@@ -104,6 +104,36 @@ function applyLhciReplacements(html, isLHCI) {
   return html.replace("/* LHCI_CSS_PLACEHOLDER */", "").replace(/%VITE_LHCI%/g, "false")
 }
 
+const safeWriteFileSync = (filePath, content) => {
+  for (let i = 0; i < 10; i++) {
+    try {
+      writeFileSync(filePath, content, "utf8")
+      return
+    } catch (err) {
+      if ((err.code === "EBUSY" || err.code === "EPERM") && i < 9) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100 * (i + 1))
+        continue
+      }
+      throw err
+    }
+  }
+}
+
+const safeCopyFileSync = (src, dest) => {
+  for (let i = 0; i < 10; i++) {
+    try {
+      copyFileSync(src, dest)
+      return
+    } catch (err) {
+      if ((err.code === "EBUSY" || err.code === "EPERM") && i < 9) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 100 * (i + 1))
+        continue
+      }
+      throw err
+    }
+  }
+}
+
 function main() {
   const cwd = process.cwd()
   const shellPath = findShellHtml(cwd)
@@ -125,7 +155,7 @@ function main() {
   html = injectFontPreloads(html, fontFiles)
   html = applyLhciReplacements(html, isLHCI)
   html = markStaticSpaShell(html)
-  writeFileSync(shellPath, html, "utf8")
+  safeWriteFileSync(shellPath, html)
 
   // Mirror the post-processed shell to `index.html` in the same directory
   // so static-server fallbacks (LHCI's staticDistDir, `npx serve -s`, etc.)
@@ -135,7 +165,7 @@ function main() {
   let mirrorPath = null
   if (path.basename(shellPath) !== "index.html") {
     mirrorPath = path.join(path.dirname(shellPath), "index.html")
-    copyFileSync(shellPath, mirrorPath)
+    safeCopyFileSync(shellPath, mirrorPath)
   }
 
   console.log(`Post-build: shell ${shellPath} processed (${originalSize} -> ${html.length} bytes)`)

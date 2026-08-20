@@ -204,28 +204,33 @@ def configure_logging(
         level=level,
     )
 
-    # MOD-6 (audit 2026-03-05): Bridge stdlib logging into the OTel SDK so that
-    # every log record is correlated with active traces (trace_id / span_id) in
-    # Grafana Tempo / OTLP backends. Requires opentelemetry-sdk ≥ 1.20.
-    # Gracefully no-ops when OTel SDK is absent (dev, test environments).
-    try:
-        from opentelemetry._logs import set_logger_provider
-        from opentelemetry.instrumentation.logging import LoggingInstrumentor
-        from opentelemetry.sdk._logs import LoggerProvider
-        from opentelemetry.sdk._logs._internal.export.otlp import OTLPLogExporter
-        from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+    # Bridge stdlib logging into the OTel SDK only when OTel and OTel logs are enabled and not in testing
+    from app.core.config import settings
 
-        _log_provider = LoggerProvider()
-        set_logger_provider(_log_provider)
-        _log_provider.add_log_record_processor(
-            BatchLogRecordProcessor(OTLPLogExporter())
-        )
-        # Instruments Python root logger → OTel bridge (adds trace_id / span_id
-        # as log record attributes recognised by Grafana Tempo).
-        LoggingInstrumentor().instrument(set_logging_format=False)
-    except ImportError:
-        # OTel SDK not installed (local dev / test) — structlog still works.
-        pass
+    if (
+        getattr(settings, "enable_otel", False)
+        and getattr(settings, "enable_otel_logs", False)
+        and getattr(settings, "environment", "") != "testing"
+    ):
+        try:
+            from opentelemetry._logs import set_logger_provider
+            from opentelemetry.instrumentation.logging import LoggingInstrumentor
+            from opentelemetry.sdk._logs import LoggerProvider
+            from opentelemetry.sdk._logs._internal.export.otlp import (
+                OTLPLogExporter,
+            )
+            from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+
+            _log_provider = LoggerProvider()
+            set_logger_provider(_log_provider)
+            _log_provider.add_log_record_processor(
+                BatchLogRecordProcessor(OTLPLogExporter())
+            )
+            # Instruments Python root logger → OTel bridge (adds trace_id / span_id
+            # as log record attributes recognised by Grafana Tempo).
+            LoggingInstrumentor().instrument(set_logging_format=False)
+        except (ImportError, Exception):  # nosec B110  # noqa: S110  # RZ-22-01-JUSTIFIED: fail-safe fallback if OTel SDK exporter unavailable in test/offline environment
+            pass
 
 
 def _orjson_serializer(obj: dict[str, Any], **kwargs: Any) -> str:

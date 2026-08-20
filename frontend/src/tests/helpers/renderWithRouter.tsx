@@ -121,6 +121,14 @@ export async function renderWithRouter({
 }: RenderWithRouterOptions): Promise<RenderWithRouterResult> {
   const client = queryClient ?? createTestQueryClient()
 
+  if (
+    typeof window !== "undefined" &&
+    !window.localStorage.getItem("ue:language") &&
+    !window.__UE_SELECTED_LANG__
+  ) {
+    window.localStorage.setItem("ue:language", "en")
+  }
+
   const rootRoute = createRootRoute({
     component: () => <Outlet />,
   })

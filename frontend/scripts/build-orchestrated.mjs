@@ -217,7 +217,7 @@ async function step3_viteBuild() {
     let memoryProbeInFlight = false
     const POLL_INTERVAL_MS = 500
     const STABLE_DEBOUNCE_TICKS = 4 // 4 × 500ms = 2s of stability
-    const MAX_WAIT_MS = 180_000 // 3 minutes hard cap before giving up
+    const MAX_WAIT_MS = Number(process.env.BUILD_MAX_WAIT_MS || 360_000) // 6 minutes cap before giving up
 
     const startTime = Date.now()
     // Never terminate a build based on stale artifacts

@@ -83,7 +83,7 @@ func (c *MemoryClient) CheckCampusPermission(ctx context.Context, campusID, perm
 	return c.CheckPermission(ctx, "campus", campusID, permission, userID)
 }
 
-// Helper function to evaluate with context timeout
+// EvaluateWithTimeout evaluates a permission check function with a context timeout.
 func EvaluateWithTimeout(ctx context.Context, fn func() (bool, error), timeout time.Duration) (bool, error) {
 	evalCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()

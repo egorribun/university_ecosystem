@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import logging
 import re
 import socket
@@ -94,9 +95,9 @@ _otel_logging_handler: LoggingHandler | None = None
 _notification_queue_metrics: NotificationQueueMetrics | None = None
 _periodic_task_metrics: dict[str, PeriodicTaskMetrics] = {}
 
-# MED-W19: locks to prevent double-init races under concurrent startup
-_otel_lock = threading.Lock()
-_notification_queue_metrics_lock = threading.Lock()
+# MED-W19: re-entrant locks to prevent double-init races and nested deadlocks under concurrent startup
+_otel_lock = threading.RLock()
+_notification_queue_metrics_lock = threading.RLock()
 
 _request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
 _trace_id_ctx: ContextVar[str | None] = ContextVar("trace_id", default=None)
@@ -330,24 +331,67 @@ def configure_observability(app: FastAPI, *, engine: AsyncEngine) -> None:
 
 
 def shutdown_observability() -> None:
-    global _otel_configured
+    global _otel_configured, _otel_logger_provider, _otel_logging_handler
     provider = trace.get_tracer_provider()
-    with suppress(Exception):
-        if isinstance(provider, TracerProvider):
-            provider.shutdown()
-
     meter_provider = metrics.get_meter_provider()
-    with suppress(Exception):
-        if isinstance(meter_provider, MeterProvider):
-            meter_provider.shutdown()
+    logger_provider = _otel_logger_provider
 
     if _otel_logging_handler is not None:
-        with suppress(Exception):
+        with suppress(
+            Exception
+        ):  # RZ-22-01-JUSTIFIED: safe removal of otel log handler
             logging.getLogger().removeHandler(_otel_logging_handler)
+        _otel_logging_handler = None
 
-    if _otel_logger_provider is not None:
-        with suppress(Exception):
-            cast(Any, _otel_logger_provider).shutdown()
+    _otel_logger_provider = None
+
+    def _shutdown_trace() -> None:
+        if isinstance(provider, TracerProvider):
+            with suppress(
+                Exception
+            ):  # RZ-22-01-JUSTIFIED: best-effort tracer provider teardown without blocking process exit
+                provider.shutdown()
+
+    def _shutdown_metrics() -> None:
+        if isinstance(meter_provider, MeterProvider):
+            with suppress(
+                Exception
+            ):  # RZ-22-01-JUSTIFIED: best-effort meter provider teardown with bounded timeout
+                try:
+                    meter_provider.shutdown(timeout_millis=2000)
+                except TypeError:
+                    meter_provider.shutdown()
+
+    def _shutdown_logs() -> None:
+        if logger_provider is not None:
+            with suppress(
+                Exception
+            ):  # RZ-22-01-JUSTIFIED: safe shutdown of otel logger provider
+                try:
+                    cast(Any, logger_provider).shutdown(timeout_millis=2000)
+                except TypeError:
+                    cast(Any, logger_provider).shutdown()
+
+    shutdown_tasks = []
+    if isinstance(provider, TracerProvider):
+        shutdown_tasks.append(_shutdown_trace)
+    if isinstance(meter_provider, MeterProvider):
+        shutdown_tasks.append(_shutdown_metrics)
+    if logger_provider is not None:
+        shutdown_tasks.append(_shutdown_logs)
+
+    if shutdown_tasks:
+        executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(len(shutdown_tasks), 3)
+        )
+        try:
+            with suppress(
+                Exception
+            ):  # RZ-22-01-JUSTIFIED: timeout suppression for unreachable telemetry collectors on process teardown
+                futures = [executor.submit(task) for task in shutdown_tasks]
+                concurrent.futures.wait(futures, timeout=2.0)
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
     _otel_configured = False
 

@@ -20,6 +20,7 @@ vi.mock("@/hooks/usePushPreferences", () => ({
   usePushPreferences: () => pushState.value,
 }))
 
+import i18n from "@/i18n/config"
 import { NotificationsSection } from "@/pages/settings/sections/NotificationsSection"
 
 const createProps = () => ({
@@ -53,7 +54,8 @@ const renderSection = async (overrides: Partial<ReturnType<typeof createProps>> 
   return { ...result, props, openNotificationAccordion }
 }
 
-beforeEach(() => {
+beforeEach(async () => {
+  await i18n.changeLanguage("en")
   pushState.value = {
     pushSupported: true,
     notificationPermission: "default",

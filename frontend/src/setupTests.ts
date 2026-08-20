@@ -182,6 +182,10 @@ afterEach(async () => {
   resetTestMfa()
   resetAdminDeadLetterJobs()
   resetEtagCache()
+  await i18n.changeLanguage("en")
+  if (typeof document !== "undefined") {
+    document.documentElement.lang = "en"
+  }
   await resetDatabaseForTesting()
 })
 

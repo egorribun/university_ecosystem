@@ -72,8 +72,10 @@ def test_configure_logging_already_configured():
         mock_structlog_conf.assert_not_called()
 
 
-def test_configure_logging_first_time_json():
+def test_configure_logging_first_time_json(monkeypatch):
     """Test configure_logging setup flow for JSON output and OTel provider integration."""
+    from types import SimpleNamespace
+
     mock_set_logger_provider = MagicMock()
     mock_logging_instrumentor_cls = MagicMock()
 
@@ -83,9 +85,17 @@ def test_configure_logging_first_time_json():
             LoggingInstrumentor=mock_logging_instrumentor_cls
         ),
         "opentelemetry.sdk._logs": MagicMock(),
+        "opentelemetry.exporter.otlp.proto.grpc._log_exporter": MagicMock(),
         "opentelemetry.sdk._logs._internal.export.otlp": MagicMock(),
         "opentelemetry.sdk._logs.export": MagicMock(),
     }
+
+    mock_settings = SimpleNamespace(
+        enable_otel=True,
+        enable_otel_logs=True,
+        environment="production",
+    )
+    monkeypatch.setattr("app.core.config.settings", mock_settings)
 
     with (
         patch.object(logging_mod, "_configured", False),
@@ -100,6 +110,33 @@ def test_configure_logging_first_time_json():
         mock_logging_instrumentor_cls.return_value.instrument.assert_called_once_with(
             set_logging_format=False
         )
+
+
+def test_configure_logging_skips_otel_in_testing_environment(monkeypatch):
+    """OTel exporter must NOT be registered when environment is 'testing'."""
+    from types import SimpleNamespace
+
+    mock_set_logger_provider = MagicMock()
+
+    modules_to_mock = {
+        "opentelemetry._logs": MagicMock(set_logger_provider=mock_set_logger_provider),
+    }
+
+    mock_settings = SimpleNamespace(
+        enable_otel=True,
+        enable_otel_logs=True,
+        environment="testing",
+    )
+    monkeypatch.setattr("app.core.config.settings", mock_settings)
+
+    with (
+        patch.object(logging_mod, "_configured", False),
+        patch("structlog.configure"),
+        patch("logging.basicConfig"),
+        patch.dict("sys.modules", modules_to_mock),
+    ):
+        configure_logging(json_output=True)
+        mock_set_logger_provider.assert_not_called()
 
 
 def test_configure_logging_first_time_console_no_otel():

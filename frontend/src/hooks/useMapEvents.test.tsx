@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
 import { useMapEvents } from "./useMapEvents"
-import * as eventsHook from "@/api/hooks/events"
 import * as campusData from "@/data/campusBuildings"
 
 /**
@@ -31,17 +30,27 @@ function wrapper(client: QueryClient) {
   }
 }
 
+const mockEventsState = vi.hoisted(() => ({
+  events: [] as unknown[],
+  isLoading: false,
+}))
+
+vi.mock("@/api/hooks/events", () => ({
+  useEventsListQuery: () => ({
+    events: mockEventsState.events,
+    isLoading: mockEventsState.isLoading,
+  }),
+}))
+
 const stubEventsHook = (events: unknown[], isLoading = false) => {
-  vi.spyOn(eventsHook, "useEventsListQuery").mockReturnValue({
-    events,
-    // The rest of UseEventsListQueryResult is irrelevant for the hook
-    // under test — useMapEvents only reads `events` + `isLoading`.
-    isLoading,
-  } as unknown as ReturnType<typeof eventsHook.useEventsListQuery>)
+  mockEventsState.events = events
+  mockEventsState.isLoading = isLoading
 }
 
 afterEach(() => {
   vi.restoreAllMocks()
+  mockEventsState.events = []
+  mockEventsState.isLoading = false
 })
 
 describe("useMapEvents — empty / loading", () => {
