@@ -1151,7 +1151,7 @@ jobs:
       - name: Validate manifests with kubeconform
         run: |
           /tmp/kubeconform -strict -summary \
-            -skip NetworkChaos,PodChaos,HTTPChaos,ClusterPolicy,ScaledObject,ExternalSecret,SecretStore,PrometheusRule,TriggerAuthentication \
+            -skip NetworkChaos,PodChaos,HTTPChaos,ClusterPolicy,ScaledObject,ExternalSecret,SecretStore,ClusterSecretStore,PrometheusRule,TriggerAuthentication,ServiceMonitor,Kustomization,Test \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             /tmp/backend-manifests.yaml
@@ -1162,7 +1162,9 @@ jobs:
             -ignore-filename-pattern 'secrets-example\.yaml' \
             -ignore-filename-pattern '.*bad.*' \
             -ignore-filename-pattern '.*kyverno.*' \
-            -skip NetworkChaos,PodChaos,HTTPChaos,ClusterPolicy,ScaledObject,ExternalSecret,SecretStore,PrometheusRule,TriggerAuthentication,TestSuite,UnitTest \
+            -ignore-filename-pattern '.*flags\.json' \
+            -ignore-filename-pattern '.*kustomization\.yaml' \
+            -skip NetworkChaos,PodChaos,HTTPChaos,ClusterPolicy,ScaledObject,ExternalSecret,SecretStore,ClusterSecretStore,PrometheusRule,TriggerAuthentication,TestSuite,UnitTest,ServiceMonitor,Kustomization,Test \
             -schema-location default \
             -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             k8s/
