@@ -734,10 +734,10 @@ jobs:
       - name: Start the full chaos compose stack
         shell: bash
         run: |
-          CF="-f docker-compose.yml -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.ci-loadtest.yml"
+          CF=(-f docker-compose.yml -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.ci-loadtest.yml)
           up_ok=""
           for attempt in 1 2 3; do
-            if docker compose $CF up -d --build; then
+            if docker compose "${CF[@]}" up -d --build; then
               echo "compose up succeeded (attempt $attempt)"
               up_ok=1
               break
@@ -746,8 +746,8 @@ jobs:
             sleep 15
           done
           if [ -z "$up_ok" ]; then
-            docker compose $CF ps || true
-            docker compose $CF logs --tail=100 backend postgres valkey nats temporal || true
+            docker compose "${CF[@]}" ps || true
+            docker compose "${CF[@]}" logs --tail=100 backend postgres valkey nats temporal || true
             exit 1
           fi
 
@@ -755,7 +755,7 @@ jobs:
           # expose-only service. Keep the sidecar fallback for runners that do
           # not publish backend:8000, while using the direct mapping when it is
           # available in the current compose implementation.
-          if [ -z "$(docker compose $CF port backend 8000 2>/dev/null || true)" ]; then
+          if [ -z "$(docker compose "${CF[@]}" port backend 8000 2>/dev/null || true)" ]; then
             net=$(docker network ls --format '{{.Name}}' | grep -E '_internal$' | head -1)
             docker rm -f ci-nightly-backend >/dev/null 2>&1 || true
             docker run -d --name ci-nightly-backend -p 8000:8000 \
@@ -811,9 +811,9 @@ jobs:
         if: always()
         shell: bash
         run: |
-          CF="-f docker-compose.yml -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.ci-loadtest.yml"
+          CF=(-f docker-compose.yml -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.ci-loadtest.yml)
           docker rm -f ci-nightly-backend >/dev/null 2>&1 || true
-          docker compose $CF down -v --remove-orphans || true
+          docker compose "${CF[@]}" down -v --remove-orphans || true
 
   kyverno-test:
     # Kept distinct from the required fast-CI context because this workflow
@@ -929,8 +929,8 @@ jobs:
 
       - name: Send optional Slack notification
         if: ${{ env.SLACK_WEBHOOK_URL != '' }}
-        run: >-
-          curl --fail-with-body --silent --show-error --request POST
-          --header 'Content-Type: application/json'
-          --data '{"text":"Nightly full quality gate failed: '${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}'"}'
-          "$SLACK_WEBHOOK_URL"
+        run: |
+          curl --fail-with-body --silent --show-error --request POST \
+            --header 'Content-Type: application/json' \
+            --data "{\"text\":\"Nightly full quality gate failed: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}" \
+            "$SLACK_WEBHOOK_URL"
