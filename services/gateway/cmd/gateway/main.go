@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"flag"
 	"fmt"
 	"net"
 	"net/http"
@@ -83,6 +84,9 @@ var (
 	shutdownH3ServerFunc   = func(server *http3.Server, ctx context.Context) error { return server.Shutdown(ctx) }
 	shutdownHTTPServerFunc = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
 	setupGinPrometheusFunc = func(router *gin.Engine) {
+		if gin.Mode() == gin.TestMode || os.Getenv("GIN_MODE") == "test" || flag.Lookup("test.v") != nil {
+			return
+		}
 		p := ginprometheus.NewPrometheus("gin")
 		p.SetListenAddress(":9102")
 		p.Use(router)
