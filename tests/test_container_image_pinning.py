@@ -17,6 +17,16 @@ def _find_repo_root() -> Path:
 
 
 ROOT = _find_repo_root()
+if (
+    not (ROOT / "k8s").exists()
+    or not (ROOT / "charts").exists()
+    or not (ROOT / "docker-compose.full.yml").exists()
+):
+    pytest.skip(
+        "repository asset tree not available (e.g. under mutmut isolation)",
+        allow_module_level=True,
+    )
+
 _DIGEST_RE = re.compile(r"@sha256:[0-9a-f]{64}$")
 _YAML_IMAGE_RE = re.compile(r"^\s*image:\s*['\"]?([^\s#'\"]+)", re.MULTILINE)
 

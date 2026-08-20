@@ -88,13 +88,19 @@ func TestSetupRouter_ClosesDedicatedRevocationRedisClientOnContextCancellation(t
 	}
 
 	var revocationClient *redis.Client
+	hooksMu.Lock()
 	originalFactory := newRevocationRedisClientFunc
 	newRevocationRedisClientFunc = func(ctx context.Context, redisURL string) (*redis.Client, error) {
 		client, err := newHealthyRedisClient(ctx, redisURL)
 		revocationClient = client
 		return client, err
 	}
-	t.Cleanup(func() { newRevocationRedisClientFunc = originalFactory })
+	hooksMu.Unlock()
+	t.Cleanup(func() {
+		hooksMu.Lock()
+		newRevocationRedisClientFunc = originalFactory
+		hooksMu.Unlock()
+	})
 
 	router, err := setupRouter(
 		cfg,
@@ -149,11 +155,14 @@ func TestRouterLifecycle_CloseIsSynchronousAndIdempotent(t *testing.T) {
 }
 
 func TestRouterLifecycle_CloseJoinsResourceErrors(t *testing.T) {
+	hooksMu.Lock()
 	originalRateLimiterClose := closeRateLimiterFunc
 	originalRevocationClose := closeRevocationRedisClientFunc
 	t.Cleanup(func() {
+		hooksMu.Lock()
 		closeRateLimiterFunc = originalRateLimiterClose
 		closeRevocationRedisClientFunc = originalRevocationClose
+		hooksMu.Unlock()
 	})
 	closeCalls := 0
 	closeRateLimiterFunc = func(*middleware.RateLimiter) error {
@@ -164,6 +173,7 @@ func TestRouterLifecycle_CloseJoinsResourceErrors(t *testing.T) {
 		closeCalls++
 		return errors.New("revocation close failed")
 	}
+	hooksMu.Unlock()
 	lifecycle := &routerLifecycle{
 		rateLimiter:           &middleware.RateLimiter{},
 		revocationRedisClient: redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"}),

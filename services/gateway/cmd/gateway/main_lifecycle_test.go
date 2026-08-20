@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -39,10 +40,16 @@ func minimalRouterConfig() *config.Config {
 }
 
 func TestSetupRouter_FailsClosedWhenTrustedProxyConfigurationFails(t *testing.T) {
+	hooksMu.Lock()
 	old := setTrustedProxiesFunc
-	t.Cleanup(func() { setTrustedProxiesFunc = old })
+	t.Cleanup(func() {
+		hooksMu.Lock()
+		setTrustedProxiesFunc = old
+		hooksMu.Unlock()
+	})
 	wantErr := errors.New("synthetic trusted proxy failure")
 	setTrustedProxiesFunc = func(*gin.Engine, []string) error { return wantErr }
+	hooksMu.Unlock()
 
 	router, err := setupRouter(
 		minimalRouterConfig(),
@@ -57,15 +64,21 @@ func TestSetupRouter_FailsClosedWhenTrustedProxyConfigurationFails(t *testing.T)
 }
 
 func TestSetupRouter_LogsPrometheusCollectorRegistrationFailure(t *testing.T) {
+	hooksMu.Lock()
 	oldProm := setupGinPrometheusFunc
-	t.Cleanup(func() { setupGinPrometheusFunc = oldProm })
-	setupGinPrometheusFunc = func(*gin.Engine) {}
-	mr := miniredis.RunT(t)
 	old := registerPrometheusCollectorFunc
-	t.Cleanup(func() { registerPrometheusCollectorFunc = old })
+	t.Cleanup(func() {
+		hooksMu.Lock()
+		setupGinPrometheusFunc = oldProm
+		registerPrometheusCollectorFunc = old
+		hooksMu.Unlock()
+	})
+	setupGinPrometheusFunc = func(*gin.Engine) {}
 	registerPrometheusCollectorFunc = func(prometheus.Collector) error {
 		return errors.New("synthetic collector registration failure")
 	}
+	hooksMu.Unlock()
+	mr := miniredis.RunT(t)
 	cfg := minimalRouterConfig()
 	cfg.RedisURL = "redis://" + mr.Addr()
 
@@ -82,14 +95,20 @@ func TestSetupRouter_LogsPrometheusCollectorRegistrationFailure(t *testing.T) {
 }
 
 func TestSetupRouter_OptionalRouteAbortStopsProxy(t *testing.T) {
+	hooksMu.Lock()
 	oldProm := setupGinPrometheusFunc
-	t.Cleanup(func() { setupGinPrometheusFunc = oldProm })
-	setupGinPrometheusFunc = func(*gin.Engine) {}
 	old := optionalAuthHandlerFunc
-	t.Cleanup(func() { optionalAuthHandlerFunc = old })
+	t.Cleanup(func() {
+		hooksMu.Lock()
+		setupGinPrometheusFunc = oldProm
+		optionalAuthHandlerFunc = old
+		hooksMu.Unlock()
+	})
+	setupGinPrometheusFunc = func(*gin.Engine) {}
 	optionalAuthHandlerFunc = func(*middleware.JWTMiddleware, context.Context) gin.HandlerFunc {
 		return func(c *gin.Context) { c.AbortWithStatus(http.StatusTeapot) }
 	}
+	hooksMu.Unlock()
 	router, err := setupRouter(
 		minimalRouterConfig(),
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -109,15 +128,18 @@ func TestSetupRouter_OptionalRouteAbortStopsProxy(t *testing.T) {
 
 func TestRun_ClosesGRPCConnectionWhenRouterSetupFails(t *testing.T) {
 	setValidRunEnvironment(t)
+	hooksMu.Lock()
 	oldTracer := initTracerFunc
 	oldGRPC := initGRPCFunc
 	oldSetup := setupRouterFunc
 	oldClose := closeGRPCConnFunc
 	t.Cleanup(func() {
+		hooksMu.Lock()
 		initTracerFunc = oldTracer
 		initGRPCFunc = oldGRPC
 		setupRouterFunc = oldSetup
 		closeGRPCConnFunc = oldClose
+		hooksMu.Unlock()
 	})
 	initTracerFunc = func(context.Context, *config.Config) (*sdktrace.TracerProvider, error) {
 		return nil, errors.New("tracing disabled in test")
@@ -134,6 +156,7 @@ func TestRun_ClosesGRPCConnectionWhenRouterSetupFails(t *testing.T) {
 		closeCalled = true
 		return errors.New("synthetic close failure")
 	}
+	hooksMu.Unlock()
 
 	assert.ErrorIs(t, run(), wantErr)
 	assert.True(t, closeCalled)
@@ -143,17 +166,20 @@ func TestRun_WaitsForRouterCleanupEvenWhenCleanupFails(t *testing.T) {
 	setValidRunEnvironment(t)
 	t.Setenv("GATEWAY_PORT", "-1")
 	t.Setenv("GATEWAY_H3_ENABLED", "false")
+	hooksMu.Lock()
 	oldTracer := initTracerFunc
 	oldGRPC := initGRPCFunc
 	oldSetup := setupRouterFunc
 	oldCloseGRPC := closeGRPCConnFunc
 	oldCloseRateLimiter := closeRateLimiterFunc
 	t.Cleanup(func() {
+		hooksMu.Lock()
 		initTracerFunc = oldTracer
 		initGRPCFunc = oldGRPC
 		setupRouterFunc = oldSetup
 		closeGRPCConnFunc = oldCloseGRPC
 		closeRateLimiterFunc = oldCloseRateLimiter
+		hooksMu.Unlock()
 	})
 	initTracerFunc = func(context.Context, *config.Config) (*sdktrace.TracerProvider, error) {
 		return nil, errors.New("tracing disabled in test")
@@ -175,6 +201,7 @@ func TestRun_WaitsForRouterCleanupEvenWhenCleanupFails(t *testing.T) {
 		cleanupCalled = true
 		return errors.New("synthetic router cleanup failure")
 	}
+	hooksMu.Unlock()
 
 	require.Error(t, run())
 	require.True(t, cleanupCalled, "run must wait for synchronous router cleanup before returning")
@@ -194,23 +221,28 @@ func (exporter *recordingSpanExporter) Shutdown(context.Context) error {
 }
 
 func TestInitTracer_PropagatesConstructionFailuresAndCleansUpExporter(t *testing.T) {
+	hooksMu.Lock()
 	oldExporter := newOTLPTraceExporterFunc
 	oldResource := newOTelResourceFunc
 	t.Cleanup(func() {
+		hooksMu.Lock()
 		newOTLPTraceExporterFunc = oldExporter
 		newOTelResourceFunc = oldResource
+		hooksMu.Unlock()
 	})
 	cfg := &config.Config{OtelEndpoint: "localhost:4317"}
 	exporterErr := errors.New("synthetic exporter failure")
 	newOTLPTraceExporterFunc = func(context.Context, ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
 		return nil, exporterErr
 	}
+	hooksMu.Unlock()
 
 	tp, err := initTracer(context.Background(), cfg)
 	assert.Nil(t, tp)
 	assert.ErrorIs(t, err, exporterErr)
 
 	exporter := &recordingSpanExporter{}
+	hooksMu.Lock()
 	newOTLPTraceExporterFunc = func(context.Context, ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
 		return exporter, nil
 	}
@@ -218,6 +250,7 @@ func TestInitTracer_PropagatesConstructionFailuresAndCleansUpExporter(t *testing
 	newOTelResourceFunc = func(context.Context, ...resource.Option) (*resource.Resource, error) {
 		return nil, resourceErr
 	}
+	hooksMu.Unlock()
 
 	tp, err = initTracer(context.Background(), cfg)
 	assert.Nil(t, tp)
@@ -226,17 +259,28 @@ func TestInitTracer_PropagatesConstructionFailuresAndCleansUpExporter(t *testing
 }
 
 func TestSetupRouter_ContextCancellationClosesOwnedLifecycle(t *testing.T) {
+	hooksMu.Lock()
 	oldProm := setupGinPrometheusFunc
-	t.Cleanup(func() { setupGinPrometheusFunc = oldProm })
+	t.Cleanup(func() {
+		hooksMu.Lock()
+		setupGinPrometheusFunc = oldProm
+		hooksMu.Unlock()
+	})
 	setupGinPrometheusFunc = func(*gin.Engine) {}
 
 	closed := make(chan struct{})
+	var closeOnce sync.Once
 	oldCloseRateLimiter := closeRateLimiterFunc
-	t.Cleanup(func() { closeRateLimiterFunc = oldCloseRateLimiter })
+	t.Cleanup(func() {
+		hooksMu.Lock()
+		closeRateLimiterFunc = oldCloseRateLimiter
+		hooksMu.Unlock()
+	})
 	closeRateLimiterFunc = func(rl *middleware.RateLimiter) error {
-		defer close(closed)
+		closeOnce.Do(func() { close(closed) })
 		return oldCloseRateLimiter(rl)
 	}
+	hooksMu.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	router, err := setupRouter(
