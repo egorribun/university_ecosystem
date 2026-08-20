@@ -1,6 +1,6 @@
 module github.com/university-ecosystem/core/gen/go
 
-go 1.26.6
+go 1.26.4
 
 require (
 	google.golang.org/grpc v1.83.0

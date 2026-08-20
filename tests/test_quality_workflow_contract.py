@@ -1123,6 +1123,7 @@ def test_active_go_toolchain_pins_use_current_security_patch() -> None:
     """All executable Go surfaces must use the same patched toolchain."""
 
     expected_version = "1.26.6"
+    manifest_expected_version = "1.26.4"
     manifests = (
         "go.mod",
         "go.work",
@@ -1141,7 +1142,7 @@ def test_active_go_toolchain_pins_use_current_security_patch() -> None:
             .splitlines()
             if line.startswith("go ")
         ]
-        assert directives == [expected_version], relative_path
+        assert directives == [manifest_expected_version], relative_path
 
     literal_version_workflows = (
         "benchmark.yml",

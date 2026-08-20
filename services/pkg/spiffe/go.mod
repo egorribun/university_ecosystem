@@ -1,6 +1,6 @@
 module github.com/university-ecosystem/services/pkg/spiffe
 
-go 1.26.6
+go 1.26.4
 
 require (
 	github.com/spiffe/go-spiffe/v2 v2.7.0
