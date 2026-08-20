@@ -16,21 +16,29 @@ test.describe("Admin notification queue", () => {
     await page.getByRole("link", { name: /Очередь уведомлений|Notification queue/i }).click()
     await page.waitForURL(/\/admin\/notifications$/)
 
-    await expect(page.getByRole("heading", { name: /Очередь уведомлений/i })).toBeVisible({
+    await expect(
+      page.getByRole("heading", { name: /Очередь уведомлений|Notification queue/i })
+    ).toBeVisible({
       timeout: 15000,
     })
-    const firstCheckbox = page.getByRole("checkbox", { name: "Выбрать задачу uuid-1" })
+    const firstCheckbox = page.getByRole("checkbox", {
+      name: /Выбрать задачу uuid-1|Select job uuid-1/i,
+    })
     await firstCheckbox.check()
 
-    await page.getByRole("button", { name: "Повторить выбранные" }).click()
+    await page.getByRole("button", { name: /Повторить выбранные|Retry selected/i }).click()
     await expect(page.getByText("Timeout")).not.toBeVisible()
-    await expect(page.getByText("Всего задач: 1")).toBeVisible()
+    await expect(page.getByText(/Всего задач: 1|Total jobs: 1/i)).toBeVisible()
 
-    const secondCheckbox = page.getByRole("checkbox", { name: "Выбрать задачу uuid-2" })
+    const secondCheckbox = page.getByRole("checkbox", {
+      name: /Выбрать задачу uuid-2|Select job uuid-2/i,
+    })
     await secondCheckbox.check()
-    await page.getByRole("button", { name: "Удалить выбранные" }).click()
+    await page.getByRole("button", { name: /Удалить выбранные|Delete selected/i }).click()
 
-    await expect(page.getByText("В отложенной очереди нет задач.")).toBeVisible()
+    await expect(
+      page.getByText(/В отложенной очереди нет задач|No dead-lettered jobs/i)
+    ).toBeVisible()
   })
 
   test("redirects non-admin users away from the queue", async ({ page }) => {

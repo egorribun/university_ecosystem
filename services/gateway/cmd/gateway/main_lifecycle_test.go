@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/gin-gonic/gin"
@@ -228,6 +229,15 @@ func TestSetupRouter_ContextCancellationClosesOwnedLifecycle(t *testing.T) {
 	oldProm := setupGinPrometheusFunc
 	t.Cleanup(func() { setupGinPrometheusFunc = oldProm })
 	setupGinPrometheusFunc = func(*gin.Engine) {}
+
+	closed := make(chan struct{})
+	oldCloseRateLimiter := closeRateLimiterFunc
+	t.Cleanup(func() { closeRateLimiterFunc = oldCloseRateLimiter })
+	closeRateLimiterFunc = func(rl *middleware.RateLimiter) error {
+		defer close(closed)
+		return oldCloseRateLimiter(rl)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	router, err := setupRouter(
 		minimalRouterConfig(),
@@ -239,4 +249,10 @@ func TestSetupRouter_ContextCancellationClosesOwnedLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, router)
 	cancel()
+
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for owned lifecycle to close")
+	}
 }

@@ -47,12 +47,13 @@ const Row = memo(function Row({ log }: { log: AuditLog }) {
       >
         <td className="px-4 py-4">
           <Button
+            id={`audit-row-toggle-${log.id}`}
             type="button"
             variant="ghost"
             size="sm"
             onClick={() => setOpen(!open)}
             aria-expanded={open}
-            aria-label={t("audit.table.toggleDetails", { id: log.id })}
+            aria-label={open ? t("audit.table.collapseRow") : t("audit.table.expandRow")}
             className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center text-(--text-secondary) hover:text-text-primary"
           >
             {open ? (

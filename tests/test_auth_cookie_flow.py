@@ -204,8 +204,18 @@ async def test_token_reuse_after_logout_rejected(
     logout_response = await async_client.post("/auth/logout", headers=headers)
     assert logout_response.status_code == 200
 
-    await db_session.refresh(session)
-    assert session.revoked_at is not None
+    await db_session.rollback()
+    refreshed_session = (
+        (
+            await db_session.execute(
+                select(ActiveSession).where(ActiveSession.jti == jti)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert refreshed_session is not None
+    assert refreshed_session.revoked_at is not None
 
     rejected = await async_client.get("/users/me", headers=headers)
     assert rejected.status_code == 401
@@ -291,9 +301,19 @@ async def test_logout_rotates_session_signing_key(
     logout_response = await async_client.post("/auth/logout", headers=headers)
     assert logout_response.status_code == 200
 
-    await db_session.refresh(session)
-    assert session.signing_key
-    assert session.signing_key != original_key
+    await db_session.rollback()
+    refreshed_session = (
+        (
+            await db_session.execute(
+                select(ActiveSession).where(ActiveSession.jti == jti)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert refreshed_session is not None
+    assert refreshed_session.signing_key
+    assert refreshed_session.signing_key != original_key
 
 
 @pytest.mark.asyncio

@@ -28,8 +28,8 @@ test.describe("University ecosystem app", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await expect(page.getByText(/Иван!/)).toBeVisible()
-    const newsLink = page.getByRole("link", { name: "Новости" }).first()
+    await expect(page.getByText(/Иван|Ivan/i)).toBeVisible()
+    const newsLink = page.getByRole("link", { name: /Новости|News/i }).first()
     await expect(newsLink).toBeVisible()
   })
 
@@ -65,17 +65,17 @@ test.describe("University ecosystem app", () => {
       .getByRole("link", { name: /Посмотреть все|See all/i })
       .first()
       .click()
-    await expect(
-      page.getByText(/\u041d\u043e\u0432\u043e\u0441\u0442\u044c \u0434\u043d\u044f/)
-    ).toBeVisible()
+    await expect(page.getByText(/Новость дня|News of the day/i)).toBeVisible()
 
     // Wait for the cache effect to run and verify it's saved
     await expect(async () => {
-      const cached = await page.evaluate(() => localStorage.getItem("news:list:ru"))
-      if (!cached) throw new Error("news:list:ru not found in localStorage")
+      const cached = await page.evaluate(
+        () => localStorage.getItem("news:list:ru") || localStorage.getItem("news:list:en")
+      )
+      if (!cached) throw new Error("news:list cache not found in localStorage")
       const parsed = JSON.parse(cached)
       if (!Array.isArray(parsed) || parsed.length === 0)
-        throw new Error("news:list:ru is empty or invalid")
+        throw new Error("news:list is empty or invalid")
     }).toPass({ timeout: TEST_TIMEOUTS.medium })
 
     // The production cache deliberately batches localStorage writes and
@@ -89,9 +89,7 @@ test.describe("University ecosystem app", () => {
       document.dispatchEvent(new Event("visibilitychange"))
     })
     await page.reload({ waitUntil: "networkidle" })
-    await expect(
-      page.getByText(/\u041d\u043e\u0432\u043e\u0441\u0442\u044c \u0434\u043d\u044f/)
-    ).toBeVisible()
+    await expect(page.getByText(/Новость дня|News of the day/i)).toBeVisible()
 
     expect(mock.state.newsLog.some((entry) => entry.status === 304)).toBeTruthy()
     expect(mock.state.newsLog.filter((entry) => entry.status === 200).length).toBeGreaterThan(0)

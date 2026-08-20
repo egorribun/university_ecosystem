@@ -7,7 +7,16 @@ from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
+
+def _find_repo_root() -> Path:
+    current = Path(__file__).resolve().parent
+    for parent in [current, *current.parents]:
+        if (parent / "pyproject.toml").exists() and (parent / "k8s").exists():
+            return parent
+    return Path(__file__).resolve().parents[1]
+
+
+ROOT = _find_repo_root()
 _DIGEST_RE = re.compile(r"@sha256:[0-9a-f]{64}$")
 _YAML_IMAGE_RE = re.compile(r"^\s*image:\s*['\"]?([^\s#'\"]+)", re.MULTILINE)
 

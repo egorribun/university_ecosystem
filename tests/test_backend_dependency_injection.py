@@ -238,7 +238,7 @@ def test_users_provider():
     assert provider.session_service(uow) is not None
 
     # unit_of_work
-    with patch("app.repositories.unit_of_work.get_unit_of_work") as mock_get_uow:
+    with patch("app.repositories.unit_of_work.uow_from_session") as mock_get_uow:
         mock_uow_instance = MagicMock()
         mock_get_uow.return_value = mock_uow_instance
         res_uow = provider.unit_of_work(db)

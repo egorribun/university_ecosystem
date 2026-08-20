@@ -69,6 +69,7 @@ async def user_factory(
         assert fetched_user is not None
         user = fetched_user
         await ensure_mfa_relationships_loaded(db_session, user)
+        await db_session.commit()
         return user
 
     return _factory

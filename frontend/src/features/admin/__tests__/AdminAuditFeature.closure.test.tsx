@@ -1,4 +1,4 @@
-import type { ChangeEvent, HTMLAttributes, ReactNode } from "react"
+import type { ButtonHTMLAttributes, ChangeEvent, HTMLAttributes, ReactNode } from "react"
 import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -12,6 +12,10 @@ vi.mock("framer-motion", async () =>
 const motion = vi.hoisted(() => ({ reduced: false }))
 vi.mock("@/hooks/useMediaQuery", () => ({
   default: () => motion.reduced,
+}))
+
+vi.mock("@/hooks/useDebounced", () => ({
+  useDebounced: <T,>(value: T) => value,
 }))
 
 vi.mock("react-i18next", () => ({
@@ -51,12 +55,20 @@ vi.mock("@/components/settings", () => ({
     children,
     disabled,
     onClick,
-  }: {
-    children?: ReactNode
-    disabled?: boolean
-    onClick?: () => void
-  }) => (
-    <button type="button" disabled={disabled} onClick={onClick}>
+    id,
+    "aria-label": ariaLabel,
+    "aria-expanded": ariaExpanded,
+    ...props
+  }: ButtonHTMLAttributes<HTMLButtonElement> & { children?: ReactNode }) => (
+    <button
+      type="button"
+      id={id}
+      disabled={disabled}
+      onClick={onClick}
+      aria-label={ariaLabel}
+      aria-expanded={ariaExpanded}
+      {...props}
+    >
       {children}
     </button>
   ),
