@@ -4,11 +4,11 @@ from unittest.mock import MagicMock
 
 import pytest
 import pytest_asyncio
+from asgi_lifespan import LifespanManager
 from sqlalchemy import event as sa_event
 
 import app.core.ratelimit as ratelimit_module
 from app import main
-from asgi_lifespan import LifespanManager
 
 _DEFAULT_QUERY_BUDGET: int = 5
 

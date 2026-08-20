@@ -307,6 +307,7 @@ ignore = [
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
+known-third-party = ["asgi_lifespan"]
 
 [tool.ruff.format]
 quote-style = "double"

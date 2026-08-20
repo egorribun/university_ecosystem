@@ -161,10 +161,9 @@ async def test_internal_access_middleware():
 @pytest.mark.asyncio
 async def test_security_headers_middleware(monkeypatch, tmp_path):
     import httpx
+    from asgi_lifespan import LifespanManager
     from fastapi import FastAPI
     from starlette.responses import Response
-
-    from asgi_lifespan import LifespanManager
 
     # Create a real file for FileResponse
     fake_file = tmp_path / "test.html"

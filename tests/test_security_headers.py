@@ -3,12 +3,12 @@ from importlib import util as importlib_util
 
 import httpx
 import pytest
+from asgi_lifespan import LifespanManager
 from fastapi import FastAPI
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import Response
 
 from app.core.config import Settings
-from asgi_lifespan import LifespanManager
 
 
 def _settings_with_expected_hs256_warning() -> Settings:

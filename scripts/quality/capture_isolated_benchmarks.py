@@ -764,8 +764,9 @@ def _go_environment(*, offline: bool) -> dict[str, str]:
 
 def _go_prefetch_environment() -> dict[str, str]:
     """Fetch Go modules without mutating the read-only workspace checkout."""
-
-    return _go_environment(offline=False)
+    environment = _go_environment(offline=False)
+    environment["GOFLAGS"] = "-buildvcs=false"
+    return environment
 
 
 def _rust_environment(*, offline: bool) -> dict[str, str]:
