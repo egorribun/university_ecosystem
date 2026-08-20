@@ -59,13 +59,17 @@ linters:
       - vendor
       - gen
       - mocks
-    # Allow the standard "exported function should have comment" pattern in test
-    # files, where docs are typically omitted for brevity.
+    # Allow test files to omit comments, use test helpers, in-memory mocks, and direct calls.
     rules:
       - path: "_test\\.go"
         linters:
           - godot
           - revive
+          - errcheck
+          - gosec
+          - gocognit
+          - cyclop
+          - noctx
 
 issues:
   # Do not limit the number of issues per linter so CI output is complete.

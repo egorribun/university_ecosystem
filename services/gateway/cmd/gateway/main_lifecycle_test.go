@@ -56,6 +56,9 @@ func TestSetupRouter_FailsClosedWhenTrustedProxyConfigurationFails(t *testing.T)
 }
 
 func TestSetupRouter_LogsPrometheusCollectorRegistrationFailure(t *testing.T) {
+	oldProm := setupGinPrometheusFunc
+	t.Cleanup(func() { setupGinPrometheusFunc = oldProm })
+	setupGinPrometheusFunc = func(*gin.Engine) {}
 	mr := miniredis.RunT(t)
 	old := registerPrometheusCollectorFunc
 	t.Cleanup(func() { registerPrometheusCollectorFunc = old })
@@ -80,6 +83,9 @@ func TestSetupRouter_LogsPrometheusCollectorRegistrationFailure(t *testing.T) {
 }
 
 func TestSetupRouter_OptionalRouteAbortStopsProxy(t *testing.T) {
+	oldProm := setupGinPrometheusFunc
+	t.Cleanup(func() { setupGinPrometheusFunc = oldProm })
+	setupGinPrometheusFunc = func(*gin.Engine) {}
 	old := optionalAuthHandlerFunc
 	t.Cleanup(func() { optionalAuthHandlerFunc = old })
 	optionalAuthHandlerFunc = func(*middleware.JWTMiddleware, context.Context) gin.HandlerFunc {
@@ -221,6 +227,9 @@ func TestInitTracer_PropagatesConstructionFailuresAndCleansUpExporter(t *testing
 }
 
 func TestSetupRouter_ContextCancellationClosesOwnedLifecycle(t *testing.T) {
+	oldProm := setupGinPrometheusFunc
+	t.Cleanup(func() { setupGinPrometheusFunc = oldProm })
+	setupGinPrometheusFunc = func(*gin.Engine) {}
 	ctx, cancel := context.WithCancel(context.Background())
 	router, err := setupRouter(
 		minimalRouterConfig(),

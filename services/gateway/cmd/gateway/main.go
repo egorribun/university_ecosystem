@@ -82,6 +82,11 @@ var (
 	}
 	shutdownH3ServerFunc   = func(server *http3.Server, ctx context.Context) error { return server.Shutdown(ctx) }
 	shutdownHTTPServerFunc = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
+	setupGinPrometheusFunc = func(router *gin.Engine) {
+		p := ginprometheus.NewPrometheus("gin")
+		p.SetListenAddress(":9102")
+		p.Use(router)
+	}
 )
 
 // newHealthyRedisClient constructs a dedicated Redis client and verifies the
@@ -441,9 +446,7 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	router.Use(rateLimiter.Middleware(ctx))
 
 	// Prometheus
-	p := ginprometheus.NewPrometheus("gin")
-	p.SetListenAddress(":9102")
-	p.Use(router)
+	setupGinPrometheusFunc(router)
 
 	// Admin/Metrics separation
 	public := router.Group("/")
