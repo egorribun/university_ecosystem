@@ -248,10 +248,10 @@ jobs:
             fi
             uv run python scripts/export_mutmut_shard_stats.py "${exporter_args[@]}" \
               --execution-proof "$MUTMUT_EVIDENCE_DIR/execution-proof.json" \
-              --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR" || return $?
-            test -s "$MUTMUT_EVIDENCE_DIR/execution-proof.json" || return $?
-            test -s "$MUTMUT_EVIDENCE_DIR/selected-mutants.json" || return $?
-            test -s "$MUTMUT_EVIDENCE_DIR/selected-results.json" || return $?
+              --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR" || return 1
+            test -s "$MUTMUT_EVIDENCE_DIR/execution-proof.json" || return 1
+            test -s "$MUTMUT_EVIDENCE_DIR/selected-mutants.json" || return 1
+            test -s "$MUTMUT_EVIDENCE_DIR/selected-results.json" || return 1
           }
           on_mutation_step_exit() {
             local exit_code="$?"
@@ -721,10 +721,12 @@ jobs:
           printf '%s.%s' "$signing_input" "$signature" > .secrets/temporal_api_key
           chmod 644 .secrets/jwt_rs256.pem
           chmod 644 .secrets/jwt_rs256.pub.pem .secrets/temporal_api_key
-          echo "COMPOSE_FILE=docker-compose.yml:docker-compose.infra.yml:docker-compose.go.yml:docker-compose.ci-loadtest.yml" >> "$GITHUB_ENV"
-          echo "API_BASE_URL=http://localhost:8000" >> "$GITHUB_ENV"
-          echo "GATEWAY_URL=http://localhost:8080" >> "$GITHUB_ENV"
-          echo "DATABASE_URL_SYNC=postgresql://postgres:${POSTGRES_PASSWORD}@localhost:54321/ecosystem" >> "$GITHUB_ENV"
+          {
+            echo "COMPOSE_FILE=docker-compose.yml:docker-compose.infra.yml:docker-compose.go.yml:docker-compose.ci-loadtest.yml"
+            echo "API_BASE_URL=http://localhost:8000"
+            echo "GATEWAY_URL=http://localhost:8080"
+            echo "DATABASE_URL_SYNC=postgresql://postgres:${POSTGRES_PASSWORD}@localhost:54321/ecosystem"
+          } >> "$GITHUB_ENV"
 
       - name: Validate the production compose contract
         run: >-

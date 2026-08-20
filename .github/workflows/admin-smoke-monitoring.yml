@@ -280,7 +280,7 @@ jobs:
           echo "---backend-log-tail---"
           tail -200 /tmp/backend.log 2>&1 || echo "(no /tmp/backend.log file)"
           echo "---ps-aux-uvicorn---"
-          ps aux | grep -i uvicorn 2>&1 | head -5 || echo "(no uvicorn process)"
+          pgrep -fa uvicorn 2>&1 | head -5 || echo "(no uvicorn process)"
           exit 1
 
       - name: Verify JWKS endpoint
