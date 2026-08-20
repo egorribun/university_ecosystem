@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime, time
+from typing import Any
 
 import rust_ext
 from pydantic import BaseModel
@@ -78,15 +79,25 @@ class ScheduleOptimizerService:
 
             conflicts_rust = rust_ext.detect_conflicts(target_rust, existing_rust)
 
-            # Reconstruct original items by matching IDs to restore metadata (room, teacher)
-            existing_map = {item.id: item for item in existing if item.id is not None}
+            # Reconstruct original items by matching Rust IDs to restore metadata and original ID
+            rust_id_map: dict[Any, ScheduleItemInternal] = {}
+            for item in existing:
+                if item.id is not None:
+                    if isinstance(item.id, int):
+                        rust_id_map[item.id] = item
+                    elif isinstance(item.id, uuid.UUID):
+                        r_id = int.from_bytes(item.id.bytes[:4], "big") & 0x7FFFFFFF
+                        rust_id_map[r_id] = item
 
             result = []
-            for item in conflicts_rust:
-                orig = existing_map.get(item.id)
+            for c_item in conflicts_rust:
+                orig = rust_id_map.get(c_item.id) if c_item.id is not None else None
                 room = orig.room if orig else None
                 teacher = orig.teacher if orig else None
-                result.append(self._from_rust_item(item, room, teacher))
+                orig_id = orig.id if orig else c_item.id
+                reconstructed = self._from_rust_item(c_item, room, teacher)
+                reconstructed.id = orig_id
+                result.append(reconstructed)
 
             return result
         # HIGH-W19 + RZ-20-04: narrow to Rust/PyO3 error types — consistent
@@ -106,27 +117,37 @@ class ScheduleOptimizerService:
             items_rust = [self._to_rust_item(item) for item in items]
             conflicts_rust = rust_ext.batch_detect_conflicts(items_rust)
 
-            existing_map = {item.id: item for item in items if item.id is not None}
+            rust_id_map: dict[Any, ScheduleItemInternal] = {}
+            for item in items:
+                if item.id is not None:
+                    if isinstance(item.id, int):
+                        rust_id_map[item.id] = item
+                    elif isinstance(item.id, uuid.UUID):
+                        r_id = int.from_bytes(item.id.bytes[:4], "big") & 0x7FFFFFFF
+                        rust_id_map[r_id] = item
 
             result = []
             for a, b in conflicts_rust:
-                orig_a = existing_map.get(a.id)
-                orig_b = existing_map.get(b.id)
+                orig_a = rust_id_map.get(a.id) if a.id is not None else None
+                orig_b = rust_id_map.get(b.id) if b.id is not None else None
 
-                result.append(
-                    (
-                        self._from_rust_item(
-                            a,
-                            orig_a.room if orig_a else None,
-                            orig_a.teacher if orig_a else None,
-                        ),
-                        self._from_rust_item(
-                            b,
-                            orig_b.room if orig_b else None,
-                            orig_b.teacher if orig_b else None,
-                        ),
-                    )
+                rec_a = self._from_rust_item(
+                    a,
+                    orig_a.room if orig_a else None,
+                    orig_a.teacher if orig_a else None,
                 )
+                if orig_a:
+                    rec_a.id = orig_a.id
+
+                rec_b = self._from_rust_item(
+                    b,
+                    orig_b.room if orig_b else None,
+                    orig_b.teacher if orig_b else None,
+                )
+                if orig_b:
+                    rec_b.id = orig_b.id
+
+                result.append((rec_a, rec_b))
             return result
         except (RuntimeError, ImportError, OSError) as e:
             # RZ-33-13: Re-raise — empty list is indistinguishable from "no conflicts".

@@ -306,11 +306,11 @@ export function AdminUsersFeature() {
                   <button
                     type="button"
                     onClick={() => void handleDelete(user.id)}
-                    className="absolute top-4 right-4 rounded-lg p-1.5 text-error transition-colors hover:bg-error/(--opacity-subtle)"
+                    className="absolute top-4 right-4 rounded-lg p-1.5 min-h-[44px] min-w-[44px] flex items-center justify-center text-error transition-colors hover:bg-error/(--opacity-subtle)"
                     aria-label={t("users.table.deleteUser")}
                     title={t("users.table.deleteUser")}
                   >
-                    <Trash2 className="h-5 w-5" />
+                    <Trash2 className="h-5 w-5" aria-hidden="true" />
                   </button>
                 )}
               </SectionCard>

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { memo, useEffect, useState } from "react"
 import { m, AnimatePresence } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
@@ -17,8 +17,9 @@ import { useAdminAuditLogsQuery } from "@/api/hooks/adminAudit"
 import { cn } from "@/utils/cn"
 import { SectionCard, TextField, Button } from "@/components/settings"
 import { AuditLog } from "@/types/Admin"
+import { useDebounced } from "@/hooks/useDebounced"
 
-function Row({ log }: { log: AuditLog }) {
+const Row = memo(function Row({ log }: { log: AuditLog }) {
   const [open, setOpen] = useState(false)
   const { t } = useTranslation("admin")
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
@@ -45,20 +46,21 @@ function Row({ log }: { log: AuditLog }) {
         )}
       >
         <td className="px-4 py-4">
-          <button
+          <Button
             type="button"
-            id={`audit-row-toggle-${log.id}`}
+            variant="ghost"
+            size="sm"
             onClick={() => setOpen(!open)}
             aria-expanded={open}
-            aria-label={open ? t("audit.table.collapseRow") : t("audit.table.expandRow")}
-            className="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg transition-colors hover:bg-(--bg-surface-hover)/(--opacity-dim) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
+            aria-label={t("audit.table.toggleDetails", { id: log.id })}
+            className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center text-(--text-secondary) hover:text-text-primary"
           >
             {open ? (
               <ChevronUp className="h-4 w-4" aria-hidden="true" />
             ) : (
               <ChevronDown className="h-4 w-4" aria-hidden="true" />
             )}
-          </button>
+          </Button>
         </td>
         <td className="px-4 py-4">
           <div className="flex flex-col">
@@ -73,7 +75,7 @@ function Row({ log }: { log: AuditLog }) {
         <td className="px-4 py-4">
           <div className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand/(--opacity-subtle) text-brand">
-              <User className="h-4 w-4" />
+              <User className="h-4 w-4" aria-hidden="true" />
             </div>
             <div className="flex flex-col min-w-0">
               <span className="truncate text-sm font-bold text-text-primary">
@@ -97,7 +99,7 @@ function Row({ log }: { log: AuditLog }) {
         </td>
         <td className="px-4 py-4">
           <div className="flex items-center gap-1.5 text-sm text-(--text-secondary)">
-            <Activity className="h-3.5 w-3.5 opacity-medium" />
+            <Activity className="h-3.5 w-3.5 opacity-medium" aria-hidden="true" />
             <span>{log.resource_type}</span>
           </div>
         </td>
@@ -108,14 +110,14 @@ function Row({ log }: { log: AuditLog }) {
                 className="flex h-6 w-6 items-center justify-center rounded-full bg-brand/(--opacity-subtle) text-brand"
                 title={t("audit.details.integrityVerified")}
               >
-                <ShieldCheck className="h-4 w-4" />
+                <ShieldCheck className="h-4 w-4" aria-hidden="true" />
               </div>
             ) : (
               <div
                 className="flex h-6 w-6 items-center justify-center rounded-full bg-error/(--opacity-subtle) text-error"
                 title={t("audit.details.integrityTampered")}
               >
-                <ShieldAlert className="h-4 w-4" />
+                <ShieldAlert className="h-4 w-4" aria-hidden="true" />
               </div>
             )}
           </div>
@@ -134,7 +136,7 @@ function Row({ log }: { log: AuditLog }) {
               >
                 <div className="mx-4 mb-4 mt-2 rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-6 shadow-sm">
                   <div className="mb-4 flex items-center gap-2 text-sm font-bold text-text-primary">
-                    <Info className="h-4 w-4 text-brand" />
+                    <Info className="h-4 w-4 text-brand" aria-hidden="true" />
                     <span>{t("audit.details.title")}</span>
                   </div>
 
@@ -179,7 +181,7 @@ function Row({ log }: { log: AuditLog }) {
                   {log.context && Object.keys(log.context).length > 0 && (
                     <div className="mt-6">
                       <div className="mb-2 flex items-center gap-2 text-label-xs font-bold uppercase tracking-widest text-(--text-secondary) opacity-medium">
-                        <Terminal className="h-3 w-3" />
+                        <Terminal className="h-3 w-3" aria-hidden="true" />
                         <span>{t("audit.details.executionContext")}</span>
                       </div>
                       <div className="rounded-md border border-glass-border/(--opacity-subtle) bg-black/(--opacity-medium) p-4 font-mono text-xs text-brand-light">
@@ -197,13 +199,23 @@ function Row({ log }: { log: AuditLog }) {
       </AnimatePresence>
     </>
   )
-}
+})
 
 /** Audit-log table with server-backed filters and offset pagination. */
 export function AdminAuditFeature() {
   const [page, setPage] = useState(0)
   const rowsPerPage = 50
+  const [rawResourceType, setRawResourceType] = useState("")
+  const [rawAction, setRawAction] = useState("")
   const [filters, setFilters] = useState({ resource_type: "", action: "" })
+
+  const debouncedResourceType = useDebounced(rawResourceType, "search")
+  const debouncedAction = useDebounced(rawAction, "search")
+
+  useEffect(() => {
+    setFilters({ resource_type: debouncedResourceType, action: debouncedAction })
+    setPage(0)
+  }, [debouncedResourceType, debouncedAction])
 
   const { t } = useTranslation("admin")
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
@@ -211,11 +223,6 @@ export function AdminAuditFeature() {
   const { data, isPending: loading } = useAdminAuditLogsQuery(filters, { page, rowsPerPage })
   const logs: AuditLog[] = data?.items ?? []
   const total = data?.total ?? 0
-
-  const updateFilter = (key: keyof typeof filters, value: string) => {
-    setFilters((previousFilters) => ({ ...previousFilters, [key]: value }))
-    setPage(0)
-  }
 
   return (
     <div className="min-h-screen w-full bg-background/(--opacity-medium) py-12">
@@ -237,15 +244,15 @@ export function AdminAuditFeature() {
           <TextField
             id="resource-type-filter"
             label={t("audit.filters.resourceType")}
-            value={filters.resource_type}
-            onChange={(event) => updateFilter("resource_type", event.target.value)}
+            value={rawResourceType}
+            onChange={(event) => setRawResourceType(event.target.value)}
             className="min-w-(--min-w-column) flex-1"
           />
           <TextField
             id="action-filter"
             label={t("audit.filters.action")}
-            value={filters.action}
-            onChange={(event) => updateFilter("action", event.target.value)}
+            value={rawAction}
+            onChange={(event) => setRawAction(event.target.value)}
             className="min-w-(--min-w-column) flex-1"
           />
         </SectionCard>

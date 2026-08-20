@@ -25,11 +25,9 @@ func MaxQueryDepthMiddleware(maxDepth int, next http.Handler) http.Handler {
 			return
 		}
 
-		// RZ-33-22: Read the full body once, extract only the "query" field for
-		// depth estimation, then pass the original body through unchanged.
-		// Previous code used DisallowUnknownFields (rejected valid requests with
-		// "variables") and re-encoded only the Query field (dropped variables).
-		bodyBytes, err := io.ReadAll(r.Body)
+		// RZ-33-22: Read body with 1MB limit to protect against memory exhaustion,
+		// extract only the "query" field for depth estimation, then pass through.
+		bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		if err != nil {
 			http.Error(w, `{"errors":[{"message":"invalid request body"}]}`, http.StatusBadRequest)
 			return

@@ -78,7 +78,7 @@ backend:
   replicaCount: 2
   image:
     repository: university-backend
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
     tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
@@ -125,7 +125,7 @@ frontend:
   replicaCount: 2
   image:
     repository: university-frontend
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
     tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
@@ -143,7 +143,7 @@ gateway:
   replicaCount: 2
   image:
     repository: university-gateway
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
     tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
@@ -174,7 +174,7 @@ fileProcessor:
   replicaCount: 2
   image:
     repository: university-file-processor
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
     tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
@@ -209,7 +209,7 @@ outboxWorker:
   replicaCount: 1
   image:
     repository: university-backend
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
     tag: ""
   resources:
     requests:

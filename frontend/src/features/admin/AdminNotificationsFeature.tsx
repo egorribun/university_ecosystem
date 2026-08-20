@@ -543,7 +543,7 @@ export function AdminNotificationsFeature() {
                   variant="outline"
                   className="flex-1 sm:flex-initial"
                 >
-                  <RotateCcw className="mr-2 h-4 w-4" />
+                  <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
                   {t("admin:notifications.actions.retrySelected")}
                 </Button>
                 <Button
@@ -552,7 +552,7 @@ export function AdminNotificationsFeature() {
                   variant="outline"
                   className="flex-1 border-error/(--opacity-dim) text-error hover:bg-error/(--opacity-subtle) sm:flex-initial"
                 >
-                  <Trash2 className="mr-2 h-4 w-4" />
+                  <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
                   {t("admin:notifications.actions.purgeSelected")}
                 </Button>
               </div>

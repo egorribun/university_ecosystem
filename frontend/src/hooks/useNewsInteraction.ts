@@ -257,21 +257,23 @@ export function useNewsInteraction(newsId: string, options: NewsInteractionOptio
     },
   })
 
+  const likeMutate = likeMutation.mutate
+  const commentMutate = commentMutation.mutate
+  const updateCommentMutate = updateCommentMutation.mutate
+  const deleteCommentMutate = deleteCommentMutation.mutate
+
   return {
     interactions,
     isLoading,
-    toggleLike: useCallback(() => likeMutation.mutate(), [likeMutation]),
-    addComment: useCallback(
-      (content: string) => commentMutation.mutate(content),
-      [commentMutation]
-    ),
+    toggleLike: useCallback(() => likeMutate(), [likeMutate]),
+    addComment: useCallback((content: string) => commentMutate(content), [commentMutate]),
     updateComment: useCallback(
-      (commentId: string, content: string) => updateCommentMutation.mutate({ commentId, content }),
-      [updateCommentMutation]
+      (commentId: string, content: string) => updateCommentMutate({ commentId, content }),
+      [updateCommentMutate]
     ),
     deleteComment: useCallback(
-      (commentId: string) => deleteCommentMutation.mutate(commentId),
-      [deleteCommentMutation]
+      (commentId: string) => deleteCommentMutate(commentId),
+      [deleteCommentMutate]
     ),
     isLiking: likeMutation.isPending,
     isCommenting: commentMutation.isPending,

@@ -450,6 +450,15 @@ class EventRepository(BaseRepository[Event, EventDTO, dict[str, Any], dict[str, 
         result = await self.db.execute(text(query), params)
         return result.fetchall(), list(result.keys())
 
+    async def get_event_files(
+        self, event_id: uuid.UUID | str | int
+    ) -> list[models.EventFile]:
+        """Fetch all attachments for the given event."""
+        event_id = self._cast_id(event_id)
+        stmt = select(models.EventFile).where(models.EventFile.event_id == event_id)
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
+
 
 def get_event_repository(db: AsyncDatabaseSession) -> EventRepository:
     """Factory function for dependency injection."""

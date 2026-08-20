@@ -153,7 +153,7 @@ export const ScheduleDesktopTable = memo(function ScheduleDesktopTable({
                     <button
                       type="button"
                       aria-label={t("schedule:actions.addLesson", { day: label })}
-                      className="flex h-6 w-6 items-center justify-center rounded-md text-text-secondary transition-all duration-fast hover:bg-brand hover:text-[var(--sched-on-accent)] focus-visible:ring-2 focus-visible:ring-brand"
+                      className="flex h-6 w-6 min-h-[44px] min-w-[44px] items-center justify-center rounded-md text-text-secondary transition-all duration-fast hover:bg-brand hover:text-[var(--sched-on-accent)] focus-visible:ring-2 focus-visible:ring-brand"
                       onClick={(e) => {
                         e.stopPropagation()
                         setAddDay(day)

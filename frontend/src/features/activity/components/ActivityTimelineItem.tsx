@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react"
+import { memo, type CSSProperties } from "react"
 import { useTranslation } from "react-i18next"
 import {
   CalendarCheck as AttendanceIcon,
@@ -36,7 +36,7 @@ type ActivityTimelineItemProps = {
   staggerIndex: number
 }
 
-export function ActivityTimelineItem({
+export const ActivityTimelineItem = memo(function ActivityTimelineItem({
   entry,
   formatDate,
   attendanceStatusLabel,
@@ -97,4 +97,4 @@ export function ActivityTimelineItem({
       </div>
     </div>
   )
-}
+})
