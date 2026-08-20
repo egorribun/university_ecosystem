@@ -143,7 +143,7 @@ jobs:
               pkg="./$pkg_dir"
             fi
             # Add to list if not already present
-            if [[ ! " $PACKAGES " =~ " $pkg " ]]; then
+            if [[ " $PACKAGES " != *" $pkg "* ]]; then
               PACKAGES="$PACKAGES $pkg"
             fi
           done

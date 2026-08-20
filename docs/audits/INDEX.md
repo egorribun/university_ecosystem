@@ -6,9 +6,9 @@ must not be treated as current configuration or current quality evidence.
 
 ## Current reference set
 
+- [PR #1249 Audit](AUDIT_PR1249.md) — multi-stack quality & architectural release certification
 - [Wave 211](AUDIT_WAVE211.md) — forwarding and group-chat completion
 - [Wave 210](AUDIT_WAVE210.md) — group-message backend foundation
-- [Wave 209](AUDIT_WAVE209.md) — group-chat foundation
 
 The active reference set is deliberately limited to the three most recent
 reports. New audit reports must move the oldest active report into `archive/`

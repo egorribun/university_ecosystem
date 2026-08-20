@@ -235,7 +235,7 @@ func initializeTracerShutdown(ctx context.Context, cfg *config.Config, logger *s
 func startTemporalWorker(ctx context.Context, cfg *config.Config, logger *slog.Logger) (client.Client, worker.Worker, error) {
 	c, err := connectTemporal(ctx, cfg, logger)
 	if err != nil {
-		logger.ErrorContext(ctx, "Failed to connect to Temporal", "err", err)
+		logger.ErrorContext(ctx, "Failed to connect to Temporal", "addr", cfg.TemporalHost)
 		return nil, nil, err
 	}
 

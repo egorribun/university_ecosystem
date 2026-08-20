@@ -52,7 +52,9 @@ func MaxQueryDepthMiddleware(maxDepth int, next http.Handler) http.Handler {
 			}{Errors: []struct {
 				Message string `json:"message"`
 			}{{Message: fmt.Sprintf("query depth %d exceeds maximum allowed depth of %d", depth, maxDepth)}}}
-			_ = json.NewEncoder(w).Encode(response) // response connection may close
+			if err := json.NewEncoder(w).Encode(response); err != nil {
+				return
+			}
 			return
 		}
 

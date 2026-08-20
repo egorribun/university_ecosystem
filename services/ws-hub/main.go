@@ -295,6 +295,61 @@ func setupHubWithRevocation(ctx context.Context, cfg *config.Config, logger *slo
 	return h, nil
 }
 
+type redisPingCache struct {
+	mu      sync.Mutex
+	err     error
+	updated time.Time
+}
+
+func (c *redisPingCache) ping(ctx context.Context, rdb *redis.Client, ttl time.Duration) string {
+	if !healthRedisConfiguredFunc(rdb) {
+		return "not configured"
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if time.Since(c.updated) > ttl {
+		c.err = healthRedisPingFunc(ctx, rdb)
+		c.updated = time.Now()
+	}
+	if c.err != nil {
+		return c.err.Error()
+	}
+	return ""
+}
+
+func newReadinessHandler(h *hub.Hub, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client, revocationRDB *redis.Client) http.HandlerFunc {
+	var appCache, revCache redisPingCache
+	const redisCacheTTL = 5 * time.Second
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		checks := map[string]string{}
+		if !healthNATSConnectedFunc(nc) {
+			checks["nats"] = "disconnected"
+		}
+		if status := appCache.ping(r.Context(), rdb, redisCacheTTL); status != "" {
+			checks["redis"] = status
+		}
+		if status := revCache.ping(r.Context(), revocationRDB, redisCacheTTL); status != "" {
+			checks["revocation_redis"] = status
+		}
+		if !healthJWKSReadyFunc(h) {
+			checks["jwks"] = "not initialized"
+		}
+		if len(checks) > 0 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			if err := json.NewEncoder(w).Encode(map[string]interface{}{
+				"status": "degraded", "checks": checks,
+			}); err != nil {
+				logger.ErrorContext(r.Context(), "Failed to encode readiness response", "err", err)
+			}
+			return
+		}
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ready"}); err != nil {
+			logger.ErrorContext(r.Context(), "Failed to encode readiness response", "err", err)
+		}
+	}
+}
+
 func setupHandlers(mux *http.ServeMux, h *hub.Hub, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client, revocationClients ...*redis.Client) {
 	revocationRDB := rdb
 	if len(revocationClients) > 0 {
@@ -318,68 +373,7 @@ func setupHandlers(mux *http.ServeMux, h *hub.Hub, cfg *config.Config, logger *s
 		}
 	}), "health_live"))
 
-	// LOW-W19: cache the Redis ping result for 5 s so that rapid K8s readiness
-	// probes (default 10 s interval, sometimes 1 s) do not open a new Redis
-	// round-trip on every probe.  NATS and JWKS checks are in-memory and cheap.
-	var (
-		redisCacheMu           sync.Mutex
-		redisCacheErr          error
-		redisCacheUpdated      time.Time
-		revocationCacheMu      sync.Mutex
-		revocationCacheErr     error
-		revocationCacheUpdated time.Time
-	)
-	const redisCacheTTL = 5 * time.Second
-
-	mux.Handle("/health/ready", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		checks := map[string]string{}
-		if !healthNATSConnectedFunc(nc) {
-			checks["nats"] = "disconnected"
-		}
-		if healthRedisConfiguredFunc(rdb) {
-			redisCacheMu.Lock()
-			if time.Since(redisCacheUpdated) > redisCacheTTL {
-				redisCacheErr = healthRedisPingFunc(r.Context(), rdb)
-				redisCacheUpdated = time.Now()
-			}
-			cachedErr := redisCacheErr
-			redisCacheMu.Unlock()
-			if cachedErr != nil {
-				checks["redis"] = cachedErr.Error()
-			}
-		} else {
-			checks["redis"] = "not configured"
-		}
-		if healthRedisConfiguredFunc(revocationRDB) {
-			revocationCacheMu.Lock()
-			if time.Since(revocationCacheUpdated) > redisCacheTTL {
-				revocationCacheErr = healthRedisPingFunc(r.Context(), revocationRDB)
-				revocationCacheUpdated = time.Now()
-			}
-			cachedErr := revocationCacheErr
-			revocationCacheMu.Unlock()
-			if cachedErr != nil {
-				checks["revocation_redis"] = cachedErr.Error()
-			}
-		} else {
-			checks["revocation_redis"] = "not configured"
-		}
-		if !healthJWKSReadyFunc(h) {
-			checks["jwks"] = "not initialized"
-		}
-		if len(checks) > 0 {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			if err := json.NewEncoder(w).Encode(map[string]interface{}{
-				"status": "degraded", "checks": checks,
-			}); err != nil {
-				logger.ErrorContext(r.Context(), "Failed to encode readiness response", "err", err)
-			}
-			return
-		}
-		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ready"}); err != nil {
-			logger.ErrorContext(r.Context(), "Failed to encode readiness response", "err", err)
-		}
-	}), "health_ready"))
+	mux.Handle("/health/ready", otelhttp.NewHandler(newReadinessHandler(h, logger, nc, rdb, revocationRDB), "health_ready"))
 
 	// Backward-compatible /health (alias for /health/live).
 	mux.Handle("/health", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

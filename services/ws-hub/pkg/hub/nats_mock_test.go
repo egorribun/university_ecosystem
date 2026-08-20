@@ -62,59 +62,75 @@ func (s *mockNatsServer) run() {
 		s.mu.Lock()
 		s.conns = append(s.conns, conn)
 		s.mu.Unlock()
-		go func(c net.Conn) {
-			defer func() {
-				if err := c.Close(); err != nil {
-					return
-				}
-			}()
-			info := `INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false,"max_payload":1048576}` + "\r\n"
-			if _, err := c.Write([]byte(info)); err != nil {
-				return
-			}
-
-			reader := bufio.NewReader(c)
-			subscriptions := make(map[string][]string)
-			for {
-				line, err := reader.ReadString('\n')
-				if err != nil {
-					return
-				}
-				if strings.HasPrefix(line, "PING") {
-					if _, err := c.Write([]byte("PONG\r\n")); err != nil {
-						return
-					}
-					continue
-				}
-				fields := strings.Fields(line)
-				if len(fields) >= 3 && fields[0] == "SUB" {
-					subject := fields[1]
-					sid := fields[len(fields)-1]
-					subscriptions[subject] = append(subscriptions[subject], sid)
-					continue
-				}
-				if len(fields) >= 3 && fields[0] == "PUB" {
-					size, parseErr := strconv.Atoi(fields[len(fields)-1])
-					if parseErr != nil || size < 0 {
-						return
-					}
-					payloadWithCRLF := make([]byte, size+2)
-					if _, readErr := io.ReadFull(reader, payloadWithCRLF); readErr != nil {
-						return
-					}
-					payload := payloadWithCRLF[:size]
-					for _, sid := range subscriptions[fields[1]] {
-						header := "MSG " + fields[1] + " " + sid + " " + strconv.Itoa(size) + "\r\n"
-						frame := append([]byte(header), payload...)
-						frame = append(frame, '\r', '\n')
-						if _, writeErr := c.Write(frame); writeErr != nil {
-							return
-						}
-					}
-				}
-			}
-		}(conn)
+		go s.handleConn(conn)
 	}
+}
+
+func (s *mockNatsServer) handleConn(c net.Conn) {
+	defer func() {
+		if err := c.Close(); err != nil {
+			return
+		}
+	}()
+	info := `INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":false,"max_payload":1048576}` + "\r\n"
+	if _, err := c.Write([]byte(info)); err != nil {
+		return
+	}
+
+	reader := bufio.NewReader(c)
+	subscriptions := make(map[string][]string)
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return
+		}
+		if !s.processLine(c, reader, line, subscriptions) {
+			return
+		}
+	}
+}
+
+func (s *mockNatsServer) processLine(c net.Conn, reader *bufio.Reader, line string, subscriptions map[string][]string) bool {
+	if strings.HasPrefix(line, "PING") {
+		_, err := c.Write([]byte("PONG\r\n"))
+		return err == nil
+	}
+	fields := strings.Fields(line)
+	if len(fields) < 3 {
+		return true
+	}
+	switch fields[0] {
+	case "SUB":
+		subject := fields[1]
+		sid := fields[len(fields)-1]
+		subscriptions[subject] = append(subscriptions[subject], sid)
+		return true
+	case "PUB":
+		return s.handlePub(c, reader, fields, subscriptions)
+	default:
+		return true
+	}
+}
+
+func (s *mockNatsServer) handlePub(c net.Conn, reader *bufio.Reader, fields []string, subscriptions map[string][]string) bool {
+	size, parseErr := strconv.Atoi(fields[len(fields)-1])
+	if parseErr != nil || size < 0 {
+		return false
+	}
+	payloadWithCRLF := make([]byte, size+2)
+	if _, readErr := io.ReadFull(reader, payloadWithCRLF); readErr != nil {
+		return false
+	}
+	payload := payloadWithCRLF[:size]
+	for _, sid := range subscriptions[fields[1]] {
+		header := "MSG " + fields[1] + " " + sid + " " + strconv.Itoa(size) + "\r\n"
+		frame := append([]byte(header), payload...)
+		frame = append(frame, '\r', '\n')
+		if _, writeErr := c.Write(frame); writeErr != nil {
+			return false
+		}
+	}
+	return true
 }
 
 func TestSubscribeToNATS_SuccessAndStop(t *testing.T) {

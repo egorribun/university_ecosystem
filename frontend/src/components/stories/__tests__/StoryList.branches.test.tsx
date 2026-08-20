@@ -311,8 +311,8 @@ describe("StoryList branches", () => {
     expect(handlePrefetch).toHaveBeenCalled()
   })
 
-  it("renders nothing when not loading and there are no stories (line 161)", () => {
-    const { container } = render(<StoryList stories={[]} loading={false} onOpenStory={vi.fn()} />)
-    expect(container).toBeEmptyDOMElement()
+  it("renders empty status when not loading and there are no stories (line 161)", () => {
+    render(<StoryList stories={[]} loading={false} onOpenStory={vi.fn()} />)
+    expect(screen.getByRole("status")).toBeInTheDocument()
   })
 })

@@ -729,12 +729,12 @@ jobs:
           TRIGGER_ACTOR: ${{ github.actor }}
         run: |
           {
-            printf '%s\n\n' '## Deployment Summary'
-            printf '%s\n' '| Property | Value |'
-            printf '%s\n' '|----------|-------|'
-            printf '| Environment | `%s` |\n' "${DEPLOY_ENVIRONMENT}"
-            printf '| Version | `%s` |\n' "${DEPLOY_VERSION}"
-            printf '| Deploy Status | `%s` |\n' "${DEPLOY_STATUS}"
-            printf '| Rollback Test | `%s` |\n\n' "${ROLLBACK_STATUS}"
-            printf '**Triggered by:** @%s\n' "${TRIGGER_ACTOR}"
+            printf "%s\n\n" "## Deployment Summary"
+            printf "%s\n" "| Property | Value |"
+            printf "%s\n" "|----------|-------|"
+            printf "| Environment | \`%s\` |\n" "${DEPLOY_ENVIRONMENT}"
+            printf "| Version | \`%s\` |\n" "${DEPLOY_VERSION}"
+            printf "| Deploy Status | \`%s\` |\n" "${DEPLOY_STATUS}"
+            printf "| Rollback Test | \`%s\` |\n\n" "${ROLLBACK_STATUS}"
+            printf "**Triggered by:** @%s\n" "${TRIGGER_ACTOR}"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -70,7 +70,7 @@
   ],
   "allowed_sleeps": [
     "services/gateway/middleware/**",
-    "services/ws-hub/pkg/hub/**",
+    "services/ws-hub/**",
     "services/file-processor/**",
     "tests/chaos/**",
     "tests/test_uuid7_and_geolocation.py",
@@ -135,7 +135,15 @@
     "frontend/src/hooks/features/__tests__/useMessengerController.branches.test.tsx",
     "frontend/src/hooks/features/__tests__/useMessengerController.test.tsx",
     "frontend/src/__tests__/manifestScreenshots.test.ts",
+    "frontend/src/__tests__/publicHeadAssets.test.ts",
     "frontend/src/api/__tests__/client.rateLimit.test.ts",
-    "frontend/src/api/__tests__/client.retry.test.ts"
+    "frontend/src/api/__tests__/client.retry.test.ts",
+    "tests/test_check_dependency_audit_report.py",
+    "tests/test_ci_main_failure_regressions.py",
+    "tests/test_container_image_pinning.py",
+    "tests/test_docker_startup_contracts.py",
+    "tests/test_revocation_redis_topology.py",
+    "tests/test_spire_manifests.py",
+    "tests/test_workflow_fail_closed_contracts.py"
   ]
 }

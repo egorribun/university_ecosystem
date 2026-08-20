@@ -97,7 +97,9 @@ func newHealthyRedisClient(ctx context.Context, redisURL string) (*redis.Client,
 	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := client.Ping(pingCtx).Err(); err != nil {
-		_ = client.Close()
+		if closeErr := client.Close(); closeErr != nil {
+			return nil, fmt.Errorf("connect to revocation Redis: %w (close error: %v)", err, closeErr)
+		}
 		return nil, fmt.Errorf("connect to revocation Redis: %w", err)
 	}
 	return client, nil
@@ -313,13 +315,15 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 		}
 	}
 	ownedLifecycle := lifecycle == nil
-	if ownedLifecycle {
+	if lifecycle == nil {
 		lifecycle = &routerLifecycle{}
 	}
 	setupComplete := false
 	defer func() {
 		if !setupComplete {
-			_ = lifecycle.Close()
+			if err := lifecycle.Close(); err != nil {
+				logger.WarnContext(ctx, "Failed to close router lifecycle on setup abort", "err", err)
+			}
 		}
 	}()
 
@@ -566,7 +570,9 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 
 	if ownedLifecycle {
 		context.AfterFunc(ctx, func() {
-			_ = lifecycle.Close()
+			if err := lifecycle.Close(); err != nil {
+				logger.WarnContext(ctx, "Failed to close router lifecycle on context completion", "err", err)
+			}
 		})
 	}
 	setupComplete = true

@@ -304,7 +304,9 @@ func (a *FileActivities) downloadAndDecodeImage(ctx context.Context, key string)
 	case <-ctx.Done():
 		// Close immediately to unblock a decoder waiting on the response body;
 		// the cancellation error below remains the authoritative result.
-		_ = obj.Close()
+		if err := obj.Close(); err != nil {
+			return nil, "", temporal.NewApplicationError(fmt.Sprintf("context cancelled during image decode (close error: %v)", err), "ContextCancelled")
+		}
 		return nil, "", temporal.NewApplicationError("context cancelled during image decode", "ContextCancelled")
 	case res := <-doneCh:
 		if res.err != nil {

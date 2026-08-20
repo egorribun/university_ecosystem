@@ -22,6 +22,7 @@ const translation = vi.hoisted(() => {
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: translation.t }),
+  I18nextProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }))
 
 type FormShape = {

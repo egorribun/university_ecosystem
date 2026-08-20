@@ -962,7 +962,7 @@ def test_helm_frontend_matches_the_node_ssr_runtime_contract() -> None:
 def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
     helm = shutil.which("helm")
     if helm is None:
-        pytest.skip("Helm is not installed")
+        pytest.skip("Helm is not installed")  # QUALITY-123 @egorribun
 
     command = [
         helm,
@@ -1213,7 +1213,7 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
 def test_helm_supports_an_externally_managed_application_secret() -> None:
     helm = shutil.which("helm")
     if helm is None:
-        pytest.skip("Helm is not installed")
+        pytest.skip("Helm is not installed")  # QUALITY-123 @egorribun
 
     rendered = subprocess.run(  # noqa: S603 - fixed Helm contract command
         [
@@ -1298,7 +1298,7 @@ def test_helm_supports_an_externally_managed_application_secret() -> None:
 def test_helm_production_render_rejects_plaintext_data_planes() -> None:
     helm = shutil.which("helm")
     if helm is None:
-        pytest.skip("Helm is not installed")
+        pytest.skip("Helm is not installed")  # QUALITY-123 @egorribun
 
     base_command = [
         helm,

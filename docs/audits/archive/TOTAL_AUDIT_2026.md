@@ -35,7 +35,7 @@
 
 #### Эксплойт (Proof of Concept)
 ```
-DATABASE_URL=postgresql://user:pass@host/mydb";DROP TABLE users;--
+DATABASE_URL=postgresql://user:pass@host/mydb";DROP TABLE users;-- # pragma: allowlist secret
 ```
 После `replace('"', '""')`: `mydb"";DROP TABLE users;--`
 Результирующий SQL: `REINDEX DATABASE "mydb"";DROP TABLE users;--"`

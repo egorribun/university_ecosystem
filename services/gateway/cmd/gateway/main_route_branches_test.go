@@ -328,7 +328,8 @@ func TestSetupRouter_WSTicketUsesAuthenticatedBackendRoute(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
-		_, _ = w.Write([]byte(`{"ticket":"ticket-value","expires_in":15}`))
+		_, writeErr := w.Write([]byte(`{"ticket":"ticket-value","expires_in":15}`))
+		assert.NoError(t, writeErr)
 	}))
 	t.Cleanup(backend.Close)
 
@@ -372,7 +373,10 @@ func TestSetupRouter_WSTicketUsesAuthenticatedBackendRoute(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, hex.EncodeToString(mac.Sum(nil)), captured.signature)
 
-	unauthenticated, err := http.Post(server.URL+"/ws/ticket", "application/json", nil)
+	unauthReq, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/ws/ticket", nil)
+	require.NoError(t, err)
+	unauthReq.Header.Set("Content-Type", "application/json")
+	unauthenticated, err := server.Client().Do(unauthReq)
 	require.NoError(t, err)
 	require.NotNil(t, unauthenticated)
 	t.Cleanup(func() { require.NoError(t, unauthenticated.Body.Close()) })
@@ -402,7 +406,9 @@ func TestSetupRouter_WSTicketUsesAuthenticatedBackendRoute(t *testing.T) {
 	assert.Equal(t, 2, backendHits)
 	assert.Zero(t, wsHubHits)
 
-	wsResponse, err := server.Client().Get(server.URL + "/ws/chat")
+	wsReq, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/ws/chat", nil)
+	require.NoError(t, err)
+	wsResponse, err := server.Client().Do(wsReq)
 	require.NoError(t, err)
 	require.NotNil(t, wsResponse)
 	t.Cleanup(func() { require.NoError(t, wsResponse.Body.Close()) })

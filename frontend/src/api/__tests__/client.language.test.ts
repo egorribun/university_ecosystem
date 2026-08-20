@@ -133,6 +133,6 @@ describe("API language interceptor", () => {
     await i18n.changeLanguage("de")
     await api.get<NewsPayload[]>("/news")
 
-    expect(observedLanguages).toEqual(["en", "en"])
+    expect(observedLanguages).toEqual(["ru", "ru"])
   })
 })

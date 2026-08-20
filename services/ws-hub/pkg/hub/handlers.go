@@ -318,19 +318,50 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 // GETDEL makes the ticket single-use: if two concurrent upgrade requests race
 // with the same ticket, only the first succeeds. The consumed JTI is then
 // checked against revoked:jti:{jti}; lookup failure rejects the upgrade.
-func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string, string, error) {
-	if h.redisClient == nil {
-		return "", "", fmt.Errorf("redis not available for ticket validation")
-	}
+func validateTicketFormat(ticket string) error {
 	if len(ticket) != 64 {
 		// tickets are always 64-char hex strings (secrets.token_hex(32))
-		return "", "", fmt.Errorf("invalid ticket length: %d", len(ticket))
+		return fmt.Errorf("invalid ticket length: %d", len(ticket))
 	}
 	// RZ-W16-06: Validate hex charset — tickets are secrets.token_hex(32) = 64 lowercase hex chars.
 	for _, c := range ticket {
 		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-			return "", "", fmt.Errorf("invalid ticket charset")
+			return fmt.Errorf("invalid ticket charset")
 		}
+	}
+	return nil
+}
+
+func parseTicketPayload(raw string) (string, string, error) {
+	// Canonical format: exactly "{user_id}:{jti}". Tenant identity is not part
+	// of the OTT until the issuer can resolve membership server-side.
+	parts := strings.Split(raw, ":")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("malformed ticket payload")
+	}
+	return parts[0], parts[1], nil
+}
+
+func (h *Hub) checkJTINotRevoked(ctx context.Context, jti string) error {
+	if h.revocationRedisClient == nil {
+		return fmt.Errorf("revocation redis not available for ticket validation")
+	}
+	revoked, err := h.revocationRedisClient.Exists(ctx, revokedJTIKeyPrefix+jti).Result()
+	if err != nil {
+		return fmt.Errorf("session revocation check failed: %w", err)
+	}
+	if revoked > 0 {
+		return fmt.Errorf("ticket session is revoked")
+	}
+	return nil
+}
+
+func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string, string, error) {
+	if h.redisClient == nil {
+		return "", "", fmt.Errorf("redis not available for ticket validation")
+	}
+	if err := validateTicketFormat(ticket); err != nil {
+		return "", "", err
 	}
 
 	key := wsTicketKeyPrefix + ticket
@@ -342,23 +373,12 @@ func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string,
 		return "", "", fmt.Errorf("redis error during ticket validation: %w", err)
 	}
 
-	// Canonical format: exactly "{user_id}:{jti}". Tenant identity is not part
-	// of the OTT until the issuer can resolve membership server-side.
-	parts := strings.Split(raw, ":")
-	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", "", fmt.Errorf("malformed ticket payload")
-	}
-	userID := parts[0]
-	jti := parts[1]
-	if h.revocationRedisClient == nil {
-		return "", "", fmt.Errorf("revocation redis not available for ticket validation")
-	}
-	revoked, err := h.revocationRedisClient.Exists(ctx, revokedJTIKeyPrefix+jti).Result()
+	userID, jti, err := parseTicketPayload(raw)
 	if err != nil {
-		return "", "", fmt.Errorf("session revocation check failed: %w", err)
+		return "", "", err
 	}
-	if revoked > 0 {
-		return "", "", fmt.Errorf("ticket session is revoked")
+	if err := h.checkJTINotRevoked(ctx, jti); err != nil {
+		return "", "", err
 	}
 	return userID, "", nil
 }

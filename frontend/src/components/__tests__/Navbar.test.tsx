@@ -48,6 +48,7 @@ vi.mock("react-i18next", () => ({
       return translations[key] ?? key
     },
   }),
+  I18nextProvider: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }))
 
 vi.mock("@/components/feedback/NotificationsBell", () => ({
