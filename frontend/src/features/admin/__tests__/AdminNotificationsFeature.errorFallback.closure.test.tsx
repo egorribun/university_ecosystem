@@ -213,7 +213,10 @@ describe("AdminNotificationsFeature defensive error handling", () => {
     translationOverrides.values.set("admin:notifications.table.aria", undefined)
     translationOverrides.values.set("admin:notifications.table.selectAll", undefined)
     translationOverrides.values.set("admin:notifications.table.selectRow", undefined)
-    translationOverrides.values.set("notifications:topics.raw-topic", "notifications:topics.raw-topic")
+    translationOverrides.values.set(
+      "notifications:topics.raw-topic",
+      "notifications:topics.raw-topic"
+    )
     translationOverrides.topicLabel = true
     vi.mocked(fetchAdminUserTopics)
       .mockResolvedValueOnce({

@@ -61,10 +61,7 @@ describe("useDashboardNews", () => {
     const { result } = renderHook(() => useDashboardNews("en"))
 
     expect(result.current.data).toHaveLength(4)
-    expect(result.current.data.slice(0, 2).map((item) => item.id)).toEqual([
-      "pinned",
-      "overflow",
-    ])
+    expect(result.current.data.slice(0, 2).map((item) => item.id)).toEqual(["pinned", "overflow"])
     expect(result.current.data.map((item) => item.id)).not.toContain("nullable")
   })
 
@@ -72,11 +69,7 @@ describe("useDashboardNews", () => {
     const queryClient = {} as Parameters<typeof prefetchDashboardNews>[0]
 
     await expect(prefetchDashboardNews(queryClient, "en")).resolves.toBeUndefined()
-    expect(dashboardNewsQueryKey("en")).toEqual([
-      "news",
-      "list",
-      { language: "en", limit: 4 },
-    ])
+    expect(dashboardNewsQueryKey("en")).toEqual(["news", "list", { language: "en", limit: 4 }])
     expect(mocks.newsListQueryKey).toHaveBeenCalledWith({ language: "en", limit: 4 })
   })
 })

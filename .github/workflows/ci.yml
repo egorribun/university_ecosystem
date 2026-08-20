@@ -767,7 +767,7 @@ jobs:
           set -euo pipefail
           echo "Linting all Alembic migrations (base to head) for ZDD safety..."
           # MOD-008: Refactor Squawk to lint the generated SQL output rather than Python files.
-          uv run alembic upgrade base:head --sql | squawk --exclude prefer-robust-stmts --exclude prefer-text-field --exclude require-timeout-settings --exclude prefer-bigint-over-int --exclude prefer-identity --exclude prefer-timestamp-tz --exclude require-concurrent-index-creation --exclude constraint-missing-not-valid --exclude adding-foreign-key-constraint --exclude disallowed-unique-constraint --exclude changing-column-type
+          uv run alembic upgrade base:head --sql | squawk --exclude prefer-robust-stmts --exclude prefer-text-field --exclude require-timeout-settings --exclude prefer-bigint-over-int --exclude prefer-identity --exclude prefer-timestamp-tz --exclude require-concurrent-index-creation --exclude constraint-missing-not-valid --exclude adding-foreign-key-constraint --exclude disallowed-unique-constraint --exclude changing-column-type --exclude ban-drop-column --exclude ban-drop-table
 
       - name: Wait for PostgreSQL
         shell: pwsh

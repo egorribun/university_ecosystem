@@ -51,8 +51,7 @@ describe("useSlidingIndicator", () => {
     container.appendChild(first)
     container.getBoundingClientRect = () =>
       ({ left: 10, top: 20, width: 300, height: 50 }) as DOMRect
-    first.getBoundingClientRect = () =>
-      ({ left: 40, top: 25, width: 80, height: 32 }) as DOMRect
+    first.getBoundingClientRect = () => ({ left: 40, top: 25, width: 80, height: 32 }) as DOMRect
     const ref = { current: container } as RefObject<HTMLElement | null>
 
     const { result, rerender, unmount } = renderHook(
@@ -63,8 +62,7 @@ describe("useSlidingIndicator", () => {
     expect(observe).toHaveBeenCalledWith(first)
     expect(observe).toHaveBeenCalledWith(container)
 
-    first.getBoundingClientRect = () =>
-      ({ left: 55, top: 30, width: 90, height: 36 }) as DOMRect
+    first.getBoundingClientRect = () => ({ left: 55, top: 30, width: 90, height: 36 }) as DOMRect
     act(() => resizeCallback([], {} as ResizeObserver))
     expect(result.current).toEqual({ left: 45, top: 10, width: 90, height: 36 })
 

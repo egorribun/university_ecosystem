@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import {
-  clearLegacyAccessToken,
-  LEGACY_ACCESS_TOKEN_STORAGE_KEY,
-} from "../legacyTokenCleanup"
+import { clearLegacyAccessToken, LEGACY_ACCESS_TOKEN_STORAGE_KEY } from "../legacyTokenCleanup"
 
 describe("clearLegacyAccessToken", () => {
   afterEach(() => {

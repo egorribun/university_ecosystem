@@ -86,11 +86,9 @@ describe("scheduleExport", () => {
     })
 
     it("uses an empty type inside a custom typePrefix when lesson_type is absent", () => {
-      const url = generateGoogleCalendarUrl(
-        { ...mockLesson, lesson_type: undefined },
-        mockDate,
-        { typePrefix: "Type: {{type}}" }
-      )
+      const url = generateGoogleCalendarUrl({ ...mockLesson, lesson_type: undefined }, mockDate, {
+        typePrefix: "Type: {{type}}",
+      })
       expect(url).toContain("details=Type%3A+")
     })
   })

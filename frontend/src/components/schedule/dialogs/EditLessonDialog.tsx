@@ -148,9 +148,7 @@ export function EditLessonDialog({
                 <Select
                   id="edit-lesson-type"
                   value={editLesson.lesson_type || ""}
-                  onValueChange={(val) =>
-                    setEditLesson((prev) => ({ ...prev!, lesson_type: val }))
-                  }
+                  onValueChange={(val) => setEditLesson((prev) => ({ ...prev!, lesson_type: val }))}
                   options={lessonTypeOptions}
                   placeholder={t("schedule:form.lessonType")}
                 />

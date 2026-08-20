@@ -68,7 +68,11 @@ describe("extractThemeFromRequest", () => {
   })
   it("falls back safely when reading headers throws", () => {
     const req = {
-      headers: { get: () => { throw new Error("malformed headers") } },
+      headers: {
+        get: () => {
+          throw new Error("malformed headers")
+        },
+      },
     } as unknown as Request
     expect(extractThemeFromRequest(req)).toBe("light")
   })
@@ -97,7 +101,11 @@ describe("extractLangFromRequest", () => {
   })
   it("falls back safely when reading headers throws", () => {
     const req = {
-      headers: { get: () => { throw new Error("malformed headers") } },
+      headers: {
+        get: () => {
+          throw new Error("malformed headers")
+        },
+      },
     } as unknown as Request
     expect(extractLangFromRequest(req)).toBe("ru")
   })

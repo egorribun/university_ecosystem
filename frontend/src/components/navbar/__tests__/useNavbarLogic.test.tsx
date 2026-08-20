@@ -19,9 +19,7 @@ const mocks = vi.hoisted(() => ({
   scrollToTop: vi.fn(),
   markScrollFromBottom: vi.fn(),
   isSamePath: vi.fn(),
-  focusOptions: undefined as
-    | { active: boolean; onDeactivate?: () => void }
-    | undefined,
+  focusOptions: undefined as { active: boolean; onDeactivate?: () => void } | undefined,
   getNavigationConfig: vi.fn(() => [{ to: "/dashboard" }]),
   parseCacheVersion: vi.fn(() => "cache-v"),
 }))
@@ -41,8 +39,7 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: mocks.user, isAuth: Boolean(mocks.user), loading: false }),
 }))
 vi.mock("@/hooks/useMediaQuery", () => ({
-  default: (query: string) =>
-    query.includes("max-width") ? mocks.mobile : mocks.reducedMotion,
+  default: (query: string) => (query.includes("max-width") ? mocks.mobile : mocks.reducedMotion),
 }))
 vi.mock("@/hooks/useFocusTrap", () => ({
   default: (options: { active: boolean; onDeactivate?: () => void }) => {

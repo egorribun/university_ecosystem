@@ -11,8 +11,7 @@ describe("Magnetic", () => {
       </Magnetic>
     )
     const target = screen.getByText("Magnetic child")
-    target.getBoundingClientRect = () =>
-      ({ left: 10, top: 20, width: 100, height: 80 }) as DOMRect
+    target.getBoundingClientRect = () => ({ left: 10, top: 20, width: 100, height: 80 }) as DOMRect
 
     fireEvent.mouseMove(target, { clientX: 80, clientY: 90 })
     expect(target).toHaveStyle({ transform: "translate3d(10px, 15px, 0)" })

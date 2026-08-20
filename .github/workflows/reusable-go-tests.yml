@@ -219,6 +219,9 @@ jobs:
             services/gateway/go.sum
             services/file-processor/go.sum
             services/ws-hub/go.sum
+            services/cmd/uni-cli/go.sum
+            services/pkg/spiffe/go.sum
+            services/pkg/spicedb/go.sum
             go.sum
 
       - name: Run golangci-lint
@@ -227,6 +230,7 @@ jobs:
           version: v2.3.0
           install-mode: goinstall
           working-directory: ${{ inputs.service-directory }}
+          args: --config ${{ github.workspace }}/.golangci.yml --timeout 5m
           # The action's default config verification downloads a remote JSON
           # schema. The lint run still parses and validates this config locally;
           # avoid making the required gate depend on schema-host availability.

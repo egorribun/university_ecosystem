@@ -121,4 +121,12 @@ func TestHandleWebTransport_OriginAndUpgradeFailures(t *testing.T) {
 		h.mu.RUnlock()
 		assert.Zero(t, clientCount)
 	})
+
+	t.Run("WebTransportSession SetPongHandler is no-op", func(t *testing.T) {
+		session := NewWebTransportSession(nil)
+		assert.NotNil(t, session)
+		assert.NotPanics(t, func() {
+			session.SetPongHandler(func(string) error { return nil })
+		})
+	})
 }

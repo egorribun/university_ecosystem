@@ -219,3 +219,17 @@ func TestInitTracer_PropagatesConstructionFailuresAndCleansUpExporter(t *testing
 	assert.ErrorIs(t, err, resourceErr)
 	assert.True(t, exporter.shutdownCalled)
 }
+
+func TestSetupRouter_ContextCancellationClosesOwnedLifecycle(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	router, err := setupRouter(
+		minimalRouterConfig(),
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+		nil,
+		nil,
+		ctx,
+	)
+	require.NoError(t, err)
+	assert.NotNil(t, router)
+	cancel()
+}

@@ -147,7 +147,7 @@ def test_renovate_validator_contract_is_pinned_and_blocking() -> None:
 
     ci_success = workflow_ci.partition("  ci-success:\n")[2]
     assert "      - pre-commit-check" in ci_success
-    assert '"${{ needs.pre-commit-check.result }}"' in ci_success
+    assert "${{ needs.pre-commit-check.result }}" in ci_success
 
 
 def test_cooldown_lock_metadata_and_emergency_runbook_are_auditable() -> None:

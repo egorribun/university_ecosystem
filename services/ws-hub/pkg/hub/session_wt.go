@@ -121,6 +121,7 @@ func (s *WebTransportSession) SetWriteDeadline(t time.Time) error {
 func (s *WebTransportSession) SetPongHandler(h func(appData string) error) {
 	// WebTransport runs over QUIC which natively handles keep-alives at transport level.
 	// Pong handler is a no-op for WebTransport.
+	_ = h
 }
 
 func (s *WebTransportSession) getOrAcceptStream() (webTransportStream, error) {

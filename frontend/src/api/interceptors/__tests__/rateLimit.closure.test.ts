@@ -220,10 +220,7 @@ describe("rateLimit interceptor — queue/window closure", () => {
     await Promise.resolve()
     expect(vi.getTimerCount()).toBe(1)
 
-    const now = vi
-      .spyOn(Date, "now")
-      .mockReturnValueOnce(1_000_000)
-      .mockReturnValueOnce(1_060_001)
+    const now = vi.spyOn(Date, "now").mockReturnValueOnce(1_000_000).mockReturnValueOnce(1_060_001)
     const thirdWait = waitForClientQueueSlot(third)
     await Promise.resolve()
     now.mockRestore()

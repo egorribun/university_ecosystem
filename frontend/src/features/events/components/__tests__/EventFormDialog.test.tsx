@@ -46,9 +46,7 @@ describe("EventFormDialog", () => {
     const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined)
     mocks.createEvent.mockResolvedValue({ id: "event-1" })
 
-    render(
-      <EventFormDialog open onClose={onClose} onSuccess={onSuccess} language="en" />
-    )
+    render(<EventFormDialog open onClose={onClose} onSuccess={onSuccess} language="en" />)
 
     expect(mocks.props).toMatchObject({ open: true, onClose, language: "en" })
     await act(async () => mocks.props?.onCreated(draft))
@@ -65,15 +63,10 @@ describe("EventFormDialog", () => {
     const onSuccess = vi.fn()
     mocks.createEvent.mockRejectedValue(error)
 
-    render(
-      <EventFormDialog open onClose={onClose} onSuccess={onSuccess} language="ru" />
-    )
+    render(<EventFormDialog open onClose={onClose} onSuccess={onSuccess} language="ru" />)
     await act(async () => mocks.props?.onCreated(draft))
 
-    expect(mocks.logError).toHaveBeenCalledWith(
-      "[EventFormDialog] createEvent failed:",
-      error
-    )
+    expect(mocks.logError).toHaveBeenCalledWith("[EventFormDialog] createEvent failed:", error)
     expect(onClose).not.toHaveBeenCalled()
     expect(onSuccess).not.toHaveBeenCalled()
   })
