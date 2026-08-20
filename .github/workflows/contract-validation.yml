@@ -73,7 +73,7 @@ jobs:
         id: spectral
         continue-on-error: true
         run: |
-          docker run --rm -v /tmp:/tmp -v $(pwd):/work -w /work stoplight/spectral:6.15.0@sha256:b3d5a530f83c4a72df69e682c5ac928bc9821b5ca3c42529e81d926c80fa50ab lint /tmp/backend-openapi.json \
+          docker run --rm -v /tmp:/tmp -v "${PWD}:/work" -w /work stoplight/spectral:6.15.0@sha256:b3d5a530f83c4a72df69e682c5ac928bc9821b5ca3c42529e81d926c80fa50ab lint /tmp/backend-openapi.json \
             --ruleset .spectral.yml \
             --format sarif \
             --output spectral-results.sarif
@@ -91,7 +91,7 @@ jobs:
         # Re-raise on errors (severity ERROR) but not warnings.
         # Spectral exit codes: 0=clean, 1=warnings, 2=errors.
         run: |
-          docker run --rm -v /tmp:/tmp -v $(pwd):/work -w /work stoplight/spectral:6.15.0@sha256:b3d5a530f83c4a72df69e682c5ac928bc9821b5ca3c42529e81d926c80fa50ab lint /tmp/backend-openapi.json \
+          docker run --rm -v /tmp:/tmp -v "${PWD}:/work" -w /work stoplight/spectral:6.15.0@sha256:b3d5a530f83c4a72df69e682c5ac928bc9821b5ca3c42529e81d926c80fa50ab lint /tmp/backend-openapi.json \
             --ruleset .spectral.yml \
             --format text \
             --fail-severity error

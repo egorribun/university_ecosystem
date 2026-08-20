@@ -5,3 +5,12 @@ paths:
   .github/workflows/ci.yml:
     ignore:
       - 'unexpected key "command" for "services" section'
+  .github/workflows/contract-validation.yml:
+    ignore:
+      - 'SC2046'
+  .github/workflows/visual-audit.yml:
+    ignore:
+      - 'SC2009'
+  .github/workflows/manual-mutation-evidence.yml:
+    ignore:
+      - 'SC2319'

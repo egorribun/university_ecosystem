@@ -130,5 +130,5 @@ Any bypass merge must record a bypass reason in the PR description or merge comm
 ## Audit Trail
 
 > **Canonical Audit Index**: Full wave audit history and active wave reports are maintained in [`docs/audits/INDEX.md`](docs/audits/INDEX.md).
-> Active wave audits: [`AUDIT_WAVE211.md`](docs/audits/AUDIT_WAVE211.md), [`AUDIT_WAVE210.md`](docs/audits/AUDIT_WAVE210.md), [`AUDIT_WAVE209.md`](docs/audits/AUDIT_WAVE209.md).
+> Active wave audits: [`AUDIT_PR1249.md`](docs/audits/AUDIT_PR1249.md), [`AUDIT_WAVE211.md`](docs/audits/AUDIT_WAVE211.md), [`AUDIT_WAVE210.md`](docs/audits/AUDIT_WAVE210.md).
 > Archived wave audits: [`docs/audits/archive/`](docs/audits/INDEX.md).

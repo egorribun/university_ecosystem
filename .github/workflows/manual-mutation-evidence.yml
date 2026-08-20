@@ -206,10 +206,10 @@ jobs:
             fi
             uv run python scripts/export_mutmut_shard_stats.py "${exporter_args[@]}" \
               --execution-proof "$MUTMUT_EVIDENCE_DIR/execution-proof.json" \
-              --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR" || return $?
-            test -s "$MUTMUT_EVIDENCE_DIR/execution-proof.json" || return $?
-            test -s "$MUTMUT_EVIDENCE_DIR/selected-mutants.json" || return $?
-            test -s "$MUTMUT_EVIDENCE_DIR/selected-results.json" || return $?
+              --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR" || return 1
+            test -s "$MUTMUT_EVIDENCE_DIR/execution-proof.json" || return 1
+            test -s "$MUTMUT_EVIDENCE_DIR/selected-mutants.json" || return 1
+            test -s "$MUTMUT_EVIDENCE_DIR/selected-results.json" || return 1
           }
           on_mutation_step_exit() {
             local exit_code="$?"

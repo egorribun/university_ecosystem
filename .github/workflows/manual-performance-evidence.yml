@@ -131,13 +131,10 @@ jobs:
             exit 2
           fi
           git worktree add --detach "$BASE_WORKTREE" "$BASE_SHA"
-          CAPTURE_HELPER="$GITHUB_WORKSPACE/scripts/quality/capture_isolated_benchmarks.py"
-          if ! test -f "$CAPTURE_HELPER"; then
-            CAPTURE_HELPER="$BASE_WORKTREE/scripts/quality/capture_isolated_benchmarks.py"
-          fi
+          BASE_CAPTURE_HELPER="$BASE_WORKTREE/scripts/quality/capture_isolated_benchmarks.py"
           BASE_COMPARATOR="$BASE_WORKTREE/scripts/quality/compare_paired_benchmarks.py"
-          if ! test -f "$CAPTURE_HELPER"; then
-            echo "Capture helper is absent: $CAPTURE_HELPER" >&2
+          if ! test -f "$BASE_CAPTURE_HELPER"; then
+            echo "Trusted base capture helper is absent: $BASE_CAPTURE_HELPER" >&2
             exit 2
           fi
           if ! test -f "$BASE_COMPARATOR"; then
@@ -165,7 +162,7 @@ jobs:
             echo "python_bin=$PYTHON_BIN"
           } >> "$GITHUB_OUTPUT"
 
-          "$PYTHON_BIN" -I "$CAPTURE_HELPER" \
+          "$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER" \
             --format go \
             --base-worktree "$BASE_WORKTREE" \
             --candidate-worktree "$GITHUB_WORKSPACE" \
@@ -343,14 +340,11 @@ jobs:
             exit 2
           fi
           git worktree add --detach "$BASE_WORKTREE" "$BASE_SHA"
-          CAPTURE_HELPER="$GITHUB_WORKSPACE/scripts/quality/capture_isolated_benchmarks.py"
-          if ! test -f "$CAPTURE_HELPER"; then
-            CAPTURE_HELPER="$BASE_WORKTREE/scripts/quality/capture_isolated_benchmarks.py"
-          fi
+          BASE_CAPTURE_HELPER="$BASE_WORKTREE/scripts/quality/capture_isolated_benchmarks.py"
           BASE_COMPARATOR="$BASE_WORKTREE/scripts/quality/compare_paired_benchmarks.py"
           BASE_RUST_DOCKERFILE="$BASE_WORKTREE/containers/quality/Dockerfile.performance-rust"
-          if ! test -f "$CAPTURE_HELPER"; then
-            echo "Capture helper is absent: $CAPTURE_HELPER" >&2
+          if ! test -f "$BASE_CAPTURE_HELPER"; then
+            echo "Trusted base capture helper is absent: $BASE_CAPTURE_HELPER" >&2
             exit 2
           fi
           if ! test -f "$BASE_COMPARATOR"; then
@@ -382,7 +376,7 @@ jobs:
             echo "python_bin=$PYTHON_BIN"
           } >> "$GITHUB_OUTPUT"
 
-          "$PYTHON_BIN" -I "$CAPTURE_HELPER" \
+          "$PYTHON_BIN" -I "$BASE_CAPTURE_HELPER" \
             --format rust \
             --base-worktree "$BASE_WORKTREE" \
             --candidate-worktree "$GITHUB_WORKSPACE" \
