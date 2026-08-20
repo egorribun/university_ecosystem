@@ -1,6 +1,6 @@
 module github.com/university-ecosystem/uni-cli
 
-go 1.26.6
+go 1.26.4
 
 require (
 	github.com/redis/go-redis/v9 v9.22.0

@@ -1,6 +1,6 @@
 module github.com/university-ecosystem/file-processor
 
-go 1.26.6
+go 1.26.4
 
 require (
 	github.com/getsentry/sentry-go v0.48.0
