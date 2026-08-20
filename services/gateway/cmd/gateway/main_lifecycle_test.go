@@ -48,7 +48,7 @@ func TestSetupRouter_FailsClosedWhenTrustedProxyConfigurationFails(t *testing.T)
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		nil,
 		nil,
-		context.Background(),
+		t.Context(),
 	)
 
 	assert.Nil(t, router)
@@ -67,15 +67,13 @@ func TestSetupRouter_LogsPrometheusCollectorRegistrationFailure(t *testing.T) {
 	}
 	cfg := minimalRouterConfig()
 	cfg.RedisURL = "redis://" + mr.Addr()
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
 
 	router, err := setupRouter(
 		cfg,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		nil,
 		nil,
-		ctx,
+		t.Context(),
 	)
 
 	require.NoError(t, err)
@@ -96,7 +94,7 @@ func TestSetupRouter_OptionalRouteAbortStopsProxy(t *testing.T) {
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 		nil,
 		nil,
-		context.Background(),
+		t.Context(),
 	)
 	require.NoError(t, err)
 

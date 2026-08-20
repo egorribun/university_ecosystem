@@ -134,7 +134,7 @@ func TestSetupRouter_FullFeatures(t *testing.T) {
 	}
 
 	assert.NotPanics(t, func() {
-		router, err := setupRouter(cfg, initLogger(), nil, nil, context.Background())
+		router, err := setupRouter(cfg, initLogger(), nil, nil, t.Context())
 		assert.NoError(t, err)
 		assert.NotNil(t, router)
 	})
@@ -228,7 +228,7 @@ func TestSetupRouter_InvalidWsHubURL(t *testing.T) {
 		JWTSecret:      "test-secret-at-least-32-characters-long",
 		AllowedOrigins: []string{"http://localhost"},
 	}
-	router, err := setupRouter(cfg, initLogger(), nil, nil, context.Background())
+	router, err := setupRouter(cfg, initLogger(), nil, nil, t.Context())
 	assert.Nil(t, router)
 	assert.Error(t, err)
 }
@@ -240,7 +240,7 @@ func TestSetupRouter_SpiffeRequiresClient(t *testing.T) {
 		AllowedOrigins: []string{"http://localhost"},
 		SpiffeEnabled:  true,
 	}
-	router, err := setupRouter(cfg, initLogger(), nil, nil, context.Background())
+	router, err := setupRouter(cfg, initLogger(), nil, nil, t.Context())
 	assert.Nil(t, router)
 	assert.ErrorIs(t, err, http.ErrServerClosed)
 }
@@ -253,7 +253,7 @@ func TestSetupRouter_SpiffeBackendCredentialFailure(t *testing.T) {
 		SpiffeEnabled:  true,
 	}
 
-	router, err := setupRouter(cfg, initLogger(), nil, nil, context.Background(), &spiffe.Client{})
+	router, err := setupRouter(cfg, initLogger(), nil, nil, t.Context(), &spiffe.Client{})
 	assert.Nil(t, router)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "uninitialized")
@@ -274,7 +274,7 @@ func TestSetupRouter_SpiffeClientTLSConfigSuccess(t *testing.T) {
 		AllowedOrigins:     []string{"http://localhost"},
 		SpiffeEnabled:      true,
 		BackendSpiffeID:    "spiffe://university.ecosystem/ns/services/backend",
-	}, initLogger(), nil, nil, context.Background(), &spiffe.Client{})
+	}, initLogger(), nil, nil, t.Context(), &spiffe.Client{})
 	require.NoError(t, err)
 	require.NotNil(t, router)
 }
@@ -414,7 +414,7 @@ func TestSetupRouter_RejectsShortJWTSecretWithoutExiting(t *testing.T) {
 		WsHubURL:       "http://localhost:8081",
 		JWTSecret:      "too-short",
 		AllowedOrigins: []string{"http://localhost"},
-	}, initLogger(), nil, nil, context.Background())
+	}, initLogger(), nil, nil, t.Context())
 	assert.Nil(t, router)
 	assert.ErrorIs(t, err, http.ErrServerClosed)
 }

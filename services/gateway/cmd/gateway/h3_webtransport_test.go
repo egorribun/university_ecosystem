@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -80,13 +79,13 @@ func TestGateway_AltSvcHeaderAndWSWebTransportRoutes(t *testing.T) {
 	}
 
 	logger := initLogger()
-	router, err := setupRouter(cfg, logger, nil, nil, context.Background())
+	router, err := setupRouter(cfg, logger, nil, nil, t.Context())
 	require.NoError(t, err)
 	gatewayServer := httptest.NewServer(router)
 	defer gatewayServer.Close()
 
 	// 3. Test Alt-Svc header on /health endpoint
-	reqHealth, err := http.NewRequestWithContext(context.Background(), http.MethodGet, gatewayServer.URL+"/health", nil)
+	reqHealth, err := http.NewRequestWithContext(t.Context(), http.MethodGet, gatewayServer.URL+"/health", nil)
 	require.NoError(t, err)
 	resp, err := http.DefaultClient.Do(reqHealth)
 	require.NoError(t, err)
@@ -97,7 +96,7 @@ func TestGateway_AltSvcHeaderAndWSWebTransportRoutes(t *testing.T) {
 	assert.Equal(t, `h3=":8443"; ma=2592000`, resp.Header.Get("Alt-Svc"))
 
 	// 4. Test proxying /ws route to ws-hub
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, gatewayServer.URL+"/ws?ticket=test-ticket-123", nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, gatewayServer.URL+"/ws?ticket=test-ticket-123", nil)
 	require.NoError(t, err)
 
 	resp, err = http.DefaultClient.Do(req)
@@ -108,7 +107,7 @@ func TestGateway_AltSvcHeaderAndWSWebTransportRoutes(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// 5. Test proxying /webtransport route to ws-hub
-	req, err = http.NewRequestWithContext(context.Background(), http.MethodGet, gatewayServer.URL+"/webtransport?ticket=test-ticket-456", nil)
+	req, err = http.NewRequestWithContext(t.Context(), http.MethodGet, gatewayServer.URL+"/webtransport?ticket=test-ticket-456", nil)
 	require.NoError(t, err)
 
 	resp, err = http.DefaultClient.Do(req)

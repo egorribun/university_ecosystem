@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -51,13 +50,13 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 		}
 
 		logger := initLogger()
-		router, err := setupRouter(cfg, logger, nil, nil, context.Background())
+		router, err := setupRouter(cfg, logger, nil, nil, t.Context())
 		require.NoError(t, err)
 		server := httptest.NewServer(router)
 		defer server.Close()
 
 		// Request health endpoint
-		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/health", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/health", nil)
 		require.NoError(t, err)
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
@@ -68,7 +67,7 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 		assert.Equal(t, `h3=":8443"; ma=2592000`, resp.Header.Get("Alt-Svc"))
 
 		// Request API endpoint
-		reqAPI, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/api/v1/health", nil)
+		reqAPI, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/api/v1/health", nil)
 		require.NoError(t, err)
 		respAPI, err := http.DefaultClient.Do(reqAPI)
 		require.NoError(t, err)
@@ -93,12 +92,12 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 		}
 
 		logger := initLogger()
-		router, err := setupRouter(cfg, logger, nil, nil, context.Background())
+		router, err := setupRouter(cfg, logger, nil, nil, t.Context())
 		require.NoError(t, err)
 		server := httptest.NewServer(router)
 		defer server.Close()
 
-		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/health", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/health", nil)
 		require.NoError(t, err)
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
@@ -126,13 +125,13 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 		}
 
 		logger := initLogger()
-		router, err := setupRouter(cfg, logger, nil, nil, context.Background())
+		router, err := setupRouter(cfg, logger, nil, nil, t.Context())
 		require.NoError(t, err)
 		server := httptest.NewServer(router)
 		defer server.Close()
 
 		// /ws route proxy check
-		reqWS, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/ws?ticket=aabbcc", nil)
+		reqWS, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/ws?ticket=aabbcc", nil)
 		require.NoError(t, err)
 		resWS, err := http.DefaultClient.Do(reqWS)
 		require.NoError(t, err)
@@ -141,7 +140,7 @@ func TestEmpirical_Gateway_AltSvcAndIngress(t *testing.T) {
 		assert.Equal(t, http.StatusOK, resWS.StatusCode)
 
 		// /webtransport route proxy check
-		reqWT, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/webtransport?ticket=aabbcc", nil)
+		reqWT, err := http.NewRequestWithContext(t.Context(), http.MethodGet, server.URL+"/webtransport?ticket=aabbcc", nil)
 		require.NoError(t, err)
 		resWT, err := http.DefaultClient.Do(reqWT)
 		require.NoError(t, err)

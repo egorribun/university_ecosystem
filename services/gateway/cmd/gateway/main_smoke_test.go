@@ -53,7 +53,7 @@ func TestSetupRouter_WiresRoutesAndProbes(t *testing.T) {
 	var router *gin.Engine
 	var err error
 	assert.NotPanics(t, func() {
-		router, err = setupRouter(cfg, logger, nil, nil, context.Background())
+		router, err = setupRouter(cfg, logger, nil, nil, t.Context())
 		require.NoError(t, err)
 	}, "setupRouter must wire a valid config without panicking or exiting")
 	if router == nil {

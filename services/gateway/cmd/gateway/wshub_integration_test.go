@@ -175,7 +175,7 @@ func TestIntegration_GatewayWSTicketRoutingAndRevocation(t *testing.T) {
 	}
 
 	logger := initLogger()
-	router, err := setupRouter(cfg, logger, nil, nil, context.Background())
+	router, err := setupRouter(cfg, logger, nil, nil, t.Context())
 	require.NoError(t, err)
 	gatewayServer := httptest.NewServer(router)
 	t.Cleanup(gatewayServer.Close)
