@@ -487,27 +487,6 @@ func (h *Hub) isOversized(bctx context.Context, msg *Message, data []byte, span 
 	return true
 }
 
-func (h *Hub) deliverToRecipient(bctx context.Context, r recipient, data []byte) {
-	if safeSend(r.client.Send, data) {
-		MessagesDeliveredTotal.Inc()
-		return
-	}
-	if !r.evictOnFull {
-		return
-	}
-	if h.Logger != nil && h.Logger.Enabled(bctx, slog.LevelWarn) {
-		h.Logger.WarnContext(bctx, "Client buffer full or closed, evicting", "id", r.client.ID)
-	}
-	go func(c *Client) {
-		select {
-		case h.Unregister <- c:
-		case <-h.ctx.Done():
-			// RZ-24-03: Hub shutting down; close client directly.
-			c.closeOnce.Do(func() { safeClose(c.Send) })
-		}
-	}(r.client)
-}
-
 func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 	bctx := parentCtx
 	if len(msg.TraceCtx) > 0 {
@@ -538,7 +517,24 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 
 	recipients := h.collectRecipients(msg, span)
 	for _, r := range recipients {
-		h.deliverToRecipient(bctx, r, data)
+		if safeSend(r.client.Send, data) {
+			MessagesDeliveredTotal.Inc()
+			continue
+		}
+		if !r.evictOnFull {
+			continue
+		}
+		if h.Logger != nil && h.Logger.Enabled(bctx, slog.LevelWarn) {
+			h.Logger.WarnContext(bctx, "Client buffer full or closed, evicting", "id", r.client.ID)
+		}
+		go func(c *Client) {
+			select {
+			case h.Unregister <- c:
+			case <-h.ctx.Done():
+				// RZ-24-03: Hub shutting down; close client directly.
+				c.closeOnce.Do(func() { safeClose(c.Send) })
+			}
+		}(r.client)
 	}
 }
 
