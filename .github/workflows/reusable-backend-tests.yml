@@ -131,7 +131,7 @@ jobs:
                   uv sync --frozen
 
             - name: Build pinned Helm dependencies
-              uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4311 # v5.0.1
+              uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
               with:
                   version: v3.17.0
 
