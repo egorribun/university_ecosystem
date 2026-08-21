@@ -1,31 +1,37 @@
-# E2E Test Suite Ready
+# Developer and E2E readiness
 
-## Test Runner
-- Commands:
-  - Node.js Validator: `node "C:\Users\egorribun\.gemini\antigravity\scratch\mcp_adversarial_suite.js"`
-  - PowerShell Validator: `pwsh -File "C:\Users\egorribun\.gemini\antigravity\scratch\mcp_adversarial_suite.ps1"`
-  - Strict AST Validator: `node "C:\Users\egorribun\.gemini\antigravity\scratch\mcp_strict_lexer_test.js"`
-  - Python Invariant Validator: `python "C:\Users\egorribun\.gemini\antigravity\scratch\mcp_config_stress_test.py"`
-- Expected: All tests pass with exit code 0.
+This file is an operational checklist, not a historical pass report. It keeps
+all commands repository-local and points to the canonical quality contract.
 
-## Coverage Summary
-| Tier | Count | Description |
-|------|------:|-------------|
-| 1. Syntax & Parse Validation | 4 | JSON parse across Node.js, PowerShell, and Python runtimes |
-| 2. Server Definition & Schema | 13 | All 13 servers validated for command, args, and env schemas |
-| 3. Specific Protocol & Endpoint | 6 | Redis (63791), MinIO (9000), Elasticsearch (9200), GitHub, Playwright, Docker |
-| 4. Permission Grants Coverage | 13 | All 13 grants verified in config.json |
-| 5. Non-Destructive Invariants | 12 | Plugins and user settings preserved |
-| **Total Assertions** | **283+** | **100% Passing** |
+## Required local gates
 
-## Feature Checklist
-| Feature | Tier 1 | Tier 2 | Tier 3 | Tier 4 |
-|---|:---:|:---:|:---:|:---:|
-| Redis/Valkey on localhost:63791 | ✓ | ✓ | ✓ | ✓ |
-| MinIO/S3 on http://127.0.0.1:9000 | ✓ | ✓ | ✓ | ✓ |
-| Elasticsearch on http://127.0.0.1:9200 | ✓ | ✓ | ✓ | ✓ |
-| GitHub with Token Forwarding | ✓ | ✓ | ✓ | ✓ |
-| Playwright Headless Browser | ✓ | ✓ | ✓ | ✓ |
-| Docker Server Integration | ✓ | ✓ | ✓ | ✓ |
-| Global Permission Grants | ✓ | ✓ | ✓ | ✓ |
-| Non-Destructive Setting Preservation | ✓ | ✓ | ✓ | ✓ |
+```powershell
+# Hermetic harness and quality inventory
+python verify_harness.py --repo-only
+python scripts/quality/check_orphans_and_anti_patterns.py
+
+# Backend
+uv run pytest -q
+
+# Frontend static checks, tests, and production build
+npm run typecheck --prefix frontend
+npm run lint --prefix frontend
+npm run test --prefix frontend -- --silent=true
+npm run build --prefix frontend
+
+# Browser matrix (requires the application services)
+npm exec --prefix frontend playwright test
+```
+
+The canonical thresholds and supported report formats live in
+[`quality/quality-contract.json`](quality/quality-contract.json) and
+[`TESTING.md`](TESTING.md). CI additionally runs Go/Rust race and mutation
+gates, dependency/security scans, Helm/Kubernetes contracts, and the full
+Playwright matrix.
+
+## Environment-dependent checks
+
+Run infrastructure-backed checks only when their services are available. A
+missing optional service must be reported as an explicit environment skip; it
+must not be converted into a fabricated pass. For MCP setup and recipes see
+[`docs/mcp/MCP_RECIPES.md`](docs/mcp/MCP_RECIPES.md).

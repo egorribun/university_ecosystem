@@ -2,7 +2,7 @@
 
 ## 1. Executive Overview & Architecture
 
-The Model Context Protocol (MCP) standardizes how autonomous agents and human developers interface with external services, runtimes, persistent storage, and diagnostic tooling. Within the **University Ecosystem Platform**, MCP provides a deterministic, zero-trust verification layer across 14 dedicated servers.
+The Model Context Protocol (MCP) standardizes how autonomous agents and human developers interface with external services, runtimes, persistent storage, and diagnostic tooling. Within the **University Ecosystem Platform**, MCP provides a deterministic, zero-trust verification layer across 13 configured server processes. The `s3` entry below is a logical permission alias for the `minio` server, not a separate process.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────────┐
@@ -28,9 +28,9 @@ All servers are declared in `~/.gemini/config/mcp_config.json` and authorized th
 
 ---
 
-## 2. Master MCP Server Catalog (14 Servers)
+## 2. Master MCP Server Catalog (13 Servers + 1 Alias)
 
-The following table provides the exhaustive catalog of all 14 configured MCP servers, detailing their transport type, execution command, endpoints, authentication mechanisms, and primary responsibilities within the repository.
+The following table provides the exhaustive catalog of the 13 configured MCP servers plus the `s3` alias, detailing their transport type, execution command, endpoints, authentication mechanisms, and primary responsibilities within the repository.
 
 | # | Server Name | Transport / Type | Command / Endpoint | Environment & Authentication | Primary Tool Capabilities | Repository Responsibility |
 |---|---|---|---|---|---|---|

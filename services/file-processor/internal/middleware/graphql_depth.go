@@ -16,6 +16,8 @@ type graphqlRequest struct {
 	Query string `json:"query"`
 }
 
+const maxGraphQLBodyBytes = 1 << 20
+
 // MaxQueryDepthMiddleware rejects GraphQL queries exceeding the given depth.
 // RZ-24-05: Parity with Python backend's QueryDepthLimiter defense layer.
 func MaxQueryDepthMiddleware(maxDepth int, next http.Handler) http.Handler {
@@ -25,11 +27,15 @@ func MaxQueryDepthMiddleware(maxDepth int, next http.Handler) http.Handler {
 			return
 		}
 
-		// RZ-33-22: Read body with 1MB limit to protect against memory exhaustion,
-		// extract only the "query" field for depth estimation, then pass through.
-		bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+		// RZ-33-22: Read at most one byte beyond the 1MB limit. Reading only the
+		// limit silently truncated oversized JSON and accepted a shorter request.
+		bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, maxGraphQLBodyBytes+1))
 		if err != nil {
 			http.Error(w, `{"errors":[{"message":"invalid request body"}]}`, http.StatusBadRequest)
+			return
+		}
+		if len(bodyBytes) > maxGraphQLBodyBytes {
+			http.Error(w, `{"errors":[{"message":"request body exceeds 1 MiB limit"}]}`, http.StatusRequestEntityTooLarge)
 			return
 		}
 

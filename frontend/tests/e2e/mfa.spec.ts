@@ -52,7 +52,7 @@ test.describe("Multi-factor authentication flows", () => {
   })
 
   test("completes login when an OTP challenge is returned", async ({ page }) => {
-    await useMockApi(page)
+    await useMockApi(page, { authenticated: false })
 
     await page.goto("/login")
     await page.waitForURL(/\/login$/)
@@ -69,7 +69,7 @@ test.describe("Multi-factor authentication flows", () => {
   })
 
   test("shows an error for invalid OTP attempts and allows retry", async ({ page }) => {
-    await useMockApi(page)
+    await useMockApi(page, { authenticated: false })
 
     await page.goto("/login")
     await page.waitForURL(/\/login$/)

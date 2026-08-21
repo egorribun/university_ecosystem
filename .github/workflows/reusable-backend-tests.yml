@@ -130,6 +130,15 @@ jobs:
                   uv lock --check
                   uv sync --frozen
 
+            - name: Build pinned Helm dependencies
+              uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4311 # v5.0.1
+              with:
+                  version: v3.17.0
+
+            - name: Resolve Helm chart dependencies
+              shell: bash
+              run: helm dependency build charts/university-ecosystem/
+
             - name: Run pytest
               shell: pwsh
               run: |  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection

@@ -12,7 +12,7 @@
  * `BUILD_HANG_TRACE=1` injects build-hang-trace-agent.cjs for handle evidence.
  */
 
-import { existsSync, readFileSync, statSync } from "node:fs"
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
 import path from "node:path"
 import process from "node:process"
 import { execFile, spawn } from "node:child_process"
@@ -133,6 +133,22 @@ async function step3_viteBuild() {
   const viteBinPath = path.resolve(cwd, "node_modules/vite/bin/vite.js")
   const shellPath = path.join(cwd, "dist/client/_shell.html")
   const serverPath = path.join(cwd, "dist/server/server.js")
+
+  const hasUsableViteArtifacts = () => {
+    if (!existsSync(shellPath) || !existsSync(serverPath)) return false
+    try {
+      const shell = readFileSync(shellPath, "utf8")
+      const server = readFileSync(serverPath, "utf8")
+      const assetsDir = path.join(cwd, "dist", "client", "assets")
+      const hasClientAsset =
+        existsSync(assetsDir) &&
+        readdirSync(assetsDir).some((file) => /\.(?:js|css|wasm)$/.test(file))
+      return /<html\b/i.test(shell) && server.trim().length > 32 && hasClientAsset
+    } catch {
+      // Vite can still be replacing an artifact while the poll runs.
+      return false
+    }
+  }
 
   // Optionally inject the hang-trace agent into the Vite subprocess.
   // Set BUILD_HANG_TRACE=1 to enable. The agent reports active handles
@@ -262,12 +278,7 @@ async function step3_viteBuild() {
       if (resolved) return
       const elapsed = Date.now() - startTime
 
-      if (
-        existsSync(shellPath) &&
-        existsSync(serverPath) &&
-        isArtifactFresh(shellPath) &&
-        isArtifactFresh(serverPath)
-      ) {
+      if (hasUsableViteArtifacts() && isArtifactFresh(shellPath) && isArtifactFresh(serverPath)) {
         stableCount += 1
         if (stableCount >= STABLE_DEBOUNCE_TICKS) {
           // Artifacts present + stable. Send SIGTERM to break out of
@@ -344,31 +355,30 @@ async function step3_viteBuild() {
       resolved = true
       // SIGTERM after artifacts confirmed → success. Any other exit code
       // before artifacts → real failure.
-      if (killed && existsSync(shellPath) && existsSync(serverPath)) {
+      if (killed && hasUsableViteArtifacts()) {
         console.log(
           `[orchestrator] vite subprocess exited (signal=${signal ?? "none"}, code=${code ?? "none"}) after kill-after-artifacts — proceeding to step 4`
         )
         resolve(undefined)
         return
       }
-      if (code === 0 && existsSync(shellPath) && existsSync(serverPath)) {
+      if (code === 0 && hasUsableViteArtifacts()) {
         // Clean exit (rare on Windows) — also success.
         resolve(undefined)
         return
       }
       reject(
         new Error(
-          `vite build exited with code=${code ?? "null"} signal=${signal ?? "null"}; artifacts present=${existsSync(shellPath) && existsSync(serverPath)}`
+          `vite build exited with code=${code ?? "null"} signal=${signal ?? "null"}; complete artifacts present=${hasUsableViteArtifacts()}`
         )
       )
     })
   })
 
-  if (!existsSync(shellPath)) {
-    throw new Error(`Expected ${shellPath} after vite build`)
-  }
-  if (!existsSync(serverPath)) {
-    throw new Error(`Expected ${serverPath} after vite build`)
+  if (!hasUsableViteArtifacts()) {
+    throw new Error(
+      `Vite completed without a usable client shell, server bundle, and client asset set under ${path.join(cwd, "dist")}`
+    )
   }
 }
 

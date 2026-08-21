@@ -24,7 +24,7 @@ test.describe("Language switching and document metadata", () => {
     await english.focus()
     await page.keyboard.press("Space")
     await expect(page.getByRole("radio", { name: /Английский|English/i })).toBeChecked()
-    await expect(page.getByRole("heading", { name: /Settings|Настройки/i })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible()
     await expect(page.locator("html")).toHaveAttribute("lang", "en")
     await expect(page.locator("html")).toHaveAttribute("dir", "ltr")
 
@@ -32,7 +32,7 @@ test.describe("Language switching and document metadata", () => {
     await russian.focus()
     await page.keyboard.press("Space")
     await expect(page.getByRole("radio", { name: /Русский|Russian/i })).toBeChecked()
-    await expect(page.getByRole("heading", { name: /Settings|Настройки/i })).toBeVisible()
+    await expect(page.getByRole("heading", { name: "Настройки" })).toBeVisible()
     await expect(page.locator("html")).toHaveAttribute("lang", "ru")
     await expect(page.locator("html")).toHaveAttribute("dir", "ltr")
 

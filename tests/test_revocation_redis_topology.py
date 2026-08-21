@@ -2,12 +2,34 @@
 
 from pathlib import Path
 
+import pytest
 import yaml
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+
+def _find_repo_root() -> Path | None:
+    """Locate the checkout when mutmut executes a copied test module.
+
+    mutmut materialises tests below ``mutants/``; resolving ``parents[1]``
+    there points at the temporary copy rather than the repository checkout.
+    Keep these deployment-contract tests hermetic in both locations.
+    """
+
+    for candidate in Path(__file__).resolve().parents:
+        if (candidate / "pyproject.toml").is_file() and (candidate / "k8s").is_dir():
+            return candidate
+    return None
+
+
+REPO_ROOT = _find_repo_root()
+if REPO_ROOT is None or not (REPO_ROOT / "docker-compose.yml").is_file():
+    pytest.skip(  # QUALITY-123 @egorribun
+        "repository deployment assets are unavailable in isolated mutation copy",
+        allow_module_level=True,
+    )
 
 
 def _compose(name: str) -> dict:
+    assert REPO_ROOT is not None
     return yaml.safe_load((REPO_ROOT / name).read_text(encoding="utf-8"))
 
 

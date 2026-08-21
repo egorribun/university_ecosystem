@@ -46,6 +46,15 @@ def main() -> int:
 
     # Read protojson input from stdin
     payload = read_json_stdin()
+    if "__hook_parse_error__" in payload:
+        reason = f"Malformed hook input: {payload['__hook_parse_error__']}"
+        if "post" in event:
+            write_json_stdout({"decision": "deny", "reason": reason})
+        elif "stop" in event:
+            write_json_stdout({"decision": "continue", "reason": reason})
+        else:
+            write_json_stdout({"decision": "deny", "reason": reason})
+        return 0
 
     try:
         if event in ("pre-tool", "pre-tool-use", "pretooluse"):
@@ -66,7 +75,7 @@ def main() -> int:
         else:
             sys.stderr.write(f"[hooks.runner] Unknown event type: {event_raw}\n")
             write_json_stdout(
-                {"decision": "allow", "reason": f"Unknown hook event '{event_raw}'."}
+                {"decision": "deny", "reason": f"Unknown hook event '{event_raw}'."}
             )
             return 0
 
@@ -74,19 +83,22 @@ def main() -> int:
         sys.stderr.write(
             f"[hooks.runner] Error processing hook event '{event_raw}': {exc}\n"
         )
-        # Safe fallback: do not crash agent loop
+        # Fail closed: a broken safety/quality hook must never silently grant
+        # permission or allow the agent to self-certify completion.
         if "pre" in event:
             write_json_stdout(
-                {"decision": "allow", "reason": f"Hook exception fallback: {exc}"}
+                {"decision": "deny", "reason": f"Hook failure requires review: {exc}"}
             )
         elif "post" in event:
-            write_json_stdout({})
+            write_json_stdout(
+                {"decision": "deny", "reason": f"Post-tool quality hook failed: {exc}"}
+            )
         elif "stop" in event:
             write_json_stdout(
-                {"decision": "allow", "reason": f"Hook exception fallback: {exc}"}
+                {"decision": "continue", "reason": f"Stop gate failed closed: {exc}"}
             )
         else:
-            write_json_stdout({})
+            write_json_stdout({"decision": "deny", "reason": f"Hook failure: {exc}"})
         return 0
 
 

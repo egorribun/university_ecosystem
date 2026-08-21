@@ -924,6 +924,30 @@ func TestRunMain_TemporalConnectErrorReturnsDirectly(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestRunMain_ReturnsTemporalWorkerError(t *testing.T) {
+	configureRunMainStubs(t)
+	wantErr := errors.New("synthetic temporal worker failure")
+	startTemporalWorkerFunc = func(context.Context, *config.Config, *slog.Logger) (client.Client, worker.Worker, error) {
+		return nil, nil, wantErr
+	}
+
+	err := runMain(context.Background())
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestStartTemporalWorker_ConnectError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	c, w, err := startTemporalWorker(ctx, &config.Config{
+		TemporalHost:       "127.0.0.1:7233",
+		TemporalAPIKeyFile: t.TempDir() + "/missing-token",
+	}, discardLogger())
+	require.Error(t, err)
+	require.Nil(t, c)
+	require.Nil(t, w)
+}
+
 func configureRunMainStubs(t *testing.T) {
 	t.Helper()
 	t.Setenv("FP_GRPC_PORT", "0")

@@ -13,7 +13,9 @@ Verifies all subsystems of the Antigravity Developer Harness:
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import py_compile
 import subprocess
 import sys
@@ -34,6 +36,7 @@ USER_HOME = Path.home()
 GEMINI_CONFIG_DIR = USER_HOME / ".gemini" / "config"
 MCP_CONFIG_FILE = GEMINI_CONFIG_DIR / "mcp_config.json"
 GLOBAL_CONFIG_FILE = GEMINI_CONFIG_DIR / "config.json"
+RUN_GLOBAL_CHECKS = os.environ.get("HARNESS_GLOBAL_CONFIG", "0") == "1"
 
 
 # ==============================================================================
@@ -92,8 +95,15 @@ class TestLifecycleHookRunner(unittest.TestCase):
             )
             if file_path.suffix == ".py":
                 # Ensure valid Python 3 syntax via py_compile
-                compiled = py_compile.compile(str(file_path), doraise=True)
-                self.assertIsNotNone(compiled, f"Failed to compile {file_path}")
+                with tempfile.TemporaryDirectory(
+                    prefix="harness-pycompile-"
+                ) as temp_dir:
+                    compiled = py_compile.compile(
+                        str(file_path),
+                        cfile=str(Path(temp_dir) / f"{file_path.stem}.pyc"),
+                        doraise=True,
+                    )
+                    self.assertIsNotNone(compiled, f"Failed to compile {file_path}")
 
     def test_hooks_json_configuration(self) -> None:
         """Verify .agents/hooks.json conforms to Antigravity hook declaration schema."""
@@ -809,7 +819,11 @@ class TestMcpConfiguration(unittest.TestCase):
         self.assertIn("Master MCP Server Catalog", catalog_doc)
 
     def test_global_mcp_config_json(self) -> None:
-        """Verify global mcp_config.json contains all 14 MCP servers."""
+        """Verify global mcp_config.json contains all configured MCP servers."""
+        if not RUN_GLOBAL_CHECKS:
+            self.skipTest(
+                "global developer config checks require HARNESS_GLOBAL_CONFIG=1"
+            )
         self.assertTrue(
             MCP_CONFIG_FILE.exists(), f"Missing global config: {MCP_CONFIG_FILE}"
         )
@@ -840,6 +854,10 @@ class TestMcpConfiguration(unittest.TestCase):
 
     def test_global_permissions_config_json(self) -> None:
         """Verify global config.json grants global permissions for all MCP servers."""
+        if not RUN_GLOBAL_CHECKS:
+            self.skipTest(
+                "global developer config checks require HARNESS_GLOBAL_CONFIG=1"
+            )
         self.assertTrue(
             GLOBAL_CONFIG_FILE.exists(), f"Missing global config: {GLOBAL_CONFIG_FILE}"
         )
@@ -881,7 +899,7 @@ class TestMcpConfiguration(unittest.TestCase):
 # ==============================================================================
 
 
-def run_all_tests() -> int:
+def run_all_tests(*, repo_only: bool = True) -> int:
     """Run all harness test suites and print detailed verification report."""
     test_loader = unittest.TestLoader()
     test_classes = [
@@ -896,7 +914,14 @@ def run_all_tests() -> int:
 
     suite = unittest.TestSuite()
     for test_class in test_classes:
-        suite.addTests(test_loader.loadTestsFromTestCase(test_class))
+        for test in test_loader.loadTestsFromTestCase(test_class):
+            if (
+                repo_only
+                and test_class is TestMcpConfiguration
+                and test._testMethodName.startswith("test_global_")
+            ):
+                continue
+            suite.addTest(test)
 
     print("=" * 80)
     print("ANTIGRAVITY DEVELOPER HARNESS COMPREHENSIVE VERIFICATION SUITE")
@@ -938,4 +963,21 @@ def run_all_tests() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(run_all_tests())
+    parser = argparse.ArgumentParser(
+        description="Run hermetic repository harness checks."
+    )
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
+        "--repo-only",
+        action="store_true",
+        help="run repository-local checks (the default)",
+    )
+    mode.add_argument(
+        "--include-global-config",
+        action="store_true",
+        help="also inspect optional per-developer ~/.gemini/config files",
+    )
+    args = parser.parse_args()
+    if args.include_global_config:
+        RUN_GLOBAL_CHECKS = True
+    sys.exit(run_all_tests(repo_only=not args.include_global_config))

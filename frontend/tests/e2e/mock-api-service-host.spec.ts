@@ -2,7 +2,7 @@ import { expect, test } from "./test"
 import { useMockApi } from "./utils/mockApi"
 
 test("mock API supports credentialed service-host requests", async ({ page }) => {
-  await useMockApi(page)
+  await useMockApi(page, { authenticated: false })
   await page.goto("/login")
 
   const result = await page.evaluate(async () => {
@@ -16,7 +16,7 @@ test("mock API supports credentialed service-host requests", async ({ page }) =>
 })
 
 test("mock API provides a stable WebSocket for authenticated pages", async ({ page }) => {
-  await useMockApi(page)
+  await useMockApi(page, { authenticated: false })
   await page.goto("/login")
 
   const opened = await page.evaluate(

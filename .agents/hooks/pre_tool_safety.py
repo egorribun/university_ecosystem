@@ -100,10 +100,24 @@ DENY_COMMAND_PATTERNS = [
     # Forced push to main or master
     (
         re.compile(
-            r"\bgit\s+push\b.*(--force|-f)\b.*(\bmain\b|\bmaster\b)",
+            r"\bgit\s+push\b.*(--force(?:-with-lease)?|-f)\b.*(\bmain\b|\bmaster\b)",
             re.IGNORECASE,
         ),
         "Force-pushing to primary branch (main/master) is strictly prohibited.",
+    ),
+    (
+        re.compile(
+            r"\bpython(?:3)?\b.*(?:open|read_text|Path).*?(?:\.env|\.secrets|\.pem|id_rsa).*?(?:requests|httpx|urllib|socket|curl|post|send)",
+            re.IGNORECASE,
+        ),
+        "Executing code that reads secrets and sends them over the network is strictly prohibited.",
+    ),
+    (
+        re.compile(
+            r"\brm\s+.*(?:\$HOME|\$USERPROFILE|%USERPROFILE%|%HOMEDRIVE%%HOMEPATH%)",
+            re.IGNORECASE,
+        ),
+        "Recursive deletion of a user home directory is strictly prohibited.",
     ),
 ]
 
@@ -112,7 +126,7 @@ ASK_COMMAND_PATTERNS = [
     # Destructive SQL DDL
     (
         re.compile(
-            r"\b(DROP\s+(?:DATABASE|SCHEMA|TABLE)|TRUNCATE(?:\s+TABLE)?|ALTER\s+TABLE\s+.*\s+DROP\s+COLUMN)\b",
+            r"\b(DROP\s+(?:DATABASE|SCHEMA|TABLE|OWNED|ROLE)|TRUNCATE(?:\s+TABLE)?|ALTER\s+TABLE\s+.*\s+DROP\s+COLUMN)\b",
             re.IGNORECASE,
         ),
         "Destructive database schema operation (DROP/TRUNCATE) requires explicit confirmation.",
@@ -212,14 +226,19 @@ def evaluate_file_modification(tool_name: str, args: dict[str, Any]) -> dict[str
     # Check critical protected files
     repo_root = find_repo_root()
     try:
-        rel_path = target_path.resolve().relative_to(repo_root.resolve()).as_posix()
+        resolved_repo = repo_root.resolve()
+        resolved_path = target_path.resolve()
+        rel_path = resolved_path.relative_to(resolved_repo).as_posix()
         if rel_path in CRITICAL_PROTECTED_FILES:
             return {
                 "decision": "ask",
                 "reason": f"[PreToolUse Safety Prompt] Target file '{rel_path}' is a critical security artifact. Overwrite requires confirmation.",
             }
     except (ValueError, OSError):
-        pass
+        return {
+            "decision": "deny",
+            "reason": f"[PreToolUse Safety Block] File modifications must stay inside the repository: '{target_file}'.",
+        }
 
     return {
         "decision": "allow",
@@ -238,13 +257,19 @@ def evaluate_pre_tool(payload: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(args, dict):
         args = {}
 
-    if tool_name == "run_command":
+    if tool_name in {"run_command", "shell_command", "exec_command", "terminal"}:
         cmd_line = get_field(
             args, "CommandLine", "commandLine", "command_line", "cmd", default=""
         )
         return evaluate_run_command(cmd_line)
 
-    if tool_name in ("write_to_file", "replace_file_content"):
+    if tool_name in {
+        "write_to_file",
+        "replace_file_content",
+        "write_file",
+        "edit_file",
+        "apply_patch",
+    }:
         return evaluate_file_modification(tool_name, args)
 
     # Default to allow for read-only / other harmless tools

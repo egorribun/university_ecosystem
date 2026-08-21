@@ -37,7 +37,7 @@ def check_python_subsystem(repo_root: Path) -> tuple[bool, str]:
     code, stdout, stderr = run_process(
         [*ruff_cmd, "check", "app/"],
         cwd=repo_root,
-        timeout=60,
+        timeout=90,
     )
     if code != 0:
         err_msg = stdout.strip() or stderr.strip()
@@ -62,7 +62,7 @@ def check_frontend_subsystem(repo_root: Path) -> tuple[bool, str]:
     code, stdout, stderr = run_process(
         cmd,
         cwd=frontend_dir,
-        timeout=450,
+        timeout=90,
     )
     if code != 0:
         err_msg = stdout.strip() or stderr.strip()
@@ -79,7 +79,7 @@ def _check_single_go_module(mod_dir: Path, repo_root: Path) -> str | None:
     code, stdout, stderr = run_process(
         ["go", "vet", "./..."],
         cwd=mod_dir,
-        timeout=240,
+        timeout=90,
     )
     if code != 0:
         err_msg = stderr.strip() or stdout.strip()
@@ -95,9 +95,16 @@ def check_services_subsystem(repo_root: Path) -> tuple[bool, str]:
         return True, ""
 
     if not find_executable("go"):
-        return True, ""
+        return False, "Go toolchain is required for the services quality gate."
 
-    target_services = ["gateway", "ws-hub", "file-processor"]
+    target_services = [
+        "gateway",
+        "ws-hub",
+        "file-processor",
+        "cmd/uni-cli",
+        "pkg/spiffe",
+        "pkg/spicedb",
+    ]
     go_mod_dirs = [
         services_dir / svc
         for svc in target_services
@@ -137,10 +144,28 @@ def check_gate_state_errors() -> tuple[bool, str]:
     try:
         with open(state_path, encoding="utf-8") as f:
             data = json.load(f)
+            # A later successful edit of one file must not hide an unresolved
+            # failure in another file. Resolve status per path from history and
+            # inspect the latest entry for every path.
+            latest_by_file: dict[str, dict[str, Any]] = {}
+            for entry in data.get("history", []):
+                if isinstance(entry, dict):
+                    file_name = str(entry.get("file", "unknown"))
+                    latest_by_file[file_name] = entry
             last = data.get("last_status", {})
-            if last and not last.get("passed", True):
-                file_name = last.get("file", "unknown")
-                output = last.get("output", "")
+            if isinstance(last, dict) and last.get("file"):
+                latest_by_file[str(last["file"])] = last
+            failed = next(
+                (
+                    entry
+                    for entry in latest_by_file.values()
+                    if not entry.get("passed", False)
+                ),
+                None,
+            )
+            if failed is not None:
+                file_name = failed.get("file", "unknown")
+                output = failed.get("output", "")
                 return (
                     False,
                     f"Recent unresolved edit error in '{file_name}':\n{output}",
@@ -189,5 +214,5 @@ def evaluate_stop(payload: dict[str, Any]) -> dict[str, Any]:
 
     return {
         "decision": "allow",
-        "reason": "All quality gates passed (Python Ruff, Frontend TypeScript, Go vet).",
+        "reason": "All configured stop checks passed (Python Ruff, frontend TypeScript, and Go vet for every workspace module).",
     }

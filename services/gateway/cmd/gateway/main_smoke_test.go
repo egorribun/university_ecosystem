@@ -19,6 +19,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"io"
 	"log/slog"
 	"net/http"
@@ -34,6 +35,16 @@ import (
 	"github.com/university-ecosystem/gateway/internal/config"
 	"github.com/university-ecosystem/gateway/middleware"
 )
+
+func TestConfigureGinPrometheus(t *testing.T) {
+	oldFlags := flag.CommandLine
+	flag.CommandLine = flag.NewFlagSet("gateway-test", flag.ContinueOnError)
+	t.Cleanup(func() { flag.CommandLine = oldFlags })
+	oldMode := gin.Mode()
+	gin.SetMode(gin.ReleaseMode)
+	t.Cleanup(func() { gin.SetMode(oldMode) })
+	setupGinPrometheusFunc(gin.New())
+}
 
 func TestSetupRouter_WiresRoutesAndProbes(t *testing.T) {
 	mr := miniredis.RunT(t)

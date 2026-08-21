@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
 import logging
 import re
 import socket
@@ -381,17 +380,31 @@ def shutdown_observability() -> None:
         shutdown_tasks.append(_shutdown_logs)
 
     if shutdown_tasks:
-        executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=min(len(shutdown_tasks), 3)
-        )
-        try:
-            with suppress(
-                Exception
-            ):  # RZ-22-01-JUSTIFIED: timeout suppression for unreachable telemetry collectors on process teardown
-                futures = [executor.submit(task) for task in shutdown_tasks]
-                concurrent.futures.wait(futures, timeout=2.0)
-        finally:
-            executor.shutdown(wait=False, cancel_futures=True)
+        # Exporter shutdown can block on an unreachable collector.  A regular
+        # ThreadPoolExecutor owns non-daemon workers, so ``shutdown(wait=False)``
+        # still keeps the interpreter alive until those workers return.  Use
+        # daemon threads instead: the application teardown remains bounded and
+        # no best-effort telemetry flush can prevent a clean process exit.
+        threads = [
+            threading.Thread(
+                target=task,
+                name=f"otel-shutdown-{index}",
+                daemon=True,
+            )
+            for index, task in enumerate(shutdown_tasks, start=1)
+        ]
+        for thread in threads:
+            with suppress(RuntimeError):
+                thread.start()
+
+        deadline = time.monotonic() + 2.0
+        for thread in threads:
+            remaining = max(0.0, deadline - time.monotonic())
+            thread.join(timeout=remaining)
+            if thread.is_alive():
+                logging.getLogger(__name__).warning(
+                    "OpenTelemetry provider shutdown exceeded timeout; continuing without flush"
+                )
 
     _otel_configured = False
 

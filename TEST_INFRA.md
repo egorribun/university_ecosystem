@@ -3,7 +3,7 @@
 ## Test Philosophy
 - Multi-stack end-to-end verification, quality contracts, and closed-loop regression prevention.
 - Coverage Mandate: 100% statement, branch, function, and line coverage across critical backend and frontend paths per `quality/quality-contract.json`.
-- Zero-Debt Target: All 14 PR #1249 CI/CD checks, mutation testing shards, and harness suites passing cleanly.
+- Zero-Debt Target: All required PR #1249 CI/CD checks, mutation testing shards, and harness suites passing cleanly. This file describes the target, not a historical pass claim.
 
 ---
 
@@ -25,7 +25,7 @@
 ---
 
 ## Test Architecture
-- **Developer Harness Test Runner**: `python verify_harness.py` (31 tests across 7 test suites).
+- **Developer Harness Test Runner**: `python verify_harness.py --repo-only` (hermetic repository checks; optional global developer-config checks require `--include-global-config`).
 - **Backend Test Runner**: `pytest tests/` (unit, integration, contracts, mutmut stats).
 - **Frontend Test Runner**: `cd frontend && npm run test` (Vitest unit & store tests).
 - **Frontend E2E Runner**: `cd frontend && npx playwright test` (Chromium, Firefox, WebKit, Mobile WebKit).
@@ -35,7 +35,7 @@
 ---
 
 ## Acceptance Thresholds
-- **Harness Acceptance**: 31/31 (100%) tests passing in `verify_harness.py`.
-- **Pre-Tool Safety Challenger**: 73/73 (100%) tests passing in `scripts/verify_challenger_pre_tool.py`.
+- **Harness Acceptance**: report from a fresh `verify_harness.py --repo-only` run; no stale count is normative.
+- **Pre-Tool Safety Challenger**: report from a fresh `scripts/verify_challenger_pre_tool.py` run.
 - **Quality Gate Aggregator**: `check_orphans_and_anti_patterns.py` returns 0 violations.
-- **PR #1249 Checks**: 14/14 checks report `conclusion: SUCCESS`.
+- **PR #1249 Checks**: every required check must report `conclusion: SUCCESS` for the current head SHA; inspect with `gh pr checks 1249`.

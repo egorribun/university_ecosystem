@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import importlib
+import inspect
 import logging
 import runpy
 import sys
@@ -49,6 +50,7 @@ def test_worker_run_configures_logging_and_executes_async_main(
 ) -> None:
     configured = Mock()
     received: list[Coroutine[Any, Any, None]] = []
+    main_factory = Mock(wraps=worker.main)
 
     def run_coroutine(coroutine: Coroutine[Any, Any, None]) -> None:
         received.append(coroutine)
@@ -56,12 +58,14 @@ def test_worker_run_configures_logging_and_executes_async_main(
 
     monkeypatch.setattr(logging, "basicConfig", configured)
     monkeypatch.setattr(asyncio, "run", run_coroutine)
+    monkeypatch.setattr(worker, "main", main_factory)
 
     worker.run()
 
     configured.assert_called_once_with(level=logging.INFO)
+    main_factory.assert_called_once_with()
     assert len(received) == 1
-    assert received[0].cr_code.co_name == "main"
+    assert inspect.iscoroutine(received[0])
 
 
 def test_worker_run_treats_keyboard_interrupt_as_clean_shutdown(

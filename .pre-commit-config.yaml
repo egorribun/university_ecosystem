@@ -1,7 +1,7 @@
 ## Bundled agent/IDE skills are third-party reference material, not product
 ## source.  Scanning their duplicated examples creates false positives and can
 ## exhaust Docker Desktop when pre-commit batches thousands of filenames.
-exclude: ^(?:\.agents|\.opencode)/
+exclude: ^(?:\.agents/skills|\.opencode)/
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit

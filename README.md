@@ -203,10 +203,10 @@ sequenceDiagram
 ## 🚀 Rapid Onboarding
 
 ### 1. Secure Environment Setup
-We utilize [Mozilla SOPS](https://github.com/getsops/sops) to ensure environment secrets remain encrypted at rest.
+Create a local environment from the checked-in example. The bootstrapper generates
+development-only secrets when values are missing; never commit `.env` files.
 ```powershell
-# Decrypt the environment template (requires age/PGP setup)
-sops -d .env.enc > .env
+Copy-Item .env.example .env
 ```
 
 ### 2. Ignition
@@ -239,8 +239,8 @@ for every runtime and Prometheus target:
 ```bash
 uv sync            # Sync Python 3.14 dependencies
 uv run pytest      # Run full pytest suite (2800+ tests)
-python -m ruff check app/   # Run Ruff linter
-python -m ruff format app/  # Format Python codebase
+uv run ruff check app/      # Run Ruff linter
+uv run ruff format app/     # Format Python codebase
 ```
 
 ### **React (Frontend)**

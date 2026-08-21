@@ -37,5 +37,12 @@ handoffs are intentionally not part of the canonical index.
 - [Canonical audit index](audits/INDEX.md)
 - [Machine-enforced quality contract](../quality/quality-contract.json)
 
+## Agent tooling
+
+- [MCP recipes and server catalog](mcp/MCP_RECIPES.md)
+- [Browser E2E MCP workflow](mcp/BROWSER_E2E_MCP.md)
+- [Database and cache MCP workflow](mcp/DB_CACHE_MCP.md)
+- [Memory and Context7 MCP workflow](mcp/MEMORY_CONTEXT7_MCP.md)
+
 Historical audit reports remain under `audits/archive/`. They are retained as
 an explicit audit trail and are not current implementation guidance.

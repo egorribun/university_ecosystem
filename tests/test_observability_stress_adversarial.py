@@ -14,9 +14,12 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import logging
+import subprocess
+import sys
 import threading
 import time
 import warnings
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -42,6 +45,7 @@ pytestmark = [
     pytest.mark.filterwarnings("ignore::DeprecationWarning:opentelemetry"),
     pytest.mark.filterwarnings("ignore::DeprecationWarning:pkg_resources"),
 ]
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _reset_otel_globals():
@@ -230,6 +234,39 @@ def test_shutdown_observability_hanging_providers_bounded_timeout():
 
     assert elapsed <= 2.05, f"Hanging shutdown took {elapsed:.4f}s, exceeding 2.05s SLA"
     assert obs._otel_configured is False
+
+
+def test_shutdown_observability_does_not_keep_process_alive() -> None:
+    """A stuck exporter must not leave non-daemon workers after shutdown."""
+    script = """
+import time
+from opentelemetry.sdk.trace import TracerProvider
+import app.core.observability as obs
+
+provider = TracerProvider()
+def hanging_shutdown(*args, **kwargs):
+    time.sleep(30)  # pragma: allowlist bound (subprocess timeout bounds the child)
+provider.shutdown = hanging_shutdown
+obs.trace.get_tracer_provider = lambda: provider
+obs.metrics.get_meter_provider = lambda: object()
+started = time.monotonic()
+obs.shutdown_observability()
+print(f'shutdown-returned {time.monotonic() - started:.4f}', flush=True)
+"""
+    completed = subprocess.run(  # noqa: S603 - interpreter/script are test-controlled.
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        # Importing the full observability stack on Windows can take several
+        # seconds; the assertion below measures the shutdown operation itself.
+        timeout=10,
+        cwd=str(REPO_ROOT),
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert "shutdown-returned" in completed.stdout
+    elapsed = float(completed.stdout.split()[-1])
+    assert elapsed <= 2.05, f"Child shutdown took {elapsed:.4f}s"
 
 
 def test_concurrent_shutdown_calls_no_deadlock():

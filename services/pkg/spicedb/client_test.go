@@ -55,7 +55,7 @@ func TestSpiceDBMemoryClient(t *testing.T) {
 	}
 
 	// 7. Timeout evaluation helper success
-	allowed, err = EvaluateWithTimeout(ctx, func() (bool, error) {
+	allowed, err = EvaluateWithTimeout(ctx, func(_ context.Context) (bool, error) {
 		return client.CheckTenantPermission(ctx, "tenant-guu", "admin", "admin-1")
 	}, 1*time.Second)
 	if err != nil || !allowed {
@@ -64,7 +64,7 @@ func TestSpiceDBMemoryClient(t *testing.T) {
 
 	// 8. Timeout evaluation helper returning error
 	customErr := errors.New("custom error")
-	allowed, err = EvaluateWithTimeout(ctx, func() (bool, error) {
+	allowed, err = EvaluateWithTimeout(ctx, func(_ context.Context) (bool, error) {
 		return false, customErr
 	}, 1*time.Second)
 	if allowed || !errors.Is(err, customErr) {
@@ -72,7 +72,7 @@ func TestSpiceDBMemoryClient(t *testing.T) {
 	}
 
 	// 9. Timeout evaluation helper returning false without error
-	allowed, err = EvaluateWithTimeout(ctx, func() (bool, error) {
+	allowed, err = EvaluateWithTimeout(ctx, func(_ context.Context) (bool, error) {
 		return false, nil
 	}, 1*time.Second)
 	if allowed || err != nil {
@@ -97,15 +97,12 @@ func TestMemoryClientRejectsCancelledEvaluation(t *testing.T) {
 
 func TestEvaluateWithTimeoutStopsWaitingAtDeadline(t *testing.T) {
 	started := make(chan struct{})
-	release := make(chan struct{})
-	defer close(release)
-
 	allowed, err := EvaluateWithTimeout(
 		context.Background(),
-		func() (bool, error) {
+		func(ctx context.Context) (bool, error) {
 			close(started)
-			<-release
-			return true, nil
+			<-ctx.Done()
+			return false, ctx.Err()
 		},
 		10*time.Millisecond,
 	)

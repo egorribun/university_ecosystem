@@ -204,33 +204,9 @@ def configure_logging(
         level=level,
     )
 
-    # Bridge stdlib logging into the OTel SDK only when OTel and OTel logs are enabled and not in testing
-    from app.core.config import settings
-
-    if (
-        getattr(settings, "enable_otel", False)
-        and getattr(settings, "enable_otel_logs", False)
-        and getattr(settings, "environment", "") != "testing"
-    ):
-        try:
-            from opentelemetry._logs import set_logger_provider
-            from opentelemetry.instrumentation.logging import LoggingInstrumentor
-            from opentelemetry.sdk._logs import LoggerProvider
-            from opentelemetry.sdk._logs._internal.export.otlp import (
-                OTLPLogExporter,
-            )
-            from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-
-            _log_provider = LoggerProvider()
-            set_logger_provider(_log_provider)
-            _log_provider.add_log_record_processor(
-                BatchLogRecordProcessor(OTLPLogExporter())
-            )
-            # Instruments Python root logger → OTel bridge (adds trace_id / span_id
-            # as log record attributes recognised by Grafana Tempo).
-            LoggingInstrumentor().instrument(set_logging_format=False)
-        except (ImportError, Exception):  # nosec B110  # noqa: S110  # RZ-22-01-JUSTIFIED: fail-safe fallback if OTel SDK exporter unavailable in test/offline environment
-            pass
+    # OpenTelemetry logger ownership lives in ``app.core.observability``.
+    # Keeping provider creation out of this low-level structlog setup prevents
+    # a hidden second BatchLogRecordProcessor from leaking exporter threads.
 
 
 def _orjson_serializer(obj: dict[str, Any], **kwargs: Any) -> str:

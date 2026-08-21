@@ -89,11 +89,15 @@ var (
 		if gin.Mode() == gin.TestMode || os.Getenv("GIN_MODE") == "test" || flag.Lookup("test.v") != nil {
 			return
 		}
-		p := ginprometheus.NewPrometheus("gin")
-		p.SetListenAddress(":9102")
-		p.Use(router)
+		configureGinPrometheus(router)
 	}
 )
+
+func configureGinPrometheus(router *gin.Engine) {
+	p := ginprometheus.NewPrometheus("gin")
+	p.SetListenAddress(":9102")
+	p.Use(router)
+}
 
 func callInitTracer(ctx context.Context, cfg *config.Config) (*sdktrace.TracerProvider, error) {
 	hooksMu.RLock()

@@ -73,7 +73,7 @@ def test_configure_logging_already_configured():
 
 
 def test_configure_logging_first_time_json(monkeypatch):
-    """Test configure_logging setup flow for JSON output and OTel provider integration."""
+    """Structlog setup leaves OpenTelemetry provider ownership to observability."""
     from types import SimpleNamespace
 
     mock_set_logger_provider = MagicMock()
@@ -106,10 +106,8 @@ def test_configure_logging_first_time_json(monkeypatch):
         configure_logging(json_output=True)
 
         mock_structlog_conf.assert_called_once()
-        mock_set_logger_provider.assert_called_once()
-        mock_logging_instrumentor_cls.return_value.instrument.assert_called_once_with(
-            set_logging_format=False
-        )
+        mock_set_logger_provider.assert_not_called()
+        mock_logging_instrumentor_cls.return_value.instrument.assert_not_called()
 
 
 def test_configure_logging_skips_otel_in_testing_environment(monkeypatch):

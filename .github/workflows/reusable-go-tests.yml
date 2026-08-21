@@ -173,7 +173,8 @@ jobs:
             fi
             if [ "$status" -ne 0 ]; then
               if grep -Eq 'panic: runtime error|go/types\.\(\*StdSizes\)\.Sizeof' "$log_file"; then
-                echo "::warning::go-mutesting toolchain panic for $pkg (legacy AST compatibility with Go 1.26+). Skipping mutation for this package."
+                echo "::error::go-mutesting is incompatible with the active Go toolchain for $pkg; mutation evidence is unavailable. Pin or upgrade the mutator before merging."
+                exit 1
               else
                 echo "::error::go-mutesting failed for $pkg with exit code $status."
                 exit "$status"

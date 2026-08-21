@@ -49,7 +49,11 @@ university_ecosystem/
 | M3 | Documentation Synchronization & Audit | F7: `README.ru.md` parity, `docs/DEPLOY*.md`, `ADR-008`, `k8s/README.md`, `API_EXAMPLES.md` | none | DONE |
 | M4 | WS-Hub Performance Optimization | F8: `services/ws-hub` memory & lock optimization to satisfy benchmark gate ratio < 1.10 | none | DONE |
 | M5 | Frontend Playwright E2E Stabilization | F9: Playwright test timeout adjustments, mockApi reliability, SSR cold-start stabilization | M1 | DONE |
-| M6 | Final Verification, Commit & PR Delivery | F10: `verify_harness.py`, all 14 CI/CD checks green, forensic audit, git commit to `egorribun` | M1, M2, M3, M4, M5 | DONE |
+| M6 | Final Verification, Commit & PR Delivery | F10: `verify_harness.py`, all required CI/CD checks green, forensic audit, git commit to `egorribun` | M1, M2, M3, M4, M5 | IN PROGRESS |
+
+> Status is evidence-based: this milestone remains open until the current PR
+> head has a fresh green required-check set and the full local verification
+> matrix is recorded. Historical audit snapshots are not release certification.
 
 ---
 

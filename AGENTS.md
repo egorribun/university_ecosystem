@@ -49,8 +49,8 @@ university_ecosystem/
 ### Backend (Python 3.14)
 ```bash
 # Linting & Formatting
-python -m ruff check app/
-python -m ruff format app/
+uv run ruff check app/
+uv run ruff format app/
 python -m py_compile app/main.py
 
 # Type Checking & Custom AST Checks
@@ -100,7 +100,7 @@ python verify_harness.py
   - `feat(waveXX): description`
   - `fix(waveXX): description`
   - `refactor(waveXX): description`
-- **STRICT PROHIBITION**: **NEVER** include a `Co-Authored-By` trailer under any circumstances.
+- **STRICT PROHIBITION**: NEVER include `Co-Authored-By` trailers under any circumstances.
 - **Testing & Waves Association**: Testing coverage and roadmaps do **NOT** belong to waves (waves are strictly reserved for main business features). Do not associate testing work with waves in commit messages, branch names, or logs.
 - **Clean Git State**: After running `detect-secrets` or pre-commit hooks, always re-stage `.secrets.baseline` via `git add .secrets.baseline`.
 
@@ -143,7 +143,7 @@ GitHub admin bypass on the main-branch ruleset is intentionally left enabled for
 - **Base Images**:
   - Python backend: `python:3.14-slim-bookworm`
   - Frontend SSR: `node:24-alpine` (running on port 3000)
-  - Go microservices: `golang:1.22-alpine` / scratch runtime with `grpc_health_probe`
+  - Go microservices: digest-pinned Go 1.26 Alpine images / scratch runtime with `grpc_health_probe`
 - **Healthcheck Standards**:
   - Backend: `/health/ready` (FastAPI readiness probe)
   - File processor: `grpc_health_probe -addr=:50051`

@@ -203,10 +203,10 @@ sequenceDiagram
 ## 🚀 Быстрый старт
 
 ### 1. Подготовка окружения
-Переменные окружения зашифрованы с помощью [Mozilla SOPS](https://github.com/getsops/sops):
+Создайте локальное окружение из включённого шаблона. Загрузчик сгенерирует
+секреты только для разработки, если значения отсутствуют; `.env` нельзя коммитить.
 ```powershell
-# Расшифровка шаблона конфигурации (требуется ключ age/PGP)
-sops -d .env.enc > .env
+Copy-Item .env.example .env
 ```
 
 ### 2. Запуск
@@ -237,8 +237,8 @@ sops -d .env.enc > .env
 ```bash
 uv sync            # Синхронизация зависимостей Python 3.14
 uv run pytest      # Запуск тестовой сюиты (2800+ тестов)
-python -m ruff check app/   # Проверка Ruff линтером
-python -m ruff format app/  # Форматирование кода
+uv run ruff check app/      # Проверка Ruff линтером
+uv run ruff format app/     # Форматирование кода
 ```
 
 ### **React (Frontend)**

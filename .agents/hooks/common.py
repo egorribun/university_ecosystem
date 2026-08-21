@@ -43,8 +43,8 @@ def read_json_stdin() -> dict[str, Any]:
             return payload
         return {"data": payload}
     except Exception as exc:
-        sys.stderr.write(f"[hooks.common] Warning: Failed to parse stdin JSON: {exc}\n")
-        return {}
+        sys.stderr.write(f"[hooks.common] Failed to parse stdin JSON: {exc}\n")
+        return {"__hook_parse_error__": str(exc)}
 
 
 def write_json_stdout(data: dict[str, Any]) -> None:

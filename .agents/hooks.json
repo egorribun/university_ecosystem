@@ -20,7 +20,7 @@
           {
             "type": "command",
             "command": "python hooks/runner.py post-tool",
-            "timeout": 30
+            "timeout": 120
           }
         ]
       }

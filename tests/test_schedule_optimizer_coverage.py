@@ -79,6 +79,33 @@ async def test_batch_detect_conflicts(optimizer_service, sample_item):
 
 
 @pytest.mark.asyncio
+async def test_batch_uuidv7_prefix_collisions_preserve_both_items(
+    optimizer_service,
+) -> None:
+    """UUIDv7 values sharing a timestamp prefix must not overwrite metadata."""
+    first = ScheduleItemInternal(
+        id=uuid.UUID("018f0000-0000-7000-8000-000000000001"),
+        weekday="Monday",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+        end_time=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
+        parity="both",
+        room="101A",
+    )
+    second = first.model_copy(
+        update={
+            "id": uuid.UUID("018f0000-0000-7000-8000-000000000002"),
+            "room": "102B",
+        }
+    )
+
+    conflicts = await optimizer_service.batch_detect_conflicts([first, second])
+
+    assert len(conflicts) == 1
+    returned = {item.id: item.room for pair in conflicts for item in pair}
+    assert returned == {first.id: "101A", second.id: "102B"}
+
+
+@pytest.mark.asyncio
 async def test_find_optimal_slot_success(optimizer_service, sample_item):
     result = await optimizer_service.find_optimal_slot(
         90, [sample_item], preferred_weekdays=["Tuesday"]

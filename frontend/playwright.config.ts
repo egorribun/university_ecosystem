@@ -12,6 +12,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 const URL_STATE_E2E_MODE = process.env.URL_STATE_E2E === "true"
 const PRODUCTION_SERVER_E2E_MODE = process.env.PRODUCTION_SERVER_E2E === "true"
 const E2E_COVERAGE_MODE = process.env.E2E_COVERAGE === "true"
+// Keep the reduced-chrome branch opt-in.  It is useful for the dedicated
+// accessibility/visual audit, but enabling it for the functional matrix
+// removes the real navigation and dashboard content that those tests verify.
+const E2E_LIGHT_MODE = process.env.E2E_LIGHT_MODE === "true"
 const PORT = Number(process.env.PLAYWRIGHT_PORT || (URL_STATE_E2E_MODE ? 4175 : 5173))
 const HOST = process.env.PLAYWRIGHT_HOST || "127.0.0.1"
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL || `http://${HOST}:${PORT}`
@@ -96,7 +100,7 @@ export default defineConfig({
             cwd: __dirname,
             env: {
               VITE_BACKEND_ORIGIN: process.env.VITE_BACKEND_ORIGIN ?? "",
-              VITE_E2E_MODE: "1",
+              VITE_E2E_MODE: E2E_LIGHT_MODE ? "1" : "0",
             },
           }
         : URL_STATE_E2E_MODE
@@ -113,7 +117,7 @@ export default defineConfig({
               cwd: __dirname,
               env: {
                 VITE_BACKEND_ORIGIN: process.env.VITE_BACKEND_ORIGIN ?? "",
-                VITE_E2E_MODE: "1",
+                VITE_E2E_MODE: E2E_LIGHT_MODE ? "1" : "0",
               },
             }
           : {
@@ -129,7 +133,7 @@ export default defineConfig({
                 // skips its 1000-particle canvas loop. See src/components/ui/
                 // ParticleAuthBackground.tsx + tests/e2e/a11y-public.spec.ts for the
                 // WebKit renderer memory exhaustion that motivated this gate.
-                VITE_E2E_MODE: "1",
+                VITE_E2E_MODE: E2E_LIGHT_MODE ? "1" : "0",
               },
             },
 })

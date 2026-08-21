@@ -26,3 +26,9 @@ test("build orchestrator prevents overlapping RSS probes", () => {
   assert.match(scriptSource, /memoryPoll = setInterval\(\(\) => \{/)
   assert.match(scriptSource, /\}, 2000\)/)
 })
+
+test("build orchestrator accepts only complete, non-empty Vite artifacts", () => {
+  assert.match(scriptSource, /hasUsableViteArtifacts/)
+  assert.match(scriptSource, /<html\\b/i)
+  assert.match(scriptSource, /hasClientAsset/)
+})

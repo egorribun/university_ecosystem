@@ -132,13 +132,12 @@ def check_typescript(file_path: Path, repo_root: Path) -> tuple[bool, str]:
     code, stdout, stderr = run_process(
         cmd,
         cwd=frontend_dir,
-        timeout=30,
+        timeout=90,
     )
     if code == -1:
-        # Graceful fallback: do not mark as defect on fast post-tool timeout; aggregate check in Stop gate
         return (
-            True,
-            "TypeScript check timed out in PostToolUse; deferred to Stop quality gate.",
+            False,
+            "TypeScript check timed out in PostToolUse; quality status is unresolved.",
         )
     passed = code == 0
     output = stdout.strip() if stdout else stderr.strip()
@@ -165,7 +164,7 @@ def format_and_check_go(file_path: Path, repo_root: Path) -> tuple[bool, str]:
     vet_code, vet_out, vet_err = run_process(
         ["go", "vet", "."],
         cwd=pkg_dir,
-        timeout=60,
+        timeout=90,
     )
     if vet_code != 0 and vet_code != -1:
         diagnostics.append(f"go vet failed: {vet_err.strip() or vet_out.strip()}")
@@ -195,6 +194,14 @@ def evaluate_post_tool(payload: dict[str, Any]) -> dict[str, Any]:
     target_path = Path(target_file)
     if not target_path.is_absolute():
         target_path = (repo_root / target_path).resolve()
+
+    try:
+        target_path.resolve().relative_to(repo_root.resolve())
+    except (ValueError, OSError):
+        return {
+            "decision": "deny",
+            "reason": "Post-tool formatting is restricted to files inside the repository.",
+        }
 
     if not target_path.exists():
         return {}

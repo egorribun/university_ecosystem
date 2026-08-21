@@ -51,9 +51,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
 
       - name: Set up Python for lock check
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -257,6 +254,7 @@ jobs:
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14"
+
       - name: Install uv
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
@@ -300,7 +298,7 @@ jobs:
         with:
           globs: |
             **/*.md
-            !.agents/**
+            !.agents/skills/**
             !.opencode/**
             !.venv/**
       - name: Run cspell
@@ -723,6 +721,9 @@ jobs:
       DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       # MOD-NEW-008 (audit 2026-03-19): Integrate Squawk to automatically lint
       # Alembic migrations. Blocks destructive statements (DROP COLUMN, ALTER TYPE)
@@ -765,9 +766,36 @@ jobs:
           DATABASE_URL: "postgresql+asyncpg://postgres:postgres@localhost:5432/university_db" # pragma: allowlist secret
         run: |
           set -euo pipefail
-          echo "Linting all Alembic migrations (base to head) for ZDD safety..."
-          # MOD-008: Refactor Squawk to lint the generated SQL output rather than Python files.
-          uv run alembic upgrade base:head --sql | squawk --exclude prefer-robust-stmts --exclude prefer-text-field --exclude require-timeout-settings --exclude prefer-bigint-over-int --exclude prefer-identity --exclude prefer-timestamp-tz --exclude require-concurrent-index-creation --exclude constraint-missing-not-valid --exclude adding-foreign-key-constraint --exclude disallowed-unique-constraint --exclude changing-column-type --exclude ban-drop-column --exclude ban-drop-table --exclude adding-not-nullable-field --exclude require-concurrent-index-deletion --exclude require-enum-value-ordering
+          echo "Linting changed Alembic migrations for ZDD safety..."
+          base_sha="${{ github.event.pull_request.base.sha }}"
+          if [ -z "$base_sha" ]; then base_sha="HEAD~1"; fi
+          changed_files="$(git diff --name-only "$base_sha"...HEAD -- 'alembic/versions/*.py' || true)"
+          if [ -z "$changed_files" ]; then
+            echo "No changed migrations; baseline migrations are covered by the immutable history gate."
+            exit 0
+          fi
+          while IFS= read -r migration; do
+            [ -z "$migration" ] && continue
+            read -r revision down_revision < <(uv run python - "$migration" <<'PY'
+          import re, sys
+          from pathlib import Path
+          text = Path(sys.argv[1]).read_text(encoding="utf-8")
+          rev = re.search(r"^revision\s*=\s*['\"]([^'\"]+)", text, re.MULTILINE)
+          down = re.search(r"^down_revision\s*=\s*['\"]([^'\"]+)", text, re.MULTILINE)
+          if not rev:
+              raise SystemExit(f"cannot resolve revision from {sys.argv[1]}")
+          print(rev.group(1), down.group(1) if down else "base")
+          PY
+            )
+            echo "Checking $migration ($down_revision -> $revision)"
+            uv run alembic upgrade "$down_revision:$revision" --sql \
+              | squawk --exclude prefer-robust-stmts --exclude prefer-text-field \
+                --exclude require-timeout-settings --exclude prefer-bigint-over-int \
+                --exclude prefer-identity --exclude prefer-timestamp-tz \
+                --exclude require-concurrent-index-creation --exclude constraint-missing-not-valid \
+                --exclude adding-foreign-key-constraint --exclude disallowed-unique-constraint \
+                --exclude require-enum-value-ordering
+          done <<< "$changed_files"
 
       - name: Wait for PostgreSQL
         shell: pwsh
@@ -1279,7 +1307,10 @@ jobs:
   schemathesis-api-tests:
     name: Schemathesis - API Schema Conformance
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # 25 examples across the complete OpenAPI surface are intentionally
+    # exhaustive.  The previous 15-minute cap cancelled a healthy run after
+    # only a quarter of the operations had executed.
+    timeout-minutes: 60
     needs: pre-commit-check
     permissions:
       contents: read
@@ -1676,6 +1707,8 @@ jobs:
       matrix:
         stats_shard: [0, 1, 2, 3]
     timeout-minutes: 25
+    env:
+      OTEL_SDK_DISABLED: "true"
     needs: pre-commit-check
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1692,6 +1725,14 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --group dev
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4311 # v5.0.1
+        with:
+          version: v3.17.0
+
+      - name: Resolve Helm chart dependencies
+        run: helm dependency build charts/university-ecosystem/
 
       - name: Detect changed Python source
         id: mutation_scope
@@ -1757,6 +1798,8 @@ jobs:
     # separately dispatched manual evidence workflow intentionally keeps its
     # longer six-hour envelope for full forensic evidence.
     timeout-minutes: 120
+    env:
+      OTEL_SDK_DISABLED: "true"
     needs:
       - pre-commit-check
       - mutation-tests-stats
@@ -1787,6 +1830,14 @@ jobs:
 
       - name: Install dependencies
         run: uv sync --group dev
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4311 # v5.0.1
+        with:
+          version: v3.17.0
+
+      - name: Resolve Helm chart dependencies
+        run: helm dependency build charts/university-ecosystem/
 
       - name: Detect changed Python source
         id: mutation_scope
@@ -2473,7 +2524,7 @@ jobs:
   quality-inventory-check:
     name: Source/Test Inventory & Anti-Pattern Check
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -2485,11 +2536,29 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Set up Node.js for harness TypeScript checks
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install harness toolchains
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: Install harness dependencies
+        run: |
+          uv sync --frozen
+          npm --prefix frontend ci
+
       - name: Generate Inventory Manifest
         run: python scripts/quality/generate_test_inventory.py
 
       - name: Verify Orphans and Anti-Patterns
         run: python scripts/quality/check_orphans_and_anti_patterns.py
+
+      - name: Verify developer harness (hermetic repository checks)
+        run: python verify_harness.py --repo-only
 
   kyverno-test:
     name: Kyverno policy tests

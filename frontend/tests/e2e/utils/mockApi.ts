@@ -65,6 +65,8 @@ type MockState = {
 
 type MockApiOptions = {
   serviceWorker?: "disabled" | "preserve"
+  /** Start without the SSR auth cookie for public login/MFA flows. */
+  authenticated?: boolean
 }
 
 const MOCK_TOTP_SECRET = "JBSW Y3DP EHJK" // pragma: allowlist secret
@@ -308,9 +310,10 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
   }
 
   const preserveServiceWorker = options.serviceWorker === "preserve"
+  const authenticated = options.authenticated ?? true
 
   await page.addInitScript(
-    ({ preserveServiceWorker }) => {
+    ({ preserveServiceWorker, authenticated }) => {
       try {
         if (!preserveServiceWorker) {
           // Most API-mock specs disable Service Workers so browser-level routes
@@ -330,10 +333,17 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
         if (window.name !== "__mock_api_initialized__") {
           window.name = "__mock_api_initialized__"
         }
-        // Force Russian language and mock authentication for every page visit
+        // Force Russian language for every page visit. Authentication is
+        // opt-in so public login/MFA tests exercise the real unauthenticated
+        // route instead of being redirected by a fixture cookie.
         window.localStorage.setItem("ue:language", "ru")
-        window.localStorage.setItem("access_token", "mock-token")
-        window.localStorage.setItem("refresh_token", "mock-refresh")
+        if (authenticated) {
+          window.localStorage.setItem("access_token", "mock-token")
+          window.localStorage.setItem("refresh_token", "mock-refresh")
+        } else {
+          window.localStorage.removeItem("access_token")
+          window.localStorage.removeItem("refresh_token")
+        }
         // API-focused specs must not be occluded by the unrelated push
         // education overlay. Dedicated component tests cover that onboarding.
         window.localStorage.setItem("ecosystem.push.education.dismissedAt", String(Date.now()))
@@ -361,7 +371,7 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
         // ignore
       }
     },
-    { preserveServiceWorker }
+    { preserveServiceWorker, authenticated }
   )
 
   // SSR runs before browser init scripts, so mirror the mocked auth state with
@@ -372,7 +382,7 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
     "http://127.0.0.1:5173"
   const e2eOrigin = new URL(e2eBaseUrl).origin
   await page.context().addCookies([
-    { name: SSR_E2E_AUTH_COOKIE, value: "mock", url: e2eOrigin },
+    ...(authenticated ? [{ name: SSR_E2E_AUTH_COOKIE, value: "mock", url: e2eOrigin }] : []),
     // Keep the SSR shell and the browser-side LanguageProvider on the same
     // locale so hydration tests exercise real UI behavior without React #418.
     { name: "ue:language", value: "ru", url: e2eOrigin },
@@ -681,13 +691,25 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
       })
 
       if (is304) {
+        // Playwright rejects route.fulfill({ status: 304 }) because 304 is a
+        // browser-generated cache status, not a response that can carry a
+        // fulfilled body. Preserve the conditional-hit assertion in state,
+        // and return the same JSON representation with the ETag so the client
+        // still exercises its conditional request path without an unsupported
+        // network primitive.
         await route.fulfill({
-          status: 304,
+          status: 200,
+          contentType: "application/json",
           headers: {
             "Access-Control-Expose-Headers": "ETag",
             ETag: state.newsVersion,
             "Cache-Control": "no-cache",
           },
+          body: JSON.stringify({
+            items: mockNews,
+            has_more: false,
+            next_cursor: null,
+          }),
         })
         return
       }
@@ -984,6 +1006,11 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
     state,
     async login(p: Page) {
       state.loggedIn = true
+      await p.context().addCookies([{ name: SSR_E2E_AUTH_COOKIE, value: "mock", url: e2eOrigin }])
+      await p.evaluate(() => {
+        window.localStorage.setItem("access_token", "mock-token")
+        window.localStorage.setItem("refresh_token", "mock-refresh")
+      })
       // Start from the public route. The mock session is installed by the
       // init script before navigation, so AuthProvider performs the normal
       // client-side redirect to /dashboard without a second SSR navigation.
