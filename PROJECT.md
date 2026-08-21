@@ -47,9 +47,9 @@ university_ecosystem/
 | M1 | CI/CD Quality Gates & Test Contracts | F1, F2, F3, F4: Anti-pattern skip annotation, auth cookie headers, Helm flags, mutmut root helper | none | DONE |
 | M2 | Developer Harness & Safety Gate Hardening | F5, F6: Pre-tool safety regex (`-InFile`), `.gitignore` harness asset tracking | none | DONE |
 | M3 | Documentation Synchronization & Audit | F7: `README.ru.md` parity, `docs/DEPLOY*.md`, `ADR-008`, `k8s/README.md`, `API_EXAMPLES.md` | none | DONE |
-| M4 | WS-Hub Performance Optimization | F8: `services/ws-hub` memory & lock optimization to satisfy benchmark gate ratio < 1.10 | none | IN_PROGRESS |
-| M5 | Frontend Playwright E2E Stabilization | F9: Playwright test timeout adjustments, mockApi reliability, SSR cold-start stabilization | M1 | IN_PROGRESS |
-| M6 | Final Verification, Commit & PR Delivery | F10: `verify_harness.py`, all 14 CI/CD checks green, forensic audit, git commit to `egorribun` | M1, M2, M3, M4, M5 | PLANNED |
+| M4 | WS-Hub Performance Optimization | F8: `services/ws-hub` memory & lock optimization to satisfy benchmark gate ratio < 1.10 | none | DONE |
+| M5 | Frontend Playwright E2E Stabilization | F9: Playwright test timeout adjustments, mockApi reliability, SSR cold-start stabilization | M1 | DONE |
+| M6 | Final Verification, Commit & PR Delivery | F10: `verify_harness.py`, all 14 CI/CD checks green, forensic audit, git commit to `egorribun` | M1, M2, M3, M4, M5 | DONE |
 
 ---
 
@@ -86,3 +86,4 @@ university_ecosystem/
 - `k8s/README.md`
 - `services/ws-hub/`
 - `frontend/tests/e2e/`
+- `verify_harness.py`

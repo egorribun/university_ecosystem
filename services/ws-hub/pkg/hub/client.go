@@ -68,12 +68,10 @@ func safeSend(ch chan []byte, data []byte) (sent bool) {
 	chMu.RLock()
 	entry, ok := chMutexes[ch]
 	if ok {
-		if entry.closed {
-			chMu.RUnlock()
-			return false
-		}
 		defer func() {
-			if recover() != nil {
+			panicValue := recover()
+			chMu.RUnlock()
+			if panicValue != nil {
 				sent = false
 				chMu.Lock()
 				if chMutexes[ch] == entry {
@@ -81,8 +79,10 @@ func safeSend(ch chan []byte, data []byte) (sent bool) {
 				}
 				chMu.Unlock()
 			}
-			chMu.RUnlock()
 		}()
+		if entry.closed {
+			return false
+		}
 		select {
 		case ch <- data:
 			return true
