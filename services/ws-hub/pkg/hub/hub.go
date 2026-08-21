@@ -468,6 +468,46 @@ func (h *Hub) collectRecipients(msg *Message, span trace.Span) []recipient {
 	}
 }
 
+func (h *Hub) isOversized(bctx context.Context, msg *Message, data []byte, span trace.Span) bool {
+	const maxBroadcastBytes = 60 * 1024 // 60 KB
+	if len(data) <= maxBroadcastBytes {
+		return false
+	}
+	if h.Logger != nil && h.Logger.Enabled(bctx, slog.LevelWarn) {
+		h.Logger.WarnContext(bctx, "Broadcast message exceeds size limit, dropping",
+			"size_bytes", len(data),
+			"limit_bytes", maxBroadcastBytes,
+			"type", msg.Type,
+			"room", msg.Room)
+	}
+	BroadcastDropsTotal.Inc()
+	if span != nil && span.IsRecording() {
+		span.SetAttributes(attribute.Bool("dropped.oversized", true))
+	}
+	return true
+}
+
+func (h *Hub) deliverToRecipient(bctx context.Context, r recipient, data []byte) {
+	if safeSend(r.client.Send, data) {
+		MessagesDeliveredTotal.Inc()
+		return
+	}
+	if !r.evictOnFull {
+		return
+	}
+	if h.Logger != nil && h.Logger.Enabled(bctx, slog.LevelWarn) {
+		h.Logger.WarnContext(bctx, "Client buffer full or closed, evicting", "id", r.client.ID)
+	}
+	go func(c *Client) {
+		select {
+		case h.Unregister <- c:
+		case <-h.ctx.Done():
+			// RZ-24-03: Hub shutting down; close client directly.
+			c.closeOnce.Do(func() { safeClose(c.Send) })
+		}
+	}(r.client)
+}
+
 func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 	bctx := parentCtx
 	if len(msg.TraceCtx) > 0 {
@@ -492,44 +532,13 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 		return
 	}
 
-	// RZ-23-05 (audit 2026-03-25 Wave 23): Drop oversized broadcasts that would
-	// exceed clients' ReadLimit (64 KB). Without this guard, recipients' ReadPump
-	// closes the connection with CloseMessageTooBig. 4 KB headroom accounts for
-	// WebSocket framing overhead.
-	const maxBroadcastBytes = 60 * 1024 // 60 KB
-	if len(data) > maxBroadcastBytes {
-		if h.Logger != nil && h.Logger.Enabled(bctx, slog.LevelWarn) {
-			h.Logger.WarnContext(bctx, "Broadcast message exceeds size limit, dropping",
-				"size_bytes", len(data),
-				"limit_bytes", maxBroadcastBytes,
-				"type", msg.Type,
-				"room", msg.Room)
-		}
-		BroadcastDropsTotal.Inc()
-		if span != nil && span.IsRecording() {
-			span.SetAttributes(attribute.Bool("dropped.oversized", true))
-		}
+	if h.isOversized(bctx, msg, data, span) {
 		return
 	}
 
 	recipients := h.collectRecipients(msg, span)
-
 	for _, r := range recipients {
-		if safeSend(r.client.Send, data) {
-			MessagesDeliveredTotal.Inc()
-		} else if r.evictOnFull {
-			if h.Logger != nil && h.Logger.Enabled(bctx, slog.LevelWarn) {
-				h.Logger.WarnContext(bctx, "Client buffer full or closed, evicting", "id", r.client.ID)
-			}
-			go func(c *Client) {
-				select {
-				case h.Unregister <- c:
-				case <-h.ctx.Done():
-					// RZ-24-03: Hub shutting down; close client directly.
-					c.closeOnce.Do(func() { safeClose(c.Send) })
-				}
-			}(r.client)
-		}
+		h.deliverToRecipient(bctx, r, data)
 	}
 }
 
