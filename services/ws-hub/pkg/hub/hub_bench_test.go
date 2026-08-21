@@ -168,17 +168,12 @@ func BenchmarkCollectRecipients_Broadcast(b *testing.B) {
 // BenchmarkSafeSend measures safeSend on a buffered channel with available
 // capacity.
 func BenchmarkSafeSend(b *testing.B) {
-	const bufferSize = 256
-	ch := make(chan []byte, bufferSize)
+	ch := make(chan []byte, b.N+1)
 	data := []byte(`{"type":"message","payload":{"text":"hello"}}`)
 
 	b.ResetTimer()
 	for range b.N {
 		safeSend(ch, data)
-		select {
-		case <-ch:
-		default:
-		}
 	}
 }
 
