@@ -198,24 +198,25 @@ const createDeadLetterJobs = (): AdminDeadLetterJob[] => [
   },
 ]
 
-const getWeekdayName = (): string => {
-  const names = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"]
-  return names[now.getDay()] ?? ""
-}
-
-const mockSchedule = [
-  {
-    id: "uuid-101",
+// Keep the fixture deterministic while making the page independent of the
+// runner's calendar date. The Schedule page opens on today's weekday, so a
+// single fixed-date lesson would disappear on any other day (as happened on
+// hosted runners whose clock differed from the fixture clock). One lesson per
+// supported weekday preserves the same payload shape and keeps every E2E run
+// able to exercise the rendered schedule and its offline cache.
+const mockSchedule = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"].map(
+  (weekday, index) => ({
+    id: `uuid-101-${index + 1}`,
     subject: "Математика",
     teacher: "Проф. Смирнов",
     room: "А-101",
     lesson_type: "Лекция",
-    weekday: getWeekdayName(),
+    weekday,
     start_time: "00:00",
     end_time: "23:59",
     parity: "both" as const,
-  },
-]
+  })
+)
 
 const createMockSessions = (): SessionMock[] => {
   const nowTime = now.getTime()
