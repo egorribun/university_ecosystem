@@ -54,6 +54,7 @@ export function OfflineIndicator() {
 
   const content = (
     <div
+      data-testid="offline-indicator-toast"
       role="status"
       aria-live="polite"
       className={cn(

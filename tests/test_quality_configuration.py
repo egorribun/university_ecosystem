@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 from urllib.parse import unquote
 from xml.etree import ElementTree
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +62,15 @@ def test_repository_skill_catalogs_are_exact_mirrors_without_stale_archive() -> 
     primary_root = ROOT / ".agents" / "skills"
     opencode_root = ROOT / ".opencode" / "skills"
     archive_root = ROOT / ".agents" / "skills_archive"
+
+    # QUALITY-123 @egorribun — mutmut's isolated source copy intentionally
+    # contains only the configured mutation sources and ``also_copy`` roots;
+    # repository-owned skill catalogs are validated by the normal full-suite
+    # inventory job, not by the isolated mutation baseline.
+    if not primary_root.is_dir() or not opencode_root.is_dir():
+        pytest.skip(
+            "repository skill catalogs are unavailable in isolated mutation copy"
+        )
 
     def catalog(root: Path) -> dict[PurePosixPath, bytes]:
         prefix = f"{root.relative_to(ROOT).as_posix()}/"

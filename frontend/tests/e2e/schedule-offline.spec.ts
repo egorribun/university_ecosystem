@@ -96,9 +96,7 @@ test.describe("Schedule offline behaviour", () => {
       await page.evaluate(() => window.dispatchEvent(new Event("offline")))
 
       // An offline indicator should appear (toast / banner).
-      const offlineBanner = page
-        .locator('[role="status"], [role="alert"]')
-        .filter({ hasText: /offline|нет подключения|отключено/i })
+      const offlineBanner = page.getByTestId("offline-banner")
       await expect(offlineBanner).toBeVisible({ timeout: TIMEOUTS.toast })
     } finally {
       await context.setOffline(false)
@@ -106,9 +104,7 @@ test.describe("Schedule offline behaviour", () => {
     }
 
     // After coming online the offline banner should disappear.
-    const offlineBanner = page
-      .locator('[role="status"], [role="alert"]')
-      .filter({ hasText: /offline|нет подключения|отключено/i })
+    const offlineBanner = page.getByTestId("offline-banner")
     await expect(offlineBanner).not.toBeVisible({ timeout: TIMEOUTS.toast })
   })
 
@@ -127,11 +123,9 @@ test.describe("Schedule offline behaviour", () => {
       await page.evaluate(() => window.dispatchEvent(new Event("offline")))
 
       // The app should surface some offline indicator.
-      const indicator = page
-        .locator('[role="status"], [role="alert"], [data-testid*="offline"]')
-        .filter({ hasText: /offline|нет подключения|отключено/i })
+      const indicator = page.getByTestId("offline-banner")
 
-      await expect(indicator.first()).toBeVisible({ timeout: TIMEOUTS.toast })
+      await expect(indicator).toBeVisible({ timeout: TIMEOUTS.toast })
     } finally {
       await context.setOffline(false)
       await page.evaluate(() => window.dispatchEvent(new Event("online")))

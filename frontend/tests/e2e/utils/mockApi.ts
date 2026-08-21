@@ -520,18 +520,13 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
     const pathname = url.pathname.replace(/^\/+/u, "")
     // Normalize both the browser-relative `/api/v1/...` form and the CI
     // service-host `http://api/v1/...` form to the same mock path.
-    let normPath = pathname.replace(/^api\/v1\//u, "api/").replace(/^v1\//u, "api/")
-    const isApiTransport = request.resourceType() === "fetch" || request.resourceType() === "xhr"
-    if (
-      isApiTransport &&
-      !normPath.startsWith("api/") &&
-      !normPath.startsWith("auth/") &&
-      !pathname.includes(".")
-    ) {
-      // The Vite development build intentionally uses an empty Axios base
-      // URL; normalize its bare XHR paths to the production `/api/v1` shape.
-      normPath = `api/${normPath}`
-    }
+    const normPath = pathname.replace(/^api\/v1\//u, "api/").replace(/^v1\//u, "api/")
+    // Production E2E builds use the explicit `/api/v1` Axios base (and the
+    // service-host compatibility form `/v1/...` handled above). Do not
+    // reinterpret arbitrary bare fetch/XHR paths as API calls: TanStack
+    // Router uses fetch for client route data such as `/dashboard`, and
+    // turning that navigation into `api/dashboard` returns `{}` from the
+    // generic mock instead of allowing the real SSR/SPA response through.
     const isBackendRequest = normPath.startsWith("api/") || normPath.startsWith("auth/")
 
     if (method === "OPTIONS" && isBackendRequest) {

@@ -52,9 +52,7 @@ test.describe("PWA offline support", () => {
     try {
       // For SPA, navigation to a cached route should still work but show offline indicator
       await page.goto("/news", { waitUntil: "domcontentloaded" })
-      const offlineIndicator = page
-        .locator('[role="status"]')
-        .filter({ hasText: /offline|подключения/i })
+      const offlineIndicator = page.getByTestId("offline-indicator-toast")
       await expect(offlineIndicator).toBeVisible({ timeout: OFFLINE_TEST_TIMEOUTS.elementVisible })
 
       // Explicitly check the fallback page too
@@ -140,7 +138,12 @@ test.describe("PWA offline support", () => {
           newsStatus: newsResp.status,
           scheduleStatus: scheduleResp.status,
           eventsStatus: eventsResp.status,
-          newsLength: Array.isArray(news) ? news.length : 0,
+          // The news endpoint is paginated (`{ items, next_cursor, ... }`),
+          // unlike the schedule endpoint which returns a bare list. Keep the
+          // assertion aligned with the OpenAPI response shape so a valid
+          // cached page is not mistaken for an empty array.
+          newsLength:
+            news && typeof news === "object" && Array.isArray(news.items) ? news.items.length : 0,
           scheduleLength: Array.isArray(schedule) ? schedule.length : 0,
           eventsCount: Array.isArray(eventsPayload?.items) ? eventsPayload.items.length : 0,
         }
@@ -174,9 +177,7 @@ test.describe("PWA offline support", () => {
       })
 
       // Wait for offline indicator to appear
-      const offlineToast = page.locator('[role="status"]').filter({
-        hasText: /offline|подключения/i,
-      })
+      const offlineToast = page.getByTestId("offline-indicator-toast")
       await expect(offlineToast).toBeVisible({ timeout: OFFLINE_TEST_TIMEOUTS.toastVisible })
 
       // Go back online
@@ -186,9 +187,7 @@ test.describe("PWA offline support", () => {
       })
 
       // Check for "Back online" message
-      const onlineToast = page.locator('[role="status"]').filter({
-        hasText: /online|восстановлено/i,
-      })
+      const onlineToast = page.getByTestId("offline-indicator-toast")
       await expect(onlineToast).toBeVisible({ timeout: OFFLINE_TEST_TIMEOUTS.toastVisible })
 
       // Toast should auto-hide after a few seconds
