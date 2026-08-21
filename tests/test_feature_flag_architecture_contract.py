@@ -6,12 +6,34 @@ import json
 import tomllib
 from pathlib import Path
 
+import pytest
 import yaml
 
 from app.core.config import Settings
 from app.core.feature_flags import _FLAG_DEFINITIONS
 
-ROOT = Path(__file__).resolve().parents[1]
+
+def _find_repo_root() -> Path | None:
+    """Locate deployment assets from a normal checkout or mutmut copy."""
+
+    current = Path(__file__).resolve().parent
+    for parent in [current, *current.parents]:
+        if (
+            (parent / "pyproject.toml").is_file()
+            and (parent / "k8s").is_dir()
+            and (parent / "start-docker.ps1").is_file()
+        ):
+            return parent
+    return None
+
+
+ROOT = _find_repo_root()
+if ROOT is None:
+    pytest.skip(
+        "repository deployment assets are unavailable in isolated mutation copy",
+        allow_module_level=True,
+    )
+
 FLAGD_IMAGE = (
     "ghcr.io/open-feature/flagd:v0.16.1@"
     "sha256:9525b3c2916183810f93f0a72774c1dfad48d1ae22852c753719c46db80af5e7"
