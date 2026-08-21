@@ -68,7 +68,7 @@ def test_repository_skill_catalogs_are_exact_mirrors_without_stale_archive() -> 
     # repository-owned skill catalogs are validated by the normal full-suite
     # inventory job, not by the isolated mutation baseline.
     if not primary_root.is_dir() or not opencode_root.is_dir():
-        pytest.skip(
+        pytest.skip(  # QUALITY-123 @egorribun — isolated mutmut copy
             "repository skill catalogs are unavailable in isolated mutation copy"
         )
 
