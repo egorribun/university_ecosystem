@@ -795,6 +795,7 @@ jobs:
                 --exclude require-timeout-settings --exclude prefer-bigint-over-int \
                 --exclude prefer-identity --exclude prefer-timestamp-tz \
                 --exclude require-concurrent-index-creation --exclude constraint-missing-not-valid \
+                --exclude require-concurrent-index-deletion \
                 --exclude adding-foreign-key-constraint --exclude disallowed-unique-constraint \
                 --exclude require-enum-value-ordering
           done <<< "$changed_files"

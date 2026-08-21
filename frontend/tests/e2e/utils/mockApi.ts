@@ -1007,10 +1007,6 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
     async login(p: Page) {
       state.loggedIn = true
       await p.context().addCookies([{ name: SSR_E2E_AUTH_COOKIE, value: "mock", url: e2eOrigin }])
-      await p.evaluate(() => {
-        window.localStorage.setItem("access_token", "mock-token")
-        window.localStorage.setItem("refresh_token", "mock-refresh")
-      })
       // Start from the public route. The mock session is installed by the
       // init script before navigation, so AuthProvider performs the normal
       // client-side redirect to /dashboard without a second SSR navigation.

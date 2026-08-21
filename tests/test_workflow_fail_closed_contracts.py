@@ -265,7 +265,7 @@ def test_incremental_go_mutation_never_converts_tool_failure_to_success() -> Non
     assert 'git fetch origin "$BASE_REF_NAME" --depth=1 || true' not in mutation
     assert 'CHANGED_PATHS="$(git diff --name-only "$BASE_REF"...HEAD)"' in mutation
     assert "Unable to resolve mutation-test base revision" in mutation
-    assert "no mutation-test packages were resolved" in mutation
+    assert "no mutation-test source files were resolved" in mutation
     assert "treating this known tool panic as advisory" not in mutation
     assert 'pipeline_status=("${PIPESTATUS[@]}")' in mutation
     assert "Unable to persist go-mutesting output" in mutation

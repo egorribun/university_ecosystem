@@ -422,6 +422,7 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
         "docs",
         "containers/quality",
         "k8s/kyverno",
+        "k8s/flagd",
         "crates/pyo3-sanitizer/src",
         "frontend/scripts",
         "frontend/package.json",

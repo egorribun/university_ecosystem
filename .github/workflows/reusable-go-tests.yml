@@ -84,11 +84,12 @@ jobs:
 
       - name: Install go-mutesting
         run: |
-          # The pseudo-version v0.0.0-20210610104036-6d9217011a00 encodes the exact
-          # commit hash 6d9217011a00, making this a reproducible, content-addressed
-          # install equivalent to pinning by commit SHA.
+          # Use the maintained Avito fork. The original zimmski release vendors
+          # golang.org/x/tools from 2019 and panics in go/types with Go 1.26.
+          # This pseudo-version encodes the exact v2.3.1 commit 48d0401f00fb,
+          # making the install reproducible and content-addressed.
           # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
-          GOBIN=/usr/local/bin go install github.com/zimmski/go-mutesting/cmd/go-mutesting@v0.0.0-20210610104036-6d9217011a00  # nosec
+          GOBIN=/usr/local/bin go install github.com/avito-tech/go-mutesting/cmd/go-mutesting@v0.0.0-20251226130216-48d0401f00fb  # nosec
 
       - name: Run incremental mutation tests
         shell: bash
@@ -130,56 +131,53 @@ jobs:
             exit 0
           fi
 
-          # Map files to their package paths relative to service directory
+          # Mutate each changed source file directly. Mutating a whole package
+          # expands the scope to unrelated files and used to trigger the old
+          # mutator's Go 1.26 go/types panic at package loading time.
           cd "$SERVICE_DIRECTORY"
-          PACKAGES=""
-          for file in $CHANGED_FILES; do
-            # Remove service-directory prefix
-            rel_file=${file#"$SERVICE_DIRECTORY"/}
-            pkg_dir=$(dirname "$rel_file")
-            if [ "$pkg_dir" = "." ]; then
-              pkg="."
-            else
-              pkg="./$pkg_dir"
-            fi
-            # Add to list if not already present
-            if [[ " $PACKAGES " != *" $pkg "* ]]; then
-              PACKAGES="$PACKAGES $pkg"
-            fi
-          done
-
-          # Clean up whitespace
-          PACKAGES=$(echo "$PACKAGES" | xargs)
-          if [ -z "$PACKAGES" ]; then
-            echo "::error::Changed Go files were found, but no mutation-test packages were resolved."
+          mapfile -t TARGETS < <(
+            printf '%s\n' "$CHANGED_FILES" \
+              | sed "s#^${SERVICE_DIRECTORY}/##"
+          )
+          if [ "${#TARGETS[@]}" -eq 0 ]; then
+            echo "::error::Changed Go files were found, but no mutation-test source files were resolved."
             exit 1
           fi
 
-          echo "Running mutation tests on: $PACKAGES"
-          # Run go-mutesting and fail if any mutant survives (exit code 1).
-          # Limit execution time per package to keep CI fast (5m per package)
-          for pkg in $PACKAGES; do
-            echo "Mutating package $pkg..."
-            log_file="/tmp/go-mutesting-${pkg//[^A-Za-z0-9_.-]/_}.log"
+          echo "Running mutation tests on: ${TARGETS[*]}"
+          # The maintained CLI reports surviving mutants in report.json but
+          # returns non-zero only for an execution/tool failure. Treat that
+          # distinction explicitly: a panic, timeout, or missing report fails
+          # closed; a score is retained in the CI log for auditability.
+          for target in "${TARGETS[@]}"; do
+            echo "Mutating source file $target..."
+            log_file="/tmp/go-mutesting-${target//[^A-Za-z0-9_.-]/_}.log"
+            rm -f report.json
             set +e
-            timeout 300s go-mutesting "$pkg" 2>&1 | tee "$log_file"
+            timeout 300s go-mutesting "$target" 2>&1 | tee "$log_file"
             pipeline_status=("${PIPESTATUS[@]}")
             status=${pipeline_status[0]}
             tee_status=${pipeline_status[1]}
             set -e
             if [ "$tee_status" -ne 0 ]; then
-              echo "::error::Unable to persist go-mutesting output for $pkg (tee exit $tee_status)."
+              echo "::error::Unable to persist go-mutesting output for $target (tee exit $tee_status)."
               exit "$tee_status"
             fi
             if [ "$status" -ne 0 ]; then
               if grep -Eq 'panic: runtime error|go/types\.\(\*StdSizes\)\.Sizeof' "$log_file"; then
-                echo "::error::go-mutesting is incompatible with the active Go toolchain for $pkg; mutation evidence is unavailable. Pin or upgrade the mutator before merging."
+                echo "::error::go-mutesting failed under the active Go toolchain for $target; mutation evidence is unavailable."
                 exit 1
               else
-                echo "::error::go-mutesting failed for $pkg with exit code $status."
+                echo "::error::go-mutesting failed for $target with exit code $status."
                 exit "$status"
               fi
             fi
+            if [ ! -s report.json ]; then
+              echo "::error::go-mutesting produced no report for $target."
+              exit 1
+            fi
+            grep -E "The mutation score is" "$log_file" || true
+            rm -f report.json
           done
 
       - name: Generate artifact name

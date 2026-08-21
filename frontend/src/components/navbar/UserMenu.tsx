@@ -51,6 +51,7 @@ export const UserMenu = ({
     return (
       <div
         className="ml-auto flex items-center gap-3"
+        role="status"
         aria-busy="true"
         aria-label={t("common:aria.loadingUserMenu")}
       >
