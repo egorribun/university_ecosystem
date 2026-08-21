@@ -29,6 +29,7 @@ def _find_repo_root() -> Path | None:
 
 ROOT = _find_repo_root()
 if ROOT is None:
+    # QUALITY-123 @egorribun — mutmut copies intentionally omit deployment assets.
     pytest.skip(
         "repository deployment assets are unavailable in isolated mutation copy",
         allow_module_level=True,
