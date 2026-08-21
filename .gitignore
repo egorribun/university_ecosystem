@@ -442,4 +442,17 @@ artifacts/
 
 # Agent superpowers directory
 .superpowers/
-.agents/
+
+# Antigravity Developer Harness & Agent Workspace
+.agents/*
+!.agents/hooks.json
+!.agents/hooks/
+!.agents/subagents.json
+!.agents/subagents/
+!.agents/skills/
+!.agents/ORIGINAL_REQUEST.md
+
+# Ephemeral agent caches and transient runtime state
+.agents/**/__pycache__/
+.agents/**/.gate_state.json
+.agents/sentinel/

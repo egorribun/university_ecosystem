@@ -6,7 +6,7 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 
 - Before building the frontend, set `VITE_BACKEND_ORIGIN` (for example via `frontend/.env.production`).
 - To render the interactive map, set `VITE_MAP_CONSTRUCTOR_ID` — the Yandex Maps constructor ID for the campus.
-- The `root/.env.example` file is a template only: required passwords and keys intentionally have no insecure fallback values. For a complete local launch, use PowerShell 7 and run `.\start-docker.ps1 -Build`; the bootstrapper creates and synchronizes `.env`/`.env.docker`. Never commit populated files.
+- The `.env.example` file is a template only: required passwords and keys intentionally have no insecure fallback values. For a complete local launch, use PowerShell 7 and run `.\start-docker.ps1 -Build`; the bootstrapper creates and synchronizes `.env`/`.env.docker`. Never commit populated files.
 - All variables prefixed with `VITE_` are inlined into the code during `npm run build`; changing them after the build has no effect.
 - During CI/CD export `SERVICE_VERSION` (or `APP_VERSION`) before launching containers to propagate the build identifier to OpenTelemetry (`service.version`). The frontend build automatically reuses these variables — alongside common CI commit identifiers such as `SOURCE_VERSION`, `VERCEL_GIT_COMMIT`, or `GITHUB_SHA` — when `VITE_APP_RELEASE` is not explicitly provided.
 - Set `VITE_APP_RELEASE` to forward the release identifier to Sentry. Values are embedded at build time.
@@ -28,12 +28,12 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Before launching a new release, run `alembic upgrade head`:
 
   ```bash
-  cd root
+  cd .
   export DATABASE_URL=postgresql+asyncpg://user:password@host:5432/university
   alembic upgrade head
   ```
 
-- Alembic reads the connection string from `root/alembic.ini`. If that sample URL
+- Alembic reads the connection string from `alembic.ini`. If that sample URL
   does not match your target database, provide the correct value through the
   `DATABASE_URL` environment variable (reuse the same URL as the application).
 - Docker Compose now includes a one-off `migrations` service that runs
@@ -108,7 +108,7 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
 - Validate offline navigation and cached payloads via the e2e suite:
 
   ```bash
-  cd root/frontend
+  cd frontend
   npm run test:e2e -- offline.spec.ts
   ```
 

@@ -5,7 +5,8 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
 ## Переменные окружения
 
 - Перед сборкой фронтенда установите `VITE_BACKEND_ORIGIN` (например, через `frontend/.env.production`).
-- Файл `root/.env.example` служит только шаблоном: обязательные пароли и ключи намеренно не имеют небезопасных fallback-значений. Для полного локального запуска используйте PowerShell 7: `.\start-docker.ps1 -Build`; скрипт создаст и синхронизирует `.env`/`.env.docker`. Заполненные файлы не коммитьте.
+- Для отображения интерактивной карты укажите `VITE_MAP_CONSTRUCTOR_ID` — идентификатор конструктора Яндекс Карт для кампуса.
+- Файл `.env.example` служит только шаблоном: обязательные пароли и ключи намеренно не имеют небезопасных fallback-значений. Для полного локального запуска используйте PowerShell 7: `.\start-docker.ps1 -Build`; скрипт создаст и синхронизирует `.env`/`.env.docker`. Заполненные файлы не коммитьте.
 - Все переменные с префиксом `VITE_` подставляются в код на этапе `npm run build`; изменение значений после сборки эффекта не даст.
 - Во время CI/CD экспортируйте `SERVICE_VERSION` (или `APP_VERSION`) перед запуском контейнеров, чтобы пробросить идентификатор сборки в OpenTelemetry (`service.version`). Сборка фронтенда автоматически использует эти значения — а также распространённые CI-переменные вроде `SOURCE_VERSION`, `VERCEL_GIT_COMMIT` или `GITHUB_SHA` — если `VITE_APP_RELEASE` не задана явно.
 - Чтобы передать идентификатор релиза в Sentry, задайте `VITE_APP_RELEASE`. Значение подставляется на этапе сборки.
@@ -26,12 +27,12 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Перед первым запуском новой версии выполните `alembic upgrade head`:
 
   ```bash
-  cd root
+  cd .
   export DATABASE_URL=postgresql+asyncpg://user:password@host:5432/university
   alembic upgrade head
   ```
 
-- Alembic берёт строку подключения из `root/alembic.ini`. Если требуется другой
+- Alembic берёт строку подключения из `alembic.ini`. Если требуется другой
   адрес, задайте его через переменную окружения `DATABASE_URL` (используйте то же
   значение, что и для приложения).
 - В docker compose добавлен одноразовый сервис `migrations`, который выполняет
@@ -107,7 +108,7 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
 - Проверить офлайн-навигацию и кеширование данных можно e2e-тестом:
 
   ```bash
-  cd root/frontend
+  cd frontend
   npm run test:e2e -- offline.spec.ts
   ```
 

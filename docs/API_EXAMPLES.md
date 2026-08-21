@@ -21,7 +21,7 @@ Content-Type: application/json
 **Response (200 OK):**
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
   "token_type": "bearer",
   "user": {
     "id": 1,
@@ -68,7 +68,7 @@ Content-Type: application/json
 **Response (200 OK):**
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
   "token_type": "bearer",
   "user": {
     "id": 2,

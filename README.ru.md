@@ -66,7 +66,7 @@ university_ecosystem/
 ├── native/            # 🦀 Rust-расширения (PyO3/Rayon) - Высокоскоростные вычисления
 ├── k8s/               # ☸️ Манифесты Kubernetes, Kyverno-политики и Chaos Mesh
 ├── alembic/           # 🗄️ Миграции базы данных (SQLAlchemy 2.0 Async)
-└── docs/              # 📖 Архитектура и ADR (ADR-001 — ADR-022)
+└── docs/              # 📖 Архитектура и ADR (ADR-001 — ADR-032)
 ```
 
 ## 🧠 Архитектурная философия
@@ -97,6 +97,7 @@ graph TD
     subgraph "Данные, Управление и Воркфлоу"
         Postgres[("🐘 PostgreSQL 17 + pgvector")]
         Valkey[("⚡ Valkey / Redis 7 (volatile-lru)")]
+        Revocations[("🛡️ Revocation Valkey (AOF / noeviction)")]
         MinIO[("📦 MinIO (S3 Storage)")]
         Temporal["⏳ Temporal.io (Workflows)"]
         SpiceDB["🔐 SpiceDB (ReBAC)"]
@@ -118,11 +119,14 @@ graph TD
 
     Backend --> Postgres
     Backend --> Valkey
+    Backend --> Revocations
     Backend --> SpiceDB
     Backend --> Temporal
     Backend --> Flagd
 
     WSHub --> Valkey
+    WSHub --> Revocations
+    Gateway --> Revocations
     WSHub --> Backend
     FileProc --> MinIO
     Optimizer --- Backend
@@ -193,8 +197,8 @@ sequenceDiagram
 | **Микросервисы** | Go 1.26, NATS, gRPC, Temporal Go SDK | Высоконагруженный чат и обработка медиа | **100%** |
 | **Производительность**| Rust, PyO3, Rayon, Maturin | Нативное вычисление расписания и HMAC | **100%** |
 | **Авторизация** | Argon2id, SpiceDB, WebAuthn/Passkeys, Kyverno, CSRF nonces | Zero-Trust ReBAC, аппаратная MFA и политики | Подтверждено |
-| **Данные и Кэш** | PostgreSQL 17, pgvector, Valkey / Redis 7 (`volatile-lru`) | Реляционные и векторные данные, L1/L2 кэш | Подтверждено |
-| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Fluent Bit | Полный 360° мониторинг, трассы и логи | Подтверждено |
+| **Данные и Кэш** | PostgreSQL 17, pgvector, Valkey / Redis 7 (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Реляционные/векторные данные, вероятностный L1/L2 кэш и изолированный отзыв сессий | Подтверждено |
+| **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Полный 360° мониторинг, трассы и логи | Подтверждено |
 
 ## 🚀 Быстрый старт
 
@@ -206,17 +210,18 @@ sops -d .env.enc > .env
 ```
 
 ### 2. Запуск
-Запуск всех сервисов через Docker Compose:
-```bash
-docker compose -f docker-compose.full.yml up --build
+Запуск всей экосистемы через загрузчик PowerShell 7. Скрипт генерирует локальные секреты, настраивает постоянную инфраструктуру, собирает образы и ожидает готовности всех рантаймов и таргетов Prometheus:
+```powershell
+.\start-docker.ps1 -Build
 ```
 
 ### 🌐 Точки доступа
-- **Цифровой портал (Фронтенд)**: [http://localhost:8081](http://localhost:8081)
-- **Документация API**: [http://localhost:8000/api/docs](http://localhost:8000/api/docs)
-- **API Gateway**: [http://localhost:8080](http://localhost:8080)
-- **WebSocket чат**: `ws://localhost:8082`
-- **Метрики**: [http://localhost:8000/metrics](http://localhost:8000/metrics)
+- **Единый цифровой хаб (Caddy edge)**: [http://localhost](http://localhost)
+- **Frontend SSR debug port**: [http://localhost:8081](http://localhost:8081)
+- **Документация API**: [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Вход Go Gateway**: [http://localhost:8080](http://localhost:8080)
+- **Real-Time сигнал**: `ws://localhost:8083/ws`
+- **Центр наблюдаемости**: [Grafana](http://localhost:3000) · [Prometheus](http://localhost:9090) · [Pyroscope](http://localhost:4040)
 
 ## 🛡️ Безопасность и Стандарты Качества
 

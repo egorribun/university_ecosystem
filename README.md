@@ -66,7 +66,7 @@ university_ecosystem/
 ├── native/            # 🦀 Rust Extensions (PyO3/Rayon) - High-Performance Hot Path
 ├── k8s/               # ☸️ Kubernetes Helm Charts, Kyverno Policies & Chaos Mesh
 ├── alembic/           # 🗄️ Database Migrations (SQLAlchemy 2.0 Async)
-└── docs/              # 📖 Architecture Specs & ADRs (ADR-001 — ADR-022)
+└── docs/              # 📖 Architecture Specs & ADRs (ADR-001 — ADR-032)
 ```
 
 ## 🧠 Architectural Philosophy
