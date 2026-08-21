@@ -85,7 +85,7 @@ DENY_COMMAND_PATTERNS = [
     # Secret exfiltration patterns (piping or posting secret keys to remote endpoints)
     (
         re.compile(
-            r"\b(curl|wget|nc|ncat|socat|Invoke-WebRequest|Invoke-RestMethod)\b.*(@\.env|@\.secrets|\.secrets[\\/]|\.pem\b|id_rsa\b|--post-file[=\s]+[^\s]*\.env|-T\s+[^\s]*\.env|--upload-file\s+[^\s]*\.env|-InFile\s+[^\s]*\.env)",
+            r"\b(curl|wget|nc|ncat|socat|Invoke-WebRequest|Invoke-RestMethod)\b.*(@\.env|@\.secrets|\.secrets[\\/]|\.pem\b|id_rsa\b|--post-file[=\s]+[^\s]*\.env|-T\s+[^\s]*\.env|--upload-file\s+[^\s]*\.env|-InFile[=\s]+[^\s]*(\.env|\.secrets|\.pem|id_rsa)|-InFile\s+[^\s]*\.env)",
             re.IGNORECASE,
         ),
         "Attempted exfiltration of sensitive secret files (.env, .secrets, private keys).",

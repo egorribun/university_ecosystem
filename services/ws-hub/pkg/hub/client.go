@@ -59,7 +59,7 @@ var (
 	}
 )
 
-// safeSend writes data to ch without panicking if the channel is already closed.
+// safeSend writes data to ch in a concurrency-safe manner without panicking if closed.
 func safeSend(ch chan []byte, data []byte) (sent bool) {
 	if ch == nil {
 		return false
@@ -68,10 +68,12 @@ func safeSend(ch chan []byte, data []byte) (sent bool) {
 	chMu.RLock()
 	entry, ok := chMutexes[ch]
 	if ok {
-		defer func() {
-			panicValue := recover()
+		if entry.closed {
 			chMu.RUnlock()
-			if panicValue != nil {
+			return false
+		}
+		defer func() {
+			if recover() != nil {
 				sent = false
 				chMu.Lock()
 				if chMutexes[ch] == entry {
@@ -79,10 +81,8 @@ func safeSend(ch chan []byte, data []byte) (sent bool) {
 				}
 				chMu.Unlock()
 			}
+			chMu.RUnlock()
 		}()
-		if entry.closed {
-			return false
-		}
 		select {
 		case ch <- data:
 			return true

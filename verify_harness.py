@@ -184,7 +184,7 @@ class TestLifecycleHookRunner(unittest.TestCase):
             "error": "",
             "fullyIdle": True,
         }
-        ret_code, resp, stderr = run_hook_cli("stop", payload, timeout=240)
+        ret_code, resp, stderr = run_hook_cli("stop", payload, timeout=500)
         self.assertEqual(ret_code, 0, f"Runner exited with non-zero code: {stderr}")
         self.assertIsInstance(resp, dict)
         self.assertIn("decision", resp)
@@ -505,7 +505,7 @@ class TestStopQualityGate(unittest.TestCase):
             "error": "",
             "fullyIdle": True,
         }
-        ret_code, resp, stderr = run_hook_cli("stop", payload, timeout=240)
+        ret_code, resp, stderr = run_hook_cli("stop", payload, timeout=500)
         self.assertEqual(ret_code, 0, f"Stop hook failed: {stderr}")
         self.assertEqual(
             resp.get("decision"),

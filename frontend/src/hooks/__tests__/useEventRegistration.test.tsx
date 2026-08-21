@@ -89,6 +89,14 @@ describe("useEventRegistration", () => {
     server.use(
       http.post("*/events/attendance", () => {
         return new HttpResponse(null, { status: 500 })
+      }),
+      http.get("*/events/:id", () => {
+        return HttpResponse.json({
+          id: eventId,
+          title: "Test Event",
+          is_registered: false,
+          participant_count: 10,
+        })
       })
     )
 

@@ -6,7 +6,7 @@ const TEST_TIMEOUTS = {
   short: 5000,
   medium: 10000,
   long: 15000,
-  extended: 20000,
+  extended: 25000,
 }
 
 const trackHydrationErrors = (page: Page): string[] => {
@@ -28,9 +28,9 @@ test.describe("University ecosystem app", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await expect(page.getByText(/Иван|Ivan/i)).toBeVisible()
+    await expect(page.getByText(/Иван|Ivan/i)).toBeVisible({ timeout: TEST_TIMEOUTS.extended })
     const newsLink = page.getByRole("link", { name: /Новости|News/i }).first()
-    await expect(newsLink).toBeVisible()
+    await expect(newsLink).toBeVisible({ timeout: TEST_TIMEOUTS.extended })
   })
 
   test("supports navigation between main sections", async ({ page }) => {

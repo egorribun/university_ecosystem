@@ -81,3 +81,53 @@ Stage and commit all modified, untracked, and unignored files using clean, struc
 - [ ] `git status` confirms a clean working tree after commits with zero unstaged or lost modifications.
 - [ ] Zero `Co-Authored-By` trailers in commit history.
 
+## Follow-up — 2026-08-21T01:37:02Z
+
+Use a very large team of agents. Autonomously diagnose, repair, and verify all 13 failing and 1 cancelled CI/CD checks on GitHub Pull Request #1249 while conducting an exhaustive, full-stack architectural and code quality audit across the entire University Ecosystem Platform to establish a hardened, zero-debt MVP foundation.
+
+Working directory: c:\Users\egorribun\Documents\university_ecosystem
+Integrity mode: development
+
+## Requirements
+
+### R1. Automated CI/CD Check Resolution for PR #1249
+Identify the root causes of all failing and cancelled checks across all test shards, linter gates, mutation testing, E2E browser tests, security scanners, and benchmark gates on active PR #1249. Implement clean, robust fixes without weakening assertions, bypassing quality gates, or introducing regressions.
+
+### R2. Comprehensive Multi-Stack Codebase Audit & Polishing
+Perform an exhaustive code quality, security, and architectural audit across every component: Python 3.14 FastAPI backend, React 19 / TypeScript frontend, Go 1.22+ microservices (`gateway`, `ws-hub`, `file-processor`), native Rust optimizer, Helm charts, and Kubernetes manifests. Eliminate dead code, type inaccuracies, antipatterns, missing error handling, and unmanaged test skips.
+
+### R3. Quality Contract & System Harmony Verification
+Ensure strict compliance with `quality/quality-contract.json` across statement, branch, and function coverage metrics on critical paths. Validate that pre-commit hooks, static analysis tools (`ruff`, `mypy`, `golangci-lint`, `bandit`, `semgrep-sast`), and runtime security checks pass with zero warnings, guaranteeing harmonious inter-service communication across REST, gRPC, WebSocket, and GraphQL interfaces.
+
+### R4. Autonomous Git & Subsystem Delivery
+Incrementally commit fixes per subsystem adhering to domain `AGENTS.md` conventions (using `feat(waveXX): ...` / `fix(waveXX): ...` commit messages, strictly omitting `Co-Authored-By`), push to branch `egorribun`, and iterate autonomously using GitHub CLI (`gh`) until all PR check runs are completely green.
+
+## Acceptance Criteria
+
+### PR CI/CD & Harness Integrity
+- [ ] All 14 previously failing and cancelled GitHub Actions check runs on PR #1249 pass with green status (`conclusion: SUCCESS`).
+- [ ] `python verify_harness.py` passes 100% of lifecycle, safety, and subagent tests with 0 errors.
+
+### Backend Subsystem (Python 3.14 + FastAPI + Dishka DI)
+- [ ] `python -m ruff check app/` and `python -m ruff format --check app/` report 0 errors and 0 warnings.
+- [ ] `python -m mypy --config-file pyproject.toml app/` passes with 0 type errors.
+- [ ] `python scripts/custom_ast_linter.py app/` and `python scripts/check_no_python2_except.py` pass cleanly.
+- [ ] All pytest test shards (unit, integration, query plans, auth cookie flow, docker startup contracts) pass without unmanaged dynamic skips.
+- [ ] Mutmut incremental mutation stats and Schemathesis API conformance gates pass.
+
+### Frontend Subsystem (React 19 + TypeScript + Vite SSR)
+- [ ] `cd frontend && npx tsc --noEmit` completes with 0 type diagnostics.
+- [ ] `cd frontend && npm run lint` passes with 0 warnings.
+- [ ] `cd frontend && npm run test` passes all component and store tests.
+- [ ] `cd frontend && npm run build` succeeds without SSR or bundling defects.
+- [ ] Playwright E2E test matrix across Chromium, Firefox, WebKit, and Mobile WebKit executes without timeouts or selector failures.
+
+### Go Microservices (gateway, ws-hub, file-processor)
+- [ ] `golangci-lint run` passes cleanly across all services in `services/`.
+- [ ] `go test -v -race ./...` passes without race conditions or leaks.
+- [ ] WS-Hub paired benchmark comparison passes with 0 performance regressions.
+
+### Security, Infra & Code Integrity
+- [ ] Pre-commit tools (`detect-secrets`, `gitleaks`, `bandit`, `semgrep-sast`, `renovate-config-validator`) pass with clean baseline.
+- [ ] All Helm charts in `charts/` and Kubernetes manifests in `k8s/` pass validation and Kyverno security policies.
+- [ ] All git commits are clean, properly formatted, and strictly exclude any `Co-Authored-By` trailers.

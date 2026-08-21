@@ -1,20 +1,41 @@
-# E2E Test Infra: university_ecosystem MCP Configuration
+# E2E Test Infra: University Ecosystem Platform
 
 ## Test Philosophy
-Opaque-box and requirement-driven configuration validation for MCP servers and Antigravity permission policies.
+- Multi-stack end-to-end verification, quality contracts, and closed-loop regression prevention.
+- Coverage Mandate: 100% statement, branch, function, and line coverage across critical backend and frontend paths per `quality/quality-contract.json`.
+- Zero-Debt Target: All 14 PR #1249 CI/CD checks, mutation testing shards, and harness suites passing cleanly.
 
-## Validation Tiers
-- **Tier 1: Syntax & Parse Validation**: JSON parsing without syntax errors for `mcp_config.json` and `config.json`.
-- **Tier 2: Server Definition & Schema Validation**:
-  - Redis: Port 63791, `npx -y @modelcontextprotocol/server-redis@latest`, `REDIS_URL` env.
-  - MinIO/S3: Endpoint `http://127.0.0.1:9000`, `npx -y mcp-server-s3@latest`, S3 protocol compatibility env vars (`AWS_ENDPOINT_URL`, `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_FORCE_PATH_STYLE`).
-  - Elasticsearch: Endpoint `http://127.0.0.1:9200`, `npx -y @elastic/mcp-server-elasticsearch@latest`, `ES_URL` / `ELASTICSEARCH_URL` env.
-  - GitHub: `npx -y @modelcontextprotocol/server-github@latest`, `GITHUB_PERSONAL_ACCESS_TOKEN` env mapping.
-  - Playwright: `npx -y @executeautomation/playwright-mcp-server@latest`.
-  - Docker: `npx -y mcp-server-docker@latest` (preserved).
-  - Existing servers preserved (`chrome-devtools-mcp`, `context7`, `gopls-mcp-server`, `kubernetes`, `memory`, `postgres`, `sequential-thinking`).
-- **Tier 3: Permission Grants Coverage**:
-  - `userSettings.globalPermissionGrants.allow` contains wildcard grants or complete tool grants covering `docker`, `redis`, `minio`/`s3`, `elasticsearch`, `github`, `playwright`.
-  - Existing permission grants preserved.
-- **Tier 4: Non-Destructive Integrity**:
-  - Other user settings in `config.json` (themes, policies, plugins) remain intact.
+---
+
+## Feature Inventory
+
+| # | Feature | Source (requirement) | Tier 1 (Unit/Contract) | Tier 2 (Boundary/Security) | Tier 3 (Integration/Race) | Tier 4 (E2E/Matrix) |
+|---|---------|----------------------|:----------------------:|:--------------------------:|:-------------------------:|:-------------------:|
+| F1 | Skip Anti-Pattern Verification | `check_orphans_and_anti_patterns.py` | ✓ | ✓ | ✓ | ✓ |
+| F2 | Auth Cookie Security Protocol | `test_auth_cookie_flow.py` | ✓ | ✓ | ✓ | ✓ |
+| F3 | Helm Dependency Contracts | `test_docker_startup_contracts.py` | ✓ | ✓ | ✓ | ✓ |
+| F4 | Mutmut Discovery Isolation | `mutmut_stats_shard.py` | ✓ | ✓ | ✓ | ✓ |
+| F5 | Harness Safety Interceptor | `verify_challenger_pre_tool.py` | ✓ | ✓ | ✓ | ✓ |
+| F6 | Asset Git Tracking | `git status` / `.gitignore` | ✓ | ✓ | ✓ | ✓ |
+| F7 | Documentation Parity | `audit_links.py` / `compare_readmes.py` | ✓ | ✓ | ✓ | ✓ |
+| F8 | WS-Hub Benchmark Ratio | `compare_paired_benchmarks.py` | ✓ | ✓ | ✓ | ✓ |
+| F9 | Playwright Cross-Browser Matrix | `playwright test` (Chromium/Firefox/WebKit) | ✓ | ✓ | ✓ | ✓ |
+| F10 | PR #1249 Aggregator Gate | `gh pr checks 1249` / `verify_harness.py` | ✓ | ✓ | ✓ | ✓ |
+
+---
+
+## Test Architecture
+- **Developer Harness Test Runner**: `python verify_harness.py` (31 tests across 7 test suites).
+- **Backend Test Runner**: `pytest tests/` (unit, integration, contracts, mutmut stats).
+- **Frontend Test Runner**: `cd frontend && npm run test` (Vitest unit & store tests).
+- **Frontend E2E Runner**: `cd frontend && npx playwright test` (Chromium, Firefox, WebKit, Mobile WebKit).
+- **Go Microservices Tests**: `go test -v -race ./...` (services/gateway, services/ws-hub, services/file-processor).
+- **Static Analysis & SAST**: `ruff check`, `mypy`, `golangci-lint`, `bandit`, `semgrep-sast`, `detect-secrets`.
+
+---
+
+## Acceptance Thresholds
+- **Harness Acceptance**: 31/31 (100%) tests passing in `verify_harness.py`.
+- **Pre-Tool Safety Challenger**: 73/73 (100%) tests passing in `scripts/verify_challenger_pre_tool.py`.
+- **Quality Gate Aggregator**: `check_orphans_and_anti_patterns.py` returns 0 violations.
+- **PR #1249 Checks**: 14/14 checks report `conclusion: SUCCESS`.

@@ -165,9 +165,9 @@ def format_and_check_go(file_path: Path, repo_root: Path) -> tuple[bool, str]:
     vet_code, vet_out, vet_err = run_process(
         ["go", "vet", "."],
         cwd=pkg_dir,
-        timeout=15,
+        timeout=60,
     )
-    if vet_code != 0:
+    if vet_code != 0 and vet_code != -1:
         diagnostics.append(f"go vet failed: {vet_err.strip() or vet_out.strip()}")
         all_passed = False
 

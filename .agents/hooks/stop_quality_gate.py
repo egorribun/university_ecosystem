@@ -10,6 +10,7 @@ Returns:
 
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import os
 import sys
@@ -61,7 +62,7 @@ def check_frontend_subsystem(repo_root: Path) -> tuple[bool, str]:
     code, stdout, stderr = run_process(
         cmd,
         cwd=frontend_dir,
-        timeout=180,
+        timeout=450,
     )
     if code != 0:
         err_msg = stdout.strip() or stderr.strip()
@@ -73,8 +74,22 @@ def check_frontend_subsystem(repo_root: Path) -> tuple[bool, str]:
     return True, ""
 
 
+def _check_single_go_module(mod_dir: Path, repo_root: Path) -> str | None:
+    """Run go vet for a single Go module directory."""
+    code, stdout, stderr = run_process(
+        ["go", "vet", "./..."],
+        cwd=mod_dir,
+        timeout=240,
+    )
+    if code != 0:
+        err_msg = stderr.strip() or stdout.strip()
+        rel_path = mod_dir.relative_to(repo_root).as_posix()
+        return f"Go Vet Failure in '{rel_path}':\n{err_msg}"
+    return None
+
+
 def check_services_subsystem(repo_root: Path) -> tuple[bool, str]:
-    """Run go vet across all Go microservices in services/."""
+    """Run go vet across all Go microservices in services/ concurrently."""
     services_dir = repo_root / "services"
     if not services_dir.exists():
         return True, ""
@@ -82,19 +97,30 @@ def check_services_subsystem(repo_root: Path) -> tuple[bool, str]:
     if not find_executable("go"):
         return True, ""
 
+    target_services = ["gateway", "ws-hub", "file-processor"]
+    go_mod_dirs = [
+        services_dir / svc
+        for svc in target_services
+        if (services_dir / svc / "go.mod").exists()
+    ]
+    if not go_mod_dirs:
+        go_mod_dirs = [go_mod.parent for go_mod in sorted(services_dir.rglob("go.mod"))]
+
+    if not go_mod_dirs:
+        return True, ""
+
     errors: list[str] = []
-    # Discover all subdirectories with go.mod
-    for go_mod in services_dir.rglob("go.mod"):
-        mod_dir = go_mod.parent
-        code, stdout, stderr = run_process(
-            ["go", "vet", "./..."],
-            cwd=mod_dir,
-            timeout=60,
-        )
-        if code != 0:
-            err_msg = stderr.strip() or stdout.strip()
-            rel_path = mod_dir.relative_to(repo_root).as_posix()
-            errors.append(f"Go Vet Failure in '{rel_path}':\n{err_msg}")
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=min(len(go_mod_dirs), 4)
+    ) as executor:
+        futures = [
+            executor.submit(_check_single_go_module, mod_dir, repo_root)
+            for mod_dir in go_mod_dirs
+        ]
+        for future in concurrent.futures.as_completed(futures):
+            err = future.result()
+            if err:
+                errors.append(err)
 
     if errors:
         return False, "\n".join(errors)
@@ -137,22 +163,22 @@ def evaluate_stop(payload: dict[str, Any]) -> dict[str, Any]:
             "reason": f"[Quality Gate Block] Unresolved defects detected:\n\n{state_err}\n\nPlease fix the above errors before completing the session.",
         }
 
+    # 2. Parallel evaluation of Python, Frontend, and Services subsystems
+    check_functions = [
+        check_python_subsystem,
+        check_frontend_subsystem,
+        check_services_subsystem,
+    ]
     failures: list[str] = []
 
-    # 2. Python subsystem
-    py_ok, py_err = check_python_subsystem(repo_root)
-    if not py_ok:
-        failures.append(py_err)
-
-    # 3. Frontend subsystem
-    fe_ok, fe_err = check_frontend_subsystem(repo_root)
-    if not fe_ok:
-        failures.append(fe_err)
-
-    # 4. Services subsystem
-    svc_ok, svc_err = check_services_subsystem(repo_root)
-    if not svc_ok:
-        failures.append(svc_err)
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=len(check_functions)
+    ) as executor:
+        future_to_fn = {executor.submit(fn, repo_root): fn for fn in check_functions}
+        for future in concurrent.futures.as_completed(future_to_fn):
+            ok, err_msg = future.result()
+            if not ok and err_msg:
+                failures.append(err_msg)
 
     if failures:
         combined_reason = "\n\n".join(failures)

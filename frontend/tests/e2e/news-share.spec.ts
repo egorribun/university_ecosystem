@@ -45,7 +45,13 @@ test.describe("News detail sharing (desktop)", () => {
   })
 })
 
-const { defaultBrowserType: _ignore, ...iPhone13Pro } = devices["iPhone 13 Pro"]
+// Firefox does not support the isMobile context option; strip it while
+// preserving the mobile viewport, userAgent, deviceScaleFactor, and touch emulation.
+const {
+  defaultBrowserType: _ignore,
+  isMobile: _isMobile,
+  ...iPhone13Pro
+} = devices["iPhone 13 Pro"]
 
 test.describe("News detail sharing (mobile)", () => {
   test.use(iPhone13Pro)

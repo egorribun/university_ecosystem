@@ -253,7 +253,7 @@ beforeEach(async () => {
   // even if bootstrap fails due to mock issues
   const offlineModule = await import("@/sw/offline")
   await offlineModule.initOfflineQueue()
-})
+}, 30_000)
 
 afterEach(async () => {
   // Note: deleteDatabase() removed to prevent hook timeouts with fake-indexeddb

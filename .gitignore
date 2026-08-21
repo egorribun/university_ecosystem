@@ -451,8 +451,14 @@ artifacts/
 !.agents/subagents/
 !.agents/skills/
 !.agents/ORIGINAL_REQUEST.md
+!verify_harness.py
+!docs/mcp/
 
 # Ephemeral agent caches and transient runtime state
 .agents/**/__pycache__/
 .agents/**/.gate_state.json
+.agents/**/progress.md
+.agents/**/BRIEFING*.md
+.agents/**/DISPATCH.md
+.agents/**/handoff.md
 .agents/sentinel/

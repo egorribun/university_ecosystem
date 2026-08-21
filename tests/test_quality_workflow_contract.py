@@ -16,7 +16,25 @@ import yaml
 from scripts.quality.capture_isolated_benchmarks import GO_IMAGE as BENCHMARK_GO_IMAGE
 from scripts.quality.filter_checkov_sarif import filter_suppressed_results
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+
+def _find_repo_root() -> Path:
+    current = Path(__file__).resolve().parent
+    for parent in [current, *current.parents]:
+        if parent.name == "mutants":
+            continue
+        if (parent / "pyproject.toml").exists() and (
+            parent / "native" / "rust_ext" / ".cargo" / "audit.toml"
+        ).exists():
+            return parent
+    for parent in [current, *current.parents]:
+        if parent.name == "mutants":
+            continue
+        if (parent / "pyproject.toml").exists():
+            return parent
+    return Path(__file__).resolve().parents[1]
+
+
+REPOSITORY_ROOT = _find_repo_root()
 CI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
 SQLMAP_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "sqlmap.yml"
 SQLMAP_OPENAPI_URL = "http://127.0.0.1:8000/api/openapi.json"

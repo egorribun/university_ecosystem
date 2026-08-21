@@ -29,10 +29,12 @@ export default defineConfig({
   retries: process.env.CI ? 2 : 0,
   timeout: 90_000,
   expect: {
-    timeout: 10_000,
+    timeout: 15_000,
   },
   use: {
     baseURL: BASE_URL,
+    actionTimeout: 15_000,
+    navigationTimeout: 45_000,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: process.env.CI ? "retain-on-failure" : "off",

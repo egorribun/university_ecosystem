@@ -33,6 +33,8 @@ def find_repo_root(start_path: Path | None = None) -> Path:
 def read_json_stdin() -> dict[str, Any]:
     """Read and parse camelCase JSON payload from sys.stdin."""
     try:
+        if sys.stdin and sys.stdin.isatty():
+            return {}
         raw = sys.stdin.read()
         if not raw or not raw.strip():
             return {}
@@ -76,6 +78,7 @@ def run_process(
         proc = subprocess.run(  # noqa: S603
             cmd,
             cwd=str(cwd) if cwd else None,
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             text=True,
             timeout=timeout,

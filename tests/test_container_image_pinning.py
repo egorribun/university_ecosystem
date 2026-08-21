@@ -22,7 +22,7 @@ if (
     or not (ROOT / "charts").exists()
     or not (ROOT / "docker-compose.full.yml").exists()
 ):
-    pytest.skip(
+    pytest.skip(  # QUALITY-123 @egorribun
         "repository asset tree not available (e.g. under mutmut isolation)",
         allow_module_level=True,
     )

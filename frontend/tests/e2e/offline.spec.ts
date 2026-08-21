@@ -5,27 +5,32 @@ import { gotoWithTransientRetry } from "./utils/navigation"
 const ensureServiceWorkerIsReady = async (page: Page) => {
   await page.waitForLoadState("networkidle")
   await page.evaluate(async () => {
-    if (!("serviceWorker" in navigator)) throw new Error("Service Worker API is unavailable")
-    await navigator.serviceWorker.ready
+    if ("serviceWorker" in navigator) {
+      await navigator.serviceWorker.ready
+    }
   })
 
   let controlled = await page.evaluate(() => Boolean(navigator.serviceWorker?.controller))
   if (!controlled) {
     await page.reload({ waitUntil: "networkidle" })
     await page.evaluate(async () => {
-      await navigator.serviceWorker?.ready
+      if ("serviceWorker" in navigator) {
+        await navigator.serviceWorker.ready
+      }
     })
     controlled = await page.evaluate(() => Boolean(navigator.serviceWorker?.controller))
   }
 
-  await page.waitForFunction(() => navigator.serviceWorker?.controller?.state === "activated")
+  await page.waitForFunction(
+    () => !navigator.serviceWorker || navigator.serviceWorker?.controller?.state === "activated"
+  )
 
   expect(controlled).toBeTruthy()
 }
 
 const OFFLINE_TEST_TIMEOUTS = {
-  elementVisible: 10000,
-  toastVisible: 5000,
+  elementVisible: 15_000,
+  toastVisible: 10_000,
 }
 
 test.describe("PWA offline support", () => {

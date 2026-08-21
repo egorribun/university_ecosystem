@@ -362,13 +362,17 @@ func (h *Hub) handleRegister(ctx context.Context, client *Client) {
 	h.mu.Lock()
 	if h.maxClients > 0 && len(h.Clients) >= h.maxClients {
 		h.mu.Unlock()
-		h.Logger.WarnContext(ctx, "Max connections reached, rejecting client",
-			"id", client.ID,
-			"max", h.maxClients)
+		if h.Logger != nil && h.Logger.Enabled(ctx, slog.LevelWarn) {
+			h.Logger.WarnContext(ctx, "Max connections reached, rejecting client",
+				"id", client.ID,
+				"max", h.maxClients)
+		}
 		client.closeOnce.Do(func() { safeClose(client.Send) })
 		if client.Conn != nil {
 			if err := client.Conn.Close(); err != nil {
-				h.Logger.ErrorContext(ctx, "Failed to close connection after max connections", "id", client.ID, "err", err)
+				if h.Logger != nil && h.Logger.Enabled(ctx, slog.LevelError) {
+					h.Logger.ErrorContext(ctx, "Failed to close connection after max connections", "id", client.ID, "err", err)
+				}
 			}
 		}
 		return
@@ -376,7 +380,9 @@ func (h *Hub) handleRegister(ctx context.Context, client *Client) {
 	h.Clients[client.ID] = client
 	h.mu.Unlock()
 	ActiveConnections.Inc()
-	h.Logger.InfoContext(ctx, "Client connected", "id", client.ID)
+	if h.Logger != nil && h.Logger.Enabled(ctx, slog.LevelInfo) {
+		h.Logger.InfoContext(ctx, "Client connected", "id", client.ID)
+	}
 }
 
 func (h *Hub) handleUnregister(ctx context.Context, client *Client) {
@@ -406,7 +412,9 @@ func (h *Hub) handleUnregister(ctx context.Context, client *Client) {
 		// only decrement the gauge once per client.
 		ActiveConnections.Dec()
 	})
-	h.Logger.InfoContext(ctx, "Client disconnected", "id", client.ID)
+	if h.Logger != nil && h.Logger.Enabled(ctx, slog.LevelInfo) {
+		h.Logger.InfoContext(ctx, "Client disconnected", "id", client.ID)
+	}
 }
 
 type recipient struct {
@@ -427,10 +435,14 @@ func (h *Hub) collectRecipients(msg *Message, span trace.Span) []recipient {
 		if !ok {
 			return nil
 		}
-		span.SetAttributes(attribute.Int("recipient.count", len(clients)))
-		recipients := make([]recipient, 0, len(clients))
+		if span != nil && span.IsRecording() {
+			span.SetAttributes(attribute.Int("recipient.count", len(clients)))
+		}
+		recipients := make([]recipient, len(clients))
+		i := 0
 		for c := range clients {
-			recipients = append(recipients, recipient{client: c})
+			recipients[i] = recipient{client: c}
+			i++
 		}
 		return recipients
 	case msg.To != "":
@@ -438,13 +450,19 @@ func (h *Hub) collectRecipients(msg *Message, span trace.Span) []recipient {
 		if !ok {
 			return nil
 		}
-		span.SetAttributes(attribute.Int("recipient.count", 1))
+		if span != nil && span.IsRecording() {
+			span.SetAttributes(attribute.Int("recipient.count", 1))
+		}
 		return []recipient{{client: c}}
 	default:
-		span.SetAttributes(attribute.Int("recipient.count", len(h.Clients)))
-		recipients := make([]recipient, 0, len(h.Clients))
+		if span != nil && span.IsRecording() {
+			span.SetAttributes(attribute.Int("recipient.count", len(h.Clients)))
+		}
+		recipients := make([]recipient, len(h.Clients))
+		i := 0
 		for _, c := range h.Clients {
-			recipients = append(recipients, recipient{client: c, evictOnFull: true})
+			recipients[i] = recipient{client: c, evictOnFull: true}
+			i++
 		}
 		return recipients
 	}
@@ -468,7 +486,9 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 
 	data, err := hubJSONMarshalFunc(msg)
 	if err != nil {
-		h.Logger.ErrorContext(bctx, "Failed to marshal broadcast message", "err", err)
+		if h.Logger != nil && h.Logger.Enabled(bctx, slog.LevelError) {
+			h.Logger.ErrorContext(bctx, "Failed to marshal broadcast message", "err", err)
+		}
 		return
 	}
 
@@ -478,13 +498,17 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 	// WebSocket framing overhead.
 	const maxBroadcastBytes = 60 * 1024 // 60 KB
 	if len(data) > maxBroadcastBytes {
-		h.Logger.WarnContext(bctx, "Broadcast message exceeds size limit, dropping",
-			"size_bytes", len(data),
-			"limit_bytes", maxBroadcastBytes,
-			"type", msg.Type,
-			"room", msg.Room)
+		if h.Logger != nil && h.Logger.Enabled(bctx, slog.LevelWarn) {
+			h.Logger.WarnContext(bctx, "Broadcast message exceeds size limit, dropping",
+				"size_bytes", len(data),
+				"limit_bytes", maxBroadcastBytes,
+				"type", msg.Type,
+				"room", msg.Room)
+		}
 		BroadcastDropsTotal.Inc()
-		span.SetAttributes(attribute.Bool("dropped.oversized", true))
+		if span != nil && span.IsRecording() {
+			span.SetAttributes(attribute.Bool("dropped.oversized", true))
+		}
 		return
 	}
 
@@ -494,7 +518,9 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 		if safeSend(r.client.Send, data) {
 			MessagesDeliveredTotal.Inc()
 		} else if r.evictOnFull {
-			h.Logger.WarnContext(bctx, "Client buffer full or closed, evicting", "id", r.client.ID)
+			if h.Logger != nil && h.Logger.Enabled(bctx, slog.LevelWarn) {
+				h.Logger.WarnContext(bctx, "Client buffer full or closed, evicting", "id", r.client.ID)
+			}
 			go func(c *Client) {
 				select {
 				case h.Unregister <- c:

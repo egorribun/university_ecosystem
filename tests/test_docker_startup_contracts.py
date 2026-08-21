@@ -10,7 +10,34 @@ from pathlib import Path
 import pytest
 import yaml
 
-ROOT = Path(__file__).resolve().parents[1]
+
+def _find_repo_root() -> Path:
+    current = Path(__file__).resolve().parent
+    for parent in [current, *current.parents]:
+        if parent.name == "mutants":
+            continue
+        if (parent / "pyproject.toml").exists() and (parent / "charts").exists():
+            return parent
+    return Path(__file__).resolve().parents[1]
+
+
+ROOT = _find_repo_root()
+
+
+def _helm_skip_dep_flag(helm: str) -> list[str]:
+    try:
+        help_out = subprocess.run(  # noqa: S603 - fixed Helm help command
+            [helm, "template", "--help"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        ).stdout
+        if "--skip-dependency-check" in help_out:
+            return ["--skip-dependency-check"]
+    except Exception:  # noqa: S110
+        pass
+    return []
 
 
 def _read(relative_path: str) -> str:
@@ -969,6 +996,7 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "template",
         "contract",
         str(ROOT / "charts" / "university-ecosystem"),
+        *_helm_skip_dep_flag(helm),
         "--set",
         "redis.enabled=false",
         "--set",
@@ -1221,6 +1249,7 @@ def test_helm_supports_an_externally_managed_application_secret() -> None:
             "template",
             "external",
             str(ROOT / "charts" / "university-ecosystem"),
+            *_helm_skip_dep_flag(helm),
             "--set",
             "redis.enabled=false",
             "--set",
@@ -1307,6 +1336,7 @@ def test_helm_production_render_rejects_plaintext_data_planes() -> None:
         "template",
         "production",
         str(ROOT / "charts" / "university-ecosystem"),
+        *_helm_skip_dep_flag(helm),
         "--set",
         "redis.enabled=false",
         "--set",

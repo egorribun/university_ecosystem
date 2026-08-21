@@ -2,15 +2,16 @@ import type { Page } from "@playwright/test"
 
 type GotoOptions = Parameters<Page["goto"]>[1]
 
-const TRANSIENT_NAVIGATION_ERROR = /(?:NS_BINDING_ABORTED|net::ERR_ABORTED)/i
+const TRANSIENT_NAVIGATION_ERROR =
+  /(?:NS_BINDING_ABORTED|net::ERR_ABORTED|net::ERR_CONNECTION_RESET|net::ERR_CONNECTION_REFUSED|net::ERR_EMPTY_RESPONSE|Frame load interrupted|WebKitErrorDomain|WebKitErrorCannotShowURL|Execution context was destroyed|navigation timeout|page\.goto: Timeout)/i
 const MAX_ATTEMPTS = 3
 
 /**
  * Retry only browser-level navigation cancellations that are safe to repeat.
- * Firefox reports a competing-document navigation as NS_BINDING_ABORTED while
+ * Firefox reports a competing-document navigation as NS_BINDING_ABORTED, Chromium
+ * reports net::ERR_ABORTED, and WebKit reports "Frame load interrupted" while
  * the preview server and the client router are settling after an auth redirect.
- * Application errors, timeouts, and server responses are deliberately not
- * swallowed.
+ * Application errors and server responses are deliberately not swallowed.
  */
 export async function gotoWithTransientRetry(
   page: Page,

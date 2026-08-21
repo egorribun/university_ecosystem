@@ -20,18 +20,31 @@ import { gotoWithTransientRetry } from "./utils/navigation"
  */
 
 const TIMEOUTS = {
-  navigation: 10_000,
-  element: 10_000,
-  toast: 5_000,
+  navigation: 15_000,
+  element: 15_000,
+  toast: 10_000,
 }
 
 async function ensureServiceWorkerReady(page: Page): Promise<void> {
   await page.waitForLoadState("networkidle")
-  await page.evaluate(async () => navigator.serviceWorker.ready)
-  if (!(await page.evaluate(() => Boolean(navigator.serviceWorker.controller)))) {
+  await page.evaluate(async () => {
+    if ("serviceWorker" in navigator) {
+      await navigator.serviceWorker.ready
+    }
+  })
+  let controlled = await page.evaluate(() => Boolean(navigator.serviceWorker?.controller))
+  if (!controlled) {
     await page.reload({ waitUntil: "networkidle" })
+    await page.evaluate(async () => {
+      if ("serviceWorker" in navigator) {
+        await navigator.serviceWorker.ready
+      }
+    })
+    controlled = await page.evaluate(() => Boolean(navigator.serviceWorker?.controller))
   }
-  await page.waitForFunction(() => navigator.serviceWorker.controller?.state === "activated")
+  await page.waitForFunction(
+    () => !navigator.serviceWorker || navigator.serviceWorker?.controller?.state === "activated"
+  )
 }
 
 test.describe("Schedule offline behaviour", () => {

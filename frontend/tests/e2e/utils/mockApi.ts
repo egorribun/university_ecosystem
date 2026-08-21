@@ -603,7 +603,12 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
     if (normPath.includes("api/users/me")) {
       if (method === "GET") {
         const authHeader = request.headers()["authorization"] || request.headers()["Authorization"]
-        if (!state.loggedIn && (!authHeader || !authHeader.includes("Bearer"))) {
+        const cookieHeader = request.headers()["cookie"] || request.headers()["Cookie"] || ""
+        const hasAuth =
+          state.loggedIn ||
+          Boolean(authHeader && authHeader.toLowerCase().includes("bearer")) ||
+          cookieHeader.includes(SSR_E2E_AUTH_COOKIE)
+        if (!hasAuth) {
           await route.fulfill({
             status: 401,
             contentType: "application/json",
@@ -611,7 +616,11 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
           })
           return
         }
-        await route.fulfill({ status: 200, body: JSON.stringify(state.profile) })
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(state.profile),
+        })
         return
       }
       if (method === "PUT" || method === "PATCH") {
@@ -980,8 +989,8 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
       // client-side redirect to /dashboard without a second SSR navigation.
       // Navigating / -> /dashboard directly can leave the preview's protected
       // SSR request pending under CI load.
-      await p.goto("/login", { waitUntil: "commit", timeout: 30_000 })
-      await expect(p).toHaveURL(/\/dashboard$/, { timeout: 30_000 })
+      await p.goto("/login", { waitUntil: "commit", timeout: 45_000 })
+      await expect(p).toHaveURL(/\/dashboard$/, { timeout: 45_000 })
     },
     async setOffline(p: Page, offline: boolean) {
       state.offline = offline

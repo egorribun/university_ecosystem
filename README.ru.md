@@ -197,7 +197,7 @@ sequenceDiagram
 | **Микросервисы** | Go 1.26, NATS, gRPC, Temporal Go SDK | Высоконагруженный чат и обработка медиа | **100%** |
 | **Производительность**| Rust, PyO3, Rayon, Maturin | Нативное вычисление расписания и HMAC | **100%** |
 | **Авторизация** | Argon2id, SpiceDB, WebAuthn/Passkeys, Kyverno, CSRF nonces | Zero-Trust ReBAC, аппаратная MFA и политики | Подтверждено |
-| **Данные и Кэш** | PostgreSQL 17, pgvector, Valkey / Redis 7 (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Реляционные/векторные данные, вероятностный L1/L2 кэш и изолированный отзыв сессий | Подтверждено |
+| **Данные и Кэш** | PostgreSQL 17, pgvector, кэш Valkey (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Реляционные/векторные данные, вероятностный L1/L2 кэш и изолированный отзыв сессий | Подтверждено |
 | **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Полный 360° мониторинг, трассы и логи | Подтверждено |
 
 ## 🚀 Быстрый старт
