@@ -28,16 +28,17 @@ jobs:
         run: |
           cd services/file-processor
           # Keep one fuzz worker: the default GOMAXPROCS-sized pool can OOM
-          # the runner while preserving the same 30-second target duration.
-          go test -v -fuzz=FuzzEstimateQueryDepth -fuzztime=30s -parallel=1 ./internal/middleware
+          # the runner. A 35-second budget leaves Go 1.26 enough shutdown
+          # headroom after baseline coverage on shared hosted runners.
+          go test -v -fuzz=FuzzEstimateQueryDepth -fuzztime=35s -parallel=1 ./internal/middleware
 
       - name: Run gateway JWT fuzz test
         run: |
           cd services/gateway
-          go test -v -fuzz=FuzzJWTValidation -fuzztime=30s -parallel=1 ./middleware
+          go test -v -fuzz=FuzzJWTValidation -fuzztime=35s -parallel=1 ./middleware
 
       - name: Run ws-hub parser fuzz tests
         run: |
           cd services/ws-hub
-          go test -v -fuzz=FuzzParseMessage -fuzztime=30s -parallel=1 ./pkg/hub
-          go test -v -fuzz=FuzzExtractAlgFromHeader -fuzztime=30s -parallel=1 ./pkg/hub
+          go test -v -fuzz=FuzzParseMessage -fuzztime=35s -parallel=1 ./pkg/hub
+          go test -v -fuzz=FuzzExtractAlgFromHeader -fuzztime=35s -parallel=1 ./pkg/hub

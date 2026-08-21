@@ -2314,7 +2314,7 @@ def test_go_fuzz_workflow_executes_all_service_fuzz_targets() -> None:
         if line.strip().startswith("go test") and "-fuzz=" in line
     ]
     assert len(fuzz_commands) == 4
-    assert all("-fuzztime=30s" in command for command in fuzz_commands)
+    assert all("-fuzztime=35s" in command for command in fuzz_commands)
     assert all("-parallel=1" in command for command in fuzz_commands)
 
 
