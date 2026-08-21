@@ -32,7 +32,7 @@ The **University Ecosystem Platform** utilizes a resilient persistence and cachi
 - **Host Port**: `15433`
 - **Database**: `university`
 - **Username**: `postgres`
-- **Connection URI**: `postgresql://postgres:b40KLcq32590sP9yUMsDmLRF3lGG6w3t@127.0.0.1:15433/university`
+- **Connection URI**: `postgresql://postgres:postgres@127.0.0.1:15433/university`
 - **Tool**: `postgres/query` (`sql: string`)
 
 ---
