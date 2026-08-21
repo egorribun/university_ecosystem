@@ -179,6 +179,11 @@ const createNewsListQueryFn =
     const requestConfig = {
       query: params,
       signal,
+      // The generated client returns AxiosError values when throwOnError is
+      // omitted. Let TanStack Query enter its error state so the persisted
+      // offline snapshot can be selected instead of silently normalising the
+      // transport failure into an empty successful page.
+      throwOnError: true,
       validateStatus: (status: number) => status >= 200 && status < 400,
       ...(etagKey ? { etagCacheKey: etagKey } : {}),
     }
@@ -264,15 +269,23 @@ export const useNewsListQuery = (
     [queryClient, normalized, queryKey]
   )
 
+  // Read once per locale/page-size pair. SSR can hydrate an already-created
+  // query with an empty/error result, in which case TanStack Query does not
+  // apply `placeholderData`; the same snapshot is therefore also used below
+  // as the final offline fallback.
+  const persistedPage = useMemo(
+    () => readPersistedNewsPage(normalized.language, normalized.limit),
+    [normalized.language, normalized.limit]
+  )
+
   // Read from localStorage as fallback for offline mode
   const placeholderData = useMemo(() => {
-    const page = readPersistedNewsPage(normalized.language, normalized.limit)
-    if (!page) return undefined
+    if (!persistedPage) return undefined
     return {
-      pages: [page],
+      pages: [persistedPage],
       pageParams: [null],
     }
-  }, [normalized.language, normalized.limit])
+  }, [persistedPage])
 
   const query = useInfiniteQuery<
     PaginatedResponse<NewsItem>,
@@ -291,7 +304,11 @@ export const useNewsListQuery = (
     ...rest,
   })
 
-  const news = useMemo(() => mergeNewsPages(query.data?.pages), [query.data])
+  const news = useMemo(() => {
+    const liveNews = mergeNewsPages(query.data?.pages)
+    if (liveNews.length > 0 || !query.isError) return liveNews
+    return persistedPage?.items ?? []
+  }, [persistedPage, query.data, query.isError])
   const pagination = query.data?.pages?.[query.data.pages.length - 1] ?? null
 
   useEffect(() => {

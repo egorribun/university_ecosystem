@@ -187,41 +187,39 @@ test.describe("University ecosystem app", () => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
-    const initialEventsResponse = page.waitForResponse(
-      (response) => {
-        const url = new URL(response.url())
-        return (
-          response.request().method() === "GET" &&
-          url.pathname.endsWith("/api/v1/events") &&
-          !url.searchParams.has("cursor")
-        )
-      },
-      { timeout: TEST_TIMEOUTS.extended }
-    )
-    await page.goto("/events")
-    await initialEventsResponse
-    await page.waitForURL(/\/events$/)
-
-    await expect(page.getByText(/(?:Событие|Event) uuid-10/i).first()).toBeVisible()
-
-    // The current feed uses an IntersectionObserver sentinel instead of a
-    // manual "load more" button. Reaching the last card on page one must
-    // fetch the next cursor page.
+    // The sentinel can be inside the viewport as soon as the SSR-hydrated
+    // first page mounts. Arm the listener before navigation so an eager
+    // IntersectionObserver fetch cannot race past the assertion.
     const nextEventsResponse = page.waitForResponse(
       (response) => {
         const url = new URL(response.url())
         return (
           response.request().method() === "GET" &&
-          url.pathname.endsWith("/api/v1/events") &&
+          // The production client may target `http://api/v1/events` in the
+          // preview harness, while the browser-gateway path is `/api/v1/events`.
+          // Both represent the same endpoint; match the stable `/v1/events`
+          // suffix so the assertion is origin-independent.
+          url.pathname.endsWith("/v1/events") &&
           url.searchParams.has("cursor")
         )
       },
       { timeout: TEST_TIMEOUTS.extended }
     )
-    await page
-      .getByText(/(?:Событие|Event) uuid-21/i)
-      .first()
-      .scrollIntoViewIfNeeded()
+
+    // The initial page is SSR-prefetched, so its request may complete on the
+    // server before the browser can observe it. Assert hydrated content rather
+    // than waiting for a client-side response that is intentionally absent.
+    await page.goto("/events")
+    await page.waitForURL(/\/events$/)
+
+    await expect(page.getByText(/(?:Событие|Event) uuid-10/i).first()).toBeVisible({
+      timeout: TEST_TIMEOUTS.long,
+    })
+
+    // The current feed uses an IntersectionObserver sentinel instead of a
+    // manual "load more" button. Reaching the last card on page one must
+    // fetch the next cursor page.
+    await page.getByTestId("events-next-page-sentinel").scrollIntoViewIfNeeded()
     await nextEventsResponse
     await expect(page.getByText(/(?:Событие|Event) uuid-25/i).first()).toBeVisible()
   })

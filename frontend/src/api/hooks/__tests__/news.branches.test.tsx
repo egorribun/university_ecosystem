@@ -119,6 +119,7 @@ describe("useNewsListQuery queryFn branches", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.news).toEqual([])
+    expect(newsListMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ throwOnError: true }))
     expect(result.current.pagination).toEqual({
       items: [],
       total: 0,
@@ -272,6 +273,25 @@ describe("useNewsListQuery placeholderData offline (news.ts:255-270)", () => {
     await act(async () => {
       resolveFn(okPage(stored, null))
     })
+  })
+
+  it("keeps the persisted feed visible when an SSR-hydrated query fails offline", async () => {
+    const stored = [makeNews("offline-1"), makeNews("offline-2")]
+    window.localStorage.setItem("news:list:ru", JSON.stringify(stored))
+    newsListMock.mockRejectedValue(new Error("offline"))
+
+    const queryClient = freshClient()
+    queryClient.setQueryData(newsListQueryKey({ language: "ru" }), {
+      pages: [],
+      pageParams: [],
+    })
+    const { result } = renderHook(
+      () => useNewsListQuery({ language: "ru", limit: 12 }, { staleTime: 0 }),
+      { wrapper: makeWrapper(queryClient) }
+    )
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.news).toEqual(stored)
   })
 
   it("returns no placeholder when stored items are empty/missing", async () => {
