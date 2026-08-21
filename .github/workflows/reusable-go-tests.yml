@@ -148,13 +148,16 @@ jobs:
           # The maintained CLI reports surviving mutants in report.json but
           # returns non-zero only for an execution/tool failure. Treat that
           # distinction explicitly: a panic, timeout, or missing report fails
-          # closed; a score is retained in the CI log for auditability.
+          # closed; a score is retained in the CI log for auditability. Large
+          # entrypoints can legitimately contain dozens of mutants, so allow
+          # up to 15 minutes for one source file without weakening failure
+          # handling.
           for target in "${TARGETS[@]}"; do
             echo "Mutating source file $target..."
             log_file="/tmp/go-mutesting-${target//[^A-Za-z0-9_.-]/_}.log"
             rm -f report.json
             set +e
-            timeout 300s go-mutesting "$target" 2>&1 | tee "$log_file"
+            timeout 900s go-mutesting "$target" 2>&1 | tee "$log_file"
             pipeline_status=("${PIPESTATUS[@]}")
             status=${pipeline_status[0]}
             tee_status=${pipeline_status[1]}
