@@ -32,7 +32,7 @@ The **University Ecosystem Platform** utilizes a resilient persistence and cachi
 - **Host Port**: `15433`
 - **Database**: `university`
 - **Username**: `postgres`
-- **Connection URI**: `postgresql://postgres:postgres@127.0.0.1:15433/university`
+- **Connection URI**: `postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:15433/university`
 - **Tool**: `postgres/query` (`sql: string`)
 
 ---
@@ -126,7 +126,7 @@ Validates database constraints (e.g. `CheckConstraint("chat_type IN ('dm', 'grou
 
 ### 3.1 Server Connection Specification
 - **Host Port**: `63791`
-- **Connection URI**: `redis://:nViPWOrh7FhdYOE2gdhFBjJa@127.0.0.1:63791`
+- **Connection URI**: `redis://:${REDIS_PASSWORD}@127.0.0.1:63791`
 - **Tools**:
   - `redis/get` (`key: string`)
   - `redis/set` (`key: string`, `value: string`, `expire?: number`)

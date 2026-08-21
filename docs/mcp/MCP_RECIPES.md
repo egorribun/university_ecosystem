@@ -44,8 +44,8 @@ The following table provides the exhaustive catalog of all 14 configured MCP ser
 | 8 | `memory` | stdio (`npx`) | `npx -y @modelcontextprotocol/server-memory@latest` | Local persistent JSON graph storage | `create_entities`, `create_relations`, `add_observations`, `read_graph`, `search_nodes`, `open_nodes`, `delete_entities` | Persistent cross-turn architectural memory, ADR tracking, inter-service dependency graphs, invariant persistence. |
 | 9 | `minio` | stdio (`npx`) | `npx -y mcp-server-s3@latest` | `AWS_ENDPOINT_URL: http://127.0.0.1:9000`<br>`AWS_ACCESS_KEY_ID: minioadmin`<br>`AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}`<br>`AWS_FORCE_PATH_STYLE: true` | `list_buckets`, `list_objects`, `get_object`, `put_object`, `delete_object`, `presigned_url`, `bucket_info` | S3-compatible object storage verification, static asset uploads, profile pictures, PDF exports, presigned URL testing. |
 | 10 | `playwright` | stdio (`npx`) | `npx -y @executeautomation/playwright-mcp-server@latest` | Headless Chromium engine | `playwright_navigate`, `playwright_click`, `playwright_fill`, `playwright_screenshot`, `playwright_evaluate`, `playwright_expect_response`, `playwright_assert_response` | End-to-end user journey simulation, form submissions, network interception, automated authentication flow verification. |
-| 11 | `postgres` | stdio (`npx`) | `npx -y @modelcontextprotocol/server-postgres@latest postgresql://postgres:postgres@127.0.0.1:15433/university` | Direct TCP connection to Postgres (Port 15433) | `query` | SQL query execution, Alembic migration verification (`alembic_version`), `EXPLAIN (ANALYZE, BUFFERS)` execution plans, RLS verification. |
-| 12 | `redis` | stdio (`npx`) | `npx -y @gongrzhe/server-redis-mcp@latest redis://:redispassword@127.0.0.1:63791` | Direct TCP connection to Redis/Valkey (Port 63791) | `get`, `set`, `delete`, `list` | Cache key verification, TTL validation, session revocation inspection (`session:revocations`, `revoked:jti:*`), cache stampede test. |
+| 11 | `postgres` | stdio (`npx`) | `npx -y @modelcontextprotocol/server-postgres@latest postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:15433/university` | Direct TCP connection to Postgres (Port 15433) | `query` | SQL query execution, Alembic migration verification (`alembic_version`), `EXPLAIN (ANALYZE, BUFFERS)` execution plans, RLS verification. |
+| 12 | `redis` | stdio (`npx`) | `npx -y @gongrzhe/server-redis-mcp@latest redis://:${REDIS_PASSWORD}@127.0.0.1:63791` | Direct TCP connection to Redis/Valkey (Port 63791) | `get`, `set`, `delete`, `list` | Cache key verification, TTL validation, session revocation inspection (`session:revocations`, `revoked:jti:*`), cache stampede test. |
 | 13 | `s3` | stdio (`npx`) | S3/MinIO operations mapped via MCP S3 Server | Compatible with AWS S3 / MinIO backend | Native S3 object APIs via `minio` namespace | S3 bucket permissions, multipart uploads, policy enforcement. |
 | 14 | `sequential-thinking`| stdio (`npx`) | `npx -y @modelcontextprotocol/server-sequential-thinking@latest` | Node.js runtime process | `sequentialthinking` | Dynamic, multi-step structured reasoning, hypothesis formulation, alternative branch tracking during complex debugging. |
 
@@ -128,7 +128,7 @@ All MCP servers are configured under the `mcpServers` object in `~/.gemini/confi
       "args": [
         "-y",
         "@modelcontextprotocol/server-postgres@latest",
-        "postgresql://postgres:b40KLcq32590sP9yUMsDmLRF3lGG6w3t@127.0.0.1:15433/university"
+        "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:15433/university"
       ]
     },
     "redis": {
@@ -136,7 +136,7 @@ All MCP servers are configured under the `mcpServers` object in `~/.gemini/confi
       "args": [
         "-y",
         "@gongrzhe/server-redis-mcp@latest",
-        "redis://:nViPWOrh7FhdYOE2gdhFBjJa@127.0.0.1:63791"
+        "redis://:${REDIS_PASSWORD}@127.0.0.1:63791"
       ]
     },
     "sequential-thinking": {
