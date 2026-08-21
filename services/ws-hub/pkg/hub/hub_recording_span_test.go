@@ -24,6 +24,9 @@ func TestHub_RecordingSpanAttributes(t *testing.T) {
 
 	provider := sdktrace.NewTracerProvider(sdktrace.WithSampler(sdktrace.AlwaysSample()))
 	tracer := provider.Tracer("hub-test")
+	if tracer == nil {
+		t.Fatal("recording tracer provider returned a nil tracer")
+	}
 
 	_, roomSpan := tracer.Start(ctx, "room")
 	recipients := h.collectRecipients(&Message{Room: "room"}, roomSpan)
