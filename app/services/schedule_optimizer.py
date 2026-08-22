@@ -1,6 +1,5 @@
 import uuid
 from datetime import UTC, datetime, time
-from typing import cast
 
 import rust_ext
 from pydantic import BaseModel
@@ -44,7 +43,9 @@ class ScheduleOptimizerService:
                 # their high bytes within the same timestamp window.
                 rust_id = int.from_bytes(item.id.bytes[:4], "big") & 0x7FFFFFFF
             else:
-                rust_id = cast(int | None, rust_id_override)
+                rust_id = (
+                    rust_id_override if isinstance(rust_id_override, int) else None
+                )
 
         # Convert time to datetime if needed (use 1970-01-01 to avoid OS/platform
         # overflow errors when calling .timestamp() on year 1)

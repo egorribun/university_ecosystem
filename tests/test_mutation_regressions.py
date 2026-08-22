@@ -329,6 +329,20 @@ def test_uuid_rust_conversion_uses_stable_four_byte_prefix() -> None:
     assert rust_item.id == expected_id
 
 
+def test_uuid_rust_conversion_honors_valid_override_and_rejects_invalid_one() -> None:
+    service = ScheduleOptimizerService()
+    item = ScheduleItemInternal(
+        id=uuid.UUID("12345678-1234-5678-90ab-cdef12345678"),
+        weekday="Monday",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+        end_time=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
+        parity="both",
+    )
+
+    assert service._to_rust_item(item, rust_id_override=123).id == 123
+    assert service._to_rust_item(item, rust_id_override=None).id is None
+
+
 def test_uuid_surrogate_allocator_moves_down_from_occupied_i32_max() -> None:
     service = ScheduleOptimizerService()
     occupied = _schedule_item(2_147_483_647, room="max", teacher="Boundary")
