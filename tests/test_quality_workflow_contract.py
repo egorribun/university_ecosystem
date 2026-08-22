@@ -1327,24 +1327,7 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
         for step in job["steps"]
         if step.get("name") == "Run incremental mutmut (blocking, stats-derived budget)"
     )
-    assert job["strategy"]["matrix"]["shard"] == [
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
-        10,
-        11,
-        12,
-        13,
-        14,
-        15,
-        16,
-    ]
+    assert job["strategy"]["matrix"]["shard"] == list(range(1, 65))
     assert job["timeout-minutes"] == 360
     assert "scripts/mutmut_shard_budget.py" in run_step["run"]
     assert "--max-timeout-seconds 18000" in run_step["run"]
@@ -1369,7 +1352,7 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
     assert "scripts/plan_mutmut_shards.py" in job_text
     assert "--changed-files /tmp/changed_py.txt" in job_text
     assert "--changed-diff /tmp/changed_py.diff" in job_text
-    assert "--num-shards 16" in job_text
+    assert "--num-shards 64" in job_text
     assert '"${MUTANT_NAMES[@]}"' in job_text
     assert "awk -v shard" not in job_text
     assert "grep '^app/core/tenant\\.py$'" not in job_text
@@ -1483,6 +1466,7 @@ def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> Non
         assert '--manual-base-sha "$MANUAL_BASE_SHA"' in scope_script
 
     manual_mutation_job = jobs["manual-mutation-tests"]
+    assert manual_mutation_job["strategy"]["matrix"]["shard"] == list(range(1, 65))
     assert manual_mutation_job["timeout-minutes"] == 360
     manual_mutation_text = "\n".join(
         step.get("run", "")
@@ -1612,7 +1596,7 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
         assert "refusing to run incomplete mutation evidence" in run_script
         assert (
             'timeout --kill-after=30s "${MUTMUT_TIMEOUT_SECONDS}s" '
-            "uv run python scripts/run_mutmut_with_stats.py --max-children 8 "
+            "uv run python scripts/run_mutmut_with_stats.py --max-children 2 "
             '"${MUTANT_NAMES[@]}" 2>&1 '
             '| tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"'
         ) in run_script
