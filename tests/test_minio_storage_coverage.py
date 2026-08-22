@@ -157,6 +157,10 @@ def test_get_minio_client_default_credentials_warns(
     with patch.object(minio_module.logger, "warning") as warning_logger:
         instance = get_minio_client()
 
+    warning_logger.assert_called_once_with(
+        "MinIO factory defaults are active; override both access "
+        "settings before staging or production"
+    )
     warning_message = str(warning_logger.call_args.args[0])
     assert "factory defaults" in warning_message
     assert "minioadmin" not in warning_message

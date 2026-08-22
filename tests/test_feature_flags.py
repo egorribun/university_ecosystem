@@ -108,6 +108,10 @@ def test_list_feature_flags_reports_evaluation_and_gitops_ownership():
         FLAG_PUSH_BATCHING,
         FLAG_GRAPHQL_SUBSCRIPTIONS,
     ]
+    assert [
+        call.args[1]
+        for call in get_client.return_value.get_boolean_details.call_args_list
+    ] == [False, False, True, False]
 
 
 def test_list_feature_flags_reports_unavailable_provider_with_fallbacks():
