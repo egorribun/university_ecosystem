@@ -107,6 +107,10 @@ async def test_batch_uuidv7_prefix_collisions_preserve_both_items(
     rust_items, _ = optimizer_service._to_rust_items_with_unique_ids([first, second])
     assert [item.id for item in rust_items] == [2_147_483_647, 2_147_483_646]
 
+    integer_item = first.model_copy(update={"id": 42})
+    _, rust_id_map = optimizer_service._to_rust_items_with_unique_ids([integer_item])
+    assert rust_id_map[42] is integer_item
+
 
 @pytest.mark.asyncio
 async def test_find_optimal_slot_success(optimizer_service, sample_item):

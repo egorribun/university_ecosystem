@@ -68,6 +68,22 @@ async def test_cleanup_dead_lettered_jobs_deletes_expired_rows():
 
 
 @pytest.mark.asyncio
+async def test_cleanup_dead_lettered_jobs_uses_thirty_day_default_retention():
+    db = AsyncMock()
+    db.execute.return_value = MagicMock(rowcount=0)
+    supplied_now = datetime(2026, 8, 17, tzinfo=UTC)
+
+    await queue.cleanup_dead_lettered_jobs(db=db, now=supplied_now)
+
+    statement = db.execute.await_args.args[0]
+    bind_values = statement.compile().params
+    cutoff = next(
+        value for name, value in bind_values.items() if name.startswith("enqueued_at")
+    )
+    assert cutoff == datetime(2026, 7, 18, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
 async def test_cleanup_dead_lettered_jobs_owns_session_and_validates_retention():
     db = AsyncMock()
     db.execute.return_value = MagicMock(rowcount=0)
