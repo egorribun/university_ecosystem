@@ -78,6 +78,16 @@ async def test_dead_letter_cleanup_normalizes_naive_timestamp_before_cutoff() ->
 
 
 @pytest.mark.asyncio
+async def test_dead_letter_cleanup_rejects_negative_retention_with_exact_message() -> (
+    None
+):
+    with pytest.raises(ValueError) as exc_info:
+        await queue.cleanup_dead_lettered_jobs(-1, db=AsyncMock())
+
+    assert str(exc_info.value) == "retention_days must be non-negative"
+
+
+@pytest.mark.asyncio
 async def test_nats_connect_preserves_unlimited_reconnect_policy() -> None:
     broker = NatsTaskBroker()
     mock_js = AsyncMock()
