@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import json
 import logging
 import uuid
@@ -573,8 +572,12 @@ def build_payload(
     if "silent" in source:
         options["silent"] = bool(source.get("silent"))
     if "timestamp" in source and source.get("timestamp") is not None:
-        with contextlib.suppress(TypeError, ValueError):
+        try:
             options["timestamp"] = int(source["timestamp"])
+        except (TypeError, ValueError):
+            # Invalid provider metadata must not prevent the notification from
+            # being delivered; omit only the malformed optional timestamp.
+            pass
     meta: dict[str, Any] = {}
     for key in _META_KEYS:
         value = source.get(key)

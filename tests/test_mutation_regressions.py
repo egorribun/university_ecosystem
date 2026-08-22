@@ -23,6 +23,7 @@ from app.services.schedule_optimizer import (
     ScheduleItemInternal,
     ScheduleOptimizerService,
 )
+from app.services.webpush import build_payload
 
 
 def _schedule_item(
@@ -88,13 +89,20 @@ async def test_dead_letter_cleanup_normalizes_naive_timestamp_before_cutoff() ->
 async def test_dead_letter_cleanup_normalizes_aware_non_utc_timestamp_before_cutoff() -> (
     None
 ):
+    seen_timezones: list[object] = []
+
+    class TrackingDateTime(datetime):
+        def astimezone(self, tz=None):  # type: ignore[override]
+            seen_timezones.append(tz)
+            return datetime(2026, 8, 17, 0, tzinfo=UTC)
+
     db = AsyncMock()
     db.execute.return_value = object()
 
     deleted = await queue.cleanup_dead_lettered_jobs(
         7,
         db=db,
-        now=datetime(2026, 8, 17, 3, tzinfo=timezone(timedelta(hours=3))),
+        now=TrackingDateTime(2026, 8, 17, 3, tzinfo=timezone(timedelta(hours=3))),
     )
 
     statement = db.execute.await_args.args[0]
@@ -104,6 +112,7 @@ async def test_dead_letter_cleanup_normalizes_aware_non_utc_timestamp_before_cut
         if name.startswith("enqueued_at")
     )
     assert cutoff == datetime(2026, 8, 10, tzinfo=UTC)
+    assert seen_timezones == [UTC]
     assert deleted == 0
 
 
@@ -140,6 +149,49 @@ async def test_dead_letter_cleanup_rejects_negative_retention_with_exact_message
         await queue.cleanup_dead_lettered_jobs(-1, db=AsyncMock())
 
     assert str(exc_info.value) == "retention_days must be non-negative"
+
+
+@pytest.mark.asyncio
+async def test_outbox_shutdown_awaits_every_auxiliary_task() -> None:
+    worker = outbox.OutboxWorker()
+    worker.heartbeat_path = Path("heartbeat")
+
+    async def stop_on_first_batch() -> int:
+        raise asyncio.CancelledError
+
+    worker.process_batch = stop_on_first_batch  # type: ignore[method-assign]
+    listen_task = MagicMock(name="listen_task")
+    heartbeat_task = MagicMock(name="heartbeat_task")
+    gather = AsyncMock()
+    tasks = iter((listen_task, heartbeat_task))
+
+    def fake_create_task(coro):
+        coro.close()
+        return next(tasks)
+
+    with (
+        patch.object(outbox.asyncio, "create_task", side_effect=fake_create_task),
+        patch.object(outbox.asyncio, "gather", new=gather),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await worker.run_forever()
+
+    listen_task.cancel.assert_called_once_with()
+    heartbeat_task.cancel.assert_called_once_with()
+    gather.assert_awaited_once_with(
+        listen_task,
+        heartbeat_task,
+        return_exceptions=True,
+    )
+
+
+def test_build_payload_ignores_non_numeric_optional_timestamp() -> None:
+    payload = build_payload(
+        "system.message",
+        {"message": "hello", "timestamp": object()},
+    )
+
+    assert "timestamp" not in payload["options"]
 
 
 @pytest.mark.asyncio

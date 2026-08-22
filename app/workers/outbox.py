@@ -137,9 +137,13 @@ class OutboxWorker:
         finally:
             # Always cancel auxiliary tasks so the raw asyncpg LISTEN connection
             # is closed and the standalone heartbeat stops during shutdown.
-            for task in auxiliary_tasks:
+            # Snapshot the collection before cancellation so the exact task set
+            # is also the set awaited below, even if a future shutdown hook
+            # mutates the working list.
+            tasks_to_shutdown = tuple(auxiliary_tasks)
+            for task in tasks_to_shutdown:
                 task.cancel()
-            await asyncio.gather(*auxiliary_tasks, return_exceptions=True)
+            await asyncio.gather(*tasks_to_shutdown, return_exceptions=True)
 
     async def _heartbeat_loop(self) -> None:
         """Record event-loop progress for the standalone container healthcheck."""

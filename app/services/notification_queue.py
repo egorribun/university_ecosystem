@@ -115,7 +115,11 @@ async def cleanup_dead_lettered_jobs(
                 now=current,
             )
 
-    cutoff = current - timedelta(days=retention_days)
+    # The cutoff must be computed from a UTC-normalized instant.  Keeping the
+    # normalized value explicit prevents a local-time conversion from silently
+    # changing the retention boundary on hosts configured outside UTC.
+    normalized_current = current.astimezone(UTC)
+    cutoff = normalized_current - timedelta(days=retention_days)
     statement = (
         delete(NotificationQueueJob)
         .where(
