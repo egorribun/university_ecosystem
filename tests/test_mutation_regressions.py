@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import BackgroundTasks
 
+from app.services import notification_queue as queue
 from app.services.notification_service import NotificationService
 from app.services.schedule_optimizer import (
     ScheduleItemInternal,
@@ -53,6 +54,26 @@ async def test_news_enqueue_failure_report_keeps_complete_metadata() -> None:
         error=failure,
         source="NotificationService.dispatch_news_created",
     )
+
+
+@pytest.mark.asyncio
+async def test_dead_letter_cleanup_normalizes_naive_timestamp_before_cutoff() -> None:
+    db = AsyncMock()
+    db.execute.return_value = MagicMock(rowcount=0)
+
+    await queue.cleanup_dead_lettered_jobs(
+        7,
+        db=db,
+        now=datetime(2026, 8, 17),
+    )
+
+    statement = db.execute.await_args.args[0]
+    cutoff = next(
+        value
+        for name, value in statement.compile().params.items()
+        if name.startswith("enqueued_at")
+    )
+    assert cutoff == datetime(2026, 8, 10, tzinfo=UTC)
 
 
 def test_uuid_rust_conversion_uses_stable_four_byte_prefix() -> None:
