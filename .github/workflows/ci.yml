@@ -1151,7 +1151,19 @@ jobs:
           version: "3.17.0"
 
       - name: Helm dependency build
-        run: helm dependency build charts/university-ecosystem/
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if helm dependency build charts/university-ecosystem/; then
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "Helm dependency build failed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
 
       - name: Helm lint — university-ecosystem chart
         run: |  # pragma: allowlist secret
@@ -1736,7 +1748,19 @@ jobs:
           version: v3.17.0
 
       - name: Resolve Helm chart dependencies
-        run: helm dependency build charts/university-ecosystem/
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if helm dependency build charts/university-ecosystem/; then
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "Helm dependency build failed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
 
       - name: Detect changed Python source
         id: mutation_scope
@@ -1842,7 +1866,19 @@ jobs:
           version: v3.17.0
 
       - name: Resolve Helm chart dependencies
-        run: helm dependency build charts/university-ecosystem/
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if helm dependency build charts/university-ecosystem/; then
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "Helm dependency build failed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
 
       - name: Detect changed Python source
         id: mutation_scope

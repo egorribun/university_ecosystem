@@ -1415,6 +1415,16 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     mutation_text = "\n".join(
         step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
     )
+    for job in (stats_job, mutation_job):
+        helm_step = next(
+            step
+            for step in job["steps"]
+            if step.get("name") == "Resolve Helm chart dependencies"
+        )
+        assert helm_step["shell"] == "bash"
+        assert "for attempt in 1 2 3; do" in helm_step["run"]
+        assert "sleep $((attempt * 15))" in helm_step["run"]
+        assert "Helm dependency build failed after 3 attempts." in helm_step["run"]
     download_step = next(
         step
         for step in mutation_job["steps"]

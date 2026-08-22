@@ -418,7 +418,16 @@ jobs:
           DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
-          helm dependency build charts/university-ecosystem
+          for attempt in 1 2 3; do
+            if helm dependency build charts/university-ecosystem; then
+              break
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "Helm dependency build failed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
           helm lint --strict charts/university-ecosystem \
             --values "$HELM_VALUES_FILE" \
             --set-string global.environment="$DEPLOY_ENVIRONMENT" \

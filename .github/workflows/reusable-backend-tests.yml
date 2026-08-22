@@ -137,7 +137,18 @@ jobs:
 
             - name: Resolve Helm chart dependencies
               shell: bash
-              run: helm dependency build charts/university-ecosystem/
+              run: |
+                set -euo pipefail
+                for attempt in 1 2 3; do
+                  if helm dependency build charts/university-ecosystem/; then
+                    exit 0
+                  fi
+                  if [[ "$attempt" -eq 3 ]]; then
+                    echo "Helm dependency build failed after 3 attempts." >&2
+                    exit 1
+                  fi
+                  sleep $((attempt * 15))
+                done
 
             - name: Run pytest
               shell: pwsh
