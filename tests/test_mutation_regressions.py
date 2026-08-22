@@ -89,9 +89,9 @@ async def test_dead_letter_cleanup_normalizes_aware_non_utc_timestamp_before_cut
     None
 ):
     db = AsyncMock()
-    db.execute.return_value = MagicMock(rowcount=0)
+    db.execute.return_value = object()
 
-    await queue.cleanup_dead_lettered_jobs(
+    deleted = await queue.cleanup_dead_lettered_jobs(
         7,
         db=db,
         now=datetime(2026, 8, 17, 3, tzinfo=timezone(timedelta(hours=3))),
@@ -104,6 +104,7 @@ async def test_dead_letter_cleanup_normalizes_aware_non_utc_timestamp_before_cut
         if name.startswith("enqueued_at")
     )
     assert cutoff == datetime(2026, 8, 10, tzinfo=UTC)
+    assert deleted == 0
 
 
 @pytest.mark.asyncio
@@ -249,6 +250,29 @@ def test_uuid_rust_conversion_uses_stable_four_byte_prefix() -> None:
 
     expected_id = int.from_bytes(item_id.bytes[:4], "big") & 0x7FFFFFFF
     assert rust_item.id == expected_id
+
+
+def test_uuid_surrogate_allocator_moves_down_from_occupied_i32_max() -> None:
+    service = ScheduleOptimizerService()
+    occupied = _schedule_item(2_147_483_647, room="max", teacher="Boundary")
+    uuid_item = ScheduleItemInternal(
+        id=uuid.UUID("018f0000-0000-7000-8000-000000000001"),
+        weekday="Monday",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+        end_time=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
+        parity="both",
+    )
+
+    def fake_to_rust_item(item: ScheduleItemInternal, **kwargs: object) -> object:
+        return SimpleNamespace(id=kwargs.get("rust_id_override", item.id))
+
+    with patch.object(service, "_to_rust_item", side_effect=fake_to_rust_item):
+        rust_items, rust_id_map = service._to_rust_items_with_unique_ids(
+            [occupied, uuid_item]
+        )
+
+    assert [item.id for item in rust_items] == [2_147_483_647, 2_147_483_646]
+    assert rust_id_map == {2_147_483_647: occupied, 2_147_483_646: uuid_item}
 
 
 @pytest.mark.asyncio

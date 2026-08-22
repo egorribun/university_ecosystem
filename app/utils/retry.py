@@ -59,6 +59,9 @@ async def retry_async[T](
     Raises:
         RetryExhausted: If all attempts fail
     """
+    if max_attempts <= 0:
+        raise RetryExhausted(max_attempts)
+
     last_error: Exception | None = None
 
     for attempt in range(1, max_attempts + 1):
@@ -98,8 +101,8 @@ async def retry_async[T](
 
             await asyncio.sleep(delay)
 
-    # Should not reach here, but satisfy type checker
-    raise RetryExhausted(max_attempts, last_error)
+    # The loop always returns or raises once max_attempts is positive.
+    raise AssertionError("retry_async loop exited unexpectedly")
 
 
 def with_retry[T, **P](
