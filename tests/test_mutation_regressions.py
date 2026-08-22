@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import BackgroundTasks
 
+from app.core.nats_broker import NatsTaskBroker
 from app.services import notification_queue as queue
 from app.services.notification_service import NotificationService
 from app.services.schedule_optimizer import (
@@ -74,6 +75,24 @@ async def test_dead_letter_cleanup_normalizes_naive_timestamp_before_cutoff() ->
         if name.startswith("enqueued_at")
     )
     assert cutoff == datetime(2026, 8, 10, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_nats_connect_preserves_unlimited_reconnect_policy() -> None:
+    broker = NatsTaskBroker()
+    mock_js = AsyncMock()
+    mock_nc = MagicMock()
+    mock_nc.jetstream.return_value = mock_js
+
+    with patch(
+        "app.core.nats_broker.nats.connect",
+        new=AsyncMock(return_value=mock_nc),
+    ) as connect:
+        await broker.connect()
+
+    kwargs = connect.await_args.kwargs
+    assert kwargs["max_reconnect_attempts"] == -1
+    assert kwargs["connect_timeout"] == 2
 
 
 def test_uuid_rust_conversion_uses_stable_four_byte_prefix() -> None:
