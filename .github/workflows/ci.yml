@@ -1795,12 +1795,12 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     # Exact shards can legitimately map to a large lifecycle test union. The
-    # pull-request gate therefore has a two-hour wall-clock envelope. Its
-    # dynamic inner timeout stays fail-closed: after a 30-second KILL grace it
-    # reserves five minutes for proof, score verification, and upload. The
-    # separately dispatched manual evidence workflow intentionally keeps its
-    # longer six-hour envelope for full forensic evidence.
-    timeout-minutes: 120
+    # pull-request gate therefore uses the same six-hour wall-clock envelope
+    # as the manual evidence workflow. Eight bounded workers keep the real
+    # mutation phase parallel without allowing an unbounded fork storm; the
+    # dynamic inner timeout remains fail-closed and leaves ten minutes for
+    # proof, score verification, upload, and a controlled exit.
+    timeout-minutes: 360
     env:
       OTEL_SDK_DISABLED: "true"
     needs:
@@ -1813,7 +1813,7 @@ jobs:
         shell: bash
         run: |
           MUTMUT_JOB_STARTED_EPOCH="$(date -u +%s)"
-          MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 7200))"
+          MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 21600))"
           {
             echo "MUTMUT_JOB_STARTED_EPOCH=$MUTMUT_JOB_STARTED_EPOCH"
             echo "MUTMUT_JOB_DEADLINE_EPOCH=$MUTMUT_JOB_DEADLINE_EPOCH"
@@ -1903,7 +1903,7 @@ jobs:
             --changed-diff /tmp/changed_py.diff \
             --shard-id "${{ matrix.shard }}" \
             --num-shards 16 \
-            --max-children 2 \
+            --max-children 8 \
             --output /tmp/mutmut-shard.txt
           mapfile -t MUTANT_NAMES < /tmp/mutmut-shard.txt
           if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then
@@ -1969,17 +1969,18 @@ jobs:
           MUTMUT_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
             --selected-file /tmp/mutmut-shard.txt \
             --stats mutants/mutmut-stats.json \
-            --max-children 2 \
-            --max-timeout-seconds 6600 \
+            --max-children 8 \
+            --control-cycle-reserve-seconds 5 \
+            --max-timeout-seconds 18000 \
             --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
           if ! [[ "$MUTMUT_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
             MUTMUT_FAILURE_REASON="mutation budget helper returned an unsafe timeout value"
             echo "::error::Mutation budget helper returned an unsafe timeout value."
             exit 1
           fi
-          # The 6,600-second budget is only an upper cap. The deadline starts
-          # before setup, so derive a lower cap from the durable two-hour job
-          # deadline and leave 300 seconds (five minutes) after timeout's
+          # The 18,000-second budget is only an upper cap. The deadline starts
+          # before setup, so derive a lower cap from the durable six-hour job
+          # deadline and leave 600 seconds (ten minutes) after timeout's
           # 30-second KILL grace for proof, score verification, upload, and a
           # fail-closed exit.
           if ! [[ "${MUTMUT_JOB_DEADLINE_EPOCH:-}" =~ ^[1-9][0-9]*$ ]]; then
@@ -1988,7 +1989,7 @@ jobs:
             exit 1
           fi
           MUTMUT_FAILURE_REASON="deriving the deadline-bounded mutation timeout"
-          MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=300
+          MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=600
           MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30
           MUTMUT_CURRENT_EPOCH="$(date -u +%s)"
           MUTMUT_REMAINING_JOB_SECONDS="$((MUTMUT_JOB_DEADLINE_EPOCH - MUTMUT_CURRENT_EPOCH))"
@@ -2016,12 +2017,12 @@ jobs:
           # the CI-supported cap; mutmut exits 0 on completion regardless of
           # survivors, so the exact-execution proof and 100% viable-score gate
           # remain blocking defenses.
-          # --max-children 2 caps concurrent forked mutant
+          # --max-children 8 caps concurrent forked mutant
           # workers (default = nproc) to bound peak RAM (one full app load per fork)
           # and reduce the runner OOM-killer firing mid-sweep.
           MUTMUT_FAILURE_REASON="mutmut pipeline did not complete"
           set +e
-          timeout --kill-after=30s "${MUTMUT_TIMEOUT_SECONDS}s" uv run python scripts/run_mutmut_with_stats.py --max-children 2 "${MUTANT_NAMES[@]}" 2>&1 | tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"
+          timeout --kill-after=30s "${MUTMUT_TIMEOUT_SECONDS}s" uv run python scripts/run_mutmut_with_stats.py --max-children 8 "${MUTANT_NAMES[@]}" 2>&1 | tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"
           pipeline_status=("${PIPESTATUS[@]}")
           mutmut_exit_code="${pipeline_status[0]}"
           tee_exit_code="${pipeline_status[1]}"
