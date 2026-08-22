@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -93,21 +93,20 @@ async def test_outbox_main_uses_reactive_worker_when_legacy_cdc_flag_is_set(
 @pytest.mark.asyncio
 async def test_outbox_main_connects_and_closes_nats(monkeypatch):
     await _prepare_outbox_main(monkeypatch)
-    run_forever = AsyncMock()
-    stop = AsyncMock()
-    monkeypatch.setattr(outbox.OutboxWorker, "run_forever", run_forever)
-    monkeypatch.setattr(outbox.OutboxWorker, "stop", stop)
+    worker = MagicMock()
+    worker.run_forever = AsyncMock()
+    worker.stop = AsyncMock()
 
     with (
-        patch.object(
-            outbox,
-            "settings",
+        patch(
+            "app.core.config.settings",
             SimpleNamespace(
                 outbox_poll_interval_seconds=1.0,
                 outbox_batch_size=2,
                 outbox_max_retries=3,
             ),
         ),
+        patch.object(outbox, "OutboxWorker", return_value=worker) as constructor,
         patch("app.core.nats_broker.broker.connect", new_callable=AsyncMock) as connect,
         patch("app.core.nats_broker.broker.close", new_callable=AsyncMock) as close,
     ):
@@ -115,8 +114,14 @@ async def test_outbox_main_connects_and_closes_nats(monkeypatch):
 
     connect.assert_awaited_once()
     close.assert_awaited_once()
-    run_forever.assert_awaited_once()
-    stop.assert_awaited_once()
+    constructor.assert_called_once_with(
+        poll_interval=1.0,
+        batch_size=2,
+        max_retries=3,
+        heartbeat_path=ANY,
+    )
+    worker.run_forever.assert_awaited_once()
+    worker.stop.assert_awaited_once()
 
 
 @pytest.mark.asyncio

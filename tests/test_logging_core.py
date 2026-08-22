@@ -142,12 +142,15 @@ def test_configure_logging_first_time_console_no_otel():
     with (
         patch.object(logging_mod, "_configured", False),
         patch("structlog.configure") as mock_structlog_conf,
+        patch("structlog.dev.ConsoleRenderer") as renderer,
         patch("logging.basicConfig"),
         patch.dict("sys.modules", {"opentelemetry._logs": None}),
     ):
         configure_logging(json_output=False)
 
         mock_structlog_conf.assert_called_once()
+        renderer.assert_called_once()
+        assert renderer.call_args.kwargs["colors"] is True
 
 
 def test_console_logging_formats_positional_arguments(monkeypatch, caplog):

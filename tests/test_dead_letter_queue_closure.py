@@ -129,6 +129,25 @@ async def test_replay_records_circuit_success_and_permanent_failure() -> None:
     circuit_breaker.record_failure.assert_called_once_with()
 
 
+@pytest.mark.asyncio
+async def test_replay_continues_to_followup_batches_after_successful_batch() -> None:
+    session = AsyncMock()
+    queue = DeadLetterQueue(session)
+    first = _job()
+    second = _job()
+    queue.get_jobs_ready_for_retry = AsyncMock(side_effect=[[first], [second], []])
+    handler = AsyncMock()
+
+    assert await queue.auto_replay_jobs(handler=handler, rate_limit_delay=0) == (2, 0)
+
+    assert handler.await_count == 2
+    assert queue.get_jobs_ready_for_retry.await_count == 3
+    assert all(
+        call.kwargs == {"limit": 10}
+        for call in queue.get_jobs_ready_for_retry.await_args_list
+    )
+
+
 def test_circuit_listener_ignores_non_recovery_and_no_running_loop() -> None:
     circuit_breaker = MagicMock()
     register_circuit_breaker_db_dlq_listener(circuit_breaker, MagicMock())

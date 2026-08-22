@@ -88,6 +88,8 @@ async def test_dispatch_news_and_comment_swallow_enqueue_errors():
         "NotificationService.dispatch_news_created",
         "NotificationService.dispatch_comment_created",
     ]
+    assert report.await_args_list[1].kwargs["record_id"] == 3
+    assert isinstance(report.await_args_list[1].kwargs["error"], RuntimeError)
 
 
 @pytest.mark.asyncio

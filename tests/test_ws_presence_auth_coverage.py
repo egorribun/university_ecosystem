@@ -118,7 +118,8 @@ async def test_get_user_from_ticket_malformed_payload() -> None:
     # Case 4: Extra segments must take the explicit malformed-payload branch.
     # This also prevents the validation condition from degrading into a generic
     # destructuring exception, which would lose the safe diagnostic path.
-    mock_redis.getdel.return_value = "user-id:jti:unexpected"
+    malformed_payload = "user-id:jti:unexpected"
+    mock_redis.getdel.return_value = malformed_payload
     with (
         patch("app.deps.cache.get_cache_client", return_value=mock_redis),
         patch("app.api.ws.auth.logger.warning") as warning,
@@ -127,10 +128,11 @@ async def test_get_user_from_ticket_malformed_payload() -> None:
 
     assert user is None
     assert jti is None
-    assert any(
-        call.args
-        and call.args[0] == "WS ticket has malformed payload (sep=%d len=%d): %s…"
-        for call in warning.call_args_list
+    warning.assert_called_once_with(
+        "WS ticket has malformed payload (sep=%d len=%d): %s…",
+        malformed_payload.find(":"),
+        len(malformed_payload),
+        ticket[:4],
     )
 
 

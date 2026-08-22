@@ -51,7 +51,14 @@ def test_pool_health_metrics_properties():
 
 def test_pool_health_monitoring_callbacks():
     # Call callbacks directly to ensure coverage
-    _on_invalidate(None, None, ValueError("Test DB error"))
+    exception = ValueError("Test DB error")
+    with patch.object(db_module.pool_health_logger, "warning") as warning:
+        _on_invalidate(None, None, exception)
+    warning.assert_called_once()
+    assert warning.call_args.kwargs["active_connections"] == (
+        _pool_metrics.active_connections
+    )
+    assert warning.call_args.kwargs["exception_type"] == "ValueError"
     _on_checkout_failed(ValueError("Test DB checkout error"), MagicMock())
 
 

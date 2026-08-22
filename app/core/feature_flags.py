@@ -203,7 +203,11 @@ def list_feature_flags() -> list[FeatureFlagSnapshot]:
         from openfeature import api as of_api
 
         provider_metadata = of_api.get_provider_metadata()
-        if getattr(provider_metadata, "is_default_provider", False):
+        # The SDK exposes this marker on every supported provider metadata
+        # object.  Missing metadata is not a healthy control-plane signal, so
+        # fail closed instead of treating an unknown provider as authoritative.
+        is_default_provider = provider_metadata.is_default_provider
+        if is_default_provider:
             logger.warning(
                 "Feature flag diagnostics are using the OpenFeature no-op provider"
             )

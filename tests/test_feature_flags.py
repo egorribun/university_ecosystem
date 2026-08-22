@@ -77,7 +77,9 @@ def test_list_feature_flags_reports_evaluation_and_gitops_ownership():
         value=True,
         reason="TARGETING_MATCH",
     )
-    provider_metadata = SimpleNamespace(name="flagd Provider")
+    provider_metadata = SimpleNamespace(
+        name="flagd Provider", is_default_provider=False
+    )
     with (
         patch("openfeature.api.get_client") as get_client,
         patch("openfeature.api.get_provider_metadata", return_value=provider_metadata),
@@ -113,7 +115,9 @@ def test_list_feature_flags_reports_unavailable_provider_with_fallbacks():
     with (
         patch(
             "openfeature.api.get_provider_metadata",
-            return_value=SimpleNamespace(name="FlagdProvider"),
+            return_value=SimpleNamespace(
+                name="FlagdProvider", is_default_provider=False
+            ),
         ),
         patch("openfeature.api.get_client", side_effect=provider_error),
         patch("app.core.feature_flags.logger.warning") as warning,
@@ -152,15 +156,19 @@ def test_list_feature_flags_reports_default_noop_provider_as_unavailable():
 
 def test_list_feature_flags_isolates_an_individual_evaluation_failure():
     details = MagicMock(value=True, reason="DEFAULT")
+    evaluation_error = RuntimeError("bad flag")
     with (
         patch("openfeature.api.get_client") as get_client,
         patch(
             "openfeature.api.get_provider_metadata",
-            return_value=SimpleNamespace(name="FlagdProvider"),
+            return_value=SimpleNamespace(
+                name="FlagdProvider", is_default_provider=False
+            ),
         ),
+        patch("app.core.feature_flags.logger.debug") as debug,
     ):
         get_client.return_value.get_boolean_details.side_effect = [
-            RuntimeError("bad flag"),
+            evaluation_error,
             details,
             details,
             details,
@@ -175,6 +183,11 @@ def test_list_feature_flags_isolates_an_individual_evaluation_failure():
         "DEFAULT",
         "DEFAULT",
     ]
+    debug.assert_called_once_with(
+        "Feature flag diagnostics failed for %s: %s",
+        FLAG_NEW_CHAT_UI,
+        evaluation_error,
+    )
 
 
 @pytest.mark.asyncio

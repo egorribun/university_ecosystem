@@ -69,13 +69,17 @@ async def test_batch_detect_conflicts(optimizer_service, sample_item):
         end_time=datetime(2026, 1, 1, 11, 00, tzinfo=UTC),
         parity="both",
         room="102B",
+        teacher="Prof. Jones",
     )
     result = await optimizer_service.batch_detect_conflicts([sample_item, target])
     assert len(result) == 1
     a, b = result[0]
-    # Check that metadata was correctly restored
-    assert a.room == "101A" or b.room == "101A"
-    assert a.room == "102B" or b.room == "102B"
+    # Check that metadata and original identifiers were correctly restored.
+    returned = {item.id: item for item in (a, b)}
+    assert returned[1].room == "101A"
+    assert returned[1].teacher == "Dr. Smith"
+    assert returned[2].room == "102B"
+    assert returned[2].teacher == "Prof. Jones"
 
 
 @pytest.mark.asyncio
@@ -111,6 +115,27 @@ async def test_batch_uuidv7_prefix_collisions_preserve_both_items(
     _, rust_id_map = optimizer_service._to_rust_items_with_unique_ids([integer_item])
     assert rust_id_map[42] is integer_item
 
+    max_id = 2_147_483_647
+    occupied_a = first.model_copy(update={"id": max_id})
+    occupied_b = second.model_copy(update={"id": max_id - 1})
+    occupied_c = first.model_copy(update={"id": max_id - 2})
+    uuid_a = first.model_copy(
+        update={"id": uuid.UUID("018f0000-0000-7000-8000-000000000003")}
+    )
+    uuid_b = second.model_copy(
+        update={"id": uuid.UUID("018f0000-0000-7000-8000-000000000004")}
+    )
+    rust_items, _ = optimizer_service._to_rust_items_with_unique_ids(
+        [occupied_a, occupied_b, occupied_c, uuid_a, uuid_b]
+    )
+    assert [item.id for item in rust_items] == [
+        max_id,
+        max_id - 1,
+        max_id - 2,
+        max_id - 3,
+        max_id - 4,
+    ]
+
 
 @pytest.mark.asyncio
 async def test_find_optimal_slot_success(optimizer_service, sample_item):
@@ -125,7 +150,7 @@ async def test_find_optimal_slot_success(optimizer_service, sample_item):
 @pytest.mark.asyncio
 async def test_uuid_id_conversion(optimizer_service) -> None:
     # Verify UUID id mapping branch
-    u_id = uuid.uuid4()
+    u_id = uuid.UUID("12345678-1234-5678-90ab-cdef12345678")
     item = ScheduleItemInternal(
         id=u_id,
         weekday="Monday",
@@ -136,6 +161,27 @@ async def test_uuid_id_conversion(optimizer_service) -> None:
     rust_item = optimizer_service._to_rust_item(item)
     expected_id = int.from_bytes(u_id.bytes[:4], "big") & 0x7FFFFFFF
     assert rust_item.id == expected_id
+
+
+@pytest.mark.asyncio
+async def test_detect_conflicts_restores_teacher_metadata(optimizer_service) -> None:
+    target = ScheduleItemInternal(
+        id=1,
+        weekday="Monday",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+        end_time=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
+        parity="both",
+    )
+    existing = target.model_copy(
+        update={"id": 2, "room": "101A", "teacher": "Dr. Smith"}
+    )
+
+    conflicts = await optimizer_service.detect_conflicts(target, [existing])
+
+    assert len(conflicts) == 1
+    assert conflicts[0].id == existing.id
+    assert conflicts[0].room == existing.room
+    assert conflicts[0].teacher == existing.teacher
 
 
 @pytest.mark.asyncio
