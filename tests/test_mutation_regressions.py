@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import BackgroundTasks
 
+import app.core.database as database
+import app.workers.outbox as outbox
 from app.core.nats_broker import NatsTaskBroker
 from app.services import notification_queue as queue
 from app.services.notification_service import NotificationService
@@ -103,6 +108,72 @@ async def test_nats_connect_preserves_unlimited_reconnect_policy() -> None:
     kwargs = connect.await_args.kwargs
     assert kwargs["max_reconnect_attempts"] == -1
     assert kwargs["connect_timeout"] == 2
+
+
+def test_database_invalidation_keeps_structured_log_message() -> None:
+    with (
+        patch.object(database._pool_metrics, "record_invalidation") as record,
+        patch.object(database.pool_health_logger, "warning") as warning,
+    ):
+        database._on_invalidate(None, None, RuntimeError("database reset"))
+
+    record.assert_called_once_with()
+    warning.assert_called_once_with(
+        "Connection invalidated",
+        active_connections=database._pool_metrics.active_connections,
+        exception_type="RuntimeError",
+    )
+
+
+@pytest.mark.asyncio
+async def test_outbox_main_passes_runtime_heartbeat_path_to_worker(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr("app.core.database.init_database", lambda: None)
+
+    async def wait_db(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    async def register_listeners() -> None:
+        return None
+
+    async def stop_on_signal(stop_event: asyncio.Event) -> None:
+        stop_event.set()
+
+    monkeypatch.setattr("app.core.database.wait_db", wait_db)
+    monkeypatch.setattr("app.core.events.register_event_listeners", register_listeners)
+    monkeypatch.setattr(
+        "app.services.event_handlers.configure_event_handlers", lambda: None
+    )
+    monkeypatch.setattr(outbox, "_wait_for_signals", stop_on_signal)
+    runtime_dir = tmp_path / "runtime"
+    monkeypatch.setenv("OUTBOX_WORKER_RUNTIME_DIR", str(runtime_dir))
+
+    worker = MagicMock()
+    worker.run_forever = AsyncMock()
+    worker.stop = AsyncMock()
+    settings = SimpleNamespace(
+        outbox_poll_interval_seconds=0.25,
+        outbox_batch_size=4,
+        outbox_max_retries=2,
+    )
+
+    with (
+        patch("app.core.config.settings", settings),
+        patch.object(outbox, "OutboxWorker", return_value=worker) as constructor,
+        patch("app.core.nats_broker.broker.connect", new_callable=AsyncMock),
+        patch("app.core.nats_broker.broker.close", new_callable=AsyncMock),
+    ):
+        await outbox.main()
+
+    constructor.assert_called_once_with(
+        poll_interval=0.25,
+        batch_size=4,
+        max_retries=2,
+        heartbeat_path=runtime_dir / "worker.heartbeat",
+    )
+    worker.run_forever.assert_awaited_once()
+    worker.stop.assert_awaited_once()
 
 
 def test_uuid_rust_conversion_uses_stable_four_byte_prefix() -> None:
