@@ -91,6 +91,14 @@ def test_repository_skill_catalogs_are_exact_mirrors_without_stale_archive() -> 
 
 
 def test_agent_instruction_surface_has_one_canonical_source() -> None:
+    # QUALITY-123 @egorribun — mutmut's isolated source copy contains only
+    # configured mutation sources, so repository instruction adapters are
+    # validated by the normal full-suite inventory job.
+    if not (ROOT / "AGENTS.md").is_file() or not (ROOT / "CLAUDE.md").is_file():
+        pytest.skip(  # QUALITY-123 @egorribun — isolated mutmut copy
+            "repository instruction files are unavailable in isolated mutation copy"
+        )
+
     canonical = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     claude_adapter = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
 
