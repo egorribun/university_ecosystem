@@ -22,12 +22,12 @@ concurrency:
 
 jobs:
   manual-mutation-stats:
-    name: Manual Mutation Evidence (mutmut stats) / shard ${{ matrix.stats_shard }}/4
+    name: Manual Mutation Evidence (mutmut stats) / shard ${{ matrix.stats_shard }}/8
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        stats_shard: [0, 1, 2, 3]
+        stats_shard: [0, 1, 2, 3, 4, 5, 6, 7]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -73,7 +73,7 @@ jobs:
           rm -rf mutants
           uv run python scripts/mutmut_stats_shard.py \
             --shard-id "${{ matrix.stats_shard }}" \
-            --num-shards 4 \
+            --num-shards 8 \
             --max-children 2
 
       - name: Upload manual mutmut stats shard

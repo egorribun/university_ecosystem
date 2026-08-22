@@ -1368,7 +1368,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert workflow["concurrency"]["group"] == "ci-matrix-${{ github.ref }}"
     assert jobs["ci-success"]["name"] == "CI Success"
 
-    assert stats_job["strategy"]["matrix"]["stats_shard"] == [0, 1, 2, 3]
+    assert stats_job["strategy"]["matrix"]["stats_shard"] == list(range(8))
     assert stats_job["timeout-minutes"] == 25
     assert "pre-commit-check" in stats_job["needs"]
     stats_text = "\n".join(
@@ -1376,7 +1376,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     )
     assert "scripts/mutmut_stats_shard.py" in stats_text
     assert "--shard-id" in stats_text
-    assert "--num-shards 4" in stats_text
+    assert "--num-shards 8" in stats_text
     helper_text = (REPOSITORY_ROOT / "scripts/mutmut_stats_shard.py").read_text(
         encoding="utf-8"
     )
@@ -2480,7 +2480,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert nightly_workflow["jobs"]["mutation-tests-full"]["strategy"]["matrix"][
         "shard"
     ] == list(range(1, 17))
-    assert stats_job["strategy"]["matrix"]["stats_shard"] == [0, 1, 2, 3]
+    assert stats_job["strategy"]["matrix"]["stats_shard"] == list(range(8))
     stats_steps = stats_job["steps"]
     stats_step = next(
         step
@@ -2518,7 +2518,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert "rm -rf mutants" in stats_script
     assert "scripts/mutmut_stats_shard.py" in stats_script
     assert '--shard-id "${{ matrix.stats_shard }}"' in stats_script
-    assert "--num-shards 4" in stats_script
+    assert "--num-shards 8" in stats_script
     assert "--max-children 2" in stats_script
     assert (
         "nightly-mutmut-stats-${{ github.run_id }}-${{ matrix.stats_shard }}"

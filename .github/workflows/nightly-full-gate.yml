@@ -18,16 +18,16 @@ concurrency:
 
 jobs:
   mutation-tests-full-stats:
-    name: Full mutation stats (mutmut) / shard ${{ matrix.stats_shard }}/4
+    name: Full mutation stats (mutmut) / shard ${{ matrix.stats_shard }}/8
     strategy:
       fail-fast: false
       # The complete pytest-to-mutant map is partitionable by the same stable
-      # shard contract used by the PR gate.  Running the four stats legs in
-      # parallel removes the single 80+ minute discovery bottleneck without
+      # shard contract used by the PR gate. Running eight stats legs in
+      # parallel keeps the heaviest test populations bounded without
       # dropping any test: merge_mutmut_stats.py rejects overlap and requires
       # every shard to contain a non-empty, valid stats payload.
       matrix:
-        stats_shard: [0, 1, 2, 3]
+        stats_shard: [0, 1, 2, 3, 4, 5, 6, 7]
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
@@ -55,7 +55,7 @@ jobs:
           rm -rf mutants
           uv run python scripts/mutmut_stats_shard.py \
             --shard-id "${{ matrix.stats_shard }}" \
-            --num-shards 4 \
+            --num-shards 8 \
             --max-children 2
 
       - name: Upload full mutmut stats shard
