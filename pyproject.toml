@@ -576,6 +576,8 @@ also_copy = [
     # test_feature_flag_architecture_contract reads the flagd deployment,
     # service, network policy, and GitOps flag definitions.
     "k8s/flagd",
+    # test_spire_manifests reads the agent DaemonSet and ConfigMap directly.
+    "k8s/spire",
     # test_quality_workflow_contract reads the three Go service Dockerfiles;
     # copy their common parent because mutmut's sandbox copier needs the
     # parent directory present for nested repository inputs.
