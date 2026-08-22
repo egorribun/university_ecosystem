@@ -38,6 +38,8 @@ async def test_dispatch_event_created_records_runtime_and_os_errors():
         record.await_args.kwargs["source"]
         == "NotificationService.dispatch_event_created"
     )
+    assert record.await_args.kwargs["record_id"] == 7
+    assert isinstance(record.await_args.kwargs["error"], OSError)
 
 
 @pytest.mark.asyncio
@@ -81,6 +83,10 @@ async def test_dispatch_news_and_comment_swallow_enqueue_errors():
     assert [call.kwargs["notification_type"] for call in report.await_args_list] == [
         "news",
         "comment",
+    ]
+    assert [call.kwargs["source"] for call in report.await_args_list] == [
+        "NotificationService.dispatch_news_created",
+        "NotificationService.dispatch_comment_created",
     ]
 
 

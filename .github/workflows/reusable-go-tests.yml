@@ -26,7 +26,11 @@ jobs:
   test:
     name: Test Go Service (${{ inputs.service-directory }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # Large entrypoints (notably gateway/cmd/gateway/main.go) can contain
+    # hundreds of mutants. Keep the blocking mutation evidence fail-closed,
+    # but give the complete changed-source set enough wall-clock budget to
+    # finish instead of converting a valid run into an outer timeout.
+    timeout-minutes: 120
     permissions:
       contents: read
     steps:
@@ -150,15 +154,15 @@ jobs:
           # distinction explicitly: a panic, timeout, or missing report fails
           # closed; a score is retained in the CI log for auditability. Large
           # entrypoints can legitimately contain hundreds of mutants, so allow
-          # up to 30 minutes for one source file without weakening failure
-          # handling. The job-level 60-minute deadline still bounds the total
+          # up to 60 minutes for one source file without weakening failure
+          # handling. The job-level 120-minute deadline still bounds the total
           # service test and mutation run.
           for target in "${TARGETS[@]}"; do
             echo "Mutating source file $target..."
             log_file="/tmp/go-mutesting-${target//[^A-Za-z0-9_.-]/_}.log"
             rm -f report.json
             set +e
-            timeout 1800s go-mutesting "$target" 2>&1 | tee "$log_file"
+            timeout 3600s go-mutesting "$target" 2>&1 | tee "$log_file"
             pipeline_status=("${PIPESTATUS[@]}")
             status=${pipeline_status[0]}
             tee_status=${pipeline_status[1]}

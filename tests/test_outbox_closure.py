@@ -1,5 +1,6 @@
 """Closure tests for outbox metrics and standalone worker lifecycle."""
 
+import os
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -118,6 +119,65 @@ async def test_outbox_main_connects_and_closes_nats(monkeypatch):
     stop.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_outbox_main_records_current_process_pid(monkeypatch, tmp_path: Path):
+    await _prepare_outbox_main(monkeypatch)
+    # Exercise the recursive directory creation contract.  ``parents=None``
+    # is accepted by ``Path.mkdir`` when the directory already exists, but it
+    # fails for a fresh nested runtime path and would leave the worker without
+    # its liveness markers.
+    runtime_dir = tmp_path / "nested" / "runtime"
+    monkeypatch.setenv("OUTBOX_WORKER_RUNTIME_DIR", str(runtime_dir))
+    # Preserve the runtime markers long enough to assert their contents. The
+    # production finally block still invokes unlink for both marker files.
+    unlink_calls: list[Path] = []
+
+    def record_unlink(path: Path, missing_ok: bool = False) -> None:
+        del missing_ok
+        unlink_calls.append(path)
+
+    monkeypatch.setattr(Path, "unlink", record_unlink)
+    write_calls: list[tuple[Path, str, str | None]] = []
+    original_write_text = Path.write_text
+
+    def record_write(
+        path: Path,
+        data: str,
+        encoding: str | None = None,
+        errors: str | None = None,
+        newline: str | None = None,
+    ) -> int:
+        write_calls.append((path, data, encoding))
+        return original_write_text(
+            path, data, encoding=encoding, errors=errors, newline=newline
+        )
+
+    monkeypatch.setattr(Path, "write_text", record_write)
+
+    with (
+        patch.object(
+            outbox,
+            "settings",
+            SimpleNamespace(
+                outbox_poll_interval_seconds=1.0,
+                outbox_batch_size=2,
+                outbox_max_retries=3,
+            ),
+        ),
+        patch.object(outbox.OutboxWorker, "run_forever", new_callable=AsyncMock),
+        patch.object(outbox.OutboxWorker, "stop", new_callable=AsyncMock),
+        patch("app.core.nats_broker.broker.connect", new_callable=AsyncMock),
+        patch("app.core.nats_broker.broker.close", new_callable=AsyncMock),
+    ):
+        await outbox.main()
+
+    assert (runtime_dir / "worker.pid").read_text(encoding="ascii") == str(os.getpid())
+    assert [
+        encoding for path, _data, encoding in write_calls if path.name == "worker.pid"
+    ] == ["ascii"]
+    assert [path.name for path in unlink_calls] == ["worker.pid", "worker.heartbeat"]
+
+
 async def test_outbox_run_forever_handles_notification_wait_timeout(monkeypatch):
     worker = outbox.OutboxWorker(poll_interval=1, batch_size=2)
 
@@ -161,3 +221,20 @@ async def test_outbox_heartbeat_records_event_loop_progress(
 
     assert heartbeat_path.is_file()
     assert heartbeat_path.read_text(encoding="ascii").strip().isdigit()
+
+
+@pytest.mark.asyncio
+async def test_outbox_heartbeat_writes_with_ascii_encoding(monkeypatch) -> None:
+    heartbeat_path = MagicMock()
+    worker = outbox.OutboxWorker(heartbeat_path=heartbeat_path)
+    worker._is_running = True
+
+    async def stop_after_first_heartbeat(_seconds: float) -> None:
+        worker._is_running = False
+
+    monkeypatch.setattr(outbox.asyncio, "sleep", stop_after_first_heartbeat)
+
+    await worker._heartbeat_loop()
+
+    heartbeat_path.write_text.assert_called_once()
+    assert heartbeat_path.write_text.call_args.kwargs["encoding"] == "ascii"

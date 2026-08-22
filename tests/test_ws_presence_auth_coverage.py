@@ -95,17 +95,43 @@ async def test_get_user_from_ticket_malformed_payload() -> None:
 
     # Case 2: Colon at index 0 (empty user_id)
     mock_redis.getdel.return_value = ":some-jti-here"
-    with patch("app.deps.cache.get_cache_client", return_value=mock_redis):
+    with (
+        patch("app.deps.cache.get_cache_client", return_value=mock_redis),
+        patch("app.api.ws.auth._resolve_user_from_ids", new=AsyncMock()) as resolve,
+    ):
         user, jti = await get_user_from_ticket(ticket)
         assert user is None
         assert jti is None
+    resolve.assert_not_awaited()
 
     # Case 3: Colon at the very end (empty JTI)
     mock_redis.getdel.return_value = "some-user-id:"
-    with patch("app.deps.cache.get_cache_client", return_value=mock_redis):
+    with (
+        patch("app.deps.cache.get_cache_client", return_value=mock_redis),
+        patch("app.api.ws.auth._resolve_user_from_ids", new=AsyncMock()) as resolve,
+    ):
         user, jti = await get_user_from_ticket(ticket)
         assert user is None
         assert jti is None
+    resolve.assert_not_awaited()
+
+    # Case 4: Extra segments must take the explicit malformed-payload branch.
+    # This also prevents the validation condition from degrading into a generic
+    # destructuring exception, which would lose the safe diagnostic path.
+    mock_redis.getdel.return_value = "user-id:jti:unexpected"
+    with (
+        patch("app.deps.cache.get_cache_client", return_value=mock_redis),
+        patch("app.api.ws.auth.logger.warning") as warning,
+    ):
+        user, jti = await get_user_from_ticket(ticket)
+
+    assert user is None
+    assert jti is None
+    assert any(
+        call.args
+        and call.args[0] == "WS ticket has malformed payload (sep=%d len=%d): %s…"
+        for call in warning.call_args_list
+    )
 
 
 @pytest.mark.asyncio
@@ -468,8 +494,15 @@ async def test_get_user_from_token_edge_cases() -> None:
         assert await get_user_from_token("token") == (None, None)
 
     # 3. decode_token raises DecodeError
-    with patch("app.auth.security.decode_token", side_effect=_JWT_DECODE_ERRORS[0]):
+    decode_error = _JWT_DECODE_ERRORS[0]("invalid token")
+    with (
+        patch("app.auth.security.decode_token", side_effect=decode_error),
+        patch("app.api.ws.auth.logger.debug") as debug,
+    ):
         assert await get_user_from_token("token") == (None, None)
+    debug.assert_called_once_with(
+        "websocket.jwt_rejected", error_type=type(decode_error).__name__
+    )
 
     # 4. decode_token raises unexpected Exception
     with patch(

@@ -43,7 +43,9 @@ async def test_replay_without_handler_fails_safely_instead_of_losing_job() -> No
 
     assert (success, failed) == (0, 1)
     assert job.status == JobStatus.PENDING.value
-    assert "handler" in job.error_message.lower()
+    assert job.error_message == (
+        "No DB DLQ replay handler is configured for job type 'sync_record'"
+    )
 
 
 @pytest.mark.asyncio

@@ -47,12 +47,17 @@ async def test_enqueue_comment_converts_all_integer_ids():
 async def test_cleanup_dead_lettered_jobs_deletes_expired_rows():
     db = AsyncMock()
     db.execute.return_value = MagicMock(rowcount=2)
+    supplied_now = datetime(2026, 8, 17, tzinfo=UTC)
 
-    deleted = await queue.cleanup_dead_lettered_jobs(
-        7,
-        db=db,
-        now=datetime(2026, 8, 17, tzinfo=UTC),
-    )
+    with patch("app.services.notification_queue.datetime") as datetime_type:
+        datetime_type.now.side_effect = AssertionError(
+            "cleanup must honor the supplied timestamp"
+        )
+        deleted = await queue.cleanup_dead_lettered_jobs(
+            7,
+            db=db,
+            now=supplied_now,
+        )
 
     assert deleted == 2
     db.execute.assert_awaited_once()
@@ -159,6 +164,7 @@ async def test_enqueue_helpers_report_transport_failures_and_reraise():
             {"locale": "en"},
             "event",
             ids[0],
+            "enqueue_event_notification",
         ),
         (
             queue.enqueue_news_notification,
@@ -167,6 +173,7 @@ async def test_enqueue_helpers_report_transport_failures_and_reraise():
             {"locale": "ru"},
             "news",
             ids[0],
+            "enqueue_news_notification",
         ),
         (
             queue.enqueue_comment_notification,
@@ -175,15 +182,27 @@ async def test_enqueue_helpers_report_transport_failures_and_reraise():
             {"locale": "en"},
             "comment",
             ids[1],
+            "enqueue_comment_notification",
         ),
     ]
 
-    for enqueue, task, args, kwargs, expected_kind, expected_id in cases:
+    for (
+        enqueue,
+        task,
+        args,
+        kwargs,
+        expected_kind,
+        expected_id,
+        expected_source,
+    ) in cases:
+        transport_error = OSError("nats")
         with (
-            patch.object(task, "kick", new=AsyncMock(side_effect=OSError("nats"))),
+            patch.object(task, "kick", new=AsyncMock(side_effect=transport_error)),
             patch.object(queue, "report_enqueue_failure", new=AsyncMock()) as report,
             pytest.raises(OSError, match="nats"),
         ):
             await enqueue(*args, **kwargs)
         assert report.await_args.kwargs["notification_type"] == expected_kind
         assert report.await_args.kwargs["record_id"] == expected_id
+        assert report.await_args.kwargs["error"] is transport_error
+        assert report.await_args.kwargs["source"] == expected_source

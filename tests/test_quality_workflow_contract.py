@@ -2061,7 +2061,7 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
     assert merged_upload["with"]["include-hidden-files"] is True
 
     go = yaml.safe_load(GO_WORKFLOW_PATH.read_text(encoding="utf-8"))
-    assert go["jobs"]["test"]["timeout-minutes"] == 60
+    assert go["jobs"]["test"]["timeout-minutes"] == 120
     assert go["jobs"]["lint"]["timeout-minutes"] == 20
     go_lint_action = next(
         step

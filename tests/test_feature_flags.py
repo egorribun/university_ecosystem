@@ -12,8 +12,10 @@ from fastapi import HTTPException
 from openfeature.evaluation_context import EvaluationContext
 
 from app.core.feature_flags import (
+    FLAG_GRAPHQL_SUBSCRIPTIONS,
     FLAG_NEW_CHAT_UI,
     FLAG_PUSH_BATCHING,
+    FLAG_SEMANTIC_SEARCH,
     initialize_feature_flags,
     is_enabled,
     is_enabled_sync,
@@ -95,18 +97,32 @@ def test_list_feature_flags_reports_evaluation_and_gitops_ownership():
         "config_path": "k8s/flagd/flags.json",
     }
     assert get_client.return_value.get_boolean_details.call_count == 4
+    assert [
+        call.args[0]
+        for call in get_client.return_value.get_boolean_details.call_args_list
+    ] == [
+        FLAG_NEW_CHAT_UI,
+        FLAG_SEMANTIC_SEARCH,
+        FLAG_PUSH_BATCHING,
+        FLAG_GRAPHQL_SUBSCRIPTIONS,
+    ]
 
 
 def test_list_feature_flags_reports_unavailable_provider_with_fallbacks():
+    provider_error = RuntimeError("provider down")
     with (
         patch(
             "openfeature.api.get_provider_metadata",
             return_value=SimpleNamespace(name="FlagdProvider"),
         ),
-        patch("openfeature.api.get_client", side_effect=RuntimeError("provider down")),
+        patch("openfeature.api.get_client", side_effect=provider_error),
+        patch("app.core.feature_flags.logger.warning") as warning,
     ):
         flags = list_feature_flags()
 
+    warning.assert_called_once_with(
+        "Feature flag diagnostics unavailable: %s", provider_error
+    )
     assert [flag["enabled"] for flag in flags] == [False, False, True, False]
     assert {flag["provider"] for flag in flags} == {"unavailable"}
     assert {flag["evaluation_reason"] for flag in flags} == {"ERROR"}
@@ -121,10 +137,14 @@ def test_list_feature_flags_reports_default_noop_provider_as_unavailable():
     with (
         patch("openfeature.api.get_client") as get_client,
         patch("openfeature.api.get_provider_metadata", return_value=provider_metadata),
+        patch("app.core.feature_flags.logger.warning") as warning,
     ):
         flags = list_feature_flags()
 
     get_client.return_value.get_boolean_details.assert_not_called()
+    warning.assert_called_once_with(
+        "Feature flag diagnostics are using the OpenFeature no-op provider"
+    )
     assert [flag["enabled"] for flag in flags] == [False, False, True, False]
     assert {flag["provider"] for flag in flags} == {"unavailable"}
     assert {flag["evaluation_reason"] for flag in flags} == {"ERROR"}
