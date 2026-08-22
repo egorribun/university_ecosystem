@@ -34,11 +34,11 @@ def _resolve_resample_filter() -> Resampling:
     """Return the best available high-quality resampling filter."""
     resampling = getattr(Image, "Resampling", None)
     if resampling is not None:
-        return cast("Resampling", resampling.LANCZOS)
+        return cast(Resampling, resampling.LANCZOS)
     lanczos = getattr(Image, "LANCZOS", None)
     if lanczos is None:
         raise AttributeError("Pillow installation does not expose a LANCZOS filter")
-    return cast("Resampling", lanczos)
+    return cast(Resampling, lanczos)
 
 
 def sanitize_svg(data: bytes) -> bytes:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -12,7 +12,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import BackgroundTasks
 
+import app.auth.security as security
 import app.core.database as database
+import app.services.nats_messaging as nats_messaging
 import app.workers.outbox as outbox
 from app.core.nats_broker import NatsTaskBroker
 from app.services import notification_queue as queue
@@ -83,6 +85,28 @@ async def test_dead_letter_cleanup_normalizes_naive_timestamp_before_cutoff() ->
 
 
 @pytest.mark.asyncio
+async def test_dead_letter_cleanup_normalizes_aware_non_utc_timestamp_before_cutoff() -> (
+    None
+):
+    db = AsyncMock()
+    db.execute.return_value = MagicMock(rowcount=0)
+
+    await queue.cleanup_dead_lettered_jobs(
+        7,
+        db=db,
+        now=datetime(2026, 8, 17, 3, tzinfo=timezone(timedelta(hours=3))),
+    )
+
+    statement = db.execute.await_args.args[0]
+    cutoff = next(
+        value
+        for name, value in statement.compile().params.items()
+        if name.startswith("enqueued_at")
+    )
+    assert cutoff == datetime(2026, 8, 10, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
 async def test_dead_letter_cleanup_rejects_negative_retention_with_exact_message() -> (
     None
 ):
@@ -108,6 +132,40 @@ async def test_nats_connect_preserves_unlimited_reconnect_policy() -> None:
     kwargs = connect.await_args.kwargs
     assert kwargs["max_reconnect_attempts"] == -1
     assert kwargs["connect_timeout"] == 2
+
+
+def test_get_nats_service_uses_configured_server_and_token(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(nats_messaging, "_nats_service", None)
+    settings = SimpleNamespace(
+        nats_url="nats://configured.example:4222",
+        nats_auth_token="configured-token",
+    )
+    instance = MagicMock()
+
+    with (
+        patch("app.core.config.settings", settings),
+        patch.object(
+            nats_messaging, "NatsService", return_value=instance
+        ) as constructor,
+    ):
+        assert nats_messaging.get_nats_service() is instance
+
+    constructor.assert_called_once_with(
+        servers="nats://configured.example:4222",
+        auth_token="configured-token",
+    )
+
+
+def test_unsupported_password_hash_warning_keeps_security_contract() -> None:
+    with patch.object(security._logger, "warning") as warning:
+        security._warn_unsupported_password_hash()
+
+    warning.assert_called_once_with(
+        "unsupported_password_hash_rejected: only argon2id hashes are accepted; "
+        "the user must reset their password",
+    )
 
 
 def test_database_invalidation_keeps_structured_log_message() -> None:
