@@ -203,15 +203,6 @@ func TestListenForRevocations_AlreadyCancelledReturns(t *testing.T) {
 }
 
 func TestListenForRevocations_ReconnectsAfterBackoffTimer(t *testing.T) {
-	oldRead := cryptoRandReadFunc
-	t.Cleanup(func() { cryptoRandReadFunc = oldRead })
-	cryptoRandReadFunc = func(randomBytes []byte) (int, error) {
-		for i := range randomBytes {
-			randomBytes[i] = 0
-		}
-		return len(randomBytes), nil
-	}
-
 	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
 	t.Cleanup(func() { require.NoError(t, rdb.Close()) })
 	middleware := NewJWTMiddleware("secret", rdb)
