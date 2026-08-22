@@ -146,7 +146,11 @@ async def test_outbox_heartbeat_optional_paths(tmp_path: Path) -> None:
         return worker.batch_size
 
     worker.process_batch = AsyncMock(side_effect=finish_batch)
-    await worker.run_forever()
+    with patch("app.workers.outbox.asyncio.gather", new=AsyncMock()) as gather:
+        await worker.run_forever()
+
+    gather.assert_awaited_once()
+    assert gather.await_args.kwargs["return_exceptions"] is True
     worker._heartbeat_loop.assert_awaited_once_with()
 
 
