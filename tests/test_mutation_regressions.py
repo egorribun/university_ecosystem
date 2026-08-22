@@ -108,6 +108,31 @@ async def test_dead_letter_cleanup_normalizes_aware_non_utc_timestamp_before_cut
 
 
 @pytest.mark.asyncio
+async def test_dead_letter_cleanup_forwards_retention_to_owned_session() -> None:
+    db = AsyncMock()
+    db.execute.return_value = MagicMock(rowcount=0)
+    session_context = MagicMock()
+    session_context.__aenter__ = AsyncMock(return_value=db)
+    session_context.__aexit__ = AsyncMock(return_value=False)
+
+    with patch.object(queue, "async_session", return_value=session_context):
+        await queue.cleanup_dead_lettered_jobs(
+            7,
+            now=datetime(2026, 8, 17, tzinfo=UTC),
+        )
+
+    statement = db.execute.await_args.args[0]
+    cutoff = next(
+        value
+        for name, value in statement.compile().params.items()
+        if name.startswith("enqueued_at")
+    )
+    assert cutoff == datetime(2026, 8, 10, tzinfo=UTC)
+    session_context.__aenter__.assert_awaited_once()
+    session_context.__aexit__.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_dead_letter_cleanup_rejects_negative_retention_with_exact_message() -> (
     None
 ):
