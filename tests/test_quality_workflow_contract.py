@@ -975,6 +975,12 @@ def test_sbom_python_and_rust_audits_capture_then_validate_reports() -> None:
     assert "--output /tmp/pip-audit.json" in python_script
     assert "pip_audit_status=$?" in python_script
     assert "set +e" in python_script and "set -e" in python_script
+    assert "for attempt in 1 2 3; do" in python_script
+    assert (
+        'if [[ "$pip_audit_status" -eq 0 || -s /tmp/pip-audit.json ]]; then'
+        in python_script
+    )
+    assert "sleep $((attempt * 15))" in python_script
     assert python_script.index("set +e") < python_script.index("pip_audit_status=$?")
     assert python_script.index("pip_audit_status=$?") < python_script.index("set -e")
     assert (
@@ -1078,6 +1084,11 @@ def test_reusable_python_audit_uses_the_same_fail_closed_validator() -> None:
     assert "--format json" in script
     assert "pip_audit_status=$?" in script
     assert "set +e" in script and "set -e" in script
+    assert "for attempt in 1 2 3; do" in script
+    assert (
+        'if [[ "$pip_audit_status" -eq 0 || -s /tmp/pip-audit.json ]]; then' in script
+    )
+    assert "sleep $((attempt * 15))" in script
     assert (
         "uv run --frozen --no-sync python scripts/check_dependency_audit_report.py pip"
     ) in script
