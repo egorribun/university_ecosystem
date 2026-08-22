@@ -182,6 +182,53 @@ func TestListenForRevocations_PurgesThenStopsDuringBackoff(t *testing.T) {
 	require.Eventually(t, func() bool { return ctx.Err() != nil }, time.Second, time.Millisecond)
 }
 
+func TestListenForRevocations_AlreadyCancelledReturns(t *testing.T) {
+	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
+	t.Cleanup(func() { require.NoError(t, rdb.Close()) })
+	middleware := NewJWTMiddleware("secret", rdb)
+	listenerCalled := make(chan struct{}, 1)
+	middleware.listenOnceFunc = func(context.Context) {
+		listenerCalled <- struct{}{}
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	middleware.ListenForRevocations(ctx)
+
+	select {
+	case <-listenerCalled:
+		t.Fatal("revocation listener started for an already-cancelled context")
+	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+func TestListenForRevocations_ReconnectsAfterBackoffTimer(t *testing.T) {
+	oldRead := cryptoRandReadFunc
+	t.Cleanup(func() { cryptoRandReadFunc = oldRead })
+	cryptoRandReadFunc = func(randomBytes []byte) (int, error) {
+		for i := range randomBytes {
+			randomBytes[i] = 0
+		}
+		return len(randomBytes), nil
+	}
+
+	rdb := redis.NewClient(&redis.Options{Addr: "127.0.0.1:1"})
+	t.Cleanup(func() { require.NoError(t, rdb.Close()) })
+	middleware := NewJWTMiddleware("secret", rdb)
+	calls := make(chan struct{}, 2)
+	middleware.listenOnceFunc = func(context.Context) {
+		calls <- struct{}{}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+
+	middleware.ListenForRevocations(ctx)
+	require.Eventually(t, func() bool {
+		return len(calls) >= 2
+	}, 3*time.Second, 10*time.Millisecond, "listener should reconnect after the backoff timer fires")
+	cancel()
+}
+
 func TestListenForRevocations_DisconnectionAndClose(t *testing.T) {
 	// Setup mock redis server that disconnects immediately
 	url, cleanup := startMockRedis(t, mockRedisConfig{existsReply: ":0\r\n"})
