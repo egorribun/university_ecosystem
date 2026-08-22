@@ -130,11 +130,10 @@ async def test_outbox_main_records_current_process_pid(monkeypatch, tmp_path: Pa
     monkeypatch.setenv("OUTBOX_WORKER_RUNTIME_DIR", str(runtime_dir))
     # Preserve the runtime markers long enough to assert their contents. The
     # production finally block still invokes unlink for both marker files.
-    unlink_calls: list[Path] = []
+    unlink_calls: list[tuple[Path, bool]] = []
 
     def record_unlink(path: Path, missing_ok: bool = False) -> None:
-        del missing_ok
-        unlink_calls.append(path)
+        unlink_calls.append((path, missing_ok))
 
     monkeypatch.setattr(Path, "unlink", record_unlink)
     write_calls: list[tuple[Path, str, str | None]] = []
@@ -175,7 +174,10 @@ async def test_outbox_main_records_current_process_pid(monkeypatch, tmp_path: Pa
     assert [
         encoding for path, _data, encoding in write_calls if path.name == "worker.pid"
     ] == ["ascii"]
-    assert [path.name for path in unlink_calls] == ["worker.pid", "worker.heartbeat"]
+    assert [(path.name, missing_ok) for path, missing_ok in unlink_calls] == [
+        ("worker.pid", True),
+        ("worker.heartbeat", True),
+    ]
 
 
 async def test_outbox_run_forever_handles_notification_wait_timeout(monkeypatch):
