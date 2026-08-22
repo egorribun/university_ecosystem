@@ -1,4 +1,5 @@
 import sys
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -88,6 +89,17 @@ def test_resolve_resample_filter_fallbacks():
         patch.object(Image, "Resampling", None, create=True),
         patch.object(Image, "LANCZOS", None, create=True),
     ):
+        with pytest.raises(
+            AttributeError, match="Pillow installation does not expose a LANCZOS filter"
+        ):
+            _resolve_resample_filter()
+
+
+def test_resolve_resample_filter_reports_missing_legacy_attribute():
+    """A Pillow build without either resampling API fails with our contract error."""
+    from app.utils.images import _resolve_resample_filter
+
+    with patch.object(img_mod, "Image", SimpleNamespace(Resampling=None)):
         with pytest.raises(
             AttributeError, match="Pillow installation does not expose a LANCZOS filter"
         ):

@@ -340,7 +340,11 @@ class DeadLetterQueue:
 
                     if halt_replay:
                         break
-                    await self.session.flush()
+                    # Flush only after a complete batch. Keeping this explicit
+                    # boolean branch prevents a future non-boolean sentinel from
+                    # silently turning a successful batch into an unflushed one.
+                    if halt_replay is False:
+                        await self.session.flush()
             finally:
                 DeadLetterQueue._is_replaying = False
 

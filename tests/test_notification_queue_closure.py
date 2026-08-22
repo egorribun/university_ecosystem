@@ -49,7 +49,10 @@ async def test_cleanup_dead_lettered_jobs_deletes_expired_rows():
     db.execute.return_value = MagicMock(rowcount=2)
     supplied_now = datetime(2026, 8, 17, tzinfo=UTC)
 
-    with patch("app.services.notification_queue.datetime") as datetime_type:
+    with (
+        patch("app.services.notification_queue.datetime") as datetime_type,
+        patch.object(queue.logger, "info") as info,
+    ):
         datetime_type.now.side_effect = AssertionError(
             "cleanup must honor the supplied timestamp"
         )
@@ -65,6 +68,10 @@ async def test_cleanup_dead_lettered_jobs_deletes_expired_rows():
     statement = str(db.execute.await_args.args[0])
     assert "notification_queue_jobs.dead_lettered IS true" in statement
     assert "notification_queue_jobs.enqueued_at <=" in statement
+    info.assert_called_once_with(
+        "Removed %s expired notification queue dead letters",
+        2,
+    )
 
 
 @pytest.mark.asyncio
@@ -109,19 +116,28 @@ async def test_cleanup_dead_lettered_jobs_owns_session_and_validates_retention()
 @pytest.mark.asyncio
 async def test_report_failure_updates_queue_metrics():
     record_id = uuid.uuid4()
+    error = RuntimeError("queue full")
     metric = MagicMock()
 
     with (
         patch.object(queue.metrics, "record_notification_failed") as record_metric,
         patch.object(queue, "_queue_metrics", metric),
+        patch.object(queue.logger, "error") as error_log,
     ):
         await queue.report_enqueue_failure(
             notification_type="event",
             record_id=record_id,
-            error=RuntimeError("queue full"),
+            error=error,
             source="test",
         )
 
+    error_log.assert_called_once_with(
+        "Failed to enqueue %s notification for ID %s (source=%s): %s",
+        "event",
+        record_id,
+        "test",
+        error,
+    )
     record_metric.assert_called_once_with(
         notification_type="event", reason="enqueue_failure"
     )

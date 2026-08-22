@@ -134,8 +134,9 @@ async def test_connect_reconciles_existing_stream_configuration_drift() -> None:
     mock_nc.is_connected = True
     mock_nc.close = AsyncMock()
 
-    with patch(
-        "app.core.nats_broker.nats.connect", new=AsyncMock(return_value=mock_nc)
+    with (
+        patch("app.core.nats_broker.nats.connect", new=AsyncMock(return_value=mock_nc)),
+        patch("app.core.nats_broker._logger.info") as info,
     ):
         await broker.connect()
 
@@ -144,6 +145,10 @@ async def test_connect_reconciles_existing_stream_configuration_drift() -> None:
     assert reconciled.name == "TASK_QUEUE"
     assert reconciled.subjects == ["tasks.>"]
     assert reconciled.max_age == 604_800
+    info.assert_any_call(
+        "Reconciled existing NATS JetStream stream %s",
+        "TASK_QUEUE",
+    )
     assert broker.is_connected
 
 

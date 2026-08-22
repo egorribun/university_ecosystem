@@ -148,6 +148,19 @@ async def test_replay_continues_to_followup_batches_after_successful_batch() -> 
     )
 
 
+@pytest.mark.asyncio
+async def test_replay_flushes_after_each_completed_batch() -> None:
+    session = AsyncMock()
+    queue = DeadLetterQueue(session)
+    queue.mark_job_retrying = AsyncMock()
+    queue.mark_job_completed = AsyncMock()
+    queue.get_jobs_ready_for_retry = AsyncMock(side_effect=[[_job()], []])
+
+    await queue.auto_replay_jobs(handler=AsyncMock(), rate_limit_delay=0)
+
+    session.flush.assert_awaited_once_with()
+
+
 def test_circuit_listener_ignores_non_recovery_and_no_running_loop() -> None:
     circuit_breaker = MagicMock()
     register_circuit_breaker_db_dlq_listener(circuit_breaker, MagicMock())

@@ -28,6 +28,59 @@ def sample_item():
     )
 
 
+def test_unique_id_allocator_keeps_surrogate_mapping(optimizer_service) -> None:
+    item = ScheduleItemInternal(
+        id=uuid.UUID("018f0000-0000-7000-8000-000000000001"),
+        weekday="Monday",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+        end_time=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
+        parity="both",
+    )
+
+    rust_items, rust_id_map = optimizer_service._to_rust_items_with_unique_ids([item])
+
+    assert [rust_item.id for rust_item in rust_items] == [2_147_483_647]
+    assert rust_id_map == {2_147_483_647: item}
+
+
+@pytest.mark.asyncio
+async def test_batch_conflicts_restore_both_metadata_with_native_pair(
+    optimizer_service,
+) -> None:
+    first = ScheduleItemInternal(
+        id=101,
+        weekday="Monday",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+        end_time=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
+        parity="both",
+        room="101A",
+        teacher="Dr. Smith",
+    )
+    second = first.model_copy(
+        update={
+            "id": 202,
+            "room": "202B",
+            "teacher": "Prof. Jones",
+        }
+    )
+
+    def return_first_pair(rust_items):
+        return [(rust_items[0], rust_items[1])]
+
+    with patch(
+        "rust_ext.batch_detect_conflicts",
+        side_effect=return_first_pair,
+    ):
+        conflicts = await optimizer_service.batch_detect_conflicts([first, second])
+
+    assert len(conflicts) == 1
+    returned = {item.id: item for pair in conflicts for item in pair}
+    assert returned[101].room == "101A"
+    assert returned[101].teacher == "Dr. Smith"
+    assert returned[202].room == "202B"
+    assert returned[202].teacher == "Prof. Jones"
+
+
 @pytest.mark.asyncio
 async def test_detect_conflicts_success(optimizer_service, sample_item):
     # Same weekday, overlapping time, same parity = conflict
