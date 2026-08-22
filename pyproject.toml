@@ -537,12 +537,17 @@ pytest_add_cli_args_test_selection = [
 #   - test_backend_dockerfile      → backend.Dockerfile         (uv image pin)
 #   - test_quality_configuration   → .dockerignore and Dockerfile.test.dockerignore
 #                                      plus .gitignore (test-image and xdist contracts)
+#                                      plus the canonical AGENTS/CLAUDE/TESTING
+#                                      instruction and quality documents
 # Copy the repository-contract paths into the isolated tree so the full nightly
 # run can measure them without a false collection failure. The mutation-score
 # parser contract imports `scripts/check_mutation_score.py`; copying its parent
 # directory prevents that test from breaking mutmut's clean-test baseline. The
 # isolated-performance tool test also reads its trusted Rust Dockerfile.
 also_copy = [
+    "AGENTS.md",
+    "CLAUDE.md",
+    "TESTING.md",
     ".github",
     ".gitignore",
     ".dockerignore",
