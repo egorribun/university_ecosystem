@@ -52,7 +52,15 @@ COPY native ./native
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=cache,target=/root/.cargo/registry \
-    uv sync --frozen --no-dev --no-install-project
+    n=0; until uv sync --frozen --no-dev --no-install-project; do \
+        n=$((n + 1)); \
+        if [ "$n" -ge 5 ]; then \
+            echo "uv sync failed after $n attempts" >&2; \
+            exit 1; \
+        fi; \
+        echo "uv sync failed (network), retry $n/5 in 5s..." >&2; \
+        sleep 5; \
+    done
 
 # Stage 2: Runtime
 FROM python:3.14-slim-bookworm@sha256:4ff4b92a68355dbdb52584ab3391dff8d371a61d4e063468bfd0130e3189c6d9 AS runtime

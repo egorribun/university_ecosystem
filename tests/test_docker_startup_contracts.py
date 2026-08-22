@@ -117,6 +117,46 @@ def test_launcher_generates_documented_secret_lengths_and_syncs_rs256() -> None:
     assert "GRAFANA_ADMIN_USER=admin" in compose_env
 
 
+def test_launcher_syncs_all_required_compose_variables_from_docker_env() -> None:
+    script = _read("start-docker.ps1")
+    sync_block = script[
+        script.index("$composeSyncKeys = @(") : script.index(
+            "# -- Wave 137 SW1", script.index("$composeSyncKeys = @(")
+        )
+    ]
+
+    required_keys = {
+        "POSTGRES_PASSWORD",
+        "MINIO_ROOT_USER",
+        "MINIO_ROOT_PASSWORD",
+        "ELASTIC_PASSWORD",
+        "NATS_USER",
+        "NATS_PASSWORD",
+        "SPICEDB_PRESHARED_KEY",
+        "WS_HUB_INTERNAL_SECRET",
+        "GRAFANA_ADMIN_PASSWORD",
+        "REDIS_PASSWORD",
+        "SECRET_KEY",
+        "INTERNAL_HMAC_SECRET",
+        "METRICS_BASIC_AUTH_PASSWORD",
+        "IMGPROXY_KEY",
+        "IMGPROXY_SALT",
+    }
+
+    assert required_keys <= set(re.findall(r'"([A-Z][A-Z0-9_]+)"', sync_block))
+    assert "Get-EnvEntry -Path $EnvFile -Key $key" in sync_block
+    assert "Set-EnvEntry -Path $EnvCompose -Key $key -Value $dockerValue" in sync_block
+    assert "Required variables are missing or empty" in sync_block
+
+
+def test_backend_image_retries_transient_uv_registry_failures() -> None:
+    dockerfile = _read("backend.Dockerfile")
+
+    assert "until uv sync --frozen --no-dev --no-install-project" in dockerfile
+    assert 'if [ "$n" -ge 5 ]' in dockerfile
+    assert "uv sync failed (network), retry $n/5 in 5s" in dockerfile
+
+
 def test_launcher_validates_and_reconciles_existing_rsa_material() -> None:
     script = _read("start-docker.ps1")
     private_key_function = _powershell_function(

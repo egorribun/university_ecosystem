@@ -845,28 +845,48 @@ Ensure-JwtEnvironment
 # Make bind-mounted configuration changes visible to Compose's config hash.
 Ensure-DockerConfigRevision
 
-# -- Sync check: ensure .env has all required vars ----------------------------
-
+# -- Sync check: keep Compose interpolation in lockstep with .env.docker ------
+# Compose reads these values from .env while containers read .env.docker. A
+# partially populated or stale .env therefore fails before the backend starts
+# (or, worse, starts services with credentials that do not match). Treat the
+# docker env file as the canonical source for every required interpolation key,
+# including keys that older launcher versions forgot to backfill.
 if (-not $generated) {
-    $envContent = Get-Content $EnvCompose -Raw -ErrorAction SilentlyContinue
-    $missing = @()
-    foreach ($key in @("WS_HUB_INTERNAL_SECRET", "REDIS_PASSWORD", "MINIO_ROOT_PASSWORD", "SPICEDB_PRESHARED_KEY", "GRAFANA_ADMIN_PASSWORD")) {
-        if ($envContent -notmatch "(?m)^$key=") {
-            $missing += $key
+    $composeSyncKeys = @(
+        "POSTGRES_PASSWORD",
+        "MINIO_ROOT_USER",
+        "MINIO_ROOT_PASSWORD",
+        "ELASTIC_PASSWORD",
+        "NATS_USER",
+        "NATS_PASSWORD",
+        "SPICEDB_PRESHARED_KEY",
+        "WS_HUB_INTERNAL_SECRET",
+        "GRAFANA_ADMIN_PASSWORD",
+        "REDIS_PASSWORD",
+        "SECRET_KEY",
+        "INTERNAL_HMAC_SECRET",
+        "METRICS_BASIC_AUTH_PASSWORD",
+        "IMGPROXY_KEY",
+        "IMGPROXY_SALT"
+    )
+    $missingDockerKeys = @()
+    $synchronizedKeys = @()
+    foreach ($key in $composeSyncKeys) {
+        $dockerValue = Get-EnvEntry -Path $EnvFile -Key $key
+        if ([string]::IsNullOrWhiteSpace($dockerValue)) {
+            $missingDockerKeys += $key
+            continue
+        }
+        if ((Get-EnvEntry -Path $EnvCompose -Key $key) -ne $dockerValue) {
+            Set-EnvEntry -Path $EnvCompose -Key $key -Value $dockerValue
+            $synchronizedKeys += $key
         }
     }
-    if ($missing.Count -gt 0) {
-        Write-Warn "Missing vars in .env: $($missing -join ', '). Reading from .env.docker..."
-        $dockerLines = Get-Content $EnvFile -ErrorAction SilentlyContinue
-        $patch = ""
-        foreach ($key in $missing) {
-            $line = $dockerLines | Where-Object { $_ -match "^$key=" } | Select-Object -First 1
-            if ($line) { $patch += "`n$line" }
-        }
-        if ($patch) {
-            Add-Content -Path $EnvCompose -Value $patch -NoNewline:$false
-            Write-Ok "Patched .env with missing vars"
-        }
+    if ($missingDockerKeys.Count -gt 0) {
+        throw "Required variables are missing or empty in ${EnvFile}: $($missingDockerKeys -join ', ')"
+    }
+    if ($synchronizedKeys.Count -gt 0) {
+        Write-Ok "Synchronized Compose variables from ${EnvFile}: $($synchronizedKeys -join ', ')"
     }
 }
 
