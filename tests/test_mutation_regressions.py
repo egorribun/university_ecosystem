@@ -117,6 +117,26 @@ async def test_dead_letter_cleanup_normalizes_aware_non_utc_timestamp_before_cut
 
 
 @pytest.mark.asyncio
+async def test_dead_letter_cleanup_converts_non_utc_offset_before_cutoff() -> None:
+    db = AsyncMock()
+    db.execute.return_value = SimpleNamespace(rowcount=0)
+
+    await queue.cleanup_dead_lettered_jobs(
+        7,
+        db=db,
+        now=datetime(2026, 8, 17, 3, tzinfo=timezone(timedelta(hours=3))),
+    )
+
+    statement = db.execute.await_args.args[0]
+    cutoff = next(
+        value
+        for name, value in statement.compile().params.items()
+        if name.startswith("enqueued_at")
+    )
+    assert cutoff == datetime(2026, 8, 10, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
 async def test_dead_letter_cleanup_forwards_retention_to_owned_session() -> None:
     db = AsyncMock()
     db.execute.return_value = MagicMock(rowcount=0)
@@ -139,6 +159,20 @@ async def test_dead_letter_cleanup_forwards_retention_to_owned_session() -> None
     assert cutoff == datetime(2026, 8, 10, tzinfo=UTC)
     session_context.__aenter__.assert_awaited_once()
     session_context.__aexit__.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_dead_letter_cleanup_treats_none_rowcount_as_zero() -> None:
+    db = AsyncMock()
+    db.execute.return_value = SimpleNamespace(rowcount=None)
+
+    deleted = await queue.cleanup_dead_lettered_jobs(
+        7,
+        db=db,
+        now=datetime(2026, 8, 17, tzinfo=UTC),
+    )
+
+    assert deleted == 0
 
 
 @pytest.mark.asyncio
@@ -364,6 +398,97 @@ def test_uuid_surrogate_allocator_moves_down_from_occupied_i32_max() -> None:
 
     assert [item.id for item in rust_items] == [2_147_483_647, 2_147_483_646]
     assert rust_id_map == {2_147_483_647: occupied, 2_147_483_646: uuid_item}
+
+
+def test_uuid_surrogate_allocator_passes_item_to_native_converter() -> None:
+    service = ScheduleOptimizerService()
+    item = ScheduleItemInternal(
+        id=uuid.UUID("018f0000-0000-7000-8000-000000000001"),
+        weekday="Monday",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+        end_time=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
+        parity="both",
+    )
+    second_item = item.model_copy(
+        update={
+            "id": uuid.UUID("018f0000-0000-7000-8000-000000000002"),
+            "room": "102B",
+        }
+    )
+
+    calls: list[tuple[ScheduleItemInternal, int]] = []
+
+    def strict_to_rust_item(
+        converted_item: ScheduleItemInternal, *, rust_id_override: int
+    ) -> object:
+        calls.append((converted_item, rust_id_override))
+        return SimpleNamespace(id=rust_id_override)
+
+    with patch.object(service, "_to_rust_item", side_effect=strict_to_rust_item):
+        rust_items, _ = service._to_rust_items_with_unique_ids([item, second_item])
+
+    assert calls == [
+        (item, 2_147_483_647),
+        (second_item, 2_147_483_646),
+    ]
+    assert [rust_item.id for rust_item in rust_items] == [
+        2_147_483_647,
+        2_147_483_646,
+    ]
+
+
+@pytest.mark.asyncio
+async def test_batch_conflicts_passes_b_item_to_native_reconstruction() -> None:
+    service = ScheduleOptimizerService()
+    first = _schedule_item(101, room="101A", teacher="Dr. Smith")
+    second = _schedule_item(202, room="202B", teacher="Prof. Jones")
+
+    def return_first_pair(rust_items):
+        return [(rust_items[0], rust_items[1])]
+
+    reconstructed: list[tuple[object, str | None, str | None]] = []
+
+    def strict_from_rust_item(
+        native_item: object,
+        original_room: str | None,
+        original_teacher: str | None,
+    ) -> ScheduleItemInternal:
+        reconstructed.append((native_item, original_room, original_teacher))
+        return ScheduleItemInternal(
+            id=getattr(native_item, "id", None),
+            weekday="Monday",
+            start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+            end_time=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
+            parity="both",
+        )
+
+    with (
+        patch("rust_ext.batch_detect_conflicts", side_effect=return_first_pair),
+        patch.object(service, "_from_rust_item", side_effect=strict_from_rust_item),
+    ):
+        conflicts = await service.batch_detect_conflicts([first, second])
+
+    assert len(conflicts) == 1
+    assert [entry[0].id for entry in reconstructed] == [101, 202]
+    assert reconstructed[0][1:] == ("101A", "Dr. Smith")
+    assert reconstructed[1][1:] == ("202B", "Prof. Jones")
+
+
+def test_imgproxy_base_url_removes_trailing_slashes() -> None:
+    from app.utils.img import get_optimized_image_url
+
+    settings = SimpleNamespace(
+        imgproxy_key="0" * 64,
+        imgproxy_salt="1" * 64,
+        imgproxy_base_url="https://img.example.com///",
+    )
+
+    with patch("app.utils.img.settings", settings):
+        result = get_optimized_image_url("https://cdn.example.com/photo.jpg")
+
+    assert result is not None
+    assert result.startswith("https://img.example.com/")
+    assert not result.startswith("https://img.example.com//")
 
 
 @pytest.mark.asyncio

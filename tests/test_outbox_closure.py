@@ -218,8 +218,10 @@ async def test_outbox_heartbeat_records_event_loop_progress(
     heartbeat_path = tmp_path / "worker.heartbeat"
     worker = outbox.OutboxWorker(heartbeat_path=heartbeat_path)
     worker._is_running = True
+    sleep_calls: list[float] = []
 
-    async def stop_after_first_heartbeat(_seconds: float) -> None:
+    async def stop_after_first_heartbeat(seconds: float) -> None:
+        sleep_calls.append(seconds)
         worker._is_running = False
 
     monkeypatch.setattr(outbox.asyncio, "sleep", stop_after_first_heartbeat)
@@ -228,6 +230,7 @@ async def test_outbox_heartbeat_records_event_loop_progress(
 
     assert heartbeat_path.is_file()
     assert heartbeat_path.read_text(encoding="ascii").strip().isdigit()
+    assert sleep_calls == [worker.heartbeat_interval]
 
 
 @pytest.mark.asyncio

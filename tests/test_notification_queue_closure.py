@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -88,6 +88,25 @@ async def test_cleanup_dead_lettered_jobs_uses_thirty_day_default_retention():
         value for name, value in bind_values.items() if name.startswith("enqueued_at")
     )
     assert cutoff == datetime(2026, 7, 18, tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_cleanup_dead_lettered_jobs_normalizes_non_utc_offsets():
+    db = AsyncMock()
+    db.execute.return_value = MagicMock(rowcount=0)
+
+    await queue.cleanup_dead_lettered_jobs(
+        7,
+        db=db,
+        now=datetime(2026, 8, 17, 3, tzinfo=timezone(timedelta(hours=3))),
+    )
+
+    cutoff = next(
+        value
+        for name, value in db.execute.await_args.args[0].compile().params.items()
+        if name.startswith("enqueued_at")
+    )
+    assert cutoff == datetime(2026, 8, 10, tzinfo=UTC)
 
 
 @pytest.mark.asyncio

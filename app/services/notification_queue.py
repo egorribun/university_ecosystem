@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import delete
 
@@ -130,7 +130,13 @@ async def cleanup_dead_lettered_jobs(
     )
     result = await db.execute(statement)
     await db.commit()
-    deleted = int(getattr(result, "rowcount", 0) or 0)
+    try:
+        rowcount = cast(Any, result).rowcount
+    except AttributeError:
+        deleted = 0
+    else:
+        rowcount_value = cast(int | None, rowcount)
+        deleted = 0 if rowcount_value is None else int(rowcount_value)
     if deleted:
         logger.info("Removed %s expired notification queue dead letters", deleted)
     return deleted
