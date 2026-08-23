@@ -164,10 +164,7 @@ jobs:
              exit 1
            fi
            MUTATION_ROOT="$(mktemp -d)"
-           cleanup_mutation_root() {
-             rm -rf "$MUTATION_ROOT"
-           }
-           trap cleanup_mutation_root EXIT
+           trap 'rm -rf -- "$MUTATION_ROOT"' EXIT
 
            run_mutation() {
              local target="$1"
