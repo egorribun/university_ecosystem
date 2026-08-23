@@ -70,7 +70,7 @@ def test_nightly_full_mutation_uses_audited_monotonic_test_reduction() -> None:
     assert plan_job["needs"] == "mutation-tests-full-stats"
     assert job["needs"] == "mutation-tests-full-plan"
     assert "--output-directory mutants/mutmut-full-plan" in preflight
-    assert "for shard in $(seq 1 16)" in preflight
+    assert "for shard in $(seq 1 64)" in preflight
     assert "scripts/mutmut_shard_budget.py" in preflight
     assert "--max-timeout-seconds 18000" in preflight
     assert "plan-manifest.json" in preflight
@@ -90,7 +90,7 @@ def test_nightly_full_mutation_uses_audited_monotonic_test_reduction() -> None:
     )
     assert workflow["jobs"]["mutation-tests-full"]["strategy"]["matrix"][
         "shard"
-    ] == list(range(1, 17))
+    ] == list(range(1, 65))
 
     plan_upload = next(
         step

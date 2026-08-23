@@ -90,9 +90,11 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
   VITE_BACKEND_ORIGIN=https://api.example.com npm run build
 ```
 
-- Localized PWA manifests are generated from `public/manifest.source.json`.
-  Run `npm run generate:manifests` before building or `npm run manifests:check`
-  to ensure the files in `public/` are up to date.
+- Localized PWA manifests are generated from
+  `frontend/public/manifest.source.json` (repository-root path; from the
+  `frontend` directory shown above, use `public/manifest.source.json`). Run
+  `npm run generate:manifests` before building or `npm run manifests:check` to
+  ensure the generated files in `frontend/public/` are up to date.
 
 ### Offline PWA behaviour
 
@@ -109,8 +111,11 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
   install-time precache so the manifest stays below a conservative CacheStorage budget.
   The offline shell and generic fallback page remain usable without a network; the map
   route (including its static list) requires a network after a cold offline navigation.
-- The build fails closed when the aggregate precache exceeds 4,800,000 bytes. This leaves
+- Production builds fail closed when the aggregate precache exceeds 4,800,000 bytes. This leaves
   headroom for Firefox and WebKit and prevents heavy lazy chunks from silently returning.
+  Chromium E2E coverage builds (`E2E_COVERAGE=true` and
+  `FRONTEND_BUILD_UNMINIFIED=true`) use a separate 9,000,000-byte diagnostic ceiling;
+  that unminified artifact is not deployable.
 - Validate offline navigation and cached payloads via the e2e suite:
 
   ```bash

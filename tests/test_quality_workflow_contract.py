@@ -53,6 +53,9 @@ FRONTEND_WORKFLOW_PATH = (
 )
 E2E_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "reusable-e2e-tests.yml"
 GO_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "reusable-go-tests.yml"
+BUILD_ORCHESTRATED_LINUX_WORKFLOW_PATH = (
+    REPOSITORY_ROOT / ".github" / "workflows" / "build-orchestrated-linux.yml"
+)
 SECURITY_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "reusable-security-audit.yml"
 )
@@ -1245,6 +1248,28 @@ def test_e2e_linux_build_memory_budget_keeps_both_limits_bounded() -> None:
     assert env["FRONTEND_BUILD_MAX_OLD_SPACE_MB"] == "1536"
 
 
+def test_linux_build_reproducibility_gate_canonicalizes_known_metadata() -> None:
+    workflow = yaml.safe_load(
+        BUILD_ORCHESTRATED_LINUX_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    run = next(
+        step["run"]
+        for step in workflow["jobs"]["build-validation"]["steps"]
+        if step.get("name") == "Run build-orchestrated.mjs × N"
+    )
+
+    assert "SHELL_STABLE_HASH=$(sed -E" in run
+    assert 'nonce="__CSP_NONCE__"' in run
+    assert "match-updated-at" in run
+    assert "SW_STABLE_HASH=$(sed -E" in run
+    assert "_shell\\.html" in run
+    assert '"url":"_shell.html"' in run
+    assert '"url":"offline.html"' in run
+    assert '"${SHELL_STABLE_HASHES[$i]}"' in run
+    assert '"${SW_STABLE_HASHES[$i]}"' in run
+    assert "grep -q 'nonce=\"__CSP_NONCE__\"'" in run
+
+
 def test_e2e_wasm_build_retries_transient_binaryen_downloads() -> None:
     workflow = yaml.safe_load(E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))
     job = workflow["jobs"]["e2e"]
@@ -2227,7 +2252,7 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         if step.get("name") == "Merge and gate full mutation evidence"
     )
     assert "scripts/merge_mutmut_cicd_stats.py" in export_step["run"]
-    assert "--expected-shards 16" in export_step["run"]
+    assert "--expected-shards 64" in export_step["run"]
     assert "scripts/check_mutation_score.py --min-score 100" in export_step["run"]
     assert "mutmut export-cicd-stats" not in export_step["run"]
     assert jobs["go-integration"]["strategy"]["matrix"]["service-directory"] == [
@@ -2479,7 +2504,7 @@ def test_full_mutation_gate_uses_the_fail_closed_exporter() -> None:
     export_index = mutation_text.index("scripts/merge_mutmut_cicd_stats.py")
     gate_index = mutation_text.index("scripts/check_mutation_score.py")
     assert export_index < gate_index
-    assert "--expected-shards 16" in mutation_text
+    assert "--expected-shards 64" in mutation_text
     assert "uv run mutmut export-cicd-stats" not in mutation_text
     assert "test -s mutants/mutmut-cicd-stats.json" in mutation_text
 
@@ -2500,7 +2525,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert plan_job["needs"] == "mutation-tests-full-stats"
     assert nightly_workflow["jobs"]["mutation-tests-full"]["strategy"]["matrix"][
         "shard"
-    ] == list(range(1, 17))
+    ] == list(range(1, 65))
     assert stats_job["strategy"]["matrix"]["stats_shard"] == list(range(8))
     stats_steps = stats_job["steps"]
     stats_step = next(
@@ -2551,10 +2576,10 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert "scripts/merge_mutmut_stats.py" in merge_step["run"]
     assert "--input-root mutmut-stats" in merge_step["run"]
     assert "--output-directory mutants/mutmut-full-plan" in preflight_step["run"]
-    assert "for shard in $(seq 1 16)" in preflight_step["run"]
+    assert "for shard in $(seq 1 64)" in preflight_step["run"]
     assert "scripts/mutmut_shard_budget.py" in preflight_step["run"]
     assert "scripts/plan_mutmut_shards.py" in run_script
-    assert "--num-shards 16" in run_script
+    assert "--num-shards 64" in run_script
     assert "cmp --silent" in run_script
     assert "scripts/run_mutmut_with_stats.py --max-children 8" in run_script
     assert "scripts/run_mutmut_with_stats.py --max-children 2" in run_script
@@ -2566,7 +2591,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
         step.get("run", "") for step in aggregate_job["steps"] if isinstance(step, dict)
     )
     assert "scripts/merge_mutmut_cicd_stats.py" in aggregate_text
-    assert "--expected-shards 16" in aggregate_text
+    assert "--expected-shards 64" in aggregate_text
 
 
 def test_pr_quality_gates_enforce_contract_policy_values() -> None:

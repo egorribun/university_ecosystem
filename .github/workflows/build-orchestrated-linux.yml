@@ -18,9 +18,12 @@
 # This workflow validates that:
 # 1. build-orchestrated.mjs runs cleanly on Linux (no behavioural difference
 #    that would bite CI consumers)
-# 2. Bundle output matches Windows local baseline byte-for-byte (BYTE-IDENTICAL
-#    invariant per W134/W135/W136 reproducibility discipline)
-# 3. wave127-build-x3.sh retirement holds across both platforms
+# 2. Stable bundles (the main client chunk and server bundle) are byte-identical
+#    across repeated Linux builds; the shell and service worker use canonical
+#    hashes that normalize only their documented SSR/CSP/workbox metadata
+#    variance,
+#    plus stable sizes and required structural markers.
+# 3. wave127-build-x3.sh retirement holds on the Linux validation path.
 #
 # Closes W135 §Honesty #8 / #11 (Linux CI not validated; consolidated).
 #
@@ -94,9 +97,11 @@ jobs:
         with:
           tool: wasm-pack@0.13.1
 
-      # Run build-orchestrated.mjs N times and capture hashes for the
-      # reproducibility check. Compare hash + size across runs to assert
-      # BYTE-IDENTICAL invariant.
+      # Run build-orchestrated.mjs N times and capture hashes/sizes for the
+      # reproducibility check. Main/server hashes must match. Shell/service-
+      # worker hashes are canonicalized only across the known SSR match time,
+      # CSP nonce, and corresponding Workbox shell revision; sizes and required
+      # markers must remain stable as well.
       - name: Run build-orchestrated.mjs × N
         id: build_runs
         env:
@@ -107,8 +112,12 @@ jobs:
           echo "Running build × $RUNS for reproducibility check"
 
           declare -a SHELL_HASHES
+          declare -a SHELL_STABLE_HASHES
+          declare -a SHELL_SIZES
           declare -a INDEX_HASHES
           declare -a SW_HASHES
+          declare -a SW_STABLE_HASHES
+          declare -a SW_SIZES
           declare -a SERVER_HASHES
 
           for i in $(seq 1 "$RUNS"); do
@@ -124,7 +133,9 @@ jobs:
             INDEX_FILE=$(find dist/client/assets -name "index-*.js" | head -1)
             INDEX_HASH=$(sha256sum "$INDEX_FILE" | awk '{print $1}')
             SHELL_HASH=$(sha256sum dist/client/_shell.html | awk '{print $1}')
+            SHELL_STABLE_HASH=$(sed -E -e 's/nonce="[^"]*"/nonce="__CSP_NONCE__"/g' -e 's/(u:)[0-9]{10,}/\1<match-updated-at>/g' dist/client/_shell.html | sha256sum | awk '{print $1}')
             SW_HASH=$(sha256sum dist/client/sw.js | awk '{print $1}')
+            SW_STABLE_HASH=$(sed -E 's/("revision":")[^"]+(,"url":"_shell\.html")/\1<shell-revision>\2/g' dist/client/sw.js | sha256sum | awk '{print $1}')
             SERVER_HASH=$(sha256sum dist/server/server.js | awk '{print $1}')
 
             INDEX_SIZE=$(stat -c %s "$INDEX_FILE")
@@ -134,8 +145,16 @@ jobs:
 
             INDEX_HASHES[i]="$INDEX_HASH"
             SHELL_HASHES[i]="$SHELL_HASH"
+            SHELL_STABLE_HASHES[i]="$SHELL_STABLE_HASH"
+            SHELL_SIZES[i]="$SHELL_SIZE"
             SW_HASHES[i]="$SW_HASH"
+            SW_STABLE_HASHES[i]="$SW_STABLE_HASH"
+            SW_SIZES[i]="$SW_SIZE"
             SERVER_HASHES[i]="$SERVER_HASH"
+
+            grep -q 'nonce="__CSP_NONCE__"' dist/client/_shell.html
+            grep -q '"url":"_shell.html"' dist/client/sw.js
+            grep -q '"url":"offline.html"' dist/client/sw.js
 
             echo "Run $i: index-$(basename "$INDEX_FILE") ($INDEX_SIZE bytes) sha256=${INDEX_HASH:0:16}..."
             echo "Run $i: _shell.html ($SHELL_SIZE bytes) sha256=${SHELL_HASH:0:16}..."
@@ -151,12 +170,20 @@ jobs:
               echo "::error::index-*.js hash differs run 1 vs run $i"
               ALL_MATCH=false
             fi
-            if [[ "${SHELL_HASHES[$i]}" != "${SHELL_HASHES[1]}" ]]; then
-              echo "::error::_shell.html hash differs run 1 vs run $i"
+            if [[ "${SHELL_SIZES[$i]}" != "${SHELL_SIZES[1]}" ]]; then
+              echo "::error::_shell.html size differs run 1 vs run $i"
               ALL_MATCH=false
             fi
-            if [[ "${SW_HASHES[$i]}" != "${SW_HASHES[1]}" ]]; then
-              echo "::error::sw.js hash differs run 1 vs run $i"
+            if [[ "${SHELL_STABLE_HASHES[$i]}" != "${SHELL_STABLE_HASHES[1]}" ]]; then
+              echo "::error::_shell.html canonical hash differs run 1 vs run $i"
+              ALL_MATCH=false
+            fi
+            if [[ "${SW_SIZES[$i]}" != "${SW_SIZES[1]}" ]]; then
+              echo "::error::sw.js size differs run 1 vs run $i"
+              ALL_MATCH=false
+            fi
+            if [[ "${SW_STABLE_HASHES[$i]}" != "${SW_STABLE_HASHES[1]}" ]]; then
+              echo "::error::sw.js canonical hash differs run 1 vs run $i"
               ALL_MATCH=false
             fi
             if [[ "${SERVER_HASHES[$i]}" != "${SERVER_HASHES[1]}" ]]; then
@@ -166,19 +193,19 @@ jobs:
           done
 
           if [[ "$ALL_MATCH" == "true" ]]; then
-            echo "✓ BYTE-IDENTICAL across $RUNS runs"
+            echo "✓ Stable bundles reproducible across $RUNS runs"
             {
-              echo "## Build × $RUNS Reproducibility — BYTE-IDENTICAL ✓"
+              echo "## Build × $RUNS Reproducibility — stable bundles ✓"
               echo ""
-              echo "| Artifact | sha256 (first 16) |"
+              echo "| Artifact | Verification |"
               echo "|---|---|"
               echo "| index-*.js | ${INDEX_HASHES[1]:0:16}... |"
-              echo "| _shell.html | ${SHELL_HASHES[1]:0:16}... |"
-              echo "| sw.js | ${SW_HASHES[1]:0:16}... |"
+              echo "| _shell.html | ${SHELL_STABLE_HASHES[1]:0:16}... + ${SHELL_SIZES[1]} bytes + CSP marker |"
+              echo "| sw.js | ${SW_STABLE_HASHES[1]:0:16}... + ${SW_SIZES[1]} bytes + shell/offline precache entries |"
               echo "| server.js | ${SERVER_HASHES[1]:0:16}... |"
             } >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "::error::Build is NOT reproducible across runs"
+            echo "::error::Stable build invariants are NOT reproducible across runs"
             exit 1
           fi
 

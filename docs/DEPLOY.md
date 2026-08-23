@@ -91,9 +91,11 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
 ```
 
 - Локализованные PWA-манифесты собираются из
-  `public/manifest.source.json`. Выполните `npm run generate:manifests`
-  перед сборкой или запустите `npm run manifests:check`, чтобы убедиться, что
-  сгенерированные файлы в `public/` не устарели.
+  `frontend/public/manifest.source.json` (путь от корня репозитория; из каталога
+  `frontend`, показанного выше, это `public/manifest.source.json`). Выполните
+  `npm run generate:manifests` перед сборкой или запустите
+  `npm run manifests:check`, чтобы убедиться, что сгенерированные файлы в
+  `frontend/public/` не устарели.
 
 ### Офлайн-режим PWA
 
@@ -109,8 +111,11 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
   это удерживает манифест ниже консервативного лимита CacheStorage. Offline-shell и
   общая fallback-страница остаются доступными без сети; маршрут карты (включая
   статический список) при холодной офлайн-загрузке требует сети.
-- Сборка завершается с ошибкой, если суммарный precache превышает 4 800 000 байт. Это
+- Production-сборка завершается с ошибкой, если суммарный precache превышает 4 800 000 байт. Это
   оставляет запас для Firefox и WebKit и защищает от незаметного возврата тяжёлых lazy-чанков.
+  Chromium E2E-сборка с покрытием (`E2E_COVERAGE=true` и
+  `FRONTEND_BUILD_UNMINIFIED=true`) использует отдельный диагностический предел 9 000 000 байт;
+  такой unminified-артефакт не предназначен для деплоя.
 - Проверить офлайн-навигацию и кеширование данных можно e2e-тестом:
 
   ```bash

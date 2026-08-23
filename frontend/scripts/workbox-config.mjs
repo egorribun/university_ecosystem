@@ -57,16 +57,44 @@
  */
 export const MAX_PRECACHE_BYTES = 4_800_000
 
-/** @type {import("workbox-build").ManifestTransform} */
-export const enforcePrecacheBudget = (manifestEntries) => {
+/**
+ * The Chromium E2E coverage job deliberately builds an unminified bundle so
+ * V8 can map executed ranges back to readable source. That diagnostic bundle
+ * is not a deployable production artifact and is substantially larger than
+ * the minified browser build. Keep a separate, explicit ceiling for that
+ * opt-in job instead of weakening the production budget.
+ */
+export const MAX_DIAGNOSTIC_PRECACHE_BYTES = 9_000_000
+
+export const getPrecacheBudget = (env = process.env) => {
+  const isE2ECoverageDiagnosticBuild =
+    env.E2E_COVERAGE === "true" && env.FRONTEND_BUILD_UNMINIFIED === "true"
+  return isE2ECoverageDiagnosticBuild
+    ? {
+        bytes: MAX_DIAGNOSTIC_PRECACHE_BYTES,
+        label: "E2E diagnostic browser budget",
+      }
+    : {
+        bytes: MAX_PRECACHE_BYTES,
+        label: "browser budget",
+      }
+}
+
+/** Apply the same transform logic against an explicit environment in tests. */
+export const enforcePrecacheBudgetForEnv = (manifestEntries, env = process.env) => {
   const totalBytes = manifestEntries.reduce((total, entry) => total + (entry.size ?? 0), 0)
-  if (totalBytes > MAX_PRECACHE_BYTES) {
+  const { bytes: activePrecacheBudget, label: budgetLabel } = getPrecacheBudget(env)
+  if (totalBytes > activePrecacheBudget) {
     throw new Error(
-      `Workbox precache is ${totalBytes} bytes, above the ${MAX_PRECACHE_BYTES}-byte browser budget`
+      `Workbox precache is ${totalBytes} bytes, above the ${activePrecacheBudget}-byte ${budgetLabel}`
     )
   }
   return { manifest: manifestEntries }
 }
+
+/** @type {import("workbox-build").ManifestTransform} */
+export const enforcePrecacheBudget = (manifestEntries) =>
+  enforcePrecacheBudgetForEnv(manifestEntries, process.env)
 
 /** @type {import("workbox-build").InjectManifestOptions} */
 export const PWA_INJECT_CONFIG = {

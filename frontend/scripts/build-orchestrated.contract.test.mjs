@@ -3,7 +3,14 @@ import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { test } from "node:test"
-import { enforcePrecacheBudget, MAX_PRECACHE_BYTES, PWA_INJECT_CONFIG } from "./workbox-config.mjs"
+import {
+  enforcePrecacheBudget,
+  enforcePrecacheBudgetForEnv,
+  getPrecacheBudget,
+  MAX_DIAGNOSTIC_PRECACHE_BYTES,
+  MAX_PRECACHE_BYTES,
+  PWA_INJECT_CONFIG,
+} from "./workbox-config.mjs"
 
 const scriptPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "build-orchestrated.mjs")
 const scriptSource = await readFile(scriptPath, "utf8")
@@ -52,15 +59,32 @@ test("PWA precache config excludes optional map chunks", () => {
 })
 
 test("PWA precache fails closed when the aggregate browser budget is exceeded", () => {
+  assert.ok(MAX_DIAGNOSTIC_PRECACHE_BYTES > MAX_PRECACHE_BYTES)
+  assert.deepEqual(getPrecacheBudget({}), {
+    bytes: MAX_PRECACHE_BYTES,
+    label: "browser budget",
+  })
+  assert.deepEqual(getPrecacheBudget({ E2E_COVERAGE: "true", FRONTEND_BUILD_UNMINIFIED: "true" }), {
+    bytes: MAX_DIAGNOSTIC_PRECACHE_BYTES,
+    label: "E2E diagnostic browser budget",
+  })
   assert.equal(
     enforcePrecacheBudget([{ url: "offline.html", revision: null, size: 1 }]).manifest.length,
     1
   )
+  const oversizedManifest = [
+    { url: "oversized.js", revision: null, size: MAX_DIAGNOSTIC_PRECACHE_BYTES + 1 },
+  ]
+  assert.throws(
+    () => enforcePrecacheBudgetForEnv(oversizedManifest, {}),
+    /above the \d+-byte browser budget/
+  )
   assert.throws(
     () =>
-      enforcePrecacheBudget([
-        { url: "oversized.js", revision: null, size: MAX_PRECACHE_BYTES + 1 },
-      ]),
-    /above the 4800000-byte browser budget/
+      enforcePrecacheBudgetForEnv(oversizedManifest, {
+        E2E_COVERAGE: "true",
+        FRONTEND_BUILD_UNMINIFIED: "true",
+      }),
+    /above the \d+-byte E2E diagnostic browser budget/
   )
 })

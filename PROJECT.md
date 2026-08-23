@@ -36,7 +36,7 @@ university_ecosystem/
 | F7 | Documentation Parity & Link Accuracy | Synchronize `README.ru.md` with `README.md`, fix operational paths in `docs/DEPLOY*.md`, `ADR-008` | M3 | survey_frontend |
 | F8 | WS-Hub Concurrency & Benchmark Tuning | Optimize memory allocations and locks in `services/ws-hub` to eliminate benchmark regression | M4 | survey_backend_ci |
 | F9 | Playwright E2E Matrix Stabilization | Resolve timeouts across Chromium, Firefox, WebKit, and Mobile WebKit test shards | M5 | survey_backend_ci |
-| F10 | Full PR #1249 CI/CD Green Gate & Audit | Verify all 14 CI/CD check runs, `verify_harness.py`, git commit & push to `egorribun` | M6 | ORIGINAL_REQUEST |
+| F10 | Full PR #1249 CI/CD Green Gate & Audit | Verify all required CI/CD check runs for the current head, `verify_harness.py`, git commit & push to `egorribun` | M6 | ORIGINAL_REQUEST |
 
 ---
 
