@@ -24,6 +24,7 @@ from app.services.schedule_optimizer import (
     ScheduleOptimizerService,
 )
 from app.services.webpush import build_payload
+from app.utils.retry import RetryExhausted, retry_async
 
 
 def _schedule_item(
@@ -77,6 +78,7 @@ async def test_dead_letter_cleanup_normalizes_naive_timestamp_before_cutoff() ->
     )
 
     statement = db.execute.await_args.args[0]
+    assert statement.get_execution_options()["synchronize_session"] is False
     cutoff = next(
         value
         for name, value in statement.compile().params.items()
@@ -104,6 +106,24 @@ async def test_dead_letter_cleanup_attaches_utc_to_naive_clock() -> None:
     )
 
     assert seen_timezones == [UTC]
+
+
+@pytest.mark.asyncio
+async def test_retry_with_single_attempt_invokes_operation_before_exhausting() -> None:
+    failure = ValueError("terminal")
+    calls = 0
+
+    async def always_fails() -> None:
+        nonlocal calls
+        calls += 1
+        raise failure
+
+    with pytest.raises(RetryExhausted) as exc_info:
+        await retry_async(always_fails, max_attempts=1)
+
+    assert calls == 1
+    assert exc_info.value.attempts == 1
+    assert exc_info.value.last_error is failure
 
 
 @pytest.mark.asyncio
