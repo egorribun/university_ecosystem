@@ -11,13 +11,13 @@ content from the main application locales to keep copy consistent.
   schedule, news, and campus map inside the app.
 - Manifest names, descriptions, and shortcut captions mirror the wording of the
   primary navigation sections (Schedule, News, Campus map). Edit
-  `public/manifest.source.json` to update these strings so the generator can
-  rebuild `manifest*.webmanifest` consistently.
+  `frontend/public/manifest.source.json` to update these strings so the
+  generator can rebuild `manifest*.webmanifest` consistently.
 
-When shell copy changes, update `public/static-shell-i18n.js` for both `ru` and
-`en` bundles and adjust the default Russian HTML in `index.html` and
-`public/offline.html` to match. Document the source of the new text in this file
-so future updates can trace back to the in-app locale keys.
+When shell copy changes, update `frontend/public/static-shell-i18n.js` for both
+`ru` and `en` bundles and adjust the default Russian HTML in `frontend/index.html`
+and `frontend/public/offline.html` to match. Document the source of the new text
+in this file so future updates can trace back to the in-app locale keys.
 
 ## Dashboard stories
 

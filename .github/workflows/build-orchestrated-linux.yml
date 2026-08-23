@@ -24,14 +24,16 @@
 #
 # Closes W135 §Honesty #8 / #11 (Linux CI not validated; consolidated).
 #
-# ## Wave 136 SW6 baseline (W135 SW3 + W136 SW5+SW6)
+# ## Reproducibility baseline
 #
-# Expected outputs (BYTE-IDENTICAL across platforms when source unchanged):
-#   dist/client/assets/index-DqqHVXgy.js  139,808 bytes
-#   dist/client/_shell.html                65,864 bytes
-#   dist/client/sw.js                      53,181 bytes
-#   dist/server/server.js                  39,373 bytes
-#   Workbox precache: 209 files / 4.80 MB
+# Artifact names, hashes, and sizes are generated at runtime because the
+# bundler fingerprints assets from source content. The workflow records and
+# compares the index chunk, shell, service worker, and server bundle across
+# consecutive runs instead of pinning stale filenames in this comment.
+#
+# Current PWA guard (last verified locally): Workbox precache 125 files /
+# 4,531,986 bytes (4.32 MiB), below the 4,800,000-byte browser budget. Map
+# route chunks remain network-loaded by design.
 #
 # Linux build duration: ~15-25s (typically faster than Windows ~30s due
 # to no kill-after-artifacts SIGTERM grace window needed).
