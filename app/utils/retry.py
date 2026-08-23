@@ -102,7 +102,7 @@ async def retry_async[T](
             await asyncio.sleep(delay)
 
     # The loop always returns or raises once max_attempts is positive.
-    raise AssertionError("retry_async loop exited unexpectedly")
+    raise AssertionError
 
 
 def with_retry[T, **P](
