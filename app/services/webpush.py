@@ -571,9 +571,10 @@ def build_payload(
         options["requireInteraction"] = bool(source.get("requireInteraction"))
     if "silent" in source:
         options["silent"] = bool(source.get("silent"))
-    if "timestamp" in source and source.get("timestamp") is not None:
+    timestamp = source.get("timestamp")
+    if timestamp is not None:
         try:
-            options["timestamp"] = int(source["timestamp"])
+            options["timestamp"] = int(timestamp)
         except (TypeError, ValueError):
             # Invalid provider metadata must not prevent the notification from
             # being delivered; omit only the malformed optional timestamp.
