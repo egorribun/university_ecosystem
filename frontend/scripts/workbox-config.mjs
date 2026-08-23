@@ -18,9 +18,10 @@
  * `npm run build` (Windows local) used the hard-coded mirror. Wave 136 SW6
  * eliminates the drift by extracting to this shared module.
  *
- * Verified BYTE-IDENTICAL bundle output post-extraction:
- * - dist/client/sw.js 53,181 bytes (same workbox manifest entries: 209 files,
- *   4.80 MB precached)
+ * The precache set is intentionally kept below a conservative browser
+ * CacheStorage budget for the cross-browser E2E matrix. Firefox and
+ * WebKit can reject a service-worker install when optional lazy chunks push
+ * the manifest over that quota, even though Chromium accepts the same build.
  *
  * ## Note on dynamic-import excluded chunks
  *
@@ -31,10 +32,16 @@
  * on every page load — Lighthouse `unused-javascript` counted those bytes
  * as wasted on /news, /events, and 5+ other routes.
  *
+ * The map page follows the same lazy-loading contract. MapLibre and the map
+ * route chunks are only fetched when the user opens `/map`; keeping them out
+ * of install-time precaching prevents a 1+ MB optional feature from consuming
+ * the browser's offline storage budget. They remain available through the
+ * normal network fetch path whenever the map is opened online.
+ *
  * Wave 116 SW-Stretch raised maximumFileSizeToCacheInBytes from 2 MB → 5 MB
  * to unblock `build-storybook` (Storybook's sb-manager/globals-runtime.js
- * is 3.25 MB). Prod's largest precache entry is maplibre-gl-*.js (~1.03 MB),
- * well under 5 MB.
+ * is 3.25 MB). That per-file limit remains independent from the smaller
+ * aggregate browser CacheStorage budget handled by the map exclusions above.
  *
  * `offline.html` stays in the precache manifest. The project uses a custom
  * `injectManifest` worker (rather than Workbox's generated runtime routes),
@@ -43,9 +50,41 @@
  * Chromium.
  */
 
+/**
+ * Keep a safety margin below the conservative CacheStorage budget exercised
+ * by Firefox/WebKit in CI. This is an aggregate limit; Workbox's
+ * `maximumFileSizeToCacheInBytes` only protects individual files.
+ */
+export const MAX_PRECACHE_BYTES = 4_800_000
+
+/** @type {import("workbox-build").ManifestTransform} */
+export const enforcePrecacheBudget = (manifestEntries) => {
+  const totalBytes = manifestEntries.reduce((total, entry) => total + (entry.size ?? 0), 0)
+  if (totalBytes > MAX_PRECACHE_BYTES) {
+    throw new Error(
+      `Workbox precache is ${totalBytes} bytes, above the ${MAX_PRECACHE_BYTES}-byte browser budget`
+    )
+  }
+  return { manifest: manifestEntries }
+}
+
 /** @type {import("workbox-build").InjectManifestOptions} */
 export const PWA_INJECT_CONFIG = {
   globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],
-  globIgnores: ["**/bundle-stats.*", "**/jspdf*.js", "**/html2canvas*.js", "**/purify*.js"],
+  globIgnores: [
+    "**/bundle-stats.*",
+    "**/jspdf*.js",
+    "**/html2canvas*.js",
+    "**/purify*.js",
+    // MapLibre is a lazy route; excluding its vendor/runtime chunks keeps
+    // Firefox/WebKit service-worker installation within CacheStorage quotas.
+    "**/vendor-map-*.js",
+    "**/vendor-map-*.css",
+    "**/Map-*.js",
+    "**/MapFeature-*.js",
+    "**/MapLibreMap-*.js",
+    "**/map-*.js",
+  ],
   maximumFileSizeToCacheInBytes: 5_000_000,
+  manifestTransforms: [enforcePrecacheBudget],
 }

@@ -50,7 +50,7 @@ not fall back to raw translation keys.
 ## Campus map fallback
 
 Privacy settings, reduced-motion preferences, or offline conditions can disable
-the embedded Yandex map on the campus page. The replacement component relies on
+the MapLibre/OpenFreeMap map on the campus page. The replacement component relies on
 new strings in `system.json`:
 
 - `map.fallback.title` and `description.*` describe why the static view is
@@ -61,9 +61,10 @@ new strings in `system.json`:
   `points.*.(title|description|address)` localize the individual campus tiles.
 
 Update both locales when these values change so the fallback remains accessible
-and consistent with the interactive map. Note that the full map still requires
-an active connection and permission to load third-party embeds; the fallback
-content must remain usable offline.
+and consistent with the interactive map. The MapLibre/OpenFreeMap chunks are
+lazy and intentionally network-only rather than install-time precached; a cold
+offline navigation therefore has only the generic shell fallback, while the
+map fallback remains usable offline once the map route has already loaded.
 
 ## Documentation localization workflow
 

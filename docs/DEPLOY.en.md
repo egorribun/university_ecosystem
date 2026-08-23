@@ -5,7 +5,7 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 ## Environment variables
 
 - Before building the frontend, set `VITE_BACKEND_ORIGIN` (for example via `frontend/.env.production`).
-- To render the interactive map, set `VITE_MAP_CONSTRUCTOR_ID` — the Yandex Maps constructor ID for the campus.
+- The interactive map uses MapLibre and OpenFreeMap; no constructor key is required. It needs network access to load.
 - The `.env.example` file is a template only: required passwords and keys intentionally have no insecure fallback values. For a complete local launch, use PowerShell 7 and run `.\start-docker.ps1 -Build`; the bootstrapper creates and synchronizes `.env`/`.env.docker`. Never commit populated files.
 - All variables prefixed with `VITE_` are inlined into the code during `npm run build`; changing them after the build has no effect.
 - During CI/CD export `SERVICE_VERSION` (or `APP_VERSION`) before launching containers to propagate the build identifier to OpenTelemetry (`service.version`). The frontend build automatically reuses these variables — alongside common CI commit identifiers such as `SOURCE_VERSION`, `VERCEL_GIT_COMMIT`, or `GITHUB_SHA` — when `VITE_APP_RELEASE` is not explicitly provided.
@@ -96,7 +96,7 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
 
 ### Offline PWA behaviour
 
-- The Service Worker caches the SPA shell (`index.html`) and serves it for navigation
+- The Service Worker caches the SPA shell (`_shell.html`) and serves it for navigation
   requests while offline; when the shell is unavailable it falls back to `offline.html`
   from the precache.
 - API calls for schedules, news, and events (`/api/schedule`, `/api/news`, `/api/events`)
@@ -105,6 +105,12 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
   headers when nothing is cached yet.
 - Media and backend static assets keep the NetworkFirst strategy with a bounded cache
   (24 hours, up to 200 entries).
+- The interactive map and its lazy MapLibre chunks are intentionally excluded from the
+  install-time precache so the manifest stays below a conservative CacheStorage budget.
+  The offline shell and generic fallback page remain usable without a network; the map
+  route (including its static list) requires a network after a cold offline navigation.
+- The build fails closed when the aggregate precache exceeds 4,800,000 bytes. This leaves
+  headroom for Firefox and WebKit and prevents heavy lazy chunks from silently returning.
 - Validate offline navigation and cached payloads via the e2e suite:
 
   ```bash
