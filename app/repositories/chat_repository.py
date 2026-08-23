@@ -34,6 +34,8 @@ from app.repositories.base import BaseRepository
 from app.schemas.dtos.chat import ChatDTO, MessageDTO
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
+# SQL CTE aliases are case-insensitive across supported dialects; a case-only
+# mutation of this literal is therefore equivalent by construction.
 _RANKED_MSG_CTE_NAME = "ranked_msg"  # pragma: no mutate
 
 # P-02 (audit 2026-03-08): Module-level tracer for chat repository spans.

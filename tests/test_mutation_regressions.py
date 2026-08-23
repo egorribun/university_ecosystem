@@ -86,6 +86,27 @@ async def test_dead_letter_cleanup_normalizes_naive_timestamp_before_cutoff() ->
 
 
 @pytest.mark.asyncio
+async def test_dead_letter_cleanup_attaches_utc_to_naive_clock() -> None:
+    seen_timezones: list[object] = []
+
+    class TrackingNaiveDateTime(datetime):
+        def replace(self, **kwargs: object) -> datetime:  # type: ignore[override]
+            seen_timezones.append(kwargs.get("tzinfo"))
+            return datetime(2026, 8, 17, tzinfo=UTC)
+
+    db = AsyncMock()
+    db.execute.return_value = MagicMock(rowcount=0)
+
+    await queue.cleanup_dead_lettered_jobs(
+        7,
+        db=db,
+        now=TrackingNaiveDateTime(2026, 8, 17),
+    )
+
+    assert seen_timezones == [UTC]
+
+
+@pytest.mark.asyncio
 async def test_dead_letter_cleanup_uses_utc_clock_when_now_is_omitted() -> None:
     db = AsyncMock()
     db.execute.return_value = MagicMock(rowcount=0)
