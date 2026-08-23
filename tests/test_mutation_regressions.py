@@ -457,6 +457,21 @@ def test_uuid_rust_conversion_uses_stable_four_byte_prefix() -> None:
     assert rust_item.id == expected_id
 
 
+@pytest.mark.parametrize(
+    ("item_id", "expected_id"),
+    [
+        (uuid.UUID("01020304-1234-5678-90ab-cdef12345678"), 0x01020304),
+        (uuid.UUID("92345678-1234-5678-90ab-cdef12345678"), 0x12345678),
+    ],
+)
+def test_uuid_rust_conversion_preserves_endianness_and_sign_mask(
+    item_id: uuid.UUID,
+    expected_id: int,
+) -> None:
+    """Exercise the byte order and high-bit mask, not just a happy-path prefix."""
+    assert ScheduleOptimizerService._uuid_to_rust_id(item_id) == expected_id
+
+
 def test_uuid_rust_conversion_honors_valid_override_and_rejects_invalid_one() -> None:
     service = ScheduleOptimizerService()
     item = ScheduleItemInternal(
