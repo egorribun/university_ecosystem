@@ -518,6 +518,22 @@ def test_imgproxy_base_url_removes_trailing_slashes() -> None:
     assert not result.startswith("https://img.example.com//")
 
 
+def test_imgproxy_base_url_preserves_non_slash_suffix() -> None:
+    from app.utils.img import get_optimized_image_url
+
+    settings = SimpleNamespace(
+        imgproxy_key="0" * 64,
+        imgproxy_salt="1" * 64,
+        imgproxy_base_url="https://img.example.comX",
+    )
+
+    with patch("app.utils.img.settings", settings):
+        result = get_optimized_image_url("https://cdn.example.com/photo.jpg")
+
+    assert result is not None
+    assert result.startswith("https://img.example.comX/")
+
+
 @pytest.mark.asyncio
 async def test_batch_conflict_stub_restores_both_domain_metadata() -> None:
     service = ScheduleOptimizerService()

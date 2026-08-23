@@ -7,7 +7,7 @@ automatic fallback to Pillow for Windows or when pyvips is not installed.
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Any, cast
+from typing import Any
 
 from defusedxml.ElementTree import fromstring as parse_svg_string
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -34,11 +34,11 @@ def _resolve_resample_filter() -> Resampling:
     """Return the best available high-quality resampling filter."""
     resampling = getattr(Image, "Resampling", None)
     if resampling is not None:
-        return cast(Resampling, resampling.LANCZOS)
+        return resampling.LANCZOS
     lanczos = getattr(Image, "LANCZOS", None)
     if lanczos is None:
         raise AttributeError("Pillow installation does not expose a LANCZOS filter")
-    return cast(Resampling, lanczos)
+    return lanczos
 
 
 def sanitize_svg(data: bytes) -> bytes:
