@@ -148,45 +148,103 @@ jobs:
             exit 1
           fi
 
-          echo "Running mutation tests on: ${TARGETS[*]}"
-          # The maintained CLI reports surviving mutants in report.json but
-          # returns non-zero only for an execution/tool failure. Treat that
-          # distinction explicitly: a panic, timeout, or missing report fails
-          # closed; a score is retained in the CI log for auditability. Large
-          # entrypoints can legitimately contain hundreds of mutants, so allow
-          # up to 60 minutes for one source file without weakening failure
-          # handling. The job-level 120-minute deadline still bounds the total
-          # service test and mutation run.
-          for target in "${TARGETS[@]}"; do
-            echo "Mutating source file $target..."
-            log_file="/tmp/go-mutesting-${target//[^A-Za-z0-9_.-]/_}.log"
-            rm -f report.json
-            set +e
-            timeout 3600s go-mutesting "$target" 2>&1 | tee "$log_file"
-            pipeline_status=("${PIPESTATUS[@]}")
-            status=${pipeline_status[0]}
-            tee_status=${pipeline_status[1]}
-            set -e
-            if [ "$tee_status" -ne 0 ]; then
-              echo "::error::Unable to persist go-mutesting output for $target (tee exit $tee_status)."
-              exit "$tee_status"
-            fi
-            if [ "$status" -ne 0 ]; then
-              if grep -Eq 'panic: runtime error|go/types\.\(\*StdSizes\)\.Sizeof' "$log_file"; then
-                echo "::error::go-mutesting failed under the active Go toolchain for $target; mutation evidence is unavailable."
-                exit 1
-              else
-                echo "::error::go-mutesting failed for $target with exit code $status."
-                exit "$status"
-              fi
-            fi
-            if [ ! -s report.json ]; then
-              echo "::error::go-mutesting produced no report for $target."
-              exit 1
-            fi
-            grep -E "The mutation score is" "$log_file" || true
-            rm -f report.json
-          done
+           echo "Running mutation tests on: ${TARGETS[*]}"
+           # The maintained CLI reports surviving mutants in report.json but
+           # returns non-zero only for an execution/tool failure. Treat that
+           # distinction explicitly: a panic, timeout, or missing report fails
+           # closed; a score is retained in the CI log for auditability. Large
+           # entrypoints can legitimately contain hundreds of mutants, so allow
+           # up to 60 minutes for one source file without weakening failure
+           # handling. Run two isolated targets concurrently: the previous
+           # sequential loop exceeded the 120-minute job deadline for ws-hub,
+           # while sharing report.json would make parallel execution unsafe.
+           MAX_PARALLEL="${GO_MUTATION_PARALLELISM:-2}"
+           if ! [[ "$MAX_PARALLEL" =~ ^[1-9][0-9]*$ ]]; then
+             echo "::error::GO_MUTATION_PARALLELISM must be a positive integer."
+             exit 1
+           fi
+           MUTATION_ROOT="$(mktemp -d)"
+           cleanup_mutation_root() {
+             rm -rf "$MUTATION_ROOT"
+           }
+           trap cleanup_mutation_root EXIT
+
+           run_mutation() {
+             local target="$1"
+             local safe_target="${target//[^A-Za-z0-9_.-]/_}"
+             local workdir="$MUTATION_ROOT/$safe_target"
+             local log_file="$MUTATION_ROOT/$safe_target.log"
+
+             mkdir -p "$workdir"
+             cp -a "$GITHUB_WORKSPACE/$SERVICE_DIRECTORY/." "$workdir/"
+             cd "$workdir"
+             echo "Mutating source file $target in an isolated workspace..."
+             rm -f report.json
+             set +e
+             timeout 3600s go-mutesting "$target" 2>&1 | tee "$log_file"
+             pipeline_status=("${PIPESTATUS[@]}")
+             status=${pipeline_status[0]}
+             tee_status=${pipeline_status[1]}
+             set -e
+             if [ "$tee_status" -ne 0 ]; then
+               echo "::error::Unable to persist go-mutesting output for $target (tee exit $tee_status)."
+               return "$tee_status"
+             fi
+             if [ "$status" -ne 0 ]; then
+               if grep -Eq 'panic: runtime error|go/types\.\(\*StdSizes\)\.Sizeof' "$log_file"; then
+                 echo "::error::go-mutesting failed under the active Go toolchain for $target; mutation evidence is unavailable."
+                 return 1
+               fi
+               echo "::error::go-mutesting failed for $target with exit code $status."
+               return "$status"
+             fi
+             if [ ! -s report.json ]; then
+               echo "::error::go-mutesting produced no report for $target."
+               return 1
+             fi
+             grep -E "The mutation score is" "$log_file" || true
+             rm -f report.json
+           }
+
+           declare -A PID_TARGET=()
+           running=0
+           overall_status=0
+           for target in "${TARGETS[@]}"; do
+             run_mutation "$target" &
+             pid=$!
+             PID_TARGET["$pid"]="$target"
+             running=$((running + 1))
+             if [ "$running" -ge "$MAX_PARALLEL" ]; then
+               set +e
+               wait -n -p finished_pid
+               status=$?
+               set -e
+               finished_target="${PID_TARGET[$finished_pid]:-unknown target}"
+               if [ "$status" -ne 0 ]; then
+                 echo "::error::Mutation test failed for $finished_target (exit $status)."
+                 overall_status=1
+               else
+                 echo "Mutation test completed for $finished_target."
+               fi
+               unset "PID_TARGET[$finished_pid]"
+               running=$((running - 1))
+             fi
+           done
+
+           for pid in "${!PID_TARGET[@]}"; do
+             set +e
+             wait "$pid"
+             status=$?
+             set -e
+             finished_target="${PID_TARGET[$pid]:-unknown target}"
+             if [ "$status" -ne 0 ]; then
+               echo "::error::Mutation test failed for $finished_target (exit $status)."
+               overall_status=1
+             else
+               echo "Mutation test completed for $finished_target."
+             fi
+           done
+           exit "$overall_status"
 
       - name: Generate artifact name
         if: always()
