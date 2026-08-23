@@ -32,10 +32,10 @@ except ImportError:
 
 def _resolve_resample_filter() -> Resampling:
     """Return the best available high-quality resampling filter."""
-    resampling = getattr(Image, "Resampling", None)
+    resampling: type[Resampling] | None = getattr(Image, "Resampling", None)
     if resampling is not None:
         return resampling.LANCZOS
-    lanczos = getattr(Image, "LANCZOS", None)
+    lanczos: Resampling | None = getattr(Image, "LANCZOS", None)
     if lanczos is None:
         raise AttributeError("Pillow installation does not expose a LANCZOS filter")
     return lanczos
