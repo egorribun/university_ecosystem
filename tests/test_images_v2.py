@@ -95,6 +95,21 @@ def test_resolve_resample_filter_fallbacks():
             _resolve_resample_filter()
 
 
+def test_resolve_resample_filter_uses_exact_resampling_attribute_name():
+    """Do not treat an unrelated uppercase attribute as Pillow's enum."""
+    from app.utils.images import _resolve_resample_filter
+
+    fake_resampling = SimpleNamespace(LANCZOS=111)
+    fake_image = SimpleNamespace(
+        Resampling=None,
+        RESAMPLING=fake_resampling,
+        LANCZOS=222,
+    )
+
+    with patch.object(img_mod, "Image", fake_image):
+        assert _resolve_resample_filter() == 222
+
+
 def test_resolve_resample_filter_reports_missing_legacy_attribute():
     """A Pillow build without either resampling API fails with our contract error."""
     from app.utils.images import _resolve_resample_filter
