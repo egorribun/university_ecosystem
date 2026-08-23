@@ -35,17 +35,17 @@
  * to unblock `build-storybook` (Storybook's sb-manager/globals-runtime.js
  * is 3.25 MB). Prod's largest precache entry is maplibre-gl-*.js (~1.03 MB),
  * well under 5 MB.
+ *
+ * `offline.html` stays in the precache manifest. The project uses a custom
+ * `injectManifest` worker (rather than Workbox's generated runtime routes),
+ * so precaching the fallback is the only engine-independent guarantee that a
+ * direct offline navigation can be served by Firefox and WebKit as well as
+ * Chromium.
  */
 
 /** @type {import("workbox-build").InjectManifestOptions} */
 export const PWA_INJECT_CONFIG = {
   globPatterns: ["**/*.{js,css,html,ico,png,svg,webp,json}"],
-  globIgnores: [
-    "**/bundle-stats.*",
-    "**/offline.html",
-    "**/jspdf*.js",
-    "**/html2canvas*.js",
-    "**/purify*.js",
-  ],
+  globIgnores: ["**/bundle-stats.*", "**/jspdf*.js", "**/html2canvas*.js", "**/purify*.js"],
   maximumFileSizeToCacheInBytes: 5_000_000,
 }

@@ -91,7 +91,9 @@ def test_reconstruct_conflict_item_restores_original_metadata(
     with patch.object(
         optimizer_service, "_from_rust_item", return_value=reconstructed
     ) as from_rust_item:
-        result = optimizer_service._reconstruct_conflict_item(native_item, sample_item)
+        result = optimizer_service._reconstruct_conflict_item(
+            (native_item, sample_item)
+        )
 
     from_rust_item.assert_called_once_with(native_item, "101A", "Dr. Smith")
     assert result is reconstructed
@@ -111,7 +113,7 @@ def test_reconstruct_conflict_item_keeps_unknown_native_identity(optimizer_servi
     with patch.object(
         optimizer_service, "_from_rust_item", return_value=reconstructed
     ) as from_rust_item:
-        result = optimizer_service._reconstruct_conflict_item(native_item, None)
+        result = optimizer_service._reconstruct_conflict_item((native_item, None))
 
     from_rust_item.assert_called_once_with(native_item, None, None)
     assert result is reconstructed

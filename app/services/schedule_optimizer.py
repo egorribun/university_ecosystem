@@ -25,20 +25,27 @@ class ScheduleOptimizerService:
 
     @staticmethod
     def _uuid_to_rust_id(item_id: uuid.UUID) -> int:
-        """Return the deterministic standalone Rust identifier for a UUID."""
-        return int.from_bytes(item_id.bytes[:4], "big") & 0x7FFFFFFF
+        """Return the UUID's first four big-endian bytes as a positive Rust ID.
+
+        ``UUID.int`` is the canonical 128-bit big-endian representation, so
+        shifting it down extracts the same prefix without an intermediate byte
+        slice.  Keeping the sign bit clear preserves the non-negative i32
+        contract expected by the PyO3 extension.
+        """
+        return (item_id.int >> 96) & 0x7FFFFFFF
 
     def _reconstruct_conflict_item(
         self,
-        native_item: rust_ext.ScheduleItem,
-        original: ScheduleItemInternal | None,
+        conflict: tuple[rust_ext.ScheduleItem, ScheduleItemInternal | None],
     ) -> ScheduleItemInternal:
-        """Restore domain metadata and identity after native conflict detection."""
-        reconstructed = self._from_rust_item(
-            native_item,
-            original.room if original else None,
-            original.teacher if original else None,
-        )
+        """Restore native conflict data and its optional domain metadata.
+
+        The pair keeps the native value and its reverse-map entry together
+        while a batch is reconstructed, preventing accidental cross-wiring.
+        """
+        native_item, original = conflict
+        metadata_args = (original.room, original.teacher) if original else (None, None)
+        reconstructed = self._from_rust_item(native_item, *metadata_args)
         if original:
             reconstructed.id = original.id
         return reconstructed
@@ -151,7 +158,9 @@ class ScheduleOptimizerService:
 
             result = []
             for c_item in conflicts_rust:
-                orig = rust_id_map.get(c_item.id) if c_item.id is not None else None
+                orig = (
+                    rust_id_map.get(c_item.id) if isinstance(c_item.id, int) else None
+                )
                 room = orig.room if orig else None
                 teacher = orig.teacher if orig else None
                 orig_id = orig.id if orig else c_item.id
@@ -179,11 +188,12 @@ class ScheduleOptimizerService:
 
             result = []
             for a, b in conflicts_rust:
-                orig_a = rust_id_map.get(a.id) if a.id is not None else None
-                orig_b = rust_id_map.get(b.id) if b.id is not None else None
-
-                rec_a = self._reconstruct_conflict_item(a, orig_a)
-                rec_b = self._reconstruct_conflict_item(b, orig_b)
+                rec_a = self._reconstruct_conflict_item(
+                    (a, rust_id_map.get(a.id) if isinstance(a.id, int) else None)
+                )
+                rec_b = self._reconstruct_conflict_item(
+                    (b, rust_id_map.get(b.id) if isinstance(b.id, int) else None)
+                )
 
                 result.append((rec_a, rec_b))
             return result
