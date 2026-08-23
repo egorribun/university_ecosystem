@@ -453,6 +453,7 @@ def test_uuid_surrogate_allocator_moves_down_from_occupied_i32_max() -> None:
     assert rust_id_map == {2_147_483_647: occupied, 2_147_483_646: uuid_item}
 
 
+@pytest.mark.timeout(5)
 def test_uuid_surrogate_allocator_passes_item_to_native_converter() -> None:
     service = ScheduleOptimizerService()
     item = ScheduleItemInternal(

@@ -28,6 +28,7 @@ def sample_item():
     )
 
 
+@pytest.mark.timeout(5)
 def test_unique_id_allocator_keeps_surrogate_mapping(optimizer_service) -> None:
     item = ScheduleItemInternal(
         id=uuid.UUID("018f0000-0000-7000-8000-000000000001"),
@@ -136,6 +137,7 @@ async def test_batch_detect_conflicts(optimizer_service, sample_item):
 
 
 @pytest.mark.asyncio
+@pytest.mark.timeout(5)
 async def test_batch_uuidv7_prefix_collisions_preserve_both_items(
     optimizer_service,
 ) -> None:
