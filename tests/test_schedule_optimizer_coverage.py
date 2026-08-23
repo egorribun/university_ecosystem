@@ -82,6 +82,42 @@ async def test_batch_conflicts_restore_both_metadata_with_native_pair(
     assert returned[202].teacher == "Prof. Jones"
 
 
+def test_reconstruct_conflict_item_restores_original_metadata(
+    optimizer_service, sample_item
+) -> None:
+    native_item = MagicMock()
+    reconstructed = sample_item.model_copy(update={"id": None})
+
+    with patch.object(
+        optimizer_service, "_from_rust_item", return_value=reconstructed
+    ) as from_rust_item:
+        result = optimizer_service._reconstruct_conflict_item(native_item, sample_item)
+
+    from_rust_item.assert_called_once_with(native_item, "101A", "Dr. Smith")
+    assert result is reconstructed
+    assert result.id == sample_item.id
+
+
+def test_reconstruct_conflict_item_keeps_unknown_native_identity(optimizer_service):
+    native_item = MagicMock()
+    reconstructed = ScheduleItemInternal(
+        id=None,
+        weekday="Monday",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+        end_time=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
+        parity="both",
+    )
+
+    with patch.object(
+        optimizer_service, "_from_rust_item", return_value=reconstructed
+    ) as from_rust_item:
+        result = optimizer_service._reconstruct_conflict_item(native_item, None)
+
+    from_rust_item.assert_called_once_with(native_item, None, None)
+    assert result is reconstructed
+    assert result.id is None
+
+
 @pytest.mark.asyncio
 async def test_detect_conflicts_success(optimizer_service, sample_item):
     # Same weekday, overlapping time, same parity = conflict
@@ -216,6 +252,7 @@ async def test_uuid_id_conversion(optimizer_service) -> None:
     rust_item = optimizer_service._to_rust_item(item)
     expected_id = int.from_bytes(u_id.bytes[:4], "big") & 0x7FFFFFFF
     assert rust_item.id == expected_id
+    assert optimizer_service._uuid_to_rust_id(u_id) == expected_id
 
 
 @pytest.mark.asyncio

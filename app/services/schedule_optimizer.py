@@ -23,6 +23,26 @@ class ScheduleItemInternal(BaseModel):
 class ScheduleOptimizerService:
     """Service to interact with the Rust-based schedule optimizer natively via PyO3."""
 
+    @staticmethod
+    def _uuid_to_rust_id(item_id: uuid.UUID) -> int:
+        """Return the deterministic standalone Rust identifier for a UUID."""
+        return int.from_bytes(item_id.bytes[:4], "big") & 0x7FFFFFFF
+
+    def _reconstruct_conflict_item(
+        self,
+        native_item: rust_ext.ScheduleItem,
+        original: ScheduleItemInternal | None,
+    ) -> ScheduleItemInternal:
+        """Restore domain metadata and identity after native conflict detection."""
+        reconstructed = self._from_rust_item(
+            native_item,
+            original.room if original else None,
+            original.teacher if original else None,
+        )
+        if original:
+            reconstructed.id = original.id
+        return reconstructed
+
     def _to_rust_item(
         self,
         item: ScheduleItemInternal,
@@ -41,7 +61,7 @@ class ScheduleOptimizerService:
                 # that only need a Rust value. Conflict paths use the
                 # collision-free allocator below because UUIDv7 values share
                 # their high bytes within the same timestamp window.
-                rust_id = int.from_bytes(item.id.bytes[:4], "big") & 0x7FFFFFFF
+                rust_id = self._uuid_to_rust_id(item.id)
             else:
                 rust_id = (
                     rust_id_override if isinstance(rust_id_override, int) else None
@@ -162,21 +182,8 @@ class ScheduleOptimizerService:
                 orig_a = rust_id_map.get(a.id) if a.id is not None else None
                 orig_b = rust_id_map.get(b.id) if b.id is not None else None
 
-                rec_a = self._from_rust_item(
-                    a,
-                    orig_a.room if orig_a else None,
-                    orig_a.teacher if orig_a else None,
-                )
-                if orig_a:
-                    rec_a.id = orig_a.id
-
-                rec_b = self._from_rust_item(
-                    b,
-                    orig_b.room if orig_b else None,
-                    orig_b.teacher if orig_b else None,
-                )
-                if orig_b:
-                    rec_b.id = orig_b.id
+                rec_a = self._reconstruct_conflict_item(a, orig_a)
+                rec_b = self._reconstruct_conflict_item(b, orig_b)
 
                 result.append((rec_a, rec_b))
             return result

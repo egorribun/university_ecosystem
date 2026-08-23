@@ -34,6 +34,8 @@ from app.repositories.base import BaseRepository
 from app.schemas.dtos.chat import ChatDTO, MessageDTO
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
+_RANKED_MSG_CTE_NAME = "ranked_msg"  # pragma: no mutate
+
 # P-02 (audit 2026-03-08): Module-level tracer for chat repository spans.
 # SQLAlchemyInstrumentor (observability.py) already adds DB-level spans;
 # these add semantic context (chat_id, user_id) for easier trace filtering.
@@ -146,7 +148,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
                 .label("message_rank"),
             )
             .select_from(Message)
-            .cte("ranked_msg")
+            .cte(_RANKED_MSG_CTE_NAME)
         )
         last_msg_cte = (
             select(
