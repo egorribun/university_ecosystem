@@ -295,6 +295,16 @@ def test_database_invalidation_keeps_structured_log_message() -> None:
     )
 
 
+def test_database_invalidation_without_exception_uses_none_type_marker() -> None:
+    with (
+        patch.object(database._pool_metrics, "record_invalidation"),
+        patch.object(database.pool_health_logger, "warning") as warning,
+    ):
+        database._on_invalidate(None, None, None)
+
+    assert warning.call_args.kwargs["exception_type"] == "None"
+
+
 @pytest.mark.asyncio
 async def test_outbox_main_passes_runtime_heartbeat_path_to_worker(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -416,24 +426,35 @@ def test_uuid_surrogate_allocator_passes_item_to_native_converter() -> None:
         }
     )
 
-    calls: list[tuple[ScheduleItemInternal, int]] = []
+    integer_item = item.model_copy(update={"id": 42})
+    calls: list[tuple[object, int | None]] = []
 
     def strict_to_rust_item(
-        converted_item: ScheduleItemInternal, *, rust_id_override: int
+        converted_item: object, *, rust_id_override: int | None = None
     ) -> object:
         calls.append((converted_item, rust_id_override))
-        return SimpleNamespace(id=rust_id_override)
+        return SimpleNamespace(
+            id=(
+                rust_id_override
+                if rust_id_override is not None
+                else getattr(converted_item, "id", None)
+            )
+        )
 
     with patch.object(service, "_to_rust_item", side_effect=strict_to_rust_item):
-        rust_items, _ = service._to_rust_items_with_unique_ids([item, second_item])
+        rust_items, _ = service._to_rust_items_with_unique_ids(
+            [item, second_item, integer_item]
+        )
 
     assert calls == [
         (item, 2_147_483_647),
         (second_item, 2_147_483_646),
+        (integer_item, None),
     ]
     assert [rust_item.id for rust_item in rust_items] == [
         2_147_483_647,
         2_147_483_646,
+        42,
     ]
 
 
