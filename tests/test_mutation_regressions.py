@@ -86,6 +86,22 @@ async def test_dead_letter_cleanup_normalizes_naive_timestamp_before_cutoff() ->
 
 
 @pytest.mark.asyncio
+async def test_dead_letter_cleanup_uses_utc_clock_when_now_is_omitted() -> None:
+    db = AsyncMock()
+    db.execute.return_value = MagicMock(rowcount=0)
+    datetime_type = MagicMock(wraps=datetime)
+    datetime_type.now = MagicMock(
+        side_effect=lambda tz=None: datetime(2026, 8, 17, tzinfo=tz)
+    )
+
+    with patch.object(queue, "datetime", datetime_type):
+        deleted = await queue.cleanup_dead_lettered_jobs(db=db)
+
+    datetime_type.now.assert_called_once_with(UTC)
+    assert deleted == 0
+
+
+@pytest.mark.asyncio
 async def test_dead_letter_cleanup_normalizes_aware_non_utc_timestamp_before_cutoff() -> (
     None
 ):
