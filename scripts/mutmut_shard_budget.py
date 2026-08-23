@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Calculate a fail-closed outer timeout for one exact mutmut shard.
 
-Mutmut 3.7.0 aborts a child after ``15 * (estimated_test_seconds + 2)`` wall
-seconds.  A shorter shell ``timeout`` can therefore terminate a valid child
-before mutmut has classified it as a timeout.  This helper derives an upper
-bound from the same merged stats and exact IDs used by the shard planner.  It
-also reserves parent-side watchdog polling, fork/reap, registration, and
-metadata-persistence time for every selected child; those costs are not part
-of a child's watchdog cap.
+Mutmut 3.7.0 aborts a child after
+``15 * (estimated_test_seconds + timeout_constant)`` wall seconds.  The
+repository sets ``timeout_constant = 6`` so pytest's 120-second per-test
+watchdog classifies a pathological mutant as a killed test before mutmut's
+own watchdog records an incomplete timeout.  A shorter shell ``timeout`` can
+still terminate a valid child before mutmut has classified it.  This helper
+derives an upper bound from the same merged stats and exact IDs used by the
+shard planner.  It also reserves parent-side watchdog polling, fork/reap,
+registration, and metadata-persistence time for every selected child; those
+costs are not part of a child's watchdog cap.
 """
 
 from __future__ import annotations
@@ -22,7 +25,10 @@ from fractions import Fraction
 from pathlib import Path
 
 MUTMUT_WALL_TIMEOUT_MULTIPLIER = 15
-MUTMUT_WALL_TIMEOUT_GRACE_SECONDS = 2
+# Keep this synchronized with [tool.mutmut].timeout_constant in pyproject.toml.
+# Six seconds intentionally exceeds pytest's 120-second child-test timeout for
+# the shortest exact mutation shard while preserving a fail-closed outer cap.
+MUTMUT_WALL_TIMEOUT_GRACE_SECONDS = 6
 METADATA_AND_STARTUP_RESERVE_SECONDS = 900
 SELECTED_TEST_PHASE_MULTIPLIER = 2
 CONTROL_CYCLE_RESERVE_SECONDS = 15
