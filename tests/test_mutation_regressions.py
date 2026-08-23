@@ -133,6 +133,27 @@ async def test_dead_letter_cleanup_normalizes_aware_non_utc_timestamp_before_cut
 
 
 @pytest.mark.asyncio
+async def test_dead_letter_cleanup_reapplies_explicit_utc_to_cutoff() -> None:
+    seen_timezones: list[object] = []
+
+    class TrackingDateTime(datetime):
+        def astimezone(self, tz=None):  # type: ignore[override]
+            seen_timezones.append(tz)
+            return self
+
+    db = AsyncMock()
+    db.execute.return_value = MagicMock(rowcount=0)
+
+    await queue.cleanup_dead_lettered_jobs(
+        7,
+        db=db,
+        now=TrackingDateTime(2026, 8, 17, 3, tzinfo=timezone(timedelta(hours=3))),
+    )
+
+    assert seen_timezones == [UTC, UTC]
+
+
+@pytest.mark.asyncio
 async def test_dead_letter_cleanup_converts_non_utc_offset_before_cutoff() -> None:
     db = AsyncMock()
     db.execute.return_value = SimpleNamespace(rowcount=0)
