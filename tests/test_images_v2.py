@@ -110,6 +110,27 @@ def test_resolve_resample_filter_uses_exact_resampling_attribute_name():
         assert _resolve_resample_filter() == 222
 
 
+def test_resolve_resample_filter_prefers_enum_over_legacy_alias():
+    """Prefer Pillow's enum value when both resampling APIs are present."""
+    from app.utils.images import _resolve_resample_filter
+
+    fake_image = SimpleNamespace(
+        Resampling=SimpleNamespace(LANCZOS=111),
+        LANCZOS=222,
+    )
+
+    with patch.object(img_mod, "Image", fake_image):
+        assert _resolve_resample_filter() == 111
+
+
+def test_resolve_resample_filter_handles_absent_resampling_attribute():
+    """A Pillow build without ``Resampling`` still uses the legacy filter."""
+    from app.utils.images import _resolve_resample_filter
+
+    with patch.object(img_mod, "Image", SimpleNamespace(LANCZOS=222)):
+        assert _resolve_resample_filter() == 222
+
+
 def test_resolve_resample_filter_reports_missing_legacy_attribute():
     """A Pillow build without either resampling API fails with our contract error."""
     from app.utils.images import _resolve_resample_filter

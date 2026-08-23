@@ -87,7 +87,8 @@ class ScheduleOptimizerService:
                 while next_surrogate in used_ids:
                     next_surrogate -= 1
                 rust_id = next_surrogate
-                used_ids.add(rust_id)
+                # ``next_surrogate`` only moves down, so an allocated ID is
+                # never revisited during this invocation.
                 next_surrogate -= 1
                 rust_id_map[rust_id] = item
                 rust_items.append(self._to_rust_item(item, rust_id_override=rust_id))
