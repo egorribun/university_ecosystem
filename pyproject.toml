@@ -509,8 +509,10 @@ skips = [
 source_paths = ["app/"]
 # Keep the external shard-budget calculation exactly aligned with mutmut's
 # per-PID watchdog in 3.7.0: timeout_multiplier * (estimated + timeout_constant).
+# The additive reserve absorbs process startup, OpenTelemetry fork hooks, and
+# pytest collection overhead observed in CI's exact mutation shards.
 timeout_multiplier = 15.0
-timeout_constant = 1.0
+timeout_constant = 2.0
 pytest_add_cli_args_test_selection = [
     "-m",
     "not integration and not chaos and not performance and not slow",

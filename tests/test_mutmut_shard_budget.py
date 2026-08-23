@@ -34,14 +34,14 @@ def test_calculate_shard_budget_models_mutmut_watchdog_and_parallel_workers() ->
         max_children=2,
     )
 
-    # mutmut schedules ascending by estimate: 30s for fast, then two 60s
-    # slow mutants. The watchdog-only bound is 90s; each of the three children
+    # mutmut schedules ascending by estimate: 45s for fast, then two 75s
+    # slow mutants. The watchdog-only bound is 120s; each of the three children
     # also consumes a parent control cycle for watchdog polling, fork/reap,
     # registration, and metadata persistence.
-    assert budget.watchdog_execution_cap_seconds == 90
+    assert budget.watchdog_execution_cap_seconds == 120
     assert budget.control_cycle_count == 3
     assert budget.control_cycle_reserve_seconds == 45
-    assert budget.execution_cap_seconds == 135
+    assert budget.execution_cap_seconds == 165
     assert budget.selected_test_union_seconds == 4
     assert budget.pre_mutation_reserve_seconds == (
         METADATA_AND_STARTUP_RESERVE_SECONDS + SELECTED_TEST_PHASE_MULTIPLIER * 4
@@ -116,10 +116,10 @@ def test_calculate_shard_budget_reserves_each_selected_child_control_cycle() -> 
     # independently incurs parent polling, fork/reap, registration, and
     # metadata persistence. Reserving only three wave-level cycles would
     # undercount two child completions.
-    assert budget.watchdog_execution_cap_seconds == 90
+    assert budget.watchdog_execution_cap_seconds == 135
     assert budget.control_cycle_count == 5
     assert budget.control_cycle_reserve_seconds == 75
-    assert budget.execution_cap_seconds == 165
+    assert budget.execution_cap_seconds == 210
 
 
 def test_calculate_shard_budget_supports_an_explicit_fail_closed_control_reserve() -> (
@@ -169,10 +169,10 @@ def test_calculate_shard_budget_rounds_a_positive_sub_ulp_duration_up_in_both_pa
     # though its nearest binary float rounds to 1.0. Both the selected union
     # reserve and mutmut's 15x watchdog therefore need their next full second.
     assert budget.selected_test_union_seconds == 2
-    assert budget.watchdog_execution_cap_seconds == 31
+    assert budget.watchdog_execution_cap_seconds == 46
     assert budget.pre_mutation_reserve_seconds == 904
-    assert budget.outer_timeout_seconds == 950
-    assert budget.total_wall_cap_seconds == 980
+    assert budget.outer_timeout_seconds == 965
+    assert budget.total_wall_cap_seconds == 995
 
 
 def test_calculate_shard_budget_matches_the_observed_pr_lifecycle_shape() -> None:
@@ -188,11 +188,11 @@ def test_calculate_shard_budget_matches_the_observed_pr_lifecycle_shape() -> Non
 
     assert budget.selected_test_union_seconds == 259
     assert budget.pre_mutation_reserve_seconds == 1418
-    assert budget.watchdog_execution_cap_seconds == 3898
+    assert budget.watchdog_execution_cap_seconds == 3913
     assert budget.control_cycle_reserve_seconds == 15
-    assert budget.execution_cap_seconds == 3913
-    assert budget.outer_timeout_seconds == 5331
-    assert budget.total_wall_cap_seconds == 5361
+    assert budget.execution_cap_seconds == 3928
+    assert budget.outer_timeout_seconds == 5346
+    assert budget.total_wall_cap_seconds == 5376
     assert budget.outer_timeout_seconds < 6600
     assert budget.total_wall_cap_seconds == (
         budget.outer_timeout_seconds + TERMINATION_GRACE_SECONDS

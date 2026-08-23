@@ -416,7 +416,7 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
     assert mutation_config["source_paths"] == ["app/"]
     assert "paths_to_mutate" not in mutation_config
     assert mutation_config["timeout_multiplier"] == 15.0
-    assert mutation_config["timeout_constant"] == 1.0
+    assert mutation_config["timeout_constant"] == 2.0
     assert mutation_config["pytest_add_cli_args_test_selection"] == [
         "-m",
         "not integration and not chaos and not performance and not slow",
