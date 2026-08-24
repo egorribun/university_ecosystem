@@ -7,11 +7,11 @@
     "test:release-toolchain": "npm --prefix tools/npm-cli-shim test && node --test scripts/tests/*.test.mjs && npm --version"
   },
   "devDependencies": {
-    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/changelog": "^7.0.0",
     "@semantic-release/commit-analyzer": "^13.0.1",
     "@semantic-release/exec": "^7.1.0",
-    "@semantic-release/github": "^12.0.6",
-    "@semantic-release/release-notes-generator": "^14.1.0",
+    "@semantic-release/github": "^12.0.9",
+    "@semantic-release/release-notes-generator": "^14.1.1",
     "npm": "file:tools/npm-cli-shim",
     "semantic-release": "^25.0.9"
   },
