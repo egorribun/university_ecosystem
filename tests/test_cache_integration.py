@@ -125,7 +125,7 @@ async def test_news_list_and_detail_cache(async_client, db_session, fake_cache):
     await db_session.commit()
     await db_session.refresh(news)
 
-    await _robust_invalidate(fake_cache, "news:list*", f"news:item:{news.id}*")
+    await _robust_invalidate(fake_cache, "news:list*", "ue:news:item:*")
 
     list_after_update = await async_client.get(
         "/news", headers={"If-None-Match": list_etag}
