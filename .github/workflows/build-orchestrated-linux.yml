@@ -111,11 +111,9 @@ jobs:
           RUNS="${RUNS_INPUT:-3}"
           echo "Running build × $RUNS for reproducibility check"
 
-          declare -a SHELL_HASHES
           declare -a SHELL_STABLE_HASHES
           declare -a SHELL_SIZES
           declare -a INDEX_HASHES
-          declare -a SW_HASHES
           declare -a SW_STABLE_HASHES
           declare -a SW_SIZES
           declare -a SERVER_HASHES
@@ -144,10 +142,8 @@ jobs:
             SERVER_SIZE=$(stat -c %s dist/server/server.js)
 
             INDEX_HASHES[i]="$INDEX_HASH"
-            SHELL_HASHES[i]="$SHELL_HASH"
             SHELL_STABLE_HASHES[i]="$SHELL_STABLE_HASH"
             SHELL_SIZES[i]="$SHELL_SIZE"
-            SW_HASHES[i]="$SW_HASH"
             SW_STABLE_HASHES[i]="$SW_STABLE_HASH"
             SW_SIZES[i]="$SW_SIZE"
             SERVER_HASHES[i]="$SERVER_HASH"
