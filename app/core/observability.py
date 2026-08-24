@@ -345,31 +345,28 @@ def shutdown_observability() -> None:
     _otel_logger_provider = None
 
     def _shutdown_trace() -> None:
-        if isinstance(provider, TracerProvider):
-            with suppress(
-                Exception
-            ):  # RZ-22-01-JUSTIFIED: best-effort tracer provider teardown without blocking process exit
-                provider.shutdown()
+        with suppress(
+            Exception
+        ):  # RZ-22-01-JUSTIFIED: best-effort tracer provider teardown without blocking process exit
+            cast(TracerProvider, provider).shutdown()
 
     def _shutdown_metrics() -> None:
-        if isinstance(meter_provider, MeterProvider):
-            with suppress(
-                Exception
-            ):  # RZ-22-01-JUSTIFIED: best-effort meter provider teardown with bounded timeout
-                try:
-                    meter_provider.shutdown(timeout_millis=2000)
-                except TypeError:
-                    meter_provider.shutdown()
+        with suppress(
+            Exception
+        ):  # RZ-22-01-JUSTIFIED: best-effort meter provider teardown with bounded timeout
+            try:
+                cast(MeterProvider, meter_provider).shutdown(timeout_millis=2000)
+            except TypeError:
+                cast(MeterProvider, meter_provider).shutdown()
 
     def _shutdown_logs() -> None:
-        if logger_provider is not None:
-            with suppress(
-                Exception
-            ):  # RZ-22-01-JUSTIFIED: safe shutdown of otel logger provider
-                try:
-                    cast(Any, logger_provider).shutdown(timeout_millis=2000)
-                except TypeError:
-                    cast(Any, logger_provider).shutdown()
+        with suppress(
+            Exception
+        ):  # RZ-22-01-JUSTIFIED: safe shutdown of otel logger provider
+            try:
+                cast(Any, logger_provider).shutdown(timeout_millis=2000)
+            except TypeError:
+                cast(Any, logger_provider).shutdown()
 
     shutdown_tasks = []
     if isinstance(provider, TracerProvider):

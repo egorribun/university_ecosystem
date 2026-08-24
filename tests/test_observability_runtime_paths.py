@@ -174,6 +174,33 @@ def test_configure_observability_instrument_app_error():
         assert mock_app.state.otel_instrumented
 
 
+def test_shutdown_observability_supports_legacy_meter_shutdown_signature():
+    from opentelemetry.sdk.metrics import MeterProvider
+
+    class LegacyMeterProvider(MeterProvider):
+        def __init__(self) -> None:
+            self.shutdown_calls = 0
+
+        def shutdown(self) -> None:
+            self.shutdown_calls += 1
+
+    meter_provider = LegacyMeterProvider()
+    with (
+        patch(
+            "app.core.observability.trace.get_tracer_provider", return_value=MagicMock()
+        ),
+        patch(
+            "app.core.observability.metrics.get_meter_provider",
+            return_value=meter_provider,
+        ),
+        patch("app.core.observability._otel_logging_handler", None),
+        patch("app.core.observability._otel_logger_provider", None),
+    ):
+        app.core.observability.shutdown_observability()
+
+    assert meter_provider.shutdown_calls == 1
+
+
 def test_get_periodic_task_metrics_cache():
     m1 = app.core.observability.get_periodic_task_metrics("test_task")
     m2 = app.core.observability.get_periodic_task_metrics("test_task")

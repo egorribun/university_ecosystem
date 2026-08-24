@@ -64,7 +64,9 @@ async def retry_async[T](
 
     last_error: Exception | None = None
 
-    for attempt in range(1, max_attempts + 1):
+    attempt = 0
+    while True:
+        attempt += 1
         try:
             return await fn(*args, **kwargs)
         except retryable_exceptions as e:
@@ -100,9 +102,6 @@ async def retry_async[T](
                 on_retry(attempt, e)
 
             await asyncio.sleep(delay)
-
-    # The loop always returns or raises once max_attempts is positive.
-    raise AssertionError
 
 
 def with_retry[T, **P](

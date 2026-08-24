@@ -558,6 +558,36 @@ def test_uuid_surrogate_allocator_passes_item_to_native_converter() -> None:
     ]
 
 
+def test_integer_id_mapping_continues_before_non_integer_items() -> None:
+    service = ScheduleOptimizerService()
+    integer_item = _schedule_item(42, room="101A", teacher="Dr. Smith")
+    none_item = ScheduleItemInternal(
+        id=None,
+        weekday="Monday",
+        start_time=datetime(2026, 1, 1, 11, 0, tzinfo=UTC),
+        end_time=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+        parity="both",
+    )
+    uuid_item = ScheduleItemInternal(
+        id=uuid.UUID("018f0000-0000-7000-8000-000000000001"),
+        weekday="Monday",
+        start_time=datetime(2026, 1, 1, 9, 0, tzinfo=UTC),
+        end_time=datetime(2026, 1, 1, 10, 0, tzinfo=UTC),
+        parity="both",
+    )
+
+    def fake_to_rust_item(item: ScheduleItemInternal, **kwargs: object) -> object:
+        return SimpleNamespace(id=kwargs.get("rust_id_override", item.id))
+
+    with patch.object(service, "_to_rust_item", side_effect=fake_to_rust_item):
+        rust_items, rust_id_map = service._to_rust_items_with_unique_ids(
+            [integer_item, none_item, uuid_item]
+        )
+
+    assert [item.id for item in rust_items] == [42, None, 2_147_483_647]
+    assert rust_id_map == {42: integer_item, 2_147_483_647: uuid_item}
+
+
 @pytest.mark.asyncio
 async def test_batch_conflicts_passes_b_item_to_native_reconstruction() -> None:
     service = ScheduleOptimizerService()

@@ -154,11 +154,12 @@ async def test_replay_flushes_after_each_completed_batch() -> None:
     queue = DeadLetterQueue(session)
     queue.mark_job_retrying = AsyncMock()
     queue.mark_job_completed = AsyncMock()
-    queue.get_jobs_ready_for_retry = AsyncMock(side_effect=[[_job()], []])
+    queue.get_jobs_ready_for_retry = AsyncMock(side_effect=[[_job()], [_job()], []])
 
-    await queue.auto_replay_jobs(handler=AsyncMock(), rate_limit_delay=0)
+    result = await queue.auto_replay_jobs(handler=AsyncMock(), rate_limit_delay=0)
 
-    session.flush.assert_awaited_once_with()
+    assert result == (2, 0)
+    assert session.flush.await_count == 2
 
 
 def test_circuit_listener_ignores_non_recovery_and_no_running_loop() -> None:
