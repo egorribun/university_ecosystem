@@ -91,6 +91,25 @@ describe("NewsCardContent closure", () => {
     }
   })
 
+  it("replaces an existing like celebration timer on a repeated click", () => {
+    vi.useFakeTimers()
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout")
+
+    try {
+      render(<NewsCardContent {...baseProps} />)
+      const likeButton = screen.getByRole("button", { name: "common:aria.like" })
+
+      fireEvent.click(likeButton)
+      clearTimeoutSpy.mockClear()
+      fireEvent.click(likeButton)
+
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+      clearTimeoutSpy.mockRestore()
+    }
+  })
+
   it("renders liked and bookmarked state without optional controls", () => {
     const onToggleLike = vi.fn()
     const onToggleBookmark = vi.fn()
