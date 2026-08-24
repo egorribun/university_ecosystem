@@ -150,8 +150,6 @@ func FileProcessSyncHandler(ctx context.Context, grpcConn *grpc.ClientConn, file
 		tenantIDVal, _ := c.Get("tenant_id")
 		if tenantID, ok := tenantIDVal.(string); ok && tenantID != "" {
 			rpcCtx = metadata.AppendToOutgoingContext(rpcCtx, "x-tenant-id", tenantID)
-		} else if tenantHeader := c.GetHeader("X-Tenant-ID"); tenantHeader != "" {
-			rpcCtx = metadata.AppendToOutgoingContext(rpcCtx, "x-tenant-id", tenantHeader)
 		}
 
 		resp, err := fileClient.ProcessFile(rpcCtx, &pb.ProcessFileRequest{

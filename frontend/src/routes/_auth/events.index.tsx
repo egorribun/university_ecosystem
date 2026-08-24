@@ -3,6 +3,7 @@ import { lazy } from "react"
 import * as v from "valibot"
 
 import { EVENTS_PAGE_SIZE, prefetchEventsListQuery } from "@/api/hooks/events"
+import { eventsSearchSchema } from "@/features/events/schema"
 import { resolveLoaderLang } from "@/utils/loaderLang"
 
 const Events = lazy(() => import("@/pages/Events"))
@@ -28,17 +29,6 @@ export const Route = createFileRoute("/_auth/events/")({
       }),
     ])
   },
-  validateSearch: (search: Record<string, unknown>) =>
-    v.parse(
-      v.object({
-        tab: v.optional(v.string()),
-        q: v.optional(v.string()),
-        dr: v.optional(v.string()),
-        loc: v.optional(v.string()),
-        sort: v.optional(v.string()),
-        cat: v.optional(v.string()),
-      }),
-      search
-    ),
+  validateSearch: (search: Record<string, unknown>) => v.parse(eventsSearchSchema, search),
   component: Events,
 })

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react"
 import { renderHook, act, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AxiosError, AxiosHeaders } from "axios"
 
 import { extractSigningKey, useAuthApi } from "./useAuthApi"
@@ -20,6 +20,10 @@ import { SPOTIFY_REAUTH_EVENT } from "@/hooks/useNowPlaying"
 const mocks = vi.hoisted(() => ({
   apiPost: vi.fn((..._a: unknown[]) => Promise.resolve({ status: 200, data: {} })),
   apiGet: vi.fn((..._a: unknown[]) => Promise.resolve({ status: 200, data: {} })),
+  i18n: {
+    resolvedLanguage: "en" as string | undefined,
+    language: "en" as string | undefined,
+  },
   incrementSessionEpoch: vi.fn(),
   fetchCurrentUser: vi.fn((..._a: unknown[]) => Promise.resolve({ id: "u-1" })),
   recoverPushConsentFromBrowser: vi.fn(async () => false),
@@ -27,15 +31,18 @@ const mocks = vi.hoisted(() => ({
   softSyncPushSubscription: vi.fn(async () => null),
   setPushConsent: vi.fn(),
   startAuthentication: vi.fn(async () => ({ id: "assertion" })),
+  prefetchDashboardStories: vi.fn(),
+  prefetchDashboardNews: vi.fn(),
+  prefetchDashboardEvents: vi.fn(),
+  prefetchEventsListQuery: vi.fn(),
+  logWarning: vi.fn(),
+  logError: vi.fn(),
 }))
 
-vi.mock("@/api/client", async () => {
-  const actual = await vi.importActual<typeof import("@/api/client")>("@/api/client")
-  return {
-    ...actual,
-    default: { post: mocks.apiPost, get: mocks.apiGet },
-  }
-})
+vi.mock("@/api/client", () => ({
+  API_UNAUTHORIZED_EVENT: "auth:unauthorized",
+  default: { post: mocks.apiPost, get: mocks.apiGet },
+}))
 
 vi.mock("@/api/interceptors/etagCache", () => ({
   incrementSessionEpoch: mocks.incrementSessionEpoch,
@@ -54,6 +61,30 @@ vi.mock("@/push/subscribe", () => ({
 
 vi.mock("@simplewebauthn/browser", () => ({
   startAuthentication: mocks.startAuthentication,
+}))
+
+vi.mock("@/i18n/config", () => ({ default: mocks.i18n }))
+
+vi.mock("@/hooks/useDashboardStories", () => ({
+  prefetchDashboardStories: mocks.prefetchDashboardStories,
+}))
+
+vi.mock("@/hooks/useDashboardNews", () => ({
+  prefetchDashboardNews: mocks.prefetchDashboardNews,
+}))
+
+vi.mock("@/hooks/useDashboardEvents", () => ({
+  prefetchDashboardEvents: mocks.prefetchDashboardEvents,
+}))
+
+vi.mock("@/api/hooks/events", () => ({
+  EVENTS_PAGE_SIZE: 20,
+  prefetchEventsListQuery: mocks.prefetchEventsListQuery,
+}))
+
+vi.mock("@/app/logger", () => ({
+  logWarning: mocks.logWarning,
+  logError: mocks.logError,
 }))
 
 vi.mock("react-i18next", () => ({
@@ -147,11 +178,18 @@ const lockedError = (retryAfter?: string): AxiosError => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.i18n.resolvedLanguage = "en"
+  mocks.i18n.language = "en"
   mocks.apiPost.mockResolvedValue({ status: 200, data: {} })
   mocks.apiGet.mockResolvedValue({ status: 200, data: {} })
   mocks.recoverPushConsentFromBrowser.mockResolvedValue(false)
   mocks.hasPushConsent.mockReturnValue(false)
+  mocks.softSyncPushSubscription.mockResolvedValue(null)
   mocks.startAuthentication.mockResolvedValue({ id: "assertion" })
+})
+
+afterEach(() => {
+  vi.unstubAllEnvs()
 })
 
 // ---------------------------------------------------------------------------
@@ -305,6 +343,61 @@ describe("login → prefetchDashboardData branches", () => {
     // fire-and-forget prefetch without throwing).
     expect(w.setUser).toHaveBeenCalled()
   })
+
+  it("falls back to the configured language and normalizes non-English locales to Russian", async () => {
+    mocks.i18n.resolvedLanguage = undefined
+    mocks.i18n.language = "fr"
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.login("a@b.dev", "pw")
+    })
+
+    await waitFor(() =>
+      expect(mocks.prefetchDashboardNews).toHaveBeenCalledWith(expect.anything(), "ru")
+    )
+  })
+
+  it("defaults dashboard prefetching to Russian when i18n exposes no active language", async () => {
+    mocks.i18n.resolvedLanguage = undefined
+    mocks.i18n.language = undefined
+    const w = makeWires({})
+    mocks.apiPost.mockResolvedValue({
+      status: 200,
+      data: { user: fullUser({ group_id: "grp-1" }) },
+    })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.login("a@b.dev", "pw")
+    })
+
+    await waitFor(() =>
+      expect(mocks.prefetchEventsListQuery).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ language: "ru" })
+      )
+    )
+  })
+
+  it("suppresses dashboard prefetch diagnostics outside development", async () => {
+    vi.stubEnv("DEV", false)
+    mocks.prefetchDashboardStories.mockImplementationOnce(() => {
+      throw new Error("prefetch unavailable")
+    })
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.login("a@b.dev", "pw")
+    })
+
+    await waitFor(() => expect(mocks.prefetchDashboardStories).toHaveBeenCalled())
+    expect(mocks.logWarning).not.toHaveBeenCalled()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -410,6 +503,22 @@ describe("submitMfaChallenge", () => {
     )
   })
 
+  it("sends an empty challenge token when the optional token is absent", async () => {
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.submitMfaChallenge({ code: "654321" })
+    })
+
+    expect(mocks.apiPost).toHaveBeenCalledWith(
+      "/auth/mfa/verify",
+      expect.objectContaining({ challenge_token: "" }),
+      expect.anything()
+    )
+  })
+
   it("throws ChallengeLockedError on 423 (lines 282-289)", async () => {
     const w = makeWires()
     mocks.apiPost.mockRejectedValue(lockedError("90"))
@@ -446,6 +555,20 @@ describe("submitMfaChallenge", () => {
         await result.current.submitMfaChallenge({ code: "1", challengeToken: "ct" })
       })
     ).rejects.toThrow("server 500")
+  })
+
+  it("leaves auth state untouched for a malformed successful payload", async () => {
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValue({ status: 200, data: {} })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.submitMfaChallenge({ code: "123456", challengeToken: "ct" })
+    })
+
+    expect(w.setUser).not.toHaveBeenCalled()
+    expect(w.updatePendingMfa).not.toHaveBeenCalled()
+    expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
   })
 })
 
@@ -519,6 +642,20 @@ describe("requireMfa", () => {
       })
     ).rejects.toThrow("nope")
   })
+
+  it("re-throws non-auth Axios failures", async () => {
+    const w = makeWires()
+    const err = new AxiosError("upstream unavailable")
+    err.response = { status: 500, headers: {}, data: {}, statusText: "", config: {} as never }
+    mocks.apiPost.mockRejectedValue(err)
+    const { result } = renderApi(w)
+
+    await expect(
+      act(async () => {
+        await result.current.requireMfa()
+      })
+    ).rejects.toBe(err)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -563,6 +700,22 @@ describe("refresh", () => {
       await result.current.refresh()
     })
     expect(w.handleUnauthorized).not.toHaveBeenCalled()
+    expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
+  })
+
+  it("swallows an asynchronous push-sync failure after refresh", async () => {
+    const w = makeWires()
+    mocks.fetchCurrentUser.mockResolvedValue(fullUser())
+    mocks.hasPushConsent.mockReturnValue(true)
+    mocks.softSyncPushSubscription.mockRejectedValue(new Error("push unavailable"))
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.refresh()
+      await Promise.resolve()
+    })
+
+    expect(mocks.softSyncPushSubscription).toHaveBeenCalled()
     expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
   })
 })
@@ -651,6 +804,24 @@ describe("loginWithPasskey", () => {
       })
     ).rejects.toThrow("passkey unavailable")
   })
+
+  it("leaves auth state untouched for a malformed passkey verification payload", async () => {
+    const w = makeWires()
+    mocks.apiPost
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { publicKey: {}, challenge_token: "ct" },
+      })
+      .mockResolvedValueOnce({ status: 200, data: {} })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.loginWithPasskey("a@b.dev")
+    })
+
+    expect(w.setUser).not.toHaveBeenCalled()
+    expect(w.updatePendingMfa).not.toHaveBeenCalled()
+  })
 })
 
 describe("useAuthApi — residual defensive branches", () => {
@@ -696,6 +867,20 @@ describe("useAuthApi — residual defensive branches", () => {
     await waitFor(() => expect(mocks.softSyncPushSubscription).toHaveBeenCalled())
   })
 
+  it("swallows push-consent recovery rejection after login", async () => {
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
+    mocks.recoverPushConsentFromBrowser.mockRejectedValue(new Error("permission unavailable"))
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.login("a@b.dev", "pw")
+      await Promise.resolve()
+    })
+
+    expect(w.setUser).toHaveBeenCalled()
+  })
+
   it("swallows push soft-sync failures after an MFA verification", async () => {
     const w = makeWires()
     mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
@@ -707,6 +892,20 @@ describe("useAuthApi — residual defensive branches", () => {
       await result.current.submitMfaChallenge({ code: "123456", challengeToken: "ct" })
     })
     await waitFor(() => expect(mocks.softSyncPushSubscription).toHaveBeenCalled())
+  })
+
+  it("swallows push-consent recovery rejection after MFA verification", async () => {
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
+    mocks.recoverPushConsentFromBrowser.mockRejectedValue(new Error("permission unavailable"))
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.submitMfaChallenge({ code: "123456", challengeToken: "ct" })
+      await Promise.resolve()
+    })
+
+    expect(w.setUser).toHaveBeenCalled()
   })
 
   it("swallows push soft-sync failures after a passkey verification", async () => {
@@ -725,6 +924,25 @@ describe("useAuthApi — residual defensive branches", () => {
       await result.current.loginWithPasskey("a@b.dev")
     })
     await waitFor(() => expect(mocks.softSyncPushSubscription).toHaveBeenCalled())
+  })
+
+  it("swallows push-consent recovery rejection after passkey verification", async () => {
+    const w = makeWires()
+    mocks.apiPost
+      .mockResolvedValueOnce({
+        status: 200,
+        data: { publicKey: {}, challenge_token: "ct" },
+      })
+      .mockResolvedValueOnce({ status: 200, data: { user: fullUser() } })
+    mocks.recoverPushConsentFromBrowser.mockRejectedValue(new Error("permission unavailable"))
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.loginWithPasskey("a@b.dev")
+      await Promise.resolve()
+    })
+
+    expect(w.setUser).toHaveBeenCalled()
   })
 
   it("swallows a dashboard prefetch import failure", async () => {

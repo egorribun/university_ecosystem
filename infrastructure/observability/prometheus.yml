@@ -21,6 +21,9 @@ scrape_configs:
       - targets: ['backend:8000']
     metrics_path: /metrics
     scrape_interval: 10s
+    basic_auth:
+      username: metrics_scraper
+      password_file: /tmp/backend_metrics_password
 
   # Notifications Worker
   - job_name: 'notifications-worker'
@@ -28,10 +31,16 @@ scrape_configs:
       - targets: ['notifications-worker:9101']
     scrape_interval: 30s
 
-  # Redis
-  - job_name: 'redis'
+  # Valkey/Redis (native RESP is not an HTTP metrics endpoint)
+  - job_name: 'redis-exporter'
     static_configs:
-      - targets: ['redis:6379']
+      - targets: ['redis-exporter:9121']
+
+  # OpenFeature flag evaluation service
+  - job_name: 'flagd'
+    static_configs:
+      - targets: ['flagd:8014']
+    metrics_path: /metrics
 
   # MinIO
   - job_name: 'minio'
@@ -39,11 +48,9 @@ scrape_configs:
       - targets: ['minio:9000']
     metrics_path: /minio/v2/metrics/cluster
 
-  # NATS
-  - job_name: 'nats'
-    static_configs:
-      - targets: ['nats:8222']
-    metrics_path: /metrics
+  # NATS' monitoring port exposes JSON endpoints (/varz, /jsz), not native
+  # Prometheus text. Add a maintained exporter before restoring a NATS scrape;
+  # pointing Prometheus directly at :8222/metrics produces a permanent 404.
 
   # Tempo
   - job_name: 'tempo'

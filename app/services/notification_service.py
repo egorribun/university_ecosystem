@@ -32,9 +32,6 @@ class NotificationService:
         self, event_id: uuid.UUID | int, locale: str, background: BackgroundTasks
     ) -> None:
         """Enqueue event notification in background."""
-        job = notification_queue.NotificationJob(
-            kind="event", record_id=event_id, locale=locale
-        )
         try:
             background.add_task(
                 notification_queue.enqueue_event_notification,
@@ -43,8 +40,9 @@ class NotificationService:
             )
         except (RuntimeError, OSError) as exc:
             # RZ-20-04: Narrowed — enqueue errors (queue full, I/O).
-            await notification_queue.record_enqueue_failure(
-                job,
+            await notification_queue.report_enqueue_failure(
+                notification_type="event",
+                record_id=event_id,
                 error=exc,
                 source="NotificationService.dispatch_event_created",
             )
@@ -62,8 +60,14 @@ class NotificationService:
                 news_id,
                 locale=locale,
             )
-        except (RuntimeError, OSError):
+        except (RuntimeError, OSError) as exc:
             # RZ-20-04: Narrowed — enqueue errors (queue full, I/O).
+            await notification_queue.report_enqueue_failure(
+                notification_type="news",
+                record_id=news_id,
+                error=exc,
+                source="NotificationService.dispatch_news_created",
+            )
             logger.exception(
                 "Failed to enqueue news notification", extra={"news_id": news_id}
             )
@@ -85,7 +89,13 @@ class NotificationService:
                 user_id,
                 locale=locale,
             )
-        except (RuntimeError, OSError):
+        except (RuntimeError, OSError) as exc:
+            await notification_queue.report_enqueue_failure(
+                notification_type="comment",
+                record_id=comment_id,
+                error=exc,
+                source="NotificationService.dispatch_comment_created",
+            )
             logger.exception(
                 "Failed to enqueue comment notification",
                 extra={"news_id": news_id, "comment_id": comment_id},

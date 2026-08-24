@@ -55,11 +55,9 @@ async def ensure_partitions_exist() -> None:
             safe_table = preparer.quote(table)
             safe_default = preparer.quote(f"{table}_default")
             try:
-                await conn.execute(
-                    text(
-                        f"CREATE TABLE IF NOT EXISTS {safe_default} "
-                        f"PARTITION OF {safe_table} DEFAULT"
-                    )
+                await conn.exec_driver_sql(
+                    f"CREATE TABLE IF NOT EXISTS {safe_default} "
+                    f"PARTITION OF {safe_table} DEFAULT"
                 )
                 await conn.commit()
             except (
@@ -121,12 +119,10 @@ async def ensure_partitions_exist() -> None:
                     # "the server expects 0 arguments".
                     safe_start = str(start_date_iso).replace("'", "''")
                     safe_end = str(end_date_iso).replace("'", "''")
-                    await conn.execute(
-                        text(
-                            f"CREATE TABLE IF NOT EXISTS {safe_partition} "
-                            f"PARTITION OF {safe_table} "
-                            f"FOR VALUES FROM ('{safe_start}') TO ('{safe_end}')"
-                        )
+                    await conn.exec_driver_sql(
+                        f"CREATE TABLE IF NOT EXISTS {safe_partition} "
+                        f"PARTITION OF {safe_table} "
+                        f"FOR VALUES FROM ('{safe_start}') TO ('{safe_end}')"
                     )
                     await conn.commit()
                 except (
@@ -177,7 +173,7 @@ async def ensure_partitions_exist() -> None:
                             )  # LOW-W19: lazy logging
                             preparer = conn.dialect.identifier_preparer
                             safe_p_name = preparer.quote(p_name)
-                            await conn.execute(text(f"DROP TABLE {safe_p_name}"))
+                            await conn.exec_driver_sql(f"DROP TABLE {safe_p_name}")
                             await conn.commit()
                         except (
                             OSError,

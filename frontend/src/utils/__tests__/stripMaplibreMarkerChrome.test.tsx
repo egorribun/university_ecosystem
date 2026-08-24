@@ -11,6 +11,8 @@ function markerFor(element: HTMLElement): MarkerInstance {
   return { getElement: () => element } as unknown as MarkerInstance
 }
 
+const markerWithoutElement = { getElement: () => null } as unknown as MarkerInstance
+
 function HookProbe({ marker }: { marker: MarkerInstance | null }) {
   const ref = useRef<MarkerInstance | null>(marker)
   useStripMaplibreMarkerChrome(ref)
@@ -33,11 +35,20 @@ describe("stripMaplibreMarkerChrome", () => {
 
   it("is safe for missing marker elements and applies the same rule through the hook", () => {
     expect(() => stripMaplibreMarkerChrome(null)).not.toThrow()
+    expect(() => stripMaplibreMarkerChrome(markerWithoutElement)).not.toThrow()
 
     const element = document.createElement("div")
     element.setAttribute("role", "button")
     render(<HookProbe marker={markerFor(element)} />)
 
     expect(element).not.toHaveAttribute("role")
+  })
+
+  it("is safe when a hook marker has no mounted element", () => {
+    expect(() => render(<HookProbe marker={markerWithoutElement} />)).not.toThrow()
+  })
+
+  it("is safe when the hook ref has no marker", () => {
+    expect(() => render(<HookProbe marker={null} />)).not.toThrow()
   })
 })

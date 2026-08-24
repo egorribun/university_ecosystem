@@ -29,7 +29,7 @@ for proxy_key in ["no_proxy", "NO_PROXY"]:
 
 worker_id = os.environ.get("PYTEST_XDIST_WORKER")
 
-# Wave 212 Phase II Step 1: Configure parallel Postgres fixtures via testcontainers/xdist
+# Configure parallel Postgres fixtures via testcontainers/xdist.
 _container = None
 _postgres_url = None
 
@@ -41,7 +41,9 @@ if os.environ.get("USE_TESTCONTAINERS_POSTGRES") == "1":
         from testcontainers.postgres import PostgresContainer
 
         # Start a lightweight Postgres container with pgvector support per worker process
-        _container = PostgresContainer("pgvector/pgvector:pg17")
+        _container = PostgresContainer(
+            "pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f"
+        )
         _container.start()
         atexit.register(_container.stop)
         # Obtain connection url with asyncpg driver
@@ -129,7 +131,9 @@ def minio_container() -> dict[str, str]:
         pytest.skip(f"testcontainers is unavailable: {error}")
 
     container = (
-        DockerContainer("minio/minio:RELEASE.2025-09-07T16-13-09Z")
+        DockerContainer(
+            "minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+        )
         .with_env("MINIO_ROOT_USER", "minioadmin")
         .with_env("MINIO_ROOT_PASSWORD", "minioadminsecret")
         .with_command("server /data")
@@ -157,7 +161,9 @@ def spicedb_container() -> dict[str, str]:
         pytest.skip(f"testcontainers is unavailable: {error}")
 
     container = (
-        DockerContainer("authzed/spicedb:v1.49.1")
+        DockerContainer(
+            "authzed/spicedb:v1.49.1@sha256:601cf2c86069197fff52ee589e1a63329e6812d63b1a4b4ba9d3becf4aa606a6"
+        )
         .with_command(
             "serve --grpc-preshared-key test-spicedb-key "
             "--datastore-engine memory --grpc-addr 0.0.0.0:50051"

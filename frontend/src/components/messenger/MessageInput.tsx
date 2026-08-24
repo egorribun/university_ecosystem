@@ -125,24 +125,24 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
 
   const handleAttachmentClick = (type: "photo" | "file" | "document") => {
     setShowAttachMenu(false)
-    if (fileInputRef.current) {
-      switch (type) {
-        case "photo":
-          fileInputRef.current.accept = "image/png,image/jpeg,image/gif,image/webp"
-          break
-        case "document":
-          fileInputRef.current.accept = ".pdf,.doc,.docx,.txt"
-          break
-        case "file":
-          fileInputRef.current.accept = "*"
-          break
-      }
-      fileInputRef.current.click()
+    const input = fileInputRef.current!
+    switch (type) {
+      case "photo":
+        input.accept = "image/png,image/jpeg,image/gif,image/webp"
+        break
+      case "document":
+        input.accept = ".pdf,.doc,.docx,.txt"
+        break
+      case "file":
+        input.accept = "*"
+        break
     }
+    input.click()
   }
 
   const handleFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
-    const files = event.target.files
+    const input = event.currentTarget
+    const files = input.files
     if (files && files.length > 0) {
       const filteredFiles = await Promise.all(
         Array.from(files).map(async (file) => {
@@ -179,7 +179,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
         })),
       ])
     }
-    if (fileInputRef.current) fileInputRef.current.value = ""
+    input.value = ""
   }
 
   const removeFile = (id: string) => {
@@ -187,8 +187,9 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
     // attachment preview. Prevents accumulation of orphaned URLs in the
     // browser table.
     setSelectedFiles((prev) => {
-      const removed = prev.find((entry) => entry.id === id)
-      if (removed) URL.revokeObjectURL(removed.previewUrl)
+      // removeFile is only reachable from a chip rendered from this state.
+      const removed = prev.find((entry) => entry.id === id)!
+      URL.revokeObjectURL(removed.previewUrl)
       return prev.filter((entry) => entry.id !== id)
     })
   }

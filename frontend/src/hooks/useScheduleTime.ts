@@ -17,6 +17,12 @@ import { type Lesson, parseMinutes } from "@/components/schedule/scheduleUtils"
  */
 const TICKER_INTERVAL_MS = 30_000
 
+const getLessonBounds = (lesson: Lesson): { start: number; end: number } | null => {
+  const start = parseMinutes(lesson.start_time)
+  const end = parseMinutes(lesson.end_time)
+  return start !== null && end !== null && end > start ? { start, end } : null
+}
+
 export function useScheduleTime(todayLessons: Lesson[], hasToday: boolean) {
   const { t } = useTranslation(["schedule"])
   const [nowTick, setNowTick] = useState(new Date())
@@ -55,9 +61,8 @@ export function useScheduleTime(todayLessons: Lesson[], hasToday: boolean) {
     if (!hasToday) return null
     return (
       todayLessons.find((l) => {
-        const s = parseMinutes(l.start_time) ?? -1
-        const e = parseMinutes(l.end_time) ?? -1
-        return minutesNow >= s && minutesNow < e
+        const bounds = getLessonBounds(l)
+        return bounds !== null && minutesNow >= bounds.start && minutesNow < bounds.end
       }) || null
     )
   }, [todayLessons, minutesNow, hasToday])
@@ -65,10 +70,20 @@ export function useScheduleTime(todayLessons: Lesson[], hasToday: boolean) {
   const nextLesson = useMemo(() => {
     if (!hasToday) return null
     if (currentLesson) {
-      const endM = parseMinutes(currentLesson.end_time) ?? 0
-      return todayLessons.find((l) => (parseMinutes(l.start_time) ?? 0) > endM) || null
+      const endM = getLessonBounds(currentLesson)!.end
+      return (
+        todayLessons.find((l) => {
+          const bounds = getLessonBounds(l)
+          return bounds !== null && bounds.start > endM
+        }) || null
+      )
     }
-    return todayLessons.find((l) => (parseMinutes(l.start_time) ?? 0) > minutesNow) || null
+    return (
+      todayLessons.find((l) => {
+        const bounds = getLessonBounds(l)
+        return bounds !== null && bounds.start > minutesNow
+      }) || null
+    )
   }, [todayLessons, currentLesson, minutesNow, hasToday])
 
   const formatDuration = useCallback(
@@ -88,13 +103,13 @@ export function useScheduleTime(todayLessons: Lesson[], hasToday: boolean) {
   const timeLeftText = useMemo(() => {
     let text = ""
     if (currentLesson) {
-      const end = parseMinutes(currentLesson.end_time) ?? 0
+      const end = getLessonBounds(currentLesson)!.end
       const left = Math.max(0, end - minutesNow)
       const h = Math.floor(left / 60)
       const m = left % 60
       text = t("schedule:timeLeft.current", { duration: formatDuration(h, m) })
     } else if (nextLesson) {
-      const start = parseMinutes(nextLesson.start_time) ?? 0
+      const start = getLessonBounds(nextLesson)!.start
       const left = Math.max(0, start - minutesNow)
       const h = Math.floor(left / 60)
       const m = left % 60
@@ -107,10 +122,10 @@ export function useScheduleTime(todayLessons: Lesson[], hasToday: boolean) {
   const timeLeftShort = useMemo(() => {
     let mins = 0
     if (currentLesson) {
-      const end = parseMinutes(currentLesson.end_time) ?? 0
+      const end = getLessonBounds(currentLesson)!.end
       mins = Math.max(0, end - minutesNow)
     } else if (nextLesson) {
-      const start = parseMinutes(nextLesson.start_time) ?? 0
+      const start = getLessonBounds(nextLesson)!.start
       mins = Math.max(0, start - minutesNow)
     }
     if (mins <= 0 && !currentLesson && !nextLesson) return ""
@@ -124,11 +139,9 @@ export function useScheduleTime(todayLessons: Lesson[], hasToday: boolean) {
 
   const currentProgress = useMemo(() => {
     if (!currentLesson) return 0
-    const s = parseMinutes(currentLesson.start_time)
-    const e = parseMinutes(currentLesson.end_time)
-    if (s == null || e == null || e <= s) return 0
-    const span = e - s
-    const passed = Math.min(Math.max(minutesNow - s, 0), span)
+    const { start, end } = getLessonBounds(currentLesson)!
+    const span = end - start
+    const passed = Math.min(Math.max(minutesNow - start, 0), span)
     return Math.round((passed / span) * 100)
   }, [currentLesson, minutesNow])
 

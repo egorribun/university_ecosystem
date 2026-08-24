@@ -63,7 +63,7 @@ func TestKeyFunc_HS256DowngradeRejected(t *testing.T) {
 
 func TestValidate_InactiveUserAccount(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	m := NewJWTMiddleware(testSecret, nil)
+	m := newUnrevokedJWTMiddleware(t)
 
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -152,15 +152,14 @@ func TestStartJWKSRefresher_FailuresAndRetries(t *testing.T) {
 
 	m := NewJWTMiddleware(testSecret, nil)
 	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 
-	go m.StartJWKSRefresher(ctx, srv.URL, 10*time.Millisecond, logger)
+	m.StartJWKSRefresher(ctx, srv.URL, 10*time.Millisecond, logger)
 
-	// Wait to let both calls happen
-	time.Sleep(50 * time.Millisecond)
-	cancel()
-
-	assert.NotNil(t, m.rsaPublicKey.Load())
+	require.Eventually(t, func() bool {
+		return m.rsaPublicKey.Load() != nil
+	}, 2*time.Second, 5*time.Millisecond, "JWKS refresher must recover after the initial fetch failure")
 }
 
 func TestListenForRevocations_ConnFailure(t *testing.T) {

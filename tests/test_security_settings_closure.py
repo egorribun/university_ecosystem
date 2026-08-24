@@ -27,7 +27,8 @@ def test_audit_log_secret_warns_for_placeholder_in_development(monkeypatch):
 
     with patch("app.core.config.security._logger") as logger:
         SecuritySettings(  # pragma: allowlist secret
-            audit_log_secret="placeholder-" + "a" * 32  # pragma: allowlist secret
+            algorithm="RS256",
+            audit_log_secret="placeholder-" + "a" * 32,  # pragma: allowlist secret
         )
 
     assert (
@@ -57,3 +58,19 @@ def test_internal_hmac_secret_is_required_in_production(monkeypatch):
             audit_log_secret="a" * 32,
             internal_hmac_secret="",
         )
+
+
+@pytest.mark.parametrize("value", ["not-hex", "ab" * 31, "abc", "ab " * 32])
+def test_imgproxy_secrets_reject_invalid_or_short_hex(value):
+    with pytest.raises(ValueError, match="IMGPROXY_KEY must be at least 32 bytes"):
+        SecuritySettings(imgproxy_key=value)
+
+
+def test_imgproxy_secrets_accept_32_byte_hex_values():
+    settings = SecuritySettings(
+        imgproxy_key="ab" * 32,
+        imgproxy_salt="cd" * 32,
+    )
+
+    assert settings.imgproxy_key == "ab" * 32
+    assert settings.imgproxy_salt == "cd" * 32

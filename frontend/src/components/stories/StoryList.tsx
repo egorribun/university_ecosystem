@@ -33,7 +33,6 @@ export const StoryList = memo(function StoryList({
   const listLabel = t("aria.storiesList")
 
   const hasStories = stories.length > 0
-  const shouldShowHeading = loading || hasStories
 
   // Drag-to-scroll — ref-based to avoid stale closures
   const listRef = useRef<HTMLUListElement>(null)
@@ -107,8 +106,7 @@ export const StoryList = memo(function StoryList({
   const handlePointerDown = useCallback((e: React.PointerEvent<HTMLUListElement>) => {
     // Wave 54: drag-to-scroll only for mouse — touch uses native overflow-x scroll (FIX-54-09)
     if (e.pointerType !== "mouse" || e.button !== 0) return
-    const el = listRef.current
-    if (!el) return
+    const el = e.currentTarget
     isPressedRef.current = true
     dragStartX.current = e.clientX
     dragScrollLeft.current = el.scrollLeft
@@ -119,8 +117,7 @@ export const StoryList = memo(function StoryList({
 
   const handlePointerMove = useCallback((e: React.PointerEvent<HTMLUListElement>) => {
     if (!isPressedRef.current) return
-    const el = listRef.current
-    if (!el) return
+    const el = e.currentTarget
     const dx = e.clientX - dragStartX.current
     if (Math.abs(dx) > DRAG_THRESHOLD) {
       if (!hasDragged.current) {
@@ -139,12 +136,10 @@ export const StoryList = memo(function StoryList({
   const handlePointerUp = useCallback((e: React.PointerEvent<HTMLUListElement>) => {
     isPressedRef.current = false
     setIsDragging(false)
-    const el = listRef.current
-    if (el) {
-      // Re-enable snap after drag — snaps to nearest story
-      el.style.scrollSnapType = ""
-      if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
-    }
+    const el = listRef.current!
+    // Re-enable snap after drag — snaps to nearest story
+    el.style.scrollSnapType = ""
+    if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
   }, [])
 
   const handleStoryClick = useCallback(
@@ -157,8 +152,6 @@ export const StoryList = memo(function StoryList({
     },
     [onOpenStory]
   )
-
-  if (!shouldShowHeading && !hasStories) return null
 
   /** Wave 54: CSS mask for edge fade indicators (DESIGN-54-01) */
   const fadeMaskStyle: CSSProperties | undefined =
@@ -190,7 +183,7 @@ export const StoryList = memo(function StoryList({
       onPointerEnter={onPrefetch}
       onFocusCapture={onPrefetch}
     >
-      {shouldShowHeading && <h2 className="sr-only">{t("stories.heading")}</h2>}
+      <h2 className="sr-only">{t("stories.heading")}</h2>
       {loading && (
         <div className="flex flex-nowrap gap-(--fluid-gap) py-(--space-3)">
           {Array.from({ length: SKELETON_COUNT }).map((_, index) => (
@@ -207,6 +200,15 @@ export const StoryList = memo(function StoryList({
               <Skeleton width="100%" height="100%" rounded="full" />
             </div>
           ))}
+        </div>
+      )}
+      {!loading && !hasStories && (
+        <div
+          role="status"
+          className="rounded-xl border border-glass-border/(--opacity-subtle) bg-(--bg-surface)/(--opacity-dim) px-4 py-3"
+        >
+          <p className="text-sm font-semibold text-text-primary">{t("stories.empty")}</p>
+          <p className="mt-1 text-sm text-(--text-secondary)">{t("stories.emptyDescription")}</p>
         </div>
       )}
       {!loading && hasStories && (
@@ -254,7 +256,7 @@ export const StoryList = memo(function StoryList({
                   onFocus={onPrefetch}
                   onMouseEnter={onPrefetch}
                   aria-label={label}
-                  title={tooltip ?? undefined}
+                  title={tooltip}
                   data-active={activeStoryId === story.id ? "true" : undefined}
                   className="transition-transform"
                   style={

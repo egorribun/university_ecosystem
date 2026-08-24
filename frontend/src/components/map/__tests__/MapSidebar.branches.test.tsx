@@ -24,7 +24,7 @@ vi.mock("@/utils/roomStatus", () => ({
   getRoomStatus: () => hooks.roomStatus,
 }))
 
-import { MapSidebar } from "@/components/map/MapSidebar"
+import { getViewportHeight, MapSidebar } from "@/components/map/MapSidebar"
 import type { CampusBuilding, BuildingFloor } from "@/data/campusBuildings"
 
 const FLOOR_1: BuildingFloor = {
@@ -72,9 +72,15 @@ describe("MapSidebar branches", () => {
     vi.useFakeTimers()
   })
   afterEach(() => {
+    vi.unstubAllGlobals()
     vi.runOnlyPendingTimers()
     vi.useRealTimers()
     vi.clearAllMocks()
+  })
+
+  it("uses the server viewport fallback without a window", () => {
+    vi.stubGlobal("window", undefined)
+    expect(getViewportHeight()).toBe(800)
   })
 
   it("renders the mobile bottom sheet branch (role=dialog, drag handle, sheetReady timer)", () => {

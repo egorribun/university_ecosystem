@@ -623,7 +623,7 @@ def test_toolchain_query_uses_bounded_logs_and_a_pinned_compiler_environment(
     removed_containers: list[str] = []
 
     class FinishedProcess:
-        stdout = BytesIO(b"go version go1.26.5\n")
+        stdout = BytesIO(b"go version go1.26.6\n")
 
         def poll(self) -> int:
             return 0
@@ -656,7 +656,7 @@ def test_toolchain_query_uses_bounded_logs_and_a_pinned_compiler_environment(
             ("go", "version"),
             environment={"GOTOOLCHAIN": "local", "HOME": CONTAINER_HOME},
         )
-        == "go version go1.26.5"
+        == "go version go1.26.6"
     )
 
     command = observed_commands[0]
@@ -915,7 +915,7 @@ def test_cache_holder_is_non_networked_and_removed_before_its_volume(
 @pytest.mark.parametrize(
     ("format_name", "expected_key", "expected_version", "environment_entry"),
     [
-        ("go", "go", "go version go1.26.5", "GOTOOLCHAIN=local"),
+        ("go", "go", "go version go1.26.6", "GOTOOLCHAIN=local"),
         (
             "rust",
             "rustc",

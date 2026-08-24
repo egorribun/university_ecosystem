@@ -293,4 +293,20 @@ describe("useEmailChange", () => {
       severity: "error",
     })
   })
+
+  it("falls back when an Axios validation array contains no messages", async () => {
+    mocks.post.mockRejectedValue(axiosError(422, [null, { code: "ignored" }]))
+    const { result, setSnackbar } = renderEmailChange()
+    setCredentials(result)
+
+    await act(async () => {
+      await result.current.handleEmailSubmit()
+    })
+
+    expect(result.current.emailError).toBe("settings:security.email.failed")
+    expect(setSnackbar).toHaveBeenCalledWith({
+      text: "settings:security.email.failed",
+      severity: "error",
+    })
+  })
 })

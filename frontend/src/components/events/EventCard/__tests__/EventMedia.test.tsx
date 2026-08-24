@@ -48,4 +48,14 @@ describe("EventMedia", () => {
     await user.click(screen.getByRole("button"))
     expect(onImageClick).toHaveBeenCalledOnce()
   })
+
+  it("uses the translated image alt text when no alt is provided", () => {
+    render(<EventMedia {...baseProps} alt="" />)
+    expect(screen.getByRole("img", { name: "events:alt.image" })).toBeInTheDocument()
+  })
+
+  it("shows the loading overlay until the image is ready", () => {
+    const { container } = render(<EventMedia {...baseProps} isReady={false} />)
+    expect(container.querySelector(".animate-pulse")).toBeInTheDocument()
+  })
 })

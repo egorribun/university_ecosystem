@@ -171,4 +171,17 @@ describe("ProfileModal", () => {
     expect(screen.getByText("messenger:loadingProfile")).toBeInTheDocument()
     expect(screen.getByText("problem")).toBeInTheDocument()
   })
+
+  it("uses an empty image alt for a null profile name", () => {
+    render(
+      <ProfileModal
+        user={{ ...testUser, full_name: null }}
+        loading={false}
+        error={null}
+        onClose={vi.fn()}
+      />
+    )
+
+    expect(screen.getByAltText("")).toBeInTheDocument()
+  })
 })

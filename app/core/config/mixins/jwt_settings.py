@@ -130,7 +130,9 @@ class JwtSettingsMixin:
         if v.upper() == "RS256":
             # Just informational logging; logic handles public/private keys
             pass
-        elif v.upper() == "HS256":
+        elif v.upper() == "HS256" and os.environ.get(
+            "ENVIRONMENT", "development"
+        ).strip().lower() not in {"test", "testing"}:
             warnings.warn(
                 "HS256 is not recommended for production. "
                 "Use RS256 with a dedicated public/private key pair.",

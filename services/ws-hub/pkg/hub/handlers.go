@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	"github.com/lestrrat-go/jwx/v2/jwk"
+	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
@@ -43,9 +45,14 @@ type contextKey string
 
 const tenantIDKey contextKey = "tenant_id"
 
-// wsTicketKeyPrefix matches the Python backend's TICKET_KEY_PREFIX in app/api/ws/ticket.py.
-// Both services must use the same prefix — see contracts/redis-keys.md.
-const wsTicketKeyPrefix = "ott:ws:"
+const (
+	// wsTicketKeyPrefix matches the Python backend's TICKET_KEY_PREFIX in app/api/ws/ticket.py.
+	// Both services must use the same prefix — see contracts/redis-keys.md.
+	wsTicketKeyPrefix = "ott:ws:"
+	// revokedJTIKeyPrefix is written by the Python session service on logout.
+	// Checking it closes the issue-to-upgrade revocation window.
+	revokedJTIKeyPrefix = "revoked:jti:"
+)
 
 var (
 	allowedOrigins []string
@@ -53,59 +60,7 @@ var (
 	upgrader       = websocket.Upgrader{
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
-		CheckOrigin: func(r *http.Request) bool {
-			origin := r.Header.Get("Origin")
-			if origin == "" {
-				return true
-			}
-
-			// Check configured slice (populated via SetAllowedOrigins from config).
-			originsMu.RLock()
-			defer originsMu.RUnlock()
-			for _, allowed := range allowedOrigins {
-				if allowed == origin {
-					return true
-				}
-			}
-
-			// Check WS_ALLOWED_ORIGINS env var (comma-separated) as a secondary source.
-			// This allows runtime overrides without redeployment.
-			for _, allowed := range strings.Split(os.Getenv("WS_ALLOWED_ORIGINS"), ",") {
-				if strings.TrimSpace(allowed) == origin {
-					return true
-				}
-			}
-
-			// In non-production environments allow all origins to ease local development.
-			// In production this returns false so unrecognised origins are rejected.
-			env := os.Getenv("ENVIRONMENT")
-			return env != "production"
-		},
-	}
-	wtUpgrader = webtransport.Server{
-		CheckOrigin: func(r *http.Request) bool {
-			origin := r.Header.Get("Origin")
-			if origin == "" {
-				return true
-			}
-
-			originsMu.RLock()
-			defer originsMu.RUnlock()
-			for _, allowed := range allowedOrigins {
-				if allowed == origin {
-					return true
-				}
-			}
-
-			for _, allowed := range strings.Split(os.Getenv("WS_ALLOWED_ORIGINS"), ",") {
-				if strings.TrimSpace(allowed) == origin {
-					return true
-				}
-			}
-
-			env := os.Getenv("ENVIRONMENT")
-			return env != "production"
-		},
+		CheckOrigin:     isUpgradeOriginAllowed,
 	}
 	upgradeWTFunc              = upgradeWT
 	newWebTransportSessionFunc = func(sess *webtransport.Session) Session { return NewWebTransportSession(sess) }
@@ -114,11 +69,47 @@ var (
 	}
 )
 
+func isUpgradeOriginAllowed(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+
+	originsMu.RLock()
+	defer originsMu.RUnlock()
+	for _, allowed := range allowedOrigins {
+		if allowed == origin {
+			return true
+		}
+	}
+
+	for _, allowed := range strings.Split(os.Getenv("WS_ALLOWED_ORIGINS"), ",") {
+		if strings.TrimSpace(allowed) == origin {
+			return true
+		}
+	}
+
+	return false
+}
+
+func newConnectionID() string {
+	return uuid.NewString()
+}
+
 // SetAllowedOrigins configures the origins allowed for WebSocket upgrades.
 func SetAllowedOrigins(origins []string) {
 	originsMu.Lock()
 	defer originsMu.Unlock()
 	allowedOrigins = origins
+}
+
+// ConfigureWebTransportServer binds the exact server used for upgrades to the
+// HTTP/3 listener. Keeping one server instance is required by webtransport-go;
+// upgrading with a different instance leaves sessions detached from the QUIC
+// server that accepted the request.
+func (h *Hub) ConfigureWebTransportServer(addr string, handler http.Handler) *webtransport.Server {
+	h.webTransportServer.H3 = &http3.Server{Addr: addr, Handler: handler}
+	return h.webTransportServer
 }
 
 // HandleWebSocket upgrades HTTP connections to WebSocket and registers clients.
@@ -161,11 +152,29 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	//   1. Client calls POST /ws/ticket (cookie-authenticated) → gets a 15s OTT ticket.
 	//   2. Client opens wss://host/ws?ticket=<ott>.
 	//   3. ws-hub validates the ticket via Redis GETDEL (atomic, single-use).
-	//   4. The ticket stores "{user_id}:{jti}"; we extract userID from it.
+	//   4. The ticket stores "{user_id}:{jti}"; we reject revoked JTI values.
 	ticket := r.URL.Query().Get("ticket")
 	if ticket == "" {
 		h.Logger.WarnContext(setupCtx, "WebSocket connection rejected: missing upgrade ticket")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Reject requests that can never be upgraded before consuming the one-time
+	// ticket. Otherwise a blocked origin or a full hub can burn a valid ticket.
+	if upgrader.CheckOrigin != nil && !upgrader.CheckOrigin(r) {
+		h.Logger.WarnContext(setupCtx, "WebSocket connection rejected: origin not allowed", "origin", r.Header.Get("Origin"))
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	h.mu.RLock()
+	atCapacity := h.maxClients > 0 && len(h.Clients) >= h.maxClients
+	h.mu.RUnlock()
+	if atCapacity {
+		h.Logger.WarnContext(setupCtx, "WebSocket rejected: hub at capacity",
+			"max_clients", h.maxClients)
+		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -181,20 +190,6 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	if userID == "" {
 		h.Logger.WarnContext(setupCtx, "WebSocket rejected: JWT sub claim is empty after validation")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	// TD-31-05: Pre-check capacity before WebSocket upgrade and goroutine spawn.
-	// This is a racy check (another client may register concurrently), but it
-	// prevents the upgrade + goroutine spawn in the common case.  The authoritative
-	// check remains in handleRegister inside the Run loop.
-	h.mu.RLock()
-	atCapacity := h.maxClients > 0 && len(h.Clients) >= h.maxClients
-	h.mu.RUnlock()
-	if atCapacity {
-		h.Logger.WarnContext(setupCtx, "WebSocket rejected: hub at capacity",
-			"max_clients", h.maxClients)
-		http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -216,7 +211,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	}
 
 	client := &Client{
-		ID:       userID,
+		ID:       newConnectionID(),
 		UserID:   userID,
 		Identity: &ClientIdentity{TenantID: tenantID},
 		Conn:     NewWebSocketSession(conn),
@@ -251,16 +246,10 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 		return
 	}
 
-	userID, tenantID, err := validateUpgradeTicketFunc(h, setupCtx, ticket)
-	if err != nil {
-		h.Logger.WarnContext(setupCtx, "WebTransport upgrade ticket invalid", "err", err)
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	if userID == "" {
-		h.Logger.WarnContext(setupCtx, "WebTransport rejected: empty user_id")
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	// Reject impossible upgrades before consuming the one-time ticket.
+	if h.webTransportServer.CheckOrigin != nil && !h.webTransportServer.CheckOrigin(r) {
+		h.Logger.WarnContext(setupCtx, "WebTransport connection rejected: origin not allowed", "origin", r.Header.Get("Origin"))
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -274,13 +263,20 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 		return
 	}
 
-	if wtUpgrader.CheckOrigin != nil && !wtUpgrader.CheckOrigin(r) {
-		h.Logger.WarnContext(setupCtx, "WebTransport connection rejected: origin not allowed", "origin", r.Header.Get("Origin"))
-		http.Error(w, "Forbidden", http.StatusForbidden)
+	userID, tenantID, err := validateUpgradeTicketFunc(h, setupCtx, ticket)
+	if err != nil {
+		h.Logger.WarnContext(setupCtx, "WebTransport upgrade ticket invalid", "err", err)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	sess, err := upgradeWTFunc(&wtUpgrader, w, r)
+	if userID == "" {
+		h.Logger.WarnContext(setupCtx, "WebTransport rejected: empty user_id")
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	sess, err := upgradeWTFunc(h.webTransportServer, w, r)
 	if err != nil {
 		h.Logger.ErrorContext(setupCtx, "WebTransport upgrade failed", "err", err)
 		return
@@ -293,7 +289,7 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 	}
 
 	client := &Client{
-		ID:       userID,
+		ID:       newConnectionID(),
 		UserID:   userID,
 		Identity: &ClientIdentity{TenantID: tenantID},
 		Conn:     newWebTransportSessionFunc(sess),
@@ -310,29 +306,62 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 }
 
 // validateUpgradeTicket atomically consumes a one-time WS upgrade ticket from
-// Redis and returns the associated userID and tenantID.
+// Redis and returns the associated userID. The tenantID result is currently
+// empty by contract and retained only to avoid widening the handler refactor.
 //
 // The ticket was issued by the Python backend (POST /ws/ticket) and stored as:
 //
 //	Key  : "ott:ws:{ticket}"
-//	Value: "{user_id}:{jti}:{tenant_id}" or "{user_id}:{jti}"
+//	Value: "{user_id}:{jti}"
 //	TTL  : WS_TICKET_TTL_SECONDS (default 15s, configurable via Config.TicketTTLSeconds)
 //
 // GETDEL makes the ticket single-use: if two concurrent upgrade requests race
-// with the same ticket, only the first succeeds.
-func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string, string, error) {
-	if h.redisClient == nil {
-		return "", "", fmt.Errorf("redis not available for ticket validation")
-	}
+// with the same ticket, only the first succeeds. The consumed JTI is then
+// checked against revoked:jti:{jti}; lookup failure rejects the upgrade.
+func validateTicketFormat(ticket string) error {
 	if len(ticket) != 64 {
 		// tickets are always 64-char hex strings (secrets.token_hex(32))
-		return "", "", fmt.Errorf("invalid ticket length: %d", len(ticket))
+		return fmt.Errorf("invalid ticket length: %d", len(ticket))
 	}
 	// RZ-W16-06: Validate hex charset — tickets are secrets.token_hex(32) = 64 lowercase hex chars.
 	for _, c := range ticket {
 		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-			return "", "", fmt.Errorf("invalid ticket charset")
+			return fmt.Errorf("invalid ticket charset")
 		}
+	}
+	return nil
+}
+
+func parseTicketPayload(raw string) (string, string, error) {
+	// Canonical format: exactly "{user_id}:{jti}". Tenant identity is not part
+	// of the OTT until the issuer can resolve membership server-side.
+	parts := strings.Split(raw, ":")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("malformed ticket payload")
+	}
+	return parts[0], parts[1], nil
+}
+
+func (h *Hub) checkJTINotRevoked(ctx context.Context, jti string) error {
+	if h.revocationRedisClient == nil {
+		return fmt.Errorf("revocation redis not available for ticket validation")
+	}
+	revoked, err := h.revocationRedisClient.Exists(ctx, revokedJTIKeyPrefix+jti).Result()
+	if err != nil {
+		return fmt.Errorf("session revocation check failed: %w", err)
+	}
+	if revoked > 0 {
+		return fmt.Errorf("ticket session is revoked")
+	}
+	return nil
+}
+
+func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string, string, error) {
+	if h.redisClient == nil {
+		return "", "", fmt.Errorf("redis not available for ticket validation")
+	}
+	if err := validateTicketFormat(ticket); err != nil {
+		return "", "", err
 	}
 
 	key := wsTicketKeyPrefix + ticket
@@ -344,21 +373,14 @@ func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string,
 		return "", "", fmt.Errorf("redis error during ticket validation: %w", err)
 	}
 
-	// Format: "{user_id}:{jti}:{tenant_id}" or "{user_id}:{jti}"
-	parts := strings.Split(raw, ":")
-	if len(parts) < 2 || parts[0] == "" {
-		return "", "", fmt.Errorf("malformed ticket payload")
+	userID, jti, err := parseTicketPayload(raw)
+	if err != nil {
+		return "", "", err
 	}
-	userID := parts[0]
-	tenantID := ""
-	if len(parts) >= 3 {
-		tenantID = parts[2]
+	if err := h.checkJTINotRevoked(ctx, jti); err != nil {
+		return "", "", err
 	}
-
-	if userID == "" {
-		return "", "", fmt.Errorf("empty user_id in ticket payload")
-	}
-	return userID, tenantID, nil
+	return userID, "", nil
 }
 
 // extractAlgFromHeader reads the "alg" field from a JWT's base64url-encoded
@@ -519,10 +541,7 @@ func (h *Hub) validateHMAC(tokenStr string, secrets []string) (string, error) {
 			return "", jwt.ErrTokenInvalidClaims
 		}
 	}
-	if lastErr != nil {
-		return "", lastErr
-	}
-	return "", jwt.ErrTokenInvalidClaims
+	return "", lastErr
 }
 
 // upgradeWT wraps WebTransport srv.Upgrade to differentiate from gorilla.websocket.Upgrader.

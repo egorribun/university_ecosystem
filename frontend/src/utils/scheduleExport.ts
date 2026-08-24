@@ -51,7 +51,7 @@ export async function exportScheduleAsPng(
 ): Promise<ExportResult> {
   try {
     const { toPng } = await import("html-to-image")
-    const dataUrl = await toPng(gridElement, { pixelRatio: 2 })
+    const dataUrl = await toPng(gridElement, { pixelRatio: 2, skipFonts: true })
     const a = document.createElement("a")
     a.href = dataUrl
     a.download = filename
@@ -82,7 +82,7 @@ export async function exportScheduleAsPdf(
   try {
     const [{ toPng }, { jsPDF }] = await Promise.all([import("html-to-image"), import("jspdf")])
 
-    const dataUrl = await toPng(gridElement, { pixelRatio: 2 })
+    const dataUrl = await toPng(gridElement, { pixelRatio: 2, skipFonts: true })
 
     // Load image with timeout to prevent hangs (FIX-68-01)
     const img = await loadImageWithTimeout(dataUrl)

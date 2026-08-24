@@ -179,8 +179,8 @@ async function pipeWebResponse(webResponse, res, extraHeaders) {
   for (const [name, value] of webResponse.headers) {
     res.setHeader(name, value)
   }
-  // Wave 132 SW5 — caller-provided headers (e.g. Server-Timing for SSR
-  // observability during Phase 6 canary). Append AFTER copying upstream
+  // Caller-provided headers (for example Server-Timing for SSR observability).
+  // Append AFTER copying upstream
   // headers so we don't accidentally clobber a set-cookie or content-type
   // that the response already carries.
   if (extraHeaders) {
@@ -239,16 +239,13 @@ const server = createServer(async (req, res) => {
       }
     }
     const request = buildWebRequest(req)
-    // Wave 132 SW5 — Server-Timing observability for Phase 6 canary stages.
+    // Server-Timing observability for SSR latency and edge diagnostics.
     // `performance.now()` gives sub-ms precision; the duration measured here
     // is the SSR-layer round-trip (router construction + route render +
     // any backend fetches reached during the loader chain).
     //
-    // The header lets operators identify which upstream pool served a
-    // response during canary — Caddy's lb_policy weighted_round_robin
-    // returns the response transparently, so without Server-Timing the
-    // edge log only shows the upstream identity (which the legacy nginx
-    // pool also receives through `health_uri /healthz` per SW3 design).
+    // The header lets operators measure the SSR layer independently from the
+    // edge proxy and browser timings.
     //
     // Skip for /healthz so the W131 SW2 fast-path response stays clean —
     // probes shouldn't be tagged as SSR-pool traffic.

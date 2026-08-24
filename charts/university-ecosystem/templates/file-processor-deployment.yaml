@@ -1,0 +1,128 @@
+{{- if .Values.fileProcessor.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-file-processor
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: file-processor
+spec:
+  {{- if not (and .Values.keda.enabled .Values.keda.fileProcessor.enabled) }}
+  replicas: {{ .Values.fileProcessor.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: file-processor
+  template:
+    metadata:
+      labels:
+        {{- include "university-ecosystem.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: file-processor
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Release.Name }}-file-processor
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: file-processor
+          image: {{ printf "%s/%s:%s" .Values.global.imageRegistry .Values.fileProcessor.image.repository (.Values.fileProcessor.image.tag | default .Values.global.imageTag | default .Chart.AppVersion) | trimPrefix "/" | quote }}
+          imagePullPolicy: {{ .Values.fileProcessor.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.fileProcessor.service.port }}
+              protocol: TCP
+            - name: metrics
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: FP_NATS_URL
+              {{- if .Values.fileProcessor.config.natsURL }}
+              value: {{ default (printf "nats://%s-nats:4222" .Release.Name) .Values.fileProcessor.config.natsURL | quote }}
+              {{- else }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.natsURLKey must be set" .Values.connections.natsURLKey | quote }}
+              {{- end }}
+            - name: FP_MINIO_ENDPOINT
+              value: {{ .Values.fileProcessor.config.minioEndpoint | quote }}
+            - name: FP_MINIO_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
+                  key: minio-access-key
+            - name: FP_MINIO_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
+                  key: minio-secret-key
+            - name: FP_TEMPORAL_HOST
+              value: {{ .Values.fileProcessor.config.temporalHost | quote }}
+            - name: FP_TEMPORAL_TLS_DISABLED
+              value: {{ .Values.fileProcessor.config.temporalTLSDisabled | quote }}
+            - name: FP_MINIO_SECURE
+              value: {{ .Values.fileProcessor.config.minioSecure | quote }}
+            - name: FP_ENVIRONMENT
+              value: {{ .Values.global.environment | quote }}
+            - name: FP_OTLP_ENDPOINT
+              value: {{ .Values.fileProcessor.config.otlpEndpoint | quote }}
+            - name: FP_OTLP_INSECURE
+              value: {{ .Values.fileProcessor.config.otlpInsecure | quote }}
+            - name: FP_TEMPORAL_API_KEY_FILE
+              value: /run/secrets/temporal-api-key
+            - name: FP_RSA_PUBLIC_KEY_FILE
+              value: /run/secrets/jwt-rsa-public-key.pem
+          startupProbe:
+            grpc:
+              port: {{ .Values.fileProcessor.service.port }}
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            grpc:
+              port: {{ .Values.fileProcessor.service.port }}
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            grpc:
+              port: {{ .Values.fileProcessor.service.port }}
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.fileProcessor.resources | nindent 12 }}
+          volumeMounts:
+            - name: credentials
+              mountPath: /run/secrets
+              readOnly: true
+      volumes:
+        - name: credentials
+          secret:
+            secretName: {{ include "university-ecosystem.applicationSecretName" . | quote }}
+            defaultMode: 0440
+            items:
+              - key: jwt-rsa-public-key
+                path: jwt-rsa-public-key.pem
+              - key: temporal-api-key
+                path: temporal-api-key
+{{- end }}

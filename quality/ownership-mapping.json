@@ -70,10 +70,10 @@
   ],
   "allowed_sleeps": [
     "services/gateway/middleware/**",
-    "services/ws-hub/pkg/hub/**",
+    "services/ws-hub/**",
     "services/file-processor/**",
     "tests/chaos/**",
-    "tests/test_utils_uuid_geolocation_booster.py",
+    "tests/test_uuid7_and_geolocation.py",
     "tests/test_l1_cache.py",
     "frontend/**",
     "services/gateway/**",
@@ -116,9 +116,9 @@
     "tests/test_smoke_rust_audit.py",
     "tests/test_smoke_rust_partitions.py",
     "tests/test_tsan_runner.py",
-    "tests/test_wave143_jwks_roundtrip.py",
-    "tests/test_wave173_caddy_routing.py",
-    "tests/test_wave173_ws_hub_env.py",
+    "tests/test_jwks_roundtrip.py",
+    "tests/test_caddy_routing.py",
+    "tests/test_ws_hub_environment.py",
     "tests/test_ws_dispatcher_full.py",
     "services/gateway/internal/contracts/gateway_consumer_test.go",
     "services/ws-hub/internal/contract/cache_invalidation_provider_test.go",
@@ -135,7 +135,15 @@
     "frontend/src/hooks/features/__tests__/useMessengerController.branches.test.tsx",
     "frontend/src/hooks/features/__tests__/useMessengerController.test.tsx",
     "frontend/src/__tests__/manifestScreenshots.test.ts",
+    "frontend/src/__tests__/publicHeadAssets.test.ts",
     "frontend/src/api/__tests__/client.rateLimit.test.ts",
-    "frontend/src/api/__tests__/client.retry.test.ts"
+    "frontend/src/api/__tests__/client.retry.test.ts",
+    "tests/test_check_dependency_audit_report.py",
+    "tests/test_ci_main_failure_regressions.py",
+    "tests/test_container_image_pinning.py",
+    "tests/test_docker_startup_contracts.py",
+    "tests/test_revocation_redis_topology.py",
+    "tests/test_spire_manifests.py",
+    "tests/test_workflow_fail_closed_contracts.py"
   ]
 }

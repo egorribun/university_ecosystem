@@ -18,7 +18,6 @@ vi.mock("@/hooks/useFocusTrap", () => ({
   },
 }))
 
-// Mock translations
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string, options?: any) => {
@@ -29,6 +28,7 @@ vi.mock("react-i18next", () => ({
       return key
     },
   }),
+  I18nextProvider: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }))
 
 // Mock useSwipe

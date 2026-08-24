@@ -86,10 +86,13 @@ export const markAllNotificationsRead = () => markAllReadApiV1NotificationsReadA
 
 export const clearNotifications = () => clearNotificationsApiV1NotificationsDelete()
 
-export const checkSchedule = (lookaheadMinutes: number = 15) =>
-  checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost({
+export const checkSchedule = async (lookaheadMinutes: number = 15) => {
+  const result = await checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost({
     query: { lookahead_minutes: lookaheadMinutes },
   })
+  if (result.error) throw result.error
+  return result
+}
 
 export const fetchDeadLetterQueue = async (
   params?: { limit?: number; offset?: number },
@@ -105,8 +108,8 @@ export const fetchDeadLetterQueue = async (
   // queryFn at `@/api/hooks/adminNotifications` now propagates the TanStack
   // Query AbortSignal so route unmounts and refetch-replacement abort the
   // in-flight request.
-  const { apiClient } = await import("@/api/client")
-  const response = await apiClient.get("/api/v1/notifications/admin/dead-letter", {
+  const { default: api } = await import("@/api/client")
+  const response = await api.get("/api/v1/notifications/admin/dead-letter", {
     params,
     signal,
   })
@@ -118,13 +121,13 @@ export const fetchDeadLetterQueue = async (
 }
 
 export const retryDeadLetterJobs = async (jobIds: string[]) => {
-  const { apiClient } = await import("@/api/client")
-  return apiClient.post("/api/v1/notifications/admin/dead-letter/retry", { job_ids: jobIds })
+  const { default: api } = await import("@/api/client")
+  return api.post("/api/v1/notifications/admin/dead-letter/retry", { job_ids: jobIds })
 }
 
 export const purgeDeadLetterJobs = async (jobIds: string[]) => {
-  const { apiClient } = await import("@/api/client")
-  return apiClient.post("/api/v1/notifications/admin/dead-letter/purge", { job_ids: jobIds })
+  const { default: api } = await import("@/api/client")
+  return api.post("/api/v1/notifications/admin/dead-letter/purge", { job_ids: jobIds })
 }
 
 export async function saveSubscription(

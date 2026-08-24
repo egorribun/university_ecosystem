@@ -15,8 +15,10 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/nats-io/nats.go"
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/university-ecosystem/services/pkg/spiffe"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 )
 
@@ -44,6 +46,61 @@ func TestInitRedis_PingFailureReturnsNil(t *testing.T) {
 	cfg := &config.Config{RedisURL: "127.0.0.1:1"}
 	rdb := initRedis(context.Background(), cfg, discardLogger())
 	assert.Nil(t, rdb)
+}
+
+func TestInitRevocationRedis_ValidatesConfigurationAndConnectivity(t *testing.T) {
+	logger := discardLogger()
+
+	t.Run("missing URL", func(t *testing.T) {
+		client, err := initRevocationRedis(context.Background(), &config.Config{}, logger)
+		assert.Nil(t, client)
+		assert.EqualError(t, err, "REVOCATION_REDIS_URL is not set")
+	})
+
+	t.Run("invalid URL", func(t *testing.T) {
+		client, err := initRevocationRedis(
+			context.Background(),
+			&config.Config{RevocationRedisURL: "not-a-redis-url"},
+			logger,
+		)
+		assert.Nil(t, client)
+		require.ErrorContains(t, err, "parse REVOCATION_REDIS_URL")
+	})
+
+	t.Run("ping failure", func(t *testing.T) {
+		client, err := initRevocationRedis(
+			context.Background(),
+			&config.Config{RevocationRedisURL: "redis://127.0.0.1:1/0"},
+			logger,
+		)
+		assert.Nil(t, client)
+		require.ErrorContains(t, err, "connect revocation Redis")
+	})
+
+	t.Run("ping and close failure", func(t *testing.T) {
+		oldClose := closeRedisFunc
+		t.Cleanup(func() { closeRedisFunc = oldClose })
+		closeRedisFunc = func(*redis.Client) error { return errors.New("synthetic close failure") }
+		client, err := initRevocationRedis(
+			context.Background(),
+			&config.Config{RevocationRedisURL: "redis://127.0.0.1:1/0"},
+			logger,
+		)
+		assert.Nil(t, client)
+		require.ErrorContains(t, err, "close client: synthetic close failure")
+	})
+
+	t.Run("success", func(t *testing.T) {
+		mr := miniredis.RunT(t)
+		client, err := initRevocationRedis(
+			context.Background(),
+			&config.Config{RevocationRedisURL: "redis://" + mr.Addr() + "/0"},
+			logger,
+		)
+		require.NoError(t, err)
+		require.NotNil(t, client)
+		t.Cleanup(func() { require.NoError(t, client.Close()) })
+	})
 }
 
 func TestInitSpiffeClient_DisabledReturnsNil(t *testing.T) {
@@ -88,6 +145,10 @@ func TestCleanupHelpersAreNilSafe(t *testing.T) {
 		closeRedisConnection(context.Background(), nil, discardLogger())
 		closeSPIFFEClient(context.Background(), nil, discardLogger())
 	})
+}
+
+func TestDefaultCloseSpiffeAdapterDelegates(t *testing.T) {
+	assert.NoError(t, closeSpiffeClientFunc(&spiffe.Client{}))
 }
 
 func TestRun_PropagatesNATSInitializationFailure(t *testing.T) {

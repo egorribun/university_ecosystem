@@ -45,6 +45,16 @@ vi.mock("@/db", () => ({
 
 const KEY = (id: string) => `schedule:notes:${id}`
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
 beforeEach(() => {
   vi.useRealTimers()
   idb.store.clear()
@@ -221,6 +231,92 @@ describe("useLessonNotes", () => {
     )
   })
 
+  it("falls back to IndexedDB when RxDB resolves without a note", async () => {
+    idb.store.set(KEY("lessonRxEmpty"), { text: "from IDB", updatedAt: 17 })
+    const findOne = vi.fn(() => ({ exec: vi.fn(async () => null) }))
+    dbState.getDatabase.mockResolvedValue({
+      notes: { findOne, upsert: vi.fn(), find: vi.fn() },
+    } as never)
+
+    const { result } = renderHook(() => useLessonNotes("lessonRxEmpty"))
+
+    await waitFor(() => expect(result.current.note?.text).toBe("from IDB"))
+    expect(idb.get).toHaveBeenCalledWith(KEY("lessonRxEmpty"))
+  })
+
+  it("does not publish an RxDB result after unmount", async () => {
+    const database = deferred<{
+      notes: { findOne: ReturnType<typeof vi.fn>; upsert: ReturnType<typeof vi.fn> }
+    }>()
+    const rxNote = { text: "late", updated_at: 42 }
+    const findOne = vi.fn(() => ({ exec: vi.fn(async () => rxNote) }))
+    dbState.getDatabase.mockImplementation(() => database.promise as never)
+
+    const { unmount } = renderHook(() => useLessonNotes("late-rx"))
+    unmount()
+    database.resolve({ notes: { findOne, upsert: vi.fn() } })
+    await act(async () => {
+      await database.promise
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(idb.get).not.toHaveBeenCalled()
+  })
+
+  it("does not publish a late IndexedDB result or error after unmount", async () => {
+    const stored = deferred<LessonNote | undefined>()
+    dbState.getDatabase.mockRejectedValue(new Error("RxDB unavailable"))
+    idb.get.mockImplementationOnce(() => stored.promise)
+
+    const first = renderHook(() => useLessonNotes("late-idb"))
+    first.unmount()
+    stored.resolve({ text: "late", updatedAt: 1 })
+    await act(async () => {
+      await stored.promise
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const failed = deferred<LessonNote | undefined>()
+    idb.get.mockImplementationOnce(() => failed.promise)
+    const second = renderHook(() => useLessonNotes("late-idb-error"))
+    second.unmount()
+    failed.reject(new Error("late failure"))
+    await act(async () => {
+      await failed.promise.catch(() => undefined)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+  })
+
+  it("handles missing RxDB rows and IndexedDB deletion failures", async () => {
+    vi.useFakeTimers()
+    const findOne = vi.fn(() => ({ exec: vi.fn(async () => null) }))
+    dbState.getDatabase.mockResolvedValue({
+      notes: { findOne, upsert: vi.fn(), find: vi.fn() },
+    } as never)
+    idb.del.mockRejectedValue(new Error("delete unavailable"))
+
+    const { result } = renderHook(() => useLessonNotes("missing-rx"))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0)
+    })
+    act(() => result.current.setNote("   "))
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(300)
+      await Promise.resolve()
+    })
+    act(() => result.current.clearNote())
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(findOne).toHaveBeenCalled()
+    expect(logError).toHaveBeenCalledWith("[schedule:notes]", expect.any(Error))
+  })
+
   it("removes RxDB records when clearing a note and marks mapped notes", async () => {
     const rxNote = { id: "lessonMap", text: "mapped", updated_at: 9, remove: vi.fn() }
     const findOne = vi.fn(() => ({ exec: vi.fn(async () => rxNote) }))
@@ -281,5 +377,29 @@ describe("useLessonNotesMap", () => {
     const { result } = renderHook(() => useLessonNotesMap(["e1"]))
     await waitFor(() => expect(result.current.size).toBe(1))
     expect(result.current.get("e1")).toBe(false)
+  })
+
+  it("ignores blank RxDB notes and does not publish a map after unmount", async () => {
+    const fallback = deferred<LessonNote | undefined>()
+    const find = vi.fn(() => ({
+      exec: vi.fn(async () => [{ id: "blank", text: "   " }]),
+    }))
+    dbState.getDatabase.mockResolvedValue({ notes: { find } } as never)
+    idb.get.mockImplementationOnce(() => fallback.promise)
+
+    const { unmount } = renderHook(() => useLessonNotesMap(["blank"]))
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    unmount()
+    fallback.resolve({ text: "from fallback", updatedAt: 1 })
+    await act(async () => {
+      await fallback.promise
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(find).toHaveBeenCalled()
   })
 })

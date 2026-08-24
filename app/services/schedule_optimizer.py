@@ -1,6 +1,5 @@
 import uuid
 from datetime import UTC, datetime, time
-from typing import Any
 
 import rust_ext
 from pydantic import BaseModel
@@ -8,6 +7,7 @@ from pydantic import BaseModel
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+_UNSET = object()
 
 
 class ScheduleItemInternal(BaseModel):
@@ -23,15 +23,39 @@ class ScheduleItemInternal(BaseModel):
 class ScheduleOptimizerService:
     """Service to interact with the Rust-based schedule optimizer natively via PyO3."""
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
-        # Kept for backward compatibility with DI containers passing URLs
-        pass
+    @staticmethod
+    def _uuid_to_rust_id(item_id: uuid.UUID) -> int:
+        """Return the UUID's first four big-endian bytes as a positive Rust ID.
 
-    async def close(self) -> None:
-        """No-op for backward compatibility."""
-        pass
+        ``UUID.int`` is the canonical 128-bit big-endian representation, so
+        shifting it down extracts the same prefix without an intermediate byte
+        slice.  Keeping the sign bit clear preserves the non-negative i32
+        contract expected by the PyO3 extension.
+        """
+        return (item_id.int >> 96) & 0x7FFFFFFF
 
-    def _to_rust_item(self, item: ScheduleItemInternal) -> rust_ext.ScheduleItem:
+    def _reconstruct_conflict_item(
+        self,
+        conflict: tuple[rust_ext.ScheduleItem, ScheduleItemInternal | None],
+    ) -> ScheduleItemInternal:
+        """Restore native conflict data and its optional domain metadata.
+
+        The pair keeps the native value and its reverse-map entry together
+        while a batch is reconstructed, preventing accidental cross-wiring.
+        """
+        native_item, original = conflict
+        metadata_args = (original.room, original.teacher) if original else (None, None)
+        reconstructed = self._from_rust_item(native_item, *metadata_args)
+        if original:
+            reconstructed.id = original.id
+        return reconstructed
+
+    def _to_rust_item(
+        self,
+        item: ScheduleItemInternal,
+        *,
+        rust_id_override: int | None | object = _UNSET,
+    ) -> rust_ext.ScheduleItem:
         # Rust expects i32 for ID, but we use UUID.
         # For conflict detection, the ID is only used to map back.
         # We'll use a hash of the UUID if it's a UUID, otherwise the int.
@@ -39,9 +63,16 @@ class ScheduleOptimizerService:
         if isinstance(item.id, int):
             rust_id = item.id
         elif isinstance(item.id, uuid.UUID):
-            # HIGH-W19: use deterministic bytes-based conversion instead of
-            # Python's randomized hash() which changes across process restarts.
-            rust_id = int.from_bytes(item.id.bytes[:4], "big") & 0x7FFFFFFF
+            if rust_id_override is _UNSET:
+                # Keep the standalone conversion deterministic for callers
+                # that only need a Rust value. Conflict paths use the
+                # collision-free allocator below because UUIDv7 values share
+                # their high bytes within the same timestamp window.
+                rust_id = self._uuid_to_rust_id(item.id)
+            else:
+                rust_id = (
+                    rust_id_override if isinstance(rust_id_override, int) else None
+                )
 
         # Convert time to datetime if needed (use 1970-01-01 to avoid OS/platform
         # overflow errors when calling .timestamp() on year 1)
@@ -60,6 +91,41 @@ class ScheduleOptimizerService:
             parity=item.parity,
             id=rust_id,
         )
+
+    def _to_rust_items_with_unique_ids(
+        self, items: list[ScheduleItemInternal]
+    ) -> tuple[list[rust_ext.ScheduleItem], dict[int, ScheduleItemInternal]]:
+        """Convert a conflict batch with a collision-free per-call ID map.
+
+        Rust exposes a signed 32-bit integer identifier while the domain uses
+        UUIDs.  Deriving an integer from only the first four UUID bytes is not
+        injective (UUIDv7 values generated in one timestamp window commonly
+        collide), so conflict reconstruction must allocate surrogate IDs for
+        UUID-backed items and retain the reverse map for this invocation.
+        """
+
+        used_ids = {item.id for item in items if isinstance(item.id, int)}
+        next_surrogate = 2_147_483_647
+        rust_id_map: dict[int, ScheduleItemInternal] = {}
+        rust_items: list[rust_ext.ScheduleItem] = []
+
+        for item in items:
+            if isinstance(item.id, uuid.UUID):
+                while next_surrogate in used_ids:
+                    next_surrogate = next_surrogate - 1
+                rust_id = next_surrogate
+                # ``next_surrogate`` only moves down, so an allocated ID is
+                # never revisited during this invocation.
+                next_surrogate = next_surrogate - 1
+                rust_id_map[rust_id] = item
+                rust_items.append(self._to_rust_item(item, rust_id_override=rust_id))
+            else:
+                rust_item = self._to_rust_item(item)
+                rust_items.append(rust_item)
+                if isinstance(item.id, int):
+                    rust_id_map[item.id] = item
+
+        return rust_items, rust_id_map
 
     def _from_rust_item(
         self,
@@ -82,20 +148,25 @@ class ScheduleOptimizerService:
     ) -> list[ScheduleItemInternal]:
         """Call the native Rust extension to detect conflicts."""
         try:
-            target_rust = self._to_rust_item(target)
-            existing_rust = [self._to_rust_item(item) for item in existing]
+            rust_items, rust_id_map = self._to_rust_items_with_unique_ids(
+                [target, *existing]
+            )
+            target_rust = rust_items[0]
+            existing_rust = rust_items[1:]
 
             conflicts_rust = rust_ext.detect_conflicts(target_rust, existing_rust)
 
-            # Reconstruct original items by matching IDs to restore metadata (room, teacher)
-            existing_map = {item.id: item for item in existing if item.id is not None}
-
             result = []
-            for item in conflicts_rust:
-                orig = existing_map.get(item.id)
+            for c_item in conflicts_rust:
+                orig = (
+                    rust_id_map.get(c_item.id) if isinstance(c_item.id, int) else None
+                )
                 room = orig.room if orig else None
                 teacher = orig.teacher if orig else None
-                result.append(self._from_rust_item(item, room, teacher))
+                orig_id = orig.id if orig else c_item.id
+                reconstructed = self._from_rust_item(c_item, room, teacher)
+                reconstructed.id = orig_id
+                result.append(reconstructed)
 
             return result
         # HIGH-W19 + RZ-20-04: narrow to Rust/PyO3 error types — consistent
@@ -112,30 +183,19 @@ class ScheduleOptimizerService:
     ) -> list[tuple[ScheduleItemInternal, ScheduleItemInternal]]:
         """Perform high-performance native batch detection."""
         try:
-            items_rust = [self._to_rust_item(item) for item in items]
+            items_rust, rust_id_map = self._to_rust_items_with_unique_ids(items)
             conflicts_rust = rust_ext.batch_detect_conflicts(items_rust)
-
-            existing_map = {item.id: item for item in items if item.id is not None}
 
             result = []
             for a, b in conflicts_rust:
-                orig_a = existing_map.get(a.id)
-                orig_b = existing_map.get(b.id)
-
-                result.append(
-                    (
-                        self._from_rust_item(
-                            a,
-                            orig_a.room if orig_a else None,
-                            orig_a.teacher if orig_a else None,
-                        ),
-                        self._from_rust_item(
-                            b,
-                            orig_b.room if orig_b else None,
-                            orig_b.teacher if orig_b else None,
-                        ),
-                    )
+                rec_a = self._reconstruct_conflict_item(
+                    (a, rust_id_map.get(a.id) if isinstance(a.id, int) else None)
                 )
+                rec_b = self._reconstruct_conflict_item(
+                    (b, rust_id_map.get(b.id) if isinstance(b.id, int) else None)
+                )
+
+                result.append((rec_a, rec_b))
             return result
         except (RuntimeError, ImportError, OSError) as e:
             # RZ-33-13: Re-raise — empty list is indistinguishable from "no conflicts".

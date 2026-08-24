@@ -18,6 +18,8 @@ class CacheSettings(BaseAppSettings):
     cache_backend: str = "redis"
     cache_enabled: bool = True
     cache_redis_url: str = "redis://127.0.0.1:6379/0"
+    # Security state must use a distinct durable/noeviction Redis process.
+    revocation_redis_url: str = "redis://127.0.0.1:6380/0"
     nats_url: str = "nats://127.0.0.1:4222"
     nats_auth_token: str | None = None
     cache_nats_bucket: str = "ue_cache"
@@ -65,6 +67,14 @@ class CacheSettings(BaseAppSettings):
             raise ValueError(
                 "CACHE_BACKEND must be redis, memory, tiered, none, or nats"
             )
+        return normalized
+
+    @field_validator("revocation_redis_url")
+    @classmethod
+    def _validate_revocation_redis_url(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("REVOCATION_REDIS_URL must not be empty")
         return normalized
 
     @field_validator("cache_warmup_max_age_seconds")

@@ -20,6 +20,13 @@ type fallbackEntry struct {
 	windowStart int64 // Unix timestamp in seconds
 }
 
+const (
+	defaultFallbackLimit           = 3
+	defaultFallbackWindow          = int64(60)
+	defaultFallbackMaxEntries      = 10_000
+	defaultFallbackCleanupInterval = 5 * time.Minute
+)
+
 // RateLimiter provides Redis-backed rate limiting with an in-memory fallback.
 type RateLimiter struct {
 	client  *redis.Client
@@ -32,7 +39,10 @@ type RateLimiter struct {
 	fallbackCounters map[string]*fallbackEntry
 	fallbackLimit    int   // max requests per fallbackWindowSecs
 	fallbackWindow   int64 // window length in seconds
-	cleanupInterval  time.Duration
+	// fallbackMaxEntries caps attacker-controlled IP/user cardinality while
+	// Redis is unavailable. New keys fail closed once the cap is reached.
+	fallbackMaxEntries int
+	cleanupInterval    time.Duration
 	// RZ-W18-03 (audit 2026-03-23 Wave 18): ensure cleanup goroutine starts once.
 	cleanupOnce     sync.Once
 	cleanupStopOnce sync.Once
@@ -45,7 +55,7 @@ var closeRedisClientFunc = func(client *redis.Client) error {
 }
 
 // NewRateLimiter creates a new rate limiter with Redis backend.
-// Fallback defaults: 10 requests / 60 s per client key.
+// Fallback defaults: 3 requests / 60 s per client key.
 func NewRateLimiter(ctx context.Context, redisURL string, rps, burst int) (*RateLimiter, error) {
 	opt, err := redis.ParseURL(redisURL)
 	if err != nil {
@@ -67,15 +77,24 @@ func NewRateLimiter(ctx context.Context, redisURL string, rps, burst int) (*Rate
 
 	limiter := redis_rate.NewLimiter(client)
 
+	rateLimiter := NewFallbackRateLimiter()
+	rateLimiter.client = client
+	rateLimiter.limiter = limiter
+	rateLimiter.rps = rps
+	return rateLimiter, nil
+}
+
+// NewFallbackRateLimiter creates a bounded, per-instance limiter for startup
+// degradation when Redis is unavailable. It deliberately uses the same
+// conservative policy as the runtime Redis-error fallback.
+func NewFallbackRateLimiter() *RateLimiter {
 	return &RateLimiter{
-		client:           client,
-		limiter:          limiter,
-		rps:              rps,
-		fallbackCounters: make(map[string]*fallbackEntry),
-		fallbackLimit:    3, // RZ-22-06: conservative per-instance limit (N instances × 3 = 9 effective, prevents brute-force during Redis outage)
-		fallbackWindow:   60,
-		cleanupInterval:  5 * time.Minute,
-	}, nil
+		fallbackCounters:   make(map[string]*fallbackEntry),
+		fallbackLimit:      defaultFallbackLimit,
+		fallbackWindow:     defaultFallbackWindow,
+		fallbackMaxEntries: defaultFallbackMaxEntries,
+		cleanupInterval:    defaultFallbackCleanupInterval,
+	}
 }
 
 // GetClient returns the underlying redis client.
@@ -90,15 +109,41 @@ func (rl *RateLimiter) inMemoryAllow(key string) bool {
 	now := time.Now().Unix()
 	rl.fallbackMu.Lock()
 	defer rl.fallbackMu.Unlock()
+	if rl.fallbackCounters == nil {
+		rl.fallbackCounters = make(map[string]*fallbackEntry)
+	}
 
 	entry, ok := rl.fallbackCounters[key]
-	if !ok || (now-entry.windowStart) >= rl.fallbackWindow {
-		// New or expired window — reset counter
+	if !ok {
+		maxEntries := rl.fallbackMaxEntries
+		if maxEntries <= 0 {
+			maxEntries = defaultFallbackMaxEntries
+		}
+		if len(rl.fallbackCounters) >= maxEntries {
+			return false
+		}
+		rl.fallbackCounters[key] = &fallbackEntry{count: 1, windowStart: now}
+		return true
+	}
+	if (now - entry.windowStart) >= rl.fallbackWindow {
+		// Existing expired window — reset without increasing cardinality.
 		rl.fallbackCounters[key] = &fallbackEntry{count: 1, windowStart: now}
 		return true
 	}
 	entry.count++
 	return entry.count <= int64(rl.fallbackLimit)
+}
+
+func (rl *RateLimiter) applyInMemoryFallback(c *gin.Context, key string) bool {
+	if rl.inMemoryAllow(key) {
+		return true
+	}
+	c.Header("Retry-After", strconv.FormatInt(rl.fallbackWindow, 10))
+	c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
+		"error":       "rate_limit_exceeded",
+		"retry_after": rl.fallbackWindow,
+	})
+	return false
 }
 
 // startFallbackCleanup launches a background goroutine that periodically
@@ -172,6 +217,12 @@ func (rl *RateLimiter) Middleware(ctx context.Context) gin.HandlerFunc {
 
 		// Get client identifier (IP or User ID)
 		key := rl.getClientKey(c)
+		if rl.limiter == nil {
+			if rl.applyInMemoryFallback(c, key) {
+				c.Next()
+			}
+			return
+		}
 
 		// PERF-06 (audit 2026-03-04): Apply a tight deadline on the Redis call.
 		// Without a timeout a slow/overloaded Redis server blocks the Gin goroutine
@@ -185,15 +236,9 @@ func (rl *RateLimiter) Middleware(ctx context.Context) gin.HandlerFunc {
 			// P0-W5-04: Redis failure — apply in-memory fallback instead of fail-open.
 			// Without this, any Redis outage completely disables rate limiting and
 			// enables unlimited brute-force on auth endpoints.
-			if !rl.inMemoryAllow(key) {
-				c.Header("Retry-After", strconv.FormatInt(rl.fallbackWindow, 10))
-				c.AbortWithStatusJSON(http.StatusTooManyRequests, gin.H{
-					"error":       "rate_limit_exceeded",
-					"retry_after": rl.fallbackWindow,
-				})
-				return
+			if rl.applyInMemoryFallback(c, key) {
+				c.Next()
 			}
-			c.Next()
 			return
 		}
 

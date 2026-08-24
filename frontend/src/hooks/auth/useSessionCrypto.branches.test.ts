@@ -32,6 +32,7 @@ beforeEach(() => {
 afterEach(() => {
   // Restore navigator.serviceWorker if a test swapped it.
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 // ---------------------------------------------------------------------------
@@ -176,6 +177,23 @@ describe("ensureSessionSigningKey failure path", () => {
     vi.restoreAllMocks()
     vi.useRealTimers()
   })
+
+  it("opens the retry circuit without development logging in production", async () => {
+    vi.stubEnv("DEV", false)
+    vi.useFakeTimers()
+    mocks.apiGet.mockRejectedValue(new Error("503"))
+    const { result } = renderHook(() => useSessionCrypto())
+
+    await act(async () => {
+      await result.current.ensureSessionSigningKey()
+      await result.current.ensureSessionSigningKey()
+      await result.current.ensureSessionSigningKey()
+    })
+
+    expect(result.current.signingKeyRetryCountRef.current).toBe(3)
+    vi.runAllTimers()
+    vi.useRealTimers()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -279,6 +297,23 @@ describe("sendServiceWorkerMessage", () => {
     expect(postMessage).toHaveBeenCalled()
   })
 
+  it("swallows controller failures without development logging in production", async () => {
+    vi.stubEnv("DEV", false)
+    const postMessage = vi.fn(() => {
+      throw new Error("worker stopped")
+    })
+    vi.stubGlobal("navigator", {
+      serviceWorker: { controller: { postMessage }, ready: undefined },
+    })
+    const { result } = renderHook(() => useSessionCrypto())
+
+    await expect(
+      act(async () => {
+        await result.current.sendSessionCacheUpdate("sk-production", { force: true })
+      })
+    ).resolves.not.toThrow()
+  })
+
   it("swallows service-worker readiness failures", async () => {
     const ready = Promise.reject(new Error("registration failed"))
     vi.stubGlobal("navigator", {
@@ -291,6 +326,34 @@ describe("sendServiceWorkerMessage", () => {
       await Promise.resolve()
       await Promise.resolve()
     })
+  })
+
+  it("swallows readiness failures without development logging in production", async () => {
+    vi.stubEnv("DEV", false)
+    const ready = Promise.reject(new Error("registration failed"))
+    vi.stubGlobal("navigator", {
+      serviceWorker: { controller: null, ready },
+    })
+    const { result } = renderHook(() => useSessionCrypto())
+
+    await act(async () => {
+      await result.current.sendSessionCacheUpdate("sk-ready-production", { force: true })
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+  })
+
+  it("does not dispatch when the service-worker readiness handle is absent", async () => {
+    vi.stubGlobal("navigator", {
+      serviceWorker: { controller: null, ready: undefined },
+    })
+    const { result } = renderHook(() => useSessionCrypto())
+
+    await expect(
+      act(async () => {
+        await result.current.sendSessionCacheUpdate("sk-no-ready", { force: true })
+      })
+    ).resolves.not.toThrow()
   })
 
   it("skips re-sending when the session hash is unchanged + not forced (lines 264-265)", async () => {

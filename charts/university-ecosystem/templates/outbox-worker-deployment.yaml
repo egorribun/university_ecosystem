@@ -1,0 +1,146 @@
+{{- if .Values.outboxWorker.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-outbox-worker
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: outbox-worker
+spec:
+  {{- if not (and .Values.keda.enabled .Values.keda.outboxWorker.enabled) }}
+  replicas: {{ .Values.outboxWorker.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: outbox-worker
+  template:
+    metadata:
+      labels:
+        {{- include "university-ecosystem.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: outbox-worker
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Release.Name }}-outbox-worker
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: outbox-worker
+          image: {{ printf "%s/%s:%s" .Values.global.imageRegistry .Values.outboxWorker.image.repository (.Values.outboxWorker.image.tag | default .Values.global.imageTag | default .Chart.AppVersion) | trimPrefix "/" | quote }}
+          imagePullPolicy: {{ .Values.outboxWorker.image.pullPolicy }}
+          # Entrypoint: python -m app.workers.outbox
+          command: ["python", "-m", "app.workers.outbox"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            {{- range $key, $value := .Values.outboxWorker.env }}
+            {{- if not (has $key (list "DATABASE_URL" "CACHE_REDIS_URL" "REVOCATION_REDIS_URL" "NATS_URL" "NATS_AUTH_TOKEN" "KEDA_POSTGRESQL_CONNECTION" "ENVIRONMENT" "SECRET_KEY" "ALGORITHM" "JWT_PRIVATE_KEY_PATH" "INTERNAL_HMAC_SECRET" "WS_HUB_INTERNAL_SECRET" "CSRF_HMAC_SECRET" "SPOTIFY_TOKEN_SECRET" "ELASTICSEARCH_PASSWORD" "SPICEDB_PRESHARED_KEY" "AUDIT_LOG_SECRET" "IDEMPOTENCY_HMAC_SECRET" "MINIO_SECURE" "ELASTICSEARCH_URL")) }}
+            - name: {{ $key }}
+              value: {{ tpl $value $ | quote }}
+            {{- end }}
+            {{- end }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.databaseURLKey must be set" .Values.connections.databaseURLKey | quote }}
+            - name: CACHE_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.redisBackendURLKey must be set" .Values.connections.redisBackendURLKey | quote }}
+            - name: REVOCATION_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey | quote }}
+            - name: NATS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.natsURLKey must be set" .Values.connections.natsURLKey | quote }}
+            - name: NATS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.natsAuthTokenKey must be set" .Values.connections.natsAuthTokenKey | quote }}
+            - name: ENVIRONMENT
+              value: {{ .Values.global.environment | quote }}
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
+                  key: jwt-secret
+            - name: ALGORITHM
+              value: "RS256"
+            - name: JWT_PRIVATE_KEY_PATH
+              value: /run/secrets/jwt-rsa-private-key.pem
+            {{- range $variable, $key := dict "INTERNAL_HMAC_SECRET" "internal-hmac-secret" "WS_HUB_INTERNAL_SECRET" "ws-hub-internal-secret" "CSRF_HMAC_SECRET" "csrf-hmac-secret" "SPOTIFY_TOKEN_SECRET" "spotify-token-secret" "ELASTICSEARCH_PASSWORD" "elasticsearch-password" "SPICEDB_PRESHARED_KEY" "spicedb-preshared-key" "AUDIT_LOG_SECRET" "audit-log-secret" "IDEMPOTENCY_HMAC_SECRET" "idempotency-hmac-secret" }}
+            - name: {{ $variable }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "university-ecosystem.applicationSecretName" $ | quote }}
+                  key: {{ $key }}
+            {{- end }}
+            - name: MINIO_SECURE
+              value: {{ .Values.backend.config.minioSecure | quote }}
+            - name: ELASTICSEARCH_URL
+              value: {{ .Values.backend.config.elasticsearchURL | quote }}
+            {{- if and .Values.keda.enabled .Values.keda.outboxWorker.enabled .Values.keda.outboxWorker.postgresql.enabled }}
+            - name: KEDA_POSTGRESQL_CONNECTION
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.kedaPostgresqlURLKey must be set" .Values.connections.kedaPostgresqlURLKey | quote }}
+            {{- end }}
+          startupProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import os; raise SystemExit(0 if os.path.exists('/tmp/worker.heartbeat') else 1)"
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - "import os,time; pid=int(open('/tmp/worker.pid', encoding='ascii').read()); os.kill(pid,0); raise SystemExit(0 if time.time()-os.path.getmtime('/tmp/worker.heartbeat') < 30 else 1)"
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.outboxWorker.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: jwt-signing-key
+              mountPath: /run/secrets
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Mi
+        - name: jwt-signing-key
+          secret:
+            secretName: {{ include "university-ecosystem.applicationSecretName" . | quote }}
+            defaultMode: 0440
+            items:
+              - key: jwt-rsa-private-key
+                path: jwt-rsa-private-key.pem
+{{- end }}

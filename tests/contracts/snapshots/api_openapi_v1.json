@@ -3,7 +3,11 @@
   "info": {
     "title": "University Ecosystem API",
     "description": "REST API for university life management platform - schedules, news, events, notifications, and more.",
-    "version": "1.0.0"
+    "version": "1.0.0",
+    "contact": {
+      "name": "University Ecosystem maintainers",
+      "url": "https://github.com/egorribun/university_ecosystem"
+    }
   },
   "paths": {
     "/": {
@@ -19,7 +23,11 @@
               }
             }
           }
-        }
+        },
+        "tags": [
+          "root"
+        ],
+        "description": "Root"
       }
     },
     "/health/live": {
@@ -44,7 +52,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Liveness Probe"
       }
     },
     "/healthz": {
@@ -85,7 +94,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Full Health Check"
       }
     },
     "/health/ready": {
@@ -110,7 +120,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Readiness Probe"
       }
     },
     "/ready": {
@@ -135,7 +146,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Legacy Readiness Check"
       }
     },
     "/api/v1/auth/logout": {
@@ -161,6 +173,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         }
       }
@@ -193,6 +208,9 @@
               }
             }
           },
+          "401": {
+            "description": "Unauthorized"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -203,7 +221,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Login Passkey Start"
       }
     },
     "/api/v1/auth/login/passkey/verify": {
@@ -242,6 +261,9 @@
               }
             }
           },
+          "401": {
+            "description": "Unauthorized"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -252,7 +274,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Login Passkey Verify"
       }
     },
     "/api/v1/auth/login": {
@@ -289,7 +312,16 @@
                   "title": "Response Login Api V1 Auth Login Post"
                 }
               }
+            },
+            "links": {
+              "GetCurrentUser": {
+                "operationId": "get_me_api_v1_users_me_get",
+                "description": "Get current user profile after login"
+              }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           },
           "422": {
             "description": "Validation Error",
@@ -301,7 +333,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Login"
       }
     },
     "/api/v1/auth/login/json": {
@@ -340,6 +373,9 @@
               }
             }
           },
+          "401": {
+            "description": "Unauthorized"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -350,7 +386,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Login Json"
       }
     },
     "/api/v1/auth/mfa/verify": {
@@ -381,6 +418,9 @@
               }
             }
           },
+          "401": {
+            "description": "Unauthorized"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -391,7 +431,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Verify Mfa Challenge"
       }
     },
     "/api/v1/auth/csrf-cookie": {
@@ -416,6 +457,9 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         }
       }
@@ -450,6 +494,9 @@
               }
             }
           },
+          "401": {
+            "description": "Unauthorized"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -460,7 +507,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Register"
       }
     },
     "/api/v1/auth/session/signing-key": {
@@ -480,13 +528,17 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "security": [
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Get Session Signing Key"
       }
     },
     "/api/v1/auth/mfa/totp/start": {
@@ -524,6 +576,9 @@
               }
             }
           },
+          "401": {
+            "description": "Unauthorized"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -539,7 +594,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Start Totp Enrollment Endpoint"
       }
     },
     "/api/v1/auth/mfa/totp/confirm": {
@@ -570,6 +626,9 @@
               }
             }
           },
+          "401": {
+            "description": "Unauthorized"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -585,7 +644,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Confirm Totp Enrollment"
       }
     },
     "/api/v1/auth/mfa/totp": {
@@ -609,13 +669,17 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "security": [
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "List Totp Enrollments"
       }
     },
     "/api/v1/auth/mfa/totp/pending/{enrollment_id}": {
@@ -646,6 +710,9 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "description": "Unauthorized"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -656,7 +723,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Delete Pending Totp Enrollment"
       }
     },
     "/api/v1/auth/mfa/totp/{enrollment_id}": {
@@ -694,6 +762,9 @@
               }
             }
           },
+          "401": {
+            "description": "Unauthorized"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -704,7 +775,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Delete Totp Enrollment"
       }
     },
     "/api/v1/auth/mfa/webauthn/register/start": {
@@ -724,13 +796,17 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "security": [
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Start Webauthn Registration"
       }
     },
     "/api/v1/auth/mfa/webauthn/register/confirm": {
@@ -761,6 +837,9 @@
               }
             }
           },
+          "401": {
+            "description": "Unauthorized"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -776,7 +855,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Confirm Webauthn Registration"
       }
     },
     "/api/v1/auth/mfa/webauthn": {
@@ -801,13 +881,17 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "security": [
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "List Webauthn Credentials"
       }
     },
     "/api/v1/auth/mfa/webauthn/{credential_id}": {
@@ -845,6 +929,9 @@
               }
             }
           },
+          "401": {
+            "description": "Unauthorized"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -855,7 +942,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Delete Webauthn Credential"
       }
     },
     "/api/v1/auth/mfa/recovery-codes": {
@@ -875,13 +963,17 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "security": [
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Generate Recovery Codes Endpoint"
       }
     },
     "/api/v1/auth/mfa/step-up": {
@@ -901,13 +993,17 @@
                 }
               }
             }
+          },
+          "401": {
+            "description": "Unauthorized"
           }
         },
         "security": [
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Request Step Up"
       }
     },
     "/api/v1/spotify/auth-url": {
@@ -933,7 +1029,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Spotify Auth Url"
       }
     },
     "/api/v1/spotify/callback": {
@@ -972,6 +1069,12 @@
               }
             }
           },
+          "503": {
+            "description": "Service Unavailable"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
           "422": {
             "description": "Validation Error",
             "content": {
@@ -982,7 +1085,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Spotify Callback"
       }
     },
     "/api/v1/spotify/now-playing": {
@@ -1008,7 +1112,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Now Playing"
       }
     },
     "/api/v1/spotify/disconnect": {
@@ -1038,7 +1143,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Disconnect"
       }
     },
     "/api/v1/spotify/playlists": {
@@ -1064,36 +1170,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
-      }
-    },
-    "/api/v1/spotify/sync-playlists": {
-      "post": {
-        "tags": [
-          "spotify"
         ],
-        "summary": "Sync Playlists",
-        "description": "Synchronize Spotify playlists metadata to the local database.",
-        "operationId": "sync_playlists_api_v1_spotify_sync_playlists_post",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "type": "object",
-                  "title": "Response Sync Playlists Api V1 Spotify Sync Playlists Post"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ]
+        "description": "List Playlists"
       }
     },
     "/api/v1/auth/sessions": {
@@ -1152,7 +1230,8 @@
               }
             }
           }
-        }
+        },
+        "description": "List Sessions"
       }
     },
     "/api/v1/auth/sessions/{session_id}": {
@@ -1200,7 +1279,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Revoke Session"
       }
     },
     "/api/v1/auth/sessions/revoke-others": {
@@ -1255,7 +1335,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Revoke Other Sessions"
       }
     },
     "/api/v1/notifications": {
@@ -1321,7 +1402,8 @@
               }
             }
           }
-        }
+        },
+        "description": "List Notifications"
       },
       "delete": {
         "tags": [
@@ -1347,7 +1429,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Clear Notifications"
       }
     },
     "/api/v1/notifications/{notif_id}/read": {
@@ -1399,7 +1482,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Mark Read Single"
       }
     },
     "/api/v1/notifications/read-all": {
@@ -1427,7 +1511,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Mark All Read"
       }
     },
     "/api/v1/notifications/{notif_id}": {
@@ -1479,7 +1564,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Delete Notification"
       }
     },
     "/api/v1/notifications/check-schedule": {
@@ -1529,7 +1615,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Check Schedule And Generate"
       }
     },
     "/api/v1/push/vapid-public-key": {
@@ -1608,7 +1695,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Subscribe"
       }
     },
     "/api/v1/push/subscribe/topics": {
@@ -1654,7 +1742,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Update Subscription Topics"
       }
     },
     "/api/v1/push/unsubscribe": {
@@ -1704,7 +1793,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Unsubscribe"
       }
     },
     "/api/v1/push/topics": {
@@ -1730,7 +1820,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Get Push Topics"
       }
     },
     "/api/v1/push/test": {
@@ -1783,7 +1874,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Send Test"
       }
     },
     "/api/v1/push/admin/topics/{user_id}": {
@@ -1831,7 +1923,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Admin Get User Topics"
       },
       "put": {
         "tags": [
@@ -1887,7 +1980,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Admin Update User Topics"
       }
     },
     "/api/v1/push/admin/disable-user": {
@@ -1944,7 +2038,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Disable User Push"
       }
     },
     "/api/v1/push/broadcast": {
@@ -1990,7 +2085,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Broadcast"
       }
     },
     "/api/v1/schedule/ics": {
@@ -2028,7 +2124,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Download Schedule Ics"
       }
     },
     "/api/v1/users/me": {
@@ -2054,7 +2151,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Me"
       },
       "put": {
         "tags": [
@@ -2098,7 +2196,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Update Me"
       }
     },
     "/api/v1/users/me/email": {
@@ -2144,7 +2243,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Change Email"
       }
     },
     "/api/v1/users/me/email/confirm": {
@@ -2190,7 +2290,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Confirm Email Change"
       }
     },
     "/api/v1/users/me/password": {
@@ -2236,7 +2337,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Change Password"
       }
     },
     "/api/v1/users/me/export": {
@@ -2262,7 +2364,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Export Current User Data"
       }
     },
     "/api/v1/users/me/delete": {
@@ -2308,7 +2411,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Delete Current User Account"
       }
     },
     "/api/v1/users/me/avatar": {
@@ -2354,7 +2458,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Upload Avatar"
       },
       "delete": {
         "tags": [
@@ -2378,7 +2483,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Delete Avatar"
       }
     },
     "/api/v1/users/me/cover": {
@@ -2424,7 +2530,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Upload Cover"
       },
       "delete": {
         "tags": [
@@ -2448,7 +2555,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Delete Cover"
       }
     },
     "/api/v1/users": {
@@ -2494,7 +2602,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Create User"
       },
       "get": {
         "tags": [
@@ -2717,7 +2826,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Export Access Audit"
       }
     },
     "/api/v1/users/{user_id}": {
@@ -2775,7 +2885,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Update User Admin"
       },
       "delete": {
         "tags": [
@@ -2823,7 +2934,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Delete User Admin"
       }
     },
     "/api/v1/password/forgot": {
@@ -2868,7 +2980,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Forgot Password"
       }
     },
     "/api/v1/password/reset": {
@@ -2913,7 +3026,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Reset Password"
       }
     },
     "/api/v1/groups": {
@@ -2938,7 +3052,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Get Groups"
       }
     },
     "/api/v1/events": {
@@ -2972,6 +3087,15 @@
                   "$ref": "#/components/schemas/EventOut"
                 }
               }
+            },
+            "links": {
+              "GetEventById": {
+                "operationId": "get_event_api_v1_events__event_id__get",
+                "parameters": {
+                  "event_id": "$response.body#/id"
+                },
+                "description": "Retrieve the created event details"
+              }
             }
           },
           "422": {
@@ -2984,7 +3108,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Create Event"
       },
       "get": {
         "tags": [
@@ -3198,7 +3323,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Unregister Event"
       }
     },
     "/api/v1/events/my": {
@@ -3256,7 +3382,8 @@
               }
             }
           }
-        }
+        },
+        "description": "My Events"
       }
     },
     "/api/v1/events/{event_id}/upload_file": {
@@ -3321,7 +3448,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Upload Event File"
       }
     },
     "/api/v1/events/{event_id}/files": {
@@ -3375,7 +3503,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Get Event Files"
       }
     },
     "/api/v1/events/upload_image": {
@@ -3425,7 +3554,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Upload Event Image"
       }
     },
     "/api/v1/events/{event_id}": {
@@ -3490,7 +3620,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Update Event"
       },
       "delete": {
         "tags": [
@@ -3545,7 +3676,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Delete Event"
       },
       "get": {
         "tags": [
@@ -3614,7 +3746,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Get Event"
       }
     },
     "/api/v1/events/file/{file_id}": {
@@ -3671,7 +3804,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Delete Event File"
       }
     },
     "/api/v1/events/search/semantic": {
@@ -3810,7 +3944,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Create News"
       },
       "get": {
         "tags": [
@@ -4023,7 +4158,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Update News"
       },
       "delete": {
         "tags": [
@@ -4071,7 +4207,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Delete News"
       }
     },
     "/api/v1/news/{id}/like": {
@@ -4123,7 +4260,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Like News"
       }
     },
     "/api/v1/news/{id}/comment": {
@@ -4181,7 +4319,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Comment On News"
       }
     },
     "/api/v1/news/{id}/interactions": {
@@ -4253,7 +4392,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Get News Interact"
       }
     },
     "/api/v1/news/comments/{comment_id}": {
@@ -4311,7 +4451,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Update Comment"
       },
       "delete": {
         "tags": [
@@ -4361,7 +4502,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Delete Comment"
       }
     },
     "/api/v1/news/upload_image": {
@@ -4411,7 +4553,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Upload News Image"
       }
     },
     "/api/v1/news/search/semantic": {
@@ -4557,7 +4700,8 @@
               }
             }
           }
-        }
+        },
+        "description": "List Stories"
       },
       "post": {
         "tags": [
@@ -4601,7 +4745,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Create Story"
       }
     },
     "/api/v1/stories/{story_id}": {
@@ -4666,7 +4811,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Update Story"
       },
       "delete": {
         "tags": [
@@ -4714,7 +4860,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Delete Story"
       }
     },
     "/api/v1/stories/upload_cover": {
@@ -4764,7 +4911,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Upload Story Cover"
       }
     },
     "/api/v1/schedule": {
@@ -4810,7 +4958,8 @@
           {
             "OAuth2PasswordBearer": []
           }
-        ]
+        ],
+        "description": "Add Schedule"
       }
     },
     "/api/v1/schedule/{id}": {
@@ -4878,7 +5027,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Get Schedule"
       },
       "patch": {
         "tags": [
@@ -4934,7 +5084,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Update Schedule"
       },
       "delete": {
         "tags": [
@@ -4982,7 +5133,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Delete Schedule"
       }
     },
     "/api/v1/stats/attendance": {
@@ -5054,7 +5206,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Attendance Summary"
       }
     },
     "/api/v1/stats/grades": {
@@ -5126,7 +5279,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Grade Summary"
       }
     },
     "/api/v1/stats/participation": {
@@ -5198,7 +5352,8 @@
               }
             }
           }
-        }
+        },
+        "description": "Participation Summary"
       }
     },
     "/api/v1/stats/summary": {
@@ -5258,68 +5413,6 @@
             "content": {
               "application/json": {
                 "schema": {}
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/stats/creation": {
-      "get": {
-        "tags": [
-          "stats"
-        ],
-        "summary": "Creation Analytics",
-        "description": "Analytics powered by UUID v7:\nCreation time distribution without DB indexes on created_at.",
-        "operationId": "creation_analytics_api_v1_stats_creation_get",
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "object_type",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "Type of object to analyze (users, news, events)",
-              "title": "Object Type"
-            },
-            "description": "Type of object to analyze (users, news, events)"
-          },
-          {
-            "name": "period",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "default": "30d",
-              "title": "Period"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Creation Analytics Api V1 Stats Creation Get"
-                }
               }
             }
           },
@@ -5436,6 +5529,15 @@
                 "schema": {
                   "$ref": "#/components/schemas/ChatResponse"
                 }
+              }
+            },
+            "links": {
+              "GetChatMessages": {
+                "operationId": "get_messages_api_v1_chats__chat_id__messages_get",
+                "parameters": {
+                  "chat_id": "$response.body#/id"
+                },
+                "description": "Get messages for the created chat"
               }
             }
           },
@@ -5599,7 +5701,7 @@
           "chats"
         ],
         "summary": "Rename Chat",
-        "description": "Rename a group's title (Wave 209 G1 — any participant).\n\nPATCH /{chat_id} is distinct from PATCH /{chat_id}/messages/{message_id}\n(edit-message). W174 auto-cookie covers PATCH CSRF.",
+        "description": "Rename a group's title (Wave 209 G1 \u2014 any participant).\n\nPATCH /{chat_id} is distinct from PATCH /{chat_id}/messages/{message_id}\n(edit-message). W174 auto-cookie covers PATCH CSRF.",
         "operationId": "rename_chat_api_v1_chats__chat_id__patch",
         "security": [
           {
@@ -5818,7 +5920,7 @@
           "chats"
         ],
         "summary": "Forward Messages",
-        "description": "Forward 1..N messages from a source chat into this destination chat (Wave 211).\n\nSnapshot-copy: copies the source content + attachments + a \"Forwarded from X\"\nlabel; the source is never dereferenced cross-chat (privacy). The actor must be\na participant of BOTH the source chat (to read) AND this destination chat (to\nsend) — see ChatMessageDispatcher.forward_messages.",
+        "description": "Forward 1..N messages from a source chat into this destination chat (Wave 211).\n\nSnapshot-copy: copies the source content + attachments + a \"Forwarded from X\"\nlabel; the source is never dereferenced cross-chat (privacy). The actor must be\na participant of BOTH the source chat (to read) AND this destination chat (to\nsend) \u2014 see ChatMessageDispatcher.forward_messages.",
         "operationId": "forward_messages_api_v1_chats__dest_chat_id__forward_post",
         "security": [
           {
@@ -6139,7 +6241,7 @@
           "chats"
         ],
         "summary": "Remove Reaction",
-        "description": "Remove an emoji reaction from a message (idempotent).\n\nW206 SW7 — emoji is a QUERY param, NOT a URL-path segment. Query params decode\nunambiguously (parse_qs); that is the robust shape for an arbitrary\nmulti-codepoint emoji used as a sub-resource selector, whereas multi-byte\ncontent in a URL path segment is a known fragility class. Verified LIVE\nend-to-end (two-browser cross-user add + remove of a real 👍, W206 SW7).\n\nHonest re-attribution: the mid-wave switch from the SW4 path route was first\nblamed on a Caddy path mis-decode, but live verification showed the earlier\n\"failed remove\" was a CORRUPT stored value — curl on Windows Git-Bash mangles a\nliteral multi-byte emoji in a request BODY to \"??\", so the curl-added reaction\nwas stored as \"??\" and no remove could match the correctly-encoded 👍. The\nquery param is retained as the more robust design (the path route was never\nverified for a real emoji). W174 auto-cookie covers DELETE CSRF.",
+        "description": "Remove an emoji reaction from a message (idempotent).\n\nW206 SW7 \u2014 emoji is a QUERY param, NOT a URL-path segment. Query params decode\nunambiguously (parse_qs); that is the robust shape for an arbitrary\nmulti-codepoint emoji used as a sub-resource selector, whereas multi-byte\ncontent in a URL path segment is a known fragility class. Verified LIVE\nend-to-end (two-browser cross-user add + remove of a real \ud83d\udc4d, W206 SW7).\n\nHonest re-attribution: the mid-wave switch from the SW4 path route was first\nblamed on a Caddy path mis-decode, but live verification showed the earlier\n\"failed remove\" was a CORRUPT stored value \u2014 curl on Windows Git-Bash mangles a\nliteral multi-byte emoji in a request BODY to \"??\", so the curl-added reaction\nwas stored as \"??\" and no remove could match the correctly-encoded \ud83d\udc4d. The\nquery param is retained as the more robust design (the path route was never\nverified for a real emoji). W174 auto-cookie covers DELETE CSRF.",
         "operationId": "remove_reaction_api_v1_chats__chat_id__messages__message_id__reactions_delete",
         "security": [
           {
@@ -6211,7 +6313,7 @@
           "chats"
         ],
         "summary": "Get Reactors",
-        "description": "List the users who reacted to a message with a specific emoji (Wave 207).\n\nPowers the reactor-list \"who reacted\" popover — reactor identities are loaded\non-demand, NOT bundled into GET /messages. Participant-authz'd + message-in-chat\nguarded (a participant of one chat can't enumerate reactors of a message in\nanother by guessing its id). emoji is a QUERY param (same robust shape as the\nDELETE route, W206 SW7). Coexists with POST + DELETE at this path (FastAPI\nroutes by method).",
+        "description": "List the users who reacted to a message with a specific emoji (Wave 207).\n\nPowers the reactor-list \"who reacted\" popover \u2014 reactor identities are loaded\non-demand, NOT bundled into GET /messages. Participant-authz'd + message-in-chat\nguarded (a participant of one chat can't enumerate reactors of a message in\nanother by guessing its id). emoji is a QUERY param (same robust shape as the\nDELETE route, W206 SW7). Coexists with POST + DELETE at this path (FastAPI\nroutes by method).",
         "operationId": "get_reactors_api_v1_chats__chat_id__messages__message_id__reactions_get",
         "security": [
           {
@@ -6285,7 +6387,7 @@
           "chats"
         ],
         "summary": "Typing Indicator",
-        "description": "Broadcast a 'typing' indicator to the other chat participants (Wave 207).\n\nThe frontend WS connects to ws-hub, which drops \"typing\" frames at its parse\nboundary — so typing can't relay peer-to-peer over the socket. This REST endpoint\ndoes the participant authz + broadcast (W204 bridge → ws-hub chat.* fan-out → the\nother participants' live TypingIndicator). A permissive 180/60 limiter (vs the\nstrict 5/60 default) gives headroom over the client's 500ms (~2/sec) throttle while\ncapping broadcast-spam abuse. W174 auto-cookie covers POST CSRF.",
+        "description": "Broadcast a 'typing' indicator to the other chat participants (Wave 207).\n\nThe frontend WS connects to ws-hub, which drops \"typing\" frames at its parse\nboundary \u2014 so typing can't relay peer-to-peer over the socket. This REST endpoint\ndoes the participant authz + broadcast (W204 bridge \u2192 ws-hub chat.* fan-out \u2192 the\nother participants' live TypingIndicator). A permissive 180/60 limiter (vs the\nstrict 5/60 default) gives headroom over the client's 500ms (~2/sec) throttle while\ncapping broadcast-spam abuse. W174 auto-cookie covers POST CSRF.",
         "operationId": "typing_indicator_api_v1_chats__chat_id__typing_post",
         "security": [
           {
@@ -6387,7 +6489,7 @@
           "chats"
         ],
         "summary": "Add Participant",
-        "description": "Add a member to a group (Wave 209 G1 — any participant). W174 auto-cookie.",
+        "description": "Add a member to a group (Wave 209 G1 \u2014 any participant). W174 auto-cookie.",
         "operationId": "add_participant_api_v1_chats__chat_id__participants_post",
         "security": [
           {
@@ -6450,7 +6552,7 @@
           "chats"
         ],
         "summary": "Remove Participant",
-        "description": "Remove a member from a group / leave (Wave 209 G1 — owner or self).\n\n3-segment path, distinct from DELETE /{chat_id} (delete-chat). W174 auto-cookie.",
+        "description": "Remove a member from a group / leave (Wave 209 G1 \u2014 owner or self).\n\n3-segment path, distinct from DELETE /{chat_id} (delete-chat). W174 auto-cookie.",
         "operationId": "remove_participant_api_v1_chats__chat_id__participants__user_id__delete",
         "security": [
           {
@@ -6684,7 +6786,7 @@
           "admin-feature-flags"
         ],
         "summary": "List Feature Flags",
-        "description": "List all registered feature flags.",
+        "description": "List registered flags and their effective read-only evaluations.",
         "operationId": "list_feature_flags_admin_feature_flags_get",
         "responses": {
           "200": {
@@ -6707,65 +6809,6 @@
             "OAuth2PasswordBearer": []
           }
         ]
-      }
-    },
-    "/admin/feature-flags/{name}": {
-      "patch": {
-        "tags": [
-          "admin",
-          "admin-feature-flags"
-        ],
-        "summary": "Update Feature Flag",
-        "description": "Update a feature flag's status or percentage.",
-        "operationId": "update_feature_flag_admin_feature_flags__name__patch",
-        "security": [
-          {
-            "OAuth2PasswordBearer": []
-          }
-        ],
-        "parameters": [
-          {
-            "name": "name",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Name"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/FeatureFlagUpdateIn"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FeatureFlagOut"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
       }
     },
     "/admin/audit": {
@@ -6897,13 +6940,126 @@
         }
       }
     },
+    "/admin/audit/time-travel": {
+      "get": {
+        "tags": [
+          "admin",
+          "admin-audit"
+        ],
+        "summary": "Get Time Travel State",
+        "description": "Reconstruct state of an aggregate entity at a target timestamp in history.",
+        "operationId": "get_time_travel_state_admin_audit_time_travel_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "aggregate_type",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Aggregate type: 'schedule', 'grade', 'user', 'assessment'",
+              "title": "Aggregate Type"
+            },
+            "description": "Aggregate type: 'schedule', 'grade', 'user', 'assessment'"
+          },
+          {
+            "name": "aggregate_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "UUID of the aggregate entity",
+              "title": "Aggregate Id"
+            },
+            "description": "UUID of the aggregate entity"
+          },
+          {
+            "name": "target_timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Target timestamp in ISO format",
+              "title": "Target Timestamp"
+            },
+            "description": "Target timestamp in ISO format"
+          },
+          {
+            "name": "timestamp",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Target timestamp alias",
+              "title": "Timestamp"
+            },
+            "description": "Target timestamp alias"
+          },
+          {
+            "name": "verify_chain",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "Verify HMAC chain integrity up to target timestamp",
+              "default": true,
+              "title": "Verify Chain"
+            },
+            "description": "Verify HMAC chain integrity up to target timestamp"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TimeTravelResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/ws/ticket": {
       "post": {
         "tags": [
           "websocket"
         ],
         "summary": "Issue a WebSocket upgrade ticket",
-        "description": "Issues a short-lived, single-use WebSocket upgrade ticket. The client must be authenticated via HttpOnly cookie or Bearer token. Connect to the WebSocket endpoint with ?ticket=<ticket> — the ticket is consumed atomically on first use and expires after WS_TICKET_TTL_SECONDS seconds if unused (default: 15 s; configure via settings.ws_ticket_ttl_seconds).",
+        "description": "Issues a short-lived, single-use WebSocket upgrade ticket. The client must be authenticated via HttpOnly cookie or Bearer token. Connect to the WebSocket endpoint with ?ticket=<ticket> \u2014 the ticket is consumed atomically on first use and expires after WS_TICKET_TTL_SECONDS seconds if unused (default: 15 s; configure via settings.ws_ticket_ttl_seconds).",
         "operationId": "issue_ws_upgrade_ticket_ws_ticket_post",
         "responses": {
           "201": {
@@ -7069,7 +7225,7 @@
           "user_id"
         ],
         "title": "AddParticipant",
-        "description": "Wave 209 G1 — add one member to a group."
+        "description": "Wave 209 G1 \u2014 add one member to a group."
       },
       "AdminUserTopicsResponse": {
         "properties": {
@@ -7080,7 +7236,8 @@
           },
           "email": {
             "type": "string",
-            "title": "Email"
+            "title": "Email",
+            "x-pii": true
           },
           "topics": {
             "items": {
@@ -7411,7 +7568,8 @@
           "password": {
             "type": "string",
             "format": "password",
-            "title": "Password"
+            "title": "Password",
+            "x-pii": true
           },
           "scope": {
             "type": "string",
@@ -7579,6 +7737,17 @@
         ],
         "title": "Body_upload_story_cover_api_v1_stories_upload_cover_post"
       },
+      "ChallengeState": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "consumed",
+          "locked",
+          "expired"
+        ],
+        "title": "ChallengeState",
+        "description": "TD-W5-01: Explicit state machine for MFA challenges.\n\nReplaces the implicit dual-null convention (consumed_at=None, locked_at=None \u2192\nactive; consumed_at set \u2192 done; locked_at set \u2192 locked) with a single\nauditable column that is impossible to misread."
+      },
       "ChatCreate": {
         "properties": {
           "participant_id": {
@@ -7634,7 +7803,8 @@
           },
           "email": {
             "type": "string",
-            "title": "Email"
+            "title": "Email",
+            "x-pii": true
           },
           "full_name": {
             "anyOf": [
@@ -8589,111 +8759,53 @@
             "type": "boolean",
             "title": "Enabled"
           },
-          "status": {
-            "type": "string",
-            "title": "Status",
-            "default": "active"
+          "default": {
+            "type": "boolean",
+            "title": "Default"
           },
           "description": {
             "type": "string",
-            "title": "Description",
-            "default": ""
+            "title": "Description"
           },
-          "percentage": {
-            "type": "integer",
-            "title": "Percentage",
-            "default": 100
+          "provider": {
+            "type": "string",
+            "title": "Provider"
           },
-          "allowed_users": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {}
-              ]
-            },
-            "type": "array",
-            "title": "Allowed Users"
+          "evaluation_reason": {
+            "type": "string",
+            "title": "Evaluation Reason"
           },
-          "allowed_groups": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Allowed Groups"
+          "management": {
+            "type": "string",
+            "const": "gitops",
+            "title": "Management"
           },
-          "metadata": {
-            "additionalProperties": true,
-            "type": "object",
-            "title": "Metadata"
+          "config_path": {
+            "type": "string",
+            "title": "Config Path"
           }
         },
         "additionalProperties": false,
         "type": "object",
         "required": [
           "name",
-          "enabled"
+          "enabled",
+          "default",
+          "description",
+          "provider",
+          "evaluation_reason",
+          "management",
+          "config_path"
         ],
         "title": "FeatureFlagOut"
-      },
-      "FeatureFlagUpdateIn": {
-        "properties": {
-          "enabled": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Enabled"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status"
-          },
-          "percentage": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Percentage"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description"
-          }
-        },
-        "additionalProperties": false,
-        "type": "object",
-        "title": "FeatureFlagUpdateIn"
       },
       "ForgotPasswordIn": {
         "properties": {
           "email": {
             "type": "string",
             "format": "email",
-            "title": "Email"
+            "title": "Email",
+            "x-pii": true
           }
         },
         "additionalProperties": false,
@@ -8754,7 +8866,7 @@
           "participant_ids"
         ],
         "title": "GroupChatCreate",
-        "description": "Wave 209 G1 — create a named group chat.\n\nparticipant_ids are the *other* members (the creator is added automatically).\nmin_length=1 is necessary-not-sufficient: the service enforces the real\n3..100 total-size bound (creator + distinct members)."
+        "description": "Wave 209 G1 \u2014 create a named group chat.\n\nparticipant_ids are the *other* members (the creator is added automatically).\nmin_length=1 is necessary-not-sufficient: the service enforces the real\n3..100 total-size bound (creator + distinct members)."
       },
       "GroupOut": {
         "properties": {
@@ -8827,11 +8939,13 @@
           "email": {
             "type": "string",
             "format": "email",
-            "title": "Email"
+            "title": "Email",
+            "x-pii": true
           },
           "password": {
             "type": "string",
-            "title": "Password"
+            "title": "Password",
+            "x-pii": true
           },
           "trust_device": {
             "type": "boolean",
@@ -8851,7 +8965,8 @@
           "email": {
             "type": "string",
             "format": "email",
-            "title": "Email"
+            "title": "Email",
+            "x-pii": true
           }
         },
         "type": "object",
@@ -9125,6 +9240,10 @@
             "type": "integer",
             "title": "Attempt Count",
             "default": 0
+          },
+          "state": {
+            "$ref": "#/components/schemas/ChallengeState",
+            "default": "pending"
           }
         },
         "type": "object",
@@ -10550,7 +10669,7 @@
           "count"
         ],
         "title": "ReactionAggregate",
-        "description": "Wave 206 — per-emoji reaction tally on a message.\n\n`reacted_by_me` is computed server-side for the requesting user on the REST\npath (the aggregation in ChatQueryService knows current_user). On the WS\ndelta-frame path the client derives it locally — it's per-viewer, so it can\nnever travel in a broadcast frame."
+        "description": "Wave 206 \u2014 per-emoji reaction tally on a message.\n\n`reacted_by_me` is computed server-side for the requesting user on the REST\npath (the aggregation in ChatQueryService knows current_user). On the WS\ndelta-frame path the client derives it locally \u2014 it's per-viewer, so it can\nnever travel in a broadcast frame."
       },
       "ReactorOut": {
         "properties": {
@@ -10588,7 +10707,7 @@
           "user_id"
         ],
         "title": "ReactorOut",
-        "description": "Wave 207 — one user in the reactor-list (\"who reacted\") popover.\n\nBuilt by ChatQueryService.get_reactors from the User rows the repository joins\nvia message_reactions. ``user_id`` is remapped explicitly in the service (the\nUser row has ``.id``, not ``.user_id``) — no from_attributes auto-mapping; only\nplain User columns (no relationship access → no N+1)."
+        "description": "Wave 207 \u2014 one user in the reactor-list (\"who reacted\") popover.\n\nBuilt by ChatQueryService.get_reactors from the User rows the repository joins\nvia message_reactions. ``user_id`` is remapped explicitly in the service (the\nUser row has ``.id``, not ``.user_id``) \u2014 no from_attributes auto-mapping; only\nplain User columns (no relationship access \u2192 no N+1)."
       },
       "ReadReceiptInfo": {
         "properties": {
@@ -10610,7 +10729,7 @@
           "last_read_at"
         ],
         "title": "ReadReceiptInfo",
-        "description": "Wave 210 G2 — one member's read high-water-mark for a group chat.\n\nService-computed (NOT a ChatDTO field) from ChatRepository.get_read_receipts.\nThe FE folds these + live `read` frames into a per-member \"seen by N\" map.\nDMs carry [] (they keep using Message.read_status), so this rides only on the\nget_chat_details response — the other ChatResponse construction sites omit it\nand it defaults []."
+        "description": "Wave 210 G2 \u2014 one member's read high-water-mark for a group chat.\n\nService-computed (NOT a ChatDTO field) from ChatRepository.get_read_receipts.\nThe FE folds these + live `read` frames into a per-member \"seen by N\" map.\nDMs carry [] (they keep using Message.read_status), so this rides only on the\nget_chat_details response \u2014 the other ChatResponse construction sites omit it\nand it defaults []."
       },
       "RecoveryCodesGenerateOut": {
         "properties": {
@@ -10650,7 +10769,7 @@
           "name"
         ],
         "title": "RenameChat",
-        "description": "Wave 209 G1 — rename a group's display title."
+        "description": "Wave 209 G1 \u2014 rename a group's display title."
       },
       "ReplyPreview": {
         "properties": {
@@ -10711,7 +10830,8 @@
             "type": "string",
             "maxLength": 200,
             "minLength": 8,
-            "title": "Password"
+            "title": "Password",
+            "x-pii": true
           }
         },
         "additionalProperties": false,
@@ -11534,6 +11654,77 @@
         "type": "object",
         "title": "StoryUpdate"
       },
+      "TimeTravelResponse": {
+        "properties": {
+          "aggregate_type": {
+            "type": "string",
+            "title": "Aggregate Type"
+          },
+          "aggregate_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Aggregate Id"
+          },
+          "target_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Target Timestamp"
+          },
+          "state_at_timestamp": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State At Timestamp"
+          },
+          "version_at_timestamp": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version At Timestamp"
+          },
+          "events_replayed": {
+            "type": "integer",
+            "title": "Events Replayed"
+          },
+          "chain_integrity_valid": {
+            "type": "boolean",
+            "title": "Chain Integrity Valid"
+          },
+          "tampered_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tampered Event Id"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "aggregate_type",
+          "aggregate_id",
+          "target_timestamp",
+          "state_at_timestamp",
+          "events_replayed",
+          "chain_integrity_valid"
+        ],
+        "title": "TimeTravelResponse"
+      },
       "TokenWithProfile": {
         "properties": {
           "access_token": {
@@ -11666,7 +11857,8 @@
                 "type": "null"
               }
             ],
-            "title": "Email"
+            "title": "Email",
+            "x-pii": true
           },
           "role": {
             "anyOf": [
@@ -11883,7 +12075,8 @@
           "email": {
             "type": "string",
             "format": "email",
-            "title": "Email"
+            "title": "Email",
+            "x-pii": true
           },
           "full_name": {
             "anyOf": [
@@ -11954,7 +12147,8 @@
             "type": "string",
             "maxLength": 200,
             "minLength": 8,
-            "title": "Password"
+            "title": "Password",
+            "x-pii": true
           },
           "invite_code": {
             "anyOf": [
@@ -12054,11 +12248,13 @@
           "email": {
             "type": "string",
             "format": "email",
-            "title": "Email"
+            "title": "Email",
+            "x-pii": true
           },
           "password": {
             "type": "string",
-            "title": "Password"
+            "title": "Password",
+            "x-pii": true
           }
         },
         "additionalProperties": false,
@@ -12260,7 +12456,8 @@
           "email": {
             "type": "string",
             "format": "email",
-            "title": "Email"
+            "title": "Email",
+            "x-pii": true
           },
           "full_name": {
             "anyOf": [
@@ -12853,7 +13050,8 @@
                 "type": "null"
               }
             ],
-            "title": "Email"
+            "title": "Email",
+            "x-pii": true
           },
           "profile_detail": {
             "anyOf": [
@@ -13233,5 +13431,105 @@
         }
       }
     }
-  }
+  },
+  "servers": [
+    {
+      "url": "/",
+      "description": "Current deployment"
+    }
+  ],
+  "tags": [
+    {
+      "name": "admin",
+      "description": "Admin API operations."
+    },
+    {
+      "name": "admin-audit",
+      "description": "Admin audit API operations."
+    },
+    {
+      "name": "admin-feature-flags",
+      "description": "Admin feature flags API operations."
+    },
+    {
+      "name": "auth",
+      "description": "Auth API operations."
+    },
+    {
+      "name": "chats",
+      "description": "Chats API operations."
+    },
+    {
+      "name": "events",
+      "description": "Events API operations."
+    },
+    {
+      "name": "groups",
+      "description": "Groups API operations."
+    },
+    {
+      "name": "health",
+      "description": "Health API operations."
+    },
+    {
+      "name": "images",
+      "description": "Images API operations."
+    },
+    {
+      "name": "mfa",
+      "description": "Mfa API operations."
+    },
+    {
+      "name": "news",
+      "description": "News API operations."
+    },
+    {
+      "name": "notifications",
+      "description": "Notifications API operations."
+    },
+    {
+      "name": "password",
+      "description": "Password API operations."
+    },
+    {
+      "name": "push",
+      "description": "Push API operations."
+    },
+    {
+      "name": "root",
+      "description": "Root API operations."
+    },
+    {
+      "name": "schedule",
+      "description": "Schedule API operations."
+    },
+    {
+      "name": "search",
+      "description": "Search API operations."
+    },
+    {
+      "name": "security",
+      "description": "Security API operations."
+    },
+    {
+      "name": "spotify",
+      "description": "Spotify API operations."
+    },
+    {
+      "name": "stats",
+      "description": "Stats API operations."
+    },
+    {
+      "name": "stories",
+      "description": "Stories API operations."
+    },
+    {
+      "name": "users",
+      "description": "Users API operations."
+    },
+    {
+      "name": "websocket",
+      "description": "Websocket API operations."
+    }
+  ]
 }

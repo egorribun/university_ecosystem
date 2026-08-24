@@ -72,9 +72,14 @@ describe("offline mutation queue — retry and sync branches", () => {
   })
 
   it("syncs success and tolerates BroadcastChannel postMessage failures", async () => {
+    const closeMock = vi.fn()
     class ThrowingBroadcastChannel {
       postMessage() {
         throw new Error("channel unavailable")
+      }
+
+      close() {
+        closeMock()
       }
     }
     vi.stubGlobal("BroadcastChannel", ThrowingBroadcastChannel)
@@ -84,6 +89,28 @@ describe("offline mutation queue — retry and sync branches", () => {
     await processPendingMutations()
 
     expect(await readPendingMutations()).toHaveLength(0)
+    expect(closeMock).toHaveBeenCalledOnce()
+  })
+
+  it("closes the BroadcastChannel after a failed replay", async () => {
+    const closeMock = vi.fn()
+    class TrackingBroadcastChannel {
+      postMessage = vi.fn()
+
+      close() {
+        closeMock()
+      }
+    }
+    vi.stubGlobal("BroadcastChannel", TrackingBroadcastChannel)
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")))
+
+    await enqueue({ mutationId: "failed", idempotencyKey: "key-failed" })
+    await processPendingMutations()
+
+    expect(closeMock).toHaveBeenCalledOnce()
+    expect(await readPendingMutations()).toEqual([
+      expect.objectContaining({ mutationId: "failed", retryCount: 1 }),
+    ])
   })
 
   it("applies mutation defaults and omits the request body for an empty payload", async () => {

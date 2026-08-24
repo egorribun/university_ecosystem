@@ -332,4 +332,54 @@ describe("useDndSettings", () => {
       })
     )
   })
+
+  it("uses the generic fallback for an Axios validation array without messages", async () => {
+    const setSnackbar = vi.fn()
+    const error = new AxiosError("validation")
+    error.response = {
+      status: 422,
+      headers: {},
+      data: { detail: [null, { code: "ignored" }] },
+      statusText: "",
+      config: {} as never,
+    }
+    mocks.put.mockRejectedValue(error)
+    const { result } = renderHook(() => useDndSettings(setSnackbar))
+
+    act(() => {
+      result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, true)
+    })
+
+    await vi.waitFor(() =>
+      expect(setSnackbar).toHaveBeenCalledWith({
+        text: "settings:dnd.snackbar.updateFailed",
+        severity: "error",
+      })
+    )
+  })
+
+  it("uses the generic fallback for an unsupported Axios detail shape", async () => {
+    const setSnackbar = vi.fn()
+    const error = new AxiosError("validation")
+    error.response = {
+      status: 422,
+      headers: {},
+      data: { detail: { code: "unsupported" } },
+      statusText: "",
+      config: {} as never,
+    }
+    mocks.put.mockRejectedValue(error)
+    const { result } = renderHook(() => useDndSettings(setSnackbar))
+
+    act(() => {
+      result.current.handleDndToggle({} as ChangeEvent<HTMLInputElement>, true)
+    })
+
+    await vi.waitFor(() =>
+      expect(setSnackbar).toHaveBeenCalledWith({
+        text: "settings:dnd.snackbar.updateFailed",
+        severity: "error",
+      })
+    )
+  })
 })

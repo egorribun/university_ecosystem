@@ -673,10 +673,4 @@ npm:
       reason: Transitive npm audit advisory disclosure.
 
 pip:
-  advisories:
-    - id: CVE-2024-23342
-      package: ecdsa
-      owner: backend@university.example
-      expires: 2027-12-31
-      reason: |
-        No upstream fix planned. The vulnerability is a low-impact potential timing attack in some curves, not applicable to our current usage. (GHSA-wj6h-64fc-37mp)
+  advisories: []

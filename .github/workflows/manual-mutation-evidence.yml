@@ -22,12 +22,12 @@ concurrency:
 
 jobs:
   manual-mutation-stats:
-    name: Manual Mutation Evidence (mutmut stats) / shard ${{ matrix.stats_shard }}/4
-    runs-on: ubuntu-latest
+    name: Manual Mutation Evidence (mutmut stats) / shard ${{ matrix.stats_shard }}/8
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        stats_shard: [0, 1, 2, 3]
+        stats_shard: [0, 1, 2, 3, 4, 5, 6, 7]
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,7 +59,8 @@ jobs:
             echo "- Base: $COMPARE_BASE";
             echo "- Head: $(git rev-parse HEAD)";
           } >> "$GITHUB_STEP_SUMMARY"
-          changed=$(git diff --name-only "$COMPARE_BASE...HEAD" | grep -E '^app/.*\.py$' || true)
+          changed_paths="$(git diff --name-only "$COMPARE_BASE...HEAD")"
+          changed="$(printf '%s\n' "$changed_paths" | grep -E '^app/.*\.py$' || true)"
           if [ -n "$changed" ]; then
             echo "has_python=true" >> "$GITHUB_OUTPUT"
           else
@@ -72,7 +73,7 @@ jobs:
           rm -rf mutants
           uv run python scripts/mutmut_stats_shard.py \
             --shard-id "${{ matrix.stats_shard }}" \
-            --num-shards 4 \
+            --num-shards 8 \
             --max-children 2
 
       - name: Upload manual mutmut stats shard
@@ -84,14 +85,14 @@ jobs:
           if-no-files-found: error
 
   manual-mutation-tests:
-    name: Manual Mutation Evidence (mutmut) / shard ${{ matrix.shard }}/16
-    runs-on: ubuntu-latest
+    name: Manual Mutation Evidence (mutmut) / shard ${{ matrix.shard }}/64
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
-    # Cap mutmut at 300 minutes (18,000 seconds).  After timeout's 30-second KILL grace,
-    # the six-hour hosted job still has 3,570 seconds for setup,
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64]
+    # Cap mutmut at 333 minutes (20,000 seconds).  After timeout's 30-second
+    # KILL grace, the six-hour hosted job still has 1,570 seconds for setup,
     # metadata verification, score checking, evidence upload, and a
     # fail-closed exit.  The PR gate uses the same envelope.
     timeout-minutes: 360
@@ -138,7 +139,8 @@ jobs:
             echo "- Base: $COMPARE_BASE";
             echo "- Head: $(git rev-parse HEAD)";
           } >> "$GITHUB_STEP_SUMMARY"
-          git diff --name-only "$COMPARE_BASE...HEAD" | grep -E '^app/.*\.py$' | sort -u > /tmp/changed_py.txt || true
+          git diff --name-only "$COMPARE_BASE...HEAD" > /tmp/changed_paths.txt
+          grep -E '^app/.*\.py$' /tmp/changed_paths.txt | sort -u > /tmp/changed_py.txt || true
           git diff --unified=0 "$COMPARE_BASE...HEAD" -- app/ > /tmp/changed_py.diff
           if [ -s /tmp/changed_py.txt ]; then
             echo "has_python=true" >> "$GITHUB_OUTPUT"
@@ -168,17 +170,17 @@ jobs:
             --changed-files /tmp/changed_py.txt \
             --changed-diff /tmp/changed_py.diff \
             --shard-id "${{ matrix.shard }}" \
-            --num-shards 16 \
+            --num-shards 64 \
             --max-children 2 \
             --output /tmp/mutmut-shard.txt
           mapfile -t MUTANT_NAMES < /tmp/mutmut-shard.txt
           if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then
-            echo "No changed mutants assigned to manual mutation shard ${{ matrix.shard }}/16."
+            echo "No changed mutants assigned to manual mutation shard ${{ matrix.shard }}/64."
             echo "has_mutants=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           echo "has_mutants=true" >> "$GITHUB_OUTPUT"
-          echo "Mutating manual shard ${{ matrix.shard }}/16: ${#MUTANT_NAMES[@]} exact mutants"
+          echo "Mutating manual shard ${{ matrix.shard }}/64: ${#MUTANT_NAMES[@]} exact mutants"
           MUTMUT_EVIDENCE_DIR=mutants/mutmut-exact-evidence
           mkdir -p "$MUTMUT_EVIDENCE_DIR"
           MUTMUT_EVIDENCE_FINALIZED=false
@@ -204,10 +206,10 @@ jobs:
             fi
             uv run python scripts/export_mutmut_shard_stats.py "${exporter_args[@]}" \
               --execution-proof "$MUTMUT_EVIDENCE_DIR/execution-proof.json" \
-              --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR" || return $?
-            test -s "$MUTMUT_EVIDENCE_DIR/execution-proof.json" || return $?
-            test -s "$MUTMUT_EVIDENCE_DIR/selected-mutants.json" || return $?
-            test -s "$MUTMUT_EVIDENCE_DIR/selected-results.json" || return $?
+              --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR" || return 1
+            test -s "$MUTMUT_EVIDENCE_DIR/execution-proof.json" || return 1
+            test -s "$MUTMUT_EVIDENCE_DIR/selected-mutants.json" || return 1
+            test -s "$MUTMUT_EVIDENCE_DIR/selected-results.json" || return 1
           }
           on_mutation_step_exit() {
             local exit_code="$?"
@@ -233,16 +235,17 @@ jobs:
             --selected-file /tmp/mutmut-shard.txt \
             --stats mutants/mutmut-stats.json \
             --max-children 2 \
-            --max-timeout-seconds 18000 \
+            --control-cycle-reserve-seconds 5 \
+            --max-timeout-seconds 20000 \
             --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
           if ! [[ "$MUTMUT_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
             MUTMUT_FAILURE_REASON="mutation budget helper returned an unsafe timeout value"
             echo "::error::Mutation budget helper returned an unsafe timeout value."
             exit 1
           fi
-          # The 18,000-second budget is only an upper cap.  The timeout starts
+          # The 20,000-second budget is only an upper cap.  The timeout starts
           # after setup, so derive a lower cap from the durable job deadline and
-          # leave 3,570 seconds after timeout's 30-second KILL grace for proof,
+          # leave 1,570 seconds after timeout's 30-second KILL grace for proof,
           # score verification, upload, and a fail-closed exit.
           if ! [[ "${MUTMUT_JOB_DEADLINE_EPOCH:-}" =~ ^[1-9][0-9]*$ ]]; then
             MUTMUT_FAILURE_REASON="mutation job deadline is missing or invalid"
@@ -250,14 +253,15 @@ jobs:
             exit 1
           fi
           MUTMUT_FAILURE_REASON="deriving the deadline-bounded mutation timeout"
-          MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=3570
+          # Keep 600 seconds for post-run evidence upload and score verification.
+          MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=600
           MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30
           MUTMUT_CURRENT_EPOCH="$(date -u +%s)"
           MUTMUT_REMAINING_JOB_SECONDS="$((MUTMUT_JOB_DEADLINE_EPOCH - MUTMUT_CURRENT_EPOCH))"
           MUTMUT_REMAINING_TIMEOUT_SECONDS="$((MUTMUT_REMAINING_JOB_SECONDS - MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS - MUTMUT_TIMEOUT_KILL_GRACE_SECONDS))"
           if [ "$MUTMUT_REMAINING_TIMEOUT_SECONDS" -lt 1 ]; then
             MUTMUT_FAILURE_REASON="mutation deadline leaves no execution time after required evidence headroom"
-            echo "::error::Mutation deadline leaves no execution time after the required 3570-second post-run/upload reserve and 30-second KILL grace."
+            echo "::error::Mutation deadline leaves no execution time after the required 600-second post-run/upload reserve and 30-second KILL grace."
             exit 1
           fi
           MUTMUT_TIMEOUT_SECONDS="$MUTMUT_BUDGET_TIMEOUT_SECONDS"
@@ -334,7 +338,7 @@ jobs:
 
   manual-frontend-mutation-tests:
     name: Manual Mutation Evidence (frontend Stryker)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout

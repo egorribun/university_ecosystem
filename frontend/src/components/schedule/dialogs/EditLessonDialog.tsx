@@ -43,12 +43,11 @@ export function EditLessonDialog({
     }
   }, [isOpen, selectedLesson])
 
-  const handleSave = async () => {
-    if (!editLesson) return
-    const optimisticId = editLesson.id
+  const handleSave = async (lesson: Lesson) => {
+    const optimisticId = lesson.id
     const backup = schedule.map((lesson) => ({ ...lesson }))
-    const backendLessonType = toBackendLessonType(editLesson.lesson_type)
-    const updatedLesson = { ...editLesson, lesson_type: backendLessonType }
+    const backendLessonType = toBackendLessonType(lesson.lesson_type)
+    const updatedLesson = { ...lesson, lesson_type: backendLessonType }
 
     // Optimistic update
     applyScheduleUpdate((prev) =>
@@ -59,7 +58,7 @@ export function EditLessonDialog({
     try {
       setIsSaving(true)
       await api.patch(`/schedule/${optimisticId}`, {
-        ...editLesson,
+        ...lesson,
         lesson_type: backendLessonType,
       })
       showSnackbar(t("schedule:snackbar.updated"))
@@ -76,8 +75,8 @@ export function EditLessonDialog({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (isFormValid && !isSaving) {
-      handleSave()
+    if (editLesson && isFormValid && !isSaving) {
+      void handleSave(editLesson)
     }
   }
 
@@ -100,9 +99,7 @@ export function EditLessonDialog({
                   type="text"
                   value={editLesson.subject || ""}
                   onChange={(event) =>
-                    setEditLesson((prev) =>
-                      prev ? { ...prev, subject: event.target.value } : null
-                    )
+                    setEditLesson((prev) => ({ ...prev!, subject: event.target.value }))
                   }
                   fullWidth
                 />
@@ -119,9 +116,7 @@ export function EditLessonDialog({
                   type="text"
                   value={editLesson.teacher || ""}
                   onChange={(event) =>
-                    setEditLesson((prev) =>
-                      prev ? { ...prev, teacher: event.target.value } : null
-                    )
+                    setEditLesson((prev) => ({ ...prev!, teacher: event.target.value }))
                   }
                   fullWidth
                 />
@@ -138,7 +133,7 @@ export function EditLessonDialog({
                   type="text"
                   value={editLesson.room || ""}
                   onChange={(event) =>
-                    setEditLesson((prev) => (prev ? { ...prev, room: event.target.value } : null))
+                    setEditLesson((prev) => ({ ...prev!, room: event.target.value }))
                   }
                   fullWidth
                 />
@@ -153,9 +148,7 @@ export function EditLessonDialog({
                 <Select
                   id="edit-lesson-type"
                   value={editLesson.lesson_type || ""}
-                  onValueChange={(val) =>
-                    setEditLesson((prev) => (prev ? { ...prev, lesson_type: val } : null))
-                  }
+                  onValueChange={(val) => setEditLesson((prev) => ({ ...prev!, lesson_type: val }))}
                   options={lessonTypeOptions}
                   placeholder={t("schedule:form.lessonType")}
                 />
@@ -174,12 +167,11 @@ export function EditLessonDialog({
                     value={getTimeStr(editLesson)}
                     onChange={(event) =>
                       setEditLesson((prev) => {
-                        if (!prev) return null
-                        const datePart = prev.start_time?.includes("T")
-                          ? prev.start_time.split("T")[0]
+                        const datePart = prev!.start_time?.includes("T")
+                          ? prev!.start_time.split("T")[0]
                           : new Date().toISOString().split("T")[0]
                         return {
-                          ...prev,
+                          ...prev!,
                           start_time: `${datePart}T${event.target.value}:00`,
                         }
                       })
@@ -200,12 +192,11 @@ export function EditLessonDialog({
                     value={getEndTimeStr(editLesson)}
                     onChange={(event) =>
                       setEditLesson((prev) => {
-                        if (!prev) return null
-                        const datePart = prev.end_time?.includes("T")
-                          ? prev.end_time.split("T")[0]
+                        const datePart = prev!.end_time?.includes("T")
+                          ? prev!.end_time.split("T")[0]
                           : new Date().toISOString().split("T")[0]
                         return {
-                          ...prev,
+                          ...prev!,
                           end_time: `${datePart}T${event.target.value}:00`,
                         }
                       })
@@ -225,9 +216,7 @@ export function EditLessonDialog({
                   id="edit-lesson-parity"
                   value={editLesson.parity}
                   onValueChange={(val) =>
-                    setEditLesson((prev) =>
-                      prev ? { ...prev, parity: val as LessonParity } : null
-                    )
+                    setEditLesson((prev) => ({ ...prev!, parity: val as LessonParity }))
                   }
                   options={[
                     { value: "both", label: t("schedule:week.both") },

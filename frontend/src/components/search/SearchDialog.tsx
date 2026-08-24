@@ -201,10 +201,10 @@ export function SearchDialog() {
               <button
                 type="button"
                 onClick={() => setQuery("")}
-                className="p-1 rounded-md hover:bg-(--bg-surface-hover) transition-colors"
+                className="p-1 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-md hover:bg-(--bg-surface-hover) transition-colors"
                 aria-label={t("common:search.clear")}
               >
-                <X className="h-4 w-4 text-(--text-tertiary)" />
+                <X className="h-4 w-4 text-(--text-tertiary)" aria-hidden="true" />
               </button>
             )}
             <kbd className="hidden sm:flex items-center gap-0.5 rounded-md border border-glass-border bg-glass px-1.5 py-0.5 text-xs font-medium text-(--text-tertiary)">

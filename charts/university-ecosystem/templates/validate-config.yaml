@@ -1,0 +1,29 @@
+{{- $environment := lower .Values.global.environment -}}
+{{- if or (eq $environment "production") (eq $environment "staging") -}}
+  {{- if not .Values.applicationSecrets.existingSecret -}}
+    {{- fail "applicationSecrets.existingSecret must be set in staging/production so credentials do not enter Helm release state" -}}
+  {{- end -}}
+  {{- if not .Values.backend.config.minioSecure -}}
+    {{- fail "backend.config.minioSecure=true is required in staging/production" -}}
+  {{- end -}}
+  {{- if and .Values.backend.config.elasticsearchURL (not (hasPrefix "https://" .Values.backend.config.elasticsearchURL)) -}}
+    {{- fail "backend.config.elasticsearchURL must use https:// in staging/production" -}}
+  {{- end -}}
+  {{- if not .Values.gateway.config.grpcUseTLS -}}
+    {{- fail "gateway.config.grpcUseTLS=true is required in staging/production" -}}
+  {{- end -}}
+  {{- if .Values.fileProcessor.enabled -}}
+    {{- if not .Values.fileProcessor.config.minioSecure -}}
+      {{- fail "fileProcessor.config.minioSecure=true is required in staging/production" -}}
+    {{- end -}}
+    {{- if .Values.fileProcessor.config.temporalTLSDisabled -}}
+      {{- fail "fileProcessor.config.temporalTLSDisabled=false is required in staging/production" -}}
+    {{- end -}}
+    {{- if .Values.fileProcessor.config.otlpInsecure -}}
+      {{- fail "fileProcessor.config.otlpInsecure=false is required in staging/production" -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if and .Values.backup.enabled (not (hasPrefix "https://" .Values.backup.minioEndpoint)) -}}
+    {{- fail "backup.minioEndpoint must use https:// in staging/production" -}}
+  {{- end -}}
+{{- end -}}

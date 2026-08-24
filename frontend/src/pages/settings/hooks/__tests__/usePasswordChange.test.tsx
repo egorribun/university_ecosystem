@@ -319,4 +319,25 @@ describe("usePasswordChange", () => {
       severity: "error",
     })
   })
+
+  it("falls back when an Axios validation array contains no messages", async () => {
+    const error = new AxiosError("validation")
+    error.response = {
+      status: 422,
+      data: { detail: [null, { code: "ignored" }] },
+    } as AxiosError["response"]
+    mocks.post.mockRejectedValue(error)
+    const { result, setSnackbar } = renderPasswordChange()
+    setValidPasswords(result)
+
+    await act(async () => {
+      await result.current.handlePasswordSubmit()
+    })
+
+    expect(result.current.passwordError).toBe("settings:security.password.failed")
+    expect(setSnackbar).toHaveBeenCalledWith({
+      text: "settings:security.password.failed",
+      severity: "error",
+    })
+  })
 })

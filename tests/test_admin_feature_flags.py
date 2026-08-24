@@ -1,8 +1,6 @@
-"""Admin feature flag API tests.
+"""Admin feature-flag API contract tests."""
 
-NOTE: FeatureFlag/FlagStatus classes were removed during the OpenFeature migration.
-Tests have been rewritten against the new app.core.feature_flags API.
-"""
+from unittest.mock import patch
 
 import pytest
 from httpx import AsyncClient
@@ -19,18 +17,42 @@ async def test_list_feature_flags_admin(root_client: AsyncClient, user_factory):
     admin = await user_factory(
         role="admin", hashed_password=await get_password_hash(TEST_PASSWORD)
     )
-    # Auth is under /api/v1
     await root_client.post(
         "/api/v1/auth/login", data={"username": admin.email, "password": TEST_PASSWORD}
     )
 
-    # Admin is NOT under /api/v1 (it's /admin)
-    response = await root_client.get("/admin/feature-flags")
+    snapshot = {
+        "name": FLAG_PUSH_BATCHING,
+        "enabled": True,
+        "default": True,
+        "description": "Batch push notifications before delivery.",
+        "provider": "flagd Provider",
+        "evaluation_reason": "STATIC",
+        "management": "gitops",
+        "config_path": "k8s/flagd/flags.json",
+    }
+    with patch(
+        "app.api.admin.feature_flags.list_feature_flag_snapshots",
+        return_value=[snapshot],
+    ):
+        response = await root_client.get("/admin/feature-flags")
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
-    # Verify we see real flags from the new system
-    assert any(f["name"] == FLAG_PUSH_BATCHING for f in data)
+    push_batching = next(f for f in data if f["name"] == FLAG_PUSH_BATCHING)
+    assert push_batching == {
+        "name": FLAG_PUSH_BATCHING,
+        "enabled": True,
+        "default": True,
+        "description": "Batch push notifications before delivery.",
+        "provider": "flagd Provider",
+        "evaluation_reason": "STATIC",
+        "management": "gitops",
+        "config_path": "k8s/flagd/flags.json",
+    }
+    assert isinstance(push_batching["enabled"], bool)
+    assert push_batching["provider"]
+    assert push_batching["evaluation_reason"]
 
 
 @pytest.mark.asyncio
@@ -47,7 +69,9 @@ async def test_list_feature_flags_forbidden(root_client: AsyncClient, user_facto
 
 
 @pytest.mark.asyncio
-async def test_update_feature_flag_success(root_client: AsyncClient, user_factory):
+async def test_update_feature_flag_is_explicitly_read_only(
+    root_client: AsyncClient, user_factory
+):
     admin = await user_factory(
         role="admin", hashed_password=await get_password_hash(TEST_PASSWORD)
     )
@@ -55,22 +79,22 @@ async def test_update_feature_flag_success(root_client: AsyncClient, user_factor
         "/api/v1/auth/login", data={"username": admin.email, "password": TEST_PASSWORD}
     )
 
-    flag_name = FLAG_PUSH_BATCHING
-
-    # In the new system, we don't 'register' during test, we update the existing one
-    # The API uses schemas.FeatureFlagUpdateIn
     response = await root_client.patch(
-        f"/admin/feature-flags/{flag_name}",
+        f"/admin/feature-flags/{FLAG_PUSH_BATCHING}",
         json={"enabled": True},
     )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["name"] == flag_name
-    assert data["enabled"] is True
+    assert response.status_code == 405
+    assert response.headers["allow"] == "GET"
+    assert response.json()["detail"] == (
+        "Feature flags are read-only in this API. Update "
+        "k8s/flagd/flags.json through the reviewed GitOps workflow."
+    )
 
 
 @pytest.mark.asyncio
-async def test_update_feature_flag_not_found(root_client: AsyncClient, user_factory):
+async def test_update_unknown_feature_flag_is_still_read_only(
+    root_client: AsyncClient, user_factory
+):
     admin = await user_factory(
         role="admin", hashed_password=await get_password_hash(TEST_PASSWORD)
     )
@@ -81,11 +105,13 @@ async def test_update_feature_flag_not_found(root_client: AsyncClient, user_fact
     response = await root_client.patch(
         "/admin/feature-flags/non_existent_flag", json={"enabled": True}
     )
-    assert response.status_code == 404
+    assert response.status_code == 405
 
 
 @pytest.mark.asyncio
-async def test_update_feature_flag_empty_input(root_client: AsyncClient, user_factory):
+async def test_update_feature_flag_empty_input_is_not_treated_as_a_write(
+    root_client: AsyncClient, user_factory
+):
     admin = await user_factory(
         role="admin", hashed_password=await get_password_hash(TEST_PASSWORD)
     )
@@ -93,6 +119,25 @@ async def test_update_feature_flag_empty_input(root_client: AsyncClient, user_fa
         "/api/v1/auth/login", data={"username": admin.email, "password": TEST_PASSWORD}
     )
 
-    flag_name = FLAG_PUSH_BATCHING
-    response = await root_client.patch(f"/admin/feature-flags/{flag_name}", json={})
-    assert response.status_code == 400
+    response = await root_client.patch(
+        f"/admin/feature-flags/{FLAG_PUSH_BATCHING}", json={}
+    )
+    assert response.status_code == 405
+
+
+@pytest.mark.asyncio
+async def test_openapi_exposes_feature_flags_as_read_only(
+    root_client: AsyncClient, user_factory
+):
+    admin = await user_factory(
+        role="admin", hashed_password=await get_password_hash(TEST_PASSWORD)
+    )
+    await root_client.post(
+        "/api/v1/auth/login", data={"username": admin.email, "password": TEST_PASSWORD}
+    )
+
+    response = await root_client.get("/api/openapi.json")
+    assert response.status_code == 200
+    paths = response.json()["paths"]
+    assert set(paths["/admin/feature-flags"]) == {"get"}
+    assert "/admin/feature-flags/{name}" not in paths

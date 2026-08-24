@@ -6,7 +6,6 @@ from app.services.cache_invalidation import (
     CacheInvalidator,
     CacheTag,
     get_tags_for_key,
-    invalidate_all_schedules,
     invalidate_by_tag,
     invalidate_event_cache,
     invalidate_groups_cache,
@@ -104,12 +103,6 @@ async def test_invalidate_cache_functions(monkeypatch):
 
     await invalidate_groups_cache()
     mock_cache.invalidate.assert_called_with("groups:list")
-
-
-@pytest.mark.asyncio
-async def test_invalidate_all_schedules():
-    with pytest.raises(NotImplementedError):
-        await invalidate_all_schedules()
 
 
 @pytest.mark.asyncio

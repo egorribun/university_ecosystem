@@ -99,7 +99,6 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
   const { data: searchResults = [], isLoading: searchLoading } = useQuery({
     queryKey: ["users", debouncedSearch],
     queryFn: async () => {
-      if (!debouncedSearch) return []
       const response = await client.get<User[]>(
         `/users?limit=${USERS_PAGE_LIMIT}&search=${debouncedSearch}`
       )

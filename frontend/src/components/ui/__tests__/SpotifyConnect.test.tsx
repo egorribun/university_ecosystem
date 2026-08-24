@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
@@ -150,6 +150,16 @@ describe("SpotifyConnect", () => {
     expect(mockState.refetch).toHaveBeenCalled()
   })
 
+  it("disables refresh and animates its icon while now-playing is fetching", () => {
+    mockState.user = { spotify_connected: true }
+    mockState.isFetching = true
+    render(<SpotifyConnect />)
+
+    const refreshButton = screen.getByText("common:buttons.refresh").closest("button")
+    expect(refreshButton).toBeDisabled()
+    expect(refreshButton?.querySelector("svg")).toHaveClass("animate-spin")
+  })
+
   it("requests the authorization URL and follows a safe hash redirect", async () => {
     const user = userEvent.setup()
     mockState.user = { spotify_connected: false }
@@ -164,6 +174,21 @@ describe("SpotifyConnect", () => {
     window.history.replaceState({}, "", "/")
   })
 
+  it("stays on the settings page when no safe authorization URL is returned", async () => {
+    const user = userEvent.setup()
+    mockState.user = { spotify_connected: false }
+    mockState.apiGet.mockResolvedValueOnce({ data: { url: "" } })
+    window.history.replaceState({}, "", "/settings")
+    render(<SpotifyConnect />)
+    const connectButton = screen.getByText("settings:integrations.spotify.connect")
+
+    await user.click(connectButton)
+
+    await waitFor(() => expect(connectButton).not.toBeDisabled())
+    expect(window.location.pathname).toBe("/settings")
+    window.history.replaceState({}, "", "/")
+  })
+
   it("refetches now-playing when the Spotify callback query is present", () => {
     mockState.user = { spotify_connected: true }
     window.history.replaceState({}, "", "/settings?spotify=connected")
@@ -171,6 +196,20 @@ describe("SpotifyConnect", () => {
     render(<SpotifyConnect />)
 
     expect(mockState.refetch).toHaveBeenCalled()
+    window.history.replaceState({}, "", "/")
+  })
+
+  it("refetches the Spotify callback only once when the query result identity changes", () => {
+    mockState.user = { spotify_connected: true }
+    window.history.replaceState({}, "", "/settings?spotify=connected")
+
+    const { rerender } = render(<SpotifyConnect />)
+    expect(mockState.refetch).toHaveBeenCalledOnce()
+
+    mockState.isFetching = true
+    rerender(<SpotifyConnect />)
+
+    expect(mockState.refetch).toHaveBeenCalledOnce()
     window.history.replaceState({}, "", "/")
   })
 })

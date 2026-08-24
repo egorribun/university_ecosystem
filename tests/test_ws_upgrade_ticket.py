@@ -28,6 +28,7 @@ def _make_active_session(
 ) -> MagicMock:
     session = MagicMock()
     session.user_id = user_id
+    session.jti = jti
     session.expires_at = datetime.now(UTC) + timedelta(hours=1)
     session.revoked_at = datetime.now(UTC) if revoked else None
     return session
@@ -58,26 +59,24 @@ class TestIssueWsUpgradeTicket:
 
         mock_request = MagicMock()
         mock_request.cookies = {"access_token_v2": "dummy"}
+        mock_request.headers = {}
+        mock_request.state.active_session = _make_active_session(user_id, jti)
+        mock_user = _make_user()
+        mock_user.id = user_id
 
         mock_redis = AsyncMock()
         mock_redis.set = AsyncMock()
 
         with (
             patch(
-                "app.api.ws.ticket.AuthTokenService.extract_and_decode_token",
-                return_value={"sub": str(user_id), "jti": jti},
-            ),
-            patch(
-                "app.api.ws.ticket.AuthTokenService.validate_payload",
-                return_value=(user_id, jti),
-            ),
-            patch(
                 "app.api.ws.ticket.get_cache_client",
                 new=AsyncMock(return_value=mock_redis),
             ),
             patch("app.api.ws.ticket.resolve_locale", return_value="en"),
         ):
-            result = await issue_ws_upgrade_ticket(request=mock_request, token=None)
+            result = await issue_ws_upgrade_ticket(
+                request=mock_request, current_user=mock_user
+            )
 
         assert isinstance(result, WsTicketResponse)
         assert len(result.ticket) == 64
@@ -92,26 +91,23 @@ class TestIssueWsUpgradeTicket:
         jti = str(uuid.uuid4())
 
         mock_request = MagicMock()
-        mock_request.headers = {}
+        mock_request.headers = {"X-Tenant-ID": "00000000-0000-0000-0000-000000000999"}
+        mock_request.state.active_session = _make_active_session(user_id, jti)
+        mock_user = _make_user()
+        mock_user.id = user_id
         mock_redis = AsyncMock()
         mock_redis.set = AsyncMock()
 
         with (
-            patch(
-                "app.api.ws.ticket.AuthTokenService.extract_and_decode_token",
-                return_value={"sub": str(user_id), "jti": jti},
-            ),
-            patch(
-                "app.api.ws.ticket.AuthTokenService.validate_payload",
-                return_value=(user_id, jti),
-            ),
             patch(
                 "app.api.ws.ticket.get_cache_client",
                 new=AsyncMock(return_value=mock_redis),
             ),
             patch("app.api.ws.ticket.resolve_locale", return_value="en"),
         ):
-            result = await issue_ws_upgrade_ticket(request=mock_request, token=None)
+            result = await issue_ws_upgrade_ticket(
+                request=mock_request, current_user=mock_user
+            )
 
         mock_redis.set.assert_called_once()
         call_args = mock_redis.set.call_args
@@ -130,6 +126,10 @@ class TestIssueWsUpgradeTicket:
         user_id = uuid.uuid4()
         jti = str(uuid.uuid4())
         mock_request = MagicMock()
+        mock_request.headers = {}
+        mock_request.state.active_session = _make_active_session(user_id, jti)
+        mock_user = _make_user()
+        mock_user.id = user_id
         mock_redis = AsyncMock()
         mock_redis.set = AsyncMock()
 
@@ -137,20 +137,14 @@ class TestIssueWsUpgradeTicket:
         for _ in range(5):
             with (
                 patch(
-                    "app.api.ws.ticket.AuthTokenService.extract_and_decode_token",
-                    return_value={"sub": str(user_id), "jti": jti},
-                ),
-                patch(
-                    "app.api.ws.ticket.AuthTokenService.validate_payload",
-                    return_value=(user_id, jti),
-                ),
-                patch(
                     "app.api.ws.ticket.get_cache_client",
                     new=AsyncMock(return_value=mock_redis),
                 ),
                 patch("app.api.ws.ticket.resolve_locale", return_value="en"),
             ):
-                result = await issue_ws_upgrade_ticket(request=mock_request, token=None)
+                result = await issue_ws_upgrade_ticket(
+                    request=mock_request, current_user=mock_user
+                )
             tickets.add(result.ticket)
 
         assert len(tickets) == 5, "Each call must generate a unique ticket"
@@ -258,6 +252,23 @@ class TestGetUserFromTicket:
 
         mock_redis = AsyncMock()
         mock_redis.getdel = AsyncMock(return_value="nodivider")
+
+        with patch(
+            "app.deps.cache.get_cache_client", new=AsyncMock(return_value=mock_redis)
+        ):
+            result = await get_user_from_ticket(secrets.token_hex(32))
+
+        assert result == (None, None)
+
+    @pytest.mark.asyncio
+    async def test_ticket_payload_with_tenant_segment_is_rejected(self):
+        """The canonical OTT payload is exactly ``user_id:jti``."""
+        from app.api.ws.auth import get_user_from_ticket
+
+        mock_redis = AsyncMock()
+        mock_redis.getdel = AsyncMock(
+            return_value=f"{uuid.uuid4()}:{uuid.uuid4()}:{uuid.uuid4()}"
+        )
 
         with patch(
             "app.deps.cache.get_cache_client", new=AsyncMock(return_value=mock_redis)

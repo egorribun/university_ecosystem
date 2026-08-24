@@ -321,4 +321,15 @@ describe("ScheduleDesktopTable", () => {
     expect(screen.getByLabelText("Linear Algebra, 09:00–10:30, 101")).toBeInTheDocument()
     expect(resizeObserverDisconnect).not.toHaveBeenCalled()
   })
+
+  it("ignores a queued ResizeObserver callback after unmount", async () => {
+    const { unmount } = await renderTable(baseProps())
+    const queuedCallback = resizeObserverCallback
+
+    expect(queuedCallback).toBeTypeOf("function")
+    unmount()
+    expect(resizeObserverDisconnect).toHaveBeenCalledOnce()
+
+    expect(() => queuedCallback?.([], {} as ResizeObserver)).not.toThrow()
+  })
 })

@@ -22,9 +22,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -360,17 +357,10 @@ def test_require_group_participant_happy_path_returns_id_set():
 
 
 async def test_notification_dispatch_event_created_happy_path():
-    """Branch: add_task succeeds → no error records created.
-
-    WHY: the normal dispatch flow must not write any failure records to the
-    dead-letter store — asserting the failure list is empty confirms that.
-    """
+    """Branch: add_task succeeds and schedules the notification."""
     from fastapi import BackgroundTasks
 
-    from app.services import notification_queue
     from app.services.notification_service import NotificationService
-
-    await notification_queue.reset_testing_state()
 
     db = AsyncMock()
     service = NotificationService(db=db)
@@ -378,23 +368,13 @@ async def test_notification_dispatch_event_created_happy_path():
 
     event_id = uuid.uuid4()
     await service.dispatch_event_created(event_id, locale="ru", background=bg)
-
-    failures = await notification_queue.get_failed_enqueue_records()
-    assert len(failures) == 0, "Successful dispatch must not create failure records"
+    assert len(bg.tasks) == 1
 
 
 async def test_notification_dispatch_event_created_enqueue_failure_recorded():
-    """Branch: background.add_task raises RuntimeError → failure is recorded, no raise.
+    """A broken background queue is reported without escaping the handler."""
 
-    WHY: the NotificationService wraps add_task in a try/except; a broken
-    background task queue must NOT bubble an exception to the HTTP handler —
-    the failure is recorded to the dead-letter store and logged instead.
-    """
-
-    from app.services import notification_queue
     from app.services.notification_service import NotificationService
-
-    await notification_queue.reset_testing_state()
 
     db = AsyncMock()
     service = NotificationService(db=db)
@@ -403,14 +383,14 @@ async def test_notification_dispatch_event_created_enqueue_failure_recorded():
     bad_bg.add_task = MagicMock(side_effect=RuntimeError("queue full"))
 
     event_id = uuid.uuid4()
-    # Must NOT raise
-    await service.dispatch_event_created(event_id, locale="ru", background=bad_bg)
+    with patch(
+        "app.services.notification_service.notification_queue.report_enqueue_failure",
+        new=AsyncMock(),
+    ) as report:
+        await service.dispatch_event_created(event_id, locale="ru", background=bad_bg)
 
-    failures = await notification_queue.get_failed_enqueue_records()
-    assert len(failures) == 1, (
-        "RuntimeError during enqueue MUST be recorded to dead-letter"
-    )
-    assert failures[0].job.kind == "event"
+    report.assert_awaited_once()
+    assert report.await_args.kwargs["notification_type"] == "event"
 
 
 # ---------------------------------------------------------------------------

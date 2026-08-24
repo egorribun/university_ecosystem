@@ -383,6 +383,8 @@ def upgrade():
 
                 dropped_uq_names = set()
                 for uq in existing_uq:
+                    if not uq.get("name"):
+                        continue
                     msg = (
                         f"Dropping unique constraint {uq['name']} on {t_name} "
                         "involved in swap"
@@ -688,6 +690,8 @@ def downgrade():
 
             dropped_uq_names = set()
             for uq in existing_uq:
+                if not uq.get("name"):
+                    continue
                 if set(uq["column_names"]) & swapped_cols:
                     logger.info(f"Dropping UQ {uq['name']} on {t_name} for swap")
                     if is_postgresql:

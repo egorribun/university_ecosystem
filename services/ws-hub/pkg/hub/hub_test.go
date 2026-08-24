@@ -248,7 +248,7 @@ func TestClient_HandleMessage_RateLimiter(t *testing.T) {
 	client := &Client{
 		ID:     "client1",
 		UserID: "user1",
-		Rooms:  make(map[string]bool),
+		Rooms:  map[string]bool{"room1": true},
 		Send:   make(chan []byte, 10),
 		Hub:    h,
 		ctx:    ctx,

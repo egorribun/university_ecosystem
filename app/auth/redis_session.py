@@ -5,9 +5,13 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from redis.exceptions import RedisError
+
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.deps.cache import RedisCache, get_cache
+
+from .revocation import get_revocation_redis_client, revoke_with_tombstone
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -34,13 +38,25 @@ class SessionBackend(ABC):
         pass
 
     @abstractmethod
-    async def revoke_session(self, jti: str) -> None:
+    async def revoke_session(
+        self, jti: str, expires_at: datetime | None = None
+    ) -> None:
         pass
 
 
 class RedisSessionBackend(SessionBackend):
-    def __init__(self, redis_client: Redis[Any]) -> None:
+    def __init__(
+        self,
+        redis_client: Redis[Any],
+        *,
+        revocation_redis_client: Redis[Any] | None = None,
+    ) -> None:
         self._redis = redis_client
+        self._revocation_redis = (
+            revocation_redis_client
+            if revocation_redis_client is not None
+            else redis_client
+        )
         self._prefix = "session:"
 
     async def register_session(
@@ -67,44 +83,22 @@ class RedisSessionBackend(SessionBackend):
         key = f"{self._prefix}{jti}"
         return await self._redis.get(key) is not None
 
-    async def revoke_session(self, jti: str) -> None:
+    async def revoke_session(
+        self, jti: str, expires_at: datetime | None = None
+    ) -> None:
         key = f"{self._prefix}{jti}"
-        revoked_key = f"revoked:jti:{jti}"
-        # RZ-W19-12: atomize TTL-read + delete + revoked-key-write via Lua script
-        # to close the TOCTOU race window where a revoked session appears valid.
-        lua_script = """
-        local ttl = redis.call('TTL', KEYS[1])
-        redis.call('DEL', KEYS[1])
-        if ttl > 0 then
-            redis.call('SET', KEYS[2], '1', 'EX', ttl)
-        end
-        return ttl
-        """
-        from redis.exceptions import ResponseError
-
-        try:
-            await self._redis.eval(lua_script, 2, key, revoked_key)  # type: ignore[no-untyped-call]
-        except (
-            ConnectionError,
-            TimeoutError,
-            OSError,
-            ResponseError,
-        ):  # RZ-22-01: narrowed Redis exceptions
-            # RZ-25-06: Use pipeline to minimize TOCTOU window when Lua unavailable.
-            remaining_ttl = await self._redis.ttl(key)
-            if remaining_ttl > 0:
-                pipe = self._redis.pipeline(transaction=True)
-                pipe.delete(key)
-                pipe.set(revoked_key, "1", ex=remaining_ttl)
-                await pipe.execute()
-            else:
-                await self._redis.delete(key)
+        await revoke_with_tombstone(
+            self._redis,
+            session_key=key,
+            jti=jti,
+            expires_at=expires_at,
+            revocation_redis_client=self._revocation_redis,
+        )
         # Notify Gateway to invalidate its L1 cache
         try:
-            await self._redis.publish("session:revocations", jti)
+            await self._revocation_redis.publish("session:revocations", jti)
         except (
-            ConnectionError,
-            TimeoutError,
+            RedisError,
             OSError,
         ):  # RZ-22-01: narrowed — Redis pub/sub errors
             logger.warning("Failed to publish session revocation for jti=%s", jti)
@@ -115,7 +109,11 @@ async def get_session_backend() -> SessionBackend:
         cache = get_cache()
         if isinstance(cache, RedisCache):
             client = await cache._get_client()
-            return RedisSessionBackend(client)
+            revocation_client = await get_revocation_redis_client()
+            return RedisSessionBackend(
+                client,
+                revocation_redis_client=revocation_client,
+            )
         # RZ-25-02: Fail-closed in production — NullSessionBackend bypasses revocation.
         _env = getattr(settings, "environment", "production").lower()
         if _env not in {"development", "local", "testing", "test"}:
@@ -145,7 +143,9 @@ async def get_session_backend() -> SessionBackend:
                 )
             return True
 
-        async def revoke_session(self, jti: str) -> None:
+        async def revoke_session(
+            self, jti: str, expires_at: datetime | None = None
+        ) -> None:
             pass
 
     return NullSessionBackend()

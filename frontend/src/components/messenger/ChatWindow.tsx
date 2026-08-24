@@ -712,8 +712,12 @@ export const ChatWindow = memo(function ChatWindow({
                                       alt={attachment.name}
                                       className="w-full h-auto max-h-72 object-cover cursor-pointer hover:scale-hover transition-transform duration-slow"
                                       onClick={() => {
-                                        const safe = sanitizeUrl(attachment.url)
-                                        if (safe) window.open(safe, "_blank", "noopener,noreferrer")
+                                        // Rendering already proved this immutable URL safe.
+                                        window.open(
+                                          sanitizeUrl(attachment.url)!,
+                                          "_blank",
+                                          "noopener,noreferrer"
+                                        )
                                       }}
                                     />
                                   ) : null

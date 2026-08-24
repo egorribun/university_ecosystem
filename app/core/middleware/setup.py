@@ -33,7 +33,10 @@ def _configure_security_core(app: FastAPI, settings: Settings) -> None:
     # D-04 (audit 2026-03-08): Registered first so the correlation ID is
     # available to every downstream middleware and route handler.
     app.add_middleware(RequestIDMiddleware)
-    app.add_middleware(TenantContextMiddleware)
+    app.add_middleware(
+        TenantContextMiddleware,
+        internal_hmac_secret=settings.internal_hmac_secret,
+    )
     app.add_middleware(SecurityHeadersMiddleware, settings=settings)
 
     # Internal Access — only allowed IPs & tokens.

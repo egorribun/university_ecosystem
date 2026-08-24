@@ -19,11 +19,13 @@ from app.core.observability import (
 def _reset_otel():
     import app.core.observability as obs
 
+    obs.shutdown_observability()
     original_configured = obs._otel_configured
     original_instrumented = obs._sqlalchemy_instrumented
     obs._otel_configured = False
     obs._sqlalchemy_instrumented = False
     yield
+    obs.shutdown_observability()
     obs._otel_configured = original_configured
     obs._sqlalchemy_instrumented = original_instrumented
 

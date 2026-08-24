@@ -1,9 +1,13 @@
 import { render, screen } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
-import { Button, FormControlLabel } from "@/components/settings/ui/Form"
+import { Button, fadeDelayStyle, FormControlLabel } from "@/components/settings/ui/Form"
 
 describe("settings Form compatibility wrappers", () => {
+  it("builds the typed fade-delay custom property", () => {
+    expect(fadeDelayStyle("120ms")).toEqual({ "--fade-delay": "120ms" })
+  })
+
   it("maps all legacy variants and sizes", () => {
     render(
       <div>

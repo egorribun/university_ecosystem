@@ -18,6 +18,7 @@ COMPONENTS = (
     "go-gateway",
     "go-ws-hub",
     "go-file-processor",
+    "go-shared",
     "rust-native",
     "rust-pyo3-sanitizer",
     "rust-wasm-sanitizer",
@@ -27,10 +28,10 @@ COMPONENTS = (
     "scripts",
 )
 COMPONENT_FLOORS = (
-    ("lines", 88),
-    ("statements", 90),
-    ("branches", 82),
-    ("functions", 80),
+    ("lines", 100),
+    ("statements", 100),
+    ("branches", 100),
+    ("functions", 100),
 )
 TIER0_FLOORS = (
     ("lines", 100),
@@ -39,10 +40,10 @@ TIER0_FLOORS = (
     ("functions", 100),
 )
 COVERAGE_MINIMUMS = (
-    ("lines", 91),
-    ("statements", 91),
-    ("branches", 82),
-    ("functions", 82),
+    ("lines", 100),
+    ("statements", 100),
+    ("branches", 100),
+    ("functions", 100),
     ("tier0", 100),
 )
 TOP_LEVEL_KEYS = frozenset(
@@ -570,8 +571,8 @@ def _validate_tier0_manifest(manifest: object) -> list[str]:
 
     The quality contract's aggregate Tier0 floor is necessary but not
     sufficient: a single under-covered file can be hidden by another file's
-    surplus coverage.  This check is intentionally opt-in so the measurement
-    phase can land before the Tier0 backlog is closed (roadmap Phase 0.4).
+    surplus coverage. This check is enabled only when the manifest declares a
+    Tier0 section; once declared, every listed file must satisfy its own floor.
     """
     if not isinstance(manifest, dict):
         return ["coverage manifest root must be an object"]

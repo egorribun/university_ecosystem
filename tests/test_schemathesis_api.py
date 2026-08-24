@@ -1,4 +1,4 @@
-"""Wave 2 / Task 2.3 — Schemathesis v4 property-based OpenAPI conformance tests.
+"""Schemathesis v4 property-based OpenAPI conformance tests.
 
 Schemathesis generates random-but-valid HTTP requests directly from the live
 FastAPI OpenAPI schema and asserts that every response conforms to the declared
@@ -34,7 +34,11 @@ What this catches
 
 Run locally
 -----------
-    uv run pytest tests/test_schemathesis_api.py -v
+    uv run pytest tests/test_schemathesis_api.py -v -m schemathesis
+
+CI sets ``SCHEMATHESIS_SHARD_COUNT=4`` and
+``SCHEMATHESIS_SHARD_INDEX=0..3`` to distribute the same exhaustive operation
+set across four bounded jobs.
 """
 
 from __future__ import annotations
@@ -69,6 +73,20 @@ auth_token = _mint_pure_jwt(subject=uuid4(), extra_claims={"role": "admin"})
 SCHEMATHESIS_MAX_EXAMPLES = int(os.environ.get("SCHEMATHESIS_MAX_EXAMPLES", "1"))
 if SCHEMATHESIS_MAX_EXAMPLES < 1:
     raise ValueError("SCHEMATHESIS_MAX_EXAMPLES must be at least 1")
+
+# The complete OpenAPI surface is intentionally exercised with the same number
+# of examples per operation.  CI distributes operations round-robin across
+# independent jobs so the exhaustive pass remains bounded without reducing
+# property-based depth.  Local runs default to one shard and therefore retain
+# the familiar single-process behaviour.
+SCHEMATHESIS_SHARD_COUNT = int(os.environ.get("SCHEMATHESIS_SHARD_COUNT", "1"))
+SCHEMATHESIS_SHARD_INDEX = int(os.environ.get("SCHEMATHESIS_SHARD_INDEX", "0"))
+if SCHEMATHESIS_SHARD_COUNT < 1:
+    raise ValueError("SCHEMATHESIS_SHARD_COUNT must be at least 1")
+if not 0 <= SCHEMATHESIS_SHARD_INDEX < SCHEMATHESIS_SHARD_COUNT:
+    raise ValueError(
+        "SCHEMATHESIS_SHARD_INDEX must be within the configured shard count"
+    )
 
 
 @schemathesis.hook
@@ -121,6 +139,40 @@ os.environ.setdefault(
 
 from app.main import app  # env vars must be set before this import
 
+# OpenAPI methods are the only keys that represent executable operations in a
+# path item.  Build the shard map from FastAPI's local schema so collection does
+# not need an ASGI round-trip or any backing service.
+_OPENAPI_METHODS = frozenset(
+    {"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD", "TRACE"}
+)
+
+
+def _build_operation_index() -> dict[str, int]:
+    operation_keys = sorted(
+        f"{method.upper()} {path}"
+        for path, path_item in app.openapi().get("paths", {}).items()
+        for method in path_item
+        if method.upper() in _OPENAPI_METHODS
+    )
+    if not operation_keys:
+        raise RuntimeError("Schemathesis OpenAPI schema declares no operations")
+    if len(set(operation_keys)) != len(operation_keys):
+        raise RuntimeError("Schemathesis OpenAPI operation keys must be unique")
+    return {key: index for index, key in enumerate(operation_keys)}
+
+
+_OPERATION_INDEX = _build_operation_index()
+
+
+def _operation_matches_shard(context) -> bool:
+    key = f"{context.operation.method.upper()} {context.operation.path}"
+    try:
+        index = _OPERATION_INDEX[key]
+    except KeyError as exc:
+        raise RuntimeError(f"Unknown Schemathesis operation: {key}") from exc
+    return index % SCHEMATHESIS_SHARD_COUNT == SCHEMATHESIS_SHARD_INDEX
+
+
 # ---------------------------------------------------------------------------
 # Schema loader — evaluated at module parse time but the ASGI call is deferred.
 #
@@ -128,10 +180,23 @@ from app.main import app  # env vars must be set before this import
 # that stores the fixture name as a plain string.  No ASGI round-trip happens
 # here.  The real ``schemathesis.openapi.from_asgi()`` call only occurs inside
 # the test body (via ``request.getfixturevalue("loaded_schema")``), so a slow
-# or missing backing service cannot hang pytest collection.
+# or missing backing service cannot hang pytest collection.  The shard filter
+# is applied to this LazySchema (rather than the fixture result), because the
+# plugin merges its own filter set when it resolves the fixture.
 # ---------------------------------------------------------------------------
 
 _lazy_schema = schemathesis.pytest.from_fixture("loaded_schema")
+if SCHEMATHESIS_SHARD_COUNT > 1:
+    _selected_operation_count = sum(
+        index % SCHEMATHESIS_SHARD_COUNT == SCHEMATHESIS_SHARD_INDEX
+        for index in _OPERATION_INDEX.values()
+    )
+    if _selected_operation_count == 0:
+        raise RuntimeError(
+            "Schemathesis shard selected no OpenAPI operations: "
+            f"{SCHEMATHESIS_SHARD_INDEX}/{SCHEMATHESIS_SHARD_COUNT}"
+        )
+    _lazy_schema = _lazy_schema.include(func=_operation_matches_shard)
 
 
 @pytest.fixture(scope="session")

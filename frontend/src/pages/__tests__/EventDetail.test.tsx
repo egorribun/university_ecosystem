@@ -483,4 +483,24 @@ describe("EventDetail", () => {
     frameCallback?.(0)
     expect(container.querySelector(".events-reading-progress")).toHaveStyle("transform: scaleX(0)")
   })
+
+  it("ignores unavailable navigation and a detached progress element", () => {
+    let frameCallback: FrameRequestCallback | undefined
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frameCallback = callback
+      return 1
+    })
+    mocks.id = ""
+
+    const { unmount } = render(<EventDetail />)
+
+    mocks.swipeOptions?.onSwipeLeft()
+    mocks.swipeOptions?.onSwipeRight()
+    expect(mocks.navigate).not.toHaveBeenCalled()
+    expect(mocks.setEventsHeroId).not.toHaveBeenCalled()
+
+    fireEvent.scroll(window)
+    unmount()
+    expect(() => frameCallback?.(0)).not.toThrow()
+  })
 })

@@ -7,7 +7,7 @@ import {
   MessageCircle as CommentIcon,
   Heart as HeartIcon,
 } from "lucide-react"
-import { memo, useCallback, useState } from "react"
+import { memo, useCallback, useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { Link } from "@tanstack/react-router"
 
@@ -40,13 +40,29 @@ const NewsCardContent = ({
 }: NewsCardContentProps) => {
   const { t } = useTranslation(["common"])
   const [celebrating, setCelebrating] = useState(false)
+  const celebrationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(
+    () => () => {
+      if (celebrationTimeoutRef.current !== null) {
+        clearTimeout(celebrationTimeoutRef.current)
+      }
+    },
+    []
+  )
 
   const handleLike = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
       if (!isLiked) {
         setCelebrating(true)
-        setTimeout(() => setCelebrating(false), 400)
+        if (celebrationTimeoutRef.current !== null) {
+          clearTimeout(celebrationTimeoutRef.current)
+        }
+        celebrationTimeoutRef.current = setTimeout(() => {
+          celebrationTimeoutRef.current = null
+          setCelebrating(false)
+        }, 400)
       }
       onToggleLike()
     },

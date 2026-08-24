@@ -75,7 +75,7 @@ concurrency:
 jobs:
   chromatic:
     name: Chromatic Visual Regression
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     # DISABLED 2026-06-13 (user request) — the Chromatic billing quota for this
     # cycle is exhausted, so `chromaui/action` posts a "UI Tests" GitHub commit

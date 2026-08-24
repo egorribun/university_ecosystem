@@ -167,7 +167,11 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
         hidden
         onChange={(e) => {
           const f = e.currentTarget.files?.[0]
-          if (f) uploadAvatar(f)
+          if (f) {
+            uploadAvatar(f)
+          } else {
+            return
+          }
         }}
       />
       <input
@@ -177,7 +181,11 @@ export function ProfileSection({ setSnackbar }: SettingsSectionProps) {
         hidden
         onChange={(e) => {
           const f = e.currentTarget.files?.[0]
-          if (f) uploadCover(f)
+          if (f) {
+            uploadCover(f)
+          } else {
+            return
+          }
         }}
       />
     </SectionCard>

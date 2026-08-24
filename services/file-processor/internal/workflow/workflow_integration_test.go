@@ -42,7 +42,7 @@ func startMinIOContainer(t *testing.T) (*minio.Client, string, func()) {
 	t.Helper()
 	ctx := context.Background()
 
-	mc, err := tcminio.Run(ctx, "minio/minio:RELEASE.2025-09-07T16-13-09Z",
+	mc, err := tcminio.Run(ctx, "minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
 		testcontainers.WithLogger(tclog.TestLogger(t)),
 	)
 	if err != nil {

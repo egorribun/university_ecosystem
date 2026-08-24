@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import type { NewsItem } from "@/api/news"
 
 const { state, mockResetEtagCache } = vi.hoisted(() => ({
   state: {
@@ -12,7 +13,7 @@ const { state, mockResetEtagCache } = vi.hoisted(() => ({
     url: { current: { params: { q: "", cat: "all", sort: "newest" } } },
     query: {
       current: {
-        news: [] as Array<{ id: string; title: string }>,
+        news: [] as NewsItem[],
         isLoading: false,
         isFetching: false,
         isFetchingNextPage: false,
@@ -132,6 +133,7 @@ const NEWS = [
     content: "Semester timetable",
     title_en: null,
     content_en: null,
+    created_at: "2026-01-01T00:00:00Z",
     likes_count: 2,
   },
   {
@@ -140,9 +142,10 @@ const NEWS = [
     content: "Football tournament",
     title_en: "Sports day",
     content_en: "Competition news",
+    created_at: "2026-01-02T00:00:00Z",
     likes_count: 20,
   },
-] as Array<{ id: string; title: string }> & Array<Record<string, unknown>>
+] satisfies NewsItem[]
 
 function renderFeature() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
@@ -230,5 +233,43 @@ describe("NewsFeature closure", () => {
 
     expect(screen.getByTestId("news-list")).toHaveAttribute("data-count", "1")
     expect(screen.getByText("Campus update")).toBeInTheDocument()
+  })
+
+  it("matches a query found only in the English content", () => {
+    state.debounced.current = "competition"
+    state.url.current = { params: { q: "competition", cat: "all", sort: "newest" } }
+
+    renderFeature()
+
+    expect(screen.getByTestId("news-list")).toHaveAttribute("data-count", "1")
+    expect(screen.getByText("Campus update")).toBeInTheDocument()
+  })
+
+  it("orders multiple unfiltered items by popularity", () => {
+    state.url.current = { params: { q: "", cat: "all", sort: "popular" } }
+
+    renderFeature()
+
+    const content = screen.getByTestId("news-list").textContent ?? ""
+    expect(content.indexOf("Campus update")).toBeLessThan(content.indexOf("Lecture schedule"))
+  })
+
+  it("treats missing popularity counters as zero on both comparator sides", () => {
+    state.url.current = { params: { q: "", cat: "all", sort: "popular" } }
+    const firstWithoutLikes: NewsItem = { ...NEWS[0]! }
+    const secondWithoutLikes: NewsItem = { ...NEWS[1]! }
+    delete firstWithoutLikes.likes_count
+    delete secondWithoutLikes.likes_count
+    state.query.current = {
+      ...state.query.current,
+      news: [
+        { ...firstWithoutLikes, id: "missing-a" },
+        { ...secondWithoutLikes, id: "missing-b" },
+      ],
+    }
+
+    renderFeature()
+
+    expect(screen.getByTestId("news-list")).toHaveAttribute("data-count", "2")
   })
 })

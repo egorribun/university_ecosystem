@@ -7,7 +7,7 @@ automatic fallback to Pillow for Windows or when pyvips is not installed.
 from __future__ import annotations
 
 from io import BytesIO
-from typing import Any, cast
+from typing import Any
 
 from defusedxml.ElementTree import fromstring as parse_svg_string
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -26,19 +26,19 @@ logger = get_logger(__name__)
 
 try:  # Pillow >= 9.1 exposes the resampling enum in PIL.Image
     from PIL.Image import Resampling
-except ImportError:  # pragma: no cover
+except ImportError:
     Resampling: Any = int  # type: ignore[no-redef]
 
 
 def _resolve_resample_filter() -> Resampling:
     """Return the best available high-quality resampling filter."""
-    resampling = getattr(Image, "Resampling", None)
+    resampling: type[Resampling] | None = getattr(Image, "Resampling", None)
     if resampling is not None:
-        return cast("Resampling", resampling.LANCZOS)
-    lanczos = getattr(Image, "LANCZOS", None)  # pragma: no cover
-    if lanczos is None:  # pragma: no cover
+        return resampling.LANCZOS
+    lanczos: Resampling | None = getattr(Image, "LANCZOS", None)
+    if lanczos is None:
         raise AttributeError("Pillow installation does not expose a LANCZOS filter")
-    return cast("Resampling", lanczos)  # pragma: no cover
+    return lanczos
 
 
 def sanitize_svg(data: bytes) -> bytes:

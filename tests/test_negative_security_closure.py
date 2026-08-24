@@ -1,4 +1,4 @@
-"""Behaviour-level negative security regressions from roadmap Phase 9.1."""
+"""Behaviour-level regressions for fail-closed security boundaries."""
 
 from __future__ import annotations
 

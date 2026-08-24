@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import BinaryIO
 
 GO_IMAGE = (
-    "docker.io/library/golang:1.26.5-bookworm@"
-    "sha256:53eeac89074db483fdf0ab3be1df32bf6e47562263d2d0d6baa7f26acb4957dd"
+    "docker.io/library/golang:1.26.6-bookworm@"
+    "sha256:116d58cbd88c1297624acc6e967a060012422bacf9930927e23fb719189c6f36"
 )
 DOCKER_BINARY = Path("/usr/bin/docker")
 TIMEOUT_BINARY = Path("/usr/bin/timeout")
@@ -764,7 +764,6 @@ def _go_environment(*, offline: bool) -> dict[str, str]:
 
 def _go_prefetch_environment() -> dict[str, str]:
     """Fetch Go modules without mutating the read-only workspace checkout."""
-
     return _go_environment(offline=False)
 
 

@@ -120,10 +120,13 @@ export function useSessionManagement({
     ((options?: { skipStepUp?: boolean }) => Promise<void>) | null
   >(null)
 
+  const revokeSessionMutateAsync = revokeSessionMutation.mutateAsync
+  const revokeAllSessionsMutateAsync = revokeAllSessionsMutation.mutateAsync
+
   const handleRevokeSession = useCallback(
     async (sessionId: string, options?: { skipStepUp?: boolean }) => {
       try {
-        const result = await revokeSessionMutation.mutateAsync(sessionId)
+        const result = await revokeSessionMutateAsync(sessionId)
         setSnackbar({ text: t("settings:sessions.snackbar.revoked"), severity: "success" })
 
         // Wave 135 SW1 — factory-routed cache mutation. The previous
@@ -149,13 +152,13 @@ export function useSessionManagement({
         })
       }
     },
-    [logout, openStepUpFor, queryClient, revokeSessionMutation, setSnackbar, t, userId]
+    [logout, openStepUpFor, queryClient, revokeSessionMutateAsync, setSnackbar, t, userId]
   )
 
   const handleRevokeAllSessions = useCallback(
     async (options?: { skipStepUp?: boolean }) => {
       try {
-        const result = await revokeAllSessionsMutation.mutateAsync()
+        const result = await revokeAllSessionsMutateAsync()
         // Wave 135 SW1 — factory-routed invalidation (closes W134 §Honesty #5).
         await invalidateSessions(queryClient, userId)
         setSnackbar({
@@ -177,7 +180,7 @@ export function useSessionManagement({
         })
       }
     },
-    [openStepUpFor, queryClient, revokeAllSessionsMutation, setSnackbar, t, userId]
+    [openStepUpFor, queryClient, revokeAllSessionsMutateAsync, setSnackbar, t, userId]
   )
 
   useEffect(() => {

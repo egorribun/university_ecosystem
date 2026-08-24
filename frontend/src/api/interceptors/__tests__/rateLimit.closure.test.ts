@@ -138,4 +138,103 @@ describe("rateLimit interceptor — queue/window closure", () => {
 
     expect(postConfig.__clientRateLimitAcquired).toBe(false)
   })
+
+  it("keeps one rolling-window timer when multiple requests queue", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_PER_MINUTE", "1")
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "4")
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const first = config()
+    const second = config()
+    const third = config()
+
+    await waitForClientQueueSlot(first)
+    releaseClientQueueSlot(first)
+    const secondWait = waitForClientQueueSlot(second)
+    const thirdWait = waitForClientQueueSlot(third)
+    await Promise.resolve()
+
+    expect(vi.getTimerCount()).toBe(1)
+    await vi.advanceTimersByTimeAsync(60_000)
+    await secondWait
+    releaseClientQueueSlot(second)
+    await vi.advanceTimersByTimeAsync(60_000)
+    await thirdWait
+    releaseClientQueueSlot(third)
+  })
+
+  it("rechecks the rolling window when releasing a concurrency-blocked request", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_PER_MINUTE", "1")
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "1")
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const first = config()
+    const second = config()
+
+    await waitForClientQueueSlot(first)
+    const secondWait = waitForClientQueueSlot(second)
+    await Promise.resolve()
+    releaseClientQueueSlot(first)
+
+    expect(vi.getTimerCount()).toBe(1)
+    await vi.advanceTimersByTimeAsync(60_000)
+    await secondWait
+    releaseClientQueueSlot(second)
+  })
+
+  it("keeps queued work blocked when a stale timer fires at max concurrency", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_PER_MINUTE", "1")
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "1")
+    vi.setSystemTime(1_000_000)
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const first = config()
+    const second = config()
+    const activeAfterClockJump = config()
+
+    await waitForClientQueueSlot(first)
+    releaseClientQueueSlot(first)
+    const secondWait = waitForClientQueueSlot(second)
+    await Promise.resolve()
+    expect(vi.getTimerCount()).toBe(1)
+
+    vi.setSystemTime(1_060_001)
+    await waitForClientQueueSlot(activeAfterClockJump)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(second.__clientRateLimitAcquired).toBeUndefined()
+
+    releaseClientQueueSlot(activeAfterClockJump)
+    await secondWait
+    releaseClientQueueSlot(second)
+  })
+
+  it("clears a stale queue timer after a forward clock jump", async () => {
+    vi.stubEnv("VITE_API_RATE_LIMIT_PER_MINUTE", "1")
+    vi.stubEnv("VITE_API_RATE_LIMIT_MAX_CONCURRENT", "4")
+    vi.setSystemTime(1_000_000)
+    const { releaseClientQueueSlot, waitForClientQueueSlot } = await import("../rateLimit")
+    const first = config()
+    const second = config()
+    const third = config()
+
+    await waitForClientQueueSlot(first)
+    releaseClientQueueSlot(first)
+    const secondWait = waitForClientQueueSlot(second)
+    await Promise.resolve()
+    expect(vi.getTimerCount()).toBe(1)
+
+    const now = vi.spyOn(Date, "now").mockReturnValueOnce(1_000_000).mockReturnValueOnce(1_060_001)
+    const thirdWait = waitForClientQueueSlot(third)
+    await Promise.resolve()
+    now.mockRestore()
+    expect(vi.getTimerCount()).toBe(0)
+
+    vi.setSystemTime(1_060_001)
+    const trigger = config()
+    await waitForClientQueueSlot(trigger)
+    releaseClientQueueSlot(trigger)
+    await vi.advanceTimersByTimeAsync(60_000)
+    await secondWait
+    releaseClientQueueSlot(second)
+    await vi.advanceTimersByTimeAsync(60_000)
+    await thirdWait
+    releaseClientQueueSlot(third)
+  })
 })

@@ -66,6 +66,8 @@ describe("ForgotPassword page", () => {
     await renderForgot()
 
     const emailInput = screen.getByLabelText(startsWithText(tAuth("fields.email")))
+    fireEvent.blur(emailInput)
+    expect(screen.queryByText(/gmail\.com/i)).not.toBeInTheDocument()
     await user.type(emailInput, "user@gmial.com")
     await user.tab()
 

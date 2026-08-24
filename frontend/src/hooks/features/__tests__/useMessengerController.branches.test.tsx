@@ -748,6 +748,26 @@ describe("useMessengerController — branch top-up", () => {
 
       await waitFor(() => expect(result.current.contacts).toHaveLength(2))
     })
+
+    it("does not navigate away when the route changes before delete confirmation", async () => {
+      seedTwoChats()
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+
+      act(() => result.current.handleDeleteChat())
+      const confirmDelete = result.current.confirmDialog?.onConfirm
+      expect(confirmDelete).toBeTypeOf("function")
+
+      mocks.paramsRef.current = { chatId: "chat-2" }
+      rerender()
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-2"))
+      mocks.navigate.mockClear()
+
+      act(() => confirmDelete?.())
+
+      await waitFor(() => expect(mocks.chatApi.deleteChat).toHaveBeenCalledWith("chat-1"))
+      expect(mocks.navigate).not.toHaveBeenCalledWith({ to: "/messenger" })
+    })
   })
 
   describe("profile modal (1010-1027)", () => {
@@ -830,6 +850,19 @@ describe("useMessengerController — branch top-up", () => {
 
       mocks.chatApi.markRead.mockClear()
       await act(async () => {
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          value: "hidden",
+        })
+        document.dispatchEvent(new Event("visibilitychange"))
+      })
+      expect(mocks.chatApi.markRead).not.toHaveBeenCalled()
+
+      await act(async () => {
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          value: "visible",
+        })
         document.dispatchEvent(new Event("visibilitychange"))
       })
 
@@ -886,6 +919,128 @@ describe("useMessengerController — branch top-up", () => {
         ])
       )
       await waitFor(() => expect(mocks.chatApi.sendMessage).toHaveBeenCalled())
+    })
+
+    it("keeps every rollback path safe when neither chats nor messages have resolved", async () => {
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      mocks.chatApi.getChats.mockImplementation(() => new Promise(() => {}))
+      mocks.chatApi.getMessages.mockImplementation(() => new Promise(() => {}))
+      mocks.chatApi.clearChat.mockRejectedValue(new Error("clear failed"))
+      mocks.chatApi.deleteChat.mockRejectedValue(new Error("delete chat failed"))
+      mocks.chatApi.editMessage.mockRejectedValue(new Error("edit failed"))
+      mocks.chatApi.deleteMessage.mockRejectedValue(new Error("delete message failed"))
+      mocks.chatApi.addReaction.mockRejectedValue(new Error("reaction failed"))
+
+      const client = new QueryClient({
+        defaultOptions: {
+          queries: { retry: false, gcTime: 0 },
+          mutations: { retry: false },
+        },
+      })
+      const localWrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      )
+      const errorCount = () =>
+        client
+          .getMutationCache()
+          .getAll()
+          .filter((mutation) => mutation.state.status === "error").length
+      const { result } = renderHook(() => useMessengerController(), { wrapper: localWrapper })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+
+      act(() => result.current.handleClearChat())
+      act(() => result.current.confirmDialog?.onConfirm())
+      await waitFor(() => expect(mocks.chatApi.clearChat).toHaveBeenCalledWith("chat-1"))
+      await waitFor(() => expect(errorCount()).toBeGreaterThanOrEqual(1))
+
+      act(() => result.current.handleDeleteChat())
+      act(() => result.current.confirmDialog?.onConfirm())
+      await waitFor(() => expect(mocks.chatApi.deleteChat).toHaveBeenCalledWith("chat-1"))
+      await waitFor(() => expect(errorCount()).toBeGreaterThanOrEqual(2))
+
+      act(() => client.removeQueries({ queryKey: ["messages", "chat-1"], exact: true }))
+      expect(client.getQueryData(["messages", "chat-1"])).toBeUndefined()
+      act(() => {
+        result.current.handleEditMessage("uncached-edit", "before")
+        result.current.setEditingMessageContent("after")
+      })
+      await waitFor(() => expect(result.current.editingMessageContent).toBe("after"))
+      act(() => result.current.handleSaveEdit("uncached-edit"))
+      await waitFor(() => expect(mocks.chatApi.editMessage).toHaveBeenCalled())
+      await waitFor(() => expect(errorCount()).toBeGreaterThanOrEqual(3))
+
+      act(() => client.removeQueries({ queryKey: ["messages", "chat-1"], exact: true }))
+      expect(client.getQueryData(["messages", "chat-1"])).toBeUndefined()
+      act(() => result.current.handleDeleteMessage("uncached-delete"))
+      act(() => result.current.confirmDialog?.onConfirm())
+      await waitFor(() => expect(mocks.chatApi.deleteMessage).toHaveBeenCalled())
+      await waitFor(() => expect(errorCount()).toBeGreaterThanOrEqual(4))
+
+      act(() => client.removeQueries({ queryKey: ["messages", "chat-1"], exact: true }))
+      expect(client.getQueryData(["messages", "chat-1"])).toBeUndefined()
+      act(() => result.current.handleToggleReaction("uncached-reaction", "👍"))
+      await waitFor(() => expect(mocks.chatApi.addReaction).toHaveBeenCalled())
+      await waitFor(() => expect(errorCount()).toBeGreaterThanOrEqual(5))
+    })
+
+    it("handles a remove-reaction race after the cache entry disappears", async () => {
+      seedChat()
+      mocks.chatApi.getMessages.mockImplementation(() => new Promise(() => {}))
+      mocks.chatApi.removeReaction.mockResolvedValue({ status: "ok" })
+      const client = new QueryClient({
+        defaultOptions: {
+          queries: { retry: false, gcTime: 0 },
+          mutations: { retry: false },
+        },
+      })
+      const localWrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      )
+      let releaseCancel!: () => void
+      const cancelGate = new Promise<void>((resolve) => {
+        releaseCancel = resolve
+      })
+      const cancelQueries = vi.spyOn(client, "cancelQueries").mockReturnValue(cancelGate)
+      const { result } = renderHook(() => useMessengerController(), { wrapper: localWrapper })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+      client.setQueryData(["messages", "chat-1"], {
+        items: [
+          {
+            id: "reaction-race",
+            chat_id: "chat-1",
+            sender_id: "peer",
+            content: "race",
+            created_at: "2026-08-18T00:00:00Z",
+            read_status: false,
+            reactions: [{ emoji: "👍", count: 1, reacted_by_me: true }],
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+
+      act(() => result.current.handleToggleReaction("reaction-race", "👍"))
+      await waitFor(() => expect(cancelQueries).toHaveBeenCalled())
+      client.setQueryData(["messages", "chat-1"], {
+        items: [
+          {
+            id: "reaction-race",
+            chat_id: "chat-1",
+            sender_id: "peer",
+            content: "race",
+            created_at: "2026-08-18T00:00:00Z",
+            read_status: false,
+            reactions: [],
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      releaseCancel()
+
+      await waitFor(() =>
+        expect(mocks.chatApi.removeReaction).toHaveBeenCalledWith("chat-1", "reaction-race", "👍")
+      )
     })
   })
 

@@ -34,6 +34,7 @@ allow-licenses:
   - Apache-2.0 WITH LLVM-exception
   - LicenseRef-scancode-protobuf
   - LicenseRef-scancode-google-patent-license-golang
+  - LicenseRef-scancode-public-domain
 
 allow-ghsas:
   - "GHSA-4c8g-83qw-93j6"
@@ -138,6 +139,8 @@ allow-dependencies-licenses:
   - "pkg:golang/golang.org/x/sync"
   - "pkg:pypi/portalocker"
   - "pkg:pypi/qdrant-client"
+  - "pkg:pypi/mmh3"
+  - "pkg:cargo/ammonia"
 
 vulnerability-check: true
 license-check: true

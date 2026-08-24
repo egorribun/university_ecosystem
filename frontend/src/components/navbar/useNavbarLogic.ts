@@ -38,7 +38,7 @@ export const useNavbarLogic = () => {
   // and multiple subcomponents receiving `isMobile` + `prefersReducedMotion`
   // props (NavbarLogo, NavbarPill, NavbarActions, DesktopNav, UserMenu,
   // NavbarOverflowMenu). Verified empirically W167 SW2 via Path B
-  // NODE_ENV=development build wave165-admin-visual-smoke.mjs re-run:
+  // NODE_ENV=development build admin-visual-smoke.mjs re-run:
   // dev React bundle emitted full unminified error message with diff
   // showing `<ul>` (server) vs `<div>` (client) for NavbarActions
   // root element on /admin/audit_light sidecar.

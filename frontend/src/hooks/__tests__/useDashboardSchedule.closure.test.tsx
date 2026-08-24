@@ -96,6 +96,13 @@ describe("useDashboardSchedule closure", () => {
 
     mockGet.mockRejectedValueOnce(new Error("temporary outage"))
     expect(await options.queryFn?.(queryContext())).toEqual([lesson])
+
+    client.removeQueries({ queryKey: options.queryKey })
+    mockGet.mockResolvedValueOnce({ status: 304, data: [] })
+    expect(await options.queryFn?.(queryContext())).toEqual([])
+
+    expect(options.placeholderData([lesson])).toEqual([lesson])
+    expect(options.placeholderData(undefined)).toEqual([])
   })
 
   it("rethrows aborted and uncached failures", async () => {

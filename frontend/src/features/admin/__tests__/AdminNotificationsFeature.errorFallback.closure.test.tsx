@@ -213,6 +213,10 @@ describe("AdminNotificationsFeature defensive error handling", () => {
     translationOverrides.values.set("admin:notifications.table.aria", undefined)
     translationOverrides.values.set("admin:notifications.table.selectAll", undefined)
     translationOverrides.values.set("admin:notifications.table.selectRow", undefined)
+    translationOverrides.values.set(
+      "notifications:topics.raw-topic",
+      "notifications:topics.raw-topic"
+    )
     translationOverrides.topicLabel = true
     vi.mocked(fetchAdminUserTopics)
       .mockResolvedValueOnce({
@@ -224,8 +228,8 @@ describe("AdminNotificationsFeature defensive error handling", () => {
       .mockResolvedValueOnce({
         user_id: "55555555-5555-5555-5555-555555555555",
         email: "non-string@example.com",
-        allowed_topics: [42 as unknown as string],
-        topics: [],
+        allowed_topics: [42 as unknown as string, "raw-topic"],
+        topics: null as unknown as string[],
       })
     server.use(
       http.get("*/push/admin/topics/:userId", () =>
@@ -269,6 +273,7 @@ describe("AdminNotificationsFeature defensive error handling", () => {
         "Topics loaded for non-string@example.com (ID 55555555-5555-5555-5555-555555555555)."
       )
     ).toBeInTheDocument()
+    expect(screen.getByText("raw-topic")).toBeInTheDocument()
     expect(vi.mocked(fetchAdminUserTopics)).toHaveBeenLastCalledWith(
       "55555555-5555-5555-5555-555555555555"
     )

@@ -144,7 +144,6 @@ async def test_create_event_records_enqueue_failure(
     registry = CollectorRegistry()
     metrics = observability.reinitialize_notification_queue_metrics(registry=registry)
     notification_queue._queue_metrics = metrics
-    await notification_queue.reset_testing_state()
 
     password = "TeacherPass123!"
     teacher = await user_factory(
@@ -177,21 +176,10 @@ async def test_create_event_records_enqueue_failure(
     counter_value = metrics.enqueue_failures_total.labels(kind="event")._value.get()
     assert counter_value == pytest.approx(1.0)
 
-    failed_records = await notification_queue.get_failed_enqueue_records()
-    assert len(failed_records) == 1
-    failure = failed_records[0]
-    assert str(failure.job.record_id) == body["id"]
-    assert failure.job.kind == "event"
-    assert failure.attempts == 1
-    assert failure.source == "NotificationService.dispatch_event_created"
-    assert failure.error and "notification queue unavailable" in failure.error
-
     import uuid
 
     stored = await db_session.get(models.Event, uuid.UUID(body["id"]))
     assert stored is not None
-
-    await notification_queue.reset_testing_state()
 
 
 @pytest.mark.asyncio

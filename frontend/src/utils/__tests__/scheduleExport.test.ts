@@ -84,6 +84,13 @@ describe("scheduleExport", () => {
       })
       expect(url).toContain("details=Type%3A+Lecture")
     })
+
+    it("uses an empty type inside a custom typePrefix when lesson_type is absent", () => {
+      const url = generateGoogleCalendarUrl({ ...mockLesson, lesson_type: undefined }, mockDate, {
+        typePrefix: "Type: {{type}}",
+      })
+      expect(url).toContain("details=Type%3A+")
+    })
   })
 
   describe("exportScheduleAsPng", () => {
@@ -224,6 +231,12 @@ describe("scheduleExport", () => {
       const result = await exportScheduleAsPdf(mockElement, "Test Schedule", "test.pdf")
       expect(result.success).toBe(false)
       expect(result.error).toBe("PDF generation error")
+    })
+
+    it("uses the generic PDF error for a non-Error rejection", async () => {
+      vi.mocked(toPng).mockRejectedValueOnce("PDF generation failed")
+      const result = await exportScheduleAsPdf(mockElement)
+      expect(result).toEqual({ success: false, error: "PDF export failed" })
     })
   })
 })

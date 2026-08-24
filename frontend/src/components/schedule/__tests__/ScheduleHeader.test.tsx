@@ -114,6 +114,17 @@ describe("ScheduleHeader", () => {
     expect(screen.getByText("schedule:summary.noMoreToday")).toBeInTheDocument()
   })
 
+  it("uses the standard duration for lessons with invalid times", () => {
+    render(
+      <ScheduleHeader
+        {...baseProps}
+        todayLessons={[lesson({ start_time: "invalid", end_time: "also-invalid" })]}
+      />
+    )
+
+    expect(screen.getByText("schedule:dayComplete")).toBeInTheDocument()
+  })
+
   it("uses the compact progress ring on mobile", () => {
     mediaMock.mockReturnValue(true)
     render(

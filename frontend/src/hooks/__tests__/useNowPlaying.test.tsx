@@ -173,6 +173,29 @@ describe("fetchNowPlaying", () => {
     await expect(fetchNowPlaying()).rejects.toThrow("offline")
     window.removeEventListener("spotify:reauth-required", reauth)
   })
+
+  it("handles a 401 without a browser and rethrows other Axios failures", async () => {
+    const get = vi.spyOn(api, "get")
+    const unauthorized = Object.assign(new Error("expired on server"), {
+      isAxiosError: true,
+      response: { status: 401, headers: {} },
+    })
+    const serverError = Object.assign(new Error("upstream failed"), {
+      isAxiosError: true,
+      response: { status: 503, headers: {} },
+    })
+    get.mockRejectedValueOnce(unauthorized).mockRejectedValueOnce(serverError)
+
+    const browserWindow = window
+    vi.stubGlobal("window", undefined)
+    try {
+      await expect(fetchNowPlaying()).resolves.toBeNull()
+    } finally {
+      vi.stubGlobal("window", browserWindow)
+    }
+
+    await expect(fetchNowPlaying()).rejects.toThrow("upstream failed")
+  })
 })
 
 describe("useNowPlaying", () => {

@@ -49,4 +49,7 @@ For JWT RS256, the backend signs with the new key while the gateway accepts both
 - JWT key rotation achieves zero downtime via dual-key JWKS
 - Credential rotation for DB/Redis still requires maintenance window until Vault dynamic secrets are adopted
 - All secrets are stored in Vault — no K8s Secret manifests contain plaintext (ESO manages the bridge)
-- Rotation runbook will be maintained in `docs/runbooks/secret-rotation.md`
+- The rotation procedure above is the canonical runbook for this decision;
+  deployment prerequisites and environment-specific secret wiring are
+  documented in [`docs/DEPLOY.md`](../DEPLOY.md) and its
+  [English counterpart](../DEPLOY.en.md).

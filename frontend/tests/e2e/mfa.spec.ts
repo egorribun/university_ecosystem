@@ -1,57 +1,58 @@
+import type { Page } from "@playwright/test"
 import { expect, test } from "./test"
 import { useMockApi } from "./utils/mockApi"
 
 const matchTotpAddButton = /Подключить приложение|Set up authenticator app/i
+const matchTotpSection = /^Приложение-аутентификатор|^Authenticator app/i
 const matchTotpVerifyButton = /Подтвердить|Verify|Confirm/i
 
-// Skip: MFA tests timeout during login/authentication flows in mock environment
-test.describe.skip("Multi-factor authentication flows", () => {
+const fillOtp = async (page: Page, code: string) => {
+  const inputs = page.getByRole("textbox", { name: /digit \d/i })
+  await expect(inputs).toHaveCount(6)
+  for (const [index, digit] of [...code].entries()) {
+    await inputs.nth(index).fill(digit)
+  }
+}
+
+test.describe("Multi-factor authentication flows", () => {
   test("allows enabling TOTP in settings", async ({ page }) => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
     await page.goto("/settings")
-    await page.waitForURL(/\/settings$/)
-    await page.waitForTimeout(500) // Allow tabs to initialize
+    await expect(page.getByRole("heading", { name: /Settings|Настройки/i })).toBeVisible()
 
-    // Switch to Account tab
-    await page.getByRole("tab", { name: /Account|Аккаунт/i }).click()
-    await page.waitForTimeout(1000)
+    await page.getByRole("tab", { name: /Security|Безопасность/i }).click()
+    await expect(
+      page.getByRole("heading", { name: /Security & MFA|Безопасность и MFA/i })
+    ).toBeVisible()
 
-    // Expand TOTP accordion
-    await page
-      .getByText(/Authenticator app|Приложение-аутентификатор/i)
-      .first()
-      .click()
-    await page.waitForTimeout(500)
+    const totpSection = page.getByRole("button", { name: matchTotpSection })
+    await totpSection.click()
+    await expect(totpSection).toHaveAttribute("aria-expanded", "true")
 
     const addBtn = page.getByRole("button", { name: matchTotpAddButton })
-    await expect(addBtn).toBeVisible({ timeout: 15000 })
+    await expect(addBtn).toBeVisible()
 
     const startPromise = page.waitForResponse(
-      (r) => r.url().includes("auth/mfa/totp/start") && r.status() === 200,
-      { timeout: 20000 }
+      (r) => r.url().includes("auth/mfa/totp/start") && r.status() === 200
     )
-    await addBtn.click({ force: true })
+    await addBtn.click()
     await startPromise
-    await page.waitForTimeout(1000)
     await expect(
       page.getByText(/Завершите настройку|Finish setup|Confirm setup|Scan|QR/i).first()
-    ).toBeVisible({ timeout: 30000 })
+    ).toBeVisible()
 
-    const otpInput = page.getByLabel(/Код из приложения|Authenticator code/i).first()
-    await otpInput.click()
-    await page.keyboard.type("123456", { delay: 50 })
+    await fillOtp(page, "123456")
 
-    // The component might auto-submit, but we also ensure the button is at least enabled or we just wait for the success state
     await expect(
       page.getByText(/Приложение-аутентификатор подключено|Authenticator app connected/i)
-    ).toBeVisible({ timeout: 10000 })
+    ).toBeVisible()
     await expect(page.getByText(/Приложение \d|Authenticator \d/i)).toBeVisible()
   })
 
   test("completes login when an OTP challenge is returned", async ({ page }) => {
-    await useMockApi(page)
+    await useMockApi(page, { authenticated: false })
 
     await page.goto("/login")
     await page.waitForURL(/\/login$/)
@@ -62,15 +63,13 @@ test.describe.skip("Multi-factor authentication flows", () => {
 
     await expect(page.getByText(/Подтвердите личность|Verify it's you/i)).toBeVisible()
 
-    const otpInput = page.getByLabel(/Код из приложения|Authenticator code/i).first()
-    await otpInput.click()
-    await page.keyboard.type("123456", { delay: 50 })
+    await fillOtp(page, "123456")
 
     await expect(page).toHaveURL(/\/dashboard$/, { timeout: 10000 })
   })
 
   test("shows an error for invalid OTP attempts and allows retry", async ({ page }) => {
-    await useMockApi(page)
+    await useMockApi(page, { authenticated: false })
 
     await page.goto("/login")
     await page.waitForURL(/\/login$/)
@@ -81,32 +80,13 @@ test.describe.skip("Multi-factor authentication flows", () => {
 
     await expect(page.getByText(/Подтвердите личность|Verify it's you/i)).toBeVisible()
 
-    const otpInput = page.getByLabel(/Код из приложения|Authenticator code/i).first()
-    await otpInput.click()
-    await page.keyboard.type("000000", { delay: 50 })
+    await fillOtp(page, "000000")
 
-    await page.waitForTimeout(500) // Wait for validation/API response rendering
-    // Assert on the specific error element
-    const errorMsg = page.locator("p.text-red-500")
-    await expect(errorMsg).toBeVisible({ timeout: 15000 })
+    const errorMsg = page.getByText(/Неверный код|Invalid verification code/i).first()
+    await expect(errorMsg).toBeVisible()
     await expect(errorMsg).toHaveText(/Неверный код|Invalid verification code/i)
 
-    // Clear inputs before retrying
-    const inputs = page.getByLabel(/Код из приложения|Authenticator code/i)
-    const count = await inputs.count()
-    for (let i = 0; i < count; i++) {
-      await inputs.nth(i).fill("")
-    }
-
-    // Simulate paste (fill respects maxLength=1, so we must paste)
-    await inputs.first().evaluate((el) => {
-      const dt = new DataTransfer()
-      dt.setData("text", "123456")
-      const event = new ClipboardEvent("paste", { clipboardData: dt, bubbles: true })
-      el.dispatchEvent(event)
-    })
-
-    // Trigger submit manually (auto-submit blocked by existing error prop)
+    await fillOtp(page, "123456")
     await page.getByRole("button", { name: matchTotpVerifyButton }).click()
 
     await expect(page).toHaveURL(/\/dashboard$/, { timeout: 10000 })

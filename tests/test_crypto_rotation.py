@@ -99,7 +99,10 @@ class TestJWTKidRotation:
 
     def test_unknown_kid_rejected(self) -> None:
         """Token with a kid that is not in the registry is rejected immediately."""
-        token = self._mint_token(kid=self._UNKNOWN_KID, secret="some-random-key-xxxx")
+        token = self._mint_token(
+            kid=self._UNKNOWN_KID,
+            secret="unknown-kid-test-key-at-least-32-bytes",  # pragma: allowlist secret
+        )
         with patch("app.auth.security.settings", **self._settings_patch()):
             payload = decode_token(token)
         assert payload is None
@@ -121,7 +124,10 @@ class TestJWTKidRotation:
 
     def test_kid_mismatch_secret_rejected(self) -> None:
         """Token signed with wrong secret for a valid kid is rejected."""
-        token = self._mint_token(kid=self._ACTIVE_KID, secret="wrong-secret-entirely")
+        token = self._mint_token(
+            kid=self._ACTIVE_KID,
+            secret="wrong-test-key-that-is-at-least-32-bytes",  # pragma: allowlist secret
+        )
         with patch("app.auth.security.settings", **self._settings_patch()):
             assert decode_token(token) is None
 

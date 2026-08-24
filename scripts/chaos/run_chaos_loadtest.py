@@ -16,6 +16,7 @@ import sys
 import time
 from dataclasses import dataclass, field
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 logger = logging.getLogger("chaos_loadtest")
@@ -82,11 +83,20 @@ class ChaosLoadTestOrchestrator:
         self, url: str, timeout: float = 5.0
     ) -> tuple[int, float, str | None]:
         start_time = time.monotonic()
-        if not (url.startswith("http://") or url.startswith("https://")):
+        parsed = urlsplit(url)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
             return 0, 0.0, f"Unsupported URL scheme: {url}"
 
         req = Request(url, headers={"User-Agent": "ChaosLoadTest/1.0"})  # noqa: S310
         try:
+            # Operator-supplied load-test target; URL structure and scheme are
+            # constrained above, so file/data handlers cannot be reached.
+            # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
             with urlopen(req, timeout=timeout) as resp:  # noqa: S310
                 elapsed_ms = (time.monotonic() - start_time) * 1000.0
                 return resp.status, elapsed_ms, None

@@ -119,7 +119,11 @@ async function ensureWrapperExecutable() {
       await fs.chmod(wrapper, 0o755)
     } catch (error) {
       // Ignore errors if we can't set permissions (e.g. read-only filesystem)
-      console.warn(`Warning: Could not set executable permissions on ${wrapper}:`, error.message)
+      console.warn(
+        "Warning: Could not set executable permissions on %s: %s",
+        wrapper,
+        error.message
+      )
     }
   }
 }

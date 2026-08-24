@@ -90,13 +90,16 @@ vi.mock("@/components/events/EventEditDialog", () => ({
     open,
     onClose,
     onSave,
+    normalizedLocation,
   }: {
     open: boolean
     onClose: () => void
     onSave: () => void
+    normalizedLocation: string
   }) =>
     open ? (
       <div data-testid="event-edit-dialog">
+        <span data-testid="normalized-location">{normalizedLocation}</span>
         <button type="button" onClick={onClose}>
           close-edit
         </button>
@@ -253,12 +256,14 @@ describe("EventCardView closure paths", () => {
           editOpen: true,
           confirmDeleteOpen: true,
           error: "Save failed",
+          location: undefined,
         })}
       />
     )
 
     await waitFor(() => expect(screen.getByTestId("event-admin-actions")).toBeInTheDocument())
     expect(screen.getByTestId("event-edit-dialog")).toBeInTheDocument()
+    expect(screen.getByTestId("normalized-location")).toBeEmptyDOMElement()
     expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument()
     expect(screen.getByTestId("snackbar")).toHaveTextContent("Save failed")
 

@@ -195,6 +195,32 @@ describe("useSyncStatus", () => {
     expect(result.current.totalPendingCount).toBe(0)
   })
 
+  it("preserves every existing object store during an upgrade", async () => {
+    const request = {} as IDBOpenDBRequest
+    const db = {
+      objectStoreNames: { contains: vi.fn(() => true) },
+      createObjectStore: vi.fn(),
+      transaction: vi.fn(() => {
+        throw new Error("not needed for this branch")
+      }),
+      close: vi.fn(),
+    } as unknown as IDBDatabase
+    const open = vi.fn(() => {
+      queueMicrotask(() => {
+        Object.defineProperty(request, "result", { value: db })
+        request.onupgradeneeded?.(new Event("upgradeneeded") as IDBVersionChangeEvent)
+        request.onsuccess?.(new Event("success"))
+      })
+      return request
+    })
+    vi.stubGlobal("indexedDB", { open })
+
+    renderHook(() => useSyncStatus())
+
+    await waitFor(() => expect(db.close).toHaveBeenCalledOnce())
+    expect(db.createObjectStore).not.toHaveBeenCalled()
+  })
+
   it("treats an IndexedDB count error as zero pending items", async () => {
     const openRequest = {} as IDBOpenDBRequest
     const countRequest = {} as IDBRequest<number>
@@ -288,6 +314,43 @@ describe("useSyncStatus", () => {
     await act(async () => result.current.triggerManualSync())
 
     expect(postMessage).toHaveBeenCalledWith({ type: "PROCESS_OFFLINE_QUEUES" })
+  })
+
+  it("does not require a query client or service-worker API for manual sync", async () => {
+    const originalQueryClient = queryState.queryClient
+    ;(queryState as unknown as { queryClient: null }).queryClient = null
+    vi.stubGlobal("navigator", { onLine: true })
+
+    try {
+      const { result } = renderHook(() => useSyncStatus())
+      await expect(act(async () => result.current.triggerManualSync())).resolves.toBeUndefined()
+    } finally {
+      ;(queryState as unknown as { queryClient: typeof originalQueryClient }).queryClient =
+        originalQueryClient
+    }
+  })
+
+  it("does nothing when a ready worker has neither sync nor a controller", async () => {
+    vi.stubGlobal("navigator", {
+      onLine: true,
+      serviceWorker: { ready: Promise.resolve({}), controller: null },
+    })
+
+    const { result } = renderHook(() => useSyncStatus())
+    await expect(act(async () => result.current.triggerManualSync())).resolves.toBeUndefined()
+  })
+
+  it("does nothing when worker readiness fails without a controller", async () => {
+    vi.stubGlobal("navigator", {
+      onLine: true,
+      serviceWorker: {
+        ready: Promise.reject(new Error("worker unavailable")),
+        controller: null,
+      },
+    })
+
+    const { result } = renderHook(() => useSyncStatus())
+    await expect(act(async () => result.current.triggerManualSync())).resolves.toBeUndefined()
   })
 
   it("returns immediately from manual sync while offline", async () => {

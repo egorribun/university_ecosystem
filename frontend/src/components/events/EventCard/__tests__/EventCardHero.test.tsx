@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, describe, it, expect, vi } from "vitest"
 
 const transitions = vi.hoisted(() => ({
@@ -42,6 +42,7 @@ describe("EventCardHero", () => {
     expect(time).not.toBeNull()
     // FIXED ISO start → deterministic dateTime attribute
     expect(time?.getAttribute("dateTime")).toBe("2026-01-15T10:00:00.000Z")
+    fireEvent.load(screen.getByAltText("events:alt.image"))
   })
 
   it("shows the LIVE badge for timeStatus='live'", () => {
@@ -80,6 +81,12 @@ describe("EventCardHero", () => {
   it("omits the date badge when startsAt is empty", () => {
     const { container } = render(<EventCardHero {...baseProps} startsAt="" />)
     expect(container.querySelector("time")).toBeNull()
+  })
+
+  it("skips view-transition lookup when no event id is available", () => {
+    render(<EventCardHero {...baseProps} id={undefined} />)
+
+    expect(transitions.getEventsHeroId).not.toHaveBeenCalled()
   })
 
   it("renders the transitioning view-transition variant without crashing", () => {

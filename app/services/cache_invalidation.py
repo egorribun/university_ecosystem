@@ -193,27 +193,6 @@ async def invalidate_groups_cache() -> None:
     logger.debug("Invalidated groups cache")
 
 
-async def invalidate_all_schedules() -> None:
-    """
-    Invalidate all schedule caches.
-
-    Note: This requires Redis SCAN which is not ideal for production.
-    Consider using a more targeted approach or Redis keyspace notifications.
-
-    LOW-W19: This function is not yet implemented.  Callers should use
-    ``invalidate_by_tag(CacheTag.SCHEDULE)`` (tag-based invalidation via a
-    Redis SET index) or call ``invalidate_schedule_cache(group_id)`` for a
-    specific group.  Implementing a full keyspace SCAN here would introduce
-    O(keyspace) latency spikes in production.
-    """
-    # LOW-W19: dead code guard — raise so callers discover the gap at
-    # development/test time rather than silently doing nothing in production.
-    raise NotImplementedError(
-        "invalidate_all_schedules is not implemented. "
-        "Use invalidate_by_tag(CacheTag.SCHEDULE) or invalidate_schedule_cache(group_id) instead."
-    )
-
-
 class CacheInvalidator:
     """
     Context manager for batch cache invalidation.

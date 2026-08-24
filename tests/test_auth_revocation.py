@@ -35,6 +35,7 @@ async def test_revoke_sessions_matching_calls_backend(db_session: AsyncSession):
 
     # 2. Mock the session backend
     mock_backend = AsyncMock()
+    expected_expires_at = session.expires_at
 
     with patch(
         "app.services.session_cleanup.get_session_backend", return_value=mock_backend
@@ -53,4 +54,6 @@ async def test_revoke_sessions_matching_calls_backend(db_session: AsyncSession):
     assert session.revoked_at is not None
 
     # Verify backend was called with correct JTI
-    mock_backend.revoke_session.assert_called_once_with(jti)
+    mock_backend.revoke_session.assert_called_once_with(
+        jti, expires_at=expected_expires_at
+    )

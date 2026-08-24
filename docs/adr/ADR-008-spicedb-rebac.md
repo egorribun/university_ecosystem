@@ -54,4 +54,4 @@ Adopted **SpiceDB** (authzed/spicedb) as the authorization service, using gRPC v
 
 - `app/auth/rbac.py` — `PermissionChecker`, grace cache, circuit breaker
 - `app/core/spicedb.py` — gRPC channel factory with keepalive options
-- SpiceDB schema: `config/spicedb/schema.zed`
+- SpiceDB schema: `schema.zed`

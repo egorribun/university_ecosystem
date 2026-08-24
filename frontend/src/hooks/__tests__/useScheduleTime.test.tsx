@@ -134,6 +134,7 @@ describe("useScheduleTime", () => {
 
     // Switch to visible and trigger event
     act(() => {
+      document.dispatchEvent(new Event("visibilitychange"))
       Object.defineProperty(document, "visibilityState", {
         value: "visible",
         configurable: true,
@@ -197,6 +198,22 @@ describe("useScheduleTime", () => {
     expect(result.current.nextLesson).toBeNull()
     expect(result.current.timeLeftText).toBe("")
     expect(result.current.timeLeftShort).toBe("")
+    expect(result.current.currentProgress).toBe(0)
+  })
+
+  it("rejects every malformed or inverted lesson boundary", () => {
+    vi.setSystemTime(new Date(2026, 3, 26, 9, 30))
+    const invalidLessons: Lesson[] = [
+      { ...mockLessons[0]!, id: "missing-start", start_time: null, end_time: "10:00" },
+      { ...mockLessons[0]!, id: "missing-end", start_time: "09:00", end_time: null },
+      { ...mockLessons[0]!, id: "inverted", start_time: "10:00", end_time: "09:00" },
+    ]
+
+    const { result } = renderHook(() => useScheduleTime(invalidLessons, true))
+
+    expect(result.current.currentLesson).toBeNull()
+    expect(result.current.nextLesson).toBeNull()
+    expect(result.current.timeLeftText).toBe("")
     expect(result.current.currentProgress).toBe(0)
   })
 

@@ -45,7 +45,7 @@ spec:
       {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
 {{- end }}
 
-{{- if gt (int .Values.fileProcessor.replicaCount) 1 }}
+{{- if and .Values.fileProcessor.enabled (gt (int .Values.fileProcessor.replicaCount) 1) }}
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget

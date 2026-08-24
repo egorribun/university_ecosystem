@@ -37,7 +37,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: backend
-          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag | default .Chart.AppVersion }}"
+          image: {{ printf "%s/%s:%s" .Values.global.imageRegistry .Values.backend.image.repository (.Values.backend.image.tag | default .Values.global.imageTag | default .Chart.AppVersion) | trimPrefix "/" | quote }}
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           # RZ-03: container-level hardening — drop all Linux capabilities, block privilege
           # escalation, and mount root filesystem read-only (writable dirs via emptyDir below).
@@ -52,9 +52,65 @@ spec:
               protocol: TCP
           env:
             {{- range $key, $value := .Values.backend.env }}
+            {{- if not (has $key (list "DATABASE_URL" "CACHE_REDIS_URL" "REVOCATION_REDIS_URL" "NATS_URL" "NATS_AUTH_TOKEN" "ENVIRONMENT" "SECRET_KEY" "ALGORITHM" "JWT_PRIVATE_KEY_PATH" "INTERNAL_HMAC_SECRET" "WS_HUB_INTERNAL_SECRET" "CSRF_HMAC_SECRET" "SPOTIFY_TOKEN_SECRET" "ELASTICSEARCH_PASSWORD" "SPICEDB_PRESHARED_KEY" "AUDIT_LOG_SECRET" "IDEMPOTENCY_HMAC_SECRET" "MINIO_SECURE" "ELASTICSEARCH_URL")) }}
             - name: {{ $key }}
-              value: {{ $value | quote }}
+              value: {{ tpl $value $ | quote }}
             {{- end }}
+            {{- end }}
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.databaseURLKey must be set" .Values.connections.databaseURLKey | quote }}
+            - name: CACHE_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.redisBackendURLKey must be set" .Values.connections.redisBackendURLKey | quote }}
+            - name: REVOCATION_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey | quote }}
+            - name: NATS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.natsURLKey must be set" .Values.connections.natsURLKey | quote }}
+            - name: NATS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.natsAuthTokenKey must be set" .Values.connections.natsAuthTokenKey | quote }}
+            - name: ENVIRONMENT
+              value: {{ .Values.global.environment | quote }}
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
+                  key: jwt-secret
+            - name: ALGORITHM
+              value: "RS256"
+            - name: JWT_PRIVATE_KEY_PATH
+              value: /run/secrets/jwt-rsa-private-key.pem
+            {{- range $variable, $key := dict "INTERNAL_HMAC_SECRET" "internal-hmac-secret" "WS_HUB_INTERNAL_SECRET" "ws-hub-internal-secret" "CSRF_HMAC_SECRET" "csrf-hmac-secret" "SPOTIFY_TOKEN_SECRET" "spotify-token-secret" "ELASTICSEARCH_PASSWORD" "elasticsearch-password" "SPICEDB_PRESHARED_KEY" "spicedb-preshared-key" "AUDIT_LOG_SECRET" "audit-log-secret" "IDEMPOTENCY_HMAC_SECRET" "idempotency-hmac-secret" }}
+            - name: {{ $variable }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "university-ecosystem.applicationSecretName" $ | quote }}
+                  key: {{ $key }}
+            {{- end }}
+            - name: MINIO_SECURE
+              value: {{ .Values.backend.config.minioSecure | quote }}
+            - name: ELASTICSEARCH_URL
+              value: {{ .Values.backend.config.elasticsearchURL | quote }}
+            - name: FLAGD_HOST
+              value: {{ .Values.backend.config.flagdHost | quote }}
+            - name: FLAGD_PORT
+              value: {{ .Values.backend.config.flagdPort | quote }}
+            # A dedicated Deployment owns transactional outbox processing.
+            - name: EMBEDDED_OUTBOX_WORKER_ENABLED
+              value: "false"
             # PERF-03 (RZ-W13): configurable OTel sampling — default 10% in prod.
             - name: OTEL_TRACES_SAMPLER
               value: {{ .Values.otel.sampler | quote }}
@@ -64,7 +120,7 @@ spec:
           # on slow startup. startupProbe gives up to 150s (30×5s) before handing off.
           startupProbe:
             httpGet:
-              path: /healthz
+              path: /health/ready
               port: http
             failureThreshold: 30
             periodSeconds: 5
@@ -78,7 +134,7 @@ spec:
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /health/ready
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
@@ -94,6 +150,9 @@ spec:
               mountPath: /tmp
             - name: app-cache
               mountPath: /app/cache
+            - name: jwt-signing-key
+              mountPath: /run/secrets
+              readOnly: true
       volumes:
         - name: tmp
           emptyDir:
@@ -102,3 +161,10 @@ spec:
         - name: app-cache
           emptyDir:
             sizeLimit: 256Mi
+        - name: jwt-signing-key
+          secret:
+            secretName: {{ include "university-ecosystem.applicationSecretName" . | quote }}
+            defaultMode: 0440
+            items:
+              - key: jwt-rsa-private-key
+                path: jwt-rsa-private-key.pem

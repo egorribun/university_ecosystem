@@ -44,6 +44,7 @@ from app.core.localization import normalize_locale, resolve_locale
 from app.core.logging import get_logger
 from app.core.ratelimit import sensitive_route_limit
 from app.deps.cache import etag_matches, format_etag, get_cache
+from app.repositories.event_repository import EventRepository
 from app.schemas import schemas
 from app.schemas.dtos import EventFileDTO
 from app.services.event_service import EventService
@@ -301,16 +302,8 @@ async def get_event_files(
     event_id: uuid.UUID | int, db: AsyncSession = Depends(get_read_db)
 ) -> list[models.EventFile]:
     _validate_id_type(event_id)
-    files = (
-        (
-            await db.execute(
-                select(models.EventFile).where(models.EventFile.event_id == event_id)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    return list(files)
+    repo = EventRepository(db)
+    return await repo.get_event_files(event_id)
 
 
 @router.post(

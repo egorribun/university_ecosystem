@@ -40,13 +40,17 @@ def test_security_core_contract_passes_all_security_arguments():
         internal_allowed_ips_list=["10.0.0.1"],
         internal_auth_header="X-Internal-Auth",
         internal_auth_token="internal-token",
+        internal_hmac_secret="internal-hmac-secret",  # pragma: allowlist secret
     )
 
     setup._configure_security_core(app, settings)
 
     assert app.add_middleware.call_args_list == [
         call(RequestIDMiddleware),
-        call(TenantContextMiddleware),
+        call(
+            TenantContextMiddleware,
+            internal_hmac_secret="internal-hmac-secret",  # pragma: allowlist secret
+        ),
         call(SecurityHeadersMiddleware, settings=settings),
         call(
             setup.InternalAccessMiddleware,

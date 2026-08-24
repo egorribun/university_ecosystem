@@ -365,14 +365,24 @@ class TestStaticFSStorageSecurityPaths:
             with pytest.raises(ValueError, match="Cannot resolve path"):
                 storage._resolve_validated_path(Path("file.txt"))
 
-    @pytest.mark.skipif(
-        True,  # Line 86 requires creating symlinks pointing outside base_dir — needs OS privileges
-        reason="Line 86 (path-escape check) requires symlink creation outside base_dir; "
-        "not testable without admin/elevated privileges on Windows.",
-    )
-    def test_resolve_validated_path_escape_raises(self, tmp_path):
-        """Line 86: Resolved path outside base_dir raises ValueError (skipped on Windows)."""
-        pass
+    def test_resolve_validated_path_escape_raises(self, tmp_path, monkeypatch):
+        """Line 86: a resolved target outside ``base_dir`` is rejected."""
+        from app.services.storage import StaticFSStorage
+
+        storage = StaticFSStorage(base_dir=tmp_path)
+        target = tmp_path / "escape.txt"
+        escaped = tmp_path.parent / "escaped.txt"
+        real_resolve = Path.resolve
+
+        def resolve_with_escape(path: Path, strict: bool = False) -> Path:
+            if path == target:
+                return escaped
+            return real_resolve(path, strict=strict)
+
+        monkeypatch.setattr(Path, "resolve", resolve_with_escape)
+
+        with pytest.raises(ValueError, match="escapes base directory"):
+            storage._resolve_validated_path(Path("escape.txt"))
 
     @pytest.mark.asyncio
     async def test_delete_file_empty_url(self, tmp_path):

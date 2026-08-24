@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -16,7 +17,6 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
@@ -32,8 +32,9 @@ import (
 var (
 	initTracerFunc          = telemetry.InitTracer
 	initRedisFunc           = initRedis
+	initRevocationRedisFunc = initRevocationRedis
 	initSpiffeClientFunc    = initSpiffeClient
-	setupHubFunc            = setupHub
+	setupHubFunc            = setupHubWithRevocation
 	runServerFunc           = runServer
 	newSpiffeClientFunc     = spiffe.NewClient
 	closeRedisFunc          = func(client *redis.Client) error { return client.Close() }
@@ -92,6 +93,11 @@ func run() error {
 
 	rdb := initRedisFunc(ctx, cfg, logger)
 	defer closeRedisConnection(ctx, rdb, logger)
+	revocationRDB, err := initRevocationRedisFunc(ctx, cfg, logger)
+	if err != nil {
+		return err
+	}
+	defer closeRedisConnection(ctx, revocationRDB, logger)
 
 	spiffeClient, err := initSpiffeClientFunc(ctx, cfg, logger)
 	if err != nil {
@@ -99,13 +105,13 @@ func run() error {
 	}
 	defer closeSPIFFEClient(ctx, spiffeClient, logger)
 
-	h, err := setupHubFunc(ctx, cfg, logger, nc, rdb, spiffeClient)
+	h, err := setupHubFunc(ctx, cfg, logger, nc, rdb, revocationRDB, spiffeClient)
 	if err != nil {
 		logger.ErrorContext(ctx, "Hub setup failed", "err", err)
 		return err
 	}
 	mux := http.NewServeMux()
-	setupHandlers(mux, h, cfg, logger, nc, rdb)
+	setupHandlers(mux, h, cfg, logger, nc, rdb, revocationRDB)
 	return runServerFunc(cfg, logger, h, mux)
 }
 
@@ -226,7 +232,32 @@ func initRedis(ctx context.Context, cfg *config.Config, logger *slog.Logger) *re
 	return rdb
 }
 
+func initRevocationRedis(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*redis.Client, error) {
+	if cfg.RevocationRedisURL == "" {
+		return nil, errors.New("REVOCATION_REDIS_URL is not set")
+	}
+	options, err := redis.ParseURL(cfg.RevocationRedisURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse REVOCATION_REDIS_URL: %w", err)
+	}
+	client := redis.NewClient(options)
+	pingCtx, pingCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer pingCancel()
+	if err := client.Ping(pingCtx).Err(); err != nil {
+		if closeErr := closeRedisFunc(client); closeErr != nil {
+			return nil, fmt.Errorf("connect revocation Redis: %w; close client: %v", err, closeErr)
+		}
+		return nil, fmt.Errorf("connect revocation Redis: %w", err)
+	}
+	logger.InfoContext(ctx, "Revocation Redis connected", "url", options.Addr)
+	return client, nil
+}
+
 func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client, spiffeClients ...*spiffe.Client) (*hub.Hub, error) {
+	return setupHubWithRevocation(ctx, cfg, logger, nc, rdb, rdb, spiffeClients...)
+}
+
+func setupHubWithRevocation(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb, revocationRDB *redis.Client, spiffeClients ...*spiffe.Client) (*hub.Hub, error) {
 	var spiffeClient *spiffe.Client
 	if len(spiffeClients) > 0 {
 		spiffeClient = spiffeClients[0]
@@ -242,7 +273,7 @@ func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *
 	authClient.StartEviction(ctx)
 	// RZ-W14-01: pass rdb so the Hub can validate one-time WS upgrade tickets
 	//nolint:contextcheck
-	h := hub.NewHub(nc, logger, authClient, cfg, rdb)
+	h := hub.NewHub(nc, logger, authClient, cfg, rdb, revocationRDB)
 
 	if cfg.JWKSURL != "" {
 		if err := setupJWKSFunc(h, ctx, cfg.JWKSURL); err != nil {
@@ -264,7 +295,66 @@ func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *
 	return h, nil
 }
 
-func setupHandlers(mux *http.ServeMux, h *hub.Hub, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client) {
+type redisPingCache struct {
+	mu      sync.Mutex
+	err     error
+	updated time.Time
+}
+
+func (c *redisPingCache) ping(ctx context.Context, rdb *redis.Client, ttl time.Duration) string {
+	if !healthRedisConfiguredFunc(rdb) {
+		return "not configured"
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if time.Since(c.updated) > ttl {
+		c.err = healthRedisPingFunc(ctx, rdb)
+		c.updated = time.Now()
+	}
+	if c.err != nil {
+		return c.err.Error()
+	}
+	return ""
+}
+
+func newReadinessHandler(h *hub.Hub, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client, revocationRDB *redis.Client) http.HandlerFunc {
+	var appCache, revCache redisPingCache
+	const redisCacheTTL = 5 * time.Second
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		checks := map[string]string{}
+		if !healthNATSConnectedFunc(nc) {
+			checks["nats"] = "disconnected"
+		}
+		if status := appCache.ping(r.Context(), rdb, redisCacheTTL); status != "" {
+			checks["redis"] = status
+		}
+		if status := revCache.ping(r.Context(), revocationRDB, redisCacheTTL); status != "" {
+			checks["revocation_redis"] = status
+		}
+		if !healthJWKSReadyFunc(h) {
+			checks["jwks"] = "not initialized"
+		}
+		if len(checks) > 0 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			if err := json.NewEncoder(w).Encode(map[string]interface{}{
+				"status": "degraded", "checks": checks,
+			}); err != nil {
+				logger.ErrorContext(r.Context(), "Failed to encode readiness response", "err", err)
+			}
+			return
+		}
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ready"}); err != nil {
+			logger.ErrorContext(r.Context(), "Failed to encode readiness response", "err", err)
+		}
+	}
+}
+
+func setupHandlers(mux *http.ServeMux, h *hub.Hub, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client, revocationClients ...*redis.Client) {
+	revocationRDB := rdb
+	if len(revocationClients) > 0 {
+		revocationRDB = revocationClients[0]
+	}
 	mux.Handle("/ws", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.HandleWebSocket(w, r, cfg)
 	}), "websocket_upgrade"))
@@ -283,51 +373,7 @@ func setupHandlers(mux *http.ServeMux, h *hub.Hub, cfg *config.Config, logger *s
 		}
 	}), "health_live"))
 
-	// LOW-W19: cache the Redis ping result for 5 s so that rapid K8s readiness
-	// probes (default 10 s interval, sometimes 1 s) do not open a new Redis
-	// round-trip on every probe.  NATS and JWKS checks are in-memory and cheap.
-	var (
-		redisCacheMu      sync.Mutex
-		redisCacheErr     error
-		redisCacheUpdated time.Time
-	)
-	const redisCacheTTL = 5 * time.Second
-
-	mux.Handle("/health/ready", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		checks := map[string]string{}
-		if !healthNATSConnectedFunc(nc) {
-			checks["nats"] = "disconnected"
-		}
-		if healthRedisConfiguredFunc(rdb) {
-			redisCacheMu.Lock()
-			if time.Since(redisCacheUpdated) > redisCacheTTL {
-				redisCacheErr = healthRedisPingFunc(r.Context(), rdb)
-				redisCacheUpdated = time.Now()
-			}
-			cachedErr := redisCacheErr
-			redisCacheMu.Unlock()
-			if cachedErr != nil {
-				checks["redis"] = cachedErr.Error()
-			}
-		} else {
-			checks["redis"] = "not configured"
-		}
-		if !healthJWKSReadyFunc(h) {
-			checks["jwks"] = "not initialized"
-		}
-		if len(checks) > 0 {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			if err := json.NewEncoder(w).Encode(map[string]interface{}{
-				"status": "degraded", "checks": checks,
-			}); err != nil {
-				logger.ErrorContext(r.Context(), "Failed to encode readiness response", "err", err)
-			}
-			return
-		}
-		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ready"}); err != nil {
-			logger.ErrorContext(r.Context(), "Failed to encode readiness response", "err", err)
-		}
-	}), "health_ready"))
+	mux.Handle("/health/ready", otelhttp.NewHandler(newReadinessHandler(h, logger, nc, rdb, revocationRDB), "health_ready"))
 
 	// Backward-compatible /health (alias for /health/live).
 	mux.Handle("/health", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -467,14 +513,7 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 		wtPort = "8443"
 	}
 
-	wtServer := &webtransport.Server{
-		H3: &http3.Server{
-			Addr: ":" + wtPort,
-		},
-		CheckOrigin: func(r *http.Request) bool {
-			return true
-		},
-	}
+	wtServer := h.ConfigureWebTransportServer(":"+wtPort, mux)
 
 	quit, stopSignals := setupSignalChannel(signalChannels...)
 	defer stopSignals()

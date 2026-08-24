@@ -69,6 +69,13 @@ export function initMediaCaching() {
     })
   )
 
+  // Explicit media requests must precede the generic image route because
+  // Workbox resolves the first matching route. This preserves session isolation.
+  registerRoute(
+    ({ url }) => url.pathname.includes("/media/"),
+    ({ request }) => handleMediaRequest(request)
+  )
+
   // App images and icons
   registerRoute(
     ({ request }) => request.destination === "image",
@@ -84,11 +91,5 @@ export function initMediaCaching() {
         }),
       ],
     })
-  )
-
-  // Explicit media requests (often used in tests)
-  registerRoute(
-    ({ url }) => url.pathname.includes("/media/"),
-    ({ request }) => handleMediaRequest(request)
   )
 }

@@ -16,7 +16,7 @@ concurrency:
 jobs:
   refresh:
     name: Refresh pytest duration map
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
       SECRET_KEY: dummy_secret_key_for_ci_tests_at_least_32_chars
@@ -25,7 +25,7 @@ jobs:
       REDIS_URL: redis://localhost:6379
     services:
       redis:
-        image: redis:7-alpine
+        image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
         ports:
           - 6379:6379
         options: >-

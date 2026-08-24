@@ -51,6 +51,9 @@ describe("BrandBootLoader", () => {
     render(<BrandBootLoader />)
     const loader = screen.getByRole("status", { name: "Загрузка" })
 
+    fireEvent.transitionEnd(loader, { propertyName: "opacity" })
+    expect(loader).toHaveAttribute("data-state", "active")
+
     act(() => window.dispatchEvent(new Event(APP_HYDRATED_EVENT)))
     expect(loader).toHaveAttribute("data-state", "exiting")
     expect(loader).toHaveAttribute("aria-busy", "false")

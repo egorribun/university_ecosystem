@@ -43,8 +43,7 @@ export default function useMediaQuery(
     }
 
     const handleChange: MediaQueryCallback = (event) => {
-      const next = "matches" in event ? event.matches : (event as MediaQueryList).matches
-      setMatches(next)
+      setMatches(event.matches)
     }
 
     if (typeof mql.addEventListener === "function") {

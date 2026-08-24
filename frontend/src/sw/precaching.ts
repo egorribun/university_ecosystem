@@ -1,4 +1,4 @@
-import { cleanupOutdatedCaches, precacheAndRoute } from "workbox-precaching"
+import { cleanupOutdatedCaches, matchPrecache, precacheAndRoute } from "workbox-precaching"
 import { NavigationRoute, registerRoute } from "workbox-routing"
 import { NetworkOnly } from "workbox-strategies"
 
@@ -18,8 +18,11 @@ export function initPrecaching() {
       plugins: [
         {
           handlerDidError: async () => {
-            // Offline fallback for navigation
-            return (await self.caches.match("index.html")) || Response.error()
+            // The SSR build creates the canonical shell as `_shell.html`;
+            // `index.html` is mirrored only after Workbox injects the
+            // manifest, so it is not a precached entry. `matchPrecache`
+            // resolves the revisioned cache key correctly.
+            return (await matchPrecache("_shell.html")) ?? Response.error()
           },
         },
       ],

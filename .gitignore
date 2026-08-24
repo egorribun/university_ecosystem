@@ -146,6 +146,8 @@ htmlcov/
 .nox/
 .coverage
 .coverage.*
+# Named local coverage databases used by focused closure runs.
+.coverage-*
 .cache
 nosetests.xml
 coverage.xml
@@ -273,6 +275,7 @@ root/frontend/test-results/
 root/frontend/blob-report/
 **/.lighthouseci/
 **/vitest-report.xml
+pytest-report.xml
 
 # W179 polish-v1 — root-level .screenshots/ (chrome-devtools-mcp + Playwright
 # visual smoke artifacts). frontend/.gitignore covers frontend/.screenshots/
@@ -406,7 +409,7 @@ native/rust_ext/fuzz/artifacts/
 *.Spotlight-V100
 *.Trashes
 ._*
-.wave136-trace/
+.build-hang-trace/
 .wave160-lhci/
 
 # Wave 138 polish-followup (post-2026-05-08): memory/ moved to .claude profile only.
@@ -434,10 +437,28 @@ services/**/mw
 .pre-commit-cache/
 
 # Quality contract and coverage artifacts
+frontend/coverage-*/
 artifacts/
 
 # Agent superpowers directory
 .superpowers/
 
+# Antigravity Developer Harness & Agent Workspace
+.agents/*
+!.agents/hooks.json
+!.agents/hooks/
+!.agents/subagents.json
+!.agents/subagents/
+!.agents/skills/
+!.agents/ORIGINAL_REQUEST.md
+!verify_harness.py
+!docs/mcp/
 
-
+# Ephemeral agent caches and transient runtime state
+.agents/**/__pycache__/
+.agents/**/.gate_state.json
+.agents/**/progress.md
+.agents/**/BRIEFING*.md
+.agents/**/DISPATCH.md
+.agents/**/handoff.md
+.agents/sentinel/

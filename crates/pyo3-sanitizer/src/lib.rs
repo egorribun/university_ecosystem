@@ -12,11 +12,8 @@ use ammonia::Builder;
 use pyo3::prelude::*;
 use std::collections::{HashMap, HashSet};
 
-fn catch_unwind_to_pyerr<F, R>(f: F) -> PyResult<R>
-where
-    F: FnOnce() -> R + std::panic::UnwindSafe,
-{
-    std::panic::catch_unwind(f).map_err(|err| {
+fn catch_sanitizer_unwind(sanitizer: fn(&str) -> String, html: &str) -> PyResult<String> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| sanitizer(html))).map_err(|err| {
         let msg = if let Some(s) = err.downcast_ref::<&str>() {
             *s
         } else if let Some(s) = err.downcast_ref::<String>() {
@@ -86,7 +83,7 @@ pub fn sanitize_rich_text(html: &str) -> String {
 #[pyfunction]
 #[pyo3(name = "sanitize_rich_text")]
 pub fn py_sanitize_rich_text(html: &str) -> PyResult<String> {
-    catch_unwind_to_pyerr(std::panic::AssertUnwindSafe(|| sanitize_rich_text(html)))
+    catch_sanitizer_unwind(sanitize_rich_text, html)
 }
 
 /// Strip all HTML except basic inline formatting (bold, italic, emphasis).
@@ -106,7 +103,7 @@ pub fn sanitize_html_basic(html: &str) -> String {
 #[pyfunction]
 #[pyo3(name = "sanitize_html_basic")]
 pub fn py_sanitize_html_basic(html: &str) -> PyResult<String> {
-    catch_unwind_to_pyerr(std::panic::AssertUnwindSafe(|| sanitize_html_basic(html)))
+    catch_sanitizer_unwind(sanitize_html_basic, html)
 }
 
 /// Remove all HTML tags, returning plain text.
@@ -130,7 +127,7 @@ pub fn strip_html(html: &str) -> String {
 #[pyfunction]
 #[pyo3(name = "strip_html")]
 pub fn py_strip_html(html: &str) -> PyResult<String> {
-    catch_unwind_to_pyerr(std::panic::AssertUnwindSafe(|| strip_html(html)))
+    catch_sanitizer_unwind(strip_html, html)
 }
 
 /// pyo3_sanitizer — native Python extension module.
@@ -143,11 +140,39 @@ fn pyo3_sanitizer(module: &Bound<'_, PyModule>) -> PyResult<()> {
     register_python_functions(module)
 }
 
-fn register_python_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
-    module.add_function(wrap_pyfunction!(py_sanitize_rich_text, module)?)?;
-    module.add_function(wrap_pyfunction!(py_sanitize_html_basic, module)?)?;
-    module.add_function(wrap_pyfunction!(py_strip_html, module)?)?;
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PythonFunction {
+    RichText,
+    BasicHtml,
+    StripHtml,
+}
+
+const PYTHON_FUNCTIONS: [PythonFunction; 3] = [
+    PythonFunction::RichText,
+    PythonFunction::BasicHtml,
+    PythonFunction::StripHtml,
+];
+
+fn register_functions<T, E>(
+    mut create: impl FnMut(PythonFunction) -> Result<T, E>,
+    mut add: impl FnMut(T) -> Result<(), E>,
+) -> Result<(), E> {
+    for function in PYTHON_FUNCTIONS {
+        let wrapped = create(function)?;
+        add(wrapped)?;
+    }
     Ok(())
+}
+
+fn register_python_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
+    register_functions(
+        |function| match function {
+            PythonFunction::RichText => wrap_pyfunction!(py_sanitize_rich_text, module),
+            PythonFunction::BasicHtml => wrap_pyfunction!(py_sanitize_html_basic, module),
+            PythonFunction::StripHtml => wrap_pyfunction!(py_strip_html, module),
+        },
+        |wrapped| module.add_function(wrapped),
+    )
 }
 
 // ── Unit Tests ────────────────────────────────────────────────────────────────
@@ -165,6 +190,11 @@ fn register_python_functions(module: &Bound<'_, PyModule>) -> PyResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(not(miri))]
+    unsafe extern "C" {
+        fn PyInit_pyo3_sanitizer() -> *mut pyo3::ffi::PyObject;
+    }
 
     // ── sanitize_rich_text ───────────────────────────────────────────────────
 
@@ -457,9 +487,10 @@ mod tests {
     #[test]
     fn test_panic_boundary_catches_rust_panic() {
         Python::initialize();
-        let result = catch_unwind_to_pyerr(std::panic::AssertUnwindSafe(|| {
+        fn panic_with_str(_: &str) -> String {
             panic!("test panic string");
-        }));
+        }
+        let result = catch_sanitizer_unwind(panic_with_str, "ignored");
         assert!(result.is_err());
         let py_err = result.unwrap_err();
         Python::attach(|_py| {
@@ -471,10 +502,15 @@ mod tests {
     #[test]
     fn test_panic_formatting_coverage() {
         Python::initialize();
-        // Panic with a String
-        let result_string = catch_unwind_to_pyerr(std::panic::AssertUnwindSafe(|| {
+        fn panic_with_string(_: &str) -> String {
             panic!("{}", "panic String".to_string());
-        }));
+        }
+        fn panic_with_non_string(_: &str) -> String {
+            std::panic::panic_any(42u32);
+        }
+
+        // Panic with a String
+        let result_string = catch_sanitizer_unwind(panic_with_string, "ignored");
         assert!(result_string.is_err());
         let py_err_string = result_string.unwrap_err();
         Python::attach(|_py| {
@@ -482,9 +518,7 @@ mod tests {
         });
 
         // Panic with an arbitrary type
-        let result_any = catch_unwind_to_pyerr(std::panic::AssertUnwindSafe(|| {
-            std::panic::panic_any(42u32);
-        }));
+        let result_any = catch_sanitizer_unwind(panic_with_non_string, "ignored");
         assert!(result_any.is_err());
         let py_err_any = result_any.unwrap_err();
         Python::attach(|_py| {
@@ -497,6 +531,11 @@ mod tests {
     fn test_pyo3_bindings_coverage() {
         Python::initialize();
         Python::attach(|py| {
+            // Exercise the exported CPython initializer generated by
+            // #[pymodule], not only its Rust module-body callback.
+            let initialized = unsafe { PyInit_pyo3_sanitizer() };
+            assert!(!initialized.is_null());
+
             let module = pyo3::types::PyModule::new(py, "pyo3_sanitizer").unwrap();
             pyo3_sanitizer(&module).unwrap();
 
@@ -516,6 +555,64 @@ mod tests {
                 .unwrap();
             assert_eq!(res_strip, "strip");
         });
+    }
+
+    #[test]
+    fn register_functions_preserves_order() {
+        let mut created = Vec::new();
+        let mut added = Vec::new();
+
+        register_functions(
+            |function| {
+                created.push(function);
+                Ok::<_, &'static str>(function)
+            },
+            |function| {
+                added.push(function);
+                Ok(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(created, PYTHON_FUNCTIONS);
+        assert_eq!(added, PYTHON_FUNCTIONS);
+    }
+
+    #[test]
+    fn register_functions_propagates_create_failure() {
+        let mut attempts = 0;
+        let error = register_functions(
+            |_function| {
+                attempts += 1;
+                if attempts == 2 {
+                    Err("create failed")
+                } else {
+                    Ok(())
+                }
+            },
+            |_| Ok(()),
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "create failed");
+        assert_eq!(attempts, 2);
+    }
+
+    #[test]
+    fn register_functions_propagates_add_failure() {
+        let mut attempts = 0;
+        let error = register_functions(Ok::<_, &'static str>, |_function| {
+            attempts += 1;
+            if attempts == 2 {
+                Err("add failed")
+            } else {
+                Ok(())
+            }
+        })
+        .unwrap_err();
+
+        assert_eq!(error, "add failed");
+        assert_eq!(attempts, 2);
     }
 }
 

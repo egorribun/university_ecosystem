@@ -216,6 +216,18 @@ describe("AdminNotifications page", () => {
     queryClient.clear()
   })
 
+  it("purges a single job via the row action button", async () => {
+    const { queryClient } = await renderPage()
+
+    expect(await screen.findByText("Timeout")).toBeInTheDocument()
+    const purgeButtons = await screen.findAllByRole("button", { name: "Delete" })
+    await userEvent.click(purgeButtons[0]!)
+
+    await waitFor(() => expect(screen.queryByText("Timeout")).not.toBeInTheDocument())
+    expect(screen.getByText("Total jobs: 1")).toBeInTheDocument()
+    queryClient.clear()
+  })
+
   it("surfaces an action error when retry fails", async () => {
     server.use(
       http.post("*/notifications/admin/dead-letter/retry", () =>

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -37,7 +39,76 @@ def test_tenant_context_vars() -> None:
 
 
 def test_tenant_context_middleware() -> None:
-    """Test FastAPI TenantContextMiddleware header extraction, UUID validation, and response header echo."""
+    """Only gateway-signed tenant identity may populate RLS context."""
+    internal_secret = "tenant-middleware-test-secret"  # pragma: allowlist secret
+    app = FastAPI()
+    app.add_middleware(
+        TenantContextMiddleware,
+        internal_hmac_secret=internal_secret,
+    )
+
+    @app.get("/test-tenant")
+    async def sample_endpoint(request: Request) -> dict[str, str]:
+        return {
+            "tenant_id": get_current_tenant(),
+            "state_tenant_id": request.state.tenant_id,
+        }
+
+    client = TestClient(app)
+    valid_uuid = str(uuid.uuid4())
+    unsigned_response = client.get("/test-tenant", headers={"X-Tenant-ID": valid_uuid})
+
+    assert unsigned_response.status_code == 200
+    assert unsigned_response.json()["tenant_id"] == ""
+    assert unsigned_response.json()["state_tenant_id"] == ""
+    assert unsigned_response.headers.get("x-tenant-id") is None
+
+    user_id = str(uuid.uuid4())
+    session_id = str(uuid.uuid4())
+    signature = hmac.new(
+        internal_secret.encode(),
+        f"{user_id}:{session_id}:{valid_uuid}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    response = client.get(
+        "/test-tenant",
+        headers={
+            "X-User-ID": user_id,
+            "X-Session-ID": session_id,
+            "X-Tenant-ID": valid_uuid,
+            "X-Internal-Signature": signature,
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["tenant_id"] == valid_uuid
+    assert response.json()["state_tenant_id"] == valid_uuid
+    assert response.headers.get("x-tenant-id") == valid_uuid
+
+    forged_response = client.get(
+        "/test-tenant",
+        headers={
+            "X-User-ID": user_id,
+            "X-Session-ID": session_id,
+            "X-Tenant-ID": valid_uuid,
+            "X-Internal-Signature": "forged-signature",
+        },
+    )
+    assert forged_response.status_code == 200
+    assert forged_response.json()["tenant_id"] == ""
+    assert forged_response.json()["state_tenant_id"] == ""
+    assert forged_response.headers.get("x-tenant-id") is None
+
+    response_invalid = client.get(
+        "/test-tenant", headers={"X-Tenant-ID": "non-uuid-tenant-slug"}
+    )
+    assert response_invalid.status_code == 200
+    assert response_invalid.json()["tenant_id"] == ""
+    assert response_invalid.json()["state_tenant_id"] == ""
+    assert response_invalid.headers.get("x-tenant-id") is None
+
+
+def test_tenant_context_middleware_without_secret_fails_closed() -> None:
     app = FastAPI()
     app.add_middleware(TenantContextMiddleware)
 
@@ -49,21 +120,20 @@ def test_tenant_context_middleware() -> None:
         }
 
     client = TestClient(app)
-    valid_uuid = str(uuid.uuid4())
-    response = client.get("/test-tenant", headers={"X-Tenant-ID": valid_uuid})
+    assert client.get("/test-tenant").json()["tenant_id"] == ""
 
-    assert response.status_code == 200
-    assert response.json()["tenant_id"] == valid_uuid
-    assert response.json()["state_tenant_id"] == valid_uuid
-    assert response.headers.get("x-tenant-id") == valid_uuid
-
-    response_invalid = client.get(
-        "/test-tenant", headers={"X-Tenant-ID": "non-uuid-tenant-slug"}
+    response = client.get(
+        "/test-tenant",
+        headers={
+            "X-User-ID": str(uuid.uuid4()),
+            "X-Session-ID": str(uuid.uuid4()),
+            "X-Tenant-ID": str(uuid.uuid4()),
+            "X-Internal-Signature": "synthetic-signature",
+        },
     )
-    assert response_invalid.status_code == 200
-    assert response_invalid.json()["tenant_id"] == ""
-    assert response_invalid.json()["state_tenant_id"] == ""
-    assert response_invalid.headers.get("x-tenant-id") is None
+    assert response.status_code == 200
+    assert response.json() == {"tenant_id": "", "state_tenant_id": ""}
+    assert response.headers.get("x-tenant-id") is None
 
 
 def test_pg_tenant_context_listener_sqlite() -> None:

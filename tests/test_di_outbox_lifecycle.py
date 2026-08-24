@@ -29,14 +29,24 @@ async def test_outbox_worker_is_scope_app_singleton() -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="Requires PostgreSQL — OutboxWorker uses asyncpg DSN format")
 async def test_outbox_worker_can_start_and_stop() -> None:
-    """OutboxWorker retrieved from DI starts run_forever() and stops cleanly."""
+    """OutboxWorker retrieved from DI starts run_forever() and stops cleanly.
+
+    Database polling and LISTEN/NOTIFY have their own integration coverage.  Mocking
+    those boundaries keeps this lifecycle contract hermetic instead of permanently
+    skipping it outside PostgreSQL jobs.
+    """
     import asyncio
 
     container = create_dishka_container()
     try:
         worker: OutboxWorker = await container.get(OutboxWorker)
+        worker.process_batch = AsyncMock(return_value=0)  # type: ignore[method-assign]
+
+        async def _listen_until_cancelled() -> None:
+            await asyncio.Event().wait()
+
+        worker._listen_loop = _listen_until_cancelled  # type: ignore[method-assign]
 
         task = asyncio.create_task(worker.run_forever())
         await asyncio.sleep(0.05)

@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: university-ecosystem
+
+resources:
+  - deployment.yaml
+  - network-policy.yaml
+
+configMapGenerator:
+  - name: flagd-flags
+    files:
+      - flags.json=flags.json
+
+generatorOptions:
+  disableNameSuffixHash: true
+  labels:
+    app: flagd
+    component: feature-flags

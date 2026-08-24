@@ -4,175 +4,175 @@ import { gotoWithTransientRetry } from "./utils/navigation"
 
 const ensureServiceWorkerIsReady = async (page: Page) => {
   await page.waitForLoadState("networkidle")
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      await page.evaluate(async () => {
-        await navigator.serviceWorker?.ready
-      })
-      break
-    } catch (error) {
-      if (attempt === 2) throw error
-      await page.waitForTimeout(OFFLINE_TEST_TIMEOUTS.serviceWorkerReady)
+  await page.evaluate(async () => {
+    if ("serviceWorker" in navigator) {
+      await navigator.serviceWorker.ready
     }
-  }
+  })
 
   let controlled = await page.evaluate(() => Boolean(navigator.serviceWorker?.controller))
   if (!controlled) {
     await page.reload({ waitUntil: "networkidle" })
     await page.evaluate(async () => {
-      await navigator.serviceWorker?.ready
+      if ("serviceWorker" in navigator) {
+        await navigator.serviceWorker.ready
+      }
     })
     controlled = await page.evaluate(() => Boolean(navigator.serviceWorker?.controller))
   }
 
-  await page.waitForFunction(() => navigator.serviceWorker?.controller?.state === "activated")
+  await page.waitForFunction(
+    () => !navigator.serviceWorker || navigator.serviceWorker?.controller?.state === "activated"
+  )
 
   expect(controlled).toBeTruthy()
 }
 
 const OFFLINE_TEST_TIMEOUTS = {
-  serviceWorkerReady: 250,
-  navigation: 10000,
-  elementVisible: 10000,
-  toastVisible: 5000,
+  elementVisible: 15_000,
+  toastVisible: 10_000,
 }
 
 test.describe("PWA offline support", () => {
-  // Skip: Service Worker caching doesn't work properly in mocked E2E environment
-  test.skip("shows offline fallback page when network is unavailable", async ({
-    page,
-    context,
-  }) => {
-    const mock = await useMockApi(page)
-    await mock.login(page)
+  test.describe("Chromium Service Worker offline navigation", () => {
+    test.skip(
+      ({ browserName }) => browserName !== "chromium",
+      "Playwright Service Worker offline navigation is supported only on Chromium"
+    )
 
-    await ensureServiceWorkerIsReady(page)
+    test("shows offline fallback page when network is unavailable", async ({ page, context }) => {
+      const mock = await useMockApi(page, { serviceWorker: "preserve" })
+      await mock.login(page)
 
-    await page.goto("/offline.html", { waitUntil: "domcontentloaded" })
-    await expect(page.locator("h1")).toBeVisible({ timeout: OFFLINE_TEST_TIMEOUTS.elementVisible })
-    await expect(
-      page.getByRole("heading", { name: /No network connection|Нет подключения к сети/i })
-    ).toBeVisible()
+      await ensureServiceWorkerIsReady(page)
 
-    await gotoWithTransientRetry(page, "/dashboard", { waitUntil: "networkidle" })
-
-    await context.setOffline(true)
-    try {
-      // For SPA, navigation to a cached route should still work but show offline indicator
-      await page.goto("/news", { waitUntil: "domcontentloaded" })
-      const offlineIndicator = page
-        .locator('[role="status"]')
-        .filter({ hasText: /offline|подключения/i })
-      await expect(offlineIndicator).toBeVisible({ timeout: OFFLINE_TEST_TIMEOUTS.elementVisible })
-
-      // Explicitly check the fallback page too
       await page.goto("/offline.html", { waitUntil: "domcontentloaded" })
-      await expect(page.locator("h1")).toBeVisible()
+      await expect(page.locator("h1")).toBeVisible({
+        timeout: OFFLINE_TEST_TIMEOUTS.elementVisible,
+      })
       await expect(
         page.getByRole("heading", { name: /No network connection|Нет подключения к сети/i })
       ).toBeVisible()
-    } finally {
-      await context.setOffline(false)
-    }
-  })
 
-  // Skip: Service Worker caching doesn't work properly in mocked E2E environment
-  test.skip("profile data stays available offline after it was cached", async ({
-    page,
-    context,
-  }) => {
-    const mock = await useMockApi(page)
-    await mock.login(page)
+      await gotoWithTransientRetry(page, "/dashboard", { waitUntil: "networkidle" })
 
-    await ensureServiceWorkerIsReady(page)
+      await context.setOffline(true)
+      try {
+        // For SPA, navigation to a cached route should still work but show offline indicator
+        await page.goto("/news", { waitUntil: "domcontentloaded" })
+        const offlineIndicator = page.getByTestId("offline-indicator-toast")
+        await expect(offlineIndicator).toBeVisible({
+          timeout: OFFLINE_TEST_TIMEOUTS.elementVisible,
+        })
 
-    await gotoWithTransientRetry(page, "/profile", { waitUntil: "networkidle" })
-    await expect(page).toHaveURL(/\/profile/)
-    await expect(page.getByText(/Иван Иванов|Ivan Ivanov/i)).toBeVisible()
-
-    await context.setOffline(true)
-    try {
-      await page.reload({ waitUntil: "domcontentloaded" })
-      await expect(page).toHaveURL(/\/profile/)
-      await expect(page.getByText(/Иван Иванов|Ivan Ivanov/i)).toBeVisible()
-    } finally {
-      await context.setOffline(false)
-    }
-  })
-
-  // Skip: Service Worker caching doesn't work properly in mocked E2E environment
-  test.skip("news, schedule, and events stay cached for offline navigation", async ({
-    page,
-    context,
-  }) => {
-    const mock = await useMockApi(page)
-    await mock.login(page)
-    await ensureServiceWorkerIsReady(page)
-
-    await gotoWithTransientRetry(page, "/news", { waitUntil: "networkidle" })
-    await expect(page.getByText(/Новость дня|News of the day/i)).toBeVisible()
-
-    await gotoWithTransientRetry(page, "/schedule", { waitUntil: "networkidle" })
-    await expect(page.getByText(/Математика|Mathematics/i).first()).toBeVisible()
-
-    const initialStatuses = await page.evaluate(async () => {
-      const [newsResp, scheduleResp, eventsResp] = await Promise.all([
-        fetch("/api/v1/news"),
-        fetch("/api/v1/schedule/1"),
-        fetch("/api/v1/events"),
-      ])
-
-      return {
-        newsStatus: newsResp.status,
-        scheduleStatus: scheduleResp.status,
-        eventsStatus: eventsResp.status,
+        // Explicitly check the fallback page too
+        await page.goto("/offline.html", { waitUntil: "domcontentloaded" })
+        await expect(page.locator("h1")).toBeVisible()
+        await expect(
+          page.getByRole("heading", { name: /No network connection|Нет подключения к сети/i })
+        ).toBeVisible()
+      } finally {
+        await context.setOffline(false)
       }
     })
 
-    expect(initialStatuses.newsStatus).toBe(200)
-    expect(initialStatuses.scheduleStatus).toBe(200)
-    expect(initialStatuses.eventsStatus).toBe(200)
+    test("profile data stays available offline after it was cached", async ({ page, context }) => {
+      const mock = await useMockApi(page, { serviceWorker: "preserve" })
+      await mock.login(page)
 
-    await context.setOffline(true)
-    try {
-      await page.goto("/news", { waitUntil: "domcontentloaded" })
+      await ensureServiceWorkerIsReady(page)
+
+      await gotoWithTransientRetry(page, "/profile", { waitUntil: "networkidle" })
+      await expect(page).toHaveURL(/\/profile/)
+      await expect(page.getByText(/Иван Иванов|Ivan Ivanov/i)).toBeVisible()
+
+      await context.setOffline(true)
+      try {
+        await page.reload({ waitUntil: "domcontentloaded" })
+        await expect(page).toHaveURL(/\/profile/)
+        await expect(page.getByText(/Иван Иванов|Ivan Ivanov/i)).toBeVisible()
+      } finally {
+        await context.setOffline(false)
+      }
+    })
+
+    test("news, schedule, and events stay cached for offline navigation", async ({
+      page,
+      context,
+    }) => {
+      const mock = await useMockApi(page, { serviceWorker: "preserve" })
+      await mock.login(page)
+      await ensureServiceWorkerIsReady(page)
+
+      await gotoWithTransientRetry(page, "/news", { waitUntil: "networkidle" })
       await expect(page.getByText(/Новость дня|News of the day/i)).toBeVisible()
 
-      const offlineData = await page.evaluate(async () => {
+      await gotoWithTransientRetry(page, "/schedule", { waitUntil: "networkidle" })
+      await expect(page.getByText(/Математика|Mathematics/i).first()).toBeVisible()
+
+      const initialStatuses = await page.evaluate(async () => {
         const [newsResp, scheduleResp, eventsResp] = await Promise.all([
           fetch("/api/v1/news"),
           fetch("/api/v1/schedule/1"),
           fetch("/api/v1/events"),
         ])
 
-        const news = await newsResp.clone().json()
-        const schedule = await scheduleResp.clone().json()
-        const eventsPayload = await eventsResp.clone().json()
-
         return {
           newsStatus: newsResp.status,
           scheduleStatus: scheduleResp.status,
           eventsStatus: eventsResp.status,
-          newsLength: Array.isArray(news) ? news.length : 0,
-          scheduleLength: Array.isArray(schedule) ? schedule.length : 0,
-          eventsCount: Array.isArray(eventsPayload?.items) ? eventsPayload.items.length : 0,
         }
       })
 
-      expect(offlineData.newsStatus).toBe(200)
-      expect(offlineData.scheduleStatus).toBe(200)
-      expect(offlineData.eventsStatus).toBe(200)
-      expect(offlineData.newsLength).toBeGreaterThan(0)
-      expect(offlineData.scheduleLength).toBeGreaterThan(0)
-      expect(offlineData.eventsCount).toBeGreaterThan(0)
-    } finally {
-      await context.setOffline(false)
-    }
+      expect(initialStatuses.newsStatus).toBe(200)
+      expect(initialStatuses.scheduleStatus).toBe(200)
+      expect(initialStatuses.eventsStatus).toBe(200)
+
+      await context.setOffline(true)
+      try {
+        await page.goto("/news", { waitUntil: "domcontentloaded" })
+        await expect(page.getByText(/Новость дня|News of the day/i)).toBeVisible()
+
+        const offlineData = await page.evaluate(async () => {
+          const [newsResp, scheduleResp, eventsResp] = await Promise.all([
+            fetch("/api/v1/news"),
+            fetch("/api/v1/schedule/1"),
+            fetch("/api/v1/events"),
+          ])
+
+          const news = await newsResp.clone().json()
+          const schedule = await scheduleResp.clone().json()
+          const eventsPayload = await eventsResp.clone().json()
+
+          return {
+            newsStatus: newsResp.status,
+            scheduleStatus: scheduleResp.status,
+            eventsStatus: eventsResp.status,
+            // The news endpoint is paginated (`{ items, next_cursor, ... }`),
+            // unlike the schedule endpoint which returns a bare list. Keep the
+            // assertion aligned with the OpenAPI response shape so a valid
+            // cached page is not mistaken for an empty array.
+            newsLength:
+              news && typeof news === "object" && Array.isArray(news.items) ? news.items.length : 0,
+            scheduleLength: Array.isArray(schedule) ? schedule.length : 0,
+            eventsCount: Array.isArray(eventsPayload?.items) ? eventsPayload.items.length : 0,
+          }
+        })
+
+        expect(offlineData.newsStatus).toBe(200)
+        expect(offlineData.scheduleStatus).toBe(200)
+        expect(offlineData.eventsStatus).toBe(200)
+        expect(offlineData.newsLength).toBeGreaterThan(0)
+        expect(offlineData.scheduleLength).toBeGreaterThan(0)
+        expect(offlineData.eventsCount).toBeGreaterThan(0)
+      } finally {
+        await context.setOffline(false)
+      }
+    })
   })
 
-  // Skip: Service worker mock prevents real offline/online events from triggering
-  test.skip("shows offline indicator toast when connection is lost", async ({ page, context }) => {
-    const mock = await useMockApi(page)
+  test("shows offline indicator toast when connection is lost", async ({ page, context }) => {
+    const mock = await useMockApi(page, { serviceWorker: "preserve" })
     await mock.login(page)
 
     await ensureServiceWorkerIsReady(page)
@@ -188,9 +188,7 @@ test.describe("PWA offline support", () => {
       })
 
       // Wait for offline indicator to appear
-      const offlineToast = page.locator('[role="status"]').filter({
-        hasText: /offline|подключения/i,
-      })
+      const offlineToast = page.getByTestId("offline-indicator-toast")
       await expect(offlineToast).toBeVisible({ timeout: OFFLINE_TEST_TIMEOUTS.toastVisible })
 
       // Go back online
@@ -200,9 +198,7 @@ test.describe("PWA offline support", () => {
       })
 
       // Check for "Back online" message
-      const onlineToast = page.locator('[role="status"]').filter({
-        hasText: /online|восстановлено/i,
-      })
+      const onlineToast = page.getByTestId("offline-indicator-toast")
       await expect(onlineToast).toBeVisible({ timeout: OFFLINE_TEST_TIMEOUTS.toastVisible })
 
       // Toast should auto-hide after a few seconds

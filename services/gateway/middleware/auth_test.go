@@ -28,6 +28,9 @@ func init() {
 }
 
 func createValidToken(secret string, claims Claims) string {
+	if len(claims.Audience) == 0 {
+		claims.Audience = jwt.ClaimStrings{DefaultJWTAudience}
+	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString([]byte(secret))
 	if err != nil {
@@ -47,6 +50,73 @@ func TestNewJWTMiddleware_CreatesMiddlewareWithSecret(t *testing.T) {
 
 	assert.NotNil(t, middleware)
 	assert.Equal(t, []byte(testSecret), middleware.secret)
+	assert.Equal(t, DefaultJWTAudience, middleware.audience)
+}
+
+func TestValidate_EnforcesExpectedAudience(t *testing.T) {
+	middleware := newUnrevokedJWTMiddleware(t)
+	router := createTestRouter(middleware.Validate(context.Background()))
+
+	baseClaims := Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ID:        "audience-jti",
+		},
+		UserID:   "audience-user",
+		IsActive: true,
+	}
+
+	for name, audience := range map[string]jwt.ClaimStrings{
+		"missing": nil,
+		"wrong":   {"another-service"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			claims := baseClaims
+			claims.Audience = audience
+			token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+			tokenString, err := token.SignedString([]byte(testSecret))
+			require.NoError(t, err)
+
+			request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+			request.Header.Set("Authorization", "Bearer "+tokenString)
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, request)
+
+			assert.Equal(t, http.StatusUnauthorized, recorder.Code)
+		})
+	}
+}
+
+func TestOptional_MismatchedAudienceRemainsUnauthenticated(t *testing.T) {
+	middleware := newUnrevokedJWTMiddleware(t)
+	var authenticated bool
+	router := gin.New()
+	router.GET("/test", middleware.Optional(context.Background()), func(c *gin.Context) {
+		_, authenticated = c.Get("user_id")
+		c.Status(http.StatusOK)
+	})
+
+	claims := Claims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Audience:  jwt.ClaimStrings{"another-service"},
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ID:        "optional-audience-jti",
+		},
+		UserID:   "audience-user",
+		IsActive: true,
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(testSecret))
+	require.NoError(t, err)
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/test", nil)
+	request.Header.Set("Authorization", "Bearer "+tokenString)
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.False(t, authenticated)
 }
 
 func TestValidate_RejectsMissingAuthorizationHeader(t *testing.T) {
@@ -109,6 +179,7 @@ func TestValidate_RejectsTokenSignedWithWrongSecret(t *testing.T) {
 
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			Audience:  jwt.ClaimStrings{DefaultJWTAudience},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 		},
@@ -127,13 +198,14 @@ func TestValidate_RejectsTokenSignedWithWrongSecret(t *testing.T) {
 }
 
 func TestValidate_RejectsInactiveUser(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret, nil)
+	middleware := newUnrevokedJWTMiddleware(t)
 	router := createTestRouter(middleware.Validate(context.Background()))
 
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ID:        "inactive-jti",
 		},
 		UserID:   "user-123",
 		IsActive: false,
@@ -151,7 +223,7 @@ func TestValidate_RejectsInactiveUser(t *testing.T) {
 }
 
 func TestValidate_AcceptsValidTokenAndSetsContext(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret, nil)
+	middleware := newUnrevokedJWTMiddleware(t)
 
 	var capturedUserID interface{}
 	var capturedRole interface{}
@@ -167,6 +239,7 @@ func TestValidate_AcceptsValidTokenAndSetsContext(t *testing.T) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ID:        "valid-context-jti",
 		},
 		UserID:   "user-456",
 		Role:     "admin",
@@ -205,7 +278,7 @@ func TestOptional_AllowsRequestWithoutToken(t *testing.T) {
 }
 
 func TestOptional_ExtractsClaimsWhenTokenProvided(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret, nil)
+	middleware := newUnrevokedJWTMiddleware(t)
 
 	var capturedUserID interface{}
 	router := gin.New()
@@ -218,6 +291,7 @@ func TestOptional_ExtractsClaimsWhenTokenProvided(t *testing.T) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			ID:        "optional-valid-jti",
 		},
 		UserID:   "optional-user",
 		IsActive: true,
@@ -363,11 +437,12 @@ func TestValidate_AcceptsRS256Token(t *testing.T) {
 		Bytes: pubASN1,
 	})
 
-	m := NewJWTMiddlewareWithConfig("secret", string(pubBytes), nil, DefaultL1CacheConfig())
+	m := NewJWTMiddlewareWithConfig("secret", string(pubBytes), newUnrevokedRedisClient(t), DefaultL1CacheConfig())
 	router := createTestRouter(m.Validate(context.Background()))
 
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			Audience:  jwt.ClaimStrings{DefaultJWTAudience},
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			ID:        "session-123",
@@ -581,7 +656,9 @@ func TestJWTMiddleware_CheckL1Cache(t *testing.T) {
 }
 
 func TestValidate_TenantSpoofingDefense(t *testing.T) {
-	middleware := NewJWTMiddleware(testSecret, nil)
+	redisURL, stopRedis := startMockRedis(t, mockRedisConfig{existsReply: ":0\r\n"})
+	t.Cleanup(stopRedis)
+	middleware := newRedisMiddleware(t, redisURL)
 
 	var capturedTenantID interface{}
 	router := gin.New()
@@ -615,7 +692,7 @@ func TestValidate_TenantSpoofingDefense(t *testing.T) {
 		assert.Equal(t, "tenant-legit-from-claims", capturedTenantID)
 	})
 
-	t.Run("client header used when claims.TenantID is empty", func(t *testing.T) {
+	t.Run("client header ignored when claims.TenantID is empty", func(t *testing.T) {
 		claims := Claims{
 			RegisteredClaims: jwt.RegisteredClaims{
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
@@ -637,6 +714,6 @@ func TestValidate_TenantSpoofingDefense(t *testing.T) {
 		router.ServeHTTP(recorder, request)
 
 		assert.Equal(t, http.StatusOK, recorder.Code)
-		assert.Equal(t, "tenant-fallback-header", capturedTenantID)
+		assert.Equal(t, "", capturedTenantID)
 	})
 }

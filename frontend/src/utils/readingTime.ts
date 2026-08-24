@@ -10,5 +10,5 @@ export function estimateReadingTime(content: string): number | null {
     .trim()
   if (!text) return null
   const words = text.split(/\s+/).filter(Boolean).length
-  return words ? Math.max(1, Math.round(words / 220)) : null
+  return Math.max(1, Math.round(words / 220))
 }

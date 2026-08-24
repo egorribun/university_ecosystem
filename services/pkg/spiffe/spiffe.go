@@ -7,8 +7,10 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/spiffe/go-spiffe/v2/bundle/x509bundle"
 	"github.com/spiffe/go-spiffe/v2/spiffeid"
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
+	"github.com/spiffe/go-spiffe/v2/svid/x509svid"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"google.golang.org/grpc/credentials"
 )
@@ -24,11 +26,18 @@ type Config struct {
 
 // Client manages the lifecycle of the SPIFFE X.509 source and builds mTLS configs.
 type Client struct {
-	source      *workloadapi.X509Source
-	trustDomain spiffeid.TrustDomain
-	myID        spiffeid.ID
-	logger      *slog.Logger
+	source         x509Source
+	workloadSource *workloadapi.X509Source
+	trustDomain    spiffeid.TrustDomain
 }
+
+type x509Source interface {
+	x509svid.Source
+	x509bundle.Source
+	Close() error
+}
+
+var newWorkloadX509Source = workloadapi.NewX509Source
 
 // NewClient initializes an X509Source connected to the SPIRE Workload API.
 func NewClient(ctx context.Context, cfg Config, logger *slog.Logger) (*Client, error) {
@@ -50,9 +59,8 @@ func NewClient(ctx context.Context, cfg Config, logger *slog.Logger) (*Client, e
 		return nil, fmt.Errorf("invalid SPIFFE trust domain %q: %w", cfg.TrustDomain, err)
 	}
 
-	var myID spiffeid.ID
 	if cfg.MySpiffeID != "" {
-		myID, err = spiffeid.FromString(cfg.MySpiffeID)
+		_, err = spiffeid.FromString(cfg.MySpiffeID)
 		if err != nil {
 			return nil, fmt.Errorf("invalid self SPIFFE ID %q: %w", cfg.MySpiffeID, err)
 		}
@@ -71,7 +79,7 @@ func NewClient(ctx context.Context, cfg Config, logger *slog.Logger) (*Client, e
 	initCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	source, err := workloadapi.NewX509Source(initCtx, opts...)
+	source, err := newWorkloadX509Source(initCtx, opts...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to SPIRE Workload API socket: %w", err)
 	}
@@ -82,10 +90,9 @@ func NewClient(ctx context.Context, cfg Config, logger *slog.Logger) (*Client, e
 	)
 
 	return &Client{
-		source:      source,
-		trustDomain: td,
-		myID:        myID,
-		logger:      logger,
+		source:         source,
+		workloadSource: source,
+		trustDomain:    td,
 	}, nil
 }
 
@@ -102,7 +109,7 @@ func (c *Client) Source() *workloadapi.X509Source {
 	if c == nil {
 		return nil
 	}
-	return c.source
+	return c.workloadSource
 }
 
 // ServerTLSConfig creates a *tls.Config for mTLS servers that verifies client SVIDs.
@@ -144,8 +151,8 @@ func (c *Client) ClientTLSConfig(expectedServerID string) (*tls.Config, error) {
 	return tlsconfig.MTLSClientConfig(c.source, c.source, authorizer), nil
 }
 
-// GRPCCerverCredentials returns gRPC transport credentials configured for mTLS server authentication.
-func (c *Client) GRPCCerverCredentials(allowedClientIDs ...string) (credentials.TransportCredentials, error) {
+// GRPCServerCredentials returns gRPC transport credentials configured for mTLS server authentication.
+func (c *Client) GRPCServerCredentials(allowedClientIDs ...string) (credentials.TransportCredentials, error) {
 	tlsCfg, err := c.ServerTLSConfig(allowedClientIDs...)
 	if err != nil {
 		return nil, err

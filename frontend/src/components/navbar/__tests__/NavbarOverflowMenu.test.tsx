@@ -88,6 +88,15 @@ describe("NavbarOverflowMenu", () => {
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument())
   })
 
+  it("stays open for unrelated document keys", async () => {
+    await renderMenu()
+    await userEvent.click(screen.getByRole("button"))
+
+    fireEvent.keyDown(document, { key: "Enter" })
+
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+  })
+
   it("closes on outside pointerdown but stays open on inside pointerdown", async () => {
     await renderMenu()
     await userEvent.click(screen.getByRole("button"))

@@ -77,6 +77,15 @@ describe("activityExport closure", () => {
     )
   })
 
+  it("uses the generic PNG error for a non-Error rejection", async () => {
+    mockToPng.mockRejectedValueOnce("png unavailable")
+
+    await expect(exportActivityAsPng(document.createElement("section"))).resolves.toEqual({
+      success: false,
+      error: "PNG export failed",
+    })
+  })
+
   it("returns a structured PDF error when the image cannot load", async () => {
     setImageBehavior("error")
     const result = await exportActivityAsPdf(document.createElement("section"))

@@ -104,9 +104,9 @@ async def revoke_sessions_matching(
         revoked += 1
         if session.revoked_at is None:
             session.revoked_at = now
-            # Best effort revocation in backend
-            with suppress(Exception):
-                await session_backend.revoke_session(session.jti)
+            await session_backend.revoke_session(
+                session.jti, expires_at=session.expires_at
+            )
 
         if rotate_signing_key:
             session.signing_key = secrets.token_urlsafe(32)

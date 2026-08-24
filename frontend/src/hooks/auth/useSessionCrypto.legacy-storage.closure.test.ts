@@ -14,4 +14,13 @@ describe("useSessionCrypto legacy storage cleanup", () => {
     expect(removeItem).toHaveBeenCalled()
     vi.unstubAllGlobals()
   })
+
+  it("loads without legacy cleanup when sessionStorage is unavailable", async () => {
+    vi.stubGlobal("sessionStorage", undefined)
+    vi.resetModules()
+
+    await expect(import("./useSessionCrypto")).resolves.toBeDefined()
+
+    vi.unstubAllGlobals()
+  })
 })

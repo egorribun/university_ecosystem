@@ -5,11 +5,7 @@ import type { PersistedClient, Persister } from "@tanstack/react-query-persist-c
 const DEFAULT_STALE_MS = 5 * 60_000 // 5 minutes - standard freshness
 const DEFAULT_CACHE_MS = 30 * 60_000 // 30 minutes - persistent window
 
-const parseDuration = (value: string | number | undefined, fallback: number) => {
-  if (typeof value === "number") {
-    return Number.isFinite(value) && value > 0 ? value : fallback
-  }
-
+const parseDuration = (value: string | undefined, fallback: number) => {
   if (!value) return fallback
 
   const parsed = Number.parseInt(String(value), 10)

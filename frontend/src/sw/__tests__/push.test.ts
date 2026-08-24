@@ -186,6 +186,74 @@ describe("Service Worker - Push Notifications", () => {
       })
     })
 
+    it("opens a window after ignoring non-matching clients", async () => {
+      const nonMatchingClient = {
+        url: `${window.location.origin}/different`,
+        focus: vi.fn(),
+      }
+      ;((self as any).clients.matchAll as any).mockResolvedValue([nonMatchingClient])
+      ;((self as any).clients.openWindow as any).mockResolvedValue({
+        url: `${window.location.origin}/mock-url`,
+      })
+
+      const mockEvent = {
+        notification: { close: vi.fn(), data: { url: "/mock-url" } },
+        waitUntil: vi.fn((promise) => promise),
+      }
+
+      await (eventListeners.notificationclick as any)(mockEvent)
+      await (mockEvent.waitUntil.mock.results[0] as any).value
+
+      expect(nonMatchingClient.focus).not.toHaveBeenCalled()
+      expect((self as any).clients.openWindow).toHaveBeenCalledWith(
+        `${window.location.origin}/mock-url`
+      )
+    })
+
+    it.each([
+      { navigationSucceeds: false, expectQueuedNavigation: true },
+      { navigationSucceeds: true, expectQueuedNavigation: false },
+    ])(
+      "queues a failed online report when navigation success is $navigationSucceeds",
+      async ({ navigationSucceeds, expectQueuedNavigation }) => {
+        vi.mocked(storePendingNavigation).mockClear()
+        vi.mocked(storePendingReport).mockClear()
+        ;((self as any).clients.matchAll as any).mockResolvedValue([])
+        ;((self as any).clients.openWindow as any).mockResolvedValue(
+          navigationSucceeds ? { url: `${window.location.origin}/mock-url` } : null
+        )
+        vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline during report")))
+
+        const mockEvent = {
+          notification: {
+            close: vi.fn(),
+            data: {
+              url: "/mock-url",
+              reportUrl: "/api/report-click",
+              notificationId: "without-payload",
+            },
+          },
+          waitUntil: vi.fn((promise) => promise),
+        }
+
+        await (eventListeners.notificationclick as any)(mockEvent)
+        await (mockEvent.waitUntil.mock.results[0] as any).value
+
+        expect(sanitizeReportPayload).toHaveBeenCalledWith({})
+        expect(storePendingReport).toHaveBeenCalledWith({
+          url: `${window.location.origin}/mock-url`,
+          reportUrl: `${window.location.origin}/api/report-click`,
+          timestamp: expect.any(Number),
+          payload: { notificationId: "without-payload" },
+        })
+        if (expectQueuedNavigation) {
+          expect(storePendingNavigation).toHaveBeenCalled()
+        } else {
+          expect(storePendingNavigation).not.toHaveBeenCalled()
+        }
+      }
+    )
+
     it("enqueues report offline if fetch fails or navigator is offline", async () => {
       ;((self as any).clients.matchAll as any).mockResolvedValue([])
       ;((self as any).clients.openWindow as any).mockResolvedValue(null) // navigation failed

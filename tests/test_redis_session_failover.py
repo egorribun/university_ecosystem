@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -37,46 +38,72 @@ async def test_redis_session_get_inactive_returns_none() -> None:
 
 
 @pytest.mark.asyncio
-async def test_redis_session_revoke_writes_blocklist_when_ttl_positive() -> None:
-    """Lines 166-175: revoke_session writes revoked:jti:<jti> when TTL > 0."""
+async def test_redis_session_revoke_writes_durable_tombstone_before_cache_delete() -> (
+    None
+):
+    """The service writes security state to its dedicated Redis first."""
     backend = RedisSessionService(redis_url="redis://localhost:6379/0")
     jti = "jti-to-revoke"
 
-    mock_client = AsyncMock()
-    mock_client.hset.return_value = 1
-    mock_client.ttl.return_value = 300  # positive TTL → blocklist path executed
-    mock_client.set.return_value = True
-    mock_client.delete.return_value = 1
+    cache_client = AsyncMock()
+    revocation_client = AsyncMock()
+    expires_at = datetime.now(UTC) + timedelta(minutes=5)
 
-    with patch(
-        "app.services.auth.redis_session._get_shared_client",
-        return_value=mock_client,
+    with (
+        patch(
+            "app.services.auth.redis_session._get_shared_client",
+            return_value=cache_client,
+        ),
+        patch(
+            "app.services.auth.redis_session.get_revocation_redis_client",
+            return_value=revocation_client,
+        ),
     ):
-        await backend.revoke_session(jti)
+        await backend.revoke_session(jti, expires_at=expires_at)
 
-    # Verify the blocklist key was written with the correct name and TTL
-    mock_client.set.assert_awaited_once_with(f"revoked:jti:{jti}", "1", ex=300)
+    written_ttl = revocation_client.set.await_args.kwargs["ex"]
+    assert 295 <= written_ttl <= 300
+    revocation_client.set.assert_awaited_once_with(
+        f"revoked:jti:{jti}", "1", ex=written_ttl
+    )
+    cache_client.delete.assert_awaited_once_with(f"session:v2:{jti}")
+    cache_client.eval.assert_not_awaited()
+    revocation_client.publish.assert_awaited_once_with("session:revocations", jti)
 
 
 @pytest.mark.asyncio
-async def test_redis_session_revoke_no_blocklist_when_ttl_zero() -> None:
-    """Lines 166-175 FALSE path: when TTL <= 0, blocklist key is NOT written."""
+@pytest.mark.parametrize("redis_ttl", [0, -1, -2])
+async def test_redis_session_revoke_uses_expiry_when_cached_key_has_no_ttl(
+    redis_ttl: int,
+) -> None:
+    """Revocation stays effective after expiry loss or cache eviction."""
     backend = RedisSessionService(redis_url="redis://localhost:6379/0")
     jti = "jti-expired"
 
-    mock_client = AsyncMock()
-    mock_client.hset.return_value = 1
-    mock_client.ttl.return_value = 0  # already expired → skip blocklist write
-    mock_client.delete.return_value = 1
+    cache_client = AsyncMock()
+    cache_client.ttl.return_value = redis_ttl
+    revocation_client = AsyncMock()
+    expires_at = datetime.now(UTC) + timedelta(minutes=5)
 
-    with patch(
-        "app.services.auth.redis_session._get_shared_client",
-        return_value=mock_client,
+    with (
+        patch(
+            "app.services.auth.redis_session._get_shared_client",
+            return_value=cache_client,
+        ),
+        patch(
+            "app.services.auth.redis_session.get_revocation_redis_client",
+            return_value=revocation_client,
+        ),
     ):
-        await backend.revoke_session(jti)
+        await backend.revoke_session(jti, expires_at=expires_at)
 
-    # Verify the blocklist set() was NOT called (TTL was 0)
-    mock_client.set.assert_not_awaited()
+    written_ttl = revocation_client.set.await_args.kwargs["ex"]
+    assert 295 <= written_ttl <= 300
+    revocation_client.set.assert_awaited_once_with(
+        f"revoked:jti:{jti}", "1", ex=written_ttl
+    )
+    cache_client.delete.assert_awaited_once_with(f"session:v2:{jti}")
+    cache_client.ttl.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -88,10 +115,18 @@ async def test_redis_session_backend_empty_url() -> None:
     user_id = uuid.uuid4()
 
     # 2. Assert all methods return early without throwing errors
-    await backend.create_session(jti, user_id, None, None)
-    assert await backend.get_session(jti) is None
-    await backend.update_last_seen(jti)
-    await backend.revoke_session(jti)
+    revocation_client = AsyncMock()
+    with patch(
+        "app.services.auth.redis_session.get_revocation_redis_client",
+        return_value=revocation_client,
+    ):
+        await backend.create_session(jti, user_id, None, None)
+        assert await backend.get_session(jti) is None
+        await backend.update_last_seen(jti)
+        await backend.revoke_session(jti)
+
+    revocation_client.set.assert_awaited_once()
+    revocation_client.publish.assert_awaited_once_with("session:revocations", jti)
 
 
 @pytest.mark.asyncio
@@ -147,27 +182,62 @@ async def test_redis_session_backend_update_last_seen_fails() -> None:
 
 
 @pytest.mark.asyncio
-async def test_redis_session_backend_revoke_session_nested_failures() -> None:
+async def test_redis_session_backend_publish_failure_keeps_revocation_successful() -> (
+    None
+):
+    """A durable tombstone remains authoritative when Pub/Sub is unavailable."""
     backend = RedisSessionService(redis_url="redis://localhost:6379/0")
-    jti = "jti-123"
+    jti = "jti-publish-offline"
 
-    mock_client = AsyncMock()
-    mock_client.hset.return_value = 1
-    # 1. Trigger RedisError on client.ttl (line 172)
-    mock_client.ttl.side_effect = RedisError("ttl check failed")
-    # 2. Trigger RedisError on client.delete (line 177)
-    mock_client.delete.side_effect = RedisError("delete key failed")
+    cache_client = AsyncMock()
+    revocation_client = AsyncMock()
+    revocation_client.publish.side_effect = RedisError("pubsub unavailable")
 
     with (
         patch(
             "app.services.auth.redis_session._get_shared_client",
-            return_value=mock_client,
+            return_value=cache_client,
+        ),
+        patch(
+            "app.services.auth.redis_session.get_revocation_redis_client",
+            return_value=revocation_client,
         ),
         patch("app.services.auth.redis_session.logger") as mock_logger,
     ):
         await backend.revoke_session(jti)
-        # Verify warnings are logged for both nested failures
-        assert mock_logger.warning.call_count == 2
+
+    revocation_client.set.assert_awaited_once()
+    cache_client.delete.assert_awaited_once_with(f"session:v2:{jti}")
+    mock_logger.warning.assert_called_once_with(
+        "Failed to publish session revocation for jti=%s",
+        jti,
+    )
+
+
+@pytest.mark.asyncio
+async def test_redis_session_backend_revoke_tombstone_failure_is_propagated() -> None:
+    backend = RedisSessionService(redis_url="redis://localhost:6379/0")
+    jti = "jti-123"
+
+    cache_client = AsyncMock()
+    revocation_client = AsyncMock()
+    revocation_client.set.side_effect = RedisError("tombstone write failed")
+
+    with (
+        patch(
+            "app.services.auth.redis_session._get_shared_client",
+            return_value=cache_client,
+        ),
+        patch(
+            "app.services.auth.redis_session.get_revocation_redis_client",
+            return_value=revocation_client,
+        ),
+        patch("app.services.auth.redis_session.logger") as mock_logger,
+    ):
+        with pytest.raises(RedisError, match="tombstone write failed"):
+            await backend.revoke_session(jti)
+        cache_client.delete.assert_not_awaited()
+        mock_logger.error.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -175,14 +245,16 @@ async def test_redis_session_backend_revoke_session_main_failure() -> None:
     backend = RedisSessionService(redis_url="redis://localhost:6379/0")
     jti = "jti-123"
 
-    mock_client = AsyncMock()
-    # Trigger main RedisError on client.hset (line 179)
-    mock_client.hset.side_effect = RedisError("redis connection failed")
+    cache_client = AsyncMock()
 
     with (
         patch(
             "app.services.auth.redis_session._get_shared_client",
-            return_value=mock_client,
+            return_value=cache_client,
+        ),
+        patch(
+            "app.services.auth.redis_session.get_revocation_redis_client",
+            side_effect=RedisError("redis connection failed"),
         ),
         patch("app.services.auth.redis_session.logger") as mock_logger,
     ):

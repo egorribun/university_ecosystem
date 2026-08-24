@@ -209,6 +209,7 @@ def test_auto_create_schema_default_true_in_development(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite+aiosqlite:///./{db_name}")
     monkeypatch.setenv("SECRET_KEY", "development-secret")
     monkeypatch.setenv("ENVIRONMENT", "development")
+    monkeypatch.setenv("ALGORITHM", "RS256")
     monkeypatch.delenv("AUTO_CREATE_SCHEMA", raising=False)
 
     with _temporary_env_file(None):

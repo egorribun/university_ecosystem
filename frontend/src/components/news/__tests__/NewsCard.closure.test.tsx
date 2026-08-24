@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   toggleBookmark: vi.fn(),
   deleteNews: vi.fn(),
   onChange: vi.fn(),
+  sanitizeNewsText: vi.fn(async (value: string) => `sanitized:${value}`),
 }))
 
 vi.mock("@/contexts/AuthContext", () => ({
@@ -41,7 +42,7 @@ vi.mock("@/components/ui/Spotlight", () => ({
 }))
 
 vi.mock("@/utils/sanitize", () => ({
-  sanitizeNewsText: vi.fn(async (value: string) => `sanitized:${value}`),
+  sanitizeNewsText: mocks.sanitizeNewsText,
 }))
 
 vi.mock("@/utils/localize", () => ({
@@ -165,6 +166,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.deleteNews.mockResolvedValue(undefined)
   mocks.isBookmarked.mockReturnValue(false)
+  mocks.sanitizeNewsText.mockImplementation(async (value: string) => `sanitized:${value}`)
 })
 
 afterEach(() => {
@@ -197,6 +199,9 @@ describe("NewsCard — state orchestration", () => {
     expect(mocks.onChange).toHaveBeenCalledOnce()
 
     fireEvent.click(screen.getByRole("button", { name: "open delete" }))
+    fireEvent.click(screen.getByRole("button", { name: "close delete" }))
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "open delete" }))
     fireEvent.click(screen.getByRole("button", { name: "confirm delete" }))
     await waitFor(() => expect(mocks.deleteNews).toHaveBeenCalledWith("/news/news-1"))
     expect(mocks.onChange).toHaveBeenCalledTimes(2)
@@ -212,5 +217,21 @@ describe("NewsCard — state orchestration", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("common:errors.generic")
     fireEvent.click(screen.getByRole("button", { name: "close error" }))
     expect(screen.queryByRole("status")).not.toBeInTheDocument()
+  })
+
+  it("does not publish a late sanitizer result after unmount", async () => {
+    let resolveSanitizer!: (value: string) => void
+    mocks.sanitizeNewsText.mockReturnValueOnce(
+      new Promise<string>((resolve) => {
+        resolveSanitizer = resolve
+      })
+    )
+    const { unmount } = render(<NewsCard {...baseProps} />)
+
+    unmount()
+    resolveSanitizer("late preview")
+    await Promise.resolve()
+
+    expect(screen.queryByTestId("news-card-view")).not.toBeInTheDocument()
   })
 })

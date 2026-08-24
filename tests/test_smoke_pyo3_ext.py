@@ -1,4 +1,4 @@
-"""PyO3 extension-module smoke + CI-import guard (testing session 9, Stream D).
+"""PyO3 extension-module smoke test and CI import guard.
 
 NOTE ON NAMING: the plan called this `test_smoke_pyo3_sanitizer.py` with
 "sanitizer parity", but `rust_ext` exposes schedule-conflict / partition /

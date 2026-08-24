@@ -88,6 +88,17 @@ describe("OtpEntry", () => {
     expect(document.activeElement).toBe(inputs[5])
   })
 
+  it("keeps focus on the final field after a single final digit", () => {
+    render(<OtpEntry onSubmit={vi.fn()} />)
+    const inputs = screen.getAllByRole("textbox")
+    inputs[5]!.focus()
+
+    fireEvent.change(inputs[5]!, { target: { value: "6" } })
+
+    expect(inputs[5]).toHaveValue("6")
+    expect(document.activeElement).toBe(inputs[5])
+  })
+
   it("handles backspace and arrow navigation at interior and boundary fields", () => {
     render(<OtpEntry onSubmit={vi.fn()} />)
     const inputs = screen.getAllByRole("textbox")
@@ -107,6 +118,19 @@ describe("OtpEntry", () => {
     fireEvent.keyDown(inputs[0]!, { key: "Backspace" })
     fireEvent.keyDown(inputs[5]!, { key: "ArrowRight" })
     expect(document.activeElement).toBe(inputs[0])
+
+    fireEvent.change(inputs[3]!, { target: { value: "7" } })
+    fireEvent.keyDown(inputs[3]!, { key: "Backspace" })
+    expect(inputs[3]).toHaveValue("7")
+  })
+
+  it("ignores a change containing no digits", () => {
+    render(<OtpEntry onSubmit={vi.fn()} />)
+    const first = screen.getAllByRole("textbox")[0]!
+
+    fireEvent.change(first, { target: { value: "letters-only" } })
+
+    expect(first).toHaveValue("")
   })
 
   it("handles sanitized paste and ignores an empty paste", () => {

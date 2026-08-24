@@ -23,7 +23,7 @@ permissions:
 jobs:
   golangci-lint:
     name: Lint ${{ matrix.service }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -57,7 +57,7 @@ jobs:
   # ── MOD-08: SBOM generation for each Go service ────────────────────────────
   go-sbom:
     name: SBOM — ${{ matrix.service }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     # Only generate SBOMs on pushes to main (not on every PR) to avoid noise.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

@@ -22,6 +22,11 @@ def test_cache_backend_validator_rejects_unknown_mode():
         CacheSettings(cache_backend="filesystem")
 
 
+def test_revocation_redis_url_validator_rejects_blank_value():
+    with pytest.raises(ValidationError, match="REVOCATION_REDIS_URL must not be empty"):
+        CacheSettings(revocation_redis_url="   ")
+
+
 def test_cache_ttl_validators_reject_invalid_values():
     with pytest.raises(ValidationError, match="STATS_CACHE_TTL_SECONDS"):
         CacheSettings(stats_cache_ttl_seconds=0)

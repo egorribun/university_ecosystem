@@ -35,7 +35,7 @@ spec:
               service:
                 name: {{ include "university-ecosystem.fullname" $ }}-{{ .service }}
                 port:
-                  number: {{ if eq .service "backend" }}{{ $.Values.backend.service.port }}{{ else }}{{ $.Values.frontend.service.port }}{{ end }}
+                  number: {{ if eq .service "backend" }}{{ $.Values.backend.service.port }}{{ else if eq .service "gateway" }}{{ $.Values.gateway.service.port }}{{ else if eq .service "frontend" }}{{ $.Values.frontend.service.port }}{{ else }}{{ fail (printf "unsupported ingress service %q" .service) }}{{ end }}
           {{- end }}
     {{- end }}
 {{- end }}

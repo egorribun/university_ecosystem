@@ -28,7 +28,6 @@ export async function getDatabase(): Promise<AppDatabase> {
     dbPromise = createRxDatabase<AppCollections>({
       name: "university_ecosystem_rxdb",
       storage: wrappedValidateAjvStorage({ storage: getRxStorageDexie() }),
-      ignoreDuplicate: true,
     }).then(async (db) => {
       await db.addCollections({
         schedule: { schema: scheduleSchema },

@@ -34,6 +34,23 @@ afterEach(() => {
 })
 
 describe("fetchWeatherSnapshot", () => {
+  it("fetches without touching browser storage during SSR", async () => {
+    vi.stubGlobal("window", undefined)
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        okResponse({
+          current: { weather_code: 0, temperature_2m: 5, time: "2026-06-05T10:00:00Z" },
+        })
+      )
+    )
+
+    await expect(fetchWeatherSnapshot({ coordinates: COORDS })).resolves.toMatchObject({
+      conditionCode: 0,
+      temperatureC: 5,
+    })
+  })
+
   it("returns the cached snapshot without fetching when fresh", async () => {
     window.sessionStorage.setItem(
       KEY,

@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, Request, Response
+from redis.exceptions import RedisError
 from sqlalchemy import select
 from starlette import status
 
@@ -50,13 +51,29 @@ async def logout(
     payload = decode_token(raw_token) if raw_token else None
     jti = payload.get("jti") if payload else None
     if jti:
+        session_expires_at: datetime | None = None
         result = await db.execute(select(ActiveSession).where(ActiveSession.jti == jti))
         session = result.scalars().first()
         if session:
+            session_expires_at = session.expires_at
             now = datetime.now(UTC)
             session.revoked_at = session.revoked_at or now
             # Rotate signing key to invalidate any tokens derived from this session
             session.signing_key = secrets.token_urlsafe(32)
+        # Write the fail-closed cross-service tombstone before committing the
+        # database state. A partial Redis failure can then never produce a
+        # durable DB revocation that edge services interpret as active.
+        from app.services.auth.redis_session import RedisSessionService
+
+        redis_service = RedisSessionService()
+        try:
+            await redis_service.revoke_session(jti, expires_at=session_expires_at)
+        except (RedisError, RuntimeError, OSError):
+            if session:
+                await db.rollback()
+            raise
+
+        if session:
             await db.commit()
 
             from app.core.container import get_audit_service
@@ -68,12 +85,6 @@ async def logout(
                 user_id=session.user_id,
                 reason="user_initiated",
             )
-
-        # Revoke from Redis (Cache-Aside)
-        from app.services.auth.redis_session import RedisSessionService
-
-        redis_service = RedisSessionService()
-        await redis_service.revoke_session(jti)
 
     LoginService.clear_access_token_cookie(response)
     response.headers["Clear-Site-Data"] = '"cache", "cookies", "storage"'

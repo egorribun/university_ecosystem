@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from .base import _DEVELOPMENT_ENVIRONMENTS, BaseAppSettings, _load_file_secret
 
@@ -23,6 +23,8 @@ class IntegrationSettings(BaseAppSettings):
     rust_optimizer_url: str = "http://rust-optimizer:8080"
     spicedb_endpoint: str = "spicedb:50051"
     spicedb_preshared_key: str = "development-preshared-key"
+    flagd_host: str = "localhost"
+    flagd_port: int = Field(default=8013, ge=1, le=65535)
 
     # Elasticsearch — requires xpack.security (ELASTIC_PASSWORD must be set in production)
     elasticsearch_url: str = "http://localhost:9200"

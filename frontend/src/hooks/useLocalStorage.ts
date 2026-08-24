@@ -72,19 +72,18 @@ export function useLocalStorage<T>(
 
         setStoredValue(valueToStore)
 
-        if (IS_BROWSER) {
-          const serialized = serializer(valueToStore)
-          window.localStorage.setItem(key, serialized)
+        const serialized = serializer(valueToStore)
+        window.localStorage.setItem(key, serialized)
 
-          // Dispatch storage event for same-tab sync
-          window.dispatchEvent(
-            new StorageEvent("storage", {
-              key,
-              newValue: serialized,
-              url: window.location.href,
-            })
-          )
-        }
+        // Dispatch storage event for same-tab sync. State setters returned by a
+        // hook can only be invoked after a client mount; effects never run in SSR.
+        window.dispatchEvent(
+          new StorageEvent("storage", {
+            key,
+            newValue: serialized,
+            url: window.location.href,
+          })
+        )
       } catch (e) {
         logWarning(`[useLocalStorage] Error setting key "${key}":`, { error: e })
       }
@@ -95,16 +94,14 @@ export function useLocalStorage<T>(
   const removeValue = useCallback(() => {
     try {
       setStoredValue(initialValue instanceof Function ? initialValue() : initialValue)
-      if (IS_BROWSER) {
-        window.localStorage.removeItem(key)
-        window.dispatchEvent(
-          new StorageEvent("storage", {
-            key,
-            newValue: null,
-            url: window.location.href,
-          })
-        )
-      }
+      window.localStorage.removeItem(key)
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key,
+          newValue: null,
+          url: window.location.href,
+        })
+      )
     } catch (e) {
       logWarning(`[useLocalStorage] Error removing key "${key}":`, { error: e })
     }
@@ -112,8 +109,6 @@ export function useLocalStorage<T>(
 
   // Sync with other tabs/windows
   useEffect(() => {
-    if (!IS_BROWSER) return
-
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === key) {
         if (e.newValue === null) {

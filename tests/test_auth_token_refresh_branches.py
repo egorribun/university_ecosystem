@@ -10,7 +10,7 @@ Covers:
   production guard.
 - _mint_pure_jwt / _hash_token helpers.
 - verify_password_sync: argon2 happy path, mismatch, unexpected argon2
-  error, legacy bcrypt rejection.
+  error, and unsupported-hash rejection.
 - verify_and_update_password_sync: needs-rehash path vs no-rehash path.
 """
 
@@ -21,10 +21,6 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import jwt as pyjwt
-import pytest
-
-pytestmark = pytest.mark.asyncio(loop_scope="session")
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -217,7 +213,7 @@ def test_verify_password_sync_argon2_mismatch():
 
 
 def test_verify_password_sync_legacy_bcrypt_always_rejected():
-    """Branch: hash does NOT start with ``$argon2`` → _verify_legacy_bcrypt → False.
+    """Branch: a hash outside the Argon2 family is rejected.
 
     WHY: Wave 21 removed bcrypt support; any legacy hash must be rejected to
     force a password reset rather than silently accepting a weak algorithm.
@@ -381,14 +377,15 @@ async def test_redis_session_revoke_removes_key():
     )
 
 
-async def test_redis_session_revoke_pipeline_fallback(monkeypatch):
-    """Branch: revoke_session falls back to pipeline when Lua eval raises OSError.
+async def test_redis_session_revoke_ordered_fallback(monkeypatch):
+    """Branch: revoke_session uses a safe fallback when EVAL is disabled.
 
     WHY: some Redis deployments disable EVAL (eval-sha security setting or
     AWS ElastiCache in cluster mode). The pipeline fallback ensures revocation
     still works without Lua.
     """
     import fakeredis.aioredis
+    from redis.exceptions import ResponseError
 
     from app.auth.redis_session import RedisSessionBackend
 
@@ -397,7 +394,7 @@ async def test_redis_session_revoke_pipeline_fallback(monkeypatch):
     original_eval = fake.eval
 
     async def _fail_eval(*args, **kwargs):
-        raise OSError("EVAL not available")
+        raise ResponseError("EVAL not available")
 
     fake.eval = _fail_eval
 
@@ -407,7 +404,7 @@ async def test_redis_session_revoke_pipeline_fallback(monkeypatch):
     _future = datetime.now(UTC) + timedelta(minutes=30)
     await fake.set(f"session:{jti}", json.dumps({"user_id": "u1"}), ex=300)
 
-    # Should not raise; pipeline fallback handles it
+    # Should not raise; ordered tombstone-first fallback handles it.
     await backend.revoke_session(jti)
 
     # Restore

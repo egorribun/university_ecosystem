@@ -1,7 +1,7 @@
 # CI-only override for the "Load and Chaos Resilience Tests" job.
 #
-# Layered LAST after docker-compose.infra.yml + docker-compose.go.yml +
-# docker-compose.yml. It bind-mounts the RS256 signing key into the backend and
+# Layered LAST after docker-compose.yml + docker-compose.infra.yml +
+# docker-compose.go.yml. It bind-mounts the RS256 signing key into the backend and
 # points the Go ws-hub at the password-protected valkey + the auth'd nats.
 #
 # NOTE on host-publishing: the backend is reached on the host (k6 --network=host,
@@ -16,7 +16,7 @@
 #
 # Caddy is BYPASSED for the load tests: k6 hits backend:8000 (via socat) +
 # ws-hub:8081 + gateway:8080 directly, so the production services/caddy/Caddyfile
-# (incl. the W132 weighted_round_robin canary block) is untouched.
+# is untouched; the current baseline has a single frontend upstream.
 services:
   backend:
     environment:
@@ -123,6 +123,6 @@ services:
       REDIS_URL: valkey:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       REDIS_DB: "0"
-      # nats runs with --auth ${NATS_AUTH_TOKEN}; the go.yml default URL lacks
-      # the token. WS upgrade (101) is NATS-independent; message fan-out is not.
-      NATS_URL: nats://${NATS_AUTH_TOKEN}@nats:4222
+      # The base stack uses NATS_PASSWORD as its single token source. Keep this
+      # CI override aligned so message fan-out exercises authenticated NATS.
+      NATS_URL: nats://${NATS_PASSWORD:?NATS_PASSWORD is required - set in .env file}@nats:4222

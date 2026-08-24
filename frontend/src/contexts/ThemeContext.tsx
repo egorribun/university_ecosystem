@@ -36,14 +36,12 @@ const readStoredTheme = (): Theme => {
 //   - Secure conditional on HTTPS so dev on http://localhost still works
 //   - 1-year Max-Age — theme is a long-lived UI preference
 const setThemeCookie = (value: Theme) => {
-  if (typeof document === "undefined") return
   const isSecure = typeof location !== "undefined" && location.protocol === "https:"
   const secureAttr = isSecure ? "; Secure" : ""
   document.cookie = `${THEME_COOKIE_NAME}=${encodeURIComponent(value)}; Path=/; Max-Age=${COOKIE_MAX_AGE_SECONDS}; SameSite=Lax${secureAttr}`
 }
 
 const readCookieValue = (name: string): string | null => {
-  if (typeof document === "undefined") return null
   const parts = document.cookie.split(/;\s*/)
   const prefix = `${name}=`
   for (const part of parts) {
@@ -79,12 +77,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
     if (theme === "system") {
       const mediaQuery = window.matchMedia?.("(prefers-color-scheme: dark)")
-      const handleChange = () => {
-        if (!mediaQuery) return
-        applyTheme(mediaQuery.matches ? "dark" : "light")
-      }
 
       if (mediaQuery) {
+        const handleChange = () => {
+          applyTheme(mediaQuery.matches ? "dark" : "light")
+        }
         handleChange()
         mediaQuery.addEventListener("change", handleChange)
         return () => mediaQuery.removeEventListener("change", handleChange)
@@ -111,7 +108,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // but no cookie (post-W127 deploy migration path). Only writes when cookie
   // is missing AND the in-memory theme value is non-default.
   useEffect(() => {
-    if (typeof document === "undefined") return
     if (readCookieValue(THEME_COOKIE_NAME) === null) {
       setThemeCookie(theme)
     }

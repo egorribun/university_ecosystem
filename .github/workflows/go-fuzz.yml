@@ -12,7 +12,7 @@ permissions:
 jobs:
   fuzz:
     name: Run Go Fuzz
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout repository
@@ -21,23 +21,24 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.5"
+          go-version: "1.26.6"
           cache: true
 
       - name: Run Fuzz Test
         run: |
           cd services/file-processor
           # Keep one fuzz worker: the default GOMAXPROCS-sized pool can OOM
-          # the runner while preserving the same 30-second target duration.
-          go test -v -fuzz=FuzzEstimateQueryDepth -fuzztime=30s -parallel=1 ./internal/middleware
+          # the runner. A 35-second budget leaves Go 1.26 enough shutdown
+          # headroom after baseline coverage on shared hosted runners.
+          go test -v -fuzz=FuzzEstimateQueryDepth -fuzztime=35s -parallel=1 ./internal/middleware
 
       - name: Run gateway JWT fuzz test
         run: |
           cd services/gateway
-          go test -v -fuzz=FuzzJWTValidation -fuzztime=30s -parallel=1 ./middleware
+          go test -v -fuzz=FuzzJWTValidation -fuzztime=35s -parallel=1 ./middleware
 
       - name: Run ws-hub parser fuzz tests
         run: |
           cd services/ws-hub
-          go test -v -fuzz=FuzzParseMessage -fuzztime=30s -parallel=1 ./pkg/hub
-          go test -v -fuzz=FuzzExtractAlgFromHeader -fuzztime=30s -parallel=1 ./pkg/hub
+          go test -v -fuzz=FuzzParseMessage -fuzztime=35s -parallel=1 ./pkg/hub
+          go test -v -fuzz=FuzzExtractAlgFromHeader -fuzztime=35s -parallel=1 ./pkg/hub

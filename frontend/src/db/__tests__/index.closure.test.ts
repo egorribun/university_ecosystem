@@ -41,6 +41,19 @@ afterEach(async () => {
 })
 
 describe("RxDB database lifecycle", () => {
+  it("does not register the development plugin in production", async () => {
+    vi.stubEnv("DEV", false)
+    vi.resetModules()
+    addRxPlugin.mockClear()
+
+    try {
+      await import("../index")
+      expect(addRxPlugin).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it("creates the validated database once and adds all application collections", async () => {
     const database = makeDatabase()
     createRxDatabase.mockResolvedValue(database)
@@ -51,6 +64,10 @@ describe("RxDB database lifecycle", () => {
     expect(first).toBe(database)
     expect(second).toBe(database)
     expect(createRxDatabase).toHaveBeenCalledOnce()
+    expect(createRxDatabase).toHaveBeenCalledWith({
+      name: "university_ecosystem_rxdb",
+      storage: { storage: "dexie-storage" },
+    })
     expect(getRxStorageDexie).toHaveBeenCalledOnce()
     expect(wrappedValidateAjvStorage).toHaveBeenCalledWith({ storage: "dexie-storage" })
     expect(database.addCollections).toHaveBeenCalledWith({

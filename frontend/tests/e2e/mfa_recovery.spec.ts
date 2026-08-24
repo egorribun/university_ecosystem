@@ -3,7 +3,7 @@ import { useMockApi } from "./utils/mockApi"
 
 test.describe("MFA Lost Recovery Flows", () => {
   test("completes login flow using backup recovery codes", async ({ page }) => {
-    await useMockApi(page)
+    await useMockApi(page, { authenticated: false })
 
     await page.goto("/login")
     await page.waitForURL(/\/login$/)

@@ -53,9 +53,11 @@ class NewsRepository(BaseRepository[News, NewsDTO, dict[str, Any], dict[str, Any
 
     @cached(cache_instance=news_cache, key_builder=build_news_cache_key, _l1_ttl=60)
     async def get_published(self, *, skip: int = 0, limit: int = 20) -> list[NewsDTO]:
-        """Get published news ordered by creation date descending with caching."""
-        # TODO: News model has no is_published column; all news rows are treated as published.
-        # Add a published: Mapped[bool] column to News when drafts are required.
+        """Get public news ordered by creation date descending with caching.
+
+        News has no draft lifecycle: persistence is the publication boundary,
+        so every stored row is intentionally visible through this query.
+        """
         result = await self.db.execute(
             select(News)
             .options(selectinload(News.author))

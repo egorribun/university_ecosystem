@@ -151,7 +151,9 @@ async def test_revoke_sessions_matching():
         res = await revoke_sessions_matching(db=db, whereclause=whereclause)
         assert res == 2
         assert session_1.revoked_at is not None
-        mock_backend.revoke_session.assert_called_once_with("jti1")
+        mock_backend.revoke_session.assert_called_once_with(
+            "jti1", expires_at=session_1.expires_at
+        )
         assert session_1.signing_key is not None
 
         # 2. With rotate_signing_key = False
@@ -165,7 +167,7 @@ async def test_revoke_sessions_matching():
         assert session_3.revoked_at is not None
         assert getattr(session_3, "signing_key", None) is None
 
-    # 3. With revoke_session raising an exception (should be suppressed)
+    # 3. A backend failure is propagated so bulk revocation cannot report success.
     session_4 = ActiveSession(revoked_at=None, jti="jti4")
     mock_exec_res.scalars.return_value = [session_4]
 
@@ -173,9 +175,11 @@ async def test_revoke_sessions_matching():
     with patch(
         "app.services.session_cleanup.get_session_backend", return_value=mock_backend
     ):
-        res = await revoke_sessions_matching(db=db, whereclause=whereclause)
-        assert res == 1
-        mock_backend.revoke_session.assert_called_with("jti4")
+        with pytest.raises(Exception, match="redis error"):
+            await revoke_sessions_matching(db=db, whereclause=whereclause)
+        mock_backend.revoke_session.assert_called_with(
+            "jti4", expires_at=session_4.expires_at
+        )
 
 
 # ============================================================

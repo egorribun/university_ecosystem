@@ -1,13 +1,16 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -51,8 +54,51 @@ func respondRESP(write func(string), upperPart string) {
 	}
 }
 
+// readRESPCommand decodes one RESP array without assuming a TCP Read preserves
+// command boundaries. The previous mock split each socket buffer on "*", which
+// intermittently split DEL into "D" + "EL" and returned a bogus +OK reply.
+func readRESPCommand(reader *bufio.Reader) ([]string, error) {
+	header, err := reader.ReadString('\n')
+	if err != nil {
+		return nil, err
+	}
+	if len(header) < 3 || header[0] != '*' {
+		return nil, fmt.Errorf("invalid RESP array header %q", header)
+	}
+	count, err := strconv.Atoi(strings.TrimSpace(header[1:]))
+	if err != nil {
+		return nil, fmt.Errorf("parse RESP array length: %w", err)
+	}
+
+	command := make([]string, 0, count)
+	for range count {
+		lengthLine, err := reader.ReadString('\n')
+		if err != nil {
+			return nil, err
+		}
+		if len(lengthLine) < 3 || lengthLine[0] != '$' {
+			return nil, fmt.Errorf("invalid RESP bulk header %q", lengthLine)
+		}
+		length, err := strconv.Atoi(strings.TrimSpace(lengthLine[1:]))
+		if err != nil || length < 0 {
+			return nil, fmt.Errorf("invalid RESP bulk length %q", lengthLine)
+		}
+		payload := make([]byte, length+2)
+		if _, err := io.ReadFull(reader, payload); err != nil {
+			return nil, err
+		}
+		command = append(command, string(payload[:length]))
+	}
+	return command, nil
+}
+
 // Setup mock RESP server to simulate Redis without external dependencies.
-func setupMockRedisServer(t *testing.T) (string, func()) {
+func setupMockRedisServer(t *testing.T, failingCommands ...string) (string, func()) {
+	t.Helper()
+	failures := make(map[string]struct{}, len(failingCommands))
+	for _, command := range failingCommands {
+		failures[strings.ToUpper(command)] = struct{}{}
+	}
 	var lc net.ListenConfig
 	ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	if err != nil {
@@ -68,19 +114,17 @@ func setupMockRedisServer(t *testing.T) (string, func()) {
 			go func(c net.Conn) {
 				defer func() { _ = c.Close() }()                      //nolint:errcheck // mock server cleanup
 				write := func(s string) { _, _ = c.Write([]byte(s)) } //nolint:errcheck // mock server best-effort write
-				buf := make([]byte, 2048)
+				reader := bufio.NewReader(c)
 				for {
-					n, err := c.Read(buf)
+					command, err := readRESPCommand(reader)
 					if err != nil {
 						return
 					}
-					// Split pipelined RESP commands (each starts with '*').
-					for _, part := range strings.Split(string(buf[:n]), "*") {
-						if part == "" {
-							continue
-						}
-						respondRESP(write, strings.ToUpper(part))
+					if _, fail := failures[strings.ToUpper(command[0])]; fail {
+						write("-ERR forced test failure\r\n")
+						continue
 					}
+					respondRESP(write, strings.ToUpper(strings.Join(command, " ")))
 				}
 			}(conn)
 		}
@@ -231,6 +275,27 @@ func TestCacheStatsCommand(t *testing.T) {
 	assert.Contains(t, output, "used_memory_human:10.5M")
 }
 
+func TestCacheClearPropagatesDeleteFailure(t *testing.T) {
+	redisURLStr, cleanup := setupMockRedisServer(t, "DEL")
+	defer cleanup()
+
+	oldRedisFunc := newRedisClientFunc
+	oldConfirmFunc := confirmActionFunc
+	defer func() {
+		newRedisClientFunc = oldRedisFunc
+		confirmActionFunc = oldConfirmFunc
+	}()
+	newRedisClientFunc = mockRedisClient(redisURLStr)
+	confirmActionFunc = func(string) bool { return true }
+
+	cmd := newRootCmd()
+	cmd.SetArgs([]string{"cache", "clear", "cache:*"})
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "forced test failure")
+}
+
 func TestHealthCommand(t *testing.T) {
 	redisURLStr, cleanup := setupMockRedisServer(t)
 	defer cleanup()
@@ -283,6 +348,22 @@ func TestMetricsShowCommand(t *testing.T) {
 		assert.Contains(t, output, "Detailed stats:")
 		assert.Contains(t, output, "total_connections:42")
 	})
+}
+
+func TestMetricsShowPropagatesInfoFailure(t *testing.T) {
+	redisURLStr, cleanup := setupMockRedisServer(t, "INFO")
+	defer cleanup()
+
+	oldRedisFunc := newRedisClientFunc
+	defer func() { newRedisClientFunc = oldRedisFunc }()
+	newRedisClientFunc = mockRedisClient(redisURLStr)
+
+	cmd := newRootCmd()
+	cmd.SetArgs([]string{"metrics", "show"})
+	err := cmd.Execute()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "forced test failure")
 }
 
 // TestCommandsFailWhenRedisUnavailable verifies the failure-path exit codes:

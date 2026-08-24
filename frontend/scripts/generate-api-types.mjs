@@ -43,11 +43,12 @@ async function loadSchema(input) {
       try {
         await access(fallbackSnapshotPath)
         console.warn(
-          `[generate-api-types] Falling back to local snapshot ${fallbackSnapshotPath} because fetching schema failed:`,
+          "[generate-api-types] Falling back to local snapshot %s because fetching schema failed:",
+          fallbackSnapshotPath,
           error
         )
         return loadSchema(fallbackSnapshotPath)
-      } catch (_) {
+      } catch {
         // If the snapshot is unavailable, rethrow the original error to surface the failure
       }
       throw error

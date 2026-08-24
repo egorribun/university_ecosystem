@@ -16,12 +16,14 @@
         // 2. Language Detection
         var lang = "ru"
         try {
-          var storedLang = localStorage.getItem("ue:language")
-          if (storedLang === "en" || storedLang === "ru") {
-            lang = storedLang
+          var cookieMatch = document.cookie.match(/(?:^|;\s*)ue:language=(ru|en)(?:;|$)/)
+          if (cookieMatch) {
+            lang = cookieMatch[1]
           } else {
-            var browser = (navigator.language || "").toLowerCase()
-            if (browser.indexOf("en") === 0) lang = "en"
+            var storedLang = localStorage.getItem("ue:language")
+            if (storedLang === "en" || storedLang === "ru") {
+              lang = storedLang
+            }
           }
         } catch (error) {}
         html.setAttribute("lang", lang)
@@ -133,7 +135,7 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
     <!--
-    Wave 117 SW5 — preconnect + dns-prefetch to picsum.photos (placeholder
+    External image fallback connection hints — preconnect + dns-prefetch to picsum.photos (placeholder
     image CDN used by NewsCard + EventCard heroes). Phase 0 chrome-devtools
     LCPDiscovery insight on /news flagged "Request is discoverable in
     initial document: FAILED" — image URL is seeded from client state, so
@@ -143,9 +145,8 @@
     required so the preconnect reuses the credentialed-CORS connection
     established when the img fetch fires (image requests go out with
     crossorigin semantics).
-  -->
+    -->
     <link rel="preconnect" href="https://picsum.photos" crossorigin />
-    <link rel="dns-prefetch" href="https://picsum.photos" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   </head>

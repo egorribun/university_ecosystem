@@ -63,6 +63,19 @@ describe("sanitize utilities", () => {
       expect(createHTML).toHaveBeenCalledWith("<p>cached</p>")
     })
 
+    it("falls back to plain text when a cached policy rejects the source", async () => {
+      const createHTML = vi.fn(() => {
+        throw new Error("policy rejected")
+      })
+      vi.stubGlobal("window", {
+        trustedTypes: { createPolicy: vi.fn() },
+        __dompurifyNewsPolicy: { createHTML },
+      })
+
+      await expect(sanitizeNewsHtml("<p>cached failure</p>")).resolves.toBe("cached failure")
+      expect(createHTML).toHaveBeenCalledWith("<p>cached failure</p>")
+    })
+
     it("creates and uses a Trusted Types policy when the browser exposes the API", async () => {
       const createHTML = vi.fn((value: string) => `trusted:${value}`)
       const createPolicy = vi.fn(

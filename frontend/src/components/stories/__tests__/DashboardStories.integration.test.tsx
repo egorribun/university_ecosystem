@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import { act, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ThemeProvider } from "@/contexts/ThemeContext"
-import type { ComponentProps } from "react"
+import type { ComponentProps, ReactNode } from "react"
 
 import DashboardStories from "../DashboardStories"
 import type { StoryItem } from "@/types/Story"
@@ -35,6 +35,7 @@ const translations: Record<string, string> = {
 }
 
 vi.mock("react-i18next", () => ({
+  I18nextProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
   useTranslation: () => ({
     t: (key: string, options: Record<string, unknown> = {}) => {
       const namespaced = key.includes(":") ? key : `dashboard:${key}`
@@ -213,9 +214,26 @@ describe("DashboardStories", () => {
     })
   })
 
-  it("omits the stories heading when there are no stories", async () => {
+  it("handles navigation at both story boundaries", async () => {
+    const { user } = await renderStories()
+
+    await user.click(await screen.findByRole("button", { name: "Story: Orientation" }))
+    await user.click(screen.getByLabelText("Previous story"))
+    expect(await screen.findByRole("heading", { name: "Orientation" })).toBeInTheDocument()
+
+    await user.click(screen.getByLabelText("Next story"))
+    expect(await screen.findByRole("heading", { name: "Clubs fair" })).toBeInTheDocument()
+    await user.click(screen.getByLabelText("Next story"))
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+  })
+
+  it("renders an honest empty state when there are no stories", async () => {
     await renderStories({ stories: [] })
 
-    expect(screen.queryByRole("heading", { name: "Stories" })).not.toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "Stories" })).toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "No stories yetStories will be published soon."
+    )
   })
 })

@@ -40,6 +40,7 @@ async def test_connect_registers_both_streams_and_lifecycle_callbacks() -> None:
         await broker.connect()
 
         kwargs = connect.call_args.kwargs
+        assert kwargs["connect_timeout"] == 2
         await kwargs["reconnected_cb"]()
         await kwargs["disconnected_cb"]()
 
@@ -55,6 +56,32 @@ async def test_connect_registers_both_streams_and_lifecycle_callbacks() -> None:
     assert configs[3].subjects == ["notifications.*"]
     assert configs[4].name == "OUTBOX_EVENTS"
     assert configs[4].subjects == ["outbox.*"]
+
+
+@pytest.mark.asyncio
+async def test_connect_preserves_cleanup_failure_detail_when_provisioning_fails() -> (
+    None
+):
+    broker = NatsTaskBroker()
+    mock_js = MagicMock()
+    mock_js.add_stream = AsyncMock(side_effect=RuntimeError("provisioning failed"))
+    mock_nc = MagicMock()
+    mock_nc.jetstream.return_value = mock_js
+
+    with (
+        patch("app.core.nats_broker.nats.connect", new=AsyncMock(return_value=mock_nc)),
+        patch.object(
+            broker, "close", new=AsyncMock(side_effect=RuntimeError("cleanup failed"))
+        ) as close,
+        patch.object(nats_broker_module._logger, "warning") as warning,
+        pytest.raises(RuntimeError, match="provisioning failed"),
+    ):
+        await broker.connect()
+
+    close.assert_awaited_once()
+    assert warning.call_args.args[0] == "Failed to close partial NATS connection: %s"
+    assert isinstance(warning.call_args.args[1], RuntimeError)
+    assert str(warning.call_args.args[1]) == "cleanup failed"
 
 
 async def test_close_clears_disconnected_client_without_close_call() -> None:

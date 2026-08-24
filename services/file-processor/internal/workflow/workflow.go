@@ -302,9 +302,9 @@ func (a *FileActivities) downloadAndDecodeImage(ctx context.Context, key string)
 
 	select {
 	case <-ctx.Done():
-		if closeErr := obj.Close(); closeErr != nil {
-			_ = closeErr
-		}
+		// Close immediately to unblock a decoder waiting on the response body;
+		// the cancellation error below remains the authoritative result.
+		_ = obj.Close() //nolint:errcheck
 		return nil, "", temporal.NewApplicationError("context cancelled during image decode", "ContextCancelled")
 	case res := <-doneCh:
 		if res.err != nil {
@@ -318,10 +318,7 @@ func applyDecodeDeadline(obj any, ctx context.Context) {
 	type deadliner interface{ SetReadDeadline(time.Time) error }
 	if dl, ok := obj.(deadliner); ok {
 		if deadline, hasDeadline := ctx.Deadline(); hasDeadline {
-			if err := dl.SetReadDeadline(deadline); err != nil {
-				// Special case: logging here instead of failing since decode is the main goal
-				_ = err
-			}
+			_ = dl.SetReadDeadline(deadline) //nolint:errcheck
 		}
 	}
 }

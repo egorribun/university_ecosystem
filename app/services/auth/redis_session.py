@@ -6,6 +6,7 @@ from uuid import UUID
 from redis.exceptions import RedisError
 
 from app.auth.fingerprint import SessionFingerprint
+from app.auth.revocation import get_revocation_redis_client, revoke_with_tombstone
 from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.ratelimit import get_shared_client as _get_shared_client
@@ -35,7 +36,9 @@ class RedisSessionService:
     KEY_PREFIX = "session:v2:"
 
     def __init__(self, redis_url: str | None = None):
-        self.redis_url = redis_url or settings.rate_limit_storage_uri
+        # Session cache and revocation security state intentionally use
+        # different Redis processes and memory policies.
+        self.redis_url = redis_url or settings.cache_redis_url
         self.ttl_seconds = int(settings.access_token_expire_minutes) * 60
 
     async def create_session(
@@ -139,49 +142,37 @@ class RedisSessionService:
         except (RedisError, OSError):
             pass
 
-    async def revoke_session(self, jti: str) -> None:
-        """Invalidate session in Redis using a two-step approach.
-
-        Step 1: Set is_active="0" atomically — callers of get_session() will
-                receive None immediately (before TTL expiry or key deletion).
-        Step 2: Delete the key for cleanup.
-
-        If Redis is unavailable, raises so the caller can log a high-priority
-        alert. A silent failure here means a revoked session (e.g. after password
-        change or fingerprint mismatch) stays active in Redis until TTL expiry
-        (up to access_token_expire_minutes * 60 seconds).
-        """
-        if not self.redis_url:
-            return
-
+    async def revoke_session(
+        self, jti: str, expires_at: datetime | None = None
+    ) -> None:
+        """Atomically write the gateway tombstone and remove cached state."""
         key = f"{self.KEY_PREFIX}{jti}"
         try:
-            client = await cast("Awaitable[Any]", _get_shared_client(self.redis_url))
-            # Step 1: Mark inactive immediately — checked in get_session().
-            await cast("Awaitable[Any]", client.hset(key, "is_active", "0"))
-            # P0-W5-03: Write gateway blocklist key before deletion so gateway's
-            # `EXISTS revoked:jti:{jti}` check correctly detects revocation.
+            client = None
+            if self.redis_url:
+                client = await cast(
+                    "Awaitable[Any]", _get_shared_client(self.redis_url)
+                )
+            revocation_client = await get_revocation_redis_client()
+            await revoke_with_tombstone(
+                client,
+                session_key=key,
+                jti=jti,
+                expires_at=expires_at,
+                revocation_redis_client=revocation_client,
+            )
             try:
-                remaining_ttl = await cast("Awaitable[Any]", client.ttl(key))
-                if remaining_ttl > 0:
-                    revoked_key = f"revoked:jti:{jti}"
-                    await cast(
-                        "Awaitable[Any]",
-                        client.set(revoked_key, "1", ex=remaining_ttl),
-                    )
+                await cast(
+                    "Awaitable[Any]",
+                    revocation_client.publish("session:revocations", jti),
+                )
             except (RedisError, OSError):
-                logger.warning("Failed to write revocation blocklist for %s", jti)
-            # Step 2: Delete for cleanup (TTL would handle this anyway).
-            try:
-                await cast("Awaitable[Any]", client.delete(key))
-            except (RedisError, OSError):
-                logger.warning("Failed to delete session key %s", jti)
+                logger.warning("Failed to publish session revocation for jti=%s", jti)
         except (RedisError, OSError) as e:
             logger.error(
-                "Failed to revoke session %s in Redis: %s — "
-                "session may remain active until TTL expiry (%ds)",
+                "Failed to revoke session %s in Redis: %s — refusing to "
+                "report a successful revocation",
                 jti,
                 e,
-                self.ttl_seconds,
             )
             raise

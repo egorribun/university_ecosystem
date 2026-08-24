@@ -1,4 +1,4 @@
-"""Coverage tests for app/services/notifications/news_events.py (testing session 9).
+"""Behavior tests for news and event notification services.
 
 Targets ``notify_about_comment`` (previously fully uncovered, L383-413).
 ``_fetch_admin_ids`` is imported INSIDE the function from

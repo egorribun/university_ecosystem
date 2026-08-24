@@ -21,6 +21,59 @@ def enable_rate_limiting(monkeypatch):
     monkeypatch.setattr(settings, "rate_limit_enabled", True)
 
 
+@pytest.fixture
+def _scripted_rate_limit_redis_client(monkeypatch, _rate_limit_redis_client):
+    """Model the Lua state transitions on hermetic fakeredis primitives.
+
+    The production script itself is executed against real Redis by
+    ``tests/integration/test_redis_contract.py::test_rate_limit_key_format``.
+    """
+    from app.core.ratelimit.strategies import redis as redis_strategy
+
+    fake_sha = "fakeredis-rate-limit-lua-contract"
+    member_counter = 0
+
+    async def _execute(key, limit, now_ms, window_ms):
+        nonlocal member_counter
+        if isinstance(key, bytes):
+            key = key.decode()
+
+        await _rate_limit_redis_client.zremrangebyscore(key, "-inf", now_ms - window_ms)
+        current = int(await _rate_limit_redis_client.zcard(key))
+        if current >= limit:
+            oldest = await _rate_limit_redis_client.zrange(key, 0, 0, withscores=True)
+            retry_after_ms = 0
+            if oldest:
+                retry_after_ms = max(0, int(float(oldest[0][1]) + window_ms - now_ms))
+            return [0, 0, retry_after_ms]
+
+        member_counter += 1
+        member = f"{now_ms}:{member_counter}"
+        await _rate_limit_redis_client.zadd(key, {member: float(now_ms)})
+        await _rate_limit_redis_client.pexpire(key, window_ms)
+        return [1, limit - current - 1, 0]
+
+    async def _script_load(script):
+        assert script == redis_strategy._RATE_LIMIT_SCRIPT
+        return fake_sha
+
+    async def _evalsha(sha, numkeys, *args):
+        assert sha == fake_sha
+        assert numkeys == 1
+        return await _execute(args[0], int(args[1]), int(args[2]), int(args[3]))
+
+    async def _eval(script, numkeys, *args):
+        assert script == redis_strategy._RATE_LIMIT_SCRIPT
+        assert numkeys == 1
+        return await _execute(args[0], int(args[1]), int(args[2]), int(args[3]))
+
+    monkeypatch.setattr(_rate_limit_redis_client, "script_load", _script_load)
+    monkeypatch.setattr(_rate_limit_redis_client, "evalsha", _evalsha)
+    monkeypatch.setattr(_rate_limit_redis_client, "eval", _eval)
+    monkeypatch.setattr(redis_strategy, "_RATE_LIMIT_SHA", None)
+    return _rate_limit_redis_client
+
+
 @pytest.mark.asyncio
 async def test_rate_limit_per_ip():
     """Test using a public endpoint that is NOT exempted."""
@@ -546,12 +599,9 @@ async def test_sensitive_dependency_memory_backend_ignores_untrusted_proxy_heade
     assert third.status_code == status.HTTP_429_TOO_MANY_REQUESTS
 
 
-@pytest.mark.skip(
-    reason="Requires real Redis for Lua scripting — FakeRedis does not support EVAL"
-)
 @pytest.mark.asyncio
 async def test_sensitive_dependency_redis_backend(
-    monkeypatch, _rate_limit_redis_client
+    monkeypatch, _scripted_rate_limit_redis_client
 ):
     monkeypatch.setattr(settings, "rate_limit_storage_backend", "redis")
     monkeypatch.setattr(settings, "rate_limit_storage_uri", "redis://test")
@@ -591,12 +641,9 @@ async def test_sensitive_dependency_redis_backend(
     assert third.headers.get("Retry-After") is not None
 
 
-@pytest.mark.skip(
-    reason="Requires real Redis for Lua scripting — FakeRedis does not support EVAL"
-)
 @pytest.mark.asyncio
 async def test_sensitive_dependency_redis_backend_forwarded_header(
-    monkeypatch, _rate_limit_redis_client
+    monkeypatch, _scripted_rate_limit_redis_client
 ):
     monkeypatch.setattr(settings, "rate_limit_storage_backend", "redis")
     monkeypatch.setattr(settings, "rate_limit_storage_uri", "redis://test")

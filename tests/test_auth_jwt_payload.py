@@ -139,7 +139,7 @@ async def test_create_access_token_without_extra_claims_omits_is_active(
 async def test_finalize_login_embeds_is_active_for_active_user(
     db_session, user_factory
 ):
-    """End-to-end: LoginSessionManager.finalize_login() → JWT carries is_active=True."""
+    """Login JWT carries active state but no unresolved tenant scope."""
     from app.services.auth.login_session_manager import LoginSessionManager
 
     user = await user_factory(is_active=True)
@@ -179,6 +179,7 @@ async def test_finalize_login_embeds_is_active_for_active_user(
 
     assert "is_active" in decoded
     assert decoded["is_active"] is True
+    assert "tenant_id" not in decoded
 
 
 @pytest.mark.asyncio

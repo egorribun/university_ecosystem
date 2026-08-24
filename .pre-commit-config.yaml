@@ -1,3 +1,8 @@
+## Bundled agent/IDE skills are third-party reference material, not product
+## source.  Scanning their duplicated examples creates false positives and can
+## exhaust Docker Desktop when pre-commit batches thousands of filenames.
+exclude: ^(?:\.agents/skills|\.opencode)/
+
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.14.14  # TD-29-03: pinned — v0.15.4 strips except-clause parens (SyntaxError on Python 3)
@@ -104,8 +109,12 @@ repos:
     hooks:
       - id: semgrep-docker
         name: semgrep-sast
-        args: ["--config", "auto", "--error"]
-        exclude: ^tests/|^native/rust_ext/fuzz/|_test\.go$
+        args: ["--config", "auto", "--error", "--oss-only"]
+        exclude: (^|/)tests/|^alembic/|^native/rust_ext/fuzz/|_test\.go$|^frontend/coverage-[^/]+/
+        # pre-commit may split --all-files into several invocations. Running
+        # those Docker containers concurrently causes intermittent EOF/OOM
+        # failures on developer workstations.
+        require_serial: true
 
   - repo: https://github.com/renovatebot/pre-commit-hooks
     rev: 43.268.4 # ece9d8611e4e7da8cbcf7ea28039ec7928316032

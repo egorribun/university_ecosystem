@@ -393,14 +393,15 @@ async def test_multiple_batchers_gather_with_real_delays_return_correct_results(
     session = AsyncMock()
 
     async def _run_batcher(item_id: int) -> dict:
-        with patch(
-            "app.utils.query_batching.batch_load_ids", side_effect=_delayed_load
-        ):
-            batcher = query_batching.QueryBatcher(session, _MockModel)
-            batcher.add(item_id)
-            return await batcher.execute()
+        batcher = query_batching.QueryBatcher(session, _MockModel)
+        batcher.add(item_id)
+        return await batcher.execute()
 
-    results = await asyncio.gather(*(_run_batcher(i) for i in range(item_count)))
+    # Patch once around the complete concurrent region. Overlapping patch
+    # contexts restore one another's mocks in completion order and can leak a
+    # mock into unrelated tests running later in the same xdist worker.
+    with patch("app.utils.query_batching.batch_load_ids", side_effect=_delayed_load):
+        results = await asyncio.gather(*(_run_batcher(i) for i in range(item_count)))
 
     assert len(results) == item_count
     for i, result in enumerate(results):

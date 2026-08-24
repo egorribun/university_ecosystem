@@ -8,9 +8,6 @@ from functools import cache, partial
 from typing import Any
 from uuid import UUID, uuid4
 
-# TD-21-04 (Wave 21): bcrypt import removed — legacy hashes no longer verified.
-# The bcrypt package remains in pyproject.toml [dependency-groups.dev] for test
-# compatibility but is no longer imported in production code.
 import httpx
 import jwt
 from argon2 import PasswordHasher, Type
@@ -113,9 +110,7 @@ class SecurityError(Exception):
     pass
 
 
-# Native argon2-cffi hasher — the only password hashing scheme.
-# TD-21-04 (Wave 21): bcrypt verification removed — _verify_legacy_bcrypt
-# always returns False. Users with legacy bcrypt hashes must reset passwords.
+# Native argon2-cffi hasher — the only accepted password hashing scheme.
 argon2_hasher = PasswordHasher(
     time_cost=ARGON2_TIME_COST,
     memory_cost=ARGON2_MEMORY_COST_KIB,
@@ -124,25 +119,12 @@ argon2_hasher = PasswordHasher(
 )
 
 
-def _verify_legacy_bcrypt(
-    plain_password: str,
-    hashed_password: str,
-) -> bool:
-    """Reject legacy bcrypt hashes with a warning — migration period ended.
-
-    TD-21-04 (audit 2026-03-25 Wave 21): bcrypt verification removed.
-    Previously deprecated with hard removal deadline 2026-09-01.  Removed
-    early as part of Wave 21 audit — all remaining bcrypt users must reset
-    their passwords.  The function signature is retained to avoid changing
-    callers; it always returns False and logs a warning.
-
-    TD-33-03: Prometheus counter removed in Wave 33 (bcrypt metrics dead code).
-    """
+def _warn_unsupported_password_hash() -> None:
+    """Record a fail-closed rejection without logging credential material."""
     _logger.warning(
-        "bcrypt_hash_rejected: Legacy bcrypt hashes are no longer accepted. "
-        "The user must reset their password to migrate to argon2id.",
+        "unsupported_password_hash_rejected: only argon2id hashes are accepted; "
+        "the user must reset their password",
     )
-    return False
 
 
 def _format_password_class_labels(class_names: list[str], *, locale: str | None) -> str:
@@ -391,8 +373,8 @@ def verify_password_sync(plain_password: str, hashed_password: str) -> bool:
                 type(exc).__name__,
             )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
             return False
-    # Only reach here for genuine legacy bcrypt hashes (no "$argon2" prefix).
-    return _verify_legacy_bcrypt(plain_password, hashed_password)
+    _warn_unsupported_password_hash()
+    return False
 
 
 async def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -418,25 +400,15 @@ def verify_and_update_password_sync(
             return True, None
         except VerifyMismatchError:
             return False, None
-        except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — falls through to legacy check that always rejects (reviewed TD-27-04)
-            # Unexpected error from argon2 (e.g. malformed hash format).
-            # TD-21-04 (Wave 21): Falls through to _verify_legacy_bcrypt which
-            # now always returns False — forcing the user to reset their password.
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — malformed or unknown Argon2 errors reject authentication
             _logger.warning(
-                "argon2 native verify_and_update raised unexpected error, "
-                "falling through to legacy check (always rejects): %s",
+                "argon2 verify-and-update failed closed: %s",
                 type(exc).__name__,
             )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure
+            return False, None
 
-    try:
-        verified = _verify_legacy_bcrypt(plain_password, hashed_password)
-    except Exception:  # RZ-22-01-JUSTIFIED: fail-closed auth — bcrypt verification error returns False (reviewed TD-27-04)
-        return False, None
-    if not verified:
-        return False, None
-    # Upgrade legacy bcrypt to argon2id on successful login
-    new_hash = argon2_hasher.hash(plain_password)
-    return True, new_hash
+    _warn_unsupported_password_hash()
+    return False, None
 
 
 async def verify_and_update_password(

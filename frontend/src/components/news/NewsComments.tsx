@@ -39,17 +39,13 @@ export function NewsComments({
   const [deleteConfirmationId, setDeleteConfirmationId] = useState<string | null>(null)
 
   const handlePostComment = () => {
-    if (commentText.trim()) {
-      addComment(commentText)
-      setCommentText("")
-    }
+    addComment(commentText)
+    setCommentText("")
   }
 
   const handleUpdateComment = (id: string) => {
-    if (editingCommentText.trim()) {
-      updateComment(id, editingCommentText)
-      setEditingCommentId(null)
-    }
+    updateComment(id, editingCommentText)
+    setEditingCommentId(null)
   }
 
   return (
@@ -220,10 +216,8 @@ export function NewsComments({
         cancelText={t("common:buttons.cancel")}
         variant="danger"
         onConfirm={() => {
-          if (deleteConfirmationId !== null) {
-            void deleteComment(deleteConfirmationId)
-            setDeleteConfirmationId(null)
-          }
+          void deleteComment(deleteConfirmationId!)
+          setDeleteConfirmationId(null)
         }}
         onCancel={() => setDeleteConfirmationId(null)}
       />

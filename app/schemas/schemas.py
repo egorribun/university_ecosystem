@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, time
-from typing import Any
+from typing import Any, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import (
@@ -803,19 +803,12 @@ class NotificationDeadLetterPurgeIn(_NotificationDeadLetterJobIds):
 class FeatureFlagOut(BaseModel):
     name: str
     enabled: bool
-    status: str = "active"
-    description: str = ""
-    percentage: int = 100
-    allowed_users: list[str | Any] = Field(default_factory=list)
-    allowed_groups: list[str] = Field(default_factory=list)
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-class FeatureFlagUpdateIn(BaseModel):
-    enabled: bool | None = None
-    status: str | None = None
-    percentage: int | None = None
-    description: str | None = None
+    default: bool
+    description: str
+    provider: str
+    evaluation_reason: str
+    management: Literal["gitops"]
+    config_path: str
 
 
 class AuditLogOut(BaseModel):

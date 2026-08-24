@@ -45,22 +45,28 @@ def test_legacy_role_payload_round_trips_through_case_migration(
     """Old uppercase rows migrate and remain readable by the current schema."""
 
     engine = create_engine("sqlite://")
-    with engine.begin() as connection:
-        connection.execute(text("CREATE TABLE users (role VARCHAR NOT NULL)"))
-        connection.execute(
-            text("INSERT INTO users (role) VALUES (:role)"), {"role": legacy_role}
-        )
+    try:
+        with engine.begin() as connection:
+            connection.execute(text("CREATE TABLE users (role VARCHAR NOT NULL)"))
+            connection.execute(
+                text("INSERT INTO users (role) VALUES (:role)"),
+                {"role": legacy_role},
+            )
 
-        migration = _load_role_migration()
-        operations = Operations(MigrationContext.configure(connection))
-        original_op = migration.op
-        migration.op = operations
-        try:
-            migration.upgrade()
-        finally:
-            migration.op = original_op
+            migration = _load_role_migration()
+            operations = Operations(MigrationContext.configure(connection))
+            original_op = migration.op
+            migration.op = operations
+            try:
+                migration.upgrade()
+            finally:
+                migration.op = original_op
 
-        migrated_role = connection.execute(text("SELECT role FROM users")).scalar_one()
+            migrated_role = connection.execute(
+                text("SELECT role FROM users")
+            ).scalar_one()
+    finally:
+        engine.dispose()
 
     payload = {
         "id": uuid4(),

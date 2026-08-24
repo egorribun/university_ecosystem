@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { render, renderHook, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useEffect } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -119,5 +119,24 @@ describe("useScrollRestoration", () => {
     await user.click(button)
 
     expect(scrollRoot.scrollTop).toBe(0)
+  })
+
+  it("matches the dashboard root and canonicalizes trailing slashes", () => {
+    const { result, rerender } = renderHook(
+      ({ path }: { path: string }) => useScrollRestoration(path),
+      {
+        initialProps: { path: "/" },
+        wrapper: ({ children }) => <AppShellProvider>{children}</AppShellProvider>,
+      }
+    )
+
+    expect(result.current.isSamePath("/dashboard")).toBe(true)
+
+    rerender({ path: "/dashboard/" })
+    expect(result.current.isSamePath("/dashboard")).toBe(true)
+
+    rerender({ path: "/news/" })
+    expect(result.current.isSamePath("/news")).toBe(true)
+    expect(result.current.isSamePath("/events")).toBe(false)
   })
 })

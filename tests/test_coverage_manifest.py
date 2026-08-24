@@ -38,33 +38,33 @@ def _write_test_contract(path: Path) -> None:
             "required_pr_matrix": True,
         },
         "coverage_minimums": {
-            "lines": 91,
-            "statements": 91,
-            "branches": 82,
-            "functions": 82,
+            "lines": 100,
+            "statements": 100,
+            "branches": 100,
+            "functions": 100,
             "tier0": 100,
         },
         "components": {
             "python": {
                 "coverage": {
-                    "lines": 99,
+                    "lines": 100,
                     "statements": 0,
-                    "branches": 98,
+                    "branches": 100,
                     "functions": 0,
                 }
             },
             "frontend": {
                 "coverage": {
-                    "lines": 91,
+                    "lines": 100,
                     "statements": 0,
-                    "branches": 82,
-                    "functions": 82,
+                    "branches": 100,
+                    "functions": 100,
                 }
             },
             "go-gateway": {
                 "coverage": {
                     "lines": 0,
-                    "statements": 99,
+                    "statements": 100,
                     "branches": 0,
                     "functions": 0,
                 }
@@ -72,7 +72,7 @@ def _write_test_contract(path: Path) -> None:
             "go-ws-hub": {
                 "coverage": {
                     "lines": 0,
-                    "statements": 99,
+                    "statements": 100,
                     "branches": 0,
                     "functions": 0,
                 }
@@ -80,41 +80,49 @@ def _write_test_contract(path: Path) -> None:
             "go-file-processor": {
                 "coverage": {
                     "lines": 0,
-                    "statements": 99,
+                    "statements": 100,
+                    "branches": 0,
+                    "functions": 0,
+                }
+            },
+            "go-shared": {
+                "coverage": {
+                    "lines": 0,
+                    "statements": 100,
                     "branches": 0,
                     "functions": 0,
                 }
             },
             "rust-native": {
                 "coverage": {
-                    "lines": 99,
+                    "lines": 100,
                     "statements": 0,
                     "branches": 0,
-                    "functions": 98,
+                    "functions": 100,
                 }
             },
             "rust-pyo3-sanitizer": {
                 "coverage": {
-                    "lines": 99,
+                    "lines": 100,
                     "statements": 0,
                     "branches": 0,
-                    "functions": 98,
+                    "functions": 100,
                 }
             },
             "rust-wasm-sanitizer": {
                 "coverage": {
-                    "lines": 99,
+                    "lines": 100,
                     "statements": 0,
                     "branches": 0,
-                    "functions": 98,
+                    "functions": 100,
                 }
             },
             "rust-crypto": {
                 "coverage": {
-                    "lines": 99,
+                    "lines": 100,
                     "statements": 0,
                     "branches": 0,
-                    "functions": 98,
+                    "functions": 100,
                 }
             },
             "infrastructure": {
@@ -158,6 +166,7 @@ def _write_test_contract(path: Path) -> None:
             "artifacts/coverage/go/gateway/coverage.out",
             "artifacts/coverage/go/ws-hub/coverage.out",
             "artifacts/coverage/go/file-processor/coverage.out",
+            "artifacts/coverage/go/shared/coverage.out",
             "artifacts/coverage/rust/rust-native/llvm.json",
             "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
@@ -235,6 +244,8 @@ def _full_report_arguments() -> list[str]:
         f"go-ws-hub={FIXTURES / 'go-ws-hub-valid.coverprofile'}",
         "--go-report",
         f"go-file-processor={FIXTURES / 'go-file-processor-valid.coverprofile'}",
+        "--go-report",
+        f"go-shared={FIXTURES / 'go-shared-valid.coverprofile'}",
         "--rust-report",
         f"rust-native={rust_report}",
         "--rust-report",
@@ -371,6 +382,38 @@ def _assert_metric_schema_shape(metric: dict[str, object]) -> None:
         assert isinstance(metric["reason_code"], str)
 
 
+def test_rust_report_without_branch_sites_satisfies_strict_branch_floor() -> None:
+    normalizer = _normalizer_module()
+    report = json.dumps(
+        {
+            "data": [
+                {
+                    "totals": {
+                        "branches": {"count": 0, "covered": 0},
+                        "functions": {"count": 1, "covered": 1},
+                        "lines": {"count": 1, "covered": 1},
+                    }
+                }
+            ]
+        }
+    ).encode()
+
+    metrics = normalizer._parse_rust_llvm_json(
+        report,
+        "rust-crypto",
+        native_branches=True,
+    )
+
+    assert metrics["branches"] == {
+        "covered": 0,
+        "derivation": "Nightly LLVM report contains no branch units",
+        "percent": 100.0,
+        "status": "derived",
+        "total": 0,
+    }
+    assert normalizer._metric_satisfies_floor(metrics["branches"], 100) is True
+
+
 def test_contract_declares_all_canonical_raw_coverage_artifacts() -> None:
     if not QUALITY_CONTRACT_PATH.exists():
         # QUALITY-100 @egorribun: Skip when contract is absent under sandbox environments
@@ -385,6 +428,7 @@ def test_contract_declares_all_canonical_raw_coverage_artifacts() -> None:
         "artifacts/coverage/go/gateway/coverage.out",
         "artifacts/coverage/go/ws-hub/coverage.out",
         "artifacts/coverage/go/file-processor/coverage.out",
+        "artifacts/coverage/go/shared/coverage.out",
         "artifacts/coverage/rust/rust-native/llvm.json",
         "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
         "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
@@ -410,6 +454,11 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
         "frontend": ["frontend/src"],
         "go-file-processor": ["services/file-processor"],
         "go-gateway": ["services/gateway"],
+        "go-shared": [
+            "services/cmd/uni-cli",
+            "services/pkg/spiffe",
+            "services/pkg/spicedb",
+        ],
         "go-ws-hub": ["services/ws-hub"],
         "infrastructure": ["infra", "infrastructure", "k8s", "charts"],
         "python": ["app"],
@@ -822,6 +871,9 @@ def test_source_identity_accepts_in_root_relative_backslash_and_absolute_paths(
         ("go-gateway", "services/gateway"),
         ("go-ws-hub", "services/ws-hub"),
         ("go-file-processor", "services/file-processor"),
+        ("go-shared", "services/cmd/uni-cli"),
+        ("go-shared", "services/pkg/spiffe"),
+        ("go-shared", "services/pkg/spicedb"),
         ("rust-native", "native/rust_ext"),
         ("rust-pyo3-sanitizer", "crates/pyo3-sanitizer"),
         ("rust-wasm-sanitizer", "frontend/wasm-sanitizer"),
@@ -859,6 +911,32 @@ def test_canonical_source_identity_rejects_every_root_directory_itself(
         )
         == f"{source_root}/fictitious-source.ext"
     )
+
+
+@pytest.mark.parametrize(
+    ("raw_path", "expected"),
+    (
+        (
+            "github.com/university-ecosystem/uni-cli/main.go",
+            "services/cmd/uni-cli/main.go",
+        ),
+        (
+            "github.com/university-ecosystem/services/pkg/spiffe/spiffe.go",
+            "services/pkg/spiffe/spiffe.go",
+        ),
+        (
+            "university-ecosystem/services/pkg/spicedb/client.go",
+            "services/pkg/spicedb/client.go",
+        ),
+    ),
+)
+def test_go_shared_normalizes_every_module_prefix(
+    raw_path: str,
+    expected: str,
+) -> None:
+    normalizer = _normalizer_module()
+
+    assert normalizer._canonical_source_identity("go-shared", raw_path) == expected
 
 
 def test_xml_root_only_source_path_is_a_structural_evidence_error(
@@ -1002,6 +1080,7 @@ def test_frontend_source_identity_rejects_control_characters(
         ("go-gateway", "services/ws-hub/main.go"),
         ("go-ws-hub", "services/gateway/main.go"),
         ("go-file-processor", "services/gateway/main.go"),
+        ("go-shared", "services/gateway/main.go"),
     ),
 )
 def test_go_source_identity_rejects_selected_component_root_mismatch(
@@ -1502,7 +1581,7 @@ def test_below_threshold_native_measurement_is_a_quality_failure(
     manifest = json.loads(output.read_text(encoding="utf-8"))
     validation = manifest["validation"]
     assert isinstance(validation, dict)
-    assert "python.lines is below required coverage floor 99" in validation["errors"]
+    assert "python.lines is below required coverage floor 100" in validation["errors"]
 
 
 def test_derived_go_line_metric_cannot_satisfy_the_strict_v1_floor(
@@ -1518,10 +1597,10 @@ def test_derived_go_line_metric_cannot_satisfy_the_strict_v1_floor(
             "required_pr_matrix": True,
         },
         "coverage_minimums": {
-            "lines": 91,
-            "statements": 91,
-            "branches": 82,
-            "functions": 82,
+            "lines": 100,
+            "statements": 100,
+            "branches": 100,
+            "functions": 100,
             "tier0": 100,
         },
         "components": {
@@ -1533,7 +1612,7 @@ def test_derived_go_line_metric_cannot_satisfy_the_strict_v1_floor(
             },
             "go-gateway": {
                 "coverage": {
-                    "lines": 99,
+                    "lines": 100,
                     "statements": 0,
                     "branches": 0,
                     "functions": 0,
@@ -1543,6 +1622,9 @@ def test_derived_go_line_metric_cannot_satisfy_the_strict_v1_floor(
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
             "go-file-processor": {
+                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+            },
+            "go-shared": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
             "rust-native": {
@@ -1583,6 +1665,7 @@ def test_derived_go_line_metric_cannot_satisfy_the_strict_v1_floor(
             "artifacts/coverage/go/gateway/coverage.out",
             "artifacts/coverage/go/ws-hub/coverage.out",
             "artifacts/coverage/go/file-processor/coverage.out",
+            "artifacts/coverage/go/shared/coverage.out",
             "artifacts/coverage/rust/rust-native/llvm.json",
             "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
@@ -2213,10 +2296,10 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
             "required_pr_matrix": True,
         },
         "coverage_minimums": {
-            "lines": 91,
-            "statements": 91,
-            "branches": 82,
-            "functions": 82,
+            "lines": 100,
+            "statements": 100,
+            "branches": 100,
+            "functions": 100,
             "tier0": 100,
         },
         "components": {
@@ -2228,7 +2311,7 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
             },
             "go-gateway": {
                 "coverage": {
-                    "lines": 99,
+                    "lines": 100,
                     "statements": 0,
                     "branches": 0,
                     "functions": 0,
@@ -2238,6 +2321,9 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
             "go-file-processor": {
+                "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
+            },
+            "go-shared": {
                 "coverage": {"lines": 0, "statements": 0, "branches": 0, "functions": 0}
             },
             "rust-native": {
@@ -2278,6 +2364,7 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
             "artifacts/coverage/go/gateway/coverage.out",
             "artifacts/coverage/go/ws-hub/coverage.out",
             "artifacts/coverage/go/file-processor/coverage.out",
+            "artifacts/coverage/go/shared/coverage.out",
             "artifacts/coverage/rust/rust-native/llvm.json",
             "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
             "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",

@@ -354,6 +354,10 @@ describe("Schedule page behavior", () => {
     keyboardState.options = null
     scrollToElement.mockClear()
     apiMocks.delete.mockResolvedValue({})
+    scheduleState.applyScheduleUpdate.mockImplementation(
+      (update: (lessons: typeof scheduleState.rawSchedule) => typeof scheduleState.rawSchedule) =>
+        update(scheduleState.rawSchedule)
+    )
   })
 
   afterEach(() => {
@@ -470,6 +474,20 @@ describe("Schedule page behavior", () => {
     )
     expect(apiMocks.delete).not.toHaveBeenCalled()
     expect(scheduleState.applyScheduleUpdate).toHaveBeenCalledTimes(2)
+  })
+
+  it("rolls back an optimistic delete when the backend rejects it", async () => {
+    apiMocks.delete.mockRejectedValueOnce(new Error("delete failed"))
+    await renderSchedule()
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete lesson" }))
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }))
+
+    await waitFor(() =>
+      expect(pageState.showSnackbar).toHaveBeenCalledWith(expect.any(String), "error")
+    )
+    expect(scheduleState.applyScheduleUpdate).toHaveBeenCalledTimes(2)
+    expect(scheduleState.refresh).not.toHaveBeenCalled()
   })
 
   it("routes keyboard edit and delete callbacks for privileged users", async () => {

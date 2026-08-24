@@ -32,7 +32,7 @@ async def test_logout_revokes_redis_when_database_session_is_missing():
         payload = await logout(Response(), request, db)
 
     assert payload["message"] == "Logged out successfully"
-    redis.revoke_session.assert_awaited_once_with("missing-jti")
+    redis.revoke_session.assert_awaited_once_with("missing-jti", expires_at=None)
     db.commit.assert_not_awaited()
 
 
@@ -43,11 +43,26 @@ async def test_logout_revokes_database_session_from_bearer_token_and_audits():
     request.headers = {"Authorization": "Bearer bearer-token"}
     db = AsyncMock()
     result = MagicMock()
-    session = MagicMock(user_id="user-1", revoked_at=None, signing_key="old-key")
+    expires_at = datetime(2026, 1, 2, tzinfo=UTC)
+    session = MagicMock(
+        user_id="user-1",
+        revoked_at=None,
+        signing_key="old-key",
+        expires_at=expires_at,
+    )
     result.scalars.return_value.first.return_value = session
     db.execute.return_value = result
+    order: list[str] = []
+
+    async def _commit() -> None:
+        order.append("database")
+
+    async def _revoke(*_args, **_kwargs) -> None:
+        order.append("redis")
+
+    db.commit.side_effect = _commit
     redis = MagicMock()
-    redis.revoke_session = AsyncMock()
+    redis.revoke_session = AsyncMock(side_effect=_revoke)
     audit = MagicMock()
 
     with (
@@ -67,7 +82,8 @@ async def test_logout_revokes_database_session_from_bearer_token_and_audits():
     assert session.revoked_at is not None
     assert session.signing_key == "new-key"
     db.commit.assert_awaited_once()
-    redis.revoke_session.assert_awaited_once_with("bearer-jti")
+    redis.revoke_session.assert_awaited_once_with("bearer-jti", expires_at=expires_at)
+    assert order == ["redis", "database"]
     audit.log.assert_called_once_with(
         "auth.logout.revoked",
         request,
@@ -78,6 +94,62 @@ async def test_logout_revokes_database_session_from_bearer_token_and_audits():
 
 
 @pytest.mark.asyncio
+async def test_logout_redis_failure_rolls_back_database_revocation():
+    request = MagicMock()
+    request.cookies = {"access_token_v2": "token"}
+    request.headers = {}
+    db = AsyncMock()
+    result = MagicMock()
+    session = MagicMock(
+        user_id="user-1",
+        revoked_at=None,
+        signing_key="old-key",
+        expires_at=datetime(2026, 1, 2, tzinfo=UTC),
+    )
+    result.scalars.return_value.first.return_value = session
+    db.execute.return_value = result
+    redis = MagicMock()
+    redis.revoke_session = AsyncMock(side_effect=ConnectionError("offline"))
+
+    with (
+        patch("app.auth.handlers.logout.decode_token", return_value={"jti": "jti"}),
+        patch(
+            "app.services.auth.redis_session.RedisSessionService", return_value=redis
+        ),
+    ):
+        with pytest.raises(ConnectionError, match="offline"):
+            await logout(Response(), request, db)
+
+    db.commit.assert_not_awaited()
+    db.rollback.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_logout_redis_failure_without_database_session_skips_rollback():
+    request = MagicMock()
+    request.cookies = {"access_token_v2": "token"}
+    request.headers = {}
+    db = AsyncMock()
+    result = MagicMock()
+    result.scalars.return_value.first.return_value = None
+    db.execute.return_value = result
+    redis = MagicMock()
+    redis.revoke_session = AsyncMock(side_effect=ConnectionError("offline"))
+
+    with (
+        patch("app.auth.handlers.logout.decode_token", return_value={"jti": "jti"}),
+        patch(
+            "app.services.auth.redis_session.RedisSessionService", return_value=redis
+        ),
+    ):
+        with pytest.raises(ConnectionError, match="offline"):
+            await logout(Response(), request, db)
+
+    db.commit.assert_not_awaited()
+    db.rollback.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_logout_keeps_existing_revocation_and_ignores_non_bearer_or_empty_tokens():
     request = MagicMock()
     request.cookies = {"access_token_v2": "cookie-token"}
@@ -85,7 +157,13 @@ async def test_logout_keeps_existing_revocation_and_ignores_non_bearer_or_empty_
     db = AsyncMock()
     result = MagicMock()
     revoked_at = datetime(2026, 1, 1, tzinfo=UTC)
-    session = MagicMock(user_id="user-2", revoked_at=revoked_at, signing_key="old-key")
+    expires_at = datetime(2026, 1, 2, tzinfo=UTC)
+    session = MagicMock(
+        user_id="user-2",
+        revoked_at=revoked_at,
+        signing_key="old-key",
+        expires_at=expires_at,
+    )
     result.scalars.return_value.first.return_value = session
     db.execute.return_value = result
     redis = MagicMock()

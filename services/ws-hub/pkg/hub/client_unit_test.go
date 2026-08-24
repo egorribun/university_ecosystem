@@ -212,6 +212,7 @@ func TestHandleMessage_RateLimited(t *testing.T) {
 	h.clientMsgRateBurst = 0
 	srv, _ := newConnPair(t)
 	c := newClientOn(h, srv, "c-rl", "u-rl")
+	c.JoinRoom("r")
 
 	c.handleMessage(Message{Type: "message", Room: "r"}, []byte(`{"type":"message"}`))
 	select {
@@ -228,6 +229,7 @@ func TestHandleMessage_RateLimitedDropsWhenSendFull(t *testing.T) {
 	h.clientMsgRateBurst = 0
 	srv, _ := newConnPair(t)
 	c := newClientOn(h, srv, "c-rlfull", "u-rlfull")
+	c.JoinRoom("r")
 	for i := 0; i < cap(c.Send); i++ {
 		c.Send <- []byte("filler")
 	}

@@ -412,7 +412,6 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     const detectSubscription = async () => {
       try {
         const supported = isPushSupported()
-        if (!active) return
         setPushSupported(supported)
         if (!supported) {
           setPushSubscription(null)

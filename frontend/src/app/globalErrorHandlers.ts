@@ -11,9 +11,6 @@ const LOGGER_TAGS = {
 }
 
 function serializeReason(reason: unknown): unknown {
-  if (reason instanceof Error) {
-    return reason
-  }
   if (typeof reason === "object" && reason !== null) {
     try {
       return JSON.parse(JSON.stringify(reason))

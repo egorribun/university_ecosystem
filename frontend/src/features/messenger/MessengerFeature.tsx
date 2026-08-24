@@ -133,8 +133,7 @@ export default function MessengerFeature() {
 
   const isMobile = useMediaQuery(`(max-width: ${breakpoints.mobile})`)
   const isNarrow = useMediaQuery(`(max-width: ${breakpoints.content})`)
-  const reducedMotionPref = useMediaQuery("(prefers-reduced-motion: reduce)")
-  const prefersReducedMotion = reducedMotionPref ?? false
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const isBottomNavVisible = isMobile
 
@@ -309,16 +308,18 @@ export default function MessengerFeature() {
         isAddingMember={isAddingMember}
       />
 
-      <ConfirmDialog
-        open={confirmDialog?.open ?? false}
-        title={confirmDialog?.title ?? ""}
-        message={confirmDialog?.message ?? ""}
-        confirmText={confirmDialog?.confirmText || t("common:buttons.confirm")}
-        cancelText={confirmDialog?.cancelText || t("common:buttons.cancel")}
-        variant={confirmDialog?.variant}
-        onConfirm={confirmDialog?.onConfirm ?? (() => {})}
-        onCancel={() => setConfirmDialog(null)}
-      />
+      {confirmDialog && (
+        <ConfirmDialog
+          open={confirmDialog.open}
+          title={confirmDialog.title}
+          message={confirmDialog.message}
+          confirmText={confirmDialog.confirmText || t("common:buttons.confirm")}
+          cancelText={confirmDialog.cancelText || t("common:buttons.cancel")}
+          variant={confirmDialog.variant}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => setConfirmDialog(null)}
+        />
+      )}
     </div>
   )
 }

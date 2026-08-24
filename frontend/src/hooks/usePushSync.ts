@@ -14,7 +14,7 @@ export function usePushSync(isAuthenticated: boolean) {
   const lastAuthState = useRef(isAuthenticated)
 
   useEffect(() => {
-    // Reset sync flag when auth state changes (user logged out then back in)
+    // Reset sync flag when auth state changes (user logged out then back in).
     if (lastAuthState.current !== isAuthenticated) {
       syncedRef.current = false
       lastAuthState.current = isAuthenticated

@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
-import { describe, it, expect, vi, beforeEach } from "vitest"
+import { afterEach, describe, it, expect, vi, beforeEach } from "vitest"
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -59,6 +59,8 @@ describe("ScheduleTimeline — branches", () => {
     vi.useRealTimers()
   })
 
+  afterEach(() => vi.useRealTimers())
+
   it("auto-scrolls to the now-indicator on mount when now is in range", async () => {
     // jsdom doesn't implement Element.scrollTo — install a stub then spy on it.
     const proto = HTMLElement.prototype as unknown as { scrollTo?: (..._a: unknown[]) => void }
@@ -83,6 +85,20 @@ describe("ScheduleTimeline — branches", () => {
     const { container } = render(<ScheduleTimeline {...baseProps} minutesNow={300} />)
     // animate-ping is unique to the now-indicator pulse ring.
     expect(container.querySelector(".animate-ping")).not.toBeInTheDocument()
+  })
+
+  it("skips auto-scroll when the now indicator is outside the range", () => {
+    vi.useFakeTimers()
+    const scrollSpy = vi.fn()
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: scrollSpy,
+    })
+    render(<ScheduleTimeline {...baseProps} minutesNow={300} />)
+
+    vi.advanceTimersByTime(100)
+
+    expect(scrollSpy).not.toHaveBeenCalled()
   })
 
   it("renders the now-line when minutesNow is in range", () => {

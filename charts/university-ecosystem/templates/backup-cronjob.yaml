@@ -1,59 +1,127 @@
+{{- if .Values.backup.enabled }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: '{{ include "university-ecosystem.fullname" . }}-db-backup'
+  name: {{ include "university-ecosystem.fullname" . }}-db-backup
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
 spec:
-  schedule: "0 2 * * *" # Every day at 2 AM
+  schedule: {{ .Values.backup.schedule | quote }}
   concurrencyPolicy: Forbid
+  startingDeadlineSeconds: {{ .Values.backup.startingDeadlineSeconds }}
+  successfulJobsHistoryLimit: {{ .Values.backup.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.backup.failedJobsHistoryLimit }}
   jobTemplate:
     spec:
+      backoffLimit: 3
+      ttlSecondsAfterFinished: {{ .Values.backup.ttlSecondsAfterFinished }}
       template:
+        metadata:
+          labels:
+            {{- include "university-ecosystem.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
         spec:
-          containers:
-            - name: backup
-              image: minio/mc:RELEASE.2024-11-17T19-35-25Z  # MOD-30-02: pinned, no :latest
-              command: ["/bin/sh", "/scripts/backup-db.sh"]
+          serviceAccountName: {{ .Release.Name }}-backup
+          automountServiceAccountToken: false
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          {{- with .Values.global.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          initContainers:
+            - name: database-dump
+              image: {{ .Values.backup.postgresImage | quote }}
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/sh", "-ec"]
+              args:
+                - >-
+                  pg_dump --format=custom --no-owner --no-privileges
+                  --file=/backup/database.dump "$DATABASE_URL"
               env:
-                - name: DB_HOST
-                  value: '{{ include "university-ecosystem.fullname" . }}-postgres'
-                - name: DB_USER
-                  value: "postgres"
-                - name: DB_NAME
-                  value: "university_ecosystem"
-                - name: PGPASSWORD
+                - name: DATABASE_URL
                   valueFrom:
                     secretKeyRef:
-                      name: '{{ include "university-ecosystem.fullname" . }}-postgres'
-                      key: postgres-password
+                      name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret }}
+                      key: {{ required "connections.backupDatabaseURLKey must be set" .Values.connections.backupDatabaseURLKey }}
+                - name: HOME
+                  value: /tmp
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              volumeMounts:
+                - name: backup-data
+                  mountPath: /backup
+                - name: tmp
+                  mountPath: /tmp
+          containers:
+            - name: upload
+              image: {{ .Values.backup.minioClientImage | quote }}
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/sh", "-ec"]
+              args:
+                - |
+                  mc alias set destination "$MINIO_ENDPOINT" "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY"
+                  mc mb --ignore-existing "destination/$MINIO_BUCKET"
+                  object="university-$(date -u +%Y%m%dT%H%M%SZ).dump"
+                  mc cp /backup/database.dump "destination/$MINIO_BUCKET/$object"
+              env:
                 - name: MINIO_ENDPOINT
-                  value: "http://minio:9000"
+                  value: {{ .Values.backup.minioEndpoint | quote }}
                 - name: MINIO_BUCKET
-                  value: "backups"
+                  value: {{ .Values.backup.minioBucket | quote }}
                 - name: MINIO_ACCESS_KEY
                   valueFrom:
                     secretKeyRef:
-                      name: '{{ include "university-ecosystem.fullname" . }}-secrets'
+                      name: {{ include "university-ecosystem.applicationSecretName" . }}
                       key: minio-access-key
                 - name: MINIO_SECRET_KEY
                   valueFrom:
                     secretKeyRef:
-                      name: '{{ include "university-ecosystem.fullname" . }}-secrets'
+                      name: {{ include "university-ecosystem.applicationSecretName" . }}
                       key: minio-secret-key
+                - name: HOME
+                  value: /tmp
+                - name: MC_CONFIG_DIR
+                  value: /tmp/mc
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 250m
+                  memory: 256Mi
               volumeMounts:
-                - name: scripts
-                  mountPath: /scripts
-          restartPolicy: OnFailure
+                - name: backup-data
+                  mountPath: /backup
+                  readOnly: true
+                - name: tmp
+                  mountPath: /tmp
           volumes:
-            - name: scripts
-              configMap:
-                name: '{{ include "university-ecosystem.fullname" . }}-backup-scripts'
----
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: '{{ include "university-ecosystem.fullname" . }}-backup-scripts'
-data:
-  backup-db.sh: |
-    # (Content of scripts/backup-db.sh will be injected here or via Helm)
+            - name: backup-data
+              emptyDir: {}
+            - name: tmp
+              emptyDir: {}
+{{- end }}

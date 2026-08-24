@@ -25,7 +25,7 @@ permissions: read-all
 jobs:
   verify-trusted-ref:
     name: Verify trusted DAST source
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:
@@ -45,7 +45,7 @@ jobs:
     # templates, and configured target to a scheduled or manual execution.
     needs: verify-trusted-ref
     if: ${{ needs.verify-trusted-ref.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -132,7 +132,7 @@ jobs:
     # Keep the same protected-source boundary as the Nuclei active scan.
     needs: verify-trusted-ref
     if: ${{ needs.verify-trusted-ref.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
       contents: read

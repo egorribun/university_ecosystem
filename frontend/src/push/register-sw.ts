@@ -53,26 +53,28 @@ export async function registerServiceWorker(path = "/sw.js") {
 
     await navigator.serviceWorker.ready
 
-    const registerBackgroundSync = async () => {
-      if ("sync" in registration) {
-        try {
-          await (
-            registration as ServiceWorkerRegistration & {
-              sync: { register: (tag: string) => Promise<void> }
-            }
-          ).sync.register("sync-offline-mutations")
-        } catch (_e) {
-          // ignore error, falls back to postMessage
+    const registerBackgroundSync = () => {
+      if (!("sync" in registration)) return Promise.resolve()
+
+      return (
+        registration as ServiceWorkerRegistration & {
+          sync: { register: (tag: string) => Promise<void> }
         }
-      }
+      ).sync
+        .register("sync-offline-mutations")
+        .catch(() => {
+          // Background Sync is optional; queue processing already falls back
+          // to the controller/active-worker postMessage path.
+        })
     }
 
     const sendQueueSignal = () => {
       if (typeof navigator.onLine === "boolean" && !navigator.onLine) {
         return
       }
-      registerBackgroundSync()
+      const backgroundSync = registerBackgroundSync()
       requestQueueProcessing(registration)
+      return backgroundSync
     }
 
     sendQueueSignal()

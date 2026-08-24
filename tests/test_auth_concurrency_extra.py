@@ -1,8 +1,8 @@
 """Wave 5 coverage tests for auth module gaps.
 
 Targets:
-- app/auth/security.py: _container_cpu_count, _verify_legacy_bcrypt,
-  validate_password_hibp (error paths), close_hibp_client
+- app/auth/security.py: _container_cpu_count, validate_password_hibp
+  (error paths), close_hibp_client
 - app/auth/mfa/challenge.py: _extract_attempt_limit, _enforce_challenge_rate_limit,
   _lock_challenge, _ensure_challenge_not_locked, _register_failed_attempt,
   describe_challenge_attempts
@@ -40,24 +40,6 @@ class TestContainerCpuCount:
         # On Windows, sched_getaffinity may not exist — just test the function runs
         result = _container_cpu_count()
         assert result >= 1
-
-
-class TestVerifyLegacyBcrypt:
-    """TD-21-04: bcrypt verification removed in Wave 21.
-
-    _verify_legacy_bcrypt now always returns False and logs a warning.
-    """
-
-    def test_always_rejects(self):
-        from app.auth.security import _verify_legacy_bcrypt
-
-        # Any input is rejected — bcrypt migration period ended
-        assert _verify_legacy_bcrypt("any-password", "$2b$12$fakehash") is False
-
-    def test_invalid_hash(self):
-        from app.auth.security import _verify_legacy_bcrypt
-
-        assert _verify_legacy_bcrypt("test", "not-a-valid-hash") is False
 
 
 class TestValidatePasswordHibp:

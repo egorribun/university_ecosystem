@@ -132,11 +132,15 @@ vi.mock("../components/EventsList", () => ({
   EventsList: (props: Record<string, unknown>) => (
     <div data-testid="list">
       <span data-testid="list-count">{(props.eventsList as unknown[]).length}</span>
+      <span data-testid="list-order">
+        {(props.eventsList as Array<{ id: string }>).map(({ id }) => id).join(",")}
+      </span>
       <span data-testid="list-initial-loading">{String(props.isInitialLoading)}</span>
       <span data-testid="list-fetching">{String(props.isFetching)}</span>
       <span data-testid="list-has-next">{String(props.hasNextPage)}</span>
       <button onClick={() => (props.fetchNextPage as () => void)()}>fetch-next</button>
       <button onClick={() => (props.refreshEvents as () => void)()}>refresh</button>
+      <button onClick={() => (props.onAddClick as () => void)()}>list-add</button>
     </div>
   ),
 }))
@@ -396,15 +400,17 @@ describe("EventsFeature — sort modes", () => {
   })
 
   it("filters to future events + sorts ascending when sort='upcoming' (187-192)", () => {
-    const future = new Date(Date.now() + 86_400_000).toISOString()
+    const sooner = new Date(Date.now() + 86_400_000).toISOString()
+    const later = new Date(Date.now() + 172_800_000).toISOString()
     search.params = { sort: "upcoming" }
     listQuery.events = [
-      evt({ id: "future", starts_at: future }),
+      evt({ id: "later", starts_at: later }),
       evt({ id: "past", starts_at: "2000-01-01T00:00:00.000Z" }),
+      evt({ id: "sooner", starts_at: sooner }),
     ]
     render(<EventsFeature />)
-    // Only the future event survives the upcoming filter.
-    expect(screen.getByTestId("list-count")).toHaveTextContent("1")
+    expect(screen.getByTestId("list-count")).toHaveTextContent("2")
+    expect(screen.getByTestId("list-order")).toHaveTextContent("sooner,later")
   })
 
   it("handles missing participant_count in popular sort (?? 0 fallback)", () => {
@@ -440,6 +446,13 @@ describe("EventsFeature — refresh + dialog + derived flags", () => {
     expect(screen.getByTestId("dialog")).toHaveAttribute("data-open", "true")
     act(() => fireEvent.click(screen.getByText("dialog-close")))
     expect(screen.getByTestId("dialog")).toHaveAttribute("data-open", "false")
+  })
+
+  it("opens the create dialog from the empty-list add action", () => {
+    render(<EventsFeature />)
+    expect(screen.getByTestId("dialog")).toHaveAttribute("data-open", "false")
+    act(() => fireEvent.click(screen.getByText("list-add")))
+    expect(screen.getByTestId("dialog")).toHaveAttribute("data-open", "true")
   })
 
   it("dialog success triggers refreshEvents", () => {

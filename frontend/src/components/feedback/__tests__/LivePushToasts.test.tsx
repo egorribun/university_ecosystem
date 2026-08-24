@@ -4,9 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
+const translationState = vi.hoisted(() => ({ emptySync: false }))
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string) =>
+      translationState.emptySync && key.startsWith("notifications:sync.") ? "" : key,
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
 }))
@@ -45,6 +48,7 @@ async function dispatchSwMessage(data: unknown) {
 
 describe("LivePushToasts", () => {
   beforeEach(() => {
+    translationState.emptySync = false
     window.localStorage.clear()
     installFakeServiceWorker()
     vi.useFakeTimers()
@@ -242,6 +246,18 @@ describe("LivePushToasts", () => {
 
     expect(screen.getByText("notifications:sync.title")).toBeInTheDocument()
     expect(screen.getByText("notifications:sync.body")).toBeInTheDocument()
+  })
+
+  it("ignores an empty localized sync-complete toast", async () => {
+    translationState.emptySync = true
+    render(<LivePushToasts />)
+
+    await dispatchSwMessage({ type: "SYNC_COMPLETE" })
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    expect(screen.queryByRole("heading", { level: 4 })).not.toBeInTheDocument()
   })
 
   it("dismisses the current toast when the close button is clicked", async () => {

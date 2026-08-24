@@ -20,7 +20,6 @@ const HEAT_LEVELS = [
 
 function getHeatLevel(count: number, maxCount: number): number {
   if (count === 0) return 0
-  if (maxCount <= 0) return 0
   const ratio = count / maxCount
   if (ratio <= 0.25) return 1
   if (ratio <= 0.5) return 2
@@ -37,7 +36,8 @@ function buildDateGrid(days: number) {
 
   // Align start to the nearest previous Monday (ISO week start)
   const dayOfWeek = startDate.getDay()
-  const mondayOffset = dayOfWeek === 0 ? -6 : -(dayOfWeek - 1)
+  // ISO Monday offset without a Sunday-only branch: Mon -> 0, Sun -> -6.
+  const mondayOffset = -((dayOfWeek + 6) % 7)
   startDate.setDate(startDate.getDate() + mondayOffset)
 
   const cells: Array<{ date: string; dayOfWeek: number; weekIndex: number; isInRange: boolean }> =

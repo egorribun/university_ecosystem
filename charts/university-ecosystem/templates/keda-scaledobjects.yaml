@@ -19,19 +19,13 @@ spec:
   cooldownPeriod: {{ .Values.keda.outboxWorker.cooldownPeriod }}
   pollingInterval: {{ .Values.keda.outboxWorker.pollingInterval }}
   triggers:
-    {{- if .Values.keda.outboxWorker.natsJetstream.enabled }}
-    - type: nats-jetstream
+    {{- if .Values.keda.outboxWorker.postgresql.enabled }}
+    - type: postgresql
       metadata:
-        natsServerMonitoringEndpoint: {{ .Values.keda.outboxWorker.natsJetstream.monitoringEndpoint | quote }}
-        account: "$SYS"
-        stream: {{ .Values.keda.outboxWorker.natsJetstream.stream | quote }}
-        consumer: {{ .Values.keda.outboxWorker.natsJetstream.consumer | quote }}
-        lagThreshold: {{ .Values.keda.outboxWorker.natsJetstream.lagThreshold | quote }}
-        activationLagThreshold: "0"
-      {{- if .Values.keda.natsAuth.enabled }}
-      authenticationRef:
-        name: {{ include "university-ecosystem.fullname" . }}-trigger-auth-nats
-      {{- end }}
+        connectionFromEnv: KEDA_POSTGRESQL_CONNECTION
+        query: "SELECT COUNT(*) FROM stored_events WHERE processed_at IS NULL"
+        targetQueryValue: {{ .Values.keda.outboxWorker.postgresql.targetQueryValue | quote }}
+        activationTargetQueryValue: {{ .Values.keda.outboxWorker.postgresql.activationTargetQueryValue | quote }}
     {{- end }}
     {{- if and .Values.hibernation.enabled .Values.hibernation.workloads.outboxWorker.enabled }}
     - type: cron
@@ -43,7 +37,7 @@ spec:
     {{- end }}
 {{- end }}
 
-{{- if .Values.keda.fileProcessor.enabled }}
+{{- if and .Values.fileProcessor.enabled .Values.keda.fileProcessor.enabled }}
 ---
 apiVersion: keda.sh/v1alpha1
 kind: ScaledObject
@@ -66,7 +60,7 @@ spec:
     {{- if .Values.keda.fileProcessor.natsJetstream.enabled }}
     - type: nats-jetstream
       metadata:
-        natsServerMonitoringEndpoint: {{ .Values.keda.fileProcessor.natsJetstream.monitoringEndpoint | quote }}
+        natsServerMonitoringEndpoint: {{ default (printf "http://%s-nats:8222" .Release.Name) .Values.keda.fileProcessor.natsJetstream.monitoringEndpoint | quote }}
         account: "$SYS"
         stream: {{ .Values.keda.fileProcessor.natsJetstream.stream | quote }}
         consumer: {{ .Values.keda.fileProcessor.natsJetstream.consumer | quote }}
@@ -110,7 +104,7 @@ spec:
     {{- if .Values.keda.backend.redisQueue.enabled }}
     - type: redis
       metadata:
-        address: {{ .Values.keda.backend.redisQueue.address | quote }}
+        address: {{ default (printf "%s-redis-master:6379" .Release.Name) .Values.keda.backend.redisQueue.address | quote }}
         listName: {{ .Values.keda.backend.redisQueue.listName | quote }}
         listLength: {{ .Values.keda.backend.redisQueue.listLength | quote }}
         databaseIndex: {{ .Values.keda.backend.redisQueue.databaseIndex | quote }}
@@ -123,7 +117,7 @@ spec:
     {{- if .Values.keda.backend.natsJetstream.enabled }}
     - type: nats-jetstream
       metadata:
-        natsServerMonitoringEndpoint: {{ .Values.keda.backend.natsJetstream.monitoringEndpoint | quote }}
+        natsServerMonitoringEndpoint: {{ default (printf "http://%s-nats:8222" .Release.Name) .Values.keda.backend.natsJetstream.monitoringEndpoint | quote }}
         account: "$SYS"
         stream: {{ .Values.keda.backend.natsJetstream.stream | quote }}
         consumer: {{ .Values.keda.backend.natsJetstream.consumer | quote }}
@@ -187,32 +181,6 @@ spec:
     name: {{ include "university-ecosystem.fullname" . }}-gateway
   minReplicaCount: {{ .Values.hibernation.workloads.gateway.minReplicasDay }}
   maxReplicaCount: {{ .Values.hibernation.workloads.gateway.maxReplicasDay }}
-  triggers:
-    - type: cron
-      metadata:
-        timezone: {{ .Values.hibernation.schedules.offPeak.timezone | quote }}
-        start: {{ .Values.hibernation.schedules.offPeak.start | quote }}
-        end: {{ .Values.hibernation.schedules.offPeak.end | quote }}
-        desiredReplicas: {{ .Values.hibernation.schedules.offPeak.desiredReplicas | quote }}
-{{- end }}
-
-{{- if and .Values.hibernation.enabled .Values.hibernation.workloads.rustOptimizer.enabled }}
----
-apiVersion: keda.sh/v1alpha1
-kind: ScaledObject
-metadata:
-  name: {{ include "university-ecosystem.fullname" . }}-rust-optimizer-hibernation
-  namespace: {{ .Release.Namespace }}
-  labels:
-    {{- include "university-ecosystem.labels" . | nindent 4 }}
-    app.kubernetes.io/component: rust-optimizer
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: {{ include "university-ecosystem.fullname" . }}-rust-optimizer
-  minReplicaCount: {{ .Values.hibernation.workloads.rustOptimizer.minReplicasDay }}
-  maxReplicaCount: {{ .Values.hibernation.workloads.rustOptimizer.maxReplicasDay }}
   triggers:
     - type: cron
       metadata:

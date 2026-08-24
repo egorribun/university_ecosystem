@@ -67,7 +67,7 @@ class ContentProvider(Provider):
 
         return ScheduleService(
             uow=uow,
-            optimizer=ScheduleOptimizerService(uow=uow),
+            optimizer=ScheduleOptimizerService(),
         )
 
     @provide(scope=Scope.REQUEST)

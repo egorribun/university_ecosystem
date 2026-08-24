@@ -39,8 +39,7 @@ export const NewsHeader = ({
   const [isStuck, setIsStuck] = useState(false)
 
   useEffect(() => {
-    const sentinel = sentinelRef.current
-    if (!sentinel) return
+    const sentinel = sentinelRef.current!
 
     const observer = new IntersectionObserver(
       ([entry]) => {

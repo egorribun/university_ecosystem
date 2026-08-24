@@ -425,9 +425,7 @@ export const ChatArea = memo(function ChatArea({
             onSend={handleSendMessage}
             replyingTo={replyingTo}
             onCancelReply={onCancelReply}
-            onTyping={() => {
-              if (selectedChatId) sendTyping(selectedChatId)
-            }}
+            onTyping={() => sendTyping(selectedChatId)}
           />
         </>
       ) : (

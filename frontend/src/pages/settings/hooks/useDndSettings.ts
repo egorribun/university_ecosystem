@@ -135,7 +135,9 @@ export function useDndSettings(setSnackbar: SetSnackbar): UseDndSettingsReturn {
               )
               .filter(Boolean)
               .join("; ")
-            if (collected) message = collected
+            message = collected || message
+          } else {
+            message = t("settings:dnd.snackbar.updateFailed")
           }
         }
 

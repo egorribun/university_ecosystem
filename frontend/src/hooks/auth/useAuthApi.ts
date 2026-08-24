@@ -133,6 +133,7 @@ export const useAuthApi = (
     ): Promise<PendingMfaState | null> => {
       if (authOperation) return null
       setAuthOperation(true)
+      let result: PendingMfaState | null = null
       try {
         const params = new URLSearchParams()
         params.append("username", email)
@@ -157,11 +158,13 @@ export const useAuthApi = (
             reason: "login",
           }
           updatePendingMfa(pendingState)
-          return pendingState
-        }
+          result = pendingState
+        } else {
+          const data = response.data as TokenWithProfileResponse
+          if (!isTokenWithProfileResponse(data)) {
+            throw new Error("Invalid response from server")
+          }
 
-        const data = response.data as TokenWithProfileResponse
-        if (isTokenWithProfileResponse(data)) {
           updateSessionSigningKey(extractSigningKey(data))
           // RED-02 (audit Wave 11): increment epoch AFTER new signing key is registered.
           // Any HMAC computations that started under the previous session see the epoch
@@ -183,11 +186,9 @@ export const useAuthApi = (
             .catch(() => {})
 
           void prefetchDashboardData(data.user)
-          return null
         }
-
-        throw new Error("Invalid response from server")
       } catch (error) {
+        setAuthOperation(false)
         if (isAxiosError(error) && error.response?.status === 423) {
           const retryAfter = error.response.headers["retry-after"]
           const seconds = retryAfter ? parseInt(retryAfter, 10) : null
@@ -198,9 +199,9 @@ export const useAuthApi = (
           throw new Error(t("login.locked"))
         }
         throw error
-      } finally {
-        setAuthOperation(false)
       }
+      setAuthOperation(false)
+      return result
     },
     [
       authOperation,
@@ -248,10 +249,12 @@ export const useAuthApi = (
           trust_device: trustDevice ?? false,
         }
 
-        if (method === "totp" || method === "recovery_code") {
-          payload.code = code
-        } else if (method === "webauthn") {
+        if (method === "webauthn") {
           payload.webauthn_response = webauthnResponse as { [key: string]: unknown }
+        } else {
+          // MfaVerifyPayload is an exhaustive union: every non-WebAuthn
+          // method (TOTP and recovery code) is represented by a code.
+          payload.code = code
         }
 
         const response = await api.post<TokenWithProfileResponse>("/auth/mfa/verify", payload, {

@@ -16,6 +16,8 @@ type graphqlRequest struct {
 	Query string `json:"query"`
 }
 
+const maxGraphQLBodyBytes = 1 << 20
+
 // MaxQueryDepthMiddleware rejects GraphQL queries exceeding the given depth.
 // RZ-24-05: Parity with Python backend's QueryDepthLimiter defense layer.
 func MaxQueryDepthMiddleware(maxDepth int, next http.Handler) http.Handler {
@@ -25,13 +27,15 @@ func MaxQueryDepthMiddleware(maxDepth int, next http.Handler) http.Handler {
 			return
 		}
 
-		// RZ-33-22: Read the full body once, extract only the "query" field for
-		// depth estimation, then pass the original body through unchanged.
-		// Previous code used DisallowUnknownFields (rejected valid requests with
-		// "variables") and re-encoded only the Query field (dropped variables).
-		bodyBytes, err := io.ReadAll(r.Body)
+		// RZ-33-22: Read at most one byte beyond the 1MB limit. Reading only the
+		// limit silently truncated oversized JSON and accepted a shorter request.
+		bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, maxGraphQLBodyBytes+1))
 		if err != nil {
 			http.Error(w, `{"errors":[{"message":"invalid request body"}]}`, http.StatusBadRequest)
+			return
+		}
+		if len(bodyBytes) > maxGraphQLBodyBytes {
+			http.Error(w, `{"errors":[{"message":"request body exceeds 1 MiB limit"}]}`, http.StatusRequestEntityTooLarge)
 			return
 		}
 
@@ -45,7 +49,14 @@ func MaxQueryDepthMiddleware(maxDepth int, next http.Handler) http.Handler {
 		if depth > maxDepth {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusBadRequest)
-			_, _ = fmt.Fprintf(w, `{"errors":[{"message":"query depth %d exceeds maximum allowed depth of %d"}]}`, depth, maxDepth) //nolint:errcheck // HTTP response write
+			response := struct {
+				Errors []struct {
+					Message string `json:"message"`
+				} `json:"errors"`
+			}{Errors: []struct {
+				Message string `json:"message"`
+			}{{Message: fmt.Sprintf("query depth %d exceeds maximum allowed depth of %d", depth, maxDepth)}}}
+			_ = json.NewEncoder(w).Encode(response) //nolint:errcheck
 			return
 		}
 

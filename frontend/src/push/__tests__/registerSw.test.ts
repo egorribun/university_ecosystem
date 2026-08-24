@@ -131,6 +131,10 @@ describe("registerServiceWorker", () => {
     mockController.postMessage.mockClear()
     visibilityHandler()
     expect(mockController.postMessage).toHaveBeenCalledTimes(1)
+    const visibilitySpy = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden")
+    visibilityHandler()
+    expect(mockController.postMessage).toHaveBeenCalledTimes(1)
+    visibilitySpy.mockRestore()
 
     // Trigger update found listener setup check
     expect(mockRegistration.addEventListener).toHaveBeenCalledWith(
@@ -138,6 +142,10 @@ describe("registerServiceWorker", () => {
       expect.any(Function)
     )
     const updateFoundHandler = mockRegistration.addEventListener.mock.calls[0][1]
+
+    // Browsers may emit updatefound before exposing an installing worker.
+    mockRegistration.installing = null
+    updateFoundHandler()
 
     // Simulate updatefound with a new installing sw
     let stateChangeHandler: any = null
@@ -152,6 +160,10 @@ describe("registerServiceWorker", () => {
     updateFoundHandler()
 
     expect(installingSw.addEventListener).toHaveBeenCalledWith("statechange", expect.any(Function))
+
+    // Ignore intermediate states until the worker is fully installed.
+    stateChangeHandler()
+    expect(installingSw.removeEventListener).not.toHaveBeenCalled()
 
     // Simulate installing SW state transitioning to "installed"
     installingSw.state = "installed"
@@ -169,9 +181,14 @@ describe("registerServiceWorker", () => {
     expect(mockWaiting.postMessage).toHaveBeenCalledWith({
       type: SERVICE_WORKER_MESSAGE_TYPES.SKIP_WAITING,
     })
+    mockRegistration.waiting = null
+    await customEventCall.detail.update()
+    expect(mockWaiting.postMessage).toHaveBeenCalledTimes(1)
 
     // Verify controllerchange listener reloads window
     expect(swListeners["controllerchange"]).toBeDefined()
+    swListeners["controllerchange"]()
+    expect(window.location.reload).toHaveBeenCalledTimes(1)
     swListeners["controllerchange"]()
     expect(window.location.reload).toHaveBeenCalledTimes(1)
   })
@@ -200,6 +217,25 @@ describe("registerServiceWorker", () => {
     expect(mockActive.postMessage).toHaveBeenCalledWith({
       type: SERVICE_WORKER_MESSAGE_TYPES.PROCESS_NOTIFICATION_CLICK_QUEUE,
     })
+  })
+
+  it("tolerates a controller that cannot receive queue messages", async () => {
+    const mockRegistration: any = {
+      active: null,
+      addEventListener: vi.fn(),
+    }
+    const mockServiceWorkerContainer = {
+      controller: {},
+      ready: Promise.resolve(mockRegistration),
+      register: vi.fn().mockResolvedValue(mockRegistration),
+      addEventListener: vi.fn(),
+    }
+    vi.stubGlobal("navigator", {
+      serviceWorker: mockServiceWorkerContainer,
+      onLine: true,
+    })
+
+    await expect(registerServiceWorker()).resolves.toBe(mockRegistration)
   })
 
   it("does not request queue processing when offline", async () => {
@@ -247,7 +283,12 @@ describe("registerServiceWorker", () => {
 
     await registerServiceWorker()
 
-    await vi.waitFor(() => expect(registerSync).toHaveBeenCalledWith("sync-offline-mutations"))
+    const onlineHandler = addEventListenerSpy.mock.calls.find(
+      (call: unknown[]) => call[0] === "online"
+    )?.[1] as (() => Promise<void>) | undefined
+    expect(onlineHandler).toEqual(expect.any(Function))
+    await onlineHandler?.()
+    expect(registerSync).toHaveBeenCalledWith("sync-offline-mutations")
   })
 
   it("does not reload page on controllerchange if window.name matches mock api initializer", async () => {

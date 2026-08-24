@@ -1,0 +1,20 @@
+{{- if .Values.fileProcessor.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-file-processor
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: file-processor
+spec:
+  type: {{ .Values.fileProcessor.service.type }}
+  ports:
+    - name: grpc
+      port: {{ .Values.fileProcessor.service.port }}
+      targetPort: grpc
+      protocol: TCP
+  selector:
+    {{- include "university-ecosystem.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: file-processor
+{{- end }}

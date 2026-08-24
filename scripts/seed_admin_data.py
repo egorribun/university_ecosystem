@@ -59,7 +59,7 @@ from app.services.audit_service import SecureAuditService  # noqa: E402
 # ---------------------------------------------------------------------------
 
 ADMIN_EMAIL = "admin@university.dev"
-ADMIN_PASSWORD = "Admin@2024test"  # noqa: S105 — dev-only test credential
+ADMIN_PASSWORD = "Admin@2024test"  # noqa: S105 # pragma: allowlist secret — dev-only test credential
 
 # ---------------------------------------------------------------------------
 # Additional users for AdminUsers page (mix of roles + groups)

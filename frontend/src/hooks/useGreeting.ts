@@ -14,7 +14,7 @@ const GREETING_EMOJI: Record<GreetingKey, Record<number | "default", string>> = 
   night: { default: "🌙" },
 }
 
-const SPECIAL_EMOJI: Record<string, string> = {
+const SPECIAL_EMOJI: Record<Exclude<SpecialGreetingKey, null>, string> = {
   newYear: "🎄",
   newYearEve: "🎄",
   knowledgeDay: "🎓",
@@ -25,9 +25,9 @@ export function getContextualEmoji(
   dayOfWeek: number,
   specialKey: SpecialGreetingKey
 ): string {
-  if (specialKey && specialKey in SPECIAL_EMOJI) return SPECIAL_EMOJI[specialKey] ?? ""
+  if (specialKey) return SPECIAL_EMOJI[specialKey]
   const dayMap = GREETING_EMOJI[greetingKey]
-  return dayMap[dayOfWeek] ?? dayMap.default ?? ""
+  return dayMap[dayOfWeek] ?? dayMap.default
 }
 
 export function getGreetingKey(hour: number): GreetingKey {

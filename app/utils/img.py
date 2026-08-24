@@ -69,4 +69,6 @@ def get_optimized_image_url(
     signature_encoded = base64.urlsafe_b64encode(signature).rstrip(b"=").decode()
 
     # Build final URL
-    return urljoin(settings.imgproxy_base_url, f"/{signature_encoded}{path}")
+    # Do not use urljoin here: the signed path begins with "/", which would
+    # silently discard a deployment prefix such as "/imgproxy".
+    return f"{settings.imgproxy_base_url.rstrip('/')}/{signature_encoded}{path}"

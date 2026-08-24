@@ -85,6 +85,22 @@ describe("SettingsIntegrations", () => {
     })
   })
 
+  it("navigates to a sanitized Spotify authorization URL", async () => {
+    const setSnackbar = vi.fn()
+    mocks.get.mockResolvedValue({ data: { url: "https://accounts.spotify.com/authorize" } })
+    mocks.sanitize.mockReturnValue("#spotify-authorized")
+    render(<SettingsIntegrations setSnackbar={setSnackbar} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "connect" }))
+
+    await waitFor(() => {
+      expect(mocks.get).toHaveBeenCalledWith("/spotify/auth-url")
+      expect(mocks.sanitize).toHaveBeenCalledWith("https://accounts.spotify.com/authorize")
+      expect(window.location.hash).toBe("#spotify-authorized")
+    })
+    expect(setSnackbar).not.toHaveBeenCalled()
+  })
+
   it("disconnects Spotify, invalidates both caches, and refreshes the user profile", async () => {
     const setSnackbar = vi.fn()
     const refreshedUser = { id: "user-1", spotify_connected: false }
@@ -121,6 +137,32 @@ describe("SettingsIntegrations", () => {
         text: "settings:integrations.spotify.snackbar.disconnectFailed",
         severity: "error",
       })
+    })
+  })
+
+  it("clears the local Spotify state when profile refresh fails", async () => {
+    const setSnackbar = vi.fn()
+    mocks.user = { ...mocks.user, spotify_is_connected: true, spotify_display_name: "Fallback" }
+    mocks.post.mockResolvedValue(undefined)
+    mocks.fetchCurrentUser.mockRejectedValue(new Error("profile unavailable"))
+    render(<SettingsIntegrations setSnackbar={setSnackbar} />)
+
+    fireEvent.click(screen.getByRole("button", { name: "disconnect" }))
+
+    await waitFor(() => expect(mocks.setUser).toHaveBeenCalledOnce())
+    const update = mocks.setUser.mock.calls[0]?.[0] as (
+      previous: typeof mocks.user | null
+    ) => typeof mocks.user | null
+
+    expect(update(mocks.user)).toMatchObject({
+      spotify_connected: false,
+      spotify_is_connected: false,
+      spotify_display_name: null,
+    })
+    expect(update(null)).toBeNull()
+    expect(setSnackbar).toHaveBeenCalledWith({
+      text: "settings:integrations.spotify.snackbar.disconnected",
+      severity: "success",
     })
   })
 })

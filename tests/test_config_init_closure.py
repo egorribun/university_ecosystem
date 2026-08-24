@@ -2,6 +2,8 @@
 
 from types import SimpleNamespace
 
+import pytest
+
 from app.core.config import Settings
 from app.core.config.__init__ import DatabaseSettings, SecuritySettings, _NamespaceView
 
@@ -27,6 +29,25 @@ def test_dependent_settings_accepts_custom_redis_url_without_warning_path():
     settings.database_read_replica_url = ""
 
     assert settings._validate_dependent_settings() is settings
+
+
+def test_dependent_settings_requires_revocation_url_outside_development():
+    settings = Settings(_allow_missing=True)
+    settings.environment = "production"
+    settings.revocation_redis_url = ""
+
+    with pytest.raises(ValueError, match="REVOCATION_REDIS_URL is required"):
+        settings._validate_dependent_settings()
+
+
+def test_dependent_settings_requires_distinct_revocation_process():
+    settings = Settings(_allow_missing=True)
+    settings.environment = "production"
+    settings.cache_redis_url = "redis://cache.internal:6379/0"
+    settings.revocation_redis_url = "redis://cache.internal:6379/9"
+
+    with pytest.raises(ValueError, match="must use a distinct Redis process"):
+        settings._validate_dependent_settings()
 
 
 def test_app_base_url_clean_prefers_configured_base_url():

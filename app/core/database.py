@@ -54,7 +54,7 @@ def set_sqlite_pragma(dbapi_connection: Any, connection_record: Any) -> None:
 
         try:
             conn.create_function("pg_sleep", 1, time.sleep)
-        except Exception:  # RZ-22-01-JUSTIFIED: SQLite connection fallback when pg_sleep cannot be registered  # noqa: S110
+        except Exception:  # RZ-22-01-JUSTIFIED: SQLite connection fallback when pg_sleep cannot be registered  # nosec B110  # noqa: S110
             pass
 
     # PRAGMAs can be executed on the wrapper connection object
@@ -384,7 +384,10 @@ def _on_invalidate(
     pool_health_logger.warning(
         "Connection invalidated",
         active_connections=_pool_metrics.active_connections,
-        exception=type(exception).__name__ if exception else "None",
+        # ``exception`` is reserved by structlog's console renderer and is
+        # interpreted as a pre-rendered traceback.  Keep this diagnostic field
+        # explicit so local logging never emits formatter warnings.
+        exception_type=type(exception).__name__ if exception else "None",
     )
 
 
@@ -709,7 +712,7 @@ async def wait_db(
             async with engine.connect() as conn:
                 await conn.execute(text("SELECT 1"))
             return
-        except Exception as exc:  # pragma: no cover - defensive logging  # RZ-22-01-JUSTIFIED: health probe — DB wait retries on any error (reviewed TD-27-04)
+        except Exception as exc:  # RZ-22-01-JUSTIFIED: health probe — DB wait retries on any error (reviewed TD-27-04)
             last_exc = exc
             log_func = logger.error if attempt == max_attempts else logger.warning
             log_func(

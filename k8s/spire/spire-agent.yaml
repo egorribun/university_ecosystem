@@ -11,6 +11,7 @@ data:
       server_address = "spire-server.spire.svc.cluster.local"
       server_port = "8081"
       socket_path = "/run/spire/sockets/agent.sock"
+      trust_bundle_path = "/run/spire/bundle/bundle.crt"
       trust_domain = "university.ecosystem"
     }
 
@@ -30,6 +31,14 @@ data:
         plugin_data {}
       }
     }
+
+    health_checks {
+      listener_enabled = true
+      bind_address = "0.0.0.0"
+      bind_port = "8080"
+      live_path = "/live"
+      ready_path = "/ready"
+    }
 ---
 apiVersion: apps/v1
 kind: DaemonSet
@@ -45,35 +54,92 @@ spec:
       labels:
         app: spire-agent
     spec:
-      hostPID: true
-      hostNetwork: true
+      # The Kubernetes workload attestor resolves container PIDs and reaches
+      # the node-local kubelet. These two host namespaces are its intentional,
+      # documented trust boundary; the container itself is not privileged.
+      hostPID: true # nosemgrep: yaml.kubernetes.security.hostpid-pod.hostpid-pod
+      hostNetwork: true # nosemgrep: yaml.kubernetes.security.hostnetwork-pod.hostnetwork-pod
       dnsPolicy: ClusterFirstWithHostNet
       serviceAccountName: spire-agent
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
         - name: create-socket-symlink
-          image: ghcr.io/spiffe/spire-agent:1.8.0
-          command: ["sh", "-c", "mkdir -p /tmp/spire-agent/public && ln -sf /run/spire/sockets/agent.sock /tmp/spire-agent/public/api.sock"]
+          # SPIRE images are scratch and contain no shell. A dedicated pinned
+          # init image creates the compatibility symlink on the mounted volume.
+          image: busybox:1.37.0-musl@sha256:fc6dddc4c44b1bfe37f41cae8e67d1693828e8f42a91862816d7953e2c9d3f23
+          command:
+            - sh
+            - -ec
+            - >-
+              mkdir -p /tmp/spire-agent/public;
+              ln -sf /run/spire/sockets/agent.sock /tmp/spire-agent/public/api.sock;
+              until [ -s /run/spire/bundle/bundle.crt ]; do sleep 2; done
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           volumeMounts:
             - name: spire-agent-socket
               mountPath: /run/spire/sockets
             - name: spire-legacy-socket
               mountPath: /tmp/spire-agent/public
+            - name: spire-bundle
+              mountPath: /run/spire/bundle
+              readOnly: true
       containers:
         - name: spire-agent
-          image: ghcr.io/spiffe/spire-agent:1.8.0
+          image: ghcr.io/spiffe/spire-agent:1.15.2@sha256:1d042e4040466686e0ee46f74981ff2167c86adfadca19b3835946f4d6047536
           args: ["-config", "/run/spire/config/agent.conf"]
+          ports:
+            - containerPort: 8080
+              name: health
           securityContext:
-            privileged: true
+            # The upstream agent image intentionally runs as root to inspect
+            # host PIDs, but needs neither privileged mode nor Linux caps.
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           volumeMounts:
             - name: spire-config
               mountPath: /run/spire/config
               readOnly: true
+            - name: spire-agent-data
+              mountPath: /run/spire/data
             - name: spire-agent-socket
               mountPath: /run/spire/sockets
             - name: spire-legacy-socket
               mountPath: /tmp/spire-agent/public
             - name: spire-token
               mountPath: /var/run/secrets/tokens
+            - name: spire-bundle
+              mountPath: /run/spire/bundle
+              readOnly: true
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: health
+            failureThreshold: 30
+            periodSeconds: 2
+            timeoutSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: health
+            failureThreshold: 3
+            periodSeconds: 30
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: health
+            failureThreshold: 3
+            periodSeconds: 5
+            timeoutSeconds: 3
           resources:
             requests:
               cpu: 50m
@@ -85,6 +151,11 @@ spec:
         - name: spire-config
           configMap:
             name: spire-agent-config
+        - name: spire-bundle
+          configMap:
+            name: spire-bundle
+        - name: spire-agent-data
+          emptyDir: {}
         - name: spire-agent-socket
           hostPath:
             path: /run/spire/sockets

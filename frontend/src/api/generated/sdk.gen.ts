@@ -79,9 +79,6 @@ import type {
   CreateUserApiV1UsersPostData,
   CreateUserApiV1UsersPostErrors,
   CreateUserApiV1UsersPostResponses,
-  CreationAnalyticsApiV1StatsCreationGetData,
-  CreationAnalyticsApiV1StatsCreationGetErrors,
-  CreationAnalyticsApiV1StatsCreationGetResponses,
   DeleteAvatarApiV1UsersMeAvatarDeleteData,
   DeleteAvatarApiV1UsersMeAvatarDeleteResponses,
   DeleteChatApiV1ChatsChatIdDeleteData,
@@ -333,8 +330,6 @@ import type {
   SubscribeApiV1PushSubscribePostData,
   SubscribeApiV1PushSubscribePostErrors,
   SubscribeApiV1PushSubscribePostResponses,
-  SyncPlaylistsApiV1SpotifySyncPlaylistsPostData,
-  SyncPlaylistsApiV1SpotifySyncPlaylistsPostResponses,
   TypingIndicatorApiV1ChatsChatIdTypingPostData,
   TypingIndicatorApiV1ChatsChatIdTypingPostErrors,
   TypingIndicatorApiV1ChatsChatIdTypingPostResponses,
@@ -353,9 +348,6 @@ import type {
   UpdateEventApiV1EventsEventIdPatchData,
   UpdateEventApiV1EventsEventIdPatchErrors,
   UpdateEventApiV1EventsEventIdPatchResponses,
-  UpdateFeatureFlagAdminFeatureFlagsNamePatchData,
-  UpdateFeatureFlagAdminFeatureFlagsNamePatchErrors,
-  UpdateFeatureFlagAdminFeatureFlagsNamePatchResponses,
   UpdateMeApiV1UsersMePutData,
   UpdateMeApiV1UsersMePutErrors,
   UpdateMeApiV1UsersMePutResponses,
@@ -1108,25 +1100,6 @@ export const listPlaylistsApiV1SpotifyPlaylistsGet = <ThrowOnError extends boole
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
     url: "/api/v1/spotify/playlists",
-    ...options,
-  })
-
-/**
- * Sync Playlists
- *
- * Synchronize Spotify playlists metadata to the local database.
- */
-export const syncPlaylistsApiV1SpotifySyncPlaylistsPost = <ThrowOnError extends boolean = false>(
-  options?: Options<SyncPlaylistsApiV1SpotifySyncPlaylistsPostData, ThrowOnError>
-): RequestResult<SyncPlaylistsApiV1SpotifySyncPlaylistsPostResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).post<
-    SyncPlaylistsApiV1SpotifySyncPlaylistsPostResponses,
-    unknown,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/spotify/sync-playlists",
     ...options,
   })
 
@@ -2978,30 +2951,6 @@ export const statsSummaryApiV1StatsSummaryGet = <ThrowOnError extends boolean = 
   })
 
 /**
- * Creation Analytics
- *
- * Analytics powered by UUID v7:
- * Creation time distribution without DB indexes on created_at.
- */
-export const creationAnalyticsApiV1StatsCreationGet = <ThrowOnError extends boolean = false>(
-  options: Options<CreationAnalyticsApiV1StatsCreationGetData, ThrowOnError>
-): RequestResult<
-  CreationAnalyticsApiV1StatsCreationGetResponses,
-  CreationAnalyticsApiV1StatsCreationGetErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).get<
-    CreationAnalyticsApiV1StatsCreationGetResponses,
-    CreationAnalyticsApiV1StatsCreationGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/stats/creation",
-    ...options,
-  })
-
-/**
  * Get Chats
  *
  * Get all chats for the current user with cursor-based pagination.
@@ -3595,7 +3544,7 @@ export const unifiedSearchApiV1SearchGet = <ThrowOnError extends boolean = false
 /**
  * List Feature Flags
  *
- * List all registered feature flags.
+ * List registered flags and their effective read-only evaluations.
  */
 export const listFeatureFlagsAdminFeatureFlagsGet = <ThrowOnError extends boolean = false>(
   options?: Options<ListFeatureFlagsAdminFeatureFlagsGetData, ThrowOnError>
@@ -3609,33 +3558,6 @@ export const listFeatureFlagsAdminFeatureFlagsGet = <ThrowOnError extends boolea
     security: [{ scheme: "bearer", type: "http" }],
     url: "/admin/feature-flags",
     ...options,
-  })
-
-/**
- * Update Feature Flag
- *
- * Update a feature flag's status or percentage.
- */
-export const updateFeatureFlagAdminFeatureFlagsNamePatch = <ThrowOnError extends boolean = false>(
-  options: Options<UpdateFeatureFlagAdminFeatureFlagsNamePatchData, ThrowOnError>
-): RequestResult<
-  UpdateFeatureFlagAdminFeatureFlagsNamePatchResponses,
-  UpdateFeatureFlagAdminFeatureFlagsNamePatchErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).patch<
-    UpdateFeatureFlagAdminFeatureFlagsNamePatchResponses,
-    UpdateFeatureFlagAdminFeatureFlagsNamePatchErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/admin/feature-flags/{name}",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
   })
 
 /**

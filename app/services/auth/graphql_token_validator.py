@@ -4,7 +4,7 @@ Addresses the auth parity gap (P1, audit 2026-02-26) between the GraphQL path
 and the REST ``get_current_user`` dependency (``app/api/deps.py``).
 
 The REST path enforces five security layers:
-  1. Redis JTI revocation fast-path          (fail-open on Redis error)
+  1. Dedicated Redis JTI revocation pre-check (DB fallback on Redis error)
   2. DB session revocation check             (fail-closed on DB error)
   3. Session expiry validation               (fail-closed)
   4. Fingerprint validation                  (revokes session on mismatch)
@@ -20,9 +20,11 @@ from __future__ import annotations
 import uuid as _uuid
 
 from fastapi import Request
+from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.revocation import get_revocation_redis_client
 from app.core.logging import get_logger
 from app.models import ActiveSession, User
 
@@ -49,7 +51,7 @@ class GraphQLTokenValidator:
 
         Steps mirror ``deps.py:get_current_user`` exactly.
         """
-        # Step 1 — Redis JTI revocation fast-path (O(1), fail-open)
+        # Step 1 — dedicated Redis JTI revocation pre-check (O(1), DB fallback)
         if not await self._redis_jti_check(jti):
             return None
 
@@ -76,16 +78,14 @@ class GraphQLTokenValidator:
     # ------------------------------------------------------------------ helpers
 
     async def _redis_jti_check(self, jti: str) -> bool:
-        """Return False if the JTI is explicitly revoked in Redis (fail-open)."""
+        """Return False if JTI is revoked; otherwise allow the mandatory DB check."""
         try:
-            from app.deps.cache import get_cache_client
-
-            _redis = await get_cache_client()
+            _redis = await get_revocation_redis_client()
             if await _redis.exists(f"revoked:jti:{jti}"):
                 logger.debug("GraphQL: session revoked in Redis")
                 return False
-        except (ConnectionError, TimeoutError, OSError) as exc:
-            # RZ-20-04: Narrowed — Redis unavailable → fall through to DB check.
+        except (RedisError, RuntimeError, OSError) as exc:
+            # RZ-20-04: revocation store unavailable → mandatory DB check.
             logger.debug("GraphQL session check fallback to DB: %s", exc)  # nosec B110
         return True
 

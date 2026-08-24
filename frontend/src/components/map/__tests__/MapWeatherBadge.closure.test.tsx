@@ -18,8 +18,13 @@ vi.mock("@/hooks/useMapWeather", () => ({
 }))
 
 vi.mock("../MapWeatherPanel", () => ({
-  MapWeatherPanel: ({ open }: { open: boolean }) => (
-    <div data-testid="weather-panel">{String(open)}</div>
+  MapWeatherPanel: ({ open, onClose }: { open: boolean; onClose: () => void }) => (
+    <div data-testid="weather-panel">
+      {String(open)}
+      <button type="button" onClick={onClose}>
+        close weather
+      </button>
+    </div>
   ),
 }))
 
@@ -35,7 +40,10 @@ describe("MapWeatherBadge defensive branches", () => {
     weatherState.value = { condition: "unlisted", isDay: false, temperature: -5 }
     render(<MapWeatherBadge />)
 
-    expect(screen.getByRole("button")).toHaveAttribute("aria-expanded", "false")
+    expect(screen.getByRole("button", { name: /weather\.ariaLabel/ })).toHaveAttribute(
+      "aria-expanded",
+      "false"
+    )
     expect(screen.getByText("-5°")).toBeInTheDocument()
     expect(screen.getByTestId("weather-panel")).toHaveTextContent("false")
   })
@@ -45,8 +53,12 @@ describe("MapWeatherBadge defensive branches", () => {
     render(<MapWeatherBadge />)
 
     expect(screen.getByText("+5°")).toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button"))
-    expect(screen.getByRole("button")).toHaveAttribute("aria-expanded", "true")
+    const weatherButton = screen.getByRole("button", { name: /weather\.ariaLabel/ })
+    fireEvent.click(weatherButton)
+    expect(weatherButton).toHaveAttribute("aria-expanded", "true")
     expect(screen.getByTestId("weather-panel")).toHaveTextContent("true")
+
+    fireEvent.click(screen.getByRole("button", { name: "close weather" }))
+    expect(screen.getByTestId("weather-panel")).toHaveTextContent("false")
   })
 })

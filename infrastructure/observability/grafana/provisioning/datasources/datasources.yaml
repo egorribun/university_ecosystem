@@ -6,6 +6,7 @@ apiVersion: 1
 datasources:
   # Prometheus - Metrics
   - name: Prometheus
+    uid: prometheus
     type: prometheus
     access: proxy
     url: http://prometheus:9090
@@ -18,6 +19,7 @@ datasources:
 
   # Tempo - Distributed Tracing
   - name: Tempo
+    uid: tempo
     type: tempo
     access: proxy
     url: http://tempo:3200
@@ -42,6 +44,7 @@ datasources:
 
   # Loki - Log Aggregation
   - name: Loki
+    uid: loki
     type: loki
     access: proxy
     url: http://loki:3100
@@ -56,6 +59,7 @@ datasources:
 
   # Pyroscope - Continuous Profiling
   - name: Pyroscope
+    uid: pyroscope
     type: grafana-pyroscope-datasource
     access: proxy
     url: http://pyroscope:4040

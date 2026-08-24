@@ -895,53 +895,29 @@ export type FeatureFlagOut = {
    */
   enabled: boolean
   /**
-   * Status
+   * Default
    */
-  status?: string
+  default: boolean
   /**
    * Description
    */
-  description?: string
+  description: string
   /**
-   * Percentage
+   * Provider
    */
-  percentage?: number
+  provider: string
   /**
-   * Allowed Users
+   * Evaluation Reason
    */
-  allowed_users?: Array<string | unknown>
+  evaluation_reason: string
   /**
-   * Allowed Groups
+   * Management
    */
-  allowed_groups?: Array<string>
+  management: "gitops"
   /**
-   * Metadata
+   * Config Path
    */
-  metadata?: {
-    [key: string]: unknown
-  }
-}
-
-/**
- * FeatureFlagUpdateIn
- */
-export type FeatureFlagUpdateIn = {
-  /**
-   * Enabled
-   */
-  enabled?: boolean | null
-  /**
-   * Status
-   */
-  status?: string | null
-  /**
-   * Percentage
-   */
-  percentage?: number | null
-  /**
-   * Description
-   */
-  description?: string | null
+  config_path: string
 }
 
 /**
@@ -4039,27 +4015,6 @@ export type ListPlaylistsApiV1SpotifyPlaylistsGetResponses = {
   200: unknown
 }
 
-export type SyncPlaylistsApiV1SpotifySyncPlaylistsPostData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/spotify/sync-playlists"
-}
-
-export type SyncPlaylistsApiV1SpotifySyncPlaylistsPostResponses = {
-  /**
-   * Response Sync Playlists Api V1 Spotify Sync Playlists Post
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: unknown
-  }
-}
-
-export type SyncPlaylistsApiV1SpotifySyncPlaylistsPostResponse =
-  SyncPlaylistsApiV1SpotifySyncPlaylistsPostResponses[keyof SyncPlaylistsApiV1SpotifySyncPlaylistsPostResponses]
-
 export type ListSessionsApiV1AuthSessionsGetData = {
   body?: never
   path?: never
@@ -6526,48 +6481,6 @@ export type StatsSummaryApiV1StatsSummaryGetResponses = {
   200: unknown
 }
 
-export type CreationAnalyticsApiV1StatsCreationGetData = {
-  body?: never
-  path?: never
-  query: {
-    /**
-     * Object Type
-     *
-     * Type of object to analyze (users, news, events)
-     */
-    object_type: string
-    /**
-     * Period
-     */
-    period?: string
-  }
-  url: "/api/v1/stats/creation"
-}
-
-export type CreationAnalyticsApiV1StatsCreationGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type CreationAnalyticsApiV1StatsCreationGetError =
-  CreationAnalyticsApiV1StatsCreationGetErrors[keyof CreationAnalyticsApiV1StatsCreationGetErrors]
-
-export type CreationAnalyticsApiV1StatsCreationGetResponses = {
-  /**
-   * Response Creation Analytics Api V1 Stats Creation Get
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: unknown
-  }
-}
-
-export type CreationAnalyticsApiV1StatsCreationGetResponse =
-  CreationAnalyticsApiV1StatsCreationGetResponses[keyof CreationAnalyticsApiV1StatsCreationGetResponses]
-
 export type GetChatsApiV1ChatsGetData = {
   body?: never
   path?: never
@@ -7394,38 +7307,6 @@ export type ListFeatureFlagsAdminFeatureFlagsGetResponses = {
 
 export type ListFeatureFlagsAdminFeatureFlagsGetResponse =
   ListFeatureFlagsAdminFeatureFlagsGetResponses[keyof ListFeatureFlagsAdminFeatureFlagsGetResponses]
-
-export type UpdateFeatureFlagAdminFeatureFlagsNamePatchData = {
-  body: FeatureFlagUpdateIn
-  path: {
-    /**
-     * Name
-     */
-    name: string
-  }
-  query?: never
-  url: "/admin/feature-flags/{name}"
-}
-
-export type UpdateFeatureFlagAdminFeatureFlagsNamePatchErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UpdateFeatureFlagAdminFeatureFlagsNamePatchError =
-  UpdateFeatureFlagAdminFeatureFlagsNamePatchErrors[keyof UpdateFeatureFlagAdminFeatureFlagsNamePatchErrors]
-
-export type UpdateFeatureFlagAdminFeatureFlagsNamePatchResponses = {
-  /**
-   * Successful Response
-   */
-  200: FeatureFlagOut
-}
-
-export type UpdateFeatureFlagAdminFeatureFlagsNamePatchResponse =
-  UpdateFeatureFlagAdminFeatureFlagsNamePatchResponses[keyof UpdateFeatureFlagAdminFeatureFlagsNamePatchResponses]
 
 export type ListAuditLogsAdminAuditGetData = {
   body?: never

@@ -180,4 +180,15 @@ describe("EventCard logic wrapper closure paths", () => {
     expect(screen.getByTestId("event-card-starts")).toHaveTextContent("")
     expect(screen.getByTestId("event-card-location")).toHaveTextContent("undefined")
   })
+
+  it("grants event administration controls to teachers", async () => {
+    useEventCardLogicMock.mockReturnValue({
+      ...makeLogic(),
+      user: { id: "teacher-1", role: "teacher" },
+    })
+
+    render(<EventCard {...baseProps} />)
+
+    await waitFor(() => expect(screen.getByTestId("event-card-admin")).toHaveTextContent("true"))
+  })
 })

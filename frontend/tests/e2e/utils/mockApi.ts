@@ -53,6 +53,7 @@ type SessionMock = {
 type MockState = {
   loggedIn: boolean
   newsVersion: string
+  newsOffline: boolean
   offline: boolean
   newsLog: NewsLogEntry[]
   sessions: SessionMock[]
@@ -62,7 +63,15 @@ type MockState = {
   deadLetterJobs: AdminDeadLetterJob[]
 }
 
+type MockApiOptions = {
+  serviceWorker?: "disabled" | "preserve"
+  /** Start without the SSR auth cookie for public login/MFA flows. */
+  authenticated?: boolean
+}
+
 const MOCK_TOTP_SECRET = "JBSW Y3DP EHJK" // pragma: allowlist secret
+export const MOCK_NEWS_ID = "11111111-1111-4111-8111-111111111111"
+const MOCK_SECOND_NEWS_ID = "22222222-2222-4222-8222-222222222222"
 
 const createBaseProfile = (): User => ({
   id: "uuid-1",
@@ -110,7 +119,7 @@ const createBaseProfile = (): User => ({
 
 const mockNews = [
   {
-    id: "uuid-1",
+    id: MOCK_NEWS_ID,
     title: "Новость дня",
     title_en: "News of the day",
     content: "Кампус переходит на новую систему расписаний.",
@@ -120,7 +129,7 @@ const mockNews = [
     image_url_optimized: null,
   },
   {
-    id: "uuid-2",
+    id: MOCK_SECOND_NEWS_ID,
     title: "Библиотека открыта",
     title_en: "Library hours extended",
     content: "Расширены часы работы библиотечного центра.",
@@ -189,24 +198,25 @@ const createDeadLetterJobs = (): AdminDeadLetterJob[] => [
   },
 ]
 
-const getWeekdayName = (): string => {
-  const names = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"]
-  return names[now.getDay()] ?? ""
-}
-
-const mockSchedule = [
-  {
-    id: "uuid-101",
+// Keep the fixture deterministic while making the page independent of the
+// runner's calendar date. The Schedule page opens on today's weekday, so a
+// single fixed-date lesson would disappear on any other day (as happened on
+// hosted runners whose clock differed from the fixture clock). One lesson per
+// supported weekday preserves the same payload shape and keeps every E2E run
+// able to exercise the rendered schedule and its offline cache.
+const mockSchedule = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"].map(
+  (weekday, index) => ({
+    id: `uuid-101-${index + 1}`,
     subject: "Математика",
     teacher: "Проф. Смирнов",
     room: "А-101",
     lesson_type: "Лекция",
-    weekday: getWeekdayName(),
+    weekday,
     start_time: "00:00",
     end_time: "23:59",
     parity: "both" as const,
-  },
-]
+  })
+)
 
 const createMockSessions = (): SessionMock[] => {
   const nowTime = now.getTime()
@@ -270,15 +280,17 @@ const createMfaChallenge = ({
 
 const decodeCursor = (value: string | null): number => {
   if (!value) return 0
-  return 0 // simplified for mock
+  const index = Number.parseInt(value, 10)
+  return Number.isSafeInteger(index) && index >= 0 ? index : 0
 }
 
 const encodeCursor = (index: number): string => index.toString()
 
-export async function useMockApi(page: Page) {
+export async function useMockApi(page: Page, options: MockApiOptions = {}) {
   const state: MockState = {
     loggedIn: false,
     newsVersion: "news-v1",
+    newsOffline: false,
     offline: false,
     newsLog: [],
     sessions: createMockSessions(),
@@ -298,74 +310,70 @@ export async function useMockApi(page: Page) {
     deadLetterJobs: createDeadLetterJobs(),
   }
 
-  await page.addInitScript(() => {
-    try {
-      // Completely neuter serviceWorker to prevent interference with mock routing
-      Object.defineProperty(navigator, "serviceWorker", {
-        get: () => ({
-          register: () => Promise.resolve({ unregister: () => Promise.resolve(true) }),
-          getRegistrations: () => Promise.resolve([]),
-          addEventListener: () => {},
-          removeEventListener: () => {},
-          ready: new Promise(() => {}), // never ready
-        }),
-      })
-      // Clear all caches to ensure clean start for ETag tests
-      if ("caches" in window) {
-        caches.keys().then((keys) => {
-          keys.forEach((key) => caches.delete(key))
-        })
-      }
-      if ("indexedDB" in window && indexedDB.databases) {
-        indexedDB
-          .databases()
-          .then((dbs) => {
-            dbs.forEach((db) => {
-              if (db.name) indexedDB.deleteDatabase(db.name)
-            })
+  const preserveServiceWorker = options.serviceWorker === "preserve"
+  const authenticated = options.authenticated ?? true
+
+  await page.addInitScript(
+    ({ preserveServiceWorker, authenticated }) => {
+      try {
+        if (!preserveServiceWorker) {
+          // Most API-mock specs disable Service Workers so browser-level routes
+          // stay the single deterministic request owner. PWA/push specs opt in
+          // to preserving either the real worker or their hermetic SW double.
+          Object.defineProperty(navigator, "serviceWorker", {
+            get: () => ({
+              register: () => Promise.resolve({ unregister: () => Promise.resolve(true) }),
+              getRegistrations: () => Promise.resolve([]),
+              addEventListener: () => {},
+              removeEventListener: () => {},
+              ready: new Promise(() => {}),
+            }),
           })
-          .catch(() => {})
-      }
-      /*
-      // Clear all caches
-      if ("caches" in window) {
-        caches.keys().then((keys) => {
-          keys.forEach((key) => caches.delete(key))
-        })
-      }
-      */
-
-      if (window.name !== "__mock_api_initialized__") {
-        window.name = "__mock_api_initialized__"
-      }
-      // Force Russian language and mock authentication for every page visit
-      window.localStorage.setItem("ue:language", "ru")
-      window.localStorage.setItem("access_token", "mock-token")
-      window.localStorage.setItem("refresh_token", "mock-refresh")
-
-      window.addEventListener("unhandledrejection", (event) => {
-        const error = event.reason
-        if (error && typeof error === "object" && error.isAxiosError) {
-          console.error(
-            `[GlobalErrors] Axios error: ${error.message} (${error.config?.url}) status=${error.response?.status} data=${JSON.stringify(error.response?.data)}`
-          )
-        } else {
-          const errMsg = String(error?.message || error)
-          if (
-            errMsg.includes("Old view transition aborted") ||
-            errMsg.includes("ViewTransition") ||
-            (error && typeof error === "object" && error.name === "AbortError")
-          ) {
-            // Ignore normal view transition aborts to prevent test flakes in WebKit
-            return
-          }
-          console.error(`[GlobalErrors] Unhandled rejection: ${errMsg}`)
         }
-      })
-    } catch {
-      // ignore
-    }
-  })
+
+        if (window.name !== "__mock_api_initialized__") {
+          window.name = "__mock_api_initialized__"
+        }
+        // Force Russian language for every page visit. Authentication is
+        // opt-in so public login/MFA tests exercise the real unauthenticated
+        // route instead of being redirected by a fixture cookie.
+        window.localStorage.setItem("ue:language", "ru")
+        if (authenticated) {
+          window.localStorage.setItem("access_token", "mock-token")
+          window.localStorage.setItem("refresh_token", "mock-refresh")
+        } else {
+          window.localStorage.removeItem("access_token")
+          window.localStorage.removeItem("refresh_token")
+        }
+        // API-focused specs must not be occluded by the unrelated push
+        // education overlay. Dedicated component tests cover that onboarding.
+        window.localStorage.setItem("ecosystem.push.education.dismissedAt", String(Date.now()))
+
+        window.addEventListener("unhandledrejection", (event) => {
+          const error = event.reason
+          if (error && typeof error === "object" && error.isAxiosError) {
+            console.error(
+              `[GlobalErrors] Axios error: ${error.message} (${error.config?.url}) status=${error.response?.status} data=${JSON.stringify(error.response?.data)}`
+            )
+          } else {
+            const errMsg = String(error?.message || error)
+            if (
+              errMsg.includes("Old view transition aborted") ||
+              errMsg.includes("ViewTransition") ||
+              (error && typeof error === "object" && error.name === "AbortError")
+            ) {
+              // Ignore normal view transition aborts to prevent test flakes in WebKit
+              return
+            }
+            console.error(`[GlobalErrors] Unhandled rejection: ${errMsg}`)
+          }
+        })
+      } catch {
+        // ignore
+      }
+    },
+    { preserveServiceWorker, authenticated }
+  )
 
   // SSR runs before browser init scripts, so mirror the mocked auth state with
   // a test-only cookie for protected direct navigations.
@@ -373,12 +381,12 @@ export async function useMockApi(page: Page) {
     process.env["PLAYWRIGHT_BASE_URL"] ||
     process.env["URL_STATE_E2E_BASE"] ||
     "http://127.0.0.1:5173"
+  const e2eOrigin = new URL(e2eBaseUrl).origin
   await page.context().addCookies([
-    {
-      name: SSR_E2E_AUTH_COOKIE,
-      value: "mock",
-      url: new URL(e2eBaseUrl).origin,
-    },
+    ...(authenticated ? [{ name: SSR_E2E_AUTH_COOKIE, value: "mock", url: e2eOrigin }] : []),
+    // Keep the SSR shell and the browser-side LanguageProvider on the same
+    // locale so hydration tests exercise real UI behavior without React #418.
+    { name: "ue:language", value: "ru", url: e2eOrigin },
   ])
 
   // Keep authenticated mock pages from opening a real socket against the
@@ -514,13 +522,30 @@ export async function useMockApi(page: Page) {
     // Normalize both the browser-relative `/api/v1/...` form and the CI
     // service-host `http://api/v1/...` form to the same mock path.
     const normPath = pathname.replace(/^api\/v1\//u, "api/").replace(/^v1\//u, "api/")
+    // Production E2E builds use the explicit `/api/v1` Axios base (and the
+    // service-host compatibility form `/v1/...` handled above). Do not
+    // reinterpret arbitrary bare fetch/XHR paths as API calls: TanStack
+    // Router uses fetch for client route data such as `/dashboard`, and
+    // turning that navigation into `api/dashboard` returns `{}` from the
+    // generic mock instead of allowing the real SSR/SPA response through.
+    const isBackendRequest = normPath.startsWith("api/") || normPath.startsWith("auth/")
 
-    if (method === "OPTIONS" && (normPath.startsWith("api/") || normPath.startsWith("auth/"))) {
+    if (method === "OPTIONS" && isBackendRequest) {
       await route.fulfill({ status: 204 })
       return
     }
 
-    if (state.offline && (normPath.startsWith("api/") || normPath.startsWith("auth/"))) {
+    // Development module URLs such as `/src/api/news.ts` contain API-like
+    // substrings but are frontend assets, not backend requests.
+    if (!isBackendRequest) {
+      await route.continue()
+      return
+    }
+
+    if (
+      (state.offline || (state.newsOffline && normPath.includes("api/news"))) &&
+      isBackendRequest
+    ) {
       // eslint-disable-next-line no-console
       console.log(`[mock] Simulating OFFLINE for ${normPath}`)
 
@@ -584,7 +609,12 @@ export async function useMockApi(page: Page) {
     if (normPath.includes("api/users/me")) {
       if (method === "GET") {
         const authHeader = request.headers()["authorization"] || request.headers()["Authorization"]
-        if (!state.loggedIn && (!authHeader || !authHeader.includes("Bearer"))) {
+        const cookieHeader = request.headers()["cookie"] || request.headers()["Cookie"] || ""
+        const hasAuth =
+          state.loggedIn ||
+          Boolean(authHeader && authHeader.toLowerCase().includes("bearer")) ||
+          cookieHeader.includes(SSR_E2E_AUTH_COOKIE)
+        if (!hasAuth) {
           await route.fulfill({
             status: 401,
             contentType: "application/json",
@@ -592,7 +622,11 @@ export async function useMockApi(page: Page) {
           })
           return
         }
-        await route.fulfill({ status: 200, body: JSON.stringify(state.profile) })
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(state.profile),
+        })
         return
       }
       if (method === "PUT" || method === "PATCH") {
@@ -605,11 +639,38 @@ export async function useMockApi(page: Page) {
 
     // --- News ---
     if (normPath.includes("api/news")) {
-      const detailMatch = normPath.match(/api\/news\/([a-zA-Z0-9-]+)/)
+      const interactionsMatch = normPath.match(/^api\/news\/([a-zA-Z0-9-]+)\/interactions$/u)
+      if (interactionsMatch) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            likes_count: 0,
+            is_liked: false,
+            comments: [],
+            comments_count: 0,
+          }),
+        })
+        return
+      }
+
+      const detailMatch = normPath.match(/^api\/news\/([a-zA-Z0-9-]+)$/u)
       if (detailMatch) {
-        const id = detailMatch[1] // Assuming regex matches string ID part
-        const entry = mockNews.find((n) => n.id === id) || mockNews[0]
-        await route.fulfill({ status: 200, body: JSON.stringify(entry) })
+        const id = detailMatch[1]
+        const entry = mockNews.find((newsItem) => newsItem.id === id)
+        if (!entry) {
+          await route.fulfill({
+            status: 404,
+            contentType: "application/json",
+            body: JSON.stringify({ detail: "News item not found" }),
+          })
+          return
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(entry),
+        })
         return
       }
 
@@ -625,6 +686,30 @@ export async function useMockApi(page: Page) {
         status: is304 ? 304 : 200,
       })
 
+      if (is304) {
+        // Playwright rejects route.fulfill({ status: 304 }) because 304 is a
+        // browser-generated cache status, not a response that can carry a
+        // fulfilled body. Preserve the conditional-hit assertion in state,
+        // and return the same JSON representation with the ETag so the client
+        // still exercises its conditional request path without an unsupported
+        // network primitive.
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          headers: {
+            "Access-Control-Expose-Headers": "ETag",
+            ETag: state.newsVersion,
+            "Cache-Control": "no-cache",
+          },
+          body: JSON.stringify({
+            items: mockNews,
+            has_more: false,
+            next_cursor: null,
+          }),
+        })
+        return
+      }
+
       const headers = request.headers()
       const locale = (headers["accept-language"] || "").startsWith("en") ? "en" : "ru"
       const localized = mockNews.map((n) => ({
@@ -635,6 +720,7 @@ export async function useMockApi(page: Page) {
 
       await route.fulfill({
         status: 200,
+        contentType: "application/json",
         headers: {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Credentials": "true",
@@ -916,13 +1002,14 @@ export async function useMockApi(page: Page) {
     state,
     async login(p: Page) {
       state.loggedIn = true
+      await p.context().addCookies([{ name: SSR_E2E_AUTH_COOKIE, value: "mock", url: e2eOrigin }])
       // Start from the public route. The mock session is installed by the
       // init script before navigation, so AuthProvider performs the normal
       // client-side redirect to /dashboard without a second SSR navigation.
       // Navigating / -> /dashboard directly can leave the preview's protected
       // SSR request pending under CI load.
-      await p.goto("/login", { waitUntil: "commit", timeout: 30_000 })
-      await expect(p).toHaveURL(/\/dashboard$/, { timeout: 30_000 })
+      await p.goto("/login", { waitUntil: "commit", timeout: 45_000 })
+      await expect(p).toHaveURL(/\/dashboard$/, { timeout: 45_000 })
     },
     async setOffline(p: Page, offline: boolean) {
       state.offline = offline
@@ -930,6 +1017,9 @@ export async function useMockApi(page: Page) {
     },
     async setApiOffline(offline: boolean) {
       state.offline = offline
+    },
+    async setNewsOffline(offline: boolean) {
+      state.newsOffline = offline
     },
   }
 }

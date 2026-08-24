@@ -284,8 +284,12 @@ class DeadLetterQueue:
                         await self.mark_job_retrying(job)
                         try:
                             payload = json.loads(job.payload)
-                            if handler:
-                                await handler(job.job_type, payload)
+                            if handler is None:
+                                raise RuntimeError(
+                                    "No DB DLQ replay handler is configured for "
+                                    f"job type {job.job_type!r}"
+                                )
+                            await handler(job.job_type, payload)
                             await self.mark_job_completed(job)
                             success_count += 1
                             if circuit_breaker:
@@ -331,8 +335,13 @@ class DeadLetterQueue:
 
                         if rate_limit_delay > 0:
                             await asyncio.sleep(rate_limit_delay)
-
-                    await self.session.flush()
+                    else:
+                        # A normal loop completion means the whole batch was
+                        # processed; circuit-breaker denial uses ``break`` and
+                        # exits replay without flushing a partial batch.
+                        await self.session.flush()
+                        continue
+                    break
             finally:
                 DeadLetterQueue._is_replaying = False
 

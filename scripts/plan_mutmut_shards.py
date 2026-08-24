@@ -9,12 +9,15 @@ map, and writes only the exact mutant names assigned to that job.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import math
 import re
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,10 +135,76 @@ def plan_mutant_shards(
     return shard_names
 
 
+def _selection_digest(names: Iterable[str]) -> str:
+    """Return a stable digest for an unordered exact-mutant population."""
+
+    canonical = "\n".join(sorted(names)).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def write_shard_plan_bundle(
+    output_directory: Path,
+    shards: Sequence[Sequence[str]],
+    estimates: Iterable[MutantEstimate],
+) -> dict[str, Any]:
+    """Persist every exact shard plus a deterministic population manifest."""
+
+    if not shards:
+        raise ValueError("shard plan must contain at least one shard")
+    if any(not shard for shard in shards):
+        raise ValueError("planned shards must not be empty")
+
+    flattened = [name for shard in shards for name in shard]
+    if len(flattened) != len(set(flattened)):
+        raise ValueError("shard plan contains duplicate mutant names")
+
+    estimate_list = list(estimates)
+    estimate_by_name = {estimate.name: estimate for estimate in estimate_list}
+    if len(estimate_by_name) != len(estimate_list):
+        raise ValueError("mutant estimates contain duplicate names")
+    if set(flattened) != set(estimate_by_name):
+        raise ValueError("shard plan does not match the estimated mutant universe")
+
+    output_directory.mkdir(parents=True, exist_ok=True)
+    manifest_shards: list[dict[str, Any]] = []
+    for shard_id, selected in enumerate(shards, start=1):
+        filename = f"shard-{shard_id:02d}.txt"
+        (output_directory / filename).write_text(
+            "".join(f"{mutant_name}\n" for mutant_name in selected),
+            encoding="utf-8",
+            newline="\n",
+        )
+        manifest_shards.append(
+            {
+                "shard_id": shard_id,
+                "path": filename,
+                "selected_count": len(selected),
+                "selection_sha256": _selection_digest(selected),
+                "estimated_load_seconds": math.fsum(
+                    estimate_by_name[name].estimated_seconds for name in selected
+                ),
+            }
+        )
+
+    manifest: dict[str, Any] = {
+        "schema_version": 1,
+        "num_shards": len(shards),
+        "universe_count": len(flattened),
+        "universe_sha256": _selection_digest(flattened),
+        "shards": manifest_shards,
+    }
+    (output_directory / "plan-manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return manifest
+
+
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--changed-files", type=Path, required=True)
-    parser.add_argument("--shard-id", type=int, required=True)
+    parser.add_argument("--shard-id", type=int)
     parser.add_argument("--num-shards", type=int, required=True)
     parser.add_argument("--max-children", type=int, default=2)
     parser.add_argument(
@@ -143,18 +212,29 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help="Optional git diff --unified=0 used to select changed source lines",
     )
-    parser.add_argument("--output", type=Path, required=True)
+    output = parser.add_mutually_exclusive_group(required=True)
+    output.add_argument("--output", type=Path)
+    output.add_argument(
+        "--output-directory",
+        type=Path,
+        help="write every exact shard and a population manifest in one pass",
+    )
     args = parser.parse_args()
     if args.num_shards < 1:
         parser.error("--num-shards must be positive")
-    if not 1 <= args.shard_id <= args.num_shards:
-        parser.error("--shard-id must be within the configured 1-based range")
+    if args.output is not None:
+        if args.shard_id is None or not 1 <= args.shard_id <= args.num_shards:
+            parser.error(
+                "--shard-id must be within the configured 1-based range with --output"
+            )
+    elif args.shard_id is not None:
+        parser.error("--shard-id cannot be combined with --output-directory")
     if args.max_children < 1:
         parser.error("--max-children must be positive")
     return args
 
 
-def _load_mutmut_cli():
+def _load_mutmut_cli() -> Any:
     """Load mutmut's orchestration module only on the Linux CI runner."""
 
     try:
@@ -166,7 +246,7 @@ def _load_mutmut_cli():
     return mutmut_cli
 
 
-def _generate_mutant_universe(mutmut_cli, *, max_children: int) -> None:
+def _generate_mutant_universe(mutmut_cli: Any, *, max_children: int) -> None:
     """Create the same source copy and metadata that ``mutmut run`` uses."""
 
     mutmut_cli.Config.ensure_loaded()
@@ -200,7 +280,7 @@ def _read_changed_files(path: Path) -> set[str]:
     }
 
 
-def _mutant_line_ranges(mutmut_cli, path: Path) -> dict[str, tuple[int, int]]:
+def _mutant_line_ranges(mutmut_cli: Any, path: Path) -> dict[str, tuple[int, int]]:
     """Map generated mutmut names to the original source node they mutate."""
 
     import libcst as cst
@@ -259,7 +339,7 @@ def _line_ranges_intersect(
 
 
 def _collect_changed_mutants(
-    mutmut_cli,
+    mutmut_cli: Any,
     changed_files: set[str],
     changed_line_ranges: ChangedLineRanges | None = None,
 ) -> list[str]:
@@ -320,6 +400,16 @@ def main() -> None:
     tests_by_function, durations = _load_stats(Path("mutants/mutmut-stats.json"))
     estimates = estimate_mutant_times(mutant_names, tests_by_function, durations)
     shards = plan_mutant_shards(estimates, num_shards=args.num_shards)
+    if args.output_directory is not None:
+        manifest = write_shard_plan_bundle(args.output_directory, shards, estimates)
+        print(
+            f"Planned all {manifest['num_shards']} mutmut shards: "
+            f"{manifest['universe_count']} exact mutants"
+        )
+        return
+
+    if args.shard_id is None or args.output is None:
+        raise RuntimeError("validated single-shard output target is missing")
     selected = shards[args.shard_id - 1]
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(

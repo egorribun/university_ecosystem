@@ -11,7 +11,6 @@ import { useAuth } from "@/contexts/AuthContext"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
 import { useDashboardStories, prefetchDashboardStories } from "@/hooks/useDashboardStories"
 import { useClock } from "@/hooks/useClock"
-import type { StoryItem } from "@/types/Story"
 
 import { DashboardHero } from "@/components/dashboard/DashboardHero"
 import { DashboardBackdrop } from "@/components/dashboard/DashboardBackdrop"
@@ -59,37 +58,6 @@ function cascadeProps(delay: number, active: boolean, reduced: boolean) {
     animate: { opacity: 1, scale: 1, filter: "blur(0px)" },
     transition: { duration: 0.5, delay, ease: [0.16, 1, 0.3, 1] },
   } as const
-}
-
-/** Wave 49: Dev-only mock stories — shown when API returns empty.
- *  Wave 75: text moved to i18n (dashboard:mockStories.*). */
-const MOCK_STORY_DEFS = [
-  { id: "mock-1", key: "unihack", seed: "unihack", cta: "/events", days: 7 },
-  { id: "mock-2", key: "library", seed: "library", cta: null, days: 14 },
-  { id: "mock-3", key: "openDay", seed: "openday", cta: "/events", days: 10 },
-  { id: "mock-4", key: "careerForum", seed: "career", cta: null, days: 12 },
-  { id: "mock-5", key: "sports", seed: "sport", cta: null, days: 30 },
-  { id: "mock-6", key: "scholarships", seed: "scholarship", cta: null, days: 20 },
-  { id: "mock-7", key: "volunteer", seed: "volunteer", cta: null, days: 8 },
-  { id: "mock-8", key: "exchange", seed: "exchange", cta: null, days: 25 },
-  { id: "mock-9", key: "conference", seed: "science", cta: null, days: 15 },
-] as const
-
-function buildMockStories(t: (key: string) => string): StoryItem[] {
-  const now = new Date().toISOString()
-  return MOCK_STORY_DEFS.map((def) => ({
-    id: def.id,
-    title: t(`dashboard:mockStories.${def.key}.title`),
-    short_text: t(`dashboard:mockStories.${def.key}.text`),
-    cover_url: `https://picsum.photos/seed/${def.seed}/183/183`,
-    cta_url: def.cta,
-    published_at: now,
-    expires_at: new Date(Date.now() + def.days * 86400000).toISOString(),
-    is_active: true,
-    created_by: null,
-    created_at: now,
-    cover_url_optimized: null,
-  }))
 }
 
 /** Wave 46: Card-shaped skeleton placeholders for SkeletonMorph */
@@ -292,11 +260,8 @@ export default function Dashboard() {
   const eventsLoaded = !eventsQuery.isLoading
 
   const dashboardStoriesQuery = useDashboardStories()
-  const realStories = dashboardStoriesQuery.data ?? []
-  // Mock stories as placeholder while stories API is being populated
-  const mockStories = buildMockStories(t)
-  const stories: StoryItem[] = realStories.length > 0 ? realStories : mockStories
-  const loadingStories = dashboardStoriesQuery.isLoading && realStories.length === 0
+  const stories = dashboardStoriesQuery.data ?? []
+  const loadingStories = dashboardStoriesQuery.isLoading && stories.length === 0
 
   const prefetchStories = useCallback(() => {
     void prefetchDashboardStories(queryClient)

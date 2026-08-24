@@ -126,10 +126,16 @@ async def test_update_attendance(event_repo_db, db_session, user_factory):
 async def test_event_file_urls_and_delete(event_repo_db, db_session, user_factory):
     user = await user_factory()
     event = await _add_event(db_session, user.id)
-    db_session.add(
-        models.EventFile(event_id=event.id, file_url="http://example.com/file.pdf")
+    event_file = models.EventFile(
+        event_id=event.id, file_url="http://example.com/file.pdf"
     )
+    db_session.add(event_file)
     await db_session.flush()
+
+    files = await event_repo_db.get_event_files(event.id)
+    assert len(files) == 1
+    assert files[0].id == event_file.id
+    assert files[0].event_id == event.id
 
     urls = await event_repo_db.get_event_file_urls(event.id)
     assert "http://example.com/file.pdf" in urls

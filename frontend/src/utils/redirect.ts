@@ -43,7 +43,7 @@ export function resolveRedirectPath(redirect: unknown, fallback = "/dashboard"):
     if (typeof window !== "undefined" && url.origin !== window.location.origin) {
       return fallback
     }
-    return url.pathname || fallback
+    return url.pathname
   } catch {
     return fallback
   }

@@ -128,15 +128,15 @@ export const useNotificationPermission = () => useNotificationStore((state) => s
 
 export const useToasts = () => useNotificationStore((state) => state.toasts)
 
+const notificationActionsSelector = (state: NotificationState) => ({
+  setTopic: state.setTopic,
+  setAllTopics: state.setAllTopics,
+  setPermission: state.setPermission,
+  addToast: state.addToast,
+  removeToast: state.removeToast,
+  clearToasts: state.clearToasts,
+  resetTopics: state.resetTopics,
+})
+
 export const useNotificationActions = () =>
-  useNotificationStore(
-    useShallow((state) => ({
-      setTopic: state.setTopic,
-      setAllTopics: state.setAllTopics,
-      setPermission: state.setPermission,
-      addToast: state.addToast,
-      removeToast: state.removeToast,
-      clearToasts: state.clearToasts,
-      resetTopics: state.resetTopics,
-    }))
-  )
+  useNotificationStore(useShallow(notificationActionsSelector))

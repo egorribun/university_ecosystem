@@ -197,6 +197,29 @@ describe("EventFileManager branches", () => {
     expect(screen.queryByText("slides.pdf")).not.toBeInTheDocument()
   })
 
+  it("completes an upload safely after the file input unmounts", async () => {
+    let resolveUpload!: (value: { data: Record<string, never> }) => void
+    mocks.post.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveUpload = resolve
+      })
+    )
+    const props = makeProps()
+    const file = makeFile("late.pdf")
+    const view = render(<EventFileManager {...props} />)
+
+    await withFormFile(file, async () => {
+      selectFileViaInput(file)
+      submitForm()
+      await waitFor(() => expect(mocks.post).toHaveBeenCalledOnce())
+      view.unmount()
+      resolveUpload({ data: {} })
+      await waitFor(() => expect(props.onSuccess).toHaveBeenCalled())
+    })
+
+    expect(screen.queryByText("late.pdf")).not.toBeInTheDocument()
+  })
+
   it("uses an Axios detail when upload fails", async () => {
     const props = makeProps()
     const file = makeFile("large.pdf")

@@ -36,6 +36,9 @@ const Layout = ({ children, className }: LayoutProps) => {
       <AnimatePresence>
         {!isOnline && (
           <m.div
+            data-testid="offline-banner"
+            role="status"
+            aria-live="polite"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}

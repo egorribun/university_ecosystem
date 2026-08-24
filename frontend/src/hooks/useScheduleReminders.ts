@@ -26,30 +26,62 @@ const DEFAULT_PREFS: ReminderPrefs = {
   overrides: {},
 }
 
+const localDateKey = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
+    date.getDate()
+  ).padStart(2, "0")}`
+
 export function useScheduleReminders(todayLessons: Lesson[]) {
   const { t } = useTranslation(["schedule"])
   const [prefs, setPrefsState] = useState<ReminderPrefs>(DEFAULT_PREFS)
   const [permission, setPermission] = useState<NotificationPermission>("default")
+  const [dayKey, setDayKey] = useState(() => localDateKey(new Date()))
+  const [hydratedDay, setHydratedDay] = useState<string | null>(null)
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
   const remindedRef = useRef<Set<string>>(new Set())
 
-  // Load prefs from IndexedDB
+  // Roll the day scope at the next local midnight. A fresh one-shot timeout is
+  // scheduled after each rollover so DST-length days do not accumulate drift.
   useEffect(() => {
-    get<ReminderPrefs>(REMINDER_PREFS_KEY)
-      .then((stored) => {
-        if (stored) setPrefsState(stored)
-      })
-      .catch((err) => logError("[schedule:reminders]", err))
+    const now = new Date()
+    const nextMidnight = new Date(now)
+    nextMidnight.setHours(24, 0, 0, 0)
+    const timer = setTimeout(() => {
+      setDayKey(localDateKey(new Date()))
+    }, nextMidnight.getTime() - now.getTime())
 
-    // Load already-reminded set for today
-    const todayKey = new Date().toISOString().slice(0, 10)
-    get<string[]>(`${REMINDED_TODAY_KEY}:${todayKey}`)
-      .then((ids) => {
-        if (ids) remindedRef.current = new Set(ids)
-      })
-      .catch((err) => logError("[schedule:reminders]", err))
+    return () => clearTimeout(timer)
+  }, [dayKey])
 
-    // Check notification permission
+  // Load prefs and the current local day's reminded IDs from IndexedDB.
+  useEffect(() => {
+    let cancelled = false
+    setHydratedDay(null)
+    remindedRef.current = new Set()
+
+    const storedPrefs = get<ReminderPrefs>(REMINDER_PREFS_KEY).catch((err) => {
+      logError("[schedule:reminders]", err)
+      return undefined
+    })
+    const remindedIds = get<string[]>(`${REMINDED_TODAY_KEY}:${dayKey}`).catch((err) => {
+      logError("[schedule:reminders]", err)
+      return undefined
+    })
+
+    void Promise.all([storedPrefs, remindedIds]).then(([stored, ids]) => {
+      if (cancelled) return
+      if (stored) setPrefsState(stored)
+      remindedRef.current = new Set(ids ?? [])
+      setHydratedDay(dayKey)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [dayKey])
+
+  // Check notification permission
+  useEffect(() => {
     if ("Notification" in window) {
       setPermission(Notification.permission)
     }
@@ -82,10 +114,7 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
   // new ones. This prevents the race condition where old timers fire after a
   // preference change (FIX-68-04).
   useEffect(() => {
-    // Clear previous timers — ensures no stale reminders fire
-    for (const timer of timersRef.current) clearTimeout(timer)
-    timersRef.current = []
-
+    if (hydratedDay !== dayKey) return
     if (prefs.minutesBefore === 0) return
     if (permission !== "granted") {
       if (prefs.minutesBefore > 0 && todayLessons.length > 0) {
@@ -98,7 +127,7 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
 
     const now = new Date()
     const nowMinutes = now.getHours() * 60 + now.getMinutes()
-    const todayKey = now.toISOString().slice(0, 10)
+    const scheduledIds = new Set<string>()
 
     for (const lesson of todayLessons) {
       const lessonMinutesBefore = prefs.overrides[lesson.id] ?? prefs.minutesBefore
@@ -113,11 +142,13 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
       // Skip if already past or already reminded
       if (delayMs <= 0) continue
       if (remindedRef.current.has(lesson.id)) continue
+      if (scheduledIds.has(lesson.id)) continue
+      scheduledIds.add(lesson.id)
 
       const timer = setTimeout(async () => {
         // Mark as reminded
         remindedRef.current.add(lesson.id)
-        set(`${REMINDED_TODAY_KEY}:${todayKey}`, [...remindedRef.current]).catch((err) =>
+        set(`${REMINDED_TODAY_KEY}:${dayKey}`, [...remindedRef.current]).catch((err) =>
           logError("[schedule:reminders]", err)
         )
 
@@ -153,7 +184,7 @@ export function useScheduleReminders(todayLessons: Lesson[]) {
       for (const timer of timersRef.current) clearTimeout(timer)
       timersRef.current = []
     }
-  }, [todayLessons, prefs, permission, t])
+  }, [todayLessons, prefs, permission, hydratedDay, dayKey, t])
 
   return {
     prefs,

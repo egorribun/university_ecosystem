@@ -1,14 +1,9 @@
 import { m, AnimatePresence } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { useTranslation } from "react-i18next"
-import { Info, Percent } from "lucide-react"
-import { useQueryClient } from "@tanstack/react-query"
-import api from "@/api/client"
-// Wave 163 SW3 — TanStack Query factory for /admin/feature-flags.
-// Closes W150 §Honesty #3 deferral.
-import { updateFeatureFlagInCache, useAdminFeatureFlagsQuery } from "@/api/hooks/adminFeatureFlags"
-import { SwitchControl, Chip } from "@/components/settings"
-import type { FlagStatus } from "@/types/Admin"
+import { Info } from "lucide-react"
+import { useAdminFeatureFlagsQuery } from "@/api/hooks/adminFeatureFlags"
+import { Chip } from "@/components/settings"
 
 /**
  * AdminFeatureFlagsFeature — Wave 164 SW2 orchestrator.
@@ -17,42 +12,14 @@ import type { FlagStatus } from "@/types/Admin"
  * features/activity/ pattern (W112 SW2). The page is now a thin
  * <Layout><FeatureErrorBoundary> wrapper; the feature owns content + state.
  *
- * Data layer: W163 SW3 TanStack Query factory at @/api/hooks/adminFeatureFlags
- * (useAdminFeatureFlagsQuery + updateFeatureFlagInCache cache mutation helper).
- * Closes W150 §Honesty #1 (features/admin/ structure migration).
+ * This is deliberately a read-only diagnostics surface. Configuration is
+ * version-controlled and promoted by GitOps so the UI cannot imply a write
+ * succeeded when flagd's ConfigMap was never changed.
  */
 export function AdminFeatureFlagsFeature() {
-  const queryClient = useQueryClient()
-  // Wave 163 SW3 — useAdminFeatureFlagsQuery replaces pre-W163 useCallback
-  // fetchFlags + useState + useEffect. Loading state derived from isPending.
   const { data: flags = [], isPending: loading } = useAdminFeatureFlagsQuery()
   const { t } = useTranslation("admin")
   const reducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
-
-  const handleToggle = async (name: string, currentStatus: FlagStatus) => {
-    const nextStatus: FlagStatus = currentStatus === "disabled" ? "enabled" : "disabled"
-    await api.patch(`/admin/feature-flags/${name}`, { status: nextStatus })
-    updateFeatureFlagInCache(queryClient, name, { status: nextStatus })
-  }
-
-  const handlePercentageChange = async (name: string, value: number) => {
-    await api.patch(`/admin/feature-flags/${name}`, {
-      status: "percentage",
-      percentage: value,
-    })
-    updateFeatureFlagInCache(queryClient, name, { status: "percentage", percentage: value })
-  }
-
-  const getStatusColor = (status: FlagStatus) => {
-    switch (status) {
-      case "enabled":
-        return "success"
-      case "percentage":
-        return "info"
-      default:
-        return "default"
-    }
-  }
 
   if (loading) {
     return (
@@ -77,6 +44,14 @@ export function AdminFeatureFlagsFeature() {
           <p className="mt-2 text-base text-(--text-secondary)">{t("featureFlags.subtitle")}</p>
         </m.div>
 
+        <div
+          role="note"
+          className="mb-6 flex items-start gap-3 rounded-lg border border-brand/(--opacity-medium) bg-brand/(--opacity-subtle) p-4 text-sm text-(--text-primary)"
+        >
+          <Info className="mt-0.5 h-5 w-5 shrink-0 text-brand" aria-hidden="true" />
+          <p>{t("featureFlags.management.notice")}</p>
+        </div>
+
         <div className="overflow-hidden rounded-lg border border-glass-border bg-(--bg-surface)/(--opacity-medium) shadow-glass">
           <div className="overflow-x-auto">
             <table
@@ -95,19 +70,19 @@ export function AdminFeatureFlagsFeature() {
                     scope="col"
                     className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium"
                   >
-                    {t("featureFlags.table.status")}
+                    {t("featureFlags.table.effective")}
                   </th>
                   <th
                     scope="col"
                     className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-medium"
                   >
-                    {t("featureFlags.table.rollout")}
+                    {t("featureFlags.table.fallback")}
                   </th>
                   <th
                     scope="col"
                     className="px-6 py-4 text-right text-xs font-bold uppercase tracking-wider text-(--text-secondary) opacity-strong"
                   >
-                    {t("featureFlags.table.details")}
+                    {t("featureFlags.table.management")}
                   </th>
                 </tr>
               </thead>
@@ -130,68 +105,33 @@ export function AdminFeatureFlagsFeature() {
                         </div>
                       </td>
                       <td className="px-6 py-5">
-                        <div className="flex items-center gap-4">
-                          <Chip
-                            label={flag.status.toUpperCase()}
-                            color={
-                              getStatusColor(flag.status) === "success"
-                                ? "success"
-                                : getStatusColor(flag.status) === "info"
-                                  ? "primary"
-                                  : "default"
-                            }
-                            className="w-24 justify-center"
-                          />
-                          <SwitchControl
-                            checked={flag.status !== "disabled"}
-                            onChange={() => handleToggle(flag.name, flag.status)}
-                          />
-                        </div>
+                        <Chip
+                          label={
+                            flag.enabled
+                              ? t("featureFlags.values.on")
+                              : t("featureFlags.values.off")
+                          }
+                          color={flag.enabled ? "success" : "default"}
+                          className="w-24 justify-center"
+                        />
                       </td>
                       <td className="px-6 py-5">
-                        {flag.status === "percentage" ? (
-                          <div className="flex flex-col gap-2 min-w-(--min-w-column)">
-                            {/* W188 SW3: 44×44 px touch target wrap per W111 SW4 pattern
-                                (WCAG 2.5.8). Visual range stays 6px (h-1.5); the parent
-                                div bumps to min-h-[44px] flex-centered so the slider's
-                                pointer hit area extends to 44px without affecting visual
-                                size. Closes W186 §H NEW #6 deferred portion. */}
-                            <div className="flex min-h-[44px] w-full items-center">
-                              <input
-                                type="range"
-                                min="0"
-                                max="100"
-                                step="5"
-                                value={flag.percentage}
-                                aria-label={t("featureFlags.rollout.range")}
-                                onChange={(event) =>
-                                  handlePercentageChange(flag.name, parseInt(event.target.value))
-                                }
-                                className="h-1.5 w-full cursor-pointer appearance-none rounded-lg bg-glass-border accent-brand"
-                              />
-                            </div>
-                            <div className="flex items-center justify-between text-label-xs font-bold uppercase tracking-widest text-(--text-secondary)">
-                              <span>
-                                {t("featureFlags.rollout.percentage", { value: flag.percentage })}
-                              </span>
-                              <Percent className="h-3 w-3" />
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-sm italic text-(--text-secondary) opacity-medium">
-                            {t("featureFlags.rollout.global")}
-                          </span>
-                        )}
+                        <span className="text-sm font-medium text-(--text-secondary)">
+                          {flag.default
+                            ? t("featureFlags.values.on")
+                            : t("featureFlags.values.off")}
+                        </span>
                       </td>
-                      <td className="px-6 py-5 text-right">
-                        <button
-                          type="button"
-                          title={JSON.stringify(flag.metadata, null, 2)}
-                          aria-label={t("featureFlags.actions.viewMetadata")}
-                          className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-dim) hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2"
-                        >
-                          <Info className="h-4 w-4" aria-hidden="true" />
-                        </button>
+                      <td className="px-6 py-5 text-right text-xs text-(--text-secondary)">
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="font-semibold text-(--text-primary)">
+                            {flag.provider}
+                          </span>
+                          <span>{flag.evaluation_reason}</span>
+                          <code className="rounded bg-(--bg-surface-hover) px-2 py-1">
+                            {flag.config_path}
+                          </code>
+                        </div>
                       </td>
                     </m.tr>
                   ))}

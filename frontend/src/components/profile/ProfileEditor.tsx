@@ -77,10 +77,14 @@ export const ProfileEditor = ({
       <div className="flex flex-col gap-4 sm:gap-5">
         {/* Name Field */}
         <div className="flex flex-col gap-1.5 sm:gap-2">
-          <label className="text-xs sm:text-sm font-bold text-text-primary">
+          <label
+            htmlFor="profile-full-name"
+            className="text-xs sm:text-sm font-bold text-text-primary"
+          >
             {t("profile:form.name")}
           </label>
           <input
+            id="profile-full-name"
             type="text"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
@@ -91,10 +95,11 @@ export const ProfileEditor = ({
 
         {/* Email Field */}
         <div className="flex flex-col gap-1.5 sm:gap-2">
-          <label className="text-xs sm:text-sm font-bold text-text-primary">
+          <label htmlFor="profile-email" className="text-xs sm:text-sm font-bold text-text-primary">
             {t("profile:form.email")}
           </label>
           <input
+            id="profile-email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -104,26 +109,37 @@ export const ProfileEditor = ({
 
         {/* Telegram Field */}
         <div className="flex flex-col gap-1.5 sm:gap-2">
-          <label className="text-xs sm:text-sm font-bold text-text-primary">
+          <label
+            htmlFor="profile-telegram"
+            className="text-xs sm:text-sm font-bold text-text-primary"
+          >
             {t("profile:form.telegram")}
           </label>
           <input
+            id="profile-telegram"
+            aria-describedby="profile-telegram-hint"
             type="text"
             value={telegram}
             onChange={(e) => setTelegram(e.target.value)}
             className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-text-primary placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast"
           />
-          <p className="text-label-xs xs:text-xs text-hint">{t("profile:form.telegramHint")}</p>
+          <p id="profile-telegram-hint" className="text-label-xs xs:text-xs text-hint">
+            {t("profile:form.telegramHint")}
+          </p>
         </div>
 
         {/* Teacher Fields */}
         {user?.role === "teacher" && (
           <>
             <div className="flex flex-col gap-1.5 sm:gap-2">
-              <label className="text-xs sm:text-sm font-bold text-text-primary">
+              <label
+                htmlFor="profile-department"
+                className="text-xs sm:text-sm font-bold text-text-primary"
+              >
                 {t("profile:form.department")}
               </label>
               <input
+                id="profile-department"
                 type="text"
                 value={department}
                 onChange={(e) => setDepartment(e.target.value)}
@@ -131,10 +147,14 @@ export const ProfileEditor = ({
               />
             </div>
             <div className="flex flex-col gap-1.5 sm:gap-2">
-              <label className="text-xs sm:text-sm font-bold text-text-primary">
+              <label
+                htmlFor="profile-position"
+                className="text-xs sm:text-sm font-bold text-text-primary"
+              >
                 {t("profile:form.position")}
               </label>
               <input
+                id="profile-position"
                 type="text"
                 value={position}
                 onChange={(e) => setPosition(e.target.value)}
@@ -148,10 +168,14 @@ export const ProfileEditor = ({
         {user?.role === "student" && (
           <>
             <div className="flex flex-col gap-1.5 sm:gap-2">
-              <label className="text-xs sm:text-sm font-bold text-text-primary">
+              <label
+                htmlFor="profile-about"
+                className="text-xs sm:text-sm font-bold text-text-primary"
+              >
                 {t("profile:form.about")}
               </label>
               <textarea
+                id="profile-about"
                 value={about}
                 onChange={(e) => setAbout(e.target.value)}
                 rows={3}
@@ -159,10 +183,14 @@ export const ProfileEditor = ({
               />
             </div>
             <div className="flex flex-col gap-1.5 sm:gap-2">
-              <label className="text-xs sm:text-sm font-bold text-text-primary">
+              <label
+                htmlFor="profile-record-book-number"
+                className="text-xs sm:text-sm font-bold text-text-primary"
+              >
                 {t("profile:form.recordBookNumber")}
               </label>
               <input
+                id="profile-record-book-number"
                 type="text"
                 value={recordBookNumber}
                 onChange={(e) => setRecordBookNumber(e.target.value)}
@@ -170,10 +198,14 @@ export const ProfileEditor = ({
               />
             </div>
             <div className="flex flex-col gap-1.5 sm:gap-2">
-              <label className="text-xs sm:text-sm font-bold text-text-primary">
+              <label
+                htmlFor="profile-status"
+                className="text-xs sm:text-sm font-bold text-text-primary"
+              >
                 {t("profile:form.status")}
               </label>
               <input
+                id="profile-status"
                 type="text"
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
@@ -181,10 +213,14 @@ export const ProfileEditor = ({
               />
             </div>
             <div className="flex flex-col gap-1.5 sm:gap-2">
-              <label className="text-xs sm:text-sm font-bold text-text-primary">
+              <label
+                htmlFor="profile-institute"
+                className="text-xs sm:text-sm font-bold text-text-primary"
+              >
                 {t("profile:form.institute")}
               </label>
               <input
+                id="profile-institute"
                 type="text"
                 value={institute}
                 onChange={(e) => setInstitute(e.target.value)}
@@ -192,10 +228,14 @@ export const ProfileEditor = ({
               />
             </div>
             <div className="flex flex-col gap-1.5 sm:gap-2">
-              <label className="text-xs sm:text-sm font-bold text-text-primary">
+              <label
+                htmlFor="profile-course"
+                className="text-xs sm:text-sm font-bold text-text-primary"
+              >
                 {t("profile:form.course")}
               </label>
               <input
+                id="profile-course"
                 type="text"
                 value={course}
                 onChange={(e) => setCourse(e.target.value)}
@@ -203,10 +243,14 @@ export const ProfileEditor = ({
               />
             </div>
             <div className="flex flex-col gap-1.5 sm:gap-2">
-              <label className="text-xs sm:text-sm font-bold text-text-primary">
+              <label
+                htmlFor="profile-education-level"
+                className="text-xs sm:text-sm font-bold text-text-primary"
+              >
                 {t("profile:form.educationLevel")}
               </label>
               <input
+                id="profile-education-level"
                 type="text"
                 value={educationLevel}
                 onChange={(e) => setEducationLevel(e.target.value)}
@@ -214,10 +258,14 @@ export const ProfileEditor = ({
               />
             </div>
             <div className="flex flex-col gap-1.5 sm:gap-2">
-              <label className="text-xs sm:text-sm font-bold text-text-primary">
+              <label
+                htmlFor="profile-track"
+                className="text-xs sm:text-sm font-bold text-text-primary"
+              >
                 {t("profile:form.track")}
               </label>
               <input
+                id="profile-track"
                 type="text"
                 value={track}
                 onChange={(e) => setTrack(e.target.value)}
@@ -225,10 +273,14 @@ export const ProfileEditor = ({
               />
             </div>
             <div className="flex flex-col gap-1.5 sm:gap-2">
-              <label className="text-xs sm:text-sm font-bold text-text-primary">
+              <label
+                htmlFor="profile-program"
+                className="text-xs sm:text-sm font-bold text-text-primary"
+              >
                 {t("profile:form.program")}
               </label>
               <input
+                id="profile-program"
                 type="text"
                 value={program}
                 onChange={(e) => setProgram(e.target.value)}
@@ -236,10 +288,14 @@ export const ProfileEditor = ({
               />
             </div>
             <div className="flex flex-col gap-1.5 sm:gap-2">
-              <label className="text-xs sm:text-sm font-bold text-text-primary">
+              <label
+                htmlFor="profile-achievements"
+                className="text-xs sm:text-sm font-bold text-text-primary"
+              >
                 {t("profile:form.achievements")}
               </label>
               <textarea
+                id="profile-achievements"
                 value={achievements}
                 onChange={(e) => setAchievements(e.target.value)}
                 rows={2}
@@ -252,6 +308,7 @@ export const ProfileEditor = ({
         {/* Action Buttons */}
         <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-center pt-2">
           <button
+            type="button"
             onClick={onSave}
             disabled={saving}
             className="w-full sm:w-auto py-2.5 sm:py-3 px-6 sm:px-8 rounded-lg sm:rounded-xl bg-(--primary-main) text-[var(--text-inverse)] font-extrabold tracking-wide text-sm sm:text-base shadow-surface hover:shadow-surface-strong transition-all duration-base hover:-translate-y-0.5 hover:scale-(--scale-hover-subtle) active:scale-95 disabled:opacity-medium disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none border border-(--primary-main)/(--opacity-dim)"
@@ -259,6 +316,7 @@ export const ProfileEditor = ({
             {saving ? t("profile:form.saving") : t("profile:form.save")}
           </button>
           <button
+            type="button"
             onClick={onCancel}
             className="w-full sm:w-auto py-(--space-3) px-(--space-8) rounded-lg sm:rounded-xl border-2 border-glass-border bg-transparent hover:bg-(--bg-surface)-accent text-text-primary font-extrabold tracking-wide text-sm sm:text-base transition-all duration-base hover:-translate-y-0.5 hover:scale-[1.01] active:scale-[0.98]"
           >

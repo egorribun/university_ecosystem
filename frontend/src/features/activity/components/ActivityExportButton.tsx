@@ -14,6 +14,7 @@ export function ActivityExportButton({ contentRef }: ActivityExportButtonProps) 
   const { t } = useTranslation(["activity"])
   const [open, setOpen] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const exportingRef = useRef(false)
   const [feedback, setFeedback] = useState<FeedbackState>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -55,7 +56,8 @@ export function ActivityExportButton({ contentRef }: ActivityExportButtonProps) 
   const handleExport = useCallback(
     async (format: "pdf" | "png") => {
       const el = contentRef.current
-      if (!el || exporting) return
+      if (!el || exportingRef.current) return
+      exportingRef.current = true
       setExporting(true)
       setOpen(false)
       try {
@@ -71,11 +73,12 @@ export function ActivityExportButton({ contentRef }: ActivityExportButtonProps) 
       } catch {
         setFeedback({ type: "error", message: t("activity:export.error") })
       } finally {
+        exportingRef.current = false
         setExporting(false)
         triggerRef.current?.focus()
       }
     },
-    [contentRef, exporting, t]
+    [contentRef, t]
   )
 
   return (

@@ -36,7 +36,6 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
-	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/reflection"
 	"google.golang.org/grpc/status"
 
@@ -81,7 +80,7 @@ var (
 	newSpiffeClientFunc       = spiffe.NewClient
 	closeSpiffeClientFunc     = func(client *spiffe.Client) error { return client.Close() }
 	grpcServerCredentialsFunc = func(client *spiffe.Client, allowedIDs ...string) (credentials.TransportCredentials, error) {
-		return client.GRPCCerverCredentials(allowedIDs...)
+		return client.GRPCServerCredentials(allowedIDs...)
 	}
 	parseGraphQLSchemaFunc    = graphql.ParseSchema
 	temporalRetryWaitFunc     = func(duration time.Duration) <-chan time.Time { return time.After(duration) }
@@ -90,6 +89,12 @@ var (
 	graphqlShutdownFunc       = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
 	parseJWTFunc              = func(tokenString string, keyFunc jwt.Keyfunc, options ...jwt.ParserOption) (*jwt.Token, error) {
 		return jwt.Parse(tokenString, keyFunc, options...)
+	}
+	newOTLPTraceExporterFunc = func(ctx context.Context, options ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
+		return otlptracegrpc.New(ctx, options...)
+	}
+	newOTelResourceFunc = func(ctx context.Context, options ...resource.Option) (*resource.Resource, error) {
+		return resource.New(ctx, options...)
 	}
 )
 
@@ -191,12 +196,23 @@ func runMain(ctx context.Context) error {
 }
 
 func loadRSAPublicKey(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*rsa.PublicKey, error) {
-	if cfg.RSAPublicKeyPEM == "" {
+	publicKeyPEM := cfg.RSAPublicKeyPEM
+	if publicKeyPEM == "" && cfg.RSAPublicKeyFile != "" {
+		keyBytes, err := os.ReadFile(cfg.RSAPublicKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("read RSA public key file: %w", err)
+		}
+		publicKeyPEM = string(keyBytes)
+		if strings.TrimSpace(publicKeyPEM) == "" {
+			return nil, fmt.Errorf("RSA public key file is empty: %s", cfg.RSAPublicKeyFile)
+		}
+	}
+	if publicKeyPEM == "" {
 		return nil, nil
 	}
-	key, err := parseRSAPublicKey(cfg.RSAPublicKeyPEM)
+	key, err := parseRSAPublicKey(publicKeyPEM)
 	if err != nil {
-		logger.ErrorContext(ctx, "Failed to parse RSA_PUBLIC_KEY_PEM", "err", err)
+		logger.ErrorContext(ctx, "Failed to parse RSA public key", "err", err)
 		return nil, err
 	}
 	logger.InfoContext(ctx, "RS256 token verification enabled")
@@ -219,7 +235,7 @@ func initializeTracerShutdown(ctx context.Context, cfg *config.Config, logger *s
 func startTemporalWorker(ctx context.Context, cfg *config.Config, logger *slog.Logger) (client.Client, worker.Worker, error) {
 	c, err := connectTemporal(ctx, cfg, logger)
 	if err != nil {
-		logger.ErrorContext(ctx, "Failed to connect to Temporal", "err", err)
+		logger.ErrorContext(ctx, "Failed to connect to Temporal", "addr", cfg.TemporalHost)
 		return nil, nil, err
 	}
 
@@ -307,11 +323,11 @@ func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	if cfg.TemporalAPIKeyFile != "" {
 		data, err := os.ReadFile(cfg.TemporalAPIKeyFile)
 		if err != nil {
-			logger.WarnContext(ctx, "Failed to read Temporal API key file; connecting without auth")
+			return nil, fmt.Errorf("read Temporal API key file: %w", err)
 		} else {
 			token := strings.TrimSpace(string(data))
 			if token == "" {
-				logger.WarnContext(ctx, "Temporal API key file is empty; connecting without auth")
+				return nil, fmt.Errorf("temporal API key file is empty: %s", cfg.TemporalAPIKeyFile)
 			} else {
 				// W141 SW5 critical detail: client.NewAPIKeyStaticCredentials AUTO-ENABLES
 				// TLS unless ConnectionOptions.TLSDisabled is true (verified at
@@ -323,14 +339,15 @@ func connectTemporal(ctx context.Context, cfg *config.Config, logger *slog.Logge
 				// Bearer <token> header is still attached via the credentials' gRPC
 				// interceptor — only the transport-level TLS is bypassed.
 				//
-				// Production K8s deployments using managed Temporal Cloud will set
-				// TLS explicitly (real CA cert) — TLSDisabled stays false there.
+				// Production K8s deployments keep TLS enabled; only the local
+				// plaintext Temporal dev server opts out through configuration.
 				opts.Credentials = client.NewAPIKeyStaticCredentials(token)
 				opts.ConnectionOptions = client.ConnectionOptions{
-					TLSDisabled: true,
+					TLSDisabled: cfg.TemporalTLSDisabled,
 				}
-				logger.InfoContext(ctx, "Attached Temporal service token (TLS disabled for plaintext dev gRPC)",
+				logger.InfoContext(ctx, "Attached Temporal service token",
 					"token_chars", len(token),
+					"tls_enabled", !cfg.TemporalTLSDisabled,
 				)
 			}
 		}
@@ -764,12 +781,9 @@ func httpJWTMiddleware(secret string, rsaPub *rsa.PublicKey, log *slog.Logger, n
 		if sub, ok := claims["sub"].(string); ok {
 			ctx = context.WithValue(ctx, userIDKey, sub)
 		}
-		tenantID := r.Header.Get("X-Tenant-ID")
-		if tenantID == "" {
-			if t, ok := claims["tenant_id"].(string); ok {
-				tenantID = t
-			}
-		}
+		// Tenant identity must come from the verified token. HTTP headers are
+		// caller-controlled and cannot establish tenant membership.
+		tenantID, _ := claims["tenant_id"].(string)
 		if tenantID != "" {
 			ctx = context.WithValue(ctx, tenantIDKey, tenantID)
 		}
@@ -800,17 +814,9 @@ func authFunc(secret string, rsaPub *rsa.PublicKey, logger *slog.Logger) auth.Au
 				return nil, status.Errorf(codes.Unauthenticated, "invalid token claims: missing sub")
 			}
 			newCtx := context.WithValue(ctx, userIDKey, sub)
-			var tenantID string
-			if md, ok := metadata.FromIncomingContext(ctx); ok {
-				if vals := md.Get("x-tenant-id"); len(vals) > 0 {
-					tenantID = vals[0]
-				}
-			}
-			if tenantID == "" {
-				if t, ok := claims["tenant_id"].(string); ok {
-					tenantID = t
-				}
-			}
+			// Metadata is transport input, not an authenticated identity source.
+			// Derive tenant context exclusively from the verified JWT claim.
+			tenantID, _ := claims["tenant_id"].(string)
 			if tenantID != "" {
 				newCtx = context.WithValue(newCtx, tenantIDKey, tenantID)
 			}
@@ -824,7 +830,7 @@ func authFunc(secret string, rsaPub *rsa.PublicKey, logger *slog.Logger) auth.Au
 func initTracer(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*sdktrace.TracerProvider, error) {
 	endpoint := cfg.OTLPEndpoint
 	if endpoint == "" {
-		endpoint = "jaeger:4317"
+		endpoint = "tempo:4317"
 	}
 
 	var opts []otlptracegrpc.Option
@@ -842,19 +848,19 @@ func initTracer(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*
 		})))
 	}
 
-	exporter, err := otlptracegrpc.New(ctx, opts...)
+	exporter, err := newOTLPTraceExporterFunc(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
 
-	res, err := resource.New(ctx,
+	res, err := newOTelResourceFunc(ctx,
 		resource.WithAttributes(
 			semconv.ServiceNameKey.String("file-processor"),
 			attribute.String("environment", cfg.Environment),
 		),
 	)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(err, exporter.Shutdown(ctx))
 	}
 
 	tp := sdktrace.NewTracerProvider(

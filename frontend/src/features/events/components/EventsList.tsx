@@ -190,7 +190,14 @@ export const EventsList = ({
           </div>
 
           {/* Infinite scroll sentinel */}
-          {hasNextPage && <div ref={sentinelRef} className="h-1" aria-hidden="true" />}
+          {hasNextPage && (
+            <div
+              ref={sentinelRef}
+              data-testid="events-next-page-sentinel"
+              className="h-1"
+              aria-hidden="true"
+            />
+          )}
         </>
       )}
     </section>

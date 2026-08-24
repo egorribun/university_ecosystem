@@ -1,4 +1,4 @@
-name: Deploy (Blue-Green)
+name: Deploy (Helm / Kubernetes)
 
 on:
   workflow_dispatch:
@@ -33,10 +33,10 @@ jobs:
     # this guard every checked-out script and Dockerfile would be attacker
     # controlled while later jobs hold registry/OIDC/deployment privileges.
     if: ${{ github.ref == 'refs/heads/main' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test  # pragma: allowlist secret
@@ -86,7 +86,7 @@ jobs:
 
   prepare:
     name: Prepare release metadata
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [validate]
     if: ${{ always() && needs.validate.result == 'success' }}
     outputs:
@@ -116,7 +116,6 @@ jobs:
       file: "backend.Dockerfile"
       tags: |
         ghcr.io/${{ github.repository }}/backend:${{ needs.prepare.outputs.version }}
-        ghcr.io/${{ github.repository }}/backend:${{ inputs.environment }}
 
   build-frontend:
     name: Build Frontend
@@ -132,7 +131,6 @@ jobs:
       file: "frontend.Dockerfile"
       tags: |
         ghcr.io/${{ github.repository }}/frontend:${{ needs.prepare.outputs.version }}
-        ghcr.io/${{ github.repository }}/frontend:${{ inputs.environment }}
 
   build-ws-hub:
     name: Build WS Hub
@@ -149,7 +147,6 @@ jobs:
       file: "services/ws-hub/Dockerfile"
       tags: |
         ghcr.io/${{ github.repository }}/ws-hub:${{ needs.prepare.outputs.version }}
-        ghcr.io/${{ github.repository }}/ws-hub:${{ inputs.environment }}
 
   build-gateway:
     name: Build Gateway
@@ -166,7 +163,6 @@ jobs:
       file: "services/gateway/Dockerfile"
       tags: |
         ghcr.io/${{ github.repository }}/gateway:${{ needs.prepare.outputs.version }}
-        ghcr.io/${{ github.repository }}/gateway:${{ inputs.environment }}
 
   build-file-processor:
     name: Build File Processor
@@ -183,11 +179,10 @@ jobs:
       file: "services/file-processor/Dockerfile"
       tags: |
         ghcr.io/${{ github.repository }}/file-processor:${{ needs.prepare.outputs.version }}
-        ghcr.io/${{ github.repository }}/file-processor:${{ inputs.environment }}
 
   deploy:
     name: Deploy to ${{ inputs.environment }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs:
       [
         prepare,
@@ -203,61 +198,447 @@ jobs:
       id-token: write  # Required: request JWT via OIDC for cloud provider authentication
     environment:
       name: ${{ inputs.environment }}
-      url: ${{ steps.deploy.outputs.url }}
+      url: ${{ vars.DEPLOYMENT_URL }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Configure Cloud Provider Credentials (OIDC)
-        # Replaces long-lived secrets with ephemeral, short-lived tokens via GitHub's OIDC provider.
-        # Ensure the cloud provider's identity pool trusts this repository and environment.
-        # NOTE (2026-03-06): Upgraded from v4 to v6. Requires GitHub Actions runner ≥ 2.327.1.
-        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
-        with:
-          role-to-assume: ${{ secrets.OIDC_DEPLOY_ROLE_ARN }}
-          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
-
-      # RZ-W15-06: Validate IMAGE_TAG is non-empty before substituting into manifests.
-      # deployment.yaml no longer has a :latest fallback; an empty tag = broken deploy.
-      - name: Validate IMAGE_TAG
+      - name: Validate deployment contract
+        shell: bash
         env:
-          IMAGE_TAG: ${{ needs.prepare.outputs.version }}
-        run: |
-          if [ -z "${IMAGE_TAG}" ]; then
-            echo "::error::IMAGE_TAG is empty. The prepare job must output a version."
-            exit 1
-          fi
-          echo "::notice::Deploying image tag: ${IMAGE_TAG}"
-
-      - name: Deploy (placeholder)
-        id: deploy
-        env:
-          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          OIDC_DEPLOY_ROLE_ARN: ${{ secrets.OIDC_DEPLOY_ROLE_ARN }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          HELM_VALUES_FILE: ${{ vars.HELM_VALUES_FILE }}
+          CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
+          APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
+          WS_HUB_DEPLOYMENT_NAME: ${{ vars.WS_HUB_DEPLOYMENT_NAME }}
+          WS_HUB_CONTAINER_NAME: ${{ vars.WS_HUB_CONTAINER_NAME }}
+          DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
+          GATEWAY_HEALTH_URL: ${{ vars.GATEWAY_HEALTH_URL }}
+          WS_HUB_HEALTH_URL: ${{ vars.WS_HUB_HEALTH_URL }}
+          BACKEND_HEALTH_URL: ${{ vars.BACKEND_HEALTH_URL }}
+          FRONTEND_HEALTH_URL: ${{ vars.FRONTEND_HEALTH_URL }}
+          DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
           BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
           FRONTEND_IMAGE_DIGEST: ${{ needs.build-frontend.outputs.digest }}
           WS_HUB_IMAGE_DIGEST: ${{ needs.build-ws-hub.outputs.digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          required=(
+            OIDC_DEPLOY_ROLE_ARN AWS_REGION EKS_CLUSTER_NAME K8S_NAMESPACE
+            HELM_RELEASE_NAME HELM_VALUES_FILE CONNECTIONS_SECRET_NAME
+            APPLICATION_SECRETS_NAME WS_HUB_DEPLOYMENT_NAME
+            WS_HUB_CONTAINER_NAME DEPLOYMENT_URL GATEWAY_HEALTH_URL
+            WS_HUB_HEALTH_URL BACKEND_HEALTH_URL FRONTEND_HEALTH_URL
+            DEPLOY_VERSION BACKEND_IMAGE_DIGEST FRONTEND_IMAGE_DIGEST
+            WS_HUB_IMAGE_DIGEST GATEWAY_IMAGE_DIGEST
+            FILE_PROCESSOR_IMAGE_DIGEST
+          )
+          for name in "${required[@]}"; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "::error::Required deployment setting '$name' is not configured for the selected GitHub Environment."
+              exit 1
+            fi
+          done
+
+          if [[ ! "$AWS_REGION" =~ ^[a-z]{2}(-gov)?-[a-z]+-[0-9]+$ ]]; then
+            echo "::error::AWS_REGION is not a valid AWS region identifier."
+            exit 1
+          fi
+          if [[ ! "$EKS_CLUSTER_NAME" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$ ]]; then
+            echo "::error::EKS_CLUSTER_NAME is not a valid EKS cluster name."
+            exit 1
+          fi
+          for name in K8S_NAMESPACE HELM_RELEASE_NAME CONNECTIONS_SECRET_NAME APPLICATION_SECRETS_NAME WS_HUB_DEPLOYMENT_NAME WS_HUB_CONTAINER_NAME; do
+            value="${!name}"
+            if [[ "${#value}" -gt 63 || ! "$value" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
+              echo "::error::$name must be a lowercase Kubernetes DNS label."
+              exit 1
+            fi
+          done
+          if [[ ! "$DEPLOY_VERSION" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::DEPLOY_VERSION must be the immutable 40-character commit SHA."
+            exit 1
+          fi
+          for name in BACKEND_IMAGE_DIGEST FRONTEND_IMAGE_DIGEST WS_HUB_IMAGE_DIGEST GATEWAY_IMAGE_DIGEST FILE_PROCESSOR_IMAGE_DIGEST; do
+            if [[ ! "${!name}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::$name is not an immutable sha256 image digest."
+              exit 1
+            fi
+          done
+          for name in DEPLOYMENT_URL GATEWAY_HEALTH_URL WS_HUB_HEALTH_URL BACKEND_HEALTH_URL FRONTEND_HEALTH_URL; do
+            if [[ ! "${!name}" =~ ^https://[^[:space:]]+$ ]]; then
+              echo "::error::$name must be a non-empty HTTPS URL."
+              exit 1
+            fi
+          done
+
+          case "$HELM_VALUES_FILE" in
+            *.yaml|*.yml) ;;
+            *)
+              echo "::error::HELM_VALUES_FILE must reference a YAML file in the repository."
+              exit 1
+              ;;
+          esac
+          if [[ ! -f "$HELM_VALUES_FILE" ]]; then
+            echo "::error::HELM_VALUES_FILE does not exist: $HELM_VALUES_FILE"
+            exit 1
+          fi
+          workspace="$(realpath "$GITHUB_WORKSPACE")"
+          values_file="$(realpath "$HELM_VALUES_FILE")"
+          if [[ "$values_file" != "$workspace"/* ]]; then
+            echo "::error::HELM_VALUES_FILE must resolve inside the checked-out repository."
+            exit 1
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        # Uses an environment-scoped role and GitHub's short-lived OIDC token.
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ secrets.OIDC_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5.1.0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+
+      - name: Configure and verify cluster access
+        shell: bash
+        env:
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+        run: |
+          set -euo pipefail
+          aws eks update-kubeconfig \
+            --name "$EKS_CLUSTER_NAME" \
+            --region "$AWS_REGION" \
+            --alias "$EKS_CLUSTER_NAME"
+          kubectl config current-context
+          kubectl version --client
+          helm version --short
+          kubectl cluster-info
+
+          if ! kubectl get namespace "$K8S_NAMESPACE" >/dev/null 2>&1; then
+            kubectl create namespace "$K8S_NAMESPACE"
+          fi
+          kubectl auth can-i get deployments --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+          kubectl auth can-i create secrets --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+
+      - name: Verify externally managed Kubernetes secrets
+        shell: bash
+        env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
+          APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
+        run: |
+          set -euo pipefail
+
+          require_secret_keys() {
+            local secret_name="$1"
+            shift
+            local secret_json
+            secret_json="$(kubectl get secret "$secret_name" --namespace "$K8S_NAMESPACE" --output json)"
+            for key in "$@"; do
+              if ! jq --exit-status --arg key "$key" \
+                '.data[$key] | type == "string" and length > 0' \
+                <<< "$secret_json" >/dev/null; then
+                echo "::error::Secret '$secret_name' is missing non-empty key '$key'."
+                exit 1
+              fi
+            done
+          }
+
+          require_secret_keys "$CONNECTIONS_SECRET_NAME" \
+            database-url redis-backend-url redis-gateway-url \
+            redis-revocation-url nats-url nats-auth-token
+          require_secret_keys "$APPLICATION_SECRETS_NAME" \
+            jwt-secret jwt-rsa-private-key jwt-rsa-public-key \
+            internal-hmac-secret ws-hub-internal-secret csrf-hmac-secret \
+            spotify-token-secret elasticsearch-password spicedb-preshared-key \
+            audit-log-secret idempotency-hmac-secret minio-access-key \
+            minio-secret-key temporal-api-key
+
+      - name: Capture rollback state
+        id: rollback_state
+        shell: bash
+        env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          WS_HUB_DEPLOYMENT_NAME: ${{ vars.WS_HUB_DEPLOYMENT_NAME }}
+          WS_HUB_CONTAINER_NAME: ${{ vars.WS_HUB_CONTAINER_NAME }}
+        run: |
+          set -euo pipefail
+          releases="$(helm list --namespace "$K8S_NAMESPACE" \
+            --filter "^${HELM_RELEASE_NAME}$" --output json)"
+          release_count="$(jq 'length' <<< "$releases")"
+          if [[ "$release_count" -gt 1 ]]; then
+            echo "::error::More than one Helm release matched '$HELM_RELEASE_NAME'."
+            exit 1
+          fi
+          previous_revision="$(jq --raw-output \
+            'if length == 0 then "0" else .[0].revision end' <<< "$releases")"
+          if [[ ! "$previous_revision" =~ ^[0-9]+$ ]]; then
+            echo "::error::Unable to resolve the current Helm revision."
+            exit 1
+          fi
+
+          ws_hub_image="$(kubectl get deployment "$WS_HUB_DEPLOYMENT_NAME" \
+            --namespace "$K8S_NAMESPACE" --output json | \
+            jq --raw-output --arg name "$WS_HUB_CONTAINER_NAME" \
+              '[.spec.template.spec.containers[] |
+                select(.name == $name) | .image] |
+               if length == 1 then .[0] else empty end')"
+          if [[ -z "$ws_hub_image" ]]; then
+            echo "::error::Unable to capture exactly one WS Hub container image."
+            exit 1
+          fi
+          echo "helm_revision=$previous_revision" >> "$GITHUB_OUTPUT"
+          echo "ws_hub_image=$ws_hub_image" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Helm release atomically
+        id: helm_deploy
+        shell: bash
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          HELM_VALUES_FILE: ${{ vars.HELM_VALUES_FILE }}
+          CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
+          APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
           DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          echo "::notice::Blue-Green deployment to ${DEPLOY_ENVIRONMENT}"
-          echo "Backend image: ${BACKEND_IMAGE_DIGEST}"
-          echo "Frontend image: ${FRONTEND_IMAGE_DIGEST}"
-          echo "WS Hub image: ${WS_HUB_IMAGE_DIGEST}"
-          echo "Version: ${DEPLOY_VERSION}"
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if helm dependency build charts/university-ecosystem; then
+              break
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "Helm dependency build failed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
+          helm lint --strict charts/university-ecosystem \
+            --values "$HELM_VALUES_FILE" \
+            --set-string global.environment="$DEPLOY_ENVIRONMENT" \
+            --set-string global.imageRegistry="$REGISTRY" \
+            --set-string global.imageTag="$DEPLOY_VERSION" \
+            --set-string backend.image.repository="$GITHUB_REPOSITORY/backend" \
+            --set-string frontend.image.repository="$GITHUB_REPOSITORY/frontend" \
+            --set-string gateway.image.repository="$GITHUB_REPOSITORY/gateway" \
+            --set-string fileProcessor.image.repository="$GITHUB_REPOSITORY/file-processor" \
+            --set-string outboxWorker.image.repository="$GITHUB_REPOSITORY/backend" \
+            --set-string connections.existingSecret="$CONNECTIONS_SECRET_NAME" \
+            --set-string applicationSecrets.existingSecret="$APPLICATION_SECRETS_NAME" \
+            --set fileProcessor.enabled=true \
+            --set outboxWorker.enabled=true
 
-          # Placeholder for actual deployment commands
-          # This would typically:
-          # 1. Deploy to "green" environment
-          # 2. Run health checks
-          # 3. Switch traffic from "blue" to "green"
-          # 4. Keep "blue" as rollback target
+          helm upgrade --install "$HELM_RELEASE_NAME" charts/university-ecosystem \
+            --namespace "$K8S_NAMESPACE" \
+            --values "$HELM_VALUES_FILE" \
+            --set-string global.environment="$DEPLOY_ENVIRONMENT" \
+            --set-string global.imageRegistry="$REGISTRY" \
+            --set-string global.imageTag="$DEPLOY_VERSION" \
+            --set-string backend.image.repository="$GITHUB_REPOSITORY/backend" \
+            --set-string frontend.image.repository="$GITHUB_REPOSITORY/frontend" \
+            --set-string gateway.image.repository="$GITHUB_REPOSITORY/gateway" \
+            --set-string fileProcessor.image.repository="$GITHUB_REPOSITORY/file-processor" \
+            --set-string outboxWorker.image.repository="$GITHUB_REPOSITORY/backend" \
+            --set-string connections.existingSecret="$CONNECTIONS_SECRET_NAME" \
+            --set-string applicationSecrets.existingSecret="$APPLICATION_SECRETS_NAME" \
+            --set fileProcessor.enabled=true \
+            --set outboxWorker.enabled=true \
+            --atomic \
+            --wait \
+            --wait-for-jobs \
+            --timeout 15m \
+            --history-max 10
 
-          echo "url=https://${DEPLOY_ENVIRONMENT}.example.com" >> "$GITHUB_OUTPUT"
+      - name: Deploy WS Hub image
+        id: ws_hub_deploy
+        shell: bash
+        env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          WS_HUB_DEPLOYMENT_NAME: ${{ vars.WS_HUB_DEPLOYMENT_NAME }}
+          WS_HUB_CONTAINER_NAME: ${{ vars.WS_HUB_CONTAINER_NAME }}
+          DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          image="$REGISTRY/$GITHUB_REPOSITORY/ws-hub:$DEPLOY_VERSION"
+          kubectl get deployment "$WS_HUB_DEPLOYMENT_NAME" \
+            --namespace "$K8S_NAMESPACE" >/dev/null
+          kubectl set image "deployment/$WS_HUB_DEPLOYMENT_NAME" \
+            "$WS_HUB_CONTAINER_NAME=$image" \
+            --namespace "$K8S_NAMESPACE"
+          kubectl rollout status "deployment/$WS_HUB_DEPLOYMENT_NAME" \
+            --namespace "$K8S_NAMESPACE" \
+            --timeout=5m
+          actual="$(kubectl get deployment "$WS_HUB_DEPLOYMENT_NAME" \
+            --namespace "$K8S_NAMESPACE" --output json | \
+            jq --raw-output --arg name "$WS_HUB_CONTAINER_NAME" \
+              '.spec.template.spec.containers[] | select(.name == $name) | .image')"
+          if [[ "$actual" != "$image" ]]; then
+            echo "::error::WS Hub rollout uses '$actual' instead of '$image'."
+            exit 1
+          fi
+
+      - name: Verify Helm-managed rollouts
+        shell: bash
+        env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+        run: |
+          set -euo pipefail
+          helm status "$HELM_RELEASE_NAME" --namespace "$K8S_NAMESPACE"
+          kubectl rollout status deployment \
+            --selector "app.kubernetes.io/instance=$HELM_RELEASE_NAME" \
+            --namespace "$K8S_NAMESPACE" \
+            --timeout=5m
+
+          verify_image() {
+            local component="$1"
+            local container="$2"
+            local expected="$3"
+            local deployments
+            local actual
+            deployments="$(kubectl get deployments \
+              --selector "app.kubernetes.io/instance=$HELM_RELEASE_NAME,app.kubernetes.io/component=$component" \
+              --namespace "$K8S_NAMESPACE" --output json)"
+            actual="$(jq --raw-output --arg container "$container" \
+              'if (.items | length) == 1 then
+                 [.items[0].spec.template.spec.containers[] |
+                  select(.name == $container) | .image] |
+                 if length == 1 then .[0] else empty end
+               else empty end' <<< "$deployments")"
+            if [[ "$actual" != "$expected" ]]; then
+              echo "::error::$component rollout uses '$actual' instead of '$expected'."
+              exit 1
+            fi
+          }
+
+          image_prefix="$REGISTRY/$GITHUB_REPOSITORY"
+          verify_image backend backend "$image_prefix/backend:$GITHUB_SHA"
+          verify_image frontend frontend "$image_prefix/frontend:$GITHUB_SHA"
+          verify_image gateway gateway "$image_prefix/gateway:$GITHUB_SHA"
+          verify_image file-processor file-processor "$image_prefix/file-processor:$GITHUB_SHA"
+          verify_image outbox-worker outbox-worker "$image_prefix/backend:$GITHUB_SHA"
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install requests
+        # RZ-W8-08: Pin version — unpinned installs can break silently or inject
+        # a supply-chain compromise at deploy time.
+        run: pip install "requests==2.33.1"
+
+      - name: Post-deployment smoke test
+        run: python scripts/smoke_test.py
+        env:
+          GATEWAY_URL: ${{ vars.GATEWAY_HEALTH_URL }}
+          WS_HUB_URL: ${{ vars.WS_HUB_HEALTH_URL }}
+          BACKEND_URL: ${{ vars.BACKEND_HEALTH_URL }}
+          FRONTEND_URL: ${{ vars.FRONTEND_HEALTH_URL }}
+
+      - name: Verify Kyverno policy compliance (MOD-14-02)
+        shell: bash
+        env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+        run: |
+          set -euo pipefail
+          expected_policies=(
+            require-run-as-non-root
+            disallow-privilege-escalation
+            require-drop-all-capabilities
+            require-seccomp-profile
+            require-readonly-root-filesystem
+            restrict-image-registries
+            require-resource-limits
+            require-always-pull-policy
+            disallow-latest-tag
+          )
+          policies="$(kubectl get clusterpolicies.kyverno.io --output json)"
+          for policy in "${expected_policies[@]}"; do
+            if ! jq --exit-status --arg name "$policy" \
+              '.items[] | select(.metadata.name == $name) |
+               .spec.validationFailureAction == "Enforce"' \
+              <<< "$policies" >/dev/null; then
+              echo "::error::Kyverno policy '$policy' is missing or is not in Enforce mode."
+              exit 1
+            fi
+          done
+
+          reports="$(kubectl get policyreports.wgpolicyk8s.io \
+            --namespace "$K8S_NAMESPACE" --output json)"
+          violations="$(jq '[.items[].summary.fail // 0] | add // 0' <<< "$reports")"
+          if [[ "$violations" -gt 0 ]]; then
+            echo "::error::Kyverno policy violations detected: $violations failure(s)."
+            kubectl get policyreports.wgpolicyk8s.io \
+              --namespace "$K8S_NAMESPACE" --output yaml
+            exit 1
+          fi
+          echo "Kyverno: all required policies enforce and no violations are reported."
+
+      - name: Roll back a deployment that failed verification
+        if: ${{ failure() && steps.rollback_state.outcome == 'success' }}
+        shell: bash
+        env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          WS_HUB_DEPLOYMENT_NAME: ${{ vars.WS_HUB_DEPLOYMENT_NAME }}
+          WS_HUB_CONTAINER_NAME: ${{ vars.WS_HUB_CONTAINER_NAME }}
+          PREVIOUS_HELM_REVISION: ${{ steps.rollback_state.outputs.helm_revision }}
+          PREVIOUS_WS_HUB_IMAGE: ${{ steps.rollback_state.outputs.ws_hub_image }}
+          HELM_DEPLOY_OUTCOME: ${{ steps.helm_deploy.outcome }}
+        run: |
+          set -uo pipefail
+          rollback_failed=0
+
+          if [[ "$HELM_DEPLOY_OUTCOME" == "success" ]]; then
+            if [[ "$PREVIOUS_HELM_REVISION" == "0" ]]; then
+              if helm status "$HELM_RELEASE_NAME" --namespace "$K8S_NAMESPACE" >/dev/null 2>&1; then
+                if ! helm uninstall "$HELM_RELEASE_NAME" \
+                  --namespace "$K8S_NAMESPACE" --wait --timeout 10m; then
+                  echo "::error::Unable to remove the newly installed failed release."
+                  rollback_failed=1
+                fi
+              fi
+            elif ! helm rollback "$HELM_RELEASE_NAME" "$PREVIOUS_HELM_REVISION" \
+              --namespace "$K8S_NAMESPACE" --wait --wait-for-jobs --timeout 10m; then
+              echo "::error::Unable to roll Helm back to revision $PREVIOUS_HELM_REVISION."
+              rollback_failed=1
+            fi
+          fi
+
+          if ! kubectl set image "deployment/$WS_HUB_DEPLOYMENT_NAME" \
+            "$WS_HUB_CONTAINER_NAME=$PREVIOUS_WS_HUB_IMAGE" \
+            --namespace "$K8S_NAMESPACE"; then
+            echo "::error::Unable to restore the previous WS Hub image."
+            rollback_failed=1
+          elif ! kubectl rollout status "deployment/$WS_HUB_DEPLOYMENT_NAME" \
+            --namespace "$K8S_NAMESPACE" --timeout=5m; then
+            echo "::error::The restored WS Hub deployment did not become ready."
+            rollback_failed=1
+          fi
+
+          if [[ "$rollback_failed" -ne 0 ]]; then
+            exit 1
+          fi
+          echo "Deployment rollback completed after a failed verification gate."
 
       - name: Record DORA Lead Time for Changes
-        # DORA metric: time from triggering commit's author date to deployment.
-        # GitHub Insights tracks Deployment Frequency automatically via the
-        # 'environment' field above. Lead Time requires explicit calculation.
+        # This runs only after the atomic rollout, smoke probes, and policy gate.
         id: dora
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
@@ -265,7 +646,6 @@ jobs:
         with:
           script: |
             const environment = process.env.DEPLOY_ENVIRONMENT
-            // Fetch the triggering commit to get its author date
             const { data: commit } = await github.rest.repos.getCommit({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -292,60 +672,14 @@ jobs:
               ])
               .write()
 
-      - name: Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.14"
-
-      - name: Install requests
-        # RZ-W8-08: Pin version — unpinned installs can break silently or inject
-        # a supply-chain compromise at deploy time.
-        run: pip install "requests==2.32.3"
-
-      - name: Post-deployment smoke test
-        run: python scripts/smoke_test.py
-        env:
-          GATEWAY_URL: "https://${{ inputs.environment }}-api.example.com/health"
-          WS_HUB_URL: "https://${{ inputs.environment }}-ws.example.com/health"
-          BACKEND_URL: "https://${{ inputs.environment }}.example.com/healthz"
-          FRONTEND_URL: "https://${{ inputs.environment }}.example.com/"
-
-      - name: Verify Kyverno policy compliance (MOD-14-02)
-        # MOD-14-02 (audit 2026-03-23): All 5 ClusterPolicies are in Enforce mode
-        # (Wave 13). A Pod that violates a policy fails admission with a cryptic
-        # message; without this step the violation is invisible in the CD summary.
-        # This step waits for all Pods to reach Ready (max 5 min — covers slow
-        # image pulls) then queries PolicyReport for any fail-count > 0.
-        #
-        # NOTE: kubectl must already be configured by the preceding OIDC credentials
-        # step + kubeconfig setup in the Helm deploy step above.
-        run: |
-          echo "Waiting for university-ecosystem Pods to reach Ready state..."
-          kubectl wait --for=condition=Ready pod \
-            -l app.kubernetes.io/part-of=university-ecosystem \
-            -n university-ecosystem \
-            --timeout=300s
-
-          echo "Checking Kyverno PolicyReports for violations..."
-          VIOLATIONS=$(kubectl get policyreport -n university-ecosystem \
-            -o jsonpath='{.items[*].summary.fail}' 2>/dev/null | \
-            tr ' ' '\n' | awk 'NF{s+=$1} END{print s+0}')
-
-          if [ "${VIOLATIONS:-0}" -gt 0 ]; then
-            echo "::error::Kyverno policy violations detected: ${VIOLATIONS} failure(s)"
-            kubectl get policyreport -n university-ecosystem -o yaml
-            exit 1
-          fi
-          echo "Kyverno: 0 policy violations ✓"
-
   rollback:
-    name: Rollback capability test
-    runs-on: ubuntu-latest
+    name: Database rollback capability test
+    runs-on: ubuntu-24.04
     needs: [deploy]
     if: ${{ inputs.environment == 'staging' }}
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test  # pragma: allowlist secret
@@ -391,7 +725,7 @@ jobs:
 
   notify:
     name: Notify deployment status
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [prepare, build-backend, deploy, rollback]
     if: always()
     steps:
@@ -404,12 +738,12 @@ jobs:
           TRIGGER_ACTOR: ${{ github.actor }}
         run: |
           {
-            printf '%s\n\n' '## Deployment Summary'
-            printf '%s\n' '| Property | Value |'
-            printf '%s\n' '|----------|-------|'
-            printf '| Environment | `%s` |\n' "${DEPLOY_ENVIRONMENT}"
-            printf '| Version | `%s` |\n' "${DEPLOY_VERSION}"
-            printf '| Deploy Status | `%s` |\n' "${DEPLOY_STATUS}"
-            printf '| Rollback Test | `%s` |\n\n' "${ROLLBACK_STATUS}"
-            printf '**Triggered by:** @%s\n' "${TRIGGER_ACTOR}"
+            printf "%s\n\n" "## Deployment Summary"
+            printf "%s\n" "| Property | Value |"
+            printf "%s\n" "|----------|-------|"
+            printf "| Environment | \`%s\` |\n" "${DEPLOY_ENVIRONMENT}"
+            printf "| Version | \`%s\` |\n" "${DEPLOY_VERSION}"
+            printf "| Deploy Status | \`%s\` |\n" "${DEPLOY_STATUS}"
+            printf "| Rollback Test | \`%s\` |\n\n" "${ROLLBACK_STATUS}"
+            printf "**Triggered by:** @%s\n" "${TRIGGER_ACTOR}"
           } >> "$GITHUB_STEP_SUMMARY"

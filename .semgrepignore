@@ -3,3 +3,24 @@
 # reaches the SQL. The text() usage is the correct and only way to express
 # these PostgreSQL-specific DDL statements.
 alembic/versions/
+
+# Test/fuzz inputs intentionally contain adversarial payloads and insecure
+# examples. They are covered by dedicated test security gates instead of the
+# production-source SAST hook.
+tests/
+native/rust_ext/fuzz/
+**/*_test.go
+
+# Generated reports and clients are reproducible build outputs. Scanning their
+# source generators and handwritten consumers provides the actionable signal.
+frontend/coverage-*/
+frontend/coverage/
+frontend/src/tests/mocks/generated/
+frontend/openapi.json
+frontend/src/routeTree.gen.ts
+app/static/quarantine/
+app/test-static/
+
+# Bundled agent/IDE skills are third-party reference material.
+.agents/
+.opencode/

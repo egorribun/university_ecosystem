@@ -150,8 +150,7 @@ export function AdminNotificationsFeature() {
   }
 
   const handleSelectAll = () => {
-    const items = listQuery.data?.items ?? []
-    if (items.length === 0) return
+    const items = listQuery.data!.items
     setSelected((previous) => {
       if (previous.size === items.length) {
         return new Set()
@@ -203,14 +202,14 @@ export function AdminNotificationsFeature() {
   )
 
   const handleSaveTopics = useCallback(async () => {
-    if (!topicsData) return
+    const currentTopics = topicsData!
     resetTopicFeedback()
     setTopicsBusy(true)
     try {
-      const selectedTopics = topicsData.allowed_topics.filter(
+      const selectedTopics = currentTopics.allowed_topics.filter(
         (topic) => topicsState[normalizeTopicKey(topic)]
       )
-      const updated = await updateAdminUserTopics(topicsData.user_id, selectedTopics)
+      const updated = await updateAdminUserTopics(currentTopics.user_id, selectedTopics)
       setTopicsData(updated)
       setTopicsState(buildTopicState(updated.allowed_topics, updated.topics))
       setTopicsMessage(t("admin:notifications.topics.saved"))
@@ -223,13 +222,11 @@ export function AdminNotificationsFeature() {
 
   const handleRetrySelected = () => {
     const ids = Array.from(selected)
-    if (!ids.length) return
     retryMutation.mutate(ids)
   }
 
   const handlePurgeSelected = () => {
     const ids = Array.from(selected)
-    if (!ids.length) return
     purgeMutation.mutate(ids)
   }
 
@@ -546,7 +543,7 @@ export function AdminNotificationsFeature() {
                   variant="outline"
                   className="flex-1 sm:flex-initial"
                 >
-                  <RotateCcw className="mr-2 h-4 w-4" />
+                  <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
                   {t("admin:notifications.actions.retrySelected")}
                 </Button>
                 <Button
@@ -555,7 +552,7 @@ export function AdminNotificationsFeature() {
                   variant="outline"
                   className="flex-1 border-error/(--opacity-dim) text-error hover:bg-error/(--opacity-subtle) sm:flex-initial"
                 >
-                  <Trash2 className="mr-2 h-4 w-4" />
+                  <Trash2 className="mr-2 h-4 w-4" aria-hidden="true" />
                   {t("admin:notifications.actions.purgeSelected")}
                 </Button>
               </div>

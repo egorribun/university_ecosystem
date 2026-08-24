@@ -146,9 +146,9 @@ describe("StepUpDialog closure", () => {
 
     expect(await screen.findByRole("heading", { name: "Custom title" })).toBeInTheDocument()
     expect(screen.getByText("Custom description")).toBeInTheDocument()
-    expect(screen.getByText("2 attempts remaining")).toBeInTheDocument()
+    expect(await screen.findByText("2 attempts remaining")).toBeInTheDocument()
 
-    await user.click(screen.getByRole("button", { name: "otp-submit" }))
+    await user.click(await screen.findByRole("button", { name: "otp-submit" }))
     await waitFor(() => {
       expect(auth.value.submitMfaChallenge).toHaveBeenCalledWith({
         code: "123456",
@@ -269,5 +269,37 @@ describe("StepUpDialog closure", () => {
 
     await waitFor(() => expect(auth.value.requireMfa).toHaveBeenCalledTimes(1))
     expect(screen.queryByTestId("otp-entry")).not.toBeInTheDocument()
+  })
+
+  it("ignores a successful challenge response after unmount", async () => {
+    let resolveChallenge!: (value: PendingMfaState) => void
+    auth.value.requireMfa.mockReturnValueOnce(
+      new Promise<PendingMfaState>((resolve) => {
+        resolveChallenge = resolve
+      })
+    )
+    const { unmount } = renderDialog()
+
+    unmount()
+    resolveChallenge(makePending())
+    await Promise.resolve()
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("ignores a challenge request failure after unmount", async () => {
+    let rejectChallenge!: (reason: unknown) => void
+    auth.value.requireMfa.mockReturnValueOnce(
+      new Promise<PendingMfaState | null>((_resolve, reject) => {
+        rejectChallenge = reject
+      })
+    )
+    const { unmount } = renderDialog()
+
+    unmount()
+    rejectChallenge(new Error("late failure"))
+    await Promise.resolve()
+
+    expect(screen.queryByText("late failure")).not.toBeInTheDocument()
   })
 })

@@ -115,22 +115,21 @@
     }
   },
   "featureFlags": {
-    "title": "Dynamic Feature Flags",
-    "subtitle": "Real-time control over application features and rollout strategies.",
+    "title": "Feature Flag Diagnostics",
+    "subtitle": "Effective OpenFeature evaluations from the flagd control plane.",
     "table": {
       "aria": "Feature flags",
       "flag": "Feature Flag",
-      "status": "Status",
-      "rollout": "Rollout",
-      "details": "Details"
+      "effective": "Effective value",
+      "fallback": "Fallback",
+      "management": "Management"
     },
-    "rollout": {
-      "range": "Rollout Percentage",
-      "percentage": "{{value}}% of users",
-      "global": "Global toggle active"
+    "values": {
+      "on": "On",
+      "off": "Off"
     },
-    "actions": {
-      "viewMetadata": "View flag metadata"
+    "management": {
+      "notice": "This page is read-only. Change k8s/flagd/flags.json through the reviewed GitOps workflow; the API never performs runtime mutations."
     }
   }
 }

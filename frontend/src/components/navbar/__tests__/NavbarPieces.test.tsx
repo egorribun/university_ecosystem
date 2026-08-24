@@ -33,19 +33,21 @@ import type { NavigationItem } from "@/config/navigation"
 const t = ((key: string) => key) as unknown as TFunction
 
 const navItems: NavigationItem[] = [
+  { to: "/", label: "Home", icon: Home },
   { to: "/news", label: "News", icon: Home },
   { to: "/events", label: "Events", icon: Calendar },
 ]
 
 describe("DesktopNav", () => {
   it("renders a list item + premium link per nav entry", async () => {
+    const scrollToTop = vi.fn()
     await renderWithRouter({
       ui: () => (
         <DesktopNav
           menuLinks={navItems}
           isActive={(to) => to === "/news"}
           isSameTarget={() => false}
-          scrollToTop={vi.fn()}
+          scrollToTop={scrollToTop}
           markScrollFromBottom={vi.fn()}
           prefersReducedMotion
           isCompact={false}
@@ -58,6 +60,9 @@ describe("DesktopNav", () => {
     // active entry carries data-active.
     const newsLink = document.getElementById("navbar-link-news")
     expect(newsLink).toHaveAttribute("data-active")
+    expect(document.getElementById("navbar-link-home")).toBeInTheDocument()
+    await userEvent.click(screen.getByText("Home"))
+    expect(scrollToTop).not.toHaveBeenCalled()
   })
 
   it("scrolls to top instead of navigating when the link targets the current page", async () => {
@@ -78,6 +83,27 @@ describe("DesktopNav", () => {
     })
     await userEvent.click(screen.getByText("News"))
     expect(scrollToTop).toHaveBeenCalledWith("auto")
+  })
+
+  it("uses smooth scrolling for a same-target link when motion is allowed", async () => {
+    const scrollToTop = vi.fn()
+    await renderWithRouter({
+      ui: () => (
+        <DesktopNav
+          menuLinks={navItems}
+          isActive={() => false}
+          isSameTarget={(to) => to === "/events"}
+          scrollToTop={scrollToTop}
+          markScrollFromBottom={vi.fn()}
+          prefersReducedMotion={false}
+          isCompact={false}
+        />
+      ),
+      authProvider: false,
+    })
+
+    await userEvent.click(screen.getByText("Events"))
+    expect(scrollToTop).toHaveBeenCalledWith("smooth")
   })
 })
 
@@ -101,6 +127,25 @@ describe("NavbarLogo", () => {
     const link = document.getElementById("navbar-logo-link")
     expect(link).toHaveAttribute("href", "/dashboard")
     expect(screen.getByText("navigation:brandName")).toBeInTheDocument()
+  })
+
+  it("renders the tablet-mobile spacing variant", async () => {
+    await renderWithRouter({
+      ui: () => (
+        <NavbarLogo
+          t={t}
+          isMobile
+          isCompact={false}
+          isPhone={false}
+          prefersReducedMotion={false}
+          onLogoClick={vi.fn()}
+          markScrollFromBottom={vi.fn()}
+        />
+      ),
+      authProvider: false,
+    })
+
+    expect(document.getElementById("navbar-logo-link")).toHaveClass("gap-fluid-gap")
   })
 })
 
@@ -191,6 +236,10 @@ describe("UserMenu", () => {
     expect(screen.getAllByTitle("navigation:aria.openProfile").length).toBeGreaterThan(0)
     await userEvent.click(screen.getByRole("button", { name: "navigation:aria.openProfile" }))
     expect(go).toHaveBeenCalledWith("/profile")
+    await userEvent.click(screen.getByAltText("navigation:aria.profileAvatarNamed"))
+    expect(go).toHaveBeenLastCalledWith("/profile")
+    await userEvent.click(screen.getByRole("button", { name: "navigation:menu.settings" }))
+    expect(go).toHaveBeenLastCalledWith("/settings")
   })
 
   it("renders nothing for a settled unauthenticated state", async () => {
@@ -219,5 +268,28 @@ describe("UserMenu", () => {
       ),
     })
     expect(screen.getByAltText("navigation:aria.profileAvatarNamed")).toBeInTheDocument()
+  })
+
+  it("renders the compact reduced-motion variant", async () => {
+    await renderWithRouter({
+      ui: () => (
+        <UserMenu
+          user={testUser}
+          isAuth
+          loading={false}
+          go={vi.fn()}
+          t={(key) => key}
+          isCompact
+          prefersReducedMotion
+        />
+      ),
+    })
+
+    expect(screen.getByAltText("navigation:aria.profileAvatarNamed")).toHaveClass("h-7", "w-7")
+    expect(screen.getByRole("button", { name: "navigation:menu.settings" })).toHaveClass(
+      "w-8",
+      "h-8",
+      "duration-0"
+    )
   })
 })

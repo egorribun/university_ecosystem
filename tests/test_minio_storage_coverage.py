@@ -1,4 +1,4 @@
-"""Coverage tests for app/services/minio_storage.py (testing session 10).
+"""Behavior and failure-path tests for app/services/minio_storage.py.
 
 The Minio SDK class is patched at the module seam (app.services.minio_storage.Minio)
 BEFORE constructing MinIOClient — all SDK calls become MagicMocks executed through
@@ -157,7 +157,13 @@ def test_get_minio_client_default_credentials_warns(
     with patch.object(minio_module.logger, "warning") as warning_logger:
         instance = get_minio_client()
 
-    assert "default credentials" in str(warning_logger.call_args.args[0])
+    warning_logger.assert_called_once_with(
+        "MinIO factory defaults are active; override both access "
+        "settings before staging or production"
+    )
+    warning_message = str(warning_logger.call_args.args[0])
+    assert "factory defaults" in warning_message
+    assert "minioadmin" not in warning_message
     assert isinstance(instance, MinIOClient)
     _, kwargs = minio_cls.call_args
     assert kwargs["access_key"] == "minioadmin"  # pragma: allowlist secret

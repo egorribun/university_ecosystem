@@ -163,13 +163,3 @@ func TestProcessFile_ExecuteWorkflowErrorPropagates(t *testing.T) {
 	})
 	require.Error(t, err)
 }
-
-func TestValidateProcessOptions_RejectsMoreThanMaximum(t *testing.T) {
-	options := make(map[string]interface{}, maxProcessOptions+1)
-	for index := 0; index <= maxProcessOptions; index++ {
-		options[string(rune('a'+index))] = index
-	}
-
-	err := validateProcessOptions(options)
-	require.EqualError(t, err, "options map exceeds maximum of 10 entries")
-}

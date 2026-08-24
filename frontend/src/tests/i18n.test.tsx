@@ -26,11 +26,6 @@ describe("i18n integration", () => {
       </LanguageProvider>
     )
 
-    expect(await screen.findByText("Sign in")).toBeInTheDocument()
-    expect(document.documentElement.getAttribute("lang")).toBe("en")
-
-    await user.click(screen.getByText("toggle"))
-
     expect(await screen.findByText("Вход")).toBeInTheDocument()
     expect(document.documentElement.getAttribute("lang")).toBe("ru")
 
@@ -38,5 +33,10 @@ describe("i18n integration", () => {
 
     expect(await screen.findByText("Sign in")).toBeInTheDocument()
     expect(document.documentElement.getAttribute("lang")).toBe("en")
+
+    await user.click(screen.getByText("toggle"))
+
+    expect(await screen.findByText("Вход")).toBeInTheDocument()
+    expect(document.documentElement.getAttribute("lang")).toBe("ru")
   })
 })

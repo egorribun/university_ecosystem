@@ -78,11 +78,11 @@ describe("useActivityData defensive derivation branches", () => {
           total: "10",
           trend: undefined,
           period_key: "bad",
-          period_label: "   ",
+          period_label: "Server-selected period",
           recent: null,
         },
         grades: { average: null, scale: "invalid", trend: null, recent: null },
-        participation: { events: "4", hours: null, groups: null, trend: null, recent: null },
+        participation: { events: "4", hours: null, groups: "3", trend: null, recent: null },
       },
       isFetching: false,
       isSuccess: true,
@@ -96,14 +96,14 @@ describe("useActivityData defensive derivation branches", () => {
       total: 10,
       trend: 0,
       periodKey: "30d",
-      periodLabel: "activity:period.labels.30d",
+      periodLabel: "Server-selected period",
       recent: [],
     })
     expect(result.current.grades).toMatchObject({ average: 0, scale: "5", trend: 0 })
     expect(result.current.participation).toMatchObject({
       events: 4,
       hours: undefined,
-      groups: undefined,
+      groups: 3,
     })
   })
 

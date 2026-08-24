@@ -513,7 +513,7 @@ interface LocalizedBuildingMeta {
 }
 
 interface LocalizedMapData {
-  buildings: Record<string, LocalizedBuildingMeta>
+  buildings: Record<BuildingId, LocalizedBuildingMeta>
   rooms: Record<string, { name: string }>
 }
 
@@ -526,8 +526,10 @@ const localePattern = /locales\/([^/]+)\/map\.json$/
 
 const mapDataByLocale = Object.entries(localeDataModules).reduce(
   (acc, [path, module]) => {
-    const match = path.match(localePattern)
-    if (match?.[1]) acc[match[1]] = module.default
+    // Every key is produced by the exact import.meta.glob pattern above, so
+    // the locale capture is guaranteed by Vite rather than optional runtime data.
+    const locale = localePattern.exec(path)![1]!
+    acc[locale] = module.default
     return acc
   },
   {} as Record<string, LocalizedMapData>
@@ -535,14 +537,14 @@ const mapDataByLocale = Object.entries(localeDataModules).reduce(
 
 const FALLBACK_LOCALE = "en"
 
-function resolveLocaleData(locale?: string): LocalizedMapData | undefined {
+function resolveLocaleData(locale?: string): LocalizedMapData {
   if (locale) {
     const normalized = locale.toLowerCase()
     if (mapDataByLocale[normalized]) return mapDataByLocale[normalized]
     const short = normalized.split("-")[0]
     if (short && mapDataByLocale[short]) return mapDataByLocale[short]
   }
-  return mapDataByLocale[FALLBACK_LOCALE]
+  return mapDataByLocale[FALLBACK_LOCALE]!
 }
 
 /* ── Public API ───────────────────────────────────── */
@@ -563,7 +565,7 @@ export function getCampusBuildings(locale?: string): CampusBuilding[] {
   const localeData = resolveLocaleData(locale)
 
   const result = CAMPUS_STRUCTURE.map((struct) => {
-    const meta = localeData?.buildings?.[struct.letter]
+    const meta = localeData.buildings[struct.letter]
     const colors = BUILDING_COLORS[struct.letter]
 
     const floors: BuildingFloor[] = struct.floors.map((f) => ({
@@ -577,11 +579,11 @@ export function getCampusBuildings(locale?: string): CampusBuilding[] {
     return {
       letter: struct.letter,
       structureId: struct.structureId,
-      name: meta?.name ?? struct.letter,
-      description: meta?.description ?? "",
-      address: meta?.address ?? "",
-      hours: meta?.hours ?? { weekday: "", saturday: "", sunday: "" },
-      amenities: meta?.amenities ?? [],
+      name: meta.name,
+      description: meta.description,
+      address: meta.address,
+      hours: meta.hours,
+      amenities: meta.amenities,
       tags: struct.tags,
       colorVar: colors.colorVar,
       colorHex: colors.colorHex,

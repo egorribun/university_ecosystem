@@ -311,16 +311,16 @@ export const ContactList = memo(function ContactList({
                 event.key === "End"
               ) {
                 event.preventDefault()
-                let targetIndex = index
-                if (event.key === "ArrowDown")
-                  targetIndex = Math.min(index + 1, contacts.length - 1)
-                else if (event.key === "ArrowUp") targetIndex = Math.max(index - 1, 0)
-                else if (event.key === "Home") targetIndex = 0
-                else if (event.key === "End") targetIndex = contacts.length - 1
-                const target = contacts[targetIndex]
-                if (target) {
-                  document.getElementById(`messenger-contact-${target.id}`)?.focus()
-                }
+                const targetIndex =
+                  event.key === "ArrowDown"
+                    ? Math.min(index + 1, contacts.length - 1)
+                    : event.key === "ArrowUp"
+                      ? Math.max(index - 1, 0)
+                      : event.key === "Home"
+                        ? 0
+                        : contacts.length - 1
+                const target = contacts[targetIndex]!
+                document.getElementById(`messenger-contact-${target.id}`)?.focus()
               }
             }}
             whileHover={hoverAnim}

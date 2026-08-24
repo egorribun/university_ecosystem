@@ -39,12 +39,22 @@ def test_algorithm_validator_normalizes_unrecognized_algorithm(monkeypatch):
     assert settings.algorithm == "EDDSA"
 
 
-def test_algorithm_validator_warns_for_hs256():
+def test_algorithm_validator_warns_for_hs256(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "development")
     with warnings.catch_warnings(record=True) as captured:
         warnings.simplefilter("always")
         assert JwtSettingsMixin.validate_jwt_algorithm("HS256") == "HS256"
 
     assert any("not recommended" in str(item.message) for item in captured)
+
+
+def test_algorithm_validator_suppresses_expected_test_hs256_warning(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "testing")
+    with warnings.catch_warnings(record=True) as captured:
+        warnings.simplefilter("always")
+        assert JwtSettingsMixin.validate_jwt_algorithm("HS256") == "HS256"
+
+    assert captured == []
 
 
 def test_production_placeholder_audience_logs_warning(monkeypatch, caplog):

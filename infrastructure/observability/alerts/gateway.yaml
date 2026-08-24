@@ -34,7 +34,7 @@ groups:
           summary: "Gateway L1 cache eviction rate above 50%"
           description: >
             Gateway L1 auth-token cache evictions are running at
-            {{ printf "%.1f" (mul 100 $value) }}% of total lookups.
+            {{ $value | humanizePercentage }} of total lookups.
             Hit rate has collapsed — every token validation falls through
             to Redis. Consider increasing GATEWAY_L1_CACHE_MAX_SIZE
             (current default: 1024 entries).

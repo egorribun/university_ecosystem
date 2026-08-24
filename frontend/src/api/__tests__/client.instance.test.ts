@@ -92,29 +92,6 @@ describe("api/client — request interceptor: GET pass-through", () => {
   })
 })
 
-describe("api/client — legacy wrapper compatibility", () => {
-  it("forwards every legacy verb helper to the configured axios instance", async () => {
-    const { apiClient: legacyApiClient } = await import("@/api/client")
-    const seen = installAdapter((config) => ({ data: { method: config.method } }))
-
-    await legacyApiClient.get("/legacy-get")
-    await legacyApiClient.post("/legacy-post", { ok: true })
-    await legacyApiClient.put("/legacy-put", { ok: true })
-    await legacyApiClient.patch("/legacy-patch", { ok: true })
-    await legacyApiClient.delete("/legacy-delete")
-    await legacyApiClient.request({ method: "GET", url: "/legacy-request" })
-
-    expect(seen.map((config) => (config.method ?? "").toLowerCase())).toEqual([
-      "get",
-      "post",
-      "put",
-      "patch",
-      "delete",
-      "get",
-    ])
-  })
-})
-
 describe("api/client — request interceptor: FormData", () => {
   it("removes the JSON Content-Type so the browser sets the multipart boundary", async () => {
     const seen = installAdapter()

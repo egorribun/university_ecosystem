@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react"
+import { memo, type CSSProperties } from "react"
 import { useTranslation } from "react-i18next"
 import {
   CalendarCheck as AttendanceIcon,
@@ -14,13 +14,13 @@ const DOT_COLORS: Record<string, string> = {
   grade: "var(--activity-grade-accent)",
   participation: "var(--activity-participation-accent)",
 }
+const FALLBACK_DOT_COLOR = "var(--text-tertiary)"
 
 function getDotColor(entry: TimelineEntry): string {
-  const fallback = "var(--text-tertiary)"
   if (entry.type === "attendance") {
-    return DOT_COLORS[`attendance-${entry.status}`] ?? DOT_COLORS["attendance-present"] ?? fallback
+    return DOT_COLORS[`attendance-${entry.status}`] ?? FALLBACK_DOT_COLOR
   }
-  return DOT_COLORS[entry.type] ?? fallback
+  return DOT_COLORS[entry.type]!
 }
 
 function getIcon(entry: TimelineEntry) {
@@ -36,7 +36,7 @@ type ActivityTimelineItemProps = {
   staggerIndex: number
 }
 
-export function ActivityTimelineItem({
+export const ActivityTimelineItem = memo(function ActivityTimelineItem({
   entry,
   formatDate,
   attendanceStatusLabel,
@@ -97,4 +97,4 @@ export function ActivityTimelineItem({
       </div>
     </div>
   )
-}
+})

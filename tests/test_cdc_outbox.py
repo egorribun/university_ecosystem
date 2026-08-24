@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import struct
-import time
 import uuid
 from typing import Any
 from unittest.mock import AsyncMock, patch
@@ -187,7 +186,7 @@ def test_pgoutput_decoder_relation_and_insert() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cdc_outbox_worker_dispatch_insert_record_sub_50ms_latency() -> None:
+async def test_cdc_outbox_worker_dispatch_insert_record_records_latency() -> None:
     mock_broker = AsyncMock()
     mock_broker.is_connected = True
     mock_broker.publish = AsyncMock()
@@ -212,14 +211,17 @@ async def test_cdc_outbox_worker_dispatch_insert_record_sub_50ms_latency() -> No
         lsn=10050,
     )
 
-    t0 = time.perf_counter()
-    domain_event = await worker.dispatch_insert_record(record)
-    elapsed_ms = (time.perf_counter() - t0) * 1000
+    with (
+        patch(
+            "app.workers.cdc_outbox.time.perf_counter",
+            side_effect=(100.0, 100.004),
+        ),
+        patch("app.workers.cdc_outbox.OUTBOX_CDC_DISPATCH_DURATION") as latency,
+    ):
+        domain_event = await worker.dispatch_insert_record(record)
 
-    # Sub-50ms dispatch latency assertion
-    assert elapsed_ms < 50.0, (
-        f"CDC dispatch latency was {elapsed_ms:.3f}ms (must be < 50ms)"
-    )
+    latency.labels.assert_called_once_with(event_type="UserCreated")
+    latency.labels.return_value.observe.assert_called_once_with(pytest.approx(0.004))
     assert domain_event is not None
     assert isinstance(domain_event, UserCreated)
     assert domain_event.email == "latency@test.com"

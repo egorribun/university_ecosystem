@@ -35,5 +35,11 @@ if (-not $root) {
 $root = $root -replace '/', '\'
 
 Set-Location $root
-& docker compose -f docker-compose.full.yml @args
+$envFile = Join-Path $root ".env.docker"
+if (-not (Test-Path -LiteralPath $envFile)) {
+  Write-Error "scripts/dc.ps1: ERROR - .env.docker is missing. Run .\start-docker.ps1 once to generate it."
+  exit 1
+}
+
+& docker compose -f docker-compose.full.yml --env-file $envFile @args
 exit $LASTEXITCODE

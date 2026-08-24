@@ -220,6 +220,15 @@ describe("NewsCardEditDialog", () => {
     revokeObjectURL.mockRestore()
   })
 
+  it("ignores an image input change without a selected file", () => {
+    render(<NewsCardEditDialog {...baseProps} />)
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+
+    fireEvent.change(fileInput, { target: { files: [] } })
+
+    expect(apiMocks.post).not.toHaveBeenCalled()
+  })
+
   it("shows the uploading state while an image upload is pending", async () => {
     const user = userEvent.setup()
     let resolveUpload: (value: { data: { url: string } }) => void = () => undefined

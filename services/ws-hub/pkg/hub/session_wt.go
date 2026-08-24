@@ -36,33 +36,15 @@ type webTransportStream interface {
 type webTransportSession interface {
 	RemoteAddr() net.Addr
 	CloseWithError(webtransport.SessionErrorCode, string) error
-	AcceptStream(context.Context) (webTransportStream, error)
+	AcceptStream(context.Context) (*webtransport.Stream, error)
 	SendDatagram([]byte) error
-}
-
-type realWebTransportSession struct{ sess *webtransport.Session }
-
-func (s *realWebTransportSession) RemoteAddr() net.Addr {
-	return s.sess.RemoteAddr()
-}
-
-func (s *realWebTransportSession) CloseWithError(code webtransport.SessionErrorCode, message string) error {
-	return s.sess.CloseWithError(code, message)
-}
-
-func (s *realWebTransportSession) AcceptStream(ctx context.Context) (webTransportStream, error) {
-	return s.sess.AcceptStream(ctx)
-}
-
-func (s *realWebTransportSession) SendDatagram(data []byte) error {
-	return s.sess.SendDatagram(data)
 }
 
 // NewWebTransportSession creates a new WebTransportSession wrapping sess.
 func NewWebTransportSession(sess *webtransport.Session) *WebTransportSession {
 	var adapted webTransportSession
 	if sess != nil {
-		adapted = &realWebTransportSession{sess: sess}
+		adapted = sess
 	}
 	return &WebTransportSession{
 		sess:      adapted,
@@ -139,6 +121,7 @@ func (s *WebTransportSession) SetWriteDeadline(t time.Time) error {
 func (s *WebTransportSession) SetPongHandler(h func(appData string) error) {
 	// WebTransport runs over QUIC which natively handles keep-alives at transport level.
 	// Pong handler is a no-op for WebTransport.
+	_ = h
 }
 
 func (s *WebTransportSession) getOrAcceptStream() (webTransportStream, error) {
@@ -160,6 +143,9 @@ func (s *WebTransportSession) getOrAcceptStream() (webTransportStream, error) {
 	st, err := s.sess.AcceptStream(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if st == nil {
+		return nil, nil
 	}
 
 	s.stream = st
@@ -203,10 +189,9 @@ func (s *WebTransportSession) WriteMessage(messageType int, data []byte) error {
 		return err
 	}
 	if st == nil {
-		if s.sess != nil {
-			return s.sess.SendDatagram(data)
-		}
-		return errors.New("webtransport stream is nil")
+		// getOrAcceptStream can return (nil, nil) only after a non-nil session
+		// accepted no stream. Preserve delivery by using its datagram path.
+		return s.sess.SendDatagram(data)
 	}
 
 	_, err = st.Write(data)

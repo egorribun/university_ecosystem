@@ -1,0 +1,36 @@
+{
+  "safety-and-quality-gate": {
+    "enabled": true,
+    "PreToolUse": [
+      {
+        "matcher": "run_command|write_to_file|replace_file_content",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python hooks/runner.py pre-tool",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "write_to_file|replace_file_content|run_command",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python hooks/runner.py post-tool",
+            "timeout": 120
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "type": "command",
+        "command": "python hooks/runner.py stop",
+        "timeout": 120
+      }
+    ]
+  }
+}

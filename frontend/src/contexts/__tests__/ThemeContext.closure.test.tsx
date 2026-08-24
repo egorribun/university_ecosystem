@@ -60,6 +60,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.unstubAllGlobals()
 })
 
 describe("ThemeContext closure", () => {
@@ -149,6 +150,7 @@ describe("ThemeContext closure", () => {
   })
 
   it("adds the Secure cookie attribute when the page uses HTTPS", async () => {
+    const cookieSetter = vi.spyOn(document, "cookie", "set")
     vi.stubGlobal("location", { protocol: "https:" })
     render(
       <ThemeProvider>
@@ -158,6 +160,10 @@ describe("ThemeContext closure", () => {
 
     await waitFor(() => expect(screen.getByTestId("resolved")).toHaveTextContent("light"))
     fireEvent.click(screen.getByRole("button", { name: "dark" }))
-    expect(document.cookie).toContain("ue-mode=dark")
+    await waitFor(() =>
+      expect(cookieSetter).toHaveBeenLastCalledWith(
+        "ue-mode=dark; Path=/; Max-Age=31536000; SameSite=Lax; Secure"
+      )
+    )
   })
 })

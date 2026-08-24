@@ -137,7 +137,6 @@ self.addEventListener("sync", (event) => {
     syncEvent.tag === queueSyncTags.newsInteraction ||
     syncEvent.tag === queueSyncTags.navigation ||
     syncEvent.tag === queueSyncTags.offlineMutations ||
-    syncEvent.tag === "sync-offline-mutations" ||
     syncEvent.tag === "offline-mutations-sync"
   ) {
     syncEvent.waitUntil(processOfflineQueues())

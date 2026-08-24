@@ -2,7 +2,7 @@ import * as Sentry from "@sentry/react"
 
 const sentryCaptureException = Sentry.captureException
 const sentryCaptureMessage = Sentry.captureMessage
-const sentrySetTag = typeof Sentry.setTag === "function" ? Sentry.setTag : undefined
+const sentrySetTag = Sentry.setTag
 
 type LogMethod = "error" | "warn" | "info" | "log"
 
@@ -51,7 +51,7 @@ function normalizeArg(value: unknown): unknown {
 
 function callConsole(method: LogMethod, args: unknown[]): void {
   // eslint-disable-next-line no-console
-  const target = typeof console !== "undefined" ? console[method] : undefined
+  const target = console[method]
   if (typeof target === "function") {
     target(...(args as unknown[]))
   }

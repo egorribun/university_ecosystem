@@ -157,6 +157,16 @@ describe("ExportDropdown — branches", () => {
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument())
   })
 
+  it("keeps the menu open for a key unrelated to menu navigation", async () => {
+    const user = userEvent.setup()
+    render(<ExportDropdown gridRef={gridRefWithEl()} />)
+    await user.click(trigger())
+
+    fireEvent.keyDown(document, { key: "Tab" })
+
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+  })
+
   it("navigates menu items with ArrowDown / ArrowUp (keydown effect arrow branch)", async () => {
     const user = userEvent.setup()
     render(<ExportDropdown gridRef={gridRefWithEl()} />)

@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import ssl
 from datetime import UTC
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
@@ -190,12 +191,12 @@ def test_ssl_context_staleness_on_svid_rotation():
 
         def mock_load_cert_chain(self, certfile=None, keyfile=None, password=None):
             cert_val = (
-                open(certfile).read()
+                Path(certfile).read_text()
                 if certfile and isinstance(certfile, str) and os.path.exists(certfile)
                 else certfile
             )
             key_val = (
-                open(keyfile).read()
+                Path(keyfile).read_text()
                 if keyfile and isinstance(keyfile, str) and os.path.exists(keyfile)
                 else keyfile
             )
@@ -284,12 +285,12 @@ def test_sni_callback_reload_under_lock():
 
         def mock_load_cert_chain(self, certfile=None, keyfile=None, password=None):
             cert_val = (
-                open(certfile).read()
+                Path(certfile).read_text()
                 if certfile and isinstance(certfile, str) and os.path.exists(certfile)
                 else certfile
             )
             key_val = (
-                open(keyfile).read()
+                Path(keyfile).read_text()
                 if keyfile and isinstance(keyfile, str) and os.path.exists(keyfile)
                 else keyfile
             )
@@ -330,12 +331,12 @@ def test_get_server_and_client_ssl_context_dynamic_reload():
 
         def mock_load_cert_chain(self, certfile=None, keyfile=None, password=None):
             cert_val = (
-                open(certfile).read()
+                Path(certfile).read_text()
                 if certfile and isinstance(certfile, str) and os.path.exists(certfile)
                 else certfile
             )
             key_val = (
-                open(keyfile).read()
+                Path(keyfile).read_text()
                 if keyfile and isinstance(keyfile, str) and os.path.exists(keyfile)
                 else keyfile
             )

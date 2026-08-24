@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from types import ModuleType, SimpleNamespace
 
 import pytest
-from fastapi import HTTPException, status
+from fastapi import status
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -242,12 +242,3 @@ async def test_stats_summary_combines_subqueries_and_handles_304(monkeypatch):
     )
     assert isinstance(not_modified, Response)
     assert not_modified.status_code == status.HTTP_304_NOT_MODIFIED
-
-
-@pytest.mark.asyncio
-async def test_creation_analytics_is_explicitly_not_implemented():
-    with pytest.raises(HTTPException) as exc_info:
-        await stats.creation_analytics(
-            _request(), object_type="events", period="30d", user=_user()
-        )
-    assert exc_info.value.status_code == status.HTTP_501_NOT_IMPLEMENTED

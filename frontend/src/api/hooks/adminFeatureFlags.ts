@@ -1,14 +1,13 @@
 import {
   queryOptions,
   useQuery,
-  type QueryClient,
   type QueryFunctionContext,
   type UseQueryOptions,
   type UseQueryResult,
 } from "@tanstack/react-query"
 
 import api from "@/api/client"
-import type { FeatureFlag, FlagStatus } from "@/types/Admin"
+import type { FeatureFlag } from "@/types/Admin"
 
 /**
  * @fileoverview SSR-safe queryOptions factory for the /admin/feature-flags
@@ -19,9 +18,8 @@ import type { FeatureFlag, FlagStatus } from "@/types/Admin"
  *
  * Pre-W163: AdminFeatureFlags.tsx consumed `GET /admin/feature-flags` via
  * raw `api.get` inside `useCallback fetchFlags` + `useState/useEffect`.
- * Post-W163: page consumes `useAdminFeatureFlagsQuery()` + mutation paths
- * route through `updateFeatureFlagInCache(queryClient, name, updated)` for
- * optimistic local cache updates.
+ * The API is intentionally read-only: flag definitions are managed through
+ * the reviewed GitOps workflow, not optimistic browser mutations.
  *
  * Cache identity: `adminFeatureFlagsQueryKey = ["admin", "feature-flags"]`.
  */
@@ -65,39 +63,4 @@ export const useAdminFeatureFlagsQuery = (
 ): UseQueryResult<FeatureFlag[], Error> =>
   useQuery({ ...adminFeatureFlagsQueryOptions(), ...options })
 
-/**
- * Optimistic cache update after a PATCH mutation. Centralising the cache
- * surface here (W135 SW1 sessions.ts pattern) means mutation paths don't
- * reach into the cache key shape directly.
- *
- * Caller flow:
- *   await api.patch(`/admin/feature-flags/${name}`, payload)
- *   updateFeatureFlagInCache(queryClient, name, { status, percentage })
- *
- * The update merges into the existing flag object; pass only the fields
- * that changed (e.g., `{ status: "enabled" }` or `{ status: "percentage",
- * percentage: 50 }`).
- *
- * No-op when the cache slot is empty / not yet populated.
- */
-export const updateFeatureFlagInCache = (
-  queryClient: QueryClient,
-  name: string,
-  update: Partial<Pick<FeatureFlag, "status" | "percentage">>
-) => {
-  queryClient.setQueryData<FeatureFlag[] | undefined>(adminFeatureFlagsQueryKey, (previous) => {
-    if (!Array.isArray(previous)) return previous
-    return previous.map((flag) => (flag.name === name ? { ...flag, ...update } : flag))
-  })
-}
-
-/**
- * Invalidate the feature flags cache. Use this when the optimistic update
- * helper is not sufficient (e.g., PATCH returned a different shape than
- * expected, or the backend computed derived fields server-side).
- */
-export const invalidateAdminFeatureFlags = async (queryClient: QueryClient) => {
-  await queryClient.invalidateQueries({ queryKey: adminFeatureFlagsQueryKey })
-}
-
-export type { FeatureFlag, FlagStatus }
+export type { FeatureFlag }

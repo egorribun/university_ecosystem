@@ -60,6 +60,9 @@ describe("ProfileEditor", () => {
     expect(screen.getByText("profile:form.telegram")).toBeInTheDocument()
     expect(screen.getByText("profile:form.save")).toBeInTheDocument()
     expect(screen.getByText("profile:form.cancel")).toBeInTheDocument()
+    expect(screen.getByRole("textbox", { name: "profile:form.name" })).toBeInTheDocument()
+    expect(screen.getByRole("textbox", { name: "profile:form.email" })).toBeInTheDocument()
+    expect(screen.getByRole("textbox", { name: "profile:form.telegram" })).toBeInTheDocument()
     // role-specific fields hidden when no user
     expect(screen.queryByText("profile:form.department")).not.toBeInTheDocument()
     expect(screen.queryByText("profile:form.about")).not.toBeInTheDocument()
@@ -88,6 +91,8 @@ describe("ProfileEditor", () => {
     render(<ProfileEditor {...props} />)
     expect(screen.getByText("profile:form.department")).toBeInTheDocument()
     expect(screen.getByText("profile:form.position")).toBeInTheDocument()
+    expect(screen.getByRole("textbox", { name: "profile:form.department" })).toBeInTheDocument()
+    expect(screen.getByRole("textbox", { name: "profile:form.position" })).toBeInTheDocument()
     const boxes = screen.getAllByRole("textbox")
     boxes.forEach((box, i) => fireEvent.change(box, { target: { value: `v${i}` } }))
     expect(props.setDepartment).toHaveBeenCalled()
@@ -109,6 +114,7 @@ describe("ProfileEditor", () => {
       "profile:form.achievements",
     ]) {
       expect(screen.getByText(key)).toBeInTheDocument()
+      expect(screen.getByRole("textbox", { name: key })).toBeInTheDocument()
     }
     const boxes = screen.getAllByRole("textbox")
     boxes.forEach((box, i) => fireEvent.change(box, { target: { value: `s${i}` } }))

@@ -124,12 +124,12 @@ func TestGatewayContract_HealthEndpoint(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Contract: POST /api/v1/ws/ticket — authentication boundary
+// Contract: POST /ws/ticket — authentication boundary
 //
 // Consumer expectation:
 //   - Without Authorization header  → 401 with JSON body containing "error" field
 //   - With invalid Bearer token     → 401 with JSON body containing "error" field
-//   - With valid Bearer token       → 200 with JSON body containing "ticket" field
+//   - With valid Bearer token       → 201 with "ticket" and "expires_in" fields
 //     (ticket value is a 64-character lowercase hex string)
 //
 // This contract is the gateway's side of the ws ticket protocol: the frontend
@@ -138,12 +138,20 @@ func TestGatewayContract_HealthEndpoint(t *testing.T) {
 // auth rejection shapes — not the full proxy chain.
 // ---------------------------------------------------------------------------
 
-// ticketHandler implements the gateway's auth-gating contract for POST /api/v1/ws/ticket.
+// ticketHandler implements the gateway's auth-gating contract for POST /ws/ticket.
 // Real implementation: JWT middleware (middleware/jwt.go) → proxy to Python backend.
 // This handler reproduces only the auth layer shape to validate the contract boundary.
 func ticketHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/ws/ticket" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
 
 		auth := r.Header.Get("Authorization")
 		if auth == "" {
@@ -164,19 +172,19 @@ func ticketHandler() http.Handler {
 		}
 
 		// Simulate a valid downstream ticket response.
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"ticket":"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"}`)) //nolint:errcheck // t not in scope in handler func
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"ticket":"a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2","expires_in":15}`)) //nolint:errcheck // t not in scope in handler func
 	})
 }
 
 // TestGatewayContract_WSTicketEndpoint verifies the auth boundary contract
-// for POST /api/v1/ws/ticket.
+// for POST /ws/ticket.
 func TestGatewayContract_WSTicketEndpoint(t *testing.T) {
 	server := httptest.NewServer(ticketHandler())
 	defer server.Close()
 
 	t.Run("missing Authorization header returns 401", func(t *testing.T) {
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/v1/ws/ticket", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/ws/ticket", nil)
 		require.NoError(t, err)
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
@@ -187,7 +195,7 @@ func TestGatewayContract_WSTicketEndpoint(t *testing.T) {
 	})
 
 	t.Run("401 response body contains 'error' field", func(t *testing.T) {
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/v1/ws/ticket", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/ws/ticket", nil)
 		require.NoError(t, err)
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
@@ -202,7 +210,7 @@ func TestGatewayContract_WSTicketEndpoint(t *testing.T) {
 	})
 
 	t.Run("non-Bearer Authorization format returns 401", func(t *testing.T) {
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/v1/ws/ticket", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/ws/ticket", nil)
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Basic dXNlcjpwYXNz")
 
@@ -215,7 +223,7 @@ func TestGatewayContract_WSTicketEndpoint(t *testing.T) {
 	})
 
 	t.Run("invalid Bearer token returns 401", func(t *testing.T) {
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/v1/ws/ticket", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/ws/ticket", nil)
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer invalid")
 
@@ -227,8 +235,8 @@ func TestGatewayContract_WSTicketEndpoint(t *testing.T) {
 			"Contract: invalid token must yield 401")
 	})
 
-	t.Run("valid Bearer token returns 200 with 'ticket' field", func(t *testing.T) {
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/v1/ws/ticket", nil)
+	t.Run("valid Bearer token returns 201 with ticket metadata", func(t *testing.T) {
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/ws/ticket", nil)
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer valid-jwt-token")
 
@@ -236,25 +244,27 @@ func TestGatewayContract_WSTicketEndpoint(t *testing.T) {
 		require.NoError(t, err)
 		defer func() { require.NoError(t, resp.Body.Close()) }()
 
-		assert.Equal(t, http.StatusOK, resp.StatusCode,
-			"Contract: valid token must yield 200")
+		assert.Equal(t, http.StatusCreated, resp.StatusCode,
+			"Contract: valid token must yield 201")
 
 		var body map[string]interface{}
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))
 		_, hasTicket := body["ticket"]
 		assert.True(t, hasTicket,
-			"Contract violation: 200 response must contain 'ticket' field")
+			"Contract violation: 201 response must contain 'ticket' field")
+		assert.Equal(t, float64(15), body["expires_in"],
+			"Contract violation: response must expose the ticket TTL")
 	})
 
 	t.Run("ticket value is a 64-character hex string", func(t *testing.T) {
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/api/v1/ws/ticket", nil)
+		req, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+"/ws/ticket", nil)
 		require.NoError(t, err)
 		req.Header.Set("Authorization", "Bearer valid-jwt-token")
 
 		resp, err := http.DefaultClient.Do(req)
 		require.NoError(t, err)
 		defer func() { require.NoError(t, resp.Body.Close()) }()
-		require.Equal(t, http.StatusOK, resp.StatusCode)
+		require.Equal(t, http.StatusCreated, resp.StatusCode)
 
 		var body map[string]interface{}
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&body))

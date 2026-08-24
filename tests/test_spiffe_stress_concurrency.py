@@ -15,6 +15,7 @@ import tempfile
 import threading
 import time
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -279,7 +280,9 @@ async def test_high_concurrency_mtls_with_dynamic_svid_rotations():
     )
 
 
-def test_concurrent_ssl_context_building_and_temp_file_cleanup():
+def test_concurrent_ssl_context_building_and_temp_file_cleanup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Verify concurrent SSLContext generation cleans up temporary PEM files without leaks."""
     import app.core.security.spiffe as spiffe_mod
 
@@ -287,6 +290,12 @@ def test_concurrent_ssl_context_building_and_temp_file_cleanup():
     mock_spiffe_id_cls.parse.return_value.trust_domain = "university.ecosystem"
     spiffe_mod.SpiffeId = mock_spiffe_id_cls
 
+    # Each backend shard runs its tests with pytest-xdist.  Inspecting the
+    # process-wide system temp directory would therefore observe files created
+    # by another worker and report a false leak.  Keep tempfile-backed SVID
+    # files in this test's isolated directory so the assertion covers only the
+    # resources created by this test.
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
     temp_dir = tempfile.gettempdir()
     initial_tmp_files = set(glob.glob(os.path.join(temp_dir, "tmp*")))
 
@@ -310,6 +319,7 @@ def test_concurrent_ssl_context_building_and_temp_file_cleanup():
     for t in threads:
         t.join()
 
+    manager.close()
     final_tmp_files = set(glob.glob(os.path.join(temp_dir, "tmp*")))
     leaked_files = final_tmp_files - initial_tmp_files
 
