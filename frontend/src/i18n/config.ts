@@ -17,9 +17,10 @@ export const localeModules = import.meta.glob<ResourceKey>("./locales/*/*.json",
   import: "default",
 })
 
-export const resources: Resource = Object.entries(localeModules).reduce<Resource>(
-  (result, [path, resource]) => {
-    const match = /^\.\/locales\/([^/]+)\/([^/]+)\.json$/.exec(path)
+/** Build the i18next resource tree from Vite's eagerly imported locale modules. */
+export const buildResources = (modules: Record<string, ResourceKey>): Resource =>
+  Object.entries(modules).reduce<Resource>((result, [path, resource]) => {
+    const match = /^\.\/locales\/([^/]*)\/([^/]*)\.json$/.exec(path)
     if (!match) return result
 
     const language = match[1]
@@ -28,9 +29,9 @@ export const resources: Resource = Object.entries(localeModules).reduce<Resource
     result[language] ??= {}
     result[language][namespace] = resource
     return result
-  },
-  {}
-)
+  }, {})
+
+export const resources: Resource = buildResources(localeModules)
 
 const createOptions = (language: string): InitOptions => ({
   defaultNS,
@@ -66,7 +67,7 @@ const configureInstance = (instance: I18nInstance, language: string): I18nInstan
 export const createI18nInstance = (language = fallbackLng): I18nInstance =>
   configureInstance(createInstance(), language)
 
-const resolveBootstrapLanguage = (): string => {
+export const resolveBootstrapLanguage = (): string => {
   if (typeof window === "undefined") return fallbackLng
   const selected = window.__UE_SELECTED_LANG__
   return supportedLngs.includes(selected as (typeof supportedLngs)[number])

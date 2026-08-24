@@ -1,11 +1,13 @@
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react"
 import type { PropsWithChildren } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
+import type { i18n as I18nInstance } from "i18next"
 
 import i18n from "@/i18n/config"
 import {
   LanguageProvider,
   getLocaleForLanguage,
+  resolveInitialLanguage,
   useLanguage,
   type SupportedLanguage,
 } from "@/contexts/LanguageContext"
@@ -46,6 +48,26 @@ describe("LanguageContext browser branches", () => {
     expect(document.documentElement).toHaveAttribute("dir", "ltr")
     expect(document.body).toHaveAttribute("dir", "ltr")
     expect(document.cookie).toContain("ue:language=ru")
+  })
+
+  it("prefers the server-selected bootstrap language when it is supported", () => {
+    window.__UE_SELECTED_LANG__ = "en"
+
+    render(<Probe />, { wrapper })
+
+    expect(screen.getByRole("button")).toHaveTextContent("en:en,ru")
+  })
+
+  it("falls back on the server when the i18n instance language is unsupported", () => {
+    vi.stubGlobal("window", undefined)
+
+    expect(resolveInitialLanguage({ language: "de" } as I18nInstance)).toBe("ru")
+  })
+
+  it("uses the supported i18n instance language during server rendering", () => {
+    vi.stubGlobal("window", undefined)
+
+    expect(resolveInitialLanguage({ language: "en" } as I18nInstance)).toBe("en")
   })
 
   it("marks the mirrored language cookie Secure on HTTPS", async () => {

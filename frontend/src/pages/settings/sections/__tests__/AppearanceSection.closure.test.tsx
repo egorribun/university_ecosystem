@@ -47,6 +47,7 @@ afterEach(() => {
 describe("AppearanceSection preferences", () => {
   it("persists a language selected from the appearance controls", async () => {
     window.localStorage.setItem("ue-mode", "light")
+    window.localStorage.setItem("ue:language", "en")
     renderSection()
     openAccordion(i18n.t("settings:appearance.language.title"))
 

@@ -55,14 +55,11 @@ export default defineConfig({
     ],
     coverage: {
       provider: "v8",
-      // Keep the stable V8 remapper path.  Vitest's experimental AST-aware
-      // remapper can synthesize a missing no-else branch as
-      // `outerIfCount - consequentCount`; when V8 omits the outer range this
-      // produces negative BRDA counts and an invalid LCOV artifact.  The
-      // aggregate gate is intentionally fail-closed on malformed coverage, so
-      // the experimental path must stay disabled until upstream fixes the
-      // accounting algorithm.
-      experimentalAstAwareRemapping: false,
+      // AST-aware remapping keeps statement/branch maps stable across Vitest
+      // shards.  V8 can report a negative synthetic no-else branch count when
+      // a shard observes only the enclosing range; merge-vitest-coverage
+      // normalises that impossible counter to zero before emitting LCOV.
+      experimentalAstAwareRemapping: true,
       reporter: ["text", "json", "lcov", "html"],
       reportsDirectory: "coverage",
       // Keep all authored production source in the denominator. Do not replace

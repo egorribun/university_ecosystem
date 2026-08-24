@@ -29,7 +29,7 @@ const setLangCookie = (lang: SupportedLanguage) => {
 const isSupportedLanguage = (value: unknown): value is SupportedLanguage =>
   typeof value === "string" && supportedLngs.includes(value as SupportedLanguage)
 
-const resolveInitialLanguage = (instance: I18nInstance): SupportedLanguage => {
+export const resolveInitialLanguage = (instance: I18nInstance): SupportedLanguage => {
   if (typeof window === "undefined") {
     return isSupportedLanguage(instance.language) ? instance.language : fallbackLng
   }

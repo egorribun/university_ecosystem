@@ -294,6 +294,18 @@ describe("useNewsListQuery placeholderData offline (news.ts:255-270)", () => {
     expect(result.current.news).toEqual(stored)
   })
 
+  it("returns an empty feed when an offline error has no persisted snapshot", async () => {
+    newsListMock.mockRejectedValue(new Error("offline"))
+
+    const queryClient = freshClient()
+    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.news).toEqual([])
+  })
+
   it("returns no placeholder when stored items are empty/missing", async () => {
     window.localStorage.setItem("news:list:ru", JSON.stringify([]))
     newsListMock.mockResolvedValue(okPage([], null))

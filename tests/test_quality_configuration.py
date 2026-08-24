@@ -596,10 +596,12 @@ def test_frontend_coverage_policy_and_source_universe_match_quality_contract() -
     )
     assert reports_directory is not None, "missing reportsDirectory"
     assert reports_directory.group("value") == "coverage"
-    # The experimental AST-aware V8 remapper can emit negative BRDA counts for
-    # no-else branches.  Keep the stable remapper path until upstream fixes
-    # that accounting bug; the LCOV normalizer must remain fail-closed.
-    assert re.search(r"\bexperimentalAstAwareRemapping\s*:\s*false\b", coverage)
+    # AST-aware remapping is required for stable statement/branch maps across
+    # Vitest shards.  Its known negative synthetic counters are normalised to
+    # zero by the aggregate merger, preserving a fail-closed 100% gate.
+    assert re.search(r"\bexperimentalAstAwareRemapping\s*:\s*true\b", coverage)
+    merger = _read_text("frontend/scripts/merge-vitest-coverage.mjs")
+    assert "normaliseNegativeHitCounts" in merger
     assert _extract_string_array(coverage, "include") == EXPECTED_VITEST_INCLUDE
     assert _extract_string_array(coverage, "exclude") == EXPECTED_VITEST_EXCLUSIONS
 

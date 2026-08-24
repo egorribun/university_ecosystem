@@ -34,6 +34,35 @@ function reportFor(filePath, hits) {
   }
 }
 
+function reportWithNegativeBranch(filePath) {
+  return {
+    [filePath]: {
+      path: filePath,
+      statementMap: {
+        0: {
+          start: { line: 1, column: 0 },
+          end: { line: 1, column: 10 },
+        },
+      },
+      fnMap: {},
+      branchMap: {
+        0: {
+          type: "if",
+          line: 1,
+          loc: { start: { line: 1, column: 0 }, end: { line: 1, column: 10 } },
+          locations: [
+            { start: { line: 1, column: 0 }, end: { line: 1, column: 5 } },
+            { start: { line: 1, column: 5 }, end: { line: 1, column: 10 } },
+          ],
+        },
+      },
+      s: { 0: 1 },
+      f: {},
+      b: { 0: [4, -3] },
+    },
+  }
+}
+
 function runMerger(input, output, expectedShards) {
   const argumentsList = [scriptPath, `--input=${input}`, `--output=${output}`]
   if (expectedShards !== undefined) {
@@ -108,5 +137,26 @@ describe("merge-vitest-coverage", () => {
 
     assert.notEqual(result.code, 0)
     assert.match(result.stderr, /Expected 3 coverage shards, found 2/)
+  })
+
+  it("normalises negative V8 branch counters before emitting LCOV", async () => {
+    const input = path.join(fixtureRoot, "negative-input")
+    const output = path.join(fixtureRoot, "negative-output")
+    await mkdir(input, { recursive: true })
+    await writeFile(
+      path.join(input, "coverage-final.json"),
+      JSON.stringify(reportWithNegativeBranch("src/negative.ts"))
+    )
+
+    const result = await runMerger(input, output, "1")
+
+    assert.equal(result.code, 0, result.stderr)
+    assert.match(result.stderr, /Normalised 1 negative coverage hit count\(s\) to zero/)
+    const merged = JSON.parse(await readFile(path.join(output, "coverage-final.json"), "utf8"))
+    assert.deepEqual(merged["src/negative.ts"].b["0"], [4, 0])
+    assert.doesNotMatch(
+      await readFile(path.join(output, "lcov.info"), "utf8"),
+      /,-[0-9]+(?:\r?\n|$)/
+    )
   })
 })

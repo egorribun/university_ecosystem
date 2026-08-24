@@ -581,4 +581,27 @@ describe("etagCache — lazy hydration on first access (isolated module)", () =>
       keySpy.mockRestore()
     }
   })
+
+  it("does not flush before the lazy map has been hydrated", async () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem")
+
+    try {
+      await import("../etagCache")
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "hidden",
+      })
+      vi.stubGlobal("window", undefined)
+      document.dispatchEvent(new Event("visibilitychange"))
+
+      expect(setItemSpy).not.toHaveBeenCalled()
+    } finally {
+      setItemSpy.mockRestore()
+      vi.unstubAllGlobals()
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "visible",
+      })
+    }
+  })
 })

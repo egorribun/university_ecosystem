@@ -240,12 +240,17 @@ describe("ScheduleCard", () => {
   })
 
   it("absorbs a rejected schedule route warmup", async () => {
-    vi.doMock("@/pages/Schedule", () => {
+    // Resolve the same page module as production's relative import so Vitest
+    // rejects the lazy load before evaluating Schedule.tsx (and does not
+    // synthesize an import branch).
+    const routeFactory = vi.fn(async () => {
       throw new Error("route chunk unavailable")
     })
+    vi.doMock("../../../pages/Schedule", routeFactory)
     renderCard({ userRole: "student", userGroupId: "group-1" })
 
     fireEvent.pointerDown(screen.getByRole("link", { name: "dashboard:aria.openFullSchedule" }))
-    await Promise.resolve()
+    await vi.dynamicImportSettled()
+    expect(routeFactory).toHaveBeenCalledOnce()
   })
 })

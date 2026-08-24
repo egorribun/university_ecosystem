@@ -120,4 +120,18 @@ describe("MapControls closure", () => {
     expect(exitFullscreen).toHaveBeenCalledOnce()
     expect(mockLogError).toHaveBeenCalledTimes(2)
   })
+
+  it("does nothing when the map container is outside the fullscreen matte", async () => {
+    const user = userEvent.setup()
+    const mapContainer = document.createElement("div")
+    const map = { getContainer: vi.fn(() => mapContainer) }
+    const ref = {
+      current: { getMap: vi.fn(() => map) },
+    } as unknown as MutableRefObject<MapRef | null>
+    render(<MapControls mapRef={ref} />)
+
+    await user.click(screen.getByRole("button", { name: "controls.fullscreen" }))
+
+    expect(map.getContainer).toHaveBeenCalledOnce()
+  })
 })

@@ -119,7 +119,7 @@ async def test_retry_with_single_attempt_invokes_operation_before_exhausting() -
         raise failure
 
     with pytest.raises(RetryExhausted) as exc_info:
-        await retry_async(always_fails, max_attempts=1)
+        await asyncio.wait_for(retry_async(always_fails, max_attempts=1), timeout=1.0)
 
     assert calls == 1
     assert exc_info.value.attempts == 1
