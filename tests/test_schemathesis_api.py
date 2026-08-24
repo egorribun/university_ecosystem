@@ -1,4 +1,4 @@
-"""Wave 2 / Task 2.3 — Schemathesis v4 property-based OpenAPI conformance tests.
+"""Schemathesis v4 property-based OpenAPI conformance tests.
 
 Schemathesis generates random-but-valid HTTP requests directly from the live
 FastAPI OpenAPI schema and asserts that every response conforms to the declared
@@ -34,7 +34,11 @@ What this catches
 
 Run locally
 -----------
-    uv run pytest tests/test_schemathesis_api.py -v
+    uv run pytest tests/test_schemathesis_api.py -v -m schemathesis
+
+CI sets ``SCHEMATHESIS_SHARD_COUNT=4`` and
+``SCHEMATHESIS_SHARD_INDEX=0..3`` to distribute the same exhaustive operation
+set across four bounded jobs.
 """
 
 from __future__ import annotations
@@ -69,6 +73,20 @@ auth_token = _mint_pure_jwt(subject=uuid4(), extra_claims={"role": "admin"})
 SCHEMATHESIS_MAX_EXAMPLES = int(os.environ.get("SCHEMATHESIS_MAX_EXAMPLES", "1"))
 if SCHEMATHESIS_MAX_EXAMPLES < 1:
     raise ValueError("SCHEMATHESIS_MAX_EXAMPLES must be at least 1")
+
+# The complete OpenAPI surface is intentionally exercised with the same number
+# of examples per operation.  CI distributes operations round-robin across
+# independent jobs so the exhaustive pass remains bounded without reducing
+# property-based depth.  Local runs default to one shard and therefore retain
+# the familiar single-process behaviour.
+SCHEMATHESIS_SHARD_COUNT = int(os.environ.get("SCHEMATHESIS_SHARD_COUNT", "1"))
+SCHEMATHESIS_SHARD_INDEX = int(os.environ.get("SCHEMATHESIS_SHARD_INDEX", "0"))
+if SCHEMATHESIS_SHARD_COUNT < 1:
+    raise ValueError("SCHEMATHESIS_SHARD_COUNT must be at least 1")
+if not 0 <= SCHEMATHESIS_SHARD_INDEX < SCHEMATHESIS_SHARD_COUNT:
+    raise ValueError(
+        "SCHEMATHESIS_SHARD_INDEX must be within the configured shard count"
+    )
 
 
 @schemathesis.hook
@@ -141,7 +159,44 @@ def loaded_schema():
     Session-scoped so the ASGI round-trip (fetching /api/openapi.json) happens
     exactly once per pytest session, not once per test case.
     """
-    return schemathesis.openapi.from_asgi("/api/openapi.json", app=app)
+    schema = schemathesis.openapi.from_asgi("/api/openapi.json", app=app)
+    if SCHEMATHESIS_SHARD_COUNT == 1:
+        return schema
+
+    operations = []
+    for operation_result in schema.get_all_operations():
+        operation = operation_result.ok()
+        if operation is not None:
+            operations.append(operation)
+
+    # Sort by a stable operation key before assigning round-robin shards.  Do
+    # not use Python's hash(), whose randomised seed would make CI shards drift
+    # between processes and silently leave operations untested.
+    operations.sort(key=lambda operation: (operation.path, operation.method))
+    operation_index = {
+        f"{operation.method.upper()} {operation.path}": index
+        for index, operation in enumerate(operations)
+    }
+    if len(operation_index) != len(operations):
+        raise RuntimeError("Schemathesis OpenAPI operation keys must be unique")
+    selected_schema = schema.include(
+        func=lambda context: operation_index[
+            f"{context.operation.method.upper()} {context.operation.path}"
+        ]
+        % SCHEMATHESIS_SHARD_COUNT
+        == SCHEMATHESIS_SHARD_INDEX
+    )
+    selected_operations = [
+        result
+        for result in selected_schema.get_all_operations()
+        if result.ok() is not None
+    ]
+    if not selected_operations:
+        raise RuntimeError(
+            "Schemathesis shard selected no OpenAPI operations: "
+            f"{SCHEMATHESIS_SHARD_INDEX}/{SCHEMATHESIS_SHARD_COUNT}"
+        )
+    return selected_schema
 
 
 # ---------------------------------------------------------------------------

@@ -1305,7 +1305,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Run contract tests (consumer-side)
-        # Wave 2.1: now includes test_file_processor_contract.py (ProcessResult
+        # Contract coverage includes test_file_processor_contract.py (ProcessResult
         # callback schema) alongside the existing ws-hub NATS contract.
         run: |
           uv run pytest tests/contracts/ -v \
@@ -1315,16 +1315,21 @@ jobs:
         env:
           PACT_DO_NOT_TRACK: "true"
 
-  # Wave 2.3 — Schemathesis property-based OpenAPI conformance gate.
+  # Schemathesis property-based OpenAPI conformance gate.
   # Generates random-but-valid requests from the live FastAPI OpenAPI schema
   # and asserts every response conforms to the declared contract.
   # Uses ASGI transport — fully hermetic, no Docker or network required.
-  schemathesis-api-tests:
-    name: Schemathesis - API Schema Conformance
+  schemathesis-api-tests-shard:
+    name: Schemathesis - API Schema Conformance / shard ${{ matrix.shard }}/4
     runs-on: ubuntu-24.04
-    # 25 examples across the complete OpenAPI surface are intentionally
-    # exhaustive.  The previous 15-minute cap cancelled a healthy run after
-    # only a quarter of the operations had executed.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    # 25 examples per operation across the complete OpenAPI surface are
+    # intentionally exhaustive.  Four independent operation shards preserve
+    # that depth while keeping each bounded job well below the old 60-minute
+    # cancellation point.
     timeout-minutes: 60
     needs: pre-commit-check
     permissions:
@@ -1357,13 +1362,35 @@ jobs:
           ENVIRONMENT: testing
           OTEL_SDK_DISABLED: "true"
           SCHEMATHESIS_MAX_EXAMPLES: "25"
+          SCHEMATHESIS_SHARD_COUNT: "4"
+          SCHEMATHESIS_SHARD_INDEX: ${{ matrix.shard }}
         run: |
           uv run pytest tests/test_schemathesis_api.py -v \
             -m schemathesis \
             --tb=short \
             -p no:cacheprovider
 
-  # Wave 2.4 — MSW mock drift gate.
+  # Preserve the exact required check name while exposing a single aggregate
+  # result for the four matrix shards above.  `always()` ensures a cancelled or
+  # failed shard is reported as a hard failure instead of disappearing as a
+  # skipped dependency in CI Success.
+  schemathesis-api-tests:
+    name: Schemathesis - API Schema Conformance
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+    needs: schemathesis-api-tests-shard
+    steps:
+      - name: Require every Schemathesis shard to pass
+        env:
+          SHARD_RESULT: ${{ needs.schemathesis-api-tests-shard.result }}
+        run: |
+          if [[ "$SHARD_RESULT" != "success" ]]; then
+            echo "Schemathesis shard aggregate: $SHARD_RESULT"
+            exit 1
+          fi
+          echo "All Schemathesis shards passed."
+
+  # MSW mock drift gate.
   # Regenerates MSW handlers from the OpenAPI spec and fails if they differ
   # from what is committed.  Ensures frontend mock handlers (used in Vitest
   # and Storybook) never silently diverge from the live API contract.

@@ -632,7 +632,11 @@ async def test_detect_conflicts_stub_restores_both_domain_metadata() -> None:
     target = _schedule_item(101, room="target", teacher="Target Teacher")
     existing = _schedule_item(202, room="202B", teacher="Prof. Jones")
 
-    def return_existing(_target, rust_items):
+    def return_existing(rust_target, rust_items):
+        # Keep the target argument observable so mutmut cannot replace the
+        # first converted item with ``None`` without failing this contract.
+        assert rust_target.id == target.id
+        assert [item.id for item in rust_items] == [existing.id]
         return [rust_items[0]]
 
     with patch("rust_ext.detect_conflicts", side_effect=return_existing):
