@@ -9,7 +9,7 @@ let motionModulePromise: Promise<MotionModule> | null = null
 
 const loadMotionModule = async () => {
   if (!motionModulePromise) {
-    motionModulePromise = import("framer-motion").then((mod) => mod)
+    motionModulePromise = import("framer-motion")
   }
   return motionModulePromise
 }
