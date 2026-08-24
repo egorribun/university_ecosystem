@@ -1,4 +1,4 @@
-import { renderHook, act } from "@testing-library/react"
+import { renderHook, act, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
@@ -35,6 +35,31 @@ const mocks = vi.hoisted(() => ({
   logError: vi.fn(),
   parseWsMessage: vi.fn(),
 }))
+
+class TestWebSocket {
+  static readonly OPEN = 1
+  static readonly CLOSED = 3
+  static instances: TestWebSocket[] = []
+
+  readonly url: string
+  readyState = TestWebSocket.OPEN
+  onopen: (() => void) | null = null
+  onmessage: ((event: MessageEvent) => void) | null = null
+  onclose: ((event: CloseEvent) => void) | null = null
+  onerror: ((event: Event) => void) | null = null
+
+  constructor(url: string) {
+    this.url = url
+    TestWebSocket.instances.push(this)
+  }
+
+  send = vi.fn()
+
+  close = vi.fn((code = 1000) => {
+    this.readyState = TestWebSocket.CLOSED
+    this.onclose?.({ code } as CloseEvent)
+  })
+}
 
 vi.mock("@/api/client", () => ({
   default: {
@@ -82,6 +107,46 @@ afterEach(() => {
 // ---------- Tests ----------
 
 describe("useChatWebSocket", () => {
+  it("ignores a typing timeout that fires after unmount", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    mocks.parseWsMessage.mockReturnValue({
+      type: "typing",
+      chat_id: "chat-1",
+      user_id: "user-1",
+      user_name: "Alice",
+    })
+
+    const { unmount } = renderHook(() => useChatWebSocket({ enabled: true }), { wrapper })
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+
+    const ws = TestWebSocket.instances[0]
+    expect(ws).toBeDefined()
+    await waitFor(() => expect(ws?.onmessage).toEqual(expect.any(Function)))
+
+    // Keep the callback after cleanup so it can exercise the mountedRef guard
+    // that protects a late event from updating unmounted state.
+    const timeoutCallbacks: Array<() => void> = []
+    const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation((handler) => {
+      if (typeof handler === "function") timeoutCallbacks.push(handler as () => void)
+      return 1 as unknown as ReturnType<typeof setTimeout>
+    })
+    act(() => {
+      ws?.onmessage?.({ data: "typing" } as MessageEvent)
+    })
+    expect(timeoutCallbacks).toHaveLength(1)
+
+    try {
+      act(() => unmount())
+      act(() => {
+        timeoutCallbacks[0]?.()
+      })
+    } finally {
+      setTimeoutSpy.mockRestore()
+      vi.unstubAllGlobals()
+    }
+  })
+
   describe("hook contract", () => {
     it("returns expected shape when enabled", () => {
       const { result } = renderHook(() => useChatWebSocket({ enabled: false }), { wrapper })
