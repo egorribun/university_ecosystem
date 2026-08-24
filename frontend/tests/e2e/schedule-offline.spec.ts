@@ -48,32 +48,39 @@ async function ensureServiceWorkerReady(page: Page): Promise<void> {
 }
 
 test.describe("Schedule offline behaviour", () => {
-  // ── 1. Page loads from SW cache when offline ───────────────────────────
-  test("loads schedule page from SW cache when network is offline", async ({ page, context }) => {
-    const { login } = await useMockApi(page, { serviceWorker: "preserve" })
-    await login(page)
+  test.describe("Chromium Service Worker offline navigation", () => {
+    test.skip(
+      ({ browserName }) => browserName !== "chromium",
+      "Playwright Service Worker offline navigation is supported only on Chromium"
+    )
 
-    await gotoWithTransientRetry(page, "/schedule", { waitUntil: "networkidle" })
-    await page.waitForURL(/\/schedule$/)
+    // ── 1. Page loads from SW cache when offline ───────────────────────────
+    test("loads schedule page from SW cache when network is offline", async ({ page, context }) => {
+      const { login } = await useMockApi(page, { serviceWorker: "preserve" })
+      await login(page)
 
-    // Verify the page loaded online first (baseline content present).
-    const scheduleHeading = page.getByRole("heading", { name: /расписание|schedule/i })
-    await expect(scheduleHeading).toBeVisible({ timeout: TIMEOUTS.element })
-    await ensureServiceWorkerReady(page)
+      await gotoWithTransientRetry(page, "/schedule", { waitUntil: "networkidle" })
+      await page.waitForURL(/\/schedule$/)
 
-    await context.setOffline(true)
-    try {
-      // Reload while offline — SW cache should serve the page.
-      await page.reload({ waitUntil: "domcontentloaded" })
-      await expect(page).toHaveURL(/\/schedule/, { timeout: TIMEOUTS.navigation })
+      // Verify the page loaded online first (baseline content present).
+      const scheduleHeading = page.getByRole("heading", { name: /расписание|schedule/i })
+      await expect(scheduleHeading).toBeVisible({ timeout: TIMEOUTS.element })
+      await ensureServiceWorkerReady(page)
 
-      // The schedule heading must still be present from cache.
-      await expect(page.getByRole("heading", { name: /расписание|schedule/i })).toBeVisible({
-        timeout: TIMEOUTS.element,
-      })
-    } finally {
-      await context.setOffline(false)
-    }
+      await context.setOffline(true)
+      try {
+        // Reload while offline — SW cache should serve the page.
+        await page.reload({ waitUntil: "domcontentloaded" })
+        await expect(page).toHaveURL(/\/schedule/, { timeout: TIMEOUTS.navigation })
+
+        // The schedule heading must still be present from cache.
+        await expect(page.getByRole("heading", { name: /расписание|schedule/i })).toBeVisible({
+          timeout: TIMEOUTS.element,
+        })
+      } finally {
+        await context.setOffline(false)
+      }
+    })
   })
 
   // ── 2. Sync resumes on reconnect ──────────────────────────────────────

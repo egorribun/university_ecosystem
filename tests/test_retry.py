@@ -1,5 +1,6 @@
 """Tests for retry utilities."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -40,11 +41,14 @@ async def test_retry_async_exhausted():
     mock_fn = AsyncMock(side_effect=ValueError("always fails"))
 
     with pytest.raises(RetryExhausted) as exc_info:
-        await retry_async(
-            mock_fn,
-            max_attempts=3,
-            base_delay=0.01,
-            retryable_exceptions=(ValueError,),
+        await asyncio.wait_for(
+            retry_async(
+                mock_fn,
+                max_attempts=3,
+                base_delay=0.01,
+                retryable_exceptions=(ValueError,),
+            ),
+            timeout=1.0,
         )
 
     assert exc_info.value.attempts == 3

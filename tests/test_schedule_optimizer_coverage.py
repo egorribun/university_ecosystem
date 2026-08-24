@@ -153,6 +153,7 @@ async def test_detect_conflicts_no_match(optimizer_service, sample_item):
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_batch_detect_conflicts(optimizer_service, sample_item):
     target = ScheduleItemInternal(
         id=2,
@@ -176,6 +177,7 @@ async def test_batch_detect_conflicts(optimizer_service, sample_item):
 
 @pytest.mark.asyncio
 @pytest.mark.timeout(5)
+@pytest.mark.integration
 async def test_batch_uuidv7_prefix_collisions_preserve_both_items(
     optimizer_service,
 ) -> None:

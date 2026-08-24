@@ -7,6 +7,7 @@ sanitization, retry, request coalescing, privacy cleanup, and misc utilities.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
@@ -222,7 +223,10 @@ class TestRetryUtil:
             raise ValueError("fail")
 
         with pytest.raises((RetryExhausted, ValueError)):
-            await retry_async(always_fails, max_attempts=2, base_delay=0.01)
+            await asyncio.wait_for(
+                retry_async(always_fails, max_attempts=2, base_delay=0.01),
+                timeout=1.0,
+            )
 
 
 # ===========================================================================

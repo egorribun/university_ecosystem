@@ -276,11 +276,9 @@ class DeadLetterQueue:
                     if not jobs:
                         break
 
-                    halt_replay = False
                     for job in jobs:
                         if circuit_breaker and not force:
                             if not circuit_breaker.allow_request():
-                                halt_replay = True
                                 break
 
                         await self.mark_job_retrying(job)
@@ -337,12 +335,13 @@ class DeadLetterQueue:
 
                         if rate_limit_delay > 0:
                             await asyncio.sleep(rate_limit_delay)
-
-                    if halt_replay:
-                        break
-                    # Halted batches break before this point, so every path
-                    # reaching here represents a complete batch to flush.
-                    await self.session.flush()
+                    else:
+                        # A normal loop completion means the whole batch was
+                        # processed; circuit-breaker denial uses ``break`` and
+                        # exits replay without flushing a partial batch.
+                        await self.session.flush()
+                        continue
+                    break
             finally:
                 DeadLetterQueue._is_replaying = False
 
