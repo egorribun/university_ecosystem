@@ -29,7 +29,7 @@ dependencies = [
   "fastapi>=0.135.3,<0.142",                          # PY-P1-01 (audit Wave 10): tight minor bound; update consciously via Renovate
   "filelock>=3.25.2",
   "geoip2>=5.2.0",
-  "grpcio>=1.81.0,<1.82",  # 1.82.0 was yanked; 1.82.1+ moves health stubs to protobuf 7
+  "grpcio>=1.81.0,<1.84",  # 1.82.0 was yanked; 1.82.1+ moves health stubs to protobuf 7
   "gunicorn>=25.3.0",
   "httpx[http2]>=0.28.1,<1.0",                          # TD-W9-06: upper bound — httpx 1.0 has breaking transport API changes
   "h2>=4.4.1,<5",                                       # SEC: fixes the active h2 advisory in HTTP/2 transport
@@ -57,7 +57,7 @@ dependencies = [
   "pillow-avif-plugin>=1.5.5,<2",  # TD-26-04: upper bound
   "polars>=1.39.3",
   "prometheus-client>=0.25.0",
-  "protobuf>=6.33.6,<7",  # Shared compatible line: flagd 0.5.0, Authzed, and OTEL all require protobuf <7
+  "protobuf>=6.33.6,<8",  # Shared compatible line: flagd 0.5.0, Authzed, and OTEL all require protobuf <7
   "psutil>=7.2.2",
   "psycopg[binary]>=3.3.3",
   "pyasn1>=0.6.4,<1",  # TD-26-04: upper bound
@@ -85,10 +85,10 @@ dependencies = [
   "webauthn>=2.7.1",
   "zxcvbn>=4.5.0",
   "authzed>=1.24.4",
-  "grpcio-health-checking>=1.81.0,<1.82",  # stable line compatible with protobuf 6
+  "grpcio-health-checking>=1.81.0,<1.84",  # stable line compatible with protobuf 6
   "dishka>=1.9.1,<2",                                  # MOD-W10-01: upper bound; dishka 2.0 may restructure DI container API
   "openfeature-sdk>=0.8.4",
-  "openfeature-provider-flagd>=0.5.0,<0.5.1",  # 0.5.1+ requires protobuf 7, incompatible with Authzed/OTEL
+  "openfeature-provider-flagd>=0.5.0,<0.5.3",  # 0.5.1+ requires protobuf 7, incompatible with Authzed/OTEL
   "rust_ext",
   # PY-P1-02 (audit Wave 10): pyo3_sanitizer removed from production deps —
   # it is a build-time / development tooling package, not a runtime dependency.
@@ -447,8 +447,8 @@ environments = [
     "sys_platform == 'darwin'",
 ]
 override-dependencies = [
-    "protobuf>=6.33.6,<7",
-    "grpcio>=1.81.0,<1.82",
+    "protobuf>=6.33.6,<8",
+    "grpcio>=1.81.0,<1.84",
     "opentelemetry-api>=1.41.0",
     "opentelemetry-sdk>=1.41.0",
     "opentelemetry-exporter-otlp>=1.41.0",
