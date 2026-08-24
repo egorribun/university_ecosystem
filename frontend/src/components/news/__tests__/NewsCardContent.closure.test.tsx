@@ -73,6 +73,24 @@ describe("NewsCardContent closure", () => {
     }
   })
 
+  it("clears a pending like celebration timer on unmount", () => {
+    vi.useFakeTimers()
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout")
+
+    try {
+      const { unmount } = render(<NewsCardContent {...baseProps} />)
+      fireEvent.click(screen.getByRole("button", { name: "common:aria.like" }))
+      clearTimeoutSpy.mockClear()
+
+      unmount()
+
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      vi.useRealTimers()
+      clearTimeoutSpy.mockRestore()
+    }
+  })
+
   it("renders liked and bookmarked state without optional controls", () => {
     const onToggleLike = vi.fn()
     const onToggleBookmark = vi.fn()
