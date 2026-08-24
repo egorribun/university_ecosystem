@@ -83,9 +83,10 @@ var (
 	newOTelResourceFunc = func(ctx context.Context, opts ...resource.Option) (*resource.Resource, error) {
 		return resource.New(ctx, opts...)
 	}
-	shutdownH3ServerFunc   = func(server *http3.Server, ctx context.Context) error { return server.Shutdown(ctx) }
-	shutdownHTTPServerFunc = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
-	setupGinPrometheusFunc = func(router *gin.Engine) {
+	listenAndServeH3ServerFunc = func(server *http3.Server) error { return server.ListenAndServe() }
+	shutdownH3ServerFunc       = func(server *http3.Server, ctx context.Context) error { return server.Shutdown(ctx) }
+	shutdownHTTPServerFunc     = func(server *http.Server, ctx context.Context) error { return server.Shutdown(ctx) }
+	setupGinPrometheusFunc     = func(router *gin.Engine) {
 		if gin.Mode() == gin.TestMode || os.Getenv("GIN_MODE") == "test" || flag.Lookup("test.v") != nil {
 			return
 		}
@@ -216,6 +217,13 @@ func callNewOTelResource(ctx context.Context, opts ...resource.Option) (*resourc
 	fn := newOTelResourceFunc
 	hooksMu.RUnlock()
 	return fn(ctx, opts...)
+}
+
+func callListenAndServeH3Server(server *http3.Server) error {
+	hooksMu.RLock()
+	fn := listenAndServeH3ServerFunc
+	hooksMu.RUnlock()
+	return fn(server)
 }
 
 func callShutdownH3Server(server *http3.Server, ctx context.Context) error {
@@ -760,7 +768,7 @@ func runServer(cfg *config.Config, router *gin.Engine, logger *slog.Logger, sign
 			}
 			go func() {
 				logger.InfoContext(context.Background(), "Starting HTTP/3 QUIC listener", "addr", h3Addr)
-				if err := h3Server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				if err := callListenAndServeH3Server(h3Server); err != nil && err != http.ErrServerClosed {
 					logger.ErrorContext(context.Background(), "HTTP/3 QUIC listener error", "err", err)
 				}
 			}()
