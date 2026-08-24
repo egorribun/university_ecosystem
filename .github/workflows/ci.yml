@@ -2034,7 +2034,7 @@ jobs:
           MUTMUT_REMAINING_TIMEOUT_SECONDS="$((MUTMUT_REMAINING_JOB_SECONDS - MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS - MUTMUT_TIMEOUT_KILL_GRACE_SECONDS))"
           if [ "$MUTMUT_REMAINING_TIMEOUT_SECONDS" -lt 1 ]; then
             MUTMUT_FAILURE_REASON="mutation deadline leaves no execution time after required evidence headroom"
-            echo "::error::Mutation deadline leaves no execution time after the required 300-second post-run/upload reserve and 30-second KILL grace."
+            echo "::error::Mutation deadline leaves no execution time after the required 600-second post-run/upload reserve and 30-second KILL grace."
             exit 1
           fi
           MUTMUT_TIMEOUT_SECONDS="$MUTMUT_BUDGET_TIMEOUT_SECONDS"

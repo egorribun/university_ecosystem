@@ -1554,6 +1554,10 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
     assert "--max-timeout-seconds 20000" in pr_run_step["run"]
     assert "--control-cycle-reserve-seconds 5" in pr_run_step["run"]
     assert "MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=600" in pr_run_step["run"]
+    assert (
+        "required 600-second post-run/upload reserve and 30-second KILL grace"
+        in pr_run_step["run"]
+    )
     assert "MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30" in pr_run_step["run"]
     assert 360 * 60 - 20_000 - 30 == 1570
 
