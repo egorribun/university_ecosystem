@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787615926204,
+  "lastUpdate": 1787615928890,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -9943,6 +9943,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 90140,
             "range": "± 545",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "9e155319855825cd42614c0d5d70f37defb2fdeb",
+          "message": "build(deps): Bump the pip-dependencies group with 4 updates (#1254)\n\nUpdates the requirements on [grpcio](https://github.com/grpc/grpc), [protobuf](https://github.com/protocolbuffers/protobuf), [grpcio-health-checking](https://grpc.io) and [openfeature-provider-flagd](https://github.com/open-feature/python-sdk-contrib) to permit the latest version.\n\nUpdates `grpcio` to 1.83.0\n- [Release notes](https://github.com/grpc/grpc/releases)\n- [Commits](https://github.com/grpc/grpc/compare/v1.81.0...v1.83.0)\n\nUpdates `protobuf` to 7.35.1\n- [Release notes](https://github.com/protocolbuffers/protobuf/releases)\n- [Commits](https://github.com/protocolbuffers/protobuf/commits)\n\nUpdates `grpcio-health-checking` to 1.83.0\n\nUpdates `openfeature-provider-flagd` to 0.5.2\n- [Release notes](https://github.com/open-feature/python-sdk-contrib/releases)\n- [Commits](https://github.com/open-feature/python-sdk-contrib/compare/openfeature-provider-flagd/v0.5.0...openfeature-provider-flagd/v0.5.2)\n\n---\nupdated-dependencies:\n- dependency-name: grpcio\n  dependency-version: 1.83.0\n  dependency-type: direct:production\n  dependency-group: pip-dependencies\n- dependency-name: protobuf\n  dependency-version: 7.35.1\n  dependency-type: direct:production\n  dependency-group: pip-dependencies\n- dependency-name: grpcio-health-checking\n  dependency-version: 1.83.0\n  dependency-type: direct:production\n  dependency-group: pip-dependencies\n- dependency-name: openfeature-provider-flagd\n  dependency-version: 0.5.2\n  dependency-type: direct:production\n  dependency-group: pip-dependencies\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: Egor <egorribun2005@gmail.com>",
+          "timestamp": "2026-08-25T01:14:39+03:00",
+          "tree_id": "6809964a41a52cdaf27054decedd6f4f08d83df7",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/9e155319855825cd42614c0d5d70f37defb2fdeb"
+        },
+        "date": 1787615928013,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 6187,
+            "range": "± 297",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 7070,
+            "range": "± 60",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 10029,
+            "range": "± 48",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10531,
+            "range": "± 36",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 95748,
+            "range": "± 3022",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5499,
+            "range": "± 12",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6393,
+            "range": "± 19",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 9047,
+            "range": "± 38",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9254,
+            "range": "± 115",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 88948,
+            "range": "± 502",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5388,
+            "range": "± 12",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6282,
+            "range": "± 13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8673,
+            "range": "± 20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9122,
+            "range": "± 49",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 88057,
+            "range": "± 1170",
             "unit": "ns/iter"
           }
         ]
