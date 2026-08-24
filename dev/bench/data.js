@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787615386712,
+  "lastUpdate": 1787615389592,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -9169,6 +9169,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 67522,
             "range": "± 2550",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d8fe19f41c69a9dbaf57921884204b1b0133afa3",
+          "message": "build(deps): Bump the go-file-processor group (#1252)\n\nBumps the go-file-processor group in /services/file-processor with 2 updates: [github.com/minio/minio-go/v7](https://github.com/minio/minio-go) and [github.com/stretchr/testify](https://github.com/stretchr/testify).\n\n\nUpdates `github.com/minio/minio-go/v7` from 7.2.1 to 7.3.0\n- [Release notes](https://github.com/minio/minio-go/releases)\n- [Commits](https://github.com/minio/minio-go/compare/v7.2.1...v7.3.0)\n\nUpdates `github.com/stretchr/testify` from 1.12.0 to 1.12.1\n- [Release notes](https://github.com/stretchr/testify/releases)\n- [Commits](https://github.com/stretchr/testify/compare/v1.12.0...v1.12.1)\n\n---\nupdated-dependencies:\n- dependency-name: github.com/minio/minio-go/v7\n  dependency-version: 7.3.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n- dependency-name: github.com/stretchr/testify\n  dependency-version: 1.12.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: go-file-processor\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: Egor <egorribun2005@gmail.com>",
+          "timestamp": "2026-08-25T00:57:48+03:00",
+          "tree_id": "bac37fca2efdc33c84e1dbd37047f9dbf09ed6f9",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/d8fe19f41c69a9dbaf57921884204b1b0133afa3"
+        },
+        "date": 1787615388648,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 6199,
+            "range": "± 12",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 7194,
+            "range": "± 27",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 10119,
+            "range": "± 124",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10806,
+            "range": "± 23",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 95685,
+            "range": "± 242",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5597,
+            "range": "± 16",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6483,
+            "range": "± 14",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 9059,
+            "range": "± 159",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9424,
+            "range": "± 20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 87661,
+            "range": "± 523",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5398,
+            "range": "± 8",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6388,
+            "range": "± 22",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8861,
+            "range": "± 29",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9309,
+            "range": "± 35",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 86087,
+            "range": "± 336",
             "unit": "ns/iter"
           }
         ]
