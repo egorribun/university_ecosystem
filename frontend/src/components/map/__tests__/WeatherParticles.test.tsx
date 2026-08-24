@@ -100,6 +100,31 @@ describe("WeatherParticles", () => {
     }
   })
 
+  it("recycles fog particles from the left when their drift is positive", () => {
+    const callbacks: FrameRequestCallback[] = []
+    vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
+      callbacks.push(callback)
+      return callbacks.length
+    })
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.999)
+
+    try {
+      render(<WeatherParticles condition="fog" isDark={false} />)
+      expect(callbacks).toHaveLength(1)
+
+      act(() => {
+        for (let index = 0; index < 80; index += 1) {
+          callbacks.shift()?.(10_000 + index * 16)
+        }
+      })
+
+      const arcCalls = vi.mocked(canvasContext.arc).mock.calls
+      expect(arcCalls.some(([x]) => typeof x === "number" && x < 0)).toBe(true)
+    } finally {
+      randomSpy.mockRestore()
+    }
+  })
+
   it("walks the storm flash scheduling branch", () => {
     // Low Math.random pushes the flash schedule toward its minimum window; this
     // still walks the storm flash scheduling + fade arithmetic.
