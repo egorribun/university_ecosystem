@@ -625,6 +625,25 @@ async def test_batch_conflicts_passes_b_item_to_native_reconstruction() -> None:
     assert reconstructed[1][1:] == ("202B", "Prof. Jones")
 
 
+@pytest.mark.asyncio
+async def test_detect_conflicts_stub_restores_both_domain_metadata() -> None:
+    """Exercise conflict reconstruction without forking into the native FFI."""
+    service = ScheduleOptimizerService()
+    target = _schedule_item(101, room="target", teacher="Target Teacher")
+    existing = _schedule_item(202, room="202B", teacher="Prof. Jones")
+
+    def return_existing(_target, rust_items):
+        return [rust_items[0]]
+
+    with patch("rust_ext.detect_conflicts", side_effect=return_existing):
+        conflicts = await service.detect_conflicts(target, [existing])
+
+    assert len(conflicts) == 1
+    assert conflicts[0].id == existing.id
+    assert conflicts[0].room == existing.room
+    assert conflicts[0].teacher == existing.teacher
+
+
 def test_imgproxy_base_url_removes_trailing_slashes() -> None:
     from app.utils.img import get_optimized_image_url
 
