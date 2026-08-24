@@ -20,17 +20,19 @@ integration tests behind the `integration` build tag:
 - `make test-integration` runs `go test -tags integration -race -timeout 5m ./...`.
 - `make test-all` runs both tiers.
 
-The integration tier uses `testcontainers-go` v0.44.0 and is required by the
+The integration tier uses `testcontainers-go` v0.44.0 (pinned in the
+gateway, file-processor, and ws-hub module manifests) and is required by the
 aggregate CI gate. Each service runs in an independent reusable-workflow job so
 a failure identifies its owning service without masking the others.
 
 ## Implemented Coverage
 
-The repository currently contains 16 `TestIntegration_*` tests:
+The repository currently contains 18 `TestIntegration_*` tests:
 
-- **ws-hub (7):** core NATS delivery and malformed-message handling,
-  oversized-message rejection, client-capacity enforcement, cache
-  invalidation, JetStream consumer setup, and offline replay.
+- **ws-hub (9):** core NATS delivery and malformed-message handling,
+  oversized-message rejection, client-capacity enforcement and WebSocket
+  pre-checks, cache invalidation, JetStream consumer setup, offline replay,
+  and the JetStream fallback path.
 - **file-processor (2):** MinIO image-processing lifecycle and NATS-triggered
   workflow execution.
 - **gateway (7):** Redis rate-limit fallback, L1-cache refresh and warmup,
