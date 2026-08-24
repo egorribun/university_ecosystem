@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787613856931,
+  "lastUpdate": 1787613859881,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -8653,6 +8653,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 91309,
             "range": "± 502",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "18d4265d2452513e4e3177747f163282a2b5c85d",
+          "message": "feat(wave212): harden multi-stack MVP foundation, resolve CI/CD matrix, and certify quality contract (#1249)\n\n* test(quality): harden external quality gates\n\n* test(quality): align dependency policy contract\n\n* test(quality): record remote closure evidence\n\n* test(quality): reset dishka lifecycle between runs\n\n* test(quality): record mutation regression and rerun\n\n* test(quality): add manual performance benchmark dispatch\n\n* test(quality): reset Dishka state across ASGI lifecycles\n\n* test(quality): preserve lifespan app fixture identity\n\n* test(quality): isolate dishka containers between lifespans\n\n* docs(quality): record dishka lifecycle closure evidence\n\n* test(quality): fix nested radio label markup\n\n* test(quality): make settings accordion deterministic\n\n* test(quality): reopen accordion after remount\n\n* test(quality): wait for expanded language controls\n\n* test(quality): align TOTP accordion contract\n\n* test(quality): isolate nightly permission checks\n\n* test(quality): target visible language accordion\n\n* test(quality): activate custom language radio label\n\n* test(quality): harden nightly browser and image isolation\n\n* test(quality): wait for hydrated login before tab audit\n\n* test(quality): wait for hydrated settings accordion\n\n* test(quality): retry transient browser navigations\n\n* test(quality): harden all transient e2e navigations\n\n* docs(quality): record current closure evidence\n\n* docs(quality): record frontend mutation evidence\n\n* fix(quality): harden mutation and image test isolation\n\n* fix(quality): handle mutmut non-function nodes\n\n* docs(quality): add closure handoff\n\n* fix(quality): isolate mutmut class-method fixture\n\n* fix(quality): enforce complete mutation evidence\n\n* test(quality): link legacy mutmut coverage test\n\n* fix(security): gate DAST label scans\n\n* fix(docs): satisfy markdown quality gate\n\n* fix(security): isolate manual mutation evidence\n\n* fix(quality): harden evidence and strict test gates\n\n* fix(quality): secure promotion evidence gates\n\n* fix(quality): repair mutation and coverage gates\n\n* fix(quality): stabilize Rust coverage gate\n\n* fix(quality): isolate Rust coverage artifacts\n\n* fix(quality): isolate mutmut clean baselines\n\n* test(quality): stabilize mutmut image isolation\n\n* test(quality): cover native scheduler non-spanning conflict\n\n* fix(quality): harden workflow closure gates\n\n* fix(quality): trigger required rust fuzz on workflow changes\n\n* fix(quality): copy gitignore into mutmut sandbox\n\n* docs(quality): specify same-run performance gates\n\n* fix(ci): give incremental mutmut a safe execution envelope\n\n* fix(quality): enforce portable JSON nesting limit\n\n* docs(quality): record live closure evidence\n\n* docs(quality): track current nightly queue\n\n* docs(quality): confirm Codecov processing\n\n* fix(security): harden push endpoints and trusted CI\n\n* docs(quality): record security hardening and nightly queue\n\n* docs(quality): quantify residual dependency advisories\n\n* docs(quality): record nightly queue replacement\n\n* fix(security): scope nightly workflow permissions\n\n* docs(quality): record current security and Codecov evidence\n\n* fix(security): block mapped IPv4 SSRF literals\n\n* docs(quality): record mapped IPv6 SSRF closure\n\n* docs(quality): record terminal nightly queue state\n\n* fix(ci): parallelize full mutmut stats collection\n\n* docs(quality): record parallel nightly mutation stats\n\n* fix(ci): report nightly mutation stats failures\n\n* docs(quality): record nightly failure notification guard\n\n* fix(ci): parallelize full mutation execution\n\n* docs(quality): record parallel mutation execution\n\n* docs(quality): record certification secret configuration\n\n* docs(quality): record DAST deferral\n\n* docs(quality): refresh live closure audit\n\n* test(quality): cover SQLMap workflow contract\n\n* docs(quality): record SQLMap contract refresh\n\n* docs(quality): record current-head validation trigger\n\n* docs(quality): record TruffleHog remediation\n\n* docs(quality): avoid scanner trigger wording\n\n* test(quality): close webpush mutation survivors\n\n* fix(security): avoid URI scanner false positive\n\n* test(quality): close diff coverage branches\n\n* test(quality): cover SSRF port guard\n\n* fix(ci): ensure required fuzz contexts run\n\n* test(webpush): cover development DNS fallback\n\n* docs(quality): record current-head CI closure\n\n* docs(quality): record rerun validation\n\n* fix(webpush): make development fallback mutation-proof\n\n* docs(quality): record mutation closure evidence\n\n* docs(quality): pin final evidence checkpoint\n\n* test(quality): cover dagger pipeline proposal\n\n* fix(quality): canonicalize mutmut package names\n\n* test(quality): cover scheduler mutation mapping\n\n* test(quality): cover pyroscope profiler mapping\n\n* test(quality): cover uvloop detection mapping\n\n* test(quality): cover event file repr mapping\n\n* test(quality): cover event repr mapping\n\n* test(quality): cover news comment repr mapping\n\n* test(quality): cover model repr mappings\n\n* test(quality): cover user file cleanup mapping\n\n* test(quality): cover worker entrypoint mapping\n\n* test(quality): cover cdc fallback mapping\n\n* docs: specify standalone logo loader\n\n* fix(ci): reuse validated bundle for lighthouse shards\n\n* docs: plan standalone logo loader\n\n* docs: specify application logo loader integration\n\n* fix(ci): build dedicated lighthouse bundle\n\n* docs: plan application logo loader integration\n\n* feat: publish app hydration completion\n\n* feat: add SSR brand boot loader\n\n* feat: add critical brand loader animation\n\n* feat: mount logo loader in app shell\n\n* feat: harden adaptive brand boot loader\n\n* fix(docker): harden full-stack startup and deployment contracts\n\n* fix(security): harden release dependency chain\n\n* docs(quality): design repository closure\n\n* fix(ci): repair coverage and vulnerability gates\n\n* chore(quality): checkpoint repository closure work\n\n* fix(quality): close Python gate regressions\n\n* fix(frontend): handle delayed reminder rollover\n\n* fix(frontend): restore strict typecheck\n\n* fix(security): fail closed dependency audit gates\n\n* fix(security): harden auth and deployment foundations\n\n* test(quality): checkpoint cross-stack closure\n\n* fix(infra): eliminate frontend docker build-hack and harden otel logging\n\n* feat(wave212): resolve PR 1249 CI checks and certify multi-stack architecture\n\n* feat(wave212): allowlist mmh3 and ammonia in dependency review config\n\n* feat(wave212): synchronize go work sum for microservices workspace\n\n* feat(wave212): fix test import sorting and benchmark prefetch flags\n\n* feat(wave212): align go toolchain directive with base container\n\n* feat(wave212): synchronize ws-hub dependencies and benchmark isolation flags\n\n* feat(wave212): allow workspace benchmark capture helper\n\n* feat(wave212): align workflow runners, actionlint and secrets baseline\n\n* feat(wave212): synchronize go module manifests with base toolchain contract\n\n* feat(wave212): direct benchmark logger output to discard writer\n\n* feat(wave212): bound memory allocations in ws-hub benchmarks\n\n* feat(wave212): scope shellcheck actionlint ignore for nightly-full-gate workflow\n\n* feat(wave212): extend actionlint ignores for all workflows\n\n* feat(wave212): resolve shellcheck notices in workflow shell steps\n\n* feat(wave212): allowlist secret keywords in deploy documentation\n\n* feat(wave212): ignore non-k8s config files in static kubeconform validation\n\n* feat(wave212): resolve CI gates for go coverage, alembic squawk, frontend formatting, and policy tests\n\n* feat(wave212): annotate intentional error discards with nolint errcheck for golangci-lint\n\n* feat(wave212): fix alembic squawk exclusions, golangci test linter rules, and gateway prometheus mock\n\n* feat(wave212): fix go-mutesting package resolution and toolchain compatibility in reusable workflow\n\n* feat(wave212): guard gateway prometheus registration in test mode to avoid port collisions\n\n* feat(wave212): remediate tech debt, optimize query and state hooks, harden k8s and graphql\n\n* feat(wave212): use test context in gateway tests to cleanly cancel background listeners\n\n* feat(wave212): fix ci check regressions across gateway, di, auth flow, and frontend tests\n\n* feat(wave212): synchronize gateway package hooks to prevent data race under cgo race detector\n\n* feat(wave212): track harness assets and synchronize markdown documentation\n\n* feat(wave212): harden developer harness, quality gates and documentation sync\n\n* feat(wave212): synchronize milestone completion status and ws-hub client safe send\n\n* fix(wave212): decompose ws-hub broadcastMessage to satisfy cyclomatic complexity linter\n\n* fix(wave212): sanitize documentation connection strings to satisfy detect-secrets\n\n* fix(wave212): parametrize all mcp connection strings to satisfy detect-secrets\n\n* fix(wave212): optimize ws-hub broadcast inner loop and normalize auth cookie test\n\n* fix(wave212): align BenchmarkSafeSend allocation logic with base benchmark contract\n\n* fix(wave212): harden cross-stack quality gates\n\n* fix(wave212): close workflow quality gates\n\n* fix(wave212): satisfy nilaway tracer contract\n\n* fix(wave212): correct pinned helm action revision\n\n* fix(wave212): repair PR quality gates and E2E auth\n\n* fix(wave212): extend Go mutation file budget\n\n* fix(wave212): harden offline news and event pagination E2E\n\n* fix(wave212): isolate deployment contract from mutmut copies\n\n* fix(wave212): document isolated contract skip ownership\n\n* fix(wave212): harden offline shell and isolated quality checks\n\n* fix(wave212): satisfy inventory skip ownership contract\n\n* fix(wave212): add Go fuzz shutdown headroom\n\n* fix(test): stabilize schedule E2E fixture across dates\n\n* fix(ci): unblock isolated quality and Go mutation checks\n\n* fix(ci): complete mutmut sandbox document contract\n\n* fix(ci): include SPIRE manifests in mutation sandbox\n\n* fix(ci): align mutation execution with verified budget\n\n* fix(ci): avoid SQLite contention in mutation shards\n\n* fix(ci): rebalance mutation statistics shards\n\n* fix(quality): close mutation and gateway verification gaps\n\n* fix(quality): close mutation survivor and timeout\n\n* fix(quality): assert outbox marker cleanup flags\n\n* fix(ci): retry transient OSV audit outages\n\n* fix(quality): close remaining mutation gaps\n\n* fix(ci): retry transient Helm dependency outages\n\n* fix(quality): assert feature and storage defaults\n\n* fix(quality): close exact mutation survivors\n\n* fix(quality): assert outbox shutdown cleanup\n\n* fix(quality): front-load mutation boundary contracts\n\n* fix(quality): cover naive dead-letter cleanup timestamps\n\n* fix(quality): cover nats reconnect policy\n\n* fix(quality): assert exact retention validation error\n\n* fix(quality): cover database and outbox contracts\n\n* fix(quality): close exact mutation survivors\n\n* fix(quality): close retry, DLQ and surrogate mutation gaps\n\n* fix(docker): reconcile compose env and retry dependency fetches\n\n* fix(quality): cover owned-session retention forwarding\n\n* fix(quality): close exact mutation survivors\n\n* fix(quality): remove equivalent Rust cast mutant\n\n* fix(quality): cover gateway revocation listener branches\n\n* fix(quality): make revocation timer test race-safe\n\n* fix(quality): close remaining mutation survivors\n\n* fix(quality): cover final mutation survivors\n\n* fix(quality): remove equivalent webpush timestamp mutant\n\n* fix(quality): remove unreachable retry assertion mutant\n\n* fix(quality): close image utility mutation survivors\n\n* fix(quality): type image resampling fallback explicitly\n\n* fix(quality): cover exact Pillow resampling lookup\n\n* fix(quality): isolate SPIFFE temp leak assertion\n\n* fix(quality): cover notification cleanup UTC default\n\n* fix(quality): enforce UTC cutoff normalization\n\n* fix(quality): bound uuid allocator mutation runtime\n\n* fix(quality): close remaining exact mutation gaps\n\n* fix(quality): remove equivalent notification result cast\n\n* fix(quality): isolate mutation-sensitive reconstruction paths\n\n* fix(quality): assert naive cleanup clocks use UTC\n\n* fix(quality): avoid surrogate allocator mutation timeout\n\n* fix(quality): close retry and cleanup mutation survivors\n\n* fix(quality): parallelize isolated Go mutation checks\n\n* fix(quality): satisfy shellcheck cleanup trap\n\n* fix(quality): kill UUID conversion mutant\n\n* fix(quality): close offline and mutation gaps\n\n* fix(quality): widen mutmut watchdog reserve\n\n* fix(quality): keep PWA precache within browser budgets\n\n* fix(quality): stabilize mutation watchdog and secret baseline\n\n* fix(quality): synchronize secrets baseline line numbers\n\n* fix(quality): refresh build and localization references\n\n* fix(quality): harden diagnostic build and mutation gates\n\n* fix(quality): align CI workflow checks and secret baseline\n\n* fix(quality): refresh deployment secret baseline\n\n* fix(quality): close aggregate coverage gaps\n\n* fix(quality): align mutation timeout envelope\n\n* fix(quality): correct mutation deadline diagnostic\n\n* fix(quality): disable unstable frontend AST remapping\n\n* fix(quality): close coverage and mutation regressions\n\n* fix(quality): remove synthetic frontend coverage callback\n\n* fix(docs): align ADR references with current implementation\n\n* fix(quality): cover late websocket timeout branch\n\n* fix(quality): cover fog particle recycle branch\n\n* fix(quality): clear news like celebration timer\n\n* fix(quality): cover repeated news celebration\n\n* fix(quality): stabilize SSR auth coverage mapping\n\n* fix(quality): close mutation and browser gates\n\n* fix(quality): align cache integration invalidation\n\n* fix(quality): isolate native schedule tests from mutmut\n\n* fix(quality): close gateway coverage gap\n\n* fix(quality): kill schedule conflict survivors\n\n* fix(quality): shard schemathesis and close mutation gaps\n\n* fix(quality): apply schemathesis filters before fixture resolution\n\n---------\n\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-08-25T00:51:11+03:00",
+          "tree_id": "854a7bdf3be0cd0dc16dc7b1fa20c155aa7c0b88",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/18d4265d2452513e4e3177747f163282a2b5c85d"
+        },
+        "date": 1787613858908,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 5999,
+            "range": "± 21",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 6990,
+            "range": "± 56",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 10115,
+            "range": "± 135",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10805,
+            "range": "± 58",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 98408,
+            "range": "± 584",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5396,
+            "range": "± 38",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6384,
+            "range": "± 54",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 9115,
+            "range": "± 70",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9448,
+            "range": "± 135",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 92010,
+            "range": "± 3729",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5268,
+            "range": "± 46",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6238,
+            "range": "± 21",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8820,
+            "range": "± 37",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9300,
+            "range": "± 84",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 89975,
+            "range": "± 1718",
             "unit": "ns/iter"
           }
         ]
