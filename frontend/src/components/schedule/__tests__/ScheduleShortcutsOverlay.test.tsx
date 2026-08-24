@@ -60,4 +60,12 @@ describe("ScheduleShortcutsOverlay", () => {
     fireEvent.click(backdrop!)
     expect(onClose).toHaveBeenCalled()
   })
+
+  it("fires onClose when the focus trap deactivates on Escape", () => {
+    const onClose = vi.fn()
+    render(<ScheduleShortcutsOverlay {...baseProps} onClose={onClose} />)
+
+    fireEvent.keyDown(document, { key: "Escape" })
+    expect(onClose).toHaveBeenCalledOnce()
+  })
 })

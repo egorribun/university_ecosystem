@@ -389,26 +389,26 @@ func (vr *VectorRouter) GetTracker(node string) (*NodeHealthTracker, error) {
 }
 
 // Route resolves tenantID to node and determines if pgvector fallback is required.
-func (vr *VectorRouter) Route(tenantID string) (targetNode string, isFallback bool, err error) {
+func (vr *VectorRouter) Route(tenantID string) (targetNode string, isFallback bool) {
 	if tenantID == "" {
-		return vr.pgvectorBackup, true, nil
+		return vr.pgvectorBackup, true
 	}
 
 	primaryNode, err := vr.ring.GetNode(tenantID)
 	if err != nil {
-		return vr.pgvectorBackup, true, nil
+		return vr.pgvectorBackup, true
 	}
 
 	tracker, err := vr.GetTracker(primaryNode)
 	if err != nil || tracker.ShouldFallback() {
-		return vr.pgvectorBackup, true, nil
+		return vr.pgvectorBackup, true
 	}
 
-	return primaryNode, false, nil
+	return primaryNode, false
 }
 
 // RouteWithKey resolves either tenantID or courseID partition key to node.
-func (vr *VectorRouter) RouteWithKey(tenantID, courseID string) (targetNode string, isFallback bool, err error) {
+func (vr *VectorRouter) RouteWithKey(tenantID, courseID string) (targetNode string, isFallback bool) {
 	partitionKey := tenantID
 	if partitionKey == "" {
 		partitionKey = courseID
@@ -423,11 +423,7 @@ func (vr *VectorRouter) ExecuteVectorQuery(
 	courseID string,
 	queryFunc VectorQueryExecutor,
 ) (results []QueryResult, targetNode string, isFallback bool, err error) {
-	targetNode, isFallback, err = vr.RouteWithKey(tenantID, courseID)
-	if err != nil {
-		targetNode = vr.pgvectorBackup
-		isFallback = true
-	}
+	targetNode, isFallback = vr.RouteWithKey(tenantID, courseID)
 
 	// 50ms context SLA limit per target node call
 	queryCtx, cancel := context.WithTimeout(ctx, vr.latencySLA)

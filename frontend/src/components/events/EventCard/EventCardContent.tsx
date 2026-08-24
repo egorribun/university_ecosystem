@@ -34,7 +34,7 @@ const formatShortDate = (s: string) =>
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
-  }) || ""
+  })
 
 const EventCardContent = ({
   id,

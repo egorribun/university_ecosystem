@@ -90,15 +90,16 @@ export function useScheduleData() {
     if (!user) return
     if (groups.length === 0) return
 
-    if (user.role === "student" && user.group_id) {
-      const userGroupExists = groups.some((g) => g.id === user.group_id)
+    const userGroupId = user.group_id
+    if (user.role === "student" && userGroupId) {
+      const userGroupExists = groups.some((g) => g.id === userGroupId)
       if (userGroupExists) {
-        setSelectedGroup((prev) => prev ?? user.group_id ?? null)
+        setSelectedGroup((prev) => prev ?? userGroupId)
       } else {
-        setSelectedGroup((prev) => prev ?? groups[0]?.id ?? null)
+        setSelectedGroup((prev) => prev ?? groups[0]!.id)
       }
     } else {
-      setSelectedGroup((prev) => prev ?? groups[0]?.id ?? null)
+      setSelectedGroup((prev) => prev ?? groups[0]!.id)
     }
   }, [user, groups])
 
@@ -114,8 +115,7 @@ export function useScheduleData() {
 
   const todayLessons = useMemo(() => {
     if (!hasToday) return []
-    const today = weekdayBackend.at(todayIdx)
-    if (!today) return []
+    const today = weekdayBackend.at(todayIdx)!
     return filteredSchedule
       .filter((l) => l.weekday === today)
       .sort((a, b) => getTimeStr(a).localeCompare(getTimeStr(b)))
@@ -141,7 +141,7 @@ export function useScheduleData() {
     for (const lesson of filteredSchedule) {
       const offset = weekdayToOffset.get(lesson.weekday)
       if (offset === undefined) continue
-      const jsDay = offset === 6 ? 0 : offset + 1
+      const jsDay = (offset + 1) % 7
       const firstOccurrence = 1 + ((jsDay - firstDay + 7) % 7)
       for (let d = firstOccurrence; d <= daysInMonth; d += 7) {
         days.add(d)

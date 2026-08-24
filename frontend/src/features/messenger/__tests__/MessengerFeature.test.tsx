@@ -167,11 +167,11 @@ describe("MessengerFeature", () => {
     expect(screen.getByTestId("mock-backdrop")).toBeTruthy()
   })
 
-  it("always mounts the new-chat modal, profile modal, and confirm dialog", () => {
+  it("mounts persistent modals and omits the confirm dialog until it is needed", () => {
     render(<MessengerFeature />)
     expect(screen.getByTestId("mock-new-chat-modal")).toBeTruthy()
     expect(screen.getByTestId("mock-profile-modal")).toBeTruthy()
-    expect(screen.getByTestId("mock-confirm-dialog")).toBeTruthy()
+    expect(screen.queryByTestId("mock-confirm-dialog")).toBeNull()
   })
 
   it("shows the WS-disconnect banner (role=status) when the socket is disconnected", () => {

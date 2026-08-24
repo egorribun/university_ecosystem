@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, expect, it, vi, beforeEach } from "vitest"
 import { NewsList } from "../NewsList"
 
@@ -73,9 +73,12 @@ describe("NewsList", () => {
   })
 
   it("renders offline fallback when list is empty and offline", () => {
-    render(<NewsList {...defaultProps} newsList={[]} isOnline={false} />)
+    const refreshNews = vi.fn()
+    render(<NewsList {...defaultProps} newsList={[]} isOnline={false} refreshNews={refreshNews} />)
     // OfflineFallback renders the offline text/icon
     expect(screen.getByText(/offline/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: /try again/i }))
+    expect(refreshNews).toHaveBeenCalledOnce()
   })
 
   it("renders empty state with add button for admins", () => {

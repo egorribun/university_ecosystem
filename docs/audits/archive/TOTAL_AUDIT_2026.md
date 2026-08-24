@@ -35,7 +35,7 @@
 
 #### Эксплойт (Proof of Concept)
 ```
-DATABASE_URL=postgresql://user:pass@host/mydb";DROP TABLE users;--
+DATABASE_URL=postgresql://user:pass@host/mydb";DROP TABLE users;-- # pragma: allowlist secret
 ```
 После `replace('"', '""')`: `mydb"";DROP TABLE users;--`
 Результирующий SQL: `REINDEX DATABASE "mydb"";DROP TABLE users;--"`
@@ -109,7 +109,7 @@ Whitelist-валидация (regex) — это defense-in-depth поверх `i
 #### Описание
 Файл `.env` содержит реальные development-секреты:
 - `POSTGRES_PASSWORD=DevSecurePass2024!`
-- `SPOTIFY_CLIENT_SECRET=5ffc84824e4843bdb2ff8fcea71f2198`
+- `SPOTIFY_CLIENT_SECRET=<redacted>`
 - `VAPID_PRIVATE_KEY=cqNPDGp24GDpbKW8q1nXvIiQ_bVBHYM8-hsg9ink280`
 - `MINIO_ROOT_PASSWORD=minioadmin123`
 - `SPICEDB_PRESHARED_KEY=dev-spicedb-key`
@@ -1019,7 +1019,7 @@ Node.js 22 LTS (активная поддержка до 2027-04): WebSocket imp
 
 | ID | Статус | Файлы изменены |
 |----|--------|---------------|
-| RZ-20-04 (wave 2) | ✅ DONE (22 files) | 7 cleanup services (`email_change_cleanup`, `mfa_challenge_cleanup`, `session_cleanup`, `story_cleanup`, `password_reset_cleanup`, `privacy_cleanup`, `notifications_retention`) — narrowed to `(OSError, ConnectionError)`; `nats_messaging` — stream setup + kept broad for handler nak; `event_service` — file deletion `(FileNotFoundError, OSError)`; `ws_hub_client` — NATS publish retry; `vector_service` — embedding API; `cache_warmup` — warmup failure; `schedule_optimizer` — PyO3 binding errors `(RuntimeError, ImportError, OSError)`; `partition_manager` — DDL errors; `push_topics` — SQLAlchemy state inspection; `notification_service` — enqueue errors; `webpush` — engine dispose + send errors; `audit_service` — decorator re-raise (kept broad, annotated); `image_proxy` — remaining 4 occurrences; `auth/fingerprint_service` — Redis revocation; `auth/graphql_token_validator` — Redis check + DB load + fingerprint (kept broad for fail-closed) |
+| RZ-20-04 (wave 2) | ✅ DONE (22 files) | 7 cleanup services (`email_change_cleanup`, `mfa_challenge_cleanup`, `session_cleanup`, `story_cleanup`, `password_reset_cleanup`, `privacy_cleanup`, `notifications_retention`) <!-- pragma: allowlist secret --> — narrowed to `(OSError, ConnectionError)`; `nats_messaging` — stream setup + kept broad for handler nak; `event_service` — file deletion `(FileNotFoundError, OSError)`; `ws_hub_client` — NATS publish retry; `vector_service` — embedding API; `cache_warmup` — warmup failure; `schedule_optimizer` — PyO3 binding errors `(RuntimeError, ImportError, OSError)`; `partition_manager` — DDL errors; `push_topics` — SQLAlchemy state inspection; `notification_service` — enqueue errors; `webpush` — engine dispose + send errors; `audit_service` — decorator re-raise (kept broad, annotated); `image_proxy` — remaining 4 occurrences; `auth/fingerprint_service` — Redis revocation; `auth/graphql_token_validator` — Redis check + DB load + fingerprint (kept broad for fail-closed) |
 | PERF-20-04 | ✅ DONE | `RecentActivityGrid.tsx`, `ScheduleCard.tsx`, `ContactList.tsx` — wrapped with `React.memo()` |
 | PERF-20-05 | ✅ DONE | `NewChatModal.tsx` — added `useDebounced(search, 300)` for user search API; `AdminUsers.tsx` — added `useDebounced(filters, 350)` for all filter fields |
 | TD-20-01 Phase 1 | ✅ DONE | `app/core/config/__init__.py` — added 8 `@cached_property` namespace accessors (`db`, `security`, `cache`, `observability`, `storage`, `notifications`, `integrations`, `app`) returning `self` with typed annotation |

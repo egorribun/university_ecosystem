@@ -97,41 +97,6 @@
     "today": "Today",
     "week": "This week"
   },
-  "mockStories": {
-    "unihack": {
-      "title": "UniHack 2026",
-      "text": "Hackathon registration is open! Prize pool 500,000 \u20bd"
-    },
-    "library": { "title": "New Library", "text": "E-catalog updated \u2014 50,000+ books online" },
-    "openDay": {
-      "title": "Open Day",
-      "text": "Welcoming prospective students on April 5 at the main campus"
-    },
-    "careerForum": {
-      "title": "Spring Career Forum",
-      "text": "50+ companies seeking interns and juniors. April 10, Assembly Hall"
-    },
-    "sports": {
-      "title": "Sports Season",
-      "text": "Sign up for volleyball, basketball, swimming, chess"
-    },
-    "scholarships": {
-      "title": "Scholarships & Grants",
-      "text": "Apply for an enhanced scholarship by April 15"
-    },
-    "volunteer": {
-      "title": "Volunteer Project",
-      "text": "Join the \u201cClean Campus\u201d environmental campaign"
-    },
-    "exchange": {
-      "title": "Berlin Exchange",
-      "text": "Exchange program: semester at TU Berlin. Deadline April 20"
-    },
-    "conference": {
-      "title": "Science Conference",
-      "text": "Spring young scientists conference \u2014 abstract submissions open"
-    }
-  },
   "weekDays": {
     "display": ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"],
     "raw": ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"]

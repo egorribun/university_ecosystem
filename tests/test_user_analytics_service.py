@@ -1,4 +1,4 @@
-"""Coverage tests for app/services/user/analytics_service.py (testing session 9).
+"""Behavior and calculation tests for user analytics services.
 
 Pure-function coverage for ``_dt_to_iso`` / ``_parse_grade_payload`` (mirrors
 tests/test_notification_templates_units.py) plus real-DB coverage for the three

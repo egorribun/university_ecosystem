@@ -18,7 +18,6 @@ from app.models import (
     Schedule,
     User,
 )
-from app.services import notification_queue
 from app.services import notifications as notifications_module
 from app.services import webpush as webpush_module
 from app.services.notifications import (
@@ -73,14 +72,6 @@ def configured_push_settings(
     monkeypatch.setattr(settings, "vapid_subject", "mailto:test@example.com")
     yield
     _reset_vapid_cache()
-
-
-@pytest.fixture(autouse=True)
-async def reset_notification_queue_state() -> typing.AsyncGenerator[None]:
-    await notification_queue.shutdown_notification_queue()
-    await notification_queue.reset_testing_state()
-    yield
-    await notification_queue.shutdown_notification_queue()
 
 
 async def _login(async_client, email: str, password: str) -> dict[str, str]:
@@ -560,7 +551,6 @@ async def test_event_creation_enqueues_notifications(
     assert response.status_code == 200
     # assert not delivery_started.is_set()  # Flaky: task might run immediately
 
-    await notification_queue.wait_for_all_jobs(timeout=3.0)
     await asyncio.wait_for(delivery_started.wait(), timeout=3.0)
     assert calls == 1
 
@@ -600,7 +590,6 @@ async def test_news_creation_enqueues_notifications(
     assert response.status_code == 200
     # assert not delivery_started.is_set()
 
-    await notification_queue.wait_for_all_jobs(timeout=1.0)
     await asyncio.wait_for(delivery_started.wait(), timeout=1.0)
     assert calls == 1
 

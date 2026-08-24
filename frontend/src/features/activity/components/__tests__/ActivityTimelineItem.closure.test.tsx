@@ -85,6 +85,12 @@ describe("ActivityTimelineItem closure paths", () => {
       status: "unknown" as "present",
       course: "History",
     })
-    expect(screen.getByRole("article")).toBeInTheDocument()
+    const article = screen.getByRole("article")
+    const statusDot = article.querySelector<HTMLElement>(".activity-timeline-dot")
+    const iconIndicator = article.querySelector<HTMLElement>(".text-text-secondary")
+
+    expect(statusDot).toHaveStyle({ backgroundColor: "var(--text-tertiary)" })
+    expect(iconIndicator).toHaveStyle({ color: "var(--text-tertiary)" })
+    expect(screen.getByText("status:unknown")).toHaveClass("sr-only")
   })
 })

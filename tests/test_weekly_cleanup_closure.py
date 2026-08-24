@@ -90,8 +90,8 @@ async def test_reindex_skips_unsafe_database_identifier():
 async def test_reindex_quotes_valid_database_identifier_and_executes_autocommit():
     connection = MagicMock()
     connection.dialect.identifier_preparer.quote.return_value = '"university_db"'
-    connection.execution_options.return_value = connection
-    connection.execute = AsyncMock()
+    connection.execution_options = AsyncMock(return_value=connection)
+    connection.exec_driver_sql = AsyncMock()
     engine_context = MagicMock()
     engine_context.__aenter__ = AsyncMock(return_value=connection)
     engine_context.__aexit__ = AsyncMock(return_value=False)
@@ -112,9 +112,10 @@ async def test_reindex_quotes_valid_database_identifier_and_executes_autocommit(
     connection.dialect.identifier_preparer.quote.assert_called_once_with(
         "university_db"
     )
-    connection.execution_options.assert_called_once_with(isolation_level="AUTOCOMMIT")
-    connection.execute.assert_awaited_once()
-    assert "REINDEX DATABASE" in str(connection.execute.await_args.args[0])
+    connection.execution_options.assert_awaited_once_with(isolation_level="AUTOCOMMIT")
+    connection.exec_driver_sql.assert_awaited_once_with(
+        'REINDEX DATABASE "university_db"'
+    )
     info.assert_called_once_with(
         "weekly_cleanup.reindex_completed", extra={"database": "university_db"}
     )

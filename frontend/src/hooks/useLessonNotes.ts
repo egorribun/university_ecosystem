@@ -22,7 +22,7 @@ export interface LessonNote {
 export function useLessonNotes(lessonId: string | null | undefined) {
   const [note, setNoteState] = useState<LessonNote | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const debouncedNote = useDebounced(note, 300)
+  const debouncedNote = useDebounced(note, "default")
   const lastSavedRef = useRef<LessonNote | null>(null)
 
   // Load note from RxDB / IndexedDB

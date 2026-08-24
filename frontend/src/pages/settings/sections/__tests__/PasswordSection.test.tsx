@@ -55,4 +55,10 @@ describe("PasswordSection", () => {
     expect(screen.getAllByRole("alert")).toHaveLength(3)
     expect(screen.getAllByRole("button").at(-1)).toBeDisabled()
   })
+
+  it("renders a new-password error state even when no helper message is available", () => {
+    render(<PasswordSection {...baseProps} isNewPasswordError passwordError={null} />)
+
+    expect(screen.getAllByDisplayValue("")).toHaveLength(3)
+  })
 })

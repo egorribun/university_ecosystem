@@ -29,4 +29,4 @@ Key components:
 ## References
 - `app/cqrs/base.py`
 - `app/cqrs/bus.py`
-- `app/cqrs/queries/schedule.py`
+- `app/cqrs/queries.py` (`GetScheduleQuery` and `GetScheduleHandler`)

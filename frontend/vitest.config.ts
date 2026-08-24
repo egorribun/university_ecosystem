@@ -31,6 +31,13 @@ export default defineConfig({
     setupFiles: ["src/setupTests.ts"],
     globals: true,
     css: true,
+    // Node 26 exposes an experimental process-global localStorage accessor
+    // which warns before JSDOM can install its isolated implementation.  Tests
+    // must use JSDOM storage, never a process-persistent cross-worker store.
+    poolOptions: {
+      threads: { execArgv: ["--no-experimental-webstorage"] },
+      forks: { execArgv: ["--no-experimental-webstorage"] },
+    },
     reporters: ["default"],
     exclude: [
       "node_modules",
@@ -48,6 +55,11 @@ export default defineConfig({
     ],
     coverage: {
       provider: "v8",
+      // AST-aware remapping keeps statement/branch maps stable across Vitest
+      // shards.  V8 can report a negative synthetic no-else branch count when
+      // a shard observes only the enclosing range; merge-vitest-coverage
+      // normalises that impossible counter to zero before emitting LCOV.
+      experimentalAstAwareRemapping: true,
       reporter: ["text", "json", "lcov", "html"],
       reportsDirectory: "coverage",
       // Keep all authored production source in the denominator. Do not replace
@@ -62,18 +74,14 @@ export default defineConfig({
         "src/routeTree.gen.ts",
         "src/api/generated/**/*",
         "**/*.d.ts",
-        "src/workers/**/*",
-        "src/server.ts",
-        "src/main.tsx",
-        "src/sw.ts",
         "src/test/**/*",
       ],
-      // Frontend ratchet: authored-only aggregate now clears 99/98/98.
+      // Authored frontend source is held to complete aggregate coverage.
       thresholds: {
-        statements: 99,
-        branches: 98,
-        functions: 98,
-        lines: 99,
+        statements: 100,
+        branches: 100,
+        functions: 100,
+        lines: 100,
       },
     },
   },

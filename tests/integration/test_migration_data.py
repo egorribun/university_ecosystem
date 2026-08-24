@@ -22,7 +22,9 @@ pytestmark = [
 def migration_postgres():
     """Provides an isolated PostgreSQL container for destructive migration tests."""
     # We use pgvector image because the schema relies on pgvector extension
-    with PostgresContainer("pgvector/pgvector:pg17") as postgres:
+    with PostgresContainer(
+        "pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f"
+    ) as postgres:
         yield postgres
 
 

@@ -112,6 +112,17 @@ describe("ActionMenu — open + close", () => {
     await user.keyboard("{Escape}")
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
   })
+
+  it("keeps the menu open for an unrelated menu-item key", async () => {
+    const user = userEvent.setup()
+    render(<ActionMenu items={items} />)
+    await user.click(screen.getByRole("button", { name: /open menu/i }))
+    const edit = screen.getByRole("menuitem", { name: "Edit" })
+
+    fireEvent.keyDown(edit, { key: "Tab" })
+
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+  })
 })
 
 describe("ActionMenu — interactions", () => {
@@ -140,9 +151,12 @@ describe("ActionMenu — interactions", () => {
     render(<ActionMenu items={[{ label: "Disabled", onClick, disabled: true }]} />)
 
     await user.click(screen.getByRole("button", { name: /open menu/i }))
-    await user.click(screen.getByRole("menuitem", { name: "Disabled" }))
+    const disabledItem = screen.getByRole("menuitem", { name: "Disabled" })
+    disabledItem.removeAttribute("disabled")
+    fireEvent.click(disabledItem)
 
     expect(onClick).not.toHaveBeenCalled()
+    expect(screen.getByRole("menu")).toBeInTheDocument()
   })
 })
 

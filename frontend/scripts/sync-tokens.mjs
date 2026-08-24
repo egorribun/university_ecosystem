@@ -1,4 +1,3 @@
-/* eslint-env node */
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -14,7 +13,6 @@ const __dirname = path.dirname(__filename)
 const PARTIALS_DIR = path.resolve(__dirname, "../src/styles/partials")
 const TOKENS_DIR = path.resolve(__dirname, "../src/styles/tokens")
 const TOKENS_TS_PATH = path.resolve(__dirname, "../src/theme/tokens.ts")
-const THEME_CSS_PATH = path.resolve(__dirname, "../src/styles/theme.css")
 
 console.log("🔄 Starting Token Synchronization...")
 
@@ -34,18 +32,13 @@ function extractVariablesFromDir(dirPath) {
     const content = fs.readFileSync(filePath, "utf-8")
     let match
     while ((match = variableRegex.exec(content)) !== null) {
-      const [_, name, value] = match
+      const [, name, value] = match
       variables.set(name, value.trim())
     }
   })
 
   return variables
 }
-// Store entry path for relative resolution context if needed,
-// strictly speaking recursion handles it if we pass absolute paths.
-// But initial call needs to be correct.
-const entryPath = THEME_CSS_PATH
-
 const themeVars = extractVariablesFromDir(PARTIALS_DIR)
 if (fs.existsSync(TOKENS_DIR)) {
   const additional = extractVariablesFromDir(TOKENS_DIR)
@@ -83,7 +76,7 @@ const GROUPS = [
     },
     valueTransform: (k) => `var(--${k})`,
     // Also generate numeric keys for standard Tailwind spacing (e.g. "4": "var(--space-4)")
-    extraKeysGenerator: (k, v) => {
+    extraKeysGenerator: (k) => {
       const suffix = k.replace("space-", "")
       // If suffix is numeric (including floating point like 0.5 -> 05 in name but 0.5 in tw),
       // we map it. Our tokens are named space-05, space-1, etc.
@@ -297,7 +290,7 @@ GROUPS.forEach((group) => {
 
   // Add generated extra keys (new feature)
   if (group.extraKeysGenerator) {
-    for (const [key, _] of themeVars.entries()) {
+    for (const [key] of themeVars.entries()) {
       if (group.pattern.test(key)) {
         const extra = group.extraKeysGenerator(key)
         if (extra) {

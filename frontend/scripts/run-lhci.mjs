@@ -4,7 +4,6 @@
 // (Wave 120 SW1, default since Wave 121 SW2) is what reads LHR fields —
 // see that file's `parseLhr()` JSDoc for the property-path dependencies
 // that have been verified compatible with Lighthouse 13.1.0.
-import { existsSync } from "node:fs"
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -240,14 +239,10 @@ async function createConfig() {
       // "tracked-upstream" — see also memory/wave166_lighthouse_upstream_issue.md
       // for the full draft + anticipated maintainer-response timeline.
       //
-      // W179 SW3 — quarterly monitoring tick. Issue state verified OPEN with
-      // NO maintainer activity since 2026-05-18 filing (WebFetch 2026-05-21).
-      // Per W170 SW3 calibration: 1-2 calendar weeks from filing → due
-      // W177-W181 window per opening prompt. Empirical state: no triage, no
-      // comments, no reactions. Calibration window pushed to W180-W184 (next
-      // monitoring check) to allow more upstream-response time. State stays
-      // "tracked-upstream". No code change needed; Linux CI gate stays
-      // `categories:performance` warn@0.40 advisory per W162 SW1 acceptance.
+      // Monitoring snapshot (2026-05-21): the upstream issue remained OPEN
+      // without maintainer activity. The GitHub issue state is the source of
+      // truth for future reassessment. Until upstream behavior changes, Linux
+      // CI keeps `categories:performance` at the advisory warn@0.40 level.
       //
       // W180 SW1 — monitoring tick at W180 open (2026-05-21). WebFetch re-
       // verified at session start: state OPEN, still NO triage, NO maintainer
@@ -382,7 +377,7 @@ async function createConfig() {
       // -f4/g3 (hooks barrel + i18n keys merged in pre-routine-e5) NOT the
       // cause either (dev wrapper measurements match W124 SW6 baseline).
       // Root cause: CI runner is systematically slower under load.
-      // Wave 125 SSR Phase 1 (`docs/plans/2026-05-01-wave125-ssr-design.md`)
+      // Wave 125 SSR Phase 1 (`docs/audits/archive/AUDIT_WAVE125.md`)
       // is the structural fix — drops auth-route LCP from ~12s → < 2.5s,
       // hoists Perf well above 0.40 in both dev + CI environments.
       // Until then, relaxed Perf assertion to `warn@0.40`: keeps the

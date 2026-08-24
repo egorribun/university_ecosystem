@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import hashlib
 import logging
 import os
 import re
@@ -13,6 +14,32 @@ from sqlalchemy.ext.asyncio import create_async_engine
 # Set up logging with a clear format
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger("db_perf_gate")
+
+_SAFE_TABLE_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
+_EXPLAINABLE_STATEMENT_RE = re.compile(
+    r"^(?:SELECT|WITH|INSERT|UPDATE|DELETE)\b", re.IGNORECASE
+)
+
+
+def normalize_explainable_query(query: str) -> str:
+    """Return one bounded SQL statement suitable for EXPLAIN ANALYZE.
+
+    Query logs are diagnostic input, not a trusted SQL channel. DDL, empty
+    statements, NUL bytes, and stacked statements are rejected before the
+    driver sees them. A single optional trailing semicolon is removed.
+    """
+
+    normalized = query.strip()
+    if normalized.endswith(";"):
+        normalized = normalized[:-1].rstrip()
+    if (
+        not normalized
+        or "\x00" in normalized
+        or ";" in normalized
+        or _EXPLAINABLE_STATEMENT_RE.match(normalized) is None
+    ):
+        raise ValueError("query is not a single explainable DML statement")
+    return normalized
 
 
 def substitute_placeholders(query: str) -> str:
@@ -101,25 +128,35 @@ async def run_explain_analysis(
     has_violations = False
     checked_count = 0
 
+    if not target_tables or any(
+        _SAFE_TABLE_RE.fullmatch(table) is None for table in target_tables
+    ):
+        raise ValueError("target tables must be non-empty safe SQL identifiers")
+
     # Calibrate statistics: artificially inflate table size to ensure planner cost decisions
     # are realistic (avoiding Seq Scans due to table emptiness in test DB)
     logger.info("Calibrating table statistics for planning simulation...")
     try:
         async with engine.begin() as conn:
-            table_list = ", ".join(f"'{table}'" for table in target_tables)
             await conn.execute(
                 text(
-                    f"UPDATE pg_class SET relpages = 1000, reltuples = 100000, relallvisible = 1000 WHERE relname IN ({table_list});"  # noqa: S608
-                )
+                    "UPDATE pg_class SET relpages = 1000, reltuples = 100000, "
+                    "relallvisible = 1000 "
+                    "WHERE relname = ANY(CAST(:table_names AS text[]))"
+                ),
+                {"table_names": target_tables},
             )
             await conn.execute(
                 text(
-                    f"UPDATE pg_class SET relpages = 100, reltuples = 100000 WHERE oid IN ("  # noqa: S608
-                    f"  SELECT indexrelid FROM pg_index WHERE indrelid IN ("
-                    f"    SELECT oid FROM pg_class WHERE relname IN ({table_list})"
-                    f"  )"
-                    f");"
-                )
+                    "UPDATE pg_class SET relpages = 100, reltuples = 100000 "
+                    "WHERE oid IN ("
+                    "  SELECT indexrelid FROM pg_index WHERE indrelid IN ("
+                    "    SELECT oid FROM pg_class "
+                    "    WHERE relname = ANY(CAST(:table_names AS text[]))"
+                    "  )"
+                    ")"
+                ),
+                {"table_names": target_tables},
             )
             logger.info("Table and index statistics successfully updated.")
     except Exception as error:
@@ -128,7 +165,14 @@ async def run_explain_analysis(
         )
 
     for raw_query in queries:
-        clean_query = substitute_placeholders(raw_query)
+        try:
+            clean_query = normalize_explainable_query(
+                substitute_placeholders(raw_query)
+            )
+        except ValueError as error:
+            query_id = hashlib.sha256(raw_query.encode()).hexdigest()[:12]
+            logger.warning("Skipping unsafe query %s: %s", query_id, error)
+            continue
 
         # We only need to check queries that target or mention our key tables
         # to save time and reduce noise.
@@ -147,7 +191,8 @@ async def run_explain_analysis(
             continue
 
         checked_count += 1
-        logger.info(f"Analyzing query: {raw_query[:80]}...")
+        query_id = hashlib.sha256(raw_query.encode()).hexdigest()[:12]
+        logger.info("Analyzing query %s", query_id)
 
         try:
             # Wrap in a transaction that is rolled back to prevent modifications
@@ -161,12 +206,12 @@ async def run_explain_analysis(
                     )
                     # Add timeout to explain query to prevent hangs
                     await conn.execute(text("SET statement_timeout = '15s'"))
-                    result = await conn.execute(text(explain_sql))
+                    result = await conn.exec_driver_sql(explain_sql)
                     plan_json_str = result.scalar()
                     await transaction.rollback()
 
             if not plan_json_str:
-                logger.warning(f"No plan returned for query: {raw_query[:50]}")
+                logger.warning("No plan returned for query %s", query_id)
                 continue
 
             # Parse plan structure
@@ -181,25 +226,29 @@ async def run_explain_analysis(
             if seq_scans:
                 for table_name, cost in seq_scans:
                     logger.error(
-                        f"VIOLATION: Sequential Scan detected on target table '{table_name}' "
-                        f"in query: {raw_query}"
+                        "VIOLATION: sequential scan on %s (cost=%s, query=%s)",
+                        table_name,
+                        cost,
+                        query_id,
                     )
                 has_violations = True
 
             # Check for High Cost
             if total_cost > max_cost_limit:
                 logger.error(
-                    f"VIOLATION: Query cost {total_cost} exceeds maximum allowed budget "
-                    f"of {max_cost_limit} for query: {raw_query}"
+                    "VIOLATION: query cost %s exceeds budget %s (query=%s)",
+                    total_cost,
+                    max_cost_limit,
+                    query_id,
                 )
                 has_violations = True
 
             if not seq_scans and total_cost <= max_cost_limit:
-                logger.info(f"✓ Query passed. Cost: {total_cost}")
+                logger.info("Query %s passed (cost=%s)", query_id, total_cost)
 
         except Exception as error:
             logger.warning(
-                f"Could not execute EXPLAIN for query: {raw_query}. Error: {error}"
+                "Could not execute EXPLAIN for query %s: %s", query_id, error
             )
             # If a query is invalid/broken or fails EXPLAIN, we treat it as a warning but don't fail the gate
             # unless it's a critical syntax error in schema.

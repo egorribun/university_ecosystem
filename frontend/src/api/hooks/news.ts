@@ -37,7 +37,7 @@ import {
   type UseInfiniteQueryOptions,
   type UseInfiniteQueryResult,
 } from "@tanstack/react-query"
-import { useMemo } from "react"
+import { useEffect, useMemo } from "react"
 
 import { newsListApiV1NewsGet } from "@/api/generated/sdk.gen"
 import { fetchNewsItem, type NewsItem } from "@/api/news"
@@ -125,6 +125,23 @@ const ensurePaginatedResponse = (
   }
 }
 
+const readPersistedNewsPage = (
+  language: string,
+  limit: number
+): PaginatedResponse<NewsItem> | null => {
+  if (typeof window === "undefined") return null
+  const items = new StorageItem<NewsItem[]>(`news:list:${language}`).get()
+  if (!Array.isArray(items) || items.length === 0) return null
+  return {
+    items,
+    total: items.length,
+    limit,
+    cursor: null,
+    next_cursor: null,
+    has_more: false,
+  }
+}
+
 const mergeNewsPages = (pages: PaginatedResponse<NewsItem>[] | undefined): NewsItem[] => {
   if (!pages?.length) {
     return []
@@ -162,6 +179,11 @@ const createNewsListQueryFn =
     const requestConfig = {
       query: params,
       signal,
+      // The generated client returns AxiosError values when throwOnError is
+      // omitted. Let TanStack Query enter its error state so the persisted
+      // offline snapshot can be selected instead of silently normalising the
+      // transport failure into an empty successful page.
+      throwOnError: true,
       validateStatus: (status: number) => status >= 200 && status < 400,
       ...(etagKey ? { etagCacheKey: etagKey } : {}),
     }
@@ -173,7 +195,10 @@ const createNewsListQueryFn =
     if (response.status === 304) {
       const cached =
         queryClient.getQueryData<InfiniteData<PaginatedResponse<NewsItem>, string | null>>(queryKey)
-      return ensurePaginatedResponse(cached?.pages?.[0], normalized.limit)
+      return ensurePaginatedResponse(
+        cached?.pages?.[0] ?? readPersistedNewsPage(normalized.language, normalized.limit),
+        normalized.limit
+      )
     }
 
     return ensurePaginatedResponse(response.data as PaginatedResponse<NewsItem>, normalized.limit)
@@ -244,31 +269,23 @@ export const useNewsListQuery = (
     [queryClient, normalized, queryKey]
   )
 
+  // Read once per locale/page-size pair. SSR can hydrate an already-created
+  // query with an empty/error result, in which case TanStack Query does not
+  // apply `placeholderData`; the same snapshot is therefore also used below
+  // as the final offline fallback.
+  const persistedPage = useMemo(
+    () => readPersistedNewsPage(normalized.language, normalized.limit),
+    [normalized.language, normalized.limit]
+  )
+
   // Read from localStorage as fallback for offline mode
   const placeholderData = useMemo(() => {
-    if (typeof window === "undefined") return undefined
-    try {
-      const storage = new StorageItem<NewsItem[]>(`news:list:${normalized.language}`)
-      const items = storage.get()
-      if (!Array.isArray(items) || items.length === 0) return undefined
-      // Wrap in the expected InfiniteData structure
-      return {
-        pages: [
-          {
-            items,
-            total: items.length,
-            limit: 12,
-            cursor: null,
-            next_cursor: null,
-            has_more: false,
-          },
-        ],
-        pageParams: [null],
-      }
-    } catch {
-      return undefined
+    if (!persistedPage) return undefined
+    return {
+      pages: [persistedPage],
+      pageParams: [null],
     }
-  }, [normalized.language])
+  }, [persistedPage])
 
   const query = useInfiniteQuery<
     PaginatedResponse<NewsItem>,
@@ -287,8 +304,17 @@ export const useNewsListQuery = (
     ...rest,
   })
 
-  const news = useMemo(() => mergeNewsPages(query.data?.pages), [query.data])
+  const news = useMemo(() => {
+    const liveNews = mergeNewsPages(query.data?.pages)
+    if (liveNews.length > 0 || !query.isError) return liveNews
+    return persistedPage?.items ?? []
+  }, [persistedPage, query.data, query.isError])
   const pagination = query.data?.pages?.[query.data.pages.length - 1] ?? null
+
+  useEffect(() => {
+    if (!query.isSuccess || query.isPlaceholderData) return
+    new StorageItem<NewsItem[]>(`news:list:${normalized.language}`).set(news)
+  }, [news, normalized.language, query.isPlaceholderData, query.isSuccess])
 
   return {
     ...query,

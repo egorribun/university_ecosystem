@@ -50,8 +50,16 @@ describe("Button", () => {
   })
 
   it("renders polymorphic as=a with aria-disabled and no disabled attr", () => {
+    const onClick = vi.fn()
     render(
-      <Button as="a" variant="outline" size="lg" disabled trailingIcon={<i data-testid="tr" />}>
+      <Button
+        as="a"
+        variant="outline"
+        size="lg"
+        disabled
+        onClick={onClick}
+        trailingIcon={<i data-testid="tr" />}
+      >
         link
       </Button>
     )
@@ -60,6 +68,8 @@ describe("Button", () => {
     expect(link).toHaveAttribute("aria-disabled", "true")
     expect(link).not.toHaveAttribute("disabled") // not a <button> element
     expect(screen.getByTestId("tr")).toBeInTheDocument()
+    fireEvent.click(link!)
+    expect(onClick).not.toHaveBeenCalled()
   })
 
   it("maps haptics: string passthrough, true→light, false→omitted", () => {
@@ -162,6 +172,26 @@ describe("TextField", () => {
     expect(onChange).toHaveBeenCalled()
     expect(screen.getByTestId("lead")).toBeInTheDocument()
     expect(screen.getByTestId("tr")).toBeInTheDocument()
+    fireEvent.blur(area)
+    expect(area).not.toHaveAttribute("aria-describedby")
+  })
+
+  it("wires multiline helper text and an optional blur handler", () => {
+    const onBlur = vi.fn()
+    render(
+      <TextField
+        value="notes"
+        onChange={() => {}}
+        onBlur={onBlur}
+        multiline
+        helperText="Formatting is supported"
+      />
+    )
+
+    const area = screen.getByRole("textbox")
+    expect(area).toHaveAttribute("aria-describedby")
+    fireEvent.blur(area)
+    expect(onBlur).toHaveBeenCalledOnce()
   })
 })
 

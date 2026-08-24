@@ -10,6 +10,9 @@ import uuid
 from datetime import UTC, datetime
 from typing import cast
 
+from redis.exceptions import RedisError
+
+from app.auth.revocation import get_revocation_redis_client
 from app.core.database import async_session
 from app.core.logging import get_logger
 from app.models import User
@@ -27,7 +30,7 @@ try:
         _jwt_lib.exceptions.InvalidTokenError,
         _jwt_lib.exceptions.ExpiredSignatureError,
     )
-except ImportError:  # pragma: no cover
+except ImportError:
     _JWT_DECODE_ERRORS = (ValueError,)
 
 
@@ -48,17 +51,15 @@ async def get_user_from_token(token: str) -> tuple[User | UserDTO | None, str | 
         # RZ-8: Fast-path Redis JTI revocation check (O(1), beats the DB path).
         if session_jti:
             try:
-                from app.deps.cache import get_cache_client
-
-                _redis = await get_cache_client()
+                _redis = await get_revocation_redis_client()
                 if await _redis.exists(f"revoked:jti:{session_jti}"):
                     logger.debug(
                         "WebSocket: JTI %s is revoked (Redis fast-path)", session_jti
                     )
                     return None, None
             except (
-                ConnectionError,
-                TimeoutError,
+                RedisError,
+                RuntimeError,
                 OSError,
             ) as redis_exc:  # RZ-22-01: narrowed — Redis errors
                 logger.debug(
@@ -91,7 +92,7 @@ async def get_user_from_token(token: str) -> tuple[User | UserDTO | None, str | 
 
             return cast("User | UserDTO", user), session_jti
     except _JWT_DECODE_ERRORS as exc:
-        logger.debug("WebSocket token validation: invalid JWT — %s", type(exc).__name__)
+        logger.debug("websocket.jwt_rejected", error_type=type(exc).__name__)
         return None, None
     except Exception:  # RZ-22-01-JUSTIFIED: fail-closed auth — returns None on unexpected failure (reviewed TD-27-04)
         logger.exception(
@@ -172,32 +173,23 @@ async def get_user_from_ticket(ticket: str) -> tuple[User | None, str | None]:
             logger.debug("WS ticket not found or already used: %.8s…", ticket)
             return None, None
 
-        # Format: "{user_id}:{jti}" — split on first colon; UUIDs contain only hyphens.
-        # RZ-W15-04 (audit 2026-03-23 Wave 15): Use str.find() + explicit bounds checks
-        # instead of str.index() + post-split emptiness check.  Mirrors Go handlers.go:
-        #   sep := strings.Index(raw, ":")
-        #   if sep <= 0 || sep == len(raw)-1 { return "", error }
-        # This makes the three invalid cases explicit instead of relying on exception
-        # control flow from str.index():
-        #   sep == -1  → no colon at all  ("useridonly")
-        #   sep == 0   → empty user_id    (":jti-value")
-        #   sep == last → empty jti       ("user-id:")
-        sep = raw.find(":")
-        if sep <= 0 or sep == len(raw) - 1:
+        # Canonical format is exactly "{user_id}:{jti}". Extra segments are
+        # rejected so untrusted tenant data cannot be smuggled into the JTI.
+        parts = raw.split(":")
+        if len(parts) != 2 or not parts[0] or not parts[1]:
             # RZ-W19-04 (audit 2026-03-24 Wave 19): truncate to 4 chars max to
             # prevent creating an oracle for brute-forcing valid tickets.
             # Previously %.8s could reveal most of a short ticket.
             safe_prefix = ticket[:4] if len(ticket) > 4 else "***"
             logger.warning(
                 "WS ticket has malformed payload (sep=%d len=%d): %s…",
-                sep,
+                raw.find(":"),
                 len(raw),
                 safe_prefix,
             )
             return None, None
 
-        user_id_str = raw[:sep]
-        jti = raw[sep + 1 :]
+        user_id_str, jti = parts
 
     except Exception as exc:  # RZ-22-01-JUSTIFIED: fail-closed auth — ticket validation failure returns None (reviewed TD-27-04)
         logger.warning("WS ticket validation error: %s", exc)
@@ -224,15 +216,14 @@ async def _resolve_user_from_ids(
             if not user or not user.is_active:
                 return None, None
 
-            # Fast-path Redis revocation check
+            # Cross-service revocation pre-check. The DB check immediately below
+            # remains authoritative if the dedicated store is unavailable.
             try:
-                from app.deps.cache import get_cache_client as _gcc
-
-                _redis = await _gcc()
+                _redis = await get_revocation_redis_client()
                 if await _redis.exists(f"revoked:jti:{jti}"):
                     logger.debug("WS ticket JTI %s is revoked (Redis fast-path)", jti)
                     return None, None
-            except (ConnectionError, TimeoutError, OSError):  # nosec B110  # RZ-28-01 + RZ-22-01: narrowed — Redis errors
+            except (RedisError, RuntimeError, OSError):  # nosec B110  # RZ-28-01 + RZ-22-01: narrowed — Redis errors
                 pass  # fallback to DB revoked_at check below
 
             active_session = await session_repo.get_by_jti(jti)

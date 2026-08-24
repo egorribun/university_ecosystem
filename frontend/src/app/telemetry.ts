@@ -11,6 +11,10 @@ import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "@opentelemetry/semantic
 
 let provider: WebTracerProvider | null = null
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
 export function initTelemetry(env: ImportMetaEnv = import.meta.env) {
   if (provider) return
 
@@ -47,21 +51,21 @@ export function initTelemetry(env: ImportMetaEnv = import.meta.env) {
   // breaking the frontend → gateway correlation in Grafana Tempo.
   provider.register({ contextManager: new ZoneContextManager() })
 
+  const backendOrigin = (env.VITE_BACKEND_ORIGIN || "").replace(/\/+$/, "")
+  const backendApiPattern = backendOrigin
+    ? // Build-time origin is escaped so regex metacharacters stay literal.
+      // eslint-disable-next-line security/detect-non-literal-regexp -- OpenTelemetry accepts only string or RegExp targets; the origin is escaped above and regression-tested.
+      new RegExp(`^${escapeRegExp(backendOrigin)}/api/`) // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
+    : /^\/api\//
+  const traceHeaderTargets = [backendApiPattern, /^\/api\//]
+
   registerInstrumentations({
     instrumentations: [
       new FetchInstrumentation({
-        propagateTraceHeaderCorsUrls: [
-          // eslint-disable-next-line security/detect-non-literal-regexp -- pattern is derived from build-time env, not user input
-          new RegExp(`${env.VITE_BACKEND_ORIGIN || ""}/api/.*`),
-          /^\/api\/.*/,
-        ],
+        propagateTraceHeaderCorsUrls: traceHeaderTargets,
       }),
       new XMLHttpRequestInstrumentation({
-        propagateTraceHeaderCorsUrls: [
-          // eslint-disable-next-line security/detect-non-literal-regexp -- pattern is derived from build-time env, not user input
-          new RegExp(`${env.VITE_BACKEND_ORIGIN || ""}/api/.*`),
-          /^\/api\/.*/,
-        ],
+        propagateTraceHeaderCorsUrls: traceHeaderTargets,
       }),
       // UserInteractionInstrumentation automatically creates spans for
       // click and submit events, giving Tempo a root span for each user

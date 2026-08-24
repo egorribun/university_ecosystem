@@ -34,6 +34,10 @@ If you discover a vulnerability, please report it privately so we can address it
 - **Rate Limiting & Circuit Breakers**:
   - `RedisCircuitBreaker` in `app/core/ratelimit/circuit_breaker.py` operates a 3-state machine with exponential backoff (PERF-30-01).
   - Go Gateway provides 2-tier rate limiting fallback (3 req/60s per instance on double Redis+memory failure, failing closed with 503).
+- **Cross-Service Session Revocation**:
+  - Backend revocation producers, Go Gateway, and `ws-hub` share the durable `revoked:jti:{jti}` namespace through `REVOCATION_REDIS_URL`. It is a dedicated AOF-backed, persistent, `noeviction` Redis/Valkey process; cache and rate-limit stores are never reused for authentication decisions.
+  - Tombstones are written before cached session deletion; write failures propagate, and credential consumers fail closed when the revocation store is unavailable.
+  - Gateway L1 caches only positive revocation tombstones. Active-session (`not revoked`) results are always checked against Redis, so a runtime Redis/Pub/Sub partition cannot authenticate from stale negative cache state.
 - **WebSocket Ingress Protection (`ws-hub`)**:
   - Oversized messages (>60 KB) are rejected at ingress and send a `message_too_large` error frame before fan-out (RZ-23-05, RZ-31-02).
   - Pre-checks `maxClients` in `HandleWebSocket` prior to HTTP upgrade (TD-31-05).
@@ -41,6 +45,9 @@ If you discover a vulnerability, please report it privately so we can address it
 - **File Processor Path Traversal Guards**:
   - `sourceKey` and `destKey` path traversal inputs are rejected at gRPC boundary with length capped to 1024 bytes (RZ-26-04, RZ-27-04).
   - GraphQL depth limit (10) and query timeout (30s) enforced (RZ-24-05).
+- **Tenant Identity Trust Boundary**:
+  - `X-Tenant-ID` and gRPC metadata are never authoritative. Backend RLS context accepts a tenant only when the gateway HMAC binds `user_id:session_id:tenant_id`; Go services derive tenant context only from a verified JWT claim.
+  - The current login issuer intentionally does not mint `tenant_id`: no authoritative user-to-tenant membership relation exists yet. Tenant-scoped HTTP, gRPC, and WebSocket identity therefore remains disabled until membership resolution and token rotation are implemented.
 
 ---
 
@@ -52,7 +59,7 @@ If you discover a vulnerability, please report it privately so we can address it
   - `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`
   - `Content-Security-Policy`: strict per-response nonces (`nonce-...`), framing disabled (`frame-ancestors 'none'`).
   - `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`.
-- **Valkey / Redis Eviction Policy**: Configured to `volatile-lru` (RZ-21-02) ensuring un-expiring security tokens are never evicted unexpectedly.
+- **Valkey / Redis Eviction Policy**: Application cache uses `volatile-lru` (RZ-21-02). Revocation security state is deliberately isolated in a durable `noeviction` process, so cache pressure cannot resurrect a revoked JWT.
 
 ---
 

@@ -91,6 +91,11 @@ export function NewsDetailBody({ content }: NewsDetailBodyProps) {
     return renderPlainText(content)
   }, [content])
 
+  // Every branch is sanitized: Markdown passes through sanitizeArticleHtml;
+  // legacy text is HTML-escaped before tags are constructed.
+  // prettier-ignore
+  const articleBody = <div className="news-article-body text-body leading-relaxed text-(--text-secondary)" dangerouslySetInnerHTML={{ __html: html }} /> // nosemgrep: typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml
+
   return (
     <section
       className={cn(
@@ -111,10 +116,7 @@ export function NewsDetailBody({ content }: NewsDetailBodyProps) {
           </div>
         )}
 
-        <div
-          className="news-article-body text-body leading-relaxed text-(--text-secondary)"
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
+        {articleBody}
       </div>
     </section>
   )

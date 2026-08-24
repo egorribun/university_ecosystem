@@ -1,6 +1,7 @@
 """Branch closure tests for AuthFingerprintService orchestration."""
 
 import os
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -21,6 +22,7 @@ def _context(fingerprint_hash: str):
         accept_language="en",
         ip_address="127.0.0.1",
         revoked_at=None,
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
     )
     db = MagicMock()
     db.commit = AsyncMock()
@@ -138,8 +140,17 @@ async def test_validate_fingerprint_revokes_and_notifies_redis():
     event = SimpleNamespace(to_log_record=lambda: {})
     detector = MagicMock()
     detector.check_fingerprint_mismatch.return_value = event
+    order: list[str] = []
+
+    async def _commit() -> None:
+        order.append("database")
+
+    async def _revoke(*_args, **_kwargs) -> None:
+        order.append("redis")
+
+    db.commit.side_effect = _commit
     redis = MagicMock()
-    redis.revoke_session = AsyncMock()
+    redis.revoke_session = AsyncMock(side_effect=_revoke)
     with (
         patch.dict(os.environ, {"ENVIRONMENT": "production"}),
         patch(
@@ -154,17 +165,19 @@ async def test_validate_fingerprint_revokes_and_notifies_redis():
     ):
         await service.validate_fingerprint(user, session, db, redis)
 
-    redis.revoke_session.assert_awaited_once_with("jti")
+    redis.revoke_session.assert_awaited_once_with("jti", expires_at=session.expires_at)
+    assert order == ["redis", "database"]
 
 
 @pytest.mark.asyncio
-async def test_validate_fingerprint_tolerates_redis_failure():
+async def test_validate_fingerprint_propagates_redis_failure():
     service, user, session, db = _context("stored")
     event = SimpleNamespace(to_log_record=lambda: {})
     detector = MagicMock()
     detector.check_fingerprint_mismatch.return_value = event
     redis = MagicMock()
     redis.revoke_session = AsyncMock(side_effect=ConnectionError("offline"))
+    db.rollback = AsyncMock()
     with (
         patch.dict(os.environ, {"ENVIRONMENT": "production"}),
         patch(
@@ -177,6 +190,8 @@ async def test_validate_fingerprint_tolerates_redis_failure():
         ),
         patch("app.services.auth.fingerprint_service.raise_forbidden"),
     ):
-        await service.validate_fingerprint(user, session, db, redis)
+        with pytest.raises(ConnectionError, match="offline"):
+            await service.validate_fingerprint(user, session, db, redis)
 
-    db.commit.assert_awaited_once()
+    db.commit.assert_not_awaited()
+    db.rollback.assert_awaited_once()

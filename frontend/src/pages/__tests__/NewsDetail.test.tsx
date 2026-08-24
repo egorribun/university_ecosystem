@@ -397,6 +397,18 @@ describe("NewsDetail", () => {
     requestAnimationFrame.mockRestore()
   })
 
+  it("dismisses transient notifications after the toast timeout", () => {
+    vi.useFakeTimers()
+    render(<NewsDetail />)
+
+    act(() => mocks.shareNotify("temporary notification"))
+    expect(screen.getByRole("alert")).toHaveTextContent("temporary notification")
+    act(() => vi.runOnlyPendingTimers())
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    vi.useRealTimers()
+  })
+
   it("localizes article content and wires interaction, edit, and delete flows", async () => {
     const historyLength = vi.spyOn(window.history, "length", "get").mockReturnValue(1)
     render(<NewsDetail />)

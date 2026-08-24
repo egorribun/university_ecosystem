@@ -13,6 +13,7 @@ import nats
 from nats.aio.client import Client as NATS
 from nats.js import JetStreamContext
 from nats.js.api import RetentionPolicy, StorageType, StreamConfig
+from nats.js.errors import BadRequestError
 from opentelemetry import propagate, trace
 from opentelemetry.trace import SpanKind
 from pydantic import BaseModel, ValidationError, field_validator
@@ -132,6 +133,7 @@ class NatsTaskBroker:
         try:
             self._nc = await nats.connect(
                 settings.nats_url,
+                token=settings.nats_auth_token,
                 # HIGH-W19: Use max_reconnect_attempts=-1 (unlimited) so that after
                 # a successful initial connection the client automatically reconnects
                 # on transient network failures. The connect_timeout still applies to
@@ -183,13 +185,32 @@ class NatsTaskBroker:
             ]
 
             for stream_cfg in streams:
-                await self._js.add_stream(config=stream_cfg)
+                try:
+                    await self._js.add_stream(config=stream_cfg)
+                except BadRequestError as exc:
+                    if exc.err_code != 10058:
+                        raise
+                    # JetStream CREATE is idempotent only while the requested
+                    # configuration matches the durable stream. Existing local
+                    # volumes can legitimately carry an older configuration;
+                    # reconcile that drift without deleting messages or volumes.
+                    await self._js.update_stream(config=stream_cfg)
+                    _logger.info(
+                        "Reconciled existing NATS JetStream stream %s",
+                        stream_cfg.name,
+                    )
 
             _logger.info(
                 "Connected to NATS JetStream (5 file-backed streams provisioned)"
             )
         except Exception as exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — logs then re-raises (reviewed TD-27-04)
             _logger.error("Failed to connect to NATS: %s", exc)
+            try:
+                await self.close()
+            except Exception as cleanup_exc:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — preserve original provisioning failure
+                _logger.warning(
+                    "Failed to close partial NATS connection: %s", cleanup_exc
+                )
             raise
 
     async def close(self) -> None:

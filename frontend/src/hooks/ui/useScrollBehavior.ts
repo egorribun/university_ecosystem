@@ -8,10 +8,11 @@ import { NAVBAR_SCROLL_THRESHOLD } from "@/constants/scroll"
 // no args). Listener attaches once + uses passive: true for jank-free
 // scrolling. Equivalent behavior — no UX change.
 export const useScrollBehavior = () => {
-  const [isScrolled, setIsScrolled] = useState(() => {
-    if (typeof window === "undefined") return false
-    return window.scrollY > NAVBAR_SCROLL_THRESHOLD
-  })
+  // The browser may restore a non-zero scroll position before hydration.
+  // Always match the server's first render, then read the real position in
+  // the effect below; otherwise the navbar changes element structure while
+  // React is hydrating a reloaded, scrolled page.
+  const [isScrolled, setIsScrolled] = useState(false)
 
   useEffect(() => {
     const handleScroll = () => {

@@ -170,10 +170,15 @@ function median(values) {
 
 async function runCommand(command, args, description, options = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    const executable =
+      process.platform === "win32" && (command === "npm" || command === "npx")
+        ? `${command}.cmd`
+        : command
+    const child = spawn(executable, args, {
       cwd: frontendRoot,
       stdio: options.silent ? "pipe" : "inherit",
-      shell: true,
+      shell: false,
+      windowsHide: true,
       env: { ...process.env, ...(options.env ?? {}) },
     })
 
@@ -246,8 +251,7 @@ async function runLighthouse(url, runIndex) {
     `--form-factor=${FORM_FACTOR}`,
     "--quiet",
     "--only-categories=performance,accessibility,best-practices,seo",
-    // Quote chrome-flags value: shell: true on Windows mangles unquoted spaces.
-    `--chrome-flags="--no-sandbox --disable-dev-shm-usage --headless=new --disable-gpu"`,
+    "--chrome-flags=--no-sandbox --disable-dev-shm-usage --headless=new --disable-gpu",
   ]
 
   // Match run-lhci.mjs behavior: emulated mobile preset implies viewport.

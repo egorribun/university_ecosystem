@@ -81,3 +81,33 @@ func TestRunServer_InvalidHTTP3AddressDoesNotBlockShutdown(t *testing.T) {
 		t.Fatal("runServer with invalid HTTP/3 address did not shut down")
 	}
 }
+
+func TestRunServer_LogsHTTP3ListenError(t *testing.T) {
+	oldListenAndServeH3 := listenAndServeH3ServerFunc
+	t.Cleanup(func() { listenAndServeH3ServerFunc = oldListenAndServeH3 })
+	called := make(chan struct{})
+	listenAndServeH3ServerFunc = func(*http3.Server) error {
+		close(called)
+		return errors.New("synthetic HTTP/3 listen failure")
+	}
+
+	quit := make(chan os.Signal, 1)
+	done := make(chan error, 1)
+	go func() {
+		done <- runServer(&config.Config{Port: "0", H3Enabled: true, H3Port: "0"}, gin.New(), slog.New(slog.NewTextHandler(os.Stderr, nil)), quit)
+	}()
+
+	select {
+	case <-called:
+	case <-time.After(2 * time.Second):
+		t.Fatal("HTTP/3 listener was not started")
+	}
+	quit <- os.Interrupt
+
+	select {
+	case err := <-done:
+		require.NoError(t, err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("runServer did not shut down after the injected signal")
+	}
+}

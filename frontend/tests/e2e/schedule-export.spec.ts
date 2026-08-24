@@ -1,27 +1,32 @@
 import { expect, test } from "./test"
-import { promises as fs } from "fs"
+import { promises as fs } from "node:fs"
 
 import { useMockApi } from "./utils/mockApi"
 
 test.describe("Schedule export", () => {
-  test.skip("allows downloading the schedule as an iCal file", async ({ page }) => {
+  test("downloads the rendered schedule as a PNG file", async ({ page }) => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
     await page.goto("/schedule")
     await expect(page).toHaveURL(/\/schedule$/)
+    await page.getByRole("tab", { name: /Сб|Sat/i }).click()
+    await expect(page.getByText(/Математика|Mathematics/i).first()).toBeVisible()
 
+    await page.getByRole("button", { name: /Настройки|Settings/i }).click()
+    await page.getByRole("button", { name: /Экспорт|Export/i }).click()
     const downloadPromise = page.waitForEvent("download")
-    await page.getByRole("link", { name: "Экспорт в календарь" }).click()
+    await page.getByRole("menuitem", { name: /Изображение \(PNG\)|Image \(PNG\)/i }).click()
     const download = await downloadPromise
 
-    expect(download.suggestedFilename()).toMatch(/schedule-iu-21\.ics$/)
+    expect(download.suggestedFilename()).toBe("schedule.png")
     const filePath = await download.path()
     expect(filePath).toBeTruthy()
     if (filePath) {
-      const content = await fs.readFile(filePath, "utf-8")
-      expect(content).toContain("BEGIN:VCALENDAR")
-      expect(content).toContain("SUMMARY:Математика")
+      const content = await fs.readFile(filePath)
+      expect(content.subarray(0, 8)).toEqual(
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
+      )
     }
   })
 })

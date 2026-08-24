@@ -119,6 +119,7 @@ describe("useNewsListQuery queryFn branches", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(result.current.news).toEqual([])
+    expect(newsListMock.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ throwOnError: true }))
     expect(result.current.pagination).toEqual({
       items: [],
       total: 0,
@@ -174,18 +175,33 @@ describe("useNewsListQuery queryFn branches", () => {
     expect(result.current.news).toHaveLength(2)
   })
 
-  it("coerces a non-object 200 payload via ensurePaginatedResponse defaults", async () => {
-    // total/limit non-numeric → fall back to items.length / fallbackLimit
+  it("304 response restores the persisted page when the query cache is cold", async () => {
+    const persistedItems = [makeNews("persisted-1"), makeNews("persisted-2")]
+    window.localStorage.setItem("news:list:ru", JSON.stringify(persistedItems))
+    newsListMock.mockResolvedValue({ status: 304, data: undefined })
+
+    const queryClient = freshClient()
+    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(newsListMock).toHaveBeenCalledOnce())
+    await waitFor(() => expect(result.current.isFetching).toBe(false))
+    expect(result.current.news).toEqual(persistedItems)
+  })
+
+  it("normalizes malformed pagination fields to safe defaults", async () => {
     newsListMock.mockResolvedValue({
       status: 200,
-      data: { items: [makeNews("x")], total: "nope", limit: "nope" },
+      data: { items: "invalid", total: "invalid", limit: "invalid" },
     })
     const queryClient = freshClient()
     const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
       wrapper: makeWrapper(queryClient),
     })
-    await waitFor(() => expect(result.current.news).toHaveLength(1))
-    expect(result.current.pagination?.total).toBe(1)
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.news).toEqual([])
+    expect(result.current.pagination?.total).toBe(0)
     expect(result.current.pagination?.limit).toBe(12)
   })
 })
@@ -217,6 +233,21 @@ describe("mergeNewsPages dedupe (news.ts:140 via shared id across pages)", () =>
 
 // ── useNewsListQuery placeholderData offline-success path (news.ts:255-270) ───
 describe("useNewsListQuery placeholderData offline (news.ts:255-270)", () => {
+  it("persists a successful news response for a later offline mount", async () => {
+    const received = [makeNews("cached-1"), makeNews("cached-2")]
+    newsListMock.mockResolvedValue(okPage(received, null))
+
+    const queryClient = freshClient()
+    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    await waitFor(() =>
+      expect(window.localStorage.getItem("news:list:ru")).toBe(JSON.stringify(received))
+    )
+  })
+
   it("seeds news from localStorage when no network response yet", async () => {
     const stored = [makeNews("p1"), makeNews("p2")]
     // key shape: news:list:<language>
@@ -242,6 +273,37 @@ describe("useNewsListQuery placeholderData offline (news.ts:255-270)", () => {
     await act(async () => {
       resolveFn(okPage(stored, null))
     })
+  })
+
+  it("keeps the persisted feed visible when an SSR-hydrated query fails offline", async () => {
+    const stored = [makeNews("offline-1"), makeNews("offline-2")]
+    window.localStorage.setItem("news:list:ru", JSON.stringify(stored))
+    newsListMock.mockRejectedValue(new Error("offline"))
+
+    const queryClient = freshClient()
+    queryClient.setQueryData(newsListQueryKey({ language: "ru" }), {
+      pages: [],
+      pageParams: [],
+    })
+    const { result } = renderHook(
+      () => useNewsListQuery({ language: "ru", limit: 12 }, { staleTime: 0 }),
+      { wrapper: makeWrapper(queryClient) }
+    )
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.news).toEqual(stored)
+  })
+
+  it("returns an empty feed when an offline error has no persisted snapshot", async () => {
+    newsListMock.mockRejectedValue(new Error("offline"))
+
+    const queryClient = freshClient()
+    const { result } = renderHook(() => useNewsListQuery({ language: "ru" }), {
+      wrapper: makeWrapper(queryClient),
+    })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.news).toEqual([])
   })
 
   it("returns no placeholder when stored items are empty/missing", async () => {

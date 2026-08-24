@@ -404,6 +404,8 @@ describe("ChatWindow — reactions picker outside-click / Escape close (W206)", 
     const pickerEmoji = 'messenger:reactions.react|{"emoji":"👍"}'
     fireEvent.click(screen.getByRole("button", { name: "messenger:reactions.add" }))
     expect(screen.getByRole("button", { name: pickerEmoji })).toBeTruthy()
+    fireEvent.keyDown(document, { key: "ArrowRight" })
+    expect(screen.getByRole("button", { name: pickerEmoji })).toBeTruthy()
     fireEvent.keyDown(document, { key: "Escape" })
     expect(screen.queryByRole("button", { name: pickerEmoji })).toBeFalsy()
   })

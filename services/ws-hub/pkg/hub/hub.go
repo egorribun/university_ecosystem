@@ -16,6 +16,7 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/lestrrat-go/jwx/v2/jwk"
 	"github.com/nats-io/nats.go"
+	"github.com/quic-go/webtransport-go"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 	"go.opentelemetry.io/otel"
@@ -61,10 +62,11 @@ type Hub struct {
 	authClient RoomAuthClient
 	subs       []*nats.Subscription
 	// UpgradeLimiter caps per-IP WebSocket upgrade attempts.
-	UpgradeLimiter  *WSUpgradeRateLimiter
-	jwksCache       *jwk.Cache
-	jwksCacheCancel context.CancelFunc
-	jwksURL         string
+	UpgradeLimiter     *WSUpgradeRateLimiter
+	webTransportServer *webtransport.Server
+	jwksCache          *jwk.Cache
+	jwksCacheCancel    context.CancelFunc
+	jwksURL            string
 	// maxClients caps the number of concurrently connected WebSocket clients.
 	maxClients int
 	// broadcastWorkers is the size of the broadcast goroutine pool (PERF-W14-02).
@@ -85,9 +87,13 @@ type Hub struct {
 	lifecycleMu   sync.Mutex
 	stopOnce      sync.Once
 	jwksMu        sync.Mutex
-	// redisClient is the shared Redis connection used for upgrade ticket validation.
+	// redisClient owns ephemeral upgrade tickets and L2 authorization cache data.
 	// RZ-W14-01 (audit 2026-03-23 Wave 14): tickets replace JWT-in-Sec-WebSocket-Protocol.
-	redisClient            *goredis.Client
+	redisClient *goredis.Client
+	// revocationRedisClient is a distinct durable/noeviction security store.
+	// Keeping it separate prevents cache pressure or restart from erasing live
+	// revoked:jti tombstones.
+	revocationRedisClient  *goredis.Client
 	limiterCleanupInterval time.Duration
 
 	// JetStream R1 fields
@@ -101,6 +107,10 @@ type Hub struct {
 }
 
 var (
+	newDedupLRUFunc  = lru.New[string, time.Time]
+	registerJWKSFunc = func(cache *jwk.Cache, url string, options ...jwk.RegisterOption) error {
+		return cache.Register(url, options...)
+	}
 	jetStreamAckFunc      = func(msg *nats.Msg) error { return msg.Ack() }
 	jetStreamNakFunc      = func(msg *nats.Msg, delay time.Duration) error { return msg.NakWithDelay(delay) }
 	jetStreamContextFunc  = func(conn *nats.Conn) (nats.JetStreamContext, error) { return conn.JetStream() }
@@ -137,7 +147,7 @@ func safeNakWithDelay(msg *nats.Msg, delay time.Duration) {
 }
 
 // NewHub creates a new Hub instance.
-func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *config.Config, rdb *goredis.Client) *Hub {
+func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *config.Config, rdb *goredis.Client, revocationClients ...*goredis.Client) *Hub {
 	bufSize := 4096
 	maxC := 10000
 	workers := 4
@@ -178,9 +188,9 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		enableJS = cfg.EnableJetStream
 	}
 
-	dedupCache, err := lru.New[string, time.Time](10000)
-	if err != nil && logger != nil {
-		logger.ErrorContext(context.Background(), "Failed to initialize dedup LRU cache", "err", err)
+	dedupCache, err := newDedupLRUFunc(10000)
+	if err != nil {
+		panic(fmt.Sprintf("failed to initialize dedup LRU cache: %v", err))
 	}
 
 	var js nats.JetStreamContext
@@ -188,6 +198,13 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		if jsc, err := jetStreamContextFunc(nc); err == nil {
 			js = jsc
 		}
+	}
+	revocationRedisClient := rdb
+	if len(revocationClients) > 1 {
+		panic("ws-hub: at most one revocation Redis client may be configured")
+	}
+	if len(revocationClients) == 1 {
+		revocationRedisClient = revocationClients[0]
 	}
 
 	return &Hub{
@@ -200,6 +217,7 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		Logger:                 logger,
 		authClient:             authClient,
 		UpgradeLimiter:         NewWSUpgradeRateLimiter(10, 60),
+		webTransportServer:     &webtransport.Server{CheckOrigin: isUpgradeOriginAllowed},
 		jwksCache:              nil, // Initialised via SetupJWKS()
 		maxClients:             maxC,
 		broadcastWorkers:       workers,
@@ -207,6 +225,7 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		clientMsgRateLimit:     rateLimit,
 		clientMsgRateBurst:     rateBurst,
 		redisClient:            rdb,
+		revocationRedisClient:  revocationRedisClient,
 		limiterCleanupInterval: 5 * time.Minute,
 		js:                     js,
 		dedupCache:             dedupCache,
@@ -237,7 +256,7 @@ func (h *Hub) SetupJWKS(ctx context.Context, jwksURL string) error {
 
 	h.jwksCache = jwk.NewCache(jwksCtx)
 	// Refresh the cache every hour.
-	err := h.jwksCache.Register(jwksURL, jwk.WithMinRefreshInterval(time.Hour))
+	err := registerJWKSFunc(h.jwksCache, jwksURL, jwk.WithMinRefreshInterval(time.Hour))
 	if err != nil {
 		cancel() // release context on error
 		return fmt.Errorf("failed to register JWKS URL %s: %w", jwksURL, err)
@@ -343,13 +362,17 @@ func (h *Hub) handleRegister(ctx context.Context, client *Client) {
 	h.mu.Lock()
 	if h.maxClients > 0 && len(h.Clients) >= h.maxClients {
 		h.mu.Unlock()
-		h.Logger.WarnContext(ctx, "Max connections reached, rejecting client",
-			"id", client.ID,
-			"max", h.maxClients)
+		if h.Logger != nil && h.Logger.Enabled(ctx, slog.LevelWarn) {
+			h.Logger.WarnContext(ctx, "Max connections reached, rejecting client",
+				"id", client.ID,
+				"max", h.maxClients)
+		}
 		client.closeOnce.Do(func() { safeClose(client.Send) })
 		if client.Conn != nil {
 			if err := client.Conn.Close(); err != nil {
-				h.Logger.ErrorContext(ctx, "Failed to close connection after max connections", "id", client.ID, "err", err)
+				if h.Logger != nil && h.Logger.Enabled(ctx, slog.LevelError) {
+					h.Logger.ErrorContext(ctx, "Failed to close connection after max connections", "id", client.ID, "err", err)
+				}
 			}
 		}
 		return
@@ -357,7 +380,9 @@ func (h *Hub) handleRegister(ctx context.Context, client *Client) {
 	h.Clients[client.ID] = client
 	h.mu.Unlock()
 	ActiveConnections.Inc()
-	h.Logger.InfoContext(ctx, "Client connected", "id", client.ID)
+	if h.Logger != nil && h.Logger.Enabled(ctx, slog.LevelInfo) {
+		h.Logger.InfoContext(ctx, "Client connected", "id", client.ID)
+	}
 }
 
 func (h *Hub) handleUnregister(ctx context.Context, client *Client) {
@@ -387,7 +412,9 @@ func (h *Hub) handleUnregister(ctx context.Context, client *Client) {
 		// only decrement the gauge once per client.
 		ActiveConnections.Dec()
 	})
-	h.Logger.InfoContext(ctx, "Client disconnected", "id", client.ID)
+	if h.Logger != nil && h.Logger.Enabled(ctx, slog.LevelInfo) {
+		h.Logger.InfoContext(ctx, "Client disconnected", "id", client.ID)
+	}
 }
 
 type recipient struct {
@@ -408,10 +435,14 @@ func (h *Hub) collectRecipients(msg *Message, span trace.Span) []recipient {
 		if !ok {
 			return nil
 		}
-		span.SetAttributes(attribute.Int("recipient.count", len(clients)))
-		recipients := make([]recipient, 0, len(clients))
+		if span != nil && span.IsRecording() {
+			span.SetAttributes(attribute.Int("recipient.count", len(clients)))
+		}
+		recipients := make([]recipient, len(clients))
+		i := 0
 		for c := range clients {
-			recipients = append(recipients, recipient{client: c})
+			recipients[i] = recipient{client: c}
+			i++
 		}
 		return recipients
 	case msg.To != "":
@@ -419,16 +450,41 @@ func (h *Hub) collectRecipients(msg *Message, span trace.Span) []recipient {
 		if !ok {
 			return nil
 		}
-		span.SetAttributes(attribute.Int("recipient.count", 1))
+		if span != nil && span.IsRecording() {
+			span.SetAttributes(attribute.Int("recipient.count", 1))
+		}
 		return []recipient{{client: c}}
 	default:
-		span.SetAttributes(attribute.Int("recipient.count", len(h.Clients)))
-		recipients := make([]recipient, 0, len(h.Clients))
+		if span != nil && span.IsRecording() {
+			span.SetAttributes(attribute.Int("recipient.count", len(h.Clients)))
+		}
+		recipients := make([]recipient, len(h.Clients))
+		i := 0
 		for _, c := range h.Clients {
-			recipients = append(recipients, recipient{client: c, evictOnFull: true})
+			recipients[i] = recipient{client: c, evictOnFull: true}
+			i++
 		}
 		return recipients
 	}
+}
+
+func (h *Hub) isOversized(bctx context.Context, msg *Message, data []byte, span trace.Span) bool {
+	const maxBroadcastBytes = 60 * 1024 // 60 KB
+	if len(data) <= maxBroadcastBytes {
+		return false
+	}
+	if h.Logger != nil && h.Logger.Enabled(bctx, slog.LevelWarn) {
+		h.Logger.WarnContext(bctx, "Broadcast message exceeds size limit, dropping",
+			"size_bytes", len(data),
+			"limit_bytes", maxBroadcastBytes,
+			"type", msg.Type,
+			"room", msg.Room)
+	}
+	BroadcastDropsTotal.Inc()
+	if span != nil && span.IsRecording() {
+		span.SetAttributes(attribute.Bool("dropped.oversized", true))
+	}
+	return true
 }
 
 func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
@@ -449,42 +505,36 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 
 	data, err := hubJSONMarshalFunc(msg)
 	if err != nil {
-		h.Logger.ErrorContext(bctx, "Failed to marshal broadcast message", "err", err)
+		if h.Logger != nil && h.Logger.Enabled(bctx, slog.LevelError) {
+			h.Logger.ErrorContext(bctx, "Failed to marshal broadcast message", "err", err)
+		}
 		return
 	}
 
-	// RZ-23-05 (audit 2026-03-25 Wave 23): Drop oversized broadcasts that would
-	// exceed clients' ReadLimit (64 KB). Without this guard, recipients' ReadPump
-	// closes the connection with CloseMessageTooBig. 4 KB headroom accounts for
-	// WebSocket framing overhead.
-	const maxBroadcastBytes = 60 * 1024 // 60 KB
-	if len(data) > maxBroadcastBytes {
-		h.Logger.WarnContext(bctx, "Broadcast message exceeds size limit, dropping",
-			"size_bytes", len(data),
-			"limit_bytes", maxBroadcastBytes,
-			"type", msg.Type,
-			"room", msg.Room)
-		BroadcastDropsTotal.Inc()
-		span.SetAttributes(attribute.Bool("dropped.oversized", true))
+	if h.isOversized(bctx, msg, data, span) {
 		return
 	}
 
 	recipients := h.collectRecipients(msg, span)
-
 	for _, r := range recipients {
 		if safeSend(r.client.Send, data) {
 			MessagesDeliveredTotal.Inc()
-		} else if r.evictOnFull {
-			h.Logger.WarnContext(bctx, "Client buffer full or closed, evicting", "id", r.client.ID)
-			go func(c *Client) {
-				select {
-				case h.Unregister <- c:
-				case <-h.ctx.Done():
-					// RZ-24-03: Hub shutting down; close client directly.
-					c.closeOnce.Do(func() { safeClose(c.Send) })
-				}
-			}(r.client)
+			continue
 		}
+		if !r.evictOnFull {
+			continue
+		}
+		if h.Logger != nil && h.Logger.Enabled(bctx, slog.LevelWarn) {
+			h.Logger.WarnContext(bctx, "Client buffer full or closed, evicting", "id", r.client.ID)
+		}
+		go func(c *Client) {
+			select {
+			case h.Unregister <- c:
+			case <-h.ctx.Done():
+				// RZ-24-03: Hub shutting down; close client directly.
+				c.closeOnce.Do(func() { safeClose(c.Send) })
+			}
+		}(r.client)
 	}
 }
 

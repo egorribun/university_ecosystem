@@ -44,8 +44,7 @@ export function ExportDropdown({ isExporting, gridRef, className }: ExportDropdo
       }
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault()
-        const menu = dropdownRef.current?.querySelector('[role="menu"]')
-        if (!menu) return
+        const menu = dropdownRef.current!.querySelector('[role="menu"]')!
         const items = Array.from(
           menu.querySelectorAll<HTMLElement>('[role="menuitem"]:not([disabled])')
         )
@@ -63,11 +62,11 @@ export function ExportDropdown({ isExporting, gridRef, className }: ExportDropdo
   }, [open])
 
   const handleExportPng = useCallback(async () => {
-    if (!gridRef?.current) return
+    const grid = gridRef!.current!
     setExporting("png")
     try {
       const { exportScheduleAsPng } = await import("@/utils/scheduleExport")
-      const result = await exportScheduleAsPng(gridRef.current)
+      const result = await exportScheduleAsPng(grid)
       if (!result.success) {
         logError("[schedule:export:png]", result.error)
       }
@@ -80,11 +79,11 @@ export function ExportDropdown({ isExporting, gridRef, className }: ExportDropdo
   }, [gridRef])
 
   const handleExportPdf = useCallback(async () => {
-    if (!gridRef?.current) return
+    const grid = gridRef!.current!
     setExporting("pdf")
     try {
       const { exportScheduleAsPdf } = await import("@/utils/scheduleExport")
-      const result = await exportScheduleAsPdf(gridRef.current, t("schedule:title.default"))
+      const result = await exportScheduleAsPdf(grid, t("schedule:title.default"))
       if (!result.success) {
         logError("[schedule:export:pdf]", result.error)
       }

@@ -1,13 +1,10 @@
 # Reusable Go Integration Tests Workflow
 #
 # Runs //go:build integration tagged tests via `make test-integration` —
-# requires Docker (pre-installed on GitHub-hosted ubuntu-latest runners).
-# Per ADR-022, these tests spin up real NATS / MinIO / Redis / ClamAV
-# containers via testcontainers-go to cover behaviour the in-process fakes
-# do not (Nak storms, MinIO multipart, Redis EVALSHA, JWKS hot-reload, etc).
-#
-# Initially non-blocking — promotes to required only when flake rate over
-# 30 days falls below 1 % per ADR-022 §Migration step 5.
+# requires Docker (pre-installed on GitHub-hosted ubuntu-24.04 runners).
+# Per ADR-022, these tests spin up real NATS, MinIO, and Redis containers via
+# testcontainers-go to cover semantics that in-process fakes cannot reproduce.
+# The jobs are required by the aggregate CI gate.
 name: Go Integration Tests
 
 permissions:
@@ -20,7 +17,7 @@ on:
         description: "Go version to use"
         required: false
         type: string
-        default: "1.26.5"
+        default: "1.26.6"
       service-directory:
         description: "Service directory to test (e.g., services/gateway)"
         required: true
@@ -29,10 +26,24 @@ on:
 jobs:
   integration:
     name: Integration Tests (${{ inputs.service-directory }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
+    env:
+      SERVICE_DIRECTORY: ${{ inputs.service-directory }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate service directory
+        id: validate-service
+        shell: bash
+        run: |
+          case "$SERVICE_DIRECTORY" in
+            services/gateway|services/file-processor|services/ws-hub) ;;
+            *)
+              echo "::error::Unsupported service directory"
+              exit 1
+              ;;
+          esac
 
       - name: Setup Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -52,13 +63,13 @@ jobs:
 
       - name: Install dependencies
         run: |
-          cd "${{ inputs.service-directory }}"
+          cd "$SERVICE_DIRECTORY"
           go mod download
 
       - name: Run integration tests
         run: |
-          echo "Running integration tests for ${{ inputs.service-directory }}…"
-          cd "${{ inputs.service-directory }}"
+          printf 'Running integration tests for %s…\n' "$SERVICE_DIRECTORY"
+          cd "$SERVICE_DIRECTORY"
           make test-integration
         env:
           # testcontainers-go reuses containers across test runs in CI to
@@ -71,19 +82,21 @@ jobs:
           TESTCONTAINERS_RYUK_DISABLED: "true"
 
       - name: Generate artifact name
-        if: always()
+        if: always() && steps.validate-service.outcome == 'success'
         id: artifact-name
         shell: bash
         run: |
           # shellcheck disable=SC1003
-          SANITIZED=$(echo "${{ inputs.service-directory }}" | tr '/\\' '-')
+          SANITIZED=$(printf '%s' "$SERVICE_DIRECTORY" | tr '/\\' '-')
           echo "name=go-integration-$SANITIZED" >> "$GITHUB_OUTPUT"
 
       - name: Upload diagnostics on failure
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: failure()
+        if: failure() && steps.validate-service.outcome == 'success'
         with:
           name: ${{ steps.artifact-name.outputs.name }}-logs
           path: |
-            ${{ inputs.service-directory }}/coverage.out
+            services/gateway/coverage.out
+            services/file-processor/coverage.out
+            services/ws-hub/coverage.out
           if-no-files-found: ignore

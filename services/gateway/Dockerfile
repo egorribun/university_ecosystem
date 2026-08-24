@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.12
 
 # Build stage
-FROM golang:1.26.4-alpine3.22@sha256:cff7cf3120cd74bf0960cfe19a3efb6631161148d8e070f76976f73a13b2e3d4 AS builder
+FROM golang:1.26.6-alpine3.24@sha256:af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df AS builder
 
 WORKDIR /app
 
@@ -35,7 +35,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 
 # Runtime stage
 # SEC-04 (audit 2026-03-14): Using Distroless to minimize attack surface (no shell, no pkg manager)
-FROM gcr.io/distroless/static-debian12:latest@sha256:20bc6c0bc4d625a22a8fde3e55f6515709b32055ef8fb9cfbddaa06d1760f838
+FROM gcr.io/distroless/static-debian12@sha256:20bc6c0bc4d625a22a8fde3e55f6515709b32055ef8fb9cfbddaa06d1760f838
 
 WORKDIR /app
 

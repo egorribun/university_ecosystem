@@ -19,6 +19,7 @@
  * empty in prod build per W116 SW3 contract).
  */
 import { createRemoteJWKSet, jwtVerify } from "jose"
+import { resolveSsrBackendOrigin } from "@/api/backendOrigin"
 
 export interface SsrAuthState {
   isAuth: boolean
@@ -72,15 +73,12 @@ export function parseCookie(header: string | null | undefined, name: string): st
 /**
  * Resolve the JWKS endpoint URL.
  *
- * Reads VITE_BACKEND_ORIGIN (same env var that `src/api/client.ts:40` uses
- * for the API base URL). Falls back to a relative URL if not set — TanStack
- * Start's `createRemoteJWKSet` takes a `URL` object; for SSR build-time
- * prerender (no real network), the relative form is fine because we never
- * actually fetch in that path.
+ * Uses the same runtime-first origin resolver as the SSR API client. This keeps
+ * JWKS verification aligned with route-loader requests while allowing one
+ * immutable image to run under arbitrary service names.
  */
 function resolveJwksUrl(): URL {
-  const origin = import.meta.env.VITE_BACKEND_ORIGIN || "http://localhost:8000"
-  return new URL("/.well-known/jwks.json", origin)
+  return new URL("/.well-known/jwks.json", resolveSsrBackendOrigin())
 }
 
 let cachedJwks: ReturnType<typeof createRemoteJWKSet> | null = null
@@ -98,6 +96,12 @@ function getJwks() {
  */
 let jwtVerifyOverride:
   null | ((token: string) => Promise<{ payload: Record<string, unknown> } | null>) = null
+
+function extractJwtPayload(
+  result: { payload: Record<string, unknown> } | null
+): Record<string, unknown> | null {
+  return result?.payload ?? null
+}
 
 export function _setJwtVerifyOverrideForTests(
   fn: ((token: string) => Promise<{ payload: Record<string, unknown> } | null>) | null
@@ -123,8 +127,8 @@ export async function validateJwt(token: string): Promise<SsrAuthState> {
     const result = jwtVerifyOverride
       ? await jwtVerifyOverride(token)
       : await jwtVerify(token, getJwks(), { audience })
-    if (!result) return SSR_AUTH_UNAUTH
-    const payload = result.payload as Record<string, unknown>
+    const payload = extractJwtPayload(result)
+    if (!payload) return SSR_AUTH_UNAUTH
     if (typeof payload.sub !== "string" || !payload.sub) return SSR_AUTH_UNAUTH
     const role = typeof payload.role === "string" ? payload.role : "student"
     return { isAuth: true, user: { role }, loading: false }

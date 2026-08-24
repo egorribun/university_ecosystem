@@ -5,8 +5,8 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 ## Environment variables
 
 - Before building the frontend, set `VITE_BACKEND_ORIGIN` (for example via `frontend/.env.production`).
-- To render the interactive map, set `VITE_MAP_CONSTRUCTOR_ID` — the Yandex Maps constructor ID for the campus.
-- The `root/.env.example` file is a template for local use. Copy it to `root/.env`, replace every secret, and keep the filled version outside of version control. Compose ships with safe development defaults for `DATABASE_URL` and `POSTGRES_PASSWORD_FILE` so commands like `docker compose config` succeed without secrets, but real deployments must override them. If you keep secrets elsewhere, set `ENV_FILE=/path/to/.env` before running Compose to point `env_file` at a different location.
+- The interactive map uses MapLibre and OpenFreeMap; no constructor key is required. It needs network access to load.
+- The `.env.example` file is a template only: required passwords and keys intentionally have no insecure fallback values. For a complete local launch, use PowerShell 7 and run `.\start-docker.ps1 -Build`; the bootstrapper creates and synchronizes `.env`/`.env.docker`. Never commit populated files.
 - All variables prefixed with `VITE_` are inlined into the code during `npm run build`; changing them after the build has no effect.
 - During CI/CD export `SERVICE_VERSION` (or `APP_VERSION`) before launching containers to propagate the build identifier to OpenTelemetry (`service.version`). The frontend build automatically reuses these variables — alongside common CI commit identifiers such as `SOURCE_VERSION`, `VERCEL_GIT_COMMIT`, or `GITHUB_SHA` — when `VITE_APP_RELEASE` is not explicitly provided.
 - Set `VITE_APP_RELEASE` to forward the release identifier to Sentry. Values are embedded at build time.
@@ -15,8 +15,10 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - To collect Web Vitals, set `VITE_ENABLE_WEB_VITALS=true`. Optionally send metrics to your own endpoint through `VITE_WEB_VITALS_ENDPOINT` (otherwise they are printed to the console). The flag is ignored in dev/test environments, so CI will not fail even when the variable is enabled.
 - Backend and frontend must run over HTTPS, otherwise the browser blocks `/media` and `/static`.
 - To limit requests, configure the backend with `RATE_LIMIT_STORAGE_BACKEND` and `RATE_LIMIT_STORAGE_URI`. The value `redis` + a Redis URL (for example, `redis://user:pass@host:6379/0`) enables a shared storage for the middleware and sensitive endpoints. Use `memory` or `memory://` for a simple single-process mode without external Redis.
+- Session revocation must use one shared, dedicated store across services: the backend, gateway, and ws-hub use only `REVOCATION_REDIS_URL`. The supported Compose and Helm topology provisions a separate Redis/Valkey process with AOF, persistent storage, and `maxmemory-policy noeviction`; neither the cache (`CACHE_REDIS_URL`) nor the rate-limit Redis (`REDIS_URL`, DB 3) is authoritative security state. Reusing a cache/rate-limit process is unsupported because evicting `revoked:jti:*` could make a revoked JWT valid again.
 - Control the object-storage health probe with `HEALTH_STORAGE_PROBE_ENABLED` (run a write/delete check when set to `true`) and `HEALTH_STORAGE_PROBE_MIN_INTERVAL_SECONDS` (cache probe results between intervals). When disabled, the probe uses cheap bucket/list calls when available, which is friendlier to external providers.
-- Docker Compose has a production override (`docker-compose.prod.yml`) that marks secrets as mandatory. Run with `docker compose --profile prod -f docker-compose.yml -f docker-compose.prod.yml up -d` and provide `DATABASE_URL`, `POSTGRES_PASSWORD_FILE`, and the frontend origins explicitly.
+- Docker Compose has a production override (`docker-compose.prod.yml`) that marks secrets as mandatory. Create the Compose secrets `secret_key`, `database_url`, and `nats_auth_token`, and provide the PostgreSQL password file through `POSTGRES_PASSWORD_SOURCE_FILE`. The `database_url` secret must point to `postgresql+asyncpg://...@pgbouncer:5432/university`. Then run `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d` with `FRONTEND_ORIGIN` and `FRONTEND_ORIGINS` set explicitly; the Go overlay is required because Caddy routes API and WebSocket traffic through gateway/ws-hub.
+- The Helm chart reads connections from the pre-created `university-connections` Secret (all required keys are documented in `charts/university-ecosystem/values.yaml`). In production, set `applicationSecrets.existingSecret`; it must contain the listed JWT/RSA keys, independent HMAC/integration secrets, MinIO credentials, and Temporal API key. Production rendering rejects plaintext MinIO, Temporal, gRPC, and OTLP so unsafe configuration never reaches the cluster or Helm release state.
 - Healthchecks stay inside the containers (`127.0.0.1`), and the only `extra_hosts` entry is `host.docker.internal`; remove it for production clusters that do not need host access.
 - Prometheus metrics are disabled by default in `docker-compose.yml`. To expose them, set `ENABLE_METRICS_ENDPOINT=true` **and** configure durable values for `METRICS_BASIC_AUTH_USERNAME` and `METRICS_BASIC_AUTH_PASSWORD` (Compose no longer injects placeholders). The backend now fails startup — or returns `503` at runtime — when metrics are enabled without credentials unless the allowlist is strictly loopback-only (`127.0.0.1`, `::1`, `localhost`).
 - To attach the `Cross-Origin-Resource-Policy` header, set `ENABLE_CORP=true`. Customize the value via `CORP_VALUE` (defaults to `same-site`; `same-origin` and `cross-origin` are also accepted).
@@ -26,12 +28,12 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Before launching a new release, run `alembic upgrade head`:
 
   ```bash
-  cd root
+  cd .
   export DATABASE_URL=postgresql+asyncpg://user:password@host:5432/university
   alembic upgrade head
   ```
 
-- Alembic reads the connection string from `root/alembic.ini`. If that sample URL
+- Alembic reads the connection string from `alembic.ini`. If that sample URL
   does not match your target database, provide the correct value through the
   `DATABASE_URL` environment variable (reuse the same URL as the application).
 - Docker Compose now includes a one-off `migrations` service that runs
@@ -41,6 +43,16 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
   ```bash
   docker compose run --rm backend alembic upgrade head
   ```
+
+- Helm performs the same upgrade automatically through a blocking
+  `pre-install,pre-upgrade` hook Job. `connections.existingSecret` must exist
+  before `helm install`; a failed migration aborts the application rollout.
+  Disable `migrations.enabled` only when a separate verified deployment pipeline
+  owns schema migrations.
+- Enable Helm backups with `backup.enabled=true`: an init container creates a
+  custom-format `pg_dump`, then `minio/mc` uploads it to the configured bucket.
+  This requires `backup-database-url` in the connection Secret and
+  `minio-access-key`/`minio-secret-key` in the application Secret.
 
 ### Database connection pool
 
@@ -78,13 +90,15 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
   VITE_BACKEND_ORIGIN=https://api.example.com npm run build
 ```
 
-- Localized PWA manifests are generated from `public/manifest.source.json`.
-  Run `npm run generate:manifests` before building or `npm run manifests:check`
-  to ensure the files in `public/` are up to date.
+- Localized PWA manifests are generated from
+  `frontend/public/manifest.source.json` (repository-root path; from the
+  `frontend` directory shown above, use `public/manifest.source.json`). Run
+  `npm run generate:manifests` before building or `npm run manifests:check` to
+  ensure the generated files in `frontend/public/` are up to date.
 
 ### Offline PWA behaviour
 
-- The Service Worker caches the SPA shell (`index.html`) and serves it for navigation
+- The Service Worker caches the SPA shell (`_shell.html`) and serves it for navigation
   requests while offline; when the shell is unavailable it falls back to `offline.html`
   from the precache.
 - API calls for schedules, news, and events (`/api/schedule`, `/api/news`, `/api/events`)
@@ -93,10 +107,19 @@ VITE_APP_RELEASE=$(git rev-parse --short HEAD) \
   headers when nothing is cached yet.
 - Media and backend static assets keep the NetworkFirst strategy with a bounded cache
   (24 hours, up to 200 entries).
+- The interactive map and its lazy MapLibre chunks are intentionally excluded from the
+  install-time precache so the manifest stays below a conservative CacheStorage budget.
+  The offline shell and generic fallback page remain usable without a network; the map
+  route (including its static list) requires a network after a cold offline navigation.
+- Production builds fail closed when the aggregate precache exceeds 4,800,000 bytes. This leaves
+  headroom for Firefox and WebKit and prevents heavy lazy chunks from silently returning.
+  Chromium E2E coverage builds (`E2E_COVERAGE=true` and
+  `FRONTEND_BUILD_UNMINIFIED=true`) use a separate 9,000,000-byte diagnostic ceiling;
+  that unminified artifact is not deployable.
 - Validate offline navigation and cached payloads via the e2e suite:
 
   ```bash
-  cd root/frontend
+  cd frontend
   npm run test:e2e -- offline.spec.ts
   ```
 
@@ -185,10 +208,10 @@ PY
 
 ## Docker image
 
-- `root/frontend.Dockerfile` is built in two stages: the `builder` stage runs `npm ci && npm run build`, and the final image is based on `nginx:alpine` and contains only the `dist/` contents.
-- `VITE_BACKEND_ORIGIN` is passed via `--build-arg` (see `docker-compose.yml`). For local development it is already set to `http://localhost:8000`.
-- Static assets are served by Nginx with caching: files in `assets/` receive `Cache-Control: public, max-age=31536000, immutable`, and `index.html` gets `Cache-Control: no-cache`.
-- The container listens on port `80`. In docker-compose it is forwarded to `8080`, so the SPA is available at http://localhost:8080.
+- `frontend.Dockerfile` uses separate stages for Rust/WASM compilation, build/runtime dependency installation, and the TanStack Start SSR build. The final image is based on digest-pinned `node:24-alpine`, runs as the unprivileged `node` user, and contains only production dependencies, WASM packages, `dist/`, and the SSR launcher.
+- `VITE_BACKEND_ORIGIN` remains the frontend build-time fallback. Node SSR first reads the runtime `BACKEND_ORIGIN`, so one immutable image works with different Compose/Helm service names; the chart and Compose already provide the internal backend address. Browser API requests stay same-origin and flow through the gateway.
+- Static files and SSR are served by `frontend/scripts/server-prod.mjs`: hashed files in `assets/` receive `Cache-Control: public, max-age=31536000, immutable`, while HTML receives `no-cache`/`no-store`.
+- The container listens on port `3000`; Compose publishes the frontend directly on `127.0.0.1:8081` and Caddy/Gateway on `127.0.0.1:8080`. The fast readiness/liveness endpoint is `/healthz`.
 
 ```bash
 # example local build
@@ -196,9 +219,9 @@ docker compose build frontend
 docker compose up frontend
 ```
 
-## Reverse proxy (Nginx)
+## Edge reverse proxy
 
-If the frontend and API run on different hosts, proxy static files and media through the same domain as the SPA. This avoids CORS/Service Worker artifacts and allows absolute links to the API domain.
+The canonical edge-routing configuration is `services/caddy/Caddyfile`: Caddy proxies SSR to `frontend:3000`, API traffic to the gateway/backend, and WebSockets to ws-hub under one origin. This prevents CORS and Service Worker divergence. If an environment requires Nginx, it must proxy Node SSR instead of serving `dist/client` as a static SPA:
 
 ```nginx
 server {
@@ -206,8 +229,11 @@ server {
     server_name app.example.com;
 
     location / {
-        root /var/www/app/dist; # built frontend
-        try_files $uri /index.html;
+        proxy_pass http://frontend:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 
     location /static/ {
@@ -226,7 +252,7 @@ server {
 }
 ```
 
-> Alternative: set `VITE_BACKEND_ORIGIN=https://api.example.com` and serve `/media`/`/static` directly from the API domain (without a proxy) while keeping full HTTPS.
+> A same-origin edge is preferred for browsers. `BACKEND_ORIGIN` is the runtime SSR setting, while `VITE_BACKEND_ORIGIN` is only a build-time fallback; never expose internal service DNS in the client bundle.
 
 ## Backend system dependencies
 

@@ -1,64 +1,15 @@
 # Trivy Ignore File
-# This file documents accepted security risks until upstream fixes are available.
+# Keep only findings confirmed present by a current unsuppressed image scan.
+# Verified with Trivy 0.73.0 against university_ecosystem-backend:latest
+# (Debian 12.15) on 2026-08-14. Re-review by 2026-09-14.
 
-# CVE-2026-0994 - protobuf DoS (recursion limit exhaustion in ParseDict)
-# Status: Fix included in protobuf 6.31.1+ (we are on 6.33.5).
-# Keeping entry temporarily until scan confirmed clear.
-# Review: 2026-04-01
-CVE-2026-0994
-
-# CVE-2024-7254 - protobuf unbounded recursion
-# Status: Fixed in 6.31.1+ (we are on 6.33.5).
-# Review: 2026-04-01
-CVE-2024-7254
-
-# CVE-2024-23342 - ecdsa potential timing attack
-# Risk: Low - affects specific curves not used in production.
-# Review: 2026-05-01
-CVE-2024-23342
-
-# GHSA-7h2j-956f-4vf2 - brace-expansion DoS (CVE-2025-5889)
-# Risk: Low - dev dependency (semantic-release). No production impact.
-# Review: 2026-05-01
-GHSA-7h2j-956f-4vf2
-CVE-2025-5889
-
-# GHSA-7r86-cg39-jmmj - minimatch ReDoS (CVE-2026-26996)
-# GHSA-23c5-xmqv-rm74 - minimatch ReDoS (CVE-2026-27904)
-# Status: Fixed via overrides where possible. Semantic-release still uses older npm.
-# Risk: Low - development tool only.
-GHSA-7r86-cg39-jmmj
-GHSA-23c5-xmqv-rm74
-CVE-2026-26996
-CVE-2026-27904
-GHSA-3ppc-4f35-3m26
-
-# CVE-2024-12254 - Python asyncio memory exhaustion
-# Status: Affects Python < 3.12.9. Base image is python:3.12-slim-bookworm (Debian 12).
-# Debian 12 currently ships 3.12.3. Patch is pending in upstream Debian.
-# Risk: Medium - mitigated by application-level timeouts and memory limits.
-# Review: 2026-04-01
-CVE-2024-12254
-
-# OS-Level Vulnerabilities (Debian 12 Bookworm)
-# Risk: Low - many are core libs where fixes are pending in upstream Debian.
-# Review: 2026-04-01
-CVE-2026-0915
-CVE-2026-0861
-CVE-2025-6020
-CVE-2025-4802
+# Debian currently publishes no fixed package for these findings. Production
+# uses PostgreSQL rather than SQLite, and the normal backend path does not
+# process attacker-controlled zlib archives. CI also uses ignore-unfixed=true;
+# these entries retain an explicit audit trail for stricter ad-hoc scans.
 CVE-2025-7458
 CVE-2023-45853
 CVE-2026-27171
-CVE-2026-27172
-CVE-2026-27173
-CVE-2026-27174
-CVE-2026-27175
-CVE-2026-27176
-CVE-2026-27177
-CVE-2026-27178
-CVE-2026-27179
-CVE-2026-27180
 
 # Accepted SPIRE daemonset node-attestation & architectural rules
 # SPIRE agent/server require hostNetwork, hostPID, root filesystem access, privileged container capabilities,

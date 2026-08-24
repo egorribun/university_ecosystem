@@ -78,7 +78,7 @@ type AxeResult = { violations: AxeViolation[] }
 // W146 SW1 — Path resolution from `frontend/tests/e2e/a11y-cdn-axe.spec.ts`
 // up to `frontend/node_modules/axe-core/axe.min.js`. Three levels up
 // (file → e2e → tests → frontend) then descend. Mirrors
-// `wave138-visual-audit.mjs:87-91` resolution pattern (which goes two
+// `authenticated-visual-audit.mjs` resolution pattern (which goes two
 // levels because that script is in `frontend/scripts/`).
 //
 // W147 SW1 iter 3 — read source SYNCHRONOUSLY at module load + pass via
@@ -168,7 +168,7 @@ test.describe("@a11y local-injected axe-core regression", () => {
     // covers Framer Motion entrance animations + React Query observers under
     // `emulateMedia({ reducedMotion: "reduce" })` + Playwright's MotionConfig
     // `reducedMotion="user"` snap behavior. Pattern verified in
-    // `frontend/scripts/wave138-visual-audit.mjs:355-366` (W145 SW1 baseline).
+    // `frontend/scripts/authenticated-visual-audit.mjs` baseline.
     await page.waitForTimeout(1500)
 
     // Wave 147 SW1 — `window.axe` is pre-injected by `test.beforeEach` above

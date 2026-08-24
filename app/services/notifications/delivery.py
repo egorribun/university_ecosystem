@@ -258,9 +258,7 @@ async def create_notifications_for_users(
             async with _fanout_semaphore:
                 # RED-07 (audit 2026-03-15): Delegate to webpush_module._send_push_async
                 # which enforces a 30-slot semaphore + 15 s asyncio.timeout per call.
-                _send_func = globals().get(
-                    "send_web_push", webpush_module.send_web_push
-                )
+                _send_func = send_web_push
                 if _send_func is webpush_module.send_web_push:
                     return await webpush_module._send_push_async(
                         subscription, dict(payload)
@@ -270,7 +268,7 @@ async def create_notifications_for_users(
                 try:
                     async with asyncio.timeout(15.0):
                         return await asyncio.to_thread(
-                            _send_func, subscription, payload
+                            _send_func, subscription, dict(payload)
                         )
                 except TimeoutError:
                     import uuid as _uuid_local

@@ -60,25 +60,25 @@ jobs:
     name: Lighthouse on Linux
     # W165 SW2 Tier 1 — Path (b) alternate runner experiment per
     # frontend/scripts/run-lhci.mjs:171-174 framing. **TESTED + REVERTED**.
-    # Experiment ran ubuntu-22.04 vs ubuntu-latest (= ubuntu-24.04 alias).
+    # Experiment ran ubuntu-22.04 vs ubuntu-24.04 (= ubuntu-24.04 alias).
     # RESULT (CI run 26039934635 on 2026-05-18, 24m42s, single-session
     # 9 URLs × 3 runs = 27 LHRs): **Perf=null reproduced for ALL 9 URLs**
     # (Path B outcome per W141 anti-pattern #1 STRICT 1-iter cap; 19th
     # total vindication post-W164). ubuntu-22.04 single-session medians:
-    # / LCP 2811ms TBT 493ms (W160 baseline: 2895/549 on ubuntu-latest),
+    # / LCP 2811ms TBT 493ms (W160 baseline: 2895/549 on ubuntu-24.04),
     # /dashboard LCP 2837/502 (W160: 2857/517) — within ±50-100ms variance.
     # **Confirms STRUCTURAL Lighthouse 13.1.0 issue, NOT runner-OS-specific**.
     # Individual metrics (CLS/LCP/TBT) measure cleanly on both runners;
     # Perf composite needs speed-index audit which requires screenshots
     # that current chromeFlags `--headless=new --disable-gpu` don't
     # collect (per W162 SW1 "platform / limitation accepted" closure at
-    # run-lhci.mjs:142-211). SW2-revert restores `runs-on: ubuntu-latest`
+    # run-lhci.mjs:142-211). SW2-revert restores `runs-on: ubuntu-24.04`
     # to preserve 81-LHR cross-wave comparability per W160 SW2 + W124 SW4
     # 3-session × 3-run methodology. W160 NEW #2 LCP HOLD + #3 TBT HOLD
     # stay structural carry-forward to W166+ pending upstream Lighthouse
     # issue file OR alternate chrome flag (`--headless=chrome` already
     # tried W161 SW1 Approach B, also failed).
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # W161 SW1-fix: bumped 25 → 30. W160 SW2 baseline ran 23m45s with Perf=null
     # (skipping screenshot work shortens runtime). W161 SW1 Approach B applies
     # `--headless=chrome` which DOES collect screenshots → added screenshot
@@ -153,7 +153,7 @@ jobs:
       - name: Run Lighthouse CI
         env:
           LHCI_URLS: ${{ inputs.urls }}
-          # ubuntu-latest is pre-provisioned with the browser runtime. Avoid
+          # ubuntu-24.04 is pre-provisioned with the browser runtime. Avoid
           # repeating Playwright's apt bootstrap on every on-demand run; the
           # script still validates/downloads the pinned Chromium executable.
           LHCI_SKIP_SYSTEM_DEPS: "1"

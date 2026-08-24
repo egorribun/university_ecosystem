@@ -7,8 +7,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
-	"os"
 	"testing"
 
 	"github.com/university-ecosystem/ws-hub/pkg/config"
@@ -17,7 +17,7 @@ import (
 
 // benchHub creates a minimal Hub suitable for benchmarks (no NATS, no Redis).
 func benchHub() *Hub {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelError}))
+	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))
 	cfg := &config.Config{
 		MaxClients:          0, // unlimited for benchmarks
 		BroadcastBufferSize: 10,
@@ -182,11 +182,11 @@ func BenchmarkSafeSend(b *testing.B) {
 func BenchmarkHandleRegister(b *testing.B) {
 	h := benchHub()
 	ctx := context.Background()
+	c := benchClient(0)
+	c.Hub = h
 
 	b.ResetTimer()
-	for i := range b.N {
-		c := benchClient(i)
-		c.Hub = h
+	for range b.N {
 		h.handleRegister(ctx, c)
 
 		// Cleanup: remove the client so map size stays bounded.

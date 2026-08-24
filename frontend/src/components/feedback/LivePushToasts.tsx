@@ -70,7 +70,6 @@ const sanitizeBuffer = (buffer: unknown): ActiveToast[] => {
 }
 
 const readBuffer = (): ActiveToast[] => {
-  if (typeof window === "undefined") return memoryBuffer
   try {
     const raw = window.localStorage?.getItem(BUFFER_STORAGE_KEY)
     if (!raw) {
@@ -88,7 +87,6 @@ const readBuffer = (): ActiveToast[] => {
 
 const writeBuffer = (buffer: ActiveToast[]) => {
   memoryBuffer = buffer.slice(-MAX_BUFFER_SIZE)
-  if (typeof window === "undefined") return
   try {
     window.localStorage?.setItem(BUFFER_STORAGE_KEY, JSON.stringify(memoryBuffer))
   } catch (_e) {
@@ -116,10 +114,8 @@ export default function LivePushToasts() {
   const [current, setCurrent] = useState<ActiveToast | null>(null)
   const [open, setOpen] = useState(false)
 
-  const enqueue = useCallback((toast: ToastPayload | ActiveToast) => {
-    const normalized = toActiveToast(toast as ToastPayload)
-    if (!normalized) return
-    setQueue((prev) => [...prev, normalized])
+  const enqueue = useCallback((toast: ActiveToast) => {
+    setQueue((prev) => [...prev, toast])
   }, [])
 
   const flushBufferedToasts = useCallback(() => {
@@ -129,7 +125,6 @@ export default function LivePushToasts() {
   }, [])
 
   useEffect(() => {
-    if (typeof window === "undefined") return
     if (!navigator.serviceWorker) return
 
     const handleMessage = (event: MessageEvent) => {
@@ -162,8 +157,6 @@ export default function LivePushToasts() {
   }, [enqueue, t])
 
   useEffect(() => {
-    if (typeof document === "undefined") return
-
     const handleVisibilityChange = () => {
       if (document.visibilityState !== "visible") return
       flushBufferedToasts()
@@ -177,7 +170,7 @@ export default function LivePushToasts() {
 
   useEffect(() => {
     if (current || queue.length === 0) return
-    setCurrent(queue[0] ?? null)
+    setCurrent(queue[0]!)
     setQueue((prev) => prev.slice(1))
     setOpen(true)
   }, [current, queue])
@@ -188,9 +181,7 @@ export default function LivePushToasts() {
   }, [])
 
   const handleAction = useCallback(() => {
-    if (!current?.url) return
-    const safeUrl = sanitizeHttpUrl(current.url)
-    if (!safeUrl) return
+    const safeUrl = current!.url!
     try {
       const resolved = new URL(safeUrl, window.location.href)
       const sameOrigin = resolved.origin === window.location.origin

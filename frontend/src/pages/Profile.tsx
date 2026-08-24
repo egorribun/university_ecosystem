@@ -1,6 +1,6 @@
 import { useAuth } from "@/contexts/AuthContext"
 import { useEffect, useId, useState, useRef, useCallback } from "react"
-import { useNavigate } from "@tanstack/react-router"
+import { useNavigate, useSearch } from "@tanstack/react-router"
 import api from "@/api/client"
 import type { User } from "@/types/User"
 import profileBg from "@/assets/background.jpg"
@@ -85,8 +85,10 @@ export default function Profile() {
     (nowPlaying.track_id || nowPlaying.track_name || nowPlaying.artists.length > 0)
   )
   const navigate = useNavigate()
+  const search = useSearch({ strict: false }) as { edit?: string }
+  const shouldEditFromSearch = search.edit === "1"
 
-  const [edit, setEdit] = useState(false)
+  const [edit, setEdit] = useState(shouldEditFromSearch)
   const [fullName, setFullName] = useState(user?.full_name || "")
   const [email, setEmail] = useState(user?.email || "")
   const [about, setAbout] = useState(user?.profile_detail?.about || "")
@@ -104,6 +106,7 @@ export default function Profile() {
   const [department, setDepartment] = useState(user?.profile_detail?.department || "")
   const [position, setPosition] = useState(user?.profile_detail?.position || "")
   const [saving, setSaving] = useState(false)
+  const initializedEditorUserIdRef = useRef(user?.id ?? null)
 
   const initEditFields = useCallback(() => {
     setFullName(user?.full_name || "")
@@ -123,10 +126,23 @@ export default function Profile() {
   }, [user])
 
   useEffect(() => {
-    if (user && !edit) {
+    if (!user) {
+      initializedEditorUserIdRef.current = null
+      return
+    }
+
+    // A profile deep-link can enter edit mode before authentication finishes.
+    // Populate the editor when that user first arrives, while preserving any
+    // in-progress edits during background refreshes for the same account.
+    if (!edit || initializedEditorUserIdRef.current !== user.id) {
       initEditFields()
+      initializedEditorUserIdRef.current = user.id
     }
   }, [user, edit, initEditFields])
+
+  useEffect(() => {
+    if (shouldEditFromSearch) setEdit(true)
+  }, [shouldEditFromSearch])
 
   if (loading) return <ProfileSkeleton />
 

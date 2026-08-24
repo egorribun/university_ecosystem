@@ -56,6 +56,9 @@ describe("buildingHours utils", () => {
       }
       vi.setSystemTime(new Date("2026-07-06T03:00:00"))
       expect(isOpenNow(h)).toBe(true)
+
+      vi.setSystemTime(new Date("2026-07-05T03:00:00"))
+      expect(isOpenNow(h)).toBe(true)
     })
 
     it("returns false for closed or закрыто", () => {

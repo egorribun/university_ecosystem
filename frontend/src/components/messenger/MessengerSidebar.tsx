@@ -76,8 +76,8 @@ export function MessengerSidebar({
   const filteredContacts = useMemo(() => {
     if (!isSearchActive) return contacts
     return contacts.filter((contact) => {
-      const name = contact.name?.toLowerCase() ?? ""
-      const lastMessage = contact.lastMessage?.toLowerCase() ?? ""
+      const name = contact.name.toLowerCase()
+      const lastMessage = contact.lastMessage.toLowerCase()
       return name.includes(normalisedSearch) || lastMessage.includes(normalisedSearch)
     })
   }, [contacts, isSearchActive, normalisedSearch])

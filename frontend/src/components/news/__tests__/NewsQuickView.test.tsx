@@ -14,6 +14,7 @@ const { reducedMotion } = vi.hoisted(() => ({ reducedMotion: vi.fn(() => false) 
 vi.mock("@/hooks/useMediaQuery", () => ({ default: () => reducedMotion() }))
 
 import { NewsQuickView } from "@/components/news/NewsQuickView"
+import { NewsCategoryBadge } from "@/components/news/NewsCategoryBadge"
 
 const baseProps = {
   title: "Новая лаборатория открывается весной",
@@ -89,5 +90,11 @@ describe("NewsQuickView", () => {
     reducedMotion.mockReturnValue(true)
     render(<NewsQuickView visible {...baseProps} position="bottom" />)
     expect(screen.getByRole("tooltip", { hidden: true })).toBeInTheDocument()
+  })
+
+  it("renders the medium category badge variant", () => {
+    render(<NewsCategoryBadge category="science" size="md" />)
+
+    expect(screen.getByText("news:categories.science")).toHaveClass("px-3")
   })
 })

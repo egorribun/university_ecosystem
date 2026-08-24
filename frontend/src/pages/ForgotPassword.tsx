@@ -58,13 +58,6 @@ export default function ForgotPassword() {
     }
   }
 
-  const applySuggestion = () => {
-    if (emailSuggestion) {
-      setValue("email", emailSuggestion, { shouldValidate: true })
-      setEmailSuggestion(null)
-    }
-  }
-
   const onSubmit = async (data: ResetPasswordValues) => {
     try {
       await axios.post(FORGOT_URL, { email: data.email })
@@ -193,7 +186,10 @@ export default function ForgotPassword() {
                             label={t("auth:messages.emailSuggestion", {
                               suggestion: emailSuggestion,
                             })}
-                            onClick={applySuggestion}
+                            onClick={() => {
+                              setValue("email", emailSuggestion, { shouldValidate: true })
+                              setEmailSuggestion(null)
+                            }}
                             color="primary"
                             className="cursor-pointer hover:bg-brand/(--opacity-subtle) transition-colors"
                           />

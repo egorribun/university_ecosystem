@@ -25,7 +25,7 @@ func startRedisContainerForAuth(t *testing.T) *redis.Client {
 	t.Helper()
 	ctx := context.Background()
 
-	rc, err := tcredis.Run(ctx, "redis:7.4.2-alpine",
+	rc, err := tcredis.Run(ctx, "redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952",
 		testcontainers.WithLogger(tclog.TestLogger(t)),
 	)
 	require.NoError(t, err)
@@ -188,7 +188,7 @@ func TestIntegration_ListenForRevocations(t *testing.T) {
 
 	// Manually add key to L1 cache
 	key := "revoked:jti:jti-pubsub-test"
-	m.l1cache.Add(key, cacheEntry{exists: true, storedAt: time.Now()})
+	m.l1cache.Add(key, cacheEntry{exists: false, storedAt: time.Now()})
 
 	// Verify key exists in L1 cache
 	_, ok := m.l1cache.Get(key)
@@ -200,7 +200,8 @@ func TestIntegration_ListenForRevocations(t *testing.T) {
 	// Wait for pubsub delivery
 	time.Sleep(150 * time.Millisecond)
 
-	// Verify key is evicted from L1 cache
-	_, ok = m.l1cache.Get(key)
-	assert.False(t, ok, "key should be evicted from L1 cache on revocation publication")
+	// Verify the safe positive revocation decision is cached immediately.
+	entry, ok := m.l1cache.Get(key)
+	assert.True(t, ok, "revocation publication should populate the L1 tombstone")
+	assert.True(t, entry.exists)
 }

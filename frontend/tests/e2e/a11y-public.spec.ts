@@ -157,7 +157,7 @@ test.describe("@a11y public routes axe scan", () => {
         // entrance animations + React Query observers under `emulateMedia({
         // reducedMotion: "reduce" })` + Playwright's MotionConfig
         // `reducedMotion="user"` snap behavior. Pattern verified in
-        // `frontend/scripts/wave138-visual-audit.mjs:355-366` (W145 SW1 baseline).
+        // `frontend/scripts/authenticated-visual-audit.mjs` baseline.
         await page.waitForTimeout(1500)
 
         // Wave 147 SW2 — `window.axe` is pre-injected by `test.beforeEach`.

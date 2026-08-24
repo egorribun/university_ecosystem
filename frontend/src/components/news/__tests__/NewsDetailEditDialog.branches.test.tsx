@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -176,6 +176,36 @@ describe("NewsDetailEditDialog branches", () => {
     expect(onSuccess).not.toHaveBeenCalled()
     // After a failed save the dialog stays open (handleClose not reached) → save button re-enabled
     expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
+  })
+
+  it("finishes a pending save safely after the dialog is closed", async () => {
+    let resolveUpdate!: (value: { data: { id: string } }) => void
+    updateNews.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveUpdate = resolve
+      })
+    )
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    const onSuccess = vi.fn()
+    const onError = vi.fn()
+    const props = { ...baseProps, onClose, onSuccess, onError }
+    const { client, rerender } = renderDialog(props)
+
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+    await waitFor(() => expect(updateNews).toHaveBeenCalledOnce())
+    await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+    rerender(
+      <QueryClientProvider client={client}>
+        <NewsDetailEditDialog {...props} open={false} />
+      </QueryClientProvider>
+    )
+
+    await act(async () => resolveUpdate({ data: { id: "news-1" } }))
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalledWith("news:notifications.updated"))
+    expect(onError).not.toHaveBeenCalled()
+    expect(onClose).toHaveBeenCalledTimes(2)
   })
 
   it("syncs editData from initialData when the dialog re-opens (effect line 69)", () => {

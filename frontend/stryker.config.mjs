@@ -30,12 +30,12 @@ export default {
     // Initial security Tier-0 slice: address/Telegram URL boundaries. Keep
     // the scope explicit so a green gate represents a complete mutation run,
     // not a partial score over an untestable application-wide universe.
-    "src/utils/sanitize.ts:86:1-92:2",
+    "src/utils/sanitize.ts:90:1-96:2",
     // `safe === null` is followed by a defensive URL parse catch that returns
-    // the same empty value; line 97 therefore has no independently observable
+    // the same empty value; line 101 therefore has no independently observable
     // mutant and remains covered by the direct invalid-host test below.
-    "src/utils/sanitize.ts:94:1-96:2",
-    "src/utils/sanitize.ts:105:1-112:2",
+    "src/utils/sanitize.ts:98:1-100:2",
+    "src/utils/sanitize.ts:109:1-116:2",
   ],
   testFiles: [
     "src/utils/__tests__/sanitize*.test.ts",

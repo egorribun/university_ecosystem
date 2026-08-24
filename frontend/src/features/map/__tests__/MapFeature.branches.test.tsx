@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, act, waitFor, within } from "@testing-library/react"
 import type { ComponentType, RefObject } from "react"
 import { Suspense } from "react"
+import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -177,6 +178,10 @@ afterEach(() => {
 })
 
 describe("MapFeature — orchestration handlers", () => {
+  it("uses the deterministic server snapshot during SSR", () => {
+    expect(renderToString(<MapFeature />)).toContain("map-theme")
+  })
+
   it("opens the sidebar when a building is selected via MapLibre, then closes it", async () => {
     renderFeature()
     await whenMapMounted()

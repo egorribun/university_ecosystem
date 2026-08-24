@@ -141,6 +141,23 @@ describe("Route Loaders & validateSearch validation", () => {
         expect.objectContaining({ queryKey: ["schedule", "lessons", expect.any(String)] })
       )
     })
+
+    it("keeps rendering when the conditional lessons prefetch fails", async () => {
+      const loader = ScheduleRoute.options.loader
+      mockQueryClient.ensureQueryData = vi.fn().mockImplementation((options: any) => {
+        if (options.queryKey[0] === "user") {
+          return Promise.resolve({ id: "user-123", group_id: "group-999" })
+        }
+        if (options.queryKey[1] === "lessons") return Promise.reject(new Error("offline"))
+        return options.queryFn()
+      })
+
+      await (loader as any)({ context: { queryClient: mockQueryClient } })
+
+      expect(mockQueryClient.ensureQueryData).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: ["schedule", "lessons", "group-999"] })
+      )
+    })
   })
 
   describe("settings.tsx Route", () => {
@@ -201,6 +218,24 @@ describe("Route Loaders & validateSearch validation", () => {
       expect(mockQueryClient.ensureQueryData).toHaveBeenCalledWith(
         expect.objectContaining({ queryKey: ["user", "me"] })
       )
+      expect(mockQueryClient.ensureQueryData).toHaveBeenCalledWith(
+        expect.objectContaining({ queryKey: ["sessions", "user-456"] })
+      )
+    })
+
+    it("treats current-user and sessions prefetch failures as best effort", async () => {
+      const loader = SettingsRoute.options.loader
+      const context = { queryClient: mockQueryClient }
+
+      mockQueryClient.ensureQueryData.mockRejectedValueOnce(new Error("user offline"))
+      await (loader as any)({ context, deps: { tab: SETTINGS_TAB.SECURITY } })
+
+      mockQueryClient.ensureQueryData = vi.fn().mockImplementation((options: any) => {
+        if (options.queryKey[0] === "user") return Promise.resolve({ id: "user-456" })
+        return Promise.reject(new Error("sessions offline"))
+      })
+      await (loader as any)({ context, deps: { tab: SETTINGS_TAB.SECURITY } })
+
       expect(mockQueryClient.ensureQueryData).toHaveBeenCalledWith(
         expect.objectContaining({ queryKey: ["sessions", "user-456"] })
       )

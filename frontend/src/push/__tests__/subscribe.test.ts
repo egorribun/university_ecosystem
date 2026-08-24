@@ -70,6 +70,10 @@ describe("subscribe", () => {
 
       vi.spyOn(storageMod.profileCacheStorage, "get").mockReturnValue(null)
       expect(mod.parseStoredTopics(JSON.stringify(payload))).toEqual(["sharedA"])
+
+      expect(mod.parseStoredTopics({ shared: ["fallback"] }, { userId: "missing-user" })).toEqual([
+        "fallback",
+      ])
     })
 
     it("serializes and sets persisted topics under user namespace", () => {
@@ -241,6 +245,58 @@ describe("subscribe", () => {
       expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
         version: 2,
         shared: ["after-malformed"],
+      })
+    })
+
+    it("normalizes defensive legacy topic shapes without inventing namespaces", () => {
+      localStorage.setItem(
+        "push:last_topics",
+        JSON.stringify({ perUser: { invalid: "not-an-array" }, shared: ["shared"] })
+      )
+      mod.setPersistedTopics(["selected"], { userId: "selected" })
+      expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
+        version: 2,
+        perUser: { selected: ["selected"] },
+        shared: ["shared"],
+      })
+
+      localStorage.setItem("push:last_topics", JSON.stringify(42))
+      mod.setPersistedTopics(["selected"], { userId: "selected" })
+      expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
+        version: 2,
+        perUser: { selected: ["selected"] },
+      })
+
+      vi.spyOn(storageMod.profileCacheStorage, "get").mockReturnValue(null)
+      localStorage.setItem("push:last_topics", JSON.stringify({ shared: ["old"] }))
+      mod.setPersistedTopics(["new"], { userId: null })
+      expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
+        version: 2,
+        shared: ["new"],
+      })
+
+      localStorage.setItem(
+        "push:last_topics",
+        JSON.stringify({ perUser: { invalid: "not-an-array" } })
+      )
+      mod.setPersistedTopics(["new"], { userId: null })
+      expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
+        version: 2,
+        shared: ["new"],
+      })
+    })
+
+    it("removes the last per-user namespace while preserving shared topics", () => {
+      localStorage.setItem(
+        "push:last_topics",
+        JSON.stringify({ shared: ["shared"], perUser: { remove: ["private"] } })
+      )
+
+      mod.setPersistedTopics(null, { userId: "remove" })
+
+      expect(JSON.parse(localStorage.getItem("push:last_topics") ?? "null")).toEqual({
+        version: 2,
+        shared: ["shared"],
       })
     })
 
@@ -725,6 +781,35 @@ describe("subscribe", () => {
       expect(mockReg.pushManager.subscribe).toHaveBeenCalledOnce()
     })
 
+    it("keeps stale-unsubscribe diagnostics disabled outside development", async () => {
+      vi.stubEnv("DEV", false)
+      const staleSub = {
+        options: { applicationServerKey: new Uint8Array([0]).buffer },
+        unsubscribe: vi.fn().mockRejectedValue(new Error("unsubscribe failed")),
+      }
+      const freshSub = {
+        endpoint: "https://push.example.com/fresh-production",
+        options: { applicationServerKey: mod.urlBase64ToUint8Array("ZnJlc2g").buffer },
+        toJSON: () => ({ endpoint: "https://push.example.com/fresh-production" }),
+      }
+      const mockReg = {
+        pushManager: {
+          getSubscription: vi.fn().mockResolvedValue(staleSub),
+          subscribe: vi.fn().mockResolvedValue(freshSub),
+        },
+      }
+      vi.stubGlobal("Notification", { permission: "granted" })
+
+      await expect(
+        mod.ensurePushSubscription({
+          registration: mockReg,
+          vapidPublicKey: "ZnJlc2g",
+          requestPermission: false,
+        })
+      ).resolves.toBe(freshSub)
+      expect(staleSub.unsubscribe).toHaveBeenCalledOnce()
+    })
+
     it("does not retry persistence after a 429 response", async () => {
       vi.mocked(saveSubscription).mockRejectedValue({
         isAxiosError: true,
@@ -857,6 +942,23 @@ describe("subscribe", () => {
     it("clears local state and returns false when registration cannot be resolved", async () => {
       mockSWContainer.getRegistration.mockResolvedValue(null)
       await expect(mod.unsubscribePush()).resolves.toBe(false)
+    })
+
+    it("preserves consent on request and handles endpoint-free subscriptions", async () => {
+      mod.setPushConsent(true)
+      localStorage.setItem("push:last_topics", JSON.stringify(["news"]))
+      const subscription = { endpoint: "", unsubscribe: vi.fn().mockResolvedValue(true) }
+      const registration = {
+        pushManager: { getSubscription: vi.fn().mockResolvedValue(subscription) },
+      }
+
+      await expect(
+        mod.unsubscribePush({ registration, preserveConsent: true, preserveTopics: true })
+      ).resolves.toBe(true)
+
+      expect(deleteSubscription).not.toHaveBeenCalled()
+      expect(mod.hasPushConsent()).toBe(true)
+      expect(mod.getPersistedTopics()).toEqual(["news"])
     })
   })
 

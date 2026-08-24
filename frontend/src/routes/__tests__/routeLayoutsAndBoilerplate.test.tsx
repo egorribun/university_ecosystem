@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import { Route as IndexRoute } from "../index"
 import { Route as AdminRoute } from "../_admin"
 import { Route as AuthRoute } from "../_auth"
@@ -23,12 +23,14 @@ import { Route as SettingsRoute } from "../_auth/settings"
 import { useAuthStore } from "@/stores/useAuthStore"
 import { QueryClient } from "@tanstack/react-query"
 
+const routerMocks = vi.hoisted(() => ({ navigate: vi.fn() }))
+
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const actual = await importOriginal<any>()
   return {
     ...actual,
     Outlet: () => <div data-testid="outlet" />,
-    useNavigate: () => vi.fn(),
+    useNavigate: () => routerMocks.navigate,
     useRouterState: vi.fn().mockImplementation(({ select }) => {
       // Simulate location select
       return select({
@@ -93,10 +95,26 @@ describe("Routes layouts and boilerplate", () => {
     expect((mapSearch as any)({ z: 16 })).toEqual({ z: 16 })
   })
 
-  it("AdminLayout rendering", () => {
+  it("AdminLayout renders for admins and reactively redirects settled non-admin states", async () => {
     const AdminComponent = AdminRoute.options.component as any
     expect(AdminComponent).toBeDefined()
-    render(<AdminComponent />)
+
+    useAuthStore.setState({ user: { role: "admin" } as any, loading: false })
+    const view = render(<AdminComponent />)
+    expect(screen.getByTestId("admin-backdrop")).toBeInTheDocument()
+
+    useAuthStore.setState({ user: { role: "student" } as any, loading: false })
+    await waitFor(() =>
+      expect(routerMocks.navigate).toHaveBeenCalledWith({ to: "/dashboard", replace: true })
+    )
+
+    useAuthStore.setState({ user: null, loading: false })
+    await waitFor(() =>
+      expect(routerMocks.navigate).toHaveBeenCalledWith({ to: "/login", replace: true })
+    )
+
+    useAuthStore.setState({ user: null, loading: true })
+    view.rerender(<AdminComponent />)
     expect(screen.getByTestId("admin-backdrop")).toBeInTheDocument()
   })
 
@@ -188,6 +206,12 @@ describe("Routes layouts and boilerplate", () => {
   })
 
   it("ProfileRoute loader test", async () => {
+    const validateSearch = ProfileRoute.options.validateSearch
+    expect(validateSearch).toBeDefined()
+    expect((validateSearch as any)({ edit: "1" })).toEqual({ edit: "1" })
+    expect((validateSearch as any)({ edit: 1 })).toEqual({ edit: "1" })
+    expect((validateSearch as any)({ edit: "unexpected" })).toEqual({ edit: undefined })
+
     const loader = ProfileRoute.options.loader
     expect(loader).toBeDefined()
     const mockQueryClient = new QueryClient()

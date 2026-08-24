@@ -54,17 +54,16 @@ export default function DashboardStories({
   }, [])
 
   const goToIndex = useCallback(
-    (nextIndex: number | null) => {
-      if (nextIndex === null) {
+    (nextIndex: number) => {
+      const next = Math.max(0, Math.min(displayStories.length - 1, nextIndex))
+      const story = displayStories[next]
+      if (!story) {
         closeViewer()
         return
       }
-      const next = Math.max(0, Math.min(displayStories.length - 1, nextIndex))
       setProgress(0)
       setOpenIndex(next)
-      if (displayStories[next]) {
-        onStoryOpen?.(displayStories[next])
-      }
+      onStoryOpen?.(story)
     },
     [closeViewer, displayStories, onStoryOpen]
   )
@@ -98,10 +97,6 @@ export default function DashboardStories({
 
   useEffect(() => {
     if (openIndex === null || prefersReducedMotion || isPaused) {
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current)
-        rafRef.current = null
-      }
       return
     }
 

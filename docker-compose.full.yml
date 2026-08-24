@@ -1,5 +1,5 @@
 # University Ecosystem - Full Docker Compose
-# Usage: docker compose -f docker-compose.full.yml up -d
+# Usage: pwsh scripts/dc.ps1 up -d
 
 services:
   # ============================================================================
@@ -13,7 +13,7 @@ services:
     env_file:
       - .env.docker
     environment:
-      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/university"
+      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
       FRONTEND_ORIGIN: http://localhost:8081
       FRONTEND_ORIGINS: http://localhost:8081,http://localhost:8080
       # Wave 137 SW4: TrustedHostMiddleware allowlist. Default in dev is
@@ -34,9 +34,10 @@ services:
       # Production K8s should keep default (5) for credential-stuffing defense.
       MAX_SESSIONS_PER_USER: "50"
       CACHE_ENABLED: "true"
-      CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:-DevRedisPass2024x}@redis:6379/0"
+      CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/0"
+      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
       RATE_LIMIT_STORAGE_BACKEND: redis
-      RATE_LIMIT_STORAGE_URI: "redis://:${REDIS_PASSWORD:-DevRedisPass2024x}@redis:6379/1"
+      RATE_LIMIT_STORAGE_URI: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/1"
       MINIO_ENDPOINT: minio:9000
       MINIO_BUCKET: uploads
       MINIO_SECURE: "false"
@@ -46,15 +47,22 @@ services:
       SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI}
       SPOTIFY_SCOPES: ${SPOTIFY_SCOPES}
       AUTO_CREATE_SCHEMA: "false"
-      NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD}@nats:4222"
+      NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD:?NATS_PASSWORD is required - run start-docker.ps1}@nats:4222"
       ELASTICSEARCH_URL: "http://elasticsearch:9200"
       ELASTICSEARCH_USER: "elastic"
       ELASTICSEARCH_PASSWORD: "${ELASTIC_PASSWORD:?ELASTIC_PASSWORD is required - set in .env file}"
       SPICEDB_ENDPOINT: "spicedb:50051"
       SPICEDB_INSECURE: "true"
+      FLAGD_HOST: "flagd"
+      FLAGD_PORT: "8013"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
       ENABLE_OTEL_LOGS: "false"
       ENABLE_OTEL_METRICS: "false"
+      ENABLE_METRICS_ENDPOINT: "true"
+      METRICS_BASIC_AUTH_USERNAME: "metrics_scraper"
+      METRICS_BASIC_AUTH_PASSWORD: ${METRICS_BASIC_AUTH_PASSWORD:?METRICS_BASIC_AUTH_PASSWORD is required - run start-docker.ps1}
+      METRICS_ALLOWLIST: ""
+      EMBEDDED_OUTBOX_WORKER_ENABLED: "false"
     volumes:
       - static-data:/app/app/static
       # Wave 137 SW1: RS256 private key mount (read-only).
@@ -66,8 +74,16 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      revocation-redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
       migrations:
         condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+      flagd-healthprobe:
+        condition: service_healthy
     # LOW-W19: bind to loopback only — backend should only be reached via the gateway
     ports:
       - "127.0.0.1:8000:8000"
@@ -104,6 +120,65 @@ services:
         max-file: "3"
     restart: unless-stopped
 
+  # OpenFeature evaluation service. The source file is shared with the K8s
+  # kustomization so local Docker and production evaluate identical flags.
+  flagd:
+    image: ghcr.io/open-feature/flagd:v0.16.1@sha256:9525b3c2916183810f93f0a72774c1dfad48d1ae22852c753719c46db80af5e7
+    labels:
+      com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
+    command:
+      - start
+      - --uri
+      - file:/etc/flagd/flags.json
+      - --port
+      - "8013"
+      - --management-port
+      - "8014"
+    volumes:
+      - ./k8s/flagd/flags.json:/etc/flagd/flags.json:ro
+    expose:
+      - "8013"
+      - "8014"
+    networks:
+      - internal
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.20"
+          memory: 128M
+    restart: unless-stopped
+
+  # flagd is distroless and intentionally contains no shell or HTTP client.
+  # Probe its official readiness endpoint from the same network namespace.
+  flagd-healthprobe:
+    image: curlimages/curl:8.21.0@sha256:7c12af72ceb38b7432ab85e1a265cff6ae58e06f95539d539b654f2cfa64bb13
+    labels:
+      com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
+    network_mode: "service:flagd"
+    depends_on:
+      flagd:
+        condition: service_started
+    command: ["sleep", "infinity"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8014/readyz"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
   frontend:
     # Wave 132 SW1 — port + healthcheck aligned to W131 SW3 Node SSR runtime.
     # Pre-W131 nginx EXPOSE was 8080; W131 SW3 frontend.Dockerfile sets ENV
@@ -115,20 +190,9 @@ services:
       dockerfile: frontend.Dockerfile
       target: runtime
       args:
-        # Wave 137 SW3: bake docker-internal backend service-name DNS at build time.
-        # ssrAuth.ts:79 reads import.meta.env.VITE_BACKEND_ORIGIN as a Rolldown
-        # build-time literal substitution (NOT runtime env lookup), so setting
-        # this in compose runtime env DOES NOT WORK. Must be a Docker build ARG.
-        # Pre-W137 the empty string fell back to ssrAuth.ts default localhost:8000
-        # which is unreachable from inside the frontend container → JWKS fetch
-        # failed silently → SSR returned UNAUTH → redirect to /login.
-        # Production CI overrides via deploy-time arg pointing at real backend
-        # hostname (e.g. https://api.example.com); compose value is dev-only.
+        # Build-time fallback for browser media/CSP helpers. Node SSR uses the
+        # runtime BACKEND_ORIGIN below, so the image remains deployment-portable.
         VITE_BACKEND_ORIGIN: "http://backend:8000"
-        # W150 polish-followup — strip SSR shell content for dev compose to
-        # bypass React #418 hydration mismatch on local Docker stack. Production
-        # CI deploys should leave this unset for full SSR LCP wins.
-        DEV_NO_SSR_SHELL: "1"
         # W153 SW1 — unminified bundle + linked source maps for /login wedge
         # diagnosis (W150-polish-followup caveat #14, W152 iter-5 honest defer).
         # KEEPS mode=production so JSX transform stays at production runtime
@@ -157,7 +221,7 @@ services:
         # defaultPendingComponent (post-W156 SW3 hydrateRoot(document) the
         # hasRealSsrContent detection target no longer exists; guard became
         # active harm on data-only routes' Suspense fallback DOM divergence).
-        # Fix applied in router.ts:102 + re-verified via wave137-authed-smoke:
+        # Fix applied in router.ts:102 + re-verified by the visual audit:
         # ALL 9 SSR routes now show 0 hydration errors under diagnostic build.
         # Flag flipped back to "" + rebuilt for production-minified verification.
         FRONTEND_BUILD_UNMINIFIED: ""
@@ -187,8 +251,11 @@ services:
         # exact element-type mismatch component stack pointing to defaultPendingComponent.
         # Fix applied in router.ts:102; diagnostic flag reverted to "" for PROD verification.
         FRONTEND_REACT_DEV_MODE: ""
+    environment:
+      # Runtime override makes the immutable SSR image portable across networks.
+      BACKEND_ORIGIN: "http://backend:8000"
     ports:
-      - "8081:3000"
+      - "127.0.0.1:8081:3000"
     networks:
       - public
     depends_on:
@@ -223,11 +290,12 @@ services:
     env_file:
       - .env.docker
     environment:
-      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/university"
+      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
       CACHE_ENABLED: "true"
-      CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:-DevRedisPass2024x}@redis:6379/0"
+      CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/0"
+      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
       AUTO_CREATE_SCHEMA: "false"
-      NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD}@nats:4222"
+      NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD:?NATS_PASSWORD is required - run start-docker.ps1}@nats:4222"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
       ENABLE_OTEL_LOGS: "false"
       ENABLE_OTEL_METRICS: "false"
@@ -235,6 +303,10 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      revocation-redis:
+        condition: service_healthy
+      nats:
         condition: service_healthy
       migrations:
         condition: service_completed_successfully
@@ -259,70 +331,53 @@ services:
         max-file: "3"
     restart: unless-stopped
 
-  cdc-outbox-worker:
+  outbox-worker:
     build:
       context: .
       dockerfile: backend.Dockerfile
       target: runtime
-    command: python -m app.workers.cdc_outbox
+    command: python -m app.workers.outbox
+    env_file:
+      - .env.docker
     environment:
-      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/university"
-      NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD}@nats:4222"
-      ENABLE_CDC_OUTBOX: "true"
-      POSTGRES_REPLICATION_SLOT: "outbox_cdc_slot"
+      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
+      CACHE_ENABLED: "true"
+      CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/0"
+      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
+      NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD:?NATS_PASSWORD is required - run start-docker.ps1}@nats:4222"
+      AUTO_CREATE_SCHEMA: "false"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
+      ENABLE_OTEL_LOGS: "false"
+      ENABLE_OTEL_METRICS: "false"
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      revocation-redis:
+        condition: service_healthy
       nats:
         condition: service_healthy
+      migrations:
+        condition: service_completed_successfully
     networks:
       - internal
     healthcheck:
-      test: ["CMD-SHELL", "python -c 'import sys; sys.exit(0)'"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "python", "-c", "import os,time; pid=int(open('/tmp/worker.pid', encoding='ascii').read()); os.kill(pid,0); raise SystemExit(0 if time.time()-os.path.getmtime('/tmp/worker.heartbeat') < 30 else 1)"]
+      interval: 15s
+      timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 20s
     deploy:
       resources:
         limits:
           cpus: '0.30'
-          memory: 512M
+          memory: 384M
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-    restart: unless-stopped
-
-  debezium:
-    image: debezium/server:2.7.3.Final
-    environment:
-      DEBEZIUM_SINK_TYPE: nats
-      DEBEZIUM_SINK_NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD}@nats:4222"
-      DEBEZIUM_SOURCE_CONNECTOR_CLASS: io.debezium.connector.postgresql.PostgresConnector
-      DEBEZIUM_SOURCE_DATABASE_HOSTNAME: postgres
-      DEBEZIUM_SOURCE_DATABASE_PORT: 5432
-      DEBEZIUM_SOURCE_DATABASE_USER: ${POSTGRES_USER:-postgres}
-      DEBEZIUM_SOURCE_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
-      DEBEZIUM_SOURCE_DATABASE_DBNAME: ${POSTGRES_DB:-university}
-      DEBEZIUM_SOURCE_DATABASE_SERVER_NAME: university
-      DEBEZIUM_SOURCE_SLOT_NAME: outbox_cdc_slot
-      DEBEZIUM_SOURCE_TOPIC_PREFIX: university
-      DEBEZIUM_SOURCE_PLUGIN_NAME: pgoutput
-      DEBEZIUM_SOURCE_TABLE_INCLUDE_LIST: public.outbox_events
-    depends_on:
-      postgres:
-        condition: service_healthy
-      nats:
-        condition: service_healthy
-    networks:
-      - internal
-    deploy:
-      resources:
-        limits:
-          cpus: '0.50'
-          memory: 512M
     restart: unless-stopped
 
   # ============================================================================
@@ -332,14 +387,14 @@ services:
     # TD-W10-07: Pinned to a specific minor version to prevent surprise upgrades.
     # Major version (pg17) floats within the same PostgreSQL release; to pin to a
     # patch update check https://hub.docker.com/r/pgvector/pgvector/tags
-    image: pgvector/pgvector:pg17
-    command: ["postgres", "-c", "max_connections=500", "-c", "wal_level=logical", "-c", "max_replication_slots=5", "-c", "max_wal_senders=5"]
+    image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+    command: ["postgres", "-c", "max_connections=500", "-c", "track_commit_timestamp=on"]
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}
       POSTGRES_DB: ${POSTGRES_DB:-university}
     ports:
-      - "15433:5432"
+      - "127.0.0.1:15433:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       # Wave 132 polish — multi-database init. Single postgres container
@@ -363,11 +418,45 @@ services:
           memory: 1G
     restart: unless-stopped
 
+  # Idempotently create every auxiliary database before dependent services.
+  # Unlike unconditional CREATE DATABASE calls, this keeps normal restarts free
+  # of duplicate-database errors and also repairs pre-existing data volumes.
+  postgres-databases-init:
+    image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGUSER: "${POSTGRES_USER:-postgres}"
+      PGPASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}"
+    entrypoint: [ "/bin/sh", "-ec" ]
+    command:
+      - |
+        for database in spicedb temporal temporal_visibility; do
+          exists="$$(psql -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = '$${database}'")"
+          if [ "$${exists}" = "1" ]; then
+            echo "[postgres-databases-init] $${database} already exists."
+          else
+            psql -d postgres -v ON_ERROR_STOP=1 -c "CREATE DATABASE \"$${database}\""
+            echo "[postgres-databases-init] Created $${database}."
+          fi
+        done
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
   redis:
     # Switched from Redis 7.4 to Valkey 8 (Linux Foundation fork) — Redis 8.x
     # changed license to RSALv2/SSPL. Production compose already uses Valkey.
     # Python `redis` client is fully compatible (same RESP protocol).
-    image: valkey/valkey:8.1-alpine
+    image: valkey/valkey:8.1-alpine@sha256:a038175878d66b9d274fbf8be73c0305e93798b83917647f167e18cef3c71eec
     command:
       - "valkey-server"
       - "--save"
@@ -383,9 +472,9 @@ services:
       - "20"
       # LOW-W19: require a password so unauthenticated access is blocked
       - "--requirepass"
-      - "${REDIS_PASSWORD:-DevRedisPass2024x}"
+      - "${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}"
     healthcheck:
-      test: [ "CMD", "valkey-cli", "-a", "${REDIS_PASSWORD:-DevRedisPass2024x}", "--no-auth-warning", "ping" ]
+      test: [ "CMD", "valkey-cli", "-a", "${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}", "--no-auth-warning", "ping" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -398,18 +487,90 @@ services:
           memory: 256M
     restart: unless-stopped
 
+  # Durable, non-evicting security state. Keeping revoked:jti tombstones out
+  # of the volatile cache prevents token resurrection during memory pressure.
+  revocation-redis:
+    image: valkey/valkey:8.1-alpine@sha256:a038175878d66b9d274fbf8be73c0305e93798b83917647f167e18cef3c71eec
+    # The image entrypoint otherwise starts as root and calls setpriv. With all
+    # capabilities dropped that UID transition is denied before Valkey starts.
+    user: "999:1000"
+    command:
+      - "valkey-server"
+      - "--save"
+      - "60 1"
+      - "--appendonly"
+      - "yes"
+      - "--appendfsync"
+      - "everysec"
+      - "--maxmemory"
+      - "256mb"
+      - "--maxmemory-policy"
+      - "noeviction"
+      - "--requirepass"
+      - "${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}
+    volumes:
+      - revocation-redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli -a $$REDIS_PASSWORD --no-auth-warning ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          cpus: '0.20'
+          memory: 320M
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.88.0@sha256:2c8c55c63ce4d915389f03d337b8acef56aaaca9fab8728291287e612d4d6398
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+
   # ── S3-compatible object storage (MinIO) ──────────────────────────────────
   minio:
     # NOTE: minio/minio repo archived Feb 2026. This is the last published tag.
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - run start-docker.ps1}
+      # Local-only internal scrape endpoint. The console remains bound to
+      # 127.0.0.1 and production uses its own authenticated monitoring policy.
+      MINIO_PROMETHEUS_AUTH_TYPE: public
     volumes:
       - minio-data:/data
     networks:
       - internal
+      # An internal-only Docker network deliberately disables host port
+      # publishing. Keep the console loopback-only, but attach a non-internal
+      # bridge so Docker can materialize 127.0.0.1:9001.
+      - public
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 10s
@@ -424,6 +585,38 @@ services:
           memory: 512M
     restart: unless-stopped
 
+  minio-init:
+    image: minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    entrypoint: [ "/bin/sh", "-ec" ]
+    command:
+      - |
+        mc alias set local http://minio:9000 "$${MINIO_ROOT_USER}" "$${MINIO_ROOT_PASSWORD}"
+        mc mb local/uploads --ignore-existing
+    environment:
+      # mc defaults to /root/.mc. Keep its short-lived credential-bearing
+      # config on a private tmpfs while leaving the image filesystem read-only.
+      MC_CONFIG_DIR: /mc-config
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - run start-docker.ps1}
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - internal
+    read_only: true
+    tmpfs:
+      - /mc-config:size=1m,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.10'
+          memory: 64M
+
   migrations:
     build:
       context: .
@@ -433,7 +626,7 @@ services:
     env_file:
       - .env.docker
     environment:
-      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD}@postgres:5432/university"
+      DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
     depends_on:
       postgres:
         condition: service_healthy
@@ -447,7 +640,9 @@ services:
     restart: on-failure
 
   nats:
-    image: nats:2.12.6-alpine
+    image: nats:2.12.6-alpine@sha256:1cfc36e2e5e638243d8c722f72c954cd0ec4b15ee82fadbc718ce12e2b3c1652
+    labels:
+      com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     # TD-09 (audit 2026-03-06): credentials via config file, not CLI args.
     # --user/--pass appear in `docker ps` output and /proc/<pid>/cmdline.
     # envsubst renders the template at startup; generated file lives in /tmp (not persisted).
@@ -483,27 +678,38 @@ services:
     build:
       context: .
       dockerfile: services/gateway/Dockerfile
+    labels:
+      com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
     environment:
       GATEWAY_PORT: "8080"
       BACKEND_URL: http://backend:8000
-      REDIS_URL: "redis://:${REDIS_PASSWORD:-DevRedisPass2024x}@redis:6379/3"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/3"
+      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
       # JWT_SECRET kept for defense-in-depth: gateway falls back to HS256 if RS256
       # verify fails. Pre-W137 in-flight HS256 tokens decode via this until expiry.
-      JWT_SECRET: ${SECRET_KEY}
+      JWT_SECRET: ${SECRET_KEY:?SECRET_KEY is required - run start-docker.ps1}
+      JWT_AUDIENCE: university-ecosystem-api
       # Wave 137 SW1: enable RS256 verification via JWKS hot-reload (MOD-W17-03).
       # Gateway polls backend's /.well-known/jwks.json every JWKS_REFRESH_INTERVAL
       # seconds; atomic public-key swap on rotation. ws-hub already uses JWKS_URL
       # default http://backend:8000/.well-known/jwks.json (no compose change needed).
       JWKS_ENDPOINT: http://backend:8000/.well-known/jwks.json
       JWKS_REFRESH_INTERVAL: "60"
+      INTERNAL_HMAC_SECRET: "${INTERNAL_HMAC_SECRET:?INTERNAL_HMAC_SECRET is required - run start-docker.ps1}"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "tempo:4317"
+      OTEL_SERVICE_NAME: "gateway"
       # AUDIT-INFRA-05: explicit opt-out for local dev — production K8s must NOT set this
       GRPC_USE_TLS: "false"
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
       redis:
+        condition: service_healthy
+      revocation-redis:
+        condition: service_healthy
+      tempo-healthprobe:
         condition: service_healthy
     networks:
       - public
@@ -520,13 +726,13 @@ services:
       context: .
       dockerfile: services/ws-hub/Dockerfile
     ports:
-      - "8083:8081"
+      - "127.0.0.1:8083:8081"
     environment:
       WS_HUB_PORT: "8081"
-      NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD}@nats:4222"
-      JWT_SECRET: ${SECRET_KEY}
+      NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD:?NATS_PASSWORD is required - run start-docker.ps1}@nats:4222"
+      JWT_SECRET: ${SECRET_KEY:?SECRET_KEY is required - run start-docker.ps1}
       # AUDIT-INFRA-02: required — ws-hub fails to start if empty
-      WS_HUB_INTERNAL_SECRET: ${WS_HUB_INTERNAL_SECRET}
+      WS_HUB_INTERNAL_SECRET: ${WS_HUB_INTERNAL_SECRET:?WS_HUB_INTERNAL_SECRET is required - run start-docker.ps1}
       # Wave 173 polish-v1: ws-hub reads REDIS_URL + REDIS_PASSWORD per
       # `services/ws-hub/pkg/config/config.go:120-121` (defaults: addr
       # `redis:6379`, no password). Pre-W173-polish-v1, REDIS_PASSWORD
@@ -540,7 +746,9 @@ services:
       # Same-mechanism sub-fix per W138 Lesson #1 (ws-hub infra config
       # gaps from W131-era multi-service split).
       REDIS_URL: "redis:6379"
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}
+      REDIS_DB: "0"
+      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
       # Wave 173 polish-v3: ws-hub default ALLOWED_ORIGINS per
       # `services/ws-hub/pkg/config/config.go:103` = ["http://localhost:3000",
       # "http://localhost:5173"] (Vite dev server ports). Production-like
@@ -564,7 +772,12 @@ services:
       OTEL_EXPORTER_OTLP_INSECURE: "true"
       OTEL_SERVICE_NAME: "ws-hub"
     depends_on:
-      - nats
+      nats:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      revocation-redis:
+        condition: service_healthy
     networks:
       - internal
       - public
@@ -579,12 +792,17 @@ services:
     build:
       context: .
       dockerfile: services/file-processor/Dockerfile
+    labels:
+      com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     environment:
-      FP_NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD}@nats:4222"
+      FP_NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD:?NATS_PASSWORD is required - run start-docker.ps1}@nats:4222"
       FP_MINIO_ENDPOINT: minio:9000
       FP_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:?MINIO_ROOT_USER is required - set in .env file}
       FP_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD is required - set in .env file}
       FP_MINIO_BUCKET: uploads
+      FP_RSA_PUBLIC_KEY_FILE: "/app/.secrets/jwt_rs256.pub.pem"
+      FP_OTLP_ENDPOINT: "tempo:4317"
+      FP_OTLP_INSECURE: "true"
       # Wave 144 SW2 Step 3 — Path (a-auth) full ACTIVATION.
       # W141 SW5 Go credentials chain (config.go TemporalAPIKeyFile field +
       # main.go connectTemporal reading token from this path then attaching
@@ -605,6 +823,8 @@ services:
       # "Connected to Temporal addr=temporal:7233", W137 §Honesty #5 +
       # W140 NEW #6 CLOSE.
       FP_TEMPORAL_API_KEY_FILE: "/app/.secrets/temporal_api_key"
+      FP_TEMPORAL_TLS_DISABLED: "true"
+      FP_ENVIRONMENT: "${ENVIRONMENT:-development}"
     volumes:
       # Wave 141 SW4 scaffolding preserved: read-only mount of .secrets/
       # for the Temporal service token (and any future file-based credentials).
@@ -615,9 +835,11 @@ services:
       - ./.secrets:/app/.secrets:ro
     depends_on:
       nats:
-        condition: service_started
+        condition: service_healthy
       minio:
         condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
       temporal:
         condition: service_healthy
       # Wave 144 SW2: default namespace must be registered before file-processor
@@ -625,6 +847,8 @@ services:
       # doesn't exist the client.Connect call fails with "namespace not found").
       temporal-namespace-init:
         condition: service_completed_successfully
+      tempo-healthprobe:
+        condition: service_healthy
       # Wave 140 SW3: backend MUST be healthy before file-processor starts.
       # Architectural contract per W140 Q2 (production parity):
       #   - Backend's NatsTaskBroker.connect() (called via app/core/lifespan.py
@@ -704,7 +928,7 @@ services:
     restart: unless-stopped
 
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.12
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.19.12@sha256:6711d4eff91dce95b900eb3c771c5298672ba00f6d20cab79551c4acc133f629
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=true
@@ -717,7 +941,7 @@ services:
     networks:
       - internal
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsSL -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health"]
+      test: ["CMD-SHELL", "curl -fsSL -u elastic:${ELASTIC_PASSWORD:?ELASTIC_PASSWORD is required - run start-docker.ps1} http://localhost:9200/_cluster/health"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -728,28 +952,70 @@ services:
           memory: 2G
     restart: unless-stopped
 
+  spicedb-migrate:
+    image: authzed/spicedb:v1.51.0@sha256:f2e6e77f89f8a0c087d9fd26b9ecd443ea601aa5422c92912f7ca95c412eb929
+    command:
+      - datastore
+      - migrate
+      - head
+      - --skip-release-check=true
+      - --datastore-engine
+      - postgres
+      - --datastore-conn-uri
+      - "postgres://${POSTGRES_USER:-postgres}@postgres:5432/spicedb?sslmode=disable"
+    environment:
+      PGPASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}"
+    depends_on:
+      postgres-databases-init:
+        condition: service_completed_successfully
+    networks:
+      - internal
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: '0.15'
+          memory: 128M
+
   spicedb:
     # P1-06 (audit 2026-03-06): Fixed hardcoded "dev-key" + memory datastore.
     # memory datastore → ACLs lost on restart; "dev-key" → brute-forceable.
     # Now uses env var (invisible to `docker ps`) and PostgreSQL for persistence.
-    image: authzed/spicedb:v1.51.0
+    image: authzed/spicedb:v1.51.0@sha256:f2e6e77f89f8a0c087d9fd26b9ecd443ea601aa5422c92912f7ca95c412eb929
     command: >-
       serve
       --datastore-engine postgres
-      --datastore-conn-uri "postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/spicedb?sslmode=disable"
+      --datastore-conn-uri "postgres://${POSTGRES_USER:-postgres}@postgres:5432/spicedb?sslmode=disable"
+      --telemetry-endpoint=
+      --skip-release-check=true
     # Internal only - accessed by backend services; no host port exposure
     expose:
       - "50051"
     environment:
-      # P1-10: Key is in env var — invisible to `docker ps --no-trunc` / docker inspect env.
+      # Keep the key out of the process command line; local Compose stores it
+      # in the container environment. Production uses a Kubernetes Secret.
       SPICEDB_GRPC_PRESHARED_KEY: "${SPICEDB_PRESHARED_KEY:?SPICEDB_PRESHARED_KEY is required - set in .env file}"
       # Dev-only: skip TLS on gRPC — production K8s must NOT set this
       SPICEDB_GRPC_NO_TLS: "true"
+      # pgx consumes PGPASSWORD without echoing it in SpiceDB's startup config
+      # log or exposing it in the container command line.
+      PGPASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}"
     networks:
       - internal
     depends_on:
       postgres:
         condition: service_healthy
+      postgres-databases-init:
+        condition: service_completed_successfully
+      spicedb-migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=:50051"]
       interval: 10s
@@ -779,31 +1045,29 @@ services:
   # `depends_on: temporal-admin-tools: service_completed_successfully` waits
   # for clean exit before starting.
   temporal-admin-tools:
-    image: temporalio/admin-tools:1.30.2
+    image: temporalio/admin-tools:1.30.2@sha256:024c6473df113e4b220b3caf6056d30964582ffcae6f6e46a1074aa6c67968d3
     container_name: temporal-admin-tools
     environment:
       SQL_PLUGIN: postgres12
       SQL_HOST: postgres
       SQL_PORT: "5432"
       SQL_USER: "${POSTGRES_USER:-postgres}"
-      SQL_PASSWORD: "${POSTGRES_PASSWORD}"
+      SQL_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}"
     entrypoint: [ "/bin/sh", "-c" ]
     command:
       - |
         set -e
         echo "[temporal-admin-tools] Bootstrapping temporal + temporal_visibility schemas..."
-        # temporal DB
-        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal create-database || true
+        # Databases are created by postgres-databases-init. Keeping schema work
+        # here avoids duplicate-database ERROR entries on every normal restart.
         temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal setup-schema -v 0.0
         temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal update-schema -d /etc/temporal/schema/postgresql/v12/temporal/versioned
-        # temporal_visibility DB
-        temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal_visibility create-database || true
         temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal_visibility setup-schema -v 0.0
         temporal-sql-tool --plugin postgres12 --ep postgres -p 5432 -u "$$SQL_USER" --pw "$$SQL_PASSWORD" --db temporal_visibility update-schema -d /etc/temporal/schema/postgresql/v12/visibility/versioned
         echo "[temporal-admin-tools] Schema bootstrap complete."
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres-databases-init:
+        condition: service_completed_successfully
     networks:
       - internal
     restart: "no"
@@ -823,7 +1087,7 @@ services:
   #     auth). file-processor connected via service-name DNS without JWT.
   #   - W142 SW3-SW5 Path A (auto-setup with JWT) attempted + (z) #6-#10
   #     cascade + SW5b honest rollback to W139 baseline.
-  #   - W143 SW2 contract test (tests/test_wave143_jwks_roundtrip.py) DISPROVED
+  #   - JWKS round-trip contract (tests/test_jwks_roundtrip.py) disproved this.
   #     Agent 2 "JWKS byte-encoding mismatch" hypothesis: Temporal uses
   #     go-jose/v4 + golang-jwt/jwt/v4 v4.5.2 (NOT lestrrat-go/jwx); encoding
   #     IS canonical RFC 7518 § 6.3.1.1; end-to-end Python verify of real
@@ -858,7 +1122,9 @@ services:
   #   - file-processor Go credentials chain (W141 SW5; config.go +
   #     main.go connectTemporal)
   temporal:
-    image: temporalio/server:1.30.2
+    image: temporalio/server:1.30.2@sha256:d5334ee3ddce1617efbe280a10afc85916cf8d81798415c98988dbda2b46773e
+    labels:
+      com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     container_name: temporal
     ports:
       - "127.0.0.1:7233:7233"  # gRPC: localhost only; access via SSH tunnel
@@ -871,7 +1137,11 @@ services:
       # exec'ing temporal-server. POSTGRES_USER + POSTGRES_PWD are passed
       # through here as the entrypoint's required inputs.
       POSTGRES_USER: "${POSTGRES_USER:-postgres}"
-      POSTGRES_PWD: "${POSTGRES_PASSWORD}"
+      POSTGRES_PWD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}"
+      # The server spans public + internal networks. A hostname lookup returns
+      # only one of those addresses, so binding gRPC to it strands clients on
+      # the other network. Membership still advertises one concrete address.
+      BIND_ON_IP: "0.0.0.0"
     entrypoint: ["/bin/sh", "/etc/temporal/wave144-entrypoint.sh"]
     volumes:
       - ./services/temporal/config.yaml:/etc/temporal/config/docker.yaml:ro
@@ -881,12 +1151,20 @@ services:
       # in config.yaml (W142 (z) #6 disproved file:// URL scheme).
       - ./.secrets:/app/.secrets:ro
     depends_on:
+      # The JWT key provider fetches JWKS during Temporal startup. Starting
+      # before backend is ready leaves an empty key cache and rejects the first
+      # authenticated SDK connections until its background refresh runs.
+      backend:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       temporal-admin-tools:
         condition: service_completed_successfully
     networks:
       - internal
+      # Required for the loopback-only 7233/7243 host publications. Docker
+      # intentionally suppresses published ports on internal-only networks.
+      - public
     healthcheck:
       # W144 SW2 NEW (z) #19: `temporalio/server:1.30.2` image ships only
       # `temporal-server` binary (no `temporal` CLI, no `grpc_health_probe`),
@@ -921,7 +1199,7 @@ services:
   # `restart: "no"` — one-shot. Once namespace exists, exit 0.
   # `--retention 1` — 1-day workflow history retention (dev-sized).
   temporal-namespace-init:
-    image: temporalio/admin-tools:1.30.2
+    image: temporalio/admin-tools:1.30.2@sha256:024c6473df113e4b220b3caf6056d30964582ffcae6f6e46a1074aa6c67968d3
     container_name: temporal-namespace-init
     environment:
       # W144 SW2 NEW (z) #20: `TEMPORAL_CLI_ADDRESS` is the v1 CLI env name;
@@ -933,25 +1211,37 @@ services:
     entrypoint: [ "/bin/sh", "-c" ]
     command:
       - |
-        set -e
-        echo "[temporal-namespace-init] Registering 'default' namespace..."
-        # Wait briefly for the frontend service to be fully accepting traffic
-        # (healthcheck reports healthy on metrics port 8000 but the gRPC
-        # frontend may need a few more seconds for first-RPC readiness).
-        for i in 1 2 3 4 5 6 7 8 9 10; do
-          if temporal operator namespace create --address temporal:7233 --namespace default --retention 24h; then
-            echo "[temporal-namespace-init] Default namespace registered."
-            exit 0
+        set -eu
+        echo "[temporal-namespace-init] Waiting for the frontend RPC..."
+        ready=false
+        for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
+          if temporal operator cluster health --address temporal:7233 --command-timeout 5s >/dev/null 2>&1; then
+            ready=true
+            break
           fi
+          echo "[temporal-namespace-init] health attempt $$i: waiting 3s..."
+          sleep 3
+        done
+        if [ "$$ready" != "true" ]; then
+          echo "[temporal-namespace-init] FAILED: frontend RPC did not become healthy."
+          exit 1
+        fi
+
+        # Give the namespace registry a short stabilization window to load
+        # records from persistent PostgreSQL before interpreting NotFound as a
+        # genuinely new installation. This prevents duplicate-key DB errors.
+        echo "[temporal-namespace-init] RPC healthy; namespace registry stabilization..."
+        sleep 5
+        for i in 1 2 3; do
           if temporal operator namespace describe --address temporal:7233 --namespace default >/dev/null 2>&1; then
             echo "[temporal-namespace-init] Default namespace already exists."
             exit 0
           fi
-          echo "[temporal-namespace-init] attempt $$i: waiting 3s for frontend RPC..."
-          sleep 3
+          sleep 2
         done
-        echo "[temporal-namespace-init] FAILED to register default namespace after 10 attempts."
-        exit 1
+        echo "[temporal-namespace-init] Registering 'default' namespace..."
+        temporal operator namespace create --address temporal:7233 --namespace default --retention 24h
+        echo "[temporal-namespace-init] Default namespace registered."
     depends_on:
       temporal:
         condition: service_healthy
@@ -965,10 +1255,12 @@ services:
           memory: 128M
 
   imgproxy:
-    image: darthsim/imgproxy:v3.28.0
+    image: darthsim/imgproxy:v3.28.0@sha256:afa85d78fc28c1b37ca965f022a9e55100f17dcac9edefbe684ca5af9df3a1e1
     ports:
-      - "8082:8080"
+      - "127.0.0.1:8082:8080"
     environment:
+      IMGPROXY_KEY: ${IMGPROXY_KEY:?IMGPROXY_KEY is required - run start-docker.ps1}
+      IMGPROXY_SALT: ${IMGPROXY_SALT:?IMGPROXY_SALT is required - run start-docker.ps1}
       # P1-09 (audit 2026-03-06): Restrict to known sources only — open allowlist
       # enables SSRF to AWS IMDS (169.254.169.254) or any internal host.
       IMGPROXY_ALLOWED_SOURCES: "http://backend:8000/static/"
@@ -994,7 +1286,9 @@ services:
     restart: unless-stopped
 
   grafana:
-    image: grafana/grafana:12.3.6
+    image: grafana/grafana:12.3.6@sha256:ee4573c0ff6b558d1690c2f453b440183df32392d9619e6216c504795e4458e8
+    labels:
+      com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     ports:
       - "127.0.0.1:3000:3000"  # localhost only; access via SSH tunnel in production
     environment:
@@ -1002,9 +1296,30 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required - set in .env file}
       GF_SECURITY_DISABLE_GRAVATAR: "true"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_PLUGINS_PUBLIC_KEY_RETRIEVAL_DISABLED: "true"
+      GF_DATABASE_WAL: "true"
+      GF_DATABASE_QUERY_RETRIES: "10"
+      GF_DATABASE_TRANSACTION_RETRIES: "10"
       GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ./infrastructure/observability/grafana/provisioning/datasources/datasources.yaml:/etc/grafana/provisioning/datasources/university-ecosystem.yaml:ro
+      - grafana-data:/var/lib/grafana
     networks:
       - internal
+      # Required for the loopback-only host publication; see minio above.
+      - public
+    depends_on:
+      tempo-healthprobe:
+        condition: service_healthy
+      loki-healthprobe:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+      pyroscope:
+        condition: service_started
     # W136 SW7: grafana base image (alpine) has wget. /api/health endpoint
     # returns JSON with database/version status; HTTP 200 = healthy.
     healthcheck:
@@ -1021,13 +1336,39 @@ services:
     restart: unless-stopped
 
   prometheus:
-    image: prom/prometheus:v3.10.0
+    image: prom/prometheus:v3.10.0@sha256:4a61322ac1103a0e3aea2a61ef1718422a48fa046441f299d71e660a3bc71ae9
+    labels:
+      com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        umask 077
+        printf '%s' "$$METRICS_BASIC_AUTH_PASSWORD" > /tmp/backend_metrics_password
+        exec /bin/prometheus \
+          --config.file=/etc/prometheus/prometheus.yml \
+          --storage.tsdb.retention.time=15d \
+          --web.enable-remote-write-receiver
+    environment:
+      METRICS_BASIC_AUTH_PASSWORD: ${METRICS_BASIC_AUTH_PASSWORD:?METRICS_BASIC_AUTH_PASSWORD is required - run start-docker.ps1}
     ports:
       # P1-07 (audit 2026-03-06): Bind to localhost — unauthenticated Prometheus
       # exposes latency histograms, queue depths, internal IPs.
       - "127.0.0.1:9090:9090"
+    volumes:
+      - ./infrastructure/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infrastructure/observability/alerts:/etc/prometheus/alerts:ro
+      - prometheus-data:/prometheus
     networks:
       - internal
+      # Required for the loopback-only host publication; see minio above.
+      - public
+    depends_on:
+      backend:
+        condition: service_healthy
+      notifications-worker:
+        condition: service_healthy
+      redis-exporter:
+        condition: service_started
     # W136 SW7: prom/prometheus base image is busybox-based with wget.
     # /-/healthy returns 200 OK when ready to serve queries.
     healthcheck:
@@ -1044,10 +1385,13 @@ services:
     restart: unless-stopped
 
   tempo:
-    image: grafana/tempo:2.10.3
+    image: grafana/tempo:2.10.3@sha256:cac9de2ac9f6da8efca5b64b690a7cb8c786a0c49cac7b4517dd1b0089a6c703
+    labels:
+      com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     command: ["-config.file=/etc/tempo/tempo.yaml"]
     volumes:
       - ./infrastructure/observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
     networks:
       - internal
     # W136 SW7 → W137 SW6: tempo's distroless image lacks any HTTP client to
@@ -1070,7 +1414,7 @@ services:
   # small. Sidecar keeps running via `sleep infinity` so its healthcheck
   # has a stable container to attach to.
   tempo-healthprobe:
-    image: curlimages/curl:8.10.1
+    image: curlimages/curl:8.10.1@sha256:d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b
     network_mode: "service:tempo"
     depends_on:
       - tempo
@@ -1084,10 +1428,13 @@ services:
     restart: unless-stopped
 
   loki:
-    image: grafana/loki:3.7.1
+    image: grafana/loki:3.7.1@sha256:73e905b51a7f917f7a1075e4be68759df30226e03dcb3cd2213b989cc0dc8eb4
+    labels:
+      com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
     command: ["-config.file=/etc/loki/loki.yaml"]
     volumes:
       - ./infrastructure/observability/loki.yaml:/etc/loki/loki.yaml:ro
+      - loki-data:/loki
     networks:
       - internal
     # W136 SW7 → W137 SW6: same sidecar pattern as tempo — see loki-healthprobe.
@@ -1101,7 +1448,7 @@ services:
     restart: unless-stopped
 
   loki-healthprobe:
-    image: curlimages/curl:8.10.1
+    image: curlimages/curl:8.10.1@sha256:d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b
     network_mode: "service:loki"
     depends_on:
       - loki
@@ -1114,8 +1461,56 @@ services:
       start_period: 20s
     restart: unless-stopped
 
+  alloy:
+    image: grafana/alloy:v1.18.0@sha256:491b0578c04983fd54fe99b587b6fab4404dc46d0dc16677bd6b00cc1140b308
+    labels:
+      com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - --disable-reporting
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./infrastructure/observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
+    ports:
+      - "127.0.0.1:12345:12345"
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - DAC_OVERRIDE
+    networks:
+      - internal
+      - public
+    depends_on:
+      loki-healthprobe:
+        condition: service_healthy
+    restart: unless-stopped
+
+  pyroscope:
+    image: grafana/pyroscope:1.19.1@sha256:d5d38187f7593fdf5643ba29e67099206e8d4dee6207f78d028ea3fe621cc04d
+    ports:
+      - "127.0.0.1:4040:4040"
+    volumes:
+      - pyroscope-data:/data
+    networks:
+      - internal
+      - public
+    restart: unless-stopped
+
   caddy:
-    image: caddy:2.11.2-alpine
+    labels:
+      com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
+    build:
+      context: ./services/caddy
+      dockerfile: Dockerfile
     ports:
       - "80:80"
       - "443:443"
@@ -1130,6 +1525,8 @@ services:
         condition: service_started
       frontend:
         condition: service_started
+      imgproxy:
+        condition: service_healthy
     networks:
       - public
     deploy:
@@ -1150,4 +1547,10 @@ volumes:
   minio-data:
   nats-data:
   elasticsearch-data:
-
+  tempo-data:
+  loki-data:
+  alloy-data:
+  pyroscope-data:
+  grafana-data:
+  prometheus-data:
+  revocation-redis-data:

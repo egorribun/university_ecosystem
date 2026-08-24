@@ -1,6 +1,8 @@
 import { act, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
+const motionState = vi.hoisted(() => ({ initialValues: [] as unknown[] }))
+
 // The animated branch only commits after the async `import("framer-motion")` →
 // setState chain resolves. waitFor polls inside act(), absorbing the
 // module-level motionModulePromise cache timing variance across tests.
@@ -15,9 +17,17 @@ const expectAnimatedChild = async (text: string) =>
     return node
   })
 
-vi.mock("framer-motion", async () =>
-  (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
-)
+vi.mock("framer-motion", async () => {
+  const { createElement } = await import("react")
+  const base = (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
+  const BaseDiv = base.m.div
+  if (!BaseDiv) throw new Error("framer-motion mock did not provide m.div")
+  const CapturingDiv = (props: Record<string, unknown>) => {
+    motionState.initialValues.push(props.initial)
+    return createElement(BaseDiv, props)
+  }
+  return { ...base, m: { div: CapturingDiv } }
+})
 
 import PageTransition from "@/components/motion/PageTransition"
 
@@ -40,6 +50,7 @@ const setReduceMotion = (matches: boolean) => {
 
 describe("PageTransition", () => {
   beforeEach(() => {
+    motionState.initialValues.length = 0
     setReduceMotion(false)
   })
 
@@ -54,6 +65,7 @@ describe("PageTransition", () => {
       </PageTransition>
     )
     await expectAnimatedChild("Initial paint child")
+    expect(motionState.initialValues).toContain(false)
   })
 
   it("keeps the fallback wrapper when matchMedia is unavailable", () => {

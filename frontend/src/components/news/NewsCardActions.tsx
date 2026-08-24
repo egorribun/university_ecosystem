@@ -51,7 +51,7 @@ export const NewsCardActions: FC<NewsCardActionsProps> = ({ onEdit, onDelete, is
 
     document.addEventListener("mousedown", handleClickOutside)
     document.addEventListener("keydown", handleKey)
-    if (firstMenuItemRef.current) firstMenuItemRef.current.focus()
+    firstMenuItemRef.current!.focus()
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside)

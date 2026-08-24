@@ -128,7 +128,8 @@ async def test_graphql_validator_rejects_redis_revocation_before_db(monkeypatch)
     redis = AsyncMock()
     redis.exists.return_value = True
     monkeypatch.setattr(
-        "app.deps.cache.get_cache_client", AsyncMock(return_value=redis)
+        "app.services.auth.graphql_token_validator.get_revocation_redis_client",
+        AsyncMock(return_value=redis),
     )
     validator = GraphQLTokenValidator(MagicMock(), AsyncMock())
     validator._load_db_session = AsyncMock()
@@ -160,7 +161,10 @@ async def test_graphql_validator_allows_active_user_without_legacy_fingerprint()
     redis = AsyncMock()
     redis.exists.return_value = False
 
-    with patch("app.deps.cache.get_cache_client", AsyncMock(return_value=redis)):
+    with patch(
+        "app.services.auth.graphql_token_validator.get_revocation_redis_client",
+        AsyncMock(return_value=redis),
+    ):
         result = await GraphQLTokenValidator(MagicMock(), session).validate(
             str(user_id), "live-jti"
         )
@@ -174,7 +178,7 @@ async def test_graphql_validator_redis_failure_falls_back_to_database(monkeypatc
     from app.services.auth.graphql_token_validator import GraphQLTokenValidator
 
     monkeypatch.setattr(
-        "app.deps.cache.get_cache_client",
+        "app.services.auth.graphql_token_validator.get_revocation_redis_client",
         AsyncMock(side_effect=ConnectionError("redis unavailable")),
     )
 

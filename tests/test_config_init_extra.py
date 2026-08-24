@@ -263,6 +263,7 @@ def test_audit_log_secret_validation():
     ):
         _ = SecuritySettings(
             environment="development",
+            algorithm="RS256",
             audit_log_secret="change-me-long-secret-key-32-chars-long",  # pragma: allowlist secret
         )
     assert any(

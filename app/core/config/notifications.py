@@ -83,6 +83,8 @@ class NotificationSettings(BaseAppSettings):
     # Outbox worker tuning (PERF-04)
     outbox_poll_interval_seconds: float = 5.0
     outbox_batch_size: int = 20
+    outbox_max_retries: int = 5
+    embedded_outbox_worker_enabled: bool = True
 
     # RZ-20-02 (audit 2026-03-24): Docker Secrets / K8s Secrets support.
     @field_validator("vapid_private_key", mode="before")

@@ -14,6 +14,21 @@ afterEach(() => {
 })
 
 describe("AppShellContext — defensive scroll branches", () => {
+  it("keeps scroll helpers inert when the browser global disappears", () => {
+    const { result } = renderHook(() => useAppShell(), { wrapper })
+    vi.stubGlobal("window", undefined)
+
+    try {
+      expect(() => {
+        result.current.scrollToTop()
+        result.current.markScrollSnapshot()
+        result.current.restoreScrollIfNeeded()
+      }).not.toThrow()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it("uses smooth scrolling when matchMedia is unavailable and only the document root remains", () => {
     const originalMatchMedia = window.matchMedia
     Object.defineProperty(window, "matchMedia", {

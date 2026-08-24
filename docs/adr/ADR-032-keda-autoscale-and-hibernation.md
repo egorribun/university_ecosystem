@@ -1,11 +1,11 @@
 # ADR-032: KEDA Event-Driven Auto-Scaling and Off-Peak Resource Hibernation
 
 ## Status
-Proposed — Vector 17 (2026-07-26)
+Accepted and implemented — Vector 17 (2026-07-26)
 
 ## Context
 
-The `university-ecosystem` platform relies on both synchronous HTTP services (`frontend`, `gateway`, `backend`) and asynchronous background queue workers (`outbox-worker` / `cdc-worker`, `file-processor`, `backend` task consumers).
+The `university-ecosystem` platform relies on both synchronous HTTP services (`frontend`, `gateway`, `backend`) and asynchronous background queue workers (`outbox-worker`, `file-processor`, `backend` task consumers).
 
 Prior to Vector 17:
 1. **Resource Inefficiency in Non-Production Environments**: Non-production clusters (`dev`, `staging`) maintained static baseline pod replica counts 24 hours a day, 7 days a week. During off-peak hours (nights and weekends), zero developer or testing activity occurred, yet containers continuously consumed compute requests (CPU and RAM allocations), driving up cloud infrastructure costs.
@@ -18,11 +18,11 @@ We adopt **KEDA** (Kubernetes Event-driven Autoscaling, `keda.sh/v1alpha1`) and 
 
 Key technical choices:
 1. **Event-Driven Workload Scalers**:
-   - `outbox-worker`: Native KEDA `nats-jetstream` scaler monitoring `OUTBOX_EVENTS` stream lag (`lagThreshold: 50`).
+   - `outbox-worker`: KEDA `postgresql` scaler monitoring unprocessed rows in `stored_events` (`targetQueryValue: 50`).
    - `file-processor`: Native KEDA `nats-jetstream` scaler monitoring `FILES_PROCESS` stream lag (`lagThreshold: 10`).
    - `backend` task workers: Dual KEDA triggers — `redis` scaler monitoring queue depth (`backend_tasks`, `listLength: 20`) and `nats-jetstream` scaler monitoring `TASK_QUEUE` stream lag (`lagThreshold: 25`).
 2. **Off-Peak Resource Hibernation**:
-   - Introduce KEDA `cron` scalers for non-critical workloads (`frontend`, `backend`, `gateway`, `fileProcessor`, `rustOptimizer`, `outboxWorker`) in non-production environments (`hibernation.enabled: true`).
+   - Introduce KEDA `cron` scalers for non-critical workloads (`frontend`, `backend`, `gateway`, `fileProcessor`, `outboxWorker`) in non-production environments (`hibernation.enabled: true`).
 3. **Decoupled Secret Authentication**:
    - Use `TriggerAuthentication` custom resources referencing standard Kubernetes Secrets (`redis-credentials`, `backend-secrets` / `nats-credentials`) to eliminate plaintext secret exposure in scaling manifests.
 4. **Helm & Deployment Guard Architecture**:
@@ -52,12 +52,11 @@ For event-driven background workers (`outbox-worker`, `file-processor`, `backend
 
 | Workload | Target Deployment | Trigger Type(s) | Metric Target / Stream | Default Threshold | Scale Range (Min/Max) |
 |---|---|---|---|---|---|
-| `outbox-worker` | `outbox-worker` | `nats-jetstream`, `cron` | `OUTBOX_EVENTS` stream lag | `lagThreshold: 50` | 2 - 10 (0 in hibernation) |
+| `outbox-worker` | `outbox-worker` | `postgresql`, `cron` | Unprocessed `stored_events` rows | `targetQueryValue: 50` | 1 - 10 (0 in hibernation) |
 | `file-processor` | `file-processor` | `nats-jetstream`, `cron` | `FILES_PROCESS` stream lag | `lagThreshold: 10` | 1 - 10 (0 in hibernation) |
 | `backend` | `backend` | `redis`, `nats-jetstream`, `cron` | `backend_tasks` list len / `TASK_QUEUE` lag | `listLength: 20`, `lagThreshold: 25` | 2 - 8 (0 in hibernation) |
 | `frontend` | `frontend` | `cron` (hibernation) | Time schedule (off-peak) | `desiredReplicas: 0` | 2 - 5 (0 in hibernation) |
 | `gateway` | `gateway` | `cron` (hibernation) | Time schedule (off-peak) | `desiredReplicas: 0` | 2 - 5 (0 in hibernation) |
-| `rust-optimizer` | `rust-optimizer` | `cron` (hibernation) | Time schedule (off-peak) | `desiredReplicas: 0` | 1 - 3 (0 in hibernation) |
 
 ## Operational Safety Guarantees
 
@@ -93,18 +92,26 @@ For event-driven background workers (`outbox-worker`, `file-processor`, `backend
 - Requires KEDA operator CRDs (`keda.sh/v1alpha1`) to be installed in clusters where `keda.enabled=true`.
 - Potential cold-start delay (~5-10 seconds) when off-peak event arrives while worker replica count is 0.
 
-## Rollout Plan & Migration Strategy
+## Implementation State
 
-1. **Phase 1 (Helm & Manifest Rollout)**: Deploy updated Helm chart (`charts/university-ecosystem`) and standalone manifests (`k8s/outbox-worker/scaledobject.yaml`).
-2. **Phase 2 (Dev/Staging Activation)**: Enable `keda.enabled: true` and `hibernation.enabled: true` in non-production values overrides.
-3. **Phase 3 (Production Scaling)**: Enable `keda.enabled: true` and `hibernation.enabled: false` in production values overrides for event-driven queue scaling while maintaining 24/7 baseline availability.
+- The Helm chart contains the KEDA `ScaledObject` and
+  `TriggerAuthentication` templates, controller-safe replica guards, and the
+  native-HPA exclusion logic described by this decision.
+- The standalone outbox-worker deployment includes its KEDA `ScaledObject`.
+- KEDA and hibernation remain explicit environment-level opt-ins. The chart
+  defaults both to disabled, so installing the chart never assumes that the
+  KEDA CRDs are present and never scales production workloads to zero by
+  accident.
+- Non-production environments enable both switches in their reviewed values;
+  production may enable event-driven scaling while keeping hibernation
+  disabled.
 
 ## Verification & Validation Method
 
-1. **Helm Lint**: `helm lint charts/university-ecosystem`
+1. **Helm Lint**: provide the gateway secret plus the file-processor RSA public key, MinIO credentials, and Temporal API key required by the chart.
 2. **Helm Template Dry-Run (KEDA & Hibernation Enabled)**:
-   `helm template test-rel charts/university-ecosystem --set gateway.config.jwtSecret=testsecret --set keda.enabled=true --set hibernation.enabled=true`
+   `helm template test-rel charts/university-ecosystem -f values.dev-secrets.yaml --set keda.enabled=true --set hibernation.enabled=true`
 3. **Helm Template Dry-Run (Production Baseline)**:
-   `helm template test-rel charts/university-ecosystem --set gateway.config.jwtSecret=testsecret --set keda.enabled=false --set hibernation.enabled=false`
+   `helm template test-rel charts/university-ecosystem -f values.prod-secrets.yaml --set keda.enabled=false --set hibernation.enabled=false`
 4. **Standalone Manifest Check**:
    `kubectl apply --dry-run=client --validate=false -f k8s/outbox-worker/scaledobject.yaml`

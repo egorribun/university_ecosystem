@@ -1,4 +1,4 @@
-# Wave 171 SW1 — Admin React #418 monitoring (wave165-admin-visual-smoke.mjs).
+# Admin React #418 monitoring (admin-visual-smoke.mjs).
 #
 # ## Why this exists
 #
@@ -9,7 +9,7 @@
 # absent". The operational counterpart is **periodic CI monitoring** that fires
 # automatically if React #418 ever re-emerges in scheduled smoke runs.
 #
-# This workflow runs `frontend/scripts/wave165-admin-visual-smoke.mjs` (W165 SW3)
+# This workflow runs `frontend/scripts/admin-visual-smoke.mjs`
 # on a Linux runner against the full authed Caddy→Node SSR chain on a weekly
 # cadence. If any of the 10 captures (5 admin routes × 2 themes) shows a
 # Minified React error #418 (W167 SW1 regex catches #418-#427 hydration boundary
@@ -62,12 +62,12 @@
 #    attribute that can't be set via the public register endpoint; must be seeded
 #    via the backend Python script. Both scripts are idempotent.
 #
-# 3. **Script invocation**: `wave165-admin-visual-smoke.mjs` (visual-audit
-#    invokes wave138-visual-audit.mjs). Different scripts:
+# 3. **Script invocation**: `admin-visual-smoke.mjs` (visual-audit
+#    invokes authenticated-visual-audit.mjs). Different scripts:
 #      - wave138: 8 SSR routes, axe a11y, test user
 #      - wave165: 5 admin routes × 2 themes, React #418 detection, admin user
 #
-# 4. **Artifact path + retention**: `.screenshots/wave165-admin-visual-smoke` +
+# 4. **Artifact path + retention**: `.screenshots/admin-visual-smoke` +
 #    30-day retention (visual-audit: 14 days). Longer retention enables
 #    quarterly trend analysis if needed. `include-hidden-files: true` defensive
 #    per W160 SW1 (z) — `.screenshots/` is hidden dir; actions/upload-artifact@v7
@@ -103,7 +103,7 @@ concurrency:
 jobs:
   admin-smoke:
     name: Admin React #418 monitoring
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       # Backend env — MIRRORS visual-audit.yml:80-104 EXACTLY (W139 SW2 + W140
@@ -124,7 +124,7 @@ jobs:
       RATE_LIMIT_STORAGE_URI: "redis://127.0.0.1:6379/1"
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
         env:
           POSTGRES_USER: test
           POSTGRES_PASSWORD: test # pragma: allowlist secret
@@ -137,7 +137,7 @@ jobs:
           --health-timeout 3s
           --health-retries 10
       redis:
-        image: redis:7-alpine
+        image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
         ports:
           - 6379:6379
         options: >-
@@ -148,7 +148,7 @@ jobs:
       # NATS required for backend lifespan (NatsTaskBroker can't be skipped via
       # env-flag; Dishka-injected dependency).
       nats:
-        image: nats:2.10.25-alpine
+        image: nats:2.10.25-alpine@sha256:3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228
         ports:
           - 4222:4222
         options: >-
@@ -280,7 +280,7 @@ jobs:
           echo "---backend-log-tail---"
           tail -200 /tmp/backend.log 2>&1 || echo "(no /tmp/backend.log file)"
           echo "---ps-aux-uvicorn---"
-          ps aux | grep -i uvicorn 2>&1 | head -5 || echo "(no uvicorn process)"
+          pgrep -fa uvicorn 2>&1 | head -5 || echo "(no uvicorn process)"
           exit 1
 
       - name: Verify JWKS endpoint
@@ -363,7 +363,7 @@ jobs:
             }
           }
           EOF
-          docker run -d --name caddy --network host -v /tmp/Caddyfile:/etc/caddy/Caddyfile caddy:2.11.2-alpine
+          docker run -d --name caddy --network host -v /tmp/Caddyfile:/etc/caddy/Caddyfile caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
           for i in {1..15}; do
             if curl -sf http://localhost/healthz > /dev/null && curl -sf http://localhost/.well-known/jwks.json > /dev/null; then
               echo "OK: Caddy ingress reachable + proxying correctly"
@@ -377,7 +377,7 @@ jobs:
           exit 1
 
       - name: Run admin smoke script
-        # Wave 165 (wave165-admin-visual-smoke.mjs) hardcodes 5 admin routes ×
+        # admin-visual-smoke.mjs hardcodes 5 admin routes ×
         # 2 themes = 10 captures. No ROUTES env override (admin scope is FIXED
         # by definition — wave165:131-137 ADMIN_ROUTES const).
         #
@@ -391,7 +391,7 @@ jobs:
           ORIGIN: http://localhost
           TEST_EMAIL: admin@university.dev
           TEST_PASSWORD: Admin@2024test # pragma: allowlist secret
-        run: node ./scripts/wave165-admin-visual-smoke.mjs
+        run: node ./scripts/admin-visual-smoke.mjs
         continue-on-error: true
 
       - name: Backend log diagnostic dump
@@ -403,7 +403,7 @@ jobs:
           tail -300 /tmp/backend.log 2>&1 || echo "(no /tmp/backend.log file)"
 
       - name: Print summary table
-        # Reads .screenshots/wave165-admin-visual-smoke/*.json sidecar files +
+        # Reads .screenshots/admin-visual-smoke/*.json sidecar files +
         # emits markdown to $GITHUB_STEP_SUMMARY. Sidecar shape per
         # wave165.mjs:408-420: path, theme, httpStatus, finalUrl,
         # redirectedToLogin, consoleErrorCount, hydrationErrorCount,
@@ -415,7 +415,7 @@ jobs:
           node -e '
             const fs = require("node:fs");
             const path = require("node:path");
-            const dir = ".screenshots/wave165-admin-visual-smoke";
+            const dir = ".screenshots/admin-visual-smoke";
             if (!fs.existsSync(dir)) {
               console.log("No sidecar JSONs to summarize (script may have failed before producing reports)");
               process.exit(0);
@@ -486,7 +486,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: admin-smoke-reports
-          path: frontend/.screenshots/wave165-admin-visual-smoke
+          path: frontend/.screenshots/admin-visual-smoke
           retention-days: 30
           if-no-files-found: warn
           include-hidden-files: true

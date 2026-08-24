@@ -1,14 +1,84 @@
 # Global settings
 global:
   environment: "development"
-  imageRegistry: "docker.io/library"
+  # Leave empty so dependency charts can use their own verified registries.
+  imageRegistry: ""
+  # Optional immutable release tag shared by all first-party workloads. A
+  # component-specific image.tag takes precedence; Chart.AppVersion is fallback.
+  imageTag: ""
+  imagePullSecrets: []
+
+# Existing Secret containing complete, URL-encoded connection strings. Keeping
+# credentials out of values.yaml avoids leaking them through Helm release state.
+# Required keys by default:
+#   database-url: postgresql+asyncpg://...
+#   redis-backend-url: redis://:PASSWORD@<release>-redis-master:6379/0
+#   redis-gateway-url: redis://:PASSWORD@<release>-redis-master:6379/3
+#   redis-revocation-url: redis://:PASSWORD@<release>-revocation-redis-master:6379/0
+#   nats-url: nats://<release>-nats:4222
+#   nats-auth-token: independent NATS authentication token
+#   keda-postgresql-url: postgresql://... (only when the PostgreSQL scaler is on)
+#   backup-database-url: postgresql://... (only when backup.enabled=true)
+connections:
+  existingSecret: "university-connections"
+  databaseURLKey: "database-url"
+  redisBackendURLKey: "redis-backend-url"
+  redisGatewayURLKey: "redis-gateway-url"
+  # Session revocation is security state and must use the dedicated durable,
+  # non-evicting datastore configured by revocationRedis below.
+  redisRevocationURLKey: "redis-revocation-url"
+  natsURLKey: "nats-url"
+  natsAuthTokenKey: "nats-auth-token"
+  kedaPostgresqlURLKey: "keda-postgresql-url"
+  backupDatabaseURLKey: "backup-database-url"
+
+# Set to an externally managed Secret in staging/production. When empty, the
+# chart creates <release>-secrets from the explicit values below for local/dev.
+# Required keys: jwt-secret, jwt-rsa-private-key, jwt-rsa-public-key,
+# internal-hmac-secret, ws-hub-internal-secret, csrf-hmac-secret,
+# spotify-token-secret, elasticsearch-password, spicedb-preshared-key,
+# audit-log-secret, idempotency-hmac-secret, minio-access-key,
+# minio-secret-key, temporal-api-key.
+applicationSecrets:
+  existingSecret: ""
+
+# Database backup is opt-in because it requires reachable PostgreSQL and MinIO
+# services plus the Secret keys documented above. The init container produces a
+# consistent custom-format pg_dump; the main container uploads it to MinIO.
+backup:
+  enabled: false
+  schedule: "0 2 * * *"
+  startingDeadlineSeconds: 900
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  ttlSecondsAfterFinished: 86400
+  postgresImage: "pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f"
+  minioClientImage: "minio/mc:RELEASE.2025-08-13T08-35-41Z@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727"
+  minioEndpoint: "http://minio:9000"
+  minioBucket: "backups"
+
+# Schema migrations run as a blocking Helm pre-install/pre-upgrade hook before
+# application workloads are rolled out. connections.existingSecret must exist
+# before `helm install` because it contains the migration database URL.
+migrations:
+  enabled: true
+  activeDeadlineSeconds: 900
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 86400
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
 
 # Backend Service (Python/FastAPI)
 backend:
   replicaCount: 2
   image:
     repository: university-backend
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
     tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
@@ -26,20 +96,40 @@ backend:
     maxReplicas: 8
     targetCPUUtilizationPercentage: 70
     targetMemoryUtilizationPercentage: 80
-  env:
-    DATABASE_URL: ""  # RZ-26-02: MUST be provided via --set or ExternalSecret. Never commit credentials.
-    CACHE_REDIS_URL: "redis://redis:6379/0"
+  # Non-secret extra environment variables. Connection variables are sourced
+  # from connections.existingSecret and reserved by the Deployment template.
+  env: {}
+  config:
+    jwtPrivateKeyPEM: ""
+    # Development-only inline values used to create <release>-secrets. Prefer
+    # applicationSecrets.existingSecret outside disposable local clusters.
+    internalHMACSecret: ""
+    wsHubInternalSecret: ""
+    csrfHMACSecret: ""
+    spotifyTokenSecret: ""
+    elasticsearchPassword: ""
+    spicedbPresharedKey: ""
+    auditLogSecret: ""
+    idempotencyHMACSecret: ""
+    # Empty disables the Elasticsearch integration. Production URLs must use
+    # HTTPS; the application validates this at startup.
+    elasticsearchURL: ""
+    minioSecure: false
+    # OpenFeature RPC provider endpoint. The flagd Service is deployed from
+    # k8s/flagd/ in the same namespace by the GitOps stack.
+    flagdHost: "flagd"
+    flagdPort: 8013
 
-# Frontend Service (nginx)
+# Frontend Service (Node SSR)
 frontend:
   replicaCount: 2
   image:
     repository: university-frontend
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
     tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
-    port: 8080
+    port: 3000
   resources:
     requests:
       cpu: 50m
@@ -53,12 +143,12 @@ gateway:
   replicaCount: 2
   image:
     repository: university-gateway
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
     tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
-    type: NodePort
+    type: ClusterIP
     port: 8080
-    nodePort: 30080
+    nodePort: 30080  # Used only when type=NodePort.
   resources:
     requests:
       cpu: 100m
@@ -68,14 +158,23 @@ gateway:
       memory: 512Mi
   config:
     jwtSecret: "" # MUST be provided as --set gateway.config.jwtSecret=...
+    jwtAudience: "university-ecosystem-api"
     rateLimitRps: 100
+    # Plaintext is suitable only for the NetworkPolicy-isolated development
+    # chart. Set true when gRPC/OTLP endpoints terminate trusted TLS.
+    grpcUseTLS: false
+    otelEndpoint: "otel-collector:4317"
+    # Kubernetes ingress terminates HTTP/3. The pod listener is disabled unless
+    # operators intentionally expose UDP and mount a trusted certificate.
+    h3Enabled: false
 
 # File Processor (Go)
 fileProcessor:
+  enabled: true
   replicaCount: 2
   image:
     repository: university-file-processor
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
     tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
@@ -87,31 +186,30 @@ fileProcessor:
     limits:
       cpu: "1"
       memory: 1Gi
+  config:
+    # Optional non-secret override. Empty uses connections.natsURLKey.
+    natsURL: ""
+    minioEndpoint: "minio:9000"
+    minioAccessKey: ""
+    minioSecretKey: ""
+    # Local MinIO is plaintext. Set true for staging/production.
+    minioSecure: false
+    temporalHost: "temporal:7233"
+    # Local Temporal dev server is plaintext. Set false for staging/production.
+    temporalTLSDisabled: true
+    temporalAPIKey: ""
+    rsaPublicKeyPEM: ""
+    otlpEndpoint: "otel-collector:4317"
+    # Production config validation rejects true; set false with a TLS endpoint.
+    otlpInsecure: true
 
-# Rust Optimizer
-rustOptimizer:
-  replicaCount: 1
-  image:
-    repository: university-rust-optimizer
-    pullPolicy: IfNotPresent
-    tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
-  service:
-    type: ClusterIP
-    port: 8080
-  resources:
-    requests:
-      cpu: 100m
-      memory: 128Mi
-    limits:
-      cpu: 500m
-      memory: 512Mi
-
-# CDC Worker
-cdcWorker:
+# Transactional outbox worker (reactive PostgreSQL LISTEN/NOTIFY + polling fallback)
+outboxWorker:
+  enabled: true
   replicaCount: 1
   image:
     repository: university-backend
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
     tag: ""
   resources:
     requests:
@@ -120,13 +218,9 @@ cdcWorker:
     limits:
       cpu: 500m
       memory: 512Mi
-  env:
-    DATABASE_URL: ""
-    NATS_URL: ""
-    ENABLE_CDC_OUTBOX: "true"
-    POSTGRES_REPLICATION_SLOT: "outbox_cdc_slot"
-    CDC_SLOT_NAME: "outbox_cdc_slot"
-    CDC_PUBLICATION_NAME: "outbox_pub"
+  # Non-secret extra environment variables. Database, Redis, NATS, and KEDA
+  # connection variables are sourced from connections.existingSecret.
+  env: {}
 
 # Ingress (MOD-30-04: fully parameterized)
 ingress:
@@ -150,7 +244,8 @@ ingress:
       paths:
         - path: /
           pathType: Prefix
-          service: backend
+          # Keep authentication, rate limiting, and gRPC dispatch at the edge.
+          service: gateway
   tls:
     - secretName: university-ecosystem-tls  # pragma: allowlist secret
       hosts:
@@ -184,23 +279,14 @@ networkPolicy:
 # Run `helm dependency update` after modifying.
 postgres:
   enabled: true  # External — managed by CloudNativePG or external RDS
-  wal_level: logical
-  max_replication_slots: 5
-  max_wal_senders: 5
   config:
-    wal_level: logical
-    max_replication_slots: 5
-    max_wal_senders: 5
+    # Required by the LISTEN/NOTIFY outbox recovery watermark; no CDC slots needed.
+    track_commit_timestamp: true
 
 postgresql:
   enabled: true
-  wal_level: logical
-  max_replication_slots: 5
-  max_wal_senders: 5
   config:
-    wal_level: logical
-    max_replication_slots: 5
-    max_wal_senders: 5
+    track_commit_timestamp: true
 
 # bitnami/redis subchart configuration.
 # Docs: https://github.com/bitnami/charts/tree/main/bitnami/redis
@@ -244,6 +330,51 @@ redis:
       requests:
         cpu: 50m
         memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
+
+# Dedicated security-state datastore. Revocation tombstones outlive cache
+# churn and pod restarts, and noeviction prevents revoked tokens resurrecting.
+revocationRedis:
+  enabled: true
+  architecture: standalone
+  auth:
+    enabled: true
+    existingSecret: "redis-credentials" #checkov:skip=CKV_SECRET_6:references a Kubernetes Secret name, not a credential value
+    existingSecretPasswordKey: "redis-password" #checkov:skip=CKV_SECRET_6:references a Secret key name, not a credential value
+  master:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    persistence:
+      enabled: true
+      size: 2Gi
+    podSecurityContext:
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities:
+        drop: ["ALL"]
+  commonConfiguration: |-
+    maxmemory 384mb
+    maxmemory-policy noeviction
+    save 60 1
+    appendonly yes
+    appendfsync everysec
+  metrics:
+    enabled: true
+    resources:
+      requests:
+        cpu: 25m
+        memory: 24Mi
       limits:
         cpu: 100m
         memory: 64Mi
@@ -308,13 +439,13 @@ keda:
     pollingInterval: 30
     redisQueue:
       enabled: true
-      address: "university-ecosystem-redis-master:6379"
+      address: ""
       listName: "backend_tasks"
       listLength: 20
       databaseIndex: 0
     natsJetstream:
       enabled: true
-      monitoringEndpoint: "http://university-ecosystem-nats:8222"
+      monitoringEndpoint: ""
       stream: "TASK_QUEUE"
       consumer: "backend-worker"
       lagThreshold: 25
@@ -327,23 +458,21 @@ keda:
     pollingInterval: 15
     natsJetstream:
       enabled: true
-      monitoringEndpoint: "http://university-ecosystem-nats:8222"
+      monitoringEndpoint: ""
       stream: "FILES_PROCESS"
       consumer: "file-processor-worker"
       lagThreshold: 10
 
   outboxWorker:
     enabled: true
-    minReplicas: 2
+    minReplicas: 1
     maxReplicas: 10
     cooldownPeriod: 60
     pollingInterval: 15
-    natsJetstream:
+    postgresql:
       enabled: true
-      monitoringEndpoint: "http://university-ecosystem-nats:8222"
-      stream: "OUTBOX_EVENTS"
-      consumer: "outbox-cdc-worker"
-      lagThreshold: 50
+      targetQueryValue: 50
+      activationTargetQueryValue: 0
 
 # Off-Peak Resource Hibernation (FinOps scale-to-zero for dev/staging)
 hibernation:
@@ -372,10 +501,6 @@ hibernation:
       enabled: true
       minReplicasDay: 1
       maxReplicasDay: 5
-    rustOptimizer:
-      enabled: true
-      minReplicasDay: 1
-      maxReplicasDay: 3
     outboxWorker:
       enabled: true
       minReplicasDay: 2

@@ -34,6 +34,10 @@ from app.repositories.base import BaseRepository
 from app.schemas.dtos.chat import ChatDTO, MessageDTO
 from app.utils.pagination import decode_datetime_cursor, encode_datetime_cursor
 
+# SQL CTE aliases are case-insensitive across supported dialects; a case-only
+# mutation of this literal is therefore equivalent by construction.
+_RANKED_MSG_CTE_NAME = "ranked_msg"  # pragma: no mutate
+
 # P-02 (audit 2026-03-08): Module-level tracer for chat repository spans.
 # SQLAlchemyInstrumentor (observability.py) already adds DB-level spans;
 # these add semantic context (chat_id, user_id) for easier trace filtering.
@@ -97,7 +101,7 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
 
         CTE layout:
         - msg_stats: unread count + MAX(created_at) per chat_id in one pass.
-        - last_msg:  DISTINCT ON to get the latest message ID per chat.
+        - ranked_msg + last_msg: ROW_NUMBER to get the latest message ID per chat.
         Both are LEFT-JOINed so chats with no messages still appear.
         """
         with _tracer.start_as_current_span(
@@ -129,20 +133,31 @@ class ChatRepository(BaseRepository[Chat, ChatDTO, dict[str, Any], dict[str, Any
             .cte("msg_stats")
         )
 
-        # CTE-2: latest message ID per chat via PostgreSQL DISTINCT ON.
-        # ORDER BY (chat_id, created_at DESC, id DESC) keeps the tie-break
-        # deterministic when two messages share the same timestamp.
-        last_msg_cte = (
+        # CTE-2: latest message ID per chat via a portable window function.
+        # PostgreSQL's DISTINCT ON silently degrades on SQLite and is becoming a
+        # SQLAlchemy compile error for non-PostgreSQL dialects. ROW_NUMBER keeps
+        # the same one-scan shape on both production PostgreSQL and test SQLite.
+        # The ID tie-break remains deterministic for equal timestamps.
+        ranked_msg_cte = (
             select(
                 Message.chat_id.label("chat_id"),
                 Message.id.label("last_message_id"),
+                func.row_number()
+                .over(
+                    partition_by=Message.chat_id,
+                    order_by=(Message.created_at.desc(), Message.id.desc()),
+                )
+                .label("message_rank"),
             )
-            .distinct(Message.chat_id)
-            .order_by(
-                Message.chat_id,
-                Message.created_at.desc(),
-                Message.id.desc(),
+            .select_from(Message)
+            .cte(_RANKED_MSG_CTE_NAME)
+        )
+        last_msg_cte = (
+            select(
+                ranked_msg_cte.c.chat_id,
+                ranked_msg_cte.c.last_message_id,
             )
+            .where(ranked_msg_cte.c.message_rank == 1)
             .cte("last_msg")
         )
 

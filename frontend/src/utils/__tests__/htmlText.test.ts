@@ -13,6 +13,29 @@ describe("htmlText utils", () => {
     expect(htmlToPlainText("<p>hello <strong>world</strong></p>")).toBe("hello world")
   })
 
+  it("normalizes a DOM parser result without text content to an empty string", () => {
+    class EmptyDOMParser {
+      parseFromString() {
+        return { body: { textContent: null } }
+      }
+    }
+    const originalDOMParser = global.DOMParser
+    Object.defineProperty(global, "DOMParser", {
+      value: EmptyDOMParser,
+      writable: true,
+      configurable: true,
+    })
+    try {
+      expect(htmlToPlainText("<p>content</p>")).toBe("")
+    } finally {
+      Object.defineProperty(global, "DOMParser", {
+        value: originalDOMParser,
+        writable: true,
+        configurable: true,
+      })
+    }
+  })
+
   it("falls back to stripTagsByState if DOMParser is undefined", () => {
     const originalDOMParser = global.DOMParser
     try {

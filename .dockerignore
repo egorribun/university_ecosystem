@@ -28,6 +28,11 @@ yarn-error.log*
 .npm/
 .vite/
 dist/
+frontend/dist/
+frontend/coverage/
+frontend/test-results/
+frontend/playwright-report/
+frontend/.vitest/
 
 # Virtual environments
 .venv/

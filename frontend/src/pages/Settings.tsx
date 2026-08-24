@@ -148,10 +148,7 @@ export default function Settings() {
           per-tab — backdrop must NOT re-mount on tab change per FIX-77-03;
           conditional render here is route-level, gated by Settings.tsx
           rendering at all, which only happens at /settings route). */}
-      <div
-        className="settings-theme flex h-full w-full flex-col bg-(--bg-page) text-(--text-primary) sm:flex-row relative"
-        style={{ height: "40rem", maxHeight: "85vh" }}
-      >
+      <div className="settings-theme relative flex min-h-full w-full flex-col bg-(--bg-page) text-(--text-primary) sm:flex-row">
         <SettingsBackdrop
           isNarrow={isNarrow}
           isMobile={isMobile}

@@ -20,8 +20,6 @@ export interface UseFocusTrapOptions {
   returnFocus?: boolean
 }
 
-const isBrowser = typeof document !== "undefined"
-
 export default function useFocusTrap<T extends HTMLElement>({
   active,
   onDeactivate,
@@ -42,16 +40,8 @@ export default function useFocusTrap<T extends HTMLElement>({
   }, [onDeactivate, initialFocus])
 
   useEffect(() => {
-    if (!isBrowser) return undefined
-
     const container = containerRef.current
     if (!container || !active) {
-      if (trapRef.current) {
-        skipDeactivateRef.current = true
-        trapRef.current.deactivate({ returnFocus })
-        skipDeactivateRef.current = false
-        trapRef.current = null
-      }
       return undefined
     }
 

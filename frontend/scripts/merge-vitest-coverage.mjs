@@ -19,6 +19,48 @@ import reportsLib from "istanbul-reports"
 const { createCoverageMap } = coverageLib
 const { create: createReport } = reportsLib
 
+/**
+ * V8's experimental AST remapper can emit a negative branch hit count for a
+ * no-else conditional when a shard only observes the enclosing range.  A
+ * negative counter is not valid Istanbul/LCOV data and makes the aggregate
+ * artifact impossible to parse.  Clamp only that impossible value to zero;
+ * all positive counters are left untouched, so the 100% gate remains
+ * fail-closed for any genuinely uncovered branch.
+ *
+ * @param {Record<string, unknown>} report
+ * @returns {number} number of corrected counters
+ */
+function normaliseNegativeHitCounts(report) {
+  let corrected = 0
+  for (const fileCoverage of Object.values(report)) {
+    if (!fileCoverage || typeof fileCoverage !== "object" || Array.isArray(fileCoverage)) {
+      continue
+    }
+    for (const property of ["s", "f"]) {
+      const counters = fileCoverage[property]
+      if (!counters || typeof counters !== "object" || Array.isArray(counters)) continue
+      for (const [key, value] of Object.entries(counters)) {
+        if (typeof value === "number" && value < 0) {
+          throw new Error(`Negative ${property} coverage counter at ${key}`)
+        }
+      }
+    }
+    const branchCounters = fileCoverage.b
+    if (branchCounters && typeof branchCounters === "object" && !Array.isArray(branchCounters)) {
+      for (const values of Object.values(branchCounters)) {
+        if (!Array.isArray(values)) continue
+        for (let index = 0; index < values.length; index += 1) {
+          if (typeof values[index] === "number" && values[index] < 0) {
+            values[index] = 0
+            corrected += 1
+          }
+        }
+      }
+    }
+  }
+  return corrected
+}
+
 function option(name) {
   const prefix = `--${name}=`
   const value = process.argv.find((argument) => argument.startsWith(prefix))
@@ -68,6 +110,7 @@ async function main() {
   }
 
   const coverageMap = createCoverageMap({})
+  let correctedHitCounts = 0
   for (const file of files) {
     let report
     try {
@@ -78,6 +121,7 @@ async function main() {
     if (!report || typeof report !== "object" || Array.isArray(report)) {
       throw new Error(`Coverage report ${file} must be a JSON object`)
     }
+    correctedHitCounts += normaliseNegativeHitCounts(report)
     coverageMap.merge(report)
   }
 
@@ -89,6 +133,9 @@ async function main() {
   const context = createContext({ dir: outputDir, coverageMap })
   createReport("json").execute(context)
   createReport("lcovonly").execute(context)
+  if (correctedHitCounts > 0) {
+    console.warn(`Normalised ${correctedHitCounts} negative coverage hit count(s) to zero`)
+  }
   console.log(`Merged ${files.length} Vitest coverage shards into ${outputDir}`)
 }
 

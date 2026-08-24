@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { MainLayout } from "../MainLayout"
 
@@ -24,6 +24,10 @@ describe("MainLayout", () => {
     Element.prototype.scrollIntoView = vi.fn()
   })
 
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
   it("renders standard chrome and moves keyboard focus to main via the skip link", () => {
     render(
       <MainLayout>
@@ -37,7 +41,7 @@ describe("MainLayout", () => {
     expect(screen.getByTestId("mobile-bottom-nav")).toBeInTheDocument()
 
     const main = screen.getByRole("main")
-    fireEvent.click(screen.getByRole("link", { name: "navigation:aria.skipLink" }))
+    fireEvent.click(screen.getByRole("link", { name: "common:skipToMain" }))
     expect(main).toHaveFocus()
     expect(main.scrollIntoView).toHaveBeenCalledWith({ block: "start" })
   })
@@ -62,5 +66,18 @@ describe("MainLayout", () => {
       "overflow-hidden"
     )
     expect(screen.queryByTestId("footer")).not.toBeInTheDocument()
+  })
+
+  it("renders lightweight landmark stubs in E2E mode", async () => {
+    vi.stubEnv("VITE_E2E_MODE", "1")
+    vi.resetModules()
+    const { MainLayout: E2EMainLayout } = await import("../MainLayout")
+
+    const { container } = render(<E2EMainLayout>e2e content</E2EMainLayout>)
+
+    expect(container.querySelector('[data-e2e-stub="main-nav"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-e2e-stub="footer"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-e2e-stub="mobile-bottom-nav"]')).toBeInTheDocument()
+    expect(screen.queryByTestId("navbar")).not.toBeInTheDocument()
   })
 })

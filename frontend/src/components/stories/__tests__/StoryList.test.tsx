@@ -39,9 +39,9 @@ const mockStories: StoryItem[] = [
 ]
 
 describe("StoryList", () => {
-  it("renders nothing when empty and not loading", () => {
-    const { container } = render(<StoryList stories={[]} loading={false} onOpenStory={vi.fn()} />)
-    expect(container).toBeEmptyDOMElement()
+  it("renders empty status when empty and not loading", () => {
+    render(<StoryList stories={[]} loading={false} onOpenStory={vi.fn()} />)
+    expect(screen.getByRole("status")).toBeInTheDocument()
   })
 
   it("renders skeletons when loading", () => {

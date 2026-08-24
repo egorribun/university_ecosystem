@@ -47,7 +47,7 @@ try:
         Histogram,
         generate_latest,
     )
-except Exception:  # pragma: no cover - optional dependency guard  # RZ-22-01-JUSTIFIED: optional dependency — prometheus_client may not be installed (reviewed TD-27-04)
+except Exception:  # RZ-22-01-JUSTIFIED: optional dependency — prometheus_client may not be installed (reviewed TD-27-04)
     CONTENT_TYPE_LATEST = "text/plain; version=0.0.4; charset=utf-8"
     CollectorRegistry: Any = None  # type: ignore[no-redef]
     Counter: Any = None  # type: ignore[no-redef]
@@ -94,9 +94,9 @@ _otel_logging_handler: LoggingHandler | None = None
 _notification_queue_metrics: NotificationQueueMetrics | None = None
 _periodic_task_metrics: dict[str, PeriodicTaskMetrics] = {}
 
-# MED-W19: locks to prevent double-init races under concurrent startup
-_otel_lock = threading.Lock()
-_notification_queue_metrics_lock = threading.Lock()
+# MED-W19: re-entrant locks to prevent double-init races and nested deadlocks under concurrent startup
+_otel_lock = threading.RLock()
+_notification_queue_metrics_lock = threading.RLock()
 
 _request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
 _trace_id_ctx: ContextVar[str | None] = ContextVar("trace_id", default=None)
@@ -330,24 +330,78 @@ def configure_observability(app: FastAPI, *, engine: AsyncEngine) -> None:
 
 
 def shutdown_observability() -> None:
-    global _otel_configured
+    global _otel_configured, _otel_logger_provider, _otel_logging_handler
     provider = trace.get_tracer_provider()
-    with suppress(Exception):
-        if isinstance(provider, TracerProvider):
-            provider.shutdown()
-
     meter_provider = metrics.get_meter_provider()
-    with suppress(Exception):
-        if isinstance(meter_provider, MeterProvider):
-            meter_provider.shutdown()
+    logger_provider = _otel_logger_provider
 
     if _otel_logging_handler is not None:
-        with suppress(Exception):
+        with suppress(
+            Exception
+        ):  # RZ-22-01-JUSTIFIED: safe removal of otel log handler
             logging.getLogger().removeHandler(_otel_logging_handler)
+        _otel_logging_handler = None
 
-    if _otel_logger_provider is not None:
-        with suppress(Exception):
-            cast(Any, _otel_logger_provider).shutdown()
+    _otel_logger_provider = None
+
+    def _shutdown_trace() -> None:
+        with suppress(
+            Exception
+        ):  # RZ-22-01-JUSTIFIED: best-effort tracer provider teardown without blocking process exit
+            cast(TracerProvider, provider).shutdown()
+
+    def _shutdown_metrics() -> None:
+        with suppress(
+            Exception
+        ):  # RZ-22-01-JUSTIFIED: best-effort meter provider teardown with bounded timeout
+            try:
+                cast(MeterProvider, meter_provider).shutdown(timeout_millis=2000)
+            except TypeError:
+                cast(MeterProvider, meter_provider).shutdown()
+
+    def _shutdown_logs() -> None:
+        with suppress(
+            Exception
+        ):  # RZ-22-01-JUSTIFIED: safe shutdown of otel logger provider
+            try:
+                cast(Any, logger_provider).shutdown(timeout_millis=2000)
+            except TypeError:
+                cast(Any, logger_provider).shutdown()
+
+    shutdown_tasks = []
+    if isinstance(provider, TracerProvider):
+        shutdown_tasks.append(_shutdown_trace)
+    if isinstance(meter_provider, MeterProvider):
+        shutdown_tasks.append(_shutdown_metrics)
+    if logger_provider is not None:
+        shutdown_tasks.append(_shutdown_logs)
+
+    if shutdown_tasks:
+        # Exporter shutdown can block on an unreachable collector.  A regular
+        # ThreadPoolExecutor owns non-daemon workers, so ``shutdown(wait=False)``
+        # still keeps the interpreter alive until those workers return.  Use
+        # daemon threads instead: the application teardown remains bounded and
+        # no best-effort telemetry flush can prevent a clean process exit.
+        threads = [
+            threading.Thread(
+                target=task,
+                name=f"otel-shutdown-{index}",
+                daemon=True,
+            )
+            for index, task in enumerate(shutdown_tasks, start=1)
+        ]
+        for thread in threads:
+            with suppress(RuntimeError):
+                thread.start()
+
+        deadline = time.monotonic() + 2.0
+        for thread in threads:
+            remaining = max(0.0, deadline - time.monotonic())
+            thread.join(timeout=remaining)
+            if thread.is_alive():
+                logging.getLogger(__name__).warning(
+                    "OpenTelemetry provider shutdown exceeded timeout; continuing without flush"
+                )
 
     _otel_configured = False
 

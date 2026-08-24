@@ -19,7 +19,7 @@ class TestSecuritySettings:
         # Mock development environment
         monkeypatch.setenv("ENVIRONMENT", "development")
         # Should NOT raise error
-        settings = SecuritySettings(secret_key="short")
+        settings = SecuritySettings(secret_key="short", algorithm="RS256")
         assert settings.secret_key == "short"
 
     def test_jwt_signing_keys_entropy(self, monkeypatch):

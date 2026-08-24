@@ -49,7 +49,7 @@ func TestEmpirical_SingleUseTicket_ConcurrentRace(t *testing.T) {
 
 	// Seed ticket in Redis
 	ticketKey := wsTicketKeyPrefix + empiricalTicket
-	require.NoError(t, rdb.Set(ctx, ticketKey, "user-race-77:jti-999:tenant-omega", 15*time.Second).Err())
+	require.NoError(t, rdb.Set(ctx, ticketKey, "user-race-77:jti-999", 15*time.Second).Err())
 
 	h := setupEmpiricalHub(t, rdb)
 
@@ -68,7 +68,7 @@ func TestEmpirical_SingleUseTicket_ConcurrentRace(t *testing.T) {
 
 			userID, tenantID, err := h.validateUpgradeTicket(context.Background(), empiricalTicket)
 			if err == nil {
-				if userID == "user-race-77" && tenantID == "tenant-omega" {
+				if userID == "user-race-77" && tenantID == "" {
 					successCount.Add(1)
 				}
 			} else {

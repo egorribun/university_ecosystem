@@ -1,5 +1,4 @@
 import { screen, within } from "@testing-library/react"
-import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { HttpResponse, http } from "msw"
 import { QueryClient } from "@tanstack/react-query"
@@ -14,23 +13,32 @@ const mockFlags = [
   {
     name: "new_dashboard_v2",
     description: "Enable new dashboard layout",
-    status: "enabled" as const,
-    percentage: 100,
-    metadata: { owner: "platform-team", created: "2026-04-01" },
+    enabled: true,
+    default: false,
+    provider: "flagd Provider",
+    evaluation_reason: "TARGETING_MATCH",
+    management: "gitops" as const,
+    config_path: "k8s/flagd/flags.json",
   },
   {
     name: "ai_summaries",
     description: "AI-powered news summaries (experimental)",
-    status: "percentage" as const,
-    percentage: 25,
-    metadata: { owner: "ml-team" },
+    enabled: false,
+    default: false,
+    provider: "flagd Provider",
+    evaluation_reason: "DEFAULT",
+    management: "gitops" as const,
+    config_path: "k8s/flagd/flags.json",
   },
   {
     name: "legacy_messenger",
     description: "Legacy messenger UI fallback",
-    status: "disabled" as const,
-    percentage: 0,
-    metadata: {},
+    enabled: false,
+    default: true,
+    provider: "flagd Provider",
+    evaluation_reason: "ERROR",
+    management: "gitops" as const,
+    config_path: "k8s/flagd/flags.json",
   },
 ]
 
@@ -98,20 +106,17 @@ const renderPage = async () => {
 
 describe("AdminFeatureFlags page", () => {
   beforeEach(() => {
-    server.use(
-      http.get("*/admin/feature-flags", () => HttpResponse.json(mockFlags)),
-      http.patch("*/admin/feature-flags/:name", () => HttpResponse.json({ status: "ok" }))
-    )
+    server.use(http.get("*/admin/feature-flags", () => HttpResponse.json(mockFlags)))
   })
 
   it("renders feature flag heading + column headers", async () => {
     await renderPage()
 
-    expect(await screen.findByText(/Dynamic Feature Flags/i)).toBeInTheDocument()
+    expect(await screen.findByText(/Feature Flag Diagnostics/i)).toBeInTheDocument()
     expect(screen.getByRole("columnheader", { name: /Feature Flag/i })).toBeInTheDocument()
-    expect(screen.getByRole("columnheader", { name: /Status/i })).toBeInTheDocument()
-    expect(screen.getByRole("columnheader", { name: /Rollout/i })).toBeInTheDocument()
-    expect(screen.getByRole("columnheader", { name: /Details/i })).toBeInTheDocument()
+    expect(screen.getByRole("columnheader", { name: /Effective value/i })).toBeInTheDocument()
+    expect(screen.getByRole("columnheader", { name: /Fallback/i })).toBeInTheDocument()
+    expect(screen.getByRole("columnheader", { name: /Management/i })).toBeInTheDocument()
   })
 
   it("renders feature flags from the API", async () => {
@@ -138,52 +143,22 @@ describe("AdminFeatureFlags page", () => {
     }
   })
 
-  it("info button has 44px touch target + aria-label (WCAG 2.5.8 + 4.1.2)", async () => {
+  it("renders provider diagnostics and the canonical GitOps path", async () => {
     await renderPage()
     await screen.findByText("new_dashboard_v2")
 
-    const infoButtons = screen.getAllByRole("button", { name: /flag metadata/i })
-    expect(infoButtons.length).toBeGreaterThan(0)
-    // First info button — verify W150 SW2 touch target class is present
-    const firstInfoButton = infoButtons[0]!
-    expect(firstInfoButton.className).toMatch(/min-h-\[44px\]/)
-    expect(firstInfoButton.className).toMatch(/min-w-\[44px\]/)
-    expect(firstInfoButton.getAttribute("type")).toBe("button")
+    expect(screen.getAllByText("flagd Provider")).toHaveLength(3)
+    expect(screen.getByText("TARGETING_MATCH")).toBeInTheDocument()
+    expect(screen.getByText("ERROR")).toBeInTheDocument()
   })
 
-  it("renders rollout percentage slider for percentage-mode flags", async () => {
+  it("is an honest read-only GitOps surface", async () => {
     await renderPage()
     await screen.findByText("ai_summaries")
 
-    const slider = screen.getByRole("slider", { name: /Rollout Percentage/i })
-    expect(slider).toBeInTheDocument()
-    expect(slider.getAttribute("value")).toBe("25")
-  })
-
-  it("range slider has 44×44 px touch target wrapper (WCAG 2.5.8) — W188 SW3", async () => {
-    await renderPage()
-    await screen.findByText("ai_summaries")
-
-    const slider = screen.getByRole("slider", { name: /Rollout Percentage/i })
-    // W188 SW3 wraps the visual 6px range input in a min-h-[44px] flex-centered
-    // div so pointer hit area meets WCAG 2.5.8 without affecting visual size.
-    // Closes W186 §H NEW #6 deferred portion. Mirrors info-button 44×44 pattern.
-    const wrapper = slider.parentElement
-    expect(wrapper).not.toBeNull()
-    expect(wrapper!.className).toMatch(/min-h-\[44px\]/)
-    expect(wrapper!.className).toMatch(/items-center/)
-  })
-
-  it("toggle switch fires patch request when clicked", async () => {
-    await renderPage()
-    await screen.findByText("new_dashboard_v2")
-
-    // SwitchControl is a checkbox under the hood (per @/components/settings).
-    const switches = screen.getAllByRole("checkbox")
-    expect(switches.length).toBeGreaterThan(0)
-
-    await userEvent.click(switches[0]!)
-    // No assertion on response body — mutation fires; no error thrown is the
-    // assertion. Verifying the api.patch handler responded with 200.
+    expect(screen.getByText(/read-only/i)).toBeInTheDocument()
+    expect(screen.getAllByText("k8s/flagd/flags.json")).toHaveLength(3)
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument()
+    expect(screen.queryByRole("slider")).not.toBeInTheDocument()
   })
 })

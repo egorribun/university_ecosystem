@@ -30,9 +30,8 @@ const ParticleAuthBackground = () => {
     // <Login>'s grid proportions + gradient overlay for readability.
     if (import.meta.env.VITE_E2E_MODE) return
 
-    const canvas = canvasRef.current
-    const container = containerRef.current
-    if (!canvas || !container) return
+    const canvas = canvasRef.current!
+    const container = containerRef.current!
 
     const ctx = canvas.getContext("2d")
     if (!ctx) return
@@ -84,7 +83,7 @@ const ParticleAuthBackground = () => {
           x: width / 2 + Math.cos(angle) * r, // Start at center
           y: height / 2 + Math.sin(angle) * r,
           size: Math.random() * 2.5 + 1.5, // Larger particles (1.5px - 4.0px)
-          color: colors[Math.floor(Math.random() * colors.length)] ?? "#ffffff",
+          color: colors[Math.floor(Math.random() * colors.length)]!,
           orbitRadius: r,
           orbitAngle: angle,
           orbitSpeed: (Math.random() * 0.002 + 0.0005) * (Math.random() > 0.5 ? 1 : -1), // Extremely slow rotation
@@ -195,7 +194,7 @@ const ParticleAuthBackground = () => {
         // Update colors of existing particles without resetting position
         const colors = getThemeColors()
         particlesRef.current.forEach((p) => {
-          p.color = colors[Math.floor(Math.random() * colors.length)] ?? p.color
+          p.color = colors[Math.floor(Math.random() * colors.length)]!
         })
       }
     })

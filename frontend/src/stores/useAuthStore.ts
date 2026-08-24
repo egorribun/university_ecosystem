@@ -41,12 +41,11 @@ export const useAuthLoading = () => useAuthStore((state) => state.loading)
 export const useAuthPendingMfa = () => useAuthStore((state) => state.pendingMfa)
 export const useAuthOperation = () => useAuthStore((state) => state.authOperation)
 
-export const useAuthActions = () =>
-  useAuthStore(
-    useShallow((state) => ({
-      setUser: state.setUser,
-      setLoading: state.setLoading,
-      setPendingMfa: state.setPendingMfa,
-      setAuthOperation: state.setAuthOperation,
-    }))
-  )
+const authActionsSelector = (state: AuthState) => ({
+  setUser: state.setUser,
+  setLoading: state.setLoading,
+  setPendingMfa: state.setPendingMfa,
+  setAuthOperation: state.setAuthOperation,
+})
+
+export const useAuthActions = () => useAuthStore(useShallow(authActionsSelector))

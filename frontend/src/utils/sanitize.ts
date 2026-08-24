@@ -41,7 +41,11 @@ export const sanitizeNewsHtml = async (
     const windowInstance = window as TrustedTypesWindow
     const policy = await createPolicy(windowInstance)
     if (policy) {
-      return policy.createHTML(source)
+      try {
+        return policy.createHTML(source)
+      } catch {
+        return htmlToPlainText(source)
+      }
     }
   }
   try {

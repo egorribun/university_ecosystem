@@ -171,6 +171,9 @@ describe("ScheduleMobileView", () => {
     expect(document.activeElement).toBe(tabs[1])
     fireEvent.keyDown(tablist, { key: "ArrowLeft" })
     expect(document.activeElement).toBe(tabs[0])
+
+    fireEvent.keyDown(tablist, { key: "Enter" })
+    expect(document.activeElement).toBe(tabs[0])
   })
 
   it("uses day-label and current-lesson fallbacks and scrolls the active panel", () => {

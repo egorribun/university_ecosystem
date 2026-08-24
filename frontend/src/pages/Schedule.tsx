@@ -94,16 +94,24 @@ function ScheduleContent() {
   // PERF-70-04: use primitive minutesNow instead of Date object to stabilize dependency
   const minutesNow = nowTick.getHours() * 60 + nowTick.getMinutes()
   const displaySchedule = useMemo(() => {
-    if (showPastLessons) return schedule
-    const todayDay = hasToday ? weekdayBackend[todayIdx] : null
-    return schedule.filter((l) => {
-      if (l.weekday !== todayDay) return true
-      const endStr = l.end_time
-      if (!endStr) return true
-      const [h, m] = endStr.split(":").map(Number)
-      if (h === undefined || m === undefined || isNaN(h) || isNaN(m)) return true
-      return h * 60 + m > minutesNow
-    })
+    if (showPastLessons) {
+      return schedule
+    } else {
+      const todayDay = hasToday ? weekdayBackend[todayIdx] : null
+      return schedule.filter((lesson) => {
+        if (lesson.weekday !== todayDay) {
+          return true
+        } else {
+          const endStr = lesson.end_time
+          if (!endStr) return true
+          const [hours, minutes] = endStr.split(":").map(Number)
+          if (hours === undefined || minutes === undefined || isNaN(hours) || isNaN(minutes)) {
+            return true
+          }
+          return hours * 60 + minutes > minutesNow
+        }
+      })
+    }
   }, [schedule, showPastLessons, hasToday, todayIdx, weekdayBackend, minutesNow])
 
   /* ── Keyboard navigation ──────────────────────────────── */
@@ -163,17 +171,19 @@ function ScheduleContent() {
 
     const backup = [...rawSchedule]
     applyScheduleUpdate((prev) => prev.filter((l) => l.id !== id))
-    try {
-      if (isOnline) {
+    if (!isOnline) {
+      showSnackbar(t("schedule:snackbar.deleteError"), "error")
+      applyScheduleUpdate(() => backup)
+      return
+    } else {
+      try {
         await api.delete(`/schedule/${id}`)
         showSnackbar(t("schedule:snackbar.deleted"))
         refresh()
-      } else {
-        throw new Error("Offline")
+      } catch {
+        showSnackbar(t("schedule:snackbar.deleteError"), "error")
+        applyScheduleUpdate(() => backup)
       }
-    } catch {
-      showSnackbar(t("schedule:snackbar.deleteError"), "error")
-      applyScheduleUpdate(() => backup)
     }
   }, [pendingDeleteId, rawSchedule, applyScheduleUpdate, isOnline, showSnackbar, t, refresh])
 

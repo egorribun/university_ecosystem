@@ -231,27 +231,3 @@ async def stats_summary(
         "grades": grades_r.payload,
         "participation": participation_r.payload,
     }
-
-
-@router.get("/creation")
-async def creation_analytics(
-    request: Request,
-    object_type: str = Query(
-        ..., description="Type of object to analyze (users, news, events)"
-    ),
-    period: str = Query("30d"),
-    user: models.User = Depends(get_current_user),
-) -> dict[str, Any]:
-    """
-    Analytics powered by UUID v7:
-    Creation time distribution without DB indexes on created_at.
-    """
-    # MED-W19: This endpoint previously returned hardcoded fake data, which
-    # silently served fabricated analytics to callers. Replaced with 501 until
-    # the real UUID-v7 temporal query is implemented.
-    from fastapi import HTTPException
-
-    raise HTTPException(
-        status_code=501,
-        detail="Not implemented: /stats/creation is not yet backed by real data",
-    )

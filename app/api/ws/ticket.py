@@ -13,24 +13,27 @@ Flow
 Redis key schema (see contracts/redis-keys.md)
 ----------------------------------------------
 Key  : ott:ws:{ticket}   — 64-char lowercase hex (32 random bytes via secrets.token_hex)
-Value: {user_id}:{jti}   — colon-joined UUIDs; split on first ":" to parse
+Value: {user_id}:{jti}   — exactly two non-empty colon-delimited fields
 TTL  : WS_TICKET_TTL_SECONDS (default 15)
 """
 
 from __future__ import annotations
 
 import secrets
+from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
+from redis.exceptions import RedisError
 
+from app.api.deps.auth import get_current_user
+from app.api.validation import raise_unauthorized
 from app.core.config import settings
 from app.core.localization import resolve_locale
 from app.core.logging import get_logger
 from app.deps.cache import get_cache_client
-from app.services.auth.token_service import AuthTokenService
+from app.models import ActiveSession, User
 
 logger = get_logger(__name__)
 
@@ -45,8 +48,6 @@ def _get_ticket_ttl() -> int:
 
 
 TICKET_KEY_PREFIX: str = "ott:ws:"
-
-_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login", auto_error=False)
 
 router = APIRouter(prefix="/ws", tags=["websocket"])
 
@@ -71,7 +72,7 @@ class WsTicketResponse(BaseModel):
 )
 async def issue_ws_upgrade_ticket(
     request: Request,
-    token: Annotated[str | None, Depends(_oauth2_scheme)],
+    current_user: Annotated[User, Depends(get_current_user)],
 ) -> WsTicketResponse:
     """RZ-W14-01: issue a one-time-use WebSocket upgrade ticket.
 
@@ -80,15 +81,34 @@ async def issue_ws_upgrade_ticket(
     The WS handler then performs an atomic GETDEL to authenticate the upgrade
     without any JWT ever appearing in WebSocket protocol headers or proxy logs.
     """
-    from app.core.tenant import get_current_tenant
-
     locale = resolve_locale(request=request)
-    payload = AuthTokenService.extract_and_decode_token(request, token, locale)
-    user_id, jti = AuthTokenService.validate_payload(payload, locale)
+    active_session: ActiveSession | None = getattr(
+        request.state, "active_session", None
+    )
+    expires_at = getattr(active_session, "expires_at", None)
+    if isinstance(expires_at, datetime) and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=UTC)
 
-    tenant_id = get_current_tenant() or request.headers.get("X-Tenant-ID", "")
+    if (
+        not current_user.is_active
+        or active_session is None
+        or active_session.user_id != current_user.id
+        or active_session.revoked_at is not None
+        or not isinstance(expires_at, datetime)
+        or expires_at <= datetime.now(UTC)
+        or not isinstance(active_session.jti, str)
+        or not active_session.jti.strip()
+    ):
+        raise_unauthorized(locale, "errors.auth.credentials_invalid")
+
+    user_id = current_user.id
+    jti = active_session.jti.strip()
+
     ticket = secrets.token_hex(32)  # 64-char hex, 256 bits of entropy
-    redis_value = f"{user_id}:{jti}:{tenant_id}" if tenant_id else f"{user_id}:{jti}"
+    # Tenant selection is deliberately excluded from the OTT contract. A raw
+    # request header proves neither membership nor authorization, so promoting
+    # it into ws-hub ClientIdentity would enable cross-tenant spoofing.
+    redis_value = f"{user_id}:{jti}"
     ttl = _get_ticket_ttl()
 
     try:
@@ -98,11 +118,16 @@ async def issue_ws_upgrade_ticket(
             redis_value,
             ex=ttl,
         )
-    except RuntimeError:
-        # RZ-22-01-JUSTIFIED: graceful degradation when NullCache is active during tests
+    except (RuntimeError, RedisError, OSError) as exc:  # RZ-22-01: cache failures
         logger.warning(
-            "NullCache active, bypassing Redis ticket storage for user_id=%s", user_id
+            "WS upgrade ticket storage unavailable for user_id=%s: %s",
+            user_id,
+            type(exc).__name__,
         )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"error": "ws_ticket_service_unavailable"},
+        ) from None
 
     logger.debug("Issued WS upgrade ticket for user_id=%s jti=%.8s", user_id, jti)
     return WsTicketResponse(ticket=ticket, expires_in=ttl)

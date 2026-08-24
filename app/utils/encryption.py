@@ -27,7 +27,7 @@ def _normalize_secret(secret: str) -> str:
     # ``Fernet`` will validate the key format; propagate errors with more context.
     try:
         Fernet(value.encode("utf-8"))
-    except Exception as exc:  # pragma: no cover - cryptography defines several types  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps cryptography errors into SpotifyEncryptionError (reviewed TD-27-04)
+    except Exception as exc:  # RZ-22-01-JUSTIFIED: convert-to-domain — wraps cryptography errors into SpotifyEncryptionError (reviewed TD-27-04)
         raise SpotifyEncryptionError(
             "Invalid SPOTIFY_TOKEN_SECRET entry; expected a Fernet key"
         ) from exc

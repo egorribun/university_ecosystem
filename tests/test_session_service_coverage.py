@@ -1,4 +1,4 @@
-"""Coverage tests for app/services/session_service.py (testing session 9).
+"""Behavior and failure-path tests for the session service.
 
 Targets the previously-uncovered service surface: session listing / lookup /
 revocation methods (L237-296), the Redis-registration warn path (L41-52),
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
@@ -244,11 +245,16 @@ async def test_get_session_by_id_found_and_missing(db_session, user_factory):
 async def test_revoke_session_by_id_revokes_and_rotates_key(
     db_session, user_factory, monkeypatch
 ):
+    order: list[str] = []
     revoked_jtis: list[str] = []
+    revoked_expiries: list[datetime] = []
 
     class _Backend:
-        async def revoke_session(self, jti: str):
+        async def revoke_session(self, jti: str, expires_at: datetime | None = None):
+            order.append("redis")
             revoked_jtis.append(jti)
+            assert expires_at is not None
+            revoked_expiries.append(expires_at)
 
     async def _get_backend():
         return _Backend()
@@ -258,6 +264,13 @@ async def test_revoke_session_by_id_revokes_and_rotates_key(
     user = await user_factory()
     row = await _add_session(db_session, user.id)
     old_key = row.signing_key
+    original_commit = db_session.commit
+
+    async def _commit() -> None:
+        order.append("database")
+        await original_commit()
+
+    monkeypatch.setattr(db_session, "commit", AsyncMock(side_effect=_commit))
     svc = _make_session_service(db_session)
 
     dto = await svc.revoke_session_by_id(row.id)
@@ -265,6 +278,8 @@ async def test_revoke_session_by_id_revokes_and_rotates_key(
     assert dto.revoked_at is not None
     assert dto.signing_key != old_key
     assert revoked_jtis == [row.jti]
+    assert revoked_expiries == [row.expires_at]
+    assert order == ["redis", "database"]
 
 
 @pytest.mark.asyncio
@@ -274,11 +289,11 @@ async def test_revoke_session_by_id_missing_returns_none(db_session):
 
 
 @pytest.mark.asyncio
-async def test_revoke_session_by_id_backend_error_is_suppressed(
+async def test_revoke_session_by_id_backend_error_is_propagated(
     db_session, user_factory, monkeypatch
 ):
     class _Backend:
-        async def revoke_session(self, jti: str):
+        async def revoke_session(self, jti: str, expires_at: datetime | None = None):
             raise RuntimeError("backend down")
 
     async def _get_backend():
@@ -288,11 +303,20 @@ async def test_revoke_session_by_id_backend_error_is_suppressed(
 
     user = await user_factory()
     row = await _add_session(db_session, user.id)
+    await db_session.commit()
+    row_id = row.id
+    row_type = type(row)
+    old_key = row.signing_key
     svc = _make_session_service(db_session)
 
-    dto = await svc.revoke_session_by_id(row.id)
-    assert dto is not None
-    assert dto.revoked_at is not None
+    with pytest.raises(RuntimeError, match="backend down"):
+        await svc.revoke_session_by_id(row.id)
+
+    assert not db_session.in_transaction()
+    persisted = await db_session.get(row_type, row_id)
+    assert persisted is not None
+    assert persisted.revoked_at is None
+    assert persisted.signing_key == old_key
 
 
 @pytest.mark.asyncio

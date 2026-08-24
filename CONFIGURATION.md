@@ -77,7 +77,7 @@ This document describes all environment variables used by the University Ecosyst
 | `SECURITY_X_FRAME_OPTIONS` | X-Frame-Options (`DENY`, `SAMEORIGIN`) | `DENY` |
 | `IMGPROXY_KEY` | Hex key for imgproxy signing | Empty |
 | `IMGPROXY_SALT` | Hex salt for imgproxy signing | Empty |
-| `IMGPROXY_BASE_URL` | imgproxy service endpoint | `http://localhost:8081` |
+| `IMGPROXY_BASE_URL` | Public imgproxy route (Caddy strips the prefix) | `http://localhost/imgproxy` |
 
 ---
 

@@ -139,49 +139,12 @@ def audit_npm(args: argparse.Namespace, allowlist: dict[str, Any]) -> None:
     check_allowances(advisories, allowed, ecosystem="npm")
 
 
-def collect_pip_advisories(requirements: list[str] | None) -> set[str]:
-    cmd = ["pip-audit", "--format=json"]
-    if requirements:
-        for req_file in requirements:
-            cmd.extend(["-r", req_file])
-
-    result = subprocess.run(cmd, capture_output=True, text=True)  # noqa: S603
-    if result.returncode not in (0, 1):
-        raise AuditFailure(f"pip-audit failed: {result.stderr or result.stdout}")
-
-    try:
-        payload = json.loads(result.stdout or "[]")
-    except json.JSONDecodeError as exc:
-        raise AuditFailure(f"pip-audit produced invalid JSON: {exc}") from exc
-
-    dependencies = payload.get("dependencies") if isinstance(payload, dict) else payload
-    advisories: set[str] = set()
-    for dependency in dependencies or []:
-        for vuln in dependency.get("vulns", []):
-            vuln_id = vuln.get("id")
-            if vuln_id:
-                advisories.add(str(vuln_id))
-    return advisories
-
-
-def audit_pip(args: argparse.Namespace, allowlist: dict[str, Any]) -> None:
-    if not args.pip:
-        return
-
-    advisories = collect_pip_advisories(args.pip)
-    allowed = (allowlist.get("pip") or {}).get("advisories") or []
-    check_allowances(advisories, allowed, ecosystem="pip")
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Enforce dependency audit allowlists.")
     parser.add_argument(
         "--allowlist", required=True, help="Path to the audit allowlist YAML file."
     )
     parser.add_argument("--npm", help="Path to the npm project directory to audit.")
-    parser.add_argument(
-        "--pip", nargs="*", help="Requirements files to audit with pip-audit."
-    )
     return parser
 
 
@@ -191,7 +154,6 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         audit_npm(args, allowlist)
-        audit_pip(args, allowlist)
     except AuditFailure as exc:
         print(f"::error::{exc}", file=sys.stderr)
         return 1

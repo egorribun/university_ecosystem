@@ -145,6 +145,36 @@ describe("api/client — LHCI safe adapter", () => {
   })
 })
 
+describe("api/client — production browser configuration", () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.stubEnv("DEV", false)
+  })
+
+  it("uses the gateway API prefix outside development", async () => {
+    const { default: productionApi } = await import("@/api/client")
+
+    expect(productionApi.defaults.baseURL).toBe("/api/v1")
+  })
+
+  it("silently revokes a non-allowlisted queue bypass outside development", async () => {
+    const { default: productionApi } = await import("@/api/client")
+    const requestHandler = (productionApi.interceptors.request as any).handlers.find(
+      (handler: { fulfilled?: unknown }) => typeof handler.fulfilled === "function"
+    )?.fulfilled as (config: InternalAxiosRequestConfig) => Promise<InternalAxiosRequestConfig>
+    const config = {
+      method: "get",
+      url: "/news",
+      headers: new AxiosHeaders(),
+      skipRateLimitQueue: true,
+    } as InternalAxiosRequestConfig & { skipRateLimitQueue: boolean }
+
+    await requestHandler(config)
+
+    expect(config.skipRateLimitQueue).toBe(false)
+  })
+})
+
 describe("api/client — BroadcastChannel idempotency coordination", () => {
   beforeEach(() => {
     RecordingBroadcastChannel.instances = []
@@ -194,6 +224,22 @@ describe("api/client — BroadcastChannel idempotency coordination", () => {
       }
     }
     vi.stubGlobal("BroadcastChannel", ThrowingBroadcastChannel)
+    const { default: safeApi } = await import("@/api/client")
+
+    safeApi.defaults.adapter = async (config): Promise<AxiosResponse> => ({
+      config,
+      data: { ok: true },
+      status: 200,
+      statusText: "OK",
+      headers: new AxiosHeaders(),
+      request: {},
+    })
+
+    await expect(safeApi.get("/news")).resolves.toMatchObject({ status: 200 })
+  })
+
+  it("continues without cross-tab coordination when BroadcastChannel is absent", async () => {
+    vi.stubGlobal("BroadcastChannel", undefined)
     const { default: safeApi } = await import("@/api/client")
 
     safeApi.defaults.adapter = async (config): Promise<AxiosResponse> => ({
@@ -258,6 +304,7 @@ describe("api/client — SSR request branches", () => {
       vi.fn(() => "access_token_v2=server-token")
     )
     vi.stubEnv("VITE_BACKEND_ORIGIN", "")
+    vi.stubEnv("BACKEND_ORIGIN", "")
   })
 
   it("forwards the incoming cookie and uses the SSR fallback base configuration", async () => {
@@ -279,6 +326,17 @@ describe("api/client — SSR request branches", () => {
     await ensureCsrfCookie()
 
     expect(AxiosHeaders.from(seen[0]!.headers).get("Cookie")).toBe("access_token_v2=server-token")
+    const { resolveSsrBackendOrigin } = await import("@/api/backendOrigin")
+    expect(resolveSsrBackendOrigin()).toBe("http://localhost:8000")
+  })
+
+  it("prefers the runtime backend origin in the Node SSR container", async () => {
+    vi.stubEnv("VITE_BACKEND_ORIGIN", "https://build-time.example")
+    vi.stubEnv("BACKEND_ORIGIN", "http://release-backend:8000/")
+
+    const { resolveSsrBackendOrigin } = await import("@/api/backendOrigin")
+
+    expect(resolveSsrBackendOrigin()).toBe("http://release-backend:8000")
   })
 
   it("does not add an empty SSR cookie header", async () => {
@@ -340,6 +398,23 @@ describe("api/client — defensive request/response interceptor inputs", () => {
       (handler: { rejected?: unknown }) => typeof handler.rejected === "function"
     )?.rejected as (error: unknown) => Promise<unknown>
     const error = { response: { status: 401 }, config: { headers: undefined } }
+
+    await expect(responseHandler(error)).rejects.toBe(error)
+  })
+
+  it("uses the default backoff for a direct 429 response without headers", async () => {
+    const { default: client } = await import("@/api/client")
+    const { RATE_LIMIT_MAX_RETRY } = await import("@/api/interceptors/rateLimit")
+    const responseHandler = (client.interceptors.response as any).handlers.find(
+      (handler: { rejected?: unknown }) => typeof handler.rejected === "function"
+    )?.rejected as (error: unknown) => Promise<unknown>
+    const error = {
+      response: { status: 429, headers: undefined },
+      config: {
+        headers: new AxiosHeaders(),
+        __rateLimitRetryCount: RATE_LIMIT_MAX_RETRY,
+      },
+    }
 
     await expect(responseHandler(error)).rejects.toBe(error)
   })

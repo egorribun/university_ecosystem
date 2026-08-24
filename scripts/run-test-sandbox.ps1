@@ -1,4 +1,4 @@
-﻿# scripts/run-test-sandbox.ps1 - local full-suite test sandbox (testing-roadmap Wave 1.4).
+﻿# scripts/run-test-sandbox.ps1 - reproducible local full-suite test sandbox.
 #
 # Brings up the four backing services (Postgres / Redis / NATS / MinIO) from
 # docker-compose.sandbox.yml on isolated host ports, runs DB migrations, compiles
@@ -6,7 +6,7 @@
 # backend pytest+coverage, Go tests, Rust cargo test, frontend vitest.
 #
 # Mirrors scripts/dc.ps1: resolves to the git repo root via `git rev-parse
-# --show-toplevel` so cwd drift cannot break the invocation (W169 (z) #1).
+# --show-toplevel` so cwd drift cannot break the invocation.
 #
 # Usage:
 #   pwsh scripts/run-test-sandbox.ps1                 # full run (infra + integration + all suites)

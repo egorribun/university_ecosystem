@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -16,21 +15,27 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
+
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/university-ecosystem/gateway/internal/config"
+	"github.com/university-ecosystem/gateway/middleware"
 )
 
 func generateUnitTestJWT(t *testing.T, secret []byte, userID, role, jti string) string {
 	t.Helper()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":  userID,
-		"role": role,
-		"jti":  jti,
-		"exp":  time.Now().Add(1 * time.Hour).Unix(),
+		"sub":       userID,
+		"aud":       middleware.DefaultJWTAudience,
+		"role":      role,
+		"jti":       jti,
+		"is_active": true,
+		"iat":       time.Now().Unix(),
+		"exp":       time.Now().Add(1 * time.Hour).Unix(),
 	})
 	tokenStr, err := token.SignedString(secret)
 	require.NoError(t, err)
@@ -38,6 +43,7 @@ func generateUnitTestJWT(t *testing.T, secret []byte, userID, role, jti string) 
 }
 
 func TestGateway_AltSvcHeaderAndWSWebTransportRoutes(t *testing.T) {
+	redisServer := miniredis.RunT(t)
 	const testJWTSecret = "my-secret-key-that-is-at-least-32-chars-long" // #nosec G101 // pragma: allowlist secret
 
 	// 1. Mock ws-hub backend server
@@ -61,6 +67,8 @@ func TestGateway_AltSvcHeaderAndWSWebTransportRoutes(t *testing.T) {
 		Port:               "8080",
 		BackendURL:         wsHubServer.URL,
 		WsHubURL:           wsHubServer.URL,
+		RedisURL:           "redis://" + redisServer.Addr() + "/3",
+		RevocationRedisURL: "redis://" + redisServer.Addr() + "/0",
 		JWTSecret:          testJWTSecret,
 		InternalHMACSecret: "test-internal-secret",
 		H3Enabled:          true,
@@ -71,13 +79,13 @@ func TestGateway_AltSvcHeaderAndWSWebTransportRoutes(t *testing.T) {
 	}
 
 	logger := initLogger()
-	router, err := setupRouter(cfg, logger, nil, nil, context.Background())
+	router, err := setupRouter(cfg, logger, nil, nil, t.Context())
 	require.NoError(t, err)
 	gatewayServer := httptest.NewServer(router)
 	defer gatewayServer.Close()
 
 	// 3. Test Alt-Svc header on /health endpoint
-	reqHealth, err := http.NewRequestWithContext(context.Background(), http.MethodGet, gatewayServer.URL+"/health", nil)
+	reqHealth, err := http.NewRequestWithContext(t.Context(), http.MethodGet, gatewayServer.URL+"/health", nil)
 	require.NoError(t, err)
 	resp, err := http.DefaultClient.Do(reqHealth)
 	require.NoError(t, err)
@@ -88,7 +96,7 @@ func TestGateway_AltSvcHeaderAndWSWebTransportRoutes(t *testing.T) {
 	assert.Equal(t, `h3=":8443"; ma=2592000`, resp.Header.Get("Alt-Svc"))
 
 	// 4. Test proxying /ws route to ws-hub
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, gatewayServer.URL+"/ws?ticket=test-ticket-123", nil)
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, gatewayServer.URL+"/ws?ticket=test-ticket-123", nil)
 	require.NoError(t, err)
 
 	resp, err = http.DefaultClient.Do(req)
@@ -99,7 +107,7 @@ func TestGateway_AltSvcHeaderAndWSWebTransportRoutes(t *testing.T) {
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// 5. Test proxying /webtransport route to ws-hub
-	req, err = http.NewRequestWithContext(context.Background(), http.MethodGet, gatewayServer.URL+"/webtransport?ticket=test-ticket-456", nil)
+	req, err = http.NewRequestWithContext(t.Context(), http.MethodGet, gatewayServer.URL+"/webtransport?ticket=test-ticket-456", nil)
 	require.NoError(t, err)
 
 	resp, err = http.DefaultClient.Do(req)

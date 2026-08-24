@@ -69,11 +69,11 @@ func TestOptional_TenantPropagation_HeaderOnlyNoToken(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Nil(t, capturedState["user_id"])
-	assert.Equal(t, "tenant-hdr-100", capturedState["tenant_id"])
+	assert.Nil(t, capturedState["tenant_id"])
 }
 
 func TestOptional_TenantPropagation_TokenOnlyNoHeader(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := newUnrevokedJWTMiddleware(t)
 	capturedState := make(map[string]interface{})
 	router := createOptionalTestRouter(m, &capturedState)
 
@@ -102,7 +102,7 @@ func TestOptional_TenantPropagation_TokenOnlyNoHeader(t *testing.T) {
 }
 
 func TestOptional_TenantPropagation_HeaderAndTokenPrecedence(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := newUnrevokedJWTMiddleware(t)
 	capturedState := make(map[string]interface{})
 	router := createOptionalTestRouter(m, &capturedState)
 
@@ -145,7 +145,7 @@ func TestOptional_TenantPropagation_InvalidTokenWithHeader(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Nil(t, capturedState["user_id"])
-	assert.Equal(t, "tenant-hdr-invalid-token", capturedState["tenant_id"])
+	assert.Nil(t, capturedState["tenant_id"])
 }
 
 func TestOptional_TenantPropagation_ExpiredTokenWithHeader(t *testing.T) {
@@ -173,7 +173,7 @@ func TestOptional_TenantPropagation_ExpiredTokenWithHeader(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Nil(t, capturedState["user_id"])
-	assert.Equal(t, "tenant-hdr-expired-token", capturedState["tenant_id"])
+	assert.Nil(t, capturedState["tenant_id"])
 }
 
 func TestOptional_TenantPropagation_ExpiredTokenWithoutHeader(t *testing.T) {
@@ -204,7 +204,7 @@ func TestOptional_TenantPropagation_ExpiredTokenWithoutHeader(t *testing.T) {
 }
 
 func TestOptional_ProxyHandler_Integration(t *testing.T) {
-	m := NewJWTMiddleware(testSecret, nil)
+	m := newUnrevokedJWTMiddleware(t)
 	internalSecret := []byte("test-internal-secret-32-bytes-long!")
 
 	var forwardedHeaders http.Header
@@ -251,7 +251,7 @@ func TestOptional_ProxyHandler_Integration(t *testing.T) {
 		assert.NotEmpty(t, forwardedHeaders.Get("X-Internal-Signature"))
 	})
 
-	t.Run("unauthenticated request with header forwards X-Tenant-ID without signature", func(t *testing.T) {
+	t.Run("unauthenticated request cannot forward X-Tenant-ID", func(t *testing.T) {
 		forwardedHeaders = nil
 
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/proxy-test", nil)
@@ -263,7 +263,7 @@ func TestOptional_ProxyHandler_Integration(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 		assert.Empty(t, forwardedHeaders.Get("X-User-ID"))
 		assert.Empty(t, forwardedHeaders.Get("X-Session-ID"))
-		assert.Equal(t, "tenant-anon-client", forwardedHeaders.Get("X-Tenant-ID"))
+		assert.Empty(t, forwardedHeaders.Get("X-Tenant-ID"))
 		assert.Empty(t, forwardedHeaders.Get("X-Internal-Signature"))
 	})
 }

@@ -29,12 +29,28 @@ import (
 	"github.com/university-ecosystem/file-processor/internal/config"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
 	"github.com/university-ecosystem/services/pkg/spiffe"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/worker"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 )
+
+type recordingTraceExporter struct {
+	shutdownCalled bool
+}
+
+func (*recordingTraceExporter) ExportSpans(context.Context, []sdktrace.ReadOnlySpan) error {
+	return nil
+}
+
+func (exporter *recordingTraceExporter) Shutdown(context.Context) error {
+	exporter.shutdownCalled = true
+	return nil
+}
 
 func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -127,6 +143,38 @@ func TestInitTracer_TLSPathSucceeds(t *testing.T) {
 	require.NoError(t, tp.Shutdown(context.Background()))
 }
 
+func TestInitTracer_PropagatesConstructionFailuresAndCleansUpExporter(t *testing.T) {
+	oldExporter := newOTLPTraceExporterFunc
+	oldResource := newOTelResourceFunc
+	t.Cleanup(func() {
+		newOTLPTraceExporterFunc = oldExporter
+		newOTelResourceFunc = oldResource
+	})
+	cfg := &config.Config{Environment: "development", OTLPEndpoint: "127.0.0.1:4317"}
+	exporterErr := errors.New("synthetic exporter failure")
+	newOTLPTraceExporterFunc = func(context.Context, ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
+		return nil, exporterErr
+	}
+
+	tp, err := initTracer(context.Background(), cfg, discardLogger())
+	assert.Nil(t, tp)
+	assert.ErrorIs(t, err, exporterErr)
+
+	exporter := &recordingTraceExporter{}
+	newOTLPTraceExporterFunc = func(context.Context, ...otlptracegrpc.Option) (sdktrace.SpanExporter, error) {
+		return exporter, nil
+	}
+	resourceErr := errors.New("synthetic resource failure")
+	newOTelResourceFunc = func(context.Context, ...resource.Option) (*resource.Resource, error) {
+		return nil, resourceErr
+	}
+
+	tp, err = initTracer(context.Background(), cfg, discardLogger())
+	assert.Nil(t, tp)
+	assert.ErrorIs(t, err, resourceErr)
+	assert.True(t, exporter.shutdownCalled)
+}
+
 func TestInitializeTracerShutdown_SuccessPath(t *testing.T) {
 	cleanup := initializeTracerShutdown(context.Background(), &config.Config{
 		OTLPInsecure: true,
@@ -161,6 +209,42 @@ func TestLoadRSAPublicKey_Valid(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, loaded)
 	assert.Equal(t, key.N, loaded.N)
+}
+
+func TestLoadRSAPublicKey_FromFile(t *testing.T) {
+	key := generateRSAKey(t)
+	keyPath := filepath.Join(t.TempDir(), "jwt_rs256.pub.pem")
+	require.NoError(t, os.WriteFile(keyPath, []byte(rsaPublicPEM(t, &key.PublicKey)), 0o600))
+
+	loaded, err := loadRSAPublicKey(context.Background(), &config.Config{
+		RSAPublicKeyFile: keyPath,
+	}, discardLogger())
+	require.NoError(t, err)
+	require.NotNil(t, loaded)
+	assert.Equal(t, key.N, loaded.N)
+}
+
+func TestLoadRSAPublicKey_FileReadFailure(t *testing.T) {
+	keyPath := filepath.Join(t.TempDir(), "missing.pem")
+
+	loaded, err := loadRSAPublicKey(context.Background(), &config.Config{
+		RSAPublicKeyFile: keyPath,
+	}, discardLogger())
+	require.Error(t, err)
+	assert.Nil(t, loaded)
+	assert.ErrorContains(t, err, "read RSA public key file")
+}
+
+func TestLoadRSAPublicKey_EmptyFileFailsClosed(t *testing.T) {
+	keyPath := filepath.Join(t.TempDir(), "empty.pem")
+	require.NoError(t, os.WriteFile(keyPath, nil, 0o600))
+
+	loaded, err := loadRSAPublicKey(context.Background(), &config.Config{
+		RSAPublicKeyFile: keyPath,
+	}, discardLogger())
+	require.Error(t, err)
+	assert.Nil(t, loaded)
+	assert.ErrorContains(t, err, "RSA public key file is empty")
 }
 
 func TestSelectiveStreamAuth_AuthErrorBlocksHandler(t *testing.T) {
@@ -413,7 +497,7 @@ func TestConnectTemporal_APIKeyFileHandling(t *testing.T) {
 			TemporalAPIKeyFile: "non-existent-key-file.txt",
 		}
 		c, err := connectTemporal(ctx, cfg, discardLogger())
-		assert.Error(t, err)
+		assert.ErrorContains(t, err, "read Temporal API key file")
 		assert.Nil(t, c)
 	})
 
@@ -430,7 +514,7 @@ func TestConnectTemporal_APIKeyFileHandling(t *testing.T) {
 			TemporalAPIKeyFile: tmpFile.Name(),
 		}
 		c, err := connectTemporal(ctx, cfg, discardLogger())
-		assert.Error(t, err)
+		assert.ErrorContains(t, err, "temporal API key file is empty")
 		assert.Nil(t, c)
 	})
 
@@ -452,6 +536,39 @@ func TestConnectTemporal_APIKeyFileHandling(t *testing.T) {
 		assert.Error(t, err)
 		assert.Nil(t, c)
 	})
+}
+
+func TestConnectTemporal_UsesConfiguredTransportSecurity(t *testing.T) {
+	keyPath := filepath.Join(t.TempDir(), "temporal-api-key")
+	require.NoError(t, os.WriteFile(keyPath, []byte("test-temporal-token"), 0o600))
+
+	for _, testCase := range []struct {
+		name        string
+		tlsDisabled bool
+	}{
+		{name: "TLS enabled", tlsDisabled: false},
+		{name: "development plaintext", tlsDisabled: true},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			oldDial := dialTemporalFunc
+			t.Cleanup(func() { dialTemporalFunc = oldDial })
+			var captured client.Options
+			dialTemporalFunc = func(options client.Options) (client.Client, error) {
+				captured = options
+				return nil, errors.New("synthetic dial failure")
+			}
+
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			_, err := connectTemporal(ctx, &config.Config{
+				TemporalHost:        "temporal:7233",
+				TemporalAPIKeyFile:  keyPath,
+				TemporalTLSDisabled: testCase.tlsDisabled,
+			}, discardLogger())
+			require.Error(t, err)
+			assert.Equal(t, testCase.tlsDisabled, captured.ConnectionOptions.TLSDisabled)
+		})
+	}
 }
 
 func TestSetupTemporalWorker(t *testing.T) {
@@ -805,6 +922,30 @@ func TestRunMain_TemporalConnectErrorReturnsDirectly(t *testing.T) {
 
 	err := runMain(ctx)
 	require.Error(t, err)
+}
+
+func TestRunMain_ReturnsTemporalWorkerError(t *testing.T) {
+	configureRunMainStubs(t)
+	wantErr := errors.New("synthetic temporal worker failure")
+	startTemporalWorkerFunc = func(context.Context, *config.Config, *slog.Logger) (client.Client, worker.Worker, error) {
+		return nil, nil, wantErr
+	}
+
+	err := runMain(context.Background())
+	require.ErrorIs(t, err, wantErr)
+}
+
+func TestStartTemporalWorker_ConnectError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	c, w, err := startTemporalWorker(ctx, &config.Config{
+		TemporalHost:       "127.0.0.1:7233",
+		TemporalAPIKeyFile: t.TempDir() + "/missing-token",
+	}, discardLogger())
+	require.Error(t, err)
+	require.Nil(t, c)
+	require.Nil(t, w)
 }
 
 func configureRunMainStubs(t *testing.T) {

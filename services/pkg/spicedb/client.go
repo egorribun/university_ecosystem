@@ -50,6 +50,9 @@ func (c *MemoryClient) SetCampusTenant(campusID, tenantID string) {
 
 // CheckPermission evaluates a permission tuple.
 func (c *MemoryClient) CheckPermission(ctx context.Context, resourceType, resourceID, permission, userID string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
@@ -80,8 +83,11 @@ func (c *MemoryClient) CheckCampusPermission(ctx context.Context, campusID, perm
 	return c.CheckPermission(ctx, "campus", campusID, permission, userID)
 }
 
-// Helper function to evaluate with context timeout
-func EvaluateWithTimeout(ctx context.Context, fn func() (bool, error), timeout time.Duration) (bool, error) {
+// EvaluateWithTimeout evaluates a permission check function with a context timeout.
+// The callback receives the derived context and must propagate cancellation to
+// its backend call; this prevents a timed-out evaluation from leaking a
+// permanently blocked goroutine.
+func EvaluateWithTimeout(ctx context.Context, fn func(context.Context) (bool, error), timeout time.Duration) (bool, error) {
 	evalCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -92,7 +98,7 @@ func EvaluateWithTimeout(ctx context.Context, fn func() (bool, error), timeout t
 
 	ch := make(chan res, 1)
 	go func() {
-		allowed, err := fn()
+		allowed, err := fn(evalCtx)
 		ch <- res{allowed: allowed, err: err}
 	}()
 

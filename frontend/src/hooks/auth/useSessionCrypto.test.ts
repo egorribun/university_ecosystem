@@ -125,6 +125,17 @@ describe("signSnapshot", () => {
     const sigB = await signSnapshot([{ other: 1 }, { other: 99 }], "k", "u")
     expect(sigA).not.toBe(sigB)
   })
+
+  it("ignores inherited enumerable properties while signing objects", async () => {
+    const prototype = Object.create(null) as Record<string, unknown>
+    Object.defineProperty(prototype, "inherited", { value: "not-owned", enumerable: true })
+    const payload = Object.assign(Object.create(prototype) as Record<string, unknown>, { own: 1 })
+
+    const inherited = await signSnapshot(payload, "k", "u")
+    const plain = await signSnapshot({ own: 1 }, "k", "u")
+
+    expect(inherited).toBe(plain)
+  })
 })
 
 describe("readStoredSessionSigningKey", () => {

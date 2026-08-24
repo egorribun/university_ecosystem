@@ -97,6 +97,14 @@ describe("extractApiError", () => {
       ])
     })
 
+    it("ignores malformed validation detail entries", () => {
+      const err = buildAxiosError(422, {
+        detail: [{ msg: "missing location" }, { loc: ["body", "email"] }, null],
+      })
+
+      expect(extractApiError(err).details).toBeUndefined()
+    })
+
     it("omits details when validation array is empty", () => {
       const err = buildAxiosError(200, { detail: [] })
       const result = extractApiError(err)
@@ -140,6 +148,18 @@ describe("extractApiError", () => {
     const result = extractApiError(caught)
     expect(result.status).toBe(422)
     expect(result.details?.[0]?.field).toBe("id")
+  })
+
+  it("uses validation fallbacks for a root issue without a received value or path", () => {
+    let caught: unknown
+    try {
+      ensureValidResponse(v.string(), undefined, "root")
+    } catch (error) {
+      caught = error
+    }
+
+    const result = extractApiError(caught)
+    expect(result.details?.[0]).toMatchObject({ code: "string", field: undefined })
   })
 
   // ---------------------------------------------------------------------------

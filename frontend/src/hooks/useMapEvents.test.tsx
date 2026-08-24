@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
 import { useMapEvents } from "./useMapEvents"
-import * as eventsHook from "@/api/hooks/events"
+import * as campusData from "@/data/campusBuildings"
 
 /**
  * useMapEvents — fetches active events and resolves campus building
@@ -30,17 +30,27 @@ function wrapper(client: QueryClient) {
   }
 }
 
+const mockEventsState = vi.hoisted(() => ({
+  events: [] as unknown[],
+  isLoading: false,
+}))
+
+vi.mock("@/api/hooks/events", () => ({
+  useEventsListQuery: () => ({
+    events: mockEventsState.events,
+    isLoading: mockEventsState.isLoading,
+  }),
+}))
+
 const stubEventsHook = (events: unknown[], isLoading = false) => {
-  vi.spyOn(eventsHook, "useEventsListQuery").mockReturnValue({
-    events,
-    // The rest of UseEventsListQueryResult is irrelevant for the hook
-    // under test — useMapEvents only reads `events` + `isLoading`.
-    isLoading,
-  } as unknown as ReturnType<typeof eventsHook.useEventsListQuery>)
+  mockEventsState.events = events
+  mockEventsState.isLoading = isLoading
 }
 
 afterEach(() => {
   vi.restoreAllMocks()
+  mockEventsState.events = []
+  mockEventsState.isLoading = false
 })
 
 describe("useMapEvents — empty / loading", () => {
@@ -185,6 +195,27 @@ describe("useMapEvents — building resolution", () => {
     const { result } = renderHook(() => useMapEvents(), {
       wrapper: wrapper(client),
     })
+    expect(result.current.events).toEqual([])
+  })
+
+  it("skips a recognized building when the localized catalog has no matching entry", () => {
+    vi.spyOn(campusData, "getCampusBuildings").mockReturnValue([])
+    stubEventsHook([
+      {
+        id: "missing-catalog-entry",
+        title: "Temporarily unavailable building",
+        starts_at: "2026-05-15T10:00:00Z",
+        ends_at: "2026-05-15T12:00:00Z",
+        location: "ГУК-305",
+        location_en: null,
+      },
+    ])
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapEvents(), {
+      wrapper: wrapper(client),
+    })
+
     expect(result.current.events).toEqual([])
   })
 

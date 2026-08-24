@@ -66,6 +66,16 @@ describe("extractThemeFromRequest", () => {
     const req = new Request("http://x", { headers: { cookie: "ue-mode=dark" } })
     expect(extractThemeFromRequest(req)).toBe("dark")
   })
+  it("falls back safely when reading headers throws", () => {
+    const req = {
+      headers: {
+        get: () => {
+          throw new Error("malformed headers")
+        },
+      },
+    } as unknown as Request
+    expect(extractThemeFromRequest(req)).toBe("light")
+  })
 })
 
 describe("extractLangFromRequest", () => {
@@ -88,5 +98,15 @@ describe("extractLangFromRequest", () => {
     })
     expect(extractThemeFromRequest(req)).toBe("dark")
     expect(extractLangFromRequest(req)).toBe("en")
+  })
+  it("falls back safely when reading headers throws", () => {
+    const req = {
+      headers: {
+        get: () => {
+          throw new Error("malformed headers")
+        },
+      },
+    } as unknown as Request
+    expect(extractLangFromRequest(req)).toBe("ru")
   })
 })

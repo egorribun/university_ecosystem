@@ -24,8 +24,8 @@ func TestUninitializedClient(t *testing.T) {
 	if _, err := client.ClientTLSConfig("spiffe://university.ecosystem/ns/default/sa/app"); err == nil {
 		t.Errorf("expected error from ClientTLSConfig on nil client")
 	}
-	if _, err := client.GRPCCerverCredentials(); err == nil {
-		t.Errorf("expected error from GRPCCerverCredentials on nil client")
+	if _, err := client.GRPCServerCredentials(); err == nil {
+		t.Errorf("expected error from GRPCServerCredentials on nil client")
 	}
 	if _, err := client.GRPCClientCredentials("spiffe://university.ecosystem/ns/default/sa/app"); err == nil {
 		t.Errorf("expected error from GRPCClientCredentials on nil client")

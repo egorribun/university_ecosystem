@@ -83,7 +83,7 @@ export function useScheduleConfig() {
   }, [t])
 
   const weekdayBackend = useMemo(
-    () => weekdayConfigs.map((config) => config.backend[0] ?? config.id),
+    () => weekdayConfigs.map((config) => config.backend[0]!),
     [weekdayConfigs]
   )
   const weekdayLabels = useMemo(() => weekdayConfigs.map((config) => config.long), [weekdayConfigs])
@@ -108,7 +108,7 @@ export function useScheduleConfig() {
   const weekdayCanonicalMap = useMemo(() => {
     const map = new Map<string, string>()
     for (const config of weekdayConfigs) {
-      const primary = config.backend[0] ?? config.id
+      const primary = config.backend[0]!
       map.set(config.id, primary)
       for (const backend of config.backend) {
         map.set(backend, primary)
@@ -212,7 +212,7 @@ export function useScheduleConfig() {
     () => lessonTypeConfigs.map((config) => ({ value: config.id, label: config.label })),
     [lessonTypeConfigs]
   )
-  const defaultLessonType = lessonTypeOptions[0]?.value ?? minimalLessonTypeFallback.id ?? ""
+  const defaultLessonType = lessonTypeOptions[0]!.value
 
   const getLessonTypeColor = useCallback(
     (value?: string | null) => {
@@ -227,7 +227,7 @@ export function useScheduleConfig() {
     (value?: string | null) => {
       if (!value) return ""
       const match = lessonTypeById.get(value)
-      if (match) return match.backend[0] ?? value
+      if (match) return match.backend[0]!
       return value
     },
     [lessonTypeById]

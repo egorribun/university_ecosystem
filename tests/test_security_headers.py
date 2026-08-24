@@ -3,12 +3,18 @@ from importlib import util as importlib_util
 
 import httpx
 import pytest
+from asgi_lifespan import LifespanManager
 from fastapi import FastAPI
 from starlette.middleware.gzip import GZipMiddleware
 from starlette.responses import Response
 
 from app.core.config import Settings
-from asgi_lifespan import LifespanManager
+
+
+def _settings_with_expected_hs256_warning() -> Settings:
+    """Build local-only settings while asserting the intentional HMAC warning."""
+    with pytest.warns(UserWarning, match="HS256 is not recommended"):
+        return Settings()
 
 
 @pytest.mark.asyncio
@@ -31,7 +37,7 @@ async def test_security_headers_production_mode(monkeypatch):
     monkeypatch.delenv("JWT_PRIVATE_KEY_PATH", raising=False)
     monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "dummy_token_for_test")
     monkeypatch.setenv("NATS_AUTH_TOKEN", "dummy-nats-token-for-test")
-    settings = Settings()
+    settings = _settings_with_expected_hs256_warning()
     assert settings.strict_security_headers_enabled
     spec = importlib_util.find_spec("app.core.security_headers")
     assert spec and spec.origin
@@ -151,7 +157,7 @@ async def test_security_headers_production_mode(monkeypatch):
 async def test_security_headers_development_report_only(monkeypatch):
     monkeypatch.setenv("ENVIRONMENT", "development")
     monkeypatch.delenv("ENABLE_STRICT_SECURITY_HEADERS", raising=False)
-    settings = Settings()
+    settings = _settings_with_expected_hs256_warning()
     assert not settings.strict_security_headers_enabled
     spec = importlib_util.find_spec("app.core.security_headers")
     assert spec and spec.origin
@@ -248,7 +254,7 @@ async def test_security_headers_credentialless_coep(monkeypatch):
     monkeypatch.delenv("JWT_PRIVATE_KEY_PATH", raising=False)
     monkeypatch.setenv("INTERNAL_AUTH_TOKEN", "dummy_token_for_test")
     monkeypatch.setenv("NATS_AUTH_TOKEN", "dummy-nats-token-for-test")
-    settings = Settings()
+    settings = _settings_with_expected_hs256_warning()
     spec = importlib_util.find_spec("app.core.security_headers")
     assert spec and spec.origin
     module = importlib_util.module_from_spec(spec)
@@ -283,7 +289,7 @@ async def test_gzip_preserves_security_headers_and_etag(monkeypatch):
     monkeypatch.setenv("ENABLE_STRICT_SECURITY_HEADERS", "true")
     monkeypatch.setenv("APP_BASE_URL", "https://example.com")
     monkeypatch.setenv("SECURITY_CSP_REPORT_ONLY", "false")
-    settings = Settings()
+    settings = _settings_with_expected_hs256_warning()
 
     spec = importlib_util.find_spec("app.core.security_headers")
     assert spec and spec.origin
@@ -355,7 +361,7 @@ def test_cors_hardening_filters_insecure_origins(monkeypatch):
         "https://app.example.com, http://example.com, *",
     )
     monkeypatch.setenv("CORS_ALLOW_CREDENTIALS", "true")
-    settings = Settings()
+    settings = _settings_with_expected_hs256_warning()
     # Filter out localhost origins which are intentionally allowed through
     # even in strict mode (see cors_allow_origins_list implementation)
     non_localhost_origins = [
@@ -372,7 +378,7 @@ def test_cors_credentials_disabled_for_insecure_hosts(monkeypatch):
     monkeypatch.setenv("ENABLE_STRICT_SECURITY_HEADERS", "true")
     monkeypatch.setenv("FRONTEND_ORIGINS", "http://example.com")
     monkeypatch.setenv("CORS_ALLOW_CREDENTIALS", "true")
-    settings = Settings()
+    settings = _settings_with_expected_hs256_warning()
     # Filter out localhost origins which are intentionally allowed through
     # even in strict mode (see cors_allow_origins_list implementation)
     non_localhost_origins = [
@@ -390,7 +396,7 @@ def test_cors_allows_localhost_when_strict(monkeypatch):
     monkeypatch.setenv("ENABLE_STRICT_SECURITY_HEADERS", "true")
     monkeypatch.setenv("FRONTEND_ORIGINS", "http://localhost:5173")
     monkeypatch.setenv("CORS_ALLOW_CREDENTIALS", "true")
-    settings = Settings()
+    settings = _settings_with_expected_hs256_warning()
     assert "http://localhost:5173" in settings.cors_allow_origins_list
     assert settings.cors_allow_credentials_effective is True
 
@@ -407,7 +413,7 @@ async def test_hsts_suppressed_when_behind_proxy(monkeypatch):
     monkeypatch.setenv("APP_BASE_URL", "https://example.com")
     monkeypatch.setenv("SECURITY_HSTS_BEHIND_PROXY", "true")
 
-    settings = Settings()
+    settings = _settings_with_expected_hs256_warning()
 
     # Sanity: strict mode is on and base URL is HTTPS — HSTS would normally fire.
     assert settings.strict_security_headers_enabled

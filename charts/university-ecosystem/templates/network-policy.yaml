@@ -117,6 +117,84 @@ spec:
         - protocol: TCP
           port: 53
 
+{{- if .Values.backup.enabled }}
+
+---
+# Backup CronJob: no ingress; reads PostgreSQL and uploads the encrypted-in-
+# transit dump to MinIO. External managed endpoints may require TCP 443.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-backup-policy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backup
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: minio
+      ports:
+        - protocol: TCP
+          port: 9000
+    - ports:
+        - protocol: TCP
+          port: 443
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- end }}
+
+{{- if .Values.migrations.enabled }}
+
+---
+# The migration hook intentionally omits release selector labels so it can run
+# before normal chart resources exist. This policy selects it by component on
+# upgrades and permits only PostgreSQL plus DNS.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-migration-policy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: migration
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - ports:
+        - protocol: TCP
+          port: 5432
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- end }}
+
 ---
 # Backend: accepts traffic from the gateway only; calls postgres, redis, NATS,
 # and external HTTPS endpoints (HIBP, Spotify OAuth, etc.).
@@ -203,8 +281,78 @@ spec:
           port: 53
 
 ---
-# Frontend: accepts traffic from the ingress controller; egress is DNS-only
-# (static assets are served directly by nginx — no backend calls at pod level).
+# File processor: accepts gRPC from the gateway and exports metrics to the
+# monitoring namespace; reaches NATS, Temporal, object storage, and OTLP.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-file-processor-policy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: file-processor
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: gateway
+      ports:
+        - protocol: TCP
+          port: 50051
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: nats
+      ports:
+        - protocol: TCP
+          port: 4222
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: temporal
+      ports:
+        - protocol: TCP
+          port: 7233
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: minio
+      ports:
+        - protocol: TCP
+          port: 9000
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+    - ports:
+        - protocol: TCP
+          port: 443
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# Frontend: accepts traffic from the ingress controller. The Node SSR runtime
+# calls the backend for route loaders and JWKS validation.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -233,9 +381,79 @@ spec:
               {{- end }}
       ports:
         - protocol: TCP
-          port: 8080
+          port: {{ .Values.frontend.service.port }}
   egress:
-    # DNS only — nginx serves pre-built static assets with no upstream calls.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: backend
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.service.port }}
+    # DNS for in-cluster backend service discovery.
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+---
+# Standalone transactional outbox worker: no ingress; only its data plane and
+# observability dependencies are reachable.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-outbox-worker-policy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: outbox-worker
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgresql
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: nats
+      ports:
+        - protocol: TCP
+          port: 4222
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: spicedb
+      ports:
+        - protocol: TCP
+          port: 50051
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+    - ports:
+        - protocol: TCP
+          port: 443
     - ports:
         - protocol: UDP
           port: 53

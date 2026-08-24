@@ -46,9 +46,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { ensureCsrfCookie } from "../client"
 
 describe("W174 SW2 — ensureCsrfCookie SSR + test-env guards", () => {
-  // Note: SSR guard test would require deleting `document` global,
-  // which conflicts with vitest jsdom env. The SSR guard is verified
-  // implicitly by 0-fetch behavior in test env (next test).
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it("returns immediately when the SSR runtime has no document", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+    vi.stubGlobal("document", undefined)
+
+    await expect(ensureCsrfCookie()).resolves.toBeUndefined()
+
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
 
   it("returns Promise.resolve() in test env without invoking fetch", async () => {
     // Pre-condition: MODE is "test" by default in vitest

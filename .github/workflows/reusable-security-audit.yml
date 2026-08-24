@@ -32,7 +32,7 @@ jobs:
   pip-audit:
     name: Python Dependency Audit
     if: ${{ inputs.run-pip-audit }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -50,20 +50,51 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies
-        shell: pwsh
-        run: uv sync --frozen
+        run: uv sync --frozen --group security
 
-      - name: Run pip-audit with allowlist
-        shell: pwsh
+      - name: Export Python requirements
+        run: uv export --frozen --no-hashes --no-dev --no-emit-workspace > /tmp/requirements.txt
+
+      - name: Run Python known-vulnerability allowlist gate
+        shell: bash
         run: |
-          uv run python scripts/audit_dependencies.py `
-            --allowlist security/audit-allowlist.yaml `
-            --pip
+          set +e
+          pip_audit_status=1
+          for attempt in 1 2 3; do
+            rm -f /tmp/pip-audit.json
+            uv run --frozen --no-sync pip-audit \
+              --strict \
+              --no-deps \
+              --disable-pip \
+              --requirement /tmp/requirements.txt \
+              --format json \
+              --aliases on \
+              --desc off \
+              --progress-spinner off \
+              --vulnerability-service osv \
+              --output /tmp/pip-audit.json
+            pip_audit_status=$?
+            # OSV outages can fail before pip-audit writes a report. Retry only
+            # that operationally incomplete case; a valid report always reaches
+            # the fail-closed allowlist validator, including real advisories.
+            if [[ "$pip_audit_status" -eq 0 || -s /tmp/pip-audit.json ]]; then
+              break
+            fi
+            echo "::warning::pip-audit produced no report (attempt $attempt/3); retrying OSV query"
+            if [[ "$attempt" -lt 3 ]]; then
+              sleep $((attempt * 15))
+            fi
+          done
+          set -e
+          uv run --frozen --no-sync python scripts/check_dependency_audit_report.py pip \
+            --report /tmp/pip-audit.json \
+            --scanner-status "$pip_audit_status" \
+            --allowlist security/audit-allowlist.yaml
 
   npm-audit:
     name: Node.js Dependency Audit
     if: ${{ inputs.run-npm-audit }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     defaults:
       run:
@@ -107,7 +138,7 @@ jobs:
 
   docker-security:
     name: Container Security Scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
@@ -130,6 +161,8 @@ jobs:
           sudo apt-get install -y trivy
 
       - name: Run Trivy vulnerability scanner (filesystem)
+        id: trivy_fs
+        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "fs"
@@ -142,10 +175,12 @@ jobs:
           limit-severities-for-sarif: true
           # skip-setup-trivy: use the binary we installed above via apt
           skip-setup-trivy: true
-          # fs scan feeds advisory SARIF; blocking is enforced by the image scan in build-and-sign
-          exit-code: "0"
+          # Preserve SARIF upload, then re-assert this blocking result below.
+          exit-code: "1"
 
       - name: Run Trivy configuration scanner (IaC)
+        id: trivy_config
+        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "config"
@@ -164,7 +199,7 @@ jobs:
           # SARIF, which can block the zero-alert ruleset while the job is green.
           limit-severities-for-sarif: true
           skip-setup-trivy: true
-          exit-code: "0"
+          exit-code: "1"
 
       - name: Upload Trivy filesystem scan results
         uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
@@ -185,10 +220,29 @@ jobs:
           sarif_file: "trivy-config.sarif"
           category: "trivy-config"
 
+      - name: Re-assert Trivy filesystem and configuration gates
+        if: always()
+        shell: bash
+        env:
+          FILESYSTEM_OUTCOME: ${{ steps.trivy_fs.outcome }}
+          CONFIGURATION_OUTCOME: ${{ steps.trivy_config.outcome }}
+        run: |
+          set -euo pipefail
+          failed=0
+          if [[ "$FILESYSTEM_OUTCOME" != "success" ]]; then
+            echo "::error::Trivy filesystem scan concluded '$FILESYSTEM_OUTCOME'."
+            failed=1
+          fi
+          if [[ "$CONFIGURATION_OUTCOME" != "success" ]]; then
+            echo "::error::Trivy configuration scan concluded '$CONFIGURATION_OUTCOME'."
+            failed=1
+          fi
+          exit "$failed"
+
   # ── Go vulnerability scanning ──────────────────────────────────────────────
   govulncheck:
     name: Go Vulnerability Scan
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Checkout
@@ -197,13 +251,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: "1.26.5"
+          go-version: "1.26.6"
           cache: true
 
       - name: Install govulncheck
-        # @v1.5.0 resolves to an immutable Go module version (content-addressed via sum DB).
+        # The version resolves to an immutable Go module (content-addressed via sum DB).
         # Scorecard goCommand: version tag is equivalent to commit pinning for Go modules.  # nosec
-        run: go install golang.org/x/vuln/cmd/govulncheck@v1.5.0
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
 
       - name: Run govulncheck on all Go modules
         # Audit all workspace modules. govulncheck fails if a directory has no packages,
@@ -221,7 +275,7 @@ jobs:
   # ── SBOM generation ────────────────────────────────────────────────────────
   sbom:
     name: Generate SBOM
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -251,7 +305,7 @@ jobs:
   # that any baseline change requires security-team approval.
   detect-secrets-baseline:
     name: detect-secrets Baseline Integrity
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -284,7 +338,7 @@ jobs:
   # (MOD-5: audit 2026-02-24)
   semgrep:
     name: Semgrep SAST
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     if: github.actor != 'dependabot[bot]'
     permissions:
@@ -292,7 +346,7 @@ jobs:
       security-events: write
       actions: read
     container:
-      image: semgrep/semgrep:1.113.0  # RZ-22-03: pin to specific version
+      image: semgrep/semgrep:1.113.0@sha256:136c094630123be54d7f832217fd0a217d148a8bfea08c7c366ce17f94cfdb22
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

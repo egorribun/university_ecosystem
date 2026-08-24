@@ -1,4 +1,4 @@
-"""Coverage tests for app/services/notifications/core.py (testing session 9).
+"""Behavior and failure-path tests for notification core services.
 
 Pure-function branches (``_current_local_time``, ``_plain_text``,
 ``_coerce_optional_text``, ``_normalize_translation_map``, ``_build_delivery_row``,

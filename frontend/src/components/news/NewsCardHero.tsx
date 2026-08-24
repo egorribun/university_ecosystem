@@ -79,8 +79,7 @@ const NewsCardHero = ({
     const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
     if (prefersReduced) return
 
-    const img = container.querySelector<HTMLElement>("[data-parallax-img]")
-    if (!img) return
+    const img = container.querySelector<HTMLElement>("[data-parallax-img]")!
 
     const observer = new IntersectionObserver(
       ([entry]) => {

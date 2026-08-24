@@ -38,7 +38,7 @@ export const extractApiError = (
     if (Array.isArray(data?.detail)) {
       // Handle FastAPI Pydantic validation errors
       for (const err of data.detail) {
-        if (err.msg && err.loc) {
+        if (err?.msg && err.loc) {
           details.push({
             code: err.type || "validation_error",
             message: err.msg,
@@ -61,7 +61,7 @@ export const extractApiError = (
       status: 422, // Unprocessable Entity
       message: error.message,
       details: error.issues.map((issue) => ({
-        code: issue.received?.toString() || "validation_error",
+        code: issue.type,
         message: issue.message,
         field: issue.path?.map((p) => p.key).join(".") || undefined,
       })),

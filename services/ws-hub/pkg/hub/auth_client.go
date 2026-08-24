@@ -83,9 +83,11 @@ var authClientTLSConfigFunc = func(client *spiffe.Client, backendSpiffeID string
 	return client.ClientTLSConfig(backendSpiffeID)
 }
 
+var newAuthLRUFunc = lru.New[string, cacheEntry]
+
 // NewInternalAPIAuthClient creates a client with L1/L2 caching.
 func NewInternalAPIAuthClient(baseURL string, redisClient *redis.Client) *InternalAPIAuthClient {
-	cache, err := lru.New[string, cacheEntry](100000)
+	cache, err := newAuthLRUFunc(100000)
 	if err != nil {
 		// FP-P2-03: Panic if LRU fails to initialize (should never happen with valid size)
 		panic(fmt.Sprintf("failed to initialize LRU cache: %v", err))

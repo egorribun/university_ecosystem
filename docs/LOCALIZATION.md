@@ -11,13 +11,13 @@ content from the main application locales to keep copy consistent.
   schedule, news, and campus map inside the app.
 - Manifest names, descriptions, and shortcut captions mirror the wording of the
   primary navigation sections (Schedule, News, Campus map). Edit
-  `public/manifest.source.json` to update these strings so the generator can
-  rebuild `manifest*.webmanifest` consistently.
+  `frontend/public/manifest.source.json` to update these strings so the
+  generator can rebuild `manifest*.webmanifest` consistently.
 
-When shell copy changes, update `public/static-shell-i18n.js` for both `ru` and
-`en` bundles and adjust the default Russian HTML in `index.html` and
-`public/offline.html` to match. Document the source of the new text in this file
-so future updates can trace back to the in-app locale keys.
+When shell copy changes, update `frontend/public/static-shell-i18n.js` for both
+`ru` and `en` bundles and adjust the default Russian HTML in `frontend/index.html`
+and `frontend/public/offline.html` to match. Document the source of the new text
+in this file so future updates can trace back to the in-app locale keys.
 
 ## Dashboard stories
 
@@ -50,7 +50,7 @@ not fall back to raw translation keys.
 ## Campus map fallback
 
 Privacy settings, reduced-motion preferences, or offline conditions can disable
-the embedded Yandex map on the campus page. The replacement component relies on
+the MapLibre/OpenFreeMap map on the campus page. The replacement component relies on
 new strings in `system.json`:
 
 - `map.fallback.title` and `description.*` describe why the static view is
@@ -61,9 +61,10 @@ new strings in `system.json`:
   `points.*.(title|description|address)` localize the individual campus tiles.
 
 Update both locales when these values change so the fallback remains accessible
-and consistent with the interactive map. Note that the full map still requires
-an active connection and permission to load third-party embeds; the fallback
-content must remain usable offline.
+and consistent with the interactive map. The MapLibre/OpenFreeMap chunks are
+lazy and intentionally network-only rather than install-time precached; a cold
+offline navigation therefore has only the generic shell fallback, while the
+map fallback remains usable offline once the map route has already loaded.
 
 ## Documentation localization workflow
 

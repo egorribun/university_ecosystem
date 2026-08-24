@@ -1,4 +1,5 @@
 import sys
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -88,6 +89,53 @@ def test_resolve_resample_filter_fallbacks():
         patch.object(Image, "Resampling", None, create=True),
         patch.object(Image, "LANCZOS", None, create=True),
     ):
+        with pytest.raises(
+            AttributeError, match="Pillow installation does not expose a LANCZOS filter"
+        ):
+            _resolve_resample_filter()
+
+
+def test_resolve_resample_filter_uses_exact_resampling_attribute_name():
+    """Do not treat an unrelated uppercase attribute as Pillow's enum."""
+    from app.utils.images import _resolve_resample_filter
+
+    fake_resampling = SimpleNamespace(LANCZOS=111)
+    fake_image = SimpleNamespace(
+        Resampling=None,
+        RESAMPLING=fake_resampling,
+        LANCZOS=222,
+    )
+
+    with patch.object(img_mod, "Image", fake_image):
+        assert _resolve_resample_filter() == 222
+
+
+def test_resolve_resample_filter_prefers_enum_over_legacy_alias():
+    """Prefer Pillow's enum value when both resampling APIs are present."""
+    from app.utils.images import _resolve_resample_filter
+
+    fake_image = SimpleNamespace(
+        Resampling=SimpleNamespace(LANCZOS=111),
+        LANCZOS=222,
+    )
+
+    with patch.object(img_mod, "Image", fake_image):
+        assert _resolve_resample_filter() == 111
+
+
+def test_resolve_resample_filter_handles_absent_resampling_attribute():
+    """A Pillow build without ``Resampling`` still uses the legacy filter."""
+    from app.utils.images import _resolve_resample_filter
+
+    with patch.object(img_mod, "Image", SimpleNamespace(LANCZOS=222)):
+        assert _resolve_resample_filter() == 222
+
+
+def test_resolve_resample_filter_reports_missing_legacy_attribute():
+    """A Pillow build without either resampling API fails with our contract error."""
+    from app.utils.images import _resolve_resample_filter
+
+    with patch.object(img_mod, "Image", SimpleNamespace(Resampling=None)):
         with pytest.raises(
             AttributeError, match="Pillow installation does not expose a LANCZOS filter"
         ):

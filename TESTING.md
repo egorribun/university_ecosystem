@@ -1,105 +1,145 @@
-# Testing Guide & Architecture
+# Testing and quality guide
 
-This document provides a comprehensive guide to the testing infrastructure, architectures, coverage thresholds, and local execution commands for the University Ecosystem project.
+University Ecosystem uses one fail-closed quality contract across Python,
+TypeScript, Go, Rust, browser tests, infrastructure, and supply-chain checks.
+The machine-readable source of truth is
+[`quality/quality-contract.json`](quality/quality-contract.json); documentation
+must not duplicate its thresholds as a second policy source.
 
----
+## What 100% means
 
-## 1. Test Architecture
+- Every native metric supported by a component's coverage tool must satisfy
+  the component threshold in the quality contract.
+- Changed executable lines must have 100% differential coverage.
+- The viable mutation score must be 100%: no surviving, timed-out, or untested
+  viable mutants.
+- Tier 0 code must remain fully covered for every metric its source report can
+  represent.
+- Unsupported counters are reported as unsupported, never converted to a
+  fabricated pass. YAML, Docker, shell, schemas, and generated artifacts are
+  verified through lint, render, contract, policy, and smoke tests.
 
-The project contains a multi-language stack (Python, Go, Rust, TypeScript/React). Each stack has a dedicated test suite:
+## Install reproducibly
 
-### 1.1 Python Backend (`pytest`)
-- Located in `tests/`.
-- Uses `pytest-asyncio` for asynchronous endpoint and database testing.
-- Uses `coverage` to enforce statement and branch coverage floors.
-- Validates FastAPI endpoints, PostgreSQL operations, Redis keyspace events, NATS task queue worker cycles, and security properties.
-
-### 1.2 Go Services (`go test`)
-- Located in `services/gateway`, `services/ws-hub`, and `services/file-processor`.
-- Standard Go testing toolchain with mocks, and in-memory NATS broker simulations.
-- Assures robust handler upgrades, JWKS validation, and configuration parsing.
-
-### 1.3 Rust Crates (`cargo test`)
-- Located in `crates/` and `native/`.
-- Validates pure algorithmic helpers, schedule optimization bounds, FFI bindings (`pyo3`), and WebAssembly modules.
-
-### 1.4 Frontend (`vitest` & `playwright`)
-- Located in `frontend/`.
-- **Unit/Component tests**: Run via Vitest. Employs fake timers and mocks for Web APIs (Tilt, weather data, push subscription events).
-- **End-to-End (E2E) tests**: Run via Playwright to verify full user authentication and app flows.
-
----
-
-## 2. Running Tests Locally
-
-### 2.1 Python Backend
-```bash
-# Run all Python tests (except performance & schemathesis)
-uv run pytest tests/ -v --tb=short -x --ignore=tests/performance --ignore=tests/test_schemathesis_api.py
+```powershell
+uv sync --frozen
+npm ci --prefix frontend
+go work sync
 ```
 
-### 2.2 Go Services
-```bash
-# Run tests for all Go services
-go test ./services/... -v
+Use the Python, Node, Go, and Rust versions pinned by the repository and CI.
+Do not update lockfiles as a side effect of running tests.
+
+## Fast feedback
+
+```powershell
+uv run pytest -q <focused-test-files>
+uv run ruff check <changed-python-files>
+npm run typecheck --prefix frontend
+npm run test --prefix frontend -- <focused-test-files>
 ```
 
-### 2.3 Rust Crates
-```bash
-# Run tests for all Rust crates
-cargo test --workspace
+Focused commands are development feedback only. A completion claim requires
+the full relevant suites and policy gates.
+
+## Canonical coverage commands
+
+### Python backend
+
+```powershell
+New-Item -ItemType Directory -Force artifacts/coverage/python | Out-Null
+uv run pytest tests -n 4 --dist loadfile --cov=app --cov-branch `
+  --cov-report=xml:coverage.xml `
+  --cov-report=json:artifacts/coverage/python/coverage.json `
+  --cov-report=term:skip-covered
 ```
 
-### 2.4 Frontend
-```bash
-# Run frontend unit/component tests
-npm run test --prefix frontend
+The command inherits the fail-closed threshold from `pyproject.toml`; do not
+override it on the command line.
 
-# Run E2E tests
-npm run test:e2e --prefix frontend
+### Frontend
+
+CI runs four Vitest shards on separate runners and merges their Istanbul
+reports. For a local correctness run:
+
+```powershell
+npm run test:ci --prefix frontend
 ```
 
----
+For exact CI parity, run `--shard=1/4` through `--shard=4/4` into separate
+coverage directories and merge them with
+`frontend/scripts/merge-vitest-coverage.mjs`. Never merge incomplete shards.
 
-## 3. Active Coverage Thresholds & Gates
+### Go services
 
-Each module has enforced coverage requirements that must be met in local testing and CI:
+Run each independent module from its own directory:
 
-| Module | Floor Requirement | Tool | Last Updated |
-|---|---|---|---|
-| **Python Backend** | $\ge 93\%$ statements, $\ge 91\%$ branches | `coverage` | Wave 7 |
-| **Go Gateway** | $\ge 90\%$ statements | `go tool cover` | Wave 8 |
-| **Go WS-Hub** | $\ge 90\%$ statements | `go tool cover` | Wave 8 |
-| **Go File-Processor** | $\ge 90\%$ statements | `go tool cover` | Wave 8 |
-| **Rust Crates** | $\ge 95\%$ statements | `cargo-llvm-cov` | Wave 9 |
-| **Frontend** | $\ge 92\%$ statements, $\ge 83\%$ branches | `vitest` | Wave 10 |
+```powershell
+Push-Location services/gateway
+go test -count=1 -race -covermode=atomic -coverprofile=coverage.out ./...
+Pop-Location
 
----
+Push-Location services/ws-hub
+go test -count=1 -race -covermode=atomic -coverprofile=coverage.out ./...
+Pop-Location
 
-## 4. Wave Roadmap Tracker
-- [x] **Wave 1**: Python Backend Unit Coverage (Auth & MFA) — **COMPLETED**
-- [x] **Wave 2**: Go Services Coverage Upgrade ($\ge 90\%$) — **COMPLETED**
-- [x] **Wave 3**: Rust Core Coverage Upgrade ($\ge 95\%$) — **COMPLETED**
-- [x] **Wave 4**: Frontend Unit & E2E Coverage Upgrade — **COMPLETED**
-- [x] **Wave 5**: Integration, Contract & Security Coverage Expansion — **COMPLETED**
-- [x] **Wave 6**: Observability, Documentation, Final CI Gate — **COMPLETED**
-- [x] **Wave 7**: Python Branch Coverage Ratchet (`fail_under` 91→93, mutation gate scripts) — **COMPLETED**
-- [x] **Wave 8**: Go Coverage Gate Enforcement (Makefile `go-test-gates` target) — **COMPLETED**
-- [x] **Wave 9**: Rust proptest + criterion benchmarks + fuzz targets — **COMPLETED**
-- [x] **Wave 10**: Frontend branches threshold raise (81→83) + new test files — **COMPLETED**
-- [x] **Wave 11**: E2E spec expansion (5 new spec files) — **COMPLETED**
-- [x] **Wave 12**: Integration test expansion (postgres + nats layers) — **COMPLETED**
-- [x] **Wave 13**: Contract test expansion (OpenAPI drift + NATS subjects) — **COMPLETED**
-- [x] **Wave 14**: Chaos + Fuzz corpus tests — **COMPLETED**
+Push-Location services/file-processor
+go test -count=1 -race -covermode=atomic -coverprofile=coverage.out ./...
+Pop-Location
 
----
+Push-Location services/cmd/uni-cli
+go test -count=1 -race -covermode=atomic -coverprofile=coverage.out ./...
+Pop-Location
 
-## 5. Adding New Tests
+Push-Location services/pkg/spiffe
+go test -count=1 -race -covermode=atomic -coverprofile=coverage.out ./...
+Pop-Location
 
-1. **Python**: Place tests under `tests/` with the `test_` prefix. Async tests do **not** need `@pytest.mark.asyncio` — `asyncio_mode = 'auto'` is set in `pyproject.toml`.
-2. **Go**: Create a `*_test.go` file next to the source code being tested.
-3. **Rust**: Write unit tests in a `tests` module inside `src/lib.rs` decorated with `#[cfg(test)]`.
-4. **Frontend**: Add `.test.tsx` or `.test.ts` files under `__tests__` directories in components or hooks.
-5. **Integration tests**: Use `pytest.mark.integration` and gate with `RUN_INTEGRATION_TESTS=1` if they require Docker/PostgreSQL.
-6. **Chaos tests**: Use `pytest.mark.chaos` and `pytest.mark.slow`; no Docker required for in-process chaos tests.
-7. **Fuzz corpus**: Add new inputs to `tests/fuzz/test_fuzz_corpus.py` after a fuzzing session discovers a crash-triggering input.
+Push-Location services/pkg/spicedb
+go test -count=1 -race -covermode=atomic -coverprofile=coverage.out ./...
+Pop-Location
+```
+
+The quality manifest reports the three deployable services independently and
+merges `uni-cli`, SPIFFE, and SpiceDB evidence into the `go-shared` component
+with `scripts/quality/merge_go_coverprofiles.py`. Generated protobuf bindings
+are build-checked but excluded from authored-source coverage.
+
+### Rust and WASM
+
+Run `cargo test` and `cargo clippy --all-targets --all-features -- -D warnings`
+for every workspace or crate. The exact `cargo llvm-cov` line, function, and
+nightly branch commands are pinned in
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml); use that workflow as the
+cross-platform report contract.
+
+## Normalize and validate evidence
+
+Raw coverage output is not the final gate. CI normalizes all reports into
+`artifacts/coverage/quality-manifest.json`, verifies report freshness and the
+commit SHA, and then runs:
+
+```powershell
+uv run python scripts/quality/validate_quality_contract.py `
+  --manifest artifacts/coverage/quality-manifest.json
+```
+
+Coverage reports, test XML, browser traces, and benchmark output are generated
+artifacts. Do not commit them unless a fixture test explicitly owns the file.
+
+## Reliability rules
+
+- Synchronize on observable events or state; do not use arbitrary sleeps as a
+  correctness assertion.
+- Do not make a flaky test pass by raising a timeout, adding retries, or
+  weakening an assertion without proving the root cause.
+- Use deterministic clocks, random seeds, ports, and disposable external
+  services.
+- A skipped test is acceptable only when its explicit, expiring policy entry
+  or environment contract makes the skip intentional.
+- Preserve the first failure and diagnostics; reruns are supporting evidence,
+  not a replacement for the original result.
+
+See the [flaky-test audit runbook](docs/testing/flaky-test-audit-runbook.md),
+[performance baseline policy](docs/testing/performance-regression-baseline.md),
+and [quality dashboard](docs/testing/dashboard.md) for operational evidence.

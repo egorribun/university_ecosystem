@@ -166,7 +166,7 @@ export const ProfileHeader = ({
             {user?.email || t("profile:placeholders.email")}
           </span>
         </Button>
-        {!!user?.profile_detail?.telegram && (
+        {user?.profile_detail?.telegram && (
           <Button
             variant="ghost"
             leadingIcon={<TelegramIcon className="shrink-0" />}
@@ -174,9 +174,7 @@ export const ProfileHeader = ({
             ref={telegramButtonRef}
             className="justify-start h-12 rounded-xl bg-glass-bg border-glass-border hover:bg-glass-tint1 hover:border-brand/(--opacity-soft)"
           >
-            <span className="truncate text-sm font-medium">
-              {user?.profile_detail?.telegram || t("profile:placeholders.telegram")}
-            </span>
+            <span className="truncate text-sm font-medium">{user.profile_detail.telegram}</span>
           </Button>
         )}
       </div>

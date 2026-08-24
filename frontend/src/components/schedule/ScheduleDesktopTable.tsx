@@ -81,8 +81,7 @@ export const ScheduleDesktopTable = memo(function ScheduleDesktopTable({
   }, [])
   // PERF-71-02: removed direct checkOverflow() call — ResizeObserver fires immediately on .observe()
   useEffect(() => {
-    const el = scrollRef.current
-    if (!el) return
+    const el = scrollRef.current!
     const ro = new ResizeObserver(checkOverflow)
     ro.observe(el)
     return () => ro.disconnect()
@@ -154,7 +153,7 @@ export const ScheduleDesktopTable = memo(function ScheduleDesktopTable({
                     <button
                       type="button"
                       aria-label={t("schedule:actions.addLesson", { day: label })}
-                      className="flex h-6 w-6 items-center justify-center rounded-md text-text-secondary transition-all duration-fast hover:bg-brand hover:text-[var(--sched-on-accent)] focus-visible:ring-2 focus-visible:ring-brand"
+                      className="flex h-6 w-6 min-h-[44px] min-w-[44px] items-center justify-center rounded-md text-text-secondary transition-all duration-fast hover:bg-brand hover:text-[var(--sched-on-accent)] focus-visible:ring-2 focus-visible:ring-brand"
                       onClick={(e) => {
                         e.stopPropagation()
                         setAddDay(day)
@@ -238,7 +237,7 @@ export const ScheduleDesktopTable = memo(function ScheduleDesktopTable({
                         tabIndex={-1}
                         aria-colindex={colI + 2}
                         aria-label={t("schedule:table.emptyCell", {
-                          day: visibleDays[colI]?.label ?? "",
+                          day: visibleDays[colI]!.label,
                           row: rowIdx + 1,
                           defaultValue: "Empty",
                         })}
@@ -255,10 +254,8 @@ export const ScheduleDesktopTable = memo(function ScheduleDesktopTable({
 
                   let hasBreakBefore = false
                   if (rowIdx > 0) {
-                    const prev = tableRows[rowIdx - 1]?.[originalIdx]
-                    if (prev) {
-                      hasBreakBefore = minutesDiff(prev.end_time, lesson.start_time) > 0
-                    }
+                    const prev = tableRows[rowIdx - 1]![originalIdx]!
+                    hasBreakBefore = minutesDiff(prev.end_time, lesson.start_time) > 0
                   }
 
                   const isConflict = conflictedIds.has(lesson.id)

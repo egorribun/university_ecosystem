@@ -1,0 +1,25 @@
+{
+  "version": "1.0.0",
+  "subagents": {
+    "lead_architect": {
+      "path": ".agents/subagents/lead_architect.json",
+      "workspaceMode": "inherit"
+    },
+    "tdd_developer": {
+      "path": ".agents/subagents/tdd_developer.json",
+      "workspaceMode": "branch"
+    },
+    "qa_e2e_tester": {
+      "path": ".agents/subagents/qa_e2e_tester.json",
+      "workspaceMode": "share"
+    },
+    "security_auditor": {
+      "path": ".agents/subagents/security_auditor.json",
+      "workspaceMode": "inherit"
+    },
+    "perf_optimizer": {
+      "path": ".agents/subagents/perf_optimizer.json",
+      "workspaceMode": "inherit"
+    }
+  }
+}

@@ -531,16 +531,3 @@ async def list_playlists(
     if r.status_code != 200:
         raise_http_error(r.status_code, "errors.spotify.api_error", locale)
     return r.json()
-
-
-@router.post("/sync-playlists")
-async def sync_playlists(
-    request: Request,
-    db: AsyncDatabaseSession = Depends(get_db),
-    user: User = Depends(get_current_user),
-) -> dict[str, Any]:
-    """
-    Synchronize Spotify playlists metadata to the local database.
-    """
-    # Placeholder implementation
-    return {"status": "success", "synced_count": 0}

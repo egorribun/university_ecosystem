@@ -83,10 +83,8 @@ export const ActionMenu = ({
   const handleItemClick = useCallback(
     (item: ActionMenuItem) => (event: MouseEvent) => {
       event.stopPropagation()
-      if (!item.disabled) {
-        item.onClick()
-        handleClose()
-      }
+      item.onClick()
+      handleClose()
     },
     [handleClose]
   )
@@ -107,8 +105,7 @@ export const ActionMenu = ({
   const handleItemKeyDown = useCallback(
     (event: KeyboardEvent<HTMLButtonElement>) => {
       const menuItems =
-        menuRef.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")
-      if (!menuItems) return
+        menuRef.current!.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")
 
       // `index` from the source items array is not safe here because disabled
       // items are excluded from `menuItems`. Navigate relative to the actual

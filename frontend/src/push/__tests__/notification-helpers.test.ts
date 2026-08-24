@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   DEFAULT_ICON,
   buildNotificationDetails,
@@ -7,6 +7,10 @@ import {
   parsePushEventData,
 } from "../notification-helpers"
 import type { NotificationActionPayload } from "../notification-helpers"
+
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
 
 describe("parsePushEventData", () => {
   it("returns empty payload when data is missing", () => {
@@ -137,12 +141,20 @@ describe("buildNotificationDetails", () => {
     }
   })
 
+  it("uses English defaults when navigator is unavailable", () => {
+    vi.stubGlobal("navigator", undefined)
+
+    expect(getDefaultNotificationTitle()).toBe("University Ecosystem")
+    expect(getDefaultNotificationBody()).toBe("You have a new notification.")
+  })
+
   it("filters invalid actions and omits optional action metadata when none is usable", () => {
     const result = buildNotificationDetails({
       actions: [
         null as unknown as NotificationActionPayload,
         { action: " ", title: "valid-looking" },
         { action: "ok", title: "" },
+        { action: 42, title: 7 } as unknown as NotificationActionPayload,
       ],
     })
     expect(result.options.actions).toBeUndefined()

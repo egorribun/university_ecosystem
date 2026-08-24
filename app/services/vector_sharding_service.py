@@ -109,8 +109,6 @@ class VectorShardingService:
                 )
             )
             chunk_idx += 1
-            if i + c_size >= len(tokens):
-                break
 
         return chunks
 
@@ -123,8 +121,9 @@ class VectorShardingService:
         while len(vec) < self.embedding_dim:
             vec.extend(vec[: min(self.embedding_dim - len(vec), len(vec))])
         norm = math.sqrt(sum(x * x for x in vec))
-        if norm > 0:
-            vec = [x / norm for x in vec]
+        # A SHA-256 byte maps to one of 256 values, none of which becomes
+        # exactly zero under the transformation above, so the norm is positive.
+        vec = [x / norm for x in vec]
         return vec[: self.embedding_dim]
 
     async def get_embedding(self, text: str) -> list[float]:

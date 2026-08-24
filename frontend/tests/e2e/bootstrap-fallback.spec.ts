@@ -1,7 +1,6 @@
 import { test, expect } from "./test"
 
-// Skip: i18n not initialized when error boundary renders in mock environment
-test.describe.skip("bootstrap fallback", () => {
+test.describe("bootstrap fallback", () => {
   test("shows fallback UI when bootstrap fails", async ({ page }) => {
     await page.addInitScript(() => {
       ;(

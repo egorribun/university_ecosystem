@@ -182,6 +182,27 @@ describe("useActivitySummaryQuery", () => {
     expect(result.current.data?.participation).toEqual(PARTICIPATION_STUB)
   })
 
+  it("returns null when attendance and participation fallback feeds fail", async () => {
+    apiMock.get
+      .mockRejectedValueOnce(new Error("summary endpoint down"))
+      .mockRejectedValueOnce(new Error("attendance service down"))
+      .mockResolvedValueOnce({ data: GRADES_STUB })
+      .mockRejectedValueOnce(new Error("participation service down"))
+
+    const { result } = renderHook(
+      () => useActivitySummaryQuery({ period: "30d", language: "en" }),
+      { wrapper: makeWrapper(queryClient) }
+    )
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(result.current.data).toEqual({
+      attendance: null,
+      grades: GRADES_STUB,
+      participation: null,
+    })
+  })
+
   it("normalises missing envelope fields to null", async () => {
     apiMock.get.mockResolvedValueOnce({
       data: { attendance: ATTENDANCE_STUB },

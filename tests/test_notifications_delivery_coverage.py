@@ -1,4 +1,4 @@
-"""Coverage tests for app/services/notifications/delivery.py (testing session 9).
+"""Behavior and failure-path tests for notification delivery services.
 
 Targets the previously-uncovered branches of ``create_notifications_for_users``:
 user_filter exclusion, push-disabled early return, skipped_no_subscription,

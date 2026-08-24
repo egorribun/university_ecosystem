@@ -159,17 +159,9 @@ def test_verify_and_update_password_sync_branches() -> None:
     assert verified is False
     assert new_hash is None
 
-    with patch("app.auth.security._verify_legacy_bcrypt", return_value=True):
-        verified, new_hash = verify_and_update_password_sync("password", "legacy-hash")
-        assert verified is True
-        assert new_hash.startswith("$argon2id$")
-
-    with patch(
-        "app.auth.security._verify_legacy_bcrypt", side_effect=RuntimeError("error")
-    ):
-        verified, new_hash = verify_and_update_password_sync("password", "legacy-hash")
-        assert verified is False
-        assert new_hash is None
+    verified, new_hash = verify_and_update_password_sync("password", "legacy-hash")
+    assert verified is False
+    assert new_hash is None
 
     legacy_hasher = PasswordHasher(memory_cost=8192, time_cost=1, parallelism=1)
     legacy_hash = legacy_hasher.hash("password")

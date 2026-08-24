@@ -85,6 +85,37 @@ describe("webVitals", () => {
     )
   })
 
+  it("uses fetch when the beacon API is unavailable and absorbs rejection", async () => {
+    const fetchMock = vi.fn(() => Promise.reject(new Error("metrics endpoint down")))
+    vi.stubGlobal("navigator", { ...navigator, sendBeacon: undefined })
+    vi.stubGlobal("fetch", fetchMock)
+    initWebVitals(enabledEnv({ VITE_WEB_VITALS_ENDPOINT: "https://metrics.test/v" }))
+
+    const reporter = vi.mocked(onCLS).mock.calls[0]![0]
+    reporter(sampleMetric() as never)
+    await Promise.resolve()
+
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
+  it("drops endpoint metrics safely when no browser transport is available", () => {
+    vi.stubGlobal("navigator", { ...navigator, sendBeacon: undefined })
+    vi.stubGlobal("fetch", undefined)
+    initWebVitals(enabledEnv({ VITE_WEB_VITALS_ENDPOINT: "https://metrics.test/v" }))
+
+    const reporter = vi.mocked(onCLS).mock.calls[0]![0]
+    expect(() => reporter(sampleMetric() as never)).not.toThrow()
+  })
+
+  it("does not initialize endpoint reporting without a browser window", () => {
+    vi.stubGlobal("window", undefined)
+
+    expect(initWebVitals(enabledEnv({ VITE_WEB_VITALS_ENDPOINT: "https://metrics.test/v" }))).toBe(
+      false
+    )
+    expect(onCLS).not.toHaveBeenCalled()
+  })
+
   it("uses the console reporter when no endpoint is configured", () => {
     expect(initWebVitals(enabledEnv())).toBe(true)
     const reporter = vi.mocked(onFCP).mock.calls[0]![0]

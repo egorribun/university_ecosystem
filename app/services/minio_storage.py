@@ -233,10 +233,8 @@ def get_minio_client() -> MinIOClient:
             _DEFAULT_CRED = "minioadmin"
             if access_key == _DEFAULT_CRED or secret_key == _DEFAULT_CRED:
                 logger.warning(
-                    "MinIO is using default credentials (%s). "
-                    "Set MINIO_ACCESS_KEY and MINIO_SECRET_KEY before deploying "
-                    "to staging or production.",
-                    "minioadmin",
+                    "MinIO factory defaults are active; override both access "
+                    "settings before staging or production"
                 )
 
             _minio_client = MinIOClient(

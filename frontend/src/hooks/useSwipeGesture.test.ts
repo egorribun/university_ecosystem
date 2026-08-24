@@ -201,4 +201,21 @@ describe("useSwipeGesture — empty touches list", () => {
     })
     expect(result.current.isDragging).toBe(false)
   })
+
+  it("ignores touchMove with no touches after dragging starts", () => {
+    const onSwipeClose = vi.fn()
+    const { result } = renderHook(() =>
+      useSwipeGesture({ direction: "right", onSwipeClose, enabled: true })
+    )
+
+    act(() => {
+      result.current.handlers.onTouchStart(touch(100))
+    })
+    act(() => {
+      result.current.handlers.onTouchMove({ touches: [] } as unknown as React.TouchEvent)
+    })
+
+    expect(result.current.dragOffset).toBe(0)
+    expect(result.current.isDragging).toBe(true)
+  })
 })

@@ -511,6 +511,9 @@ describe("ChatWindow — W205 SW6 edit/delete affordance + tombstone + inline ed
     expect(onSaveEdit).toHaveBeenCalledWith("edit-3")
     fireEvent.keyDown(textarea, { key: "Escape" })
     expect(onCancelEdit).toHaveBeenCalledTimes(1)
+    fireEvent.keyDown(textarea, { key: "ArrowLeft" })
+    expect(onSaveEdit).toHaveBeenCalledTimes(1)
+    expect(onCancelEdit).toHaveBeenCalledTimes(1)
   })
 })
 

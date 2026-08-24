@@ -11,7 +11,7 @@ import type { Event, EventEditDraft } from "@/types/Event"
 
 // dayjs extensions removed
 
-const parseDate = (d?: string) => {
+const parseDate = (d?: string | null) => {
   if (!d) return new Date(NaN)
   return new Date(d.includes(" ") && !d.includes("T") ? d.replace(" ", "T") : d)
 }
@@ -82,7 +82,7 @@ export function useEventCardLogic({
     eventId: id,
     user,
     initialRegistered: is_registered ?? false,
-    initialParticipantCount: participant_count ?? 0,
+    initialParticipantCount: participant_count,
     initialQrToken: my_qr_token ?? undefined,
     onNotify: setSnackbar,
   })
@@ -134,8 +134,8 @@ export function useEventCardLogic({
       }
       const payload = {
         ...editData,
-        starts_at: parseDate(editData.starts_at || undefined).toISOString(),
-        ends_at: parseDate(editData.ends_at || undefined).toISOString(),
+        starts_at: parseDate(editData.starts_at).toISOString(),
+        ends_at: parseDate(editData.ends_at).toISOString(),
         image_url: imgUrl,
       }
       await api.patch(`/events/${id}`, payload)

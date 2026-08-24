@@ -15,15 +15,15 @@ The existing `pool_timeout=30s` in `app/core/database.py` mitigates worker-level
 
 ## Decision
 
-Deployed **PgBouncer 1.23.1** in **transaction-mode pooling** between the application tier and PostgreSQL:
+Deploy the maintained **edoburu/pgbouncer v1.25.2-p0** image in **transaction-mode pooling** between the application tier and PostgreSQL:
 
-- `PGBOUNCER_POOL_MODE=transaction` — each transaction gets a server connection; connection released immediately after `COMMIT`/`ROLLBACK`
-- `PGBOUNCER_MAX_CLIENT_CONN=1000` — supports burst of up to 1000 application connections
-- `PGBOUNCER_DEFAULT_POOL_SIZE=25` — at most 25 server-side PostgreSQL connections regardless of application replica count
-- `PGBOUNCER_AUTH_TYPE=scram-sha-256` — PgBouncer authenticates via `pgbouncer.get_auth()` query; plaintext passwords never stored in PgBouncer config
-- `PGBOUNCER_SERVER_TLS_SSLMODE=require` — TLS between PgBouncer and PostgreSQL
+- `POOL_MODE=transaction` — each transaction gets a server connection; connection released immediately after `COMMIT`/`ROLLBACK`
+- `MAX_CLIENT_CONN=1000` — supports burst of up to 1000 application connections
+- `DEFAULT_POOL_SIZE=25` — at most 25 server-side PostgreSQL connections regardless of application replica count
+- `AUTH_TYPE=scram-sha-256` — client authentication uses SCRAM; the generated userlist lives only on a container tmpfs
+- `SERVER_TLS_SSLMODE=prefer` — works with the Compose-managed PostgreSQL instance and negotiates TLS when the upstream database offers it; real production deployments with a TLS-only external database should override this to `require`
 
-**Application URL change:** `DATABASE_URL_FILE` must contain `host=pgbouncer` (not `postgres`) so connections route through the pooler.
+**Application URL change:** `DATABASE_URL_FILE` must contain `host=pgbouncer` and port `5432` (not `postgres`) so connections route through the pooler.
 
 ## Transaction Mode Constraints
 
@@ -40,7 +40,7 @@ These patterns are not used in the current codebase; must be enforced via code r
 **Positive:**
 - PostgreSQL server connection count capped at 25 regardless of replica count.
 - Burst traffic no longer exhausts PostgreSQL `max_connections`.
-- SCRAM-SHA-256 auth means PgBouncer never holds plaintext credentials.
+- The PostgreSQL password is supplied by a Compose file secret and is absent from Compose environment metadata.
 
 **Negative:**
 - Session-level state (`SET LOCAL` used by RLS) must be within a transaction — already the case for RLS via SQLAlchemy session context.
@@ -49,6 +49,6 @@ These patterns are not used in the current codebase; must be enforced via code r
 
 ## Implementation
 
-- `docker-compose.prod.yml` — PgBouncer service with all configuration via environment variables
+- `docker-compose.prod.yml` — PgBouncer service with pinned image, file-backed password, tmpfs-generated configuration, healthcheck, and migration dependency
 - `k8s/backend/` — PgBouncer deployment and service (if running in K8s)
 - `app/core/database.py` — `pool_timeout=30s`, `pool_size` tuned for post-bouncer throughput

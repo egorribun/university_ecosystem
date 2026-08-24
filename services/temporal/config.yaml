@@ -16,7 +16,7 @@
 # `audience` are SIBLING fields at the same level (NOT nested inside
 # jwtKeyProvider). Confirmed by reading the Go struct + YAML tags.
 #
-# W143 SW2 contract test (tests/test_wave143_jwks_roundtrip.py) DISPROVED
+# The JWKS round-trip contract (tests/test_jwks_roundtrip.py) disproved this.
 # Agent 2 W142's "JWKS byte-encoding mismatch" hypothesis: encoding IS
 # canonical RFC 7518 § 6.3.1.1; end-to-end Python verify against real
 # .secrets/temporal_api_key PASSES against both PEM-derived AND JWKS-
@@ -70,9 +70,10 @@ global:
     # W144 SW2 NEW (z) #18: broadcastAddress must match an address that's
     # reachable from within the membership ring. Upstream dev config uses
     # "127.0.0.1" (single-node loopback), but our cross-container setup needs
-    # the container's actual bridge-network IP so file-processor can reach
-    # temporal:7233. The custom entrypoint.sh substitutes ${BROADCAST_ADDRESS}
-    # here with `getent hosts $(hostname)` output at start time.
+    # one concrete container address. Client reachability is controlled
+    # independently by BIND_ON_IP=0.0.0.0 because the container is attached to
+    # multiple Compose networks. The custom entrypoint substitutes this value
+    # with `getent hosts $(hostname)` output at start time.
     broadcastAddress: "${BROADCAST_ADDRESS}"
   pprof:
     port: 7936
@@ -116,22 +117,26 @@ services:
       grpcPort: 7233
       membershipPort: 6933
       bindOnLocalHost: false
+      bindOnIP: "0.0.0.0"
       httpPort: 7243
   matching:
     rpc:
       grpcPort: 7235
       membershipPort: 6935
       bindOnLocalHost: false
+      bindOnIP: "0.0.0.0"
   history:
     rpc:
       grpcPort: 7234
       membershipPort: 6934
       bindOnLocalHost: false
+      bindOnIP: "0.0.0.0"
   worker:
     rpc:
       grpcPort: 7239
       membershipPort: 6939
       bindOnLocalHost: false
+      bindOnIP: "0.0.0.0"
 
 # ─── Cluster metadata (single-cluster dev) ──────────────────────────────────
 #

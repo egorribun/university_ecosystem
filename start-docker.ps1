@@ -5,7 +5,7 @@
 .DESCRIPTION
     Builds and starts all Docker containers for the full site.
     Generates secure secrets if .env / .env.docker don't exist.
-    Creates MinIO bucket and SpiceDB database on first run.
+    Reconciles the MinIO bucket and auxiliary databases on every start.
 
 .EXAMPLE
     .\start-docker.ps1            # Start (no rebuild)
@@ -31,6 +31,7 @@ Set-Location $ProjectRoot
 $ComposeFile = "docker-compose.full.yml"
 $EnvFile = ".env.docker"
 $EnvCompose = ".env"
+$OpenSslFallbackImage = "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"
 
 # -- Helpers ------------------------------------------------------------------
 
@@ -42,12 +43,25 @@ function Write-Warn    { param([string]$Msg) Write-Host "[!] $Msg" -ForegroundCo
 function New-Secret {
     param([int]$Length = 32)
     $chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
-    -join ((1..$Length) | ForEach-Object { $chars[(Get-Random -Maximum $chars.Length)] })
+    $builder = [System.Text.StringBuilder]::new($Length)
+    for ($i = 0; $i -lt $Length; $i++) {
+        $index = [System.Security.Cryptography.RandomNumberGenerator]::GetInt32($chars.Length)
+        $null = $builder.Append($chars[$index])
+    }
+    return $builder.ToString()
 }
 
 function New-HexSecret {
     param([int]$Length = 32)
-    -join ((1..$Length) | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) })
+    $bytes = [System.Security.Cryptography.RandomNumberGenerator]::GetBytes($Length)
+    return [System.Convert]::ToHexString($bytes).ToLowerInvariant()
+}
+
+function New-FernetKey {
+    # Fernet requires exactly 32 random bytes encoded with padded URL-safe
+    # Base64. Keep this native so a fresh launcher does not depend on Python.
+    $bytes = [System.Security.Cryptography.RandomNumberGenerator]::GetBytes(32)
+    return [System.Convert]::ToBase64String($bytes).Replace('+', '-').Replace('/', '_')
 }
 
 function Write-Utf8NoBom {
@@ -59,8 +73,210 @@ function Write-Utf8NoBom {
     )
 }
 
+function Get-EnvEntry {
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][string]$Key
+    )
+
+    $absolutePath = Join-Path $ProjectRoot $Path
+    if (-not (Test-Path -LiteralPath $absolutePath)) { return $null }
+
+    $prefix = "$Key="
+    $line = Get-Content -LiteralPath $absolutePath -ErrorAction SilentlyContinue |
+        Where-Object { $_.StartsWith($prefix, [StringComparison]::Ordinal) } |
+        Select-Object -First 1
+    if ($null -eq $line) { return $null }
+    return $line.Substring($prefix.Length).Trim()
+}
+
+function Set-EnvEntry {
+    param(
+        [Parameter(Mandatory=$true)][string]$Path,
+        [Parameter(Mandatory=$true)][string]$Key,
+        [Parameter(Mandatory=$true)][string]$Value
+    )
+
+    $absolutePath = Join-Path $ProjectRoot $Path
+    $prefix = "$Key="
+    $found = $false
+    $updated = @(
+        Get-Content -LiteralPath $absolutePath -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                if ($_.StartsWith($prefix, [StringComparison]::Ordinal)) {
+                    $found = $true
+                    "$Key=$Value"
+                } else {
+                    $_
+                }
+            }
+    )
+    if (-not $found) { $updated += "$Key=$Value" }
+    Write-Utf8NoBom -Path $Path -Content "$(($updated -join "`n").TrimEnd())`n"
+}
+
+function Ensure-ImgproxyEnvironment {
+    # .env.docker is canonical because both the backend signer and imgproxy read
+    # it. Keep .env synchronized for Compose interpolation and migrate the old
+    # frontend URL, which could never serve signed image paths.
+    $specs = @(
+        @{ Key = "IMGPROXY_KEY"; Bytes = 32 },
+        @{ Key = "IMGPROXY_SALT"; Bytes = 32 }
+    )
+
+    foreach ($spec in $specs) {
+        $value = Get-EnvEntry -Path $EnvFile -Key $spec.Key
+        # Accept any even-length hex value of at least 32 bytes. This matches
+        # the backend validator and preserves deliberately longer user keys.
+        $pattern = "^(?:[0-9a-fA-F]{2}){$($spec.Bytes),}$"
+        if (-not $value -or $value -notmatch $pattern) {
+            $value = New-HexSecret -Length $spec.Bytes
+            Set-EnvEntry -Path $EnvFile -Key $spec.Key -Value $value
+            Write-Ok "Generated $($spec.Key) for signed image URLs"
+        }
+
+        if ((Get-EnvEntry -Path $EnvCompose -Key $spec.Key) -ne $value) {
+            Set-EnvEntry -Path $EnvCompose -Key $spec.Key -Value $value
+        }
+    }
+
+    $baseUrl = Get-EnvEntry -Path $EnvFile -Key "IMGPROXY_BASE_URL"
+    if (-not $baseUrl -or $baseUrl -eq "http://localhost:8081") {
+        $baseUrl = "http://localhost/imgproxy"
+        Set-EnvEntry -Path $EnvFile -Key "IMGPROXY_BASE_URL" -Value $baseUrl
+        Write-Ok "Configured IMGPROXY_BASE_URL through Caddy"
+    }
+    if ((Get-EnvEntry -Path $EnvCompose -Key "IMGPROXY_BASE_URL") -ne $baseUrl) {
+        Set-EnvEntry -Path $EnvCompose -Key "IMGPROXY_BASE_URL" -Value $baseUrl
+    }
+}
+
+function Ensure-MetricsEnvironment {
+    # Prometheus authenticates to the backend /metrics endpoint. Keep one
+    # launcher-managed credential in both environment files so the backend and
+    # Prometheus receive the same value without committing it to the repository.
+    # prometheus.yml intentionally uses a fixed non-secret identity. Do not
+    # preserve an arbitrary legacy username or the two sides will disagree.
+    $username = "metrics_scraper"
+
+    $password = Get-EnvEntry -Path $EnvFile -Key "METRICS_BASIC_AUTH_PASSWORD"
+    if (-not $password -or $password.Length -lt 32 -or $password -match "CHANGE_ME") {
+        $password = New-Secret -Length 48
+        Write-Ok "Generated backend metrics scrape credentials"
+    }
+
+    foreach ($path in @($EnvFile, $EnvCompose)) {
+        Set-EnvEntry -Path $path -Key "ENABLE_METRICS_ENDPOINT" -Value "true"
+        Set-EnvEntry -Path $path -Key "METRICS_BASIC_AUTH_USERNAME" -Value $username
+        Set-EnvEntry -Path $path -Key "METRICS_BASIC_AUTH_PASSWORD" -Value $password
+    }
+}
+
+function Ensure-ApplicationSecrets {
+    # Remove development fallbacks that couple unrelated security domains to
+    # SECRET_KEY. .env.docker remains canonical and .env is synchronized for
+    # values interpolated directly into Compose service environments.
+    $specs = @(
+        @{ Key = "CSRF_HMAC_SECRET"; Length = 48; Fernet = $false },
+        @{ Key = "INTERNAL_HMAC_SECRET"; Length = 48; Fernet = $false },
+        @{ Key = "IDEMPOTENCY_HMAC_SECRET"; Length = 48; Fernet = $false },
+        @{ Key = "SPOTIFY_TOKEN_SECRET"; Length = 44; Fernet = $true },
+        @{ Key = "SPOTIFY_OAUTH_STATE_SECRET"; Length = 48; Fernet = $false }
+    )
+
+    foreach ($spec in $specs) {
+        $value = Get-EnvEntry -Path $EnvFile -Key $spec.Key
+        $invalid = -not $value -or $value -match "CHANGE_ME"
+        if ($spec.Fernet) {
+            $invalid = $invalid -or $value -notmatch '^[A-Za-z0-9_-]{43}=$'
+        } else {
+            $invalid = $invalid -or $value.Length -lt 32
+        }
+
+        if ($invalid) {
+            $value = if ($spec.Fernet) { New-FernetKey } else { New-Secret -Length $spec.Length }
+            Write-Ok "Generated independent $($spec.Key)"
+        }
+
+        foreach ($path in @($EnvFile, $EnvCompose)) {
+            if ((Get-EnvEntry -Path $path -Key $spec.Key) -ne $value) {
+                Set-EnvEntry -Path $path -Key $spec.Key -Value $value
+            }
+        }
+    }
+}
+
+function Ensure-JwtEnvironment {
+    # The launcher-managed keypair is the single signing source for both the
+    # full and base Compose modes, so keep their environment files aligned.
+    foreach ($path in @($EnvFile, $EnvCompose)) {
+        Set-EnvEntry -Path $path -Key "ALGORITHM" -Value "RS256"
+        Set-EnvEntry -Path $path -Key "JWT_PRIVATE_KEY_PATH" -Value ".secrets/jwt_rs256.pem"
+    }
+}
+
+function Ensure-DockerConfigRevision {
+    # Compose does not notice changes inside bind-mounted files. Fold every
+    # runtime configuration file into a deterministic label so `compose up`
+    # recreates only the affected configuration-driven services after a pull.
+    $relativePaths = @(
+        "config/nats.conf.template",
+        "services/temporal/config.yaml",
+        "services/temporal/entrypoint.sh",
+        "infrastructure/observability/prometheus.yml",
+        "infrastructure/observability/alerts/gateway.yaml",
+        "infrastructure/observability/tempo.yaml",
+        "infrastructure/observability/loki.yaml",
+        "infrastructure/observability/alloy/config.alloy",
+        "infrastructure/observability/grafana/provisioning/datasources/datasources.yaml",
+        "k8s/flagd/flags.json",
+        "infrastructure/Caddyfile"
+    )
+    $manifest = foreach ($relativePath in $relativePaths) {
+        $absolutePath = Join-Path $ProjectRoot $relativePath
+        if (-not (Test-Path -LiteralPath $absolutePath)) {
+            throw "Runtime configuration file is missing: $relativePath"
+        }
+        "$relativePath=$((Get-FileHash -LiteralPath $absolutePath -Algorithm SHA256).Hash)"
+    }
+
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes(($manifest -join "`n"))
+        $revision = [System.Convert]::ToHexString($sha256.ComputeHash($bytes)).ToLowerInvariant()
+    } finally {
+        $sha256.Dispose()
+    }
+
+    foreach ($path in @($EnvFile, $EnvCompose)) {
+        Set-EnvEntry -Path $path -Key "DOCKER_CONFIG_REVISION" -Value $revision
+    }
+}
+
+# Validate an existing launcher-managed private key before treating it as an
+# idempotent result. A truncated or public-only PEM would otherwise make every
+# backend restart fail until the user manually deleted the file.
+function Test-JwtRs256PrivateKey {
+    param([Parameter(Mandatory=$true)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) { return $false }
+    try {
+        $pem = [System.IO.File]::ReadAllText($Path)
+        $rsa = [System.Security.Cryptography.RSA]::Create()
+        try {
+            $rsa.ImportFromPem($pem)
+            $privateParameters = $rsa.ExportParameters($true)
+            return $rsa.KeySize -ge 2048 -and $null -ne $privateParameters.D -and $privateParameters.D.Length -gt 0
+        } finally {
+            $rsa.Dispose()
+        }
+    } catch {
+        return $false
+    }
+}
+
 # Wave 137 SW1: Generate RSA-2048 keypair for backend JWT RS256 signing.
-# Idempotent - skips generation if key file already exists.
+# Idempotent only after validating the existing private key.
 # Uses .NET 8 native PEM export (PowerShell 7+ ships .NET 8 with
 # RSA.ExportPkcs8PrivateKeyPem). Falls back to OpenSSL if available.
 # Closes W135 sec.Honesty #9 SSR auth-at-edge layer (jose.createRemoteJWKSet
@@ -69,9 +285,12 @@ function New-JwtRs256Key {
     param([string]$OutputPath = ".secrets/jwt_rs256.pem")
 
     $absoluteOutputPath = Join-Path $ProjectRoot $OutputPath
-    if (Test-Path $absoluteOutputPath) {
+    if (Test-JwtRs256PrivateKey -Path $absoluteOutputPath) {
         Write-Ok "RSA-2048 keypair already exists at $OutputPath (idempotent skip)"
         return
+    }
+    if (Test-Path -LiteralPath $absoluteOutputPath) {
+        Write-Warn "RSA private key at $OutputPath is invalid; regenerating"
     }
 
     Write-Status "Generating RSA-2048 keypair for JWT RS256 signing..."
@@ -107,7 +326,7 @@ function New-JwtRs256Key {
         # Path C: docker fallback (runs openssl in lightweight container if host openssl unavailable)
         if (-not $pem -and (Get-Command docker -ErrorAction SilentlyContinue)) {
             Write-Status "Falling back to Docker openssl for keypair generation..."
-            $pem = docker run --rm alpine sh -c "apk add --no-cache openssl >/dev/null 2>&1; openssl genrsa 2048 2>/dev/null" 2>&1 | Out-String
+            $pem = docker run --rm $OpenSslFallbackImage sh -c "apk add --no-cache openssl >/dev/null 2>&1; openssl genrsa 2048 2>/dev/null" 2>&1 | Out-String
             if ($LASTEXITCODE -ne 0 -or $pem -notmatch "BEGIN (RSA )?PRIVATE KEY") {
                 $pem = $null
             }
@@ -127,18 +346,10 @@ function New-JwtRs256Key {
     Write-Ok "Generated RSA-2048 keypair at $OutputPath"
 }
 
-# Wave 142 SW3: derive RSA-2048 PUBLIC key from existing private key for
-# Temporal's JWT verification (TEMPORAL_JWT_KEY_SOURCE1=file:///app/.secrets/
-# jwt_rs256.pub.pem). The private key is generated by New-JwtRs256Key (above);
-# the public key is needed because Temporal verifies JWT signatures it CANNOT
-# sign. Uses .NET 8 RSA.ExportSubjectPublicKeyInfoPem with openssl fallback.
-# Idempotent: skips if .secrets/jwt_rs256.pub.pem already exists. Closes
-# W141 (z) #4 risk by avoiding the HTTP-JWKS chicken-and-egg with backend
-# startup ordering - file:// URLs require no network roundtrip at temporal
-# server startup, so Temporal won't fail JWKS fetch if backend isn't yet
-# healthy. The backend's /.well-known/jwks.json endpoint serves the SAME
-# public key derivation server-side; this file is just the static copy
-# Temporal reads at boot.
+# Derive the RSA public key used directly by file-processor. Temporal validates
+# through the backend JWKS endpoint, which serves the same private key's public
+# component. Re-derive on each launcher run and update only when content drifted
+# so a deliberately replaced private key cannot leave a stale verifier behind.
 function New-JwtRs256PublicKey {
     param(
         [string]$PrivateKeyPath = ".secrets/jwt_rs256.pem",
@@ -147,11 +358,6 @@ function New-JwtRs256PublicKey {
 
     $absolutePrivateKeyPath = Join-Path $ProjectRoot $PrivateKeyPath
     $absoluteOutputPath = Join-Path $ProjectRoot $OutputPath
-
-    if (Test-Path $absoluteOutputPath) {
-        Write-Ok "RSA-2048 public key already exists at $OutputPath (idempotent skip)"
-        return
-    }
 
     if (-not (Test-Path $absolutePrivateKeyPath)) {
         throw "Cannot derive public key: private key not found at $PrivateKeyPath. Run New-JwtRs256Key first."
@@ -183,7 +389,7 @@ function New-JwtRs256PublicKey {
         if (-not $publicPem -and (Get-Command docker -ErrorAction SilentlyContinue)) {
             $secretDirAbs = Split-Path $absolutePrivateKeyPath -Parent
             $privKeyFile = Split-Path $absolutePrivateKeyPath -Leaf
-            $publicPem = docker run --rm -v "${secretDirAbs}:/secrets:ro" alpine sh -c "apk add --no-cache openssl >/dev/null 2>&1; openssl rsa -in /secrets/${privKeyFile} -pubout 2>/dev/null" 2>&1 | Out-String
+            $publicPem = docker run --rm -v "${secretDirAbs}:/secrets:ro" $OpenSslFallbackImage sh -c "apk add --no-cache openssl >/dev/null 2>&1; openssl rsa -in /secrets/${privKeyFile} -pubout 2>/dev/null" 2>&1 | Out-String
             if ($LASTEXITCODE -ne 0 -or $publicPem -notmatch "BEGIN PUBLIC KEY") {
                 $publicPem = $null
             }
@@ -194,9 +400,19 @@ function New-JwtRs256PublicKey {
         throw "Failed to derive RSA public key - neither .NET, host openssl, nor docker openssl succeeded."
     }
 
+    $publicPem = $publicPem.Trim()
+    if (Test-Path -LiteralPath $absoluteOutputPath) {
+        $existingPublicPem = [System.IO.File]::ReadAllText($absoluteOutputPath).Trim()
+        if ($existingPublicPem -ceq $publicPem) {
+            Write-Ok "RSA-2048 public key at $OutputPath is current (idempotent skip)"
+            return
+        }
+        Write-Warn "RSA public key at $OutputPath does not match the private key; updating"
+    }
+
     [System.IO.File]::WriteAllText(
         $absoluteOutputPath,
-        $publicPem.Trim(),
+        $publicPem,
         [System.Text.UTF8Encoding]::new($false)
     )
 
@@ -210,6 +426,62 @@ function ConvertTo-Base64Url {
     return [System.Convert]::ToBase64String($Bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
 }
 
+function ConvertFrom-Base64Url {
+    param([Parameter(Mandatory=$true)][string]$Value)
+    $padded = $Value.Replace('-', '+').Replace('_', '/')
+    switch ($padded.Length % 4) {
+        2 { $padded += '==' }
+        3 { $padded += '=' }
+        1 { throw "Invalid base64url value" }
+    }
+    return [System.Convert]::FromBase64String($padded)
+}
+
+function Test-TemporalServiceToken {
+    param(
+        [Parameter(Mandatory=$true)][string]$Token,
+        [Parameter(Mandatory=$true)][string]$PrivateKeyPath,
+        [Parameter(Mandatory=$true)][string]$Subject,
+        [Parameter(Mandatory=$true)][string]$Audience,
+        [int]$MinimumValiditySeconds = 604800
+    )
+
+    try {
+        $parts = $Token.Trim().Split('.')
+        if ($parts.Count -ne 3) { return $false }
+
+        $headerJson = [System.Text.Encoding]::UTF8.GetString((ConvertFrom-Base64Url $parts[0]))
+        $payloadJson = [System.Text.Encoding]::UTF8.GetString((ConvertFrom-Base64Url $parts[1]))
+        $header = $headerJson | ConvertFrom-Json
+        $payload = $payloadJson | ConvertFrom-Json
+        $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+
+        if ($header.alg -ne 'RS256' -or $header.kid -ne 'primary') { return $false }
+        if ($payload.sub -ne $Subject -or $payload.aud -ne $Audience) { return $false }
+        if (-not $payload.jti -or $null -eq $payload.iat -or $null -eq $payload.exp) { return $false }
+        if ([long]$payload.iat -gt ($now + 60)) { return $false }
+        if ([long]$payload.exp -le ($now + $MinimumValiditySeconds)) { return $false }
+
+        $pem = [System.IO.File]::ReadAllText($PrivateKeyPath)
+        $rsa = [System.Security.Cryptography.RSA]::Create()
+        try {
+            $rsa.ImportFromPem($pem)
+            $signedBytes = [System.Text.Encoding]::UTF8.GetBytes("$($parts[0]).$($parts[1])")
+            $signature = ConvertFrom-Base64Url $parts[2]
+            return $rsa.VerifyData(
+                $signedBytes,
+                $signature,
+                [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+                [System.Security.Cryptography.RSASignaturePadding]::Pkcs1
+            )
+        } finally {
+            $rsa.Dispose()
+        }
+    } catch {
+        return $false
+    }
+}
+
 # Wave 141 SW4: mint long-lived service token (~1 year exp) signed with the
 # same RSA private key backend uses for its JWTs. Token has sub=
 # file-processor-service + aud=temporal claims so Temporal's default JWT claim
@@ -219,8 +491,9 @@ function ConvertTo-Base64Url {
 # Closes W137 sec.Honesty #5 + W140 NEW #6 (joined with SW3 image swap + SW5 Go
 # credentials attach to form the full Path (a-auth) chain).
 #
-# Idempotent: skips minting if .secrets/temporal_api_key already exists. To
-# regenerate (e.g., changed audience), delete the file and re-run.
+# Idempotent: keeps an existing token only after its claims, lifetime, algorithm,
+# and RSA signature have been validated. Invalid or near-expiry tokens are
+# replaced automatically.
 #
 # Security framing: this is a STATIC long-lived service token (no rotation).
 # Acceptable for dev compose where the threat model is "anyone with host
@@ -241,86 +514,94 @@ function New-TemporalServiceToken {
     )
 
     $absoluteOutputPath = Join-Path $ProjectRoot $OutputPath
-    if (Test-Path $absoluteOutputPath) {
-        Write-Ok "Temporal service token already exists at $OutputPath (idempotent skip)"
-        return
-    }
-
     $absolutePrivateKeyPath = Join-Path $ProjectRoot $PrivateKeyPath
     if (-not (Test-Path $absolutePrivateKeyPath)) {
         throw "Cannot mint Temporal service token: private key not found at $PrivateKeyPath. Run New-JwtRs256Key first."
     }
 
+    if (Test-Path $absoluteOutputPath) {
+        $existingToken = [System.IO.File]::ReadAllText($absoluteOutputPath).Trim()
+        if (Test-TemporalServiceToken -Token $existingToken -PrivateKeyPath $absolutePrivateKeyPath -Subject $Subject -Audience $Audience) {
+            Write-Ok "Valid existing Temporal service token at $OutputPath (idempotent skip)"
+            return
+        }
+        Write-Warn "Temporal service token at $OutputPath is invalid or near expiry; regenerating"
+        Remove-Item -LiteralPath $absoluteOutputPath -Force
+    }
+
     $days = [Math]::Round($ExpirationSeconds / 86400)
     Write-Status "Minting Temporal service token (sub=$Subject, aud=$Audience, $days days valid)..."
 
-        $headerObj  = [PSCustomObject]@{ alg = 'RS256'; kid = 'primary'; typ = 'JWT' }
-        $payloadObj = [PSCustomObject]@{
-            sub = $Subject
-            aud = $Audience
-            iat = $now
-            exp = $exp
-            jti = $jti
-        }
+    $now = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $exp = $now + $ExpirationSeconds
+    $jti = [Guid]::NewGuid().ToString("N")
+    $headerObj  = [PSCustomObject]@{ alg = 'RS256'; kid = 'primary'; typ = 'JWT' }
+    $payloadObj = [PSCustomObject]@{
+        sub = $Subject
+        aud = $Audience
+        iat = $now
+        exp = $exp
+        jti = $jti
+    }
 
-        $headerJson  = $headerObj  | ConvertTo-Json -Compress
-        $payloadJson = $payloadObj | ConvertTo-Json -Compress
+    $headerJson  = $headerObj  | ConvertTo-Json -Compress
+    $payloadJson = $payloadObj | ConvertTo-Json -Compress
 
-        $headerB64  = ConvertTo-Base64Url ([System.Text.Encoding]::UTF8.GetBytes($headerJson))
-        $payloadB64 = ConvertTo-Base64Url ([System.Text.Encoding]::UTF8.GetBytes($payloadJson))
+    $headerB64  = ConvertTo-Base64Url ([System.Text.Encoding]::UTF8.GetBytes($headerJson))
+    $payloadB64 = ConvertTo-Base64Url ([System.Text.Encoding]::UTF8.GetBytes($payloadJson))
 
-        $signingInput = "$headerB64.$payloadB64"
+    $signingInput = "$headerB64.$payloadB64"
 
-        $signatureB64 = $null
+    $signatureB64 = $null
+    try {
+        # Path A: .NET 8 native - RSA.ImportFromPem + SignData
+        $pem = [System.IO.File]::ReadAllText($absolutePrivateKeyPath)
+        $rsa = [System.Security.Cryptography.RSA]::Create()
         try {
-            # Path A: .NET 8 native - RSA.ImportFromPem + SignData
-            $pem = [System.IO.File]::ReadAllText($absolutePrivateKeyPath)
-            $rsa = [System.Security.Cryptography.RSA]::Create()
+            $rsa.ImportFromPem($pem)
+            $signingInputBytes = [System.Text.Encoding]::UTF8.GetBytes($signingInput)
+            $signatureBytes    = $rsa.SignData(
+                $signingInputBytes,
+                [System.Security.Cryptography.HashAlgorithmName]::SHA256,
+                [System.Security.Cryptography.RSASignaturePadding]::Pkcs1
+            )
+            $signatureB64 = ConvertTo-Base64Url $signatureBytes
+        } finally {
+            $rsa.Dispose()
+        }
+    } catch {
+        # Path B: host openssl fallback (requires openssl in PATH)
+        if (Get-Command openssl -ErrorAction SilentlyContinue) {
+            $tempInputFile = [System.IO.Path]::GetTempFileName()
+            $tempSigFile   = [System.IO.Path]::GetTempFileName()
             try {
-                $rsa.ImportFromPem($pem)
-                $signingInputBytes = [System.Text.Encoding]::UTF8.GetBytes($signingInput)
-                $signatureBytes    = $rsa.SignData(
-                    $signingInputBytes,
-                    [System.Security.Cryptography.HashAlgorithmName]::SHA256,
-                    [System.Security.Cryptography.RSASignaturePadding]::Pkcs1
-                )
-                $signatureB64 = ConvertTo-Base64Url $signatureBytes
+                [System.IO.File]::WriteAllText($tempInputFile, $signingInput, [System.Text.Encoding]::UTF8)
+                $null = openssl dgst -sha256 -sign $absolutePrivateKeyPath -out $tempSigFile $tempInputFile 2>&1
+                if ($LASTEXITCODE -eq 0 -and (Test-Path $tempSigFile)) {
+                    $signatureBytes = [System.IO.File]::ReadAllBytes($tempSigFile)
+                    $signatureB64   = ConvertTo-Base64Url $signatureBytes
+                }
             } finally {
-                $rsa.Dispose()
-            }
-        } catch {
-            # Path B: host openssl fallback (requires openssl in PATH)
-            if (Get-Command openssl -ErrorAction SilentlyContinue) {
-                $tempInputFile = [System.IO.Path]::GetTempFileName()
-                $tempSigFile   = [System.IO.Path]::GetTempFileName()
-                try {
-                    [System.IO.File]::WriteAllText($tempInputFile, $signingInput, [System.Text.Encoding]::UTF8)
-                    $null = openssl dgst -sha256 -sign $absolutePrivateKeyPath -out $tempSigFile $tempInputFile 2>&1
-                    if ($LASTEXITCODE -eq 0 -and (Test-Path $tempSigFile)) {
-                        $signatureBytes = [System.IO.File]::ReadAllBytes($tempSigFile)
-                        $signatureB64   = ConvertTo-Base64Url $signatureBytes
-                    }
-                } finally {
-                    Remove-Item $tempInputFile, $tempSigFile -ErrorAction SilentlyContinue
-                }
-            }
-
-            # Path C: docker fallback (runs openssl in alpine container)
-            if (-not $signatureB64 -and (Get-Command docker -ErrorAction SilentlyContinue)) {
-                $secretDirAbs = Split-Path $absolutePrivateKeyPath -Parent
-                $privKeyFile  = Split-Path $absolutePrivateKeyPath -Leaf
-                $sigOut = docker run --rm -v "${secretDirAbs}:/secrets:ro" alpine sh -c "apk add --no-cache openssl >/dev/null 2>&1; printf '%s' '$signingInput' | openssl dgst -sha256 -sign /secrets/${privKeyFile} 2>/dev/null | base64 | tr -d '\r\n' | tr '+/' '-_' | tr -d '='" 2>&1 | Out-String
-                if ($LASTEXITCODE -eq 0 -and $sigOut.Trim()) {
-                    $signatureB64 = $sigOut.Trim()
-                }
+                Remove-Item $tempInputFile, $tempSigFile -ErrorAction SilentlyContinue
             }
         }
 
-        if (-not $signatureB64) {
-            throw "Failed to sign Temporal service token - neither .NET, host openssl, nor docker openssl succeeded."
+        # Path C: docker fallback (runs openssl in alpine container)
+        if (-not $signatureB64 -and (Get-Command docker -ErrorAction SilentlyContinue)) {
+            $secretDirAbs = Split-Path $absolutePrivateKeyPath -Parent
+            $privKeyFile  = Split-Path $absolutePrivateKeyPath -Leaf
+            $sigOut = docker run --rm -v "${secretDirAbs}:/secrets:ro" $OpenSslFallbackImage sh -c "apk add --no-cache openssl >/dev/null 2>&1; printf '%s' '$signingInput' | openssl dgst -sha256 -sign /secrets/${privKeyFile} 2>/dev/null | base64 | tr -d '\r\n' | tr '+/' '-_' | tr -d '='" 2>&1 | Out-String
+            if ($LASTEXITCODE -eq 0 -and $sigOut.Trim()) {
+                $signatureB64 = $sigOut.Trim()
+            }
         }
+    }
 
-        $token = "$signingInput.$signatureB64"
+    if (-not $signatureB64) {
+        throw "Failed to sign Temporal service token - neither .NET, host openssl, nor docker openssl succeeded."
+    }
+
+    $token = "$signingInput.$signatureB64"
 
     [System.IO.File]::WriteAllText(
         $absoluteOutputPath,
@@ -335,6 +616,49 @@ function Test-ServiceHttp {
     param([string]$Url, [int]$Timeout = 2)
     try { (Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec $Timeout).StatusCode -eq 200 }
     catch { $false }
+}
+
+function Wait-PrometheusTargets {
+    param([int]$Timeout = 75)
+
+    $expectedJobs = @(
+        "prometheus", "backend", "notifications-worker", "redis-exporter",
+        "minio", "tempo", "loki", "pyroscope", "gateway", "flagd"
+    )
+    $deadline = (Get-Date).AddSeconds($Timeout)
+    $lastProblems = @("Prometheus target API has not responded yet")
+
+    do {
+        try {
+            $response = Invoke-RestMethod `
+                -Uri "http://localhost:9090/api/v1/targets?state=active" `
+                -TimeoutSec 5
+            $targets = @($response.data.activeTargets)
+            $lastProblems = @()
+
+            foreach ($job in $expectedJobs) {
+                $jobTargets = @($targets | Where-Object { $_.labels.job -eq $job })
+                if ($jobTargets.Count -eq 0) {
+                    $lastProblems += "${job}: missing target"
+                    continue
+                }
+                foreach ($target in $jobTargets) {
+                    if ($target.health -ne "up") {
+                        $reason = if ($target.lastError) { $target.lastError } else { "health=$($target.health)" }
+                        $lastProblems += "${job}: $reason"
+                    }
+                }
+            }
+
+            if ($lastProblems.Count -eq 0) { return $true }
+        } catch {
+            $lastProblems = @("Prometheus target API: $($_.Exception.Message)")
+        }
+        Start-Sleep -Seconds 5
+    } while ((Get-Date) -lt $deadline)
+
+    foreach ($problem in $lastProblems) { Write-Err "  $problem" }
+    return $false
 }
 
 # -- Prerequisite: Docker running ---------------------------------------------
@@ -357,8 +681,13 @@ if ($Down) {
     Write-Status "Stopping all containers..."
     $envArgs = if (Test-Path $EnvFile) { @("--env-file", $EnvFile) } else { @() }
     docker compose -f $ComposeFile @envArgs down
+    $composeExitCode = $LASTEXITCODE
+    if ($composeExitCode -ne 0) {
+        Write-Err "Failed to stop containers."
+        exit $composeExitCode
+    }
     Write-Ok "All containers stopped"
-    exit 0
+    exit $composeExitCode
 }
 
 # -- Handle -Logs -------------------------------------------------------------
@@ -370,7 +699,11 @@ if ($Logs) {
     } else {
         docker compose -f $ComposeFile @envArgs logs -f
     }
-    exit 0
+    $composeExitCode = $LASTEXITCODE
+    if ($composeExitCode -ne 0) {
+        Write-Err "Failed to read container logs."
+    }
+    exit $composeExitCode
 }
 
 # -- Generate secrets ---------------------------------------------------------
@@ -386,13 +719,21 @@ if ($needsEnvDocker -and $needsEnvCompose) {
 
     $postgresPassword = New-Secret -Length 32
     $secretKey         = New-Secret -Length 64
-    $minioPassword     = New-Secret -Length 24
-    $redisPassword     = New-Secret -Length 24
-    $elasticPassword   = New-Secret -Length 24
-    $natsPassword      = New-Secret -Length 24
+    $minioPassword     = New-Secret -Length 32
+    $redisPassword     = New-Secret -Length 32
+    $elasticPassword   = New-Secret -Length 32
+    $natsPassword      = New-Secret -Length 32
     $spicedbKey        = New-Secret -Length 32
     $wsHubSecret       = New-Secret -Length 32
-    $grafanaPassword   = New-Secret -Length 24
+    $grafanaPassword   = New-Secret -Length 32
+    $metricsPassword   = New-Secret -Length 48
+    $imgproxyKey       = New-HexSecret -Length 32
+    $imgproxySalt      = New-HexSecret -Length 32
+    $csrfHmacSecret    = New-Secret -Length 48
+    $internalHmacSecret = New-Secret -Length 48
+    $idempotencyHmacSecret = New-Secret -Length 48
+    $spotifyTokenSecret = New-FernetKey
+    $spotifyOauthStateSecret = New-Secret -Length 48
 
     # -- .env.docker (container env_file) ---------------------------------
     $dockerEnv = @"
@@ -410,14 +751,26 @@ NATS_USER=app
 NATS_PASSWORD=$natsPassword
 SPICEDB_PRESHARED_KEY=$spicedbKey
 WS_HUB_INTERNAL_SECRET=$wsHubSecret
+GRAFANA_ADMIN_USER=admin
 GRAFANA_ADMIN_PASSWORD=$grafanaPassword
 REDIS_PASSWORD=$redisPassword
+ENABLE_METRICS_ENDPOINT=true
+METRICS_BASIC_AUTH_USERNAME=metrics_scraper
+METRICS_BASIC_AUTH_PASSWORD=$metricsPassword
+IMGPROXY_KEY=$imgproxyKey
+IMGPROXY_SALT=$imgproxySalt
+IMGPROXY_BASE_URL=http://localhost/imgproxy
 VAPID_SUBJECT=mailto:admin@example.com
 ENVIRONMENT=development
 SPOTIFY_CLIENT_ID=
 SPOTIFY_CLIENT_SECRET=
 SPOTIFY_REDIRECT_URI=
 SPOTIFY_SCOPES=
+CSRF_HMAC_SECRET=$csrfHmacSecret
+INTERNAL_HMAC_SECRET=$internalHmacSecret
+IDEMPOTENCY_HMAC_SECRET=$idempotencyHmacSecret
+SPOTIFY_TOKEN_SECRET=$spotifyTokenSecret
+SPOTIFY_OAUTH_STATE_SECRET=$spotifyOauthStateSecret
 "@
     Write-Utf8NoBom $EnvFile $dockerEnv
 
@@ -429,6 +782,8 @@ POSTGRES_USER=postgres
 POSTGRES_PASSWORD=$postgresPassword
 POSTGRES_DB=university
 SECRET_KEY=$secretKey
+ALGORITHM=RS256
+JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem
 MINIO_ROOT_USER=minioadmin
 MINIO_ROOT_PASSWORD=$minioPassword
 ELASTIC_PASSWORD=$elasticPassword
@@ -436,14 +791,26 @@ NATS_USER=app
 NATS_PASSWORD=$natsPassword
 SPICEDB_PRESHARED_KEY=$spicedbKey
 WS_HUB_INTERNAL_SECRET=$wsHubSecret
+GRAFANA_ADMIN_USER=admin
 GRAFANA_ADMIN_PASSWORD=$grafanaPassword
 REDIS_PASSWORD=$redisPassword
+ENABLE_METRICS_ENDPOINT=true
+METRICS_BASIC_AUTH_USERNAME=metrics_scraper
+METRICS_BASIC_AUTH_PASSWORD=$metricsPassword
+IMGPROXY_KEY=$imgproxyKey
+IMGPROXY_SALT=$imgproxySalt
+IMGPROXY_BASE_URL=http://localhost/imgproxy
 ENVIRONMENT=development
 VAPID_SUBJECT=mailto:admin@example.com
 SPOTIFY_CLIENT_ID=
 SPOTIFY_CLIENT_SECRET=
 SPOTIFY_REDIRECT_URI=
 SPOTIFY_SCOPES=
+CSRF_HMAC_SECRET=$csrfHmacSecret
+INTERNAL_HMAC_SECRET=$internalHmacSecret
+IDEMPOTENCY_HMAC_SECRET=$idempotencyHmacSecret
+SPOTIFY_TOKEN_SECRET=$spotifyTokenSecret
+SPOTIFY_OAUTH_STATE_SECRET=$spotifyOauthStateSecret
 "@
     Write-Utf8NoBom $EnvCompose $composeEnv
 
@@ -463,61 +830,63 @@ SPOTIFY_SCOPES=
     $generated = $true
 }
 
-# -- Sync check: ensure .env has all required vars ----------------------------
+# Enable signed imgproxy URLs for both fresh and pre-existing local setups.
+Ensure-ImgproxyEnvironment
 
+# Enable authenticated Prometheus scraping for fresh and existing setups.
+Ensure-MetricsEnvironment
+
+# Give each application security domain an independent launcher-managed key.
+Ensure-ApplicationSecrets
+
+# Keep RS256 settings coherent in both supported Compose environment files.
+Ensure-JwtEnvironment
+
+# Make bind-mounted configuration changes visible to Compose's config hash.
+Ensure-DockerConfigRevision
+
+# -- Sync check: keep Compose interpolation in lockstep with .env.docker ------
+# Compose reads these values from .env while containers read .env.docker. A
+# partially populated or stale .env therefore fails before the backend starts
+# (or, worse, starts services with credentials that do not match). Treat the
+# docker env file as the canonical source for every required interpolation key,
+# including keys that older launcher versions forgot to backfill.
 if (-not $generated) {
-    $envContent = Get-Content $EnvCompose -Raw -ErrorAction SilentlyContinue
-    $missing = @()
-    foreach ($key in @("WS_HUB_INTERNAL_SECRET", "REDIS_PASSWORD", "MINIO_ROOT_PASSWORD", "SPICEDB_PRESHARED_KEY", "GRAFANA_ADMIN_PASSWORD")) {
-        if ($envContent -notmatch "(?m)^$key=") {
-            $missing += $key
+    $composeSyncKeys = @(
+        "POSTGRES_PASSWORD",
+        "MINIO_ROOT_USER",
+        "MINIO_ROOT_PASSWORD",
+        "ELASTIC_PASSWORD",
+        "NATS_USER",
+        "NATS_PASSWORD",
+        "SPICEDB_PRESHARED_KEY",
+        "WS_HUB_INTERNAL_SECRET",
+        "GRAFANA_ADMIN_PASSWORD",
+        "REDIS_PASSWORD",
+        "SECRET_KEY",
+        "INTERNAL_HMAC_SECRET",
+        "METRICS_BASIC_AUTH_PASSWORD",
+        "IMGPROXY_KEY",
+        "IMGPROXY_SALT"
+    )
+    $missingDockerKeys = @()
+    $synchronizedKeys = @()
+    foreach ($key in $composeSyncKeys) {
+        $dockerValue = Get-EnvEntry -Path $EnvFile -Key $key
+        if ([string]::IsNullOrWhiteSpace($dockerValue)) {
+            $missingDockerKeys += $key
+            continue
+        }
+        if ((Get-EnvEntry -Path $EnvCompose -Key $key) -ne $dockerValue) {
+            Set-EnvEntry -Path $EnvCompose -Key $key -Value $dockerValue
+            $synchronizedKeys += $key
         }
     }
-    if ($missing.Count -gt 0) {
-        Write-Warn "Missing vars in .env: $($missing -join ', '). Reading from .env.docker..."
-        $dockerLines = Get-Content $EnvFile -ErrorAction SilentlyContinue
-        $patch = ""
-        foreach ($key in $missing) {
-            $line = $dockerLines | Where-Object { $_ -match "^$key=" } | Select-Object -First 1
-            if ($line) { $patch += "`n$line" }
-        }
-        if ($patch) {
-            Add-Content -Path $EnvCompose -Value $patch -NoNewline:$false
-            Write-Ok "Patched .env with missing vars"
-        }
+    if ($missingDockerKeys.Count -gt 0) {
+        throw "Required variables are missing or empty in ${EnvFile}: $($missingDockerKeys -join ', ')"
     }
-}
-
-# -- Wave 137 SW1: Migrate existing .env.docker to RS256 ----------------------
-# Pre-W137 .env.docker has ALGORITHM=HS256 (no JWT_PRIVATE_KEY_PATH).
-# Post-W137 expects ALGORITHM=RS256 + JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem.
-# Auto-patch existing files for seamless upgrade.
-if (Test-Path $EnvFile) {
-    $envDockerContent = Get-Content $EnvFile -Raw -ErrorAction SilentlyContinue
-    $needsAlgorithmFlip = $envDockerContent -match "(?m)^ALGORITHM=HS256\s*$"
-    $needsKeyPath = $envDockerContent -notmatch "(?m)^JWT_PRIVATE_KEY_PATH="
-
-    if ($needsAlgorithmFlip -or $needsKeyPath) {
-        Write-Status "Migrating $EnvFile to RS256 (Wave 137 SW1)..."
-
-        if ($needsAlgorithmFlip) {
-            $envDockerContent = $envDockerContent -replace "(?m)^ALGORITHM=HS256\s*$", "ALGORITHM=RS256"
-            Write-Ok "Flipped ALGORITHM=HS256 -> ALGORITHM=RS256"
-        }
-
-        if ($needsKeyPath) {
-            # Insert JWT_PRIVATE_KEY_PATH after ALGORITHM line (or after SECRET_KEY if ALGORITHM missing)
-            if ($envDockerContent -match "(?m)^ALGORITHM=") {
-                $envDockerContent = $envDockerContent -replace `
-                    "((?m)^ALGORITHM=[^\r\n]*)", `
-                    "`$1`nJWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem"
-            } else {
-                $envDockerContent += "`nJWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem"
-            }
-            Write-Ok "Added JWT_PRIVATE_KEY_PATH=.secrets/jwt_rs256.pem"
-        }
-
-        Write-Utf8NoBom $EnvFile $envDockerContent.TrimEnd()
+    if ($synchronizedKeys.Count -gt 0) {
+        Write-Ok "Synchronized Compose variables from ${EnvFile}: $($synchronizedKeys -join ', ')"
     }
 }
 
@@ -526,21 +895,17 @@ if (Test-Path $EnvFile) {
 # Volume-mounted into container at /app/.secrets/jwt_rs256.pem.
 New-JwtRs256Key -OutputPath ".secrets/jwt_rs256.pem"
 
-# -- Wave 142 SW3: Derive RSA-2048 public key for Temporal JWT verification ---
-# Temporal reads .secrets/jwt_rs256.pub.pem via TEMPORAL_JWT_KEY_SOURCE1=
-# file:///app/.secrets/jwt_rs256.pub.pem env var (rendered into config.yaml
-# by auto-setup's config_template.yaml line 260). The file:// approach avoids
-# the HTTP JWKS chicken-and-egg with backend startup ordering - W141 SW3
-# tried http://backend:8000/.well-known/jwks.json and likely contributed to
-# the (z) cascade. Public key is derived from the same RSA-2048 private key
-# the backend uses to sign JWTs (.secrets/jwt_rs256.pem from W137 SW1).
+# Derive the public key used directly by file-processor. Temporal obtains the
+# same key from backend's JWKS endpoint and now waits for backend readiness, so
+# its first authenticated request cannot race an empty key-provider cache.
 New-JwtRs256PublicKey -PrivateKeyPath ".secrets/jwt_rs256.pem" -OutputPath ".secrets/jwt_rs256.pub.pem"
 
 # -- Wave 141 SW4: Mint Temporal service token (RS256 JWT) ---------------------
 # file-processor (W141 SW5) reads .secrets/temporal_api_key and attaches it to
 # Temporal client via client.NewAPIKeyStaticCredentials(token). Temporal's
 # default JWT claim mapper (W141 SW2 verified) validates via the JWKS endpoint
-# at /.well-known/jwks.json. Idempotent - skips if file exists.
+# at /.well-known/jwks.json. Existing tokens are retained only after their
+# claims, expiry, algorithm, and RSA signature pass validation.
 New-TemporalServiceToken
 
 # -- Wave 137 SW2: SECRET_KEY drift detection .env <-> .env.docker ---------------
@@ -593,78 +958,51 @@ if ($Rebuild) {
 # -- Start services -----------------------------------------------------------
 
 Write-Status "Starting containers..."
-docker compose -f $ComposeFile --env-file $EnvFile up -d
+# Compose recreates only services whose image or effective configuration
+# changed. This keeps repeat starts fast while --remove-orphans retires services
+# removed from the supported topology.
+docker compose -f $ComposeFile --env-file $EnvFile up -d --remove-orphans
 if ($LASTEXITCODE -ne 0) {
     Write-Err "Failed to start containers."
+    docker compose -f $ComposeFile --env-file $EnvFile ps --all
+    docker compose -f $ComposeFile --env-file $EnvFile logs --tail=50 migrations postgres-databases-init minio-init spicedb-migrate temporal-admin-tools temporal-namespace-init flagd flagd-healthprobe backend outbox-worker 2>$null
     exit 1
-}
-
-# -- First-run initialization -------------------------------------------------
-
-# SpiceDB needs its own database in Postgres (idempotent)
-Write-Status "Ensuring SpiceDB database exists..."
-& {
-    $ErrorActionPreference = "SilentlyContinue"
-    docker compose -f $ComposeFile --env-file $EnvFile exec -T postgres psql -U postgres -c "CREATE DATABASE spicedb" 2>$null
-}
-# Ignore errors - database may already exist
-
-# SpiceDB needs migrations after fresh DB creation
-Write-Status "Running SpiceDB migrations..."
-$pgPass = (Select-String -Path $EnvFile -Pattern "^POSTGRES_PASSWORD=(.+)$").Matches.Groups[1].Value
-$projectName = (Split-Path $ProjectRoot -Leaf).ToLower() -replace '[^a-z0-9]', '_'
-$network = "${projectName}_internal"
-& {
-    $ErrorActionPreference = "SilentlyContinue"
-    docker run --rm --network $network authzed/spicedb:v1.51.0 migrate head --datastore-engine postgres --datastore-conn-uri "postgres://postgres:${pgPass}@postgres:5432/spicedb?sslmode=disable" 2>$null
-}
-if ($LASTEXITCODE -eq 0) {
-    Write-Ok "SpiceDB migrations applied"
-} else {
-    Write-Warn "SpiceDB migration failed or already up-to-date"
-}
-
-# MinIO bucket (wait for MinIO to be healthy, then create via minio/mc container)
-Write-Status "Ensuring MinIO 'uploads' bucket exists..."
-$minioReady = $false
-for ($i = 0; $i -lt 12; $i++) {
-    $healthStr = & { $ErrorActionPreference = "SilentlyContinue"; docker compose -f $ComposeFile --env-file $EnvFile ps minio --format json 2>$null } | Out-String
-    $health = if ($healthStr -match "\{") { $healthStr | ConvertFrom-Json } else { $null }
-    $h = if ($health -is [array]) { $health[0].Health } else { $health.Health }
-    if ($h -eq "healthy") { $minioReady = $true; break }
-    Start-Sleep -Seconds 5
-}
-if ($minioReady) {
-    $minioPass = (Select-String -Path $EnvFile -Pattern "^MINIO_ROOT_PASSWORD=(.+)$").Matches.Groups[1].Value
-    # mc is NOT in minio/minio image - use separate minio/mc container on the same network
-    $projectName = (Split-Path $ProjectRoot -Leaf).ToLower() -replace '[^a-z0-9]', '_'
-    $network = "${projectName}_internal"
-    & {
-        $ErrorActionPreference = "SilentlyContinue"
-        docker run --rm --network $network --entrypoint "" minio/mc sh -c "mc alias set local http://minio:9000 minioadmin $minioPass && mc mb local/uploads --ignore-existing" 2>$null
-    }
-    if ($LASTEXITCODE -eq 0) {
-        Write-Ok "MinIO bucket ready"
-    } else {
-        Write-Warn "Could not create MinIO bucket - create manually after startup"
-    }
-} else {
-    Write-Warn "MinIO not healthy yet - create bucket manually after startup"
 }
 
 # -- Health check loop --------------------------------------------------------
 
 Write-Status "Waiting for services..."
-$timeout = 120
+$timeout = 300
 $elapsed = 0
-$services = @{
-    postgres = @{ type = "docker"; ready = $false }
-    backend  = @{ type = "docker"; ready = $false }
-    nats     = @{ type = "docker"; ready = $false }
-    gateway  = @{ type = "http"; url = "http://localhost:8080/health"; ready = $false }
-    wshub    = @{ type = "http"; url = "http://localhost:8083/health"; ready = $false }
-    frontend = @{ type = "http"; url = "http://localhost:8081/healthz"; ready = $false }
-    caddy    = @{ type = "http"; url = "http://localhost/healthz"; ready = $false }
+$services = [ordered]@{
+    postgres      = @{ type = "docker"; service = "postgres"; ready = $false }
+    redis         = @{ type = "docker"; service = "redis"; ready = $false }
+    redisexporter = @{ type = "docker"; service = "redis-exporter"; ready = $false }
+    flagd         = @{ type = "docker"; service = "flagd-healthprobe"; ready = $false }
+    backend       = @{ type = "docker"; service = "backend"; ready = $false }
+    elasticsearch = @{ type = "docker"; service = "elasticsearch"; ready = $false }
+    gateway       = @{ type = "http"; service = "gateway"; url = "http://localhost:8080/health"; ready = $false }
+    minio         = @{ type = "http"; service = "minio"; url = "http://localhost:9001/"; ready = $false }
+    temporal      = @{ type = "docker"; service = "temporal"; ready = $false }
+    grafana       = @{ type = "http"; service = "grafana"; url = "http://localhost:3000/api/health"; ready = $false }
+    notifications = @{ type = "docker"; service = "notifications-worker"; ready = $false }
+    prometheus    = @{ type = "http"; service = "prometheus"; url = "http://localhost:9090/-/healthy"; ready = $false }
+    # Probe a rendered route, not only the lightweight process health endpoint.
+    # The first SSR render after an image update can take several seconds while
+    # Node warms module caches, so give it a bounded one-time warmup window.
+    frontend      = @{ type = "http"; service = "frontend"; url = "http://localhost:8081/login"; timeout = 20; ready = $false }
+    imgproxy      = @{ type = "docker"; service = "imgproxy"; ready = $false }
+    nats          = @{ type = "docker"; service = "nats"; ready = $false }
+    outbox        = @{ type = "docker"; service = "outbox-worker"; ready = $false }
+    spicedb       = @{ type = "docker"; service = "spicedb"; ready = $false }
+    wshub         = @{ type = "http"; service = "ws-hub"; url = "http://localhost:8083/health"; ready = $false }
+    caddy         = @{ type = "http"; service = "caddy"; url = "http://localhost/healthz"; ready = $false }
+    site          = @{ type = "http"; service = "caddy"; url = "http://localhost/login"; timeout = 20; ready = $false }
+    fileprocessor = @{ type = "docker"; service = "file-processor"; ready = $false }
+    loki          = @{ type = "docker"; service = "loki-healthprobe"; ready = $false }
+    tempo         = @{ type = "docker"; service = "tempo-healthprobe"; ready = $false }
+    alloy         = @{ type = "docker"; service = "alloy"; ready = $false }
+    pyroscope     = @{ type = "http"; service = "pyroscope"; url = "http://localhost:4040/ready"; ready = $false }
 }
 
 do {
@@ -675,18 +1013,29 @@ do {
         if ($services[$name].ready) { continue }
 
         if ($services[$name].type -eq "docker") {
-            $infoStr = & { $ErrorActionPreference = "SilentlyContinue"; docker compose -f $ComposeFile --env-file $EnvFile ps $name --format json 2>$null } | Out-String
+            $serviceName = $services[$name].service
+            $infoStr = & { $ErrorActionPreference = "SilentlyContinue"; docker compose -f $ComposeFile --env-file $EnvFile ps $serviceName --format json 2>$null } | Out-String
             $info = if ($infoStr -match "\{") { $infoStr | ConvertFrom-Json } else { $null }
             $h = if ($info -is [array]) { $info[0].Health } else { $info.Health }
-            if ($h -eq "healthy") { $services[$name].ready = $true }
+            $state = if ($info -is [array]) { $info[0].State } else { $info.State }
+            if ($h -eq "healthy" -or ((-not $h) -and $state -eq "running")) {
+                $services[$name].ready = $true
+            }
         } else {
-            if (Test-ServiceHttp $services[$name].url) { $services[$name].ready = $true }
+            $requestTimeout = if ($services[$name].ContainsKey("timeout")) {
+                $services[$name].timeout
+            } else {
+                2
+            }
+            if (Test-ServiceHttp -Url $services[$name].url -Timeout $requestTimeout) {
+                $services[$name].ready = $true
+            }
         }
     }
 
     # Status line
     $statParts = @()
-    foreach ($name in @("postgres", "backend", "gateway", "caddy", "frontend", "nats", "wshub")) {
+    foreach ($name in $services.Keys) {
         $icon = if ($services[$name].ready) { "+" } else { "." }
         $color = if ($services[$name].ready) { "Green" } else { "DarkGray" }
         $statParts += @{ name = $name; icon = $icon; color = $color }
@@ -705,13 +1054,21 @@ if (-not $allReady) {
     Write-Err "Timeout after ${timeout}s. Failing services:"
     foreach ($name in $services.Keys) {
         if (-not $services[$name].ready) {
-            Write-Err "  $name - showing last 15 log lines:"
-            docker compose -f $ComposeFile --env-file $EnvFile logs --tail=15 $name 2>$null
+            $serviceName = $services[$name].service
+            Write-Err "  $name ($serviceName) - showing last 15 log lines:"
+            docker compose -f $ComposeFile --env-file $EnvFile logs --tail=15 $serviceName 2>$null
             Write-Host ""
         }
     }
     exit 1
 }
+
+Write-Status "Validating Prometheus scrape targets..."
+if (-not (Wait-PrometheusTargets)) {
+    Write-Err "Prometheus has missing or unhealthy scrape targets."
+    exit 1
+}
+Write-Ok "Prometheus scrape targets are healthy"
 
 # -- Done ---------------------------------------------------------------------
 
@@ -730,6 +1087,9 @@ Write-Host "  API Docs:             http://localhost:8000/docs" -ForegroundColor
 Write-Host "  WS Hub:               http://localhost:8083" -ForegroundColor DarkYellow
 Write-Host "  MinIO Console:        http://localhost:9001" -ForegroundColor DarkYellow
 Write-Host "  Grafana:              http://localhost:3000" -ForegroundColor DarkYellow
+Write-Host "  Prometheus:           http://localhost:9090" -ForegroundColor DarkYellow
+Write-Host "  Pyroscope:            http://localhost:4040" -ForegroundColor DarkYellow
+Write-Host "  Alloy:                http://localhost:12345" -ForegroundColor DarkYellow
 Write-Host ""
 Write-Host "Seed data:" -ForegroundColor Cyan
 Write-Host "  1) Demo content (idempotent - student user + news + events + schedule + stories):"

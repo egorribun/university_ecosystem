@@ -55,14 +55,17 @@ const ISO_SAMPLE: Lesson = {
 }
 
 function makeBaseProps() {
+  const unrelatedLesson = { ...SAMPLE, id: "unrelated" }
   return {
-    schedule: [SAMPLE],
+    schedule: [SAMPLE, unrelatedLesson],
     lessonTypeOptions: [
       { value: "lecture", label: "Лекция" },
       { value: "practice", label: "Практика" },
     ],
     toBackendLessonType: (v?: string | null) => v ?? "lecture",
-    applyScheduleUpdate: vi.fn((updater: (prev: Lesson[]) => Lesson[]) => updater([SAMPLE])),
+    applyScheduleUpdate: vi.fn((updater: (prev: Lesson[]) => Lesson[]) =>
+      updater([SAMPLE, unrelatedLesson])
+    ),
     refresh: vi.fn(),
   }
 }
@@ -234,5 +237,14 @@ describe("EditLessonDialog — branches", () => {
     )
     expect(screen.queryByText("schedule:dialog.editTitle")).not.toBeInTheDocument()
     expect(screen.queryByDisplayValue("Линейная алгебра")).not.toBeInTheDocument()
+  })
+
+  it("does not submit an invalid edit form", () => {
+    renderDialog(makeBaseProps())
+    fireEvent.change(screen.getByLabelText("schedule:form.subject"), { target: { value: "" } })
+
+    fireEvent.submit(screen.getByRole("button", { name: "common:buttons.save" }).closest("form")!)
+
+    expect(apiMocks.patch).not.toHaveBeenCalled()
   })
 })

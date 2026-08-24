@@ -89,7 +89,29 @@ class SecuritySettings(
     # ── Image proxy ──────────────────────────────────────────────────────────
     imgproxy_key: str | None = None
     imgproxy_salt: str | None = None
-    imgproxy_base_url: str = "http://localhost:8081"
+    imgproxy_base_url: str = "http://localhost/imgproxy"
+
+    @field_validator("imgproxy_key", "imgproxy_salt")
+    @classmethod
+    def _validate_imgproxy_hex_secret(
+        cls, value: str | None, info: ValidationInfo
+    ) -> str | None:
+        if not value:
+            return None
+
+        label = (info.field_name or "imgproxy secret").upper()
+        if len(value) % 2 or any(
+            character not in "0123456789abcdefABCDEF" for character in value
+        ):
+            raise ValueError(
+                f"{label} must be at least 32 bytes encoded as hexadecimal"
+            )
+        decoded = bytes.fromhex(value)
+        if len(decoded) < 32:
+            raise ValueError(
+                f"{label} must be at least 32 bytes encoded as hexadecimal"
+            )
+        return value.lower()
 
     # ── CSRF (RZ-003, audit 2026-03-10) ──────────────────────────────────────
     # Used to sign CSRF tokens with HMAC-SHA256, binding each token to the

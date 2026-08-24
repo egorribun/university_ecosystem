@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 import jwt
 from fastapi import BackgroundTasks
+from redis.exceptions import RedisError
 
 from app.auth.redis_session import get_session_backend
 from app.core.config import settings
@@ -262,16 +263,18 @@ class SessionService:
 
         session.revoked_at = session.revoked_at or now
         session.signing_key = secrets.token_urlsafe(32)
-        await self.db.commit()
-
-        # Best effort backend revocation
-        from contextlib import suppress
 
         from app.auth.redis_session import get_session_backend
 
         backend = await get_session_backend()
-        with suppress(Exception):
-            await backend.revoke_session(str(session.jti))
+        try:
+            await backend.revoke_session(
+                str(session.jti), expires_at=session.expires_at
+            )
+        except (RedisError, RuntimeError, OSError):
+            await self.db.rollback()
+            raise
+        await self.db.commit()
 
         return ActiveSessionDTO.model_validate(session)
 

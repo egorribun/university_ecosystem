@@ -23,6 +23,16 @@ describe("profileUtils closure paths", () => {
       },
       { key: "Mentor-1", name: "Mentor", issuer: undefined, date: undefined, url: undefined },
     ])
+
+    expect(parseAchievements("| Faculty | 2026")).toEqual([
+      {
+        key: "| Faculty | 2026-0",
+        name: "| Faculty | 2026",
+        issuer: "Faculty",
+        date: "2026",
+        url: undefined,
+      },
+    ])
   })
 
   it("builds vCards with optional contact fields", () => {

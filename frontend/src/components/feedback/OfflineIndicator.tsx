@@ -49,10 +49,12 @@ export function OfflineIndicator() {
     }
   }, [isOffline, show])
 
+  if (typeof document === "undefined") return null
   if (!show) return null
 
   const content = (
     <div
+      data-testid="offline-indicator-toast"
       role="status"
       aria-live="polite"
       className={cn(
@@ -79,7 +81,7 @@ export function OfflineIndicator() {
     </div>
   )
 
-  return typeof document !== "undefined" ? createPortal(content, document.body) : null
+  return createPortal(content, document.body)
 }
 
 export default OfflineIndicator

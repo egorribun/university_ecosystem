@@ -128,6 +128,18 @@ describe("useSwipe — gating conditions", () => {
 
     expect(onSwipeRight).not.toHaveBeenCalled()
   })
+
+  it("treats a zero-duration gesture as zero velocity", () => {
+    const onSwipeRight = vi.fn()
+    const { result } = renderHook(() =>
+      useSwipe({ onSwipeRight, threshold: 100, minVelocity: 0.3 })
+    )
+
+    result.current.onPointerDown(pointerEvent(0, 0))
+    result.current.onPointerUp(pointerEvent(20, 0))
+
+    expect(onSwipeRight).not.toHaveBeenCalled()
+  })
 })
 
 describe("useSwipe — cancel paths", () => {

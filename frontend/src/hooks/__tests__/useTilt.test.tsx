@@ -111,4 +111,18 @@ describe("useTilt", () => {
     expect(cancelSpy).toHaveBeenCalled()
     cancelSpy.mockRestore()
   })
+
+  it("ignores a queued frame after the element ref is detached", () => {
+    const { result } = renderHook(() => useTilt())
+    const el = document.createElement("div")
+    result.current.ref(el)
+    result.current.onMouseMove({ clientX: 10, clientY: 10 } as React.MouseEvent)
+    result.current.ref(null)
+
+    act(() => {
+      vi.advanceTimersByTime(16)
+    })
+
+    expect(el.style.transform).toBe("")
+  })
 })

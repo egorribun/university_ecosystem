@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ApiResponseValidationError } from "../validation"
 
-// Mock the generated SDK + the lazy-imported apiClient so the api/notifications
+// Mock the generated SDK + the lazy-imported axios client so the api/notifications
 // wrappers run against canned responses (no MSW / contract validator needed).
 vi.mock("@/api/generated", () => ({
   adminGetUserTopicsApiV1PushAdminTopicsUserIdGet: vi.fn(),
@@ -22,7 +22,7 @@ vi.mock("@/api/generated", () => ({
 const apiClientGet = vi.fn()
 const apiClientPost = vi.fn()
 vi.mock("@/api/client", () => ({
-  apiClient: { get: apiClientGet, post: apiClientPost },
+  default: { get: apiClientGet, post: apiClientPost },
 }))
 
 import * as gen from "@/api/generated"
@@ -45,6 +45,16 @@ import {
 } from "../notifications"
 
 const UUID = "11111111-1111-4111-8111-111111111111"
+
+const checkScheduleSuccess = {
+  data: { items: [], unread_count: 0, has_more: false, next_cursor: null },
+  status: 200,
+  statusText: "OK",
+  headers: {},
+  config: { headers: {} },
+  request: {},
+  error: undefined,
+}
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -97,18 +107,56 @@ describe("simple notification passthroughs", () => {
   })
 
   it("checkSchedule forwards the lookahead default + override", async () => {
-    await checkSchedule()
+    vi.mocked(gen.checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost).mockResolvedValue(
+      checkScheduleSuccess as never
+    )
+
+    await expect(checkSchedule()).resolves.toBe(checkScheduleSuccess)
     expect(
       gen.checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost
     ).toHaveBeenLastCalledWith({
       query: { lookahead_minutes: 15 },
     })
-    await checkSchedule(30)
+    await expect(checkSchedule(30)).resolves.toBe(checkScheduleSuccess)
     expect(
       gen.checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost
     ).toHaveBeenLastCalledWith({
       query: { lookahead_minutes: 30 },
     })
+  })
+
+  it("checkSchedule rejects the error from a fulfilled SDK result", async () => {
+    const error = {
+      detail: [
+        {
+          loc: ["query", "lookahead_minutes"],
+          msg: "Input should be greater than zero",
+          type: "greater_than",
+          input: 0,
+        },
+      ],
+    }
+    vi.mocked(gen.checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost).mockResolvedValue({
+      data: undefined,
+      error,
+      name: "AxiosError",
+      message: "Request failed with status code 422",
+      code: "ERR_BAD_REQUEST",
+      config: { headers: {} },
+      request: {},
+      response: {
+        data: error,
+        status: 422,
+        statusText: "Unprocessable Entity",
+        headers: {},
+        config: { headers: {} },
+      },
+      status: 422,
+      isAxiosError: true,
+      toJSON: () => ({}),
+    } as never)
+
+    await expect(checkSchedule()).rejects.toBe(error)
   })
 })
 
@@ -130,6 +178,21 @@ describe("saveSubscription", () => {
       keys: { p256dh: "p", auth: "a" },
       topics: ["system"],
     })
+  })
+
+  it("passes an undefined user agent when the browser reports an empty value", async () => {
+    const userAgent = vi.spyOn(navigator, "userAgent", "get").mockReturnValue("")
+    vi.mocked(gen.subscribeApiV1PushSubscribePost).mockResolvedValue({
+      data: { id: UUID, endpoint: "https://push.example/x" },
+    } as never)
+
+    try {
+      await saveSubscription(goodSub)
+      const body = vi.mocked(gen.subscribeApiV1PushSubscribePost).mock.calls[0]?.[0]?.body
+      expect(body).toHaveProperty("user_agent", undefined)
+    } finally {
+      userAgent.mockRestore()
+    }
   })
 
   it("throws on an incomplete payload (no network call)", async () => {
@@ -232,7 +295,7 @@ describe("admin topics", () => {
   })
 })
 
-describe("dead-letter queue (lazy apiClient)", () => {
+describe("dead-letter queue (lazy axios client)", () => {
   it("fetchDeadLetterQueue validates + forwards params/signal", async () => {
     apiClientGet.mockResolvedValue({
       data: { items: [], total: 0 },

@@ -480,10 +480,6 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
 
     from sqlalchemy.exc import OperationalError
 
-    from app.services import notification_queue
-
-    # Clear wait queue before test
-    await notification_queue.reset_testing_state()
     yield
 
     database_url = os.environ.get("DATABASE_URL", "")

@@ -28,6 +28,7 @@ COMPONENTS = (
     "go-gateway",
     "go-ws-hub",
     "go-file-processor",
+    "go-shared",
     "rust-native",
     "rust-pyo3-sanitizer",
     "rust-wasm-sanitizer",
@@ -43,6 +44,11 @@ SOURCE_ROOTS = {
     "go-gateway": ("services/gateway",),
     "go-ws-hub": ("services/ws-hub",),
     "go-file-processor": ("services/file-processor",),
+    "go-shared": (
+        "services/cmd/uni-cli",
+        "services/pkg/spiffe",
+        "services/pkg/spicedb",
+    ),
     "rust-native": ("native/rust_ext",),
     "rust-pyo3-sanitizer": ("crates/pyo3-sanitizer",),
     "rust-wasm-sanitizer": ("frontend/wasm-sanitizer",),
@@ -60,6 +66,7 @@ SUPPORTED_REPORTS = {
         "go-coverprofile",
         "artifacts/coverage/go/file-processor/coverage.out",
     ),
+    "go-shared": ("go-coverprofile", "artifacts/coverage/go/shared/coverage.out"),
     "rust-native": ("llvm-cov-json", "artifacts/coverage/rust/rust-native/llvm.json"),
     "rust-pyo3-sanitizer": (
         "llvm-cov-json",
@@ -83,6 +90,7 @@ CANONICAL_RAW_ARTIFACTS = frozenset(
         "artifacts/coverage/go/gateway/coverage.out",
         "artifacts/coverage/go/ws-hub/coverage.out",
         "artifacts/coverage/go/file-processor/coverage.out",
+        "artifacts/coverage/go/shared/coverage.out",
         "artifacts/coverage/rust/rust-native/llvm.json",
         "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
         "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
@@ -90,7 +98,7 @@ CANONICAL_RAW_ARTIFACTS = frozenset(
         "artifacts/coverage/quality-manifest.json",
     }
 )
-GO_COMPONENTS = frozenset({"go-gateway", "go-ws-hub", "go-file-processor"})
+GO_COMPONENTS = frozenset({"go-gateway", "go-ws-hub", "go-file-processor", "go-shared"})
 RUST_COMPONENTS = frozenset(
     {"rust-native", "rust-pyo3-sanitizer", "rust-wasm-sanitizer", "rust-crypto"}
 )
@@ -463,6 +471,21 @@ def _canonical_source_identity(component: str, raw_path: str) -> str:
             "file-processor",
         ):
             source_parts = ("services", "file-processor", *source_parts[3:])
+    elif component == "go-shared":
+        if len(source_parts) >= 3 and source_parts[:3] == (
+            "github.com",
+            "university-ecosystem",
+            "uni-cli",
+        ):
+            source_parts = ("services", "cmd", "uni-cli", *source_parts[3:])
+        elif len(source_parts) >= 5 and source_parts[:5] == (
+            "github.com",
+            "university-ecosystem",
+            "services",
+            "pkg",
+            "spiffe",
+        ):
+            source_parts = ("services", "pkg", "spiffe", *source_parts[5:])
 
     _reject_source_symlink_parts(source_parts)
     if not _source_path_is_within_component_root(component, source_parts):
@@ -1510,6 +1533,8 @@ def _parse_rust_llvm_json(
         if native_branches
         else []
     )
+    covered_branches = sum(covered for covered, _ in branch_pairs)
+    total_branches = sum(total for _, total in branch_pairs)
     source_function_pair = _parse_rust_crypto_source_function_pair(
         document, component, ignore_outside_files
     )
@@ -1529,10 +1554,10 @@ def _parse_rust_llvm_json(
             reason_code="llvm_json_has_no_statement_counter",
         ),
         "branches": (
-            _measured_metric(
-                "native",
-                sum(covered for covered, _ in branch_pairs),
-                sum(total for _, total in branch_pairs),
+            (
+                _vacuous_metric("Nightly LLVM report contains no branch units")
+                if total_branches == 0
+                else _measured_metric("native", covered_branches, total_branches)
             )
             if native_branches
             else _unmeasured_metric(
@@ -2481,8 +2506,6 @@ def _missing_metrics() -> dict[str, dict[str, object]]:
 
 
 def _metric_satisfies_floor(metric: dict[str, object], floor: int) -> bool:
-    if metric["status"] != "native":
-        return False
     covered = metric["covered"]
     total = metric["total"]
     if (
@@ -2490,8 +2513,16 @@ def _metric_satisfies_floor(metric: dict[str, object], floor: int) -> bool:
         or not isinstance(covered, int)
         or isinstance(total, bool)
         or not isinstance(total, int)
-        or total <= 0
+        or total < 0
     ):
+        return False
+    if total == 0:
+        return (
+            metric["status"] == "derived"
+            and covered == 0
+            and metric.get("percent") == 100.0
+        )
+    if metric["status"] != "native":
         return False
     return covered * 100 >= total * floor
 

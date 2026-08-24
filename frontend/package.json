@@ -15,7 +15,7 @@
     "build:report": "npm run build -- --report",
     "preview": "vite preview",
     "start": "node ./scripts/server-prod.mjs",
-    "lint": "eslint --max-warnings=0 --ext .ts,.tsx \"src\" \"tests\"",
+    "lint": "eslint --max-warnings=0 --ext .ts,.tsx,.js,.mjs,.cjs \"src\" \"tests\" \"scripts\"",
     "lint:deadcode": "ts-prune",
     "lint:depcheck": "node scripts/lint-depcheck.mjs",
     "lint:all": "npm run lint && npm run manifests:check && npm run tokens:sync && npm run lint:deadcode && npm run lint:depcheck",
@@ -169,6 +169,7 @@
     "eslint-plugin-storybook": "^10.2.10",
     "fake-indexeddb": "^6.2.5",
     "fast-check": "^4.8.0",
+    "globals": "17.9.0",
     "husky": "^9.1.7",
     "istanbul-lib-coverage": "^3.2.2",
     "istanbul-lib-report": "^3.0.1",
@@ -205,7 +206,7 @@
   },
   "description": "",
   "lint-staged": {
-    "*.{ts,tsx,js,jsx}": [
+    "*.{ts,tsx,js,jsx,mjs,cjs}": [
       "eslint --fix --no-warn-ignored"
     ],
     "*.{ts,tsx,js,jsx,json,css,scss,md,html,mjs,cjs}": [

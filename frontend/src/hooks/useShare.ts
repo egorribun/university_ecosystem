@@ -21,6 +21,12 @@ interface ShareOptions {
   }
 }
 
+export function resolveShareUrl(url?: string): string {
+  if (url) return url
+  if (typeof window === "undefined") return ""
+  return window.location.href
+}
+
 export function useShare({ title, url, onNotify, translations = {} }: ShareOptions) {
   const [sharing, setSharing] = useState(false)
   const [shareDialogOpen, setShareDialogOpen] = useState(false)
@@ -28,11 +34,7 @@ export function useShare({ title, url, onNotify, translations = {} }: ShareOptio
   const [copiedLink, setCopiedLink] = useState(false)
   const copyTimeoutRef = useRef<number | null>(null)
 
-  const shareUrl = useMemo(() => {
-    if (url) return url
-    if (typeof window === "undefined") return ""
-    return window.location.href
-  }, [url])
+  const shareUrl = useMemo(() => resolveShareUrl(url), [url])
 
   const shareOptions = useMemo(() => {
     if (!shareUrl) return []

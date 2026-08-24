@@ -38,6 +38,7 @@ func hubWithWTTicketRedis(t *testing.T, payload string) *Hub {
 
 	h := newWTTestHub()
 	h.redisClient = rdb
+	h.revocationRedisClient = rdb
 	return h
 }
 
@@ -119,5 +120,13 @@ func TestHandleWebTransport_OriginAndUpgradeFailures(t *testing.T) {
 		clientCount := len(h.Clients)
 		h.mu.RUnlock()
 		assert.Zero(t, clientCount)
+	})
+
+	t.Run("WebTransportSession SetPongHandler is no-op", func(t *testing.T) {
+		session := NewWebTransportSession(nil)
+		assert.NotNil(t, session)
+		assert.NotPanics(t, func() {
+			session.SetPongHandler(func(string) error { return nil })
+		})
 	})
 }

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -39,7 +40,7 @@ def _snapshot_row(path: Path, snapshot: dict[str, Any]) -> str:
     frontend = components.get("frontend", {})
     go_values = [
         components.get(name, {}).get("metrics", {}).get("statements", {}).get("percent")
-        for name in ("go-gateway", "go-ws-hub", "go-file-processor")
+        for name in ("go-gateway", "go-ws-hub", "go-file-processor", "go-shared")
     ]
     go_values = [float(value) for value in go_values if value is not None]
     go_summary = "—" if not go_values else f"{sum(go_values) / len(go_values):.2f}%"
@@ -131,7 +132,7 @@ def main() -> int:
     parser.add_argument(
         "--history-dir",
         type=Path,
-        default=REPOSITORY_ROOT / "artifacts" / "quality" / "history",
+        default=REPOSITORY_ROOT / "docs" / "testing" / "quality-history",
     )
     parser.add_argument(
         "--contract",
@@ -148,12 +149,23 @@ def main() -> int:
     if args.limit < 1:
         parser.error("--limit must be positive")
 
-    paths = (
-        sorted(args.history_dir.glob("*.json"))[-args.limit :]
+    history = (
+        [(path, _read_json(path)) for path in sorted(args.history_dir.glob("*.json"))]
         if args.history_dir.exists()
         else []
     )
-    snapshots = [(path, _read_json(path)) for path in paths]
+    latest_history = sorted(
+        history,
+        key=lambda item: str(item[1].get("generated_at", "")),
+    )[-args.limit :]
+    output_parent = args.output.resolve().parent
+    snapshots = [
+        (
+            Path(os.path.relpath(path.resolve(), start=output_parent)),
+            snapshot,
+        )
+        for path, snapshot in latest_history
+    ]
     dashboard = render_dashboard(snapshots, _read_json(args.contract))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(dashboard, encoding="utf-8", newline="\n")

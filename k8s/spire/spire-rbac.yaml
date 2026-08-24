@@ -18,6 +18,37 @@ metadata:
   name: spire-agent
   namespace: spire
 ---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-bundle
+  namespace: spire
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: spire-server-bundle-role
+  namespace: spire
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["spire-bundle"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: spire-server-bundle-binding
+  namespace: spire
+subjects:
+  - kind: ServiceAccount
+    name: spire-server
+    namespace: spire
+roleRef:
+  kind: Role
+  name: spire-server-bundle-role
+  apiGroup: rbac.authorization.k8s.io
+---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -27,8 +58,8 @@ rules:
     resources: ["tokenreviews"]
     verbs: ["create"]
   - apiGroups: [""]
-    resources: ["nodes", "pods", "namespaces"]
-    verbs: ["get", "list", "watch"]
+    resources: ["nodes", "pods"]
+    verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

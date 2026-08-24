@@ -59,49 +59,9 @@ const LHCI_REDUCED_MOTION = import.meta.env.VITE_LHCI === "true" ? "always" : "u
 // `useReducedMotion`, `AnimatePresence`, `MotionConfig`, `motion.X` (now `m.X`)
 // initial/animate/exit/whileHover/whileTap/variants are all in domAnimation.
 export function AppProviders({ children }: AppProvidersProps) {
-  // Wave 148 SW2 — Hydration sentinel for Playwright e2e tests.
-  //
-  // ⭐ USER CONTRIBUTION POINT — choose timing semantics for the sentinel.
-  //
-  // This effect runs AFTER React commits the AppProviders tree (because
-  // useEffect always runs post-commit). That's the earliest point where
-  // child providers + components have mounted + their event listeners are
-  // bound. Playwright's `page.waitForFunction(() => window.__APP_HYDRATED)`
-  // gates on this signal to avoid the W125 SSR createRoot race that
-  // surfaced /events × 2 click-no-effect failures (W147 polish §Honesty
-  // probe, deferred to W148 SW3 via test.skip).
-  //
-  // Three architectural choices for the user to decide:
-  //
-  // (1) WHERE: AppProviders top-level (here) vs ProvidersInner vs a
-  //     dedicated <HydrationSentinel /> child mounted as last sibling.
-  //     • Top-level (current placement): fires after the WHOLE provider
-  //       tree mounts. Simplest. Used below.
-  //     • ProvidersInner: fires after only the inner providers mount;
-  //       LanguageProvider + MotionConfig are already mounted by parent
-  //       effects (different commit order — may race).
-  //     • Dedicated child: most controlled — key prop ordering guarantees
-  //       it mounts AFTER all siblings, but adds 1 extra component.
-  //
-  // (2) WHEN: immediate-on-mount (current) vs after microtask
-  //     (`Promise.resolve().then(...)`) vs after rAF (`requestAnimationFrame`).
-  //     • Immediate (current): fires synchronously inside useEffect.
-  //       Sufficient if onClick bindings attach during the same commit.
-  //     • Microtask: defers by 1 microtask tick. Useful if some async
-  //       state hydration (e.g. Zustand SSR sync) competes with the
-  //       effect.
-  //     • rAF: defers until next paint. Most conservative but adds ~16ms
-  //       to every test's wait time.
-  //
-  // (3) CLEANUP: leave `true` forever (current) vs reset on unmount.
-  //     • No cleanup (current): simpler; AppProviders never unmounts in
-  //       prod or test contexts; HMR may set it true again on reload.
-  //     • Reset: cleaner for HMR + StrictMode double-render, but adds
-  //       complexity for a 1-byte boolean.
-  //
-  // The current implementation is the safe default (top-level, immediate,
-  // no-cleanup). markAppHydrated also emits the idempotent bootstrap-loader
-  // completion event without changing this post-commit timing.
+  // Publish the hydration sentinel after React commits the complete provider
+  // tree. Playwright waits for this signal before interacting with hydrated UI;
+  // markAppHydrated also completes the bootstrap loader idempotently.
   useEffect(() => {
     markAppHydrated()
   }, [])

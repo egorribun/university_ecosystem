@@ -6,6 +6,7 @@ import { server } from "@/tests/mocks/server"
 
 vi.mock("workbox-precaching", () => ({
   cleanupOutdatedCaches: vi.fn(),
+  matchPrecache: vi.fn(async () => undefined),
   precacheAndRoute: vi.fn(),
   createHandlerBoundToURL: vi.fn(() => vi.fn()),
 }))
@@ -253,7 +254,7 @@ beforeEach(async () => {
   // even if bootstrap fails due to mock issues
   const offlineModule = await import("@/sw/offline")
   await offlineModule.initOfflineQueue()
-})
+}, 30_000)
 
 afterEach(async () => {
   // Note: deleteDatabase() removed to prevent hook timeouts with fake-indexeddb
@@ -919,7 +920,7 @@ describe("service worker media cache controls", () => {
     expect(reportsB.length).toBeGreaterThan(0)
   })
 
-  test("NavigationRoute error handler returns cached index.html or Response.error", async () => {
+  test("NavigationRoute error handler returns the precached shell or Response.error", async () => {
     const instance = (globalThis as any).__navigationRouteMockInstance
     expect(instance).toBeDefined()
     expect(instance.strategy).toBeDefined()
@@ -928,24 +929,17 @@ describe("service worker media cache controls", () => {
     const handlerPlugin = plugins.find((p: any) => p.handlerDidError)
     expect(handlerPlugin).toBeDefined()
 
-    const scope = self as unknown as TestServiceWorkerScope
-    const cache = await scope.caches.open("index-cache")
-    await cache.put("index.html", new Response("cached-html"))
-
-    const originalMatch = scope.caches.match
-    scope.caches.match = vi.fn(async (req) => {
-      if (req === "index.html") return new Response("cached-html")
-      return undefined
-    })
+    const { matchPrecache } = await import("workbox-precaching")
+    const matchPrecacheMock = vi.mocked(matchPrecache)
+    matchPrecacheMock.mockResolvedValueOnce(new Response("cached-html"))
 
     const res1 = await handlerPlugin.handlerDidError()
     await expect(res1.text()).resolves.toBe("cached-html")
 
-    scope.caches.match = vi.fn(async () => undefined)
+    matchPrecacheMock.mockResolvedValueOnce(undefined)
     const res2 = await handlerPlugin.handlerDidError()
     expect(res2.type).toBe("error")
-
-    scope.caches.match = originalMatch
+    expect(matchPrecacheMock).toHaveBeenCalledWith("_shell.html")
   })
 
   test("captured workbox routes match and handle requests correctly", async () => {

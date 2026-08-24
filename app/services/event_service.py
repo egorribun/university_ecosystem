@@ -172,7 +172,10 @@ class EventService:
                     # TD-W19-03 (Wave 19): narrowed from bare Exception.
                     # Token issuance can fail due to missing secret (KeyError),
                     # invalid input (ValueError), or wrong type (TypeError).
-                    logger.debug("MFA token issuance failed for attendee: %s", exc)
+                    logger.debug(
+                        "event.attendance_proof_generation_failed",
+                        error_type=exc.__class__.__name__,
+                    )
 
             output.append(
                 self.serialize_event(

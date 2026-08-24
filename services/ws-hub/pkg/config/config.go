@@ -74,6 +74,9 @@ type Config struct {
 	RedisURL      string
 	RedisPassword string
 	RedisDB       int
+	// RevocationRedisURL is a full redis:// URL for the dedicated durable,
+	// noeviction revoked:jti store. It must not share cache memory policy.
+	RevocationRedisURL string
 	// SPIFFE Workload API & mTLS configuration
 	SpiffeEnabled        bool
 	SpiffeEndpointSocket string
@@ -134,6 +137,7 @@ func LoadConfig() *Config {
 		RedisURL:                 getEnv("REDIS_URL", "redis:6379"),
 		RedisPassword:            getEnv("REDIS_PASSWORD", ""),
 		RedisDB:                  getEnvInt("REDIS_DB", 0),
+		RevocationRedisURL:       getEnv("REVOCATION_REDIS_URL", "redis://revocation-redis:6379/0"),
 		SpiffeEnabled:            os.Getenv("SPIFFE_ENABLED") == "true",
 		SpiffeEndpointSocket:     getEnv("SPIFFE_ENDPOINT_SOCKET", "unix:///run/spire/sockets/agent.sock"),
 		SpiffeTrustDomain:        getEnv("SPIFFE_TRUST_DOMAIN", "university.ecosystem"),

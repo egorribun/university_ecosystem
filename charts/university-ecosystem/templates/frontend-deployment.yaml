@@ -26,20 +26,20 @@ spec:
       # TD-05 (audit Wave 12): dedicated ServiceAccount.
       serviceAccountName: {{ .Release.Name }}-frontend
       automountServiceAccountToken: false
-      # RZ-03 (audit Wave 12): pod-level security context.
-      # runAsUser 101 matches the nginx user in nginxinc/nginx-unprivileged (frontend.Dockerfile).
+      # The runtime image uses the non-root `node` account (UID/GID 1000).
       securityContext:
         runAsNonRoot: true
-        runAsUser: 101
-        runAsGroup: 101
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: frontend
-          image: "{{ .Values.frontend.image.repository }}:{{ .Values.frontend.image.tag | default .Chart.AppVersion }}"
+          image: {{ printf "%s/%s:%s" .Values.global.imageRegistry .Values.frontend.image.repository (.Values.frontend.image.tag | default .Values.global.imageTag | default .Chart.AppVersion) | trimPrefix "/" | quote }}
           imagePullPolicy: {{ .Values.frontend.image.pullPolicy }}
-          # RZ-03: nginx-unprivileged writes pid + temp files to /tmp and cache to
-          # /var/cache/nginx. Provide emptyDir volumes; root filesystem is read-only.
+          # Node SSR does not write to the image filesystem; /tmp remains
+          # available for standard-library and runtime temporary files.
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -49,16 +49,21 @@ spec:
             - name: http
               containerPort: {{ .Values.frontend.service.port }}
               protocol: TCP
+          env:
+            # Node SSR requests and JWKS discovery use the in-cluster backend;
+            # browser requests remain relative and flow through the gateway.
+            - name: BACKEND_ORIGIN
+              value: "http://{{ include "university-ecosystem.fullname" . }}-backend:{{ .Values.backend.service.port }}"
           # TD-04 (audit Wave 12): explicit probe timing.
           startupProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: http
             failureThreshold: 30
             periodSeconds: 5
           livenessProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: http
             initialDelaySeconds: 10
             periodSeconds: 15
@@ -66,7 +71,7 @@ spec:
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
@@ -74,19 +79,11 @@ spec:
             failureThreshold: 3
           resources:
             {{- toYaml .Values.frontend.resources | nindent 12 }}
-          # RZ-03: writable dirs required by nginx-unprivileged with readOnlyRootFilesystem.
-          # /tmp: nginx pid file + client body temp.
-          # /var/cache/nginx: proxy and fastcgi cache dir (even without proxy_cache).
           volumeMounts:
             - name: tmp
               mountPath: /tmp
-            - name: nginx-cache
-              mountPath: /var/cache/nginx
       volumes:
         - name: tmp
           emptyDir:
             medium: Memory
             sizeLimit: 32Mi
-        - name: nginx-cache
-          emptyDir:
-            sizeLimit: 128Mi

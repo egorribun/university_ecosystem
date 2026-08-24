@@ -10,10 +10,14 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: quality-history
+  cancel-in-progress: false
+
 jobs:
   archive:
     name: Archive quality manifest and render dashboard
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - name: Checkout main
@@ -36,31 +40,53 @@ jobs:
           set -euo pipefail
           latest="$(gh run list --workflow ci.yml --branch main --status success --limit 1 --json databaseId,headSha --jq '.[0] // empty')"
           if [[ -z "$latest" ]]; then
-            echo "::warning::No successful main CI run found; skipping this history cycle."
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "::error::No successful main CI run is available for the quality-history archive."
+            exit 1
           fi
           run_id="$(jq -r '.databaseId' <<< "$latest")"
           head_sha="$(jq -r '.headSha' <<< "$latest")"
-          mkdir -p "$RUNNER_TEMP/quality-ci" artifacts/quality/history
+          if ! [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Latest successful CI run returned an invalid head SHA."
+            exit 1
+          fi
+          echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
+          mkdir -p "$RUNNER_TEMP/quality-ci" docs/testing/quality-history
           if ! gh run download "$run_id" --name quality-manifest --dir "$RUNNER_TEMP/quality-ci"; then
-            echo "::warning::Successful CI run $run_id has no downloadable quality-manifest; skipping this history cycle."
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "::error::Successful CI run $run_id has no downloadable quality-manifest."
+            exit 1
           fi
           manifest_path="$(find "$RUNNER_TEMP/quality-ci" -name quality-manifest.json -print -quit)"
           if [[ -z "$manifest_path" ]]; then
-            echo "::warning::quality-manifest.json is missing from CI run $run_id; skipping this history cycle."
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "::error::quality-manifest.json is missing from CI run $run_id."
+            exit 1
           fi
-          timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
-          cp "$manifest_path" "artifacts/quality/history/${timestamp}-${head_sha}.json"
+          if ! manifest_sha="$(jq -er '.commit_sha | select(type == "string")' "$manifest_path")"; then
+            echo "::error::quality-manifest.json has no valid commit_sha."
+            exit 1
+          fi
+          if [[ "$manifest_sha" != "$head_sha" ]]; then
+            echo "::error::Quality manifest commit $manifest_sha does not match CI run commit $head_sha."
+            exit 1
+          fi
+          history_path="docs/testing/quality-history/${head_sha}.json"
+          if [[ -e "$history_path" ]]; then
+            if cmp --silent "$manifest_path" "$history_path"; then
+              echo "Quality history for $head_sha is already archived."
+              echo "available=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::error::Quality history collision for immutable commit $head_sha."
+            exit 1
+          fi
+          cp "$manifest_path" "$history_path"
           echo "available=true" >> "$GITHUB_OUTPUT"
 
       - name: Render deterministic dashboard
         if: steps.collect-manifest.outputs.available == 'true'
-        run: python scripts/quality/generate_dashboard.py --limit 30
+        run: >-
+          python scripts/quality/generate_dashboard.py
+          --history-dir docs/testing/quality-history
+          --limit 30
 
       - name: Commit quality history
         if: steps.collect-manifest.outputs.available == 'true'
@@ -71,14 +97,42 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add artifacts/quality/history docs/testing/dashboard.md
+          git add docs/testing/quality-history docs/testing/dashboard.md
           if git diff --cached --quiet; then
             echo "No new quality history to commit."
             exit 0
           fi
-          branch="automation/quality-history-$(date -u +%Y%m%dT%H%M%SZ)"
+          head_sha="${{ steps.collect-manifest.outputs.head_sha }}"
+          if ! [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Quality history source SHA is missing or invalid."
+            exit 1
+          fi
+          branch="automation/quality-history-${head_sha}"
+          existing_pr="$(gh pr list --state all --head "$branch" --limit 1 --json number,state,url --jq '.[0] // empty')"
+          if git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
+            git fetch origin "refs/heads/$branch:refs/remotes/origin/$branch"
+            if ! git show "origin/$branch:docs/testing/quality-history/${head_sha}.json" \
+              | cmp --silent - "docs/testing/quality-history/${head_sha}.json"; then
+              echo "::error::Remote quality-history branch collides with immutable commit $head_sha."
+              exit 1
+            fi
+            if [[ -n "$existing_pr" ]]; then
+              echo "Quality history PR already exists for $head_sha: $existing_pr"
+              exit 0
+            fi
+            gh pr create \
+              --base main \
+              --head "$branch" \
+              --title "chore(quality): archive quality history" \
+              --body "Automated archive of the latest successful CI quality manifest and dashboard."
+            exit 0
+          fi
+          if [[ -n "$existing_pr" ]]; then
+            echo "Quality history PR was already handled for $head_sha: $existing_pr"
+            exit 0
+          fi
           git switch -c "$branch"
-          git commit -m "chore(quality): archive quality history"
+          git commit -m "chore(quality): archive quality history for ${head_sha:0:12}"
           git push --set-upstream origin "$branch"
           gh pr create \
             --base main \

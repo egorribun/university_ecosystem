@@ -29,7 +29,7 @@ test.describe("React Hydration Verification", () => {
   })
 
   test("does not produce React hydration errors on main SSR entrypoints", async ({ page }) => {
-    const mock = await useMockApi(page)
+    const mock = await useMockApi(page, { authenticated: false })
 
     // 1. Test public /login first (does not require login token)
     await page.goto("/login", { waitUntil: "domcontentloaded", timeout: 30_000 })

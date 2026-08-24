@@ -62,6 +62,7 @@ def test_dashboard_surfaces_missing_evidence_and_expiry(tmp_path: Path) -> None:
             "go-gateway": {"metrics": {"statements": {"percent": 99.0}}},
             "go-ws-hub": {"metrics": {"statements": {"percent": None}}},
             "go-file-processor": {"metrics": {"statements": {"percent": 98.0}}},
+            "go-shared": {"metrics": {"statements": {"percent": 100.0}}},
         },
     }
     output = dashboard.render_dashboard(

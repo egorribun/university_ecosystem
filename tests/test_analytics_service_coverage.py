@@ -1,14 +1,11 @@
-"""Coverage tests for app/services/analytics.py (testing session 10).
+"""Behavior and calculation tests for app/services/analytics.py.
 
 Pure-fn tests for the Polars _compute_* helpers + AsyncMock-repo tests for the
 async wrappers (get_news_repository / get_event_repository are module-level
 imports at analytics.py:25-26 — monkeypatchable).
 
-IMPORTANT: get_user_activity is tested with an AsyncMock session ONLY — its raw
-SQL references the table name `event_attendees` while the real table is
-`event_attendance` (app/models/events.py:126); running it against a real DB
-would fail. The mismatch is filed as a follow-up fix (session 11), out of scope
-for this test-only session.
+The raw SQL table-name regression is guarded separately by
+``test_auth_security_service_behavior.py``.
 
 shutdown() is exercised against a throwaway ThreadPoolExecutor monkeypatched in
 so the shared module pool stays alive for sibling tests.

@@ -138,7 +138,7 @@ def _coerce_int(value: Any, default: int = 0) -> int:
         if isinstance(value, float):
             return int(value)
         text = str(value).strip()
-    except Exception:  # pragma: no cover - defensive guard  # RZ-22-01-JUSTIFIED: handler-nak — safe int parsing returns default (reviewed TD-27-04)
+    except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — safe int parsing returns default (reviewed TD-27-04)
         return default
     if not text:
         return default

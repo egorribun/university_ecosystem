@@ -47,6 +47,7 @@ describe("Milestone 1 — Adversarial Offline-First & Stress Test Suite", () => 
   afterEach(async () => {
     if (onlineSpy) onlineSpy.mockRestore()
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
     globalThis.indexedDB = new IDBFactory() as unknown as typeof globalThis.indexedDB
   })
 

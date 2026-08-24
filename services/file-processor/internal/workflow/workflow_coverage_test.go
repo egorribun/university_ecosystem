@@ -11,6 +11,7 @@ package workflow
 import (
 	"bytes"
 	"context"
+	"errors"
 	"image"
 	"image/png"
 	"io"
@@ -216,6 +217,28 @@ func TestResizeImageActivity_UploadError(t *testing.T) {
 	}
 	_, err := a.ResizeImageActivity(context.Background(), job)
 	require.Error(t, err)
+}
+
+func TestResizeImageActivity_EncodeFailureIsReturned(t *testing.T) {
+	fs := &fakeS3{getBody: makeRGBAPNG(t, 10, 10)}
+	srv := httptest.NewServer(fs.handler())
+	t.Cleanup(srv.Close)
+	a := &FileActivities{MinioClient: minioClientFor(t, srv.URL), Bucket: "bucket"}
+	wantErr := errors.New("synthetic PNG encode failure")
+	oldEncode := pngEncodeFunc
+	t.Cleanup(func() { pngEncodeFunc = oldEncode })
+	pngEncodeFunc = func(io.Writer, image.Image) error { return wantErr }
+	job := ProcessJob{
+		ID:        "job-encode-failure",
+		SourceKey: "in/img.png",
+		DestKey:   "out/img.png",
+		Options:   map[string]interface{}{"width": 5, "height": 5},
+	}
+
+	result, err := a.ResizeImageActivity(context.Background(), job)
+
+	assert.Nil(t, result)
+	assert.ErrorIs(t, err, wantErr)
 }
 
 func TestGetValidatedDimension_ParsesInt32AndInt64(t *testing.T) {

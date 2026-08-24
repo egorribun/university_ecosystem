@@ -35,7 +35,6 @@ let clientQueueInFlight = 0
 const clientQueueWaiters: Array<() => void> = []
 const clientQueueTimestamps: number[] = []
 let clientQueueTimer: ReturnType<typeof setTimeout> | null = null
-let clientQueueResetAt = 0
 
 const pruneClientQueueTimestamps = () => {
   const threshold = Date.now() - RATE_LIMIT_WINDOW_MS
@@ -53,30 +52,27 @@ const scheduleClientQueueWindowReset = () => {
   pruneClientQueueTimestamps()
 
   if (clientQueueTimestamps.length < CLIENT_RATE_LIMIT_REQUESTS_PER_WINDOW) {
-    if (clientQueueTimer) {
-      clearTimeout(clientQueueTimer)
-      clientQueueTimer = null
-      clientQueueResetAt = 0
-    }
-    return
-  }
-
-  const oldest = clientQueueTimestamps[0] ?? Date.now()
-  const target = oldest + RATE_LIMIT_WINDOW_MS
-  if (clientQueueTimer && target >= clientQueueResetAt) {
-    return
-  }
-
-  if (clientQueueTimer) {
-    clearTimeout(clientQueueTimer)
+    // Clearing an absent timer is a platform-defined no-op. Keeping this
+    // unconditional avoids encoding a second state invariant ("below the
+    // window limit implies a timer exists") that callers do not need.
+    clearTimeout(clientQueueTimer as ReturnType<typeof setTimeout>)
     clientQueueTimer = null
+    return
   }
 
-  clientQueueResetAt = target
+  // The length guard above guarantees an oldest timestamp.  A Date.now()
+  // fallback would hide state corruption and adds an impossible branch.
+  const oldest = clientQueueTimestamps[0]!
+  const target = oldest + RATE_LIMIT_WINDOW_MS
+  // Timestamps are appended chronologically, so an existing timer always
+  // targets this same oldest entry (or an earlier one).  One timer is enough.
+  if (clientQueueTimer) {
+    return
+  }
+
   clientQueueTimer = setTimeout(
     () => {
       clientQueueTimer = null
-      clientQueueResetAt = 0
       pruneClientQueueTimestamps()
       notifyClientQueue()
     },
@@ -101,11 +97,9 @@ const notifyClientQueue = () => {
       return
     }
 
-    const resolve = clientQueueWaiters.shift()
-    if (!resolve) {
-      continue
-    }
-    resolve()
+    // The loop guard and JavaScript's run-to-completion semantics guarantee a
+    // waiter here; no other task can mutate the queue between these statements.
+    clientQueueWaiters.shift()!()
   }
 }
 
@@ -238,10 +232,8 @@ if (typeof window !== "undefined") {
   window.addEventListener("online", () => {
     if (rateLimitResetAt !== 0 && Date.now() >= rateLimitResetAt) {
       // Window has already expired — unblock queued requests immediately
-      if (rateLimitTimer !== null) {
-        clearTimeout(rateLimitTimer)
-        rateLimitTimer = null
-      }
+      clearTimeout(rateLimitTimer as ReturnType<typeof setTimeout>)
+      rateLimitTimer = null
       rateLimitResetAt = 0
       while (rateLimitWaiters.length > 0) {
         rateLimitWaiters.shift()?.()

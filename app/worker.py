@@ -22,9 +22,14 @@ async def main() -> None:
     await broker.run_worker()
 
 
-if __name__ == "__main__":
+def run() -> None:
+    """Run the worker process and treat an operator interrupt as a clean exit."""
     logging.basicConfig(level=logging.INFO)
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         pass
+
+
+if __name__ == "__main__":
+    run()

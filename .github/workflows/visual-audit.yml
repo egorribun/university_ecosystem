@@ -1,8 +1,8 @@
-# Wave 139 SW1 — Linux on-demand visual a11y audit (axe-core via wave138-visual-audit.mjs).
+# Linux on-demand visual a11y audit (axe-core via authenticated-visual-audit.mjs).
 #
 # ## Why this exists
 #
-# Wave 138 SW3 created `frontend/scripts/wave138-visual-audit.mjs` (~527 LoC),
+# `frontend/scripts/authenticated-visual-audit.mjs` provides the audit runner,
 # the first per-page visual a11y audit infra feasible since the SSR migration
 # arc started in W125. SW3+SW4 hit the W137 SW7 Windows heavy-DOM wall family:
 # AxeBuilder.analyze() injects axe-core via page.evaluate, which hangs on
@@ -21,7 +21,7 @@
 #
 # ## Architecture (no Docker compose — uses runner-host services pattern)
 #
-# wave138-visual-audit.mjs requires a SINGLE ORIGIN that serves both
+# authenticated-visual-audit.mjs requires a SINGLE ORIGIN that serves both
 # backend (/.well-known/jwks.json, /api/v1/auth/*) and frontend (/dashboard
 # SSR + others). In dev compose, Caddy is the unified ingress. Reproducing
 # that on a Linux runner without docker-compose-ing the full stack:
@@ -75,13 +75,13 @@ concurrency:
 jobs:
   visual-audit:
     name: Axe a11y audit on Linux
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       # Backend env (mirrors reusable-e2e-tests.yml + adds RS256)
-      SECRET_KEY: "dummy_secret_key_for_visual_audit_ci_at_least_32_chars"  # pragma: allowlist secret
+      SECRET_KEY: "dummy_secret_key_for_visual_audit_ci_at_least_32_chars" # pragma: allowlist secret
       ENVIRONMENT: testing
-      DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/test_visual_audit"  # pragma: allowlist secret
+      DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/test_visual_audit" # pragma: allowlist secret
       OTEL_SDK_DISABLED: "true"
       ALGORITHM: "RS256"
       JWT_PRIVATE_KEY_PATH: ".secrets/jwt_rs256.pem"
@@ -104,10 +104,10 @@ jobs:
       RATE_LIMIT_STORAGE_URI: "redis://127.0.0.1:6379/1"
     services:
       postgres:
-        image: pgvector/pgvector:pg17
+        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
         env:
           POSTGRES_USER: test
-          POSTGRES_PASSWORD: test  # pragma: allowlist secret
+          POSTGRES_PASSWORD: test # pragma: allowlist secret
           POSTGRES_DB: test_visual_audit
         ports:
           - 5432:5432
@@ -117,7 +117,7 @@ jobs:
           --health-timeout 3s
           --health-retries 10
       redis:
-        image: redis:7-alpine
+        image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
         ports:
           - 6379:6379
         options: >-
@@ -134,7 +134,7 @@ jobs:
       # converge. Default port 4222, no auth (matches backend default
       # nats_url "nats://127.0.0.1:4222").
       nats:
-        image: nats:2.10.25-alpine
+        image: nats:2.10.25-alpine@sha256:3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228
         ports:
           - 4222:4222
         options: >-
@@ -313,11 +313,11 @@ jobs:
           echo "---backend-log-tail---"
           tail -200 /tmp/backend.log 2>&1 || echo "(no /tmp/backend.log file)"
           echo "---ps-aux-uvicorn---"
-          ps aux | grep -i uvicorn 2>&1 | head -5 || echo "(no uvicorn process)"
+          pgrep -fa uvicorn 2>&1 | head -5 || echo "(no uvicorn process)"
           exit 1
 
       - name: Verify JWKS endpoint
-        # JWKS endpoint MUST serve at least 1 RS256 key. wave138-visual-audit.mjs
+        # JWKS endpoint MUST serve at least 1 RS256 key. authenticated-visual-audit.mjs
         # checks both /api/v1/.well-known/jwks.json and /.well-known/jwks.json
         # paths (W137 SW4 pattern). Linux backend serves at the same paths
         # as Caddy-fronted dev compose.
@@ -419,7 +419,7 @@ jobs:
             }
           }
           EOF
-          docker run -d --name caddy --network host -v /tmp/Caddyfile:/etc/caddy/Caddyfile caddy:2.11.2-alpine
+          docker run -d --name caddy --network host -v /tmp/Caddyfile:/etc/caddy/Caddyfile caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
           # Wait for Caddy proxy chain
           for i in {1..15}; do
             if curl -sf http://localhost/healthz > /dev/null && curl -sf http://localhost/.well-known/jwks.json > /dev/null; then
@@ -434,6 +434,7 @@ jobs:
           exit 1
 
       - name: Run visual audit script
+        id: visual_audit
         # ORIGIN=http://localhost — Caddy on :80 fronts backend + frontend Node SSR.
         # ROUTES env from workflow_dispatch input (empty = full sweep).
         # `continue-on-error: true` so artifact upload always runs (script exit
@@ -443,8 +444,8 @@ jobs:
           ORIGIN: http://localhost
           ROUTES: ${{ inputs.routes }}
           TEST_EMAIL: test@university.dev
-          TEST_PASSWORD: TestPass@2024x  # pragma: allowlist secret
-        run: node ./scripts/wave138-visual-audit.mjs
+          TEST_PASSWORD: TestPass@2024x # pragma: allowlist secret
+        run: node ./scripts/authenticated-visual-audit.mjs
         continue-on-error: true
 
       - name: Backend log diagnostic dump
@@ -460,7 +461,7 @@ jobs:
           tail -300 /tmp/backend.log 2>&1 || echo "(no /tmp/backend.log file)"
 
       - name: Print summary table
-        # Reads .screenshots/wave138-visual-audit/*.json sidecar files + emits
+        # Reads .screenshots/authenticated-visual-audit/*.json sidecar files + emits
         # markdown to $GITHUB_STEP_SUMMARY for at-a-glance review without
         # artifact download (mirrors lhci-linux.yml summary pattern).
         if: always()
@@ -470,7 +471,7 @@ jobs:
           node -e '
             const fs = require("node:fs");
             const path = require("node:path");
-            const dir = ".screenshots/wave138-visual-audit";
+            const dir = ".screenshots/authenticated-visual-audit";
             if (!fs.existsSync(dir)) {
               console.log("No sidecar JSONs to summarize (script may have failed before producing reports)");
               process.exit(0);
@@ -520,6 +521,12 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: visual-audit-reports
-          path: frontend/.screenshots/wave138-visual-audit
+          path: frontend/.screenshots/authenticated-visual-audit
           retention-days: 14
           if-no-files-found: warn
+
+      - name: Re-assert visual audit result
+        if: always() && steps.visual_audit.outcome == 'failure'
+        run: |
+          echo "::error::The visual audit reported accessibility, rendering, or setup failures."
+          exit 1

@@ -149,6 +149,19 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     })
   })
 
+  it("does not select a group while the available group list is empty", async () => {
+    const client = newClient()
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, [])
+    useAuthMock.mockReturnValue({
+      user: { id: "u-empty", role: "admin", group_id: null },
+    } as never)
+
+    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.groups).toEqual([]))
+    expect(result.current.selectedGroup).toBeNull()
+  })
+
   it("schedule queryKey matches pageScheduleQueryOptions(groupId) shape", () => {
     const opts = pageScheduleQueryOptions("group-test")
     expect(opts.queryKey).toEqual(["schedule", "group", "group-test"])
@@ -433,6 +446,63 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
     ])
   })
 
+  it("sorts the current weekday lessons and excludes parity mismatches", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-08-15T12:00:00.000Z"))
+
+    const groups: ScheduleGroup[] = [{ id: "group-today", name: "Today Group" }]
+    const lessons: Lesson[] = [
+      {
+        id: "later",
+        group_id: "group-today",
+        weekday: "saturday",
+        start_time: "11:00",
+        end_time: "12:00",
+        subject: "Later",
+        teacher: "Teacher",
+        room: "2",
+        lesson_type: "lecture",
+        parity: "both",
+      },
+      {
+        id: "earlier",
+        group_id: "group-today",
+        weekday: "saturday",
+        start_time: "09:00",
+        end_time: "10:00",
+        subject: "Earlier",
+        teacher: "Teacher",
+        room: "1",
+        lesson_type: "lecture",
+        parity: "both",
+      },
+      {
+        id: "other-parity",
+        group_id: "group-today",
+        weekday: "saturday",
+        start_time: "08:00",
+        end_time: "09:00",
+        subject: "Other parity",
+        teacher: "Teacher",
+        room: "0",
+        lesson_type: "lecture",
+        parity: "even",
+      },
+    ]
+    const client = newClient()
+    client.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
+    client.setQueryData(pageScheduleQueryOptions("group-today").queryKey, lessons)
+    useAuthMock.mockReturnValue({
+      user: { id: "u-today", role: "student", group_id: "group-today" },
+    } as never)
+
+    const { result } = renderHook(() => useScheduleData(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.selectedGroup).toBe("group-today"))
+    expect(result.current.hasToday).toBe(true)
+    expect(result.current.todayLessons.map((lesson) => lesson.id)).toEqual(["earlier", "later"])
+  })
+
   it("normalizes nullish persistence fields without throwing", async () => {
     const groups: ScheduleGroup[] = [{ id: "group-nullish", name: "Nullish Group" }]
     const lessons = [
@@ -480,5 +550,42 @@ describe("useScheduleData (Wave 130 SW1 factory integration)", () => {
         lesson_type: "lecture",
       }),
     ])
+  })
+
+  it("swallows both database-open and bulk-persistence failures", async () => {
+    const lesson = {
+      id: "lesson-failure",
+      group_id: "group-failure",
+      weekday: "monday",
+      start_time: "09:00",
+      end_time: "10:00",
+      subject: "Failure-safe",
+      teacher: "Teacher",
+      room: "1",
+      building: "Main",
+      parity: "both",
+      lesson_type: "lecture",
+    } as Lesson
+    const groups: ScheduleGroup[] = [{ id: "group-failure", name: "Failure Group" }]
+    useAuthMock.mockReturnValue({
+      user: { id: "u-failure", role: "student", group_id: "group-failure" },
+    } as never)
+
+    const firstClient = newClient()
+    firstClient.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
+    firstClient.setQueryData(pageScheduleQueryOptions("group-failure").queryKey, [lesson])
+    const bulkUpsert = vi.fn().mockRejectedValue(new Error("write failed"))
+    getDatabaseMock.mockResolvedValueOnce({ schedule: { bulkUpsert } } as never)
+    const first = renderHook(() => useScheduleData(), { wrapper: wrapper(firstClient) })
+    await waitFor(() => expect(bulkUpsert).toHaveBeenCalledOnce())
+    first.unmount()
+
+    const secondClient = newClient()
+    secondClient.setQueryData(scheduleGroupsQueryOptions().queryKey, groups)
+    secondClient.setQueryData(pageScheduleQueryOptions("group-failure").queryKey, [lesson])
+    getDatabaseMock.mockRejectedValueOnce(new Error("database unavailable"))
+    const second = renderHook(() => useScheduleData(), { wrapper: wrapper(secondClient) })
+    await waitFor(() => expect(getDatabaseMock).toHaveBeenCalledTimes(2))
+    expect(second.result.current.rawSchedule).toEqual([lesson])
   })
 })

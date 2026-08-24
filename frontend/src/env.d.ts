@@ -45,4 +45,5 @@ interface ImportMeta {
  */
 interface Window {
   __APP_HYDRATED?: boolean
+  __UE_SELECTED_LANG__?: "ru" | "en"
 }

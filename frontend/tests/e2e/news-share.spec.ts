@@ -1,8 +1,9 @@
 import { devices, expect, test } from "./test"
-import { useMockApi } from "./utils/mockApi"
+import { MOCK_NEWS_ID, useMockApi } from "./utils/mockApi"
 
-// Skip: News share tests timeout during login in mock environment
-test.describe.skip("News detail sharing (desktop)", () => {
+const newsPath = `/news/${MOCK_NEWS_ID}`
+
+test.describe("News detail sharing (desktop)", () => {
   test("falls back to copying link when the Web Share API is unavailable", async ({ page }) => {
     await page.addInitScript(() => {
       Object.defineProperty(navigator, "share", {
@@ -24,14 +25,14 @@ test.describe.skip("News detail sharing (desktop)", () => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
-    await page.goto("/news/1")
+    await page.goto(newsPath)
     await expect(
       page.getByRole("heading", { name: /(Новость дня|News of the day)/i })
     ).toBeVisible()
 
     const shareButton = page.getByRole("button", { name: /(Поделиться|Share)/i })
     await expect(shareButton).toBeVisible()
-    await shareButton.click({ force: true })
+    await shareButton.click()
 
     // When share API is undefined, a dialog opens. We need to click "Copy link".
     await page.getByRole("button", { name: /Скопировать ссылку|Copy link/i }).click()
@@ -40,14 +41,19 @@ test.describe.skip("News detail sharing (desktop)", () => {
     const copiedLink = await page.evaluate(
       () => (window as typeof window & { __copiedLink?: string }).__copiedLink
     )
-    expect(copiedLink).toContain("/news/1")
+    expect(copiedLink).toContain(newsPath)
   })
 })
 
-const { defaultBrowserType: _ignore, ...iPhone13Pro } = devices["iPhone 13 Pro"]
+// Firefox does not support the isMobile context option; strip it while
+// preserving the mobile viewport, userAgent, deviceScaleFactor, and touch emulation.
+const {
+  defaultBrowserType: _ignore,
+  isMobile: _isMobile,
+  ...iPhone13Pro
+} = devices["iPhone 13 Pro"]
 
-// Skip: News share tests timeout during login in mock environment
-test.describe.skip("News detail sharing (mobile)", () => {
+test.describe("News detail sharing (mobile)", () => {
   test.use(iPhone13Pro)
 
   test("uses the Web Share API when available", async ({ page }) => {
@@ -65,7 +71,7 @@ test.describe.skip("News detail sharing (mobile)", () => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
-    await page.goto("/news/1")
+    await page.goto(newsPath)
     await expect(
       page.getByRole("heading", { name: /(Новость дня|News of the day)/i })
     ).toBeVisible()
@@ -78,7 +84,7 @@ test.describe.skip("News detail sharing (mobile)", () => {
     const sharedPayload = await page.evaluate(() =>
       (window as typeof window & { __sharedPayloads?: ShareData[] }).__sharedPayloads?.at(0)
     )
-    expect(sharedPayload?.url).toContain("/news/1")
+    expect(sharedPayload?.url).toContain(newsPath)
     expect(sharedPayload?.title).toBeTruthy()
   })
 })

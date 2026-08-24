@@ -60,7 +60,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
       if (index < 5) {
         inputRefs.current[index + 1]?.focus()
       }
-    } else if (sanitized.length > 1) {
+    } else {
       setDigits((prev) => {
         const next = [...prev]
         for (let i = 0; i < sanitized.length && index + i < 6; i++) {

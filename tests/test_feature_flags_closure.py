@@ -20,7 +20,9 @@ def test_ensure_provider_initializes_flagd_provider_successfully():
         patch("openfeature.api.set_provider") as set_provider,
         patch(
             "app.core.config.settings",
-            SimpleNamespace(flagd_host="flagd", flagd_port=8013),
+            SimpleNamespace(
+                integrations=SimpleNamespace(flagd_host="flagd", flagd_port=8013)
+            ),
         ),
     ):
         feature_flags._ensure_provider()

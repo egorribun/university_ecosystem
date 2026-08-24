@@ -149,7 +149,7 @@ re-run the sync and commit the result.
 
 ## Wave-by-Wave Token Changes
 
-The `## Audit Trail` section in `CLAUDE.md` (root) documents per-wave
+The audit trail in `docs/audits/INDEX.md` documents per-wave
 token additions, removals, and consolidations. Notable entries:
 
 - **Wave 120 SW6**: removed 3 orphan `@property` registrations + 12

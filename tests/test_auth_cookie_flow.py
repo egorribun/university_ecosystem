@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from app.auth.security import decode_token, get_password_hash
 from app.core.config import settings
+from app.core.csrf import _ANON_NONCE_COOKIE_NAME
 from app.core.localization import translate
 from app.models import ActiveSession
 
@@ -21,9 +22,12 @@ def _set_query_budget(async_client):
     async_client.headers["X-Query-Budget"] = "15"
 
 
-async def _create_active_user(user_factory, password: str):
+async def _create_active_user(user_factory, password: str, db_session=None):
     hashed = await get_password_hash(password)
-    return await user_factory(hashed_password=hashed, is_active=True)
+    user = await user_factory(hashed_password=hashed, is_active=True)
+    if db_session is not None:
+        await db_session.commit()
+    return user
 
 
 async def _login(async_client, email: str, password: str):
@@ -49,7 +53,7 @@ async def test_session_signing_key_missing_localized(
     async_client, user_factory, db_session, locale: str
 ):
     password = "SessionKeyLocale123!"
-    user = await _create_active_user(user_factory, password)
+    user = await _create_active_user(user_factory, password, db_session)
 
     response = await _login(async_client, user.email, password)
     assert response.status_code == 200
@@ -103,13 +107,18 @@ def _extract_cookie_attributes(header: str) -> set[str]:
 
 @pytest.mark.parametrize("strict_value, expected_secure", [(None, False), (True, True)])
 async def test_login_cookie_security_modes(
-    async_client, user_factory, configure_cookie_security, strict_value, expected_secure
+    async_client,
+    user_factory,
+    db_session,
+    configure_cookie_security,
+    strict_value,
+    expected_secure,
 ):
     configure_cookie_security(strict_value)
     assert settings.cookie_secure is expected_secure
 
     password = "StrongPass123!"
-    user = await _create_active_user(user_factory, password)
+    user = await _create_active_user(user_factory, password, db_session)
 
     response = await _login(async_client, user.email, password)
 
@@ -126,8 +135,23 @@ async def test_login_cookie_security_modes(
     assert ("secure" in attributes) is expected_secure
     assert "samesite=lax" in attributes
 
-    stored_cookie = async_client.cookies.get("access_token_v2")
+    stored_cookie = next(
+        (
+            header.split(";")[0].split("=")[1]
+            for header in set_cookie_headers
+            if header.lower().startswith("access_token_v2=")
+        ),
+        async_client.cookies.get("access_token_v2"),
+    )
     assert stored_cookie is not None and stored_cookie != ""
+    anon_nonce = next(
+        (
+            header.split(";")[0].split("=")[1]
+            for header in set_cookie_headers
+            if header.lower().startswith(f"{_ANON_NONCE_COOKIE_NAME}=")
+        ),
+        async_client.cookies.get(_ANON_NONCE_COOKIE_NAME),
+    )
 
     new_csrf_token = ""
     for header in set_cookie_headers:
@@ -138,6 +162,8 @@ async def test_login_cookie_security_modes(
     # Wipe the client cookie jar entirely to prevent httpx CookieConflict
     async_client.cookies.clear()
     async_client.cookies.set("access_token_v2", stored_cookie)
+    if anon_nonce:
+        async_client.cookies.set(_ANON_NONCE_COOKIE_NAME, anon_nonce)
     if new_csrf_token:
         async_client.cookies.set("csrf_token", new_csrf_token)
 
@@ -176,7 +202,7 @@ async def test_token_reuse_after_logout_rejected(
     async_client, user_factory, db_session
 ):
     password = "ReusePass789!"
-    user = await _create_active_user(user_factory, password)
+    user = await _create_active_user(user_factory, password, db_session)
 
     login_response = await _login(async_client, user.email, password)
     assert login_response.status_code == 200
@@ -200,16 +226,28 @@ async def test_token_reuse_after_logout_rejected(
     logout_response = await async_client.post("/auth/logout", headers=headers)
     assert logout_response.status_code == 200
 
-    await db_session.refresh(session)
-    assert session.revoked_at is not None
+    await db_session.rollback()
+    refreshed_session = (
+        (
+            await db_session.execute(
+                select(ActiveSession).where(ActiveSession.jti == jti)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert refreshed_session is not None
+    assert refreshed_session.revoked_at is not None
 
     rejected = await async_client.get("/users/me", headers=headers)
     assert rejected.status_code == 401
 
 
-async def test_profile_cache_envelope_validation(async_client, user_factory):
+async def test_profile_cache_envelope_validation(
+    async_client, user_factory, db_session
+):
     password = "EnvelopePass123!"
-    user = await _create_active_user(user_factory, password)
+    user = await _create_active_user(user_factory, password, db_session)
 
     login_response = await _login(async_client, user.email, password)
     assert login_response.status_code == 200
@@ -265,7 +303,7 @@ async def test_logout_rotates_session_signing_key(
     async_client, user_factory, db_session
 ):
     password = "RotateKeyPass123!"
-    user = await _create_active_user(user_factory, password)
+    user = await _create_active_user(user_factory, password, db_session)
 
     login_response = await _login(async_client, user.email, password)
     assert login_response.status_code == 200
@@ -287,9 +325,19 @@ async def test_logout_rotates_session_signing_key(
     logout_response = await async_client.post("/auth/logout", headers=headers)
     assert logout_response.status_code == 200
 
-    await db_session.refresh(session)
-    assert session.signing_key
-    assert session.signing_key != original_key
+    await db_session.rollback()
+    refreshed_session = (
+        (
+            await db_session.execute(
+                select(ActiveSession).where(ActiveSession.jti == jti)
+            )
+        )
+        .scalars()
+        .first()
+    )
+    assert refreshed_session is not None
+    assert refreshed_session.signing_key
+    assert refreshed_session.signing_key != original_key
 
 
 @pytest.mark.asyncio

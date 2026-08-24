@@ -85,6 +85,15 @@ describe("EventAboutEditor", () => {
     expect(screen.getByText("events:detail.sections.about.empty")).toBeInTheDocument()
   })
 
+  it.each([
+    ["en", { ...baseEvent, about_en: null }],
+    ["ru", { ...baseEvent, about: null }],
+  ] as const)("treats a null %s about value as empty", (language, event) => {
+    render(<EventAboutEditor {...baseProps} event={event} language={language} />)
+
+    expect(screen.getByText("events:detail.sections.about.empty")).toBeInTheDocument()
+  })
+
   it("enters edit mode and reverts on cancel", async () => {
     const user = userEvent.setup()
     render(<EventAboutEditor {...baseProps} />)

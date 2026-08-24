@@ -229,7 +229,7 @@ export default function useActivityData() {
     return [...byDate.entries()]
       .map(([date, { present, total }]) => ({
         date,
-        value: total > 0 ? Math.round((present / total) * 100) : 0,
+        value: Math.round((present / total) * 100),
       }))
       .sort((a, b) => a.date.localeCompare(b.date))
   }, [attendance?.recent])

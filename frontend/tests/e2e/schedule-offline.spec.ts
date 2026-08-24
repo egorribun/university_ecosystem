@@ -15,82 +15,72 @@ import { gotoWithTransientRetry } from "./utils/navigation"
  * before going offline, and the context is always restored to online in a
  * finally block to prevent test pollution.
  *
- * NOTE: Service Worker caching requires a proper SW-registered build.
- * In the plain mock-API environment the SW is not guaranteed to control
- * the page. Tests are skipped if the SW is not active, rather than
- * letting them fail non-deterministically.
+ * The API mock preserves the real production Service Worker in these specs;
+ * readiness is a required precondition and failures are surfaced directly.
  */
 
 const TIMEOUTS = {
-  navigation: 10_000,
-  element: 10_000,
-  toast: 5_000,
+  navigation: 15_000,
+  element: 15_000,
+  toast: 10_000,
 }
 
-async function isServiceWorkerControlled(page: Page): Promise<boolean> {
-  try {
-    return await page.evaluate(() => Boolean(navigator.serviceWorker?.controller))
-  } catch {
-    return false
-  }
-}
-
-async function ensureServiceWorkerReady(page: Page): Promise<boolean> {
-  try {
-    await page.waitForLoadState("networkidle")
-    const swReady = await page.evaluate(async () => {
-      if (!navigator.serviceWorker) return false
-      return Promise.race([
-        navigator.serviceWorker.ready.then(() => true),
-        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 1500)),
-      ])
-    })
-    if (!swReady) return false
-
-    let controlled = await isServiceWorkerControlled(page)
-    if (!controlled) {
-      await page.reload({ waitUntil: "networkidle" })
-      controlled = await isServiceWorkerControlled(page)
+async function ensureServiceWorkerReady(page: Page): Promise<void> {
+  await page.waitForLoadState("networkidle")
+  await page.evaluate(async () => {
+    if ("serviceWorker" in navigator) {
+      await navigator.serviceWorker.ready
     }
-    return controlled
-  } catch {
-    return false
+  })
+  let controlled = await page.evaluate(() => Boolean(navigator.serviceWorker?.controller))
+  if (!controlled) {
+    await page.reload({ waitUntil: "networkidle" })
+    await page.evaluate(async () => {
+      if ("serviceWorker" in navigator) {
+        await navigator.serviceWorker.ready
+      }
+    })
+    controlled = await page.evaluate(() => Boolean(navigator.serviceWorker?.controller))
   }
+  await page.waitForFunction(
+    () => !navigator.serviceWorker || navigator.serviceWorker?.controller?.state === "activated"
+  )
 }
 
 test.describe("Schedule offline behaviour", () => {
-  // ── 1. Page loads from SW cache when offline ───────────────────────────
-  test("loads schedule page from SW cache when network is offline", async ({ page, context }) => {
-    const { login } = await useMockApi(page)
-    await login(page)
+  test.describe("Chromium Service Worker offline navigation", () => {
+    test.skip(
+      ({ browserName }) => browserName !== "chromium",
+      "Playwright Service Worker offline navigation is supported only on Chromium"
+    )
 
-    await gotoWithTransientRetry(page, "/schedule", { waitUntil: "networkidle" })
-    await page.waitForURL(/\/schedule$/)
+    // ── 1. Page loads from SW cache when offline ───────────────────────────
+    test("loads schedule page from SW cache when network is offline", async ({ page, context }) => {
+      const { login } = await useMockApi(page, { serviceWorker: "preserve" })
+      await login(page)
 
-    // Verify the page loaded online first (baseline content present).
-    const scheduleHeading = page.getByRole("heading", { name: /расписание|schedule/i })
-    if (!(await scheduleHeading.isVisible({ timeout: 5000 }))) {
-      test.skip(true, "Schedule page heading not found — layout may have changed")
-    }
+      await gotoWithTransientRetry(page, "/schedule", { waitUntil: "networkidle" })
+      await page.waitForURL(/\/schedule$/)
 
-    const swReady = await ensureServiceWorkerReady(page)
-    if (!swReady) {
-      test.skip(true, "Service Worker not active — caching not testable in this environment")
-    }
+      // Verify the page loaded online first (baseline content present).
+      const scheduleHeading = page.getByRole("heading", { name: /расписание|schedule/i })
+      await expect(scheduleHeading).toBeVisible({ timeout: TIMEOUTS.element })
+      await ensureServiceWorkerReady(page)
 
-    await context.setOffline(true)
-    try {
-      // Reload while offline — SW cache should serve the page.
-      await page.reload({ waitUntil: "domcontentloaded" })
-      await expect(page).toHaveURL(/\/schedule/, { timeout: TIMEOUTS.navigation })
+      await context.setOffline(true)
+      try {
+        // Reload while offline — SW cache should serve the page.
+        await page.reload({ waitUntil: "domcontentloaded" })
+        await expect(page).toHaveURL(/\/schedule/, { timeout: TIMEOUTS.navigation })
 
-      // The schedule heading must still be present from cache.
-      await expect(page.getByRole("heading", { name: /расписание|schedule/i })).toBeVisible({
-        timeout: TIMEOUTS.element,
-      })
-    } finally {
-      await context.setOffline(false)
-    }
+        // The schedule heading must still be present from cache.
+        await expect(page.getByRole("heading", { name: /расписание|schedule/i })).toBeVisible({
+          timeout: TIMEOUTS.element,
+        })
+      } finally {
+        await context.setOffline(false)
+      }
+    })
   })
 
   // ── 2. Sync resumes on reconnect ──────────────────────────────────────
@@ -99,73 +89,50 @@ test.describe("Schedule offline behaviour", () => {
   // and verifies the UI no longer shows an offline indicator (i.e., the
   // app detected the reconnect and cleared the offline banner).
   test("clears offline indicator and resumes sync on reconnect", async ({ page, context }) => {
-    const { login } = await useMockApi(page)
+    const { login } = await useMockApi(page, { serviceWorker: "preserve" })
     await login(page)
 
     await gotoWithTransientRetry(page, "/schedule", { waitUntil: "networkidle" })
     await page.waitForURL(/\/schedule$/)
 
-    const swReady = await ensureServiceWorkerReady(page)
-    if (!swReady) {
-      test.skip(true, "Service Worker not active — offline sync not testable in this environment")
-    }
+    await ensureServiceWorkerReady(page)
 
     await context.setOffline(true)
     try {
       // Trigger browser's offline event so the app reacts immediately.
       await page.evaluate(() => window.dispatchEvent(new Event("offline")))
-      await page.waitForTimeout(500)
 
       // An offline indicator should appear (toast / banner).
-      const offlineBanner = page
-        .locator('[role="status"], [role="alert"]')
-        .filter({ hasText: /offline|нет подключения|отключено/i })
-      if (await offlineBanner.isVisible({ timeout: 3000 })) {
-        await expect(offlineBanner).toBeVisible()
-      }
+      const offlineBanner = page.getByTestId("offline-banner")
+      await expect(offlineBanner).toBeVisible({ timeout: TIMEOUTS.toast })
     } finally {
       await context.setOffline(false)
       await page.evaluate(() => window.dispatchEvent(new Event("online")))
     }
 
     // After coming online the offline banner should disappear.
-    const offlineBanner = page
-      .locator('[role="status"], [role="alert"]')
-      .filter({ hasText: /offline|нет подключения|отключено/i })
+    const offlineBanner = page.getByTestId("offline-banner")
     await expect(offlineBanner).not.toBeVisible({ timeout: TIMEOUTS.toast })
   })
 
   // ── 3. Offline indicator shown while disconnected ──────────────────────
   test("shows offline indicator while network is unavailable", async ({ page, context }) => {
-    const { login } = await useMockApi(page)
+    const { login } = await useMockApi(page, { serviceWorker: "preserve" })
     await login(page)
 
     await gotoWithTransientRetry(page, "/schedule", { waitUntil: "networkidle" })
     await page.waitForURL(/\/schedule$/)
 
-    const swReady = await ensureServiceWorkerReady(page)
-    if (!swReady) {
-      test.skip(true, "Service Worker not active — offline indicator test skipped")
-    }
+    await ensureServiceWorkerReady(page)
 
     await context.setOffline(true)
     try {
       await page.evaluate(() => window.dispatchEvent(new Event("offline")))
-      await page.waitForTimeout(500)
 
       // The app should surface some offline indicator.
-      const indicator = page
-        .locator('[role="status"], [role="alert"], [data-testid*="offline"]')
-        .filter({ hasText: /offline|нет подключения|отключено/i })
+      const indicator = page.getByTestId("offline-banner")
 
-      if (await indicator.isVisible({ timeout: TIMEOUTS.toast })) {
-        await expect(indicator.first()).toBeVisible()
-      } else {
-        test.info().annotations.push({
-          type: "info",
-          description: "Offline indicator not rendered — the app may use a different UX pattern",
-        })
-      }
+      await expect(indicator).toBeVisible({ timeout: TIMEOUTS.toast })
     } finally {
       await context.setOffline(false)
       await page.evaluate(() => window.dispatchEvent(new Event("online")))

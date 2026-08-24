@@ -40,6 +40,7 @@ class InfrastructureProvider(Provider):
         return OutboxWorker(
             poll_interval=settings.outbox_poll_interval_seconds,
             batch_size=settings.outbox_batch_size,
+            max_retries=settings.outbox_max_retries,
         )
 
     @provide(scope=Scope.APP)

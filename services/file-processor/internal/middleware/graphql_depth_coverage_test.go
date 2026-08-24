@@ -111,3 +111,18 @@ func TestMaxQueryDepth_BodyReadError(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rec.Code)
 	assert.Contains(t, rec.Body.String(), "invalid request body")
 }
+
+func TestMaxQueryDepth_OversizedBodyRejected(t *testing.T) {
+	called := false
+	handler := MaxQueryDepthMiddleware(2, http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		called = true
+	}))
+	body := `{"query":"{ ok }","padding":"` + strings.Repeat("x", maxGraphQLBodyBytes) + `"}`
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/graphql", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusRequestEntityTooLarge, rec.Code)
+	assert.False(t, called)
+}

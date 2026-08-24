@@ -175,6 +175,21 @@ describe("useLoginForm.onSubmit", () => {
     })
     await waitFor(() => expect(result.current.submitError).toBe("Invalid credentials"))
   })
+
+  it("keeps the translated fallback when login rejects with a non-Error value", async () => {
+    mocks.login.mockRejectedValue("authentication unavailable")
+    const { result } = renderHook(() => useLoginForm())
+    act(() => {
+      result.current.form.setValue("email", "a@b.dev")
+      result.current.form.setValue("password", "Password123!")
+    })
+
+    await act(async () => {
+      await result.current.onSubmit()
+    })
+
+    await waitFor(() => expect(result.current.submitError).toBe("auth:login.error"))
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -320,6 +335,20 @@ describe("useLoginForm.handlePasskeyLogin", () => {
 
     expect(mocks.loginWithPasskey).toHaveBeenCalledWith("", false)
   })
+
+  it("keeps the translated fallback when passkey login rejects with a non-Error value", async () => {
+    mocks.loginWithPasskey.mockRejectedValue("credential unavailable")
+    const { result } = renderHook(() => useLoginForm())
+    act(() => {
+      result.current.form.setValue("email", "a@b.dev")
+    })
+
+    await act(async () => {
+      await result.current.handlePasskeyLogin()
+    })
+
+    expect(result.current.passkeyError).toBe("auth:login.error")
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -405,6 +434,19 @@ describe("useMfaFlow.handleRecoveryVerify", () => {
     expect(result.current.mfaError).toBe("Recovery code rejected")
     expect(result.current.mfaErrorSource).toBe("general")
   })
+
+  it("keeps the translated fallback when recovery verification rejects with a non-Error", async () => {
+    mocks.pendingMfa = mfaLogin()
+    mocks.submitMfaChallenge.mockRejectedValue("recovery unavailable")
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(async () => {
+      await result.current.handleRecoveryVerify("BAD", false)
+    })
+
+    expect(result.current.mfaError).toBe("auth:mfa.errors.generic")
+    expect(result.current.mfaErrorSource).toBe("general")
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -482,6 +524,19 @@ describe("useMfaFlow.handleOtpVerify", () => {
     expect(result.current.mfaError).toBe("Code expired")
     expect(result.current.mfaErrorSource).toBe("totp")
   })
+
+  it("keeps the translated fallback when OTP verification rejects with a non-Error", async () => {
+    mocks.pendingMfa = mfaLogin()
+    mocks.submitMfaChallenge.mockRejectedValue("otp unavailable")
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(async () => {
+      await result.current.handleOtpVerify("111111", false)
+    })
+
+    expect(result.current.mfaError).toBe("auth:mfa.errors.generic")
+    expect(result.current.mfaErrorSource).toBe("totp")
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -546,6 +601,19 @@ describe("useMfaFlow.handleWebAuthnVerify", () => {
       await result.current.handleWebAuthnVerify(false)
     })
     expect(result.current.mfaError).toBe("Assertion rejected")
+    expect(result.current.mfaErrorSource).toBe("general")
+  })
+
+  it("keeps the translated fallback when WebAuthn rejects with a non-Error", async () => {
+    mocks.pendingMfa = mfaLogin()
+    mocks.startAuthentication.mockRejectedValue("credential unavailable")
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(async () => {
+      await result.current.handleWebAuthnVerify(false)
+    })
+
+    expect(result.current.mfaError).toBe("auth:mfa.errors.generic")
     expect(result.current.mfaErrorSource).toBe("general")
   })
 })

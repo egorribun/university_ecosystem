@@ -55,6 +55,9 @@ class _Connection:
             return _Result(self.partitions)
         return _Result()
 
+    async def exec_driver_sql(self, statement):
+        return await self.execute(statement)
+
     async def commit(self):
         self.commits += 1
 

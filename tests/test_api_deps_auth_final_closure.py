@@ -59,7 +59,7 @@ async def test_get_current_user_cached_session_rejects_different_user():
             return_value=(user_id, "jti"),
         ),
         patch(
-            "app.api.deps.auth.get_cache_client", new_callable=AsyncMock
+            "app.api.deps.auth.get_revocation_redis_client", new_callable=AsyncMock
         ) as get_cache,
     ):
         get_cache.return_value.exists.return_value = False
@@ -98,7 +98,7 @@ async def test_get_current_user_cached_invalid_session_id_falls_back_to_db():
     with (
         patch("app.api.deps.auth.resolve_locale", return_value="en"),
         patch(
-            "app.api.deps.auth.get_cache_client",
+            "app.api.deps.auth.get_revocation_redis_client",
             new_callable=AsyncMock,
             return_value=client,
         ),
@@ -145,7 +145,7 @@ async def test_get_current_user_cached_stale_db_session_is_rejected():
     with (
         patch("app.api.deps.auth.resolve_locale", return_value="en"),
         patch(
-            "app.api.deps.auth.get_cache_client",
+            "app.api.deps.auth.get_revocation_redis_client",
             new_callable=AsyncMock,
             return_value=client,
         ),
@@ -180,7 +180,7 @@ async def test_get_current_user_cached_inactive_user_is_rejected():
     with (
         patch("app.api.deps.auth.resolve_locale", return_value="en"),
         patch(
-            "app.api.deps.auth.get_cache_client",
+            "app.api.deps.auth.get_revocation_redis_client",
             new_callable=AsyncMock,
             return_value=client,
         ),
@@ -235,7 +235,7 @@ async def test_get_current_user_cached_session_id_branches(session_id: str | Non
     with (
         patch("app.api.deps.auth.resolve_locale", return_value="en"),
         patch(
-            "app.api.deps.auth.get_cache_client",
+            "app.api.deps.auth.get_revocation_redis_client",
             new_callable=AsyncMock,
             return_value=client,
         ),
@@ -280,7 +280,7 @@ async def test_get_current_user_rejects_none_session_after_cache_lookup():
     with (
         patch("app.api.deps.auth.resolve_locale", return_value="en"),
         patch(
-            "app.api.deps.auth.get_cache_client",
+            "app.api.deps.auth.get_revocation_redis_client",
             new_callable=AsyncMock,
             return_value=client,
         ),

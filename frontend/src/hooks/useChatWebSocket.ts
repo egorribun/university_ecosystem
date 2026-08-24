@@ -58,10 +58,9 @@ export function calculateReconnectDelay(attempt: number): number {
 }
 
 /**
- * Wave 203 SW5 — pure cache update for a chat-level `read` frame. Extracted as a
- * module-level function so it is unit-testable without the WS/ticket machinery
- * (the useChatWebSocket hook test suite is describe.skip'd since W113 on a
- * missing MSW ticket handler).
+ * Pure cache update for a chat-level `read` frame. Extracted as a module-level
+ * function so the transformation remains directly testable independently of
+ * the WebSocket ticket and transport machinery.
  *
  * The frame's `user_id` is the READER (the other participant). Every message NOT
  * sent by the reader — i.e. the current user's own sent messages, in a 1-on-1 DM
@@ -290,7 +289,9 @@ export function useChatWebSocket({
   const onPresenceUpdateRef = useRef(onPresenceUpdate)
   const onAuthErrorRef = useRef(onAuthError)
   const mountedRef = useRef(false)
-  const connectRef = useRef<() => void>(() => {})
+  // Assigned by the first effect before the connection effect can schedule a
+  // retry. Avoid a never-invoked placeholder callback in the runtime graph.
+  const connectRef = useRef<() => void>(null!)
   // W204 SW4 — latest current-user id (self-echo guard) + the room this client
   // should be joined to (re-sent on every (re)connect in ws.onopen, since
   // ws-hub room membership is per-connection).

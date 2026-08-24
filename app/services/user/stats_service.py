@@ -205,11 +205,17 @@ class StatsService:
     ) -> dict[str, Any]:
         now = datetime.now(UTC)
         start_date = now - timedelta(days=period_days)
+        previous_start = start_date - timedelta(days=period_days)
 
         rows = await self.stats_repo.get_participation_stats_raw(
             user_id=user_id,
             window_start=start_date,
             now=now,
+        )
+        previous_rows = await self.stats_repo.get_participation_stats_raw(
+            user_id=user_id,
+            window_start=previous_start,
+            now=start_date,
         )
 
         events_count = len(rows)
@@ -231,14 +237,7 @@ class StatsService:
             "events": events_count,
             "hours": round(total_hours, 2),
             "groups": len(unique_groups),
-            # LOW-W19: `trend` is a placeholder value (1 if there are any events,
-            # else 0).  A real trend requires comparing participation counts
-            # against the previous period.  Replace with:
-            #   previous_count = await self.stats_repo.get_participation_count(
-            #       user_id, previous_start, window_start)
-            #   trend = events_count - previous_count
-            # once the previous-period query is implemented in UserStatsRepository.
-            "trend": 1 if events_count > 0 else 0,
+            "trend": events_count - len(previous_rows),
             "period_key": stats_cache.resolve_period_key(period_key, period_days),
             "recent": recent_items,
         }

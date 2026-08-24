@@ -59,9 +59,14 @@ async def retry_async[T](
     Raises:
         RetryExhausted: If all attempts fail
     """
+    if max_attempts <= 0:
+        raise RetryExhausted(max_attempts)
+
     last_error: Exception | None = None
 
-    for attempt in range(1, max_attempts + 1):
+    attempt = 0
+    while True:
+        attempt += 1
         try:
             return await fn(*args, **kwargs)
         except retryable_exceptions as e:
@@ -97,9 +102,6 @@ async def retry_async[T](
                 on_retry(attempt, e)
 
             await asyncio.sleep(delay)
-
-    # Should not reach here, but satisfy type checker
-    raise RetryExhausted(max_attempts, last_error)  # pragma: no cover
 
 
 def with_retry[T, **P](

@@ -91,7 +91,7 @@ export function NewsDetailHeader({
           onClick={onShare}
           leadingIcon={<ShareIcon size={16} />}
           loading={sharing}
-          aria-label={t("news:aria.shareNews") ?? ""}
+          aria-label={t("news:aria.shareNews")}
         >
           {t("news:actions.share")}
         </Button>
@@ -152,7 +152,7 @@ export function NewsDetailHeader({
               type="button"
               onClick={onEditOpen}
               className={iconBtnClass}
-              aria-label={t("news:aria.editNews") ?? ""}
+              aria-label={t("news:aria.editNews")}
               disabled={saving || deleting}
             >
               <EditIcon size={16} />
@@ -161,7 +161,7 @@ export function NewsDetailHeader({
               type="button"
               onClick={onDeleteOpen}
               className={cn(iconBtnClass, "text-(--error-text) hover:text-(--error-text)")}
-              aria-label={t("news:aria.deleteNews") ?? ""}
+              aria-label={t("news:aria.deleteNews")}
               disabled={deleting || saving}
             >
               <DeleteIcon size={16} />

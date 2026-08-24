@@ -208,6 +208,17 @@ describe("useNewsKeyboardNav", () => {
     expect(result.current.activeIndex).toBe(-1)
   })
 
+  it("ignores a sparse-array hole even when its index is active", () => {
+    const sparse = new Array<NewsItem>(1)
+    const { result } = renderHook(() => useNewsKeyboardNav(sparse))
+
+    dispatchKey("j")
+    expect(result.current.activeIndex).toBe(0)
+    dispatchKey("Enter")
+
+    expect(mockNavigateFn).not.toHaveBeenCalled()
+  })
+
   // -------------------------------------------------------------------------
   // Escape (lines 72-75)
   // -------------------------------------------------------------------------

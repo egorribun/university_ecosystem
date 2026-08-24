@@ -147,6 +147,8 @@ describe("ForwardModal", () => {
       <ForwardModal open={true} onClose={onClose} contacts={mockContacts} onSelect={() => {}} />
     )
 
+    fireEvent.keyDown(document, { key: "ArrowLeft" })
+    expect(onClose).not.toHaveBeenCalled()
     fireEvent.keyDown(document, { key: "Escape" })
     expect(onClose).toHaveBeenCalledTimes(1)
   })

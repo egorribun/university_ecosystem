@@ -127,6 +127,17 @@ describe("useNextLesson, useRelatedEvents, useRelatedNews, useRouteType hooks", 
       const { result: res2 } = renderHook(() => useRelatedEvents("1", "lecture", 4))
       expect(res2.current.length).toBeGreaterThanOrEqual(3)
     })
+
+    it("skips cache entries without pages and pages without items", () => {
+      mockGetQueriesData.mockReturnValue([
+        ["missing-data", undefined],
+        ["missing-pages", {}],
+        ["mixed-pages", { pages: [{}, { items: [] }] }],
+      ])
+
+      const { result } = renderHook(() => useRelatedEvents("current", "lecture"))
+      expect(result.current).toEqual([])
+    })
   })
 
   describe("useRelatedNews", () => {
@@ -148,6 +159,17 @@ describe("useNextLesson, useRelatedEvents, useRelatedNews, useRouteType hooks", 
       // Limit of 4: will return all sameCategory + remaining
       const { result: res2 } = renderHook(() => useRelatedNews("1", "education", 4))
       expect(res2.current.length).toBeGreaterThanOrEqual(3)
+    })
+
+    it("skips cache entries without pages and pages without items", () => {
+      mockGetQueriesData.mockReturnValue([
+        ["missing-data", undefined],
+        ["missing-pages", {}],
+        ["mixed-pages", { pages: [{}, { items: [] }] }],
+      ])
+
+      const { result } = renderHook(() => useRelatedNews("current", "education"))
+      expect(result.current).toEqual([])
     })
   })
 

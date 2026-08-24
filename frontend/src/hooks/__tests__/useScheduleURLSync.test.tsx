@@ -43,6 +43,21 @@ describe("useScheduleURLSync", () => {
     expect(mockSetWeekOffset).toHaveBeenCalledWith(2)
   })
 
+  it("normalizes an invalid URL week to the current week", () => {
+    vi.mocked(useURLState).mockReturnValue({
+      params: { w: "not-a-number" },
+      setParam: mockSetParam,
+      setParams: vi.fn(),
+    })
+    vi.mocked(useScheduleUIStore).mockImplementation((selector) =>
+      selector({ weekOffset: 3, setWeekOffset: mockSetWeekOffset } as never)
+    )
+
+    renderHook(() => useScheduleURLSync())
+
+    expect(mockSetWeekOffset).toHaveBeenCalledWith(0)
+  })
+
   it("does NOT write to URL on mount (URL is authoritative at mount time)", () => {
     // W179 SW10 — store→URL effect skips its first run so that a stale
     // weekOffset=0 does not clear a valid ?w=N URL param before the

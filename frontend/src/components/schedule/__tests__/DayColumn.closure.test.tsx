@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 
 vi.mock("react-i18next", () => ({
@@ -151,6 +151,8 @@ const baseProps = {
 }
 
 describe("DayColumn closure paths", () => {
+  afterEach(() => vi.useRealTimers())
+
   it("renders the offline fallback and forwards its retry action", async () => {
     const user = userEvent.setup()
     const onRetry = vi.fn()
@@ -233,5 +235,15 @@ describe("DayColumn closure paths", () => {
     render(<DayColumn {...baseProps} onLessonReorder={undefined} />)
     await user.click(screen.getByTestId("drag-known"))
     expect(screen.getByText("Linear Algebra")).toBeInTheDocument()
+  })
+
+  it("hides completion confetti after its announcement window", () => {
+    vi.useFakeTimers()
+    render(<DayColumn {...baseProps} isToday dayComplete />)
+
+    expect(screen.getByRole("status")).toHaveTextContent("schedule:dayComplete")
+    act(() => vi.advanceTimersByTime(2000))
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument()
   })
 })

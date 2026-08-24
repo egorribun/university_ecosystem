@@ -127,7 +127,6 @@ spec:
               - 172.16.0.0/12
               - 192.168.0.0/16
               - 169.254.0.0/16      # AWS/GCP/Azure IMDS + link-local (SSRF protection)
-              - fd00::/8            # IPv6 ULA (private)
       ports:
         - protocol: TCP
           port: 443

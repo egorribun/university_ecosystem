@@ -52,7 +52,7 @@ describe("FlipCountdown", () => {
   })
 
   it("ticks down each second and flips a digit on change", () => {
-    render(<FlipCountdown targetMinutes={600} />)
+    const { container } = render(<FlipCountdown targetMinutes={600} />)
     // starts at 5s → units digit "5"
     expect(screen.getByLabelText("5 schedule:countdown.unitSeconds")).toBeInTheDocument()
     act(() => {
@@ -60,6 +60,11 @@ describe("FlipCountdown", () => {
     })
     // now 4s → units digit "4", flip flap shows previous "5"
     expect(screen.getByLabelText("4 schedule:countdown.unitSeconds")).toBeInTheDocument()
+    expect(container.querySelector(".sched-flip-active")).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(600)
+    })
+    expect(container.querySelector(".sched-flip-active")).not.toBeInTheDocument()
   })
 
   it("fires onComplete when the countdown reaches zero", () => {

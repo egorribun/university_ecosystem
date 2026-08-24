@@ -1205,36 +1205,6 @@ export const handlers = [
         : body;
     return HttpResponse.json(responseJson, init);
   }),
-  http.get(`${baseURL}/api/v1/stats/creation`, async ({ request }) => {
-    const shouldEchoRequestBody = false;
-    let requestJson = null;
-    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
-      try {
-        requestJson = await request.clone().json();
-      } catch (e) {
-        requestJson = null;
-      }
-    }
-
-    const resultArray = [
-      [
-        await getCreationAnalyticsApiV1StatsCreationGet200Response(),
-        { status: 200 },
-      ],
-      [
-        await getCreationAnalyticsApiV1StatsCreationGet422Response(),
-        { status: 422 },
-      ],
-    ] as [any, { status: number }][];
-
-    const [body, init] =
-      resultArray[next(`get /api/v1/stats/creation`) % resultArray.length];
-    const responseJson =
-      requestJson && body && typeof body === "object" && !Array.isArray(body)
-        ? { ...body, ...requestJson }
-        : body;
-    return HttpResponse.json(responseJson, init);
-  }),
   http.get(`${baseURL}/api/v1/stats/grades`, async ({ request }) => {
     const shouldEchoRequestBody = false;
     let requestJson = null;
@@ -1765,34 +1735,6 @@ export const handlers = [
 
     const [body, init] =
       resultArray[next(`post /api/v1/spotify/disconnect`) % resultArray.length];
-    const responseJson =
-      requestJson && body && typeof body === "object" && !Array.isArray(body)
-        ? { ...body, ...requestJson }
-        : body;
-    return HttpResponse.json(responseJson, init);
-  }),
-  http.post(`${baseURL}/api/v1/spotify/sync-playlists`, async ({ request }) => {
-    const shouldEchoRequestBody = false;
-    let requestJson = null;
-    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("post")) {
-      try {
-        requestJson = await request.clone().json();
-      } catch (e) {
-        requestJson = null;
-      }
-    }
-
-    const resultArray = [
-      [
-        await getSyncPlaylistsApiV1SpotifySyncPlaylistsPost200Response(),
-        { status: 200 },
-      ],
-    ] as [any, { status: number }][];
-
-    const [body, init] =
-      resultArray[
-        next(`post /api/v1/spotify/sync-playlists`) % resultArray.length
-      ];
     const responseJson =
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
@@ -3696,38 +3638,6 @@ export const handlers = [
         : body;
     return HttpResponse.json(responseJson, init);
   }),
-  http.patch(`${baseURL}/admin/feature-flags/:name`, async ({ request }) => {
-    const shouldEchoRequestBody = false;
-    let requestJson = null;
-    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("patch")) {
-      try {
-        requestJson = await request.clone().json();
-      } catch (e) {
-        requestJson = null;
-      }
-    }
-
-    const resultArray = [
-      [
-        await getUpdateFeatureFlagAdminFeatureFlagsNamePatch200Response(),
-        { status: 200 },
-      ],
-      [
-        await getUpdateFeatureFlagAdminFeatureFlagsNamePatch422Response(),
-        { status: 422 },
-      ],
-    ] as [any, { status: number }][];
-
-    const [body, init] =
-      resultArray[
-        next(`patch /admin/feature-flags/:name`) % resultArray.length
-      ];
-    const responseJson =
-      requestJson && body && typeof body === "object" && !Array.isArray(body)
-        ? { ...body, ...requestJson }
-        : body;
-    return HttpResponse.json(responseJson, init);
-  }),
   http.delete(
     `${baseURL}/api/v1/chats/:chatId/messages/:messageId/reactions`,
     async ({ request }) => {
@@ -5560,10 +5470,6 @@ export function getDisconnectApiV1SpotifyDisconnectPost200Response() {
 
 export function getListPlaylistsApiV1SpotifyPlaylistsGet200Response() {
   return null;
-}
-
-export function getSyncPlaylistsApiV1SpotifySyncPlaylistsPost200Response() {
-  return {};
 }
 
 export function getListSessionsApiV1AuthSessionsGet200Response() {
@@ -10983,43 +10889,6 @@ export function getStatsSummaryApiV1StatsSummaryGet422Response() {
   };
 }
 
-export function getCreationAnalyticsApiV1StatsCreationGet200Response() {
-  return {};
-}
-
-export function getCreationAnalyticsApiV1StatsCreationGet422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
 export function getGetChatsApiV1ChatsGet200Response() {
   return {
     items: (() => {
@@ -12740,92 +12609,14 @@ export function getListFeatureFlagsAdminFeatureFlagsGet200Response() {
     ].map((_) => ({
       name: faker.person.fullName(),
       enabled: faker.datatype.boolean(),
-      status: faker.lorem.words(),
+      default: faker.datatype.boolean(),
       description: faker.lorem.words(),
-      percentage: faker.number.int(),
-      allowed_users: (() => {
-        const arrayMin = 1;
-        const arrayMax = MAX_ARRAY_LENGTH;
-        const safeMin = Math.min(arrayMin, arrayMax);
-        return [
-          ...new Array(
-            faker.number.int({ min: safeMin, max: arrayMax }),
-          ).keys(),
-        ].map((_) => faker.helpers.arrayElement([faker.lorem.words(), null]));
-      })(),
-      allowed_groups: (() => {
-        const arrayMin = 1;
-        const arrayMax = MAX_ARRAY_LENGTH;
-        const safeMin = Math.min(arrayMin, arrayMax);
-        return [
-          ...new Array(
-            faker.number.int({ min: safeMin, max: arrayMax }),
-          ).keys(),
-        ].map((_) => faker.lorem.words());
-      })(),
-      metadata: {},
+      provider: faker.lorem.words(),
+      evaluation_reason: faker.lorem.words(),
+      management: faker.lorem.words(),
+      config_path: faker.lorem.words(),
     }));
   })();
-}
-
-export function getUpdateFeatureFlagAdminFeatureFlagsNamePatch200Response() {
-  return {
-    name: faker.person.fullName(),
-    enabled: faker.datatype.boolean(),
-    status: faker.lorem.words(),
-    description: faker.lorem.words(),
-    percentage: faker.number.int(),
-    allowed_users: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => faker.helpers.arrayElement([faker.lorem.words(), null]));
-    })(),
-    allowed_groups: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => faker.lorem.words());
-    })(),
-    metadata: {},
-  };
-}
-
-export function getUpdateFeatureFlagAdminFeatureFlagsNamePatch422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
 }
 
 export function getListAuditLogsAdminAuditGet200Response() {

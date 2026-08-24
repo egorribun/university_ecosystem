@@ -259,10 +259,9 @@ function buildTopicsPayload(
             payload.shared = sharedTopics
           }
         } else if (Array.isArray(parsed)) {
-          const sharedTopics = normalizeTopics(parsed)
-          if (sharedTopics !== undefined) {
-            payload.shared = sharedTopics
-          }
+          // Array input is the legacy shared-topic format. normalizeTopics()
+          // always returns an array for array input, including an empty one.
+          payload.shared = normalizeTopics(parsed)!
         }
       } catch {
         /* ignore malformed data */
@@ -271,9 +270,9 @@ function buildTopicsPayload(
 
     perUser[userId] = normalizedTopics
 
-    if (Object.keys(perUser).length > 0) {
-      payload.perUser = perUser
-    }
+    // The selected user is assigned immediately above, so this collection is
+    // non-empty by construction.
+    payload.perUser = perUser
   } else {
     const perUserEntries: Record<string, string[]> = {}
 

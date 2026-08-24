@@ -33,4 +33,11 @@ describe("ensureValidResponse", () => {
       /Invalid API response for users/
     )
   })
+
+  it("uses a stable fallback message when no issue text is available", () => {
+    const error = new ApiResponseValidationError([])
+
+    expect(error.message).toBe("Invalid API response: Validation failed")
+    expect(error.issues).toEqual([])
+  })
 })

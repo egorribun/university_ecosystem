@@ -39,8 +39,11 @@ Welcome to the **University Ecosystem Platform** contribution guide. Please foll
   - `python -m ruff format app/`
   - `mypy app/` (Python 3.14 target).
 - **Test Coverage**:
-  - Baseline coverage threshold is ratcheted at **93%+**.
-  - Run `uv run pytest tests/` before opening a PR.
+  - CI enforces the per-component thresholds from the
+    [quality contract](../quality/quality-contract.json); do not duplicate or
+    lower them in feature changes.
+  - Run the canonical commands in the [testing guide](../TESTING.md) before
+    opening a PR.
 - **Exception Handling Conventions**:
   - Narrow exceptions to specific types with `# RZ-20-04` audit tags (e.g. `(OSError, ConnectionError)`).
   - Python 2 `except A, B:` syntax is strictly forbidden — always use `except (A, B):` tuple form.

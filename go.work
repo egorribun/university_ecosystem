@@ -16,6 +16,7 @@ use (
 	./services/cmd/uni-cli
 	./services/file-processor
 	./services/gateway
+	./services/pkg/spicedb
 	./services/pkg/spiffe
 	./services/ws-hub
 )

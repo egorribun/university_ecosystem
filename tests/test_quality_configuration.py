@@ -1,10 +1,14 @@
 import json
 import re
+import subprocess
 import tomllib
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from shutil import which
 from tempfile import TemporaryDirectory
+from urllib.parse import unquote
 from xml.etree import ElementTree
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,12 +34,128 @@ EXPECTED_VITEST_EXCLUSIONS = (
     "src/routeTree.gen.ts",
     "src/api/generated/**/*",
     "**/*.d.ts",
-    "src/workers/**/*",
-    "src/server.ts",
-    "src/main.tsx",
-    "src/sw.ts",
     "src/test/**/*",
 )
+
+MARKDOWN_LINK_RE = re.compile(
+    r"!?\[[^\]]*\]\((?:<(?P<angled>[^>]+)>|(?P<plain>[^\s)]+))"
+)
+MARKDOWN_REFERENCE_LINK_RE = re.compile(
+    r"^\s*\[[^\]]+\]:\s*(?:<(?P<angled>[^>]+)>|(?P<plain>\S+))",
+    re.MULTILINE,
+)
+
+
+def _tracked_files(*pathspecs: str) -> list[str]:
+    git_executable = which("git")
+    assert git_executable is not None, "Git is required for repository contracts"
+    return subprocess.run(  # noqa: S603 -- resolved Git executable, fixed operation
+        [git_executable, "ls-files", "--", *pathspecs],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+
+
+def test_repository_skill_catalogs_are_exact_mirrors_without_stale_archive() -> None:
+    primary_root = ROOT / ".agents" / "skills"
+    opencode_root = ROOT / ".opencode" / "skills"
+    archive_root = ROOT / ".agents" / "skills_archive"
+
+    # QUALITY-123 @egorribun — mutmut's isolated source copy intentionally
+    # contains only the configured mutation sources and ``also_copy`` roots;
+    # repository-owned skill catalogs are validated by the normal full-suite
+    # inventory job, not by the isolated mutation baseline.
+    if not primary_root.is_dir() or not opencode_root.is_dir():
+        pytest.skip(  # QUALITY-123 @egorribun — isolated mutmut copy
+            "repository skill catalogs are unavailable in isolated mutation copy"
+        )
+
+    def catalog(root: Path) -> dict[PurePosixPath, bytes]:
+        prefix = f"{root.relative_to(ROOT).as_posix()}/"
+        return {
+            PurePosixPath(relative_name.removeprefix(prefix)): (
+                ROOT / relative_name
+            ).read_bytes()
+            for relative_name in _tracked_files(root.relative_to(ROOT).as_posix())
+        }
+
+    primary = catalog(primary_root)
+    opencode = catalog(opencode_root)
+
+    assert primary, "the canonical repository skill catalog must not be empty"
+    assert primary.keys() == opencode.keys()
+    assert primary == opencode
+    assert not any(path.is_file() for path in archive_root.rglob("*"))
+
+
+def test_agent_instruction_surface_has_one_canonical_source() -> None:
+    # QUALITY-123 @egorribun — mutmut's isolated source copy contains only
+    # configured mutation sources, so repository instruction adapters are
+    # validated by the normal full-suite inventory job.
+    if not (ROOT / "AGENTS.md").is_file() or not (ROOT / "CLAUDE.md").is_file():
+        pytest.skip(  # QUALITY-123 @egorribun — isolated mutmut copy
+            "repository instruction files are unavailable in isolated mutation copy"
+        )
+
+    canonical = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    claude_adapter = (ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+
+    assert "NEVER include `Co-Authored-By`" in canonical
+    assert (
+        "`AGENTS.md` is the single canonical repository instruction file"
+        in claude_adapter
+    )
+    assert len(claude_adapter.encode("utf-8")) < 4_096
+    assert "docs/audits/AUDIT_WAVE" not in claude_adapter
+
+
+def test_canonical_markdown_internal_links_resolve() -> None:
+    tracked = _tracked_files("*.md")
+    excluded_prefixes = (
+        ".agents/",
+        ".opencode/",
+        "docs/audits/archive/",
+    )
+    missing: list[str] = []
+
+    for relative_name in tracked:
+        if relative_name.startswith(excluded_prefixes):
+            continue
+        document = ROOT / relative_name
+        if not document.is_file():
+            continue
+        text = document.read_text(encoding="utf-8")
+        for link_pattern in (MARKDOWN_LINK_RE, MARKDOWN_REFERENCE_LINK_RE):
+            for match in link_pattern.finditer(text):
+                target = match.group("angled") or match.group("plain") or ""
+                if not target or target.startswith(
+                    (
+                        "#",
+                        "http://",
+                        "https://",
+                        "mailto:",
+                        "tel:",
+                        "data:",
+                        "file://",
+                    )
+                ):
+                    continue
+                path_text = unquote(target.split("#", maxsplit=1)[0])
+                path_text = re.sub(r":\d+(?:-\d+)?$", "", path_text)
+                if not path_text:
+                    continue
+                candidate = (
+                    ROOT / path_text.lstrip("/")
+                    if path_text.startswith("/")
+                    else document.parent / path_text
+                )
+                if not candidate.exists():
+                    line = text.count("\n", 0, match.start()) + 1
+                    missing.append(f"{relative_name}:{line} -> {target}")
+
+    assert not missing, "broken internal Markdown links:\n" + "\n".join(missing)
 
 
 def _read_contract() -> dict[str, object]:
@@ -70,6 +190,52 @@ def test_xdist_sqlite_database_artifacts_are_ignored() -> None:
     }.issubset(gitignore_patterns)
 
 
+def test_root_pytest_report_artifact_is_ignored() -> None:
+    assert "pytest-report.xml" in set(_read_text(".gitignore").splitlines())
+
+
+def test_backend_test_files_use_domain_oriented_names() -> None:
+    forbidden = re.compile(
+        r"(?:wave\d+|session\d+|booster|topup|coverage_(?:boost|closure))",
+        re.I,
+    )
+    violations = sorted(
+        path.name
+        for path in (ROOT / "tests").glob("test_*.py")
+        if forbidden.search(path.name)
+    )
+
+    assert violations == []
+
+
+def test_python_coverage_excludes_only_non_runtime_typing_contours() -> None:
+    coverage_report = _read_pyproject()["tool"]["coverage"]["report"]
+
+    assert coverage_report["exclude_lines"] == [
+        "pragma: no cover",
+        "if TYPE_CHECKING:",
+    ]
+
+
+def test_runtime_source_has_no_executable_coverage_pragmas() -> None:
+    usages: list[tuple[str, str]] = []
+    for path in sorted((ROOT / "app").rglob("*.py")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if "pragma: no cover" in line:
+                usages.append((path.relative_to(ROOT).as_posix(), line.strip()))
+
+    assert usages == [
+        (
+            "app/core/event_decorators.py",
+            "]: ...  # pragma: no cover - typing-only overload",
+        ),
+        (
+            "app/core/event_decorators.py",
+            "]: ...  # pragma: no cover - typing-only overload",
+        ),
+    ]
+
+
 def test_governance_quality_configuration_matches_contract() -> None:
     contract = _read_contract()
     ownership = json.loads(_read_text("quality/ownership-mapping.json"))
@@ -87,19 +253,32 @@ def test_governance_quality_configuration_matches_contract() -> None:
 
     codecov = yaml.safe_load(_read_text("codecov.yml"))
     expected_flags = {
-        "python": "app/",
-        "frontend": "frontend/src/",
-        "go-gateway": "services/gateway/",
-        "go-ws-hub": "services/ws-hub/",
-        "go-file-processor": "services/file-processor/",
-        "rust-native": "native/rust_ext/",
-        "rust-pyo3-sanitizer": "crates/pyo3-sanitizer/",
-        "rust-wasm-sanitizer": "frontend/wasm-sanitizer/",
-        "rust-crypto": "frontend/rust-crypto/",
+        "python": ["app/"],
+        "frontend": ["frontend/src/"],
+        "go-gateway": ["services/gateway/"],
+        "go-ws-hub": ["services/ws-hub/"],
+        "go-file-processor": ["services/file-processor/"],
+        "go-shared": [
+            "services/cmd/uni-cli/",
+            "services/pkg/spiffe/",
+            "services/pkg/spicedb/",
+        ],
+        "rust-native": ["native/rust_ext/"],
+        "rust-pyo3-sanitizer": ["crates/pyo3-sanitizer/"],
+        "rust-wasm-sanitizer": ["frontend/wasm-sanitizer/"],
+        "rust-crypto": ["frontend/rust-crypto/"],
     }
     assert set(codecov["flags"]) == set(expected_flags)
-    for flag, path in expected_flags.items():
-        assert codecov["flags"][flag]["paths"] == [path]
+    assert codecov["coverage"]["status"]["project"]["default"] == {
+        "target": "100%",
+        "threshold": "0%",
+    }
+    assert codecov["coverage"]["status"]["patch"]["default"] == {
+        "target": "100%",
+        "threshold": "0%",
+    }
+    for flag, paths in expected_flags.items():
+        assert codecov["flags"][flag]["paths"] == paths
         coverage = contract["components"][flag]["coverage"]
         floor = next(value for value in coverage.values() if value)
         assert codecov["coverage"]["status"]["project"][flag]["target"] == f"{floor}%"
@@ -237,7 +416,7 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
     assert mutation_config["source_paths"] == ["app/"]
     assert "paths_to_mutate" not in mutation_config
     assert mutation_config["timeout_multiplier"] == 15.0
-    assert mutation_config["timeout_constant"] == 1.0
+    assert mutation_config["timeout_constant"] == 6.0
     assert mutation_config["pytest_add_cli_args_test_selection"] == [
         "-m",
         "not integration and not chaos and not performance and not slow",
@@ -261,6 +440,7 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
         "docs",
         "containers/quality",
         "k8s/kyverno",
+        "k8s/flagd",
         "crates/pyo3-sanitizer/src",
         "frontend/scripts",
         "frontend/package.json",
@@ -416,6 +596,12 @@ def test_frontend_coverage_policy_and_source_universe_match_quality_contract() -
     )
     assert reports_directory is not None, "missing reportsDirectory"
     assert reports_directory.group("value") == "coverage"
+    # AST-aware remapping is required for stable statement/branch maps across
+    # Vitest shards.  Its known negative synthetic counters are normalised to
+    # zero by the aggregate merger, preserving a fail-closed 100% gate.
+    assert re.search(r"\bexperimentalAstAwareRemapping\s*:\s*true\b", coverage)
+    merger = _read_text("frontend/scripts/merge-vitest-coverage.mjs")
+    assert "normaliseNegativeHitCounts" in merger
     assert _extract_string_array(coverage, "include") == EXPECTED_VITEST_INCLUDE
     assert _extract_string_array(coverage, "exclude") == EXPECTED_VITEST_EXCLUSIONS
 
@@ -467,6 +653,10 @@ def test_coverage_commands_and_sonar_paths_match_quality_contract() -> None:
         for fragment in required_fragments:
             assert fragment in target
         assert "--cov-fail-under=" not in target
+
+    testing_guide = _read_text("TESTING.md")
+    assert "--cov-fail-under=0" not in testing_guide
+    assert "inherits the fail-closed threshold" in testing_guide
 
     sonar = _read_text("sonar-project.properties")
     assert _sonar_property(sonar, "sonar.python.coverage.reportPaths") == "coverage.xml"

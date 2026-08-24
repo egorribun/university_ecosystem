@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import typing
 from functools import cached_property
+from urllib.parse import urlsplit
 
 from pydantic import ValidationInfo, field_validator, model_validator
 
@@ -185,6 +186,23 @@ class Settings(
                     "set CACHE_REDIS_URL for production or connections will fail",
                     cache_backend,
                 )
+
+        revocation_url = str(getattr(self, "revocation_redis_url", "") or "")
+        if not revocation_url:
+            raise ValueError("REVOCATION_REDIS_URL is required outside development")
+        cache_url = str(getattr(self, "cache_redis_url", "") or "")
+        cache_endpoint = urlsplit(cache_url)
+        revocation_endpoint = urlsplit(revocation_url)
+        cache_host_port = (cache_endpoint.hostname, cache_endpoint.port or 6379)
+        revocation_host_port = (
+            revocation_endpoint.hostname,
+            revocation_endpoint.port or 6379,
+        )
+        if cache_host_port == revocation_host_port:
+            raise ValueError(
+                "REVOCATION_REDIS_URL must use a distinct Redis process from "
+                "CACHE_REDIS_URL so cache eviction cannot erase security state"
+            )
 
         # Database pool coordination
         pool_size = int(getattr(self, "database_pool_size", 5) or 5)

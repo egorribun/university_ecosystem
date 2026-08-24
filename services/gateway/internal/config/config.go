@@ -30,7 +30,14 @@ type Config struct {
 	Port       string
 	BackendURL string
 	RedisURL   string
-	JWTSecret  string
+	// RevocationRedisURL is the canonical cross-service session-revocation
+	// store. It is deliberately separate from RedisURL, which owns rate-limit
+	// state and may use another logical database.
+	RevocationRedisURL string
+	JWTSecret          string
+	// JWTAudience binds access tokens to this relying party. It must match the
+	// Python issuer's JWT_AUDIENCE setting.
+	JWTAudience string
 	// JWKSPublicKeyPEM is the PEM-encoded RSA/EC public key used to verify RS256 tokens.
 	// Optional. When empty, only HS256 tokens are accepted. Set JWKS_PUBLIC_KEY_PEM to
 	// enable RS256 support without a round-trip to the Python JWKS endpoint at startup.
@@ -79,20 +86,30 @@ type Config struct {
 // Load loads the configuration from environment variables
 // It ensures critical secrets are present, enforcing a "Fail Secure" policy.
 func Load() (*Config, error) {
+	revocationRedisURL := "redis://redis:6379/0"
+	if value, explicitlySet := os.LookupEnv("REVOCATION_REDIS_URL"); explicitlySet {
+		revocationRedisURL = strings.TrimSpace(value)
+	}
+	jwtAudience := "university-ecosystem-api"
+	if value, explicitlySet := os.LookupEnv("JWT_AUDIENCE"); explicitlySet {
+		jwtAudience = strings.TrimSpace(value)
+	}
 	cfg := &Config{
-		Port:              getEnv("GATEWAY_PORT", "8080"),
-		BackendURL:        getEnv("BACKEND_URL", "http://backend:8000"),
-		RedisURL:          getEnv("REDIS_URL", "redis://redis:6379/3"),
-		JWTSecret:         os.Getenv("JWT_SECRET"),          // No default — fail secure
-		JWKSPublicKeyPEM:  os.Getenv("JWKS_PUBLIC_KEY_PEM"), // Optional RS256 public key
-		FileProcessorAddr: getEnv("FILE_PROCESSOR_ADDR", "file-processor:50051"),
-		RateLimitRPS:      getEnvInt("RATE_LIMIT_RPS", 100),
-		RateLimitBurst:    getEnvInt("RATE_LIMIT_BURST", 200),
-		AllowedOrigins:    getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
-		SentryDSN:         getEnv("SENTRY_DSN", ""),
-		Environment:       getEnv("VITE_ENVIRONMENT", "development"),
-		OtelEndpoint:      getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "jaeger:4317"),
-		AppVersion:        getEnv("APP_VERSION", "unknown"),
+		Port:               getEnv("GATEWAY_PORT", "8080"),
+		BackendURL:         getEnv("BACKEND_URL", "http://backend:8000"),
+		RedisURL:           getEnv("REDIS_URL", "redis://redis:6379/3"),
+		RevocationRedisURL: revocationRedisURL,
+		JWTSecret:          os.Getenv("JWT_SECRET"), // No default — fail secure
+		JWTAudience:        jwtAudience,
+		JWKSPublicKeyPEM:   os.Getenv("JWKS_PUBLIC_KEY_PEM"), // Optional RS256 public key
+		FileProcessorAddr:  getEnv("FILE_PROCESSOR_ADDR", "file-processor:50051"),
+		RateLimitRPS:       getEnvInt("RATE_LIMIT_RPS", 100),
+		RateLimitBurst:     getEnvInt("RATE_LIMIT_BURST", 200),
+		AllowedOrigins:     getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
+		SentryDSN:          getEnv("SENTRY_DSN", ""),
+		Environment:        getEnv("VITE_ENVIRONMENT", "development"),
+		OtelEndpoint:       getEnv("OTEL_EXPORTER_OTLP_ENDPOINT", "tempo:4317"),
+		AppVersion:         getEnv("APP_VERSION", "unknown"),
 		// AUDIT-INFRA-05: Fail-closed — TLS on by default. Set GRPC_USE_TLS=false
 		// ONLY for local dev (docker-compose.yml). Production/K8s inherit TLS=true.
 		GrpcUseTLS: os.Getenv("GRPC_USE_TLS") != "false",
@@ -121,6 +138,12 @@ func Load() (*Config, error) {
 	if cfg.JWTSecret == "" {
 		// CRITICAL: Fail to start if no secret is provided.
 		return nil, fmt.Errorf("JWT_SECRET environment variable is not set")
+	}
+	if cfg.RevocationRedisURL == "" {
+		return nil, fmt.Errorf("REVOCATION_REDIS_URL environment variable must not be blank")
+	}
+	if cfg.JWTAudience == "" {
+		return nil, fmt.Errorf("JWT_AUDIENCE environment variable must not be blank")
 	}
 
 	// RZ-33-02: If JWKS hot-reload is enabled but refresh interval is invalid,

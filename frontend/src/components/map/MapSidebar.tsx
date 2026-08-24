@@ -26,6 +26,8 @@ interface MapSidebarProps {
   todayLessons?: TodayLesson[]
 }
 
+export const getViewportHeight = () => (typeof window === "undefined" ? 800 : window.innerHeight)
+
 /**
  * MapSidebar — building/room info panel with integrated floor selector.
  * Desktop: inline panel (no overlay). Mobile: bottom sheet.
@@ -47,8 +49,7 @@ export function MapSidebar({
   const isOpen = !!building
 
   /* ── Bottom sheet drag state (mobile only) ── */
-  const getViewH = () => (typeof window !== "undefined" ? window.innerHeight : 800)
-  const [sheetHeight, setSheetHeight] = useState(() => getViewH() * 0.5)
+  const [sheetHeight, setSheetHeight] = useState(() => getViewportHeight() * 0.5)
   /** Scroll locked during entrance animation — prevents focus-trap auto-scroll */
   const [sheetReady, setSheetReady] = useState(false)
   const dragStartY = useRef(0)
@@ -57,7 +58,7 @@ export function MapSidebar({
 
   // Stabilize snap points — prevents snapToNearest recreation every render (CQ-110-01)
   const { SNAP_PEEK, SNAP_HALF, SNAP_FULL } = useMemo(() => {
-    const vh = getViewH()
+    const vh = getViewportHeight()
     return { SNAP_PEEK: 160, SNAP_HALF: vh * 0.5, SNAP_FULL: vh * 0.85 }
   }, [])
 
@@ -103,7 +104,7 @@ export function MapSidebar({
   const handleDragMove = useCallback((clientY: number) => {
     if (!isDragging.current) return
     const dy = dragStartY.current - clientY
-    const viewH = typeof window !== "undefined" ? window.innerHeight : 800
+    const viewH = getViewportHeight()
     const newH = Math.max(100, Math.min(dragStartH.current + dy, viewH * 0.9))
     setSheetHeight(newH)
   }, [])

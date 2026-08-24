@@ -1,11 +1,11 @@
-"""Session-11 — config-mixin validator/property coverage.
+"""Config-mixin validator and property tests.
 
 Targets the UNtested validators + cached_property/property accessors of the five
 Pydantic config mixins composed by ``app.core.config.security.SecuritySettings``:
 ``JwtSettingsMixin``, ``CspSettingsMixin``, ``CorsSettingsMixin``,
 ``MfaSettingsMixin``, ``RateLimitSettingsMixin``.
 
-Idiom (mirrors ``tests/test_wave131_cookie_migration.py``): instantiate a FRESH
+Idiom (mirrors ``tests/test_security_cookie_migration.py``): instantiate a FRESH
 ``SecuritySettings()`` per test + ``monkeypatch.setenv``. NEVER mutate the global
 ``settings`` singleton or any class descriptor — that is the mutmut-isolation
 landmine (mutmut forks per-mutant and shared module/class state corrupts the run).
@@ -135,7 +135,8 @@ class TestJwtSettingsMixin:
     def test_algorithm_hs256_in_dev_allowed_and_uppercased(self, monkeypatch):
         monkeypatch.setenv("ENVIRONMENT", "development")
         monkeypatch.setenv("ALGORITHM", "hs256")
-        s = SecuritySettings()
+        with pytest.warns(UserWarning, match="HS256 is not recommended"):
+            s = SecuritySettings()
         assert s.algorithm == "HS256"  # validate_jwt_algorithm uppercases
         assert s.ALGORITHM == "HS256"  # cached_property delegates (J17)
 
@@ -241,7 +242,7 @@ class TestJwtSettingsMixin:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# CspSettingsMixin (UNtested half only — cookie_samesite covered by test_wave131)
+# CspSettingsMixin (remaining contours; cookie_samesite has a dedicated test)
 # ─────────────────────────────────────────────────────────────────────────────
 class TestCspSettingsMixin:
     def test_coep_value_valid_normalized(self, monkeypatch):

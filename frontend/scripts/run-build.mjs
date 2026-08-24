@@ -15,7 +15,7 @@ function run(command, commandArgs, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, commandArgs, { stdio: "inherit", env, ...options })
     child.on("error", (err) => {
-      console.error(`Failed to start ${command}:`, err)
+      console.error("Failed to start %s:", command, err)
       reject(err)
     })
     child.on("close", (code) => {

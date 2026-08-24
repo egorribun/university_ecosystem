@@ -15,6 +15,9 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: backend
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: backend
       ports:
         - protocol: TCP
           port: 8013
@@ -24,7 +27,7 @@ spec:
               kubernetes.io/metadata.name: monitoring
       ports:
         - protocol: TCP
-          port: 8016
+          port: 8014
   egress:
     - to:
         - namespaceSelector:

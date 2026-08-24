@@ -98,6 +98,10 @@ async def test_get_chats_for_user_covers_cursor_pagination_and_empty_result() ->
     assert has_more is True
     assert next_cursor == "next"
     encode.assert_called_once_with(NOW, OTHER_ID)
+    statement = db.execute.await_args.args[0]
+    assert "message_rank = 1" in str(
+        statement.compile(compile_kwargs={"literal_binds": True})
+    )
 
     db.execute.return_value = _result(rows=[])
     with patch.object(

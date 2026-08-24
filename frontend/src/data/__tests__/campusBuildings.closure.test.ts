@@ -16,6 +16,7 @@ describe("campus building data helpers", () => {
     expect(getCampusBuildings("en")).toBe(buildings)
     expect(getCampusBuildings("en-US")).toHaveLength(BUILDING_IDS.length)
     expect(getCampusBuildings("unknown-locale")).toHaveLength(BUILDING_IDS.length)
+    expect(getCampusBuildings()).toHaveLength(BUILDING_IDS.length)
     expect(buildings.every((building) => building.floors.length === building.floorCount)).toBe(true)
     expect(
       buildings.some((building) => building.floors.some((floor) => floor.rooms.length > 0))

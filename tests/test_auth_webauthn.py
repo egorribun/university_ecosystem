@@ -520,7 +520,7 @@ async def test_mfa_endpoints_edge_cases(
             "challenge_token": "challenge_token_of_at_least_32_chars_length",
         },
     )
-    assert verify_resp.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert verify_resp.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
     with patch("app.auth.mfa.consume_challenge", side_effect=HTTPException(400, "Err")):
         verify_resp = await async_client.post(

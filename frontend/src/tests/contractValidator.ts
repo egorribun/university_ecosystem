@@ -46,8 +46,8 @@ const _specPath = resolve(
 
 const _fallbackSpecPath = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  // Walk up to root, then to tests/contracts/openapi.json
-  "../../../tests/contracts/openapi.json"
+  // Walk up to the repository's canonical compatibility snapshot.
+  "../../../tests/contracts/snapshots/api_openapi_v1.json"
 )
 
 let _spec: OpenApiDocument | null = null

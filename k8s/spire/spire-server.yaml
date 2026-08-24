@@ -39,12 +39,26 @@ data:
         }
       }
 
-      UpstreamAuthority "disk" {
+      BundlePublisher "k8s_configmap" {
         plugin_data {
-          key_file_path = "/run/spire/secrets/bootstrap.key"
-          cert_file_path = "/run/spire/secrets/bootstrap.crt"
+          clusters = {
+            "university-cluster" = {
+              configmap_name = "spire-bundle"
+              configmap_key = "bundle.crt"
+              namespace = "spire"
+              format = "pem"
+            }
+          }
         }
       }
+    }
+
+    health_checks {
+      listener_enabled = true
+      bind_address = "0.0.0.0"
+      bind_port = "8080"
+      live_path = "/live"
+      ready_path = "/ready"
     }
 ---
 apiVersion: v1
@@ -79,13 +93,48 @@ spec:
         app: spire-server
     spec:
       serviceAccountName: spire-server
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: spire-server
-          image: ghcr.io/spiffe/spire-server:1.8.0
+          image: ghcr.io/spiffe/spire-server:1.15.2@sha256:aa74ef1be86bc8e0684007d84a4d9859d294384d842c30425048d73429f3216e
           args: ["-config", "/run/spire/config/server.conf"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 8081
               name: grpc
+            - containerPort: 8080
+              name: health
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: health
+            failureThreshold: 30
+            periodSeconds: 2
+            timeoutSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: health
+            failureThreshold: 3
+            periodSeconds: 30
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: health
+            failureThreshold: 3
+            periodSeconds: 5
+            timeoutSeconds: 3
           volumeMounts:
             - name: spire-config
               mountPath: /run/spire/config

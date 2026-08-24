@@ -5,11 +5,10 @@ import i18n, { fallbackLng, supportedLngs } from "@/i18n/config"
 const acceptLanguageHeader = "Accept-Language"
 
 const normalizeLanguageCandidate = (candidate: string) =>
-  candidate.toLowerCase().replace(/_/g, "-").split(",", 1)[0]?.trim() ?? ""
+  candidate.toLowerCase().replace(/_/g, "-").split(",", 1).join("").trim()
 
-const resolveAcceptLanguage = (language?: string) => {
+const resolveAcceptLanguage = (language: string) => {
   const fallbackLanguage = fallbackLng
-  if (!language) return fallbackLanguage
 
   const normalized = normalizeLanguageCandidate(language)
   if (!normalized) return fallbackLanguage

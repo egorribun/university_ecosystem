@@ -2,97 +2,210 @@
 # Run with: docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
 
 services:
+  # Enable the backend endpoint only when the observability layer is selected.
+  # Authentication prevents the localhost-published backend port from exposing
+  # operational internals anonymously.
+  backend:
+    environment:
+      ENABLE_METRICS_ENDPOINT: "true"
+      METRICS_BASIC_AUTH_USERNAME: "metrics_scraper"
+      METRICS_BASIC_AUTH_PASSWORD: ${METRICS_BASIC_AUTH_PASSWORD:?METRICS_BASIC_AUTH_PASSWORD is required - run start-docker.ps1}
+      METRICS_ALLOWLIST: ""
+
+  minio:
+    environment:
+      MINIO_PROMETHEUS_AUTH_TYPE: public
+
   # Grafana Tempo - Distributed tracing backend
   tempo:
-    image: grafana/tempo:2.7.1
+    image: grafana/tempo:2.10.3@sha256:cac9de2ac9f6da8efca5b64b690a7cb8c786a0c49cac7b4517dd1b0089a6c703
     command: ["-config.file=/etc/tempo/tempo.yaml"]
-    ports:
-      - "3200:3200"   # Tempo API
-      - "4317:4317"   # OTLP gRPC
-      - "4318:4318"   # OTLP HTTP
+    # Replace the base Tempo binding instead of merging a second host binding.
+    ports: !override
+      - "127.0.0.1:3200:3200"   # Tempo API
+      - "127.0.0.1:4317:4317"   # OTLP gRPC
+      - "127.0.0.1:4318:4318"   # OTLP HTTP
     volumes:
       - ./infrastructure/observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
       - tempo-data:/var/tempo
     networks:
       - internal
+      - public
     restart: unless-stopped
 
   # Grafana Loki - Log aggregation
   loki:
-    image: grafana/loki:3.4.1
+    image: grafana/loki:3.7.1@sha256:73e905b51a7f917f7a1075e4be68759df30226e03dcb3cd2213b989cc0dc8eb4
     command: ["-config.file=/etc/loki/loki.yaml"]
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
     volumes:
       - ./infrastructure/observability/loki.yaml:/etc/loki/loki.yaml:ro
       - loki-data:/loki
     networks:
       - internal
+      - public
     restart: unless-stopped
 
-  # Promtail - Log collector for Loki
-  promtail:
-    image: grafana/promtail:3.4.1
-    command: ["-config.file=/etc/promtail/promtail.yaml"]
-    volumes:
-      - ./infrastructure/observability/promtail.yaml:/etc/promtail/promtail.yaml:ro
-      - /var/log:/var/log:ro
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-    networks:
-      - internal
+  # Loki is also distroless, so its readiness check runs from a sidecar.
+  loki-healthprobe:
+    image: curlimages/curl:8.10.1@sha256:d9b4541e214bcd85196d6e92e2753ac6d0ea699f0af5741f8c6cccbfcf00ef4b
+    network_mode: "service:loki"
     depends_on:
       - loki
+    command: ["sleep", "infinity"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  # Grafana Alloy - supported Docker log collector for Loki. Promtail reached
+  # end-of-life on 2026-03-02 and receives no further fixes.
+  alloy:
+    image: grafana/alloy:v1.18.0@sha256:491b0578c04983fd54fe99b587b6fab4404dc46d0dc16677bd6b00cc1140b308
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - --disable-reporting
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./infrastructure/observability/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy-data:/var/lib/alloy/data
+    ports:
+      - "127.0.0.1:12345:12345"
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # The official image's /var/lib/alloy parent is owned by alloy:alloy with
+    # mode 0770. Root needs this single capability to traverse into the mounted
+    # state volume; all other Linux capabilities remain dropped.
+    cap_add:
+      - DAC_OVERRIDE
+    networks:
+      - internal
+      - public
+    depends_on:
+      loki-healthprobe:
+        condition: service_healthy
     restart: unless-stopped
 
   # Pyroscope - Continuous profiling
   pyroscope:
-    image: grafana/pyroscope:1.18.1
-    ports:
-      - "4040:4040"
+    image: grafana/pyroscope:1.19.1@sha256:d5d38187f7593fdf5643ba29e67099206e8d4dee6207f78d028ea3fe621cc04d
+    # Replace the base localhost binding instead of publishing it twice.
+    ports: !override
+      - "127.0.0.1:4040:4040"
     volumes:
       - pyroscope-data:/data
     networks:
       - internal
+      - public
     restart: unless-stopped
 
   # Grafana - Unified dashboards
   grafana:
-    image: grafana/grafana:11.5.1
+    image: grafana/grafana:12.3.6@sha256:ee4573c0ff6b558d1690c2f453b440183df32392d9619e6216c504795e4458e8
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD is required - run start-docker.ps1}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_PLUGINS_PUBLIC_KEY_RETRIEVAL_DISABLED: "true"
+      GF_DATABASE_WAL: "true"
+      GF_DATABASE_QUERY_RETRIES: "10"
+      GF_DATABASE_TRANSACTION_RETRIES: "10"
       GF_FEATURE_TOGGLES_ENABLE: "traceqlEditor tempoSearch tempoBackendSearch"
     volumes:
-      - ./infrastructure/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/observability/grafana/provisioning/datasources/datasources.yaml:/etc/grafana/provisioning/datasources/university-ecosystem.yaml:ro
       - grafana-data:/var/lib/grafana
     networks:
       - internal
       - public
     depends_on:
-      - tempo
-      - loki
-      - prometheus
-      - pyroscope
+      tempo-healthprobe:
+        condition: service_healthy
+      loki-healthprobe:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+      pyroscope:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
   # Prometheus - Metrics (extend existing if present)
   prometheus:
-    image: prom/prometheus:v3.1.0
+    image: prom/prometheus:v3.10.0@sha256:4a61322ac1103a0e3aea2a61ef1718422a48fa046441f299d71e660a3bc71ae9
+    entrypoint: ["/bin/sh", "-ec"]
     command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.retention.time=15d"
-      - "--web.enable-remote-write-receiver"
+      - |
+        umask 077
+        printf '%s' "$$METRICS_BASIC_AUTH_PASSWORD" > /tmp/backend_metrics_password
+        exec /bin/prometheus \
+          --config.file=/etc/prometheus/prometheus.yml \
+          --storage.tsdb.retention.time=15d \
+          --web.enable-remote-write-receiver
+    environment:
+      METRICS_BASIC_AUTH_PASSWORD: ${METRICS_BASIC_AUTH_PASSWORD:?METRICS_BASIC_AUTH_PASSWORD is required - run start-docker.ps1}
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     volumes:
       - ./infrastructure/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./infrastructure/observability/alerts:/etc/prometheus/alerts:ro
       - prometheus-data:/prometheus
     networks:
       - internal
+      - public
+    depends_on:
+      backend:
+        condition: service_healthy
+      redis-exporter:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.88.0@sha256:2c8c55c63ce4d915389f03d337b8acef56aaaca9fab8728291287e612d4d6398
+    environment:
+      REDIS_ADDR: redis://valkey:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    depends_on:
+      valkey:
+        condition: service_healthy
+    networks:
+      - cache_net
+      - internal
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     restart: unless-stopped
 
 volumes:
@@ -101,3 +214,4 @@ volumes:
   pyroscope-data:
   grafana-data:
   prometheus-data:
+  alloy-data:

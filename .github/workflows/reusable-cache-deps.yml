@@ -22,7 +22,7 @@ on:
                 description: "Go version"
                 required: false
                 type: string
-                default: "1.26.5"
+                default: "1.26.6"
         outputs:
             python-cache-hit:
                 description: "Whether Python cache was hit"
@@ -34,7 +34,7 @@ on:
 jobs:
     cache:
         name: Warm Dependency Caches
-        runs-on: ubuntu-latest
+        runs-on: ubuntu-24.04
         outputs:
             python-cache-hit: ${{ steps.python-cache.outputs.cache-hit }}
             node-cache-hit: ${{ steps.node-cache.outputs.cache-hit }}

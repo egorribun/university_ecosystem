@@ -116,6 +116,18 @@ describe("cryptoWorker wrapper", () => {
     await expect(p2).rejects.toThrow("Worker thread crashed due to Out Of Memory")
   })
 
+  it("uses a defensive message when a worker crash has no details", async () => {
+    const pending = cryptoWorker.pbkdf2({
+      value: "a",
+      salt: "b",
+      keySize: 128,
+      iterations: 1,
+    })
+
+    mockWorker.onerror({ message: undefined } as unknown as ErrorEvent)
+    await expect(pending).rejects.toThrow("Crypto worker crashed: unknown error")
+  })
+
   it("rejects promises after a 30-second timeout", async () => {
     const p = cryptoWorker.pbkdf2({ value: "a", salt: "b", keySize: 128, iterations: 1 })
 

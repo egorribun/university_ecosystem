@@ -18,24 +18,25 @@ from app.management.reset_mfa import (
     _reset_user_mfa,
 )
 from app.management.reset_mfa import main as reset_mfa_main
-from app.management.squash_migrations import main as squash_migrations_main
 from app.management.stories_cleanup import main as stories_cleanup_main
 from app.management.weekly_cleanup import main as weekly_cleanup_main
 from app.management.weekly_cleanup import run_weekly_cleanup
 from app.scripts.backfill_uuids import main as backfill_uuids_main
 
-# Declarative models for backfill testing to mimic transition phase
-TestBase = declarative_base()
+# Declarative models for backfill testing to mimic transition phase.  The name
+# intentionally does not start with ``Test`` so pytest never treats the SQLAlchemy
+# base as a test container.
+MockBase = declarative_base()
 
 
-class MockUser(TestBase):
+class MockUser(MockBase):
     __tablename__ = "mock_users"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     uuid_id: Mapped[str] = mapped_column(String, nullable=True)
     created_at = None
 
 
-class MockActiveSession(TestBase):
+class MockActiveSession(MockBase):
     __tablename__ = "mock_active_sessions"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     uuid_id: Mapped[str] = mapped_column(String, nullable=True)
@@ -257,81 +258,6 @@ def test_reset_mfa_main() -> None:
         mock_parser.return_value.parse_args.return_value = args
         reset_mfa_main()
         mock_async_main.assert_awaited_once_with(args)
-
-
-# ===========================================================================
-# squash_migrations.py tests
-# ===========================================================================
-
-
-def test_squash_migrations_no_migrations() -> None:
-    mock_versions_dir = MagicMock(spec=Path)
-    mock_versions_dir.glob.return_value = []
-    with patch("app.management.squash_migrations.VERSIONS_DIR", mock_versions_dir):
-        with pytest.raises(SystemExit) as exc:
-            squash_migrations_main()
-        assert exc.value.code == 1
-
-
-def test_squash_migrations_too_few_migrations() -> None:
-    migrations = [Path("0001_initial.py"), Path("0002_user.py")]
-    mock_versions_dir = MagicMock(spec=Path)
-    mock_versions_dir.glob.return_value = migrations
-    with patch("app.management.squash_migrations.VERSIONS_DIR", mock_versions_dir):
-        with pytest.raises(SystemExit) as exc:
-            squash_migrations_main()
-        assert exc.value.code == 0
-
-
-def test_squash_migrations_proceed(tmp_path) -> None:
-    versions_dir = tmp_path / "alembic" / "versions"
-    versions_dir.mkdir(parents=True)
-
-    # Create 25 migrations
-    for i in range(25):
-        (versions_dir / f"{i:04d}_migration.py").write_text("content")
-
-    with (
-        patch("app.management.squash_migrations.VERSIONS_DIR", versions_dir),
-        patch(
-            "app.management.squash_migrations.ARCHIVE_DIR", versions_dir / "_archived"
-        ),
-        patch("builtins.input", return_value="y"),
-    ):
-        squash_migrations_main()
-
-        # 5 should be archived (since KEEP_RECENT = 20)
-        archived_dir = versions_dir / "_archived"
-        assert archived_dir.exists()
-        assert len(list(archived_dir.glob("*.py"))) == 5
-        # 20 kept + 1 new baseline
-        assert len(list(versions_dir.glob("*.py"))) == 21
-
-
-def test_squash_migrations_abort(tmp_path) -> None:
-    versions_dir = tmp_path / "alembic" / "versions"
-    versions_dir.mkdir(parents=True)
-
-    # Create 25 migrations
-    for i in range(25):
-        (versions_dir / f"{i:04d}_migration.py").write_text("content")
-
-    with (
-        patch("app.management.squash_migrations.VERSIONS_DIR", versions_dir),
-        patch(
-            "app.management.squash_migrations.ARCHIVE_DIR", versions_dir / "_archived"
-        ),
-        patch("builtins.input", return_value="n"),
-    ):
-        with pytest.raises(SystemExit) as exc:
-            squash_migrations_main()
-        assert exc.value.code == 0
-
-        # Archive directory should not exist or be empty
-        archived_dir = versions_dir / "_archived"
-        assert not archived_dir.exists()
-        # Original 25 migrations should remain unchanged
-        assert len(list(versions_dir.glob("*.py"))) == 25
 
 
 # ===========================================================================

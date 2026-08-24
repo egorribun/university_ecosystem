@@ -22,8 +22,6 @@ Coverage focus:
 * ``@invalidates_cache`` decorator — invalidates after success, does
   NOT invalidate on exception (mutation didn't commit), supports
   multiple tags;
-* ``invalidate_all_schedules`` — raises NotImplementedError as a
-  documented guard.
 """
 
 from __future__ import annotations
@@ -43,7 +41,6 @@ from app.services.cache_invalidation import (
     event_cache_key,
     events_list_cache_key,
     get_tags_for_key,
-    invalidate_all_schedules,
     invalidate_by_tag,
     invalidate_event_cache,
     invalidate_groups_cache,
@@ -273,17 +270,7 @@ async def test_invalidate_groups_cache_targets_groups_prefix() -> None:
     cache.invalidate.assert_awaited_once_with(CACHE_PREFIX_GROUPS)
 
 
-# ── 7. invalidate_all_schedules ──────────────────────────────────────────────
-
-
-@pytest.mark.asyncio
-async def test_invalidate_all_schedules_raises_not_implemented() -> None:
-    """The function is a deliberate guard — callers are pointed elsewhere."""
-    with pytest.raises(NotImplementedError, match="invalidate_by_tag"):
-        await invalidate_all_schedules()
-
-
-# ── 8. CacheInvalidator context manager ──────────────────────────────────────
+# ── 7. CacheInvalidator context manager ──────────────────────────────────────
 
 
 @pytest.mark.asyncio

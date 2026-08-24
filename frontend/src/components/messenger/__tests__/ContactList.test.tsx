@@ -238,6 +238,15 @@ describe("ContactList — empty state (W183 SW1)", () => {
 })
 
 describe("ContactList — keyboard navigation (W183 SW4)", () => {
+  it("renders unread badges without entrance motion when reduced motion is enabled", () => {
+    mockReducedMotion.mockReturnValue(true)
+    render(<ContactList contacts={mockContacts} selectedId={null} onSelect={() => {}} />, {
+      wrapper,
+    })
+
+    expect(screen.getByLabelText(/messenger:aria.unread/)).toHaveTextContent("2")
+  })
+
   it("ArrowDown focuses next contact row", () => {
     render(<ContactList contacts={mockContacts} selectedId={null} onSelect={() => {}} />, {
       wrapper,
@@ -290,6 +299,18 @@ describe("ContactList — keyboard navigation (W183 SW4)", () => {
     aliceRow.focus()
     fireEvent.keyDown(aliceRow, { key: "End" })
     expect(document.activeElement).toBe(carolRow)
+  })
+
+  it("leaves focus unchanged for an unrelated key", () => {
+    render(<ContactList contacts={mockContacts} selectedId={null} onSelect={() => {}} />, {
+      wrapper,
+    })
+    const aliceRow = document.getElementById("messenger-contact-1")!
+    aliceRow.focus()
+
+    fireEvent.keyDown(aliceRow, { key: "PageDown" })
+
+    expect(document.activeElement).toBe(aliceRow)
   })
 
   it("ArrowDown at last contact does NOT wrap around (Slack-style)", () => {

@@ -60,31 +60,9 @@ class UserProvider(Provider):
 
     @provide(scope=Scope.REQUEST)
     def unit_of_work(self, db: AsyncDatabaseSession) -> UnitOfWork:
-        from app.repositories.auth_repository import AuthRepository
-        from app.repositories.chat_repository import ChatRepository
-        from app.repositories.event_repository import EventRepository
-        from app.repositories.news_repository import NewsRepository
-        from app.repositories.notification_repository import NotificationRepository
-        from app.repositories.schedule_repository import (
-            GroupRepository,
-            ScheduleRepository,
-        )
-        from app.repositories.story_repository import StoryRepository
-        from app.repositories.unit_of_work import get_unit_of_work
+        from app.repositories.unit_of_work import uow_from_session
 
-        uow = get_unit_of_work(lambda: db)
-        uow._session = db  # RZ-33-06: manual session injection — UnitOfWork lacks public set_session() API
-        uow.users = UserRepository(db)
-        uow.auth = AuthRepository(db)
-        uow.chats = ChatRepository(db)
-        uow.events = EventRepository(db)
-        uow.notifications = NotificationRepository(db)
-        uow.news = NewsRepository(db)
-        uow.stories = StoryRepository(db)
-        uow.sessions = ActiveSessionRepository(db)
-        uow.schedules = ScheduleRepository(db)
-        uow.groups = GroupRepository(db)
-        return uow
+        return uow_from_session(db)
 
     @provide(scope=Scope.REQUEST)
     def user_repository(self, db: AsyncDatabaseSession) -> UserRepository:

@@ -1,37 +1,98 @@
-"""Closure test for NullCache degradation during WS ticket issuance."""
+"""Security-boundary closure tests for WebSocket ticket issuance."""
 
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
+from fastapi import HTTPException
 
-from app.api.ws.ticket import WsTicketResponse, issue_ws_upgrade_ticket
+from app.api.ws.ticket import issue_ws_upgrade_ticket
+from app.models import User
+
+
+def _ticket_identity(
+    *,
+    user_id: UUID | None = None,
+    session_user_id: UUID | None = None,
+    active: bool = True,
+    revoked: bool = False,
+    expired: bool = False,
+) -> tuple[MagicMock, User, SimpleNamespace]:
+    resolved_user_id = user_id or uuid4()
+    request = MagicMock()
+    request.headers = {}
+    request.state.active_session = SimpleNamespace(
+        user_id=session_user_id or resolved_user_id,
+        jti=str(uuid4()),
+        revoked_at=datetime.now(UTC) if revoked else None,
+        expires_at=datetime.now(UTC)
+        + (timedelta(seconds=-1) if expired else timedelta(hours=1)),
+    )
+    user = cast(User, SimpleNamespace(id=resolved_user_id, is_active=active))
+    return request, user, request.state.active_session
 
 
 @pytest.mark.asyncio
-async def test_issue_ws_upgrade_ticket_returns_ticket_when_cache_is_unavailable():
-    user_id = uuid4()
-    jti = "session-jti"
-    request = MagicMock()
-    request.headers = {}
+async def test_issue_ws_upgrade_ticket_fails_closed_when_cache_is_unavailable() -> None:
+    request, user, _session = _ticket_identity()
 
-    with (
-        patch(
-            "app.api.ws.ticket.AuthTokenService.extract_and_decode_token",
-            return_value={"sub": str(user_id), "jti": jti},
-        ),
-        patch(
-            "app.api.ws.ticket.AuthTokenService.validate_payload",
-            return_value=(user_id, jti),
-        ),
-        patch(
-            "app.api.ws.ticket.get_cache_client",
-            new=AsyncMock(side_effect=RuntimeError("NullCache active")),
-        ),
-        patch("app.api.ws.ticket.resolve_locale", return_value="en"),
+    with patch(
+        "app.api.ws.ticket.get_cache_client",
+        new=AsyncMock(side_effect=RuntimeError("NullCache active")),
     ):
-        result = await issue_ws_upgrade_ticket(request=request, token=None)
+        with pytest.raises(HTTPException) as exc_info:
+            await issue_ws_upgrade_ticket(request=request, current_user=user)
 
-    assert isinstance(result, WsTicketResponse)
-    assert len(result.ticket) == 64
-    assert result.expires_in == 15
+    assert exc_info.value.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_issue_ws_upgrade_ticket_normalizes_naive_session_expiry() -> None:
+    request, user, session = _ticket_identity()
+    session.expires_at = datetime.now() + timedelta(hours=1)
+    cache_client = AsyncMock()
+
+    with patch(
+        "app.api.ws.ticket.get_cache_client",
+        new=AsyncMock(return_value=cache_client),
+    ):
+        response = await issue_ws_upgrade_ticket(request=request, current_user=user)
+
+    assert response.expires_in > 0
+    cache_client.set.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("active", "revoked", "expired", "session_user_id", "case"),
+    (
+        (False, False, False, None, "inactive user"),
+        (True, True, False, None, "revoked session"),
+        (True, False, True, None, "expired session"),
+        (True, False, False, uuid4(), "session/user mismatch"),
+    ),
+)
+async def test_issue_ws_upgrade_ticket_rejects_invalid_identity_before_redis(
+    active: bool,
+    revoked: bool,
+    expired: bool,
+    session_user_id: UUID | None,
+    case: str,
+) -> None:
+    request, user, _session = _ticket_identity(
+        active=active,
+        revoked=revoked,
+        expired=expired,
+        session_user_id=session_user_id,
+    )
+    cache_client = AsyncMock()
+
+    with patch("app.api.ws.ticket.get_cache_client", new=cache_client):
+        with pytest.raises(HTTPException) as exc_info:
+            await issue_ws_upgrade_ticket(request=request, current_user=user)
+
+    assert exc_info.value.status_code == 401, case
+    cache_client.assert_not_awaited()

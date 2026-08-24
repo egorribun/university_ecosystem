@@ -257,13 +257,26 @@ describe("MapLibreMap", () => {
   })
 
   it("re-applies the sky on theme change", async () => {
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        callback(0)
+        return 1
+      })
     const map = makeMap()
     const ref = makeRef(map)
-    const { rerender } = render(<MapLibreMapComponent {...baseProps} mapRef={ref} isDark={false} />)
-    await waitFor(() => expect(map.setSky).toHaveBeenCalled())
-    map.setSky.mockClear()
-    rerender(<MapLibreMapComponent {...baseProps} mapRef={ref} isDark={true} />)
-    await waitFor(() => expect(map.setSky).toHaveBeenCalled())
+    try {
+      const { rerender } = render(
+        <MapLibreMapComponent {...baseProps} mapRef={ref} isDark={false} />
+      )
+      await waitFor(() => expect(map.setSky).toHaveBeenCalled())
+      map.setSky.mockClear()
+      rerender(<MapLibreMapComponent {...baseProps} mapRef={ref} isDark={true} />)
+      await waitFor(() => expect(map.setSky).toHaveBeenCalled())
+      expect(map.resize).toHaveBeenCalledTimes(2)
+    } finally {
+      requestFrame.mockRestore()
+    }
   })
 
   it("filters building markers by the active category without crashing", () => {
@@ -295,6 +308,7 @@ describe("MapLibreMap", () => {
     fireEvent.click(screen.getByTestId("map-click"))
     fireEvent.click(screen.getByTestId("map-move-end-programmatic"))
     fireEvent.click(screen.getByTestId("map-move-end"))
+    fireEvent.click(screen.getByTestId("map-move-end-programmatic"))
     fireEvent.click(screen.getByTestId("building-open-ГУК"))
     fireEvent.click(screen.getByTestId("building-close-ГУК"))
     fireEvent.click(screen.getAllByTestId("poi-open")[0]!)
@@ -303,6 +317,7 @@ describe("MapLibreMap", () => {
     fireEvent.click(screen.getByTestId("event-close"))
 
     expect(onDeselectBuilding).toHaveBeenCalled()
+    expect(onMapMoveEnd).toHaveBeenCalledTimes(2)
     expect(onMapMoveEnd).toHaveBeenCalledWith({
       zoom: 16,
       latitude: 55.7,

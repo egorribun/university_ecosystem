@@ -10,6 +10,7 @@
 #   secrets:
 #     secret_key:
 #       file: /etc/university/secrets/secret_key   # chmod 0400, owned by deploy user
+#   POSTGRES_PASSWORD_SOURCE_FILE=/etc/university/secrets/postgres_password
 #
 # Python config reads SECRET_KEY_FILE, DATABASE_URL_FILE, NATS_AUTH_TOKEN_FILE
 # via _load_file_secret() in app/core/config/base.py.
@@ -21,6 +22,8 @@ secrets:
     external: true
   nats_auth_token:
     external: true
+  postgres_password:
+    file: ${POSTGRES_PASSWORD_SOURCE_FILE:?Set POSTGRES_PASSWORD_SOURCE_FILE for production}
 
 services:
   backend:
@@ -86,33 +89,12 @@ services:
       - /tmp:size=32m,noexec,nosuid
     cap_drop:
       - ALL
-    # FIX-HEALTH-01: Replaced the /proc/1/status check, which always returns 0
-    # inside any living container and therefore never detects a hung or deadlocked
-    # event loop. The new check writes a PID file on startup (app/worker.py must
-    # call open('/tmp/worker.pid','w').write(str(os.getpid()))) and then sends
-    # signal 0 to that PID — signal 0 tests whether the process is alive without
-    # delivering an actual signal. If the event loop is stuck but the process is
-    # still runnable, Docker will still restart it after `retries` failures because
-    # the PID file is not refreshed. This is a meaningful liveness signal without
-    # requiring an HTTP endpoint in the worker process.
+    # The worker already exposes a dedicated monitoring application on port 9101;
+    # probe its health endpoint instead of a PID file that it never creates.
     healthcheck:
-      test:
-        - "CMD"
-        - "python3"
-        - "-c"
-        - |
-          import os, sys
-          pid_file = '/tmp/worker.pid'
-          if not os.path.exists(pid_file):
-              sys.exit(1)
-          try:
-              pid = int(open(pid_file).read().strip())
-              os.kill(pid, 0)
-              sys.exit(0)
-          except (ValueError, ProcessLookupError, PermissionError):
-              sys.exit(1)
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9101/healthz', timeout=4)"]
       interval: 30s
-      timeout: 10s
+      timeout: 5s
       retries: 3
       start_period: 20s
     deploy:
@@ -138,26 +120,12 @@ services:
       - /tmp:size=32m,noexec,nosuid
     cap_drop:
       - ALL
-    # FIX-HEALTH-01: Same PID-file + signal-0 pattern as notifications-worker.
-    # See notifications-worker comment for full rationale.
+    # The worker writes both files after DB/NATS initialization. A stale heartbeat
+    # detects a blocked event loop while signal 0 also detects a dead process.
     healthcheck:
-      test:
-        - "CMD"
-        - "python3"
-        - "-c"
-        - |
-          import os, sys
-          pid_file = '/tmp/worker.pid'
-          if not os.path.exists(pid_file):
-              sys.exit(1)
-          try:
-              pid = int(open(pid_file).read().strip())
-              os.kill(pid, 0)
-              sys.exit(0)
-          except (ValueError, ProcessLookupError, PermissionError):
-              sys.exit(1)
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "python", "-c", "import os,time; pid=int(open('/tmp/worker.pid', encoding='ascii').read()); os.kill(pid,0); raise SystemExit(0 if time.time()-os.path.getmtime('/tmp/worker.heartbeat') < 30 else 1)"]
+      interval: 15s
+      timeout: 5s
       retries: 3
       start_period: 20s
     deploy:
@@ -174,6 +142,9 @@ services:
     environment:
       SECRET_KEY_FILE: /run/secrets/secret_key
       DATABASE_URL_FILE: /run/secrets/database_url
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
     # Migrations need write access for Alembic temp files; no read_only here.
     security_opt:
       - no-new-privileges:true
@@ -186,7 +157,7 @@ services:
           memory: 512M
 
   postgres:
-    image: pgvector/pgvector:pg17
+    image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
     profiles: ["prod"]
     deploy:
       resources:
@@ -196,40 +167,56 @@ services:
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-university}
       POSTGRES_DB: ${POSTGRES_DB:-university}
-      POSTGRES_PASSWORD_FILE: ${POSTGRES_PASSWORD_FILE:?Provide POSTGRES_PASSWORD_FILE for production}
+      # The base Compose file injects POSTGRES_PASSWORD. An empty override lets
+      # the official entrypoint select the mounted *_FILE value instead.
+      POSTGRES_PASSWORD: ""
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets:
+      - postgres_password
 
   # MOD-14-06 (audit 2026-03-18): PgBouncer connection pooler in transaction mode.
-  # Sits between backend/workers and PostgreSQL; caps server-side connections at
-  # PGBOUNCER_DEFAULT_POOL_SIZE (25) regardless of how many app replicas are running.
-  # Auth uses scram-sha-256 via pgbouncer.get_auth() so PgBouncer never holds
-  # plaintext passwords.  DATABASE_URL_FILE must point to a URL using host=pgbouncer.
+  # The maintained edoburu image generates its config and SCRAM userlist at
+  # startup. The wrapper reads the database password from the mounted secret so
+  # it never appears in Compose environment metadata.
   pgbouncer:
-    image: pgbouncer/pgbouncer:1.23.1
+    image: edoburu/pgbouncer:v1.25.2-p0@sha256:7d7a27d9e90985cab5cf42256f5c13a3120baa4b055b69df37beb272b89b2340
+    profiles: ["prod"]
     restart: unless-stopped
+    secrets:
+      - postgres_password
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        export DB_PASSWORD="$$(cat /run/secrets/postgres_password)"
+        exec /entrypoint.sh /usr/bin/pgbouncer /etc/pgbouncer/pgbouncer.ini
     environment:
-      DATABASES_HOST: postgres
-      DATABASES_PORT: "5432"
-      DATABASES_DBNAME: "${POSTGRES_DB:-university}"
-      PGBOUNCER_POOL_MODE: transaction
-      PGBOUNCER_MAX_CLIENT_CONN: "1000"
-      PGBOUNCER_DEFAULT_POOL_SIZE: "25"
-      PGBOUNCER_AUTH_TYPE: scram-sha-256
-      PGBOUNCER_AUTH_USER: "${POSTGRES_USER:-university}"
-      PGBOUNCER_AUTH_QUERY: "SELECT password FROM pgbouncer.get_auth($1)"
-      PGBOUNCER_SERVER_TLS_SSLMODE: require
-      PGBOUNCER_ADMIN_USERS: "${POSTGRES_USER:-university}"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: "${POSTGRES_DB:-university}"
+      DB_USER: "${POSTGRES_USER:-university}"
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: "1000"
+      DEFAULT_POOL_SIZE: "25"
+      # The Compose-managed PostgreSQL service has no server certificate.
+      # `prefer` still negotiates TLS when an external TLS-enabled DB is used.
+      SERVER_TLS_SSLMODE: prefer
+      ADMIN_USERS: "${POSTGRES_USER:-university}"
     depends_on:
       postgres:
         condition: service_healthy
     networks:
-      - internal
+      - db_net
     read_only: true
     tmpfs:
-      - /tmp
+      - /tmp:uid=70,gid=70,mode=0700
+      - /etc/pgbouncer:uid=70,gid=70,mode=0700
     security_opt:
-      - no-new-privileges
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     healthcheck:
-      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U \"$$DB_USER\""]
       interval: 10s
       timeout: 5s
       retries: 5

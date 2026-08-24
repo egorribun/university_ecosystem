@@ -1,0 +1,358 @@
+# Playwright smoke for /login, /register, /forgot-password, and
+# /reset-password through the real Caddy -> Node SSR -> backend chain.
+# Light and dark themes run independently. The runner returns 1 for HTTP or
+# navigation failures and 2 for hydration errors; artifacts upload before the
+# final step reasserts that exit code.
+name: Unauthenticated Routes Smoke (Linux PR)
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions: read-all
+
+concurrency:
+  group: unauthenticated-routes-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unauthed-smoke:
+    name: Unauthenticated routes smoke (theme=${{ matrix.theme }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        theme: [light, dark]
+    env:
+      # Public routes do not exercise authentication flows, but backend lifespan
+      # and JWKS initialization still require valid settings.
+      SECRET_KEY: "dummy_secret_key_for_unauthenticated_routes_smoke" # pragma: allowlist secret
+      ENVIRONMENT: testing
+      DATABASE_URL: "postgresql+asyncpg://test:test@localhost:5432/test_public_routes_smoke" # pragma: allowlist secret
+      OTEL_SDK_DISABLED: "true"
+      ALGORITHM: "RS256"
+      JWT_PRIVATE_KEY_PATH: ".secrets/jwt_rs256.pem"
+      NATS_URL: "nats://127.0.0.1:4222"
+      CACHE_REDIS_URL: "redis://127.0.0.1:6379/0"
+      RATE_LIMIT_STORAGE_BACKEND: redis
+      RATE_LIMIT_STORAGE_URI: "redis://127.0.0.1:6379/1"
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test # pragma: allowlist secret
+          POSTGRES_DB: test_public_routes_smoke
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U test -d test_public_routes_smoke"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine@sha256:e7723ff73d963f5cc6d9c4643ea3d989527a402a319239054e9472a7fb9219a2
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      # NATS required for backend lifespan (NatsTaskBroker Dishka-injected
+      # dependency; can't be env-flag-skipped).
+      nats:
+        image: nats:2.10.25-alpine@sha256:3290c829aa05ddd4da12026783ccaff86f3fbc1f0551722908a934c293cd6228
+        ports:
+          - 4222:4222
+        options: >-
+          --health-cmd "wget -q -O - http://localhost:8222/varz || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install backend dependencies
+        run: uv sync --frozen
+
+      - name: Install wasm-pack
+        # Use the maintained installer action rather than an external download URL.
+        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
+        with:
+          tool: wasm-pack@0.13.1
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build WASM modules
+        # Retry transient Binaryen downloads; each build is idempotent and reuses cache.
+        working-directory: frontend
+        run: |
+          for attempt in 1 2 3; do
+            if wasm-pack build rust-crypto --target web && \
+               wasm-pack build wasm-sanitizer --target web; then
+              echo "OK: WASM modules built (attempt $attempt)"
+              exit 0
+            fi
+            echo "WASM build failed on attempt $attempt; retrying after 10s..."
+            sleep 10
+          done
+          echo "::error::WASM build failed after 3 attempts"
+          exit 1
+
+      - name: Generate RS256 keypair
+        # Mirrors start-docker.ps1 and the authenticated visual audit.
+        run: |
+          mkdir -p .secrets
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out .secrets/jwt_rs256.pem
+          ls -la .secrets/jwt_rs256.pem
+          echo "OK: RS256 keypair generated"
+
+      - name: Run database migrations
+        run: uv run alembic upgrade head
+
+      - name: Build frontend (E2E reduced-chrome mode, NOT VITE_LHCI bypass)
+        # Keep the same reduced-chrome mode used by the other browser smokes.
+        # These routes use compact layout, but parity protects build invariants.
+        working-directory: frontend
+        env:
+          VITE_BACKEND_ORIGIN: http://localhost
+          VITE_E2E_MODE: "1"
+        run: |
+          npm run build
+          if find dist/client/assets -name "*.js" -exec grep -l "lhci-mock-user" {} + 2>/dev/null | grep -q .; then
+            echo "::error::VITE_LHCI tree-shake invariant violated — E2E build contains LHCI mock-user reference"
+            exit 1
+          fi
+          echo "OK: VITE_LHCI bypass tree-shaken cleanly"
+
+      - name: Install Playwright bundled Chromium
+        # The runner prefers installed Chrome and falls back to this bundled browser.
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Start backend
+        run: |
+          uv run uvicorn app.main:app --host 127.0.0.1 --port 8000 --log-level debug > /tmp/backend.log 2>&1 &
+          echo "BACKEND_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Wait for backend health
+        # Readiness includes dependencies; /health is not a supported endpoint.
+        run: |
+          for i in {1..90}; do
+            if curl -sf http://127.0.0.1:8000/health/ready > /dev/null; then
+              echo "OK: backend ready after $i attempts (~$(( i * 2 ))s)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Backend failed to start within 180s"
+          echo "---backend-log-tail---"
+          tail -200 /tmp/backend.log 2>&1 || echo "(no /tmp/backend.log file)"
+          exit 1
+
+      - name: Verify JWKS endpoint
+        # Defense-in-depth — unauth routes don't validate JWT, but a broken JWKS
+        # endpoint still signals broken backend RS256 initialization.
+        run: |
+          if ! curl -sf http://127.0.0.1:8000/.well-known/jwks.json | python -c "import sys, json; d = json.load(sys.stdin); keys = d.get('keys', []); assert len(keys) > 0, 'JWKS empty'; print(f'OK: JWKS has {len(keys)} key(s)')"; then
+            echo "::error::JWKS endpoint not serving keys (RS256 backend setup broken)"
+            exit 1
+          fi
+
+      # No user seeding: all four routes are public landing pages.
+
+      - name: Start frontend Node SSR
+        # server-prod.mjs listens on port 3000.
+        working-directory: frontend
+        env:
+          NODE_ENV: production
+          PORT: "3000"
+          HOST: "0.0.0.0"
+        run: |
+          npm run start &
+          echo "FRONTEND_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Wait for frontend Node SSR health
+        run: |
+          for i in {1..30}; do
+            if curl -sf http://127.0.0.1:3000/healthz > /dev/null; then
+              echo "OK: frontend Node SSR ready"
+              exit 0
+            fi
+            echo "Waiting for frontend... ($i/30)"
+            sleep 2
+          done
+          echo "::error::Frontend Node SSR failed to start within 60s"
+          exit 1
+
+      - name: Start Caddy ingress
+        # Mirrors admin-smoke-monitoring.yml:341-376 Caddyfile.
+        run: |
+          cat > /tmp/Caddyfile <<'EOF'
+          {
+            auto_https off
+            admin off
+          }
+          :80 {
+            handle /api/v1/* {
+              reverse_proxy 127.0.0.1:8000
+            }
+            handle /.well-known/* {
+              reverse_proxy 127.0.0.1:8000
+            }
+            handle {
+              reverse_proxy 127.0.0.1:3000
+            }
+          }
+          EOF
+          docker run -d --name caddy --network host -v /tmp/Caddyfile:/etc/caddy/Caddyfile caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+          for i in {1..15}; do
+            if curl -sf http://localhost/healthz > /dev/null && curl -sf http://localhost/.well-known/jwks.json > /dev/null; then
+              echo "OK: Caddy ingress reachable + proxying correctly"
+              exit 0
+            fi
+            echo "Waiting for Caddy proxy... ($i/15)"
+            sleep 2
+          done
+          echo "::error::Caddy proxy chain not reachable"
+          docker logs caddy || true
+          exit 1
+
+      - name: Run unauthenticated routes smoke script
+        # unauthenticated-routes-smoke.mjs hardcodes 4 unauthenticated routes.
+        # Script env contract per script lines 55-72:
+        #   ORIGIN  (default "http://localhost") — Caddy ingress
+        #   THEME   (default "light")           — light OR dark per matrix entry
+        #   OUT_DIR (default ".screenshots/unauthenticated-routes-smoke")
+        # Matrix interpolation: each entry gets its own OUT_DIR so artifacts
+        # don't collide on upload.
+        id: smoke
+        working-directory: frontend
+        env:
+          ORIGIN: http://localhost
+          THEME: ${{ matrix.theme }}
+          OUT_DIR: .screenshots/unauthenticated-routes-smoke-${{ matrix.theme }}
+        run: node ./scripts/unauthenticated-routes-smoke.mjs
+        continue-on-error: true
+
+      - name: Backend log diagnostic dump
+        # Keep enough backend context for failure triage.
+        if: always()
+        run: |
+          echo "---backend-log-tail---"
+          tail -300 /tmp/backend.log 2>&1 || echo "(no /tmp/backend.log file)"
+
+      - name: Print summary table
+        # Reads .screenshots/unauthenticated-routes-smoke-${theme}/*.json sidecars.
+        # Sidecar shape: path, theme, httpStatus, finalUrl,
+        # hydrationErrorCount, consoleErrorCount, networkRequestCount.
+        if: always()
+        working-directory: frontend
+        env:
+          THEME: ${{ matrix.theme }}
+          SIDECAR_DIR: .screenshots/unauthenticated-routes-smoke-${{ matrix.theme }}
+        run: |
+          # shellcheck disable=SC2016
+          node -e '
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const dir = process.env.SIDECAR_DIR;
+            const theme = process.env.THEME ?? "?";
+            if (!fs.existsSync(dir)) {
+              console.log("No sidecar JSONs to summarize (script may have failed before producing reports)");
+              process.exit(0);
+            }
+            const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json"));
+            if (files.length === 0) {
+              console.log("No JSON sidecars found");
+              process.exit(0);
+            }
+            const summary = process.env.GITHUB_STEP_SUMMARY;
+            const lines = [];
+            lines.push(`## Unauthenticated Routes Smoke (theme=${theme})`);
+            lines.push("");
+            lines.push("4 unauth public routes: /login + /register + /forgot-password + /reset-password.");
+            lines.push("React #418-#427 detection plus descriptive hydration-message matching.");
+            lines.push("");
+            lines.push("| Path | HTTP | Hydr err | Console err | Net req |");
+            lines.push("|---|---|---|---|---|");
+            let totalHydration = 0;
+            let totalFailed = 0;
+            for (const f of files.sort()) {
+              try {
+                const r = JSON.parse(fs.readFileSync(path.join(dir, f), "utf8"));
+                const p = r.path ?? "?";
+                const http = r.httpStatus ?? "-";
+                const hyd = r.hydrationErrorCount ?? 0;
+                const cons = r.consoleErrorCount ?? 0;
+                const net = r.networkRequestCount ?? 0;
+                if (hyd > 0) totalHydration += hyd;
+                if (http !== 200) totalFailed++;
+                lines.push(`| ${p} | ${http} | ${hyd} | ${cons} | ${net} |`);
+              } catch (e) {
+                lines.push(`| (${f}) | - | - | parse-error | - |`);
+              }
+            }
+            lines.push("");
+            if (totalHydration > 0) {
+              lines.push(`⚠ **${totalHydration} hydration error(s) detected across ${files.length} capture(s)** (theme=${theme}) — investigate React #418 class regression.`);
+            } else if (totalFailed > 0) {
+              lines.push(`⚠ **${totalFailed} capture(s) returned non-200** (theme=${theme}) — SSR / routing setup may be broken.`);
+            } else {
+              lines.push(`✅ **All ${files.length} captures clean** (theme=${theme}; HTTP 200 + 0 hydration errors).`);
+            }
+            const out = lines.join("\n");
+            console.log(out);
+            if (summary) {
+              fs.appendFileSync(summary, out + "\n");
+            }
+          '
+
+      - name: Terminate background processes
+        if: always()
+        run: |
+          if [ -n "$BACKEND_PID" ]; then kill "$BACKEND_PID" 2>/dev/null || true; fi
+          if [ -n "$FRONTEND_PID" ]; then kill "$FRONTEND_PID" 2>/dev/null || true; fi
+          docker rm -f caddy 2>/dev/null || true
+
+      - name: Upload smoke reports
+        # `.screenshots/` is hidden, so artifact upload must include hidden files.
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: unauthenticated-routes-smoke-${{ matrix.theme }}
+          path: frontend/.screenshots/unauthenticated-routes-smoke-${{ matrix.theme }}
+          retention-days: 14
+          if-no-files-found: warn
+          include-hidden-files: true
+
+      - name: Re-assert smoke result
+        # The runner step continues so artifacts upload; this final step is the gate.
+        if: always() && steps.smoke.outcome == 'failure'
+        run: |
+          echo "::error::Unauthenticated routes smoke FAILED (theme=${{ matrix.theme }}) — see artifact frontend/.screenshots/unauthenticated-routes-smoke-${{ matrix.theme }}/ for sidecar JSONs"
+          exit 1

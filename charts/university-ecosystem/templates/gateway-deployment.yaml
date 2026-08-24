@@ -20,9 +20,13 @@ spec:
         app.kubernetes.io/component: gateway
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
-        prometheus.io/path: "/gateway/metrics"
+        prometheus.io/port: "9102"
+        prometheus.io/path: "/metrics"
     spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       # TD-05 (audit Wave 12): dedicated ServiceAccount.
       serviceAccountName: {{ .Release.Name }}-gateway
       automountServiceAccountToken: false
@@ -36,7 +40,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: gateway
-          image: "{{ .Values.global.imageRegistry }}/{{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag | default .Chart.AppVersion }}"
+          image: {{ printf "%s/%s:%s" .Values.global.imageRegistry .Values.gateway.image.repository (.Values.gateway.image.tag | default .Values.global.imageTag | default .Chart.AppVersion) | trimPrefix "/" | quote }}
           imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
           # RZ-03: distroless Go binary has no filesystem writes — readOnlyRootFilesystem
           # is safe without any emptyDir volumes.
@@ -49,20 +53,50 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
+            - name: metrics
+              containerPort: 9102
+              protocol: TCP
           env:
             - name: GATEWAY_PORT
               value: "8080"
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Release.Name }}-secrets
+                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
                   key: jwt-secret
+            - name: JWT_AUDIENCE
+              value: {{ required "gateway.config.jwtAudience must be set" .Values.gateway.config.jwtAudience | quote }}
             - name: BACKEND_URL
               value: "http://{{ include "university-ecosystem.fullname" . }}-backend:8000"
             - name: FILE_PROCESSOR_ADDR
               value: "{{ include "university-ecosystem.fullname" . }}-file-processor:50051"
             - name: REDIS_URL
-              value: "redis://{{ .Release.Name }}-redis:6379/3"
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.redisGatewayURLKey must be set" .Values.connections.redisGatewayURLKey | quote }}
+            - name: REVOCATION_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey | quote }}
+            - name: VITE_ENVIRONMENT
+              value: {{ .Values.global.environment | quote }}
+            - name: GRPC_USE_TLS
+              value: {{ .Values.gateway.config.grpcUseTLS | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.gateway.config.otelEndpoint | quote }}
+            - name: GATEWAY_H3_ENABLED
+              value: {{ .Values.gateway.config.h3Enabled | quote }}
+            - name: JWKS_ENDPOINT
+              value: {{ printf "http://%s-backend:%v/.well-known/jwks.json" (include "university-ecosystem.fullname" .) .Values.backend.service.port | quote }}
+            - name: JWKS_REFRESH_INTERVAL
+              value: "60"
+            - name: INTERNAL_HMAC_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
+                  key: internal-hmac-secret
             # PERF-03 (RZ-W13): OTel sampling — 10% in production.
             - name: OTEL_TRACES_SAMPLER
               value: {{ .Values.otel.sampler | quote }}
