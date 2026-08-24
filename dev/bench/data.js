@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787615587777,
+  "lastUpdate": 1787615817836,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -4866,6 +4866,150 @@ window.BENCHMARK_DATA = {
             "value": 17614,
             "unit": "ns/op",
             "extra": "97534 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "07610805c6b9a1aaf3e7f0a8832178bdb548b06e",
+          "message": "ci(deps): Bump the github-actions group with 7 updates (#1250)\n\nBumps the github-actions group with 7 updates:\n\n| Package | From | To |\n| --- | --- | --- |\n| [bridgecrewio/checkov-action](https://github.com/bridgecrewio/checkov-action) | `12.3117.0` | `12.3119.0` |\n| [github/codeql-action/upload-sarif](https://github.com/github/codeql-action) | `4.37.7` | `4.37.8` |\n| [chromaui/action](https://github.com/chromaui/action) | `18.1.0` | `18.5.0` |\n| [streetsidesoftware/cspell-action](https://github.com/streetsidesoftware/cspell-action) | `8.4.0` | `9.0.1` |\n| [github/codeql-action/init](https://github.com/github/codeql-action) | `4.37.7` | `4.37.8` |\n| [github/codeql-action/analyze](https://github.com/github/codeql-action) | `4.37.7` | `4.37.8` |\n| [docker/setup-buildx-action](https://github.com/docker/setup-buildx-action) | `4.2.0` | `4.3.0` |\n\n\nUpdates `bridgecrewio/checkov-action` from 12.3117.0 to 12.3119.0\n- [Release notes](https://github.com/bridgecrewio/checkov-action/releases)\n- [Commits](https://github.com/bridgecrewio/checkov-action/compare/1246d92f57abae29d5db5f9aeeed2a9813e52d7d...59b9d7edfcad5b87fbe3f473a9a134a721ad03f8)\n\nUpdates `github/codeql-action/upload-sarif` from 4.37.7 to 4.37.8\n- [Release notes](https://github.com/github/codeql-action/releases)\n- [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/github/codeql-action/compare/ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd...db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28)\n\nUpdates `chromaui/action` from 18.1.0 to 18.5.0\n- [Release notes](https://github.com/chromaui/action/releases)\n- [Changelog](https://github.com/chromaui/action/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/chromaui/action/compare/14cfaef73576e69f95f47f60058063f46ca38719...534eebfc19023579541d106f7b61d5ad70ed65c7)\n\nUpdates `streetsidesoftware/cspell-action` from 8.4.0 to 9.0.1\n- [Release notes](https://github.com/streetsidesoftware/cspell-action/releases)\n- [Changelog](https://github.com/streetsidesoftware/cspell-action/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/streetsidesoftware/cspell-action/compare/de2a73e963e7443969755b648a1008f77033c5b2...e0668cf020899e887ee8ad4d173c31738a79eae8)\n\nUpdates `github/codeql-action/init` from 4.37.7 to 4.37.8\n- [Release notes](https://github.com/github/codeql-action/releases)\n- [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/github/codeql-action/compare/ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd...db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28)\n\nUpdates `github/codeql-action/analyze` from 4.37.7 to 4.37.8\n- [Release notes](https://github.com/github/codeql-action/releases)\n- [Changelog](https://github.com/github/codeql-action/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/github/codeql-action/compare/ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd...db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28)\n\nUpdates `docker/setup-buildx-action` from 4.2.0 to 4.3.0\n- [Release notes](https://github.com/docker/setup-buildx-action/releases)\n- [Commits](https://github.com/docker/setup-buildx-action/compare/bb05f3f5519dd87d3ba754cc423b652a5edd6d2c...37fe631027851001ddb9b187196cc803df7f5f0e)\n\n---\nupdated-dependencies:\n- dependency-name: bridgecrewio/checkov-action\n  dependency-version: 12.3119.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: github-actions\n- dependency-name: github/codeql-action/upload-sarif\n  dependency-version: 4.37.8\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: github-actions\n- dependency-name: chromaui/action\n  dependency-version: 18.5.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: github-actions\n- dependency-name: streetsidesoftware/cspell-action\n  dependency-version: 9.0.1\n  dependency-type: direct:production\n  update-type: version-update:semver-major\n  dependency-group: github-actions\n- dependency-name: github/codeql-action/init\n  dependency-version: 4.37.8\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: github-actions\n- dependency-name: github/codeql-action/analyze\n  dependency-version: 4.37.8\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: github-actions\n- dependency-name: docker/setup-buildx-action\n  dependency-version: 4.3.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: github-actions\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-08-25T01:13:49+03:00",
+          "tree_id": "9d09bb6f736658d44911cbf8ca2045c3667c0e6f",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/07610805c6b9a1aaf3e7f0a8832178bdb548b06e"
+        },
+        "date": 1787615816877,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkJWKSValidation (github.com/university-ecosystem/gateway/middleware)",
+            "value": 101303,
+            "unit": "ns/op",
+            "extra": "12039 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRateLimitFallback (github.com/university-ecosystem/gateway/middleware)",
+            "value": 110.7,
+            "unit": "ns/op",
+            "extra": "10409708 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkExtractAlgFromHeader (github.com/university-ecosystem/gateway/middleware)",
+            "value": 742.5,
+            "unit": "ns/op",
+            "extra": "1613014 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateIAT (github.com/university-ecosystem/gateway/middleware)",
+            "value": 73.49,
+            "unit": "ns/op",
+            "extra": "16397642 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Hit (github.com/university-ecosystem/gateway/middleware)",
+            "value": 154.5,
+            "unit": "ns/op",
+            "extra": "7514523 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Miss (github.com/university-ecosystem/gateway/middleware)",
+            "value": 14.95,
+            "unit": "ns/op",
+            "extra": "80822247 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWKToRSAPublicKey (github.com/university-ecosystem/gateway/middleware)",
+            "value": 530.3,
+            "unit": "ns/op",
+            "extra": "2258894 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkShouldRefreshProbabilistic (github.com/university-ecosystem/gateway/middleware)",
+            "value": 125.3,
+            "unit": "ns/op",
+            "extra": "9416236 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkKeyFunc_HS256 (github.com/university-ecosystem/gateway/middleware)",
+            "value": 29.62,
+            "unit": "ns/op",
+            "extra": "38699611 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageMarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 478.8,
+            "unit": "ns/op",
+            "extra": "2509358 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageUnmarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1314,
+            "unit": "ns/op",
+            "extra": "780133 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkClientLookup (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 13.59,
+            "unit": "ns/op",
+            "extra": "90187731 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Room (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 695.8,
+            "unit": "ns/op",
+            "extra": "1679424 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_DirectMessage (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 43.87,
+            "unit": "ns/op",
+            "extra": "26359938 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Broadcast (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1280,
+            "unit": "ns/op",
+            "extra": "850712 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSafeSend (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 30.3,
+            "unit": "ns/op",
+            "extra": "36659004 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHandleRegister (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 59.91,
+            "unit": "ns/op",
+            "extra": "19793781 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkNATSPublishSimulated (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 46.34,
+            "unit": "ns/op",
+            "extra": "25840689 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWTVerify (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 780.4,
+            "unit": "ns/op",
+            "extra": "1744684 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBroadcastTo1000Clients (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 14298,
+            "unit": "ns/op",
+            "extra": "116581 times\n4 procs"
           }
         ]
       }
