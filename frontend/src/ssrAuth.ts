@@ -97,6 +97,12 @@ function getJwks() {
 let jwtVerifyOverride:
   null | ((token: string) => Promise<{ payload: Record<string, unknown> } | null>) = null
 
+function extractJwtPayload(
+  result: { payload: Record<string, unknown> } | null
+): Record<string, unknown> | null {
+  return result?.payload ?? null
+}
+
 export function _setJwtVerifyOverrideForTests(
   fn: ((token: string) => Promise<{ payload: Record<string, unknown> } | null>) | null
 ) {
@@ -121,8 +127,8 @@ export async function validateJwt(token: string): Promise<SsrAuthState> {
     const result = jwtVerifyOverride
       ? await jwtVerifyOverride(token)
       : await jwtVerify(token, getJwks(), { audience })
-    if (!result) return SSR_AUTH_UNAUTH
-    const payload = result.payload as Record<string, unknown>
+    const payload = extractJwtPayload(result)
+    if (!payload) return SSR_AUTH_UNAUTH
     if (typeof payload.sub !== "string" || !payload.sub) return SSR_AUTH_UNAUTH
     const role = typeof payload.role === "string" ? payload.role : "student"
     return { isAuth: true, user: { role }, loading: false }
