@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1787615820261,
+  "lastUpdate": 1787615926204,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -5010,6 +5010,150 @@ window.BENCHMARK_DATA = {
             "value": 14298,
             "unit": "ns/op",
             "extra": "116581 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "9e155319855825cd42614c0d5d70f37defb2fdeb",
+          "message": "build(deps): Bump the pip-dependencies group with 4 updates (#1254)\n\nUpdates the requirements on [grpcio](https://github.com/grpc/grpc), [protobuf](https://github.com/protocolbuffers/protobuf), [grpcio-health-checking](https://grpc.io) and [openfeature-provider-flagd](https://github.com/open-feature/python-sdk-contrib) to permit the latest version.\n\nUpdates `grpcio` to 1.83.0\n- [Release notes](https://github.com/grpc/grpc/releases)\n- [Commits](https://github.com/grpc/grpc/compare/v1.81.0...v1.83.0)\n\nUpdates `protobuf` to 7.35.1\n- [Release notes](https://github.com/protocolbuffers/protobuf/releases)\n- [Commits](https://github.com/protocolbuffers/protobuf/commits)\n\nUpdates `grpcio-health-checking` to 1.83.0\n\nUpdates `openfeature-provider-flagd` to 0.5.2\n- [Release notes](https://github.com/open-feature/python-sdk-contrib/releases)\n- [Commits](https://github.com/open-feature/python-sdk-contrib/compare/openfeature-provider-flagd/v0.5.0...openfeature-provider-flagd/v0.5.2)\n\n---\nupdated-dependencies:\n- dependency-name: grpcio\n  dependency-version: 1.83.0\n  dependency-type: direct:production\n  dependency-group: pip-dependencies\n- dependency-name: protobuf\n  dependency-version: 7.35.1\n  dependency-type: direct:production\n  dependency-group: pip-dependencies\n- dependency-name: grpcio-health-checking\n  dependency-version: 1.83.0\n  dependency-type: direct:production\n  dependency-group: pip-dependencies\n- dependency-name: openfeature-provider-flagd\n  dependency-version: 0.5.2\n  dependency-type: direct:production\n  dependency-group: pip-dependencies\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: Egor <egorribun2005@gmail.com>",
+          "timestamp": "2026-08-25T01:14:39+03:00",
+          "tree_id": "6809964a41a52cdaf27054decedd6f4f08d83df7",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/9e155319855825cd42614c0d5d70f37defb2fdeb"
+        },
+        "date": 1787615924902,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkJWKSValidation (github.com/university-ecosystem/gateway/middleware)",
+            "value": 83720,
+            "unit": "ns/op",
+            "extra": "14442 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRateLimitFallback (github.com/university-ecosystem/gateway/middleware)",
+            "value": 94.33,
+            "unit": "ns/op",
+            "extra": "12400588 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkExtractAlgFromHeader (github.com/university-ecosystem/gateway/middleware)",
+            "value": 1011,
+            "unit": "ns/op",
+            "extra": "1000000 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateIAT (github.com/university-ecosystem/gateway/middleware)",
+            "value": 53.3,
+            "unit": "ns/op",
+            "extra": "22561048 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Hit (github.com/university-ecosystem/gateway/middleware)",
+            "value": 174.8,
+            "unit": "ns/op",
+            "extra": "6805196 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Miss (github.com/university-ecosystem/gateway/middleware)",
+            "value": 39.56,
+            "unit": "ns/op",
+            "extra": "30392941 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWKToRSAPublicKey (github.com/university-ecosystem/gateway/middleware)",
+            "value": 531.4,
+            "unit": "ns/op",
+            "extra": "2243307 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkShouldRefreshProbabilistic (github.com/university-ecosystem/gateway/middleware)",
+            "value": 120,
+            "unit": "ns/op",
+            "extra": "10001691 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkKeyFunc_HS256 (github.com/university-ecosystem/gateway/middleware)",
+            "value": 29.26,
+            "unit": "ns/op",
+            "extra": "42771553 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageMarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 508.3,
+            "unit": "ns/op",
+            "extra": "2349364 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageUnmarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1356,
+            "unit": "ns/op",
+            "extra": "818098 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkClientLookup (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 17.87,
+            "unit": "ns/op",
+            "extra": "67276244 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Room (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 827,
+            "unit": "ns/op",
+            "extra": "1687081 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_DirectMessage (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 45.93,
+            "unit": "ns/op",
+            "extra": "24262209 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Broadcast (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1336,
+            "unit": "ns/op",
+            "extra": "860217 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSafeSend (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 50.54,
+            "unit": "ns/op",
+            "extra": "23294059 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHandleRegister (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 89.74,
+            "unit": "ns/op",
+            "extra": "12765895 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkNATSPublishSimulated (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 65.57,
+            "unit": "ns/op",
+            "extra": "18286657 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWTVerify (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 811,
+            "unit": "ns/op",
+            "extra": "1327053 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBroadcastTo1000Clients (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 18072,
+            "unit": "ns/op",
+            "extra": "99270 times\n4 procs"
           }
         ]
       }
