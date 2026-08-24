@@ -121,6 +121,7 @@ def test_reconstruct_conflict_item_keeps_unknown_native_identity(optimizer_servi
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_detect_conflicts_success(optimizer_service, sample_item):
     # Same weekday, overlapping time, same parity = conflict
     target = ScheduleItemInternal(
@@ -139,6 +140,7 @@ async def test_detect_conflicts_success(optimizer_service, sample_item):
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_detect_conflicts_no_match(optimizer_service, sample_item):
     # Different weekday = no conflict
     target = ScheduleItemInternal(
@@ -233,6 +235,7 @@ async def test_batch_uuidv7_prefix_collisions_preserve_both_items(
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_find_optimal_slot_success(optimizer_service, sample_item):
     result = await optimizer_service.find_optimal_slot(
         90, [sample_item], preferred_weekdays=["Tuesday"]
@@ -260,6 +263,7 @@ async def test_uuid_id_conversion(optimizer_service) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_detect_conflicts_restores_teacher_metadata(optimizer_service) -> None:
     target = ScheduleItemInternal(
         id=1,
