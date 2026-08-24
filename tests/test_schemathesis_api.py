@@ -139,6 +139,40 @@ os.environ.setdefault(
 
 from app.main import app  # env vars must be set before this import
 
+# OpenAPI methods are the only keys that represent executable operations in a
+# path item.  Build the shard map from FastAPI's local schema so collection does
+# not need an ASGI round-trip or any backing service.
+_OPENAPI_METHODS = frozenset(
+    {"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD", "TRACE"}
+)
+
+
+def _build_operation_index() -> dict[str, int]:
+    operation_keys = sorted(
+        f"{method.upper()} {path}"
+        for path, path_item in app.openapi().get("paths", {}).items()
+        for method in path_item
+        if method.upper() in _OPENAPI_METHODS
+    )
+    if not operation_keys:
+        raise RuntimeError("Schemathesis OpenAPI schema declares no operations")
+    if len(set(operation_keys)) != len(operation_keys):
+        raise RuntimeError("Schemathesis OpenAPI operation keys must be unique")
+    return {key: index for index, key in enumerate(operation_keys)}
+
+
+_OPERATION_INDEX = _build_operation_index()
+
+
+def _operation_matches_shard(context) -> bool:
+    key = f"{context.operation.method.upper()} {context.operation.path}"
+    try:
+        index = _OPERATION_INDEX[key]
+    except KeyError as exc:
+        raise RuntimeError(f"Unknown Schemathesis operation: {key}") from exc
+    return index % SCHEMATHESIS_SHARD_COUNT == SCHEMATHESIS_SHARD_INDEX
+
+
 # ---------------------------------------------------------------------------
 # Schema loader — evaluated at module parse time but the ASGI call is deferred.
 #
@@ -146,10 +180,23 @@ from app.main import app  # env vars must be set before this import
 # that stores the fixture name as a plain string.  No ASGI round-trip happens
 # here.  The real ``schemathesis.openapi.from_asgi()`` call only occurs inside
 # the test body (via ``request.getfixturevalue("loaded_schema")``), so a slow
-# or missing backing service cannot hang pytest collection.
+# or missing backing service cannot hang pytest collection.  The shard filter
+# is applied to this LazySchema (rather than the fixture result), because the
+# plugin merges its own filter set when it resolves the fixture.
 # ---------------------------------------------------------------------------
 
 _lazy_schema = schemathesis.pytest.from_fixture("loaded_schema")
+if SCHEMATHESIS_SHARD_COUNT > 1:
+    _selected_operation_count = sum(
+        index % SCHEMATHESIS_SHARD_COUNT == SCHEMATHESIS_SHARD_INDEX
+        for index in _OPERATION_INDEX.values()
+    )
+    if _selected_operation_count == 0:
+        raise RuntimeError(
+            "Schemathesis shard selected no OpenAPI operations: "
+            f"{SCHEMATHESIS_SHARD_INDEX}/{SCHEMATHESIS_SHARD_COUNT}"
+        )
+    _lazy_schema = _lazy_schema.include(func=_operation_matches_shard)
 
 
 @pytest.fixture(scope="session")
@@ -159,44 +206,7 @@ def loaded_schema():
     Session-scoped so the ASGI round-trip (fetching /api/openapi.json) happens
     exactly once per pytest session, not once per test case.
     """
-    schema = schemathesis.openapi.from_asgi("/api/openapi.json", app=app)
-    if SCHEMATHESIS_SHARD_COUNT == 1:
-        return schema
-
-    operations = []
-    for operation_result in schema.get_all_operations():
-        operation = operation_result.ok()
-        if operation is not None:
-            operations.append(operation)
-
-    # Sort by a stable operation key before assigning round-robin shards.  Do
-    # not use Python's hash(), whose randomised seed would make CI shards drift
-    # between processes and silently leave operations untested.
-    operations.sort(key=lambda operation: (operation.path, operation.method))
-    operation_index = {
-        f"{operation.method.upper()} {operation.path}": index
-        for index, operation in enumerate(operations)
-    }
-    if len(operation_index) != len(operations):
-        raise RuntimeError("Schemathesis OpenAPI operation keys must be unique")
-    selected_schema = schema.include(
-        func=lambda context: operation_index[
-            f"{context.operation.method.upper()} {context.operation.path}"
-        ]
-        % SCHEMATHESIS_SHARD_COUNT
-        == SCHEMATHESIS_SHARD_INDEX
-    )
-    selected_operations = [
-        result
-        for result in selected_schema.get_all_operations()
-        if result.ok() is not None
-    ]
-    if not selected_operations:
-        raise RuntimeError(
-            "Schemathesis shard selected no OpenAPI operations: "
-            f"{SCHEMATHESIS_SHARD_INDEX}/{SCHEMATHESIS_SHARD_COUNT}"
-        )
-    return selected_schema
+    return schemathesis.openapi.from_asgi("/api/openapi.json", app=app)
 
 
 # ---------------------------------------------------------------------------
