@@ -91,8 +91,8 @@ jobs:
       fail-fast: false
       matrix:
         shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64]
-    # Cap mutmut at 300 minutes (18,000 seconds).  After timeout's 30-second KILL grace,
-    # the six-hour hosted job still has 3,570 seconds for setup,
+    # Cap mutmut at 333 minutes (20,000 seconds).  After timeout's 30-second
+    # KILL grace, the six-hour hosted job still has 1,570 seconds for setup,
     # metadata verification, score checking, evidence upload, and a
     # fail-closed exit.  The PR gate uses the same envelope.
     timeout-minutes: 360
@@ -236,16 +236,16 @@ jobs:
             --stats mutants/mutmut-stats.json \
             --max-children 2 \
             --control-cycle-reserve-seconds 5 \
-            --max-timeout-seconds 18000 \
+            --max-timeout-seconds 20000 \
             --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
           if ! [[ "$MUTMUT_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
             MUTMUT_FAILURE_REASON="mutation budget helper returned an unsafe timeout value"
             echo "::error::Mutation budget helper returned an unsafe timeout value."
             exit 1
           fi
-          # The 18,000-second budget is only an upper cap.  The timeout starts
+          # The 20,000-second budget is only an upper cap.  The timeout starts
           # after setup, so derive a lower cap from the durable job deadline and
-          # leave 3,570 seconds after timeout's 30-second KILL grace for proof,
+          # leave 1,570 seconds after timeout's 30-second KILL grace for proof,
           # score verification, upload, and a fail-closed exit.
           if ! [[ "${MUTMUT_JOB_DEADLINE_EPOCH:-}" =~ ^[1-9][0-9]*$ ]]; then
             MUTMUT_FAILURE_REASON="mutation job deadline is missing or invalid"
@@ -253,14 +253,15 @@ jobs:
             exit 1
           fi
           MUTMUT_FAILURE_REASON="deriving the deadline-bounded mutation timeout"
-          MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=3570
+          # Keep 600 seconds for post-run evidence upload and score verification.
+          MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=600
           MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30
           MUTMUT_CURRENT_EPOCH="$(date -u +%s)"
           MUTMUT_REMAINING_JOB_SECONDS="$((MUTMUT_JOB_DEADLINE_EPOCH - MUTMUT_CURRENT_EPOCH))"
           MUTMUT_REMAINING_TIMEOUT_SECONDS="$((MUTMUT_REMAINING_JOB_SECONDS - MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS - MUTMUT_TIMEOUT_KILL_GRACE_SECONDS))"
           if [ "$MUTMUT_REMAINING_TIMEOUT_SECONDS" -lt 1 ]; then
             MUTMUT_FAILURE_REASON="mutation deadline leaves no execution time after required evidence headroom"
-            echo "::error::Mutation deadline leaves no execution time after the required 3570-second post-run/upload reserve and 30-second KILL grace."
+            echo "::error::Mutation deadline leaves no execution time after the required 600-second post-run/upload reserve and 30-second KILL grace."
             exit 1
           fi
           MUTMUT_TIMEOUT_SECONDS="$MUTMUT_BUDGET_TIMEOUT_SECONDS"

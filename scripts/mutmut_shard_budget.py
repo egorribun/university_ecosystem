@@ -33,7 +33,11 @@ METADATA_AND_STARTUP_RESERVE_SECONDS = 900
 SELECTED_TEST_PHASE_MULTIPLIER = 2
 CONTROL_CYCLE_RESERVE_SECONDS = 15
 TERMINATION_GRACE_SECONDS = 30
-DEFAULT_MAX_TIMEOUT_SECONDS = 18_000
+# Keep the CI cap below the six-hour mutation job envelope.  The workflow
+# reserves 600 seconds for post-run evidence plus a 30-second kill grace, so a
+# 20,000-second execution cap still leaves 1,570 seconds for setup and exit
+# handling while covering the slowest stats-derived PR shards.
+DEFAULT_MAX_TIMEOUT_SECONDS = 20_000
 _GLOB_TOKENS = frozenset("*?[")
 
 

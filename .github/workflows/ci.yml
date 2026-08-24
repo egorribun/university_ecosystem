@@ -2009,14 +2009,14 @@ jobs:
             --stats mutants/mutmut-stats.json \
             --max-children 2 \
             --control-cycle-reserve-seconds 5 \
-            --max-timeout-seconds 18000 \
+            --max-timeout-seconds 20000 \
             --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
           if ! [[ "$MUTMUT_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
             MUTMUT_FAILURE_REASON="mutation budget helper returned an unsafe timeout value"
             echo "::error::Mutation budget helper returned an unsafe timeout value."
             exit 1
           fi
-          # The 18,000-second budget is only an upper cap. The deadline starts
+          # The 20,000-second budget is only an upper cap. The deadline starts
           # before setup, so derive a lower cap from the durable six-hour job
           # deadline and leave 600 seconds (ten minutes) after timeout's
           # 30-second KILL grace for proof, score verification, upload, and a

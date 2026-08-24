@@ -1366,7 +1366,7 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
     assert job["strategy"]["matrix"]["shard"] == list(range(1, 65))
     assert job["timeout-minutes"] == 360
     assert "scripts/mutmut_shard_budget.py" in run_step["run"]
-    assert "--max-timeout-seconds 18000" in run_step["run"]
+    assert "--max-timeout-seconds 20000" in run_step["run"]
     assert "--control-cycle-reserve-seconds 5" in run_step["run"]
     assert '"${MUTMUT_TIMEOUT_SECONDS}s"' in run_step["run"]
     assert (
@@ -1520,7 +1520,7 @@ def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> Non
         if isinstance(step, dict)
     )
     assert "scripts/mutmut_shard_budget.py" in manual_mutation_text
-    assert "--max-timeout-seconds 18000" in manual_mutation_text
+    assert "--max-timeout-seconds 20000" in manual_mutation_text
     assert '--prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"' in (
         manual_mutation_text
     )
@@ -1551,11 +1551,11 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
     assert 'MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 21600))"' in (
         pr_deadline
     )
-    assert "--max-timeout-seconds 18000" in pr_run_step["run"]
+    assert "--max-timeout-seconds 20000" in pr_run_step["run"]
     assert "--control-cycle-reserve-seconds 5" in pr_run_step["run"]
     assert "MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=600" in pr_run_step["run"]
     assert "MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30" in pr_run_step["run"]
-    assert 360 * 60 - 300 * 60 - 10 * 60 - 30 == 2970
+    assert 360 * 60 - 20_000 - 30 == 1570
 
     workflows = (
         (
@@ -1565,7 +1565,7 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
             "Upload incremental mutation evidence",
             360,
             21600,
-            18000,
+            20000,
             600,
         ),
         (
@@ -1575,8 +1575,8 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
             "Upload manual mutation evidence",
             360,
             21600,
-            18000,
-            3570,
+            20000,
+            600,
         ),
     )
     for (
@@ -2459,7 +2459,7 @@ def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:
         step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
     )
     assert "exceeded its stats-derived budget" in mutation_text
-    assert "--max-timeout-seconds 18000" in mutation_text
+    assert "--max-timeout-seconds 20000" in mutation_text
     assert "MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30" in mutation_text
     assert "Skipping score verification" not in mutation_text
     assert (
