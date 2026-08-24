@@ -55,9 +55,14 @@ export default defineConfig({
     ],
     coverage: {
       provider: "v8",
-      // Remap against the authored AST so generated Vite SSR import wrappers
-      // cannot become phantom uncovered statements during cross-worker merges.
-      experimentalAstAwareRemapping: true,
+      // Keep the stable V8 remapper path.  Vitest's experimental AST-aware
+      // remapper can synthesize a missing no-else branch as
+      // `outerIfCount - consequentCount`; when V8 omits the outer range this
+      // produces negative BRDA counts and an invalid LCOV artifact.  The
+      // aggregate gate is intentionally fail-closed on malformed coverage, so
+      // the experimental path must stay disabled until upstream fixes the
+      // accounting algorithm.
+      experimentalAstAwareRemapping: false,
       reporter: ["text", "json", "lcov", "html"],
       reportsDirectory: "coverage",
       // Keep all authored production source in the denominator. Do not replace

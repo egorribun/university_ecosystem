@@ -596,7 +596,10 @@ def test_frontend_coverage_policy_and_source_universe_match_quality_contract() -
     )
     assert reports_directory is not None, "missing reportsDirectory"
     assert reports_directory.group("value") == "coverage"
-    assert re.search(r"\bexperimentalAstAwareRemapping\s*:\s*true\b", coverage)
+    # The experimental AST-aware V8 remapper can emit negative BRDA counts for
+    # no-else branches.  Keep the stable remapper path until upstream fixes
+    # that accounting bug; the LCOV normalizer must remain fail-closed.
+    assert re.search(r"\bexperimentalAstAwareRemapping\s*:\s*false\b", coverage)
     assert _extract_string_array(coverage, "include") == EXPECTED_VITEST_INCLUDE
     assert _extract_string_array(coverage, "exclude") == EXPECTED_VITEST_EXCLUSIONS
 
