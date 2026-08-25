@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/Button"
 import { suggestEmailDomain } from "@/utils/authUtils"
 import { cn } from "@/utils/cn"
 import { registerSchema, type RegisterValues } from "@/features/auth/schemas"
+import { analyzePasswordStrength } from "@/utils/passwordStrength"
 
 const Register = () => {
   const { t } = useTranslation(["auth"])
@@ -80,10 +81,7 @@ const Register = () => {
 
     const checkStrength = async () => {
       try {
-        const { zxcvbn, zxcvbnOptions } = await import("@zxcvbn-ts/core")
-        const zxcvbnCommon = await import("@zxcvbn-ts/language-common")
-        zxcvbnOptions.setOptions(zxcvbnCommon)
-        const strengthScore = zxcvbn(password).score
+        const strengthScore = (await analyzePasswordStrength(password)).score
         setStrength(strengthScore)
       } catch {
         setStrength(null)

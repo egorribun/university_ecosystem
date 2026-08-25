@@ -56,7 +56,7 @@ const createOptions = (language: string): InitOptions => ({
   keySeparator: ".",
   // All locale resources are bundled. Synchronous initialization guarantees
   // the first server and browser render see the same translated text.
-  initImmediate: false,
+  initAsync: false,
 })
 
 const configureInstance = (instance: I18nInstance, language: string): I18nInstance => {

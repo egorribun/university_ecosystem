@@ -3,12 +3,6 @@ import { renderToString } from "react-dom/server"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
 import useMediaQuery from "../useMediaQuery"
 
-declare global {
-  interface Window {
-    matchMedia: (query: string) => MediaQueryList
-  }
-}
-
 describe("useMediaQuery", () => {
   const listeners = new Map<string, (event: MediaQueryListEvent) => void>()
 

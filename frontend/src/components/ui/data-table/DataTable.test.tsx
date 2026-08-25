@@ -1,5 +1,4 @@
 import { fireEvent, render, screen } from "@testing-library/react"
-import type { ColumnDef } from "@tanstack/react-table"
 import { describe, expect, it, vi } from "vitest"
 
 vi.mock("react-i18next", () => ({
@@ -9,10 +8,11 @@ vi.mock("react-i18next", () => ({
 }))
 
 import { DataTable } from "./DataTable"
+import type { DataTableColumnDef } from "./dataTableFeatures"
 
 type Row = { id: string; name: string; status: string }
 
-const columns: ColumnDef<Row>[] = [
+const columns: DataTableColumnDef<Row>[] = [
   {
     id: "group",
     header: "Details",

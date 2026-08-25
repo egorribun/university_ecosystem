@@ -4,6 +4,7 @@ import Schedule from "@/pages/Schedule"
 import type { User } from "@/types/User"
 import type { ReactNode } from "react"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
+import { expect } from "vitest"
 
 type AuthState = {
   isAuth: boolean

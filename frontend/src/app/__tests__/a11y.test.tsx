@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react"
 import { QueryClient } from "@tanstack/react-query"
-import { describe, it, beforeEach, afterEach, vi } from "vitest"
+import { describe, it, beforeEach, afterEach, expect, vi } from "vitest"
 import type { AxiosResponse, InternalAxiosRequestConfig } from "axios"
 import type { ComponentType } from "react"
 

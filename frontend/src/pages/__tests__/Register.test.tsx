@@ -16,17 +16,23 @@ const matchText = (text: string) => (content: string) => content.startsWith(text
 const passwordAnalysis = vi.hoisted(() => ({
   mode: "normal" as "normal" | "throw" | "unknown",
   calls: 0,
+  constructors: 0,
 }))
 
 vi.mock("@zxcvbn-ts/core", () => ({
-  zxcvbnOptions: { setOptions: vi.fn() },
-  zxcvbn: () => {
-    passwordAnalysis.calls += 1
-    if (passwordAnalysis.mode === "throw") throw new Error("analysis unavailable")
-    return { score: passwordAnalysis.mode === "unknown" ? 99 : 3 }
+  ZxcvbnFactory: class {
+    constructor() {
+      passwordAnalysis.constructors += 1
+    }
+
+    check() {
+      passwordAnalysis.calls += 1
+      if (passwordAnalysis.mode === "throw") throw new Error("analysis unavailable")
+      return { score: passwordAnalysis.mode === "unknown" ? 99 : 3 }
+    }
   },
 }))
-vi.mock("@zxcvbn-ts/language-common", () => ({}))
+vi.mock("@zxcvbn-ts/language-common", () => ({ adjacencyGraphs: {}, dictionary: {} }))
 
 const renderRegister = () =>
   renderWithRouter({
@@ -40,6 +46,7 @@ describe("Register page", () => {
   beforeEach(() => {
     passwordAnalysis.mode = "normal"
     passwordAnalysis.calls = 0
+    passwordAnalysis.constructors = 0
   })
 
   it("surfaces API error messages", async () => {
@@ -184,6 +191,18 @@ describe("Register page", () => {
     await waitFor(() => {
       expect(document.querySelector('[style*="width"]')).toBeInTheDocument()
     })
+  })
+
+  it("reuses the password analyzer across password changes", async () => {
+    await renderRegister()
+    const passwordInput = screen.getByLabelText(matchText(tAuth("fields.password")))
+
+    fireEvent.change(passwordInput, { target: { value: "first-password" } })
+    await waitFor(() => expect(passwordAnalysis.calls).toBeGreaterThan(0))
+    fireEvent.change(passwordInput, { target: { value: "second-password" } })
+    await waitFor(() => expect(passwordAnalysis.calls).toBeGreaterThan(1))
+
+    expect(passwordAnalysis.constructors).toBeLessThanOrEqual(1)
   })
 
   it("hides password strength when analysis fails", async () => {

@@ -3,13 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 vi.mock("web-vitals", () => ({
   onCLS: vi.fn(),
   onFCP: vi.fn(),
-  onFID: vi.fn(),
   onINP: vi.fn(),
   onLCP: vi.fn(),
   onTTFB: vi.fn(),
 }))
 
-import { onCLS, onFCP, onFID, onINP, onLCP, onTTFB } from "web-vitals"
+import { onCLS, onFCP, onINP, onLCP, onTTFB } from "web-vitals"
 import { initWebVitals, resetWebVitalsForTesting } from "../app/webVitals"
 
 type MutableEnv = ImportMetaEnv & {
@@ -40,7 +39,6 @@ describe("initWebVitals", () => {
     expect(result).toBe(true)
     expect(onCLS).toHaveBeenCalledTimes(1)
     expect(onFCP).toHaveBeenCalledTimes(1)
-    expect(onFID).toHaveBeenCalledTimes(1)
     expect(onINP).toHaveBeenCalledTimes(1)
     expect(onLCP).toHaveBeenCalledTimes(1)
     expect(onTTFB).toHaveBeenCalledTimes(1)

@@ -16,9 +16,9 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext"
 import { testUser } from "@/tests/mocks/handlers"
 import api from "@/api/client"
 import i18n from "@/i18n/config"
-import { hmac } from "@noble/hashes/hmac"
-import { sha256 } from "@noble/hashes/sha256"
-import { utf8ToBytes } from "@noble/hashes/utils"
+import { hmac } from "@noble/hashes/hmac.js"
+import { sha256 } from "@noble/hashes/sha2.js"
+import { utf8ToBytes } from "@noble/hashes/utils.js"
 import * as logger from "@/app/logger"
 
 // cryptoWorker is mocked globally in setupTests.ts

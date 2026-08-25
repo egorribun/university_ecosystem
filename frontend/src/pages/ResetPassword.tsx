@@ -20,6 +20,7 @@ import { ProgressBar } from "@/components/ui"
 import AuthBackdrop from "@/components/auth/AuthBackdrop"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { newPasswordSchema, type NewPasswordValues } from "@/features/auth/schemas"
+import { analyzePasswordStrength } from "@/utils/passwordStrength"
 
 const RESET_URL = "/password/reset"
 const STRENGTH_VALUES = [10, 30, 55, 75, 100]
@@ -96,10 +97,7 @@ export default function ResetPassword() {
 
     const checkPassword = async () => {
       try {
-        const { zxcvbn, zxcvbnOptions } = await import("@zxcvbn-ts/core")
-        const zxcvbnCommon = await import("@zxcvbn-ts/language-common")
-        zxcvbnOptions.setOptions(zxcvbnCommon)
-        const complexityResult = zxcvbn(password)
+        const complexityResult = await analyzePasswordStrength(password)
         setStrength(complexityResult.score)
         const tips =
           (complexityResult.feedback?.warning || "") +

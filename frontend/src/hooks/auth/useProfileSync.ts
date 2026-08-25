@@ -24,8 +24,8 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { isAxiosError, isCancel } from "axios"
-import { hmac } from "@noble/hashes/hmac"
-import { sha256 } from "@noble/hashes/sha256"
+import { hmac } from "@noble/hashes/hmac.js"
+import { sha256 } from "@noble/hashes/sha2.js"
 
 import api, { resetEtagCache, type ApiRequestConfig } from "@/api/client"
 import { clearCachesOnLogout } from "@/api/interceptors/etagCache"

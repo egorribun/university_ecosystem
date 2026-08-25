@@ -1,6 +1,7 @@
 import { screen } from "@testing-library/react"
 import LoadingState from "@/components/feedback/LoadingState"
 import { renderWithA11y } from "@/tests/axeTest"
+import { describe, expect, test } from "vitest"
 
 describe("LoadingState", () => {
   test("renders an accessible busy status with page landmarks", async () => {

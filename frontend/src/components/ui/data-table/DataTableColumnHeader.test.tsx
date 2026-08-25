@@ -2,9 +2,8 @@ import { describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { axe } from "jest-axe"
-import type { Column } from "@tanstack/react-table"
-
 import { DataTableColumnHeader } from "./DataTableColumnHeader"
+import type { DataTableColumn } from "./dataTableFeatures"
 
 /**
  * DataTableColumnHeader ARIA + sorting interaction tests.
@@ -25,7 +24,7 @@ function makeColumn(
     canSort: boolean
     isSorted: false | "asc" | "desc"
   }> = {}
-): Column<unknown, unknown> {
+): DataTableColumn<Record<string, never>, unknown> {
   const { canSort = true, isSorted = false } = overrides
   const toggleSorting = vi.fn()
   return {
@@ -33,7 +32,7 @@ function makeColumn(
     getIsSorted: () => isSorted,
     toggleSorting,
     // Other Column<>'s methods aren't called by the component — cast through.
-  } as unknown as Column<unknown, unknown>
+  } as unknown as DataTableColumn<Record<string, never>, unknown>
 }
 
 describe("DataTableColumnHeader — non-sortable column", () => {

@@ -113,15 +113,17 @@ const wrapper = ({ children }: { children: ReactNode }) => {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }
 
+type UseAuthApiArgs = Parameters<typeof useAuthApi>
+
 type Wires = {
-  user: User | null
-  setUser: ReturnType<typeof vi.fn>
-  updatePendingMfa: ReturnType<typeof vi.fn>
-  handleUnauthorized: ReturnType<typeof vi.fn>
-  updateSessionSigningKey: ReturnType<typeof vi.fn>
+  user: UseAuthApiArgs[0]
+  setUser: UseAuthApiArgs[1]
+  updatePendingMfa: UseAuthApiArgs[2]
+  handleUnauthorized: UseAuthApiArgs[3]
+  updateSessionSigningKey: UseAuthApiArgs[4]
   authOperation: boolean
-  setAuthOperation: ReturnType<typeof vi.fn>
-  resetEtagCache: ReturnType<typeof vi.fn>
+  setAuthOperation: UseAuthApiArgs[6]
+  resetEtagCache: UseAuthApiArgs[7]
 }
 
 const makeWires = (overrides: Partial<Wires> = {}): Wires => ({

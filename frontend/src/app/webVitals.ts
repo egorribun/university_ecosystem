@@ -1,5 +1,5 @@
 import type { Metric } from "web-vitals"
-import { onCLS, onFCP, onFID, onINP, onLCP, onTTFB } from "web-vitals"
+import { onCLS, onFCP, onINP, onLCP, onTTFB } from "web-vitals"
 import { logDebug } from "@/app/logger"
 
 type MetricRating = Metric["rating"]
@@ -121,7 +121,6 @@ export function initWebVitals(env: ExtendedEnv = import.meta.env as ExtendedEnv)
 
   onCLS(reporter)
   onFCP(reporter)
-  onFID(reporter)
   onINP(reporter)
   onLCP(reporter)
   onTTFB(reporter)
@@ -182,6 +181,7 @@ function createCustomMetric(
     id: `${name}-${Date.now()}`,
     entries: [],
     navigationType: resolveNavigationType(),
+    navigationId: 0,
   }
 }
 

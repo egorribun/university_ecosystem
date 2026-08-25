@@ -3,14 +3,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 vi.mock("web-vitals", () => ({
   onCLS: vi.fn(),
   onFCP: vi.fn(),
-  onFID: vi.fn(),
   onINP: vi.fn(),
   onLCP: vi.fn(),
   onTTFB: vi.fn(),
 }))
 vi.mock("@/app/logger", () => ({ logDebug: vi.fn(), logError: vi.fn() }))
 
-import { onCLS, onFCP, onFID, onINP, onLCP, onTTFB } from "web-vitals"
+import { onCLS, onFCP, onINP, onLCP, onTTFB } from "web-vitals"
 import { logDebug } from "@/app/logger"
 import { initWebVitals, reportBootstrapTTI, resetWebVitalsForTesting } from "@/app/webVitals"
 
@@ -55,13 +54,13 @@ describe("webVitals", () => {
     expect(initWebVitals({ ...PROD_BASE, VITE_ENABLE_WEB_VITALS: "nope" } as never)).toBe(false)
   })
 
-  it("registers all six web-vital callbacks when enabled with an endpoint", () => {
+  it("registers all five supported web-vital callbacks when enabled with an endpoint", () => {
     const sendBeacon = vi.fn(() => true)
     vi.stubGlobal("navigator", { ...navigator, sendBeacon })
     expect(initWebVitals(enabledEnv({ VITE_WEB_VITALS_ENDPOINT: "https://metrics.test/v" }))).toBe(
       true
     )
-    for (const fn of [onCLS, onFCP, onFID, onINP, onLCP, onTTFB]) {
+    for (const fn of [onCLS, onFCP, onINP, onLCP, onTTFB]) {
       expect(fn).toHaveBeenCalledOnce()
     }
     const reporter = vi.mocked(onCLS).mock.calls[0]![0]

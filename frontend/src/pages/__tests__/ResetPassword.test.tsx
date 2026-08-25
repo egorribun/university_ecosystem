@@ -23,16 +23,17 @@ const passwordAnalysis = vi.hoisted(() => ({
   suggestions: ["Add another word"],
 }))
 vi.mock("@zxcvbn-ts/core", () => ({
-  zxcvbnOptions: { setOptions: vi.fn() },
-  zxcvbn: () => {
-    if (passwordAnalysis.shouldThrow) throw new Error("analysis unavailable")
-    return {
-      score: passwordAnalysis.score,
-      feedback: { warning: "", suggestions: passwordAnalysis.suggestions },
+  ZxcvbnFactory: class {
+    check() {
+      if (passwordAnalysis.shouldThrow) throw new Error("analysis unavailable")
+      return {
+        score: passwordAnalysis.score,
+        feedback: { warning: "", suggestions: passwordAnalysis.suggestions },
+      }
     }
   },
 }))
-vi.mock("@zxcvbn-ts/language-common", () => ({}))
+vi.mock("@zxcvbn-ts/language-common", () => ({ adjacencyGraphs: {}, dictionary: {} }))
 
 const renderWithToken = () =>
   renderWithRouter({

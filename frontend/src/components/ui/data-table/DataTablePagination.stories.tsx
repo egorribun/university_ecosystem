@@ -1,13 +1,8 @@
 import type { Meta, StoryObj, Decorator } from "@storybook/react-vite"
 import { useMemo } from "react"
-import {
-  useReactTable,
-  getCoreRowModel,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  type ColumnDef,
-} from "@tanstack/react-table"
+import { useTable } from "@tanstack/react-table"
 import { DataTablePagination } from "./DataTablePagination"
+import { dataTableFeatures, type DataTableColumnDef } from "./dataTableFeatures"
 
 // Wave 196 SW3 — DataTablePagination Storybook fixture (LEAF tier batch 2).
 //
@@ -27,15 +22,13 @@ function Harness() {
     () => Array.from({ length: 42 }, (_, i) => ({ id: i + 1, name: `Row ${i + 1}` })),
     []
   )
-  const columns: ColumnDef<Row>[] = [{ accessorKey: "name", header: "Name" }]
-  const table = useReactTable<Row>({
+  const columns: DataTableColumnDef<Row>[] = [{ accessorKey: "name", header: "Name" }]
+  const table = useTable({
+    features: dataTableFeatures,
     data,
     columns,
     enableRowSelection: true,
-    initialState: { pagination: { pageSize: 10 } },
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
+    initialState: { pagination: { pageIndex: 0, pageSize: 10 } },
   })
   return <DataTablePagination table={table} />
 }

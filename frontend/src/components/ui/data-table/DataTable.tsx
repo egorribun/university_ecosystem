@@ -1,18 +1,12 @@
 import * as React from "react"
 import { useTranslation } from "react-i18next"
 import {
-  ColumnDef,
   ColumnFiltersState,
+  ColumnVisibilityState,
+  RowData,
   SortingState,
-  VisibilityState,
   flexRender,
-  getCoreRowModel,
-  getFacetedRowModel,
-  getFacetedUniqueValues,
-  getFilteredRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
+  useTable,
 } from "@tanstack/react-table"
 
 import {
@@ -24,20 +18,22 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { DataTablePagination } from "./DataTablePagination"
+import { dataTableFeatures, type DataTableColumnDef } from "./dataTableFeatures"
 
-export interface DataTableProps<TData, TValue = unknown> {
-  columns: ColumnDef<TData, TValue>[]
+export interface DataTableProps<TData extends RowData> {
+  columns: DataTableColumnDef<TData>[]
   data: TData[]
 }
 
-function DataTableInner<TData, TValue>({ columns, data }: DataTableProps<TData, TValue>) {
+function DataTableInner<TData extends RowData>({ columns, data }: DataTableProps<TData>) {
   const { t } = useTranslation()
   const [rowSelection, setRowSelection] = React.useState({})
-  const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
+  const [columnVisibility, setColumnVisibility] = React.useState<ColumnVisibilityState>({})
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [sorting, setSorting] = React.useState<SortingState>([])
 
-  const table = useReactTable({
+  const table = useTable({
+    features: dataTableFeatures,
     data,
     columns,
     state: {
@@ -51,12 +47,6 @@ function DataTableInner<TData, TValue>({ columns, data }: DataTableProps<TData, 
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onColumnVisibilityChange: setColumnVisibility,
-    getCoreRowModel: getCoreRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    getFacetedRowModel: getFacetedRowModel(),
-    getFacetedUniqueValues: getFacetedUniqueValues(),
   })
 
   return (
@@ -116,8 +106,8 @@ function DataTableInner<TData, TValue>({ columns, data }: DataTableProps<TData, 
   )
 }
 
-export const DataTable = React.memo(DataTableInner) as <TData, TValue = unknown>(
-  props: DataTableProps<TData, TValue>
+export const DataTable = React.memo(DataTableInner) as <TData extends RowData>(
+  props: DataTableProps<TData>
 ) => React.ReactElement
 
 export default DataTable

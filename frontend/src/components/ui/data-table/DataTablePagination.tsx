@@ -1,15 +1,18 @@
-import { Table } from "@tanstack/react-table"
+import type { RowData } from "@tanstack/react-table"
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react"
 
 import { Button } from "@/components/ui/Button"
 import { Select } from "@/components/ui/Select"
 import { useTranslation } from "react-i18next"
+import type { DataTableInstance } from "./dataTableFeatures"
 
-interface DataTablePaginationProps<TData> {
-  table: Table<TData>
+interface DataTablePaginationProps<TData extends RowData> {
+  table: DataTableInstance<TData>
 }
 
-export function DataTablePagination<TData>({ table }: DataTablePaginationProps<TData>) {
+export function DataTablePagination<TData extends RowData>({
+  table,
+}: DataTablePaginationProps<TData>) {
   const { t } = useTranslation(["common"])
   return (
     <div className="flex items-center justify-between px-2">
@@ -23,7 +26,7 @@ export function DataTablePagination<TData>({ table }: DataTablePaginationProps<T
             {t("common:pagination.rowsPerPage")}
           </p>
           <Select
-            value={`${table.getState().pagination.pageSize}`}
+            value={`${table.state.pagination.pageSize}`}
             onValueChange={(value) => {
               table.setPageSize(Number(value))
             }}
@@ -39,7 +42,7 @@ export function DataTablePagination<TData>({ table }: DataTablePaginationProps<T
           />
         </div>
         <div className="flex w-24 items-center justify-center text-sm font-medium">
-          Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()}
+          Page {table.state.pagination.pageIndex + 1} of {table.getPageCount()}
         </div>
         <div className="flex items-center space-x-2">
           <Button

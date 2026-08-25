@@ -3,7 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 vi.mock("web-vitals", () => ({
   onCLS: vi.fn(),
   onFCP: vi.fn(),
-  onFID: vi.fn(),
   onINP: vi.fn(),
   onLCP: vi.fn(),
   onTTFB: vi.fn(),

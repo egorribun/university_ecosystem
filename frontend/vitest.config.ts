@@ -34,10 +34,7 @@ export default defineConfig({
     // Node 26 exposes an experimental process-global localStorage accessor
     // which warns before JSDOM can install its isolated implementation.  Tests
     // must use JSDOM storage, never a process-persistent cross-worker store.
-    poolOptions: {
-      threads: { execArgv: ["--no-experimental-webstorage"] },
-      forks: { execArgv: ["--no-experimental-webstorage"] },
-    },
+    execArgv: ["--no-experimental-webstorage"],
     reporters: ["default"],
     exclude: [
       "node_modules",
@@ -55,11 +52,9 @@ export default defineConfig({
     ],
     coverage: {
       provider: "v8",
-      // AST-aware remapping keeps statement/branch maps stable across Vitest
-      // shards.  V8 can report a negative synthetic no-else branch count when
-      // a shard observes only the enclosing range; merge-vitest-coverage
-      // normalises that impossible counter to zero before emitting LCOV.
-      experimentalAstAwareRemapping: true,
+      // V8 can report a negative synthetic no-else branch count when a shard
+      // observes only the enclosing range; merge-vitest-coverage normalises
+      // that impossible counter to zero before emitting LCOV.
       reporter: ["text", "json", "lcov", "html"],
       reportsDirectory: "coverage",
       // Keep all authored production source in the denominator. Do not replace

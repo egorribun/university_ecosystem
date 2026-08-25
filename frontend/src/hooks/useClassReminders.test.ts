@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest"
 import { act, renderHook } from "@testing-library/react"
 
 import { useClassReminders, type RemindItem } from "./useClassReminders"
@@ -16,7 +16,7 @@ import { useClassReminders, type RemindItem } from "./useClassReminders"
 
 const NOW = new Date("2026-05-15T12:00:00Z")
 
-let notificationCtor: ReturnType<typeof vi.fn>
+let notificationCtor: Mock<(...args: unknown[]) => void>
 let permission: NotificationPermission
 
 beforeEach(() => {
@@ -24,7 +24,7 @@ beforeEach(() => {
   vi.setSystemTime(NOW)
 
   permission = "granted"
-  notificationCtor = vi.fn()
+  notificationCtor = vi.fn<(...args: unknown[]) => void>()
 
   // Build a Notification stub that tests can control via `permission`.
   const NotificationStub = function (this: Notification, ...args: unknown[]) {

@@ -8,6 +8,7 @@ beforeAll(() => {
   class MockIntersectionObserver implements IntersectionObserver {
     root: Element | Document | null = null
     rootMargin: string = ""
+    readonly scrollMargin: string = ""
     thresholds: ReadonlyArray<number> = []
     callback: IntersectionObserverCallback
 

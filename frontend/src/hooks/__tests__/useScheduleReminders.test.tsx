@@ -1,5 +1,5 @@
 import { renderHook, act } from "@testing-library/react"
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest"
 
 const { idbGet, idbSet, logError } = vi.hoisted(() => ({
   idbGet: vi.fn(),
@@ -16,11 +16,11 @@ import { useScheduleReminders, type ReminderPrefs } from "@/hooks/useScheduleRem
 import type { Lesson } from "@/components/schedule/scheduleUtils"
 
 const notifications: Array<{ title: string; options?: NotificationOptions }> = []
-let requestPermissionMock: ReturnType<typeof vi.fn>
+let requestPermissionMock: Mock<() => Promise<NotificationPermission>>
 
 class MockNotification {
   static permission: NotificationPermission = "default"
-  static requestPermission = (...args: unknown[]) => requestPermissionMock(...args)
+  static requestPermission = () => requestPermissionMock()
   title: string
   options?: NotificationOptions
   constructor(title: string, options?: NotificationOptions) {
@@ -54,7 +54,7 @@ beforeEach(() => {
   idbSet.mockReset().mockResolvedValue(undefined)
   logError.mockReset()
   notifications.length = 0
-  requestPermissionMock = vi.fn(async () => "granted" as NotificationPermission)
+  requestPermissionMock = vi.fn<() => Promise<NotificationPermission>>(async () => "granted")
   MockNotification.permission = "default"
   vi.stubGlobal("Notification", MockNotification)
 })
