@@ -63,6 +63,7 @@ COVERAGE_COMPONENTS = (
 COVERAGE_CONTROL_PATHS = (
     ".coveragerc",
     ".github/workflows",
+    "Makefile",
     "pyproject.toml",
     "uv.lock",
     "tests",
@@ -2791,9 +2792,18 @@ def _tracked_source_inventory() -> dict[str, frozenset[str]]:
             ),
             f"inventory tracked sources for {component}",
         )
-        inventory[component] = frozenset(
-            path for path in tracked if _tracked_source_is_coverable(component, path)
-        )
+        canonical_sources: dict[str, str] = {}
+        for path in tracked:
+            if not _tracked_source_is_coverable(component, path):
+                continue
+            identity = _canonical_source_identity(component, path)
+            existing = canonical_sources.setdefault(identity, path)
+            if existing != path:
+                raise _InputError(
+                    f"tracked {component} sources collide as {identity}: "
+                    f"{existing}, {path}"
+                )
+        inventory[component] = frozenset(canonical_sources)
     return inventory
 
 

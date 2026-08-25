@@ -490,18 +490,23 @@ def test_normalizer_v2_rejects_frontend_report_omitting_authored_production_sour
 def test_normalizer_v2_matches_frontend_report_case_to_tracked_identity(
     evidence_repo: Path,
 ) -> None:
+    tracked_source = evidence_repo / "frontend/src/example.ts"
+    mixed_case_source = evidence_repo / "frontend/src/App.tsx"
+    tracked_source.rename(mixed_case_source)
+    _commit_all(evidence_repo, "track mixed-case frontend source")
+
     lcov_path = evidence_repo / "frontend/coverage/lcov.info"
     lcov_path.write_text(
         lcov_path.read_text(encoding="utf-8").replace(
-            "frontend/src/example.ts", "FRONTEND/SRC/EXAMPLE.ts"
+            "frontend/src/example.ts", "frontend/src/app.tsx"
         ),
         encoding="utf-8",
     )
     json_path = evidence_repo / "frontend/coverage/coverage-final.json"
     report = json.loads(json_path.read_text(encoding="utf-8"))
     record = report.pop("frontend/src/example.ts")
-    record["path"] = "FRONTEND/SRC/EXAMPLE.ts"
-    report["FRONTEND/SRC/EXAMPLE.ts"] = record
+    record["path"] = "frontend/src/app.tsx"
+    report["frontend/src/app.tsx"] = record
     json_path.write_text(json.dumps(report), encoding="utf-8")
 
     result = _run(evidence_repo, _full_arguments(evidence_repo))
@@ -534,6 +539,7 @@ def test_normalizer_v2_keeps_case_distinct_frontend_sources_on_linux(
         "frontend/playwright.config.ts",
         "pyproject.toml",
         "go.work",
+        "Makefile",
     ],
 )
 def test_normalizer_v2_rejects_dirty_coverage_control_inputs(
