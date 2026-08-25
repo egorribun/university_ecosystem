@@ -11,6 +11,7 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from datetime import date
+from decimal import ROUND_HALF_UP, Decimal, localcontext
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import NoReturn, cast
 
@@ -96,6 +97,34 @@ REPORT_FORMATS = frozenset(
         "go-coverprofile",
         "llvm-cov-json",
         "llvm-cov-branch-json",
+    }
+)
+VERSION_PATTERN = re.compile(r"^[0-9]+(?:\.[0-9]+){1,3}(?:[-+][0-9A-Za-z.-]+)?$")
+REPORT_FORMAT_TO_TOOLS = {
+    "cobertura-xml": frozenset({"coverage.py", "python"}),
+    "coverage-py-json": frozenset({"coverage.py", "python"}),
+    "lcov": frozenset({"node", "vitest"}),
+    "istanbul-json": frozenset({"node", "vitest"}),
+    "go-coverprofile": frozenset({"go"}),
+    "llvm-cov-json": frozenset({"cargo-llvm-cov", "rustc"}),
+    "llvm-cov-branch-json": frozenset({"cargo-llvm-cov", "rustc"}),
+}
+TRUSTED_DERIVATIONS = frozenset(
+    {
+        "AST function entries covered when the first executable body line is reported as executed",
+        "AST source contains no branch construct",
+        "AST source contains no function definitions",
+        "Cobertura source contains no executable lines",
+        "LCOV source contains no branch units",
+        "LCOV source contains no executable lines",
+        "LCOV source contains no function units",
+        "LLVM source contains no executable line segments",
+        "Nightly LLVM report contains no branch units",
+        "Nightly LLVM source contains no branch sites",
+        "source branch sites deduplicated across LLVM generic instantiations; each outcome covered by any instantiation",
+        "sum of applicable Tier0 file metrics",
+        "unique source lines from non-gap LLVM segments; covered when any segment on the line is executed",
+        "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
     }
 )
 EXPECTED_COVERAGE_REPORTS = frozenset(
@@ -850,7 +879,6 @@ def _validate_metric_for_floor(
     *,
     floor: int,
     field: str,
-    tier0: bool,
 ) -> list[str]:
     status = metric["status"]
     if status in {"missing", "experimental"}:
@@ -861,11 +889,40 @@ def _validate_metric_for_floor(
         return []
     if status not in {"native", "derived"}:
         return [f"{field} has unsupported status {status!r}"]
+    covered = cast(int, metric["covered"])
+    total = cast(int, metric["total"])
     percent = metric["percent"]
-    required = 100 if tier0 else floor
-    if required and percent != required:
-        return [f"{field} must equal {required}% (percent={percent!r})"]
-    return []
+    metric_errors: list[str] = []
+    if status == "derived" and metric.get("derivation") not in TRUSTED_DERIVATIONS:
+        metric_errors.append(f"{field} uses an untrusted derived-metric algorithm")
+    if total == 0:
+        expected_percent = 100.0
+        if status != "derived" or covered != 0:
+            metric_errors.append(
+                f"{field} zero-unit evidence must be an explicit trusted derivation"
+            )
+    else:
+        with localcontext() as context:
+            context.prec = max(28, len(str(covered)) + len(str(total)) + 8)
+            expected_percent = float(
+                (Decimal(covered) * Decimal(100) / Decimal(total)).quantize(
+                    Decimal("0.000001"), rounding=ROUND_HALF_UP
+                )
+            )
+    if percent != expected_percent:
+        metric_errors.append(
+            f"{field}.percent does not match covered/total counters "
+            f"(expected {expected_percent}, got {percent!r})"
+        )
+    # A measured metric is applicable by definition. The platform-wide quality
+    # floor is 100 for every applicable measurement; component floor 0 means
+    # the toolchain may report explicit unsupported/N/A, not undercoverage.
+    if covered != total or percent != 100:
+        metric_errors.append(
+            f"{field} is applicable and must equal 100% "
+            f"(covered={covered}, total={total}, percent={percent!r})"
+        )
+    return metric_errors
 
 
 def _tier0_rule_matches(path: str, rule: str) -> bool:
@@ -1018,10 +1075,54 @@ def _validate_components_manifest(
                     metric,
                     floor=floors[metric_name],
                     field=f"components.{component}.{metric_name}",
-                    tier0=False,
                 )
             )
     return errors
+
+
+def _load_canonical_tier0_rules(repository_root: Path, errors: list[str]) -> list[str]:
+    path = _safe_repository_file(
+        repository_root,
+        "quality/ownership-mapping.json",
+        "canonical ownership-mapping",
+        errors,
+    )
+    if path is None:
+        return []
+    try:
+        text = path.read_text(encoding="utf-8")
+        _reject_excessive_json_nesting(text)
+        document = json.loads(
+            text,
+            object_pairs_hook=_duplicate_key_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        RecursionError,
+        ValueError,
+    ) as error:
+        errors.append(f"canonical ownership-mapping is invalid: {error}")
+        return []
+    if not isinstance(document, dict):
+        errors.append("canonical ownership-mapping root must be an object")
+        return []
+    rules = document.get("tier0_rules")
+    if (
+        not isinstance(rules, list)
+        or not rules
+        or not all(isinstance(rule, str) and rule.strip() for rule in rules)
+    ):
+        errors.append(
+            "canonical ownership-mapping tier0_rules must be a non-empty string array"
+        )
+        return []
+    normalized = [cast(str, rule).strip().replace("\\", "/") for rule in rules]
+    if len(normalized) != len(set(normalized)):
+        errors.append("canonical ownership-mapping tier0_rules contains duplicates")
+    return sorted(set(normalized))
 
 
 def _validate_tier0_manifest(
@@ -1035,7 +1136,12 @@ def _validate_tier0_manifest(
         errors.append(f"tier0.status must be 'ready', got {tier0['status']!r}")
     if tier0["errors"]:
         errors.append("tier0.errors must be empty")
-    rules = cast(list[str], tier0["rules"])
+    manifest_rules = cast(list[str], tier0["rules"])
+    rules = _load_canonical_tier0_rules(repository_root, errors)
+    if manifest_rules != rules:
+        errors.append(
+            "tier0.rules must exactly equal canonical ownership-mapping tier0_rules"
+        )
     files = cast(list[object], tier0["files"])
     source_roots = cast(dict[str, object], manifest["source_roots"])
     expected_inventory = _expected_tier0_inventory(
@@ -1082,7 +1188,6 @@ def _validate_tier0_manifest(
                     metric,
                     floor=floors[metric_name],
                     field=f"{path}.{metric_name}",
-                    tier0=True,
                 )
             )
             if metric["status"] in {"native", "derived"}:
@@ -1175,6 +1280,39 @@ def _validate_provenance(
     return errors
 
 
+def _validate_tool_versions(manifest: dict[str, object]) -> list[str]:
+    reports = cast(list[object], manifest["reports"])
+    required_tools = {"quality-normalizer"}
+    for report_value in reports:
+        report = cast(dict[str, object], report_value)
+        report_format = cast(str, report["format"])
+        required_tools.update(REPORT_FORMAT_TO_TOOLS[report_format])
+    tool_versions = cast(dict[str, object], manifest["tool_versions"])
+    actual_tools = set(tool_versions)
+    errors: list[str] = []
+    missing = required_tools - actual_tools
+    unexpected = actual_tools - required_tools
+    if missing:
+        errors.append(
+            "tool_versions is missing required tools: " + ", ".join(sorted(missing))
+        )
+    if unexpected:
+        errors.append(
+            "tool_versions contains unexpected tools: " + ", ".join(sorted(unexpected))
+        )
+    for tool, version_value in tool_versions.items():
+        if (
+            not isinstance(version_value, str)
+            or VERSION_PATTERN.fullmatch(version_value) is None
+        ):
+            errors.append(f"tool_versions.{tool} must be a concrete version-like value")
+    if tool_versions.get("quality-normalizer") != NORMALIZER_VERSION:
+        errors.append(
+            f"tool_versions.quality-normalizer must equal {NORMALIZER_VERSION}"
+        )
+    return errors
+
+
 def validate_manifest_evidence(
     manifest: object,
     *,
@@ -1236,10 +1374,15 @@ def validate_manifest_evidence(
     if manifest["missing_reports"]:
         errors.append("missing_reports must be empty")
     generation = cast(dict[str, object], manifest["generation"])
+    if generation["command"] != "scripts/quality/normalize_coverage_reports.py":
+        errors.append(
+            "generation.command must equal scripts/quality/normalize_coverage_reports.py"
+        )
     if generation["normalizer_version"] != NORMALIZER_VERSION:
         errors.append(f"generation.normalizer_version must equal {NORMALIZER_VERSION}")
     provenance = cast(dict[str, object], manifest["provenance"])
     errors.extend(_validate_provenance(provenance, expected_provenance))
+    errors.extend(_validate_tool_versions(manifest))
     errors.extend(_validate_reports(manifest, contract, repository_root))
     errors.extend(_validate_components_manifest(manifest, contract))
     errors.extend(_validate_tier0_manifest(manifest, contract, repository_root))

@@ -50,7 +50,7 @@ def _derived() -> dict[str, object]:
         "covered": 1,
         "total": 1,
         "percent": 100.0,
-        "derivation": "trusted fixture derivation",
+        "derivation": "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
     }
 
 
@@ -120,7 +120,10 @@ def _valid_manifest_fixture(
         "source_roots": contract["source_roots"],
         "tool_versions": {
             "coverage.py": "7.10.0",
+            "cargo-llvm-cov": "0.6.19",
             "go": "1.26.0",
+            "node": "24.7.0",
+            "python": "3.14.0",
             "quality-normalizer": "2.0.0",
             "rustc": "1.90.0",
             "vitest": "4.0.0",
@@ -188,6 +191,12 @@ def git_evidence_root(tmp_path: Path) -> Path:
         ],
         cwd=tmp_path,
         check=True,
+    )
+    quality_root = tmp_path / "quality"
+    quality_root.mkdir(parents=True, exist_ok=True)
+    (quality_root / "ownership-mapping.json").write_text(
+        json.dumps({"tier0_rules": ["**/spicedb/**"]}),
+        encoding="utf-8",
     )
     return tmp_path
 
@@ -410,6 +419,88 @@ def test_v2_manifest_na_does_not_enter_aggregate_denominator(
     errors = _validate(validator, manifest, contract, manifest_path, git_evidence_root)
 
     assert any("metric_summary.branches" in error for error in errors)
+
+
+def test_v2_manifest_rejects_manifest_authored_tier0_rules(
+    git_evidence_root: Path,
+) -> None:
+    validator = _load_validator()
+    contract, manifest, manifest_path = _valid_manifest_fixture(git_evidence_root)
+    manifest["tier0"]["rules"] = ["**/nothing-security-critical/**"]
+
+    errors = _validate(validator, manifest, contract, manifest_path, git_evidence_root)
+
+    assert any("canonical ownership-mapping" in error for error in errors)
+
+
+def test_v2_manifest_rejects_measured_undercoverage_even_when_floor_is_zero(
+    git_evidence_root: Path,
+) -> None:
+    validator = _load_validator()
+    contract, manifest, manifest_path = _valid_manifest_fixture(git_evidence_root)
+    undercovered = {"status": "native", "covered": 0, "total": 1, "percent": 0.0}
+    manifest["tier0"]["files"][0]["metrics"]["branches"] = undercovered
+    manifest["tier0"]["coverage"]["branches"] = undercovered
+    manifest["tier0"]["metric_summary"]["branches"] = {
+        "applicable_files": 1,
+        "not_applicable_files": 0,
+    }
+
+    errors = _validate(validator, manifest, contract, manifest_path, git_evidence_root)
+
+    assert any("branches" in error and "100" in error for error in errors)
+
+
+def test_v2_manifest_recomputes_percent_from_native_counters(
+    git_evidence_root: Path,
+) -> None:
+    validator = _load_validator()
+    contract, manifest, manifest_path = _valid_manifest_fixture(git_evidence_root)
+    forged = {"status": "native", "covered": 0, "total": 10, "percent": 100.0}
+    manifest["tier0"]["files"][0]["metrics"]["branches"] = forged
+    manifest["tier0"]["coverage"]["branches"] = forged
+    manifest["tier0"]["metric_summary"]["branches"] = {
+        "applicable_files": 1,
+        "not_applicable_files": 0,
+    }
+
+    errors = _validate(validator, manifest, contract, manifest_path, git_evidence_root)
+
+    assert any("covered/total counters" in error for error in errors)
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    [
+        (lambda manifest: manifest["tool_versions"].pop("go"), "tool_versions"),
+        (
+            lambda manifest: manifest["tool_versions"].update({"go": "latest"}),
+            "tool_versions.go",
+        ),
+        (
+            lambda manifest: manifest["tool_versions"].update({"unrelated": "1.0.0"}),
+            "unexpected tools",
+        ),
+        (
+            lambda manifest: manifest["generation"].update(
+                {"command": "python arbitrary.py"}
+            ),
+            "generation.command",
+        ),
+    ],
+)
+def test_v2_manifest_requires_exact_tool_and_generator_provenance(
+    git_evidence_root: Path,
+    mutation: object,
+    message: str,
+) -> None:
+    validator = _load_validator()
+    contract, manifest, manifest_path = _valid_manifest_fixture(git_evidence_root)
+    mutation(manifest)
+
+    errors = _validate(validator, manifest, contract, manifest_path, git_evidence_root)
+
+    assert any(message in error for error in errors)
 
 
 def test_contract_v2_removes_manifest_self_hash_and_declares_all_native_evidence() -> (

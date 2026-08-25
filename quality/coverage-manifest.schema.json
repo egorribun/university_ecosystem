@@ -30,7 +30,10 @@
     "tool_versions": {
       "type": "object",
       "minProperties": 1,
-      "additionalProperties": {"type": "string", "minLength": 1}
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9]+(?:\\.[0-9]+){1,3}(?:[-+][0-9A-Za-z.-]+)?$"
+      }
     },
     "provenance": {"$ref": "#/$defs/provenance"},
     "generation": {"$ref": "#/$defs/generation"},
@@ -136,7 +139,7 @@
       "additionalProperties": false,
       "required": ["command", "normalizer_version"],
       "properties": {
-        "command": {"type": "string", "minLength": 1},
+        "command": {"const": "scripts/quality/normalize_coverage_reports.py"},
         "normalizer_version": {"type": "string", "pattern": "^2\\.[0-9]+\\.[0-9]+$"}
       }
     },
