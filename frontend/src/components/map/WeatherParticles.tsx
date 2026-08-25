@@ -8,6 +8,7 @@
  */
 import { useEffect, useRef } from "react"
 import useMediaQuery from "@/hooks/useMediaQuery"
+import { isLowPowerDevice } from "@/utils/deviceCapabilities"
 
 import type { WeatherCondition } from "@/utils/weatherCodes"
 
@@ -112,6 +113,7 @@ function recycleParticle(p: Particle, config: ParticleConfig, width: number): vo
 
 export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+  const lowPowerDevice = isLowPowerDevice()
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -123,7 +125,7 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
   const flashRef = useRef({ active: false, opacity: 0, nextFlash: 0 })
 
   useEffect(() => {
-    if (prefersReducedMotion) return
+    if (prefersReducedMotion || lowPowerDevice) return
     const config = CONFIGS[condition]
     if (!config) return
 
@@ -279,10 +281,10 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
       resizeObserver.disconnect()
       document.removeEventListener("visibilitychange", onVisibilityChange)
     }
-  }, [condition, isDark, prefersReducedMotion])
+  }, [condition, isDark, lowPowerDevice, prefersReducedMotion])
 
   // No particles for clear/cloudy, or when user prefers reduced motion
-  if (prefersReducedMotion || condition === "clear" || condition === "cloudy") {
+  if (prefersReducedMotion || lowPowerDevice || condition === "clear" || condition === "cloudy") {
     return null
   }
 

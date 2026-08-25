@@ -3,7 +3,7 @@ import { useEffect, useCallback } from "react"
 import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { X } from "lucide-react"
-import { m, AnimatePresence } from "framer-motion"
+import { m } from "framer-motion"
 import { cn } from "@/utils/cn"
 import { useAppShell } from "@/contexts/AppShellContext"
 import { useSwipeGesture } from "@/hooks/useSwipeGesture"
@@ -92,149 +92,150 @@ export function MobileMenu({
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }))
   }
 
+  if (!isOpen) return null
+
   return createPortal(
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop */}
+    <>
+      {/* Backdrop */}
+      <m.button
+        type="button"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.2 }}
+        className="fixed inset-0 z-overlay h-full w-full border-none p-0 cursor-default outline-none bg-(--drawer-overlay) backdrop-blur-sm"
+        onClick={onClose}
+        aria-label={t("navigation:aria.closeMenu")}
+        data-testid="mobile-menu-backdrop"
+        tabIndex={-1}
+      />
+
+      {/* Drawer — slides from RIGHT */}
+      <m.div
+        id="mobile-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("navigation:aria.mobileMenu")}
+        aria-describedby="mobile-drawer-description"
+        ref={drawerTrapRef}
+        initial={{ x: "100%" }}
+        animate={{ x: dragOffset > 0 ? dragOffset : 0 }}
+        transition={prefersReducedMotion ? { duration: 0 } : drawerSpring}
+        className={cn(
+          "fixed inset-y-0 right-0 z-overlay flex h-dvh max-h-dvh flex-col",
+          "w-(--drawer-w) max-w-(--drawer-w-max)",
+          "pt-[env(safe-area-inset-top,0px)] pr-[env(safe-area-inset-right,0px)] pb-[env(safe-area-inset-bottom,0px)]",
+          "drawer-glass glass-noise",
+          "shadow-glass-strong"
+        )}
+        tabIndex={-1}
+        {...handlers}
+      >
+        <p id="mobile-drawer-description" className="sr-only">
+          {t("navigation:aria.mobileMenuDescription")}
+        </p>
+        {/* Decorative accent gradient line */}
+        <div
+          className="h-0.5 w-full shrink-0"
+          style={{ background: "var(--drawer-accent-gradient)" }}
+          aria-hidden="true"
+        />
+
+        {/* Close button */}
+        <div className="flex items-center justify-end px-4 pt-3 pb-1">
           <m.button
             type="button"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={prefersReducedMotion ? { duration: 0 } : { duration: 0.2 }}
-            className="fixed inset-0 z-overlay h-full w-full border-none p-0 cursor-default outline-none bg-(--drawer-overlay) backdrop-blur-sm"
+            whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
+            transition={prefersReducedMotion ? { duration: 0 } : springSoft}
             onClick={onClose}
+            className="flex size-11 items-center justify-center rounded-xl border-none bg-transparent text-(--text-secondary) transition-[transform,opacity,background-color,color] duration-200 hover:bg-(--bg-surface-hover)/(--opacity-soft) hover:text-(--text-primary) cursor-pointer"
             aria-label={t("navigation:aria.closeMenu")}
-            data-testid="mobile-menu-backdrop"
-            tabIndex={-1}
-          />
-
-          {/* Drawer — slides from RIGHT */}
-          <m.div
-            id="mobile-drawer"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t("navigation:aria.mobileMenu")}
-            ref={drawerTrapRef}
-            initial={{ x: "100%" }}
-            animate={{ x: dragOffset > 0 ? dragOffset : 0 }}
-            exit={{ x: "100%" }}
-            transition={prefersReducedMotion ? { duration: 0 } : drawerSpring}
-            className={cn(
-              "fixed inset-y-0 right-0 z-overlay flex h-full flex-col",
-              "w-(--drawer-w) max-w-(--drawer-w-max)",
-              "drawer-glass glass-noise",
-              "shadow-glass-strong"
-            )}
-            tabIndex={-1}
-            {...handlers}
           >
-            {/* Decorative accent gradient line */}
-            <div
-              className="h-0.5 w-full shrink-0"
-              style={{ background: "var(--drawer-accent-gradient)" }}
-              aria-hidden="true"
-            />
+            <X size={20} />
+          </m.button>
+        </div>
 
-            {/* Close button */}
-            <div className="flex items-center justify-end px-4 pt-3 pb-1">
-              <m.button
-                type="button"
-                whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
-                transition={prefersReducedMotion ? { duration: 0 } : springSoft}
-                onClick={onClose}
-                className="flex items-center justify-center size-10 rounded-xl text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-surface-hover)/(--opacity-soft) transition-all duration-200 cursor-pointer border-none bg-transparent"
-                aria-label={t("navigation:aria.closeMenu")}
-              >
-                <X size={20} />
-              </m.button>
-            </div>
-
-            {/* Profile card */}
-            {isAuth && user && (
-              <div className="px-2 pb-2">
-                <MobileDrawerProfile
-                  user={user}
-                  onProfileClick={() => {
-                    onClose()
-                    go("/profile")
-                  }}
-                  t={t}
-                />
-              </div>
-            )}
-
-            {/* Quick actions */}
-            <MobileDrawerQuickActions
-              onSearch={handleSearch}
-              onNotifications={() => {
+        {/* Profile card */}
+        {isAuth && user && (
+          <div className="px-2 pb-2">
+            <MobileDrawerProfile
+              user={user}
+              onProfileClick={() => {
                 onClose()
-                // Notifications are handled inline via NotificationsBell
+                go("/profile")
               }}
-              onSettings={() => {
-                onClose()
-                go("/settings")
-              }}
-              prefersReducedMotion={prefersReducedMotion}
               t={t}
             />
+          </div>
+        )}
 
-            {/* Separator — gradient fade */}
-            <div
-              className="mx-4 my-2 h-px"
-              style={{
-                background: "linear-gradient(90deg, transparent, var(--glass-border), transparent)",
-              }}
-            />
+        {/* Quick actions */}
+        <MobileDrawerQuickActions
+          onSearch={handleSearch}
+          onNotifications={() => {
+            onClose()
+            document.getElementById("global-notifications-btn")?.click()
+          }}
+          onSettings={() => {
+            onClose()
+            go("/settings")
+          }}
+          prefersReducedMotion={prefersReducedMotion}
+          t={t}
+        />
 
-            {/* Navigation items */}
-            <div className="flex-1 overflow-y-auto px-3 py-2">
-              <ul
-                className="flex flex-col gap-1"
-                role="navigation"
-                aria-label={t("navigation:aria.mobileMenu")}
-              >
-                {menuLinks.map((item, index) => {
-                  const Icon = item.icon
-                  const active = isActive(item.to)
-                  return (
-                    <m.li
-                      key={item.to}
-                      initial={prefersReducedMotion ? false : { opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={
-                        prefersReducedMotion
-                          ? { duration: 0 }
-                          : { delay: 0.05 + index * 0.03, ...springSoft }
-                      }
-                    >
-                      <Link
-                        id={`mobile-nav-link-${item.to.replace(/\//g, "") || "home"}`}
-                        to={item.to}
-                        onClick={onClose}
-                        className="mobile-nav-link"
-                        data-active={active || undefined}
-                      >
-                        {Icon && <Icon className="mobile-nav-link-icon shrink-0" size={18} />}
-                        {item.label}
-                      </Link>
-                    </m.li>
-                  )
-                })}
-              </ul>
-            </div>
+        {/* Separator — gradient fade */}
+        <div
+          className="mx-4 my-2 h-px"
+          style={{
+            background: "linear-gradient(90deg, transparent, var(--glass-border), transparent)",
+          }}
+        />
 
-            {/* Footer */}
-            <div className="border-t border-(--glass-border) px-6 py-4">
-              <div className="text-center text-xs font-medium text-(--text-tertiary)">
-                © {new Date().getFullYear()} {t("navigation:brandName")}
-              </div>
-            </div>
-          </m.div>
-        </>
-      )}
-    </AnimatePresence>,
+        {/* Navigation items */}
+        <div className="flex-1 overflow-y-auto px-3 py-2">
+          <ul
+            className="flex flex-col gap-1"
+            role="navigation"
+            aria-label={t("navigation:aria.mobileMenu")}
+          >
+            {menuLinks.map((item, index) => {
+              const Icon = item.icon
+              const active = isActive(item.to)
+              return (
+                <m.li
+                  key={item.to}
+                  initial={prefersReducedMotion ? false : { opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={
+                    prefersReducedMotion
+                      ? { duration: 0 }
+                      : { delay: 0.05 + index * 0.03, ...springSoft }
+                  }
+                >
+                  <Link
+                    id={`mobile-nav-link-${item.to.replace(/\//g, "") || "home"}`}
+                    to={item.to}
+                    onClick={onClose}
+                    className="mobile-nav-link"
+                    data-active={active || undefined}
+                  >
+                    {Icon && <Icon className="mobile-nav-link-icon shrink-0" size={18} />}
+                    {item.label}
+                  </Link>
+                </m.li>
+              )
+            })}
+          </ul>
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-(--glass-border) px-6 py-4">
+          <div className="text-center text-xs font-medium text-(--text-tertiary)">
+            © {new Date().getFullYear()} {t("navigation:brandName")}
+          </div>
+        </div>
+      </m.div>
+    </>,
     document.body
   )
 }

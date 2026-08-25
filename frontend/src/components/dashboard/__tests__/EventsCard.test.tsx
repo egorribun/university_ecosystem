@@ -77,6 +77,13 @@ describe("EventsCard", () => {
     reducedMotion.value = true
   })
 
+  it("does not mount perpetual decorative animations", () => {
+    const { container } = renderCard()
+
+    expect(container.querySelector('[style*="animation"]')).toBeNull()
+    expect(container.querySelector(".dash-orb-reactive")).toBeNull()
+  })
+
   it("renders the heading, view-all link, and scope toggles", () => {
     renderCard()
     expect(screen.getByText("dashboard:events.heading")).toBeInTheDocument()

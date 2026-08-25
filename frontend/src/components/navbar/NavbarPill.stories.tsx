@@ -43,7 +43,7 @@ export const Compact: Story = {
   decorators: [themed(false)],
   parameters: {
     docs: {
-      description: { story: "Compact pill — glass bg, layered shadows, inner glow, breathing." },
+      description: { story: "Compact pill — matte surface with a restrained gradient accent." },
     },
   },
 }

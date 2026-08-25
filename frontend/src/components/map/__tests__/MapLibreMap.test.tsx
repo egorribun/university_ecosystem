@@ -4,14 +4,17 @@ import { createElement, type ReactNode } from "react"
 import type { MapRef } from "react-map-gl/maplibre"
 
 const translationState = vi.hoisted(() => ({ resolvedLanguage: "en" as string | undefined }))
+const renderedMapProps = vi.hoisted(() => ({ current: {} as Record<string, unknown> }))
 
 vi.mock("react-map-gl/maplibre", async () => {
   const base = (await import("@/tests/helpers/mapGlMock")).mapGlMock()
   const invoke = (callback: unknown, ...args: unknown[]) => {
     if (typeof callback === "function") callback(...args)
   }
-  const MapWithEvents = ({ children, onClick, onMoveEnd }: Record<string, unknown>) =>
-    createElement(
+  const MapWithEvents = (props: Record<string, unknown>) => {
+    renderedMapProps.current = props
+    const { children, onClick, onMoveEnd } = props
+    return createElement(
       "div",
       null,
       createElement(
@@ -39,6 +42,7 @@ vi.mock("react-map-gl/maplibre", async () => {
       ),
       children as ReactNode
     )
+  }
   return { ...base, Map: MapWithEvents }
 })
 vi.mock("react-i18next", () => ({
@@ -174,6 +178,7 @@ describe("MapLibreMap", () => {
 
   beforeEach(() => {
     originalMatchMedia = window.matchMedia
+    renderedMapProps.current = {}
   })
 
   afterEach(() => {
@@ -185,6 +190,14 @@ describe("MapLibreMap", () => {
     render(<MapLibreMapComponent {...baseProps} mapRef={makeRef(makeMap())} />)
     expect(screen.getByRole("application", { name: "a11y.mapContainer" })).toBeInTheDocument()
     expect(screen.getByText("a11y.mapKeyboardHint")).toBeInTheDocument()
+  })
+
+  it("contains gestures locally and does not retain a shared MapLibre instance", () => {
+    render(<MapLibreMapComponent {...baseProps} mapRef={makeRef(makeMap())} />)
+
+    const region = screen.getByRole("application", { name: "a11y.mapContainer" })
+    expect(region).toHaveStyle({ overscrollBehavior: "contain" })
+    expect(renderedMapProps.current.reuseMaps).not.toBe(true)
   })
 
   it("on map-ready resizes, sets the sky, and runs the cinematic flyTo intro", async () => {

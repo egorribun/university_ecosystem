@@ -43,6 +43,7 @@ import {
 import { WidgetErrorBoundary } from "@/components/error"
 import FadeSection from "@/components/motion/FadeSection"
 import type { MapRef } from "react-map-gl/maplibre"
+import { loadMapLibre } from "@/features/map/loadMapLibre"
 
 /* ── Reactive dark mode detection ── */
 function subscribeToDarkMode(cb: () => void) {
@@ -61,7 +62,7 @@ function getIsDark() {
 const SERVER_SNAPSHOT = false
 
 /** Lazy-load MapLibre GL — CSS + JS only loaded when map page is activated */
-const MapLibreMapComponent = lazy(() => import("@/components/map/MapLibreMap"))
+const MapLibreMapComponent = lazy(loadMapLibre)
 
 /**
  * MapFeature — central orchestrator for the campus map page.

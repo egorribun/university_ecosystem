@@ -54,7 +54,7 @@ export const Default: Story = {
   decorators: [themed(false)],
   parameters: {
     docs: {
-      description: { story: "Overflow trigger button (active glow); the menu opens on click." },
+      description: { story: "Overflow trigger button with a persistent active state." },
     },
   },
 }

@@ -126,6 +126,7 @@ const consumeScrollTopNext = (): boolean => {
 export const AppShellProvider = ({ children }: PropsWithChildren) => {
   const overlaysRef = useRef<OverlayMap>(new Map())
   const previousOverflowRef = useRef<string>("")
+  const scrollLockActiveRef = useRef(false)
   const pendingScrollFrameRef = useRef<number | null>(null)
 
   const [overlayStatus, setOverlayStatus] = useState({ blurred: false, scrollLocked: false })
@@ -139,11 +140,13 @@ export const AppShellProvider = ({ children }: PropsWithChildren) => {
       document.body.classList.remove("blurred")
     }
 
-    if (scrollLocked) {
+    if (scrollLocked && !scrollLockActiveRef.current) {
       previousOverflowRef.current = document.body.style.overflow
+      scrollLockActiveRef.current = true
       document.body.style.overflow = "hidden"
-    } else {
+    } else if (!scrollLocked && scrollLockActiveRef.current) {
       document.body.style.overflow = previousOverflowRef.current || ""
+      scrollLockActiveRef.current = false
     }
   }, [overlayStatus])
 
@@ -172,7 +175,10 @@ export const AppShellProvider = ({ children }: PropsWithChildren) => {
     () => () => {
       cancelPendingScrollFrame()
       document.body.classList.remove("blurred")
-      document.body.style.overflow = ""
+      if (scrollLockActiveRef.current) {
+        document.body.style.overflow = previousOverflowRef.current || ""
+        scrollLockActiveRef.current = false
+      }
     },
     [cancelPendingScrollFrame]
   )

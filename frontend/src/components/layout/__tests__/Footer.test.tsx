@@ -75,29 +75,42 @@ describe("Footer", () => {
     const socials = container.querySelectorAll("a.footer-social-btn")
     expect(socials.length).toBe(2)
 
-    // Each social link must have aria-label, target=_blank, rel="noopener noreferrer"
-    for (const a of Array.from(socials)) {
-      expect(a.getAttribute("aria-label")?.length ?? 0).toBeGreaterThan(0)
-      expect(a.getAttribute("target")).toBe("_blank")
-      expect(a.getAttribute("rel")).toContain("noopener")
-      expect(a.getAttribute("rel")).toContain("noreferrer")
-    }
+    const telegram = Array.from(socials).find((link) =>
+      link.getAttribute("href")?.startsWith("https://t.me/")
+    )
+    const email = Array.from(socials).find(
+      (link) => link.getAttribute("href") === "mailto:inf@guu.ru"
+    )
 
-    // Confirm hrefs target Telegram + Gmail
-    const hosts = Array.from(socials).map((a) => new URL((a as HTMLAnchorElement).href).hostname)
-    expect(hosts).toContain("t.me")
-    expect(hosts).toContain("mail.google.com")
+    expect(telegram).toHaveAttribute("target", "_blank")
+    expect(telegram).toHaveAttribute("rel", expect.stringContaining("noopener"))
+    expect(telegram).toHaveAccessibleName(/opens in a new tab|новой вкладке/i)
+    expect(telegram?.querySelector("svg[data-icon='telegram']")).toBeInTheDocument()
+
+    expect(email).toBeInTheDocument()
+    expect(email).not.toHaveAttribute("target")
+    expect(email).toHaveAccessibleName(/send an email|отправить письмо/i)
+
+    for (const link of Array.from(socials)) {
+      expect(link).toHaveClass("min-h-11", "min-w-11")
+    }
   })
 
-  it("marks decorative layers (FooterBackdrop, accent stripe) aria-hidden", async () => {
+  it("uses a filled four-track grid without media-query-driven glow", async () => {
     const { container } = await renderWithRouter({ ui: Footer, path: "/" })
 
-    // FooterBackdrop is a div with aria-hidden="true" containing 3 orbs
-    const ariaHiddenDivs = container.querySelectorAll(
-      "footer > div[aria-hidden='true'], footer > .footer-accent-stripe[aria-hidden='true']"
+    expect(container.querySelector(".grid")).toHaveClass("@lg:grid-cols-4")
+    expect(container.querySelector("[style*='radial-gradient']")).not.toBeInTheDocument()
+    expect(container.querySelector(".footer-stagger-item")).not.toBeInTheDocument()
+  })
+
+  it("marks the static accent divider as decorative", async () => {
+    const { container } = await renderWithRouter({ ui: Footer, path: "/" })
+
+    expect(container.querySelector("footer > .footer-accent-stripe")).toHaveAttribute(
+      "aria-hidden",
+      "true"
     )
-    // Should find at least FooterBackdrop wrapper + accent stripe
-    expect(ariaHiddenDivs.length).toBeGreaterThanOrEqual(2)
   })
 
   it("applies data-status='active' to /dashboard link when mounted on /dashboard", async () => {

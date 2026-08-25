@@ -50,14 +50,36 @@ describe("NavbarOverflowMenu", () => {
   it("opens the menu on trigger click and lists items", async () => {
     await renderMenu()
     const trigger = screen.getByRole("button")
+    expect(trigger).toHaveAccessibleName("More navigation")
+    expect(trigger).toHaveAttribute("aria-haspopup", "menu")
+    expect(trigger).toHaveAttribute("aria-controls", "navbar-overflow-menu")
+    expect(trigger).toHaveClass("size-11")
     expect(trigger).toHaveAttribute("aria-expanded", "false")
 
     await userEvent.click(trigger)
 
     expect(trigger).toHaveAttribute("aria-expanded", "true")
     expect(screen.getByRole("menu")).toBeInTheDocument()
-    expect(screen.getByText("News")).toBeInTheDocument()
-    expect(screen.getByText("Events")).toBeInTheDocument()
+    expect(screen.getByRole("menuitem", { name: "News" })).toHaveFocus()
+    expect(screen.getByRole("menuitem", { name: "Events" })).toBeInTheDocument()
+  })
+
+  it("supports roving keyboard focus and restores the trigger on Escape", async () => {
+    const user = userEvent.setup()
+    await renderMenu()
+    const trigger = screen.getByRole("button")
+    await user.click(trigger)
+
+    await user.keyboard("{ArrowDown}")
+    expect(screen.getByRole("menuitem", { name: "Events" })).toHaveFocus()
+    await user.keyboard("{Home}")
+    expect(screen.getByRole("menuitem", { name: "News" })).toHaveFocus()
+    await user.keyboard("{End}")
+    expect(screen.getByRole("menuitem", { name: "Events" })).toHaveFocus()
+    await user.keyboard("{Escape}")
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
   })
 
   it("closes the menu on second trigger click", async () => {
@@ -124,7 +146,7 @@ describe("NavbarOverflowMenu", () => {
   it("respects compact sizing and non-reduced motion props", async () => {
     await renderMenu({ isCompact: true, prefersReducedMotion: false })
     const trigger = screen.getByRole("button")
-    expect(trigger.className).toContain("size-8")
+    expect(trigger.className).toContain("size-11")
     await userEvent.click(trigger)
     expect(screen.getByRole("menu")).toBeInTheDocument()
   })

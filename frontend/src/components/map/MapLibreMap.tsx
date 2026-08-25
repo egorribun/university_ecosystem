@@ -202,7 +202,10 @@ export function MapLibreMapComponent({
    * Handles all cases:
    * - Fresh load: polls ~1-3s until tiles ready → intro animation
    * - StrictMode remount: map already loaded from first mount → runs on first frame
-   * - Navigation back (reuseMaps): map at final position → flyTo is a no-op
+   * - Navigation back: a fresh, fully-owned instance restores the URL viewport
+   *
+   * The map is intentionally not placed in react-map-gl's global reuse pool:
+   * unmount must release WebGL workers/listeners instead of retaining them.
    */
   useEffect(() => {
     let raf: number
@@ -315,6 +318,7 @@ export function MapLibreMapComponent({
   return (
     <div
       className="maplibre-map-wrapper relative h-full min-h-[inherit]"
+      style={{ overscrollBehavior: "contain" }}
       role="application"
       aria-label={t("a11y.mapContainer")}
       aria-roledescription={t("a11y.mapRoleDescription")}
@@ -347,7 +351,6 @@ export function MapLibreMapComponent({
         }
         mapStyle={mapStyle}
         style={{ width: "100%", height: "100%", minHeight: "inherit", borderRadius: 12 }}
-        reuseMaps
         attributionControl={false}
         onClick={() => {
           onDeselectBuilding()

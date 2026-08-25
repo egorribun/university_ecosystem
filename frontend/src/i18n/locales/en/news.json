@@ -125,6 +125,7 @@
     "pressToClose": "Press ? or Esc to close"
   },
   "aria": {
+    "categoryFilter": "Filter news by category",
     "cardActions": "News actions",
     "editNews": "Edit news",
     "deleteNews": "Delete news",

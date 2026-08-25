@@ -18,6 +18,8 @@ export interface UseFocusTrapOptions {
   allowOutsideClick?: boolean
   /** Whether focus should return to the previously focused element. */
   returnFocus?: boolean
+  /** Whether Escape should deactivate the trap. */
+  escapeDeactivates?: boolean
 }
 
 export default function useFocusTrap<T extends HTMLElement>({
@@ -27,6 +29,7 @@ export default function useFocusTrap<T extends HTMLElement>({
   fallbackFocus,
   allowOutsideClick = true,
   returnFocus = true,
+  escapeDeactivates = true,
 }: UseFocusTrapOptions) {
   const containerRef = useRef<T | null>(null)
   const trapRef = useRef<FocusTrap | null>(null)
@@ -55,7 +58,7 @@ export default function useFocusTrap<T extends HTMLElement>({
 
     const options: FocusTrapOptions = {
       allowOutsideClick,
-      escapeDeactivates: true,
+      escapeDeactivates,
       returnFocusOnDeactivate: returnFocus,
       fallbackFocus: fallbackTarget,
     }
@@ -80,7 +83,7 @@ export default function useFocusTrap<T extends HTMLElement>({
       skipDeactivateRef.current = false
       trapRef.current = null
     }
-  }, [active, allowOutsideClick, fallbackFocus, returnFocus])
+  }, [active, allowOutsideClick, escapeDeactivates, fallbackFocus, returnFocus])
 
   return containerRef
 }

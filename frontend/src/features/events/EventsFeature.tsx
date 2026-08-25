@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useEffect, useMemo } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -89,6 +89,7 @@ export const EventsFeature = () => {
           return next
         },
         replace: true,
+        resetScroll: false,
         viewTransition: false,
       })
     },
@@ -194,6 +195,27 @@ export const EventsFeature = () => {
     return list
   }, [rawEvents, activeCategory, dateRange, sortMode])
 
+  const requiresCompleteDataset =
+    tab !== "my" && (activeCategory !== "all" || Boolean(dateRange) || sortMode !== "newest")
+  useEffect(() => {
+    if (
+      requiresCompleteDataset &&
+      hasNextPage &&
+      !listIsLoading &&
+      !isFetchingNextPage &&
+      isOnline
+    ) {
+      void fetchNextPage()
+    }
+  }, [
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isOnline,
+    listIsLoading,
+    requiresCompleteDataset,
+  ])
+
   /* ── Keyboard navigation ── */
   const { activeIndex, registerRef } = useEventsKeyboardNav(filteredEvents)
 
@@ -203,8 +225,7 @@ export const EventsFeature = () => {
   }, [queryClient])
 
   /* ── Derived flags ── */
-  const canFetchMore =
-    tab !== "my" && hasNextPage && activeCategory === "all" && !debouncedSearch.trim()
+  const canFetchMore = tab !== "my" && Boolean(hasNextPage)
 
   const isAdmin = user?.role === "admin" || user?.role === "teacher"
 

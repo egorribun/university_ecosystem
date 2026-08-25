@@ -127,6 +127,8 @@ describe("NavbarLogo", () => {
     const link = document.getElementById("navbar-logo-link")
     expect(link).toHaveAttribute("href", "/dashboard")
     expect(screen.getByText("navigation:brandName")).toBeInTheDocument()
+    const logoSurface = screen.getByRole("img").parentElement
+    expect(logoSurface).not.toHaveClass("hover:scale-105", "active:scale-95")
   })
 
   it("renders the tablet-mobile spacing variant", async () => {
@@ -170,6 +172,20 @@ describe("MobileDrawerProfile", () => {
       authProvider: false,
     })
     expect(screen.getByText("navigation:role.admin")).toBeInTheDocument()
+  })
+
+  it("shows the teacher role label for teaching staff", async () => {
+    await renderWithRouter({
+      ui: () => (
+        <MobileDrawerProfile
+          user={{ ...testUser, role: "teacher" }}
+          onProfileClick={vi.fn()}
+          t={t}
+        />
+      ),
+      authProvider: false,
+    })
+    expect(screen.getByText("navigation:role.teacher")).toBeInTheDocument()
   })
 
   it("uses an avatar URL and the translated alt fallback when the name is empty", async () => {
@@ -232,9 +248,12 @@ describe("UserMenu", () => {
     await renderWithRouter({
       ui: () => <UserMenu user={testUser} isAuth loading={false} go={go} t={(key) => key} />,
     })
-    // The authed branch renders the profile avatar + button (both titled).
-    expect(screen.getAllByTitle("navigation:aria.openProfile").length).toBeGreaterThan(0)
-    await userEvent.click(screen.getByRole("button", { name: "navigation:aria.openProfile" }))
+    const profileButtons = screen.getAllByRole("button", {
+      name: "navigation:aria.openProfile",
+    })
+    expect(profileButtons).toHaveLength(2)
+    expect(profileButtons[0]).toHaveClass("size-11")
+    await userEvent.click(profileButtons[0]!)
     expect(go).toHaveBeenCalledWith("/profile")
     await userEvent.click(screen.getByAltText("navigation:aria.profileAvatarNamed"))
     expect(go).toHaveBeenLastCalledWith("/profile")
@@ -287,8 +306,7 @@ describe("UserMenu", () => {
 
     expect(screen.getByAltText("navigation:aria.profileAvatarNamed")).toHaveClass("h-7", "w-7")
     expect(screen.getByRole("button", { name: "navigation:menu.settings" })).toHaveClass(
-      "w-8",
-      "h-8",
+      "size-11",
       "duration-0"
     )
   })

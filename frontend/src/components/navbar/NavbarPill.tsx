@@ -12,10 +12,10 @@ interface NavbarPillProps {
  * The parent <nav> has FIXED height (64px always, no layout shift).
  * This container fills that height and transitions visual properties:
  * - Expanded: full width, no border-radius, transparent bg
- * - Compact: max-width pill, glass bg, layered shadows, inner glow, gradient overlay
+ * - Compact: bounded matte surface with a restrained gradient accent
  *
  * Premium features (compact only):
- * - 3-layer box-shadow + inner glow for realistic depth
+ * - No continuous or layout-triggering animation
  * - ::after gradient overlay for directional lighting (lighter top edge)
  * - glass-noise texture for frosted glass feel
  * - 6s breathing animation (slower, more organic)
@@ -28,20 +28,16 @@ export function NavbarPill({ isCompact, prefersReducedMotion, children }: Navbar
     <div
       className={cn(
         "flex w-full items-center box-border",
-        "transition-[max-width,height,border-radius,background,border-color,box-shadow,backdrop-filter]",
+        "transition-[transform,opacity]",
         dur,
         ease,
         isCompact
           ? [
-              // Compact pill: centered, rounded, premium glass
+              // Compact matte surface; layout properties snap at the hysteresis boundary.
               "relative mx-auto h-(--navbar-pill-h)",
               "max-w-(--navbar-pill-max-w) rounded-[var(--navbar-pill-radius)]",
               "bg-(--pill-bg) border border-(--pill-border)",
-              "shadow-[var(--pill-shadow),var(--pill-inner-glow)]",
-              "backdrop-blur-xl backdrop-saturate-[1.4]",
               "px-(--navbar-pill-px)",
-              "glass-noise",
-              !prefersReducedMotion && "animate-pill-breathe",
             ]
           : [
               // Expanded: full width, full height, no decoration

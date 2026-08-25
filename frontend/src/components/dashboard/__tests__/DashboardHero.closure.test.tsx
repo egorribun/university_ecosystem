@@ -77,7 +77,7 @@ describe("DashboardHero closure", () => {
     parityMock.mockReturnValue("even")
   })
 
-  it("renders personalized greeting, special marker, motion decorations, and stories", () => {
+  it("renders personalized greeting, a static special marker, and stories", () => {
     greetingState.greeting = "Happy birthday"
     greetingState.greetingKey = "birthday"
     greetingState.specialKey = "birthday"
@@ -99,6 +99,9 @@ describe("DashboardHero closure", () => {
     expect(screen.getByText(/dashboard:academicWeek:/)).toBeInTheDocument()
     expect(screen.getByText("dashboard:parityEven")).toBeInTheDocument()
     expect(screen.getByTestId("weather-widget")).toBeInTheDocument()
+    expect(document.querySelector('[class*="animate-[spin_40s_linear_infinite]"]')).toBeNull()
+    expect(document.querySelector('[class*="group-hover:translate-x"]')).toBeNull()
+    expect(document.querySelector(".animate-dash-colon-blink")).toBeNull()
   })
 
   it("renders the reduced narrow fallback without optional decorations", () => {
@@ -120,5 +123,22 @@ describe("DashboardHero closure", () => {
     expect(screen.getByText("dashboard:parityOdd")).toBeInTheDocument()
     expect(screen.queryByTestId("stories-slot")).not.toBeInTheDocument()
     expect(container.querySelector('[class*="animate-[spin_40s_linear_infinite]"]')).toBeNull()
+  })
+
+  it("refreshes academic-week parity when the clock date changes", () => {
+    const { rerender } = render(<DashboardHero {...baseProps} user={null} />)
+    expect(screen.getByText("dashboard:parityEven")).toBeInTheDocument()
+
+    parityMock.mockReturnValue("odd")
+    rerender(
+      <DashboardHero
+        {...baseProps}
+        time={new Date(2026, 7, 10, 9, 15)}
+        dateStr="Monday, 10 August"
+        user={null}
+      />
+    )
+
+    expect(screen.getByText("dashboard:parityOdd")).toBeInTheDocument()
   })
 })

@@ -80,6 +80,18 @@ describe("NewsList", () => {
     expect(screen.getByText(/no news yet/i)).toBeInTheDocument()
   })
 
+  it("continues pagination when the current filtered page has no matches", () => {
+    const fetchNextPage = vi.fn()
+    render(<NewsList {...defaultProps} newsList={[]} hasNextPage fetchNextPage={fetchNextPage} />)
+
+    expect(screen.queryByText(/no news yet/i)).not.toBeInTheDocument()
+    intersectionCallback?.(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver
+    )
+    expect(fetchNextPage).toHaveBeenCalledOnce()
+  })
+
   it("renders offline fallback when list is empty and offline", () => {
     const refreshNews = vi.fn()
     render(<NewsList {...defaultProps} newsList={[]} isOnline={false} refreshNews={refreshNews} />)

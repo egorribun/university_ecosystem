@@ -39,7 +39,7 @@ export const NavbarLogo = ({
       aria-label={t("navigation:aria.homeLink")}
       className={cn(
         "inline-flex min-w-0 items-center rounded-2xl no-underline group",
-        "transition-[gap,padding]",
+        "transition-[transform,opacity]",
         dur,
         ease,
         "hover:bg-(--bg-surface-hover)/(--opacity-soft)",
@@ -59,7 +59,7 @@ export const NavbarLogo = ({
         className={cn(
           "flex items-center justify-center shrink-0 rounded-full",
           "bg-(--bg-surface-raised) dark:bg-(--bg-surface-hover) shadow-sm border border-border-subtle",
-          "transition-[width,height,transform,box-shadow]",
+          "transition-[transform,opacity]",
           dur,
           ease,
           isCompact
@@ -67,19 +67,9 @@ export const NavbarLogo = ({
             : isPhone
               ? "w-(--nav-action-size) h-(--nav-action-size)"
               : "w-11 h-11",
-          "hover:scale-105 hover:shadow-[var(--nav-link-hover-glow)] active:scale-95",
-          !prefersReducedMotion && "hover:transition-transform hover:duration-200",
-          !prefersReducedMotion && "animate-logo-shimmer"
+          !prefersReducedMotion &&
+            "hover:scale-105 active:scale-95 hover:transition-transform hover:duration-200"
         )}
-        style={
-          !prefersReducedMotion
-            ? {
-                backgroundImage:
-                  "linear-gradient(90deg, transparent 30%, color-mix(in srgb, white 20%, transparent) 50%, transparent 70%)",
-                backgroundSize: "200% 100%",
-              }
-            : undefined
-        }
       >
         <SmartImage
           srcRaw={guuLogo}

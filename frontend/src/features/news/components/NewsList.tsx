@@ -43,7 +43,8 @@ export const NewsList = ({
   registerCardRef,
 }: NewsListProps) => {
   const { t } = useTranslation(["news", "common"])
-  const showEmptyState = !isInitialLoading && newsList.length === 0
+  const showEmptyState =
+    !isInitialLoading && !isFetchingNextPage && !hasNextPage && newsList.length === 0
 
   /* ── Infinite scroll ── */
   const sentinelRef = useRef<HTMLDivElement>(null)

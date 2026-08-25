@@ -258,12 +258,12 @@ export const StoryList = memo(function StoryList({
                   aria-label={label}
                   title={tooltip}
                   data-active={activeStoryId === story.id ? "true" : undefined}
-                  className="transition-transform"
+                  className="shadow-none transition-opacity"
                   style={
                     activeStoryId === story.id
                       ? {
-                          boxShadow:
-                            "0 0 0 var(--space-1) color-mix(in srgb, var(--brand-main) var(--opacity-medium), transparent)",
+                          outline: "2px solid currentColor",
+                          outlineOffset: "3px",
                         }
                       : undefined
                   }

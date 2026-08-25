@@ -136,6 +136,25 @@ describe("AppShellContext", () => {
       })
       expect(document.body.style.overflow).not.toBe("hidden")
     })
+
+    it("preserves the original overflow across nested overlay locks", () => {
+      document.body.style.overflow = "clip"
+      const { result } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => {
+        result.current.setOverlayState("drawer", { blurred: false, scrollLocked: true })
+      })
+      expect(document.body.style.overflow).toBe("hidden")
+
+      act(() => {
+        result.current.setOverlayState("dialog", { blurred: true, scrollLocked: true })
+        result.current.setOverlayState("drawer", null)
+      })
+      expect(document.body.style.overflow).toBe("hidden")
+
+      act(() => result.current.setOverlayState("dialog", null))
+      expect(document.body.style.overflow).toBe("clip")
+    })
   })
 
   describe("scrollToTop", () => {

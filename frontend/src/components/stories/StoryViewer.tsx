@@ -39,6 +39,7 @@ export const StoryViewer = ({
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   const closeButtonRef = useRef<HTMLButtonElement | null>(null)
   const dialogTitleId = useId()
+  const dialogInstructionsId = useId()
 
   const [isClient, setIsClient] = useState(false)
   useEffect(() => setIsClient(true), [])
@@ -58,6 +59,8 @@ export const StoryViewer = ({
   }, [activeStoryIndex])
 
   const viewerStory = activeStoryIndex === null ? null : (stories[activeStoryIndex] ?? null)
+  const nextStory = activeStoryIndex === null ? null : (stories[activeStoryIndex + 1] ?? null)
+  const nextStoryImage = nextStory?.cover_url_optimized ?? nextStory?.cover_url ?? null
 
   const progressForIndex = useCallback(
     (index: number) => {
@@ -156,12 +159,14 @@ export const StoryViewer = ({
         // Wave 54: prefer aria-labelledby when title exists (FIX-54-04)
         aria-labelledby={viewerStory.title?.trim() ? dialogTitleId : undefined}
         aria-label={viewerStory.title?.trim() ? undefined : storyDialogLabel}
+        aria-describedby={dialogInstructionsId}
         className="relative z-base flex w-full justify-center"
       >
+        {nextStoryImage && <link rel="preload" as="image" href={nextStoryImage} />}
         {/* Wave 54: Tailwind-only sizing, no conflicting inline styles (FIX-54-05) */}
         <div
           className={cn(
-            "relative z-decor flex aspect-9/16 max-h-[92vh] w-[min(96%,960px)] flex-col items-stretch justify-center overflow-hidden text-white sm:aspect-video sm:w-[min(96%,60rem)]",
+            "relative z-decor flex aspect-9/16 max-h-[92vh] w-[min(96%,960px)] flex-col items-stretch justify-center overflow-hidden text-white landscape:aspect-video landscape:max-h-[94vh] sm:aspect-video sm:w-[min(96%,60rem)]",
             viewerStory.cover_url ? "bg-page" : "bg-brand shadow-premium-lift",
             viewerStory.cover_url ? "rounded-none" : "rounded-md sm:rounded-lg"
           )}
@@ -184,6 +189,9 @@ export const StoryViewer = ({
             </div>
           )}
 
+          <p id={dialogInstructionsId} className="sr-only">
+            {t("stories.viewer.aria.instructions")}
+          </p>
           <p className="sr-only">{t("stories.viewer.hints.auto")}</p>
 
           {(viewerStory.title || viewerStory.short_text || viewerStory.cta_url) && (

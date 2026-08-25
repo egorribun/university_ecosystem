@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router"
-import { useMemo, useRef } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
 import {
   LayoutDashboard as DashboardIcon,
@@ -9,11 +9,8 @@ import {
   User as PersonIcon,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { m, AnimatePresence } from "framer-motion"
-import { springSoft } from "@/utils/animations"
-import useMediaQuery from "@/hooks/useMediaQuery"
 import { markIfFromBottom, smoothToTop, getScrollRoot } from "@/utils/scrollUtils"
-import { useSlidingIndicator } from "@/hooks/ui/useSlidingIndicator"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 function samePath(a: string, b: string) {
   const na = a.replace(/\/+$/, "")
@@ -21,10 +18,18 @@ function samePath(a: string, b: string) {
   return na === nb
 }
 
+function isSectionActive(pathname: string, section: string) {
+  const path = pathname.replace(/\/+$/, "")
+  const target = section.replace(/\/+$/, "")
+  return path === target || path.startsWith(`${target}/`)
+}
+
 export default function MobileBottomNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const { t } = useTranslation(["navigation"])
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+  const deferredScrollFrame = useRef<number | null>(null)
+  const [isVirtualKeyboardOpen, setIsVirtualKeyboardOpen] = useState(false)
 
   // Wave 128 SW3 — useIsomorphicLayoutEffect picks useEffect on SSR
   // (avoids React's "useLayoutEffect does nothing on the server" warning
@@ -33,9 +38,43 @@ export default function MobileBottomNav() {
   useIsomorphicLayoutEffect(() => {
     if (sessionStorage.getItem("__scrollTopNext") === "1") {
       sessionStorage.removeItem("__scrollTopNext")
-      requestAnimationFrame(() => smoothToTop(getScrollRoot()))
+      deferredScrollFrame.current = requestAnimationFrame(() => {
+        deferredScrollFrame.current = null
+        smoothToTop(getScrollRoot(), prefersReducedMotion ? "auto" : "smooth")
+      })
     }
-  }, [pathname])
+
+    return () => {
+      if (deferredScrollFrame.current !== null) {
+        cancelAnimationFrame(deferredScrollFrame.current)
+        deferredScrollFrame.current = null
+      }
+    }
+  }, [pathname, prefersReducedMotion])
+
+  useEffect(() => {
+    const viewport = window.visualViewport
+    if (!viewport) return
+
+    const syncKeyboardState = () => {
+      const activeElement = document.activeElement
+      const hasEditableFocus =
+        activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLTextAreaElement ||
+        (activeElement instanceof HTMLElement && activeElement.isContentEditable)
+      const atDefaultScale = viewport.scale === undefined || Math.abs(viewport.scale - 1) < 0.01
+      setIsVirtualKeyboardOpen(
+        hasEditableFocus && atDefaultScale && window.innerHeight - viewport.height > 150
+      )
+    }
+    syncKeyboardState()
+    viewport.addEventListener("resize", syncKeyboardState)
+    viewport.addEventListener("scroll", syncKeyboardState)
+    return () => {
+      viewport.removeEventListener("resize", syncKeyboardState)
+      viewport.removeEventListener("scroll", syncKeyboardState)
+    }
+  }, [])
 
   const items = useMemo(
     () => [
@@ -53,47 +92,36 @@ export default function MobileBottomNav() {
   )
 
   const hideOn = ["/login", "/register", "/forgot-password", "/reset-password"]
-  const hidden = hideOn.some((p) => pathname.startsWith(p))
+  const hidden = hideOn.some((path) => isSectionActive(pathname, path))
 
-  // Wave 124 SW1 — replaces framer-motion layoutId="bottom-nav-pill" (requires
-  // domMax). Single absolutely-positioned pill slides between active items via
-  // CSS transform transition. Computes target rect via useSlidingIndicator.
-  const activeNavTo = useMemo(() => {
-    for (const it of items) {
-      const isActive = pathname.startsWith(it.to)
-      if (isActive) return it.to
-    }
-    return null
-  }, [items, pathname])
-  const navRef = useRef<HTMLElement>(null)
-  const pillRect = useSlidingIndicator(navRef, activeNavTo)
+  const activeIndex = items.findIndex((item) => isSectionActive(pathname, item.to))
 
   if (hidden) return null
 
   return (
     <>
       <nav
-        ref={navRef}
-        className="fixed bottom-0 left-0 right-0 z-(--z-navbar) flex h-(--bottom-nav-h) w-full items-center justify-around bottom-nav-glass border-t border-glass-border pb-(--safe-area-bottom) shadow-up transition-all md:hidden"
+        className={`fixed inset-x-0 bottom-0 z-(--z-navbar) grid h-[calc(var(--bottom-nav-h)+var(--safe-area-bottom))] w-full grid-cols-5 items-stretch border-t border-glass-border bottom-nav-glass pb-(--safe-area-bottom) shadow-up transition-[transform,opacity] duration-200 motion-reduce:transition-none md:hidden ${isVirtualKeyboardOpen ? "pointer-events-none translate-y-full opacity-0" : "translate-y-0 opacity-100"}`}
         role="navigation"
         aria-label={t("navigation:aria.mainNavigation")}
+        aria-hidden={isVirtualKeyboardOpen || undefined}
+        data-virtual-keyboard={isVirtualKeyboardOpen ? "open" : "closed"}
+        inert={isVirtualKeyboardOpen || undefined}
       >
-        {pillRect && (
+        {activeIndex >= 0 && (
           <span
             aria-hidden="true"
-            className="absolute rounded-(--bottom-nav-pill-radius) bottom-nav-pill z-negative"
+            data-nav-indicator
+            className="pointer-events-none absolute left-0 top-0 h-(--bottom-nav-h) w-1/5 p-1.5 transition-[transform,opacity] duration-300 motion-reduce:transition-none"
             style={{
-              transform: `translate3d(${pillRect.left + 8}px, ${pillRect.top + 4}px, 0)`,
-              width: pillRect.width - 16,
-              height: pillRect.height - 8,
-              transition: prefersReducedMotion
-                ? "none"
-                : "transform 280ms cubic-bezier(0.34, 1.3, 0.64, 1), width 280ms cubic-bezier(0.34, 1.3, 0.64, 1), height 280ms cubic-bezier(0.34, 1.3, 0.64, 1)",
+              transform: `translate3d(${activeIndex * 100}%, 0, 0)`,
             }}
-          />
+          >
+            <span className="block h-full w-full rounded-(--bottom-nav-pill-radius) border border-(--bottom-pill-border) bg-(--bottom-pill-bg)" />
+          </span>
         )}
         {items.map((it) => {
-          const isActive = pathname.startsWith(it.to)
+          const isActive = isSectionActive(pathname, it.to)
           const Icon = it.icon
           return (
             <Link
@@ -104,72 +132,37 @@ export default function MobileBottomNav() {
               onClick={(e) => {
                 if (samePath(pathname, it.to)) {
                   e.preventDefault()
-                  smoothToTop(getScrollRoot())
+                  smoothToTop(getScrollRoot(), prefersReducedMotion ? "auto" : "smooth")
                 }
               }}
-              className="group relative flex flex-1 flex-col items-center justify-center py-1 text-text-primary transition-all outline-none select-none"
+              className="group relative flex h-full min-h-11 w-full flex-col items-center justify-center text-text-primary outline-none select-none focus-visible:shadow-focus"
               aria-label={it.label}
+              aria-current={isActive ? "page" : undefined}
             >
-              <div className="relative z-surface">
-                <m.span
-                  className="block"
-                  animate={{
-                    y: isActive ? -1 : 0,
-                    scale: isActive ? 1.1 : 1,
-                  }}
-                  whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
-                  transition={prefersReducedMotion ? { duration: 0 } : springSoft}
-                >
-                  {/* Active icon gets colored circular background */}
-                  {isActive ? (
-                    <span
-                      className="flex items-center justify-center rounded-lg p-0.5"
-                      style={{ backgroundColor: "var(--nav-active-glow)" }}
-                    >
-                      <Icon size={20} className="text-(--nav-active-color)" />
-                    </span>
-                  ) : (
-                    <Icon
-                      size={20}
-                      className="text-(--text-secondary) group-hover:text-(--text-primary)"
-                    />
-                  )}
-                </m.span>
-              </div>
-
-              {/* Label — spring scale entry for premium feel */}
-              <AnimatePresence mode="wait">
-                {isActive && (
-                  <m.span
-                    key={`label-${it.to}`}
-                    initial={prefersReducedMotion ? false : { opacity: 0, height: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, height: "auto", scale: 1 }}
-                    exit={{ opacity: 0, height: 0, scale: 0.8 }}
-                    transition={
-                      prefersReducedMotion
-                        ? { duration: 0 }
-                        : { duration: 0.2, ease: [0.16, 1, 0.3, 1] }
-                    }
-                    className="z-surface text-[10px] font-bold uppercase tracking-tight text-(--nav-active-color) mt-0.5 leading-tight"
-                  >
-                    {it.label}
-                  </m.span>
-                )}
-              </AnimatePresence>
-
-              {/* Dot for inactive items — slightly larger for visibility */}
-              {!isActive && (
-                <span className="h-1 w-1.5 rounded-full bg-(--text-tertiary) mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-              )}
+              <span
+                data-nav-icon
+                aria-hidden="true"
+                className={`relative z-surface flex h-6 w-6 shrink-0 items-center justify-center rounded-lg transition-[transform,color] duration-200 motion-reduce:transition-none ${isActive ? "-translate-y-px text-(--nav-active-color)" : "translate-y-0 text-(--text-secondary) group-hover:text-(--text-primary)"}`}
+              >
+                <Icon size={20} aria-hidden="true" />
+              </span>
+              <span
+                data-nav-label
+                aria-hidden="true"
+                className={`relative z-surface mt-0.5 h-3 text-[10px] font-bold uppercase leading-3 tracking-tight text-(--nav-active-color) transition-opacity duration-200 motion-reduce:transition-none ${isActive ? "opacity-100" : "opacity-0"}`}
+              >
+                {it.label}
+              </span>
             </Link>
           )
         })}
       </nav>
 
       {/* Spacer for bottom nav */}
-      {!pathname.startsWith("/messenger") && (
+      {!isVirtualKeyboardOpen && !isSectionActive(pathname, "/messenger") && (
         <span
-          className="h-(--bottom-nav-h) bg-transparent md:hidden relative z-decor"
+          data-bottom-nav-spacer
+          className="relative z-decor block h-[calc(var(--bottom-nav-h)+var(--safe-area-bottom))] bg-transparent md:hidden"
           aria-hidden="true"
         />
       )}

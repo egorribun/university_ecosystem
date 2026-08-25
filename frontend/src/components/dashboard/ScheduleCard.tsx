@@ -254,18 +254,6 @@ export const ScheduleCard = memo(function ScheduleCard({
           </ul>
         )}
       </div>
-
-      {/* Decorative orbs — visible accents (Wave 48: dash-orb-reactive) */}
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-hide dash-orb-reactive bg-(--grad-schedule-flare) mix-blend-soft-light opacity-medium transition-opacity duration-slow motion-reduce:!animate-none"
-        style={{ animation: "orb-breathe 5s ease-in-out infinite" }}
-      />
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute -top-16 right-8 z-hide dash-orb-reactive h-32 w-32 rounded-full bg-(--flare-schedule-orb) blur-3xl mix-blend-soft-light opacity-medium transition-opacity duration-slower motion-reduce:!animate-none"
-        style={{ animation: "orb-pulse-opacity 5s ease-in-out infinite" }}
-      />
     </Card>
   )
 })

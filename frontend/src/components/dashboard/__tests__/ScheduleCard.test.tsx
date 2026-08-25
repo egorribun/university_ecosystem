@@ -103,6 +103,13 @@ describe("ScheduleCard", () => {
     preloadRoute.mockResolvedValue(undefined)
   })
 
+  it("does not mount perpetual decorative animations", () => {
+    const { container } = renderCard()
+
+    expect(container.querySelector('[style*="animation"]')).toBeNull()
+    expect(container.querySelector(".dash-orb-reactive")).toBeNull()
+  })
+
   it("gates loading to student accounts with a group", () => {
     scheduleState.current = { data: undefined, isLoading: true, isFetching: false }
 

@@ -21,6 +21,7 @@
   },
   "role": {
     "admin": "Administrator",
+    "teacher": "Teacher",
     "student": "Student"
   },
   "aria": {
@@ -32,6 +33,7 @@
     "closeMenu": "Close menu",
     "mainNavigation": "Main navigation",
     "mobileMenu": "Mobile menu",
+    "mobileMenuDescription": "Navigation, profile and account actions",
     "overflowMenu": "More navigation",
     "close": "Close"
   },
@@ -41,6 +43,7 @@
     "myProfile": "My profile",
     "contactTelegram": "Message us on Telegram",
     "contactEmail": "Send an email",
+    "opensNewTab": "opens in a new tab",
     "copyright": "© {{year}} GUU Ecosystem",
     "careNote": "Created with care for students and staff."
   }

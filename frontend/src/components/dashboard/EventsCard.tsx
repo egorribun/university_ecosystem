@@ -245,22 +245,6 @@ export const EventsCard = memo(function EventsCard({
           </ul>
         )}
       </div>
-
-      {/* Decorative orbs — visible accent glow (Wave 48: dash-orb-reactive) */}
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-hide dash-orb-reactive mix-blend-soft-light opacity-medium transition-opacity duration-slow motion-reduce:!animate-none"
-        style={{
-          background:
-            "radial-gradient(circle at top left, var(--dash-card-events-radial), transparent 70%)",
-          animation: "orb-sway 6.5s ease-in-out infinite",
-        }}
-      />
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-hide dash-orb-reactive opacity-dim bg-(--grad-events-flare) mix-blend-soft-light transition-opacity duration-slow motion-reduce:!animate-none"
-        style={{ animation: "orb-drift-alt 9s ease-in-out infinite" }}
-      />
     </Card>
   )
 })

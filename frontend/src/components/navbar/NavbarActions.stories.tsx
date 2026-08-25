@@ -34,7 +34,11 @@ const MESSENGER_STUB = {
 
 const NavbarActionsHarness = () => {
   const logic = useNavbarLogic()
-  const morph = useNavbarMorph(logic.menuLinks)
+  const morph = useNavbarMorph(logic.menuLinks, {
+    isScrolled: logic.isScrolled,
+    viewport: logic.viewport,
+    prefersReducedMotion: logic.prefersReducedMotion,
+  })
   return <NavbarActions logic={logic} morph={morph} />
 }
 

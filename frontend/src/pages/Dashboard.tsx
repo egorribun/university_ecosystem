@@ -1,5 +1,4 @@
-import { useCallback, useRef, useState, useEffect, type CSSProperties } from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { m } from "framer-motion"
 
@@ -9,7 +8,7 @@ import { PageLayout } from "@/components/layout/PageLayout"
 import { DashboardStories } from "@/components/stories"
 import { useAuth } from "@/contexts/AuthContext"
 import { getLocaleForLanguage, useLanguage } from "@/contexts/LanguageContext"
-import { useDashboardStories, prefetchDashboardStories } from "@/hooks/useDashboardStories"
+import { useDashboardStories } from "@/hooks/useDashboardStories"
 import { useClock } from "@/hooks/useClock"
 
 import { DashboardHero } from "@/components/dashboard/DashboardHero"
@@ -22,7 +21,6 @@ import { SkeletonMorph } from "@/components/ui/SkeletonMorph"
 import { Card, Skeleton } from "@/components/ui"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
-import { useTilt } from "@/hooks/useTilt"
 import { useDashboardSchedule } from "@/hooks/useDashboardSchedule"
 import { useDashboardNews } from "@/hooks/useDashboardNews"
 import { useDashboardEvents } from "@/hooks/useDashboardEvents"
@@ -35,8 +33,8 @@ const CASCADE_KEY = "dash-cascade-done"
 
 // Wave 142 SW1 — Path C (content render reduction). Extends W116 SW1 reduced
 // MainLayout pattern (MainLayout.tsx:30) one level down to the page root,
-// suppressing decorative subtrees (DashboardBackdrop canvas, WeatherAmbient,
-// DashboardHero card, DashboardStories carousel, 3D tilt hooks) under
+// suppressing decorative subtrees (DashboardBackdrop, WeatherAmbient,
+// DashboardHero card, DashboardStories carousel) under
 // VITE_E2E_MODE so the heavy /dashboard DOM (~800-1000 nodes pre-fix) drops
 // below axe-core's 60s analyze threshold in the visual-audit.yml CI workflow.
 // W141 SW1 propagated VITE_E2E_MODE=1 to the visual-audit build (verified by
@@ -54,8 +52,8 @@ const E2E_MODE = import.meta.env.VITE_E2E_MODE === "1"
 function cascadeProps(delay: number, active: boolean, reduced: boolean) {
   if (!active || reduced) return {}
   return {
-    initial: { opacity: 0, scale: 0.92, filter: "blur(8px)" },
-    animate: { opacity: 1, scale: 1, filter: "blur(0px)" },
+    initial: { opacity: 0, transform: "translateY(var(--space-2))" },
+    animate: { opacity: 1, transform: "translateY(0)" },
     transition: { duration: 0.5, delay, ease: [0.16, 1, 0.3, 1] },
   } as const
 }
@@ -132,15 +130,6 @@ export default function Dashboard() {
   const locale = getLocaleForLanguage(language)
   const { hh, mm, dateStr, time } = useClock(locale)
 
-  // Wave 46: Parallax — backdrop scrolls slower than content
-  // Wave 124 SW1: Refactored from framer-motion useScroll/useTransform (require
-  // domMax) to native scroll listener + CSS custom properties. Same offset
-  // semantics ["start start", "end start"]: progress = clamp(-rect.top /
-  // rect.height, 0, 1). Native scroll + rAF throttle keeps 60fps; CSS var
-  // updates trigger inexpensive composite-only repaints.
-  const parallaxRef = useRef<HTMLDivElement>(null)
-  const backdropRef = useRef<HTMLDivElement>(null)
-
   // Wave 47: Weather-aware ambient particles
   const weatherResult = useWeather()
   const weatherAnimation = weatherResult.data?.animation ?? "none"
@@ -159,94 +148,6 @@ export default function Dashboard() {
     }
   }, [showCascade])
 
-  // Wave 48: Scroll depth — cards recede as they scroll above viewport
-  const cardGridRef = useRef<HTMLDivElement>(null)
-
-  // Wave 124 SW1 — Aurora backdrop parallax via native scroll
-  useEffect(() => {
-    if (prefersReducedMotion) return
-    const target = parallaxRef.current
-    const inner = backdropRef.current
-    if (!target || !inner) return
-    let raf = 0
-    const update = () => {
-      raf = 0
-      const rect = target.getBoundingClientRect()
-      const progress = Math.max(0, Math.min(1, -rect.top / Math.max(1, rect.height)))
-      inner.style.setProperty("--dashboard-backdrop-y", `${progress * 15}%`)
-    }
-    const onScroll = () => {
-      if (raf !== 0) return
-      raf = requestAnimationFrame(update)
-    }
-    update()
-    window.addEventListener("scroll", onScroll, { passive: true })
-    return () => {
-      if (raf !== 0) cancelAnimationFrame(raf)
-      window.removeEventListener("scroll", onScroll)
-    }
-  }, [prefersReducedMotion])
-
-  // Wave 124 SW1 — Card grid depth via native scroll
-  useEffect(() => {
-    if (prefersReducedMotion) return
-    const target = cardGridRef.current
-    if (!target) return
-    let raf = 0
-    const update = () => {
-      raf = 0
-      const rect = target.getBoundingClientRect()
-      const progress = Math.max(0, Math.min(1, -rect.top / Math.max(1, rect.height)))
-      // Same interpolation as prior useTransform([0, 0.3, 1], [1, 1, 0.96]):
-      // first 30% holds, then linearly decays.
-      let scale = 1
-      let opacity = 1
-      if (progress > 0.3) {
-        const t = (progress - 0.3) / 0.7
-        scale = 1 + t * (0.96 - 1)
-        opacity = 1 + t * (0.7 - 1)
-      }
-      target.style.setProperty("--dashboard-grid-scale", String(scale))
-      target.style.setProperty("--dashboard-grid-opacity", String(opacity))
-    }
-    const onScroll = () => {
-      if (raf !== 0) return
-      raf = requestAnimationFrame(update)
-    }
-    update()
-    window.addEventListener("scroll", onScroll, { passive: true })
-    return () => {
-      if (raf !== 0) cancelAnimationFrame(raf)
-      window.removeEventListener("scroll", onScroll)
-    }
-  }, [prefersReducedMotion])
-
-  // Wave 46: 3D tilt on dashboard cards
-  // Wave 142 SW1 — added E2E_MODE to disabled clause as defensive guard
-  // (useTilt reads refs during render per FIX-54-01; under E2E_MODE we
-  // suppress the tilt entirely so the test build's a11y tree mirrors what
-  // a non-motion-enabled user sees).
-  const {
-    ref: tiltScheduleRef,
-    style: tiltScheduleStyle,
-    onMouseMove: tiltScheduleOnMouseMove,
-    onMouseLeave: tiltScheduleOnMouseLeave,
-  } = useTilt({ max: 5, disabled: prefersReducedMotion || isNarrow || E2E_MODE })
-  const {
-    ref: tiltNewsRef,
-    style: tiltNewsStyle,
-    onMouseMove: tiltNewsOnMouseMove,
-    onMouseLeave: tiltNewsOnMouseLeave,
-  } = useTilt({ max: 5, disabled: prefersReducedMotion || isNarrow || E2E_MODE })
-  const {
-    ref: tiltEventsRef,
-    style: tiltEventsStyle,
-    onMouseMove: tiltEventsOnMouseMove,
-    onMouseLeave: tiltEventsOnMouseLeave,
-  } = useTilt({ max: 5, disabled: prefersReducedMotion || isNarrow || E2E_MODE })
-
-  const queryClient = useQueryClient()
-
   // Wave 46: SkeletonMorph — shared query instances for loading state
   // React Query deduplicates, so no extra network requests
   const scheduleQuery = useDashboardSchedule(
@@ -263,14 +164,6 @@ export default function Dashboard() {
   const stories = dashboardStoriesQuery.data ?? []
   const loadingStories = dashboardStoriesQuery.isLoading && stories.length === 0
 
-  const prefetchStories = useCallback(() => {
-    void prefetchDashboardStories(queryClient)
-  }, [queryClient])
-
-  const handleStoryOpen = useCallback(() => {
-    prefetchStories()
-  }, [prefetchStories])
-
   if (authLoading) {
     return (
       <PageLayout variant="full" className="py-0 md:py-0">
@@ -283,18 +176,9 @@ export default function Dashboard() {
     <PageLayout variant="full" className="dashboard-theme py-0 md:py-0">
       <SEO title={t("dashboard:pageTitle", "Dashboard")} />
 
-      {/* Aurora wrapper — parallax via native scroll listener (Wave 124 SW1) */}
-      <div ref={parallaxRef} className="aurora-mesh relative w-full">
-        <div
-          ref={backdropRef}
-          style={
-            prefersReducedMotion
-              ? undefined
-              : ({ transform: "translateY(var(--dashboard-backdrop-y, 0%))" } as CSSProperties)
-          }
-          className="absolute inset-0 pointer-events-none"
-          aria-hidden="true"
-        >
+      {/* Static editorial backdrop; no per-scroll work or layout-affecting motion. */}
+      <div className="aurora-mesh relative w-full">
+        <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
           {/* Wave 142 SW1 — Path C: suppress decorative canvas+particles under
               VITE_E2E_MODE. aria-hidden parent + empty div under E2E reduces
               ~50-100 nodes (DashboardBackdrop SVG + WeatherAmbient canvas). */}
@@ -302,7 +186,10 @@ export default function Dashboard() {
             <>
               <DashboardBackdrop isNarrow={isNarrow} prefersReducedMotion={prefersReducedMotion} />
               {/* Wave 47: Weather-aware ambient particles */}
-              <WeatherAmbient animation={weatherAnimation} disabled={prefersReducedMotion} />
+              <WeatherAmbient
+                animation={weatherAnimation}
+                disabled={prefersReducedMotion || isNarrow}
+              />
             </>
           )}
         </div>
@@ -327,8 +214,6 @@ export default function Dashboard() {
                 <DashboardStories
                   stories={stories}
                   loading={loadingStories}
-                  onPrefetch={prefetchStories}
-                  onStoryOpen={handleStoryOpen}
                   maxVisibleStories={9}
                 />
               ) : undefined
@@ -346,47 +231,25 @@ export default function Dashboard() {
               Eliminates the "ScheduleCard `<a href="/schedule">` shift" the
               W123 SW3 LHR identified as 0.0335 dominant — the link itself
               wasn't growing, it was being pushed down by DashboardStories
-              transitioning from skeleton to loaded state. Same `min-h-[Xpx]`
-              Tailwind className pattern as W118 SW4 dash-tilt-card residuals. */}
+              transitioning from skeleton to loaded state. */}
           {!isStoriesInHero && !E2E_MODE && (
             <div className="mb-2 min-h-[120px]">
-              <DashboardStories
-                stories={stories}
-                loading={loadingStories}
-                onPrefetch={prefetchStories}
-                onStoryOpen={handleStoryOpen}
-              />
+              <DashboardStories stories={stories} loading={loadingStories} />
             </div>
           )}
           {/* Wave 142 SW1 — Path C: below-hero stories suppressed under E2E flag */}
           {!isStoriesInHero && E2E_MODE && <div data-e2e-stub="dashboard-stories" />}
 
-          {/* Wave 48: scroll depth wrapper — cards recede on scroll
-              Wave 124 SW1: refactored from motion-value scale/opacity to CSS
-              custom properties updated via native scroll listener (above). */}
-          <div
-            ref={cardGridRef}
-            className="mt-4 grid w-full grid-cols-12 gap-4 md:mt-5 md:gap-3.5 lg:gap-4 pb-24 md:pb-10"
-            style={
-              prefersReducedMotion
-                ? undefined
-                : ({
-                    transform: "scale(var(--dashboard-grid-scale, 1))",
-                    opacity: "var(--dashboard-grid-opacity, 1)",
-                  } as CSSProperties)
-            }
-          >
+          {/* Cards remain layout-stable while scrolling. */}
+          <div className="mt-4 grid w-full grid-cols-12 gap-4 md:mt-5 md:gap-3.5 lg:gap-4 pb-24 md:pb-10">
             {/* Schedule card */}
             <m.div
               className="col-span-12 lg:col-span-4"
               {...cascadeProps(0.1, showCascade, prefersReducedMotion)}
             >
               <div
-                ref={tiltScheduleRef}
-                style={tiltScheduleStyle}
-                className="dash-tilt-card vt-dash-schedule min-h-[400px]"
-                onMouseMove={tiltScheduleOnMouseMove}
-                onMouseLeave={tiltScheduleOnMouseLeave}
+                className={`vt-dash-schedule ${scheduleLoaded ? "" : "min-h-[400px]"}`}
+                aria-busy={!scheduleLoaded}
               >
                 <WidgetErrorBoundary widgetName="ScheduleCard" showFallback>
                   <SkeletonMorph loaded={scheduleLoaded} skeleton={<ScheduleCardSkeleton />}>
@@ -402,11 +265,8 @@ export default function Dashboard() {
               {...cascadeProps(0.2, showCascade, prefersReducedMotion)}
             >
               <div
-                ref={tiltNewsRef}
-                style={tiltNewsStyle}
-                className="dash-tilt-card vt-dash-news min-h-[400px]"
-                onMouseMove={tiltNewsOnMouseMove}
-                onMouseLeave={tiltNewsOnMouseLeave}
+                className={`vt-dash-news ${newsLoaded ? "" : "min-h-[400px]"}`}
+                aria-busy={!newsLoaded}
               >
                 <WidgetErrorBoundary widgetName="NewsCard" showFallback>
                   <SkeletonMorph loaded={newsLoaded} skeleton={<NewsCardSkeleton />}>
@@ -422,11 +282,8 @@ export default function Dashboard() {
               {...cascadeProps(0.3, showCascade, prefersReducedMotion)}
             >
               <div
-                ref={tiltEventsRef}
-                style={tiltEventsStyle}
-                className="dash-tilt-card vt-dash-events min-h-[400px]"
-                onMouseMove={tiltEventsOnMouseMove}
-                onMouseLeave={tiltEventsOnMouseLeave}
+                className={`vt-dash-events ${eventsLoaded ? "" : "min-h-[400px]"}`}
+                aria-busy={!eventsLoaded}
               >
                 <WidgetErrorBoundary widgetName="EventsCard" showFallback>
                   <SkeletonMorph loaded={eventsLoaded} skeleton={<EventsCardSkeleton />}>

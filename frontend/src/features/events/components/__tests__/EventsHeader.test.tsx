@@ -99,6 +99,7 @@ describe("EventsHeader", () => {
     rerender(<EventsHeader {...defaultProps} searchQuery="test" />)
     const clearBtn = screen.getByLabelText(/Clear search/i)
     expect(clearBtn).toBeInTheDocument()
+    expect(clearBtn).toHaveClass("size-11")
 
     fireEvent.click(clearBtn)
     expect(defaultProps.onSearchChange).toHaveBeenCalledWith("")
@@ -108,6 +109,26 @@ describe("EventsHeader", () => {
     render(<EventsHeader {...defaultProps} />)
     fireEvent.click(screen.getByText(/Past events/i))
     expect(defaultProps.onTabChange).toHaveBeenCalledWith("archive")
+  })
+
+  it("centers the status tablist across the available width", () => {
+    render(<EventsHeader {...defaultProps} />)
+
+    expect(screen.getByRole("tablist")).toHaveClass("flex", "justify-center", "w-full")
+    for (const tab of screen.getAllByRole("tab")) expect(tab).toHaveClass("min-h-11")
+  })
+
+  it("uses roving focus and arrow keys for the status tabs", () => {
+    render(<EventsHeader {...defaultProps} tab="active" />)
+    const tabs = screen.getAllByRole("tab")
+
+    expect(tabs[0]).toHaveAttribute("tabindex", "0")
+    expect(tabs[1]).toHaveAttribute("tabindex", "-1")
+    tabs[0]!.focus()
+    fireEvent.keyDown(screen.getByRole("tablist"), { key: "ArrowRight" })
+
+    expect(defaultProps.onTabChange).toHaveBeenCalledWith("archive")
+    expect(tabs[1]).toHaveFocus()
   })
 
   it("calls onCategoryChange when a category is clicked", () => {
@@ -138,7 +159,9 @@ describe("EventsHeader", () => {
 
   it("opens the filter popover, updates values, and resets them", () => {
     render(<EventsHeader {...defaultProps} />)
-    fireEvent.click(screen.getByRole("button", { name: /Open filters/i }))
+    const filterButton = screen.getByRole("button", { name: /Open filters/i })
+    expect(filterButton).toHaveClass("size-11")
+    fireEvent.click(filterButton)
 
     expect(screen.getByRole("dialog")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /This week/i }))

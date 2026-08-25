@@ -4,9 +4,17 @@
  */
 
 export function getScrollRoot(): HTMLElement {
-  // Use explicit scroll root if defined, otherwise fallback to document defaults
+  const isScrollable = (element: HTMLElement) => {
+    const overflowY = getComputedStyle(element).overflowY
+    return (
+      (overflowY === "auto" || overflowY === "scroll") &&
+      element.scrollHeight > element.clientHeight
+    )
+  }
+
+  // A layout marker is only an owner when it actually owns scrolling.
   const root = document.querySelector<HTMLElement>("[data-scroll-root]")
-  if (root) return root
+  if (root && isScrollable(root)) return root
 
   // Legacy/Safety fallback search
   const candidates = [
@@ -19,18 +27,20 @@ export function getScrollRoot(): HTMLElement {
   for (const el of candidates) {
     if (!el) continue
     const e = el as HTMLElement
-    const oy = getComputedStyle(e).overflowY
-    const scrollable = (oy === "auto" || oy === "scroll") && e.scrollHeight > e.clientHeight
-    if (scrollable) return e
+    if (isScrollable(e)) return e
   }
 
   return (document.scrollingElement || document.documentElement) as HTMLElement
 }
 
-export function smoothToTop(target: HTMLElement) {
+export function smoothToTop(target: HTMLElement, behavior: ScrollBehavior = "smooth") {
   try {
-    target.scrollTo({ top: 0, behavior: "smooth" })
+    target.scrollTo({ top: 0, behavior })
   } catch {
+    if (behavior === "auto") {
+      target.scrollTop = 0
+      return
+    }
     const start = target.scrollTop
     const duration = 420
     let t0 = 0

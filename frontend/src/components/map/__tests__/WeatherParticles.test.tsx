@@ -1,9 +1,12 @@
 import { act, render } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const hoisted = vi.hoisted(() => ({ reducedMotion: false }))
+const hoisted = vi.hoisted(() => ({ reducedMotion: false, lowPower: false }))
 
 vi.mock("@/hooks/useMediaQuery", () => ({ default: () => hoisted.reducedMotion }))
+vi.mock("@/utils/deviceCapabilities", () => ({
+  isLowPowerDevice: () => hoisted.lowPower,
+}))
 
 import { WeatherParticles } from "@/components/map/WeatherParticles"
 
@@ -26,7 +29,9 @@ const canvasContext = {
 
 describe("WeatherParticles", () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     hoisted.reducedMotion = false
+    hoisted.lowPower = false
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(canvasContext)
     let n = 0
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
@@ -56,6 +61,13 @@ describe("WeatherParticles", () => {
     hoisted.reducedMotion = true
     const { container } = render(<WeatherParticles condition="rain" isDark={false} />)
     expect(container.querySelector("canvas")).toBeNull()
+  })
+
+  it("does not start canvas effects on a low-power device", () => {
+    hoisted.lowPower = true
+    const { container } = render(<WeatherParticles condition="rain" isDark={false} />)
+    expect(container.querySelector("canvas")).toBeNull()
+    expect(window.requestAnimationFrame).not.toHaveBeenCalled()
   })
 
   it.each(DRAWING_CONDITIONS)("draws a canvas for the %s condition (light)", (condition) => {
@@ -109,12 +121,13 @@ describe("WeatherParticles", () => {
     const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.999)
 
     try {
+      const startedAt = performance.now()
       render(<WeatherParticles condition="fog" isDark={false} />)
       expect(callbacks).toHaveLength(1)
 
       act(() => {
-        for (let index = 0; index < 80; index += 1) {
-          callbacks.shift()?.(10_000 + index * 16)
+        for (let index = 0; index < 400; index += 1) {
+          callbacks.shift()?.(startedAt + (index + 1) * 16)
         }
       })
 

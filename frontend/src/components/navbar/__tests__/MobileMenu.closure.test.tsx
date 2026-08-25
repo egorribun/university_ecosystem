@@ -110,8 +110,15 @@ describe("MobileMenu closure paths", () => {
     const onKeyDown = (event: KeyboardEvent) => searchEvents.push(event)
     window.addEventListener("keydown", onKeyDown)
     const { onClose, go } = renderMenu()
+    const notificationsTrigger = document.createElement("button")
+    notificationsTrigger.id = "global-notifications-btn"
+    const notificationClick = vi.fn()
+    notificationsTrigger.addEventListener("click", notificationClick)
+    document.body.append(notificationsTrigger)
 
-    expect(screen.getByRole("dialog", { name: "navigation:aria.mobileMenu" })).toBeInTheDocument()
+    const dialog = screen.getByRole("dialog", { name: "navigation:aria.mobileMenu" })
+    expect(dialog).toHaveClass("h-dvh", "max-h-dvh")
+    expect(dialog).toHaveAttribute("aria-describedby", "mobile-drawer-description")
     expect(screen.getByTestId("schedule-icon")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("data-active", "true")
     expect(document.getElementById("mobile-nav-link-home")).toBeInTheDocument()
@@ -121,12 +128,14 @@ describe("MobileMenu closure paths", () => {
     await user.click(screen.getByRole("button", { name: "settings-action" }))
     expect(go).toHaveBeenCalledWith("/settings")
     await user.click(screen.getByRole("button", { name: "notifications-action" }))
+    expect(notificationClick).toHaveBeenCalledOnce()
     await user.click(screen.getByRole("button", { name: "search-action" }))
     await user.click(screen.getByRole("link", { name: "Schedule" }))
 
     expect(onClose).toHaveBeenCalledTimes(5)
     expect(searchEvents.some((event) => event.key === "k" && event.metaKey)).toBe(true)
     window.removeEventListener("keydown", onKeyDown)
+    notificationsTrigger.remove()
   })
 
   it("closes from backdrop, close button, swipe, and Escape", async () => {

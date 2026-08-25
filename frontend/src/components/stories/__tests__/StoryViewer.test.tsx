@@ -102,6 +102,14 @@ describe("StoryViewer", () => {
     // "Story Viewer: <title>" aria-label key the test originally expected.
     expect(screen.getByRole("dialog", { name: "Story 1" })).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "Story 1" })).toBeInTheDocument()
+    const dialog = screen.getByRole("dialog", { name: "Story 1" })
+    const describedBy = dialog.getAttribute("aria-describedby")
+    expect(describedBy).toBeTruthy()
+    expect(document.getElementById(describedBy!)).toHaveTextContent(
+      "stories.viewer.aria.instructions"
+    )
+    const stage = dialog.querySelector('[class*="aspect-9/16"]')
+    expect(stage).toHaveClass("landscape:aspect-video")
   })
 
   it("calls onClose when close button clicked", async () => {

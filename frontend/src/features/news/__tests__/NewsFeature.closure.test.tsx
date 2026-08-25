@@ -221,7 +221,8 @@ describe("NewsFeature closure", () => {
     expect(screen.getByTestId("news-header")).toHaveAttribute("data-admin", "false")
     expect(screen.getByTestId("news-header")).toHaveAttribute("data-count", "1")
     expect(screen.getByTestId("news-list")).toHaveAttribute("data-count", "1")
-    expect(screen.getByTestId("news-list")).toHaveAttribute("data-next", "false")
+    expect(screen.getByTestId("news-list")).toHaveAttribute("data-next", "true")
+    expect(state.query.current.fetchNextPage).not.toHaveBeenCalled()
     expect(screen.getByText("Campus update")).toBeInTheDocument()
     expect(screen.queryByText("Lecture schedule")).not.toBeInTheDocument()
   })
@@ -233,6 +234,7 @@ describe("NewsFeature closure", () => {
 
     expect(screen.getByTestId("news-list")).toHaveAttribute("data-count", "1")
     expect(screen.getByText("Campus update")).toBeInTheDocument()
+    expect(state.query.current.fetchNextPage).toHaveBeenCalledOnce()
   })
 
   it("matches a query found only in the English content", () => {

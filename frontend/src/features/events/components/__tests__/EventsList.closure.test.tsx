@@ -161,6 +161,18 @@ describe("EventsList closure", () => {
     expect(onAddClick).toHaveBeenCalledOnce()
   })
 
+  it("continues pagination when the current filtered page has no matches", () => {
+    const fetchNextPage = vi.fn()
+    render(<EventsList {...baseProps} eventsList={[]} hasNextPage fetchNextPage={fetchNextPage} />)
+
+    expect(screen.queryByText("events:states.empty")).not.toBeInTheDocument()
+    intersectionCallback?.(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver
+    )
+    expect(fetchNextPage).toHaveBeenCalledOnce()
+  })
+
   it("renders cards, refetch indicator, next-page skeletons, refs, and sentinel", () => {
     const refreshEvents = vi.fn()
     const fetchNextPage = vi.fn()
