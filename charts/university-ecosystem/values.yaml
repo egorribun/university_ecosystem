@@ -79,6 +79,7 @@ backend:
   image:
     repository: university-backend
     pullPolicy: Always
+    digest: ""  # sha256:... takes precedence over tag for immutable deployment
     tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
@@ -126,6 +127,7 @@ frontend:
   image:
     repository: university-frontend
     pullPolicy: Always
+    digest: ""
     tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
@@ -144,6 +146,7 @@ gateway:
   image:
     repository: university-gateway
     pullPolicy: Always
+    digest: ""
     tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
@@ -175,6 +178,7 @@ fileProcessor:
   image:
     repository: university-file-processor
     pullPolicy: Always
+    digest: ""
     tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
@@ -210,6 +214,7 @@ outboxWorker:
   image:
     repository: university-backend
     pullPolicy: Always
+    digest: ""
     tag: ""
   resources:
     requests:

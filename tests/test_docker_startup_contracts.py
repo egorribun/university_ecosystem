@@ -990,6 +990,8 @@ def test_helm_references_only_real_workloads_and_services_select_their_pods() ->
 
 
 def test_helm_images_do_not_gain_a_leading_slash_when_registry_is_empty() -> None:
+    helpers = _read("charts/university-ecosystem/templates/_helpers.tpl")
+    assert 'trimPrefix "/"' in helpers
     deployments = (
         "backend-deployment.yaml",
         "frontend-deployment.yaml",
@@ -999,7 +1001,7 @@ def test_helm_images_do_not_gain_a_leading_slash_when_registry_is_empty() -> Non
     )
     for name in deployments:
         deployment = _read(f"charts/university-ecosystem/templates/{name}")
-        assert 'trimPrefix "/"' in deployment, name
+        assert 'include "university-ecosystem.image"' in deployment, name
         assert ".Values.global.imagePullSecrets" in deployment, name
 
 

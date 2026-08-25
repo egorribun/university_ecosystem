@@ -499,7 +499,10 @@ jobs:
           HELM_VALUES_FILE: ${{ vars.HELM_VALUES_FILE }}
           CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
           APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
-          DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.build-frontend.outputs.digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
         run: |
           set -euo pipefail
           for attempt in 1 2 3; do
@@ -516,12 +519,16 @@ jobs:
             --values "$HELM_VALUES_FILE" \
             --set-string global.environment="$DEPLOY_ENVIRONMENT" \
             --set-string global.imageRegistry="$REGISTRY" \
-            --set-string global.imageTag="$DEPLOY_VERSION" \
             --set-string backend.image.repository="$GITHUB_REPOSITORY/backend" \
+            --set-string backend.image.digest="$BACKEND_IMAGE_DIGEST" \
             --set-string frontend.image.repository="$GITHUB_REPOSITORY/frontend" \
+            --set-string frontend.image.digest="$FRONTEND_IMAGE_DIGEST" \
             --set-string gateway.image.repository="$GITHUB_REPOSITORY/gateway" \
+            --set-string gateway.image.digest="$GATEWAY_IMAGE_DIGEST" \
             --set-string fileProcessor.image.repository="$GITHUB_REPOSITORY/file-processor" \
+            --set-string fileProcessor.image.digest="$FILE_PROCESSOR_IMAGE_DIGEST" \
             --set-string outboxWorker.image.repository="$GITHUB_REPOSITORY/backend" \
+            --set-string outboxWorker.image.digest="$BACKEND_IMAGE_DIGEST" \
             --set-string connections.existingSecret="$CONNECTIONS_SECRET_NAME" \
             --set-string applicationSecrets.existingSecret="$APPLICATION_SECRETS_NAME" \
             --set fileProcessor.enabled=true \
@@ -532,12 +539,16 @@ jobs:
             --values "$HELM_VALUES_FILE" \
             --set-string global.environment="$DEPLOY_ENVIRONMENT" \
             --set-string global.imageRegistry="$REGISTRY" \
-            --set-string global.imageTag="$DEPLOY_VERSION" \
             --set-string backend.image.repository="$GITHUB_REPOSITORY/backend" \
+            --set-string backend.image.digest="$BACKEND_IMAGE_DIGEST" \
             --set-string frontend.image.repository="$GITHUB_REPOSITORY/frontend" \
+            --set-string frontend.image.digest="$FRONTEND_IMAGE_DIGEST" \
             --set-string gateway.image.repository="$GITHUB_REPOSITORY/gateway" \
+            --set-string gateway.image.digest="$GATEWAY_IMAGE_DIGEST" \
             --set-string fileProcessor.image.repository="$GITHUB_REPOSITORY/file-processor" \
+            --set-string fileProcessor.image.digest="$FILE_PROCESSOR_IMAGE_DIGEST" \
             --set-string outboxWorker.image.repository="$GITHUB_REPOSITORY/backend" \
+            --set-string outboxWorker.image.digest="$BACKEND_IMAGE_DIGEST" \
             --set-string connections.existingSecret="$CONNECTIONS_SECRET_NAME" \
             --set-string applicationSecrets.existingSecret="$APPLICATION_SECRETS_NAME" \
             --set fileProcessor.enabled=true \
@@ -555,10 +566,10 @@ jobs:
           K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
           WS_HUB_DEPLOYMENT_NAME: ${{ vars.WS_HUB_DEPLOYMENT_NAME }}
           WS_HUB_CONTAINER_NAME: ${{ vars.WS_HUB_CONTAINER_NAME }}
-          DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.build-ws-hub.outputs.digest }}
         run: |
           set -euo pipefail
-          image="$REGISTRY/$GITHUB_REPOSITORY/ws-hub:$DEPLOY_VERSION"
+          image="$REGISTRY/$GITHUB_REPOSITORY/ws-hub@$WS_HUB_IMAGE_DIGEST"
           kubectl get deployment "$WS_HUB_DEPLOYMENT_NAME" \
             --namespace "$K8S_NAMESPACE" >/dev/null
           kubectl set image "deployment/$WS_HUB_DEPLOYMENT_NAME" \
@@ -581,6 +592,10 @@ jobs:
         env:
           K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
           HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.build-frontend.outputs.digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
         run: |
           set -euo pipefail
           helm status "$HELM_RELEASE_NAME" --namespace "$K8S_NAMESPACE"
@@ -611,11 +626,11 @@ jobs:
           }
 
           image_prefix="$REGISTRY/$GITHUB_REPOSITORY"
-          verify_image backend backend "$image_prefix/backend:$DEPLOY_VERSION"
-          verify_image frontend frontend "$image_prefix/frontend:$DEPLOY_VERSION"
-          verify_image gateway gateway "$image_prefix/gateway:$DEPLOY_VERSION"
-          verify_image file-processor file-processor "$image_prefix/file-processor:$DEPLOY_VERSION"
-          verify_image outbox-worker outbox-worker "$image_prefix/backend:$DEPLOY_VERSION"
+          verify_image backend backend "$image_prefix/backend@$BACKEND_IMAGE_DIGEST"
+          verify_image frontend frontend "$image_prefix/frontend@$FRONTEND_IMAGE_DIGEST"
+          verify_image gateway gateway "$image_prefix/gateway@$GATEWAY_IMAGE_DIGEST"
+          verify_image file-processor file-processor "$image_prefix/file-processor@$FILE_PROCESSOR_IMAGE_DIGEST"
+          verify_image outbox-worker outbox-worker "$image_prefix/backend@$BACKEND_IMAGE_DIGEST"
 
       - name: Setup Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0

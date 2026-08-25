@@ -88,6 +88,43 @@ jobs:
         env:
           CI: "true"
 
+      - name: Write frontend shard provenance
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        env:
+          SHARD_ID: ${{ matrix.shard }}
+          ARTIFACT_NAME: frontend-coverage-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          EXPECTED_SHA: ${{ github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          test -s frontend/coverage/coverage-final.json
+          node_version="$(node -p 'process.versions.node')"
+          vitest_version="$(node -p \"require('./frontend/node_modules/vitest/package.json').version\")"
+          python3 scripts/quality/coverage_provenance.py write \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --output frontend/coverage/coverage-provenance.json \
+            --expected-sha "$EXPECTED_SHA" \
+            --identity-provider github-actions \
+            --repository "$WORKFLOW_REPOSITORY" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --event "$WORKFLOW_EVENT" \
+            --job "$GITHUB_JOB" \
+            --artifact "$ARTIFACT_NAME" \
+            --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --tool-version "node=$node_version" \
+            --tool-version "vitest=$vitest_version" \
+            --tool-version quality-provenance=2.0.0 \
+            --report "frontend-shard|istanbul-json|frontend/coverage/coverage-final.json|frontend/.coverage-shards/$ARTIFACT_NAME/coverage-final.json"
+
       - name: Upload Vitest shard report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -98,8 +135,10 @@ jobs:
       - name: Upload frontend coverage shard
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: frontend-coverage-shard-${{ matrix.shard }}
-          path: ${{ inputs.working-directory }}/coverage/coverage-final.json
+          name: frontend-coverage-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: |
+            ${{ inputs.working-directory }}/coverage/coverage-final.json
+            ${{ inputs.working-directory }}/coverage/coverage-provenance.json
           if-no-files-found: error
 
   # Keep a stable `Frontend Tests / Unit Tests` check for branch protection.
@@ -153,9 +192,43 @@ jobs:
       - name: Download frontend coverage shards
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: frontend-coverage-shard-*
+          pattern: frontend-coverage-shard-*-attempt-${{ github.run_attempt }}
           path: ${{ inputs.working-directory }}/.coverage-shards
           merge-multiple: false
+
+      - name: Verify frontend shard provenance
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          test "$(find frontend/.coverage-shards -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 4
+          for shard in 1 2 3 4; do
+            artifact="frontend-coverage-shard-${shard}-attempt-${RUN_ATTEMPT}"
+            shard_root="frontend/.coverage-shards/$artifact"
+            test "$(find "$shard_root" -maxdepth 1 -type f | wc -l)" -eq 2
+            test -s "$shard_root/coverage-final.json"
+            test -s "$shard_root/coverage-provenance.json"
+            python3 scripts/quality/coverage_provenance.py verify \
+              --repository-root "$GITHUB_WORKSPACE" \
+              --expected-sha "$EXPECTED_SHA" \
+              --expected-repository "$WORKFLOW_REPOSITORY" \
+              --expected-run-id "$RUN_ID" \
+              --expected-run-attempt "$RUN_ATTEMPT" \
+              --expected-workflow-ref "$WORKFLOW_REF" \
+              --expected-workflow-sha "$WORKFLOW_SHA" \
+              --expected-event "$WORKFLOW_EVENT" \
+              --expected-job unit-tests-shard \
+              --expected-artifact "$artifact" \
+              --metadata "$shard_root/coverage-provenance.json"
+          done
 
       - name: Merge frontend coverage shards
         run: node scripts/merge-vitest-coverage.mjs --input=.coverage-shards --output=coverage --expected-shards=4
@@ -223,7 +296,7 @@ jobs:
             --run-attempt "$RUN_ATTEMPT" \
             --event "$WORKFLOW_EVENT" \
             --job "$GITHUB_JOB" \
-            --artifact frontend-coverage \
+            --artifact "frontend-coverage-attempt-$RUN_ATTEMPT" \
             --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
             --tool-version "node=$node_version" \
             --tool-version "vitest=$vitest_version" \
@@ -241,7 +314,7 @@ jobs:
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: frontend-coverage
+          name: frontend-coverage-attempt-${{ github.run_attempt }}
           path: |
             frontend/coverage/lcov.info
             frontend/coverage/coverage-final.json

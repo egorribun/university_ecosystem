@@ -40,7 +40,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: file-processor
-          image: {{ printf "%s/%s:%s" .Values.global.imageRegistry .Values.fileProcessor.image.repository (.Values.fileProcessor.image.tag | default .Values.global.imageTag | default .Chart.AppVersion) | trimPrefix "/" | quote }}
+          image: {{ include "university-ecosystem.image" (dict "root" . "image" .Values.fileProcessor.image) | quote }}
           imagePullPolicy: {{ .Values.fileProcessor.image.pullPolicy }}
           securityContext:
             allowPrivilegeEscalation: false

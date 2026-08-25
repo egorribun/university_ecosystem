@@ -459,6 +459,8 @@ def verify_metadata(
     expected_repository: str,
     expected_run_id: str,
     expected_run_attempt: str,
+    expected_job: str,
+    expected_artifact: str,
     expected_workflow_ref: str | None = None,
     expected_workflow_sha: str | None = None,
     expected_event: str | None = None,
@@ -474,6 +476,8 @@ def verify_metadata(
     run_attempt = _require_positive_decimal(
         expected_run_attempt, "expected_run_attempt"
     )
+    job = _require_text(expected_job, "expected_job")
+    artifact = _require_text(expected_artifact, "expected_artifact")
     if not metadata_paths:
         raise ProvenanceError("metadata_paths must contain at least one sidecar")
     documents: list[dict[str, object]] = []
@@ -487,6 +491,8 @@ def verify_metadata(
             "repository": repository,
             "run_id": run_id,
             "run_attempt": run_attempt,
+            "job": job,
+            "artifact": artifact,
         }
         if expected_workflow_ref is not None:
             expectations["workflow_ref"] = _require_text(
@@ -564,6 +570,7 @@ def merge_metadata(
     metadata_paths: Sequence[Path],
     output_path: Path,
     tool_versions: Mapping[str, str],
+    producer_expectations: Mapping[Path, tuple[str, str]],
     expected_sha: str,
     identity_provider: str,
     repository: str,
@@ -593,17 +600,39 @@ def merge_metadata(
         collected_at=collected_at,
     )
     contract = _safe_metadata_input(root, contract_path)
-    documents = verify_metadata(
-        repository_root=root,
-        metadata_paths=metadata_paths,
-        expected_sha=sha,
-        expected_repository=repository,
-        expected_run_id=run_id,
-        expected_run_attempt=run_attempt,
-        expected_workflow_ref=workflow_ref,
-        expected_workflow_sha=workflow_sha,
-        expected_event=event,
-    )
+    safe_metadata_paths = [_safe_metadata_input(root, path) for path in metadata_paths]
+    safe_expectations: dict[Path, tuple[str, str]] = {}
+    for expectation_path, (
+        expected_job,
+        expected_artifact,
+    ) in producer_expectations.items():
+        safe_path = _safe_metadata_input(root, expectation_path)
+        if safe_path in safe_expectations:
+            raise ProvenanceError(f"duplicate producer expectation: {safe_path}")
+        safe_expectations[safe_path] = (
+            _require_text(expected_job, "producer expectation job"),
+            _require_text(expected_artifact, "producer expectation artifact"),
+        )
+    if set(safe_metadata_paths) != set(safe_expectations):
+        raise ProvenanceError("producer expectations must exactly match metadata paths")
+    documents: list[dict[str, object]] = []
+    for metadata_path in safe_metadata_paths:
+        expected_job, expected_artifact = safe_expectations[metadata_path]
+        documents.extend(
+            verify_metadata(
+                repository_root=root,
+                metadata_paths=[metadata_path],
+                expected_sha=sha,
+                expected_repository=repository,
+                expected_run_id=run_id,
+                expected_run_attempt=run_attempt,
+                expected_job=expected_job,
+                expected_artifact=expected_artifact,
+                expected_workflow_ref=workflow_ref,
+                expected_workflow_sha=workflow_sha,
+                expected_event=event,
+            )
+        )
     expected_reports = _contract_reports(contract)
     reports: list[dict[str, object]] = []
     actual_reports: set[tuple[str, str, str]] = set()
@@ -683,12 +712,38 @@ def _parse_report(value: str) -> tuple[str, str, str, str]:
     return component, report_format, source_path, canonical_path
 
 
+def _parse_producer_expectation(value: str) -> tuple[Path, str, str]:
+    parts = value.split("|")
+    if len(parts) != 3:
+        raise argparse.ArgumentTypeError(
+            "producer expectation must use METADATA_PATH|JOB|ARTIFACT"
+        )
+    try:
+        metadata_path, job, artifact = (
+            _require_text(part, "producer expectation field") for part in parts
+        )
+    except ProvenanceError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
+    return Path(metadata_path), job, artifact
+
+
 def _tool_map(values: Sequence[tuple[str, str]]) -> dict[str, str]:
     result: dict[str, str] = {}
     for name, version in values:
         if name in result:
             raise ProvenanceError(f"duplicate tool version entry: {name}")
         result[name] = version
+    return result
+
+
+def _producer_expectation_map(
+    values: Sequence[tuple[Path, str, str]],
+) -> dict[Path, tuple[str, str]]:
+    result: dict[Path, tuple[str, str]] = {}
+    for path, job, artifact in values:
+        if path in result:
+            raise ProvenanceError(f"duplicate producer expectation entry: {path}")
+        result[path] = (job, artifact)
     return result
 
 
@@ -729,6 +784,8 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
     verify_parser.add_argument("--expected-repository", required=True)
     verify_parser.add_argument("--expected-run-id", required=True)
     verify_parser.add_argument("--expected-run-attempt", required=True)
+    verify_parser.add_argument("--expected-job", required=True)
+    verify_parser.add_argument("--expected-artifact", required=True)
     verify_parser.add_argument("--expected-workflow-ref")
     verify_parser.add_argument("--expected-workflow-sha")
     verify_parser.add_argument("--expected-event")
@@ -740,6 +797,12 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
     merge_parser.add_argument("--output", type=Path, required=True)
     merge_parser.add_argument(
         "--tool-version", action="append", type=_parse_tool, required=True
+    )
+    merge_parser.add_argument(
+        "--producer-expectation",
+        action="append",
+        type=_parse_producer_expectation,
+        required=True,
     )
     _add_identity_arguments(merge_parser)
     return parser.parse_args(argv)
@@ -780,6 +843,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 expected_repository=arguments.expected_repository,
                 expected_run_id=arguments.expected_run_id,
                 expected_run_attempt=arguments.expected_run_attempt,
+                expected_job=arguments.expected_job,
+                expected_artifact=arguments.expected_artifact,
                 expected_workflow_ref=arguments.expected_workflow_ref,
                 expected_workflow_sha=arguments.expected_workflow_sha,
                 expected_event=arguments.expected_event,
@@ -791,6 +856,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 metadata_paths=arguments.metadata,
                 output_path=arguments.output,
                 tool_versions=_tool_map(arguments.tool_version),
+                producer_expectations=_producer_expectation_map(
+                    arguments.producer_expectation
+                ),
                 **_identity_kwargs(arguments),
             )
     except ProvenanceError as error:

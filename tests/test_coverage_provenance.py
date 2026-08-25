@@ -266,6 +266,39 @@ def test_verify_metadata_recomputes_and_closes_evidence(
             expected_repository="example/university-ecosystem",
             expected_run_id="123456789",
             expected_run_attempt="2",
+            expected_job="coverage-policy-gate",
+            expected_artifact="python-coverage-provenance",
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "mutated", "message"),
+    [
+        ("job", "stale-producer-job", "producer.job"),
+        ("artifact", "stale-producer-artifact", "producer.artifact"),
+    ],
+)
+def test_verify_metadata_rejects_wrong_producer_identity(
+    provenance_repository: Path,
+    field: str,
+    mutated: str,
+    message: str,
+) -> None:
+    metadata_path = _write_one_metadata(provenance_repository)
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["producer"][field] = mutated
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    with pytest.raises(ProvenanceError, match=message):
+        verify_metadata(
+            repository_root=provenance_repository,
+            metadata_paths=[metadata_path],
+            expected_sha=_git_head(provenance_repository),
+            expected_repository="example/university-ecosystem",
+            expected_run_id="123456789",
+            expected_run_attempt="2",
+            expected_job="coverage-policy-gate",
+            expected_artifact="python-coverage-provenance",
         )
 
 
@@ -308,6 +341,10 @@ def test_merge_metadata_requires_exact_canonical_report_registry_once(
         metadata_paths=[python_metadata, frontend_metadata],
         output_path=output_path,
         tool_versions={"quality-provenance": "2.0.0"},
+        producer_expectations={
+            python_metadata: ("coverage-policy-gate", "python-coverage-provenance"),
+            frontend_metadata: ("frontend-tests", "frontend-coverage"),
+        },
         **_identity(
             provenance_repository,
             artifact=f"quality-evidence-{_git_head(provenance_repository)}",
@@ -372,6 +409,47 @@ def test_merge_metadata_rejects_wrong_report_cardinality(
             metadata_paths=[metadata_path],
             output_path=provenance_repository / "aggregate.json",
             tool_versions={"quality-provenance": "2.0.0"},
+            producer_expectations={
+                metadata_path: (
+                    "coverage-policy-gate",
+                    "python-coverage-provenance",
+                )
+            },
+            **_identity(provenance_repository, artifact="quality-evidence-test"),
+        )
+
+
+def test_merge_metadata_rejects_mutated_producer_expectation(
+    provenance_repository: Path,
+) -> None:
+    contract_path = provenance_repository / "quality/quality-contract.json"
+    contract_path.parent.mkdir(parents=True)
+    contract_path.write_text(
+        json.dumps(
+            {
+                "coverage_reports": [
+                    {
+                        "component": "python",
+                        "format": "cobertura-xml",
+                        "path": "coverage.xml",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    metadata_path = _write_one_metadata(provenance_repository)
+
+    with pytest.raises(ProvenanceError, match=r"producer\.artifact"):
+        merge_metadata(
+            repository_root=provenance_repository,
+            contract_path=contract_path,
+            metadata_paths=[metadata_path],
+            output_path=provenance_repository / "aggregate.json",
+            tool_versions={"quality-provenance": "2.0.0"},
+            producer_expectations={
+                metadata_path: ("coverage-policy-gate", "wrong-artifact")
+            },
             **_identity(provenance_repository, artifact="quality-evidence-test"),
         )
 

@@ -36,7 +36,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: outbox-worker
-          image: {{ printf "%s/%s:%s" .Values.global.imageRegistry .Values.outboxWorker.image.repository (.Values.outboxWorker.image.tag | default .Values.global.imageTag | default .Chart.AppVersion) | trimPrefix "/" | quote }}
+          image: {{ include "university-ecosystem.image" (dict "root" . "image" .Values.outboxWorker.image) | quote }}
           imagePullPolicy: {{ .Values.outboxWorker.image.pullPolicy }}
           # Entrypoint: python -m app.workers.outbox
           command: ["python", "-m", "app.workers.outbox"]

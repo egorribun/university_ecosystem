@@ -107,7 +107,7 @@ REPORT_FORMAT_TO_TOOLS = {
     "istanbul-json": frozenset({"node", "vitest"}),
     "go-coverprofile": frozenset({"go"}),
     "llvm-cov-json": frozenset({"cargo-llvm-cov", "rustc"}),
-    "llvm-cov-branch-json": frozenset({"cargo-llvm-cov", "rustc"}),
+    "llvm-cov-branch-json": frozenset({"cargo-llvm-cov", "rustc-nightly"}),
 }
 TRUSTED_DERIVATIONS = frozenset(
     {

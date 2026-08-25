@@ -2202,12 +2202,14 @@ def test_frontend_coverage_is_merged_after_all_vitest_shards() -> None:
     assert "--output=coverage" in merge_step["run"]
     assert "--expected-shards=4" in merge_step["run"]
     assert any(
-        step.get("with", {}).get("pattern") == "frontend-coverage-shard-*"
+        step.get("with", {}).get("pattern")
+        == "frontend-coverage-shard-*-attempt-${{ github.run_attempt }}"
         for step in aggregate_steps
         if isinstance(step, dict)
     )
     assert any(
-        step.get("with", {}).get("name") == "frontend-coverage"
+        step.get("with", {}).get("name")
+        == "frontend-coverage-attempt-${{ github.run_attempt }}"
         for step in aggregate_steps
         if isinstance(step, dict)
     )
@@ -2774,7 +2776,9 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     coverage_step = next(
         step for step in unit_steps if step.get("name") == "Upload coverage artifacts"
     )
-    assert "frontend-coverage" == coverage_step["with"]["name"]
+    assert coverage_step["with"]["name"] == (
+        "frontend-coverage-attempt-${{ github.run_attempt }}"
+    )
 
     ci_coverage_gate = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))[
         "jobs"
@@ -4243,9 +4247,10 @@ def test_coverage_aggregate_uses_scoped_current_run_artifacts_only() -> None:
     assert '--expected-sha "$EXPECTED_SHA"' in verify_run
     assert '--expected-run-id "$RUN_ID"' in verify_run
     assert '--expected-run-attempt "$RUN_ATTEMPT"' in verify_run
+    backend_verify = _provenance_step(job, "Verify backend shard provenance")
     assert (
-        "test \"$(find artifacts/coverage/python/shards -name '.coverage.*' -type f | wc -l)\" -eq 4"
-        in verify_run
+        "test \"$(find artifacts/coverage/python/shards -name '.coverage.shard-*' -type f | wc -l)\" -eq 4"
+        in str(backend_verify["run"])
     )
     assert (
         "test \"$(find artifacts/coverage/go/shared-inputs -name 'coverage.out' -type f | wc -l)\" -eq 3"
@@ -4431,3 +4436,184 @@ def test_release_and_deploy_build_the_validated_source_sha() -> None:
         assert deploy["jobs"][job_name]["with"]["source-sha"] == (
             "${{ inputs.release-sha }}"
         )
+
+
+def test_backend_shards_publish_and_aggregate_current_attempt_lineage() -> None:
+    backend = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    unit_job = backend["jobs"]["unit-tests"]
+    provenance = _provenance_step(unit_job, "Write backend shard coverage provenance")
+    provenance_run = str(provenance["run"])
+    assert "coverage_provenance.py write" in provenance_run
+    assert "coverage-provenance-shard-$SHARD_ID.json" in provenance_run
+    assert provenance["env"]["ARTIFACT_NAME"].endswith(
+        "-attempt-${{ github.run_attempt }}"
+    )
+    assert "python-shard|coverage-py-data" in provenance_run
+    upload = _provenance_step(unit_job, "Upload raw coverage data for aggregation")
+    assert upload["with"]["name"].endswith("-attempt-${{ github.run_attempt }}")
+    assert set(str(upload["with"]["path"]).splitlines()) == {
+        "artifacts/coverage/python/producer/.coverage.shard-${{ inputs.shard-id }}",
+        "artifacts/coverage/python/producer/coverage-provenance-shard-${{ inputs.shard-id }}.json",
+    }
+
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    aggregate = ci["jobs"]["coverage-policy-gate"]
+    download = _provenance_step(aggregate, "Download Python shard coverage data")
+    assert download["with"]["pattern"].endswith("-attempt-${{ github.run_attempt }}")
+    verify = _provenance_step(aggregate, "Verify backend shard provenance")
+    verify_run = str(verify["run"])
+    assert "for shard in 0 1 2 3" in verify_run
+    assert "coverage_provenance.py verify" in verify_run
+    assert "--expected-job unit-tests" in verify_run
+    assert '--expected-artifact "$artifact"' in verify_run
+    assert "coverage-provenance-shard-${shard}.json" in verify_run
+    assert (
+        "find artifacts/coverage/python/shards -name '.coverage.shard-*'" in verify_run
+    )
+
+
+def test_frontend_shards_are_verified_before_coverage_merge() -> None:
+    frontend = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    shard_job = frontend["jobs"]["unit-tests-shard"]
+    provenance = _provenance_step(shard_job, "Write frontend shard provenance")
+    provenance_run = str(provenance["run"])
+    assert "coverage_provenance.py write" in provenance_run
+    assert "frontend-shard|istanbul-json" in provenance_run
+    assert provenance["env"]["ARTIFACT_NAME"] == (
+        "frontend-coverage-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}"
+    )
+    upload = _provenance_step(shard_job, "Upload frontend coverage shard")
+    assert upload["with"]["name"].endswith("-attempt-${{ github.run_attempt }}")
+    assert "coverage-provenance.json" in str(upload["with"]["path"])
+
+    merge_job = frontend["jobs"]["unit-tests"]
+    download = _provenance_step(merge_job, "Download frontend coverage shards")
+    assert download["with"]["pattern"].endswith("-attempt-${{ github.run_attempt }}")
+    verify = _provenance_step(merge_job, "Verify frontend shard provenance")
+    verify_run = str(verify["run"])
+    assert "for shard in 1 2 3 4" in verify_run
+    assert "coverage_provenance.py verify" in verify_run
+    assert "--expected-job unit-tests-shard" in verify_run
+    assert '--expected-artifact "$artifact"' in verify_run
+    merge = _provenance_step(merge_job, "Merge frontend coverage shards")
+    assert merge_job["steps"].index(verify) < merge_job["steps"].index(merge)
+    merged_upload = _provenance_step(merge_job, "Upload coverage artifacts")
+    assert merged_upload["with"]["name"] == (
+        "frontend-coverage-attempt-${{ github.run_attempt }}"
+    )
+
+
+def test_quality_history_revalidates_exact_sha_bound_run_evidence() -> None:
+    workflow = yaml.safe_load(QUALITY_HISTORY_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["archive"]
+    collect = _provenance_step(job, "Collect latest successful CI quality manifest")
+    text = str(collect["run"])
+    assert (
+        "gh run list --workflow ci.yml --branch main --event push --status success"
+        in text
+    )
+    for field in (
+        "head_sha",
+        "conclusion",
+        "event",
+        "head_branch",
+        "path",
+        "run_attempt",
+    ):
+        assert f".{field}" in text
+    assert "actions/runs/$run_id" in text
+    assert "actions/runs/$run_id/artifacts?per_page=100" in text
+    assert "--paginate --slurp" in text
+    assert "quality-evidence-$head_sha" in text
+    assert ".expired == false" in text
+    assert "[.[].artifacts[]" in text
+    assert "| length'" in text
+    assert "git worktree add --detach" in text
+    assert "validate_quality_contract.py" in text
+    for required in (
+        '--artifact-root "$evidence_root"',
+        '--schema "$evidence_root/quality/coverage-manifest.schema.json"',
+        '--expected-commit-sha "$head_sha"',
+        '--expected-workflow-run-id "$run_id"',
+        '--expected-workflow-run-attempt "$run_attempt"',
+        "--expected-workflow-event push",
+        '--expected-workflow-repository "$GITHUB_REPOSITORY"',
+        '--expected-workflow-ref "$GITHUB_REPOSITORY/.github/workflows/ci.yml@refs/heads/main"',
+        "--expected-workflow-job coverage-policy-gate",
+    ):
+        assert required in text
+
+
+def test_rust_branch_reports_bind_the_nightly_rustc_version() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    rust_job = workflow["jobs"]["rust-tests"]
+    provenance = _provenance_step(rust_job, "Write Rust coverage provenance")
+    provenance_run = str(provenance["run"])
+    assert "rustc +nightly --version" in provenance_run
+    assert '--tool-version "rustc-nightly=$rustc_nightly_version"' in provenance_run
+    normalize = _provenance_step(
+        workflow["jobs"]["coverage-policy-gate"], "Normalize coverage evidence"
+    )
+    normalize_run = str(normalize["run"])
+    assert 'rustc_nightly_version="$(read_tool rustc-nightly)"' in normalize_run
+    assert '--tool-version "rustc-nightly=$rustc_nightly_version"' in normalize_run
+
+
+def test_deploy_uses_build_digests_for_all_cluster_image_references() -> None:
+    deploy_path = REPOSITORY_ROOT / ".github" / "workflows" / "deploy.yml"
+    workflow = yaml.safe_load(deploy_path.read_text(encoding="utf-8"))
+    deploy = workflow["jobs"]["deploy"]
+    helm = _provenance_step(deploy, "Deploy Helm release atomically")
+    helm_run = str(helm["run"])
+    for setting in (
+        'backend.image.digest="$BACKEND_IMAGE_DIGEST"',
+        'frontend.image.digest="$FRONTEND_IMAGE_DIGEST"',
+        'gateway.image.digest="$GATEWAY_IMAGE_DIGEST"',
+        'fileProcessor.image.digest="$FILE_PROCESSOR_IMAGE_DIGEST"',
+        'outboxWorker.image.digest="$BACKEND_IMAGE_DIGEST"',
+    ):
+        assert setting in helm_run
+    assert "global.imageTag" not in helm_run
+
+    ws_hub = _provenance_step(deploy, "Deploy WS Hub image")
+    assert 'image="$REGISTRY/$GITHUB_REPOSITORY/ws-hub@$WS_HUB_IMAGE_DIGEST"' in str(
+        ws_hub["run"]
+    )
+    verify = _provenance_step(deploy, "Verify Helm-managed rollouts")
+    verify_run = str(verify["run"])
+    assert "$image_prefix/backend@$BACKEND_IMAGE_DIGEST" in verify_run
+    assert "$image_prefix/frontend@$FRONTEND_IMAGE_DIGEST" in verify_run
+    assert "$image_prefix/gateway@$GATEWAY_IMAGE_DIGEST" in verify_run
+    assert "$image_prefix/file-processor@$FILE_PROCESSOR_IMAGE_DIGEST" in verify_run
+    assert "$image_prefix/backend:$DEPLOY_VERSION" not in verify_run
+
+    reusable = yaml.safe_load(
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "reusable-build-and-sign.yml"
+        ).read_text(encoding="utf-8")
+    )
+    readback = _provenance_step(reusable["jobs"]["build"], "Verify source checkout")
+    assert 'test "$(git rev-parse HEAD)" = "$SOURCE_SHA"' in str(readback["run"])
+
+    values = yaml.safe_load(
+        (REPOSITORY_ROOT / "charts" / "university-ecosystem" / "values.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    for component in (
+        "backend",
+        "frontend",
+        "gateway",
+        "fileProcessor",
+        "outboxWorker",
+    ):
+        assert values[component]["image"]["digest"] == ""
+    helpers = (
+        REPOSITORY_ROOT
+        / "charts"
+        / "university-ecosystem"
+        / "templates"
+        / "_helpers.tpl"
+    ).read_text(encoding="utf-8")
+    assert 'define "university-ecosystem.image"' in helpers
+    assert 'printf "%s/%s@%s"' in helpers

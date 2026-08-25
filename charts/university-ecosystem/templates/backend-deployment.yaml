@@ -37,7 +37,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: backend
-          image: {{ printf "%s/%s:%s" .Values.global.imageRegistry .Values.backend.image.repository (.Values.backend.image.tag | default .Values.global.imageTag | default .Chart.AppVersion) | trimPrefix "/" | quote }}
+          image: {{ include "university-ecosystem.image" (dict "root" . "image" .Values.backend.image) | quote }}
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           # RZ-03: container-level hardening — drop all Linux capabilities, block privilege
           # escalation, and mount root filesystem read-only (writable dirs via emptyDir below).

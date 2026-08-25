@@ -126,6 +126,7 @@ def _valid_manifest_fixture(
             "python": "3.14.0",
             "quality-normalizer": "2.0.0",
             "rustc": "1.90.0",
+            "rustc-nightly": "1.92.0-nightly",
             "vitest": "4.0.0",
         },
         "provenance": {
@@ -561,3 +562,18 @@ def test_validator_cli_uses_explicit_schema_and_artifact_root(
     )
 
     assert exit_code == 0
+
+
+def test_branch_reports_require_exact_nightly_rustc_tool_mapping(
+    git_evidence_root: Path,
+) -> None:
+    validator = _load_validator()
+    assert validator.REPORT_FORMAT_TO_TOOLS["llvm-cov-branch-json"] == frozenset(
+        {"cargo-llvm-cov", "rustc-nightly"}
+    )
+    contract, manifest, manifest_path = _valid_manifest_fixture(git_evidence_root)
+    del manifest["tool_versions"]["rustc-nightly"]
+
+    errors = _validate(validator, manifest, contract, manifest_path, git_evidence_root)
+
+    assert any("missing required tools: rustc-nightly" in error for error in errors)
