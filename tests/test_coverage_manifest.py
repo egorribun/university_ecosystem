@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -50,6 +52,74 @@ def _remove_readonly_and_retry(
         raise error
     os.chmod(path, stat.S_IWRITE)
     operation(path)
+
+
+def _sync_go_source_fixture(root: Path, component: str, report_path: str) -> None:
+    component_roots = {
+        "go-gateway": ("services/gateway",),
+        "go-ws-hub": ("services/ws-hub",),
+        "go-file-processor": ("services/file-processor",),
+        "go-shared": (
+            "services/cmd/uni-cli",
+            "services/pkg/spiffe",
+            "services/pkg/spicedb",
+        ),
+    }[component]
+    try:
+        lines = (root / report_path).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return
+    sources: set[str] = set()
+    for line in lines[1:]:
+        match = re.match(r"^(?P<source>.+):[0-9]+\.[0-9]+,", line)
+        if match is None:
+            continue
+        source = match.group("source").replace("\\", "/")
+        if (
+            ".." not in source.split("/")
+            and source.endswith(".go")
+            and any(
+                source.startswith(f"{component_root}/")
+                for component_root in component_roots
+            )
+        ):
+            sources.add(source)
+    if not sources:
+        return
+    for component_root in component_roots:
+        root_path = root / component_root
+        if root_path.is_dir():
+            for source in root_path.rglob("*.go"):
+                source.unlink()
+    for source in sources:
+        target = root / source
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("package fixture\n", encoding="utf-8")
+
+
+def _sync_frontend_source_fixture(root: Path, report_path: str) -> None:
+    try:
+        lines = (root / report_path).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return
+    sources = {
+        line.removeprefix("SF:").replace("\\", "/")
+        for line in lines
+        if line.startswith("SF:frontend/src/")
+        and ".." not in line.removeprefix("SF:").split("/")
+        and line.removeprefix("SF:").endswith((".ts", ".tsx"))
+    }
+    if not sources:
+        return
+    frontend_root = root / "frontend/src"
+    if frontend_root.is_dir():
+        for pattern in ("*.ts", "*.tsx"):
+            for source in frontend_root.rglob(pattern):
+                source.unlink()
+    for source in sources:
+        target = root / source
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("export const fixture = 1\n", encoding="utf-8")
 
 
 def _write_test_contract(path: Path) -> None:
@@ -245,25 +315,12 @@ def _run_normalizer_in_isolated_repo(
         "GIT_AUTHOR_DATE": "2026-01-01T00:00:00Z",
         "GIT_COMMITTER_DATE": "2026-01-01T00:00:00Z",
     }
-    subprocess.run(  # noqa: S603
-        [
-            GIT_EXECUTABLE,
-            "-c",
-            "user.email=test@example.invalid",
-            "-c",
-            "user.name=Quality Test",
-            "commit",
-            "--allow-empty",
-            "-qm",
-            "fixture",
-        ],
-        cwd=evidence_root,
-        env=git_environment,
-        check=True,
-    )
     write_complete_evidence(evidence_root)
     quality_root = evidence_root / "quality"
     quality_root.mkdir(parents=True, exist_ok=True)
+    (quality_root / "coverage-manifest.schema.json").write_bytes(
+        QUALITY_MANIFEST_SCHEMA_PATH.read_bytes()
+    )
     (quality_root / "ownership-mapping.json").write_bytes(
         (REPOSITORY_ROOT / "quality" / "ownership-mapping.json").read_bytes()
     )
@@ -400,6 +457,36 @@ def _run_normalizer_in_isolated_repo(
                 )
             else:
                 contract_target.write_bytes(source_contract_bytes)
+    for component, report_path in component_report_options["--go-report"].items():
+        if any(
+            option == "--go-report" and value.startswith(f"{component}=")
+            for option, value in itertools.pairwise(rewritten_arguments)
+        ):
+            _sync_go_source_fixture(evidence_root, component, report_path)
+    has_frontend_lcov = "--frontend-lcov" in rewritten_arguments
+    has_frontend_json = "--frontend-json" in rewritten_arguments
+    if has_frontend_lcov and has_frontend_json:
+        _sync_frontend_source_fixture(
+            evidence_root, report_options["--frontend-lcov"][1]
+        )
+    subprocess.run(  # noqa: S603
+        [GIT_EXECUTABLE, "add", "--all"], cwd=evidence_root, check=True
+    )
+    subprocess.run(  # noqa: S603
+        [
+            GIT_EXECUTABLE,
+            "-c",
+            "user.email=test@example.invalid",
+            "-c",
+            "user.name=Quality Test",
+            "commit",
+            "-qm",
+            "fixture",
+        ],
+        cwd=evidence_root,
+        env=git_environment,
+        check=True,
+    )
     canonical_output = (
         evidence_root / "coverage.xml"
         if output_aliases_input

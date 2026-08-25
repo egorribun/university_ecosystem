@@ -6,6 +6,12 @@ from pathlib import Path
 
 def write_complete_evidence(root: Path) -> None:
     """Create a minimal, internally consistent copy of every canonical report."""
+    python_source = root / "app/example.py"
+    python_source.parent.mkdir(parents=True, exist_ok=True)
+    python_source.write_text("value = 1\n", encoding="utf-8")
+    frontend_source = root / "frontend/src/example.ts"
+    frontend_source.parent.mkdir(parents=True, exist_ok=True)
+    frontend_source.write_text("export const value = 1\n", encoding="utf-8")
     payloads = {
         "coverage.xml": """<?xml version="1.0" ?>
 <coverage branches-covered="1" branches-valid="1" lines-covered="1" lines-valid="1" version="7.10">

@@ -31,6 +31,26 @@ def evidence_repo(tmp_path: Path) -> Path:
     subprocess.run(  # noqa: S603
         [GIT_EXECUTABLE, "init", "-q"], cwd=tmp_path, check=True
     )
+    contract_target = tmp_path / "quality" / "quality-contract.json"
+    contract_target.parent.mkdir(parents=True, exist_ok=True)
+    contract_target.write_bytes(CONTRACT_PATH.read_bytes())
+    (tmp_path / "quality" / "coverage-manifest.schema.json").write_bytes(
+        SCHEMA_PATH.read_bytes()
+    )
+    (tmp_path / "quality" / "ownership-mapping.json").write_text(
+        json.dumps({"tier0_rules": ["**/spicedb/**", "alembic/versions/**"]}),
+        encoding="utf-8",
+    )
+    write_complete_evidence(tmp_path)
+    _commit_all(tmp_path, "fixture")
+    return tmp_path
+
+
+def _commit_all(root: Path, message: str) -> None:
+    assert GIT_EXECUTABLE is not None
+    subprocess.run(  # noqa: S603
+        [GIT_EXECUTABLE, "add", "--all"], cwd=root, check=True
+    )
     subprocess.run(  # noqa: S603
         [
             GIT_EXECUTABLE,
@@ -39,22 +59,12 @@ def evidence_repo(tmp_path: Path) -> Path:
             "-c",
             "user.name=Quality Test",
             "commit",
-            "--allow-empty",
             "-qm",
-            "fixture",
+            message,
         ],
-        cwd=tmp_path,
+        cwd=root,
         check=True,
     )
-    contract_target = tmp_path / "quality" / "quality-contract.json"
-    contract_target.parent.mkdir(parents=True, exist_ok=True)
-    contract_target.write_bytes(CONTRACT_PATH.read_bytes())
-    (tmp_path / "quality" / "ownership-mapping.json").write_text(
-        json.dumps({"tier0_rules": ["**/spicedb/**"]}),
-        encoding="utf-8",
-    )
-    write_complete_evidence(tmp_path)
-    return tmp_path
 
 
 def _head(root: Path) -> str:
@@ -242,6 +252,7 @@ def test_normalizer_v2_rejects_nightly_rust_source_inventory_extras(
     report["data"][0]["files"].append(extra)
     extra_source = evidence_repo / "native/rust_ext/src/extra.rs"
     extra_source.write_text("pub fn extra() {}\n", encoding="utf-8")
+    _commit_all(evidence_repo, "add tracked Rust source")
     report_path.write_text(json.dumps(report), encoding="utf-8")
 
     result = _run(evidence_repo, _full_arguments(evidence_repo))
@@ -272,3 +283,121 @@ def test_normalizer_v2_requires_explicit_local_or_workflow_provenance(
 
     assert result.returncode == 2
     assert "provenance-mode" in result.stderr
+
+
+def test_normalizer_v2_preserves_alembic_source_identity_and_inventory(
+    evidence_repo: Path,
+) -> None:
+    alembic_path = "alembic/versions/20260825_example.py"
+    source = evidence_repo / alembic_path
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("revision = '20260825'\n", encoding="utf-8")
+    _commit_all(evidence_repo, "add alembic migration")
+
+    xml_path = evidence_repo / "coverage.xml"
+    xml_path.write_text(
+        f"""<?xml version="1.0" ?>
+<coverage branches-covered="2" branches-valid="2" lines-covered="2" lines-valid="2" version="7.10">
+  <packages><package name="python"><classes>
+    <class filename="app/example.py" name="example"><methods /><lines><line branch="true" condition-coverage="100% (1/1)" hits="1" number="1" /></lines></class>
+    <class filename="{alembic_path}" name="migration"><methods /><lines><line branch="true" condition-coverage="100% (1/1)" hits="1" number="1" /></lines></class>
+  </classes></package></packages>
+</coverage>
+""",
+        encoding="utf-8",
+    )
+    json_path = evidence_repo / "artifacts/coverage/python/coverage.json"
+    report = json.loads(json_path.read_text(encoding="utf-8"))
+    report["files"][alembic_path] = json.loads(
+        json.dumps(report["files"]["app/example.py"])
+    )
+    report["totals"] = {
+        "covered_lines": 2,
+        "num_statements": 2,
+        "covered_branches": 2,
+        "num_branches": 2,
+    }
+    json_path.write_text(json.dumps(report), encoding="utf-8")
+
+    result = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert result.returncode == 0, result.stderr
+    manifest = json.loads(
+        (evidence_repo / "artifacts/coverage/quality-manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert any(item["path"] == alembic_path for item in manifest["tier0"]["files"])
+
+
+@pytest.mark.parametrize("mutation", ["modified", "deleted", "untracked"])
+def test_normalizer_v2_rejects_dirty_authored_source_snapshot(
+    evidence_repo: Path,
+    mutation: str,
+) -> None:
+    source = evidence_repo / "app/example.py"
+    if mutation == "modified":
+        source.write_text("value = 2\n", encoding="utf-8")
+    elif mutation == "deleted":
+        source.unlink()
+    else:
+        (evidence_repo / "app/untracked.py").write_text("value = 2\n", encoding="utf-8")
+
+    result = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert result.returncode == 2
+    assert "clean tracked HEAD snapshot" in result.stderr
+    assert not (evidence_repo / "artifacts/coverage/quality-manifest.json").exists()
+
+
+def test_normalizer_v2_allows_generated_raw_coverage_artifact_changes(
+    evidence_repo: Path,
+) -> None:
+    report_path = evidence_repo / "artifacts/coverage/python/coverage.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    report_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+
+    result = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_normalizer_v2_rejects_output_parent_symlink_before_writing(
+    evidence_repo: Path,
+) -> None:
+    contract_path = evidence_repo / "quality/quality-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract["manifest_path"] = "artifacts/manifests/quality-manifest.json"
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
+    _commit_all(evidence_repo, "move manifest path")
+
+    outside = evidence_repo.parent / f"{evidence_repo.name}-outside"
+    outside.mkdir()
+    output_parent = evidence_repo / "artifacts/manifests"
+    try:
+        output_parent.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("directory symlink creation is unavailable")
+
+    arguments = _full_arguments(evidence_repo)
+    arguments[arguments.index("--output") + 1] = str(
+        output_parent / "quality-manifest.json"
+    )
+    result = _run(evidence_repo, arguments)
+
+    assert result.returncode == 2
+    assert "symlink or junction" in result.stderr
+    assert not (outside / "quality-manifest.json").exists()
+
+
+def test_normalizer_v2_rejects_reports_omitting_tracked_non_tier0_source(
+    evidence_repo: Path,
+) -> None:
+    source = evidence_repo / "app/secondary.py"
+    source.write_text("secondary = 1\n", encoding="utf-8")
+    _commit_all(evidence_repo, "add authored source")
+
+    result = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert result.returncode == 2
+    assert "python coverage is missing tracked source app/secondary.py" in result.stderr

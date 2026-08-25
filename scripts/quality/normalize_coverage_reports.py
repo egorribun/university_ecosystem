@@ -45,6 +45,18 @@ COMPONENTS = (
     "scripts",
 )
 METRICS = ("lines", "statements", "branches", "functions")
+COVERAGE_COMPONENTS = (
+    "python",
+    "frontend",
+    "go-gateway",
+    "go-ws-hub",
+    "go-file-processor",
+    "go-shared",
+    "rust-native",
+    "rust-pyo3-sanitizer",
+    "rust-wasm-sanitizer",
+    "rust-crypto",
+)
 SOURCE_ROOTS = {
     "python": ("app", "alembic/versions"),
     "frontend": ("frontend/src",),
@@ -203,6 +215,7 @@ class _PreparedInvocation:
     provenance: dict[str, str]
     tool_versions: dict[str, str]
     contract: dict[str, object]
+    source_inventory: dict[str, frozenset[str]]
 
 
 @dataclass(frozen=True)
@@ -506,7 +519,11 @@ def _canonical_source_identity(component: str, raw_path: str) -> str:
             if source_parts[0].casefold() == "src":
                 source_parts = ("frontend", *source_parts)
     elif component == "python":
-        if source_parts and source_parts[0].casefold() != "app":
+        if (
+            source_parts
+            and not _source_path_is_within_component_root(component, source_parts)
+            and not _source_path_is_component_root(component, source_parts)
+        ):
             if source_parts[0].casefold() not in OTHER_ROOTS:
                 source_parts = ("app", *source_parts)
     elif component == "go-gateway":
@@ -2554,11 +2571,161 @@ def _current_git_head() -> str:
     return head
 
 
+def _git_output(arguments: Sequence[str], operation: str) -> bytes:
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        raise _InputError(f"unable to {operation}: git is unavailable")
+    try:
+        result = subprocess.run(  # noqa: S603
+            [git_executable, *arguments],
+            cwd=REPOSITORY_ROOT,
+            capture_output=True,
+            check=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise _InputError(f"unable to {operation}: {error}") from error
+    return result.stdout
+
+
+def _decode_git_paths(raw: bytes, operation: str) -> list[str]:
+    try:
+        return sorted(path.decode("utf-8") for path in raw.split(b"\0") if path)
+    except UnicodeDecodeError as error:
+        raise _InputError(f"unable to {operation}: Git path is not UTF-8") from error
+
+
+def _source_control_scope(contract_path: Path) -> list[str]:
+    contract_identity = _lexical_manifest_path(contract_path)
+    return sorted(
+        {
+            contract_identity,
+            "quality/coverage-manifest.schema.json",
+            "quality/ownership-mapping.json",
+            *(root for roots in SOURCE_ROOTS.values() for root in roots),
+        }
+    )
+
+
+def _validate_clean_source_snapshot(contract_path: Path) -> None:
+    scope = _source_control_scope(contract_path)
+    tracked_changes = _decode_git_paths(
+        _git_output(
+            ["diff", "--name-only", "-z", "HEAD", "--", *scope],
+            "inspect tracked source/control changes",
+        ),
+        "inspect tracked source/control changes",
+    )
+    untracked_sources = _decode_git_paths(
+        _git_output(
+            ["ls-files", "--others", "--exclude-standard", "-z", "--", *scope],
+            "inspect untracked source/control files",
+        ),
+        "inspect untracked source/control files",
+    )
+    dirty_paths = sorted(set(tracked_changes + untracked_sources))
+    if dirty_paths:
+        raise _InputError(
+            "clean tracked HEAD snapshot required; dirty source/control paths: "
+            + ", ".join(dirty_paths)
+        )
+
+
+def _tracked_source_is_coverable(component: str, relative_path: str) -> bool:
+    pure = PurePosixPath(relative_path)
+    lowered_name = pure.name.casefold()
+    if component == "python":
+        return pure.suffix.casefold() == ".py"
+    if component == "frontend":
+        return (
+            pure.suffix.casefold() in {".ts", ".tsx"}
+            and not lowered_name.endswith(".d.ts")
+            and lowered_name != "routetree.gen.ts"
+            and ".test." not in lowered_name
+            and ".spec." not in lowered_name
+            and "__tests__" not in pure.parts
+        )
+    if component.startswith("go-"):
+        return (
+            pure.suffix.casefold() == ".go"
+            and not lowered_name.endswith("_test.go")
+            and not lowered_name.endswith(".pb.go")
+            and not lowered_name.endswith("_mock.go")
+            and not lowered_name.startswith("mock_")
+        )
+    if component.startswith("rust-"):
+        return pure.suffix.casefold() == ".rs" and "tests" not in pure.parts
+    return False
+
+
+def _tracked_source_inventory() -> dict[str, frozenset[str]]:
+    inventory: dict[str, frozenset[str]] = {}
+    for component in COVERAGE_COMPONENTS:
+        tracked = _decode_git_paths(
+            _git_output(
+                ["ls-files", "-z", "--", *SOURCE_ROOTS[component]],
+                f"inventory tracked sources for {component}",
+            ),
+            f"inventory tracked sources for {component}",
+        )
+        inventory[component] = frozenset(
+            path for path in tracked if _tracked_source_is_coverable(component, path)
+        )
+    return inventory
+
+
 def _lexical_manifest_path(path: Path) -> str:
     try:
         return path.relative_to(REPOSITORY_ROOT).as_posix()
     except ValueError as error:
         raise _InputError(f"evidence path is outside the repository: {path}") from error
+
+
+def _validate_output_path_confinement(output_path: Path) -> None:
+    repository_root = REPOSITORY_ROOT.resolve(strict=True)
+    try:
+        relative = output_path.relative_to(REPOSITORY_ROOT)
+    except ValueError as error:
+        raise _InputError(
+            f"output path is outside the repository: {output_path}"
+        ) from error
+    if not relative.parts:
+        raise _InputError("output path must identify a repository file")
+
+    current = REPOSITORY_ROOT
+    for part in relative.parts:
+        current /= part
+        if not current.exists() and not current.is_symlink():
+            continue
+        if _is_link_or_junction(current):
+            raise _InputError(
+                f"output path traverses a symlink or junction: {output_path}"
+            )
+        try:
+            resolved = current.resolve(strict=True)
+        except OSError as error:
+            raise _InputError(
+                f"unable to inspect output path {output_path}: {error}"
+            ) from error
+        if not resolved.is_relative_to(repository_root):
+            raise _InputError(
+                f"output path resolves outside the repository: {output_path}"
+            )
+
+    existing_parent = output_path.parent
+    while not existing_parent.exists():
+        if existing_parent == REPOSITORY_ROOT:
+            break
+        existing_parent = existing_parent.parent
+    try:
+        resolved_parent = existing_parent.resolve(strict=True)
+    except OSError as error:
+        raise _InputError(
+            f"unable to inspect output parent {existing_parent}: {error}"
+        ) from error
+    if not resolved_parent.is_relative_to(repository_root):
+        raise _InputError(
+            f"output parent resolves outside the repository: {output_path}"
+        )
 
 
 def _paths_alias(first: Path, second: Path) -> bool:
@@ -2612,11 +2779,6 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
         action="append",
         default=[],
         metavar="NAME=VERSION",
-    )
-    parser.add_argument(
-        "--ignore-outside-files",
-        action="store_true",
-        help="Ignore files that are outside the component's configured roots instead of failing.",
     )
     parser.add_argument("--python-xml", action="append", default=[], metavar="PATH")
     parser.add_argument("--python-json", action="append", default=[], metavar="PATH")
@@ -3335,7 +3497,11 @@ def _aggregate_tier0(
             continue
         covered = sum(cast(int, entry["covered"]) for entry in entries)
         total = sum(cast(int, entry["total"]) for entry in entries)
-        if any(entry["status"] == "derived" for entry in entries):
+        if total == 0:
+            aggregate[metric_name] = _vacuous_metric(
+                "applicable Tier0 files contain no coverage units"
+            )
+        elif any(entry["status"] == "derived" for entry in entries):
             aggregate[metric_name] = _measured_metric(
                 "derived",
                 covered,
@@ -3412,6 +3578,7 @@ def _prepare_invocation(arguments: argparse.Namespace) -> _PreparedInvocation:
         else (REPOSITORY_ROOT / "quality" / "quality-contract.json")
     )
     output_path = _resolve_path(arguments.output)
+    _validate_output_path_confinement(output_path)
     report_inputs = _collect_report_inputs(arguments)
     for path in [contract_path, *(entry.path for entry in report_inputs)]:
         if _paths_alias(output_path, path):
@@ -3422,6 +3589,8 @@ def _prepare_invocation(arguments: argparse.Namespace) -> _PreparedInvocation:
     configuration = _load_contract(contract_path, generated_at)
     global SOURCE_ROOTS
     SOURCE_ROOTS = configuration.source_roots
+    _validate_clean_source_snapshot(contract_path)
+    source_inventory = _tracked_source_inventory()
     if _lexical_manifest_path(output_path) != configuration.manifest_path:
         raise _InputError(
             f"output must equal contract manifest_path {configuration.manifest_path}"
@@ -3447,6 +3616,7 @@ def _prepare_invocation(arguments: argparse.Namespace) -> _PreparedInvocation:
         provenance=_build_provenance(arguments),
         tool_versions=_parse_tool_versions(arguments.tool_version),
         contract=configuration.contract,
+        source_inventory=source_inventory,
     )
 
 
@@ -3504,9 +3674,7 @@ def _build_manifest(
             continue
         raw_reports.extend((raw_report, *raw_report.supplemental))
         try:
-            report = _parse_report(
-                raw_report, ignore_outside_files=arguments.ignore_outside_files
-            )
+            report = _parse_report(raw_report)
         except _InputError as error:
             message = (
                 f"malformed report for component {report_input.component}: {error}"
@@ -3586,6 +3754,35 @@ def _build_manifest(
         reports_by_component[component] = [merged_report]
         evidence_errors_by_component[component].extend(merge_errors)
         structural_errors.extend(merge_errors)
+
+    for component in COVERAGE_COMPONENTS:
+        component_reports = reports_by_component[component]
+        if len(component_reports) != 1:
+            continue
+        if (
+            component in {"python", "frontend"}
+            and "+" not in component_reports[0].report_format
+        ):
+            continue
+        if component in RUST_COMPONENTS and (
+            branch_input_counts[component] != 1
+            or len(branch_reports_by_component[component]) != 1
+        ):
+            continue
+        reported_sources = set(component_reports[0].file_metrics)
+        tracked_sources = set(invocation.source_inventory[component])
+        inventory_errors = [
+            *(
+                f"{component} coverage is missing tracked source {source}"
+                for source in sorted(tracked_sources - reported_sources)
+            ),
+            *(
+                f"{component} coverage contains non-inventory source {source}"
+                for source in sorted(reported_sources - tracked_sources)
+            ),
+        ]
+        evidence_errors_by_component[component].extend(inventory_errors)
+        structural_errors.extend(inventory_errors)
 
     components: dict[str, object] = {}
     missing_reports: list[dict[str, object]] = []
@@ -3673,9 +3870,7 @@ def _build_manifest(
             contract=invocation.contract,
             manifest_path=output_path,
             repository_root=REPOSITORY_ROOT,
-            schema_path=(
-                DEFAULT_REPOSITORY_ROOT / "quality" / "coverage-manifest.schema.json"
-            ),
+            schema_path=(REPOSITORY_ROOT / "quality" / "coverage-manifest.schema.json"),
             expected_commit_sha=arguments.commit_sha,
             expected_provenance=invocation.provenance,
         )
@@ -3692,6 +3887,7 @@ def _write_manifest(output_path: Path, manifest: dict[str, object]) -> None:
     payload = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8")
     temporary_path: Path | None = None
     try:
+        _validate_output_path_confinement(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(
             delete=False,

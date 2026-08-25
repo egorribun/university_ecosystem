@@ -2420,7 +2420,6 @@ jobs:
             --commit-sha ${{ github.sha }} \
             --generated-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
             --output artifacts/coverage/quality-manifest.json \
-            --ignore-outside-files \
             --python-xml coverage.xml \
             --frontend-lcov frontend/coverage/lcov.info \
             --go-report go-gateway=artifacts/coverage/go/gateway/coverage.out \
