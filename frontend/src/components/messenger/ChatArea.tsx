@@ -63,6 +63,10 @@ interface ChatAreaProps {
    * error empty state.
    */
   onRetryMessages?: () => void
+  hasMoreMessages?: boolean
+  isLoadingOlderMessages?: boolean
+  olderMessagesError?: boolean
+  onLoadOlderMessages?: () => void | Promise<void>
   showSearchInChat: boolean
   setShowSearchInChat: Dispatch<SetStateAction<boolean>>
   searchQuery: string
@@ -120,6 +124,10 @@ export const ChatArea = memo(function ChatArea({
   messagesLoading = false,
   messagesError = false,
   onRetryMessages,
+  hasMoreMessages = false,
+  isLoadingOlderMessages = false,
+  olderMessagesError = false,
+  onLoadOlderMessages,
   showSearchInChat,
   setShowSearchInChat,
   searchQuery,
@@ -195,11 +203,13 @@ export const ChatArea = memo(function ChatArea({
                 <div className="flex items-center gap-3">
                   {isMobile && (
                     <m.button
+                      type="button"
                       whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
-                      onClick={() => navigate({ to: "/messenger" })}
-                      className="-ml-1 rounded-full p-1.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                      onClick={() => navigate({ to: "/messenger", replace: true })}
+                      aria-label={t("messenger:backToChats")}
+                      className="-ml-1 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                     >
-                      <ChevronLeft className="h-5 w-5" strokeWidth={2.5} />
+                      <ChevronLeft className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" />
                     </m.button>
                   )}
                   <m.button
@@ -407,6 +417,10 @@ export const ChatArea = memo(function ChatArea({
             isLoading={messagesLoading}
             isError={messagesError}
             onRetry={onRetryMessages}
+            hasMore={hasMoreMessages}
+            isLoadingOlder={isLoadingOlderMessages}
+            olderMessagesError={olderMessagesError}
+            onLoadOlder={onLoadOlderMessages}
             searchQuery={showSearchInChat ? searchQuery : ""}
             onClearSearch={() => setSearchQuery("")}
             editingMessageId={editingMessageId}

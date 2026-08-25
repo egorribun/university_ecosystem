@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from "@testing-library/react"
-import { describe, it, expect, vi } from "vitest"
+import { beforeEach, describe, it, expect, vi } from "vitest"
 import type { ReactNode } from "react"
 
 import { ChatWindow } from "@/components/messenger/ChatWindow"
@@ -66,21 +66,41 @@ vi.mock("@/hooks/useDebounced", () => ({
 // returns empty virtualItems → message text doesn't render → text-content
 // assertions fail. Mock returns all rows as if container had unlimited
 // height. This lets us assert ACTUAL rendered text for filter verification.
+const virtualizerMock = vi.hoisted(() => ({
+  options: undefined as
+    | {
+        count: number
+        getItemKey?: (index: number) => string | number | bigint
+        anchorTo?: "start" | "end"
+        followOnAppend?: boolean | "auto" | "smooth" | "instant"
+        scrollEndThreshold?: number
+      }
+    | undefined,
+  scrollToIndex: vi.fn(),
+  scrollToEnd: vi.fn(),
+}))
+
 vi.mock("@tanstack/react-virtual", () => ({
-  useVirtualizer: ({ count }: { count: number }) => ({
-    getVirtualItems: () =>
-      Array.from({ length: count }, (_, idx) => ({
-        key: idx,
-        index: idx,
-        start: idx * 80,
-        end: (idx + 1) * 80,
-        size: 80,
-        lane: 0,
-      })),
-    getTotalSize: () => count * 80,
-    measureElement: () => {},
-    scrollToIndex: () => {},
-  }),
+  useVirtualizer: (options: NonNullable<typeof virtualizerMock.options>) => {
+    virtualizerMock.options = options
+    return {
+      getVirtualItems: () =>
+        Array.from({ length: options.count }, (_, idx) => ({
+          key: options.getItemKey?.(idx) ?? idx,
+          index: idx,
+          start: idx * 80,
+          end: (idx + 1) * 80,
+          size: 80,
+          lane: 0,
+        })),
+      getTotalSize: () => options.count * 80,
+      measureElement: () => {},
+      scrollToIndex: virtualizerMock.scrollToIndex,
+      scrollToEnd: virtualizerMock.scrollToEnd,
+      isAtEnd: () => false,
+      getDistanceFromEnd: () => 500,
+    }
+  },
 }))
 
 const queryClient = new QueryClient()
@@ -103,6 +123,49 @@ const mockMessages: Message[] = [
   makeMessage({ id: "2", text: "Good morning everyone", senderName: "Bob" }),
   makeMessage({ id: "3", text: "Have a nice day", senderName: "Carol" }),
 ]
+
+beforeEach(() => {
+  virtualizerMock.options = undefined
+  virtualizerMock.scrollToIndex.mockReset()
+  virtualizerMock.scrollToEnd.mockReset()
+})
+
+describe("ChatWindow — stable end-anchored virtualization", () => {
+  it("keys rows by message id and enables end-only append following", () => {
+    render(<ChatWindow messages={mockMessages} />, { wrapper })
+
+    expect(virtualizerMock.options?.getItemKey?.(0)).toBe("1")
+    expect(virtualizerMock.options?.getItemKey?.(2)).toBe("3")
+    expect(virtualizerMock.options).toMatchObject({
+      anchorTo: "end",
+      followOnAppend: "auto",
+      scrollEndThreshold: 48,
+    })
+  })
+
+  it("delegates appended-message following to the virtualizer instead of forcing scroll", () => {
+    const { rerender } = render(<ChatWindow messages={mockMessages} />, { wrapper })
+    virtualizerMock.scrollToIndex.mockClear()
+    virtualizerMock.scrollToEnd.mockClear()
+
+    rerender(
+      <ChatWindow
+        messages={[...mockMessages, makeMessage({ id: "4", text: "new while reading" })]}
+      />
+    )
+
+    expect(virtualizerMock.scrollToIndex).not.toHaveBeenCalled()
+    expect(virtualizerMock.scrollToEnd).not.toHaveBeenCalled()
+  })
+
+  it("exposes a keyboard-accessible older-history action", () => {
+    const onLoadOlder = vi.fn()
+    render(<ChatWindow messages={mockMessages} hasMore onLoadOlder={onLoadOlder} />, { wrapper })
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:history.loadOlder" }))
+    expect(onLoadOlder).toHaveBeenCalledTimes(1)
+  })
+})
 
 describe("ChatWindow — W184 SW1 search-filter render path", () => {
   it("filters messages by case-insensitive substring on text field", () => {

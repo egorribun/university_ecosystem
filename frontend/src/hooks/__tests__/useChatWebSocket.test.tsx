@@ -34,6 +34,7 @@ const mocks = vi.hoisted(() => ({
   apiPost: vi.fn(),
   logError: vi.fn(),
   parseWsMessage: vi.fn(),
+  dbUpsert: vi.fn(),
 }))
 
 class TestWebSocket {
@@ -75,9 +76,15 @@ vi.mock("@/api/schemas/wsMessage", () => ({
   parseWsMessage: mocks.parseWsMessage,
 }))
 
+vi.mock("@/db/lazy", () => ({
+  getDatabaseLazily: vi.fn(async () => ({
+    messages: { upsert: mocks.dbUpsert },
+  })),
+}))
+
 // Import after mocks
 import { useChatWebSocket, WebSocketProvider, applyReadFrame } from "../useChatWebSocket"
-import type { MessagesListResponse } from "@/api/chat"
+import type { ChatsListResponse, Message, MessagesListResponse } from "@/api/chat"
 
 // ---------- Helpers ----------
 
@@ -98,15 +105,229 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.apiPost.mockResolvedValue({ data: { ticket: "mock-ticket", expires_in: 15 } })
   mocks.parseWsMessage.mockReturnValue(null)
+  mocks.dbUpsert.mockResolvedValue(undefined)
 })
 
 afterEach(() => {
   vi.restoreAllMocks()
+  Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true })
 })
 
 // ---------- Tests ----------
 
 describe("useChatWebSocket", () => {
+  it("pauses ticket acquisition while offline and reconnects on the online event", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    Object.defineProperty(window.navigator, "onLine", { configurable: true, value: false })
+
+    renderHook(() => useChatWebSocket({ enabled: true }), { wrapper })
+    await act(async () => Promise.resolve())
+    expect(mocks.apiPost).not.toHaveBeenCalled()
+
+    Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true })
+    act(() => window.dispatchEvent(new Event("online")))
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledTimes(1))
+
+    vi.unstubAllGlobals()
+  })
+
+  it("does not create a socket when the ticket resolves after unmount", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    let resolveTicket:
+      ((value: { data: { ticket: string; expires_in: number } }) => void) | undefined
+    mocks.apiPost.mockReturnValue(
+      new Promise((resolve) => {
+        resolveTicket = resolve
+      })
+    )
+
+    const { unmount } = renderHook(() => useChatWebSocket({ enabled: true }), { wrapper })
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledTimes(1))
+    act(() => unmount())
+    resolveTicket?.({ data: { ticket: "late-ticket", expires_in: 15 } })
+    await act(async () => Promise.resolve())
+
+    expect(TestWebSocket.instances).toHaveLength(0)
+    vi.unstubAllGlobals()
+  })
+
+  it("keeps a newer online ticket request owned when an aborted request settles late", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    let resolveFirst:
+      ((value: { data: { ticket: string; expires_in: number } }) => void) | undefined
+    let resolveSecond:
+      ((value: { data: { ticket: string; expires_in: number } }) => void) | undefined
+    mocks.apiPost
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveFirst = resolve
+        })
+      )
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveSecond = resolve
+        })
+      )
+
+    renderHook(() => useChatWebSocket({ enabled: true }), { wrapper })
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledTimes(1))
+
+    act(() => window.dispatchEvent(new Event("offline")))
+    act(() => window.dispatchEvent(new Event("online")))
+    await waitFor(() => expect(mocks.apiPost).toHaveBeenCalledTimes(2))
+
+    resolveFirst?.({ data: { ticket: "stale-ticket", expires_in: 15 } })
+    await act(async () => Promise.resolve())
+    act(() => window.dispatchEvent(new Event("online")))
+    expect(mocks.apiPost).toHaveBeenCalledTimes(2)
+
+    resolveSecond?.({ data: { ticket: "current-ticket", expires_in: 15 } })
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    expect(TestWebSocket.instances[0]?.url).toContain("current-ticket")
+    vi.unstubAllGlobals()
+  })
+
+  it("ignores a stale close event after an online reconnect opens a newer socket", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const { result } = renderHook(() => useChatWebSocket({ enabled: true }), { wrapper })
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    const firstSocket = TestWebSocket.instances[0]!
+    const staleClose = firstSocket.onclose
+    act(() => firstSocket.onopen?.())
+    expect(result.current.isConnected).toBe(true)
+
+    act(() => window.dispatchEvent(new Event("offline")))
+    act(() => window.dispatchEvent(new Event("online")))
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(2))
+    const secondSocket = TestWebSocket.instances[1]!
+    act(() => secondSocket.onopen?.())
+    expect(result.current.isConnected).toBe(true)
+
+    act(() => staleClose?.({ code: 1006 } as CloseEvent))
+    expect(result.current.isConnected).toBe(true)
+    vi.unstubAllGlobals()
+  })
+
+  it("processes a duplicate new_message exactly once", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <WebSocketProvider>{children}</WebSocketProvider>
+      </QueryClientProvider>
+    )
+    const message: Message = {
+      id: "message-1",
+      chat_id: "chat-1",
+      sender_id: "peer",
+      content: "hello",
+      created_at: "2026-08-25T12:00:00Z",
+      read_status: false,
+      attachments: [],
+    }
+    queryClient.setQueryData<MessagesListResponse>(["messages", "chat-1"], {
+      items: [],
+      has_more: false,
+      next_cursor: null,
+    })
+    queryClient.setQueryData<ChatsListResponse>(["chats"], {
+      items: [
+        {
+          id: "chat-1",
+          participants: [],
+          unread_count: 0,
+          created_at: "2026-08-25T11:00:00Z",
+          updated_at: "2026-08-25T11:00:00Z",
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+    mocks.parseWsMessage.mockReturnValue({ type: "new_message", chat_id: "chat-1", message })
+    const onNewMessage = vi.fn()
+
+    renderHook(() => useChatWebSocket({ enabled: true, currentUserId: "me", onNewMessage }), {
+      wrapper: localWrapper,
+    })
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    const socket = TestWebSocket.instances[0]!
+
+    act(() => {
+      socket.onmessage?.({ data: "message-frame" } as MessageEvent)
+      socket.onmessage?.({ data: "duplicate-frame" } as MessageEvent)
+    })
+
+    expect(
+      queryClient.getQueryData<MessagesListResponse>(["messages", "chat-1"])?.items
+    ).toHaveLength(1)
+    expect(queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[0]?.unread_count).toBe(1)
+    expect(onNewMessage).toHaveBeenCalledTimes(1)
+    vi.unstubAllGlobals()
+  })
+
+  it("retains the 201st live message when the cached history is fully loaded", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <WebSocketProvider>{children}</WebSocketProvider>
+      </QueryClientProvider>
+    )
+    const initialItems: Message[] = Array.from({ length: 200 }, (_, index) => ({
+      id: `message-${index}`,
+      chat_id: "chat-1",
+      sender_id: "peer",
+      content: `message ${index}`,
+      created_at: new Date(Date.UTC(2026, 7, 25, 12, 0, index)).toISOString(),
+      read_status: false,
+      attachments: [],
+    }))
+    const liveMessage: Message = {
+      id: "message-200",
+      chat_id: "chat-1",
+      sender_id: "peer",
+      content: "message 200",
+      created_at: "2026-08-25T12:04:00Z",
+      read_status: false,
+      attachments: [],
+    }
+    queryClient.setQueryData<MessagesListResponse>(["messages", "chat-1"], {
+      items: initialItems,
+      has_more: false,
+      next_cursor: null,
+    })
+    mocks.parseWsMessage.mockReturnValue({
+      type: "new_message",
+      chat_id: "chat-1",
+      message: liveMessage,
+    })
+
+    renderHook(() => useChatWebSocket({ enabled: true, currentUserId: "me" }), {
+      wrapper: localWrapper,
+    })
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    act(() => {
+      TestWebSocket.instances[0]?.onmessage?.({ data: "message-frame" } as MessageEvent)
+    })
+
+    const cached = queryClient.getQueryData<MessagesListResponse>(["messages", "chat-1"])
+    expect(cached?.items).toHaveLength(201)
+    expect(cached?.items[0]?.id).toBe("message-0")
+    expect(cached?.has_more).toBe(false)
+    expect(cached?.next_cursor).toBeNull()
+    vi.unstubAllGlobals()
+  })
+
   it("ignores a typing timeout that fires after unmount", async () => {
     TestWebSocket.instances = []
     vi.stubGlobal("WebSocket", TestWebSocket)

@@ -1,4 +1,12 @@
-import { useState, useEffect, useCallback, useMemo, useOptimistic, useRef } from "react"
+import {
+  startTransition,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useOptimistic,
+  useRef,
+} from "react"
 import { useNavigate, useParams } from "@tanstack/react-router"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
@@ -10,6 +18,7 @@ import {
   type Chat,
   type ChatMaintenanceResult,
   type ChatsListResponse,
+  type Message as ApiMessage,
   type MessagesListResponse,
 } from "@/api/chat"
 // Wave 180 SW3 — extracted queryOptions factories close W134 §Honesty #10
@@ -39,6 +48,44 @@ const isSameCalendarDay = (a: Date, b: Date): boolean =>
   a.getFullYear() === b.getFullYear() &&
   a.getMonth() === b.getMonth() &&
   a.getDate() === b.getDate()
+
+const mergeOlderMessagePage = (
+  current: MessagesListResponse | undefined,
+  olderPage: MessagesListResponse
+): MessagesListResponse => {
+  const byId = new Map<string, ApiMessage>()
+  olderPage.items.forEach((message) => byId.set(message.id, message))
+  // The live cache wins at an overlapping cursor boundary: it may already
+  // contain a newer edit/delete/read or WebSocket update than the REST page.
+  current?.items.forEach((message) => byId.set(message.id, message))
+  const items = [...byId.values()].sort((left, right) => {
+    const chronological = new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
+    return chronological || left.id.localeCompare(right.id)
+  })
+  return {
+    items,
+    has_more: olderPage.has_more,
+    next_cursor: olderPage.next_cursor,
+  }
+}
+
+const mergeHydratedMessagePage = (
+  current: MessagesListResponse | undefined,
+  fetched: MessagesListResponse
+): MessagesListResponse => {
+  const byId = new Map<string, ApiMessage>()
+  fetched.items.forEach((message) => byId.set(message.id, message))
+  // The cache is sampled only after this request resolves, so it may contain a
+  // newer WebSocket edit/delete/read/reaction than the REST snapshot. Without a
+  // comparable server version on Message, the live record must win same-id
+  // conflicts; live-only ids are retained as well.
+  current?.items.forEach((message) => byId.set(message.id, message))
+  const items = [...byId.values()].sort((left, right) => {
+    const chronological = new Date(left.created_at).getTime() - new Date(right.created_at).getTime()
+    return chronological || left.id.localeCompare(right.id)
+  })
+  return { ...fetched, items }
+}
 
 // Wave 206 — API reaction aggregate shape (snake_case, as carried on @/api/chat
 // Message.reactions). The optimistic toggle below operates on this shape in the
@@ -141,6 +188,10 @@ export const useMessengerController = () => {
   // long messenger sessions (each attached image = ~10-100 KB in the URL
   // table, accumulating until tab close).
   const blobUrlsRef = useRef<Set<string>>(new Set())
+  const olderHistoryRequestRef = useRef<Promise<void> | null>(null)
+  const olderHistoryAbortRef = useRef<AbortController | null>(null)
+  const [isLoadingOlderMessages, setIsLoadingOlderMessages] = useState(false)
+  const [olderMessagesError, setOlderMessagesError] = useState(false)
 
   useEffect(() => {
     // Snapshot the ref to a local variable so the cleanup closure references
@@ -154,6 +205,15 @@ export const useMessengerController = () => {
       blobUrls.clear()
     }
   }, [])
+
+  useEffect(() => {
+    olderHistoryAbortRef.current?.abort()
+    olderHistoryAbortRef.current = null
+    olderHistoryRequestRef.current = null
+    setIsLoadingOlderMessages(false)
+    setOlderMessagesError(false)
+    return () => olderHistoryAbortRef.current?.abort()
+  }, [chatId])
 
   // Sync selection with URL
   useEffect(() => {
@@ -172,6 +232,7 @@ export const useMessengerController = () => {
   // Pre-W184 fetch failures resulted in the empty-state "No conversations
   // yet" branch flashing wrongly — the user had no way to distinguish
   // "no chats" from "network error".
+  const messageQueryOptions = messagesQueryOptions(selectedChatId)
   const {
     data: chatsData,
     isLoading: chatsLoading,
@@ -204,10 +265,49 @@ export const useMessengerController = () => {
     isError: messagesError,
     refetch: refetchMessages,
   } = useQuery({
-    ...messagesQueryOptions(selectedChatId),
+    ...messageQueryOptions,
+    queryFn: async (context) => {
+      const fetched = await messageQueryOptions.queryFn(context)
+      const liveCache = queryClient.getQueryData<MessagesListResponse>(messageQueryOptions.queryKey)
+      return mergeHydratedMessagePage(liveCache, fetched)
+    },
     enabled: !!selectedChatId,
   })
   const messages = useMemo(() => messagesData?.items ?? [], [messagesData?.items])
+
+  const handleLoadOlderMessages = useCallback((): Promise<void> => {
+    const inFlight = olderHistoryRequestRef.current
+    if (inFlight) return inFlight
+    const cursor = messagesData?.next_cursor
+    if (!selectedChatId || !messagesData?.has_more || !cursor) return Promise.resolve()
+
+    const requestedChatId = selectedChatId
+    const abortController = new AbortController()
+    olderHistoryAbortRef.current = abortController
+    setIsLoadingOlderMessages(true)
+    setOlderMessagesError(false)
+
+    const request = chatApi
+      .getMessages(requestedChatId, cursor, 50, abortController.signal)
+      .then((olderPage) => {
+        if (abortController.signal.aborted) return
+        queryClient.setQueryData<MessagesListResponse>(["messages", requestedChatId], (current) =>
+          mergeOlderMessagePage(current, olderPage)
+        )
+      })
+      .catch(() => {
+        if (!abortController.signal.aborted) setOlderMessagesError(true)
+      })
+      .finally(() => {
+        if (olderHistoryRequestRef.current === request) {
+          olderHistoryRequestRef.current = null
+          olderHistoryAbortRef.current = null
+          if (!abortController.signal.aborted) setIsLoadingOlderMessages(false)
+        }
+      })
+    olderHistoryRequestRef.current = request
+    return request
+  }, [messagesData?.has_more, messagesData?.next_cursor, queryClient, selectedChatId])
 
   // --- Computed ---
 
@@ -342,6 +442,14 @@ export const useMessengerController = () => {
     (state: UiMessage[], newMessage: UiMessage) => [...state, newMessage]
   )
 
+  const revokeOwnedBlobUrls = useCallback((urls: readonly string[]) => {
+    for (const url of urls) {
+      // Settlement and unmount may race. Only the owner that successfully
+      // removes the URL from the shared outstanding set performs the revoke.
+      if (blobUrlsRef.current.delete(url)) URL.revokeObjectURL(url)
+    }
+  }, [])
+
   // --- Mutations ---
 
   const sendMessageMutation = useMutation({
@@ -352,15 +460,17 @@ export const useMessengerController = () => {
       content,
       files,
       replyToMessageId,
+      optimisticBlobUrls: _optimisticBlobUrls,
     }: {
       chatId: string
       content: string
       files?: File[]
       replyToMessageId?: string
+      optimisticBlobUrls: string[]
     }) => chatApi.sendMessage(chatId, content, files, replyToMessageId),
-    onSuccess: (newMessage) => {
+    onSuccess: (newMessage, variables) => {
       queryClient.setQueryData<MessagesListResponse | undefined>(
-        ["messages", selectedChatId],
+        ["messages", variables.chatId],
         (old) => {
           const items = old?.items ?? []
           if (items.some((m) => m.id === newMessage.id)) return old
@@ -372,19 +482,10 @@ export const useMessengerController = () => {
         }
       )
       queryClient.invalidateQueries({ queryKey: ["chats"] })
-      // Wave 183 SW3 — revoke Blob URLs created by the optimistic message
-      // now that the server-returned message with real URLs has replaced it.
-      // Pre-W183 these URLs leaked until tab close.
-      blobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
-      blobUrlsRef.current.clear()
+      revokeOwnedBlobUrls(variables.optimisticBlobUrls)
     },
-    onError: () => {
-      // Wave 183 SW3 — revoke Blob URLs on send failure too. The optimistic
-      // message may be retained by the user (e.g., retry pending) but the
-      // Blob URLs become orphaned because React will re-render the
-      // optimistic state from scratch on next attempt.
-      blobUrlsRef.current.forEach((url) => URL.revokeObjectURL(url))
-      blobUrlsRef.current.clear()
+    onError: (_error, variables) => {
+      revokeOwnedBlobUrls(variables.optimisticBlobUrls)
     },
   })
 
@@ -783,6 +884,7 @@ export const useMessengerController = () => {
     // Wave 183 SW3 — track Blob URLs created here so the mutation onSuccess/
     // onError handlers can revoke them (preventing memory leak per-attachment).
     // UI-only message for optimistic update.
+    const optimisticBlobUrls: string[] = []
     const optimisticMsg: UiMessage = {
       id: tempId,
       senderId: String(user?.id),
@@ -808,6 +910,7 @@ export const useMessengerController = () => {
       attachments: files.map((f, i) => {
         const blobUrl = URL.createObjectURL(f)
         blobUrlsRef.current.add(blobUrl)
+        optimisticBlobUrls.push(blobUrl)
         return {
           id: `${tempId}-${i}`,
           url: blobUrl,
@@ -818,12 +921,13 @@ export const useMessengerController = () => {
       }),
     }
 
-    addOptimisticMessage(optimisticMsg)
+    startTransition(() => addOptimisticMessage(optimisticMsg))
     sendMessageMutation.mutate({
       chatId: selectedChatId,
       content: text,
       files,
       replyToMessageId: replyingTo?.id,
+      optimisticBlobUrls,
     })
     // Wave 207 — clear the reply context once the send is dispatched (the chip
     // disappears; the optimistic bubble already carries its own replyTo copy).
@@ -1093,6 +1197,10 @@ export const useMessengerController = () => {
     // Data
     contacts,
     messages: optimisticMessages,
+    hasMoreMessages: messagesData?.has_more ?? false,
+    isLoadingOlderMessages,
+    olderMessagesError,
+    handleLoadOlderMessages,
     chatsLoading,
     messagesLoading,
     // Wave 184 SW3 (Path B) — fetch-failure flags + refetch handles for

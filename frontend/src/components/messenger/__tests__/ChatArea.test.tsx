@@ -567,8 +567,12 @@ describe("ChatArea — mobile vs desktop", () => {
     const lucideChevronMobile = container.querySelector(".lucide-chevron-left")
     expect(lucideChevronMobile).toBeTruthy()
 
-    fireEvent.click(lucideChevronMobile!.parentElement!)
-    expect(navigateMock).toHaveBeenCalledWith({ to: "/messenger" })
+    const backButton = screen.getByRole("button", { name: "messenger:backToChats" })
+    expect(backButton.className).toContain("min-h-[44px]")
+    expect(backButton.className).toContain("min-w-[44px]")
+
+    fireEvent.click(backButton)
+    expect(navigateMock).toHaveBeenCalledWith({ to: "/messenger", replace: true })
 
     prefersReducedMotionMock.mockReturnValue(true)
     rerender(

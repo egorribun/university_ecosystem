@@ -269,6 +269,11 @@ export function useChatWebSocket({
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const reconnectAttemptRef = useRef(0)
+  const connectionGenerationRef = useRef(0)
+  const ticketRequestRef = useRef<{
+    generation: number
+    controller: AbortController
+  } | null>(null)
 
   // MOD-11: Subscribe to external store for connection state
   // W127 SW1: 3rd arg getServerSnapshot returns `false` — no WS connection
@@ -324,11 +329,17 @@ export function useChatWebSocket({
   }, [])
 
   const connect = useCallback(() => {
-    if (!enabled) return
+    if (!enabled || !mountedRef.current || navigator.onLine === false) return
 
-    if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+    if (
+      ticketRequestRef.current ||
+      (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED)
+    ) {
       return
     }
+    const requestGeneration = ++connectionGenerationRef.current
+    const ticketController = new AbortController()
+    ticketRequestRef.current = { generation: requestGeneration, controller: ticketController }
 
     // RZ-W14-01 (audit 2026-03-23 Wave 14): fetch a short-lived upgrade ticket
     // before opening the WebSocket.  This eliminates the JWT from the URL and
@@ -352,7 +363,6 @@ export function useChatWebSocket({
       // does NOT accept cookie-only upgrades since Wave 14.
       let ticket: string
       // TD-26-02: AbortController for cleanup on unmount; TD-26-03: 5s timeout
-      const ticketController = new AbortController()
       const ticketTimeout = setTimeout(() => ticketController.abort(), 5000)
       try {
         // FIX-44-02: Use axios instead of fetch so CSRF header (X-CSRF-Token)
@@ -366,6 +376,7 @@ export function useChatWebSocket({
         )
         ticket = resp.data.ticket
       } catch (e: unknown) {
+        if (ticketController.signal.aborted || !mountedRef.current) return
         const axiosErr = e as { response?: { status: number } }
         const status = axiosErr?.response?.status
         if (status === 401 || status === 403) {
@@ -374,6 +385,13 @@ export function useChatWebSocket({
           onAuthErrorRef.current?.()
         } else {
           // Transient server/network error — schedule backoff reconnect.
+          if (navigator.onLine === false) return
+          if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
+            logError("[WebSocket] Ticket retry limit reached.", {
+              attempts: reconnectAttemptRef.current,
+            })
+            return
+          }
           logError("[WebSocket] Ticket fetch failed; will retry.", e)
           const delay = calculateReconnectDelay(reconnectAttemptRef.current)
           reconnectAttemptRef.current += 1
@@ -382,7 +400,18 @@ export function useChatWebSocket({
         return
       } finally {
         clearTimeout(ticketTimeout) // TD-26-03: clean up timeout
+        if (ticketRequestRef.current?.generation === requestGeneration) {
+          ticketRequestRef.current = null
+        }
       }
+
+      if (
+        !mountedRef.current ||
+        ticketController.signal.aborted ||
+        !enabled ||
+        connectionGenerationRef.current !== requestGeneration
+      )
+        return
 
       try {
         const ws = new WebSocket(`${baseWsUrl}?ticket=${encodeURIComponent(ticket)}`)
@@ -436,7 +465,37 @@ export function useChatWebSocket({
                 // wrongly +1 the sender's OWN unread_count in the chats cache.
                 if (validated.message.sender_id === currentUserIdRef.current) break
 
-                // Persist message to RxDB
+                // Wave 202 SW2 — `validated.message` is the Valibot `ParsedMessage`
+                // (attachments/sender validated shape-only as Record<string,unknown>);
+                // the cache stores `@/api/chat` `Message` (typed Attachment[]/User).
+                // `Message` is assignable to `ParsedMessage`, so the two are comparable
+                // → a single `as Message` is valid (collapsed from the prior, redundant
+                // `as unknown as Message` double-cast; the `unknown` hop was never needed).
+                // Do NOT delete the cast — `ParsedMessage` is NOT structurally `Message`.
+                let inserted = false
+                queryClient.setQueryData<MessagesListResponse>(
+                  ["messages", validated.chat_id],
+                  (old) => {
+                    if (!old) {
+                      inserted = true
+                      return {
+                        items: [validated.message as Message],
+                        has_more: false,
+                        next_cursor: null,
+                      }
+                    }
+                    if (old.items.some((m) => m.id === validated.message.id)) return old
+                    inserted = true
+                    // Do not discard history without a cursor that can recover the
+                    // exact dropped edge. Rendering is virtualized, so retaining the
+                    // fully hydrated list is both lossless and scroll-anchor safe.
+                    return { ...old, items: [...old.items, validated.message as Message] }
+                  }
+                )
+                if (!inserted) break
+
+                // Persist only newly accepted frames to RxDB. A repeated delivery
+                // is idempotent across the in-memory cache, unread count and callbacks.
                 getDatabaseLazily()
                   .then((db) => {
                     const msg = validated.message as Message
@@ -458,36 +517,6 @@ export function useChatWebSocket({
                       .catch(() => {})
                   })
                   .catch(() => {})
-
-                // Wave 202 SW2 — `validated.message` is the Valibot `ParsedMessage`
-                // (attachments/sender validated shape-only as Record<string,unknown>);
-                // the cache stores `@/api/chat` `Message` (typed Attachment[]/User).
-                // `Message` is assignable to `ParsedMessage`, so the two are comparable
-                // → a single `as Message` is valid (collapsed from the prior, redundant
-                // `as unknown as Message` double-cast; the `unknown` hop was never needed).
-                // Do NOT delete the cast — `ParsedMessage` is NOT structurally `Message`.
-                queryClient.setQueryData<MessagesListResponse>(
-                  ["messages", validated.chat_id],
-                  (old) => {
-                    if (!old)
-                      return {
-                        items: [validated.message as Message],
-                        has_more: false,
-                        next_cursor: null,
-                      }
-                    if (old.items.some((m) => m.id === validated.message.id)) return old
-                    // RZ-004: Sliding window prevents V8 heap exhaustion in long-lived sessions.
-                    // Cap in-memory buffer at 200 messages — older messages are re-fetched
-                    // via cursor-based pagination when the user scrolls up.
-                    const MAX_BUFFERED_MESSAGES = 200
-                    const appended = [...old.items, validated.message as Message]
-                    const trimmed =
-                      appended.length > MAX_BUFFERED_MESSAGES
-                        ? appended.slice(appended.length - MAX_BUFFERED_MESSAGES)
-                        : appended
-                    return { ...old, items: trimmed }
-                  }
-                )
                 queryClient.invalidateQueries({
                   queryKey: ["messages", validated.chat_id],
                   refetchType: "none",
@@ -645,6 +674,10 @@ export function useChatWebSocket({
         }
 
         ws.onclose = (event) => {
+          // A late close from a superseded transport must not tear down the
+          // connection state or timers belonging to the newer socket.
+          if (wsRef.current !== ws) return
+          wsRef.current = null
           wsStore.setConnected(false)
           cleanup()
 
@@ -685,6 +718,9 @@ export function useChatWebSocket({
 
   const disconnect = useCallback(() => {
     cleanup()
+    connectionGenerationRef.current += 1
+    ticketRequestRef.current?.controller.abort()
+    ticketRequestRef.current = null
     if (wsRef.current) {
       wsRef.current.close(1000)
       wsRef.current = null
@@ -705,6 +741,21 @@ export function useChatWebSocket({
       disconnect()
     }
   }, [enabled, connect, disconnect])
+
+  useEffect(() => {
+    if (!enabled) return
+    const onOnline = () => {
+      reconnectAttemptRef.current = 0
+      connectRef.current()
+    }
+    const onOffline = () => disconnect()
+    window.addEventListener("online", onOnline)
+    window.addEventListener("offline", onOffline)
+    return () => {
+      window.removeEventListener("online", onOnline)
+      window.removeEventListener("offline", onOffline)
+    }
+  }, [disconnect, enabled])
 
   // Wave 207 — typing is broadcast via REST (POST /chats/{id}/typing), NOT over the
   // WS: the frontend connects to ws-hub, whose allowedMessageTypes drops "typing" at

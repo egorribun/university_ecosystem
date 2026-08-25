@@ -64,6 +64,10 @@ export default function MessengerFeature() {
     refetchChats,
     messagesError,
     refetchMessages,
+    hasMoreMessages,
+    isLoadingOlderMessages,
+    olderMessagesError,
+    handleLoadOlderMessages,
 
     // Profile
     profileUser,
@@ -173,6 +177,10 @@ export default function MessengerFeature() {
       onRetryMessages={() => {
         void refetchMessages()
       }}
+      hasMoreMessages={hasMoreMessages}
+      isLoadingOlderMessages={isLoadingOlderMessages}
+      olderMessagesError={olderMessagesError}
+      onLoadOlderMessages={handleLoadOlderMessages}
       showSearchInChat={showSearchInChat}
       setShowSearchInChat={setShowSearchInChat}
       searchQuery={searchQuery}

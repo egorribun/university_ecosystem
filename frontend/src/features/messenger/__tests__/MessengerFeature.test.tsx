@@ -43,10 +43,23 @@ vi.mock("@/components/messenger", async () => {
     await vi.importActual<typeof import("@/components/messenger")>("@/components/messenger")
   return {
     ...actual,
-    ChatArea: (props: { onOpenGroupInfo?: () => void; onRetryMessages?: () => void }) => (
-      <div data-testid="mock-chat-area">
+    ChatArea: (props: {
+      onOpenGroupInfo?: () => void
+      onRetryMessages?: () => void
+      hasMoreMessages?: boolean
+      isLoadingOlderMessages?: boolean
+      olderMessagesError?: boolean
+      onLoadOlderMessages?: () => void
+    }) => (
+      <div
+        data-testid="mock-chat-area"
+        data-has-more={String(!!props.hasMoreMessages)}
+        data-loading-older={String(!!props.isLoadingOlderMessages)}
+        data-older-error={String(!!props.olderMessagesError)}
+      >
         <button data-testid="mock-open-group-info" onClick={props.onOpenGroupInfo} />
         <button data-testid="mock-retry-messages" onClick={props.onRetryMessages} />
+        <button data-testid="mock-load-older" onClick={props.onLoadOlderMessages} />
       </div>
     ),
     MessengerSidebar: (props: { onRetry?: () => void }) => (
@@ -118,6 +131,10 @@ const makeController = (overrides: Record<string, unknown> = {}) => ({
   refetchChats: vi.fn(),
   messagesError: false,
   refetchMessages: vi.fn(),
+  hasMoreMessages: false,
+  isLoadingOlderMessages: false,
+  olderMessagesError: false,
+  handleLoadOlderMessages: vi.fn(),
   profileUser: null,
   isProfileLoading: false,
   profileError: false,
@@ -208,6 +225,26 @@ describe("MessengerFeature", () => {
     render(<MessengerFeature />)
     expect(screen.getByTestId("mock-chat-area")).toBeTruthy()
     expect(screen.queryByTestId("mock-sidebar")).toBeFalsy()
+  })
+
+  it("threads cursor-history state and action into the active chat", () => {
+    const handleLoadOlderMessages = vi.fn()
+    mockController.mockReturnValue(
+      makeController({
+        hasMoreMessages: true,
+        isLoadingOlderMessages: true,
+        olderMessagesError: true,
+        handleLoadOlderMessages,
+      })
+    )
+
+    render(<MessengerFeature />)
+    const chatArea = screen.getByTestId("mock-chat-area")
+    expect(chatArea.getAttribute("data-has-more")).toBe("true")
+    expect(chatArea.getAttribute("data-loading-older")).toBe("true")
+    expect(chatArea.getAttribute("data-older-error")).toBe("true")
+    fireEvent.click(screen.getByTestId("mock-load-older"))
+    expect(handleLoadOlderMessages).toHaveBeenCalledTimes(1)
   })
 
   it("wires retry, modal, group-panel, and confirm callbacks", () => {

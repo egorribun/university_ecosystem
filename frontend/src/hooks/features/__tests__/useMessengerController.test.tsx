@@ -140,6 +140,7 @@ beforeEach(() => {
     has_more: false,
     next_cursor: null,
   })
+  mocks.chatApi.getChat.mockResolvedValue(null)
   mocks.chatApi.getMessages.mockResolvedValue({
     items: [],
     has_more: false,
@@ -169,7 +170,372 @@ afterEach(() => {
 // ---------- Tests ----------
 
 describe("useMessengerController", () => {
+  describe("cursor history hydration", () => {
+    beforeEach(() => {
+      mocks.chatApi.getChat.mockResolvedValue({
+        id: "chat-1",
+        participants: [{ id: "current-user-id" }, { id: "peer" }],
+        unread_count: 0,
+      })
+    })
+
+    const makeApiMessage = (id: string, createdAt: string, content = id) => ({
+      id,
+      chat_id: "chat-1",
+      sender_id: "peer",
+      content,
+      created_at: createdAt,
+      read_status: false,
+      attachments: [],
+    })
+
+    it("prepends an older page, deduplicates ids, and keeps chronological order", async () => {
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      mocks.chatApi.getChats.mockResolvedValue({
+        items: [
+          {
+            id: "chat-1",
+            participants: [{ id: "current-user-id" }, { id: "peer" }],
+            unread_count: 0,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      const current = makeApiMessage("m-current", "2026-08-25T12:00:00Z")
+      const older = makeApiMessage("m-older", "2026-08-25T11:00:00Z")
+      mocks.chatApi.getMessages.mockImplementation((_chatId: string, cursor?: string) =>
+        cursor
+          ? Promise.resolve({
+              items: [older, current],
+              has_more: false,
+              next_cursor: null,
+            })
+          : Promise.resolve({
+              items: [current],
+              has_more: true,
+              next_cursor: "cursor-older",
+            })
+      )
+
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(result.current.messages.map((message) => message.id)).toEqual(["m-current"])
+      )
+
+      await act(async () => {
+        await result.current.handleLoadOlderMessages()
+      })
+
+      await waitFor(() =>
+        expect(result.current.messages.map((message) => message.id)).toEqual([
+          "m-older",
+          "m-current",
+        ])
+      )
+      expect(result.current.hasMoreMessages).toBe(false)
+      expect(mocks.chatApi.getMessages).toHaveBeenCalledWith(
+        "chat-1",
+        "cursor-older",
+        50,
+        expect.any(AbortSignal)
+      )
+    })
+
+    it("coalesces concurrent requests for the same older cursor page", async () => {
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      mocks.chatApi.getChats.mockResolvedValue({
+        items: [
+          {
+            id: "chat-1",
+            participants: [{ id: "current-user-id" }, { id: "peer" }],
+            unread_count: 0,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      const current = makeApiMessage("m-current", "2026-08-25T12:00:00Z")
+      let resolveOlder:
+        ((value: { items: never[]; has_more: false; next_cursor: null }) => void) | undefined
+      const olderRequest = new Promise<{ items: never[]; has_more: false; next_cursor: null }>(
+        (resolve) => {
+          resolveOlder = resolve
+        }
+      )
+      mocks.chatApi.getMessages.mockImplementation((_chatId: string, cursor?: string) =>
+        cursor
+          ? olderRequest
+          : Promise.resolve({
+              items: [current],
+              has_more: true,
+              next_cursor: "cursor-older",
+            })
+      )
+
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.hasMoreMessages).toBe(true))
+
+      let first: Promise<void> | undefined
+      let second: Promise<void> | undefined
+      act(() => {
+        first = result.current.handleLoadOlderMessages()
+        second = result.current.handleLoadOlderMessages()
+      })
+      expect(
+        mocks.chatApi.getMessages.mock.calls.filter((call) => call[1] === "cursor-older")
+      ).toHaveLength(1)
+
+      resolveOlder?.({ items: [], has_more: false, next_cursor: null })
+      await act(async () => {
+        await Promise.all([first, second])
+      })
+    })
+
+    it("preserves a WebSocket-only message when REST hydration resolves later", async () => {
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      mocks.chatApi.getChats.mockResolvedValue({
+        items: [
+          {
+            id: "chat-1",
+            participants: [{ id: "current-user-id" }, { id: "peer" }],
+            unread_count: 0,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      const restMessage = makeApiMessage("m-rest", "2026-08-25T11:00:00Z")
+      const liveMessage = makeApiMessage("m-live", "2026-08-25T12:00:00Z")
+      let resolveHydration:
+        | ((value: {
+            items: ReturnType<typeof makeApiMessage>[]
+            has_more: false
+            next_cursor: null
+          }) => void)
+        | undefined
+      mocks.chatApi.getMessages.mockReturnValue(
+        new Promise((resolve) => {
+          resolveHydration = resolve
+        })
+      )
+      const queryClient = new QueryClient({
+        defaultOptions: {
+          queries: { retry: false, gcTime: 0 },
+          mutations: { retry: false },
+        },
+      })
+      const localWrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      )
+      const { result } = renderHook(() => useMessengerController(), { wrapper: localWrapper })
+
+      act(() => {
+        queryClient.setQueryData(["messages", "chat-1"], {
+          items: [liveMessage],
+          has_more: false,
+          next_cursor: null,
+        })
+      })
+      resolveHydration?.({ items: [restMessage], has_more: false, next_cursor: null })
+
+      await waitFor(() =>
+        expect(result.current.messages.map((message) => message.id)).toEqual(["m-rest", "m-live"])
+      )
+    })
+
+    it.each([
+      {
+        name: "edit",
+        stale: { content: "stale REST content", edited_at: null },
+        live: { content: "new live content", edited_at: "2026-08-25T12:01:00Z" },
+        expected: {
+          text: "new live content",
+          editedAt: "2026-08-25T12:01:00Z",
+          deletedAt: null,
+        },
+      },
+      {
+        name: "delete",
+        stale: { content: "stale REST content", deleted_at: null },
+        live: {
+          content: "",
+          attachments: [],
+          deleted_at: "2026-08-25T12:02:00Z",
+        },
+        expected: {
+          text: "",
+          editedAt: null,
+          deletedAt: "2026-08-25T12:02:00Z",
+        },
+      },
+    ])(
+      "keeps a live same-id $name when stale REST hydration resolves later",
+      async ({ stale, live, expected }) => {
+        mocks.paramsRef.current = { chatId: "chat-1" }
+        mocks.chatApi.getChats.mockResolvedValue({
+          items: [
+            {
+              id: "chat-1",
+              participants: [{ id: "current-user-id" }, { id: "peer" }],
+              unread_count: 0,
+            },
+          ],
+          has_more: false,
+          next_cursor: null,
+        })
+        const staleMessage = {
+          ...makeApiMessage("m-shared", "2026-08-25T12:00:00Z"),
+          ...stale,
+        }
+        const liveMessage = {
+          ...makeApiMessage("m-shared", "2026-08-25T12:00:00Z"),
+          ...live,
+        }
+        let resolveHydration:
+          | ((value: {
+              items: ReturnType<typeof makeApiMessage>[]
+              has_more: false
+              next_cursor: null
+            }) => void)
+          | undefined
+        mocks.chatApi.getMessages.mockReturnValue(
+          new Promise((resolve) => {
+            resolveHydration = resolve
+          })
+        )
+        const queryClient = new QueryClient({
+          defaultOptions: {
+            queries: { retry: false, gcTime: 0 },
+            mutations: { retry: false },
+          },
+        })
+        const localWrapper = ({ children }: { children: ReactNode }) => (
+          <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+        )
+        const { result } = renderHook(() => useMessengerController(), { wrapper: localWrapper })
+
+        act(() => {
+          queryClient.setQueryData(["messages", "chat-1"], {
+            items: [liveMessage],
+            has_more: false,
+            next_cursor: null,
+          })
+        })
+        resolveHydration?.({ items: [staleMessage], has_more: false, next_cursor: null })
+
+        await waitFor(() => {
+          expect(result.current.messages).toHaveLength(1)
+          expect(result.current.messages[0]).toMatchObject(expected)
+        })
+      }
+    )
+  })
+
   describe("Blob URL lifecycle (W183 SW3 regression)", { retry: 2 }, () => {
+    it("writes a deferred send result to the originating chat after a route switch", async () => {
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      mocks.chatApi.getChats.mockResolvedValue({
+        items: [
+          {
+            id: "chat-1",
+            participants: [{ id: "current-user-id" }, { id: "peer-1" }],
+            unread_count: 0,
+          },
+          {
+            id: "chat-2",
+            participants: [{ id: "current-user-id" }, { id: "peer-2" }],
+            unread_count: 0,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      let resolveSend:
+        | ((value: {
+            id: string
+            chat_id: string
+            sender_id: string
+            content: string
+            created_at: string
+            read_status: boolean
+            attachments: never[]
+          }) => void)
+        | undefined
+      mocks.chatApi.sendMessage.mockReturnValue(
+        new Promise((resolve) => {
+          resolveSend = resolve
+        })
+      )
+      const queryClient = new QueryClient({
+        defaultOptions: {
+          queries: { retry: false, gcTime: 0 },
+          mutations: { retry: false },
+        },
+      })
+      const localWrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      )
+      const { result, rerender } = renderHook(() => useMessengerController(), {
+        wrapper: localWrapper,
+      })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+
+      act(() => result.current.handleSendMessage("deferred", []))
+      mocks.paramsRef.current = { chatId: "chat-2" }
+      rerender()
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-2"))
+
+      resolveSend?.({
+        id: "server-deferred",
+        chat_id: "chat-1",
+        sender_id: "current-user-id",
+        content: "deferred",
+        created_at: "2026-08-25T12:00:00Z",
+        read_status: false,
+        attachments: [],
+      })
+
+      await waitFor(() =>
+        expect(
+          queryClient
+            .getQueryData<{ items: Array<{ id: string }> }>(["messages", "chat-1"])
+            ?.items.map((message) => message.id)
+        ).toContain("server-deferred")
+      )
+      expect(
+        queryClient
+          .getQueryData<{ items: Array<{ id: string }> }>(["messages", "chat-2"])
+          ?.items.map((message) => message.id)
+      ).not.toContain("server-deferred")
+    })
+
+    it("dispatches the optimistic message inside a React transition", async () => {
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      mocks.chatApi.getChats.mockResolvedValue({
+        items: [
+          {
+            id: "chat-1",
+            participants: [{ id: "current-user-id" }, { id: "peer" }],
+            unread_count: 0,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      act(() => result.current.handleSendMessage("hello", []))
+
+      expect(
+        consoleError.mock.calls.some((call) =>
+          String(call[0]).includes("optimistic state update occurred outside")
+        )
+      ).toBe(false)
+    })
+
     it("creates ONE Blob URL per attached file in handleSendMessage", async () => {
       mocks.paramsRef.current = { chatId: "chat-1" }
       mocks.chatApi.getChats.mockResolvedValue({
@@ -288,6 +654,65 @@ describe("useMessengerController", () => {
       unmount()
 
       expect(mocks.revokeObjectURL).toHaveBeenCalledWith("blob:mock-url")
+    })
+
+    it("keeps concurrent sends' Blob URLs isolated until their own settlement or unmount", async () => {
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      mocks.chatApi.getChats.mockResolvedValue({
+        items: [
+          {
+            id: "chat-1",
+            participants: [{ id: "current-user-id" }, { id: "peer" }],
+            unread_count: 0,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      mocks.createObjectURL.mockReturnValueOnce("blob:first").mockReturnValueOnce("blob:second")
+      let resolveFirst:
+        | ((value: {
+            id: string
+            chat_id: string
+            sender_id: string
+            content: string
+            created_at: string
+            read_status: boolean
+            attachments: never[]
+          }) => void)
+        | undefined
+      const firstSend = new Promise((resolve) => {
+        resolveFirst = resolve
+      })
+      const secondSend = new Promise(() => {})
+      mocks.chatApi.sendMessage.mockReturnValueOnce(firstSend).mockReturnValueOnce(secondSend)
+
+      const { result, unmount } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("chat-1"))
+
+      act(() => {
+        result.current.handleSendMessage("first", [new File(["a"], "a.png", { type: "image/png" })])
+        result.current.handleSendMessage("second", [
+          new File(["b"], "b.png", { type: "image/png" }),
+        ])
+      })
+
+      resolveFirst?.({
+        id: "server-first",
+        chat_id: "chat-1",
+        sender_id: "current-user-id",
+        content: "first",
+        created_at: "2026-08-25T12:00:00Z",
+        read_status: false,
+        attachments: [],
+      })
+      await waitFor(() => expect(mocks.revokeObjectURL).toHaveBeenCalledWith("blob:first"))
+      expect(mocks.revokeObjectURL).not.toHaveBeenCalledWith("blob:second")
+
+      mocks.revokeObjectURL.mockClear()
+      unmount()
+      expect(mocks.revokeObjectURL).toHaveBeenCalledTimes(1)
+      expect(mocks.revokeObjectURL).toHaveBeenCalledWith("blob:second")
     })
   })
 

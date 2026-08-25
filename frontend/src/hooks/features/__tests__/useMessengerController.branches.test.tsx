@@ -157,6 +157,7 @@ beforeEach(() => {
   })
 
   mocks.chatApi.getChats.mockResolvedValue({ items: [], has_more: false, next_cursor: null })
+  mocks.chatApi.getChat.mockResolvedValue(null)
   mocks.chatApi.getMessages.mockResolvedValue({ items: [], has_more: false, next_cursor: null })
   mocks.chatApi.sendMessage.mockResolvedValue({
     id: "server-msg-id",

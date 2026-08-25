@@ -115,6 +115,14 @@ interface ChatWindowProps {
    * query is disabled (the pill still renders + toggles).
    */
   chatId?: string
+  /** Whether the server has an older cursor page available. */
+  hasMore?: boolean
+  /** Prepends the next older cursor page to the message cache. */
+  onLoadOlder?: () => void | Promise<void>
+  /** Disables duplicate cursor requests while an older page is loading. */
+  isLoadingOlder?: boolean
+  /** Keeps history-loading failures separate from the initial history error. */
+  olderMessagesError?: boolean
 }
 
 // Wave 206 — fixed quick-reaction set (no emoji-picker dependency). Module-level
@@ -147,6 +155,10 @@ export const ChatWindow = memo(function ChatWindow({
   onStartReply,
   onForward,
   chatId,
+  hasMore = false,
+  onLoadOlder,
+  isLoadingOlder = false,
+  olderMessagesError = false,
 }: ChatWindowProps) {
   const { t } = useTranslation()
   // Wave 206 — which message's emoji picker is open (null = none). The "+react"
@@ -182,10 +194,19 @@ export const ChatWindow = memo(function ChatWindow({
     count: filteredMessages.length,
     getScrollElement: () => containerRef.current,
     estimateSize: () => 80,
+    // Message identity, rather than an array index, lets Virtual Core retain
+    // measurements and the visible anchor when an older cursor page is
+    // prepended. The installed virtual-core 3.17.7 supports end anchoring and
+    // follows appends only if the viewport was already at the end.
+    getItemKey: (index) => filteredMessages[index]!.id,
+    anchorTo: "end",
+    followOnAppend: "auto",
+    scrollEndThreshold: 48,
     overscan: 5,
   })
 
   const prevMessagesLengthRef = useRef(0)
+  const didInitialScrollRef = useRef(false)
 
   // Wave 202 SW6 — animate ONLY newly-appended messages, not every virtualized
   // row that scrolls back into view (pre-W202 each remount re-fired the entrance
@@ -207,35 +228,26 @@ export const ChatWindow = memo(function ChatWindow({
   // they return to (or auto-scroll back to) the latest message.
   const [showJumpButton, setShowJumpButton] = useState(false)
 
-  // Auto-scroll to bottom when new messages arrive.
-  // Wave 184 SW1 — track filtered length so search-narrowing doesn't trigger
-  // a spurious scroll-to-end. Auto-scroll only fires when the underlying
-  // message list grows (new incoming message), not when search filtering
-  // shrinks the displayed set.
+  // Scroll once when history first arrives. Subsequent append/prepend behavior
+  // belongs to Virtual Core: followOnAppend keeps a reader at the end only when
+  // they were already there, while anchorTo + stable keys preserve the visible
+  // item when older history is prepended.
   useEffect(() => {
-    if (!isSearchActive && filteredMessages.length > prevMessagesLengthRef.current) {
-      virtualizer.scrollToIndex(filteredMessages.length - 1, {
-        align: "end",
-        behavior: "auto",
-      })
-      // Wave 202 SW6 — advance the entrance boundary to the new length so the
-      // NEXT growth's render (which sees this as the previous length) animates
-      // only the freshly-appended rows. setAnimateFromIndex is a stable setter,
-      // so it's not required in the dependency array.
-      setAnimateFromIndex(filteredMessages.length)
+    const nextLength = messages.length
+    const previousLength = prevMessagesLengthRef.current
+    if (nextLength === 0) {
+      didInitialScrollRef.current = false
+    } else if (!isSearchActive && !didInitialScrollRef.current) {
+      virtualizer.scrollToIndex(nextLength - 1, { align: "end", behavior: "auto" })
+      didInitialScrollRef.current = true
+      setAnimateFromIndex(nextLength)
+    } else if (!isSearchActive && nextLength > previousLength) {
+      // The preceding render still sees the old boundary and animates only the
+      // appended tail. Advancing it here prevents replay on recycled rows.
+      setAnimateFromIndex(nextLength)
     }
-    prevMessagesLengthRef.current = filteredMessages.length
-  }, [filteredMessages.length, isSearchActive, virtualizer])
-
-  // Initial scroll to bottom
-  useEffect(() => {
-    if (!isSearchActive && filteredMessages.length > 0) {
-      virtualizer.scrollToIndex(filteredMessages.length - 1, {
-        align: "end",
-        behavior: "auto",
-      })
-    }
-  }, [filteredMessages.length, isSearchActive, virtualizer])
+    prevMessagesLengthRef.current = nextLength
+  }, [messages.length, isSearchActive, virtualizer])
 
   // Wave 208 SW4 — toggle the scroll-to-bottom FAB based on scroll position.
   // The scroll metrics are read inside the handler (ref access in a handler is
@@ -498,6 +510,25 @@ export const ChatWindow = memo(function ChatWindow({
 
   return (
     <div className="relative flex flex-1 min-h-0 flex-col">
+      {hasMore && onLoadOlder ? (
+        <div className="flex shrink-0 flex-col items-center gap-1 px-4 py-2">
+          <button
+            type="button"
+            onClick={() => void onLoadOlder()}
+            disabled={isLoadingOlder}
+            className="inline-flex min-h-[44px] items-center justify-center rounded-full border border-(--glass-border) bg-(--bg-surface-raised) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) disabled:cursor-wait disabled:opacity-medium"
+          >
+            {isLoadingOlder
+              ? t("messenger:history.loadingOlder")
+              : t("messenger:history.loadOlder")}
+          </button>
+          {olderMessagesError ? (
+            <span role="alert" className="text-sm text-(--error-text)">
+              {t("messenger:history.loadOlderError")}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <div
         ref={containerRef}
         role="log"
