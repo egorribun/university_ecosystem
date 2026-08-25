@@ -7,21 +7,28 @@ import hashlib
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import unicodedata
 from collections import defaultdict
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 from pathlib import Path, PurePosixPath
-from typing import NoReturn
+from typing import NoReturn, cast
 from xml.etree import ElementTree
 
-from validate_quality_contract import validate_contract
+from validate_quality_contract import (
+    NORMALIZER_VERSION,
+    validate_contract,
+    validate_manifest_evidence,
+)
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+REPOSITORY_ROOT = DEFAULT_REPOSITORY_ROOT
 COMPONENTS = (
     "python",
     "frontend",
@@ -39,7 +46,7 @@ COMPONENTS = (
 )
 METRICS = ("lines", "statements", "branches", "functions")
 SOURCE_ROOTS = {
-    "python": ("app",),
+    "python": ("app", "alembic/versions"),
     "frontend": ("frontend/src",),
     "go-gateway": ("services/gateway",),
     "go-ws-hub": ("services/ws-hub",),
@@ -58,51 +65,62 @@ SOURCE_ROOTS = {
     "scripts": ("scripts",),
 }
 SUPPORTED_REPORTS = {
-    "python": ("cobertura-xml", "coverage.xml"),
-    "frontend": ("lcov", "frontend/coverage/lcov.info"),
-    "go-gateway": ("go-coverprofile", "artifacts/coverage/go/gateway/coverage.out"),
-    "go-ws-hub": ("go-coverprofile", "artifacts/coverage/go/ws-hub/coverage.out"),
-    "go-file-processor": (
-        "go-coverprofile",
-        "artifacts/coverage/go/file-processor/coverage.out",
+    "python": (
+        ("cobertura-xml", "coverage.xml"),
+        ("coverage-py-json", "artifacts/coverage/python/coverage.json"),
     ),
-    "go-shared": ("go-coverprofile", "artifacts/coverage/go/shared/coverage.out"),
-    "rust-native": ("llvm-cov-json", "artifacts/coverage/rust/rust-native/llvm.json"),
+    "frontend": (
+        ("lcov", "frontend/coverage/lcov.info"),
+        ("istanbul-json", "frontend/coverage/coverage-final.json"),
+    ),
+    "go-gateway": (("go-coverprofile", "artifacts/coverage/go/gateway/coverage.out"),),
+    "go-ws-hub": (("go-coverprofile", "artifacts/coverage/go/ws-hub/coverage.out"),),
+    "go-file-processor": (
+        ("go-coverprofile", "artifacts/coverage/go/file-processor/coverage.out"),
+    ),
+    "go-shared": (("go-coverprofile", "artifacts/coverage/go/shared/coverage.out"),),
+    "rust-native": (
+        ("llvm-cov-json", "artifacts/coverage/rust/rust-native/llvm.json"),
+        (
+            "llvm-cov-branch-json",
+            "artifacts/coverage/rust/rust-native/branch-llvm.json",
+        ),
+    ),
     "rust-pyo3-sanitizer": (
-        "llvm-cov-json",
-        "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
+        ("llvm-cov-json", "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json"),
+        (
+            "llvm-cov-branch-json",
+            "artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json",
+        ),
     ),
     "rust-wasm-sanitizer": (
-        "llvm-cov-json",
-        "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
+        ("llvm-cov-json", "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json"),
+        (
+            "llvm-cov-branch-json",
+            "artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json",
+        ),
     ),
     "rust-crypto": (
-        "llvm-cov-json",
-        "artifacts/coverage/rust/rust-crypto/llvm.json",
+        ("llvm-cov-json", "artifacts/coverage/rust/rust-crypto/llvm.json"),
+        (
+            "llvm-cov-branch-json",
+            "artifacts/coverage/rust/rust-crypto/branch-llvm.json",
+        ),
     ),
 }
+CANONICAL_REPORT_DECLARATIONS = frozenset(
+    (component, report_format, path)
+    for component, reports in SUPPORTED_REPORTS.items()
+    for report_format, path in reports
+)
 CANONICAL_RAW_ARTIFACTS = frozenset(
-    {
-        "coverage.xml",
-        "artifacts/coverage/python/coverage.json",
-        "frontend/coverage/lcov.info",
-        "frontend/coverage/coverage-final.json",
-        "artifacts/coverage/go/gateway/coverage.out",
-        "artifacts/coverage/go/ws-hub/coverage.out",
-        "artifacts/coverage/go/file-processor/coverage.out",
-        "artifacts/coverage/go/shared/coverage.out",
-        "artifacts/coverage/rust/rust-native/llvm.json",
-        "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
-        "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
-        "artifacts/coverage/rust/rust-crypto/llvm.json",
-        "artifacts/coverage/quality-manifest.json",
-    }
+    path for _, _, path in CANONICAL_REPORT_DECLARATIONS
 )
 GO_COMPONENTS = frozenset({"go-gateway", "go-ws-hub", "go-file-processor", "go-shared"})
 RUST_COMPONENTS = frozenset(
     {"rust-native", "rust-pyo3-sanitizer", "rust-wasm-sanitizer", "rust-crypto"}
 )
-SHA_PATTERN = re.compile(r"^[0-9A-Fa-f]{7,64}$")
+SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 ASCII_DECIMAL_PATTERN = re.compile(r"^[0-9]+$")
 CONDITION_COVERAGE_PATTERN = re.compile(
@@ -180,6 +198,20 @@ class _PreparedInvocation:
     output_path: Path
     report_inputs: tuple[_ReportInput, ...]
     floors: dict[str, dict[str, int]]
+    expected_reports: frozenset[tuple[str, str, str]]
+    manifest_path: str
+    provenance: dict[str, str]
+    tool_versions: dict[str, str]
+    contract: dict[str, object]
+
+
+@dataclass(frozen=True)
+class _ContractConfiguration:
+    floors: dict[str, dict[str, int]]
+    source_roots: dict[str, tuple[str, ...]]
+    expected_reports: frozenset[tuple[str, str, str]]
+    manifest_path: str
+    contract: dict[str, object]
 
 
 def _duplicate_key_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -279,11 +311,59 @@ def _parse_nonnegative_decimal(value: str | None, field: str) -> int:
     return _parse_nonnegative_integer(parsed, field)
 
 
-def _read_report_bytes(path: Path) -> bytes:
+def _is_link_or_junction(path: Path) -> bool:
     try:
-        return path.read_bytes()
+        if path.is_symlink():
+            return True
+        is_junction = getattr(path, "is_junction", None)
+        return bool(is_junction()) if callable(is_junction) else False
+    except OSError:
+        return True
+
+
+def _canonical_evidence_path(path: Path) -> str:
+    root = REPOSITORY_ROOT.resolve(strict=True)
+    candidate = path if path.is_absolute() else REPOSITORY_ROOT / path
+    try:
+        lexical = candidate.relative_to(REPOSITORY_ROOT)
+    except ValueError as error:
+        raise _InputError(f"report path is outside the repository: {path}") from error
+    current = REPOSITORY_ROOT
+    for part in lexical.parts:
+        current /= part
+        if _is_link_or_junction(current):
+            raise _InputError(
+                f"report path resolves through a symlink or junction: {path}"
+            )
+    try:
+        resolved = candidate.resolve(strict=True)
+    except OSError as error:
+        raise _InputError(
+            f"report is missing or unreadable: {path}: {error}"
+        ) from error
+    try:
+        relative = resolved.relative_to(root)
+    except ValueError as error:
+        raise _InputError(
+            f"report path resolves outside the repository: {path}"
+        ) from error
+    canonical = relative.as_posix()
+    if str(PurePosixPath(canonical)) != canonical or canonical in {"", "."}:
+        raise _InputError(f"report path is not canonical: {path}")
+    if not resolved.is_file():
+        raise _InputError(f"report path must identify a regular file: {path}")
+    return canonical
+
+
+def _read_report_bytes(path: Path) -> bytes:
+    _canonical_evidence_path(path)
+    try:
+        raw = path.read_bytes()
     except OSError as error:
         raise _InputError(f"unable to read report {path}: {error}") from error
+    if not raw:
+        raise _InputError(f"report is empty: {path}")
+    return raw
 
 
 def _decode_report(
@@ -1011,6 +1091,244 @@ def _parse_istanbul_counter_map(
     return counters
 
 
+def _validate_istanbul_source_map(
+    record: dict[str, object],
+    *,
+    counter_field: str,
+    map_field: str,
+    source: str,
+) -> None:
+    counters = record.get(counter_field)
+    source_map = record.get(map_field)
+    if not isinstance(counters, dict):
+        raise _InputError(
+            f"Istanbul JSON {counter_field} for {source} counters must be an object"
+        )
+    if not isinstance(source_map, dict):
+        raise _InputError(f"Istanbul JSON {map_field} for {source} must be an object")
+    if set(source_map) != set(counters):
+        raise _InputError(
+            f"Istanbul JSON {map_field} for {source} must match {counter_field} keys"
+        )
+    if not all(isinstance(value, dict) for value in source_map.values()):
+        raise _InputError(
+            f"Istanbul JSON {map_field} for {source} entries must be objects"
+        )
+
+
+def _coverage_py_summary_metric(
+    summary: object,
+    *,
+    covered_key: str,
+    total_key: str,
+    field: str,
+) -> dict[str, object]:
+    if not isinstance(summary, dict):
+        raise _InputError(f"coverage.py JSON {field} must be an object")
+    covered = _parse_nonnegative_integer(
+        summary.get(covered_key), f"coverage.py JSON {field}.{covered_key}"
+    )
+    total = _parse_nonnegative_integer(
+        summary.get(total_key), f"coverage.py JSON {field}.{total_key}"
+    )
+    return _measured_metric("native", covered, total)
+
+
+def _coverage_py_line_set(value: object, field: str) -> set[int]:
+    if not isinstance(value, list):
+        raise _InputError(f"coverage.py JSON {field} must be an array")
+    result: set[int] = set()
+    for index, raw_line in enumerate(value):
+        line = _parse_nonnegative_integer(
+            raw_line, f"coverage.py JSON {field}[{index}]"
+        )
+        if line == 0:
+            raise _InputError(f"coverage.py JSON {field}[{index}] must be positive")
+        if line in result:
+            raise _InputError(
+                f"coverage.py JSON {field} contains duplicate line {line}"
+            )
+        result.add(line)
+    return result
+
+
+def _coverage_py_branch_set(value: object, field: str) -> set[tuple[int, int]]:
+    if not isinstance(value, list):
+        raise _InputError(f"coverage.py JSON {field} must be an array")
+    result: set[tuple[int, int]] = set()
+    for index, raw_branch in enumerate(value):
+        if not isinstance(raw_branch, list) or len(raw_branch) != 2:
+            raise _InputError(
+                f"coverage.py JSON {field}[{index}] must be a two-integer arc"
+            )
+        origin, destination = raw_branch
+        if (
+            isinstance(origin, bool)
+            or not isinstance(origin, int)
+            or origin <= 0
+            or isinstance(destination, bool)
+            or not isinstance(destination, int)
+            or destination == 0
+        ):
+            raise _InputError(
+                f"coverage.py JSON {field}[{index}] must be a valid source arc"
+            )
+        branch = (origin, destination)
+        if branch in result:
+            raise _InputError(
+                f"coverage.py JSON {field} contains duplicate arc {branch!r}"
+            )
+        result.add(branch)
+    return result
+
+
+def _parse_python_coverage_json(
+    raw: bytes,
+    component: str,
+    ignore_outside_files: bool = False,
+) -> tuple[
+    dict[str, dict[str, object]],
+    dict[str, dict[str, dict[str, object]]],
+]:
+    text = _decode_report(raw, "coverage.py JSON report")
+    try:
+        document = json.loads(
+            text,
+            object_pairs_hook=_duplicate_key_object,
+            parse_constant=_reject_json_constant,
+        )
+    except _DuplicateKeyError as error:
+        raise _InputError(str(error)) from error
+    except (json.JSONDecodeError, RecursionError, ValueError) as error:
+        raise _InputError(f"malformed coverage.py JSON: {error}") from error
+    if not isinstance(document, dict):
+        raise _InputError("coverage.py JSON root must be an object")
+    files = document.get("files")
+    totals = document.get("totals")
+    if not isinstance(files, dict) or not files:
+        raise _InputError("coverage.py JSON files must be a non-empty object")
+    if not isinstance(totals, dict):
+        raise _InputError("coverage.py JSON totals must be an object")
+
+    file_metrics: dict[str, dict[str, dict[str, object]]] = {}
+    aggregate_statements_covered = 0
+    aggregate_statements_total = 0
+    aggregate_branches_covered = 0
+    aggregate_branches_total = 0
+    ignored_outside_file = False
+    for raw_source, record in files.items():
+        if not isinstance(raw_source, str) or not isinstance(record, dict):
+            raise _InputError("coverage.py JSON contains an invalid file record")
+        try:
+            source = _canonical_source_identity(component, raw_source)
+        except _InputError as error:
+            if ignore_outside_files and "configured roots" in str(error):
+                ignored_outside_file = True
+                continue
+            raise
+        if source in file_metrics:
+            raise _InputError(f"coverage.py JSON has duplicate source {source}")
+        summary = record.get("summary")
+        statement_metric = _coverage_py_summary_metric(
+            summary,
+            covered_key="covered_lines",
+            total_key="num_statements",
+            field=f"files[{raw_source}].summary",
+        )
+        branch_metric = _coverage_py_summary_metric(
+            summary,
+            covered_key="covered_branches",
+            total_key="num_branches",
+            field=f"files[{raw_source}].summary",
+        )
+        executed_lines = _coverage_py_line_set(
+            record.get("executed_lines"), f"files[{raw_source}].executed_lines"
+        )
+        missing_lines = _coverage_py_line_set(
+            record.get("missing_lines"), f"files[{raw_source}].missing_lines"
+        )
+        if executed_lines & missing_lines:
+            raise _InputError(
+                f"coverage.py JSON files[{raw_source}] line inventories overlap"
+            )
+        if statement_metric["covered"] != len(executed_lines) or statement_metric[
+            "total"
+        ] != len(executed_lines | missing_lines):
+            raise _InputError(
+                f"coverage.py JSON files[{raw_source}] statement summary disagrees "
+                "with executed_lines/missing_lines"
+            )
+        executed_branches = _coverage_py_branch_set(
+            record.get("executed_branches"),
+            f"files[{raw_source}].executed_branches",
+        )
+        missing_branches = _coverage_py_branch_set(
+            record.get("missing_branches"),
+            f"files[{raw_source}].missing_branches",
+        )
+        if executed_branches & missing_branches:
+            raise _InputError(
+                f"coverage.py JSON files[{raw_source}] branch inventories overlap"
+            )
+        if branch_metric["covered"] != len(executed_branches) or branch_metric[
+            "total"
+        ] != len(executed_branches | missing_branches):
+            raise _InputError(
+                f"coverage.py JSON files[{raw_source}] branch summary disagrees with "
+                "executed_branches/missing_branches"
+            )
+        aggregate_statements_covered += len(executed_lines)
+        aggregate_statements_total += len(executed_lines | missing_lines)
+        aggregate_branches_covered += len(executed_branches)
+        aggregate_branches_total += len(executed_branches | missing_branches)
+        file_metrics[source] = {
+            "lines": _unmeasured_metric(
+                "unsupported", reason_code="coverage_json_line_counter_not_used"
+            ),
+            "statements": statement_metric,
+            "branches": branch_metric,
+            "functions": _unmeasured_metric(
+                "unsupported", reason_code="coverage_json_has_no_function_counter"
+            ),
+        }
+    if not file_metrics:
+        raise _InputError("coverage.py JSON contains no in-scope file records")
+    statement_totals = _coverage_py_summary_metric(
+        totals,
+        covered_key="covered_lines",
+        total_key="num_statements",
+        field="totals",
+    )
+    branch_totals = _coverage_py_summary_metric(
+        totals,
+        covered_key="covered_branches",
+        total_key="num_branches",
+        field="totals",
+    )
+    if not ignored_outside_file and (
+        statement_totals["covered"] != aggregate_statements_covered
+        or statement_totals["total"] != aggregate_statements_total
+        or branch_totals["covered"] != aggregate_branches_covered
+        or branch_totals["total"] != aggregate_branches_total
+    ):
+        raise _InputError(
+            "coverage.py JSON totals disagree with the complete file inventory"
+        )
+    return (
+        {
+            "lines": _unmeasured_metric(
+                "unsupported", reason_code="coverage_json_line_counter_not_used"
+            ),
+            "statements": statement_totals,
+            "branches": branch_totals,
+            "functions": _unmeasured_metric(
+                "unsupported", reason_code="coverage_json_has_no_function_counter"
+            ),
+        },
+        file_metrics,
+    )
+
+
 def _parse_istanbul_branch_map(value: object) -> list[int]:
     if not isinstance(value, dict):
         raise _InputError("Istanbul JSON branch counters must be an object")
@@ -1111,6 +1429,24 @@ def _parse_frontend_istanbul_json(
             "Istanbul JSON report",
         )
 
+        _validate_istanbul_source_map(
+            record,
+            counter_field="s",
+            map_field="statementMap",
+            source=source,
+        )
+        _validate_istanbul_source_map(
+            record,
+            counter_field="b",
+            map_field="branchMap",
+            source=source,
+        )
+        _validate_istanbul_source_map(
+            record,
+            counter_field="f",
+            map_field="fnMap",
+            source=source,
+        )
         statement_counters = _parse_istanbul_counter_map(
             record.get("s"),
             f"s for {source}",
@@ -1171,7 +1507,7 @@ def _inclusive_interval_union_length(intervals: Sequence[tuple[int, int]]) -> in
 
 
 def _go_line_coverage_counts(
-    source_intervals: dict[str, Sequence[tuple[int, int, bool]]],
+    source_intervals: Mapping[str, Sequence[tuple[int, int, bool]]],
 ) -> tuple[int, int]:
     """Return covered/total unique source lines from grouped Go block ranges."""
     covered = 0
@@ -1634,8 +1970,9 @@ def _rust_source_branch_metrics(
     monomorphization would make the Tier0 result depend on compiler codegen.
     """
     entries: list[object] = []
-    if isinstance(document.get("files"), list):
-        entries.extend(document["files"])
+    top_level_files = document.get("files")
+    if isinstance(top_level_files, list):
+        entries.extend(top_level_files)
     data = document.get("data")
     if (
         isinstance(data, list)
@@ -1643,7 +1980,7 @@ def _rust_source_branch_metrics(
         and isinstance(data[0], dict)
         and isinstance(data[0].get("files"), list)
     ):
-        entries.extend(data[0]["files"])
+        entries.extend(cast(list[object], data[0]["files"]))
 
     result: dict[str, dict[str, object]] = {}
     for entry in entries:
@@ -1668,12 +2005,19 @@ def _rust_source_branch_metrics(
                     f"LLVM JSON branches[{index}] must contain source coordinates "
                     "and both outcome counters"
                 )
-            coordinates = tuple(
+            coordinates: tuple[int, int, int, int] = (
                 _parse_nonnegative_integer(
-                    branch[offset],
-                    f"LLVM branch {index} coordinate {offset}",
-                )
-                for offset in range(4)
+                    branch[0], f"LLVM branch {index} coordinate 0"
+                ),
+                _parse_nonnegative_integer(
+                    branch[1], f"LLVM branch {index} coordinate 1"
+                ),
+                _parse_nonnegative_integer(
+                    branch[2], f"LLVM branch {index} coordinate 2"
+                ),
+                _parse_nonnegative_integer(
+                    branch[3], f"LLVM branch {index} coordinate 3"
+                ),
             )
             true_count = _parse_nonnegative_integer(
                 branch[4], f"LLVM branch {index} true count"
@@ -2042,7 +2386,15 @@ def _parse_tier0_go_files(
             {filename: intervals[filename]}
         )
         result[filename] = {
-            "lines": _measured_metric("derived", covered_lines, total_lines),
+            "lines": _measured_metric(
+                "derived",
+                covered_lines,
+                total_lines,
+                derivation=(
+                    "unique source lines in coverprofile blocks; covered when any "
+                    "overlapping block has count greater than zero"
+                ),
+            ),
             "statements": _measured_metric(
                 "native", covered_statements, total_statements
             ),
@@ -2180,9 +2532,54 @@ def _resolve_path(value: str) -> Path:
     if not candidate.is_absolute():
         candidate = REPOSITORY_ROOT / candidate
     try:
-        return candidate.resolve(strict=False)
+        return Path(os.path.abspath(candidate))
     except OSError as error:
         raise _InputError(f"unable to resolve path {value}: {error}") from error
+
+
+def _configure_repository_root(value: str | None) -> None:
+    global REPOSITORY_ROOT
+    candidate = Path(value) if value is not None else DEFAULT_REPOSITORY_ROOT
+    try:
+        resolved = candidate.resolve(strict=True)
+    except OSError as error:
+        raise _InputError(
+            f"unable to resolve repository root {candidate}: {error}"
+        ) from error
+    if not resolved.is_dir():
+        raise _InputError(f"repository root must be a directory: {resolved}")
+    REPOSITORY_ROOT = resolved
+
+
+def _current_git_head() -> str:
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        raise _InputError(
+            "unable to resolve current repository HEAD: git is unavailable"
+        )
+    try:
+        result = subprocess.run(  # noqa: S603
+            [git_executable, "rev-parse", "HEAD"],
+            cwd=REPOSITORY_ROOT,
+            capture_output=True,
+            check=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise _InputError(
+            f"unable to resolve current repository HEAD: {error}"
+        ) from error
+    head = result.stdout.strip()
+    if SHA_PATTERN.fullmatch(head) is None:
+        raise _InputError("current repository HEAD is not a canonical Git SHA")
+    return head
+
+
+def _lexical_manifest_path(path: Path) -> str:
+    try:
+        return path.relative_to(REPOSITORY_ROOT).as_posix()
+    except ValueError as error:
+        raise _InputError(f"evidence path is outside the repository: {path}") from error
 
 
 def _paths_alias(first: Path, second: Path) -> bool:
@@ -2190,10 +2587,7 @@ def _paths_alias(first: Path, second: Path) -> bool:
 
 
 def _manifest_path(path: Path) -> str:
-    try:
-        return path.relative_to(REPOSITORY_ROOT).as_posix()
-    except ValueError:
-        return path.as_posix()
+    return _lexical_manifest_path(path)
 
 
 def _parse_component_path(
@@ -2214,22 +2608,46 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = _CoverageArgumentParser(
         description="Normalize native coverage evidence into a quality manifest."
     )
+    parser.add_argument(
+        "--repository-root",
+        metavar="PATH",
+        help="isolated Git checkout root (defaults to the checkout containing this script)",
+    )
     parser.add_argument("--contract", metavar="PATH")
     parser.add_argument("--commit-sha", required=True, metavar="SHA")
     parser.add_argument("--generated-at", required=True, metavar="TIMESTAMP")
     parser.add_argument("--output", required=True, metavar="PATH")
+    parser.add_argument(
+        "--provenance-mode",
+        required=True,
+        choices=("local", "github-actions"),
+    )
+    parser.add_argument("--workflow-run-id", metavar="ID")
+    parser.add_argument("--workflow-run-attempt", metavar="ATTEMPT")
+    parser.add_argument("--workflow-event", metavar="EVENT")
+    parser.add_argument("--workflow-repository", metavar="OWNER/REPO")
+    parser.add_argument("--workflow-ref", metavar="REF")
+    parser.add_argument("--workflow-job", metavar="JOB")
+    parser.add_argument(
+        "--tool-version",
+        action="append",
+        default=[],
+        metavar="NAME=VERSION",
+    )
     parser.add_argument(
         "--ignore-outside-files",
         action="store_true",
         help="Ignore files that are outside the component's configured roots instead of failing.",
     )
     parser.add_argument("--python-xml", action="append", default=[], metavar="PATH")
+    parser.add_argument("--python-json", action="append", default=[], metavar="PATH")
     parser.add_argument(
         "--frontend-lcov",
         action="append",
         default=[],
         metavar="PATH",
     )
+    parser.add_argument("--frontend-json", action="append", default=[], metavar="PATH")
     parser.add_argument(
         "--go-report", action="append", default=[], metavar="COMPONENT=PATH"
     )
@@ -2262,7 +2680,7 @@ def _parse_generated_at(value: str) -> datetime:
         ) from error
 
 
-def _load_contract(path: Path, generated_at: datetime) -> dict[str, dict[str, int]]:
+def _load_contract(path: Path, generated_at: datetime) -> _ContractConfiguration:
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as error:
@@ -2284,13 +2702,22 @@ def _load_contract(path: Path, generated_at: datetime) -> dict[str, dict[str, in
     if contract_errors:
         raise _InputError(f"malformed contract: {'; '.join(contract_errors)}")
 
-    required_artifacts = contract["required_artifacts"]
-    if not isinstance(required_artifacts, list):
-        raise _InputError("malformed contract: required_artifacts must be a list")
-    missing_artifacts = CANONICAL_RAW_ARTIFACTS - set(required_artifacts)
-    if missing_artifacts:
-        paths = ", ".join(sorted(missing_artifacts))
-        raise _InputError(f"malformed contract: missing canonical artifacts: {paths}")
+    coverage_reports = contract["coverage_reports"]
+    if not isinstance(coverage_reports, list):
+        raise _InputError("malformed contract: coverage_reports must be a list")
+    expected_reports = frozenset(
+        (
+            str(declaration["component"]),
+            str(declaration["format"]),
+            str(declaration["path"]),
+        )
+        for declaration in coverage_reports
+        if isinstance(declaration, dict)
+    )
+    if expected_reports != CANONICAL_REPORT_DECLARATIONS:
+        raise _InputError(
+            "malformed contract: coverage_reports registry is not canonical"
+        )
 
     components = contract["components"]
     if not isinstance(components, dict):
@@ -2316,15 +2743,41 @@ def _load_contract(path: Path, generated_at: datetime) -> dict[str, dict[str, in
                 )
             component_floors[metric] = value
         floors[component] = component_floors
-    return floors
+    raw_source_roots = contract["source_roots"]
+    if not isinstance(raw_source_roots, dict):
+        raise _InputError("malformed contract: source_roots must be an object")
+    source_roots: dict[str, tuple[str, ...]] = {}
+    for component in COMPONENTS:
+        roots = raw_source_roots[component]
+        if not isinstance(roots, list) or not all(
+            isinstance(root, str) for root in roots
+        ):
+            raise _InputError(
+                f"malformed contract: source_roots.{component} must be a string array"
+            )
+        source_roots[component] = tuple(roots)
+    manifest_path = contract["manifest_path"]
+    if not isinstance(manifest_path, str):
+        raise _InputError("malformed contract: manifest_path must be a string")
+    return _ContractConfiguration(
+        floors=floors,
+        source_roots=source_roots,
+        expected_reports=expected_reports,
+        manifest_path=manifest_path,
+        contract=contract,
+    )
 
 
 def _collect_report_inputs(arguments: argparse.Namespace) -> list[_ReportInput]:
     inputs: list[_ReportInput] = []
     for value in arguments.python_xml:
         inputs.append(_ReportInput("python", "cobertura-xml", _resolve_path(value)))
+    for value in arguments.python_json:
+        inputs.append(_ReportInput("python", "coverage-py-json", _resolve_path(value)))
     for value in arguments.frontend_lcov:
         inputs.append(_ReportInput("frontend", "lcov", _resolve_path(value)))
+    for value in arguments.frontend_json:
+        inputs.append(_ReportInput("frontend", "istanbul-json", _resolve_path(value)))
     for value in arguments.go_report:
         inputs.append(
             _parse_component_path(
@@ -2357,27 +2810,12 @@ def _collect_report_inputs(arguments: argparse.Namespace) -> list[_ReportInput]:
 
 def _read_raw_report(report_input: _ReportInput) -> _RawReport:
     raw = _read_report_bytes(report_input.path)
-    supplemental: tuple[_RawReport, ...] = ()
-    if report_input.report_format == "lcov":
-        istanbul_path = report_input.path.with_name("coverage-final.json")
-        if istanbul_path.is_file():
-            istanbul_raw = _read_report_bytes(istanbul_path)
-            supplemental = (
-                _RawReport(
-                    component=report_input.component,
-                    report_format="istanbul-json",
-                    path=istanbul_path,
-                    raw=istanbul_raw,
-                    sha256=hashlib.sha256(istanbul_raw).hexdigest(),
-                ),
-            )
     return _RawReport(
         component=report_input.component,
         report_format=report_input.report_format,
         path=report_input.path,
         raw=raw,
         sha256=hashlib.sha256(raw).hexdigest(),
-        supplemental=supplemental,
     )
 
 
@@ -2392,6 +2830,12 @@ def _parse_report(
         file_metrics = _parse_tier0_files(
             raw_report,
             ignore_outside_files=ignore_outside_files,
+        )
+    elif raw_report.report_format == "coverage-py-json":
+        metrics, file_metrics = _parse_python_coverage_json(
+            raw_report.raw,
+            raw_report.component,
+            ignore_outside_files,
         )
     elif raw_report.report_format == "lcov":
         metrics = _parse_frontend_lcov(
@@ -2462,6 +2906,12 @@ def _parse_report(
                         )
                         if not preserve_vacuous_metric:
                             target_metrics[metric_name] = istanbul_metric
+    elif raw_report.report_format == "istanbul-json":
+        metrics, file_metrics = _parse_frontend_istanbul_json(
+            raw_report.raw,
+            raw_report.component,
+            ignore_outside_files,
+        )
     elif raw_report.report_format == "go-coverprofile":
         metrics = _parse_go_coverprofile(
             raw_report.raw, raw_report.component, ignore_outside_files
@@ -2506,6 +2956,11 @@ def _missing_metrics() -> dict[str, dict[str, object]]:
 
 
 def _metric_satisfies_floor(metric: dict[str, object], floor: int) -> bool:
+    status = metric["status"]
+    if status == "unsupported":
+        return floor == 0
+    if status in {"missing", "experimental"}:
+        return False
     covered = metric["covered"]
     total = metric["total"]
     if (
@@ -2522,9 +2977,9 @@ def _metric_satisfies_floor(metric: dict[str, object], floor: int) -> bool:
             and covered == 0
             and metric.get("percent") == 100.0
         )
-    if metric["status"] != "native":
+    if status not in {"native", "derived"}:
         return False
-    return covered * 100 >= total * floor
+    return covered == total and metric.get("percent") == 100.0
 
 
 def _metric_failure(
@@ -2533,13 +2988,11 @@ def _metric_failure(
     metric: dict[str, object],
     floor: int,
 ) -> str | None:
-    if floor == 0:
-        return None
     if _metric_satisfies_floor(metric, floor):
         return None
     status = metric["status"]
     if status == "derived":
-        return f"{component}.{metric_name} is derived and cannot satisfy strict coverage floor"
+        return f"{component}.{metric_name} trusted derivation is below 100%"
     if status != "native":
         return f"{component}.{metric_name} is {status} and cannot satisfy strict coverage floor"
     return f"{component}.{metric_name} is below required coverage floor {floor}"
@@ -2549,43 +3002,35 @@ def _component_entry(
     component: str,
     reports: list[_ParsedReport],
     floors: dict[str, int],
-    input_count: int,
+    supplied_count: int,
+    required_count: int,
     evidence_errors: list[str],
 ) -> tuple[dict[str, object], list[str], dict[str, object] | None]:
-    if input_count == 0:
-        if component in SUPPORTED_REPORTS:
-            _, expected_path = SUPPORTED_REPORTS[component]
-            error = f"expected report for component {component} was not supplied"
-            missing_report: dict[str, object] | None = {
-                "component": component,
-                "path": expected_path,
-                "reason_code": "expected_report_not_supplied",
-            }
-        else:
-            missing_report = {
-                "component": component,
-                "reason_code": "alternative_gate_required",
-            }
-            entry = {
-                "status": "missing",
-                "metrics": _missing_metrics(),
-                "errors": [],
-            }
-            return entry, [], missing_report
-        entry = {
-            "status": "missing",
-            "metrics": _missing_metrics(),
-            "errors": [error],
+    if required_count == 0:
+        metrics = {
+            metric: _unmeasured_metric(
+                "unsupported", reason_code="component_uses_noncoverage_quality_gates"
+            )
+            for metric in METRICS
         }
-        return entry, [error], missing_report
+        return (
+            {
+                "status": "not_applicable",
+                "metrics": metrics,
+                "errors": [],
+            },
+            [],
+            None,
+        )
 
     errors = list(evidence_errors)
-    if input_count > 1:
-        errors.append(f"duplicate report input for component {component}")
-    if errors:
-        metrics = _missing_metrics()
-    else:
-        metrics = reports[0].metrics if reports else _missing_metrics()
+    if supplied_count != required_count:
+        errors.append(
+            f"component {component} requires exactly {required_count} reports, "
+            f"got {supplied_count}"
+        )
+    metrics = reports[0].metrics if reports else _missing_metrics()
+    if reports:
         errors.extend(
             failure
             for metric_name in METRICS
@@ -2602,7 +3047,13 @@ def _component_entry(
     errors.sort()
     return (
         {
-            "status": "passed" if not errors else "failed",
+            "status": (
+                "passed"
+                if not errors
+                else "missing"
+                if supplied_count == 0
+                else "failed"
+            ),
             "metrics": metrics,
             "errors": errors,
         },
@@ -2631,6 +3082,12 @@ def _merge_rust_branch_report(
         )
 
     merged_file_metrics: dict[str, dict[str, dict[str, object]]] = {}
+    stable_sources = set(stable_report.file_metrics)
+    nightly_sources = set(branch_report.file_metrics)
+    for path in sorted(nightly_sources - stable_sources):
+        errors.append(
+            f"{stable_report.component} nightly branch report contains unexpected source {path}"
+        )
     for path, stable_metrics in stable_report.file_metrics.items():
         nightly_metrics = branch_report.file_metrics.get(path)
         if nightly_metrics is None:
@@ -2658,6 +3115,111 @@ def _merge_rust_branch_report(
     )
 
 
+def _same_counter_pair(first: dict[str, object], second: dict[str, object]) -> bool:
+    return first.get("covered") == second.get("covered") and first.get(
+        "total"
+    ) == second.get("total")
+
+
+def _merge_python_reports(
+    xml_report: _ParsedReport,
+    json_report: _ParsedReport,
+) -> tuple[_ParsedReport, list[str]]:
+    errors: list[str] = []
+    if not _same_counter_pair(
+        xml_report.metrics["lines"], json_report.metrics["statements"]
+    ):
+        errors.append("python coverage XML and JSON disagree for statements/lines")
+    if not _same_counter_pair(
+        xml_report.metrics["branches"], json_report.metrics["branches"]
+    ):
+        errors.append("python coverage XML and JSON disagree for branches")
+    xml_sources = set(xml_report.file_metrics)
+    json_sources = set(json_report.file_metrics)
+    for source in sorted(xml_sources - json_sources):
+        errors.append(f"python coverage JSON is missing source {source}")
+    for source in sorted(json_sources - xml_sources):
+        errors.append(f"python coverage JSON contains unexpected source {source}")
+
+    file_metrics: dict[str, dict[str, dict[str, object]]] = {}
+    for source, xml_metrics in xml_report.file_metrics.items():
+        merged_metrics = dict(xml_metrics)
+        json_metrics = json_report.file_metrics.get(source)
+        if json_metrics is not None:
+            if not _same_counter_pair(xml_metrics["lines"], json_metrics["statements"]):
+                errors.append(
+                    f"python coverage XML and JSON disagree for {source}.statements/lines"
+                )
+            if not _same_counter_pair(
+                xml_metrics["branches"], json_metrics["branches"]
+            ):
+                errors.append(
+                    f"python coverage XML and JSON disagree for {source}.branches"
+                )
+            merged_metrics["statements"] = json_metrics["statements"]
+        file_metrics[source] = merged_metrics
+    metrics = dict(xml_report.metrics)
+    metrics["statements"] = json_report.metrics["statements"]
+    return (
+        _ParsedReport(
+            component=xml_report.component,
+            report_format="cobertura-xml+coverage-py-json",
+            path=xml_report.path,
+            metrics=metrics,
+            file_metrics=file_metrics,
+            sha256=xml_report.sha256,
+        ),
+        errors,
+    )
+
+
+def _merge_frontend_reports(
+    lcov_report: _ParsedReport,
+    istanbul_report: _ParsedReport,
+) -> tuple[_ParsedReport, list[str]]:
+    errors: list[str] = []
+    for metric_name in ("branches", "functions"):
+        if not _same_counter_pair(
+            lcov_report.metrics[metric_name], istanbul_report.metrics[metric_name]
+        ):
+            errors.append(f"frontend LCOV and Istanbul JSON disagree for {metric_name}")
+    lcov_sources = set(lcov_report.file_metrics)
+    istanbul_sources = set(istanbul_report.file_metrics)
+    for source in sorted(lcov_sources - istanbul_sources):
+        errors.append(f"frontend Istanbul JSON is missing source {source}")
+    for source in sorted(istanbul_sources - lcov_sources):
+        errors.append(f"frontend Istanbul JSON contains unexpected source {source}")
+
+    file_metrics: dict[str, dict[str, dict[str, object]]] = {}
+    for source, lcov_metrics in lcov_report.file_metrics.items():
+        merged_metrics = dict(lcov_metrics)
+        istanbul_metrics = istanbul_report.file_metrics.get(source)
+        if istanbul_metrics is not None:
+            for metric_name in ("branches", "functions"):
+                if not _same_counter_pair(
+                    lcov_metrics[metric_name], istanbul_metrics[metric_name]
+                ):
+                    errors.append(
+                        f"frontend LCOV and Istanbul JSON disagree for "
+                        f"{source}.{metric_name}"
+                    )
+            merged_metrics["statements"] = istanbul_metrics["statements"]
+        file_metrics[source] = merged_metrics
+    metrics = dict(lcov_report.metrics)
+    metrics["statements"] = istanbul_report.metrics["statements"]
+    return (
+        _ParsedReport(
+            component=lcov_report.component,
+            report_format="lcov+istanbul-json",
+            path=lcov_report.path,
+            metrics=metrics,
+            file_metrics=file_metrics,
+            sha256=lcov_report.sha256,
+        ),
+        errors,
+    )
+
+
 def _load_tier0_rules() -> tuple[list[str], str | None]:
     path = REPOSITORY_ROOT / "quality" / "ownership-mapping.json"
     try:
@@ -2679,8 +3241,54 @@ def _tier0_rule_matches(path: str, rule: str) -> bool:
     )
 
 
+def _tier0_source_suffixes(component: str) -> frozenset[str]:
+    if component == "python":
+        return frozenset({".py"})
+    if component == "frontend":
+        return frozenset({".ts", ".tsx"})
+    if component.startswith("go-"):
+        return frozenset({".go"})
+    if component.startswith("rust-"):
+        return frozenset({".rs"})
+    return frozenset()
+
+
+def _expected_tier0_sources(rules: Sequence[str]) -> set[tuple[str, str]]:
+    expected: set[tuple[str, str]] = set()
+    for component, roots in SOURCE_ROOTS.items():
+        suffixes = _tier0_source_suffixes(component)
+        if not suffixes:
+            continue
+        for root_value in roots:
+            root = REPOSITORY_ROOT / root_value
+            if not root.is_dir() or _is_link_or_junction(root):
+                continue
+            for source in root.rglob("*"):
+                if not source.is_file() or _is_link_or_junction(source):
+                    continue
+                relative = source.relative_to(REPOSITORY_ROOT).as_posix()
+                pure = PurePosixPath(relative)
+                if pure.suffix not in suffixes:
+                    continue
+                lowered = pure.name.lower()
+                if component.startswith("go-") and lowered.endswith("_test.go"):
+                    continue
+                if component == "frontend" and (
+                    ".test." in lowered
+                    or ".spec." in lowered
+                    or "__tests__" in pure.parts
+                ):
+                    continue
+                if component.startswith("rust-") and "tests" in pure.parts:
+                    continue
+                if any(_tier0_rule_matches(relative, rule) for rule in rules):
+                    expected.add((component, relative))
+    return expected
+
+
 def _aggregate_tier0(
     reports_by_component: defaultdict[str, list[_ParsedReport]],
+    floors: dict[str, dict[str, int]],
 ) -> dict[str, object]:
     rules, rules_error = _load_tier0_rules()
     file_records: list[tuple[str, str, dict[str, dict[str, object]]]] = []
@@ -2698,55 +3306,126 @@ def _aggregate_tier0(
     errors: list[str] = []
     if rules_error:
         errors.append(rules_error)
+    actual_inventory = {(component, path) for path, component in deduplicated}
+    expected_inventory = _expected_tier0_sources(rules)
+    for _, path in sorted(expected_inventory - actual_inventory):
+        errors.append(f"Tier0 source inventory is missing evidence for {path}")
+    for _, path in sorted(actual_inventory - expected_inventory):
+        errors.append(f"Tier0 evidence contains unexpected source {path}")
+
+    measured_by_metric: dict[str, list[dict[str, object]]] = {
+        metric: [] for metric in METRICS
+    }
+    not_applicable = {metric: 0 for metric in METRICS}
+    for component, path in sorted(expected_inventory - actual_inventory):
+        files.append(
+            {"path": path, "component": component, "metrics": _missing_metrics()}
+        )
     for (path, component), metrics in sorted(deduplicated.items()):
         files.append({"path": path, "component": component, "metrics": metrics})
-        for metric_name in ("lines", "branches", "functions"):
-            if metrics[metric_name]["status"] not in {"native", "derived"}:
+        for metric_name in METRICS:
+            metric = metrics[metric_name]
+            status = metric["status"]
+            if status in {"native", "derived"}:
+                measured_by_metric[metric_name].append(metric)
+                if not _metric_satisfies_floor(metric, 100):
+                    errors.append(f"{path} ({component}).{metric_name} is below 100%")
+            elif status == "unsupported" and floors[component][metric_name] == 0:
+                not_applicable[metric_name] += 1
+            elif status == "unsupported":
                 errors.append(
-                    f"{path} ({component}).{metric_name} is not natively measured"
+                    f"{path} ({component}).{metric_name} is unsupported but its floor is 100"
+                )
+            else:
+                errors.append(
+                    f"{path} ({component}).{metric_name} is {status} and incomplete"
                 )
 
     aggregate: dict[str, dict[str, object]] = {}
+    metric_summary: dict[str, dict[str, int]] = {}
     for metric_name in METRICS:
-        entries = [metrics[metric_name] for _, _, metrics in file_records]
+        entries = measured_by_metric[metric_name]
+        metric_summary[metric_name] = {
+            "applicable_files": len(entries),
+            "not_applicable_files": not_applicable[metric_name],
+        }
         if not entries:
-            aggregate[metric_name] = _unmeasured_metric("missing")
-            continue
-        if any(
-            entry["status"] not in {"native", "derived"}
-            or not isinstance(entry["covered"], int)
-            or not isinstance(entry["total"], int)
-            for entry in entries
-        ):
             aggregate[metric_name] = _unmeasured_metric(
-                "unsupported", reason_code="tier0_file_metric_not_measured"
+                "unsupported", reason_code="tier0_metric_not_applicable"
             )
             continue
-        covered = sum(int(entry["covered"]) for entry in entries)
-        total = sum(int(entry["total"]) for entry in entries)
+        covered = sum(cast(int, entry["covered"]) for entry in entries)
+        total = sum(cast(int, entry["total"]) for entry in entries)
         if any(entry["status"] == "derived" for entry in entries):
             aggregate[metric_name] = _measured_metric(
                 "derived",
                 covered,
                 total,
-                derivation="sum of matched Tier0 file metrics",
+                derivation="sum of applicable Tier0 file metrics",
             )
         else:
             aggregate[metric_name] = _measured_metric("native", covered, total)
 
+    files.sort(key=lambda entry: (str(entry["component"]), str(entry["path"])))
     errors = sorted(set(errors))
     return {
-        "status": "not_observed" if not files else "measurement_only",
+        "status": "ready" if files and not errors else "failed",
         "rules": rules,
         "coverage": aggregate,
+        "metric_summary": metric_summary,
         "files": files,
         "errors": errors,
     }
 
 
+def _parse_tool_versions(values: Sequence[str]) -> dict[str, str]:
+    versions: dict[str, str] = {"quality-normalizer": NORMALIZER_VERSION}
+    for value in values:
+        name, separator, version = value.partition("=")
+        if not separator or not name.strip() or not version.strip():
+            raise _InputError("tool-version must use NAME=VERSION")
+        name = name.strip()
+        version = version.strip()
+        if name in versions:
+            raise _InputError(f"duplicate tool-version entry: {name}")
+        versions[name] = version
+    return dict(sorted(versions.items()))
+
+
+def _build_provenance(arguments: argparse.Namespace) -> dict[str, str]:
+    workflow_values = {
+        "workflow_run_id": arguments.workflow_run_id,
+        "workflow_run_attempt": arguments.workflow_run_attempt,
+        "workflow_event": arguments.workflow_event,
+        "workflow_repository": arguments.workflow_repository,
+        "workflow_ref": arguments.workflow_ref,
+        "workflow_job": arguments.workflow_job,
+    }
+    if arguments.provenance_mode == "local":
+        if any(value is not None for value in workflow_values.values()):
+            raise _InputError("workflow provenance flags are forbidden in local mode")
+        return {"mode": "local", **dict.fromkeys(workflow_values, "local")}
+    missing = [field for field, value in workflow_values.items() if not value]
+    if missing:
+        raise _InputError(
+            "github-actions provenance requires: " + ", ".join(sorted(missing))
+        )
+    return {
+        "mode": "github-actions",
+        **{field: str(value) for field, value in workflow_values.items()},
+    }
+
+
 def _prepare_invocation(arguments: argparse.Namespace) -> _PreparedInvocation:
+    _configure_repository_root(arguments.repository_root)
     if SHA_PATTERN.fullmatch(arguments.commit_sha) is None:
-        raise _InputError("commit-sha must be a 7-64 character hexadecimal Git SHA")
+        raise _InputError("commit-sha must be a lowercase 40-character Git SHA")
+    current_head = _current_git_head()
+    if arguments.commit_sha != current_head:
+        raise _InputError(
+            f"commit-sha must equal current repository HEAD {current_head}, "
+            f"got {arguments.commit_sha}"
+        )
     generated_at = _parse_generated_at(arguments.generated_at)
     contract_path = (
         _resolve_path(arguments.contract)
@@ -2755,23 +3434,40 @@ def _prepare_invocation(arguments: argparse.Namespace) -> _PreparedInvocation:
     )
     output_path = _resolve_path(arguments.output)
     report_inputs = _collect_report_inputs(arguments)
-    report_paths: list[Path] = []
-    for entry in report_inputs:
-        report_paths.append(entry.path)
-        if entry.report_format == "lcov":
-            report_paths.append(entry.path.with_name("coverage-final.json"))
-    for path in [contract_path, *report_paths]:
+    for path in [contract_path, *(entry.path for entry in report_inputs)]:
         if _paths_alias(output_path, path):
             raise _InputError(
                 "output path must not alias the contract or an input report"
             )
 
-    floors = _load_contract(contract_path, generated_at)
+    configuration = _load_contract(contract_path, generated_at)
+    global SOURCE_ROOTS
+    SOURCE_ROOTS = configuration.source_roots
+    if _lexical_manifest_path(output_path) != configuration.manifest_path:
+        raise _InputError(
+            f"output must equal contract manifest_path {configuration.manifest_path}"
+        )
+    for entry in report_inputs:
+        identity = (
+            entry.component,
+            entry.report_format,
+            _lexical_manifest_path(entry.path),
+        )
+        if identity not in configuration.expected_reports:
+            raise _InputError(
+                "report input does not match the contract coverage_reports registry: "
+                f"{identity[2]}"
+            )
     return _PreparedInvocation(
         arguments=arguments,
         output_path=output_path,
         report_inputs=tuple(report_inputs),
-        floors=floors,
+        floors=configuration.floors,
+        expected_reports=configuration.expected_reports,
+        manifest_path=configuration.manifest_path,
+        provenance=_build_provenance(arguments),
+        tool_versions=_parse_tool_versions(arguments.tool_version),
+        contract=configuration.contract,
     )
 
 
@@ -2791,12 +3487,35 @@ def _build_manifest(
     evidence_errors_by_component: defaultdict[str, list[str]] = defaultdict(list)
     raw_reports: list[_RawReport] = []
     structural_errors: list[str] = []
+    supplied_declarations: list[tuple[str, str, str]] = [
+        (
+            report_input.component,
+            report_input.report_format,
+            _lexical_manifest_path(report_input.path),
+        )
+        for report_input in report_inputs
+    ]
+    supplied_declaration_set = set(supplied_declarations)
+    for declaration in sorted(invocation.expected_reports - supplied_declaration_set):
+        component, _, path = declaration
+        message = f"expected report not supplied for component {component}: {path}"
+        evidence_errors_by_component[component].append(message)
+    duplicate_declarations = sorted(
+        {
+            declaration
+            for declaration in supplied_declarations
+            if supplied_declarations.count(declaration) > 1
+        }
+    )
+    for component, _, path in duplicate_declarations:
+        message = f"report input must be supplied exactly once for {component}: {path}"
+        evidence_errors_by_component[component].append(message)
+
     for report_input in report_inputs:
+        report_input_counts[report_input.component] += 1
         is_branch_report = report_input.report_format == "llvm-cov-branch-json"
         if is_branch_report:
             branch_input_counts[report_input.component] += 1
-        else:
-            report_input_counts[report_input.component] += 1
         try:
             raw_report = _read_raw_report(report_input)
         except _InputError as error:
@@ -2821,6 +3540,50 @@ def _build_manifest(
             else:
                 reports_by_component[report.component].append(report)
 
+    paired_components = (
+        (
+            "python",
+            "cobertura-xml",
+            "coverage-py-json",
+            _merge_python_reports,
+        ),
+        (
+            "frontend",
+            "lcov",
+            "istanbul-json",
+            _merge_frontend_reports,
+        ),
+    )
+    for (
+        component,
+        primary_format,
+        supplemental_format,
+        merge_reports,
+    ) in paired_components:
+        reports = reports_by_component[component]
+        primary = [
+            report for report in reports if report.report_format == primary_format
+        ]
+        supplemental = [
+            report for report in reports if report.report_format == supplemental_format
+        ]
+        if len(primary) != 1 or len(supplemental) != 1:
+            if (
+                report_input_counts[component] == 2
+                and not evidence_errors_by_component[component]
+            ):
+                message = (
+                    f"component {component} requires one {primary_format} report and one "
+                    f"{supplemental_format} report"
+                )
+                evidence_errors_by_component[component].append(message)
+                structural_errors.append(message)
+            continue
+        merged_report, merge_errors = merge_reports(primary[0], supplemental[0])
+        reports_by_component[component] = [merged_report]
+        evidence_errors_by_component[component].extend(merge_errors)
+        structural_errors.extend(merge_errors)
+
     for component in RUST_COMPONENTS:
         branch_count = branch_input_counts[component]
         if branch_count == 0:
@@ -2843,16 +3606,22 @@ def _build_manifest(
         )
         reports_by_component[component] = [merged_report]
         evidence_errors_by_component[component].extend(merge_errors)
+        structural_errors.extend(merge_errors)
 
     components: dict[str, object] = {}
     missing_reports: list[dict[str, object]] = []
     validation_errors: list[str] = []
     for component in COMPONENTS:
+        required_count = sum(
+            declaration_component == component
+            for declaration_component, _, _ in invocation.expected_reports
+        )
         entry, errors, missing_report = _component_entry(
             component,
             reports_by_component[component],
             floors[component],
             report_input_counts[component],
+            required_count,
             evidence_errors_by_component[component],
         )
         components[component] = entry
@@ -2860,6 +3629,7 @@ def _build_manifest(
         if missing_report is not None:
             missing_reports.append(missing_report)
 
+    validation_errors.extend(structural_errors)
     validation_errors = sorted(set(validation_errors))
     structural_errors = sorted(set(structural_errors))
     report_entries = [
@@ -2868,6 +3638,7 @@ def _build_manifest(
             "format": report.report_format,
             "path": _manifest_path(report.path),
             "sha256": report.sha256,
+            "size_bytes": len(report.raw),
         }
         for report in raw_reports
     ]
@@ -2879,25 +3650,62 @@ def _build_manifest(
             str(entry["sha256"]),
         )
     )
-    missing_reports.sort(
-        key=lambda entry: (str(entry["component"]), str(entry.get("path", "")))
-    )
+    missing_reports = [
+        {
+            "component": component,
+            "path": path,
+            "reason_code": "expected_report_not_supplied",
+        }
+        for component, _, path in sorted(
+            invocation.expected_reports - supplied_declaration_set
+        )
+    ]
+    tier0 = _aggregate_tier0(reports_by_component, floors)
+    tier0_errors = tier0["errors"]
+    if isinstance(tier0_errors, list):
+        validation_errors.extend(str(error) for error in tier0_errors)
+        validation_errors = sorted(set(validation_errors))
     manifest: dict[str, object] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "commit_sha": arguments.commit_sha,
         "generated_at": arguments.generated_at,
+        "manifest_path": invocation.manifest_path,
         "source_roots": {
             component: list(SOURCE_ROOTS[component]) for component in COMPONENTS
         },
+        "tool_versions": invocation.tool_versions,
+        "provenance": invocation.provenance,
+        "generation": {
+            "command": "scripts/quality/normalize_coverage_reports.py",
+            "normalizer_version": NORMALIZER_VERSION,
+        },
         "reports": report_entries,
         "components": components,
-        "tier0": _aggregate_tier0(reports_by_component),
+        "tier0": tier0,
         "missing_reports": missing_reports,
         "validation": {
             "valid": not validation_errors,
             "errors": validation_errors,
         },
     }
+    if not validation_errors:
+        evidence_errors = validate_manifest_evidence(
+            manifest,
+            contract=invocation.contract,
+            manifest_path=output_path,
+            repository_root=REPOSITORY_ROOT,
+            schema_path=(
+                DEFAULT_REPOSITORY_ROOT / "quality" / "coverage-manifest.schema.json"
+            ),
+            expected_commit_sha=arguments.commit_sha,
+            expected_provenance=invocation.provenance,
+        )
+        if evidence_errors:
+            validation_errors = sorted(set(evidence_errors))
+            manifest["validation"] = {
+                "valid": False,
+                "errors": validation_errors,
+            }
     return manifest, validation_errors, structural_errors, output_path
 
 
@@ -2968,8 +3776,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 2
 
     if validation_errors:
-        for error in validation_errors:
-            _print_error(error)
+        for validation_error in validation_errors:
+            _print_error(validation_error)
         return 2 if structural_errors else 1
 
     print("Quality coverage artifacts are valid.")
