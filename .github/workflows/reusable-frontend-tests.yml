@@ -70,6 +70,9 @@ jobs:
       - name: Run type check
         run: npm run typecheck
 
+      - name: Clean frontend shard coverage outputs
+        run: rm -rf -- coverage
+
       - name: Run unit-test shard
         # Each shard sees only a fraction of the repository and therefore
         # cannot satisfy the repository-wide coverage thresholds on its own.
@@ -96,7 +99,8 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: frontend-coverage-shard-${{ matrix.shard }}
-          path: ${{ inputs.working-directory }}/coverage/
+          path: ${{ inputs.working-directory }}/coverage/coverage-final.json
+          if-no-files-found: error
 
   # Keep a stable `Frontend Tests / Unit Tests` check for branch protection.
   # The matrix above owns execution; this job owns the merged, repository-wide
@@ -136,6 +140,15 @@ jobs:
 
       - name: Run production-only client contracts
         run: npm run test:client-production
+
+      - name: Clean merged frontend coverage outputs
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf -- frontend/.coverage-shards
+          rm -rf -- frontend/.vitest-reports
+          rm -rf -- frontend/coverage
 
       - name: Download frontend coverage shards
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -180,6 +193,44 @@ jobs:
           # ratchet strict so newly changed source cannot reintroduce debt.
           uv run diff-cover frontend/coverage/lcov.info --compare-branch=origin/$env:COMPARE_BRANCH --fail-under=100
 
+      - name: Write frontend coverage provenance
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          test -s frontend/coverage/lcov.info
+          test -s frontend/coverage/coverage-final.json
+          test "$(find frontend/coverage -maxdepth 1 -type f | wc -l)" -eq 2
+          node_version="$(node -p 'process.versions.node')"
+          vitest_version="$(node -p \"require('./frontend/node_modules/vitest/package.json').version\")"
+          python3 scripts/quality/coverage_provenance.py write \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --output frontend/coverage/coverage-provenance.json \
+            --expected-sha "$EXPECTED_SHA" \
+            --identity-provider github-actions \
+            --repository "$WORKFLOW_REPOSITORY" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --event "$WORKFLOW_EVENT" \
+            --job "$GITHUB_JOB" \
+            --artifact frontend-coverage \
+            --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --tool-version "node=$node_version" \
+            --tool-version "vitest=$vitest_version" \
+            --tool-version quality-provenance=2.0.0 \
+            --report "frontend|lcov|frontend/coverage/lcov.info|frontend/coverage/lcov.info" \
+            --report "frontend|istanbul-json|frontend/coverage/coverage-final.json|frontend/coverage/coverage-final.json"
+
       - name: Upload Vitest report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -191,7 +242,11 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: frontend-coverage
-          path: ${{ inputs.working-directory }}/coverage/
+          path: |
+            frontend/coverage/lcov.info
+            frontend/coverage/coverage-final.json
+            frontend/coverage/coverage-provenance.json
+          if-no-files-found: error
 
   lint:
     name: Lint & Format

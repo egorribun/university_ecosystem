@@ -464,16 +464,28 @@ jobs:
         include:
           - service: services/gateway
             coverage-threshold: 100
+            coverage-component: go-gateway
+            coverage-canonical-path: artifacts/coverage/go/gateway/coverage.out
           - service: services/file-processor
             coverage-threshold: 100
+            coverage-component: go-file-processor
+            coverage-canonical-path: artifacts/coverage/go/file-processor/coverage.out
           - service: services/ws-hub
             coverage-threshold: 100
+            coverage-component: go-ws-hub
+            coverage-canonical-path: artifacts/coverage/go/ws-hub/coverage.out
           - service: services/cmd/uni-cli
             coverage-threshold: 100
+            coverage-component: go-shared-fragment
+            coverage-canonical-path: artifacts/coverage/go/shared-inputs/uni-cli/coverage.out
           - service: services/pkg/spiffe
             coverage-threshold: 100
+            coverage-component: go-shared-fragment
+            coverage-canonical-path: artifacts/coverage/go/shared-inputs/spiffe/coverage.out
           - service: services/pkg/spicedb
             coverage-threshold: 100
+            coverage-component: go-shared-fragment
+            coverage-canonical-path: artifacts/coverage/go/shared-inputs/spicedb/coverage.out
     needs: pre-commit-check
     permissions:
       contents: read
@@ -482,6 +494,8 @@ jobs:
       service-directory: ${{ matrix.service }}
       go-version: "1.26.6"
       coverage-threshold: ${{ matrix.coverage-threshold }}
+      coverage-component: ${{ matrix.coverage-component }}
+      coverage-canonical-path: ${{ matrix.coverage-canonical-path }}
 
   # MOD-W15-06 (audit 2026-03-23 Wave 15): Go fuzz testing for ws-hub message parsing.
   # Short 30s CI budget — finds quick panics and crashes.
@@ -1655,6 +1669,15 @@ jobs:
       - name: Install nightly Rust for branch coverage
         run: rustup toolchain install nightly --component llvm-tools-preview --allow-downgrade --no-self-update
 
+      - name: Clean Rust coverage outputs
+        run: |
+          set -euo pipefail
+          rm -rf -- artifacts/coverage/rust/rust-native
+          rm -rf -- artifacts/coverage/rust/rust-pyo3-sanitizer
+          rm -rf -- artifacts/coverage/rust/rust-wasm-sanitizer
+          rm -rf -- artifacts/coverage/rust/rust-crypto
+          rm -f -- artifacts/coverage/rust/coverage-provenance.json
+
       - name: Create coverage output directories
         run: mkdir -p artifacts/coverage/rust/rust-native artifacts/coverage/rust/rust-pyo3-sanitizer artifacts/coverage/rust/rust-wasm-sanitizer artifacts/coverage/rust/rust-crypto
 
@@ -1712,11 +1735,80 @@ jobs:
           cargo +nightly llvm-cov clean
           cargo +nightly llvm-cov --all-targets --branch --json --output-path ../../artifacts/coverage/rust/rust-crypto/branch-llvm.json
 
+      - name: Write Rust coverage provenance
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          test "$(find artifacts/coverage/rust -name 'llvm.json' -type f | wc -l)" -eq 4
+          test "$(find artifacts/coverage/rust -name 'branch-llvm.json' -type f | wc -l)" -eq 4
+          while IFS= read -r report; do test -s "$report"; done < <(
+            find artifacts/coverage/rust -name 'llvm.json' -type f -print
+          )
+          while IFS= read -r report; do test -s "$report"; done < <(
+            find artifacts/coverage/rust -name 'branch-llvm.json' -type f -print
+          )
+          rustc_version="$(rustc --version | awk '{print $2}')"
+          llvm_cov_version="$(cargo llvm-cov --version | awk '{print $2}')"
+          python scripts/quality/coverage_provenance.py write \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --output artifacts/coverage/rust/coverage-provenance.json \
+            --expected-sha "$EXPECTED_SHA" \
+            --identity-provider github-actions \
+            --repository "$WORKFLOW_REPOSITORY" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --event "$WORKFLOW_EVENT" \
+            --job "$GITHUB_JOB" \
+            --artifact rust-coverage \
+            --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --tool-version "rustc=$rustc_version" \
+            --tool-version "cargo-llvm-cov=$llvm_cov_version" \
+            --tool-version quality-provenance=2.0.0 \
+            --report "rust-native|llvm-cov-json|artifacts/coverage/rust/rust-native/llvm.json|artifacts/coverage/rust/rust-native/llvm.json" \
+            --report "rust-native|llvm-cov-branch-json|artifacts/coverage/rust/rust-native/branch-llvm.json|artifacts/coverage/rust/rust-native/branch-llvm.json" \
+            --report "rust-pyo3-sanitizer|llvm-cov-json|artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json|artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json" \
+            --report "rust-pyo3-sanitizer|llvm-cov-branch-json|artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json|artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json" \
+            --report "rust-wasm-sanitizer|llvm-cov-json|artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json|artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json" \
+            --report "rust-wasm-sanitizer|llvm-cov-branch-json|artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json|artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json" \
+            --report "rust-crypto|llvm-cov-json|artifacts/coverage/rust/rust-crypto/llvm.json|artifacts/coverage/rust/rust-crypto/llvm.json" \
+            --report "rust-crypto|llvm-cov-branch-json|artifacts/coverage/rust/rust-crypto/branch-llvm.json|artifacts/coverage/rust/rust-crypto/branch-llvm.json"
+
       - name: Upload Rust coverage artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: rust-coverage
-          path: artifacts/coverage/rust/
+          path: |
+            artifacts/coverage/rust/rust-native/llvm.json
+            artifacts/coverage/rust/rust-native/branch-llvm.json
+            artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
+            artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json
+            artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
+            artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json
+            artifacts/coverage/rust/rust-crypto/llvm.json
+            artifacts/coverage/rust/rust-crypto/branch-llvm.json
+            artifacts/coverage/rust/coverage-provenance.json
+          if-no-files-found: error
+
+      - name: Upload Rust Codecov diagnostic artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rust-codecov-reports
+          path: |
+            artifacts/coverage/rust/rust-native/codecov.json
+            artifacts/coverage/rust/rust-pyo3-sanitizer/codecov.json
+            artifacts/coverage/rust/rust-wasm-sanitizer/codecov.json
+            artifacts/coverage/rust/rust-crypto/codecov.json
+          if-no-files-found: error
 
       - name: Install wasm-pack
         # rustwasm canonical curl installer (W141 polish-v2 / W142 polish-v3:
@@ -2309,7 +2401,7 @@ jobs:
   coverage-policy-gate:
     name: Coverage & Quality Policy Gate
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     needs:
       - backend-tests
       - frontend-tests
@@ -2320,6 +2412,37 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify aggregate checkout SHA
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+
+      - name: Clean aggregate coverage destinations
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f -- .coverage coverage.xml
+          rm -rf -- artifacts/coverage/python/shards
+          rm -f -- artifacts/coverage/python/coverage.json
+          rm -rf -- frontend/coverage
+          rm -rf -- artifacts/coverage/go/gateway
+          rm -rf -- artifacts/coverage/go/ws-hub
+          rm -rf -- artifacts/coverage/go/file-processor
+          rm -rf -- artifacts/coverage/go/shared-inputs
+          rm -rf -- artifacts/coverage/go/shared
+          rm -rf -- artifacts/coverage/rust/rust-native
+          rm -rf -- artifacts/coverage/rust/rust-pyo3-sanitizer
+          rm -rf -- artifacts/coverage/rust/rust-wasm-sanitizer
+          rm -rf -- artifacts/coverage/rust/rust-crypto
+          rm -rf -- artifacts/coverage/provenance
+          rm -rf -- artifacts/coverage/codecov
+          rm -f -- artifacts/coverage/quality-manifest.json
+          rm -f -- artifacts/coverage/quality-manifest.json.sha256
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -2338,25 +2461,6 @@ jobs:
         with:
           enable-cache: true
           cache-dependency-glob: uv.lock
-
-      - name: Install coverage tooling
-        run: uv sync --frozen
-
-      - name: Combine Python shard coverage
-        run: |
-          test "$(find artifacts/coverage/python/shards -name '.coverage.*' -type f | wc -l)" -eq 4
-          uv run coverage combine --data-file=.coverage artifacts/coverage/python/shards
-          uv run coverage xml --data-file=.coverage -o coverage.xml
-          uv run coverage json --data-file=.coverage -o artifacts/coverage/python/coverage.json
-
-      - name: Enforce aggregate PR differential coverage
-        if: ${{ github.event_name == 'pull_request' }}
-        shell: bash
-        env:
-          COMPARE_BRANCH: ${{ github.base_ref }}
-        run: |
-          git fetch origin "$COMPARE_BRANCH"
-          uv run diff-cover coverage.xml --compare-branch="origin/$COMPARE_BRANCH" --fail-under=100
 
       - name: Download Frontend coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -2400,28 +2504,234 @@ jobs:
           name: go-coverage-services-pkg-spicedb
           path: artifacts/coverage/go/shared-inputs/spicedb
 
-      - name: Merge Go shared coverage evidence
-        run: |
-          uv run python scripts/quality/merge_go_coverprofiles.py \
-            --output artifacts/coverage/go/shared/coverage.out \
-            artifacts/coverage/go/shared-inputs/uni-cli/coverage.out \
-            artifacts/coverage/go/shared-inputs/spiffe/coverage.out \
-            artifacts/coverage/go/shared-inputs/spicedb/coverage.out
-
       - name: Download Rust coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: rust-coverage
           path: artifacts/coverage/rust
 
-      - name: Normalize coverage evidence
+      - name: Download Rust Codecov diagnostics
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: rust-codecov-reports
+          path: artifacts/coverage/rust
+
+      - name: Verify downloaded coverage artifacts
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
         run: |
+          set -euo pipefail
+          test "$(find artifacts/coverage/python/shards -name '.coverage.*' -type f | wc -l)" -eq 4
+          test "$(find artifacts/coverage/python/shards -type f | wc -l)" -eq 4
+          while IFS= read -r report; do test -s "$report"; done < <(
+            find artifacts/coverage/python/shards -name '.coverage.*' -type f -print
+          )
+          test -s frontend/coverage/lcov.info
+          test -s frontend/coverage/coverage-final.json
+          test "$(find frontend/coverage -maxdepth 1 -type f | wc -l)" -eq 3
+          test "$(find artifacts/coverage/go/shared-inputs -name 'coverage.out' -type f | wc -l)" -eq 3
+          test "$(find artifacts/coverage/go -name 'coverage.out' -type f | wc -l)" -eq 6
+          test "$(find artifacts/coverage/go -name 'coverage-provenance.json' -type f | wc -l)" -eq 6
+          test "$(find artifacts/coverage/rust -name 'llvm.json' -type f | wc -l)" -eq 4
+          test "$(find artifacts/coverage/rust -name 'branch-llvm.json' -type f | wc -l)" -eq 4
+          test "$(find artifacts/coverage/rust -name 'codecov.json' -type f | wc -l)" -eq 4
+          python scripts/quality/coverage_provenance.py verify \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --expected-sha "$EXPECTED_SHA" \
+            --expected-repository "$WORKFLOW_REPOSITORY" \
+            --expected-run-id "$RUN_ID" \
+            --expected-run-attempt "$RUN_ATTEMPT" \
+            --expected-workflow-ref "$WORKFLOW_REF" \
+            --expected-workflow-sha "$WORKFLOW_SHA" \
+            --expected-event "$WORKFLOW_EVENT" \
+            --metadata frontend/coverage/coverage-provenance.json \
+            --metadata artifacts/coverage/go/gateway/coverage-provenance.json \
+            --metadata artifacts/coverage/go/ws-hub/coverage-provenance.json \
+            --metadata artifacts/coverage/go/file-processor/coverage-provenance.json \
+            --metadata artifacts/coverage/go/shared-inputs/uni-cli/coverage-provenance.json \
+            --metadata artifacts/coverage/go/shared-inputs/spiffe/coverage-provenance.json \
+            --metadata artifacts/coverage/go/shared-inputs/spicedb/coverage-provenance.json \
+            --metadata artifacts/coverage/rust/coverage-provenance.json
+
+      - name: Install coverage tooling
+        run: uv sync --frozen
+
+      - name: Combine Python shard coverage
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          uv run coverage combine --data-file=.coverage artifacts/coverage/python/shards
+          uv run coverage xml --data-file=.coverage -o coverage.xml
+          uv run coverage json --data-file=.coverage -o artifacts/coverage/python/coverage.json
+          test -s coverage.xml
+          test -s artifacts/coverage/python/coverage.json
+          python_version="$(uv run python -c 'import platform; print(platform.python_version())')"
+          coverage_version="$(uv run coverage --version | awk 'NR == 1 {print $2}')"
+          python scripts/quality/coverage_provenance.py write \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --output artifacts/coverage/provenance/python.json \
+            --expected-sha "$EXPECTED_SHA" \
+            --identity-provider github-actions \
+            --repository "$WORKFLOW_REPOSITORY" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --event "$WORKFLOW_EVENT" \
+            --job "$GITHUB_JOB" \
+            --artifact python-coverage-aggregate \
+            --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --tool-version "python=$python_version" \
+            --tool-version "coverage.py=$coverage_version" \
+            --tool-version quality-provenance=2.0.0 \
+            --report "python|cobertura-xml|coverage.xml|coverage.xml" \
+            --report "python|coverage-py-json|artifacts/coverage/python/coverage.json|artifacts/coverage/python/coverage.json"
+
+      - name: Enforce aggregate PR differential coverage
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          COMPARE_BRANCH: ${{ github.base_ref }}
+        run: |
+          git fetch origin "$COMPARE_BRANCH"
+          uv run diff-cover coverage.xml --compare-branch="origin/$COMPARE_BRANCH" --fail-under=100
+
+      - name: Merge Go shared coverage evidence
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          uv run python scripts/quality/merge_go_coverprofiles.py \
+            --output artifacts/coverage/go/shared/coverage.out \
+            artifacts/coverage/go/shared-inputs/uni-cli/coverage.out \
+            artifacts/coverage/go/shared-inputs/spiffe/coverage.out \
+            artifacts/coverage/go/shared-inputs/spicedb/coverage.out
+          test -s artifacts/coverage/go/shared/coverage.out
+          python scripts/quality/coverage_provenance.py write \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --output artifacts/coverage/provenance/go-shared.json \
+            --expected-sha "$EXPECTED_SHA" \
+            --identity-provider github-actions \
+            --repository "$WORKFLOW_REPOSITORY" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --event "$WORKFLOW_EVENT" \
+            --job "$GITHUB_JOB" \
+            --artifact go-shared-coverage-aggregate \
+            --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --tool-version go=1.26.6 \
+            --tool-version quality-provenance=2.0.0 \
+            --report "go-shared|go-coverprofile|artifacts/coverage/go/shared/coverage.out|artifacts/coverage/go/shared/coverage.out"
+
+      - name: Merge canonical coverage provenance
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          python scripts/quality/coverage_provenance.py merge \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --contract quality/quality-contract.json \
+            --output artifacts/coverage/provenance/aggregate.json \
+            --expected-sha "$EXPECTED_SHA" \
+            --identity-provider github-actions \
+            --repository "$WORKFLOW_REPOSITORY" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --event "$WORKFLOW_EVENT" \
+            --job coverage-policy-gate \
+            --artifact "quality-evidence-${{ github.sha }}" \
+            --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --tool-version quality-provenance=2.0.0 \
+            --metadata artifacts/coverage/provenance/python.json \
+            --metadata frontend/coverage/coverage-provenance.json \
+            --metadata artifacts/coverage/go/gateway/coverage-provenance.json \
+            --metadata artifacts/coverage/go/ws-hub/coverage-provenance.json \
+            --metadata artifacts/coverage/go/file-processor/coverage-provenance.json \
+            --metadata artifacts/coverage/provenance/go-shared.json \
+            --metadata artifacts/coverage/rust/coverage-provenance.json
+
+      - name: Normalize coverage evidence
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          read_tool() {
+            python - "$1" <<'PY'
+          import json
+          import sys
+          with open("artifacts/coverage/provenance/aggregate.json", encoding="utf-8") as stream:
+              print(json.load(stream)["tool_versions"][sys.argv[1]])
+          PY
+          }
+          coverage_version="$(read_tool coverage.py)"
+          python_version="$(read_tool python)"
+          node_version="$(read_tool node)"
+          vitest_version="$(read_tool vitest)"
+          go_version="$(read_tool go)"
+          rustc_version="$(read_tool rustc)"
+          llvm_cov_version="$(read_tool cargo-llvm-cov)"
           python scripts/quality/normalize_coverage_reports.py \
-            --commit-sha ${{ github.sha }} \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --commit-sha "$EXPECTED_SHA" \
             --generated-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
             --output artifacts/coverage/quality-manifest.json \
+            --provenance-mode github-actions \
+            --workflow-run-id "$RUN_ID" \
+            --workflow-run-attempt "$RUN_ATTEMPT" \
+            --workflow-event "$WORKFLOW_EVENT" \
+            --workflow-repository "$WORKFLOW_REPOSITORY" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-job coverage-policy-gate \
+            --tool-version "coverage.py=$coverage_version" \
+            --tool-version "python=$python_version" \
+            --tool-version "node=$node_version" \
+            --tool-version "vitest=$vitest_version" \
+            --tool-version "go=$go_version" \
+            --tool-version "rustc=$rustc_version" \
+            --tool-version "cargo-llvm-cov=$llvm_cov_version" \
             --python-xml coverage.xml \
+            --python-json artifacts/coverage/python/coverage.json \
             --frontend-lcov frontend/coverage/lcov.info \
+            --frontend-json frontend/coverage/coverage-final.json \
             --go-report go-gateway=artifacts/coverage/go/gateway/coverage.out \
             --go-report go-ws-hub=artifacts/coverage/go/ws-hub/coverage.out \
             --go-report go-file-processor=artifacts/coverage/go/file-processor/coverage.out \
@@ -2436,10 +2746,35 @@ jobs:
             --rust-branch-report rust-crypto=artifacts/coverage/rust/rust-crypto/branch-llvm.json
 
       - name: Validate quality policy, mutation registry, and Tier0 manifest
-        run: >-
-          python scripts/quality/validate_quality_contract.py
-          --mutation-registry quality/mutation-exclusions.json
-          --manifest artifacts/coverage/quality-manifest.json
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          python scripts/quality/validate_quality_contract.py \
+            --schema quality/coverage-manifest.schema.json \
+            --artifact-root "$GITHUB_WORKSPACE" \
+            --mutation-registry quality/mutation-exclusions.json \
+            --manifest artifacts/coverage/quality-manifest.json \
+            --expected-commit-sha "$EXPECTED_SHA" \
+            --expected-workflow-run-id "$RUN_ID" \
+            --expected-workflow-run-attempt "$RUN_ATTEMPT" \
+            --expected-workflow-event "$WORKFLOW_EVENT" \
+            --expected-workflow-repository "$WORKFLOW_REPOSITORY" \
+            --expected-workflow-ref "$WORKFLOW_REF" \
+            --expected-workflow-job coverage-policy-gate
+
+      - name: Hash validated quality manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          sha256sum artifacts/coverage/quality-manifest.json > artifacts/coverage/quality-manifest.json.sha256
+          sha256sum --check artifacts/coverage/quality-manifest.json.sha256
 
       - name: Stage trusted Codecov reports
         run: |
@@ -2463,11 +2798,41 @@ jobs:
           path: artifacts/coverage/codecov/
           if-no-files-found: error
 
-      - name: Upload Quality Manifest
+      - name: Upload canonical quality evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: quality-manifest
-          path: artifacts/coverage/quality-manifest.json
+          name: quality-evidence-${{ github.sha }}
+          path: |
+            coverage.xml
+            artifacts/coverage/python/coverage.json
+            frontend/coverage/lcov.info
+            frontend/coverage/coverage-final.json
+            artifacts/coverage/go/gateway/coverage.out
+            artifacts/coverage/go/ws-hub/coverage.out
+            artifacts/coverage/go/file-processor/coverage.out
+            artifacts/coverage/go/shared/coverage.out
+            artifacts/coverage/rust/rust-native/llvm.json
+            artifacts/coverage/rust/rust-native/branch-llvm.json
+            artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
+            artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json
+            artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json
+            artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json
+            artifacts/coverage/rust/rust-crypto/llvm.json
+            artifacts/coverage/rust/rust-crypto/branch-llvm.json
+            artifacts/coverage/provenance/python.json
+            artifacts/coverage/provenance/go-shared.json
+            artifacts/coverage/provenance/aggregate.json
+            frontend/coverage/coverage-provenance.json
+            artifacts/coverage/rust/coverage-provenance.json
+            artifacts/coverage/go/gateway/coverage-provenance.json
+            artifacts/coverage/go/ws-hub/coverage-provenance.json
+            artifacts/coverage/go/file-processor/coverage-provenance.json
+            artifacts/coverage/go/shared-inputs/uni-cli/coverage-provenance.json
+            artifacts/coverage/go/shared-inputs/spiffe/coverage-provenance.json
+            artifacts/coverage/go/shared-inputs/spicedb/coverage-provenance.json
+            artifacts/coverage/quality-manifest.json
+            artifacts/coverage/quality-manifest.json.sha256
+          if-no-files-found: error
 
   codecov-upload:
     name: Trusted Codecov Upload

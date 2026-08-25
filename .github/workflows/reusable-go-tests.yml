@@ -21,6 +21,14 @@ on:
         required: false
         type: number
         default: 80
+      coverage-component:
+        description: "Canonical quality-contract component for this report"
+        required: true
+        type: string
+      coverage-canonical-path:
+        description: "Repository-relative path used after artifact download"
+        required: true
+        type: string
 
 jobs:
   test:
@@ -56,6 +64,15 @@ jobs:
         run: |
           cd "$SERVICE_DIRECTORY"
           go mod download
+
+      - name: Clean Go coverage outputs
+        shell: bash
+        env:
+          SERVICE_DIRECTORY: ${{ inputs.service-directory }}
+        run: |
+          set -euo pipefail
+          rm -f -- "$SERVICE_DIRECTORY/coverage.out"
+          rm -rf -- artifacts/coverage/go-producer
 
       - name: Run tests with coverage
         env:
@@ -244,7 +261,6 @@ jobs:
            exit "$overall_status"
 
       - name: Generate artifact name
-        if: always()
         id: artifact-name
         shell: bash
         env:
@@ -255,13 +271,53 @@ jobs:
           SANITIZED=$(echo "$SERVICE_DIRECTORY" | tr '/\\' '-')
           echo "name=go-coverage-$SANITIZED" >> "$GITHUB_OUTPUT"
 
+      - name: Write Go coverage provenance
+        shell: bash
+        env:
+          SERVICE_DIRECTORY: ${{ inputs.service-directory }}
+          COVERAGE_COMPONENT: ${{ inputs.coverage-component }}
+          COVERAGE_CANONICAL_PATH: ${{ inputs.coverage-canonical-path }}
+          ARTIFACT_NAME: ${{ steps.artifact-name.outputs.name }}
+          EXPECTED_SHA: ${{ github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          test -s "$SERVICE_DIRECTORY/coverage.out"
+          mkdir -p artifacts/coverage/go-producer
+          cp "$SERVICE_DIRECTORY/coverage.out" artifacts/coverage/go-producer/coverage.out
+          go_version="$(go env GOVERSION | sed 's/^go//')"
+          python3 scripts/quality/coverage_provenance.py write \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --output artifacts/coverage/go-producer/coverage-provenance.json \
+            --expected-sha "$EXPECTED_SHA" \
+            --identity-provider github-actions \
+            --repository "$WORKFLOW_REPOSITORY" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --event "$WORKFLOW_EVENT" \
+            --job "$GITHUB_JOB" \
+            --artifact "$ARTIFACT_NAME" \
+            --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --tool-version "go=$go_version" \
+            --tool-version quality-provenance=2.0.0 \
+            --report "$COVERAGE_COMPONENT|go-coverprofile|artifacts/coverage/go-producer/coverage.out|$COVERAGE_CANONICAL_PATH"
+
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
+        if: ${{ success() }}
         with:
           name: ${{ steps.artifact-name.outputs.name }}
           path: |
-            ${{ inputs.service-directory }}/coverage.out
+            artifacts/coverage/go-producer/coverage.out
+            artifacts/coverage/go-producer/coverage-provenance.json
+          if-no-files-found: error
 
   lint:
     name: Lint Go Service (${{ inputs.service-directory }})

@@ -12,6 +12,10 @@ on:
         description: "Subject name for the image (e.g., backend)"
         required: true
         type: string
+      source-sha:
+        description: "Exact validated commit SHA to check out and build"
+        required: true
+        type: string
       context:
         description: "Docker build context"
         required: false
@@ -51,6 +55,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source-sha }}
+          persist-credentials: false
 
       - name: Login to GHCR
         # CI-01 (audit Wave 10): SHA-pinned; mutable @v4 tag replaced.

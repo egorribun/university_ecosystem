@@ -537,3 +537,27 @@ def test_schema_v2_models_provenance_integrity_and_rust_branch_format() -> None:
     )
     assert "size_bytes" in schema["$defs"]["report"]["required"]
     assert schema["$defs"]["provenance"]["additionalProperties"] is False
+
+
+def test_validator_cli_uses_explicit_schema_and_artifact_root(
+    git_evidence_root: Path,
+) -> None:
+    validator = _load_validator()
+    _, manifest, manifest_path = _valid_manifest_fixture(git_evidence_root)
+
+    exit_code = validator.main(
+        [
+            "--contract",
+            str(CONTRACT_PATH),
+            "--manifest",
+            str(manifest_path),
+            "--schema",
+            str(SCHEMA_PATH),
+            "--artifact-root",
+            str(git_evidence_root),
+            "--expected-commit-sha",
+            str(manifest["commit_sha"]),
+        ]
+    )
+
+    assert exit_code == 0

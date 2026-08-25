@@ -4107,3 +4107,327 @@ def test_sqlmap_openapi_scan_is_pinned_local_and_bounded() -> None:
     for step in (capability, readiness, scan):
         assert step.get("continue-on-error", False) is False
         assert "|| true" not in step["run"]
+
+
+def _provenance_step(job: dict[str, object], name: str) -> dict[str, object]:
+    steps = job.get("steps")
+    assert isinstance(steps, list)
+    matches = [
+        step for step in steps if isinstance(step, dict) and step.get("name") == name
+    ]
+    assert len(matches) == 1, f"expected exactly one workflow step named {name!r}"
+    return matches[0]
+
+
+def _run_text(job: dict[str, object]) -> str:
+    steps = job.get("steps")
+    assert isinstance(steps, list)
+    return "\n".join(
+        str(step.get("run", "")) for step in steps if isinstance(step, dict)
+    )
+
+
+def _assert_current_run_download(step: dict[str, object]) -> None:
+    uses = str(step.get("uses", ""))
+    assert uses.startswith("actions/download-artifact@")
+    options = step.get("with", {})
+    assert isinstance(options, dict)
+    assert "run-id" not in options
+    assert "github-token" not in options
+    assert "repository" not in options
+
+
+def test_coverage_producers_publish_closed_v2_sidecars() -> None:
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    frontend = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    go = yaml.safe_load(GO_WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+    frontend_job = frontend["jobs"]["unit-tests"]
+    frontend_steps = frontend_job["steps"]
+    cleanup = _provenance_step(frontend_job, "Clean merged frontend coverage outputs")
+    download = _provenance_step(frontend_job, "Download frontend coverage shards")
+    assert frontend_steps.index(cleanup) < frontend_steps.index(download)
+    _assert_current_run_download(download)
+    provenance = _provenance_step(frontend_job, "Write frontend coverage provenance")
+    provenance_run = str(provenance["run"])
+    assert "scripts/quality/coverage_provenance.py write" in provenance_run
+    assert (
+        "frontend|lcov|frontend/coverage/lcov.info|frontend/coverage/lcov.info"
+        in provenance_run
+    )
+    assert (
+        "frontend|istanbul-json|frontend/coverage/coverage-final.json|frontend/coverage/coverage-final.json"
+        in provenance_run
+    )
+    assert "test -s frontend/coverage/lcov.info" in provenance_run
+    assert "test -s frontend/coverage/coverage-final.json" in provenance_run
+    frontend_upload = _provenance_step(frontend_job, "Upload coverage artifacts")
+    assert frontend_upload["with"]["if-no-files-found"] == "error"
+    assert set(str(frontend_upload["with"]["path"]).splitlines()) == {
+        "frontend/coverage/lcov.info",
+        "frontend/coverage/coverage-final.json",
+        "frontend/coverage/coverage-provenance.json",
+    }
+
+    go_job = go["jobs"]["test"]
+    go_text = _run_text(go_job)
+    assert "coverage-component" in _workflow_triggers(go)["workflow_call"]["inputs"]
+    assert "Clean Go coverage outputs" in {
+        str(step.get("name", "")) for step in go_job["steps"]
+    }
+    assert "scripts/quality/coverage_provenance.py write" in go_text
+    assert "$COVERAGE_COMPONENT|go-coverprofile" in go_text
+    go_upload = _provenance_step(go_job, "Upload coverage artifacts")
+    assert go_upload["if"] == "${{ success() }}"
+    assert go_upload["with"]["if-no-files-found"] == "error"
+    assert "coverage-provenance.json" in str(go_upload["with"]["path"])
+
+    rust_job = ci["jobs"]["rust-tests"]
+    rust_steps = rust_job["steps"]
+    rust_cleanup = _provenance_step(rust_job, "Clean Rust coverage outputs")
+    rust_create = _provenance_step(rust_job, "Create coverage output directories")
+    assert rust_steps.index(rust_cleanup) < rust_steps.index(rust_create)
+    rust_provenance = _provenance_step(rust_job, "Write Rust coverage provenance")
+    rust_run = str(rust_provenance["run"])
+    assert rust_run.count("|llvm-cov-json|") == 4
+    assert rust_run.count("|llvm-cov-branch-json|") == 4
+    assert (
+        "test \"$(find artifacts/coverage/rust -name 'llvm.json' -type f | wc -l)\" -eq 4"
+        in rust_run
+    )
+    assert (
+        "test \"$(find artifacts/coverage/rust -name 'branch-llvm.json' -type f | wc -l)\" -eq 4"
+        in rust_run
+    )
+    rust_upload = _provenance_step(rust_job, "Upload Rust coverage artifacts")
+    assert rust_upload["with"]["if-no-files-found"] == "error"
+    assert "artifacts/coverage/rust/coverage-provenance.json" in str(
+        rust_upload["with"]["path"]
+    )
+
+
+def test_coverage_aggregate_uses_scoped_current_run_artifacts_only() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["coverage-policy-gate"]
+    steps = job["steps"]
+    head_guard = _provenance_step(job, "Verify aggregate checkout SHA")
+    cleanup = _provenance_step(job, "Clean aggregate coverage destinations")
+    downloads = [
+        step
+        for step in steps
+        if isinstance(step, dict)
+        and str(step.get("uses", "")).startswith("actions/download-artifact@")
+    ]
+    assert downloads
+    assert (
+        steps.index(head_guard)
+        < steps.index(cleanup)
+        < min(steps.index(step) for step in downloads)
+    )
+    assert 'test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"' in str(head_guard["run"])
+    assert head_guard["env"]["EXPECTED_SHA"] == "${{ github.sha }}"
+    cleanup_run = str(cleanup["run"])
+    assert "rm -rf -- artifacts/coverage/python/shards" in cleanup_run
+    assert "rm -rf -- frontend/coverage" in cleanup_run
+    assert "rm -rf -- artifacts/coverage/go" in cleanup_run
+    assert "rm -rf -- artifacts/coverage/rust" in cleanup_run
+    assert "rm -rf -- artifacts/coverage" not in {
+        line.strip() for line in cleanup_run.splitlines()
+    }
+    for download in downloads:
+        _assert_current_run_download(download)
+
+    verify = _provenance_step(job, "Verify downloaded coverage artifacts")
+    verify_run = str(verify["run"])
+    assert "coverage_provenance.py verify" in verify_run
+    assert '--expected-sha "$EXPECTED_SHA"' in verify_run
+    assert '--expected-run-id "$RUN_ID"' in verify_run
+    assert '--expected-run-attempt "$RUN_ATTEMPT"' in verify_run
+    assert (
+        "test \"$(find artifacts/coverage/python/shards -name '.coverage.*' -type f | wc -l)\" -eq 4"
+        in verify_run
+    )
+    assert (
+        "test \"$(find artifacts/coverage/go/shared-inputs -name 'coverage.out' -type f | wc -l)\" -eq 3"
+        in verify_run
+    )
+
+
+def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["coverage-policy-gate"]
+    normalize = _provenance_step(job, "Normalize coverage evidence")
+    normalize_run = str(normalize["run"])
+
+    for required in (
+        '--repository-root "$GITHUB_WORKSPACE"',
+        '--commit-sha "$EXPECTED_SHA"',
+        "--provenance-mode github-actions",
+        '--workflow-run-id "$RUN_ID"',
+        '--workflow-run-attempt "$RUN_ATTEMPT"',
+        '--workflow-event "$WORKFLOW_EVENT"',
+        '--workflow-repository "$WORKFLOW_REPOSITORY"',
+        '--workflow-ref "$WORKFLOW_REF"',
+        "--workflow-job coverage-policy-gate",
+        "--python-xml coverage.xml",
+        "--python-json artifacts/coverage/python/coverage.json",
+        "--frontend-lcov frontend/coverage/lcov.info",
+        "--frontend-json frontend/coverage/coverage-final.json",
+    ):
+        assert required in normalize_run
+    assert normalize_run.count("--go-report ") == 4
+    assert normalize_run.count("--rust-report ") == 4
+    assert normalize_run.count("--rust-branch-report ") == 4
+    assert "ignore-outside" not in normalize_run
+    assert normalize_run.count("--tool-version ") >= 7
+
+    merge = _provenance_step(job, "Merge canonical coverage provenance")
+    merge_run = str(merge["run"])
+    assert "coverage_provenance.py merge" in merge_run
+    assert merge_run.count("--metadata ") == 7
+    assert "--contract quality/quality-contract.json" in merge_run
+    assert "quality-evidence-${{ github.sha }}" in merge_run
+
+    validator = _provenance_step(
+        job, "Validate quality policy, mutation registry, and Tier0 manifest"
+    )
+    validator_run = str(validator["run"])
+    for required in (
+        "--schema quality/coverage-manifest.schema.json",
+        '--artifact-root "$GITHUB_WORKSPACE"',
+        '--expected-commit-sha "$EXPECTED_SHA"',
+        '--expected-workflow-run-id "$RUN_ID"',
+        '--expected-workflow-run-attempt "$RUN_ATTEMPT"',
+        '--expected-workflow-event "$WORKFLOW_EVENT"',
+        '--expected-workflow-repository "$WORKFLOW_REPOSITORY"',
+        '--expected-workflow-ref "$WORKFLOW_REF"',
+        "--expected-workflow-job coverage-policy-gate",
+    ):
+        assert required in validator_run
+
+
+def test_quality_evidence_bundle_is_hashed_after_validation_and_required() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["coverage-policy-gate"]
+    steps = job["steps"]
+    validator = _provenance_step(
+        job, "Validate quality policy, mutation registry, and Tier0 manifest"
+    )
+    hash_step = _provenance_step(job, "Hash validated quality manifest")
+    upload = _provenance_step(job, "Upload canonical quality evidence")
+    assert steps.index(validator) < steps.index(hash_step) < steps.index(upload)
+    hash_run = str(hash_step["run"])
+    assert "sha256sum artifacts/coverage/quality-manifest.json" in hash_run
+    assert "quality-manifest.json.sha256" in hash_run
+    assert "sha256sum --check" in hash_run
+    assert upload["with"]["name"] == "quality-evidence-${{ github.sha }}"
+    assert upload["with"]["if-no-files-found"] == "error"
+    upload_paths = str(upload["with"]["path"])
+    for required in (
+        "coverage.xml",
+        "artifacts/coverage/python/coverage.json",
+        "frontend/coverage/lcov.info",
+        "frontend/coverage/coverage-final.json",
+        "artifacts/coverage/go/gateway/coverage.out",
+        "artifacts/coverage/go/ws-hub/coverage.out",
+        "artifacts/coverage/go/file-processor/coverage.out",
+        "artifacts/coverage/go/shared/coverage.out",
+        "artifacts/coverage/rust/",
+        "artifacts/coverage/quality-manifest.json",
+        "artifacts/coverage/quality-manifest.json.sha256",
+        "artifacts/coverage/provenance/aggregate.json",
+    ):
+        assert required in upload_paths
+
+    for workflow_path in (
+        BACKEND_WORKFLOW_PATH,
+        FRONTEND_WORKFLOW_PATH,
+        GO_WORKFLOW_PATH,
+        CI_WORKFLOW_PATH,
+    ):
+        current = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        for job_config in current.get("jobs", {}).values():
+            for step in job_config.get("steps", []):
+                if not isinstance(step, dict):
+                    continue
+                if not str(step.get("uses", "")).startswith("actions/upload-artifact@"):
+                    continue
+                name = str(step.get("with", {}).get("name", "")).casefold()
+                path = str(step.get("with", {}).get("path", "")).casefold()
+                if any(
+                    token in name + path
+                    for token in ("coverage", "manifest", "provenance")
+                ):
+                    assert step["with"].get("if-no-files-found") == "error"
+
+
+def test_release_and_deploy_require_the_same_sha_bound_quality_bundle() -> None:
+    release_path = REPOSITORY_ROOT / ".github" / "workflows" / "release.yml"
+    deploy_path = REPOSITORY_ROOT / ".github" / "workflows" / "deploy.yml"
+    for workflow_path in (release_path, deploy_path):
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        dispatch = _workflow_triggers(workflow)["workflow_dispatch"]
+        inputs = dispatch["inputs"]
+        assert inputs["release-sha"]["required"] is True
+        assert inputs["quality-run-id"]["required"] is True
+        gate = workflow["jobs"][
+            "release" if workflow_path.name == "release.yml" else "validate"
+        ]
+        text = _run_text(gate)
+        assert "quality-evidence-$RELEASE_SHA" in text
+        assert "quality-manifest.json.sha256" in text
+        assert "sha256sum --check" in text
+        assert 'test "$(git rev-parse HEAD)" = "$RELEASE_SHA"' in text
+        assert "head_sha" in text and "conclusion" in text and "ci.yml" in text
+        assert "gh run list" not in text
+        assert "find " not in text
+
+        download = _provenance_step(gate, "Download SHA-bound quality evidence")
+        assert download["with"]["name"] == "quality-evidence-${{ inputs.release-sha }}"
+        assert download["with"]["run-id"] == "${{ inputs.quality-run-id }}"
+        assert download["with"]["github-token"] == "${{ github.token }}"
+        assert download["with"]["path"] == "."
+
+        validate = _provenance_step(gate, "Validate SHA-bound quality evidence")
+        validate_run = str(validate["run"])
+        assert "validate_quality_contract.py" in validate_run
+        assert '--expected-commit-sha "$RELEASE_SHA"' in validate_run
+        assert '--expected-workflow-run-id "$QUALITY_RUN_ID"' in validate_run
+        assert '--expected-workflow-run-attempt "$QUALITY_RUN_ATTEMPT"' in validate_run
+
+
+def test_release_and_deploy_build_the_validated_source_sha() -> None:
+    reusable_path = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "reusable-build-and-sign.yml"
+    )
+    reusable = yaml.safe_load(reusable_path.read_text(encoding="utf-8"))
+    source_sha = _workflow_triggers(reusable)["workflow_call"]["inputs"]["source-sha"]
+    assert source_sha["required"] is True
+    checkout = _provenance_step(reusable["jobs"]["build"], "Checkout")
+    assert checkout["with"]["ref"] == "${{ inputs.source-sha }}"
+    assert checkout["with"]["persist-credentials"] is False
+
+    release = yaml.safe_load(
+        (REPOSITORY_ROOT / ".github" / "workflows" / "release.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert release["jobs"]["build"]["with"]["source-sha"] == (
+        "${{ inputs.release-sha }}"
+    )
+
+    deploy = yaml.safe_load(
+        (REPOSITORY_ROOT / ".github" / "workflows" / "deploy.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    for job_name in (
+        "build-backend",
+        "build-frontend",
+        "build-ws-hub",
+        "build-gateway",
+        "build-file-processor",
+    ):
+        assert deploy["jobs"][job_name]["with"]["source-sha"] == (
+            "${{ inputs.release-sha }}"
+        )

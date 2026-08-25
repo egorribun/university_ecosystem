@@ -751,6 +751,18 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--contract", type=Path, metavar="PATH")
     parser.add_argument(
+        "--schema",
+        type=Path,
+        metavar="PATH",
+        help="explicit coverage manifest JSON schema",
+    )
+    parser.add_argument(
+        "--artifact-root",
+        type=Path,
+        metavar="PATH",
+        help="Git checkout root containing every canonical evidence path",
+    )
+    parser.add_argument(
         "--manifest",
         type=Path,
         metavar="PATH",
@@ -1499,12 +1511,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             for field, value in vars(arguments).items()
             if field.startswith("expected_workflow_") and value is not None
         }
+        artifact_root = arguments.artifact_root or REPOSITORY_ROOT
+        schema_path = (
+            arguments.schema
+            or REPOSITORY_ROOT / "quality" / "coverage-manifest.schema.json"
+        )
         manifest_errors = validate_manifest_evidence(
             manifest,
             contract=contract,
             manifest_path=arguments.manifest,
-            repository_root=REPOSITORY_ROOT,
-            schema_path=REPOSITORY_ROOT / "quality" / "coverage-manifest.schema.json",
+            repository_root=artifact_root,
+            schema_path=schema_path,
             expected_commit_sha=arguments.expected_commit_sha,
             expected_provenance=expected_provenance or None,
         )

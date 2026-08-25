@@ -51,15 +51,17 @@ jobs:
           fi
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
           mkdir -p "$RUNNER_TEMP/quality-ci" docs/testing/quality-history
-          if ! gh run download "$run_id" --name quality-manifest --dir "$RUNNER_TEMP/quality-ci"; then
-            echo "::error::Successful CI run $run_id has no downloadable quality-manifest."
+          if ! gh run download "$run_id" --name "quality-evidence-$head_sha" --dir "$RUNNER_TEMP/quality-ci"; then
+            echo "::error::Successful CI run $run_id has no downloadable quality-manifest evidence bundle."
             exit 1
           fi
-          manifest_path="$(find "$RUNNER_TEMP/quality-ci" -name quality-manifest.json -print -quit)"
-          if [[ -z "$manifest_path" ]]; then
+          manifest_path="$RUNNER_TEMP/quality-ci/artifacts/coverage/quality-manifest.json"
+          checksum_path="$RUNNER_TEMP/quality-ci/artifacts/coverage/quality-manifest.json.sha256"
+          if [[ ! -s "$manifest_path" || ! -s "$checksum_path" ]]; then
             echo "::error::quality-manifest.json is missing from CI run $run_id."
             exit 1
           fi
+          (cd "$RUNNER_TEMP/quality-ci" && sha256sum --check artifacts/coverage/quality-manifest.json.sha256)
           if ! manifest_sha="$(jq -er '.commit_sha | select(type == "string")' "$manifest_path")"; then
             echo "::error::quality-manifest.json has no valid commit_sha."
             exit 1

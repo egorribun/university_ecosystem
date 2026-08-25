@@ -243,6 +243,7 @@ jobs:
                   path: |
                       coverage-*.xml
                       artifacts/coverage/python/coverage-*.json
+                  if-no-files-found: error
 
             - name: Upload raw coverage data for aggregation
               if: ${{ inputs.num-shards > 1 }}
@@ -251,6 +252,7 @@ jobs:
                   name: backend-coverage-data-${{ inputs.test-group-name }}
                   path: .coverage.${{ inputs.shard-id }}
                   include-hidden-files: true
+                  if-no-files-found: error
 
             - name: Upload pytest report
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

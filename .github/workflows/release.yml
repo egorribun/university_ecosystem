@@ -1,6 +1,15 @@
 name: Release
 on:
-  workflow_dispatch: {} # manual-only until production release infrastructure is ready
+  workflow_dispatch:
+    inputs:
+      release-sha:
+        description: "Exact current main commit to certify and release"
+        required: true
+        type: string
+      quality-run-id:
+        description: "Successful CI run that produced this SHA's quality evidence"
+        required: true
+        type: string
   # push:
   #   branches:
   #     - main
@@ -26,32 +35,95 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+          ref: ${{ inputs.release-sha }}
           token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Verify release SHA and quality run
+        id: quality-run
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          QUALITY_RUN_ID: ${{ inputs.quality-run-id }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$QUALITY_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
+          mkdir -p artifacts/quality
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALITY_RUN_ID" > artifacts/quality/quality-run.json
+          test "$(jq -r .head_sha artifacts/quality/quality-run.json)" = "$RELEASE_SHA"
+          test "$(jq -r .conclusion artifacts/quality/quality-run.json)" = success
+          test "$(jq -r .event artifacts/quality/quality-run.json)" = push
+          test "$(jq -r .head_branch artifacts/quality/quality-run.json)" = main
+          test "$(jq -r .path artifacts/quality/quality-run.json)" = .github/workflows/ci.yml
+          run_attempt="$(jq -r .run_attempt artifacts/quality/quality-run.json)"
+          [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]]
+          echo "run-attempt=$run_attempt" >> "$GITHUB_OUTPUT"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALITY_RUN_ID/artifacts?per_page=100" \
+            > artifacts/quality/quality-artifacts.json
+          test "$(jq --arg name "quality-evidence-$RELEASE_SHA" '[.artifacts[] | select(.name == $name and .expired == false)] | length' artifacts/quality/quality-artifacts.json)" -eq 1
+
+      - name: Clean quality evidence destinations
+        run: |
+          set -euo pipefail
+          rm -f -- coverage.xml
+          rm -rf -- frontend/coverage
+          rm -rf -- artifacts/coverage
+
+      - name: Download SHA-bound quality evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: quality-evidence-${{ inputs.release-sha }}
+          run-id: ${{ inputs.quality-run-id }}
+          github-token: ${{ github.token }}
+          path: .
+
+      - name: Validate SHA-bound quality evidence
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          QUALITY_RUN_ID: ${{ inputs.quality-run-id }}
+          QUALITY_RUN_ATTEMPT: ${{ steps.quality-run.outputs.run-attempt }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test -s artifacts/coverage/quality-manifest.json
+          test -s artifacts/coverage/quality-manifest.json.sha256
+          sha256sum --check artifacts/coverage/quality-manifest.json.sha256
+          python scripts/quality/validate_quality_contract.py \
+            --schema quality/coverage-manifest.schema.json \
+            --artifact-root "$GITHUB_WORKSPACE" \
+            --mutation-registry quality/mutation-exclusions.json \
+            --manifest artifacts/coverage/quality-manifest.json \
+            --expected-commit-sha "$RELEASE_SHA" \
+            --expected-workflow-run-id "$QUALITY_RUN_ID" \
+            --expected-workflow-run-attempt "$QUALITY_RUN_ATTEMPT" \
+            --expected-workflow-event push \
+            --expected-workflow-repository "$GITHUB_REPOSITORY" \
+            --expected-workflow-ref "$GITHUB_REPOSITORY/.github/workflows/ci.yml@refs/heads/main" \
+            --expected-workflow-job coverage-policy-gate
 
       - name: Generate quality certification record
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           QUALITY_CERTIFICATION_KEY: ${{ secrets.QUALITY_CERTIFICATION_KEY }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
         run: |
+          set -euo pipefail
           test -n "$QUALITY_CERTIFICATION_KEY" || {
             echo "::error::QUALITY_CERTIFICATION_KEY is required for a signed release certification";
             exit 1;
           }
-          mkdir -p artifacts/quality
-          gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" > artifacts/quality/check-runs.json
+          gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_SHA/check-runs?per_page=100" > artifacts/quality/check-runs.json
           python -c 'import json; raw=json.load(open("artifacts/quality/check-runs.json", encoding="utf-8")); checks={item["name"]: item.get("conclusion", "unknown") for item in raw.get("check_runs", [])}; assert checks, "no completed check runs found for release SHA"; json.dump({"check_runs": checks}, open("artifacts/quality/required-checks.json", "w", encoding="utf-8"), indent=2); print(f"collected {len(checks)} check runs")'
-          quality_run_id="$(gh run list --workflow ci.yml --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
-          test -n "$quality_run_id"
-          gh run download "$quality_run_id" --dir artifacts/quality/ci
-          manifest_path="$(find artifacts/quality/ci -name quality-manifest.json -print -quit)"
-          test -n "$manifest_path"
           python scripts/quality/generate_certification.py \
-            --commit-sha "$GITHUB_SHA" \
+            --commit-sha "$RELEASE_SHA" \
             --contract quality/quality-contract.json \
             --checks artifacts/quality/required-checks.json \
-            --report-dir artifacts/quality/ci \
+            --report-dir artifacts/coverage \
             --output artifacts/quality/certification.json \
-            --limitation "Per-tool raw reports remain in the CI run; this release record hashes the normalized quality manifest and contract."
+            --limitation "This record hashes the same-SHA validated canonical v2 quality evidence bundle and contract."
 
       - name: Upload quality certification
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -113,8 +185,9 @@ jobs:
     uses: ./.github/workflows/reusable-build-and-sign.yml
     with:
       image_name: ${{ matrix.image_name }}
+      source-sha: ${{ inputs.release-sha }}
       context: ${{ matrix.context }}
       file: ${{ matrix.file }}
       tags: |
         ghcr.io/${{ github.repository }}/${{ matrix.image_name }}:latest
-        ghcr.io/${{ github.repository }}/${{ matrix.image_name }}:${{ github.sha }}
+        ghcr.io/${{ github.repository }}/${{ matrix.image_name }}:${{ inputs.release-sha }}
