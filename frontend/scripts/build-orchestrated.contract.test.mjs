@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { test } from "node:test"
+import { loadConfigFromFile } from "vite"
 import {
   enforcePrecacheBudget,
   enforcePrecacheBudgetForEnv,
@@ -20,6 +21,14 @@ const viteConfigPath = path.join(
   "vite.config.mts"
 )
 const viteConfigSource = await readFile(viteConfigPath, "utf8")
+const loadedViteConfig = await loadConfigFromFile(
+  { command: "build", mode: "production" },
+  viteConfigPath,
+  undefined,
+  "silent"
+)
+const resolveModulePreloadDependencies =
+  loadedViteConfig?.config?.build?.modulePreload?.resolveDependencies
 
 test("build orchestrator exposes bounded memory controls", () => {
   assert.match(scriptSource, /FRONTEND_BUILD_MAX_RSS_MB/)
@@ -82,6 +91,42 @@ test("optional password-strength dictionaries have stable lazy chunk names and s
 
   assert.ok(ignores.includes("**/vendor-password-strength-*.js"))
   assert.equal(MAX_PRECACHE_BYTES, 4_800_000)
+})
+
+test("English and Russian password analyzers do not preload the opposite locale", () => {
+  assert.equal(typeof resolveModulePreloadDependencies, "function")
+
+  const sharedRuntimeDependency = "assets/rolldown-runtime-hash.js"
+  const commonDictionaryDependency = "assets/vendor-password-strength-common-hash.js"
+  const context = {
+    hostId: "assets/passwordStrength-hash.js",
+    hostType: "js",
+  }
+
+  assert.deepEqual(
+    resolveModulePreloadDependencies(
+      "assets/vendor-password-strength-en-hash.js",
+      [
+        "assets/vendor-password-strength-ru-hash.js",
+        commonDictionaryDependency,
+        sharedRuntimeDependency,
+      ],
+      context
+    ),
+    [sharedRuntimeDependency]
+  )
+  assert.deepEqual(
+    resolveModulePreloadDependencies(
+      "assets/vendor-password-strength-ru-hash.js",
+      [
+        "assets/vendor-password-strength-en-hash.js",
+        commonDictionaryDependency,
+        sharedRuntimeDependency,
+      ],
+      context
+    ),
+    [sharedRuntimeDependency]
+  )
 })
 
 test("PWA precache fails closed when the aggregate browser budget is exceeded", () => {

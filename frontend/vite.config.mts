@@ -387,6 +387,14 @@ export default defineConfig(({ mode }) => {
       modulePreload: {
         polyfill: false,
         resolveDependencies(_filename, deps, { hostType }) {
+          // Vite also emits preload helpers inside JS chunks for dynamic
+          // imports. Password-strength locale imports are selected at runtime;
+          // preloading their generated dependency graph can otherwise fetch the
+          // opposite locale dictionary. The import() target remains untouched
+          // and loads the selected analyzer normally.
+          if (hostType === "js") {
+            return deps.filter((dep) => !dep.includes("vendor-password-strength-"))
+          }
           if (hostType !== "html") return deps
           return deps.filter(
             (dep) =>
