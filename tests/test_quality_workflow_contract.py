@@ -486,7 +486,8 @@ def test_kyverno_matrix_covers_every_policy_with_positive_and_negative_cases() -
             KYVERNO_POLICY_PATH.read_text(encoding="utf-8")
         )
         if isinstance(document, dict)
-        and document.get("kind") == "ClusterPolicy"
+        and document.get("apiVersion") == "policies.kyverno.io/v1"
+        and document.get("kind") == "ValidatingPolicy"
         and isinstance(document.get("metadata"), dict)
     }
     suites = {
@@ -495,9 +496,9 @@ def test_kyverno_matrix_covers_every_policy_with_positive_and_negative_cases() -
         if path.is_dir() and (path / "kyverno-test.yaml").is_file()
     }
 
-    assert policies, "Kyverno policy file must declare at least one ClusterPolicy"
+    assert policies, "Kyverno policy file must declare at least one ValidatingPolicy"
     assert suites == policies, (
-        "Every ClusterPolicy must have exactly one executable test suite; "
+        "Every ValidatingPolicy must have exactly one executable test suite; "
         f"missing={sorted(policies - suites)}, extra={sorted(suites - policies)}"
     )
 

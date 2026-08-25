@@ -1,6 +1,10 @@
 {{- if .Values.deploymentContract.enabled -}}
 {{- $mfaKeys := list .Values.applicationSecrets.keys.mfaEmailOtpHMACKeys .Values.applicationSecrets.keys.mfaEmailOtpActiveHMACKeyId .Values.applicationSecrets.keys.mfaEmailDeliveryKEKs .Values.applicationSecrets.keys.mfaEmailDeliveryActiveKEKId .Values.applicationSecrets.keys.mfaTrustedDeviceHMACKeys .Values.applicationSecrets.keys.mfaTrustedDeviceActiveHMACKeyId -}}
-{{- $backendKeys := concat (list "jwt-secret" "jwt-rsa-private-key" "internal-hmac-secret" "ws-hub-internal-secret" "csrf-hmac-secret" "spotify-token-secret" "elasticsearch-password" "spicedb-preshared-key" "audit-log-secret" "idempotency-hmac-secret") $mfaKeys | uniq | sortAlpha -}}
+{{- $cwvKeys := list -}}
+{{- if eq .Values.global.environment "staging" -}}
+  {{- $cwvKeys = list .Values.applicationSecrets.keys.cwvManualTesterUserIds -}}
+{{- end -}}
+{{- $backendKeys := concat (list "jwt-secret" "jwt-rsa-private-key" "internal-hmac-secret" "ws-hub-internal-secret" "csrf-hmac-secret" "spotify-token-secret" "elasticsearch-password" "spicedb-preshared-key" "audit-log-secret" "idempotency-hmac-secret") $mfaKeys $cwvKeys | uniq | sortAlpha -}}
 {{- $outboxKeys := list "jwt-secret" "jwt-rsa-private-key" "internal-hmac-secret" "ws-hub-internal-secret" "csrf-hmac-secret" "spotify-token-secret" "elasticsearch-password" "spicedb-preshared-key" "audit-log-secret" "idempotency-hmac-secret" .Values.applicationSecrets.keys.mfaEmailDeliveryKEKs | uniq | sortAlpha -}}
 {{- $applicationKeys := concat $backendKeys $outboxKeys -}}
 {{- if .Values.fileProcessor.enabled -}}

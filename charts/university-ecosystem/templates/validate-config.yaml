@@ -3,6 +3,9 @@
   {{- fail "global.environment must be one of: development, staging, production" -}}
 {{- end -}}
 {{- $mfaSecretKeys := list .Values.applicationSecrets.keys.mfaEmailOtpHMACKeys .Values.applicationSecrets.keys.mfaEmailOtpActiveHMACKeyId .Values.applicationSecrets.keys.mfaEmailDeliveryKEKs .Values.applicationSecrets.keys.mfaEmailDeliveryActiveKEKId .Values.applicationSecrets.keys.mfaTrustedDeviceHMACKeys .Values.applicationSecrets.keys.mfaTrustedDeviceActiveHMACKeyId -}}
+{{- if not .Values.applicationSecrets.keys.cwvManualTesterUserIds -}}
+  {{- fail "applicationSecrets.keys.cwvManualTesterUserIds must be set" -}}
+{{- end -}}
 {{- if ne (len $mfaSecretKeys) (len (uniq $mfaSecretKeys)) -}}
   {{- fail "MFA Secret key names must be pairwise unique" -}}
 {{- end -}}

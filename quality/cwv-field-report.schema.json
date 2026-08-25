@@ -1,0 +1,155 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://university-ecosystem.local/schemas/cwv-field-report.schema.json",
+  "title": "University Ecosystem field Core Web Vitals report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "release_sha",
+    "frontend_image_digest",
+    "environment",
+    "deployment",
+    "collector",
+    "window",
+    "observations"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "generated_at": { "$ref": "#/$defs/timestamp" },
+    "release_sha": { "$ref": "#/$defs/sha" },
+    "frontend_image_digest": { "$ref": "#/$defs/digest" },
+    "environment": { "const": "staging" },
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "workflow_run_id",
+        "workflow_run_attempt",
+        "deployed_at",
+        "deployment_url"
+      ],
+      "properties": {
+        "workflow_run_id": { "type": "integer", "minimum": 1 },
+        "workflow_run_attempt": { "type": "integer", "minimum": 1 },
+        "deployed_at": { "$ref": "#/$defs/timestamp" },
+        "deployment_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "maxLength": 2048
+        }
+      }
+    },
+    "collector": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "library", "library_version", "exporter_version", "eligibility", "sampling", "maximum_collectors"],
+      "properties": {
+        "kind": { "const": "web-vitals-rum" },
+        "library": { "const": "web-vitals" },
+        "library_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "exporter_version": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "eligibility": { "const": "operator-curated-manual-testers" },
+        "sampling": { "const": "one-final-metric-per-collector-route-hour" },
+        "maximum_collectors": { "const": 50 }
+      }
+    },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "$ref": "#/$defs/timestamp" },
+        "end": { "$ref": "#/$defs/timestamp" }
+      }
+    },
+    "observations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100000,
+      "items": { "$ref": "#/$defs/observation" }
+    }
+  },
+  "$defs": {
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "opaqueId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{16,128}$"
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric",
+        "unit",
+        "value",
+        "metric_id",
+        "collector_id",
+        "navigation_id",
+        "session_id",
+        "device_class",
+        "route_group",
+        "observed_at",
+        "release_sha",
+        "frontend_image_digest",
+        "automated",
+        "final"
+      ],
+      "properties": {
+        "metric": { "enum": ["LCP", "INP", "CLS"] },
+        "unit": { "enum": ["ms", "score"] },
+        "value": { "type": "number", "minimum": 0, "maximum": 60000 },
+        "metric_id": { "$ref": "#/$defs/opaqueId" },
+        "collector_id": { "$ref": "#/$defs/opaqueId" },
+        "navigation_id": { "$ref": "#/$defs/opaqueId" },
+        "session_id": { "$ref": "#/$defs/opaqueId" },
+        "device_class": { "enum": ["mobile", "desktop"] },
+        "route_group": {
+          "enum": [
+            "auth",
+            "core",
+            "content",
+            "map_activity",
+            "messenger_profile_settings_admin"
+          ]
+        },
+        "observed_at": { "$ref": "#/$defs/timestamp" },
+        "release_sha": { "$ref": "#/$defs/sha" },
+        "frontend_image_digest": { "$ref": "#/$defs/digest" },
+        "automated": { "type": "boolean" },
+        "final": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "metric": { "const": "CLS" } } },
+          "then": {
+            "properties": {
+              "unit": { "const": "score" },
+              "value": { "maximum": 10 }
+            }
+          },
+          "else": {
+            "properties": {
+              "unit": { "const": "ms" },
+              "value": { "maximum": 60000 }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

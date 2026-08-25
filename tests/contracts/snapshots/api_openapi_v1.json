@@ -890,6 +890,117 @@
         "title": "ChatsListOut",
         "type": "object"
       },
+      "CwvEnvelopeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "device_class": {
+            "enum": [
+              "mobile",
+              "desktop"
+            ],
+            "title": "Device Class",
+            "type": "string"
+          },
+          "pathname": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Pathname",
+            "type": "string"
+          },
+          "renewal_envelope": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "minLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Renewal Envelope"
+          }
+        },
+        "required": [
+          "pathname",
+          "device_class"
+        ],
+        "title": "CwvEnvelopeRequest",
+        "type": "object"
+      },
+      "CwvEnvelopeResponse": {
+        "properties": {
+          "envelope": {
+            "maxLength": 4096,
+            "minLength": 32,
+            "title": "Envelope",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "envelope",
+          "expires_at"
+        ],
+        "title": "CwvEnvelopeResponse",
+        "type": "object"
+      },
+      "CwvObservationAccepted": {
+        "properties": {
+          "accepted": {
+            "const": true,
+            "default": true,
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "metric_id": {
+            "title": "Metric Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric_id"
+        ],
+        "title": "CwvObservationAccepted",
+        "type": "object"
+      },
+      "CwvObservationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "maxLength": 4096,
+            "minLength": 32,
+            "title": "Envelope",
+            "type": "string"
+          },
+          "metric": {
+            "enum": [
+              "LCP",
+              "INP",
+              "CLS"
+            ],
+            "title": "Metric",
+            "type": "string"
+          },
+          "value": {
+            "maximum": 60000.0,
+            "minimum": 0.0,
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "envelope",
+          "metric",
+          "value"
+        ],
+        "title": "CwvObservationRequest",
+        "type": "object"
+      },
       "DataDeletionOut": {
         "additionalProperties": false,
         "properties": {
@@ -2651,6 +2762,11 @@
             "title": "Id",
             "type": "string"
           },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
           "read": {
             "title": "Read",
             "type": "boolean"
@@ -2681,6 +2797,17 @@
               }
             ],
             "title": "Title En"
+          },
+          "topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic"
           },
           "type": {
             "anyOf": [
@@ -8561,6 +8688,100 @@
         ]
       }
     },
+    "/api/v1/cwv/envelope": {
+      "post": {
+        "description": "Create Cwv Envelope",
+        "operationId": "create_cwv_envelope_api_v1_cwv_envelope_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CwvEnvelopeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CwvEnvelopeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Create Cwv Envelope",
+        "tags": [
+          "field-performance"
+        ]
+      }
+    },
+    "/api/v1/cwv/observations": {
+      "post": {
+        "description": "Ingest Cwv Observation",
+        "operationId": "ingest_cwv_observation_api_v1_cwv_observations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CwvObservationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CwvObservationAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Ingest Cwv Observation",
+        "tags": [
+          "field-performance"
+        ]
+      }
+    },
     "/api/v1/events": {
       "get": {
         "description": "Get a paginated list of events.",
@@ -13152,6 +13373,10 @@
     {
       "description": "Events API operations.",
       "name": "events"
+    },
+    {
+      "description": "Field performance API operations.",
+      "name": "field-performance"
     },
     {
       "description": "Groups API operations.",

@@ -12,10 +12,6 @@ allow = [
     "MIT",
     "Apache-2.0",
     "BSD-3-Clause",
-    "ISC",
-    "CC0-1.0",
-    "0BSD",
-    "Unicode-DFS-2016",
     "Apache-2.0 WITH LLVM-exception",
     "Unicode-3.0",
 ]

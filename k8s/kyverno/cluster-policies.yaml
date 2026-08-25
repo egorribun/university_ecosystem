@@ -1,356 +1,337 @@
-# MOD-05 (audit Wave 12): Kyverno ClusterPolicies for admission-level enforcement.
+# University Ecosystem admission controls for Kyverno 1.19+.
 #
-# NetworkPolicy and PodSecurityContext in Helm charts can be bypassed by deploying
-# raw manifests or using kubectl apply directly. Kyverno enforces the same rules at
-# the Kubernetes admission webhook layer — no manifest gets through without complying.
+# Kyverno removed the legacy ClusterPolicy API after its v1.19 compatibility
+# window. These CEL-native ValidatingPolicy resources keep admission fail-closed
+# while also producing background policy reports.
 #
-# Installation:
-#   helm repo add kyverno https://kyverno.github.io/kyverno/
-#   helm install kyverno kyverno/kyverno -n kyverno --create-namespace \
-#     --set admissionController.replicas=3  # HA for production
-#
-# Policy modes:
-#   validationFailureAction: Enforce  — blocks non-compliant pods (recommended for prod)
-#   validationFailureAction: Audit    — logs violations without blocking (use during rollout)
-#
-# Start in Audit mode, verify zero violations in the Kyverno dashboard, then switch to Enforce.
+# Production installation:
+#   helm upgrade --install kyverno kyverno/kyverno --namespace kyverno \
+#     --create-namespace --set admissionController.replicas=3 \
+#     --set backgroundController.replicas=2 \
+#     --set cleanupController.replicas=2 \
+#     --set reportsController.replicas=2
 
 ---
-# Policy 1: Require non-root containers.
-# Matches the PodSecurityContext we added in RZ-03 (backend: UID 10001, gateway/ws-hub/
-# file-processor: UID 65532, frontend: UID 101).
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: require-run-as-non-root
   annotations:
     policies.kyverno.io/title: Require Non-Root Containers
     policies.kyverno.io/category: Pod Security
     policies.kyverno.io/severity: high
-    policies.kyverno.io/description: >-
-      Containers must not run as UID 0 (root). Enforce runAsNonRoot: true at
-      the pod and container level. This mirrors the Kubernetes PodSecurity
-      "restricted" baseline and prevents container escape from yielding root on the node.
 spec:
-  # DEBT-05 (RZ-W13): Promoted from Audit → Enforce.
-  # Prerequisite verified: `kubectl get policyreport -A` must show 0 violations
-  # in the university-ecosystem namespace before promoting.
-  # Rollback: `kubectl patch clusterpolicy require-run-as-non-root --type merge
-  #   -p '{"spec":{"validationFailureAction":"Warn"}}'`
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: check-runAsNonRoot
-      match:
-        any:
-          - resources:
-              kinds: [Pod]
-              namespaces: [university-ecosystem]
-      validate:
-        message: "Pod must set runAsNonRoot: true in the pod or all containers' securityContext"
-        anyPattern:
-          # Pattern A: set at the pod level
-          - spec:
-              securityContext:
-                runAsNonRoot: true
-          # Pattern B: set on every container individually
-          - spec: # nosemgrep: yaml.kubernetes.security.run-as-non-root.run-as-non-root -- Kyverno match pattern, not a Pod.
-              containers:
-                - securityContext:
-                    runAsNonRoot: true
+  failurePolicy: Fail
+  validationActions: [Deny, Audit]
+  evaluation:
+    admission:
+      enabled: true
+    background:
+      enabled: true
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: university-ecosystem
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: allContainers
+      expression: >-
+        object.spec.containers + object.spec.?initContainers.orValue([]) +
+        object.spec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: >-
+        object.spec.?securityContext.?runAsNonRoot.orValue(false) ||
+        variables.allContainers.all(container,
+          container.?securityContext.?runAsNonRoot.orValue(false))
+      message: Pod or every container must set runAsNonRoot to true
 
 ---
-# Policy 2: Disallow privilege escalation.
-# Prevents suid binaries and setcap from granting elevated privileges after exec.
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-privilege-escalation
   annotations:
     policies.kyverno.io/title: Disallow Privilege Escalation
     policies.kyverno.io/category: Pod Security
     policies.kyverno.io/severity: high
-    policies.kyverno.io/description: >-
-      allowPrivilegeEscalation: false prevents a child process from gaining more
-      privileges than its parent. Required for CIS Kubernetes Benchmark Level 2.
 spec:
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: check-allowPrivilegeEscalation
-      match:
-        any:
-          - resources:
-              kinds: [Pod]
-              namespaces: [university-ecosystem]
-      validate:
-        message: "All containers must set allowPrivilegeEscalation: false"
-        pattern:
-          spec: # nosemgrep: yaml.kubernetes.security.run-as-non-root.run-as-non-root -- Kyverno match pattern, not a Pod.
-            containers:
-              - securityContext:
-                  allowPrivilegeEscalation: false
-            =(initContainers):
-              - securityContext:
-                  allowPrivilegeEscalation: false
+  failurePolicy: Fail
+  validationActions: [Deny, Audit]
+  evaluation:
+    admission: { enabled: true }
+    background: { enabled: true }
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: university-ecosystem
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: allContainers
+      expression: >-
+        object.spec.containers + object.spec.?initContainers.orValue([]) +
+        object.spec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: >-
+        variables.allContainers.all(container,
+          container.?securityContext.?allowPrivilegeEscalation.orValue(true) == false)
+      message: Every container must set allowPrivilegeEscalation to false
 
 ---
-# Policy 3: Require drop ALL capabilities.
-# Removes all Linux capabilities (CAP_NET_RAW, CAP_SYS_PTRACE, etc.) that allow
-# network sniffing, process inspection, and kernel module loading.
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: require-drop-all-capabilities
   annotations:
     policies.kyverno.io/title: Require Drop All Capabilities
     policies.kyverno.io/category: Pod Security
     policies.kyverno.io/severity: medium
-    policies.kyverno.io/description: >-
-      All containers must drop ALL Linux capabilities. Capabilities not explicitly
-      needed (which is the case for all university-ecosystem services) must be absent.
 spec:
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: check-capabilities-drop-all
-      match:
-        any:
-          - resources:
-              kinds: [Pod]
-              namespaces: [university-ecosystem]
-      validate:
-        message: "All containers must include 'ALL' in capabilities.drop"
-        pattern:
-          spec: # nosemgrep: yaml.kubernetes.security.run-as-non-root.run-as-non-root -- Kyverno match pattern, not a Pod.
-            containers:
-              - securityContext:
-                  capabilities:
-                    drop: ["ALL"]
+  failurePolicy: Fail
+  validationActions: [Deny, Audit]
+  evaluation:
+    admission: { enabled: true }
+    background: { enabled: true }
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: university-ecosystem
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: allContainers
+      expression: >-
+        object.spec.containers + object.spec.?initContainers.orValue([]) +
+        object.spec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: >-
+        variables.allContainers.all(container,
+          container.?securityContext.?capabilities.?drop.orValue([]).exists(capability,
+            capability == 'ALL'))
+      message: Every container must include ALL in securityContext.capabilities.drop
 
 ---
-# Policy 4: Require seccomp profile RuntimeDefault or Localhost.
-# Syscall filtering reduces attack surface for container escapes exploiting kernel CVEs.
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: require-seccomp-profile
   annotations:
     policies.kyverno.io/title: Require Seccomp Profile
     policies.kyverno.io/category: Pod Security
     policies.kyverno.io/severity: medium
-    policies.kyverno.io/description: >-
-      Pods must specify a seccomp profile of RuntimeDefault or Localhost.
-      RuntimeDefault enables the container runtime's default syscall allow-list,
-      which blocks ~300 dangerous syscalls with zero application changes needed.
 spec:
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: check-seccomp-profile
-      match:
-        any:
-          - resources:
-              kinds: [Pod]
-              namespaces: [university-ecosystem]
-      validate:
-        message: "Pod must set seccompProfile.type to RuntimeDefault or Localhost"
-        pattern:
-          spec:
-            securityContext:
-              seccompProfile:
-                type: "RuntimeDefault | Localhost"
+  failurePolicy: Fail
+  validationActions: [Deny, Audit]
+  evaluation:
+    admission: { enabled: true }
+    background: { enabled: true }
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: university-ecosystem
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: allContainers
+      expression: >-
+        object.spec.containers + object.spec.?initContainers.orValue([]) +
+        object.spec.?ephemeralContainers.orValue([])
+    - name: podSeccompType
+      expression: object.spec.?securityContext.?seccompProfile.?type.orValue('')
+  validations:
+    - expression: >-
+        variables.podSeccompType in ['RuntimeDefault', 'Localhost'] ||
+        variables.allContainers.all(container,
+          container.?securityContext.?seccompProfile.?type.orValue('') in
+            ['RuntimeDefault', 'Localhost'])
+      message: Pod or every container must use the RuntimeDefault or Localhost seccomp profile
 
 ---
-# Policy 5: Require read-only root filesystem.
-# Prevents exploits from writing reverse-shell binaries to the container filesystem.
-# Services that need writable dirs should declare emptyDir volumes (done in RZ-03).
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: require-readonly-root-filesystem
   annotations:
     policies.kyverno.io/title: Require Read-Only Root Filesystem
     policies.kyverno.io/category: Pod Security
     policies.kyverno.io/severity: medium
-    policies.kyverno.io/description: >-
-      All containers must mount the root filesystem as read-only. Writable directories
-      must be provided via emptyDir or PersistentVolume mounts.
 spec:
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: check-readOnlyRootFilesystem
-      match:
-        any:
-          - resources:
-              kinds: [Pod]
-              namespaces: [university-ecosystem]
-      validate:
-        message: "All containers must set readOnlyRootFilesystem: true"
-        pattern:
-          spec: # nosemgrep: yaml.kubernetes.security.run-as-non-root.run-as-non-root -- Kyverno match pattern, not a Pod.
-            containers:
-              - securityContext:
-                  readOnlyRootFilesystem: true
-
+  failurePolicy: Fail
+  validationActions: [Deny, Audit]
+  evaluation:
+    admission: { enabled: true }
+    background: { enabled: true }
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: university-ecosystem
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: allContainers
+      expression: >-
+        object.spec.containers + object.spec.?initContainers.orValue([]) +
+        object.spec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: >-
+        variables.allContainers.all(container,
+          container.?securityContext.?readOnlyRootFilesystem.orValue(false))
+      message: Every container must set readOnlyRootFilesystem to true
 
 ---
-# Policy 6: Require images from approved registries (MOD-W15-10, Wave 15).
-# Start in Audit mode — validate no violations before switching to Enforce.
-# Approved registries: project registry + ghcr.io for public base images.
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: restrict-image-registries
   annotations:
     policies.kyverno.io/title: Restrict Image Registries
     policies.kyverno.io/category: Supply Chain Security
     policies.kyverno.io/severity: high
-    policies.kyverno.io/description: >-
-      Images must be pulled from the approved registry (registry.example.com)
-      or ghcr.io. Prevents supply-chain attacks via untrusted public images.
-    policies.kyverno.io/minversion: "1.6.0"
+    policies.kyverno.io/minversion: 1.19.0
 spec:
-  # MOD-W18-01 (audit 2026-03-23 Wave 18): promoted from Audit to Enforce.
-  # Policies 1–5 enforced since Wave 13; policies 6–8 now follow after
-  # confirming zero violations in production via policyreport.
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: check-registry
-      match:
-        any:
-          - resources:
-              kinds: [Pod]
-              namespaces: [university-ecosystem]
-      validate:
-        message: "Images must be from registry.example.com/* or ghcr.io/*"
-        foreach:
-          - list: request.object.spec.containers
-            pattern:
-              image: "registry.example.com/* | ghcr.io/*"
+  failurePolicy: Fail
+  validationActions: [Deny, Audit]
+  evaluation:
+    admission: { enabled: true }
+    background: { enabled: true }
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: university-ecosystem
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: allContainers
+      expression: >-
+        object.spec.containers + object.spec.?initContainers.orValue([]) +
+        object.spec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: >-
+        variables.allContainers.all(container,
+          container.image.startsWith('registry.example.com/') ||
+          container.image.startsWith('ghcr.io/'))
+      message: Images must come from registry.example.com or ghcr.io
 
 ---
-# Policy 7: Require CPU and memory limits on all containers (MOD-W15-10, Wave 15).
-# Prevents noisy-neighbor OOM; pairs with the HPA resource metrics.
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: require-resource-limits
   annotations:
     policies.kyverno.io/title: Require Resource Limits
     policies.kyverno.io/category: Resource Management
     policies.kyverno.io/severity: medium
-    policies.kyverno.io/description: >-
-      All containers must specify CPU and memory limits. Prevents OOM-kill cascades
-      and ensures HPA has accurate per-pod resource metrics to scale on.
-    policies.kyverno.io/minversion: "1.6.0"
 spec:
-  # MOD-W18-01 (audit 2026-03-23 Wave 18): promoted from Audit to Enforce.
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: check-limits
-      match:
-        any:
-          - resources:
-              kinds: [Pod]
-              namespaces: [university-ecosystem]
-      validate:
-        message: "CPU and memory limits are required on all containers"
-        pattern:
-          spec: # nosemgrep: yaml.kubernetes.security.run-as-non-root.run-as-non-root -- Kyverno match pattern, not a Pod.
-            containers:
-              - resources:
-                  limits:
-                    cpu: "?*"
-                    memory: "?*"
+  failurePolicy: Fail
+  validationActions: [Deny, Audit]
+  evaluation:
+    admission: { enabled: true }
+    background: { enabled: true }
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: university-ecosystem
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: allContainers
+      expression: >-
+        object.spec.containers + object.spec.?initContainers.orValue([]) +
+        object.spec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: >-
+        variables.allContainers.all(container,
+          container.?resources.?limits.?cpu.orValue('') != '' &&
+          container.?resources.?limits.?memory.orValue('') != '')
+      message: Every container must define CPU and memory limits
 
 ---
-# Policy 8: Require imagePullPolicy: Always in production (MOD-W15-10, Wave 15).
-# Paired with Policy 6 (restrict-image-registries) and the image-tag :latest
-# ban (Policy 5 / disallow-latest-tag). Ensures K8s always re-validates the
-# image digest against the registry on pod start — prevents stale cached images
-# from running if an image tag is force-pushed (should not happen but defence-in-depth).
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: require-always-pull-policy
   annotations:
-    policies.kyverno.io/title: Require Always Pull Policy in Production
-    policies.kyverno.io/category: Security
+    policies.kyverno.io/title: Require Always Pull Policy
+    policies.kyverno.io/category: Supply Chain Security
     policies.kyverno.io/severity: medium
-    policies.kyverno.io/description: >-
-      All containers in the university-ecosystem namespace must set
-      imagePullPolicy: Always so Kubernetes re-validates the image on every
-      pod start. Prevents stale cached images from running after a rotation.
-    policies.kyverno.io/minversion: "1.6.0"
 spec:
-  # MOD-W18-01 (audit 2026-03-23 Wave 18): promoted from Audit to Enforce.
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: check-pull-policy
-      match:
-        any:
-          - resources:
-              kinds: [Pod]
-              namespaces: [university-ecosystem]
-      validate:
-        message: "imagePullPolicy must be Always in the university-ecosystem namespace"
-        pattern:
-          spec: # nosemgrep: yaml.kubernetes.security.run-as-non-root.run-as-non-root -- Kyverno match pattern, not a Pod.
-            containers:
-              - imagePullPolicy: Always
+  failurePolicy: Fail
+  validationActions: [Deny, Audit]
+  evaluation:
+    admission: { enabled: true }
+    background: { enabled: true }
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: university-ecosystem
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: allContainers
+      expression: >-
+        object.spec.containers + object.spec.?initContainers.orValue([]) +
+        object.spec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: variables.allContainers.all(container, container.imagePullPolicy == 'Always')
+      message: Every container must set imagePullPolicy to Always
 
 ---
-# Policy 9: Disallow empty or 'latest' image tags (MOD-30-02, Wave 30).
-# CI validates IMAGE_TAG but manual `kubectl apply` can bypass CI.
-# This admission-level gate ensures every container image has a non-empty,
-# non-latest tag (must be semver or commit SHA).
-apiVersion: kyverno.io/v1
-kind: ClusterPolicy
+apiVersion: policies.kyverno.io/v1
+kind: ValidatingPolicy
 metadata:
   name: disallow-latest-tag
   annotations:
     policies.kyverno.io/title: Disallow Latest or Empty Image Tags
     policies.kyverno.io/category: Supply Chain Security
     policies.kyverno.io/severity: high
-    policies.kyverno.io/description: >-
-      All container images must specify an explicit tag that is not 'latest'.
-      This prevents accidental deployment of unversioned images and ensures
-      reproducible rollouts. Use semver tags or commit SHAs.
-    policies.kyverno.io/minversion: "1.6.0"
 spec:
-  validationFailureAction: Enforce
-  background: true
-  rules:
-    - name: validate-image-tag
-      match:
-        any:
-          - resources:
-              kinds: [Pod]
-              namespaces: [university-ecosystem]
-      validate:
-        message: >-
-          Image tag must not be 'latest' or empty. Use a semver tag (v1.2.3)
-          or commit SHA for reproducible deployments.
-        pattern:
-          spec: # nosemgrep: yaml.kubernetes.security.run-as-non-root.run-as-non-root -- Kyverno match pattern, not a Pod.
-            containers:
-              - image: "*:?*"
-    - name: deny-latest-tag
-      match:
-        any:
-          - resources:
-              kinds: [Pod]
-              namespaces: [university-ecosystem]
-      validate:
-        message: "Image tag 'latest' is not allowed. Use a specific version tag."
-        deny:
-          conditions:
-            any:
-              - key: "{{ request.object.spec.containers[].image }}"
-                operator: AnyIn
-                value: ["*:latest"]
+  failurePolicy: Fail
+  validationActions: [Deny, Audit]
+  evaluation:
+    admission: { enabled: true }
+    background: { enabled: true }
+  matchConstraints:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: university-ecosystem
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [pods]
+  variables:
+    - name: allContainers
+      expression: >-
+        object.spec.containers + object.spec.?initContainers.orValue([]) +
+        object.spec.?ephemeralContainers.orValue([])
+  validations:
+    - expression: >-
+        variables.allContainers.all(container,
+          container.image.matches('^.+(@sha256:[a-f0-9]{64}|:[^/:@]+)$') &&
+          !container.image.matches('(?i)^.+:latest$'))
+      message: Every image must use an explicit non-empty tag or immutable sha256 digest

@@ -680,6 +680,13 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	{
 		api.Any("/v1/*path", func(c *gin.Context) {
 			subPath := c.Param("path")
+			// Field evidence export carries a GitHub Actions OIDC token, not an
+			// application JWT. Only this exact read-only path bypasses edge JWT;
+			// the backend verifies issuer, audience, workflow, environment and SHA.
+			if subPath == "/cwv/export" && c.Request.Method == http.MethodGet {
+				fileFn(c)
+				return
+			}
 			if strings.HasPrefix(subPath, "/auth/") {
 				// Auth routes: optional JWT
 				jwtMiddleware.Optional(ctx)(c)

@@ -61,6 +61,9 @@ import type {
   CreateChatApiV1ChatsPostData,
   CreateChatApiV1ChatsPostErrors,
   CreateChatApiV1ChatsPostResponses,
+  CreateCwvEnvelopeApiV1CwvEnvelopePostData,
+  CreateCwvEnvelopeApiV1CwvEnvelopePostErrors,
+  CreateCwvEnvelopeApiV1CwvEnvelopePostResponses,
   CreateEventApiV1EventsPostData,
   CreateEventApiV1EventsPostErrors,
   CreateEventApiV1EventsPostResponses,
@@ -200,6 +203,9 @@ import type {
   HealthzHealthzGetData,
   HealthzHealthzGetErrors,
   HealthzHealthzGetResponses,
+  IngestCwvObservationApiV1CwvObservationsPostData,
+  IngestCwvObservationApiV1CwvObservationsPostErrors,
+  IngestCwvObservationApiV1CwvObservationsPostResponses,
   IssueWsUpgradeTicketWsTicketPostData,
   IssueWsUpgradeTicketWsTicketPostResponses,
   LikeNewsApiV1NewsIdLikePostData,
@@ -1552,6 +1558,60 @@ export const receiveCspReportApiV1CspReportPost = <ThrowOnError extends boolean 
     unknown,
     ThrowOnError
   >({ url: "/api/v1/csp-report", ...options })
+
+/**
+ * Create Cwv Envelope
+ *
+ * Create Cwv Envelope
+ */
+export const createCwvEnvelopeApiV1CwvEnvelopePost = <ThrowOnError extends boolean = false>(
+  options: Options<CreateCwvEnvelopeApiV1CwvEnvelopePostData, ThrowOnError>
+): RequestResult<
+  CreateCwvEnvelopeApiV1CwvEnvelopePostResponses,
+  CreateCwvEnvelopeApiV1CwvEnvelopePostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    CreateCwvEnvelopeApiV1CwvEnvelopePostResponses,
+    CreateCwvEnvelopeApiV1CwvEnvelopePostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/cwv/envelope",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Ingest Cwv Observation
+ *
+ * Ingest Cwv Observation
+ */
+export const ingestCwvObservationApiV1CwvObservationsPost = <ThrowOnError extends boolean = false>(
+  options: Options<IngestCwvObservationApiV1CwvObservationsPostData, ThrowOnError>
+): RequestResult<
+  IngestCwvObservationApiV1CwvObservationsPostResponses,
+  IngestCwvObservationApiV1CwvObservationsPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    IngestCwvObservationApiV1CwvObservationsPostResponses,
+    IngestCwvObservationApiV1CwvObservationsPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/cwv/observations",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
 
 /**
  * List Events

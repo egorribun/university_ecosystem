@@ -65,11 +65,7 @@
           "mfa_method": {
             "anyOf": [
               {
-                "enum": [
-                  "totp",
-                  "email_otp",
-                  "recovery_code"
-                ],
+                "enum": ["totp", "email_otp", "recovery_code"],
                 "type": "string"
               },
               {
@@ -124,13 +120,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "created_at",
-          "id",
-          "user_id",
-          "jti",
-          "expires_at"
-        ],
+        "required": ["created_at", "id", "user_id", "jti", "expires_at"],
         "title": "ActiveSessionOut",
         "type": "object"
       },
@@ -144,9 +134,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "user_id"
-        ],
+        "required": ["user_id"],
         "title": "AddParticipant",
         "type": "object"
       },
@@ -190,12 +178,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "user_id",
-          "email",
-          "topics",
-          "allowed_topics"
-        ],
+        "required": ["user_id", "email", "topics", "allowed_topics"],
         "title": "AdminUserTopicsResponse",
         "type": "object"
       },
@@ -263,13 +246,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "url",
-          "file_type",
-          "filename",
-          "size"
-        ],
+        "required": ["id", "url", "file_type", "filename", "size"],
         "title": "AttachmentResponse",
         "type": "object"
       },
@@ -288,10 +265,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "items",
-          "total"
-        ],
+        "required": ["items", "total"],
         "title": "AuditLogListOut",
         "type": "object"
       },
@@ -412,13 +386,7 @@
             "title": "User Agent"
           }
         },
-        "required": [
-          "id",
-          "resource_type",
-          "action",
-          "created_at",
-          "is_valid"
-        ],
+        "required": ["id", "resource_type", "action", "created_at", "is_valid"],
         "title": "AuditLogOut",
         "type": "object"
       },
@@ -431,9 +399,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "emoji"
-        ],
+        "required": ["emoji"],
         "title": "Body_add_reaction_api_v1_chats__chat_id__messages__message_id__reactions_post",
         "type": "object"
       },
@@ -444,9 +410,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "content"
-        ],
+        "required": ["content"],
         "title": "Body_comment_on_news_api_v1_news__id__comment_post",
         "type": "object"
       },
@@ -459,9 +423,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "content"
-        ],
+        "required": ["content"],
         "title": "Body_edit_message_api_v1_chats__chat_id__messages__message_id__patch",
         "type": "object"
       },
@@ -523,10 +485,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "username",
-          "password"
-        ],
+        "required": ["username", "password"],
         "title": "Body_login_api_v1_auth_login_post",
         "type": "object"
       },
@@ -571,9 +530,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "file"
-        ],
+        "required": ["file"],
         "title": "Body_upload_avatar_api_v1_users_me_avatar_post",
         "type": "object"
       },
@@ -585,9 +542,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "file"
-        ],
+        "required": ["file"],
         "title": "Body_upload_cover_api_v1_users_me_cover_post",
         "type": "object"
       },
@@ -599,9 +554,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "file"
-        ],
+        "required": ["file"],
         "title": "Body_upload_event_file_api_v1_events__event_id__upload_file_post",
         "type": "object"
       },
@@ -625,10 +578,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "file",
-          "event_id"
-        ],
+        "required": ["file", "event_id"],
         "title": "Body_upload_event_image_api_v1_events_upload_image_post",
         "type": "object"
       },
@@ -640,9 +590,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "file"
-        ],
+        "required": ["file"],
         "title": "Body_upload_news_image_api_v1_news_upload_image_post",
         "type": "object"
       },
@@ -654,9 +602,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "file"
-        ],
+        "required": ["file"],
         "title": "Body_upload_story_cover_api_v1_stories_upload_cover_post",
         "type": "object"
       },
@@ -669,9 +615,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "participant_id"
-        ],
+        "required": ["participant_id"],
         "title": "ChatCreate",
         "type": "object"
       },
@@ -699,10 +643,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "chat_id",
-          "status"
-        ],
+        "required": ["chat_id", "status"],
         "title": "ChatMaintenanceResult",
         "type": "object"
       },
@@ -746,11 +687,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "id",
-          "email",
-          "is_active"
-        ],
+        "required": ["id", "email", "is_active"],
         "title": "ChatParticipant",
         "type": "object"
       },
@@ -847,12 +784,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "participants",
-          "created_at",
-          "updated_at"
-        ],
+        "required": ["id", "participants", "created_at", "updated_at"],
         "title": "ChatResponse",
         "type": "object"
       },
@@ -884,10 +816,100 @@
             "title": "Next Cursor"
           }
         },
-        "required": [
-          "items"
-        ],
+        "required": ["items"],
         "title": "ChatsListOut",
+        "type": "object"
+      },
+      "CwvEnvelopeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "device_class": {
+            "enum": ["mobile", "desktop"],
+            "title": "Device Class",
+            "type": "string"
+          },
+          "pathname": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Pathname",
+            "type": "string"
+          },
+          "renewal_envelope": {
+            "anyOf": [
+              {
+                "maxLength": 4096,
+                "minLength": 32,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Renewal Envelope"
+          }
+        },
+        "required": ["pathname", "device_class"],
+        "title": "CwvEnvelopeRequest",
+        "type": "object"
+      },
+      "CwvEnvelopeResponse": {
+        "properties": {
+          "envelope": {
+            "maxLength": 4096,
+            "minLength": 32,
+            "title": "Envelope",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          }
+        },
+        "required": ["envelope", "expires_at"],
+        "title": "CwvEnvelopeResponse",
+        "type": "object"
+      },
+      "CwvObservationAccepted": {
+        "properties": {
+          "accepted": {
+            "const": true,
+            "default": true,
+            "title": "Accepted",
+            "type": "boolean"
+          },
+          "metric_id": {
+            "title": "Metric Id",
+            "type": "string"
+          }
+        },
+        "required": ["metric_id"],
+        "title": "CwvObservationAccepted",
+        "type": "object"
+      },
+      "CwvObservationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "maxLength": 4096,
+            "minLength": 32,
+            "title": "Envelope",
+            "type": "string"
+          },
+          "metric": {
+            "enum": ["LCP", "INP", "CLS"],
+            "title": "Metric",
+            "type": "string"
+          },
+          "value": {
+            "maximum": 60000.0,
+            "minimum": 0.0,
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": ["envelope", "metric", "value"],
+        "title": "CwvObservationRequest",
         "type": "object"
       },
       "DataDeletionOut": {
@@ -903,10 +925,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "deleted",
-          "anonymized_email"
-        ],
+        "required": ["deleted", "anonymized_email"],
         "title": "DataDeletionOut",
         "type": "object"
       },
@@ -919,9 +938,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "confirm"
-        ],
+        "required": ["confirm"],
         "title": "DataDeletionRequest",
         "type": "object"
       },
@@ -971,9 +988,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "profile"
-        ],
+        "required": ["profile"],
         "title": "DataExportOut",
         "type": "object"
       },
@@ -987,9 +1002,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "user_id"
-        ],
+        "required": ["user_id"],
         "title": "DisableUserPushRequest",
         "type": "object"
       },
@@ -1003,9 +1016,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "challenge_token"
-        ],
+        "required": ["challenge_token"],
         "title": "EmailOtpResendIn",
         "type": "object"
       },
@@ -1025,9 +1036,7 @@
             "title": "Event Id"
           }
         },
-        "required": [
-          "event_id"
-        ],
+        "required": ["event_id"],
         "title": "EventAttendanceCreate",
         "type": "object"
       },
@@ -1077,12 +1086,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "user_id",
-          "event_id",
-          "registered_at"
-        ],
+        "required": ["id", "user_id", "event_id", "registered_at"],
         "title": "EventAttendanceOut",
         "type": "object"
       },
@@ -1225,11 +1229,7 @@
             "title": "Title En"
           }
         },
-        "required": [
-          "title",
-          "starts_at",
-          "ends_at"
-        ],
+        "required": ["title", "starts_at", "ends_at"],
         "title": "EventCreate",
         "type": "object"
       },
@@ -1273,11 +1273,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "event_id",
-          "file_url"
-        ],
+        "required": ["id", "event_id", "file_url"],
         "title": "EventFileOut",
         "type": "object"
       },
@@ -1734,9 +1730,7 @@
             "x-pii": true
           }
         },
-        "required": [
-          "email"
-        ],
+        "required": ["email"],
         "title": "ForgotPasswordIn",
         "type": "object"
       },
@@ -1759,10 +1753,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "source_chat_id",
-          "message_ids"
-        ],
+        "required": ["source_chat_id", "message_ids"],
         "title": "ForwardMessages",
         "type": "object"
       },
@@ -1786,10 +1777,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "name",
-          "participant_ids"
-        ],
+        "required": ["name", "participant_ids"],
         "title": "GroupChatCreate",
         "type": "object"
       },
@@ -1839,10 +1827,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "name"
-        ],
+        "required": ["id", "name"],
         "title": "GroupOut",
         "type": "object"
       },
@@ -1878,10 +1863,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "email",
-          "password"
-        ],
+        "required": ["email", "password"],
         "title": "LoginIn",
         "type": "object"
       },
@@ -2011,14 +1993,7 @@
             ]
           }
         },
-        "required": [
-          "content",
-          "id",
-          "chat_id",
-          "sender_id",
-          "created_at",
-          "read_status"
-        ],
+        "required": ["content", "id", "chat_id", "sender_id", "created_at", "read_status"],
         "title": "MessageResponse",
         "type": "object"
       },
@@ -2050,9 +2025,7 @@
             "title": "Next Cursor"
           }
         },
-        "required": [
-          "items"
-        ],
+        "required": ["items"],
         "title": "MessagesListOut",
         "type": "object"
       },
@@ -2066,10 +2039,7 @@
           "mfa_default_method": {
             "anyOf": [
               {
-                "enum": [
-                  "totp",
-                  "email_otp"
-                ],
+                "enum": ["totp", "email_otp"],
                 "type": "string"
               },
               {
@@ -2084,9 +2054,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "disabled"
-        ],
+        "required": ["disabled"],
         "title": "MfaFactorStatusOut",
         "type": "object"
       },
@@ -2135,10 +2103,7 @@
             "title": "Delivery Hint"
           },
           "method": {
-            "enum": [
-              "totp",
-              "email_otp"
-            ],
+            "enum": ["totp", "email_otp"],
             "title": "Method",
             "type": "string"
           },
@@ -2171,11 +2136,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "method",
-          "challenge_token",
-          "challenge_expires_at"
-        ],
+        "required": ["method", "challenge_token", "challenge_expires_at"],
         "title": "MfaMethodChallengeOut",
         "type": "object"
       },
@@ -2236,12 +2197,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "created_at",
-          "id",
-          "user_id",
-          "is_active"
-        ],
+        "required": ["created_at", "id", "user_id", "is_active"],
         "title": "MfaTotpEnrollmentOut",
         "type": "object"
       },
@@ -2267,19 +2223,12 @@
             "title": "Code"
           },
           "method": {
-            "enum": [
-              "totp",
-              "email_otp",
-              "recovery_code"
-            ],
+            "enum": ["totp", "email_otp", "recovery_code"],
             "title": "Method",
             "type": "string"
           }
         },
-        "required": [
-          "method",
-          "challenge_token"
-        ],
+        "required": ["method", "challenge_token"],
         "title": "MfaVerifyIn",
         "type": "object"
       },
@@ -2310,13 +2259,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "content",
-          "user_id",
-          "user_name",
-          "created_at"
-        ],
+        "required": ["id", "content", "user_id", "user_name", "created_at"],
         "title": "NewsCommentOut",
         "type": "object"
       },
@@ -2330,9 +2273,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "content"
-        ],
+        "required": ["content"],
         "title": "NewsCommentUpdate",
         "type": "object"
       },
@@ -2381,10 +2322,7 @@
             "title": "Title En"
           }
         },
-        "required": [
-          "title",
-          "content"
-        ],
+        "required": ["title", "content"],
         "title": "NewsCreate",
         "type": "object"
       },
@@ -2411,12 +2349,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "likes_count",
-          "is_liked",
-          "comments",
-          "comments_count"
-        ],
+        "required": ["likes_count", "is_liked", "comments", "comments_count"],
         "title": "NewsInteractionsOut",
         "type": "object"
       },
@@ -2501,12 +2434,7 @@
             "title": "Title En"
           }
         },
-        "required": [
-          "title",
-          "content",
-          "created_at",
-          "id"
-        ],
+        "required": ["title", "content", "created_at", "id"],
         "title": "NewsOut",
         "type": "object"
       },
@@ -2610,10 +2538,7 @@
             "title": "Url"
           }
         },
-        "required": [
-          "action",
-          "title"
-        ],
+        "required": ["action", "title"],
         "title": "NotificationAction",
         "type": "object"
       },
@@ -2651,6 +2576,11 @@
             "title": "Id",
             "type": "string"
           },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          },
           "read": {
             "title": "Read",
             "type": "boolean"
@@ -2682,6 +2612,17 @@
             ],
             "title": "Title En"
           },
+          "topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic"
+          },
           "type": {
             "anyOf": [
               {
@@ -2705,12 +2646,7 @@
             "title": "Url"
           }
         },
-        "required": [
-          "created_at",
-          "id",
-          "title",
-          "read"
-        ],
+        "required": ["created_at", "id", "title", "read"],
         "title": "NotificationOut",
         "type": "object"
       },
@@ -2744,11 +2680,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "items",
-          "unread_count",
-          "has_more"
-        ],
+        "required": ["items", "unread_count", "has_more"],
         "title": "NotificationsListOut",
         "type": "object"
       },
@@ -2875,9 +2807,7 @@
             "title": "Url"
           }
         },
-        "required": [
-          "title"
-        ],
+        "required": ["title"],
         "title": "NotifyBody",
         "type": "object"
       },
@@ -2933,11 +2863,7 @@
             "title": "Total"
           }
         },
-        "required": [
-          "items",
-          "limit",
-          "has_more"
-        ],
+        "required": ["items", "limit", "has_more"],
         "title": "PaginatedEvents",
         "type": "object"
       },
@@ -2968,10 +2894,7 @@
             "title": "Next Cursor"
           }
         },
-        "required": [
-          "items",
-          "has_more"
-        ],
+        "required": ["items", "has_more"],
         "title": "PaginatedNews",
         "type": "object"
       },
@@ -2988,9 +2911,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "ok"
-        ],
+        "required": ["ok"],
         "title": "PasswordChangeOut",
         "type": "object"
       },
@@ -2999,10 +2920,7 @@
           "default_method": {
             "anyOf": [
               {
-                "enum": [
-                  "totp",
-                  "email_otp"
-                ],
+                "enum": ["totp", "email_otp"],
                 "type": "string"
               },
               {
@@ -3042,10 +2960,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "user_id",
-          "methods"
-        ],
+        "required": ["user_id", "methods"],
         "title": "PendingMfaResponse",
         "type": "object"
       },
@@ -3082,9 +2997,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "endpoint"
-        ],
+        "required": ["endpoint"],
         "title": "PushSubscriptionDelete",
         "type": "object"
       },
@@ -3127,10 +3040,7 @@
             "title": "User Agent"
           }
         },
-        "required": [
-          "endpoint",
-          "keys"
-        ],
+        "required": ["endpoint", "keys"],
         "title": "PushSubscriptionIn",
         "type": "object"
       },
@@ -3148,10 +3058,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "p256dh",
-          "auth"
-        ],
+        "required": ["p256dh", "auth"],
         "title": "PushSubscriptionKeys",
         "type": "object"
       },
@@ -3229,14 +3136,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "id",
-          "user_id",
-          "endpoint",
-          "p256dh",
-          "auth",
-          "created_at"
-        ],
+        "required": ["id", "user_id", "endpoint", "p256dh", "auth", "created_at"],
         "title": "PushSubscriptionOut",
         "type": "object"
       },
@@ -3256,9 +3156,7 @@
             "type": "array"
           }
         },
-        "required": [
-          "endpoint"
-        ],
+        "required": ["endpoint"],
         "title": "PushSubscriptionTopicsUpdate",
         "type": "object"
       },
@@ -3441,10 +3339,7 @@
             "title": "Updated At"
           }
         },
-        "required": [
-          "allowed",
-          "topics"
-        ],
+        "required": ["allowed", "topics"],
         "title": "PushTopicsResponse",
         "type": "object"
       },
@@ -3466,10 +3361,7 @@
             "type": "boolean"
           }
         },
-        "required": [
-          "emoji",
-          "count"
-        ],
+        "required": ["emoji", "count"],
         "title": "ReactionAggregate",
         "type": "object"
       },
@@ -3505,9 +3397,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "user_id"
-        ],
+        "required": ["user_id"],
         "title": "ReactorOut",
         "type": "object"
       },
@@ -3526,10 +3416,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "user_id",
-          "last_read_at"
-        ],
+        "required": ["user_id", "last_read_at"],
         "title": "ReadReceiptInfo",
         "type": "object"
       },
@@ -3549,10 +3436,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "codes",
-          "created_at"
-        ],
+        "required": ["codes", "created_at"],
         "title": "RecoveryCodesGenerateOut",
         "type": "object"
       },
@@ -3567,9 +3451,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "name"
-        ],
+        "required": ["name"],
         "title": "RenameChat",
         "type": "object"
       },
@@ -3614,11 +3496,7 @@
             "title": "Sender Name"
           }
         },
-        "required": [
-          "id",
-          "sender_id",
-          "content"
-        ],
+        "required": ["id", "sender_id", "content"],
         "title": "ReplyPreview",
         "type": "object"
       },
@@ -3637,10 +3515,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "token",
-          "password"
-        ],
+        "required": ["token", "password"],
         "title": "ResetPasswordIn",
         "type": "object"
       },
@@ -3716,13 +3591,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "group_id",
-          "subject",
-          "weekday",
-          "start_time",
-          "end_time"
-        ],
+        "required": ["group_id", "subject", "weekday", "start_time", "end_time"],
         "title": "ScheduleCreate",
         "type": "object"
       },
@@ -3826,14 +3695,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "group_id",
-          "subject",
-          "weekday",
-          "start_time",
-          "end_time",
-          "id"
-        ],
+        "required": ["group_id", "subject", "weekday", "start_time", "end_time", "id"],
         "title": "ScheduleOut",
         "type": "object"
       },
@@ -3978,11 +3840,7 @@
             "type": "integer"
           }
         },
-        "required": [
-          "sent",
-          "removed",
-          "failed"
-        ],
+        "required": ["sent", "removed", "failed"],
         "title": "SendTestResponse",
         "type": "object"
       },
@@ -4006,9 +3864,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "signing_key"
-        ],
+        "required": ["signing_key"],
         "title": "SessionSigningKeyOut",
         "type": "object"
       },
@@ -4020,9 +3876,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "url"
-        ],
+        "required": ["url"],
         "title": "SpotifyAuthURL",
         "type": "object"
       },
@@ -4135,10 +3989,7 @@
             "title": "Track Url"
           }
         },
-        "required": [
-          "is_playing",
-          "fetched_at"
-        ],
+        "required": ["is_playing", "fetched_at"],
         "title": "SpotifyNowPlayingOut",
         "type": "object"
       },
@@ -4227,10 +4078,7 @@
             "title": "Title En"
           }
         },
-        "required": [
-          "title",
-          "short_text"
-        ],
+        "required": ["title", "short_text"],
         "title": "StoryCreate",
         "type": "object"
       },
@@ -4560,9 +4408,7 @@
             "$ref": "#/components/schemas/UserOut"
           }
         },
-        "required": [
-          "user"
-        ],
+        "required": ["user"],
         "title": "TokenWithProfile",
         "type": "object"
       },
@@ -4578,10 +4424,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "enrollment_id",
-          "code"
-        ],
+        "required": ["enrollment_id", "code"],
         "title": "TotpEnrollmentConfirmIn",
         "type": "object"
       },
@@ -4628,11 +4471,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "enrollment",
-          "secret",
-          "otpauth_url"
-        ],
+        "required": ["enrollment", "secret", "otpauth_url"],
         "title": "TotpEnrollmentStartOut",
         "type": "object"
       },
@@ -4965,10 +4804,7 @@
             "title": "Track"
           }
         },
-        "required": [
-          "email",
-          "password"
-        ],
+        "required": ["email", "password"],
         "title": "UserCreate",
         "type": "object"
       },
@@ -5060,10 +4896,7 @@
             "x-pii": true
           }
         },
-        "required": [
-          "email",
-          "password"
-        ],
+        "required": ["email", "password"],
         "title": "UserEmailChangeIn",
         "type": "object"
       },
@@ -5075,9 +4908,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "token"
-        ],
+        "required": ["token"],
         "title": "UserEmailConfirmIn",
         "type": "object"
       },
@@ -5299,10 +5130,7 @@
           "mfa_default_method": {
             "anyOf": [
               {
-                "enum": [
-                  "totp",
-                  "email_otp"
-                ],
+                "enum": ["totp", "email_otp"],
                 "type": "string"
               },
               {
@@ -5493,11 +5321,7 @@
             "title": "Track"
           }
         },
-        "required": [
-          "email",
-          "id",
-          "is_active"
-        ],
+        "required": ["email", "id", "is_active"],
         "title": "UserOut",
         "type": "object"
       },
@@ -5515,10 +5339,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "current_password",
-          "new_password"
-        ],
+        "required": ["current_password", "new_password"],
         "title": "UserPasswordChangeIn",
         "type": "object"
       },
@@ -6080,22 +5901,13 @@
             "title": "Telegram"
           }
         },
-        "required": [
-          "id",
-          "is_active"
-        ],
+        "required": ["id", "is_active"],
         "title": "UserPublicOut",
         "type": "object"
       },
       "UserRole": {
         "description": "Available roles for users within the system.",
-        "enum": [
-          "student",
-          "teacher",
-          "admin",
-          "superuser",
-          "anonymous"
-        ],
+        "enum": ["student", "teacher", "admin", "superuser", "anonymous"],
         "title": "UserRole",
         "type": "string"
       },
@@ -6131,11 +5943,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
+        "required": ["loc", "msg", "type"],
         "title": "ValidationError",
         "type": "object"
       },
@@ -6150,10 +5958,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "ticket",
-          "expires_in"
-        ],
+        "required": ["ticket", "expires_in"],
         "title": "WsTicketResponse",
         "type": "object"
       }
@@ -6196,9 +6001,7 @@
           }
         },
         "summary": "Root",
-        "tags": [
-          "root"
-        ]
+        "tags": ["root"]
       }
     },
     "/admin/audit": {
@@ -6324,10 +6127,7 @@
           }
         ],
         "summary": "List Audit Logs",
-        "tags": [
-          "admin",
-          "admin-audit"
-        ]
+        "tags": ["admin", "admin-audit"]
       }
     },
     "/admin/audit/time-travel": {
@@ -6437,10 +6237,7 @@
           }
         ],
         "summary": "Get Time Travel State",
-        "tags": [
-          "admin",
-          "admin-audit"
-        ]
+        "tags": ["admin", "admin-audit"]
       }
     },
     "/admin/feature-flags": {
@@ -6469,10 +6266,7 @@
           }
         ],
         "summary": "List Feature Flags",
-        "tags": [
-          "admin",
-          "admin-feature-flags"
-        ]
+        "tags": ["admin", "admin-feature-flags"]
       }
     },
     "/api/v1/auth/csrf-cookie": {
@@ -6499,9 +6293,7 @@
           }
         },
         "summary": "Initialize CSRF token",
-        "tags": [
-          "auth"
-        ]
+        "tags": ["auth"]
       }
     },
     "/api/v1/auth/login": {
@@ -6558,9 +6350,7 @@
           }
         },
         "summary": "Login",
-        "tags": [
-          "auth"
-        ]
+        "tags": ["auth"]
       }
     },
     "/api/v1/auth/login/json": {
@@ -6611,9 +6401,7 @@
           }
         },
         "summary": "Login Json",
-        "tags": [
-          "auth"
-        ]
+        "tags": ["auth"]
       }
     },
     "/api/v1/auth/logout": {
@@ -6640,10 +6428,7 @@
           }
         },
         "summary": "Logout",
-        "tags": [
-          "auth",
-          "auth"
-        ]
+        "tags": ["auth", "auth"]
       }
     },
     "/api/v1/auth/mfa/email": {
@@ -6671,9 +6456,7 @@
           }
         ],
         "summary": "Disable Email Mfa Endpoint",
-        "tags": [
-          "mfa"
-        ]
+        "tags": ["mfa"]
       }
     },
     "/api/v1/auth/mfa/email/enable": {
@@ -6701,9 +6484,7 @@
           }
         ],
         "summary": "Start Email Mfa Enablement",
-        "tags": [
-          "mfa"
-        ]
+        "tags": ["mfa"]
       }
     },
     "/api/v1/auth/mfa/email/resend": {
@@ -6746,9 +6527,7 @@
           }
         },
         "summary": "Resend Email Mfa Challenge",
-        "tags": [
-          "auth"
-        ]
+        "tags": ["auth"]
       }
     },
     "/api/v1/auth/mfa/email/verification/start": {
@@ -6776,9 +6555,7 @@
           }
         ],
         "summary": "Start Email Verification",
-        "tags": [
-          "mfa"
-        ]
+        "tags": ["mfa"]
       }
     },
     "/api/v1/auth/mfa/recovery-codes": {
@@ -6806,9 +6583,7 @@
           }
         ],
         "summary": "Generate Recovery Codes Endpoint",
-        "tags": [
-          "mfa"
-        ]
+        "tags": ["mfa"]
       }
     },
     "/api/v1/auth/mfa/step-up": {
@@ -6836,9 +6611,7 @@
           }
         ],
         "summary": "Request Step Up",
-        "tags": [
-          "mfa"
-        ]
+        "tags": ["mfa"]
       }
     },
     "/api/v1/auth/mfa/totp": {
@@ -6870,9 +6643,7 @@
           }
         ],
         "summary": "List Totp Enrollments",
-        "tags": [
-          "mfa"
-        ]
+        "tags": ["mfa"]
       }
     },
     "/api/v1/auth/mfa/totp/confirm": {
@@ -6920,9 +6691,7 @@
           }
         ],
         "summary": "Confirm Totp Enrollment",
-        "tags": [
-          "mfa"
-        ]
+        "tags": ["mfa"]
       }
     },
     "/api/v1/auth/mfa/totp/pending/{enrollment_id}": {
@@ -6965,9 +6734,7 @@
           }
         ],
         "summary": "Delete Pending Totp Enrollment",
-        "tags": [
-          "mfa"
-        ]
+        "tags": ["mfa"]
       }
     },
     "/api/v1/auth/mfa/totp/start": {
@@ -7022,9 +6789,7 @@
           }
         ],
         "summary": "Start Totp Enrollment Endpoint",
-        "tags": [
-          "mfa"
-        ]
+        "tags": ["mfa"]
       }
     },
     "/api/v1/auth/mfa/totp/{enrollment_id}": {
@@ -7074,9 +6839,7 @@
           }
         ],
         "summary": "Delete Totp Enrollment",
-        "tags": [
-          "mfa"
-        ]
+        "tags": ["mfa"]
       }
     },
     "/api/v1/auth/mfa/verify": {
@@ -7119,9 +6882,7 @@
           }
         },
         "summary": "Verify Mfa Challenge",
-        "tags": [
-          "auth"
-        ]
+        "tags": ["auth"]
       }
     },
     "/api/v1/auth/register": {
@@ -7166,9 +6927,7 @@
           }
         },
         "summary": "Register",
-        "tags": [
-          "auth"
-        ]
+        "tags": ["auth"]
       }
     },
     "/api/v1/auth/session/signing-key": {
@@ -7196,9 +6955,7 @@
           }
         ],
         "summary": "Get Session Signing Key",
-        "tags": [
-          "auth"
-        ]
+        "tags": ["auth"]
       }
     },
     "/api/v1/auth/sessions": {
@@ -7256,9 +7013,7 @@
           }
         ],
         "summary": "List Sessions",
-        "tags": [
-          "auth"
-        ]
+        "tags": ["auth"]
       }
     },
     "/api/v1/auth/sessions/revoke-others": {
@@ -7312,9 +7067,7 @@
           }
         ],
         "summary": "Revoke Other Sessions",
-        "tags": [
-          "auth"
-        ]
+        "tags": ["auth"]
       }
     },
     "/api/v1/auth/sessions/{session_id}": {
@@ -7361,9 +7114,7 @@
           }
         ],
         "summary": "Revoke Session",
-        "tags": [
-          "auth"
-        ]
+        "tags": ["auth"]
       }
     },
     "/api/v1/chats": {
@@ -7432,9 +7183,7 @@
           }
         ],
         "summary": "Get Chats",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       },
       "post": {
         "description": "Create a new chat with a user.  If a DM chat already exists, return it.",
@@ -7486,9 +7235,7 @@
           }
         ],
         "summary": "Create Chat",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       }
     },
     "/api/v1/chats/groups": {
@@ -7533,9 +7280,7 @@
           }
         ],
         "summary": "Create Group",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       }
     },
     "/api/v1/chats/{chat_id}": {
@@ -7582,9 +7327,7 @@
           }
         ],
         "summary": "Delete Chat",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       },
       "get": {
         "description": "Get details for a specific chat.",
@@ -7629,9 +7372,7 @@
           }
         ],
         "summary": "Get Chat",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       },
       "patch": {
         "description": "Rename a group's title (Wave 209 G1 \u2014 any participant).\n\nPATCH /{chat_id} is distinct from PATCH /{chat_id}/messages/{message_id}\n(edit-message). W174 auto-cookie covers PATCH CSRF.",
@@ -7690,9 +7431,7 @@
           }
         ],
         "summary": "Rename Chat",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       }
     },
     "/api/v1/chats/{chat_id}/clear": {
@@ -7739,9 +7478,7 @@
           }
         ],
         "summary": "Clear Chat History",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       }
     },
     "/api/v1/chats/{chat_id}/messages": {
@@ -7820,9 +7557,7 @@
           }
         ],
         "summary": "Get Messages",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       },
       "post": {
         "description": "Send a message to a chat.  Supports ``Idempotency-Key`` header for retry-safe sends.",
@@ -7895,9 +7630,7 @@
           }
         ],
         "summary": "Send Message",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       }
     },
     "/api/v1/chats/{chat_id}/messages/{message_id}": {
@@ -7958,9 +7691,7 @@
           }
         ],
         "summary": "Delete Message",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       },
       "patch": {
         "description": "Edit a message's content (author-only).  W174 auto-cookie covers PATCH CSRF.",
@@ -8029,9 +7760,7 @@
           }
         ],
         "summary": "Edit Message",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       }
     },
     "/api/v1/chats/{chat_id}/messages/{message_id}/reactions": {
@@ -8103,9 +7832,7 @@
           }
         ],
         "summary": "Remove Reaction",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       },
       "get": {
         "description": "List the users who reacted to a message with a specific emoji (Wave 207).\n\nPowers the reactor-list \"who reacted\" popover \u2014 reactor identities are loaded\non-demand, NOT bundled into GET /messages. Participant-authz'd + message-in-chat\nguarded (a participant of one chat can't enumerate reactors of a message in\nanother by guessing its id). emoji is a QUERY param (same robust shape as the\nDELETE route, W206 SW7). Coexists with POST + DELETE at this path (FastAPI\nroutes by method).",
@@ -8175,9 +7902,7 @@
           }
         ],
         "summary": "Get Reactors",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       },
       "post": {
         "description": "Add an emoji reaction to a message (idempotent, any participant).\n\nW174 auto-cookie covers POST CSRF.",
@@ -8246,9 +7971,7 @@
           }
         ],
         "summary": "Add Reaction",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       }
     },
     "/api/v1/chats/{chat_id}/participants": {
@@ -8309,9 +8032,7 @@
           }
         ],
         "summary": "Add Participant",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       }
     },
     "/api/v1/chats/{chat_id}/participants/{user_id}": {
@@ -8372,9 +8093,7 @@
           }
         ],
         "summary": "Remove Participant",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       }
     },
     "/api/v1/chats/{chat_id}/read": {
@@ -8425,9 +8144,7 @@
           }
         ],
         "summary": "Mark Read",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       }
     },
     "/api/v1/chats/{chat_id}/typing": {
@@ -8478,9 +8195,7 @@
           }
         ],
         "summary": "Typing Indicator",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       }
     },
     "/api/v1/chats/{dest_chat_id}/forward": {
@@ -8541,9 +8256,7 @@
           }
         ],
         "summary": "Forward Messages",
-        "tags": [
-          "chats"
-        ]
+        "tags": ["chats"]
       }
     },
     "/api/v1/csp-report": {
@@ -8556,9 +8269,97 @@
           }
         },
         "summary": "Receive Csp Report",
-        "tags": [
-          "security"
-        ]
+        "tags": ["security"]
+      }
+    },
+    "/api/v1/cwv/envelope": {
+      "post": {
+        "description": "Create Cwv Envelope",
+        "operationId": "create_cwv_envelope_api_v1_cwv_envelope_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CwvEnvelopeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CwvEnvelopeResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Create Cwv Envelope",
+        "tags": ["field-performance"]
+      }
+    },
+    "/api/v1/cwv/observations": {
+      "post": {
+        "description": "Ingest Cwv Observation",
+        "operationId": "ingest_cwv_observation_api_v1_cwv_observations_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CwvObservationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CwvObservationAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Ingest Cwv Observation",
+        "tags": ["field-performance"]
       }
     },
     "/api/v1/events": {
@@ -8679,9 +8480,7 @@
           }
         ],
         "summary": "List Events",
-        "tags": [
-          "events"
-        ]
+        "tags": ["events"]
       },
       "post": {
         "description": "Create Event",
@@ -8733,9 +8532,7 @@
           }
         ],
         "summary": "Create Event",
-        "tags": [
-          "events"
-        ]
+        "tags": ["events"]
       }
     },
     "/api/v1/events/attendance": {
@@ -8782,9 +8579,7 @@
           }
         ],
         "summary": "Unregister Event",
-        "tags": [
-          "events"
-        ]
+        "tags": ["events"]
       },
       "post": {
         "description": "Register attendance for an event.",
@@ -8827,9 +8622,7 @@
           }
         ],
         "summary": "Attend Event",
-        "tags": [
-          "events"
-        ]
+        "tags": ["events"]
       }
     },
     "/api/v1/events/file/{file_id}": {
@@ -8885,9 +8678,7 @@
           }
         ],
         "summary": "Delete Event File",
-        "tags": [
-          "events"
-        ]
+        "tags": ["events"]
       }
     },
     "/api/v1/events/my": {
@@ -8944,9 +8735,7 @@
           }
         ],
         "summary": "My Events",
-        "tags": [
-          "events"
-        ]
+        "tags": ["events"]
       }
     },
     "/api/v1/events/search/semantic": {
@@ -9037,9 +8826,7 @@
           }
         ],
         "summary": "Semantic Search",
-        "tags": [
-          "events"
-        ]
+        "tags": ["events"]
       }
     },
     "/api/v1/events/upload_image": {
@@ -9088,9 +8875,7 @@
           }
         ],
         "summary": "Upload Event Image",
-        "tags": [
-          "events"
-        ]
+        "tags": ["events"]
       }
     },
     "/api/v1/events/{event_id}": {
@@ -9146,9 +8931,7 @@
           }
         ],
         "summary": "Delete Event",
-        "tags": [
-          "events"
-        ]
+        "tags": ["events"]
       },
       "get": {
         "description": "Get Event",
@@ -9216,9 +8999,7 @@
           }
         ],
         "summary": "Get Event",
-        "tags": [
-          "events"
-        ]
+        "tags": ["events"]
       },
       "patch": {
         "description": "Update Event",
@@ -9280,9 +9061,7 @@
           }
         ],
         "summary": "Update Event",
-        "tags": [
-          "events"
-        ]
+        "tags": ["events"]
       }
     },
     "/api/v1/events/{event_id}/files": {
@@ -9335,9 +9114,7 @@
           }
         },
         "summary": "Get Event Files",
-        "tags": [
-          "events"
-        ]
+        "tags": ["events"]
       }
     },
     "/api/v1/events/{event_id}/upload_file": {
@@ -9401,9 +9178,7 @@
           }
         ],
         "summary": "Upload Event File",
-        "tags": [
-          "events"
-        ]
+        "tags": ["events"]
       }
     },
     "/api/v1/groups": {
@@ -9427,9 +9202,7 @@
           }
         },
         "summary": "Get Groups",
-        "tags": [
-          "groups"
-        ]
+        "tags": ["groups"]
       }
     },
     "/api/v1/img/{path}": {
@@ -9502,9 +9275,7 @@
           }
         },
         "summary": "Proxy Image",
-        "tags": [
-          "images"
-        ]
+        "tags": ["images"]
       }
     },
     "/api/v1/news": {
@@ -9589,9 +9360,7 @@
           }
         ],
         "summary": "List News",
-        "tags": [
-          "news"
-        ]
+        "tags": ["news"]
       },
       "post": {
         "description": "Create News",
@@ -9634,9 +9403,7 @@
           }
         ],
         "summary": "Create News",
-        "tags": [
-          "news"
-        ]
+        "tags": ["news"]
       }
     },
     "/api/v1/news/comments/{comment_id}": {
@@ -9687,9 +9454,7 @@
           }
         ],
         "summary": "Delete Comment",
-        "tags": [
-          "news"
-        ]
+        "tags": ["news"]
       },
       "patch": {
         "description": "Update Comment",
@@ -9744,9 +9509,7 @@
           }
         ],
         "summary": "Update Comment",
-        "tags": [
-          "news"
-        ]
+        "tags": ["news"]
       }
     },
     "/api/v1/news/search/semantic": {
@@ -9837,9 +9600,7 @@
           }
         ],
         "summary": "Semantic Search",
-        "tags": [
-          "news"
-        ]
+        "tags": ["news"]
       }
     },
     "/api/v1/news/upload_image": {
@@ -9888,9 +9649,7 @@
           }
         ],
         "summary": "Upload News Image",
-        "tags": [
-          "news"
-        ]
+        "tags": ["news"]
       }
     },
     "/api/v1/news/{id}": {
@@ -9939,9 +9698,7 @@
           }
         ],
         "summary": "Delete News",
-        "tags": [
-          "news"
-        ]
+        "tags": ["news"]
       },
       "get": {
         "description": "Get a specific news article by ID.",
@@ -10002,9 +9759,7 @@
           }
         ],
         "summary": "Get News Item",
-        "tags": [
-          "news"
-        ]
+        "tags": ["news"]
       },
       "patch": {
         "description": "Update News",
@@ -10066,9 +9821,7 @@
           }
         ],
         "summary": "Update News",
-        "tags": [
-          "news"
-        ]
+        "tags": ["news"]
       }
     },
     "/api/v1/news/{id}/comment": {
@@ -10125,9 +9878,7 @@
           }
         ],
         "summary": "Comment On News",
-        "tags": [
-          "news"
-        ]
+        "tags": ["news"]
       }
     },
     "/api/v1/news/{id}/interactions": {
@@ -10198,9 +9949,7 @@
           }
         ],
         "summary": "Get News Interact",
-        "tags": [
-          "news"
-        ]
+        "tags": ["news"]
       }
     },
     "/api/v1/news/{id}/like": {
@@ -10251,9 +10000,7 @@
           }
         ],
         "summary": "Like News",
-        "tags": [
-          "news"
-        ]
+        "tags": ["news"]
       }
     },
     "/api/v1/notifications": {
@@ -10280,9 +10027,7 @@
           }
         ],
         "summary": "Clear Notifications",
-        "tags": [
-          "notifications"
-        ]
+        "tags": ["notifications"]
       },
       "get": {
         "description": "List Notifications",
@@ -10345,9 +10090,7 @@
           }
         ],
         "summary": "List Notifications",
-        "tags": [
-          "notifications"
-        ]
+        "tags": ["notifications"]
       }
     },
     "/api/v1/notifications/check-schedule": {
@@ -10396,9 +10139,7 @@
           }
         ],
         "summary": "Check Schedule And Generate",
-        "tags": [
-          "notifications"
-        ]
+        "tags": ["notifications"]
       }
     },
     "/api/v1/notifications/read-all": {
@@ -10425,9 +10166,7 @@
           }
         ],
         "summary": "Mark All Read",
-        "tags": [
-          "notifications"
-        ]
+        "tags": ["notifications"]
       }
     },
     "/api/v1/notifications/{notif_id}": {
@@ -10478,9 +10217,7 @@
           }
         ],
         "summary": "Delete Notification",
-        "tags": [
-          "notifications"
-        ]
+        "tags": ["notifications"]
       }
     },
     "/api/v1/notifications/{notif_id}/read": {
@@ -10531,9 +10268,7 @@
           }
         ],
         "summary": "Mark Read Single",
-        "tags": [
-          "notifications"
-        ]
+        "tags": ["notifications"]
       }
     },
     "/api/v1/password/forgot": {
@@ -10577,9 +10312,7 @@
           }
         },
         "summary": "Forgot Password",
-        "tags": [
-          "password"
-        ]
+        "tags": ["password"]
       }
     },
     "/api/v1/password/reset": {
@@ -10623,9 +10356,7 @@
           }
         },
         "summary": "Reset Password",
-        "tags": [
-          "password"
-        ]
+        "tags": ["password"]
       }
     },
     "/api/v1/push/admin/disable-user": {
@@ -10681,9 +10412,7 @@
           }
         ],
         "summary": "Disable User Push",
-        "tags": [
-          "push"
-        ]
+        "tags": ["push"]
       }
     },
     "/api/v1/push/admin/topics/{user_id}": {
@@ -10730,9 +10459,7 @@
           }
         ],
         "summary": "Admin Get User Topics",
-        "tags": [
-          "push"
-        ]
+        "tags": ["push"]
       },
       "put": {
         "description": "Admin Update User Topics",
@@ -10787,9 +10514,7 @@
           }
         ],
         "summary": "Admin Update User Topics",
-        "tags": [
-          "push"
-        ]
+        "tags": ["push"]
       }
     },
     "/api/v1/push/broadcast": {
@@ -10834,9 +10559,7 @@
           }
         ],
         "summary": "Broadcast",
-        "tags": [
-          "push"
-        ]
+        "tags": ["push"]
       }
     },
     "/api/v1/push/subscribe": {
@@ -10881,9 +10604,7 @@
           }
         ],
         "summary": "Subscribe",
-        "tags": [
-          "push"
-        ]
+        "tags": ["push"]
       }
     },
     "/api/v1/push/subscribe/topics": {
@@ -10928,9 +10649,7 @@
           }
         ],
         "summary": "Update Subscription Topics",
-        "tags": [
-          "push"
-        ]
+        "tags": ["push"]
       }
     },
     "/api/v1/push/test": {
@@ -10982,9 +10701,7 @@
           }
         ],
         "summary": "Send Test",
-        "tags": [
-          "push"
-        ]
+        "tags": ["push"]
       }
     },
     "/api/v1/push/topics": {
@@ -11009,9 +10726,7 @@
           }
         ],
         "summary": "Get Push Topics",
-        "tags": [
-          "push"
-        ]
+        "tags": ["push"]
       }
     },
     "/api/v1/push/unsubscribe": {
@@ -11060,9 +10775,7 @@
           }
         ],
         "summary": "Unsubscribe",
-        "tags": [
-          "push"
-        ]
+        "tags": ["push"]
       }
     },
     "/api/v1/push/vapid-public-key": {
@@ -11093,9 +10806,7 @@
           }
         },
         "summary": "Get Vapid Public Key",
-        "tags": [
-          "push"
-        ]
+        "tags": ["push"]
       }
     },
     "/api/v1/schedule": {
@@ -11140,9 +10851,7 @@
           }
         ],
         "summary": "Add Schedule",
-        "tags": [
-          "schedule"
-        ]
+        "tags": ["schedule"]
       }
     },
     "/api/v1/schedule/ics": {
@@ -11179,9 +10888,7 @@
           }
         },
         "summary": "Download Schedule Ics",
-        "tags": [
-          "schedule"
-        ]
+        "tags": ["schedule"]
       }
     },
     "/api/v1/schedule/{id}": {
@@ -11230,9 +10937,7 @@
           }
         ],
         "summary": "Delete Schedule",
-        "tags": [
-          "schedule"
-        ]
+        "tags": ["schedule"]
       },
       "get": {
         "description": "Get Schedule",
@@ -11297,9 +11002,7 @@
           }
         ],
         "summary": "Get Schedule",
-        "tags": [
-          "schedule"
-        ]
+        "tags": ["schedule"]
       },
       "patch": {
         "description": "Update Schedule",
@@ -11354,9 +11057,7 @@
           }
         ],
         "summary": "Update Schedule",
-        "tags": [
-          "schedule"
-        ]
+        "tags": ["schedule"]
       }
     },
     "/api/v1/search": {
@@ -11434,9 +11135,7 @@
           }
         ],
         "summary": "Unified Search",
-        "tags": [
-          "search"
-        ]
+        "tags": ["search"]
       }
     },
     "/api/v1/spotify/auth-url": {
@@ -11461,9 +11160,7 @@
           }
         ],
         "summary": "Spotify Auth Url",
-        "tags": [
-          "spotify"
-        ]
+        "tags": ["spotify"]
       }
     },
     "/api/v1/spotify/callback": {
@@ -11517,9 +11214,7 @@
           }
         },
         "summary": "Spotify Callback",
-        "tags": [
-          "spotify"
-        ]
+        "tags": ["spotify"]
       }
     },
     "/api/v1/spotify/disconnect": {
@@ -11548,9 +11243,7 @@
           }
         ],
         "summary": "Disconnect",
-        "tags": [
-          "spotify"
-        ]
+        "tags": ["spotify"]
       }
     },
     "/api/v1/spotify/now-playing": {
@@ -11575,9 +11268,7 @@
           }
         ],
         "summary": "Now Playing",
-        "tags": [
-          "spotify"
-        ]
+        "tags": ["spotify"]
       }
     },
     "/api/v1/spotify/playlists": {
@@ -11602,9 +11293,7 @@
           }
         ],
         "summary": "List Playlists",
-        "tags": [
-          "spotify"
-        ]
+        "tags": ["spotify"]
       }
     },
     "/api/v1/stats/attendance": {
@@ -11675,9 +11364,7 @@
           }
         ],
         "summary": "Attendance Summary",
-        "tags": [
-          "stats"
-        ]
+        "tags": ["stats"]
       }
     },
     "/api/v1/stats/grades": {
@@ -11748,9 +11435,7 @@
           }
         ],
         "summary": "Grade Summary",
-        "tags": [
-          "stats"
-        ]
+        "tags": ["stats"]
       }
     },
     "/api/v1/stats/participation": {
@@ -11821,9 +11506,7 @@
           }
         ],
         "summary": "Participation Summary",
-        "tags": [
-          "stats"
-        ]
+        "tags": ["stats"]
       }
     },
     "/api/v1/stats/summary": {
@@ -11894,9 +11577,7 @@
           }
         ],
         "summary": "Stats Summary",
-        "tags": [
-          "stats"
-        ]
+        "tags": ["stats"]
       }
     },
     "/api/v1/stories": {
@@ -11948,9 +11629,7 @@
           }
         },
         "summary": "List Stories",
-        "tags": [
-          "stories"
-        ]
+        "tags": ["stories"]
       },
       "post": {
         "description": "Create Story",
@@ -11993,9 +11672,7 @@
           }
         ],
         "summary": "Create Story",
-        "tags": [
-          "stories"
-        ]
+        "tags": ["stories"]
       }
     },
     "/api/v1/stories/upload_cover": {
@@ -12044,9 +11721,7 @@
           }
         ],
         "summary": "Upload Story Cover",
-        "tags": [
-          "stories"
-        ]
+        "tags": ["stories"]
       }
     },
     "/api/v1/stories/{story_id}": {
@@ -12095,9 +11770,7 @@
           }
         ],
         "summary": "Delete Story",
-        "tags": [
-          "stories"
-        ]
+        "tags": ["stories"]
       },
       "patch": {
         "description": "Update Story",
@@ -12159,9 +11832,7 @@
           }
         ],
         "summary": "Update Story",
-        "tags": [
-          "stories"
-        ]
+        "tags": ["stories"]
       }
     },
     "/api/v1/users": {
@@ -12314,9 +11985,7 @@
           }
         ],
         "summary": "Search Users",
-        "tags": [
-          "users"
-        ]
+        "tags": ["users"]
       },
       "post": {
         "description": "Create User",
@@ -12359,9 +12028,7 @@
           }
         ],
         "summary": "Create User",
-        "tags": [
-          "users"
-        ]
+        "tags": ["users"]
       }
     },
     "/api/v1/users/audit/export": {
@@ -12430,9 +12097,7 @@
           }
         ],
         "summary": "Export Access Audit",
-        "tags": [
-          "users"
-        ]
+        "tags": ["users"]
       }
     },
     "/api/v1/users/me": {
@@ -12457,9 +12122,7 @@
           }
         ],
         "summary": "Me",
-        "tags": [
-          "users"
-        ]
+        "tags": ["users"]
       },
       "put": {
         "description": "Update Me",
@@ -12502,9 +12165,7 @@
           }
         ],
         "summary": "Update Me",
-        "tags": [
-          "users"
-        ]
+        "tags": ["users"]
       }
     },
     "/api/v1/users/me/avatar": {
@@ -12529,9 +12190,7 @@
           }
         ],
         "summary": "Delete Avatar",
-        "tags": [
-          "users"
-        ]
+        "tags": ["users"]
       },
       "post": {
         "description": "Upload Avatar",
@@ -12574,9 +12233,7 @@
           }
         ],
         "summary": "Upload Avatar",
-        "tags": [
-          "users"
-        ]
+        "tags": ["users"]
       }
     },
     "/api/v1/users/me/cover": {
@@ -12601,9 +12258,7 @@
           }
         ],
         "summary": "Delete Cover",
-        "tags": [
-          "users"
-        ]
+        "tags": ["users"]
       },
       "post": {
         "description": "Upload Cover",
@@ -12646,9 +12301,7 @@
           }
         ],
         "summary": "Upload Cover",
-        "tags": [
-          "users"
-        ]
+        "tags": ["users"]
       }
     },
     "/api/v1/users/me/delete": {
@@ -12693,9 +12346,7 @@
           }
         ],
         "summary": "Delete Current User Account",
-        "tags": [
-          "users"
-        ]
+        "tags": ["users"]
       }
     },
     "/api/v1/users/me/email": {
@@ -12740,9 +12391,7 @@
           }
         ],
         "summary": "Change Email",
-        "tags": [
-          "users"
-        ]
+        "tags": ["users"]
       }
     },
     "/api/v1/users/me/email/confirm": {
@@ -12787,9 +12436,7 @@
           }
         ],
         "summary": "Confirm Email Change",
-        "tags": [
-          "users"
-        ]
+        "tags": ["users"]
       }
     },
     "/api/v1/users/me/export": {
@@ -12814,9 +12461,7 @@
           }
         ],
         "summary": "Export Current User Data",
-        "tags": [
-          "users"
-        ]
+        "tags": ["users"]
       }
     },
     "/api/v1/users/me/password": {
@@ -12861,9 +12506,7 @@
           }
         ],
         "summary": "Change Password",
-        "tags": [
-          "users"
-        ]
+        "tags": ["users"]
       }
     },
     "/api/v1/users/{user_id}": {
@@ -12912,9 +12555,7 @@
           }
         ],
         "summary": "Delete User Admin",
-        "tags": [
-          "users"
-        ]
+        "tags": ["users"]
       },
       "patch": {
         "description": "Update User Admin",
@@ -12969,9 +12610,7 @@
           }
         ],
         "summary": "Update User Admin",
-        "tags": [
-          "users"
-        ]
+        "tags": ["users"]
       }
     },
     "/health/live": {
@@ -12995,9 +12634,7 @@
           }
         },
         "summary": "Liveness Probe",
-        "tags": [
-          "health"
-        ]
+        "tags": ["health"]
       }
     },
     "/health/ready": {
@@ -13021,9 +12658,7 @@
           }
         },
         "summary": "Readiness Probe",
-        "tags": [
-          "health"
-        ]
+        "tags": ["health"]
       }
     },
     "/healthz": {
@@ -13063,9 +12698,7 @@
           }
         },
         "summary": "Full Health Check",
-        "tags": [
-          "health"
-        ]
+        "tags": ["health"]
       }
     },
     "/ready": {
@@ -13089,9 +12722,7 @@
           }
         },
         "summary": "Legacy Readiness Check",
-        "tags": [
-          "health"
-        ]
+        "tags": ["health"]
       }
     },
     "/ws/ticket": {
@@ -13116,9 +12747,7 @@
           }
         ],
         "summary": "Issue a WebSocket upgrade ticket",
-        "tags": [
-          "websocket"
-        ]
+        "tags": ["websocket"]
       }
     }
   },
@@ -13152,6 +12781,10 @@
     {
       "description": "Events API operations.",
       "name": "events"
+    },
+    {
+      "description": "Field performance API operations.",
+      "name": "field-performance"
     },
     {
       "description": "Groups API operations.",

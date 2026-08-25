@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "percentile": 75,
+  "percentile_algorithm": "nearest-rank",
+  "collector": {
+    "kind": "web-vitals-rum",
+    "library": "web-vitals",
+    "library_version": "6.1.1",
+    "exporter_version": "1",
+    "eligibility": "operator-curated-manual-testers",
+    "sampling": "one-final-metric-per-collector-route-hour",
+    "maximum_collectors": 50
+  },
+  "thresholds": {
+    "LCP": { "unit": "ms", "maximum": 2500 },
+    "INP": { "unit": "ms", "maximum": 200 },
+    "CLS": { "unit": "score", "maximum": 0.1 }
+  },
+  "required_device_classes": ["mobile", "desktop"],
+  "minimum_observations_per_metric_and_device": 100,
+  "minimum_observations_per_metric_route_group_and_device": 20,
+  "minimum_distinct_sessions_per_device": 25,
+  "minimum_distinct_collectors_per_device": 25,
+  "minimum_distinct_sessions_per_metric_route_group_and_device": 5,
+  "minimum_distinct_collectors_per_metric_route_group_and_device": 20,
+  "maximum_distinct_collectors": 50,
+  "minimum_collection_window_hours": 24,
+  "minimum_active_hours_per_device": 6,
+  "maximum_report_age_hours": 72,
+  "minimum_navigations_per_route_group_and_device": 5,
+  "required_route_groups": [
+    "core",
+    "content",
+    "map_activity",
+    "messenger_profile_settings_admin"
+  ]
+}

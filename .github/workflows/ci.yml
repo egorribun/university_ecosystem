@@ -3065,11 +3065,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Install Kyverno CLI v1.18.0
+      - name: Install Kyverno CLI v1.19.0
         shell: bash
         run: |
-          version="v1.18.0"
-          archive="kyverno-cli_v1.18.0_linux_x86_64.tar.gz"
+          version="v1.19.0"
+          archive="kyverno-cli_v1.19.0_linux_x86_64.tar.gz"
           base="https://github.com/kyverno/kyverno/releases/download/${version}"
           curl_args=(--fail --silent --show-error --location --retry 10 --retry-delay 5 --retry-all-errors --connect-timeout 20)
           curl "${curl_args[@]}" --output "$RUNNER_TEMP/$archive" "$base/$archive"

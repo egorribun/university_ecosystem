@@ -500,6 +500,70 @@ export type ChatsListOut = {
 }
 
 /**
+ * CwvEnvelopeRequest
+ */
+export type CwvEnvelopeRequest = {
+  /**
+   * Device Class
+   */
+  device_class: "mobile" | "desktop"
+  /**
+   * Pathname
+   */
+  pathname: string
+  /**
+   * Renewal Envelope
+   */
+  renewal_envelope?: string | null
+}
+
+/**
+ * CwvEnvelopeResponse
+ */
+export type CwvEnvelopeResponse = {
+  /**
+   * Envelope
+   */
+  envelope: string
+  /**
+   * Expires At
+   */
+  expires_at: string
+}
+
+/**
+ * CwvObservationAccepted
+ */
+export type CwvObservationAccepted = {
+  /**
+   * Accepted
+   */
+  accepted?: true
+  /**
+   * Metric Id
+   */
+  metric_id: string
+}
+
+/**
+ * CwvObservationRequest
+ */
+export type CwvObservationRequest = {
+  /**
+   * Envelope
+   */
+  envelope: string
+  /**
+   * Metric
+   */
+  metric: "LCP" | "INP" | "CLS"
+  /**
+   * Value
+   */
+  value: number
+}
+
+/**
  * DataDeletionOut
  */
 export type DataDeletionOut = {
@@ -1415,6 +1479,12 @@ export type NotificationOut = {
    */
   id: string
   /**
+   * Metadata
+   */
+  metadata?: {
+    [key: string]: unknown
+  }
+  /**
    * Read
    */
   read: boolean
@@ -1430,6 +1500,10 @@ export type NotificationOut = {
    * Title En
    */
   title_en?: string | null
+  /**
+   * Topic
+   */
+  topic?: string | null
   /**
    * Type
    */
@@ -4539,6 +4613,60 @@ export type ReceiveCspReportApiV1CspReportPostResponses = {
 
 export type ReceiveCspReportApiV1CspReportPostResponse =
   ReceiveCspReportApiV1CspReportPostResponses[keyof ReceiveCspReportApiV1CspReportPostResponses]
+
+export type CreateCwvEnvelopeApiV1CwvEnvelopePostData = {
+  body: CwvEnvelopeRequest
+  path?: never
+  query?: never
+  url: "/api/v1/cwv/envelope"
+}
+
+export type CreateCwvEnvelopeApiV1CwvEnvelopePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type CreateCwvEnvelopeApiV1CwvEnvelopePostError =
+  CreateCwvEnvelopeApiV1CwvEnvelopePostErrors[keyof CreateCwvEnvelopeApiV1CwvEnvelopePostErrors]
+
+export type CreateCwvEnvelopeApiV1CwvEnvelopePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: CwvEnvelopeResponse
+}
+
+export type CreateCwvEnvelopeApiV1CwvEnvelopePostResponse =
+  CreateCwvEnvelopeApiV1CwvEnvelopePostResponses[keyof CreateCwvEnvelopeApiV1CwvEnvelopePostResponses]
+
+export type IngestCwvObservationApiV1CwvObservationsPostData = {
+  body: CwvObservationRequest
+  path?: never
+  query?: never
+  url: "/api/v1/cwv/observations"
+}
+
+export type IngestCwvObservationApiV1CwvObservationsPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type IngestCwvObservationApiV1CwvObservationsPostError =
+  IngestCwvObservationApiV1CwvObservationsPostErrors[keyof IngestCwvObservationApiV1CwvObservationsPostErrors]
+
+export type IngestCwvObservationApiV1CwvObservationsPostResponses = {
+  /**
+   * Successful Response
+   */
+  202: CwvObservationAccepted
+}
+
+export type IngestCwvObservationApiV1CwvObservationsPostResponse =
+  IngestCwvObservationApiV1CwvObservationsPostResponses[keyof IngestCwvObservationApiV1CwvObservationsPostResponses]
 
 export type AllEventsApiV1EventsGetData = {
   body?: never

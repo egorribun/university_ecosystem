@@ -37,6 +37,14 @@ FROM base AS builder
 ENV SKIP_WASM_BUILD=1
 ARG VITE_BACKEND_ORIGIN=""
 ENV VITE_BACKEND_ORIGIN=$VITE_BACKEND_ORIGIN
+ARG VITE_APP_RELEASE=""
+ENV VITE_APP_RELEASE=$VITE_APP_RELEASE
+ARG VITE_ENABLE_WEB_VITALS="false"
+ENV VITE_ENABLE_WEB_VITALS=$VITE_ENABLE_WEB_VITALS
+ARG VITE_CWV_TRUSTED_RUM="false"
+ENV VITE_CWV_TRUSTED_RUM=$VITE_CWV_TRUSTED_RUM
+ARG VITE_WEB_VITALS_ENDPOINT="/api/v1/cwv"
+ENV VITE_WEB_VITALS_ENDPOINT=$VITE_WEB_VITALS_ENDPOINT
 # W153 SW1 — opt-in unminified bundle + linked source maps so the wedged
 # renderer error becomes readable in Chrome DevTools via stack traces.
 # Defaults to empty (production minified) so CI / prod deploys are

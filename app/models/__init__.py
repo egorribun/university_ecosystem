@@ -47,6 +47,7 @@ from app.models.chat import (
 from app.models.chat import (
     MessageReaction as MessageReaction,
 )
+from app.models.cwv import CwvObservation as CwvObservation
 from app.models.dead_letter import (
     DeadLetterJob as DeadLetterJob,
 )

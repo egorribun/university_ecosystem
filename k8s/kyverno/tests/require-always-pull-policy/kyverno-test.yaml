@@ -9,12 +9,10 @@ resources:
   - bad.yaml
 results:
   - policy: require-always-pull-policy
-    rule: check-pull-policy
     resources: [university-ecosystem/compliant-pod]
     kind: Pod
     result: pass
   - policy: require-always-pull-policy
-    rule: check-pull-policy
     resources: [university-ecosystem/cached-image-pod]
     kind: Pod
     result: fail

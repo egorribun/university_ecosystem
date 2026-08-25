@@ -9,12 +9,10 @@ resources:
   - bad.yaml
 results:
   - policy: require-resource-limits
-    rule: check-limits
     resources: [university-ecosystem/compliant-pod]
     kind: Pod
     result: pass
   - policy: require-resource-limits
-    rule: check-limits
     resources: [university-ecosystem/missing-limits-pod]
     kind: Pod
     result: fail

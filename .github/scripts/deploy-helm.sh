@@ -17,12 +17,40 @@ for name in "${required[@]}"; do
   fi
 done
 
+cwv_enabled=false
+if [[ "$DEPLOY_ENVIRONMENT" == "staging" ]]; then
+  cwv_enabled=true
+  for name in DEPLOY_VERSION DEPLOYMENT_URL GITHUB_RUN_ID GITHUB_RUN_ATTEMPT CWV_DEPLOYED_AT CWV_EXPORT_OIDC_SUBJECT; do
+    if [[ -z "${!name:-}" ]]; then
+      echo "Required staging CWV input '$name' is empty." >&2
+      exit 1
+    fi
+  done
+fi
+cwv_release_sha="${DEPLOY_VERSION:-0000000000000000000000000000000000000000}"
+cwv_deployment_url="${DEPLOYMENT_URL:-https://disabled.invalid}"
+cwv_run_id="${GITHUB_RUN_ID:-1}"
+cwv_run_attempt="${GITHUB_RUN_ATTEMPT:-1}"
+cwv_deployed_at="${CWV_DEPLOYED_AT:-1970-01-01T00:00:00Z}"
+
 common_args=(
   --values "$HELM_VALUES_FILE"
   --set-string "global.environment=$DEPLOY_ENVIRONMENT"
   --set-string "global.imageRegistry="
   --set-string "backend.image.repository=$REGISTRY/$GITHUB_REPOSITORY/backend"
   --set-string "backend.image.digest=$BACKEND_IMAGE_DIGEST"
+  --set-string "backend.env.CWV_RUM_ENABLED=$cwv_enabled"
+  --set-string "backend.env.CWV_RELEASE_SHA=$cwv_release_sha"
+  --set-string "backend.env.CWV_FRONTEND_IMAGE_DIGEST=$FRONTEND_IMAGE_DIGEST"
+  --set-string "backend.env.CWV_DEPLOYMENT_RUN_ID=$cwv_run_id"
+  --set-string "backend.env.CWV_DEPLOYMENT_RUN_ATTEMPT=$cwv_run_attempt"
+  --set-string "backend.env.CWV_DEPLOYMENT_URL=$cwv_deployment_url"
+  --set-string "backend.env.CWV_DEPLOYED_AT=$cwv_deployed_at"
+  --set-string "backend.env.CWV_ALLOWED_ORIGINS=$cwv_deployment_url"
+  --set-string "backend.env.CWV_EXPORT_OIDC_ENABLED=$cwv_enabled"
+  --set-string "backend.env.CWV_EXPORT_OIDC_REPOSITORY=$GITHUB_REPOSITORY"
+  --set-string "backend.env.CWV_EXPORT_OIDC_WORKFLOW_REF=$GITHUB_REPOSITORY/.github/workflows/cwv-field-certification.yml@refs/heads/main"
+  --set-string "backend.env.CWV_EXPORT_OIDC_SUBJECT=${CWV_EXPORT_OIDC_SUBJECT:-disabled}"
   --set-string "frontend.image.repository=$REGISTRY/$GITHUB_REPOSITORY/frontend"
   --set-string "frontend.image.digest=$FRONTEND_IMAGE_DIGEST"
   --set-string "gateway.image.repository=$REGISTRY/$GITHUB_REPOSITORY/gateway"

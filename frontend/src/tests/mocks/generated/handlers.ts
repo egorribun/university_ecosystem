@@ -1357,6 +1357,66 @@ export const handlers = [
         : body;
     return HttpResponse.json(responseJson, init);
   }),
+  http.post(`${baseURL}/api/v1/cwv/envelope`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("post")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [
+        await getCreateCwvEnvelopeApiV1CwvEnvelopePost200Response(),
+        { status: 200 },
+      ],
+      [
+        await getCreateCwvEnvelopeApiV1CwvEnvelopePost422Response(),
+        { status: 422 },
+      ],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`post /api/v1/cwv/envelope`) % resultArray.length];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
+  http.post(`${baseURL}/api/v1/cwv/observations`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("post")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [
+        await getIngestCwvObservationApiV1CwvObservationsPost202Response(),
+        { status: 202 },
+      ],
+      [
+        await getIngestCwvObservationApiV1CwvObservationsPost422Response(),
+        { status: 422 },
+      ],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`post /api/v1/cwv/observations`) % resultArray.length];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
   http.post(`${baseURL}/api/v1/events/attendance`, async ({ request }) => {
     const shouldEchoRequestBody = false;
     let requestJson = null;
@@ -6849,6 +6909,86 @@ export function getForwardMessagesApiV1ChatsDestChatIdForwardPost422Response() {
   };
 }
 
+export function getCreateCwvEnvelopeApiV1CwvEnvelopePost200Response() {
+  return {
+    envelope: faker.string.alpha({ length: { min: 32, max: 4096 } }),
+    expires_at: faker.date.anytime().toISOString(),
+  };
+}
+
+export function getCreateCwvEnvelopeApiV1CwvEnvelopePost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getIngestCwvObservationApiV1CwvObservationsPost202Response() {
+  return {
+    accepted: faker.datatype.boolean(),
+    metric_id: faker.string.uuid(),
+  };
+}
+
+export function getIngestCwvObservationApiV1CwvObservationsPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
 export function getAllEventsApiV1EventsGet200Response() {
   return {
     cursor: faker.helpers.arrayElement([faker.lorem.words(), null]),
@@ -8319,6 +8459,7 @@ export function getListNotificationsApiV1NotificationsGet200Response() {
         body_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
         created_at: faker.date.anytime().toISOString(),
         id: faker.string.uuid(),
+        metadata: {},
         read: faker.datatype.boolean(),
         read_at: faker.helpers.arrayElement([
           faker.date.anytime().toISOString(),
@@ -8326,6 +8467,7 @@ export function getListNotificationsApiV1NotificationsGet200Response() {
         ]),
         title: faker.lorem.words(),
         title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        topic: faker.helpers.arrayElement([faker.lorem.words(), null]),
         type: faker.helpers.arrayElement([faker.lorem.words(), null]),
         url: faker.helpers.arrayElement([faker.lorem.words(), null]),
       }));
@@ -8382,6 +8524,7 @@ export function getCheckScheduleAndGenerateApiV1NotificationsCheckSchedulePost20
         body_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
         created_at: faker.date.anytime().toISOString(),
         id: faker.string.uuid(),
+        metadata: {},
         read: faker.datatype.boolean(),
         read_at: faker.helpers.arrayElement([
           faker.date.anytime().toISOString(),
@@ -8389,6 +8532,7 @@ export function getCheckScheduleAndGenerateApiV1NotificationsCheckSchedulePost20
         ]),
         title: faker.lorem.words(),
         title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        topic: faker.helpers.arrayElement([faker.lorem.words(), null]),
         type: faker.helpers.arrayElement([faker.lorem.words(), null]),
         url: faker.helpers.arrayElement([faker.lorem.words(), null]),
       }));

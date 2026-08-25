@@ -521,6 +521,13 @@ def test_deployment_workflows_cannot_report_mock_success() -> None:
         "FRONTEND_URL": "${{ vars.FRONTEND_HEALTH_URL }}",
     }
     kyverno = _step(deploy, "Verify Kyverno policy compliance (MOD-14-02)")
+    kyverno_script = kyverno["run"]
+    assert "validatingpolicies.policies.kyverno.io" in kyverno_script
+    assert "clusterpolicies.kyverno.io" not in kyverno_script
+    assert ".status.conditionStatus.ready == true" in kyverno_script
+    assert 'index("Deny") != null' in kyverno_script
+    assert 'index("Audit") != null' in kyverno_script
+    assert "validationFailureAction" not in kyverno_script
     dora = _step(deploy, "Record DORA Lead Time for Changes")
     assert steps.index(smoke) < steps.index(kyverno) < steps.index(rollback)
     assert steps.index(rollback) < steps.index(dora)

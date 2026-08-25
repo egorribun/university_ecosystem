@@ -3,6 +3,7 @@ from fastapi import APIRouter
 from app.api.auth.login import router as login_router
 from app.api.auth.mfa import router as mfa_router
 from app.api.chat import router as chat_router
+from app.api.cwv import router as cwv_router
 from app.api.events import router as events_router
 from app.api.images import router as images_router
 from app.api.internal.csp_report import router as csp_report_router
@@ -39,6 +40,7 @@ router.include_router(stories_router)
 router.include_router(schedule_api_router)
 router.include_router(stats_router)
 router.include_router(chat_router)
+router.include_router(cwv_router)
 router.include_router(images_router)
 router.include_router(csp_report_router)
 router.include_router(search_router)

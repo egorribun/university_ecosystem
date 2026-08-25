@@ -227,6 +227,96 @@ class Settings(
 
         return self
 
+    @model_validator(mode="after")
+    def _validate_cwv_rum_settings(self) -> Settings:
+        """A partially configured trust chain must never collect certifiable data."""
+        if not self.cwv_rum_enabled:
+            return self
+        import re
+        import uuid
+        from urllib.parse import urlsplit
+
+        if str(self.environment).lower() != "staging":
+            raise ValueError("CWV_RUM_ENABLED is restricted to the staging environment")
+        if len(self.cwv_rum_signing_secret.get_secret_value().encode()) < 32:
+            raise ValueError("CWV_RUM_SIGNING_SECRET must contain at least 32 bytes")
+        if re.fullmatch(r"[0-9a-f]{40}", self.cwv_release_sha) is None:
+            raise ValueError("CWV_RELEASE_SHA must be an exact commit SHA")
+        if re.fullmatch(r"sha256:[0-9a-f]{64}", self.cwv_frontend_image_digest) is None:
+            raise ValueError("CWV_FRONTEND_IMAGE_DIGEST must be an immutable digest")
+        if self.cwv_deployment_run_id < 1 or self.cwv_deployment_run_attempt < 1:
+            raise ValueError("CWV deployment workflow run binding is required")
+        if self.cwv_deployed_at is None or self.cwv_deployed_at.tzinfo is None:
+            raise ValueError("CWV_DEPLOYED_AT must be a timezone-aware timestamp")
+        if not 60 <= self.cwv_envelope_ttl_seconds <= 600:
+            raise ValueError("CWV_ENVELOPE_TTL_SECONDS must be between 60 and 600")
+        if not 3 <= self.cwv_retention_days <= 30:
+            raise ValueError("CWV_RETENTION_DAYS must be between 3 and 30")
+        deployment_url = urlsplit(self.cwv_deployment_url)
+        if (
+            deployment_url.scheme != "https"
+            or not deployment_url.netloc
+            or deployment_url.username is not None
+            or deployment_url.password is not None
+            or deployment_url.path not in {"", "/"}
+            or deployment_url.query
+            or deployment_url.fragment
+        ):
+            raise ValueError("CWV_DEPLOYMENT_URL must be an exact HTTPS origin")
+        origins = [
+            item.strip() for item in self.cwv_allowed_origins.split(",") if item.strip()
+        ]
+        if not origins:
+            raise ValueError("CWV_ALLOWED_ORIGINS must contain an HTTPS staging origin")
+        for item in origins:
+            parsed = urlsplit(item)
+            if (
+                parsed.scheme != "https"
+                or not parsed.netloc
+                or parsed.username is not None
+                or parsed.password is not None
+                or parsed.path not in {"", "/"}
+                or parsed.query
+                or parsed.fragment
+            ):
+                raise ValueError("CWV_ALLOWED_ORIGINS must contain exact HTTPS origins")
+        deployment_origin = f"https://{deployment_url.netloc.lower()}"
+        allowed_origins = {
+            f"https://{urlsplit(item).netloc.lower()}" for item in origins
+        }
+        if deployment_origin not in allowed_origins:
+            raise ValueError("CWV deployment origin must be explicitly allowed")
+        testers = [
+            item.strip()
+            for item in self.cwv_manual_tester_user_ids.get_secret_value().split(",")
+            if item.strip()
+        ]
+        try:
+            canonical_testers = {str(uuid.UUID(item)) for item in testers}
+        except ValueError as exc:
+            raise ValueError("CWV manual tester cohort must contain UUIDs") from exc
+        if any(item != str(uuid.UUID(item)) for item in testers):
+            raise ValueError("CWV manual tester cohort UUIDs must be canonical")
+        if len(canonical_testers) < 25 or len(canonical_testers) > 50:
+            raise ValueError("CWV manual tester cohort must contain 25 to 50 users")
+        if len(canonical_testers) != len(testers):
+            raise ValueError("CWV manual tester cohort must contain unique UUIDs")
+        expected_workflow = (
+            f"{self.cwv_export_oidc_repository}/.github/workflows/"
+            "cwv-field-certification.yml@refs/heads/main"
+        )
+        if (
+            not self.cwv_export_oidc_enabled
+            or not self.cwv_export_oidc_repository
+            or self.cwv_export_oidc_workflow_ref != expected_workflow
+            or re.fullmatch(
+                r"repo:[^:]+:environment:staging", self.cwv_export_oidc_subject
+            )
+            is None
+        ):
+            raise ValueError("CWV exporter GitHub OIDC policy is incomplete")
+        return self
+
     @cached_property
     def app_base_url_clean(self) -> str:
         for candidate in (self.app_base_url, self.frontend_origin):

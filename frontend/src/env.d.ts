@@ -13,6 +13,9 @@ interface ImportMetaEnv {
   readonly VITE_SERVICE_VERSION?: string
   readonly VITE_VAPID_PUBLIC_KEY?: string
   readonly VITE_LHCI?: string
+  readonly VITE_ENABLE_WEB_VITALS?: string
+  readonly VITE_WEB_VITALS_ENDPOINT?: string
+  readonly VITE_CWV_TRUSTED_RUM?: string
   readonly VITE_E2E_MODE?: string
   readonly VITE_RELEASE?: string
   readonly VITE_SENTRY_RELEASE?: string

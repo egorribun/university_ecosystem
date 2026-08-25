@@ -19,6 +19,16 @@ on:
         description: "Successful CI run that produced this SHA's quality evidence"
         required: true
         type: string
+      cwv-certification-run-id:
+        description: "Successful field-CWV certification run (required for production)"
+        required: false
+        default: ""
+        type: string
+      cwv-certified-frontend-image-digest:
+        description: "Exact staging-certified frontend digest (required for production)"
+        required: false
+        default: ""
+        type: string
       rotate-mfa-keys:
         description: "Reconcile ExternalSecret and restart MFA consumers"
         required: true
@@ -216,6 +226,11 @@ jobs:
       file: "frontend.Dockerfile"
       tags: |
         ghcr.io/${{ github.repository }}/frontend:${{ needs.prepare.outputs.version }}
+      build_args: |
+        VITE_APP_RELEASE=${{ inputs.release-sha }}
+        VITE_ENABLE_WEB_VITALS=${{ inputs.environment == 'staging' }}
+        VITE_CWV_TRUSTED_RUM=${{ inputs.environment == 'staging' }}
+        VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv
 
   build-ws-hub:
     name: Build WS Hub
@@ -282,6 +297,7 @@ jobs:
       ]
     permissions:
       contents: read
+      actions: read  # Verify and download exact field-CWV evidence for production.
       deployments: write  # Required: create and update GitHub deployment status records
       id-token: write  # Required: request JWT via OIDC for cloud provider authentication
     environment:
@@ -292,6 +308,86 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ inputs.release-sha }}
+
+      - name: Select immutable frontend image
+        id: release-images
+        shell: bash
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          BUILT_FRONTEND_IMAGE_DIGEST: ${{ needs.build-frontend.outputs.digest }}
+          CERTIFIED_FRONTEND_IMAGE_DIGEST: ${{ inputs.cwv-certified-frontend-image-digest }}
+        run: |
+          set -euo pipefail
+          selected="$BUILT_FRONTEND_IMAGE_DIGEST"
+          if [[ "$DEPLOY_ENVIRONMENT" == "production" ]]; then
+            [[ "$CERTIFIED_FRONTEND_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+            selected="$CERTIFIED_FRONTEND_IMAGE_DIGEST"
+          fi
+          [[ "$selected" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "frontend-digest=$selected" >> "$GITHUB_OUTPUT"
+
+      - name: Verify production field certification run
+        if: ${{ inputs.environment == 'production' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
+          CERTIFICATION_RUN_ID: ${{ inputs.cwv-certification-run-id }}
+        run: |
+          set -euo pipefail
+          [[ "$CERTIFICATION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          mkdir -p artifacts/cwv/production-provenance
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CERTIFICATION_RUN_ID" \
+            > artifacts/cwv/production-provenance/certification-run.json
+          jq --exit-status \
+            --arg sha "$RELEASE_SHA" \
+            '.head_sha == $sha and .conclusion == "success" and
+             .event == "workflow_dispatch" and .head_branch == "main" and
+             .path == ".github/workflows/cwv-field-certification.yml"' \
+            artifacts/cwv/production-provenance/certification-run.json >/dev/null
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$CERTIFICATION_RUN_ID/artifacts?per_page=100" \
+            > artifacts/cwv/production-provenance/certification-artifacts.json
+          test "$(jq --arg name "cwv-field-certificate-$RELEASE_SHA" \
+            --arg sha "$RELEASE_SHA" \
+            '[.artifacts[] | select(.name == $name and .expired == false and
+              .workflow_run.head_sha == $sha)] | length' \
+            artifacts/cwv/production-provenance/certification-artifacts.json)" -eq 1
+          test -n "$FRONTEND_IMAGE_DIGEST"
+
+      - name: Download production field certification
+        if: ${{ inputs.environment == 'production' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: cwv-field-certificate-${{ inputs.release-sha }}
+          run-id: ${{ inputs.cwv-certification-run-id }}
+          github-token: ${{ github.token }}
+          path: artifacts/cwv/production-certificate
+
+      - name: Validate production field certification
+        if: ${{ inputs.environment == 'production' }}
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
+        run: |
+          set -euo pipefail
+          cd artifacts/cwv/production-certificate/certificate
+          test -s field-verdict.json
+          test -s field-verdict.json.sha256
+          sha256sum --check field-verdict.json.sha256
+          jq --exit-status \
+            --arg sha "$RELEASE_SHA" \
+            --arg digest "$FRONTEND_IMAGE_DIGEST" \
+            '.schema_version == 1 and .valid == true and
+             .environment == "staging" and .release_sha == $sha and
+             .frontend_image_digest == $digest' \
+            field-verdict.json >/dev/null
+          generated_epoch="$(date -u -d "$(jq -r '.generated_at' field-verdict.json)" +%s)"
+          current_epoch="$(date -u +%s)"
+          test "$generated_epoch" -le "$current_epoch"
+          test "$((current_epoch - generated_epoch))" -le 259200
 
       - name: Validate deployment contract
         shell: bash
@@ -321,7 +417,7 @@ jobs:
           FRONTEND_HEALTH_URL: ${{ vars.FRONTEND_HEALTH_URL }}
           DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
           BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
-          FRONTEND_IMAGE_DIGEST: ${{ needs.build-frontend.outputs.digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
           WS_HUB_IMAGE_DIGEST: ${{ needs.build-ws-hub.outputs.digest }}
           GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
           FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
@@ -487,7 +583,7 @@ jobs:
           CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
           APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
           BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
-          FRONTEND_IMAGE_DIGEST: ${{ needs.build-frontend.outputs.digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
           GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
           FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
         run: |
@@ -526,7 +622,7 @@ jobs:
           CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
           APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
           BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
-          FRONTEND_IMAGE_DIGEST: ${{ needs.build-frontend.outputs.digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
           GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
           FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
           MFA_SMOKE_STATE_DIR: ${{ runner.temp }}/mfa-overlap-smoke
@@ -802,7 +898,7 @@ jobs:
           CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
           APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
           BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
-          FRONTEND_IMAGE_DIGEST: ${{ needs.build-frontend.outputs.digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
           GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
           FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
         run: |
@@ -893,6 +989,12 @@ jobs:
           echo "helm_revision=$previous_revision" >> "$GITHUB_OUTPUT"
           echo "ws_hub_image=$ws_hub_image" >> "$GITHUB_OUTPUT"
 
+      - name: Capture field-evidence timestamp
+        id: field-evidence-time
+        if: ${{ inputs.environment == 'staging' }}
+        shell: bash
+        run: echo "timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
       - name: Deploy Helm release atomically
         id: helm_deploy
         shell: bash
@@ -904,9 +1006,13 @@ jobs:
           CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
           APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
           BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
-          FRONTEND_IMAGE_DIGEST: ${{ needs.build-frontend.outputs.digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
           GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
           FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
+          DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
+          DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
+          CWV_DEPLOYED_AT: ${{ steps.field-evidence-time.outputs.timestamp }}
+          CWV_EXPORT_OIDC_SUBJECT: ${{ vars.CWV_EXPORT_OIDC_SUBJECT }}
         run: |
           set -euo pipefail
           bash .github/scripts/deploy-helm.sh lint
@@ -946,7 +1052,7 @@ jobs:
           K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
           HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
           BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
-          FRONTEND_IMAGE_DIGEST: ${{ needs.build-frontend.outputs.digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
           GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
           FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
         run: |
@@ -1038,13 +1144,15 @@ jobs:
             require-always-pull-policy
             disallow-latest-tag
           )
-          policies="$(kubectl get clusterpolicies.kyverno.io --output json)"
+          policies="$(kubectl get validatingpolicies.policies.kyverno.io --output json)"
           for policy in "${expected_policies[@]}"; do
             if ! jq --exit-status --arg name "$policy" \
               '.items[] | select(.metadata.name == $name) |
-               .spec.validationFailureAction == "Enforce"' \
+               (.status.conditionStatus.ready == true) and
+               ((.spec.validationActions // []) | index("Deny") != null) and
+               ((.spec.validationActions // []) | index("Audit") != null)' \
               <<< "$policies" >/dev/null; then
-              echo "::error::Kyverno policy '$policy' is missing or is not in Enforce mode."
+              echo "::error::Kyverno policy '$policy' is missing, not Ready, or does not enforce Deny+Audit."
               exit 1
             fi
           done
@@ -1059,6 +1167,60 @@ jobs:
             exit 1
           fi
           echo "Kyverno: all required policies enforce and no violations are reported."
+
+      - name: Create staging field-evidence metadata
+        if: ${{ inputs.environment == 'staging' }}
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
+          DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
+          DEPLOYED_AT: ${{ steps.field-evidence-time.outputs.timestamp }}
+          DEPLOY_RUN_ID: ${{ github.run_id }}
+          DEPLOY_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/cwv
+          jq --null-input \
+            --arg release_sha "$RELEASE_SHA" \
+            --arg frontend_image_digest "$FRONTEND_IMAGE_DIGEST" \
+            --arg deployment_url "$DEPLOYMENT_URL" \
+            --arg deployed_at "$DEPLOYED_AT" \
+            --argjson workflow_run_id "$DEPLOY_RUN_ID" \
+            --argjson workflow_run_attempt "$DEPLOY_RUN_ATTEMPT" \
+            '{
+              schema_version: 1,
+              environment: "staging",
+              release_sha: $release_sha,
+              frontend_image_digest: $frontend_image_digest,
+              deployment_url: $deployment_url,
+              deployed_at: $deployed_at,
+              workflow_run_id: $workflow_run_id,
+              workflow_run_attempt: $workflow_run_attempt
+            }' > artifacts/cwv/staging-deployment.json
+          jq --exit-status \
+            --arg sha "$RELEASE_SHA" \
+            --arg digest "$FRONTEND_IMAGE_DIGEST" \
+            --argjson run_id "$DEPLOY_RUN_ID" \
+            --argjson run_attempt "$DEPLOY_RUN_ATTEMPT" \
+            '.schema_version == 1 and .environment == "staging" and
+             .release_sha == $sha and .frontend_image_digest == $digest and
+             .workflow_run_id == $run_id and
+             .workflow_run_attempt == $run_attempt' \
+            artifacts/cwv/staging-deployment.json >/dev/null
+          (cd artifacts/cwv && \
+            sha256sum staging-deployment.json > staging-deployment.json.sha256)
+
+      - name: Upload staging field-evidence metadata
+        if: ${{ inputs.environment == 'staging' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: staging-deployment-${{ inputs.release-sha }}
+          path: |
+            artifacts/cwv/staging-deployment.json
+            artifacts/cwv/staging-deployment.json.sha256
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Roll back a deployment that failed verification
         if: ${{ failure() && steps.rollback_state.outcome == 'success' }}

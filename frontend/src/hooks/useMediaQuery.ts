@@ -24,13 +24,27 @@ const toMediaQueryList = (query: string): MediaQueryList | null => {
   }
 }
 
+class MediaQueryStore {
+  private current: boolean
+
+  constructor(initialValue: boolean) {
+    this.current = initialValue
+  }
+
+  readonly getSnapshot = (): boolean => this.current
+
+  update(nextValue: boolean): void {
+    this.current = nextValue
+  }
+}
+
 export default function useMediaQuery(
   query: string,
   { defaultValue = false }: UseMediaQueryOptions = {}
 ): boolean {
   const mediaQueryList = useMemo(() => toMediaQueryList(query), [query])
   const store = useMemo(
-    () => ({ current: mediaQueryList?.matches ?? defaultValue }),
+    () => new MediaQueryStore(mediaQueryList?.matches ?? defaultValue),
     [defaultValue, mediaQueryList]
   )
 
@@ -39,7 +53,7 @@ export default function useMediaQuery(
       if (!mediaQueryList) return () => undefined
 
       const handleChange: MediaQueryCallback = (event) => {
-        store.current = event.matches
+        store.update(event.matches)
         onStoreChange()
       }
       if (typeof mediaQueryList.addEventListener === "function") {
@@ -59,8 +73,7 @@ export default function useMediaQuery(
     [mediaQueryList, store]
   )
 
-  const getSnapshot = useCallback(() => store.current, [store])
   const getServerSnapshot = useCallback(() => defaultValue, [defaultValue])
 
-  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot)
+  return useSyncExternalStore(subscribe, store.getSnapshot, getServerSnapshot)
 }

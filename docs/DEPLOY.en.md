@@ -13,6 +13,19 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - To enable client-side error monitoring, set `VITE_SENTRY_DSN` and, if needed, `VITE_ENVIRONMENT`. The SDK does not activate automatically in dev builds.
 - The frontend logger (`src/app/logger.ts`) automatically sends `logError`/`logWarning` to Sentry and mirrors the output in the console. Unhandled `Promise`/`axios` errors are captured by global handlers (`initGlobalErrorHandlers()` is invoked in `src/main.tsx`).
 - To collect Web Vitals, set `VITE_ENABLE_WEB_VITALS=true`. Optionally send metrics to your own endpoint through `VITE_WEB_VITALS_ENDPOINT` (otherwise they are printed to the console). The flag is ignored in dev/test environments, so CI will not fail even when the variable is enabled.
+- Release-blocking field Core Web Vitals are certified separately by
+  `cwv-field-certification.yml`. The workflow derives the exporter URL from the
+  signed, SHA-bound staging deployment metadata; an independent export URL is
+  not accepted. The exporter must validate the GitHub OIDC audience
+  `university-cwv-exporter`, repository, protected `main` ref, and `staging`
+  environment, then return observations only for the exact `release_sha`,
+  frontend image digest, and deploy run/attempt. The supported collector contract
+  is `web-vitals` 6.1.1 with exporter schema version `1`. The deploy workflow
+  emits the immutable `staging-deployment-<sha>` artifact only after rollout,
+  smoke, and Kyverno verification. Certification downloads it from the exact run
+  and attempt, rejects stale, partial, or foreign evidence, evaluates p75
+  LCP/INP/CLS, and publishes a SHA-bound artifact with a build-provenance
+  attestation. A manually uploaded report is not valid release evidence.
 - Backend and frontend must run over HTTPS, otherwise the browser blocks `/media` and `/static`.
 - To limit requests, configure the backend with `RATE_LIMIT_STORAGE_BACKEND` and `RATE_LIMIT_STORAGE_URI`. The value `redis` + a Redis URL (for example, `redis://user:pass@host:6379/0`) enables a shared storage for the middleware and sensitive endpoints. Use `memory` or `memory://` for a simple single-process mode without external Redis.
 - Session revocation must use one shared, dedicated store across services: the backend, gateway, and ws-hub use only `REVOCATION_REDIS_URL`. The supported Compose and Helm topology provisions a separate Redis/Valkey process with AOF, persistent storage, and `maxmemory-policy noeviction`; neither the cache (`CACHE_REDIS_URL`) nor the rate-limit Redis (`REDIS_URL`, DB 3) is authoritative security state. Reusing a cache/rate-limit process is unsupported because evicting `revoked:jti:*` could make a revoked JWT valid again.
