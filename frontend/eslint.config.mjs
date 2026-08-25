@@ -1,5 +1,6 @@
 // For more info, see https://github.com/storybookjs/eslint-plugin-storybook#configuration-flat-config-format
 import storybook from "eslint-plugin-storybook"
+import { fileURLToPath, URL } from "node:url"
 
 import js from "@eslint/js"
 import globals from "globals"
@@ -46,7 +47,7 @@ export default tseslint.config(
   jsxA11y.flatConfigs.recommended,
   {
     settings: {
-      react: { version: "detect" },
+      react: { version: "19.2" },
     },
   },
   {
@@ -92,7 +93,7 @@ export default tseslint.config(
       "import/resolver": {
         "./scripts/eslint-import-resolver-alias.cjs": {
           alias: "@",
-          target: "./src",
+          target: fileURLToPath(new URL("./src", import.meta.url)),
         },
         node: {
           extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json"],
@@ -206,6 +207,21 @@ export default tseslint.config(
               },
               message: "Features cannot import from app composition modules.",
             },
+            {
+              from: { element: { type: "feature-ui" } },
+              disallow: { to: { element: { type: "page" } } },
+              message: "Feature UI cannot import from pages or app layer.",
+            },
+            {
+              from: { element: { type: "feature-ui" } },
+              disallow: {
+                to: {
+                  element: { type: "app" },
+                  file: { categories: { noneOf: ["platform"] } },
+                },
+              },
+              message: "Feature UI cannot import from app composition modules.",
+            },
           ],
         },
       ],
@@ -237,6 +253,12 @@ export default tseslint.config(
               importNames: ["useReducedMotion"],
               message:
                 'framer-motion useReducedMotion is jsdom-incompatible (W184 SW6 + W190 broader migration sweep). Use `useMediaQuery("(prefers-reduced-motion: reduce)")` from `@/hooks/useMediaQuery` (DEFAULT export) instead. See CLAUDE.md ## Gotchas for full rationale.',
+            },
+          ],
+          patterns: [
+            {
+              group: ["@/../*", "@/../**", "@/**/../*", "@/**/../**"],
+              message: "Alias imports must stay within the frontend source root.",
             },
           ],
         },

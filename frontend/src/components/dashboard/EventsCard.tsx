@@ -45,10 +45,7 @@ export const EventsCard = memo(function EventsCard({
   )
   const loadingEvents = dashboardEventsQuery.isLoading && events.length === 0
 
-  const warmEventsPage = () => import("../../pages/Events").catch(() => {})
-
   const prefetchEventsList = () => {
-    warmEventsPage()
     void prefetchDashboardEvents(queryClient)
     void prefetchEventsListQuery(queryClient, {
       language,

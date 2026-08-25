@@ -33,10 +33,43 @@ exports.resolve = function resolve(source, _sourceFile, options = {}) {
     return { found: false }
   }
 
-  const target = options.target ?? "./src"
-  const suffix = source === alias ? "" : source.slice(alias.length + 1)
-  const candidate = path.resolve(process.cwd(), target, suffix)
-  const resolvedPath = resolveExistingPath(candidate, options.extensions ?? DEFAULT_EXTENSIONS)
+  const target = options.target
+  if (typeof target !== "string" || !path.isAbsolute(target)) {
+    return { found: false }
+  }
 
-  return resolvedPath ? { found: true, path: resolvedPath } : { found: false }
+  let targetRoot
+  try {
+    targetRoot = fs.realpathSync.native(target)
+  } catch {
+    return { found: false }
+  }
+
+  const suffix = source === alias ? "" : source.slice(alias.length + 1)
+  const candidate = path.resolve(targetRoot, suffix)
+  const relativeCandidate = path.relative(targetRoot, candidate)
+  if (
+    path.isAbsolute(relativeCandidate) ||
+    relativeCandidate === ".." ||
+    relativeCandidate.startsWith(`..${path.sep}`)
+  ) {
+    return { found: false }
+  }
+
+  const resolvedPath = resolveExistingPath(candidate, options.extensions ?? DEFAULT_EXTENSIONS)
+  if (!resolvedPath) {
+    return { found: false }
+  }
+
+  const realPath = fs.realpathSync.native(resolvedPath)
+  const relativeRealPath = path.relative(targetRoot, realPath)
+  if (
+    path.isAbsolute(relativeRealPath) ||
+    relativeRealPath === ".." ||
+    relativeRealPath.startsWith(`..${path.sep}`)
+  ) {
+    return { found: false }
+  }
+
+  return { found: true, path: realPath }
 }

@@ -1,6 +1,6 @@
-import { memo, useMemo, useCallback, type KeyboardEvent, type CSSProperties } from "react"
+import { memo, useCallback, useMemo, type CSSProperties } from "react"
 
-import { Link } from "@tanstack/react-router"
+import { Link, useRouter } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Badge, Button, Card, ProgressBar, Skeleton } from "@/components/ui"
 import { cn } from "@/utils/cn"
@@ -26,6 +26,7 @@ export const ScheduleCard = memo(function ScheduleCard({
   ...props
 }: ScheduleCardProps) {
   const { t } = useTranslation(["dashboard", "common"])
+  const router = useRouter()
   const shouldLoadSchedule = userRole === "student" && Boolean(userGroupId)
   const dashboardScheduleQuery = useDashboardSchedule(
     (userRole as "student" | "teacher" | "admin" | null) ?? null,
@@ -123,13 +124,9 @@ export const ScheduleCard = memo(function ScheduleCard({
     return Math.round((passed / span) * 100)
   }, [currentLesson, minutesNow])
 
-  const warmSchedulePage = () => import("../../pages/Schedule").catch(() => {})
-
-  const prepareOnKey = useCallback((event: KeyboardEvent, callback: () => void) => {
-    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
-      callback()
-    }
-  }, [])
+  const warmScheduleRoute = useCallback(() => {
+    void router.preloadRoute({ to: "/schedule" }).catch(() => undefined)
+  }, [router])
 
   return (
     <Card
@@ -156,8 +153,7 @@ export const ScheduleCard = memo(function ScheduleCard({
               variant="outline"
               className="btn-dash whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-0.5"
               aria-label={t("dashboard:aria.openFullSchedule")}
-              onPointerDown={warmSchedulePage}
-              onKeyDown={(event) => prepareOnKey(event, warmSchedulePage)}
+              onPointerDown={warmScheduleRoute}
             >
               {t("dashboard:fullSchedule")}
             </Button>

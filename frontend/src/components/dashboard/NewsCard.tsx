@@ -33,10 +33,7 @@ export const NewsCard = memo(function NewsCard({
   const news: NewsItem[] = dashboardNewsQuery.data ?? []
   const loadingNews = dashboardNewsQuery.isLoading && news.length === 0
 
-  const warmNewsPage = () => import("../../pages/News").catch(() => {})
-
   const prefetchNewsList = () => {
-    warmNewsPage()
     void prefetchDashboardNews(queryClient, language)
   }
 
