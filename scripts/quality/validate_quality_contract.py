@@ -1219,6 +1219,13 @@ def _validate_tier0_manifest(
                     f"tier0.coverage.{metric_name} must be N/A when no files are applicable"
                 )
             continue
+        errors.extend(
+            _validate_metric_for_floor(
+                aggregate_metric,
+                floor=100,
+                field=f"tier0.coverage.{metric_name}",
+            )
+        )
         covered = sum(cast(int, entry["covered"]) for entry in entries)
         total = sum(cast(int, entry["total"]) for entry in entries)
         expected_status = (

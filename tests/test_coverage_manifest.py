@@ -324,6 +324,9 @@ def _run_normalizer_in_isolated_repo(
     (quality_root / "ownership-mapping.json").write_bytes(
         (REPOSITORY_ROOT / "quality" / "ownership-mapping.json").read_bytes()
     )
+    (quality_root / "coverage-source-policy.json").write_bytes(
+        (REPOSITORY_ROOT / "quality" / "coverage-source-policy.json").read_bytes()
+    )
 
     source_contract: Path | None = None
     rewritten_arguments: list[str] = []

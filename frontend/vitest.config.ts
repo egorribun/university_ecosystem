@@ -3,6 +3,7 @@ import { defineConfig } from "vitest/config"
 import react from "@vitejs/plugin-react"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import coverageSourcePolicy from "../quality/coverage-source-policy.json"
 
 // Vite's bundled config loader preserves import.meta.dirname, while the
 // module-runner path remains compatible with older Node versions via the URL
@@ -59,18 +60,8 @@ export default defineConfig({
       reportsDirectory: "coverage",
       // Keep all authored production source in the denominator. Do not replace
       // this with a hand-selected allow-list to make a percentage look healthy.
-      include: ["src/**/*.{ts,tsx}"],
-      exclude: [
-        "src/tests/**/*",
-        "src/**/__tests__/**/*",
-        "src/**/*.test.{ts,tsx}",
-        "src/**/*.stories.{ts,tsx}",
-        "src/setupTests.ts",
-        "src/routeTree.gen.ts",
-        "src/api/generated/**/*",
-        "**/*.d.ts",
-        "src/test/**/*",
-      ],
+      include: coverageSourcePolicy.frontend.include,
+      exclude: coverageSourcePolicy.frontend.exclude,
       // Authored frontend source is held to complete aggregate coverage.
       thresholds: {
         statements: 100,

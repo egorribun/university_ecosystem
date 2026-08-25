@@ -584,6 +584,9 @@ def test_mypy_excludes_are_valid_regular_expressions() -> None:
 def test_frontend_coverage_policy_and_source_universe_match_quality_contract() -> None:
     contract = _read_contract()
     coverage = _extract_object_body(_read_text("frontend/vitest.config.ts"), "coverage")
+    source_policy = json.loads(_read_text("quality/coverage-source-policy.json"))[
+        "frontend"
+    ]
 
     assert _extract_string_array(coverage, "reporter") == (
         "text",
@@ -596,14 +599,19 @@ def test_frontend_coverage_policy_and_source_universe_match_quality_contract() -
     )
     assert reports_directory is not None, "missing reportsDirectory"
     assert reports_directory.group("value") == "coverage"
-    # AST-aware remapping is required for stable statement/branch maps across
-    # Vitest shards.  Its known negative synthetic counters are normalised to
-    # zero by the aggregate merger, preserving a fail-closed 100% gate.
-    assert re.search(r"\bexperimentalAstAwareRemapping\s*:\s*true\b", coverage)
+    # Vitest 4 removed the experimental AST-remapping option. Its known
+    # negative synthetic counters are normalised by the aggregate merger,
+    # preserving a fail-closed 100% gate without an unsupported config key.
     merger = _read_text("frontend/scripts/merge-vitest-coverage.mjs")
     assert "normaliseNegativeHitCounts" in merger
-    assert _extract_string_array(coverage, "include") == EXPECTED_VITEST_INCLUDE
-    assert _extract_string_array(coverage, "exclude") == EXPECTED_VITEST_EXCLUSIONS
+    assert source_policy["include"] == list(EXPECTED_VITEST_INCLUDE)
+    assert source_policy["exclude"] == list(EXPECTED_VITEST_EXCLUSIONS)
+    assert re.search(
+        r"\binclude\s*:\s*coverageSourcePolicy\.frontend\.include", coverage
+    )
+    assert re.search(
+        r"\bexclude\s*:\s*coverageSourcePolicy\.frontend\.exclude", coverage
+    )
 
     thresholds = _extract_object_body(coverage, "thresholds")
     for metric in ("statements", "branches", "functions", "lines"):
@@ -612,7 +620,7 @@ def test_frontend_coverage_policy_and_source_universe_match_quality_contract() -
         assert match is not None, f"missing {metric} coverage threshold"
         assert int(match.group(1)) == value
 
-    exclusions = _extract_string_array(coverage, "exclude")
+    exclusions = source_policy["exclude"]
     for forbidden_exclusion in FORBIDDEN_VITEST_EXCLUSIONS:
         assert forbidden_exclusion.removeprefix('"').removesuffix('"') not in exclusions
 

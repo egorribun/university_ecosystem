@@ -57,6 +57,42 @@ COVERAGE_COMPONENTS = (
     "rust-wasm-sanitizer",
     "rust-crypto",
 )
+# These paths can change what source is measured or how coverage is produced.
+# They are intentionally explicit so generated coverage artifacts remain writable
+# while authored tests, toolchain manifests, and gate configuration stay HEAD-bound.
+COVERAGE_CONTROL_PATHS = (
+    ".coveragerc",
+    ".github/workflows",
+    "pyproject.toml",
+    "uv.lock",
+    "tests",
+    "frontend/package.json",
+    "frontend/package-lock.json",
+    "frontend/.npmrc",
+    "frontend/vite.config.mts",
+    "frontend/vitest.config.ts",
+    "frontend/playwright.config.ts",
+    "frontend/stryker.config.mjs",
+    "frontend/tsconfig.json",
+    "frontend/tsconfig.app.json",
+    "frontend/tsconfig.node.json",
+    "frontend/scripts",
+    "frontend/tests",
+    "go.mod",
+    "go.sum",
+    "go.work",
+    "go.work.sum",
+    "services",
+    "native",
+    "crates",
+    "frontend/rust-crypto",
+    "frontend/wasm-sanitizer",
+    "scripts/quality",
+    "quality/coverage-source-policy.json",
+)
+FRONTEND_COVERAGE_INCLUDE: tuple[str, ...] = ()
+FRONTEND_COVERAGE_EXCLUDE: tuple[str, ...] = ()
+TIER0_AGGREGATE_DERIVATION = "sum of applicable Tier0 file metrics"
 SOURCE_ROOTS = {
     "python": ("app", "alembic/versions"),
     "frontend": ("frontend/src",),
@@ -2594,6 +2630,69 @@ def _decode_git_paths(raw: bytes, operation: str) -> list[str]:
         raise _InputError(f"unable to {operation}: Git path is not UTF-8") from error
 
 
+def _expand_brace_pattern(pattern: str) -> tuple[str, ...]:
+    match = re.search(r"\{([^{}]+)\}", pattern)
+    if match is None:
+        return (pattern,)
+    alternatives = match.group(1).split(",")
+    if not alternatives or any(not alternative for alternative in alternatives):
+        raise _InputError("coverage source policy contains an invalid brace pattern")
+    expanded: list[str] = []
+    for alternative in alternatives:
+        replacement = pattern[: match.start()] + alternative + pattern[match.end() :]
+        expanded.extend(_expand_brace_pattern(replacement))
+    return tuple(expanded)
+
+
+def _load_frontend_coverage_policy() -> tuple[tuple[str, ...], tuple[str, ...]]:
+    policy_path = REPOSITORY_ROOT / "quality" / "coverage-source-policy.json"
+    try:
+        document = json.loads(
+            policy_path.read_text(encoding="utf-8"),
+            object_pairs_hook=_duplicate_key_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (OSError, UnicodeDecodeError, ValueError, json.JSONDecodeError) as error:
+        raise _InputError(f"invalid coverage source policy: {error}") from error
+    if not isinstance(document, dict) or set(document) != {"frontend"}:
+        raise _InputError("coverage source policy must contain only frontend")
+    frontend = document["frontend"]
+    if not isinstance(frontend, dict) or set(frontend) != {"include", "exclude"}:
+        raise _InputError(
+            "frontend coverage source policy requires include and exclude"
+        )
+
+    normalized: dict[str, tuple[str, ...]] = {}
+    for policy_field in ("include", "exclude"):
+        values = frontend[policy_field]
+        if (
+            not isinstance(values, list)
+            or not values
+            or not all(isinstance(value, str) and value for value in values)
+            or len(values) != len(set(values))
+        ):
+            raise _InputError(
+                f"frontend coverage source policy {policy_field} must be unique strings"
+            )
+        expanded: list[str] = []
+        for value in cast(list[str], values):
+            if (
+                "\\" in value
+                or value.startswith("/")
+                or ".." in PurePosixPath(value).parts
+                or any(unicodedata.category(character) == "Cc" for character in value)
+            ):
+                raise _InputError(
+                    "frontend coverage source policy "
+                    f"{policy_field} contains an unsafe path"
+                )
+            expanded.extend(
+                f"frontend/{pattern}" for pattern in _expand_brace_pattern(value)
+            )
+        normalized[policy_field] = tuple(expanded)
+    return normalized["include"], normalized["exclude"]
+
+
 def _source_control_scope(contract_path: Path) -> list[str]:
     contract_identity = _lexical_manifest_path(contract_path)
     return sorted(
@@ -2601,6 +2700,7 @@ def _source_control_scope(contract_path: Path) -> list[str]:
             contract_identity,
             "quality/coverage-manifest.schema.json",
             "quality/ownership-mapping.json",
+            *COVERAGE_CONTROL_PATHS,
             *(root for roots in SOURCE_ROOTS.values() for root in roots),
         }
     )
@@ -2636,14 +2736,7 @@ def _tracked_source_is_coverable(component: str, relative_path: str) -> bool:
     if component == "python":
         return pure.suffix.casefold() == ".py"
     if component == "frontend":
-        return (
-            pure.suffix.casefold() in {".ts", ".tsx"}
-            and not lowered_name.endswith(".d.ts")
-            and lowered_name != "routetree.gen.ts"
-            and ".test." not in lowered_name
-            and ".spec." not in lowered_name
-            and "__tests__" not in pure.parts
-        )
+        return _matches_frontend_coverage_policy(relative_path)
     if component.startswith("go-"):
         return (
             pure.suffix.casefold() == ".go"
@@ -2655,6 +2748,37 @@ def _tracked_source_is_coverable(component: str, relative_path: str) -> bool:
     if component.startswith("rust-"):
         return pure.suffix.casefold() == ".rs" and "tests" not in pure.parts
     return False
+
+
+def _glob_matches_path(path: str, pattern: str) -> bool:
+    """Match a repo path with Vitest-style ``**`` allowing zero directories."""
+    candidates: set[str] = set()
+    pending = [pattern]
+    while pending:
+        candidate = pending.pop()
+        if candidate in candidates:
+            continue
+        candidates.add(candidate)
+        start = 0
+        while (index := candidate.find("/**/", start)) >= 0:
+            pending.append(candidate[:index] + "/" + candidate[index + 4 :])
+            start = index + 1
+    if os.name == "nt":
+        path = path.casefold()
+        candidates = {candidate.casefold() for candidate in candidates}
+    return any(fnmatch.fnmatchcase(path, candidate) for candidate in candidates)
+
+
+def _matches_frontend_coverage_policy(relative_path: str) -> bool:
+    included = any(
+        _glob_matches_path(relative_path, pattern)
+        for pattern in FRONTEND_COVERAGE_INCLUDE
+    )
+    excluded = any(
+        _glob_matches_path(relative_path, pattern)
+        for pattern in FRONTEND_COVERAGE_EXCLUDE
+    )
+    return included and not excluded
 
 
 def _tracked_source_inventory() -> dict[str, frozenset[str]]:
@@ -3498,15 +3622,13 @@ def _aggregate_tier0(
         covered = sum(cast(int, entry["covered"]) for entry in entries)
         total = sum(cast(int, entry["total"]) for entry in entries)
         if total == 0:
-            aggregate[metric_name] = _vacuous_metric(
-                "applicable Tier0 files contain no coverage units"
-            )
+            aggregate[metric_name] = _vacuous_metric(TIER0_AGGREGATE_DERIVATION)
         elif any(entry["status"] == "derived" for entry in entries):
             aggregate[metric_name] = _measured_metric(
                 "derived",
                 covered,
                 total,
-                derivation="sum of applicable Tier0 file metrics",
+                derivation=TIER0_AGGREGATE_DERIVATION,
             )
         else:
             aggregate[metric_name] = _measured_metric("native", covered, total)
@@ -3587,8 +3709,11 @@ def _prepare_invocation(arguments: argparse.Namespace) -> _PreparedInvocation:
             )
 
     configuration = _load_contract(contract_path, generated_at)
-    global SOURCE_ROOTS
+    global FRONTEND_COVERAGE_EXCLUDE, FRONTEND_COVERAGE_INCLUDE, SOURCE_ROOTS
     SOURCE_ROOTS = configuration.source_roots
+    FRONTEND_COVERAGE_INCLUDE, FRONTEND_COVERAGE_EXCLUDE = (
+        _load_frontend_coverage_policy()
+    )
     _validate_clean_source_snapshot(contract_path)
     source_inventory = _tracked_source_inventory()
     if _lexical_manifest_path(output_path) != configuration.manifest_path:

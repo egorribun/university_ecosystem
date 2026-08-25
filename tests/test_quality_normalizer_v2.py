@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -22,6 +23,7 @@ NORMALIZER_PATH = (
 )
 CONTRACT_PATH = REPOSITORY_ROOT / "quality" / "quality-contract.json"
 SCHEMA_PATH = REPOSITORY_ROOT / "quality" / "coverage-manifest.schema.json"
+SOURCE_POLICY_PATH = REPOSITORY_ROOT / "quality" / "coverage-source-policy.json"
 GIT_EXECUTABLE = shutil.which("git")
 
 
@@ -40,6 +42,9 @@ def evidence_repo(tmp_path: Path) -> Path:
     (tmp_path / "quality" / "ownership-mapping.json").write_text(
         json.dumps({"tier0_rules": ["**/spicedb/**", "alembic/versions/**"]}),
         encoding="utf-8",
+    )
+    (tmp_path / "quality" / "coverage-source-policy.json").write_bytes(
+        SOURCE_POLICY_PATH.read_bytes()
     )
     write_complete_evidence(tmp_path)
     _commit_all(tmp_path, "fixture")
@@ -401,3 +406,221 @@ def test_normalizer_v2_rejects_reports_omitting_tracked_non_tier0_source(
 
     assert result.returncode == 2
     assert "python coverage is missing tracked source app/secondary.py" in result.stderr
+
+
+def test_normalizer_v2_frontend_inventory_matches_vitest_production_scope(
+    evidence_repo: Path,
+) -> None:
+    excluded_sources = {
+        "frontend/src/tests/helper.ts": "export const helper = 1\n",
+        "frontend/src/example.test.ts": "export const tested = 1\n",
+        "frontend/src/example.stories.tsx": "export const Story = () => null\n",
+        "frontend/src/setupTests.ts": "export {}\n",
+        "frontend/src/routeTree.gen.ts": "export {}\n",
+        "frontend/src/api/generated/client.ts": "export const generated = 1\n",
+        "frontend/src/types.d.ts": "export type Value = number\n",
+        "frontend/src/test/setup.ts": "export {}\n",
+        "frontend/src/nested/__tests__/helper.ts": "export const helper = 1\n",
+    }
+    for relative_path, contents in excluded_sources.items():
+        source = evidence_repo / relative_path
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text(contents, encoding="utf-8")
+    _commit_all(evidence_repo, "add non-production frontend sources")
+
+    result = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_normalizer_v2_reads_frontend_inventory_from_shared_source_policy(
+    evidence_repo: Path,
+) -> None:
+    policy = evidence_repo / "quality/coverage-source-policy.json"
+    policy.write_text(
+        json.dumps(
+            {
+                "frontend": {
+                    "include": ["src/**/*.{ts,tsx}"],
+                    "exclude": [
+                        "src/tests/**/*",
+                        "src/**/__tests__/**/*",
+                        "src/**/*.test.{ts,tsx}",
+                        "src/setupTests.ts",
+                        "src/routeTree.gen.ts",
+                        "src/api/generated/**/*",
+                        "**/*.d.ts",
+                        "src/test/**/*",
+                    ],
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    story = evidence_repo / "frontend/src/example.stories.tsx"
+    story.write_text("export const Story = () => null\n", encoding="utf-8")
+    _commit_all(evidence_repo, "make stories coverable in shared source policy")
+
+    result = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert result.returncode == 2
+    assert (
+        "frontend coverage is missing tracked source frontend/src/example.stories.tsx"
+        in result.stderr
+    )
+
+
+def test_normalizer_v2_rejects_frontend_report_omitting_authored_production_source(
+    evidence_repo: Path,
+) -> None:
+    source = evidence_repo / "frontend/src/secondary.tsx"
+    source.write_text("export const Secondary = () => null\n", encoding="utf-8")
+    _commit_all(evidence_repo, "add authored frontend source")
+
+    result = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert result.returncode == 2
+    assert (
+        "frontend coverage is missing tracked source frontend/src/secondary.tsx"
+        in result.stderr
+    )
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows report paths are case-insensitive")
+def test_normalizer_v2_matches_frontend_report_case_to_tracked_identity(
+    evidence_repo: Path,
+) -> None:
+    lcov_path = evidence_repo / "frontend/coverage/lcov.info"
+    lcov_path.write_text(
+        lcov_path.read_text(encoding="utf-8").replace(
+            "frontend/src/example.ts", "FRONTEND/SRC/EXAMPLE.ts"
+        ),
+        encoding="utf-8",
+    )
+    json_path = evidence_repo / "frontend/coverage/coverage-final.json"
+    report = json.loads(json_path.read_text(encoding="utf-8"))
+    record = report.pop("frontend/src/example.ts")
+    record["path"] = "FRONTEND/SRC/EXAMPLE.ts"
+    report["FRONTEND/SRC/EXAMPLE.ts"] = record
+    json_path.write_text(json.dumps(report), encoding="utf-8")
+
+    result = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert result.returncode == 0, result.stderr
+
+
+@pytest.mark.skipif(os.name == "nt", reason="requires a case-sensitive checkout")
+def test_normalizer_v2_keeps_case_distinct_frontend_sources_on_linux(
+    evidence_repo: Path,
+) -> None:
+    source = evidence_repo / "frontend/src/EXAMPLE.ts"
+    source.write_text("export const upper = 1\n", encoding="utf-8")
+    _commit_all(evidence_repo, "add case-distinct frontend source")
+
+    result = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert result.returncode == 2
+    assert (
+        "frontend coverage is missing tracked source frontend/src/EXAMPLE.ts"
+        in result.stderr
+    )
+
+
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "tests/test_coverage_gate.py",
+        "frontend/package-lock.json",
+        "frontend/playwright.config.ts",
+        "pyproject.toml",
+        "go.work",
+    ],
+)
+def test_normalizer_v2_rejects_dirty_coverage_control_inputs(
+    evidence_repo: Path,
+    relative_path: str,
+) -> None:
+    control = evidence_repo / relative_path
+    control.parent.mkdir(parents=True, exist_ok=True)
+    control.write_text("committed\n", encoding="utf-8")
+    _commit_all(evidence_repo, f"add coverage control {relative_path}")
+    control.write_text("dirty\n", encoding="utf-8")
+
+    result = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert result.returncode == 2
+    assert "clean tracked HEAD snapshot" in result.stderr
+    assert relative_path in result.stderr
+
+
+def test_normalizer_v2_allows_untracked_superpowers_documents(
+    evidence_repo: Path,
+) -> None:
+    document = evidence_repo / "docs/superpowers/notes.md"
+    document.parent.mkdir(parents=True, exist_ok=True)
+    document.write_text("user plan\n", encoding="utf-8")
+
+    result = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_normalizer_v2_zero_unit_tier0_derivation_validates_end_to_end(
+    evidence_repo: Path,
+) -> None:
+    migration_path = "alembic/versions/20260825_empty.py"
+    migration = evidence_repo / migration_path
+    migration.parent.mkdir(parents=True, exist_ok=True)
+    migration.write_text("revision = '20260825'\n", encoding="utf-8")
+    ownership = evidence_repo / "quality/ownership-mapping.json"
+    ownership.write_text(
+        json.dumps({"tier0_rules": ["alembic/versions/**"]}), encoding="utf-8"
+    )
+    _commit_all(evidence_repo, "add zero-unit Tier0 source")
+
+    xml_path = evidence_repo / "coverage.xml"
+    xml = xml_path.read_text(encoding="utf-8")
+    xml_path.write_text(
+        xml.replace(
+            "</classes>",
+            f'<class filename="{migration_path}" name="migration"><methods />'
+            '<lines><line hits="1" number="1" /></lines></class></classes>',
+        ).replace(
+            'lines-covered="1" lines-valid="1"', 'lines-covered="2" lines-valid="2"'
+        ),
+        encoding="utf-8",
+    )
+    json_path = evidence_repo / "artifacts/coverage/python/coverage.json"
+    report = json.loads(json_path.read_text(encoding="utf-8"))
+    report["files"][migration_path] = {
+        "executed_lines": [1],
+        "missing_lines": [],
+        "executed_branches": [],
+        "missing_branches": [],
+        "summary": {
+            "covered_lines": 1,
+            "num_statements": 1,
+            "covered_branches": 0,
+            "num_branches": 0,
+        },
+    }
+    report["totals"] = {
+        "covered_lines": 2,
+        "num_statements": 2,
+        "covered_branches": 1,
+        "num_branches": 1,
+    }
+    json_path.write_text(json.dumps(report), encoding="utf-8")
+
+    result = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert result.returncode == 0, result.stderr
+    manifest = json.loads(
+        (evidence_repo / "artifacts/coverage/quality-manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    functions = manifest["tier0"]["coverage"]["functions"]
+    assert functions["status"] == "derived"
+    assert functions["derivation"] == "sum of applicable Tier0 file metrics"
+    assert manifest["validation"] == {"valid": True, "errors": []}
