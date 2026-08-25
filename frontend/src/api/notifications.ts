@@ -30,6 +30,8 @@ const notificationSchema = v.object({
   body_en: v.optional(v.nullable(v.string())),
   type: v.optional(v.nullable(v.string())),
   url: v.optional(v.nullable(v.string())),
+  topic: v.optional(v.nullable(v.string())),
+  metadata: v.optional(v.record(v.string(), v.unknown())),
   created_at: v.string(),
   read: v.boolean(),
   read_at: v.optional(v.nullable(v.string())),

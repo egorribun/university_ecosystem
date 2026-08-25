@@ -210,17 +210,18 @@ describe("usePushPreferences notifications flow", () => {
     const ensureArgs = ensurePushSubscriptionMock.mock.calls[1]![0]
     expect(ensureArgs.registration).toBe(registration)
     expect(ensureArgs.requestPermission).toBe(true)
-    expect(ensureArgs.topics).toEqual(["schedule", "news"])
+    expect(ensureArgs.topics).toEqual(["news.published", "schedule.changed"])
 
     expect(setPushConsentMock).toHaveBeenCalledWith(true)
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({ text: tNotifications("messages.enabled"), severity: "success" })
     )
     expect(result.current.topicState).toMatchObject({
-      news: true,
-      schedule: true,
-      events: false,
-      system: false,
+      "news.published": true,
+      "schedule.changed": true,
+      "events.published": false,
+      "chat.message.created": false,
+      "system.release": false,
     })
   })
 
@@ -265,19 +266,19 @@ describe("usePushPreferences notifications flow", () => {
 
     await waitFor(() => expect(result.current.notificationsEnabled).toBe(true))
 
-    const handler = result.current.handleTopicToggle("system")
+    const handler = result.current.handleTopicToggle("system.release")
     await act(async () => {
       await handler({} as ChangeEvent<HTMLInputElement>, false)
     })
 
     expect(ensurePushSubscriptionMock).toHaveBeenCalledTimes(2)
     const updateArgs = ensurePushSubscriptionMock.mock.calls[1]![0]
-    expect(updateArgs.topics).toEqual(["schedule", "news"])
+    expect(updateArgs.topics).toEqual(["news.published", "schedule.changed"])
     expect(setPersistedTopicsMock).toHaveBeenCalledWith(
-      ["schedule", "news"],
+      ["news.published", "schedule.changed"],
       expect.objectContaining({ userId: AUTH_USER_ID })
     )
-    expect(result.current.topicState.system).toBe(false)
+    expect(result.current.topicState["system.release"]).toBe(false)
   })
 
   it("persists topic selection locally when notifications are disabled", async () => {
@@ -287,16 +288,16 @@ describe("usePushPreferences notifications flow", () => {
 
     expect(result.current.notificationsEnabled).toBe(false)
 
-    const handler = result.current.handleTopicToggle("news")
+    const handler = result.current.handleTopicToggle("news.published")
     await act(async () => {
       await handler({} as ChangeEvent<HTMLInputElement>, false)
     })
 
     expect(setPersistedTopicsMock).toHaveBeenCalledWith(
-      ["schedule", "events", "system"],
+      ["schedule.changed", "events.published", "chat.message.created", "system.release"],
       expect.objectContaining({ userId: AUTH_USER_ID })
     )
-    expect(result.current.topicState.news).toBe(false)
+    expect(result.current.topicState["news.published"]).toBe(false)
   })
 
   it("notifies user when permission is denied", async () => {

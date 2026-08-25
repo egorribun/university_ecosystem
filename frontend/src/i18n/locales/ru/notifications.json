@@ -9,15 +9,17 @@
     "startsSoon": "Через {{minutes}} мин."
   },
   "topics": {
-    "schedule": "Расписание",
-    "news": "Новости",
-    "events": "Мероприятия",
-    "system": "Системные"
+    "newsPublished": "Опубликованные новости",
+    "scheduleChanged": "Изменения расписания",
+    "eventsPublished": "Опубликованные мероприятия",
+    "chatMessageCreated": "Сообщения чата",
+    "systemRelease": "Системные релизы"
   },
   "permission": {
     "granted": "разрешено",
     "denied": "запрещено",
-    "default": "не запрошено"
+    "default": "не запрошено",
+    "unsupported": "не поддерживается"
   },
   "messages": {
     "noTopics": "Темы не выбраны",

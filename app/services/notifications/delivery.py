@@ -12,6 +12,7 @@ import uuid
 import uuid as _uuid_mod
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC
 from typing import TYPE_CHECKING, Any, cast
 
@@ -21,6 +22,10 @@ from sqlalchemy.orm import selectinload
 from app.core import metrics
 from app.core.config import settings
 from app.core.logging import get_logger
+from app.core.notification_contract import (
+    build_notification_metadata,
+    infer_notification_topic,
+)
 from app.models import (
     Notification,
     NotificationDelivery,
@@ -35,7 +40,11 @@ from app.services.notifications.core import (
     _normalize_translation_map,
 )
 from app.services.notifications.quiet_hours import prepare_push_payload_for_user
-from app.services.push_topics import normalize_topic, subscription_supports_topic
+from app.services.push_topics import (
+    filter_user_ids_by_topic,
+    normalize_topic,
+    subscription_supports_topic,
+)
 from app.services.webpush import WebPushResult
 from app.utils.uuid_v7 import generate_uuid7
 
@@ -45,6 +54,26 @@ if TYPE_CHECKING:
     from app.core.protocols import AsyncDatabaseSession as AsyncSession
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class NotificationRedeliveryOutcome:
+    """Persisted result of one outbox-driven delivery attempt."""
+
+    sent: int = 0
+    already_delivered: int = 0
+    terminal_failures: int = 0
+    retryable_failures: int = 0
+
+
+class NotificationRedeliveryError(RuntimeError):
+    """Signal retryable Web Push failures to the transactional outbox worker."""
+
+    def __init__(self, outcome: NotificationRedeliveryOutcome) -> None:
+        self.outcome = outcome
+        super().__init__(
+            f"Web Push redelivery has {outcome.retryable_failures} retryable failure(s)"
+        )
 
 
 def _is_push_configured() -> bool:
@@ -60,6 +89,228 @@ def only_active_users(stmt: Select[Any]) -> Select[Any]:
     """Limit a user selection to accounts that are currently active."""
 
     return stmt.where(User.is_active.is_(True))
+
+
+def _unique_notification_ids(values: Sequence[uuid.UUID | str]) -> list[uuid.UUID]:
+    """Return valid notification UUIDs once, retaining their event order."""
+
+    identifiers: list[uuid.UUID] = []
+    seen: set[uuid.UUID] = set()
+    for value in values:
+        try:
+            identifier = uuid.UUID(str(value))
+        except (AttributeError, TypeError, ValueError):
+            logger.warning("Ignoring invalid notification id in outbox event")
+            continue
+        if identifier not in seen:
+            seen.add(identifier)
+            identifiers.append(identifier)
+    return identifiers
+
+
+async def redeliver_notifications(
+    db: AsyncSession,
+    *,
+    notification_ids: Sequence[uuid.UUID | str],
+    channel: str = "push",
+) -> NotificationRedeliveryOutcome:
+    """Deliver stored notifications and persist an idempotency journal.
+
+    Successful ``(notification, subscription)`` pairs are never sent again.
+    Notification row locks serialize overlapping outbox events on PostgreSQL;
+    retryable provider failures are recorded so the caller can commit partial
+    progress before asking the outbox worker to retry the event.
+    """
+
+    if channel != "push":
+        raise ValueError(f"Unsupported notification delivery channel: {channel!r}")
+    identifiers = _unique_notification_ids(notification_ids)
+    if not identifiers:
+        return NotificationRedeliveryOutcome()
+    if not _is_push_configured():
+        raise NotificationRedeliveryError(
+            NotificationRedeliveryOutcome(retryable_failures=len(identifiers))
+        )
+
+    notification_rows = await db.execute(
+        select(Notification)
+        .where(Notification.id.in_(identifiers))
+        .order_by(Notification.id)
+        .with_for_update()
+    )
+    notifications = list(notification_rows.scalars().all())
+    if not notifications:
+        return NotificationRedeliveryOutcome()
+
+    user_ids = list({uuid.UUID(str(item.user_id)) for item in notifications})
+    subscription_rows = await db.execute(
+        select(PushSubscription)
+        .options(
+            selectinload(PushSubscription.user).selectinload(
+                User.push_topic_preferences
+            )
+        )
+        .where(PushSubscription.user_id.in_(user_ids))
+    )
+    subscriptions_by_user: defaultdict[uuid.UUID, list[PushSubscription]] = defaultdict(
+        list
+    )
+    subscriptions: list[PushSubscription] = []
+    for subscription in subscription_rows.scalars().all():
+        user_id = uuid.UUID(str(subscription.user_id))
+        subscriptions_by_user[user_id].append(subscription)
+        subscriptions.append(subscription)
+
+    subscription_ids = [uuid.UUID(str(item.id)) for item in subscriptions]
+    delivered_pairs: set[tuple[uuid.UUID, uuid.UUID]] = set()
+    prior_attempts: dict[tuple[uuid.UUID, uuid.UUID], NotificationDelivery] = {}
+    if subscription_ids:
+        delivered_rows = await db.execute(
+            select(NotificationDelivery)
+            .where(
+                NotificationDelivery.notification_id.in_(identifiers),
+                NotificationDelivery.channel == "webpush",
+                NotificationDelivery.subscription_id.in_(subscription_ids),
+            )
+            .order_by(NotificationDelivery.attempted_at.desc())
+        )
+        for delivery in delivered_rows.scalars().all():
+            if delivery.subscription_id is None:
+                continue
+            pair = (
+                uuid.UUID(str(delivery.notification_id)),
+                uuid.UUID(str(delivery.subscription_id)),
+            )
+            prior_attempts.setdefault(pair, delivery)
+            if delivery.status == "sent":
+                delivered_pairs.add(pair)
+
+    already_delivered = 0
+    terminal_failures = 0
+    send_jobs: list[tuple[Notification, PushSubscription]] = []
+    tasks: list[Awaitable[WebPushResult]] = []
+    for notification in notifications:
+        notification_id = uuid.UUID(str(notification.id))
+        topic = normalize_topic(infer_notification_topic(notification.type))
+        for subscription in subscriptions_by_user.get(
+            uuid.UUID(str(notification.user_id)), []
+        ):
+            subscription_id = uuid.UUID(str(subscription.id))
+            if (notification_id, subscription_id) in delivered_pairs:
+                already_delivered += 1
+                continue
+            if not subscription_supports_topic(subscription, topic):
+                terminal_failures += 1
+                continue
+            payload: dict[str, Any] = {
+                "title": notification.title,
+                "body": notification.body or "",
+                "url": notification.url or "/",
+                "type": notification.type,
+                "tag": str(notification_id),
+                "data": build_notification_metadata(
+                    notification_id=notification_id,
+                    topic=topic,
+                    notification_type=notification.type,
+                    url=notification.url,
+                ),
+            }
+            if topic:
+                payload["topic"] = topic
+            prepared = prepare_push_payload_for_user(
+                payload, getattr(subscription, "user", None)
+            )
+            send_jobs.append((notification, subscription))
+            tasks.append(webpush_module._send_push_async(subscription, prepared))
+
+    sent = 0
+    retryable_failures = 0
+    delivery_rows: list[dict[str, Any]] = []
+    push_results: list[WebPushResult] = []
+    if tasks:
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for (notification, subscription), result in zip(
+            send_jobs, results, strict=True
+        ):
+            attempted_at = dt.datetime.now(UTC)
+            notification_id = uuid.UUID(str(notification.id))
+            subscription_id = uuid.UUID(str(subscription.id))
+            prior_attempt = prior_attempts.get((notification_id, subscription_id))
+            if isinstance(result, WebPushResult):
+                push_results.append(result)
+                if prior_attempt is None:
+                    delivery_rows.append(
+                        _build_delivery_row(
+                            notification_id,
+                            notification.created_at,
+                            status=result.status,
+                            subscription_id=subscription_id,
+                            attempted_at=attempted_at,
+                            delivered=result.status == "sent",
+                            status_code=result.status_code,
+                            detail=result.error,
+                        )
+                    )
+                else:
+                    prior_attempt.status = result.status
+                    prior_attempt.delivered_at = (
+                        attempted_at if result.status == "sent" else None
+                    )
+                    prior_attempt.status_code = result.status_code
+                    prior_attempt.detail = result.error
+                if result.status == "sent":
+                    sent += 1
+                    metrics.record_notification_delivered(
+                        notification_type=str(notification.type or "unknown")
+                    )
+                elif result.status == "gone":
+                    terminal_failures += 1
+                    metrics.record_notification_failed(
+                        notification_type=str(notification.type or "unknown"),
+                        reason="gone",
+                    )
+                else:
+                    retryable_failures += 1
+                    metrics.record_notification_failed(
+                        notification_type=str(notification.type or "unknown"),
+                        reason="error",
+                    )
+            else:
+                retryable_failures += 1
+                detail = f"exception:{result}"
+                if prior_attempt is None:
+                    delivery_rows.append(
+                        _build_delivery_row(
+                            notification_id,
+                            notification.created_at,
+                            status="error",
+                            subscription_id=subscription_id,
+                            attempted_at=attempted_at,
+                            detail=detail,
+                        )
+                    )
+                else:
+                    prior_attempt.status = "error"
+                    prior_attempt.delivered_at = None
+                    prior_attempt.status_code = None
+                    prior_attempt.detail = detail
+                metrics.record_notification_failed(
+                    notification_type=str(notification.type or "unknown"),
+                    reason="exception",
+                )
+
+    if delivery_rows:
+        await db.execute(insert(NotificationDelivery).values(delivery_rows))
+    await db.flush()
+    if push_results:
+        await webpush_module.process_push_results(push_results)
+
+    return NotificationRedeliveryOutcome(
+        sent=sent,
+        already_delivered=already_delivered,
+        terminal_failures=terminal_failures,
+        retryable_failures=retryable_failures,
+    )
 
 
 async def create_notifications_for_users(
@@ -90,6 +341,7 @@ async def create_notifications_for_users(
     _push_enabled = _is_push_configured()
     now = dt.datetime.now(UTC)
     uids = list({uuid.UUID(str(uid)) for uid in user_ids})
+    normalized_topic = normalize_topic(topic)
     if not uids:
         return 0
 
@@ -103,6 +355,9 @@ async def create_notifications_for_users(
         uids = [uid for uid in uids if uid in allowed_ids]
         if not uids:
             return 0
+    uids = await filter_user_ids_by_topic(db, user_ids=uids, topic=normalized_topic)
+    if not uids:
+        return 0
     title_map = _normalize_translation_map(title_translations)
     body_map = _normalize_translation_map(body_translations)
 
@@ -221,15 +476,12 @@ async def create_notifications_for_users(
             "url": url or "/",
             "type": type or None,
         }
-        normalized_topic = normalize_topic(topic)
         if normalized_topic:
             base_payload["topic"] = normalized_topic
         if badge:
             base_payload["badge"] = badge
         if tag:
             base_payload["tag"] = tag
-        if payload_data:
-            base_payload["data"] = dict(payload_data)
         if actions:
             normalized_actions: list[dict[str, Any]] = []
             for action in actions:
@@ -304,8 +556,17 @@ async def create_notifications_for_users(
                     )
                 )
                 continue
+            payload_for_subscription = dict(base_payload)
+            payload_for_subscription["tag"] = str(notification_id)
+            payload_for_subscription["data"] = build_notification_metadata(
+                notification_id=uuid.UUID(str(notification_id)),
+                topic=normalized_topic,
+                notification_type=type,
+                url=url,
+                extra=payload_data,
+            )
             prepared_payload = prepare_push_payload_for_user(
-                base_payload, getattr(sub, "user", None)
+                payload_for_subscription, getattr(sub, "user", None)
             )
             send_jobs.append((sub, notification_id))
             tasks.append(_send_push(sub, prepared_payload))

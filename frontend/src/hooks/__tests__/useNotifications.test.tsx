@@ -101,6 +101,34 @@ beforeEach(() => {
 })
 
 describe("useNotifications — list query", () => {
+  it("invalidates once for duplicate live/Web Push messages with the same canonical id", async () => {
+    vi.mocked(fetchNotificationsList).mockResolvedValue(listResult([]))
+    const listeners = new Set<(event: MessageEvent) => void>()
+    const serviceWorker = {
+      addEventListener: vi.fn((_type: string, listener: (event: MessageEvent) => void) => {
+        listeners.add(listener)
+      }),
+      removeEventListener: vi.fn((_type: string, listener: (event: MessageEvent) => void) => {
+        listeners.delete(listener)
+      }),
+    }
+    vi.stubGlobal("navigator", { ...navigator, serviceWorker })
+
+    const { result, unmount } = setup()
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+    expect(fetchNotificationsList).toHaveBeenCalledTimes(1)
+
+    const message = new MessageEvent("message", {
+      data: { type: "PUSH_NOTIFICATION", notificationId: "018f10c0-0000-7000-8000-000000000001" },
+    })
+    for (const listener of listeners) listener(message)
+    for (const listener of listeners) listener(message)
+
+    await waitFor(() => expect(fetchNotificationsList).toHaveBeenCalledTimes(2))
+    unmount()
+    expect(serviceWorker.removeEventListener).toHaveBeenCalledOnce()
+  })
+
   it("normalizes the list response (url→link, unread_count→unreadCount, paging)", async () => {
     vi.mocked(fetchNotificationsList).mockResolvedValue(
       listResult([entry("1"), entry("2", { read: true, url: null })], {

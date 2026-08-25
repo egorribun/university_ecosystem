@@ -82,6 +82,10 @@ OUTBOX_DLQ_TOTAL = _get_or_create_metric(
 )
 
 
+class PermanentOutboxError(RuntimeError):
+    """An invalid stored event that cannot become valid after a retry."""
+
+
 class OutboxWorker:
     """
     Worker that picks up unprocessed StoredEvents and publishes them
@@ -256,7 +260,9 @@ class OutboxWorker:
                         se.last_error = last_error[:500]
                         # MOD-08: Move to DLQ after max_retries instead of
                         # silently abandoning the event.
-                        if se.error_count >= self.max_retries:
+                        if isinstance(exc, PermanentOutboxError) or (
+                            se.error_count >= self.max_retries
+                        ):
                             await self._move_to_dlq(db, se, last_error)
                             # MOD-04: DLQ counter (also tracked in _move_to_dlq log)
                             OUTBOX_DLQ_TOTAL.labels(event_type=se.event_type).inc()
@@ -361,8 +367,7 @@ class OutboxWorker:
                 se.event_type,
                 se.id,
             )
-            se.error_count = int(se.error_count or 0) + 1
-            raise RuntimeError("Unknown outbox event type")
+            raise PermanentOutboxError("Unknown outbox event type")
 
         import dataclasses
 
@@ -396,7 +401,6 @@ class OutboxWorker:
 
         except Exception as e:  # RZ-22-01-JUSTIFIED: re-raise-after-cleanup — logs then re-raises for caller retry logic (reviewed TD-27-04)
             logger.error("Failed to reconstruct event %s: %s", se.id, e)
-            se.error_count += 1
             raise
 
 

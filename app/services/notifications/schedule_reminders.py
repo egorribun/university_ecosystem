@@ -348,7 +348,7 @@ async def generate_schedule_reminders(
                 ],
                 payload_data=data_payload,
                 user_ids=to_notify,
-                topic="schedule",
+                topic="schedule.changed",
                 user_filter=only_active_users,
             )
             existing_by_dedupe[key_for_dedupe].update(to_notify)

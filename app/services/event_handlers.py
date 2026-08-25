@@ -270,26 +270,32 @@ async def handle_chat_deleted(event: ChatDeleted) -> None:
 
 
 async def handle_notifications_requested(event: NotificationsRequested) -> None:
-    """Deliver push notifications for the requested notification IDs.
-
-    RED-02 (audit 2026-03-14): Called by OutboxWorker; provides at-least-once
-    delivery semantics for push notifications.  The OutboxWorker retries this
-    handler if it raises, so delivery is guaranteed even when the originating
-    request process crashes after writing the outbox event.
-    """
+    """Redeliver requested notifications through the transactional outbox."""
     if not event.notification_ids:
         return
+
+    from app.services.notifications.delivery import (
+        NotificationRedeliveryError,
+        redeliver_notifications,
+    )
 
     logger.info(
         "NotificationsRequested: %d notification(s) to deliver (channel=%s)",
         len(event.notification_ids),
         event.channel,
     )
-    # Future work: route to dispatch_push_for_notifications() once that helper
-    # is extracted from create_notifications_for_users() in delivery.py.
-    # For now the in-process direct-dispatch path in delivery.py is the primary
-    # delivery mechanism; this handler acts as the at-least-once durability
-    # backstop recorded in the outbox.
+    async with async_session() as db:
+        outcome = await redeliver_notifications(
+            db,
+            notification_ids=event.notification_ids,
+            channel=event.channel,
+        )
+        # Persist successful recipients and failed-attempt evidence before the
+        # retry signal escapes to OutboxWorker. A replay then sends only pairs
+        # without a committed successful delivery row.
+        await db.commit()
+    if outcome.retryable_failures:
+        raise NotificationRedeliveryError(outcome)
 
 
 async def handle_attachment_cleanup_requested(

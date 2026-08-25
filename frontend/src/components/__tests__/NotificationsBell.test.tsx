@@ -118,6 +118,21 @@ describe("NotificationsBell", () => {
     useNotificationsMock.mockReset()
   })
 
+  it("exposes dialog state and closes with Escape while restoring trigger focus", async () => {
+    useNotificationsMock.mockReturnValue(baseState())
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+    const trigger = screen.getByRole("button", { name: "Open notifications" })
+
+    await user.click(trigger)
+    expect(trigger).toHaveAttribute("aria-expanded", "true")
+    expect(screen.getByRole("dialog", { name: "Notifications" })).toBeInTheDocument()
+
+    await user.keyboard("{Escape}")
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
   it("renders an error message and disables bulk actions when loading fails", async () => {
     const state = baseState()
     state.isError = true

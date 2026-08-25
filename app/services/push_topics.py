@@ -10,6 +10,12 @@ from sqlalchemy.orm import attributes as orm_attributes
 
 from app.core.config import Settings
 from app.core.config import settings as app_settings
+from app.core.notification_contract import (
+    CANONICAL_NOTIFICATION_TOPICS as CANONICAL_NOTIFICATION_TOPICS,
+)
+from app.core.notification_contract import (
+    canonicalize_notification_topic,
+)
 from app.models import PushSubscription, UserPushTopic
 
 if TYPE_CHECKING:
@@ -72,10 +78,15 @@ def normalize_topic(
 
     if value is None:
         return None
-    normalized = str(value).strip().lower()
-    if not normalized:
+    raw_normalized = str(value).strip().lower()
+    if not raw_normalized:
         return None
     allowed = _resolve_allowed_topics(allowed_topics, settings_obj)
+    normalized = (
+        raw_normalized
+        if raw_normalized in allowed
+        else canonicalize_notification_topic(raw_normalized)
+    )
     if normalized not in allowed:
         if strict:
             raise ValueError(f"Unknown notification topic: {value!r}")
@@ -236,3 +247,47 @@ async def synchronize_user_topics(
     for subscription in subscriptions:
         subscription.topics = list(normalized_copy)
     return normalized_copy
+
+
+async def filter_user_ids_by_topic(
+    db: AsyncSession,
+    *,
+    user_ids: Sequence[uuid.UUID],
+    topic: str | None,
+    allowed_topics: Collection[str] | None = None,
+    settings_obj: Settings | None = None,
+) -> list[uuid.UUID]:
+    """Apply the canonical topic preference to every delivery channel.
+
+    Users without an explicit preference record retain the backwards-compatible
+    opt-in default. An explicit empty topic list opts out of all topics.
+    """
+
+    normalized_topic = normalize_topic(
+        topic,
+        allowed_topics=allowed_topics,
+        settings_obj=settings_obj,
+    )
+    ordered_ids = list(dict.fromkeys(user_ids))
+    if normalized_topic is None or not ordered_ids:
+        return ordered_ids
+    rows = (
+        await db.execute(
+            select(UserPushTopic.user_id, UserPushTopic.topics).where(
+                UserPushTopic.user_id.in_(ordered_ids)
+            )
+        )
+    ).all()
+    preferences = {
+        uuid.UUID(str(user_id)): normalize_topics(
+            topics,
+            allowed_topics=allowed_topics,
+            settings_obj=settings_obj,
+        )
+        for user_id, topics in rows
+    }
+    return [
+        user_id
+        for user_id in ordered_ids
+        if user_id not in preferences or normalized_topic in preferences[user_id]
+    ]

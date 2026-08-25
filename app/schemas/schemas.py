@@ -725,6 +725,8 @@ class NotificationOut(OrmModel):
     body_en: SanitizedInput = None
     type: SanitizedInput = None
     url: SanitizedInput = None
+    topic: SanitizedInput = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     read: bool
     read_at: datetime | None = None

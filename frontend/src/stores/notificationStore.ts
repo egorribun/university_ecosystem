@@ -8,6 +8,11 @@
 import { create } from "zustand"
 import { devtools, persist } from "zustand/middleware"
 import { useShallow } from "zustand/react/shallow"
+import {
+  CANONICAL_NOTIFICATION_TOPICS,
+  normalizeNotificationTopic,
+  type NotificationTopic,
+} from "@/notifications/contract"
 
 import type {
   NotificationTopicKey,
@@ -18,10 +23,25 @@ import type {
 
 /** Default topic preferences - all enabled */
 const DEFAULT_TOPICS: Record<NotificationTopicKey, boolean> = {
-  schedule: true,
-  news: true,
-  events: true,
-  system: true,
+  "news.published": true,
+  "schedule.changed": true,
+  "events.published": true,
+  "chat.message.created": true,
+  "system.release": true,
+}
+
+const migratePersistedTopics = (
+  persistedState: unknown
+): Pick<NotificationState, "topics"> | Record<string, never> => {
+  if (!persistedState || typeof persistedState !== "object") return {}
+  const persistedTopics = (persistedState as { topics?: unknown }).topics
+  if (!persistedTopics || typeof persistedTopics !== "object") return {}
+  const topics = { ...DEFAULT_TOPICS }
+  for (const [rawTopic, enabled] of Object.entries(persistedTopics)) {
+    const topic = normalizeNotificationTopic(rawTopic)
+    if (topic) topics[topic] = Boolean(enabled)
+  }
+  return { topics }
 }
 
 interface NotificationState {
@@ -112,6 +132,12 @@ export const useNotificationStore = create<NotificationState>()(
       }),
       {
         name: "notification-preferences",
+        version: 2,
+        migrate: (state) => migratePersistedTopics(state),
+        merge: (persisted, current) => ({
+          ...current,
+          ...migratePersistedTopics(persisted),
+        }),
         partialize: (state) => ({
           topics: state.topics,
         }),
@@ -140,3 +166,6 @@ const notificationActionsSelector = (state: NotificationState) => ({
 
 export const useNotificationActions = () =>
   useNotificationStore(useShallow(notificationActionsSelector))
+
+export { CANONICAL_NOTIFICATION_TOPICS }
+export type { NotificationTopic }

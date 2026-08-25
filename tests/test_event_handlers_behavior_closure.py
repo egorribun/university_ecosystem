@@ -152,9 +152,21 @@ async def test_chat_delete_notifications_and_attachment_handlers():
     await event_handlers.handle_notifications_requested(
         NotificationsRequested(notification_ids=[], channel="push")
     )
-    await event_handlers.handle_notifications_requested(
-        NotificationsRequested(notification_ids=[uuid4()], channel="push")
-    )
+    db = MagicMock()
+    db.commit = AsyncMock()
+    session_context = MagicMock()
+    session_context.__aenter__ = AsyncMock(return_value=db)
+    session_context.__aexit__ = AsyncMock(return_value=False)
+    with (
+        patch.object(event_handlers, "async_session", return_value=session_context),
+        patch(
+            "app.services.notifications.delivery.redeliver_notifications",
+            new=AsyncMock(return_value=SimpleNamespace(retryable_failures=0)),
+        ),
+    ):
+        await event_handlers.handle_notifications_requested(
+            NotificationsRequested(notification_ids=[uuid4()], channel="push")
+        )
 
     with patch(
         "app.services.chat.attachment_service.ChatAttachmentService"
@@ -169,6 +181,39 @@ async def test_chat_delete_notifications_and_attachment_handlers():
     )
 
 
+@pytest.mark.asyncio
+async def test_notification_redelivery_commits_partial_results_before_retry():
+    from app.services.notifications.delivery import (
+        NotificationRedeliveryError,
+        NotificationRedeliveryOutcome,
+    )
+
+    db = MagicMock()
+    db.commit = AsyncMock()
+    session_context = MagicMock()
+    session_context.__aenter__ = AsyncMock(return_value=db)
+    session_context.__aexit__ = AsyncMock(return_value=False)
+    outcome = NotificationRedeliveryOutcome(sent=1, retryable_failures=1)
+    event = NotificationsRequested(notification_ids=[uuid4()], channel="push")
+
+    with (
+        patch.object(event_handlers, "async_session", return_value=session_context),
+        patch(
+            "app.services.notifications.delivery.redeliver_notifications",
+            new=AsyncMock(return_value=outcome),
+        ) as redeliver,
+        pytest.raises(NotificationRedeliveryError),
+    ):
+        await event_handlers.handle_notifications_requested(event)
+
+    redeliver.assert_awaited_once_with(
+        db,
+        notification_ids=event.notification_ids,
+        channel="push",
+    )
+    db.commit.assert_awaited_once()
+
+
 def test_configure_event_handlers_registers_global_subscriptions():
     with (
         patch.object(event_handlers.event_bus, "subscribe_all") as subscribe_all,
@@ -177,4 +222,8 @@ def test_configure_event_handlers_registers_global_subscriptions():
         event_handlers.configure_event_handlers()
 
     subscribe_all.assert_called_once_with(event_handlers.log_all_events)
-    assert subscribe.call_count == 14
+    assert subscribe.call_count == 15
+    subscribe.assert_any_call(
+        "notification.delivery_requested",
+        event_handlers.handle_notifications_requested,
+    )

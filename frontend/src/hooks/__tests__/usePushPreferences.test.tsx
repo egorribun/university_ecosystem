@@ -102,8 +102,10 @@ describe("usePushPreferences", () => {
   it("returns defaults + derived values (selectedTopicsDescription with all topics)", async () => {
     const { result } = renderHook(() => usePushPreferences(), { wrapper })
 
-    // All four default topics are selected → description is a join of labels (lines 120-126)
-    expect(result.current.selectedTopicsDescription).toContain("notifications:topics.schedule")
+    // All five default topics are selected → description is a join of labels.
+    expect(result.current.selectedTopicsDescription).toContain(
+      "notifications:topics.scheduleChanged"
+    )
     expect(result.current.permissionText).toBe("notifications:permission.default")
     expect(result.current.safariGuideUrl).toContain("support.apple.com")
 
@@ -422,11 +424,11 @@ describe("usePushPreferences", () => {
     await waitFor(() => expect(result.current.pushInitializing).toBe(false))
 
     await act(async () => {
-      await result.current.handleTopicToggle("news")({} as any, false)
+      await result.current.handleTopicToggle("news.published")({} as any, false)
     })
 
     expect(mockSetPersistedTopics).toHaveBeenCalled()
-    expect(result.current.topicState.news).toBe(false)
+    expect(result.current.topicState["news.published"]).toBe(false)
   })
 
   it("handleTopicToggle: unsupported reverts topic state (288-291)", async () => {
@@ -443,11 +445,11 @@ describe("usePushPreferences", () => {
 
     mockIsPushSupported.mockReturnValue(false)
     await act(async () => {
-      await result.current.handleTopicToggle("news")({} as any, false)
+      await result.current.handleTopicToggle("news.published")({} as any, false)
     })
 
     // state reverted to previous (true) after unsupported guard
-    await waitFor(() => expect(result.current.topicState.news).toBe(true))
+    await waitFor(() => expect(result.current.topicState["news.published"]).toBe(true))
   })
 
   it("handleTopicToggle: enabled, no SW → workerUnavailable + revert (296-300)", async () => {
@@ -465,7 +467,7 @@ describe("usePushPreferences", () => {
 
     mockResolveServiceWorkerRegistration.mockResolvedValue(null)
     await act(async () => {
-      await result.current.handleTopicToggle("news")({} as any, false)
+      await result.current.handleTopicToggle("news.published")({} as any, false)
     })
 
     expect(onNotify).toHaveBeenCalledWith(
@@ -488,7 +490,7 @@ describe("usePushPreferences", () => {
 
     mockEnsurePushSubscription.mockResolvedValue(null)
     await act(async () => {
-      await result.current.handleTopicToggle("news")({} as any, false)
+      await result.current.handleTopicToggle("news.published")({} as any, false)
     })
 
     expect(onNotify).toHaveBeenCalledWith(
@@ -514,12 +516,12 @@ describe("usePushPreferences", () => {
     onNotify.mockClear()
 
     await act(async () => {
-      await result.current.handleTopicToggle("news")({} as any, false)
+      await result.current.handleTopicToggle("news.published")({} as any, false)
     })
 
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: "notifications:messages.topicDisabled:notifications:topics.news",
+        text: "notifications:messages.topicDisabled:notifications:topics.newsPublished",
         severity: "success",
       })
     )
@@ -527,12 +529,12 @@ describe("usePushPreferences", () => {
     onNotify.mockClear()
     mockGetPersistedTopics.mockReturnValue(undefined)
     await act(async () => {
-      await result.current.handleTopicToggle("news")({} as any, true)
+      await result.current.handleTopicToggle("news.published")({} as any, true)
     })
 
     expect(onNotify).toHaveBeenCalledWith(
       expect.objectContaining({
-        text: "notifications:messages.topicEnabled:notifications:topics.news",
+        text: "notifications:messages.topicEnabled:notifications:topics.newsPublished",
         severity: "success",
       })
     )
@@ -553,7 +555,7 @@ describe("usePushPreferences", () => {
 
     mockEnsurePushSubscription.mockRejectedValue(new Error("ensure boom"))
     await act(async () => {
-      await result.current.handleTopicToggle("news")({} as any, false)
+      await result.current.handleTopicToggle("news.published")({} as any, false)
     })
 
     expect(mockLogError).toHaveBeenCalledWith("Failed to update topics", expect.anything())
@@ -750,10 +752,11 @@ describe("usePushPreferences", () => {
 
     await waitFor(() => expect(result.current.pushInitializing).toBe(false))
     expect(result.current.topicState).toEqual({
-      schedule: false,
-      news: true,
-      events: false,
-      system: false,
+      "news.published": true,
+      "schedule.changed": false,
+      "events.published": false,
+      "chat.message.created": false,
+      "system.release": false,
     })
   })
 
@@ -764,10 +767,11 @@ describe("usePushPreferences", () => {
 
     await waitFor(() => expect(result.current.pushInitializing).toBe(false))
     expect(result.current.topicState).toEqual({
-      schedule: false,
-      news: false,
-      events: false,
-      system: false,
+      "news.published": false,
+      "schedule.changed": false,
+      "events.published": false,
+      "chat.message.created": false,
+      "system.release": false,
     })
   })
 

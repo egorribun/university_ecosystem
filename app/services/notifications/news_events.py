@@ -170,7 +170,7 @@ async def notify_about_news(
         tag=tag,
         payload_data=payload_data,
         user_ids=user_ids,
-        topic="news",
+        topic="news.published",
     )
 
 
@@ -366,7 +366,7 @@ async def notify_about_event(
         tag=tag,
         payload_data=payload_data,
         user_ids=user_ids,
-        topic="events",
+        topic="events.published",
     )
 
 
@@ -418,5 +418,5 @@ async def notify_about_comment(
         tag=str(template["tag"]),
         payload_data=template.get("data", {}),
         user_ids=admin_ids,
-        topic="news",
+        topic="news.published",
     )

@@ -7,6 +7,10 @@ from typing import Any
 from pydantic import Field, ValidationInfo, field_validator, model_validator
 
 from app.core.logging import get_logger
+from app.core.notification_contract import (
+    CANONICAL_NOTIFICATION_TOPICS,
+    canonicalize_notification_topic,
+)
 
 from .base import (
     _DEVELOPMENT_ENVIRONMENTS,
@@ -77,7 +81,7 @@ class NotificationSettings(BaseAppSettings):
     notifications_queue_in_memory_only: bool = False
     notifications_queue_retry_base_seconds: float = 1.0
     notifications_allowed_push_topics: list[str] | str = Field(
-        default_factory=lambda: ["news", "schedule", "events", "system"]
+        default_factory=lambda: list(CANONICAL_NOTIFICATION_TOPICS)
     )
     notifications_queue_max_attempts: int = 5
 
@@ -148,9 +152,11 @@ class NotificationSettings(BaseAppSettings):
         normalized: list[str] = []
         seen: set[str] = set()
         for item in _coerce_str_list(value):
-            candidate = item.strip().lower()
+            candidate = canonicalize_notification_topic(item)
             if not candidate or candidate in seen:
                 continue
+            if candidate not in CANONICAL_NOTIFICATION_TOPICS:
+                raise ValueError(f"Unknown notification topic: {item!r}")
             seen.add(candidate)
             normalized.append(candidate)
         if not normalized:

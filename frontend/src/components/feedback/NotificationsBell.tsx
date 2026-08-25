@@ -14,6 +14,7 @@ import {
 } from "lucide-react"
 import { useNotifications } from "@/hooks/useNotifications"
 import { cn } from "@/utils/cn"
+import useMediaQuery from "@/hooks/useMediaQuery"
 
 export default function NotificationsBell() {
   const { t } = useTranslation(["system"])
@@ -41,6 +42,7 @@ export default function NotificationsBell() {
   const dropdownRef = useRef<HTMLDivElement>(null)
   const [coords, setCoords] = useState<{ top: number; right: number | null }>({ top: 0, right: 0 })
   const [isMobile, setIsMobile] = useState(false)
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   // Update position when opening
   useEffect(() => {
@@ -58,6 +60,17 @@ export default function NotificationsBell() {
       window.addEventListener("resize", updatePosition)
       return () => window.removeEventListener("resize", updatePosition)
     }
+  }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return
+      setIsOpen(false)
+      buttonRef.current?.focus()
+    }
+    document.addEventListener("keydown", handleEscape)
+    return () => document.removeEventListener("keydown", handleEscape)
   }, [isOpen])
 
   // Close when clicking outside
@@ -94,7 +107,7 @@ export default function NotificationsBell() {
       scale: 1,
       x: isMobile ? "-50%" : 0,
       transition: {
-        duration: 0.2,
+        duration: prefersReducedMotion ? 0 : 0.2,
         ease: "easeOut",
         staggerChildren: 0.05,
       },
@@ -104,7 +117,7 @@ export default function NotificationsBell() {
       y: -10,
       scale: 0.95,
       x: isMobile ? "-50%" : 0,
-      transition: { duration: 0.15, ease: "easeIn" },
+      transition: { duration: prefersReducedMotion ? 0 : 0.15, ease: "easeIn" },
     },
   }
 
@@ -127,6 +140,9 @@ export default function NotificationsBell() {
         )}
         data-unread={unreadCount ? "" : undefined}
         aria-label={t("system:notificationsBell.open")}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        aria-controls="notifications-center"
       >
         <Bell
           className={cn("nav-action-icon bell-wiggle", isOpen && "rotate-[-10deg]")}
@@ -144,6 +160,10 @@ export default function NotificationsBell() {
         <AnimatePresence>
           {isOpen && (
             <m.div
+              id="notifications-center"
+              role="dialog"
+              aria-modal="false"
+              aria-labelledby="notifications-center-title"
               initial="hidden"
               animate="visible"
               exit="exit"
@@ -167,7 +187,10 @@ export default function NotificationsBell() {
               {/* Header */}
               <div className="p-4 border-b border-glass-border flex items-center justify-between bg-(--bg-surface)/(--opacity-soft)">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-text-primary tracking-tight">
+                  <h3
+                    id="notifications-center-title"
+                    className="font-semibold text-text-primary tracking-tight"
+                  >
                     {t("system:notificationsBell.title")}
                   </h3>
                   {unreadCount > 0 && (
@@ -182,7 +205,7 @@ export default function NotificationsBell() {
                     type="button"
                     onClick={() => markAll()}
                     disabled={actionsDisabled}
-                    className="p-2 text-(--text-secondary) hover:text-text-primary hover:bg-(--text-secondary)/(--opacity-faint) rounded-lg transition-colors focus-ring-premium disabled:opacity-soft disabled:hover:bg-transparent"
+                    className="min-h-11 min-w-11 p-2 text-(--text-secondary) hover:text-text-primary hover:bg-(--text-secondary)/(--opacity-faint) rounded-lg transition-colors focus-ring-premium disabled:opacity-soft disabled:hover:bg-transparent"
                     aria-label={t("system:notificationsBell.markAll")}
                     title={t("system:notificationsBell.markAll")}
                   >
@@ -196,7 +219,7 @@ export default function NotificationsBell() {
                       })
                     }
                     disabled={actionsDisabled}
-                    className="p-2 text-(--text-secondary) hover:text-error-text hover:bg-error-bg/(--opacity-subtle) rounded-lg transition-colors focus-ring-premium disabled:opacity-soft disabled:hover:bg-transparent"
+                    className="min-h-11 min-w-11 p-2 text-(--text-secondary) hover:text-error-text hover:bg-error-bg/(--opacity-subtle) rounded-lg transition-colors focus-ring-premium disabled:opacity-soft disabled:hover:bg-transparent"
                     aria-label={t("system:notificationsBell.clear")}
                     title={t("system:notificationsBell.clear")}
                   >
@@ -253,8 +276,6 @@ export default function NotificationsBell() {
                             if (!n.read) markRead(n.id)
                           }}
                           className={cn("flex gap-3", n.link ? "cursor-pointer" : "cursor-default")}
-                          target={n.link ? "_blank" : undefined}
-                          rel={n.link ? "noopener noreferrer" : undefined}
                         >
                           <div
                             className={cn(
@@ -297,7 +318,7 @@ export default function NotificationsBell() {
                               e.stopPropagation()
                               markRead(n.id)
                             }}
-                            className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-all p-1.5 rounded-lg text-(--text-secondary) hover:text-text-primary hover:bg-(--border-strong) bg-(--bg-surface)/(--opacity-medium) backdrop-blur-sm"
+                            className="absolute top-2 right-2 min-h-11 min-w-11 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-1.5 rounded-lg text-(--text-secondary) hover:text-text-primary hover:bg-(--border-strong) bg-(--bg-surface)/(--opacity-medium) backdrop-blur-sm"
                             title={t("system:notificationsBell.markRead")}
                           >
                             <CheckCheck className="w-3.5 h-3.5" />

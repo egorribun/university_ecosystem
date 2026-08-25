@@ -3,7 +3,7 @@
  */
 
 /** Notification topic keys */
-export type NotificationTopicKey = "schedule" | "news" | "events" | "system"
+export type { NotificationTopic as NotificationTopicKey } from "@/notifications/contract"
 
 /** Toast severity levels */
 export type ToastSeverity = "success" | "info" | "warning" | "error"
@@ -23,4 +23,4 @@ export type ScheduleViewMode = "week" | "day" | "list"
 export type ThemeMode = "light" | "dark" | "system"
 
 /** Notification permission states */
-export type NotificationPermissionState = "default" | "granted" | "denied"
+export type NotificationPermissionState = "default" | "granted" | "denied" | "unsupported"
