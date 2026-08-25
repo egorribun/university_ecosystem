@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -17,6 +17,11 @@ const passwordAnalysis = vi.hoisted(() => ({
   mode: "normal" as "normal" | "throw" | "unknown",
   calls: 0,
   constructors: 0,
+  deferred: false,
+  pending: [] as Array<{
+    password: string
+    resolve: (result: { score: number }) => void
+  }>,
 }))
 
 vi.mock("@zxcvbn-ts/core", () => ({
@@ -25,9 +30,14 @@ vi.mock("@zxcvbn-ts/core", () => ({
       passwordAnalysis.constructors += 1
     }
 
-    check() {
+    check(password: string) {
       passwordAnalysis.calls += 1
       if (passwordAnalysis.mode === "throw") throw new Error("analysis unavailable")
+      if (passwordAnalysis.deferred) {
+        return new Promise<{ score: number }>((resolve) => {
+          passwordAnalysis.pending.push({ password, resolve })
+        })
+      }
       return { score: passwordAnalysis.mode === "unknown" ? 99 : 3 }
     }
   },
@@ -47,6 +57,8 @@ describe("Register page", () => {
     passwordAnalysis.mode = "normal"
     passwordAnalysis.calls = 0
     passwordAnalysis.constructors = 0
+    passwordAnalysis.deferred = false
+    passwordAnalysis.pending = []
   })
 
   it("surfaces API error messages", async () => {
@@ -203,6 +215,36 @@ describe("Register page", () => {
     await waitFor(() => expect(passwordAnalysis.calls).toBeGreaterThan(1))
 
     expect(passwordAnalysis.constructors).toBeLessThanOrEqual(1)
+  })
+
+  it("keeps the newest password score when an older analysis resolves last", async () => {
+    passwordAnalysis.deferred = true
+    await renderRegister()
+    const passwordInput = screen.getByLabelText(matchText(tAuth("fields.password")))
+
+    fireEvent.change(passwordInput, { target: { value: "older-password" } })
+    await waitFor(() =>
+      expect(passwordAnalysis.pending.some(({ password }) => password === "older-password")).toBe(
+        true
+      )
+    )
+    fireEvent.change(passwordInput, { target: { value: "newer-password" } })
+    await waitFor(() =>
+      expect(passwordAnalysis.pending.some(({ password }) => password === "newer-password")).toBe(
+        true
+      )
+    )
+
+    const older = passwordAnalysis.pending.find(({ password }) => password === "older-password")!
+    const newer = passwordAnalysis.pending.find(({ password }) => password === "newer-password")!
+    await act(async () => newer.resolve({ score: 4 }))
+    expect(screen.getByText(tAuth("register.passwordStrengthLevel.excellent"))).toBeInTheDocument()
+
+    await act(async () => older.resolve({ score: 0 }))
+    expect(screen.getByText(tAuth("register.passwordStrengthLevel.excellent"))).toBeInTheDocument()
+    expect(
+      screen.queryByText(tAuth("register.passwordStrengthLevel.veryWeak"))
+    ).not.toBeInTheDocument()
   })
 
   it("hides password strength when analysis fails", async () => {

@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -166,8 +166,74 @@ describe("ResetPassword page", () => {
 
     await waitFor(() => expect(screen.getByText(tAuth("reset.pwnedWarning"))).toBeInTheDocument())
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("https://api.pwnedpasswords.com/range/49EFE")
+      expect.stringContaining("https://api.pwnedpasswords.com/range/49EFE"),
+      expect.objectContaining({ signal: expect.any(AbortSignal) })
     )
+    fetchMock.mockRestore()
+  })
+
+  it("keeps the newest breach result when an older request resolves last", async () => {
+    let resolveOlder!: (response: Response) => void
+    let resolveNewer!: (response: Response) => void
+    const olderResponse = new Response("F5F70D47ADC2DB2EB397FBEF5F7BC560E29:3\n", {
+      status: 200,
+    })
+    const newerResponse = new Response("", { status: 200 })
+    const olderText = vi.spyOn(olderResponse, "text")
+    const newerText = vi.spyOn(newerResponse, "text")
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => (resolveOlder = resolve)))
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => (resolveNewer = resolve)))
+    const { unmount } = await renderWithToken()
+    const password = screen.getByLabelText(matchText(tAuth("fields.password")))
+
+    fireEvent.change(password, { target: { value: "Password123!" } })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1))
+    fireEvent.change(password, { target: { value: "Password456!" } })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+
+    await act(async () => {
+      resolveNewer(newerResponse)
+    })
+    await waitFor(() => expect(newerText).toHaveBeenCalled())
+    expect(screen.queryByText(tAuth("reset.pwnedWarning"))).not.toBeInTheDocument()
+
+    await act(async () => {
+      resolveOlder(olderResponse)
+    })
+    await waitFor(() => expect(olderText).toHaveBeenCalled())
+    expect(screen.queryByText(tAuth("reset.pwnedWarning"))).not.toBeInTheDocument()
+
+    unmount()
+    fetchMock.mockRestore()
+  })
+
+  it("aborts the active breach request when the page unmounts", async () => {
+    let requestSignal: AbortSignal | null | undefined
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation((_url, init) => {
+      requestSignal = init?.signal
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("Request aborted", "AbortError"))
+        )
+      })
+    })
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined)
+    const { unmount } = await renderWithToken()
+    const password = screen.getByLabelText(matchText(tAuth("fields.password")))
+
+    fireEvent.change(password, { target: { value: "Password123!" } })
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled())
+    unmount()
+
+    expect(requestSignal?.aborted).toBe(true)
+    await act(async () => Promise.resolve())
+    expect(consoleError.mock.calls.some(([message]) => String(message).includes("unmounted"))).toBe(
+      false
+    )
+
+    consoleError.mockRestore()
     fetchMock.mockRestore()
   })
 

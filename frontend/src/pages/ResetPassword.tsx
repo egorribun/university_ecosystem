@@ -37,18 +37,24 @@ async function sha1Hex(str: string) {
 const PWNED_API_URL = "https://api.pwnedpasswords.com/range/"
 const HASH_PREFIX_LEN = 5
 
-async function isPwnedPassword(pwd: string) {
+async function isPwnedPassword(pwd: string, signal: AbortSignal) {
+  signal.throwIfAborted()
   const hash = await sha1Hex(pwd)
+  signal.throwIfAborted()
   const prefix = hash.slice(0, HASH_PREFIX_LEN)
   const suffix = hash.slice(HASH_PREFIX_LEN)
-  const resp = await fetch(`${PWNED_API_URL}${prefix}`)
+  const resp = await fetch(`${PWNED_API_URL}${prefix}`, { signal })
   if (!resp.ok) return false
   const text = await resp.text()
   return text.split("\n").some((line) => line.split(":")[0] === suffix)
 }
 
+const isAbortError = (error: unknown): boolean =>
+  typeof error === "object" && error !== null && "name" in error && error.name === "AbortError"
+
 export default function ResetPassword() {
-  const { t } = useTranslation(["auth", "common"])
+  const { t, i18n } = useTranslation(["auth", "common"])
+  const passwordStrengthLanguage = i18n.resolvedLanguage ?? i18n.language
   // Wave 186 SW3 — useReducedMotion via project's useMediaQuery (jsdom-safe
   // per W184 SW6). Drops AuthBackdrop blur on mobile/reduced-motion.
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
@@ -94,10 +100,14 @@ export default function ResetPassword() {
       setFeedback("")
       return
     }
+    let active = true
+    const controller = new AbortController()
+    setPwned(false)
 
     const checkPassword = async () => {
       try {
-        const complexityResult = await analyzePasswordStrength(password)
+        const complexityResult = await analyzePasswordStrength(password, passwordStrengthLanguage)
+        if (!active) return
         setStrength(complexityResult.score)
         const tips =
           (complexityResult.feedback?.warning || "") +
@@ -106,14 +116,16 @@ export default function ResetPassword() {
             : "")
         setFeedback(tips)
       } catch {
-        // ignore
+        if (!active) return
+        setStrength(null)
+        setFeedback("")
       }
 
       try {
-        const bad = await isPwnedPassword(password)
-        setPwned(bad)
-      } catch {
-        // ignore
+        const bad = await isPwnedPassword(password, controller.signal)
+        if (active) setPwned(bad)
+      } catch (error: unknown) {
+        if (active && !isAbortError(error)) setPwned(false)
       }
     }
 
@@ -122,8 +134,12 @@ export default function ResetPassword() {
       void checkPassword()
     }, 300)
 
-    return () => clearTimeout(handler)
-  }, [password])
+    return () => {
+      active = false
+      clearTimeout(handler)
+      controller.abort()
+    }
+  }, [password, passwordStrengthLanguage])
 
   const onSubmit = async (data: NewPasswordValues) => {
     if (!token) {

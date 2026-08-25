@@ -19,7 +19,8 @@ import { registerSchema, type RegisterValues } from "@/features/auth/schemas"
 import { analyzePasswordStrength } from "@/utils/passwordStrength"
 
 const Register = () => {
-  const { t } = useTranslation(["auth"])
+  const { t, i18n } = useTranslation(["auth"])
+  const passwordStrengthLanguage = i18n.resolvedLanguage ?? i18n.language
   const navigate = useNavigate()
   // Wave 186 SW3 — useReducedMotion via project's useMediaQuery (jsdom-safe
   // per W184 SW6). Drops AuthBackdrop blur on mobile/reduced-motion.
@@ -78,17 +79,22 @@ const Register = () => {
       setStrength(null)
       return
     }
+    let active = true
 
     const checkStrength = async () => {
       try {
-        const strengthScore = (await analyzePasswordStrength(password)).score
-        setStrength(strengthScore)
+        const strengthScore = (await analyzePasswordStrength(password, passwordStrengthLanguage))
+          .score
+        if (active) setStrength(strengthScore)
       } catch {
-        setStrength(null)
+        if (active) setStrength(null)
       }
     }
     void checkStrength()
-  }, [password])
+    return () => {
+      active = false
+    }
+  }, [password, passwordStrengthLanguage])
 
   const onSubmit: SubmitHandler<RegisterValues> = async (data) => {
     try {
