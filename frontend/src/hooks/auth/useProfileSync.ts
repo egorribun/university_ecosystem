@@ -408,15 +408,13 @@ const readCachedUserAsync = async (signingKey: string | null): Promise<User | un
     return undefined
   }
 
-  let snapshotData: CachedUserSnapshot | null = null
-  if (typeof candidate.data === "string") {
-    snapshotData = await decryptData(candidate.data, signingKey)
-  } else if (candidate.data && typeof candidate.data === "object") {
-    // Legacy V3 support for unencrypted object data
-    snapshotData = candidate.data as CachedUserSnapshot
-  } else {
-    snapshotData = null
-  }
+  const snapshotData: CachedUserSnapshot | null =
+    typeof candidate.data === "string"
+      ? await decryptData(candidate.data, signingKey)
+      : candidate.data && typeof candidate.data === "object"
+        ? // Legacy V3 support for unencrypted object data
+          (candidate.data as CachedUserSnapshot)
+        : null
 
   if (!snapshotData || typeof snapshotData.id !== "string") {
     clearProfileCacheStorage("invalid_data")

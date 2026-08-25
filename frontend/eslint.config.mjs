@@ -1,6 +1,7 @@
 // For more info, see https://github.com/storybookjs/eslint-plugin-storybook#configuration-flat-config-format
 import storybook from "eslint-plugin-storybook"
 
+import { fixupConfigRules } from "@eslint/compat"
 import js from "@eslint/js"
 import globals from "globals"
 import tseslint from "typescript-eslint"
@@ -42,8 +43,8 @@ export default tseslint.config(
     },
   },
   ...tseslint.configs.recommended,
-  reactPlugin.configs.flat.recommended,
-  jsxA11y.flatConfigs.recommended,
+  ...fixupConfigRules(reactPlugin.configs.flat.recommended),
+  ...fixupConfigRules(jsxA11y.flatConfigs.recommended),
   {
     settings: {
       react: { version: "detect" },
@@ -140,15 +141,17 @@ export default tseslint.config(
         "error",
         {
           default: "allow",
-          rules: [
+          policies: [
             {
-              from: { type: "shared" },
-              disallow: { to: { type: ["feature", "page", "app"] } },
+              from: { element: { type: "shared" } },
+              disallow: {
+                to: { element: { types: { anyOf: ["feature", "page", "app"] } } },
+              },
               message: "Shared components cannot import from features, pages, or app layer.",
             },
             {
-              from: { type: "feature" },
-              disallow: { to: { type: ["page", "app"] } },
+              from: { element: { type: "feature" } },
+              disallow: { to: { element: { types: { anyOf: ["page", "app"] } } } },
               message: "Features cannot import from pages or app layer.",
             },
           ],

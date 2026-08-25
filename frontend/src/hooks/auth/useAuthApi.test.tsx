@@ -303,13 +303,17 @@ describe("login", () => {
 
   it("maps 423 lockout WITH retry-after seconds to a duration message (lines 189-195)", async () => {
     const w = makeWires()
-    mocks.apiPost.mockRejectedValue(lockedError("30"))
+    const cause = lockedError("30")
+    mocks.apiPost.mockRejectedValue(cause)
     const { result } = renderApi(w)
     await expect(
       act(async () => {
         await result.current.login("a@b.dev", "pw")
       })
-    ).rejects.toThrow(/login\.locked .*login\.lockedRetry/)
+    ).rejects.toMatchObject({
+      message: expect.stringMatching(/login\.locked .*login\.lockedRetry/),
+      cause,
+    })
   })
 
   it("re-throws non-423 errors unchanged (line 198)", async () => {
@@ -776,13 +780,17 @@ describe("loginWithPasskey", () => {
       status: 200,
       data: { publicKey: {}, challenge_token: "ct" },
     })
-    mocks.startAuthentication.mockRejectedValue(lockedError("120"))
+    const cause = lockedError("120")
+    mocks.startAuthentication.mockRejectedValue(cause)
     const { result } = renderApi(w)
     await expect(
       act(async () => {
         await result.current.loginWithPasskey("a@b.dev")
       })
-    ).rejects.toThrow(/login\.locked .*login\.lockedRetry/)
+    ).rejects.toMatchObject({
+      message: expect.stringMatching(/login\.locked .*login\.lockedRetry/),
+      cause,
+    })
   })
 
   it("maps 423 lockout without retry-after to plain locked message (line 417)", async () => {

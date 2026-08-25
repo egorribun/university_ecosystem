@@ -18,6 +18,9 @@ const options = {
     "@storybook/addon-onboarding",
     "@storybook/addon-vitest",
     "@storybook/react-vite",
+    // Browser-mode runtime consumed by the Storybook Vitest addon rather than
+    // imported directly from application source.
+    "@vitest/browser",
     // Sentry integration
     "@sentry/vite-plugin",
     // CSS / Tailwind
@@ -104,7 +107,11 @@ const options = {
     "**/*.ts": depcheck.parser.typescript,
     "**/*.tsx": depcheck.parser.typescript,
   },
-  detectors: [depcheck.detector.requireCallExpression, depcheck.detector.importDeclaration],
+  detectors: [
+    depcheck.detector.requireCallExpression,
+    depcheck.detector.importDeclaration,
+    depcheck.detector.importCallExpression,
+  ],
   specials: [
     depcheck.special.eslint,
     depcheck.special.webpack,

@@ -408,7 +408,7 @@ export const handlers = [
         { status: 400 }
       )
     }
-    let payload: unknown = {}
+    let payload: unknown
     try {
       payload = await request.json()
     } catch {

@@ -32,7 +32,7 @@ async function ensureServiceWorkerReady(page: Page): Promise<void> {
       await navigator.serviceWorker.ready
     }
   })
-  let controlled = await page.evaluate(() => Boolean(navigator.serviceWorker?.controller))
+  const controlled = await page.evaluate(() => Boolean(navigator.serviceWorker?.controller))
   if (!controlled) {
     await page.reload({ waitUntil: "networkidle" })
     await page.evaluate(async () => {
@@ -40,7 +40,6 @@ async function ensureServiceWorkerReady(page: Page): Promise<void> {
         await navigator.serviceWorker.ready
       }
     })
-    controlled = await page.evaluate(() => Boolean(navigator.serviceWorker?.controller))
   }
   await page.waitForFunction(
     () => !navigator.serviceWorker || navigator.serviceWorker?.controller?.state === "activated"
