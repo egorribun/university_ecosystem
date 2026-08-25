@@ -88,11 +88,44 @@ export default tseslint.config(
       security,
     },
     settings: {
+      "boundaries/root-path": import.meta.dirname,
+      "import/resolver": {
+        "./scripts/eslint-import-resolver-alias.cjs": {
+          alias: "@",
+          target: "./src",
+        },
+        node: {
+          extensions: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".json"],
+        },
+      },
       "boundaries/elements": [
-        { type: "shared", pattern: "src/components/*" },
-        { type: "feature", pattern: "src/features/*" },
-        { type: "page", pattern: "src/pages/*" },
-        { type: "app", pattern: "src/app/*" },
+        {
+          type: "test",
+          pattern: ["src/**/__tests__/**", "src/**/*.{test,spec}.{ts,tsx}"],
+          partialMatch: false,
+        },
+        {
+          type: "feature-ui",
+          pattern: [
+            "src/components/auth",
+            "src/components/dashboard",
+            "src/components/events",
+            "src/components/map",
+            "src/components/news",
+            "src/components/schedule",
+          ],
+        },
+        { type: "shared", pattern: "src/components" },
+        { type: "feature", pattern: "src/features" },
+        { type: "page", pattern: "src/pages" },
+        { type: "app", pattern: "src/app" },
+      ],
+      "boundaries/files": [
+        {
+          category: "platform",
+          pattern: ["src/app/logger.ts", "src/app/hydration.ts", "src/app/pwaEvents.ts"],
+        },
+        { category: "source", pattern: "src/**/*" },
       ],
     },
     rules: {
@@ -144,14 +177,34 @@ export default tseslint.config(
             {
               from: { element: { type: "shared" } },
               disallow: {
-                to: { element: { types: { anyOf: ["feature", "page", "app"] } } },
+                to: { element: { types: { anyOf: ["feature", "page"] } } },
               },
               message: "Shared components cannot import from features, pages, or app layer.",
             },
             {
+              from: { element: { type: "shared" } },
+              disallow: {
+                to: {
+                  element: { type: "app" },
+                  file: { categories: { noneOf: ["platform"] } },
+                },
+              },
+              message: "Shared components cannot import from app composition modules.",
+            },
+            {
               from: { element: { type: "feature" } },
-              disallow: { to: { element: { types: { anyOf: ["page", "app"] } } } },
+              disallow: { to: { element: { type: "page" } } },
               message: "Features cannot import from pages or app layer.",
+            },
+            {
+              from: { element: { type: "feature" } },
+              disallow: {
+                to: {
+                  element: { type: "app" },
+                  file: { categories: { noneOf: ["platform"] } },
+                },
+              },
+              message: "Features cannot import from app composition modules.",
             },
           ],
         },
