@@ -467,28 +467,7 @@ def _canonical_source_identity(component: str, raw_path: str) -> str:
             raise _InputError("source path is outside the repository") from error
     elif normalized_path.startswith("/"):
         if os.name == "nt":
-            try:
-                resolved_p = Path(normalized_path).resolve()
-                resolved_root = REPOSITORY_ROOT.resolve()
-                if resolved_p.is_relative_to(resolved_root):
-                    raise _InputError(
-                        "source path must not be root-relative on Windows"
-                    )
-            except _InputError:
-                raise
-            except Exception:  # noqa: S110  # RZ-22-01-JUSTIFIED: ignore path resolution errors
-                pass
-
-            is_foreign = False
-            for repo_dir in ["university_ecosystem", "university-ecosystem"]:
-                marker = f"/{repo_dir}/"
-                if marker in normalized_path:
-                    normalized_path = normalized_path.split(marker)[-1]
-                    is_foreign = True
-                    break
-            if not is_foreign:
-                raise _InputError("source path must not be root-relative on Windows")
-            relative_parts = tuple(normalized_path.split("/"))
+            raise _InputError("source path must not be root-relative on Windows")
         else:
             try:
                 resolved_p = Path(normalized_path).resolve()

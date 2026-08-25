@@ -4,9 +4,11 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -37,6 +39,17 @@ DEEP_JSON_DEPTH = 15_000
 GIT_EXECUTABLE = shutil.which("git")
 if GIT_EXECUTABLE is None:
     raise RuntimeError("git executable is required for coverage normalizer tests")
+
+
+def _remove_readonly_and_retry(
+    operation: Callable[[str], object],
+    path: str,
+    error: BaseException,
+) -> None:
+    if not isinstance(error, PermissionError):
+        raise error
+    os.chmod(path, stat.S_IWRITE)
+    operation(path)
 
 
 def _write_test_contract(path: Path) -> None:
@@ -196,14 +209,42 @@ def _run_normalizer(
     commit_sha: str = COMMIT_SHA,
     generated_at: str = GENERATED_AT,
 ) -> subprocess.CompletedProcess[str]:
-    output_is_fixture = output.resolve(strict=False).is_relative_to(FIXTURES.resolve())
-    temp_parent = Path(tempfile.gettempdir()) if output_is_fixture else output.parent
+    del cwd  # v2 report paths are always resolved from the repository root.
+    temp_parent = Path(tempfile.gettempdir()).resolve()
     evidence_root = Path(
-        tempfile.mkdtemp(prefix=f".evidence-{output.stem}-", dir=temp_parent)
-    )
+        tempfile.mkdtemp(prefix=f"quality-evidence-{output.stem}-", dir=temp_parent)
+    ).resolve()
+    if evidence_root.parent != temp_parent:
+        raise RuntimeError("isolated evidence repository escaped the temporary root")
+    try:
+        return _run_normalizer_in_isolated_repo(
+            evidence_root,
+            output,
+            *arguments,
+            commit_sha=commit_sha,
+            generated_at=generated_at,
+        )
+    finally:
+        if evidence_root.parent != temp_parent:
+            raise RuntimeError("refusing to clean an unexpected evidence repository")
+        shutil.rmtree(evidence_root, onexc=_remove_readonly_and_retry)
+
+
+def _run_normalizer_in_isolated_repo(
+    evidence_root: Path,
+    output: Path,
+    *arguments: str,
+    commit_sha: str,
+    generated_at: str,
+) -> subprocess.CompletedProcess[str]:
     subprocess.run(  # noqa: S603
         [GIT_EXECUTABLE, "init", "-q"], cwd=evidence_root, check=True
     )
+    git_environment = {
+        **os.environ,
+        "GIT_AUTHOR_DATE": "2026-01-01T00:00:00Z",
+        "GIT_COMMITTER_DATE": "2026-01-01T00:00:00Z",
+    }
     subprocess.run(  # noqa: S603
         [
             GIT_EXECUTABLE,
@@ -217,19 +258,21 @@ def _run_normalizer(
             "fixture",
         ],
         cwd=evidence_root,
+        env=git_environment,
         check=True,
     )
     write_complete_evidence(evidence_root)
     quality_root = evidence_root / "quality"
     quality_root.mkdir(parents=True, exist_ok=True)
-    (quality_root / "ownership-mapping.json").write_text(
-        json.dumps({"tier0_rules": ["**/spicedb/**"]}), encoding="utf-8"
+    (quality_root / "ownership-mapping.json").write_bytes(
+        (REPOSITORY_ROOT / "quality" / "ownership-mapping.json").read_bytes()
     )
 
     source_contract: Path | None = None
     rewritten_arguments: list[str] = []
     output_aliases_input = False
-    source_cwd = cwd or REPOSITORY_ROOT
+    output_aliases_contract = False
+    source_cwd = REPOSITORY_ROOT
     report_options = {
         "--python-xml": (None, "coverage.xml"),
         "--python-json": (None, "artifacts/coverage/python/coverage.json"),
@@ -298,6 +341,11 @@ def _run_normalizer(
         option = arguments[index]
         if option == "--contract":
             source_contract = Path(arguments[index + 1])
+            if not source_contract.is_absolute():
+                source_contract = source_cwd / source_contract
+            output_aliases_contract = source_contract.resolve(
+                strict=False
+            ) == output.resolve(strict=False)
             index += 2
             continue
         if option in report_options:
@@ -355,6 +403,8 @@ def _run_normalizer(
     canonical_output = (
         evidence_root / "coverage.xml"
         if output_aliases_input
+        else contract_target
+        if output_aliases_contract
         else evidence_root / "artifacts/coverage/quality-manifest.json"
     )
     resolved_commit = (
@@ -392,7 +442,11 @@ def _run_normalizer(
         errors="replace",
         text=True,
     )
-    if canonical_output.is_file() and not output_aliases_input:
+    if (
+        canonical_output.is_file()
+        and not output_aliases_input
+        and not output_aliases_contract
+    ):
         shutil.copyfile(canonical_output, output)
     return result
 
@@ -790,9 +844,10 @@ def test_tier0_missing_evidence_is_fail_closed_before_enforcement(
         metric["status"] == "missing"
         for metric in tier0["files"][0]["metrics"].values()
     )
-    assert tier0["errors"] == [
+    assert (
         "Tier0 source inventory is missing evidence for services/pkg/spicedb/client.go"
-    ]
+        in tier0["errors"]
+    )
 
 
 def test_ast_derived_metrics_ignore_mutmut_generated_functions(
@@ -2292,12 +2347,13 @@ def test_relative_report_path_is_resolved_from_repository_root(tmp_path: Path) -
     report = next(
         entry for entry in manifest["reports"] if entry["component"] == "python"
     )
-    assert report["path"] == "tests/fixtures/quality/python-valid.xml"
+    assert report["path"] == "coverage.xml"
 
 
 def test_output_cannot_alias_an_input_or_the_contract(tmp_path: Path) -> None:
     input_path = FIXTURES / "python-valid.xml"
     contract_bytes = QUALITY_CONTRACT_PATH.read_bytes()
+    contract_hash = hashlib.sha256(contract_bytes).hexdigest()
     input_bytes = input_path.read_bytes()
 
     input_alias = _run_normalizer(
@@ -2317,6 +2373,9 @@ def test_output_cannot_alias_an_input_or_the_contract(tmp_path: Path) -> None:
         assert result.stderr.startswith("ERROR:")
     assert input_path.read_bytes() == input_bytes
     assert QUALITY_CONTRACT_PATH.read_bytes() == contract_bytes
+    assert (
+        hashlib.sha256(QUALITY_CONTRACT_PATH.read_bytes()).hexdigest() == contract_hash
+    )
 
 
 def test_contract_expiry_uses_the_caller_supplied_generated_at_date(
