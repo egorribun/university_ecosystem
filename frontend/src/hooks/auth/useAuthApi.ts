@@ -22,7 +22,6 @@ import {
   softSyncPushSubscription,
   setPushConsent,
 } from "@/push/subscribe"
-import type { WebAuthnAuthenticationOptionsOut } from "@/types/Auth"
 import { logWarning, logError } from "@/app/logger"
 import { incrementSessionEpoch } from "@/api/interceptors/etagCache"
 
@@ -235,28 +234,14 @@ export const useAuthApi = (
   }, [handleUnauthorized, user])
 
   const submitMfaChallenge = useCallback(
-    async ({
-      method = "totp",
-      code,
-      webauthnResponse,
-      challengeToken,
-      trustDevice,
-    }: SubmitMfaChallengePayload) => {
+    async ({ method = "totp", code, challengeToken }: SubmitMfaChallengePayload) => {
       if (authOperation) return
       setAuthOperation(true)
       try {
         const payload: MfaVerifyPayload = {
           method,
           challenge_token: challengeToken || "",
-          trust_device: trustDevice ?? false,
-        }
-
-        if (method === "webauthn") {
-          payload.webauthn_response = webauthnResponse as { [key: string]: unknown }
-        } else {
-          // MfaVerifyPayload is an exhaustive union: every non-WebAuthn
-          // method (TOTP and recovery code) is represented by a code.
-          payload.code = code
+          code,
         }
 
         const response = await api.post<TokenWithProfileResponse>("/auth/mfa/verify", payload, {
@@ -360,93 +345,11 @@ export const useAuthApi = (
     }
   }, [handleUnauthorized, resetEtagCache, setAuthOperation, setUser])
 
-  const loginWithPasskey = useCallback(
-    async (email: string, trustDevice = false): Promise<void> => {
-      if (authOperation) return
-      setAuthOperation(true)
-      try {
-        const { startAuthentication } = await import("@simplewebauthn/browser")
-
-        // 1. Get authentication options
-        const optionsResponse = await api.post<WebAuthnAuthenticationOptionsOut>(
-          "/auth/login/passkey/start",
-          { email },
-          { skipRateLimitQueue: true } as ApiRequestConfig
-        )
-
-        // 2. Start biometric authentication
-        const authResponse = await startAuthentication({
-          optionsJSON: optionsResponse.data.publicKey as unknown as Parameters<
-            typeof startAuthentication
-          >[0]["optionsJSON"],
-        })
-
-        // 3. Verify authentication response
-        const response = await api.post<TokenWithProfileResponse>(
-          "/auth/login/passkey/verify",
-          {
-            challenge_token: optionsResponse.data.challenge_token,
-            webauthn_response: authResponse,
-            trust_device: trustDevice,
-          },
-          { skipRateLimitQueue: true } as ApiRequestConfig
-        )
-
-        const data = response.data
-        if (isTokenWithProfileResponse(data)) {
-          updateSessionSigningKey(extractSigningKey(data))
-          incrementSessionEpoch() // RED-02 Wave 11: epoch bump after passkey login
-          setUser(data.user)
-          updatePendingMfa(null)
-          if (data.user.spotify_connected) {
-            window.dispatchEvent(new Event(SPOTIFY_REAUTH_EVENT))
-          }
-
-          // Recover push consent if browser maintains subscription
-          recoverPushConsentFromBrowser()
-            .then((recovered) => {
-              if (recovered || hasPushConsent()) {
-                softSyncPushSubscription().catch(() => {})
-              }
-            })
-            .catch(() => {})
-
-          void prefetchDashboardData(data.user)
-        }
-      } catch (error) {
-        if (isAxiosError(error) && error.response?.status === 423) {
-          const retryAfter = error.response.headers["retry-after"]
-          const seconds = retryAfter ? parseInt(retryAfter, 10) : null
-          const duration = formatLockoutDuration(seconds, t)
-          if (duration) {
-            throw new Error(`${t("login.locked")} ${t("login.lockedRetry", { duration })}`, {
-              cause: error,
-            })
-          }
-          throw new Error(t("login.locked"), { cause: error })
-        }
-        throw error
-      } finally {
-        setAuthOperation(false)
-      }
-    },
-    [
-      authOperation,
-      prefetchDashboardData,
-      setAuthOperation,
-      setUser,
-      t,
-      updatePendingMfa,
-      updateSessionSigningKey,
-    ]
-  )
-
   return {
     login,
     logout,
     submitMfaChallenge,
     requireMfa,
-    loginWithPasskey,
     refresh,
   }
 }

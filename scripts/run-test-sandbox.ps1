@@ -96,15 +96,28 @@ try {
       uv run maturin develop --manifest-path native/rust_ext/Cargo.toml
     }
     Invoke-Step "Backend pytest + coverage" {
-      if ($useInfra) {
-        # The integration tier runs against the sandbox Postgres. Two test files
-        # need a live gateway + Tempo (not part of the four backing services),
-        # so they are skipped here; CI runs them in the full service mesh.
-        uv run pytest tests/ --cov=app --cov-report=term-missing -q `
-          --ignore=tests/integration/test_gateway_revocation.py `
-          --ignore=tests/integration/test_trace_driven.py
-      } else {
-        uv run pytest tests/ --cov=app --cov-report=term-missing -q
+      $previousDatabaseResetOptIn = $env:UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET
+      try {
+        if ($useInfra) {
+          # This subprocess owns the disposable sandbox database. Keep the
+          # destructive-reset capability scoped to pytest and restore the
+          # caller's environment before any later tool runs.
+          $env:UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET = "1"
+          # The integration tier runs against the sandbox Postgres. Two test files
+          # need a live gateway + Tempo (not part of the four backing services),
+          # so they are skipped here; CI runs them in the full service mesh.
+          uv run pytest tests/ --cov=app --cov-report=term-missing -q `
+            --ignore=tests/integration/test_gateway_revocation.py `
+            --ignore=tests/integration/test_trace_driven.py
+        } else {
+          uv run pytest tests/ --cov=app --cov-report=term-missing -q
+        }
+      } finally {
+        if ($null -eq $previousDatabaseResetOptIn) {
+          Remove-Item Env:\UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET -ErrorAction SilentlyContinue
+        } else {
+          $env:UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET = $previousDatabaseResetOptIn
+        }
       }
     }
   }

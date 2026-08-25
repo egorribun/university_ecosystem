@@ -20,33 +20,58 @@ async def test_cleanup_stale_mfa_challenges_respects_grace_period(db_session):
     expired_old = MfaChallenge(
         user_id=user.id,
         challenge_type="totp",
-        token="expired-old",
+        flow="login",
+        session_identifier="expired-old",
+        client_fingerprint="f" * 64,
+        method="totp",
+        token_digest="1" * 64,
+        token_key_id="test",
         expires_at=cutoff - dt.timedelta(seconds=5),
     )
     expired_recent = MfaChallenge(
         user_id=user.id,
         challenge_type="totp",
-        token="expired-recent",
+        flow="login",
+        session_identifier="expired-recent",
+        client_fingerprint="f" * 64,
+        method="totp",
+        token_digest="2" * 64,
+        token_key_id="test",
         expires_at=cutoff + dt.timedelta(seconds=15),
     )
     consumed_old = MfaChallenge(
         user_id=user.id,
         challenge_type="totp",
-        token="consumed-old",
+        flow="login",
+        session_identifier="consumed-old",
+        client_fingerprint="f" * 64,
+        method="totp",
+        token_digest="3" * 64,
+        token_key_id="test",
         expires_at=cutoff - dt.timedelta(seconds=30),
         consumed_at=cutoff - dt.timedelta(seconds=10),
     )
     consumed_recent = MfaChallenge(
         user_id=user.id,
         challenge_type="totp",
-        token="consumed-recent",
+        flow="login",
+        session_identifier="consumed-recent",
+        client_fingerprint="f" * 64,
+        method="totp",
+        token_digest="4" * 64,
+        token_key_id="test",
         expires_at=cutoff - dt.timedelta(seconds=30),
         consumed_at=cutoff + dt.timedelta(seconds=30),
     )
     future_active = MfaChallenge(
         user_id=user.id,
         challenge_type="totp",
-        token="future-active",
+        flow="login",
+        session_identifier="future-active",
+        client_fingerprint="f" * 64,
+        method="totp",
+        token_digest="5" * 64,
+        token_key_id="test",
         expires_at=now + dt.timedelta(minutes=5),
     )
 
@@ -67,7 +92,7 @@ async def test_cleanup_stale_mfa_challenges_respects_grace_period(db_session):
 
     assert deleted == 2
 
-    remaining = await db_session.execute(select(MfaChallenge.token))
+    remaining = await db_session.execute(select(MfaChallenge.session_identifier))
     assert set(remaining.scalars().all()) == {
         "expired-recent",
         "consumed-recent",

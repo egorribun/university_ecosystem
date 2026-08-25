@@ -45,15 +45,24 @@ describe("EventsHeader", () => {
     vi.mocked(useSlidingIndicator).mockReturnValue(null)
 
     // Mock IntersectionObserver
-    const mockIntersectionObserver = vi.fn((callback: IntersectionObserverCallback) => {
-      intersectionCallback = callback
-      return {
-        observe: () => null,
-        unobserve: () => null,
-        disconnect: () => null,
+    class MockIntersectionObserver {
+      readonly root = null
+      readonly rootMargin = "0px"
+      readonly scrollMargin = "0px"
+      readonly thresholds: readonly number[] = []
+
+      constructor(callback: IntersectionObserverCallback) {
+        intersectionCallback = callback
       }
-    })
-    window.IntersectionObserver = mockIntersectionObserver as unknown as typeof IntersectionObserver
+
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords(): IntersectionObserverEntry[] {
+        return []
+      }
+    }
+    window.IntersectionObserver = MockIntersectionObserver
   })
 
   it("renders correctly", () => {

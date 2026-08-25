@@ -34,38 +34,42 @@ def upgrade() -> None:
     connection = op.get_bind()
     # connection.execution_options(isolation_level="AUTOCOMMIT")
 
-    connection.execute(
-        sa.text(
-            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_messages_chat_created "
-            "ON messages (chat_id, created_at DESC)"
+    with op.get_context().autocommit_block():
+        connection.execute(
+            sa.text(
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_messages_chat_created "
+                "ON messages (chat_id, created_at DESC)"
+            )
         )
-    )
     connection.execute(
         sa.text(
             "CREATE INDEX IF NOT EXISTS idx_notifications_user_unread_created "
             "ON notifications (user_id, created_at DESC) WHERE read = false"
         )
     )
-    connection.execute(
-        sa.text(
-            "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_active_sessions_user_valid "
-            "ON active_sessions (user_id, revoked_at) WHERE revoked_at IS NULL"
+    with op.get_context().autocommit_block():
+        connection.execute(
+            sa.text(
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_active_sessions_user_valid "
+                "ON active_sessions (user_id, revoked_at) WHERE revoked_at IS NULL"
+            )
         )
-    )
 
 
 def downgrade() -> None:
     connection = op.get_bind()
     # connection.execution_options(isolation_level="AUTOCOMMIT")
 
-    connection.execute(
-        sa.text("DROP INDEX CONCURRENTLY IF EXISTS idx_messages_chat_created")
-    )
+    with op.get_context().autocommit_block():
+        connection.execute(
+            sa.text("DROP INDEX CONCURRENTLY IF EXISTS idx_messages_chat_created")
+        )
     # notifications is a partitioned table: CONCURRENTLY is not supported for
     # partitioned indexes in PostgreSQL.
     connection.execute(
         sa.text("DROP INDEX IF EXISTS idx_notifications_user_unread_created")
     )
-    connection.execute(
-        sa.text("DROP INDEX CONCURRENTLY IF EXISTS idx_active_sessions_user_valid")
-    )
+    with op.get_context().autocommit_block():
+        connection.execute(
+            sa.text("DROP INDEX CONCURRENTLY IF EXISTS idx_active_sessions_user_valid")
+        )

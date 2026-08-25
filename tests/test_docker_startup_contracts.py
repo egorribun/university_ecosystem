@@ -1068,6 +1068,18 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "--set",
         "backend.config.idempotencyHMACSecret=ci-placeholder",
         "--set",
+        "backend.config.mfaEmailOtpHMACKeys=test-key:ci-placeholder",
+        "--set",
+        "backend.config.mfaEmailOtpActiveHMACKeyId=test-key",
+        "--set",
+        "backend.config.mfaEmailDeliveryKEKs=test-key:ci-placeholder",
+        "--set",
+        "backend.config.mfaEmailDeliveryActiveKEKId=test-key",
+        "--set",
+        "backend.config.mfaTrustedDeviceHMACKeys=test-key:ci-placeholder",
+        "--set",
+        "backend.config.mfaTrustedDeviceActiveHMACKeyId=test-key",
+        "--set",
         "fileProcessor.config.rsaPublicKeyPEM=ci-placeholder",
         "--set",
         "fileProcessor.config.minioAccessKey=ci-placeholder",
@@ -1171,6 +1183,14 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "SPICEDB_PRESHARED_KEY": "spicedb-preshared-key",
         "AUDIT_LOG_SECRET": "audit-log-secret",  # pragma: allowlist secret
         "IDEMPOTENCY_HMAC_SECRET": "idempotency-hmac-secret",  # pragma: allowlist secret
+        "MFA_EMAIL_OTP_HMAC_KEYS": "mfa-email-otp-hmac-keys",
+        "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID": "mfa-email-otp-active-hmac-key-id",
+        "MFA_EMAIL_DELIVERY_KEKS": "mfa-email-delivery-keks",
+        "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID": "mfa-email-delivery-active-kek-id",
+        "MFA_TRUSTED_DEVICE_HMAC_KEYS": "mfa-trusted-device-hmac-keys",
+        "MFA_TRUSTED_DEVICE_ACTIVE_HMAC_KEY_ID": (
+            "mfa-trusted-device-active-hmac-key-id"
+        ),
     }.items():
         assert backend_env[variable]["valueFrom"]["secretKeyRef"] == {
             "name": "contract-secrets",
@@ -1240,6 +1260,7 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "SPICEDB_PRESHARED_KEY": "spicedb-preshared-key",
         "AUDIT_LOG_SECRET": "audit-log-secret",  # pragma: allowlist secret
         "IDEMPOTENCY_HMAC_SECRET": "idempotency-hmac-secret",  # pragma: allowlist secret
+        "MFA_EMAIL_DELIVERY_KEKS": "mfa-email-delivery-keks",
     }.items():
         assert outbox_env[variable]["valueFrom"]["secretKeyRef"] == {
             "name": "contract-secrets",

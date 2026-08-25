@@ -30,7 +30,6 @@ vi.mock("@/stores/useAuthStore", () => {
     mfa_last_verified_at: null,
     recovery_codes_left: 0,
     totp_enrollments: [],
-    mfa_challenges: [],
   }
   return {
     useAuthStore: () => ({
@@ -64,7 +63,6 @@ const renderSettings = async () => {
           setUser: mockSetUser,
           logout: mockLogout,
           login: vi.fn(),
-          loginWithPasskey: vi.fn(),
           refresh: vi.fn(),
           submitMfaChallenge: vi.fn().mockResolvedValue(undefined),
           requireMfa: vi.fn().mockResolvedValue(null),

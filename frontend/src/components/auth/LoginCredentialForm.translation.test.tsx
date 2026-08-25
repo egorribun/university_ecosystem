@@ -28,6 +28,7 @@ vi.mock("react-i18next", () => ({
 type FormShape = {
   email: string
   password: string
+  rememberEmail: boolean
   trustDevice: boolean
 }
 
@@ -35,7 +36,7 @@ type FormStub = Parameters<typeof LoginCredentialForm>[0]["form"]
 
 function Harness(): ReactNode {
   const rhf = useForm<FormShape>({
-    defaultValues: { email: "", password: "", trustDevice: false },
+    defaultValues: { email: "", password: "", rememberEmail: false, trustDevice: false },
   })
   const form = {
     form: rhf,
@@ -49,11 +50,6 @@ function Harness(): ReactNode {
     activeEmail: "",
     submitting: false,
     submitError: undefined,
-    passkeyError: null,
-    webauthnSupported: false,
-    trustDevice: false,
-    setTrustDevice: vi.fn(),
-    handlePasskeyLogin: vi.fn(),
     onSubmit: vi.fn(),
     pendingMfa: null,
     savedEmail: "",

@@ -58,10 +58,25 @@ async def test_reset_mfa_changed_without_notification():
     from app.management import reset_mfa
 
     user = MagicMock(id=1)
-    stats = SimpleNamespace(changed=True, totp_deleted=1, challenges_revoked=0)
+    pending = [MagicMock()]
+    stats = SimpleNamespace(
+        changed=True,
+        totp_deleted=1,
+        challenges_revoked=0,
+        session_revocations=pending,
+    )
     session = MagicMock()
     session.get = AsyncMock(return_value=user)
-    session.commit = AsyncMock()
+    events: list[str] = []
+
+    async def commit():
+        events.append("commit")
+
+    async def publish(_pending):
+        events.append("publish")
+
+    session.commit = AsyncMock(side_effect=commit)
+    session.rollback = AsyncMock()
 
     class SessionContext:
         async def __aenter__(self):
@@ -75,6 +90,11 @@ async def test_reset_mfa_changed_without_notification():
         patch.object(
             reset_mfa.mfa, "reset_user_mfa", new=AsyncMock(return_value=stats)
         ),
+        patch.object(
+            reset_mfa.mfa,
+            "publish_mfa_session_revocations",
+            new=AsyncMock(side_effect=publish),
+        ) as publish_revocations,
         patch.object(reset_mfa, "_audit_cli") as audit_cli,
     ):
         result_user, result_stats = await reset_mfa._reset_user_mfa(
@@ -85,6 +105,8 @@ async def test_reset_mfa_changed_without_notification():
 
     assert result_user is user
     assert result_stats is stats
+    publish_revocations.assert_awaited_once_with(pending)
+    assert events == ["commit", "publish"]
     audit_cli.assert_called_once()
 
 

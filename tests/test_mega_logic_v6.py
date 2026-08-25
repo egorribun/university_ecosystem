@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import UploadFile
+from pydantic import ValidationError
 
 import app.models as models
 from app.core.exceptions.domain import (
@@ -41,6 +42,7 @@ async def test_user_service_mega():
         role="admin",
         is_active=True,
         mfa_required=False,
+        mfa_epoch=0,
         _allow_system_managed_assignment=True,
     )
     admin_dto = UserDTO.model_validate(admin_user, from_attributes=True)
@@ -50,6 +52,7 @@ async def test_user_service_mega():
         role="student",
         is_active=True,
         mfa_required=False,
+        mfa_epoch=0,
         _allow_system_managed_assignment=True,
     )
     student_dto = UserDTO.model_validate(student_user, from_attributes=True)
@@ -58,7 +61,8 @@ async def test_user_service_mega():
     request.headers.get.return_value = "PyTest"
 
     # 2. update_user_profile - duplicate email
-    schemas.UserProfileUpdate(email="taken@e.com")
+    with pytest.raises(ValidationError, match="use /users/me/email"):
+        schemas.UserProfileUpdate(email="taken@e.com")
     mock_res_dup = MagicMock()
     mock_res_dup.scalar_one_or_none.return_value = 3
     db.execute.return_value = mock_res_dup
@@ -121,9 +125,12 @@ async def test_user_service_mega():
         role="student",
         is_active=True,
         mfa_required=False,
+        mfa_epoch=0,
         _allow_system_managed_assignment=True,
     )
     repo.get.return_value = UserDTO.model_validate(db_user, from_attributes=True)
+    repo.get_orm_for_update_with_relations.return_value = db_user
+    repo._to_dto.return_value = UserDTO.model_validate(db_user, from_attributes=True)
     with (
         patch("app.auth.mfa.reset_user_mfa", new_callable=AsyncMock) as m_reset,
         patch("app.services.user.profile_service.resolve_locale", return_value="en"),
@@ -132,7 +139,7 @@ async def test_user_service_mega():
             new_callable=AsyncMock,
         ),
     ):
-        m_reset.return_value = MagicMock(changed=True)
+        m_reset.return_value = MagicMock(changed=True, session_revocations=[])
         await service.admin_update_user(3, data_update, request, admin_user)
         service.notifications.send_security_notification.assert_called_once()
 

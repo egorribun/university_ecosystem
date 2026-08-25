@@ -302,7 +302,10 @@ if (typeof window !== "undefined") {
 
   Object.defineProperty(window, "matchMedia", {
     writable: true,
-    value: vi.fn().mockImplementation((query) => ({
+    // Keep the shared baseline as a plain function. `restoreMocks` restores
+    // spies between tests and would otherwise erase a `vi.fn` implementation,
+    // leaving later consumers with an undefined MediaQueryList.
+    value: (query: string) => ({
       matches: false,
       media: query,
       onchange: null,
@@ -311,7 +314,7 @@ if (typeof window !== "undefined") {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
-    })),
+    }),
   })
 
   if (!("IntersectionObserver" in window)) {

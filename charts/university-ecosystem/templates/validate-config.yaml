@@ -1,7 +1,23 @@
-{{- $environment := lower .Values.global.environment -}}
+{{- $environment := .Values.global.environment -}}
+{{- if not (has $environment (list "development" "staging" "production")) -}}
+  {{- fail "global.environment must be one of: development, staging, production" -}}
+{{- end -}}
+{{- $mfaSecretKeys := list .Values.applicationSecrets.keys.mfaEmailOtpHMACKeys .Values.applicationSecrets.keys.mfaEmailOtpActiveHMACKeyId .Values.applicationSecrets.keys.mfaEmailDeliveryKEKs .Values.applicationSecrets.keys.mfaEmailDeliveryActiveKEKId .Values.applicationSecrets.keys.mfaTrustedDeviceHMACKeys .Values.applicationSecrets.keys.mfaTrustedDeviceActiveHMACKeyId -}}
+{{- if ne (len $mfaSecretKeys) (len (uniq $mfaSecretKeys)) -}}
+  {{- fail "MFA Secret key names must be pairwise unique" -}}
+{{- end -}}
+{{- $fixedApplicationSecretKeys := list "jwt-secret" "jwt-rsa-private-key" "jwt-rsa-public-key" "internal-hmac-secret" "ws-hub-internal-secret" "csrf-hmac-secret" "spotify-token-secret" "elasticsearch-password" "spicedb-preshared-key" "audit-log-secret" "idempotency-hmac-secret" "minio-access-key" "minio-secret-key" "temporal-api-key" -}}
+{{- range $mfaSecretKey := $mfaSecretKeys -}}
+  {{- if has $mfaSecretKey $fixedApplicationSecretKeys -}}
+    {{- fail "MFA Secret key names must not collide with fixed application Secret keys" -}}
+  {{- end -}}
+{{- end -}}
 {{- if or (eq $environment "production") (eq $environment "staging") -}}
   {{- if not .Values.applicationSecrets.existingSecret -}}
     {{- fail "applicationSecrets.existingSecret must be set in staging/production so credentials do not enter Helm release state" -}}
+  {{- end -}}
+  {{- if or .Values.backend.config.mfaEmailOtpHMACKeys .Values.backend.config.mfaEmailOtpActiveHMACKeyId .Values.backend.config.mfaEmailDeliveryKEKs .Values.backend.config.mfaEmailDeliveryActiveKEKId .Values.backend.config.mfaTrustedDeviceHMACKeys .Values.backend.config.mfaTrustedDeviceActiveHMACKeyId -}}
+    {{- fail "MFA key material must not be stored in Helm values in staging/production; use applicationSecrets.existingSecret" -}}
   {{- end -}}
   {{- if not .Values.backend.config.minioSecure -}}
     {{- fail "backend.config.minioSecure=true is required in staging/production" -}}

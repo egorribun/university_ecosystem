@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   password: {} as Record<string, unknown>,
   sessions: {} as Record<string, unknown>,
   totp: {} as Record<string, unknown>,
-  webauthn: {} as Record<string, unknown>,
+  emailMfa: {} as Record<string, unknown>,
 }))
 
 vi.mock("react-i18next", () => ({
@@ -25,7 +25,7 @@ vi.mock("@/pages/settings/hooks", () => ({
   usePasswordChange: () => mocks.password,
   useSessionManagement: () => mocks.sessions,
   useTotpEnrollment: () => mocks.totp,
-  useWebAuthn: () => mocks.webauthn,
+  useEmailMfa: () => mocks.emailMfa,
 }))
 
 vi.mock("@/pages/settings/sections", () => ({
@@ -182,12 +182,17 @@ const makeTotpState = () => ({
   formatDateTime: vi.fn(() => "formatted-date"),
 })
 
-const makeWebAuthnState = () => ({
-  credentials: [],
-  busy: false,
-  supported: false,
-  handleRegister: vi.fn(),
-  handleDelete: vi.fn(),
+const makeEmailMfaState = () => ({
+  emailChallenge: null,
+  emailMfaBusy: false,
+  emailMfaError: null,
+  emailMfaEnabled: false,
+  emailVerified: true,
+  handleStartEmailMfa: vi.fn(),
+  handleConfirmEmailMfa: vi.fn(),
+  handleResendEmailMfa: vi.fn(),
+  handleCancelEmailMfa: vi.fn(),
+  handleDisableEmailMfa: vi.fn(),
 })
 
 const renderSecurity = (isActive = true) =>
@@ -199,7 +204,7 @@ beforeEach(() => {
   mocks.password = makePasswordState()
   mocks.sessions = makeSessionsState()
   mocks.totp = makeTotpState()
-  mocks.webauthn = makeWebAuthnState()
+  mocks.emailMfa = makeEmailMfaState()
 })
 
 describe("SettingsSecurity", () => {
@@ -209,7 +214,9 @@ describe("SettingsSecurity", () => {
     expect(screen.getByTestId("email-section")).toBeInTheDocument()
     expect(screen.getByTestId("password-section")).toBeInTheDocument()
     expect(screen.getByTestId("sessions-section")).toBeInTheDocument()
-    expect(screen.getByRole("status")).toHaveTextContent("settings:security.webauthn.notSupported")
+    expect(
+      screen.getByRole("button", { name: "settings:security.emailMfa.enable" })
+    ).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "email-submit" }))
     fireEvent.click(screen.getByRole("button", { name: "password-submit" }))
@@ -257,28 +264,36 @@ describe("SettingsSecurity", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Too many attempts")
   })
 
-  it("covers supported WebAuthn credentials, registration, deletion, and busy controls", () => {
+  it("covers email MFA enable, challenge, resend, confirm, cancel, and disable states", () => {
     const { rerender } = renderSecurity()
-    mocks.webauthn = {
-      ...makeWebAuthnState(),
-      supported: true,
-      credentials: [{ id: "credential-1", label: "", created_at: "2026-01-01T00:00:00Z" }],
-    }
-    rerender(<SettingsSecurity setSnackbar={vi.fn()} openStepUpFor={vi.fn()} isActive />)
-    expect(screen.getByText("settings:security.webauthn.defaultLabel")).toBeInTheDocument()
-    const iconButton = screen.getAllByRole("button").find((button) => button.querySelector("svg"))
-    expect(iconButton).toBeDefined()
-    fireEvent.click(iconButton!)
-    fireEvent.click(screen.getByRole("button", { name: "settings:security.webauthn.add" }))
-    expect(mocks.webauthn.handleDelete).toHaveBeenCalledWith("credential-1")
-    expect(mocks.webauthn.handleRegister).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole("button", { name: "settings:security.emailMfa.enable" }))
+    expect(mocks.emailMfa.handleStartEmailMfa).toHaveBeenCalledTimes(1)
 
-    mocks.webauthn = {
-      ...mocks.webauthn,
-      busy: true,
+    mocks.emailMfa = {
+      ...makeEmailMfaState(),
+      emailChallenge: {
+        method: "email_otp",
+        challenge_token: "challenge-token",
+        challenge_expires_at: "2026-08-25T16:00:00Z",
+        delivery_hint: "u***@example.com",
+      },
     }
     rerender(<SettingsSecurity setSnackbar={vi.fn()} openStepUpFor={vi.fn()} isActive />)
-    expect(screen.getByRole("button", { name: "settings:security.webauthn.add" })).toBeDisabled()
+    expect(screen.getByText("settings:security.emailMfa.sentTo")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "otp-submit" }))
+    fireEvent.click(screen.getByRole("button", { name: "settings:security.emailMfa.resend" }))
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+    expect(mocks.emailMfa.handleConfirmEmailMfa).toHaveBeenCalledWith("123456")
+    expect(mocks.emailMfa.handleResendEmailMfa).toHaveBeenCalledTimes(1)
+    expect(mocks.emailMfa.handleCancelEmailMfa).toHaveBeenCalledTimes(1)
+
+    mocks.emailMfa = {
+      ...makeEmailMfaState(),
+      emailMfaEnabled: true,
+    }
+    rerender(<SettingsSecurity setSnackbar={vi.fn()} openStepUpFor={vi.fn()} isActive />)
+    fireEvent.click(screen.getByRole("button", { name: "settings:security.emailMfa.disable" }))
+    expect(mocks.emailMfa.handleDisableEmailMfa).toHaveBeenCalledTimes(1)
   })
 
   it("normalizes session error details, Error messages, and translation fallback", () => {

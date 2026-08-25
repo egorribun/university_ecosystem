@@ -10,7 +10,6 @@ from app.models.auth import (
     FailedLoginAttempt,
     LoginHistory,
     PasswordResetToken,
-    WebAuthnCredential,
     _generate_session_signing_key,
 )
 
@@ -47,11 +46,6 @@ def test_system_managed_assignment_flag_is_removed_by_model_constructors():
         email="user@example.com",
         ip_address="127.0.0.1",
     )
-    credential = WebAuthnCredential(
-        _allow_system_managed_assignment=True,
-        credential_id="credential",
-        public_key="key",
-    )
     history = LoginHistory(
         _allow_system_managed_assignment=True,
         ip_address="127.0.0.1",
@@ -59,5 +53,4 @@ def test_system_managed_assignment_flag_is_removed_by_model_constructors():
     )
 
     assert failed.email == "user@example.com"
-    assert credential.credential_id == "credential"
     assert history.status == "success"

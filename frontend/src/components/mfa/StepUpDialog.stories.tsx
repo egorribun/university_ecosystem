@@ -39,7 +39,6 @@ const authActions = {
   refresh: async () => {},
   submitMfaChallenge: async () => {},
   requireMfa: async () => PENDING_MFA,
-  loginWithPasskey: async () => {},
   resetEtagCache: () => {},
   authOperation: false,
 }

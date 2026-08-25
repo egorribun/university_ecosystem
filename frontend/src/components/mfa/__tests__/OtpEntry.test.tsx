@@ -26,6 +26,14 @@ describe("OtpEntry", () => {
     expect(inputs).toHaveLength(6)
   })
 
+  it("labels email OTP inputs with the selected verification method", () => {
+    render(<OtpEntry method="email_otp" onSubmit={vi.fn()} />)
+
+    expect(screen.getByRole("heading")).toHaveTextContent("mfa.otp.methods.email_otp")
+    expect(screen.getByLabelText("mfa.otp.methods.email_otp - digit 1")).toBeInTheDocument()
+    expect(screen.getByText("mfa.otp.descriptions.email_otp")).toBeInTheDocument()
+  })
+
   it("calls onSubmit automatically when 6 digits are entered", async () => {
     const onSubmit = vi.fn()
     const user = userEvent.setup()

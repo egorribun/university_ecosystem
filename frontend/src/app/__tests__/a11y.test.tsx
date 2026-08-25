@@ -102,7 +102,6 @@ const baseUser: User = {
   mfa_last_verified_at: null,
   recovery_codes_left: 0,
   totp_enrollments: [],
-  mfa_challenges: [],
 }
 
 const activeClients: QueryClient[] = []
@@ -113,7 +112,6 @@ async function renderForA11y(Component: ComponentType, route = "/dashboard") {
   const authValue = {
     isAuth: true,
     login: vi.fn(),
-    loginWithPasskey: vi.fn(),
     logout: vi.fn(),
     setUser: vi.fn(),
     refresh: vi.fn(),

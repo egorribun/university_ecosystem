@@ -117,6 +117,7 @@ class SessionService:
                     session_data[key] = str(val)
 
             session_data["mfa_required"] = bool(metadata.get("mfa_required", False))
+            session_data["mfa_epoch"] = int(metadata.get("mfa_epoch", 0))
             if val := metadata.get("mfa_completed_at"):
                 session_data["mfa_completed_at"] = val
             if val := metadata.get("mfa_verified_at"):

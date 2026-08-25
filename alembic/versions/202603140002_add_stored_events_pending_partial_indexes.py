@@ -68,20 +68,22 @@ def upgrade() -> None:
         # migrations in a transaction by default.  We mark these as non-transactional
         # by creating them in a deferred CONCURRENTLY block.  Alembic will issue
         # a COMMIT before and after each CONCURRENTLY statement.
-        op.execute(
-            text(
-                f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX_POLL} "
-                f"ON {_TABLE} (created_at, id) "
-                f"WHERE {_WHERE}"
+        with op.get_context().autocommit_block():
+            op.execute(
+                text(
+                    f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX_POLL} "
+                    f"ON {_TABLE} (created_at, id) "
+                    f"WHERE {_WHERE}"
+                )
             )
-        )
-        op.execute(
-            text(
-                f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX_AGG} "
-                f"ON {_TABLE} (aggregate_id, created_at, id) "
-                f"WHERE {_WHERE}"
+        with op.get_context().autocommit_block():
+            op.execute(
+                text(
+                    f"CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX_AGG} "
+                    f"ON {_TABLE} (aggregate_id, created_at, id) "
+                    f"WHERE {_WHERE}"
+                )
             )
-        )
     else:
         # SQLite: no partial indexes via op.create_index; use raw DDL.
         # SQLite 3.8.9+ supports partial indexes natively.
@@ -104,8 +106,10 @@ def upgrade() -> None:
 def downgrade() -> None:
     """Drop the partial indexes."""
     if _is_postgresql():
-        op.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX_POLL}"))
-        op.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX_AGG}"))
+        with op.get_context().autocommit_block():
+            op.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX_POLL}"))
+        with op.get_context().autocommit_block():
+            op.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX_AGG}"))
     else:
         op.execute(text(f"DROP INDEX IF EXISTS {_IDX_POLL}"))
         op.execute(text(f"DROP INDEX IF EXISTS {_IDX_AGG}"))

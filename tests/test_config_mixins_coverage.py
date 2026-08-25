@@ -330,7 +330,6 @@ class TestCorsSettingsMixin:
         )
         monkeypatch.setenv("FRONTEND_ORIGIN", "")
         monkeypatch.setenv("APP_BASE_URL", "")
-        monkeypatch.setenv("WEBAUTHN_ORIGIN", "")
         s = SecuritySettings()
         assert s.frontend_origins_list == ["https://a.com", "https://b.com"]
 
@@ -340,7 +339,6 @@ class TestCorsSettingsMixin:
         monkeypatch.setenv("FRONTEND_ORIGINS", "https://prod.com")
         monkeypatch.setenv("FRONTEND_ORIGIN", "")
         monkeypatch.setenv("APP_BASE_URL", "")
-        monkeypatch.setenv("WEBAUTHN_ORIGIN", "")
         s = SecuritySettings()
         assert "http://localhost:5173" not in s.frontend_origins_list
 
@@ -349,7 +347,6 @@ class TestCorsSettingsMixin:
         monkeypatch.setenv("FRONTEND_ORIGINS", "http://evil.com")
         monkeypatch.setenv("FRONTEND_ORIGIN", "")
         monkeypatch.setenv("APP_BASE_URL", "")
-        monkeypatch.setenv("WEBAUTHN_ORIGIN", "")
         s = SecuritySettings()
         assert "http://evil.com" not in s.cors_allow_origins_list
 
@@ -357,7 +354,6 @@ class TestCorsSettingsMixin:
         monkeypatch.setenv("FRONTEND_ORIGINS", "http://localhost:5173")
         monkeypatch.setenv("FRONTEND_ORIGIN", "")
         monkeypatch.setenv("APP_BASE_URL", "")
-        monkeypatch.setenv("WEBAUTHN_ORIGIN", "")
         s = SecuritySettings()
         assert "http://localhost:5173" in s.cors_allow_origins_list
 
@@ -370,7 +366,6 @@ class TestCorsSettingsMixin:
         monkeypatch.setenv("FRONTEND_ORIGINS", "")
         monkeypatch.setenv("FRONTEND_ORIGIN", "")
         monkeypatch.setenv("APP_BASE_URL", "")
-        monkeypatch.setenv("WEBAUTHN_ORIGIN", "")
         s = SecuritySettings()
         assert s.cors_allow_origins_list == []
         assert s.cors_allow_credentials_effective is False
@@ -379,7 +374,6 @@ class TestCorsSettingsMixin:
         monkeypatch.setenv("FRONTEND_ORIGINS", "https://prod.com")
         monkeypatch.setenv("FRONTEND_ORIGIN", "")
         monkeypatch.setenv("APP_BASE_URL", "")
-        monkeypatch.setenv("WEBAUTHN_ORIGIN", "")
         s = SecuritySettings()
         assert s.cors_allow_credentials_effective is True
 

@@ -18,6 +18,9 @@ from app.models.auth import (
     MfaChallenge as MfaChallenge,
 )
 from app.models.auth import (
+    MfaEmailDelivery as MfaEmailDelivery,
+)
+from app.models.auth import (
     MfaTotpEnrollment as MfaTotpEnrollment,
 )
 from app.models.auth import (
@@ -28,9 +31,6 @@ from app.models.auth import (
 )
 from app.models.auth import (
     TrustedDevice as TrustedDevice,
-)
-from app.models.auth import (
-    WebAuthnCredential as WebAuthnCredential,
 )
 from app.models.chat import (
     Attachment as Attachment,

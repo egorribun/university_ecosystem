@@ -53,15 +53,16 @@ def upgrade() -> None:
     # Functional index: lower(full_name) with text_pattern_ops operator class.
     # text_pattern_ops allows LIKE 'prefix%' patterns to use the index even
     # though the column is TEXT; without it, PostgreSQL would fall back to seqscan.
-    conn.execute(
-        text(
-            f"""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS {_INDEX_NAME}
-            ON {_TABLE_NAME} (lower(full_name) text_pattern_ops)
-            WHERE full_name IS NOT NULL
-            """
+    with op.get_context().autocommit_block():
+        conn.execute(
+            text(
+                f"""
+                CREATE INDEX CONCURRENTLY IF NOT EXISTS {_INDEX_NAME}
+                ON {_TABLE_NAME} (lower(full_name) text_pattern_ops)
+                WHERE full_name IS NOT NULL
+                """
+            )
         )
-    )
 
 
 def downgrade() -> None:
@@ -70,4 +71,5 @@ def downgrade() -> None:
 
     conn = op.get_bind()
     # conn.execute(text("COMMIT"))
-    conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_INDEX_NAME}"))
+    with op.get_context().autocommit_block():
+        conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_INDEX_NAME}"))

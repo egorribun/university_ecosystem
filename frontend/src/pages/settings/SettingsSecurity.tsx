@@ -9,7 +9,7 @@ import {
   usePasswordChange,
   useSessionManagement,
   useTotpEnrollment,
-  useWebAuthn,
+  useEmailMfa,
 } from "./hooks"
 
 import {
@@ -23,7 +23,7 @@ import {
 
 import { TotpQrDisplay } from "@/components/mfa/TotpQrDisplay"
 import { OtpEntry } from "@/components/mfa/OtpEntry"
-import { Smartphone, Fingerprint, Trash2 } from "lucide-react"
+import { MailCheck, Smartphone } from "lucide-react"
 
 import type { SetSnackbar } from "./types"
 
@@ -119,16 +119,20 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
     openStepUpFor,
   })
 
-  // --- WebAuthn ---
+  // --- Email MFA ---
   const {
-    credentials: webauthnCredentials,
-    busy: webauthnBusy,
-    supported: webauthnSupported,
-    handleRegister: handleRegisterWebAuthn,
-    handleDelete: handleDeleteWebAuthn,
-  } = useWebAuthn({
+    emailChallenge,
+    emailMfaBusy,
+    emailMfaError,
+    emailMfaEnabled,
+    emailVerified,
+    handleStartEmailMfa,
+    handleConfirmEmailMfa,
+    handleResendEmailMfa,
+    handleCancelEmailMfa,
+    handleDisableEmailMfa,
+  } = useEmailMfa({
     setSnackbar,
-    tabActive: isActive,
     openStepUpFor,
   })
 
@@ -259,56 +263,64 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
             </div>
           </AccordionSection>
 
-          {/* WebAuthn */}
+          {/* Email OTP */}
           <AccordionSection
-            title={t("settings:security.method.webauthn")}
-            subtitle={t("settings:security.webauthn.description")}
+            title={t("settings:security.method.emailOtp")}
+            subtitle={t("settings:security.emailMfa.description")}
           >
             <div className="flex flex-col gap-4">
-              {!webauthnSupported ? (
-                <Alert severity="warning">{t("settings:security.webauthn.notSupported")}</Alert>
-              ) : (
-                <>
-                  <div className="flex flex-col gap-2">
-                    {webauthnCredentials.map((cred) => (
-                      <div
-                        key={cred.id}
-                        className="flex items-center justify-between p-3 rounded-xs bg-(--bg-surface-hover) border border-(--border-subtle)"
-                      >
-                        <div className="flex items-center gap-3">
-                          <Fingerprint className="w-5 h-5 text-(--text-secondary)" />
-                          <div className="flex flex-col">
-                            <span className="font-semibold text-sm">
-                              {cred.label || t("settings:security.webauthn.defaultLabel")}
-                            </span>
-                            <span className="text-xs text-(--text-secondary)">
-                              {t("settings:security.webauthn.added", {
-                                value: formatDateTime(cred.created_at),
-                              })}
-                            </span>
-                          </div>
-                        </div>
-                        <Button
-                          size="small"
-                          color="error"
-                          onClick={() => handleDeleteWebAuthn(cred.id)}
-                          disabled={webauthnBusy}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    ))}
+              {emailMfaError ? <Alert severity="error">{emailMfaError}</Alert> : null}
+              {emailChallenge ? (
+                <div className="flex flex-col gap-3 rounded-xl border border-border-subtle bg-surface-raised p-4">
+                  <div className="flex items-start gap-3">
+                    <MailCheck className="mt-0.5 h-5 w-5 text-brand" aria-hidden="true" />
+                    <p className="text-sm text-text-secondary">
+                      {t("settings:security.emailMfa.sentTo", {
+                        hint: emailChallenge.delivery_hint ?? user?.email ?? "",
+                      })}
+                    </p>
                   </div>
-
-                  <Button
-                    variant="outlined"
-                    onClick={() => handleRegisterWebAuthn()}
-                    disabled={webauthnBusy}
-                    className="self-start"
-                  >
-                    {t("settings:security.webauthn.add")}
-                  </Button>
-                </>
+                  <OtpEntry
+                    method="email_otp"
+                    loading={emailMfaBusy}
+                    error={emailMfaError}
+                    onSubmit={handleConfirmEmailMfa}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      disabled={emailMfaBusy}
+                      onClick={handleResendEmailMfa}
+                    >
+                      {t("settings:security.emailMfa.resend")}
+                    </Button>
+                    <Button
+                      variant="text"
+                      size="small"
+                      disabled={emailMfaBusy}
+                      onClick={handleCancelEmailMfa}
+                    >
+                      {t("common:buttons.cancel")}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  variant="outlined"
+                  color={emailMfaEnabled ? "error" : undefined}
+                  onClick={
+                    emailMfaEnabled ? handleDisableEmailMfa : () => void handleStartEmailMfa()
+                  }
+                  disabled={emailMfaBusy}
+                  className="self-start"
+                >
+                  {emailMfaEnabled
+                    ? t("settings:security.emailMfa.disable")
+                    : emailVerified
+                      ? t("settings:security.emailMfa.enable")
+                      : t("settings:security.emailMfa.verifyEmail")}
+                </Button>
               )}
             </div>
           </AccordionSection>

@@ -1,5 +1,12 @@
+import atexit
+import hashlib
 import os
+import shutil
 import sys
+import tempfile
+import time
+from dataclasses import dataclass
+from itertools import islice
 from pathlib import Path
 from typing import Any, cast
 
@@ -15,6 +22,7 @@ if "magic" not in sys.modules:
 
 import pytest
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.compiler import compiles
 
 # Core settings for tests
@@ -28,6 +36,214 @@ for proxy_key in ["no_proxy", "NO_PROXY"]:
         )
 
 worker_id = os.environ.get("PYTEST_XDIST_WORKER")
+
+_AUTO_DATABASE_URL_ENV = "UNIVERSITY_ECOSYSTEM_PYTEST_AUTO_DATABASE_URL"
+_AUTO_DATABASE_DIR_ENV = "UNIVERSITY_ECOSYSTEM_PYTEST_AUTO_DATABASE_DIR"
+_DATABASE_MODE_ENV = "UNIVERSITY_ECOSYSTEM_PYTEST_DATABASE_MODE"
+_EXTERNAL_DATABASE_URL_ENV = "UNIVERSITY_ECOSYSTEM_PYTEST_EXTERNAL_DATABASE_URL"
+_AUTO_DATABASE_ROOT = (
+    Path(tempfile.gettempdir()) / "university-ecosystem-pytest"
+).resolve()
+_STALE_OWNED_DIR_MAX_AGE_SECONDS = 24 * 60 * 60
+_STALE_OWNED_DIR_SCAN_LIMIT = 32
+
+
+@dataclass(frozen=True)
+class _AutomaticDatabaseOwnership:
+    directory: Path
+    database_path: Path
+    sentinel_value: str
+
+
+@dataclass(frozen=True)
+class _AutomaticBaseTempOwnership:
+    directory: Path
+    sentinel_value: str
+
+
+def _pid_is_alive(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    if pid == os.getpid():
+        return True
+    try:
+        os.kill(pid, 0)
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _stale_directory_identity(directory: Path) -> tuple[int, str] | None:
+    if directory.is_symlink() or directory.parent != _AUTO_DATABASE_ROOT:
+        return None
+    parts = directory.name.split("-", 2)
+    if len(parts) != 3 or parts[0] not in {"pytest", "basetemp"}:
+        return None
+    try:
+        pid = int(parts[1])
+    except ValueError:
+        return None
+    sentinel = directory / ".pytest-owned"
+    if sentinel.is_symlink():
+        return None
+    prefix = (
+        "university-ecosystem-pytest-basetemp"
+        if parts[0] == "basetemp"
+        else "university-ecosystem-pytest"
+    )
+    expected = f"{prefix}:{pid}:{directory.name}\n"
+    try:
+        if sentinel.read_text(encoding="utf-8") != expected:
+            return None
+    except OSError:
+        return None
+    return pid, expected
+
+
+def _scavenge_stale_owned_dirs(
+    *,
+    now: float | None = None,
+    max_age_seconds: float = _STALE_OWNED_DIR_MAX_AGE_SECONDS,
+    limit: int = _STALE_OWNED_DIR_SCAN_LIMIT,
+) -> int:
+    if limit <= 0 or max_age_seconds < 0 or not _AUTO_DATABASE_ROOT.is_dir():
+        return 0
+    current_time = time.time() if now is None else now
+    bounded_limit = min(limit, 256)
+    try:
+        candidates = list(islice(_AUTO_DATABASE_ROOT.iterdir(), bounded_limit))
+        candidates.sort(key=lambda path: path.stat().st_mtime)
+    except OSError:
+        return 0
+
+    removed = 0
+    for directory in candidates:
+        try:
+            age_seconds = current_time - directory.stat().st_mtime
+        except OSError:
+            continue
+        if age_seconds < max_age_seconds:
+            continue
+        identity = _stale_directory_identity(directory)
+        if identity is None:
+            continue
+        pid, _sentinel = identity
+        if _pid_is_alive(pid):
+            continue
+        # Revalidate the immutable root and sentinel immediately before delete.
+        if _stale_directory_identity(directory) != identity:
+            continue
+        shutil.rmtree(directory, ignore_errors=True)
+        if not directory.exists():
+            removed += 1
+    return removed
+
+
+_scavenge_stale_owned_dirs()
+
+
+def _has_valid_ownership_sentinel(ownership: _AutomaticDatabaseOwnership) -> bool:
+    directory = ownership.directory
+    if (
+        directory.parent != _AUTO_DATABASE_ROOT
+        or not directory.name.startswith(f"pytest-{os.getpid()}-")
+        or ownership.database_path.parent != directory
+    ):
+        return False
+    try:
+        return (directory / ".pytest-owned").read_text(
+            encoding="utf-8"
+        ) == ownership.sentinel_value
+    except OSError:
+        return False
+
+
+def _remove_automatic_database_dir(ownership: _AutomaticDatabaseOwnership) -> None:
+    if _has_valid_ownership_sentinel(ownership):
+        shutil.rmtree(ownership.directory, ignore_errors=True)
+
+
+def _remove_automatic_basetemp_dir(ownership: _AutomaticBaseTempOwnership) -> None:
+    directory = ownership.directory
+    if directory.parent != _AUTO_DATABASE_ROOT or not directory.name.startswith(
+        f"basetemp-{os.getpid()}-"
+    ):
+        return
+    try:
+        sentinel_matches = (directory / ".pytest-owned").read_text(
+            encoding="utf-8"
+        ) == ownership.sentinel_value
+    except OSError:
+        return
+    if sentinel_matches:
+        shutil.rmtree(directory, ignore_errors=True)
+
+
+def _create_automatic_basetemp() -> Path:
+    _AUTO_DATABASE_ROOT.mkdir(parents=True, exist_ok=True)
+    directory = Path(
+        tempfile.mkdtemp(prefix=f"basetemp-{os.getpid()}-", dir=_AUTO_DATABASE_ROOT)
+    ).resolve()
+    sentinel_value = (
+        f"university-ecosystem-pytest-basetemp:{os.getpid()}:{directory.name}\n"
+    )
+    (directory / ".pytest-owned").write_text(sentinel_value, encoding="utf-8")
+    ownership = _AutomaticBaseTempOwnership(
+        directory=directory,
+        sentinel_value=sentinel_value,
+    )
+    atexit.register(_remove_automatic_basetemp_dir, ownership)
+    return directory / "root"
+
+
+def _create_automatic_sqlite_database_url(current_worker_id: str | None) -> str:
+    _AUTO_DATABASE_ROOT.mkdir(parents=True, exist_ok=True)
+    database_dir = Path(
+        tempfile.mkdtemp(prefix=f"pytest-{os.getpid()}-", dir=_AUTO_DATABASE_ROOT)
+    ).resolve()
+    database_name = f"test_{current_worker_id}.db" if current_worker_id else "test.db"
+    database_path = database_dir / database_name
+    sentinel_value = f"university-ecosystem-pytest:{os.getpid()}:{database_dir.name}\n"
+    (database_dir / ".pytest-owned").write_text(sentinel_value, encoding="utf-8")
+    ownership = _AutomaticDatabaseOwnership(
+        directory=database_dir,
+        database_path=database_path,
+        sentinel_value=sentinel_value,
+    )
+    database_url = f"sqlite+aiosqlite:///{database_path.as_posix()}"
+    os.environ[_AUTO_DATABASE_URL_ENV] = database_url
+    os.environ[_AUTO_DATABASE_DIR_ENV] = str(database_dir)
+    atexit.register(_remove_automatic_database_dir, ownership)
+    return database_url
+
+
+def _sqlite_url_for_worker(database_url: str, current_worker_id: str) -> str:
+    parsed = make_url(database_url)
+    if parsed.get_backend_name() != "sqlite" or parsed.database in {
+        None,
+        "",
+        ":memory:",
+    }:
+        return database_url
+    database_path = Path(parsed.database)
+    worker_path = database_path.with_name(
+        f"{database_path.stem}_{current_worker_id}{database_path.suffix}"
+    )
+    return str(parsed.set(database=worker_path.as_posix()))
+
+
+def _postgres_database_for_worker(
+    original_database: str, current_worker_id: str
+) -> str:
+    test_run_uid = os.environ.get("PYTEST_XDIST_TESTRUNUID") or f"pid-{os.getpid()}"
+    digest = hashlib.sha256(
+        f"{original_database}:{current_worker_id}:{test_run_uid}".encode()
+    ).hexdigest()[:10]
+    suffix = f"_{current_worker_id}_{digest}"
+    return f"{original_database[: 63 - len(suffix)]}{suffix}"
+
 
 # Configure parallel Postgres fixtures via testcontainers/xdist.
 _container = None
@@ -49,16 +265,26 @@ if os.environ.get("USE_TESTCONTAINERS_POSTGRES") == "1":
         # Obtain connection url with asyncpg driver
         _postgres_url = _container.get_connection_url(driver="asyncpg")
     except Exception as e:
+        if (
+            os.environ.get("UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_TESTCONTAINERS_FALLBACK")
+            != "1"
+        ):
+            raise RuntimeError(f"Failed to start Postgres testcontainer: {e}") from e
         print(
             f"Warning: Failed to start Postgres testcontainer, falling back to other methods: {e}"
         )
 
 # 2. Assign DATABASE_URL based on availability and xdist environment
 env_db_url = os.environ.get("DATABASE_URL")
+inherited_auto_db_url = os.environ.get(_AUTO_DATABASE_URL_ENV)
+has_explicit_db_url = bool(env_db_url and env_db_url != inherited_auto_db_url)
 if _postgres_url:
+    os.environ.pop(_EXTERNAL_DATABASE_URL_ENV, None)
     os.environ["DATABASE_URL"] = _postgres_url
+    os.environ[_DATABASE_MODE_ENV] = "harness-postgres"
     os.environ["RUN_INTEGRATION_TESTS"] = "1"
-elif env_db_url and env_db_url.startswith("postgresql"):
+elif has_explicit_db_url and env_db_url and env_db_url.startswith("postgresql"):
+    os.environ[_EXTERNAL_DATABASE_URL_ENV] = env_db_url
     if worker_id:
         # Rewrite DATABASE_URL to target a unique database name per worker.
         # Example: postgresql+asyncpg://test:test@localhost:5432/test -> postgresql+asyncpg://test:test@localhost:5432/test_gw0  # pragma: allowlist secret
@@ -66,15 +292,26 @@ elif env_db_url and env_db_url.startswith("postgresql"):
 
         parsed = urlparse(env_db_url)
         original_db = parsed.path.lstrip("/")
-        worker_db = f"{original_db}_{worker_id}"
+        worker_db = _postgres_database_for_worker(original_db, worker_id)
         os.environ["DATABASE_URL"] = urlunparse(parsed._replace(path=f"/{worker_db}"))
+        os.environ[_DATABASE_MODE_ENV] = "harness-postgres"
+    else:
+        os.environ[_DATABASE_MODE_ENV] = "explicit"
     os.environ["RUN_INTEGRATION_TESTS"] = "1"
 else:
-    if worker_id:
+    if has_explicit_db_url and worker_id:
+        os.environ[_EXTERNAL_DATABASE_URL_ENV] = env_db_url
         # Use unique database per worker for parallel testing with SQLite
-        os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///./test_{worker_id}.db"
+        os.environ["DATABASE_URL"] = _sqlite_url_for_worker(env_db_url, worker_id)
+        os.environ[_DATABASE_MODE_ENV] = "explicit"
+    elif has_explicit_db_url and env_db_url:
+        os.environ[_EXTERNAL_DATABASE_URL_ENV] = env_db_url
+        os.environ["DATABASE_URL"] = env_db_url
+        os.environ[_DATABASE_MODE_ENV] = "explicit"
     else:
-        os.environ["DATABASE_URL"] = env_db_url or "sqlite+aiosqlite:///./test.db"
+        os.environ.pop(_EXTERNAL_DATABASE_URL_ENV, None)
+        os.environ["DATABASE_URL"] = _create_automatic_sqlite_database_url(worker_id)
+        os.environ[_DATABASE_MODE_ENV] = "harness-sqlite"
 os.environ["SECRET_KEY"] = "test-secret-key-32-characters-long-entropy"
 os.environ["ALGORITHM"] = "HS256"
 os.environ["ACCESS_TOKEN_EXPIRE_MINUTES"] = "30"
@@ -608,6 +845,12 @@ def pytest_addoption(parser):
 
 
 def pytest_configure(config):
+    invocation_args = tuple(str(arg) for arg in config.invocation_params.args)
+    explicit_basetemp = any(
+        arg == "--basetemp" or arg.startswith("--basetemp=") for arg in invocation_args
+    )
+    if not explicit_basetemp:
+        config.option.basetemp = str(_create_automatic_basetemp())
     config.addinivalue_line("markers", "quarantine: mark test as quarantined/flaky")
 
 

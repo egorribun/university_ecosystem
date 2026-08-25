@@ -81,9 +81,9 @@ def map_user_orm_to_dict(user: Any) -> dict[str, Any]:
         else None
     )
 
-    # Relationships list
+    # Publicly serializable relationship list. Challenge records contain
+    # authentication state and bindings, so they must never enter UserOut.
     out["totp_enrollments"] = getattr(user, "totp_enrollments", [])
-    out["mfa_challenges"] = getattr(user, "mfa_challenges", [])
 
     # Pending email
     out["pending_email"] = getattr(user, "pending_email", None)

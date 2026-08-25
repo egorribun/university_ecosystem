@@ -9,7 +9,6 @@ import { expect } from "vitest"
 type AuthState = {
   isAuth: boolean
   login: ReturnType<typeof vi.fn>
-  loginWithPasskey: ReturnType<typeof vi.fn>
   logout: ReturnType<typeof vi.fn>
   refresh: ReturnType<typeof vi.fn>
   user: User | null
@@ -45,13 +44,11 @@ const baseUser: User = {
   mfa_last_verified_at: null,
   recovery_codes_left: 0,
   totp_enrollments: [],
-  mfa_challenges: [],
 }
 
 const authState: AuthState = {
   isAuth: true,
   login: vi.fn(),
-  loginWithPasskey: vi.fn(),
   logout: vi.fn(),
   refresh: vi.fn(),
   user: baseUser,

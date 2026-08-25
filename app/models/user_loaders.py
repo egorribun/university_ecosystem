@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 USER_MFA_RELATIONSHIP_NAMES: tuple[str, ...] = (
     "totp_enrollments",
     "mfa_challenges",
-    "webauthn_credentials",
     "preferences",
     "spotify",
     "email_change_tokens",
@@ -27,7 +26,6 @@ USER_MFA_RELATIONSHIP_NAMES: tuple[str, ...] = (
 USER_MFA_COLLECTION_OPTIONS: tuple[Any, ...] = (
     selectinload(User.totp_enrollments),
     selectinload(User.mfa_challenges),
-    selectinload(User.webauthn_credentials),
     selectinload(User.email_change_tokens),
     selectinload(User.recovery_codes),
 )
@@ -70,7 +68,6 @@ USER_AUTH_WITH_MFA_OPTIONS: tuple[Any, ...] = (
     joinedload(User.education_path),
     selectinload(User.totp_enrollments),
     selectinload(User.mfa_challenges),
-    selectinload(User.webauthn_credentials),
     selectinload(User.email_change_tokens),
     selectinload(User.recovery_codes),
 )

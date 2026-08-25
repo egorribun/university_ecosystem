@@ -101,7 +101,7 @@ def signal_csrf_rotation(request: Request) -> None:
     """Mark the current request as requiring a fresh CSRF token in the response.
 
     Call this in every endpoint that completes a privilege escalation:
-    - successful login (password or passkey)
+    - successful login
     - MFA step-up completion
     - password change
 

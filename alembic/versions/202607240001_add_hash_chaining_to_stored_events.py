@@ -35,13 +35,14 @@ def upgrade() -> None:
                 "stored_events",
                 sa.Column("hash", sa.String(length=64), nullable=True),
             )
-            op.create_index(
-                "ix_stored_events_hash",
-                "stored_events",
-                ["hash"],
-                unique=False,
-                postgresql_concurrently=True,
-            )
+            with op.get_context().autocommit_block():
+                op.create_index(
+                    "ix_stored_events_hash",
+                    "stored_events",
+                    ["hash"],
+                    unique=False,
+                    postgresql_concurrently=True,
+                )
 
 
 def downgrade() -> None:

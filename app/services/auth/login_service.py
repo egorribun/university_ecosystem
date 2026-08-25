@@ -10,6 +10,7 @@ from app.core.logging import get_logger
 from app.schemas import schemas
 
 if TYPE_CHECKING:
+    from app.auth.mfa.email_otp import EmailOtpService
     from app.core.protocols import AsyncDatabaseSession
     from app.models import User
     from app.schemas.dtos import UserAuthDTO, UserDTO
@@ -35,8 +36,7 @@ class LoginService:
         self.session_manager = session_manager
         self.db = db_session
 
-        # Expose repo for backwards compatibility with login_passkey_verify
-        # and other direct callers expecting login_service.repo
+        # Expose the repository for narrow compatibility with direct callers.
         self.repo = self.mfa_coord.repo
 
     async def perform_login(
@@ -67,6 +67,7 @@ class LoginService:
             request=request,
             response=response,
             locale=user_locale,
+            trust_device=trust_device,
         )
         if mfa_response:
             return mfa_response
@@ -117,8 +118,48 @@ class LoginService:
         locale: str,
         capabilities: dict[str, bool],
         session: Any | None = None,
+        request: Request | None = None,
+        flow: str = "login",
     ) -> list[auth_schemas.MfaMethodChallengeOut]:
         """Delegate challenges collection to MfaCoordinator."""
         return await self.mfa_coord._collect_mfa_challenges(
-            user, locale, capabilities, session
+            user,
+            locale,
+            capabilities,
+            session,
+            request=request,
+            flow=flow,  # type: ignore[arg-type]
+        )
+
+    def get_email_otp_service(self) -> EmailOtpService:
+        """Resolve the email OTP service lazily for email-only endpoints."""
+        return self.mfa_coord.get_email_otp_service()
+
+    async def complete_step_up(
+        self,
+        *,
+        user: User,
+        session: Any,
+        request: Request,
+        method: str,
+    ) -> schemas.TokenWithProfile:
+        return await self.session_manager.complete_step_up(
+            user=user,
+            session=session,
+            request=request,
+            db_session=self.db,
+            method=method,
+        )
+
+    async def publish_completed_step_up(
+        self,
+        *,
+        user: User,
+        session: Any,
+        request: Request,
+    ) -> None:
+        await self.session_manager.publish_completed_step_up(
+            user=user,
+            session=session,
+            request=request,
         )

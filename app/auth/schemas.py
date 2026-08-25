@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
@@ -13,24 +13,16 @@ class LoginIn(BaseModel):
     trust_device: bool = False
 
 
-class LoginPasskeyStartIn(BaseModel):
-    email: EmailStr
-
-
-class LoginPasskeyVerifyIn(BaseModel):
-    challenge_token: str
-    webauthn_response: dict[str, Any]
-    trust_device: bool = False
-
-
 class MfaMethodChallengeOut(BaseModel):
-    method: Literal["totp", "webauthn"]
+    method: Literal["totp", "email_otp"]
     challenge_token: str
     challenge_expires_at: datetime
-    options: dict[str, Any] | None = None
     attempt_count: int | None = None
     attempt_limit: int | None = None
     remaining_attempts: int | None = None
+    delivery_hint: str | None = None
+    resend_available_at: datetime | None = None
+    revision: int = 1
 
 
 MfaChallengeEntry = MfaMethodChallengeOut
@@ -40,7 +32,7 @@ class PendingMfaResponse(BaseModel):
     status: Literal["mfa_required"] = "mfa_required"
     user_id: UUID
     session_id: UUID | None = None
-    default_method: Literal["totp", "webauthn"] | None = None
+    default_method: Literal["totp", "email_otp"] | None = None
     methods: list[MfaMethodChallengeOut]
 
 
@@ -61,18 +53,37 @@ class TotpEnrollmentConfirmIn(BaseModel):
 
 
 class MfaVerifyIn(BaseModel):
-    method: Literal["totp", "webauthn", "recovery_code"]
+    method: Literal["totp", "email_otp", "recovery_code"]
     # Constrain challenge_token to prevent Redis key amplification attacks:
     # min 32 chars (all legitimate tokens are UUIDs or longer), max 128 chars,
     # and restrict to the character set used by the server's token generator.
     challenge_token: str = Field(
         min_length=32,
         max_length=128,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
+        pattern=r"^[a-zA-Z0-9_.\-]+$",
     )
     # LOW-W19: max_length=19 matches the longest valid value (recovery code format
     # "XXXXX-XXXXX-XXXXX" = 17 chars + 2 dashes). Prevents oversized payloads from
     # reaching TOTP/recovery-code verification logic.
     code: str | None = Field(default=None, max_length=19)
-    webauthn_response: dict[str, Any] | None = None
-    trust_device: bool = False
+
+
+class EmailOtpResendIn(BaseModel):
+    challenge_token: str = Field(
+        min_length=32,
+        max_length=128,
+        pattern=r"^[a-zA-Z0-9_.\-]+$",
+    )
+
+
+__all__ = [
+    "EmailOtpResendIn",
+    "LoginIn",
+    "MfaChallengeEntry",
+    "MfaMethodChallengeOut",
+    "MfaVerifyIn",
+    "PendingMfaResponse",
+    "TotpEnrollmentConfirmIn",
+    "TotpEnrollmentStartIn",
+    "TotpEnrollmentStartOut",
+]

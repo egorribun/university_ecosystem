@@ -178,6 +178,12 @@ describe("MessageInput branch coverage", () => {
       const img = new File(["<svg xmlns='http://www.w3.org/2000/svg'></svg>"], "tricky.png", {
         type: "image/png",
       })
+      const unreadablePrefix = new Blob([])
+      Object.defineProperty(unreadablePrefix, "text", {
+        configurable: true,
+        value: vi.fn().mockRejectedValue(new Error("unreadable image prefix")),
+      })
+      vi.spyOn(img, "slice").mockReturnValue(unreadablePrefix)
       setFiles(fileInput, [img])
 
       await act(async () => {

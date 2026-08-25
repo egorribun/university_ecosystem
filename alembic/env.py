@@ -154,9 +154,11 @@ def run_migrations_offline() -> None:
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
         render_as_batch=True,
-        transactional_ddl=False,  # Allow non-transactional DDL
+        transactional_ddl=True,
+        transaction_per_migration=True,
     )
-    context.run_migrations()
+    with context.begin_transaction():
+        context.run_migrations()
 
 
 def _configure_context(connection: SyncConnection) -> None:
@@ -165,7 +167,8 @@ def _configure_context(connection: SyncConnection) -> None:
         target_metadata=target_metadata,
         compare_type=True,
         render_as_batch=True,
-        transactional_ddl=False,  # Allow non-transactional DDL
+        transactional_ddl=True,
+        transaction_per_migration=True,
     )
 
 
@@ -190,11 +193,8 @@ def run_migrations_online() -> None:
 
     def run_sync_migrations(connection: SyncConnection) -> None:
         _configure_context(connection)
-        # P0-05 (audit 2026-03-09): Removed the global `begin_transaction()` wrapper.
-        # PostgreSQL commands like `CREATE INDEX CONCURRENTLY` cannot run inside
-        # a transaction block. Migrations that require transactions must manage
-        # them explicitly or rely on Alembic's per-migration transaction control.
-        context.run_migrations()
+        with context.begin_transaction():
+            context.run_migrations()
 
     connection: Any = config.attributes.get("connection")
     if connection:
@@ -211,11 +211,7 @@ def run_migrations_online() -> None:
         )
 
         async def async_run_migrations() -> None:
-            # RZ-12: Use AUTOCOMMIT isolation level for concurrent index support.
-            autocommit_engine = connectable.execution_options(
-                isolation_level="AUTOCOMMIT"
-            )
-            async with autocommit_engine.connect() as connection:
+            async with connectable.connect() as connection:
                 await connection.run_sync(run_sync_migrations)
 
         try:

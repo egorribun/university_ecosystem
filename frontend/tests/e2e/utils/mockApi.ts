@@ -114,7 +114,6 @@ const createBaseProfile = (): User => ({
   mfa_last_verified_at: null,
   recovery_codes_left: 0,
   totp_enrollments: [],
-  mfa_challenges: [],
 })
 
 const mockNews = [
@@ -265,7 +264,6 @@ const createMfaChallenge = ({
       method: "totp",
       challenge_token: "totp-challenge-token-32-characters-long",
       challenge_expires_at: challengeExpiresAt(),
-      options: null,
     })
   }
 

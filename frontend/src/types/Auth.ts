@@ -1,8 +1,6 @@
-import type { PendingMfaResponse, WebAuthnAuthenticationOptionsOut } from "@/api/generated"
+import type { PendingMfaResponse } from "@/api/generated"
 import type { User } from "@/types/User"
 import type { Dispatch, SetStateAction } from "react"
-
-export type { WebAuthnAuthenticationOptionsOut }
 
 export type UserState = User | null
 export type SetUserArg = SetStateAction<UserState>
@@ -10,11 +8,9 @@ export type SetUserArg = SetStateAction<UserState>
 export type PendingMfaState = PendingMfaResponse & { reason: "login" | "step-up" }
 
 export type SubmitMfaChallengePayload = {
-  method?: "totp" | "webauthn" | "recovery_code"
+  method?: "totp" | "email_otp" | "recovery_code"
   code?: string
-  webauthnResponse?: unknown
   challengeToken?: string
-  trustDevice?: boolean
 }
 
 export type AuthContextType = {
@@ -29,7 +25,6 @@ export type AuthContextType = {
   pendingMfa: PendingMfaState | null
   submitMfaChallenge: (payload: SubmitMfaChallengePayload) => Promise<void>
   requireMfa: () => Promise<PendingMfaState | null>
-  loginWithPasskey: (email: string, trustDevice?: boolean) => Promise<void>
   resetEtagCache: () => void
 }
 

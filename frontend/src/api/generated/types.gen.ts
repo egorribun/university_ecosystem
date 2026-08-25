@@ -13,41 +13,29 @@ export type ActiveSessionOut = {
    */
   created_at: string
   /**
-   * Id
-   */
-  id: string
-  /**
-   * User Id
-   */
-  user_id: string
-  /**
-   * Jti
-   */
-  jti: string
-  /**
    * Expires At
    */
   expires_at: string
   /**
-   * Revoked At
+   * Id
    */
-  revoked_at?: string | null
+  id: string
   /**
    * Ip Address
    */
   ip_address?: string | null
   /**
-   * User Agent
+   * Is Current
    */
-  user_agent?: string | null
+  is_current?: boolean
+  /**
+   * Jti
+   */
+  jti: string
   /**
    * Last Seen At
    */
   last_seen_at?: string | null
-  /**
-   * Mfa Required
-   */
-  mfa_required?: boolean
   /**
    * Mfa Completed At
    */
@@ -55,15 +43,27 @@ export type ActiveSessionOut = {
   /**
    * Mfa Method
    */
-  mfa_method?: string | null
+  mfa_method?: "totp" | "email_otp" | "recovery_code" | null
+  /**
+   * Mfa Required
+   */
+  mfa_required?: boolean
   /**
    * Mfa Verified At
    */
   mfa_verified_at?: string | null
   /**
-   * Is Current
+   * Revoked At
    */
-  is_current?: boolean
+  revoked_at?: string | null
+  /**
+   * User Agent
+   */
+  user_agent?: string | null
+  /**
+   * User Id
+   */
+  user_id: string
 }
 
 /**
@@ -83,9 +83,9 @@ export type AddParticipant = {
  */
 export type AdminUserTopicsResponse = {
   /**
-   * User Id
+   * Allowed Topics
    */
-  user_id: string
+  allowed_topics: Array<string>
   /**
    * Email
    */
@@ -95,13 +95,13 @@ export type AdminUserTopicsResponse = {
    */
   topics: Array<string>
   /**
-   * Allowed Topics
-   */
-  allowed_topics: Array<string>
-  /**
    * Updated At
    */
   updated_at?: string | null
+  /**
+   * User Id
+   */
+  user_id: string
 }
 
 /**
@@ -119,13 +119,9 @@ export type AdminUserTopicsUpdate = {
  */
 export type AttachmentResponse = {
   /**
-   * Id
+   * Created At
    */
-  id: string
-  /**
-   * Url
-   */
-  url: string
+  created_at?: string | null
   /**
    * File Type
    */
@@ -135,17 +131,21 @@ export type AttachmentResponse = {
    */
   filename: string
   /**
-   * Size
+   * Id
    */
-  size: number
-  /**
-   * Created At
-   */
-  created_at?: string | null
+  id: string
   /**
    * Message Id
    */
   message_id?: string | null
+  /**
+   * Size
+   */
+  size: number
+  /**
+   * Url
+   */
+  url: string
 }
 
 /**
@@ -167,37 +167,17 @@ export type AuditLogListOut = {
  */
 export type AuditLogOut = {
   /**
-   * Id
+   * Action
    */
-  id: string
-  /**
-   * Actor User Id
-   */
-  actor_user_id?: string | null
+  action: string
   /**
    * Actor Name
    */
   actor_name?: string | null
   /**
-   * Subject User Id
+   * Actor User Id
    */
-  subject_user_id?: string | null
-  /**
-   * Subject Name
-   */
-  subject_name?: string | null
-  /**
-   * Resource Type
-   */
-  resource_type: string
-  /**
-   * Resource Id
-   */
-  resource_id?: string | null
-  /**
-   * Action
-   */
-  action: string
+  actor_user_id?: string | null
   /**
    * Context
    */
@@ -205,21 +185,41 @@ export type AuditLogOut = {
     [key: string]: unknown
   } | null
   /**
-   * Ip Address
-   */
-  ip_address?: string | null
-  /**
-   * User Agent
-   */
-  user_agent?: string | null
-  /**
    * Created At
    */
   created_at: string
   /**
+   * Id
+   */
+  id: string
+  /**
+   * Ip Address
+   */
+  ip_address?: string | null
+  /**
    * Is Valid
    */
   is_valid: boolean
+  /**
+   * Resource Id
+   */
+  resource_id?: string | null
+  /**
+   * Resource Type
+   */
+  resource_type: string
+  /**
+   * Subject Name
+   */
+  subject_name?: string | null
+  /**
+   * Subject User Id
+   */
+  subject_user_id?: string | null
+  /**
+   * User Agent
+   */
+  user_agent?: string | null
 }
 
 /**
@@ -257,17 +257,17 @@ export type BodyEditMessageApiV1ChatsChatIdMessagesMessageIdPatch = {
  */
 export type BodyLoginApiV1AuthLoginPost = {
   /**
-   * Trust Device
+   * Client Id
    */
-  trust_device?: boolean
+  client_id?: string | null
+  /**
+   * Client Secret
+   */
+  client_secret?: string | null
   /**
    * Grant Type
    */
   grant_type?: string | null
-  /**
-   * Username
-   */
-  username: string
   /**
    * Password
    */
@@ -277,13 +277,13 @@ export type BodyLoginApiV1AuthLoginPost = {
    */
   scope?: string
   /**
-   * Client Id
+   * Trust Device
    */
-  client_id?: string | null
+  trust_device?: boolean
   /**
-   * Client Secret
+   * Username
    */
-  client_secret?: string | null
+  username: string
 }
 
 /**
@@ -341,13 +341,13 @@ export type BodyUploadEventFileApiV1EventsEventIdUploadFilePost = {
  */
 export type BodyUploadEventImageApiV1EventsUploadImagePost = {
   /**
-   * File
-   */
-  file: Blob | File
-  /**
    * Event Id
    */
   event_id: string | number
+  /**
+   * File
+   */
+  file: Blob | File
 }
 
 /**
@@ -371,17 +371,6 @@ export type BodyUploadStoryCoverApiV1StoriesUploadCoverPost = {
 }
 
 /**
- * ChallengeState
- *
- * TD-W5-01: Explicit state machine for MFA challenges.
- *
- * Replaces the implicit dual-null convention (consumed_at=None, locked_at=None →
- * active; consumed_at set → done; locked_at set → locked) with a single
- * auditable column that is impossible to misread.
- */
-export type ChallengeState = "pending" | "consumed" | "locked" | "expired"
-
-/**
  * ChatCreate
  */
 export type ChatCreate = {
@@ -402,17 +391,17 @@ export type ChatMaintenanceResult = {
    */
   chat_id: string
   /**
-   * Status
+   * Deleted Attachments
    */
-  status: string
+  deleted_attachments?: number
   /**
    * Deleted Messages
    */
   deleted_messages?: number
   /**
-   * Deleted Attachments
+   * Status
    */
-  deleted_attachments?: number
+  status: string
 }
 
 /**
@@ -420,9 +409,9 @@ export type ChatMaintenanceResult = {
  */
 export type ChatParticipant = {
   /**
-   * Id
+   * Avatar Url
    */
-  id: string
+  avatar_url?: string | null
   /**
    * Email
    */
@@ -432,9 +421,9 @@ export type ChatParticipant = {
    */
   full_name?: string | null
   /**
-   * Avatar Url
+   * Id
    */
-  avatar_url?: string | null
+  id: string
   /**
    * Is Active
    */
@@ -446,38 +435,30 @@ export type ChatParticipant = {
  */
 export type ChatResponse = {
   /**
-   * Id
-   */
-  id: string
-  /**
    * Chat Type
    */
   chat_type?: string
-  /**
-   * Name
-   */
-  name?: string | null
-  /**
-   * Created By
-   */
-  created_by?: string | null
-  /**
-   * Participants
-   */
-  participants: Array<ChatParticipant>
-  last_message?: MessageResponse | null
-  /**
-   * Unread Count
-   */
-  unread_count?: number
   /**
    * Created At
    */
   created_at: string
   /**
-   * Updated At
+   * Created By
    */
-  updated_at: string
+  created_by?: string | null
+  /**
+   * Id
+   */
+  id: string
+  last_message?: MessageResponse | null
+  /**
+   * Name
+   */
+  name?: string | null
+  /**
+   * Participants
+   */
+  participants: Array<ChatParticipant>
   /**
    * Presence
    */
@@ -488,6 +469,14 @@ export type ChatResponse = {
    * Read Receipts
    */
   read_receipts?: Array<ReadReceiptInfo>
+  /**
+   * Unread Count
+   */
+  unread_count?: number
+  /**
+   * Updated At
+   */
+  updated_at: string
 }
 
 /**
@@ -497,13 +486,13 @@ export type ChatResponse = {
  */
 export type ChatsListOut = {
   /**
-   * Items
-   */
-  items: Array<ChatResponse>
-  /**
    * Has More
    */
   has_more?: boolean
+  /**
+   * Items
+   */
+  items: Array<ChatResponse>
   /**
    * Next Cursor
    */
@@ -515,13 +504,13 @@ export type ChatsListOut = {
  */
 export type DataDeletionOut = {
   /**
-   * Deleted
-   */
-  deleted: boolean
-  /**
    * Anonymized Email
    */
   anonymized_email: string
+  /**
+   * Deleted
+   */
+  deleted: boolean
 }
 
 /**
@@ -541,15 +530,19 @@ export type DataDeletionRequest = {
  */
 export type DataExportOut = {
   /**
-   * Profile
+   * Access Logs
    */
-  profile: {
+  access_logs?: Array<{
     [key: string]: unknown
-  }
+  }>
   /**
-   * Sessions
+   * Mfa Challenge Count
    */
-  sessions?: Array<{
+  mfa_challenge_count?: number
+  /**
+   * Mfa Enrollments
+   */
+  mfa_enrollments?: Array<{
     [key: string]: unknown
   }>
   /**
@@ -559,21 +552,15 @@ export type DataExportOut = {
     [key: string]: unknown
   }>
   /**
-   * Mfa Challenges
+   * Profile
    */
-  mfa_challenges?: Array<{
+  profile: {
     [key: string]: unknown
-  }>
+  }
   /**
-   * Mfa Enrollments
+   * Sessions
    */
-  mfa_enrollments?: Array<{
-    [key: string]: unknown
-  }>
-  /**
-   * Access Logs
-   */
-  access_logs?: Array<{
+  sessions?: Array<{
     [key: string]: unknown
   }>
 }
@@ -588,6 +575,16 @@ export type DisableUserPushRequest = {
    * User ID for which push notifications should be disabled
    */
   user_id: string
+}
+
+/**
+ * EmailOtpResendIn
+ */
+export type EmailOtpResendIn = {
+  /**
+   * Challenge Token
+   */
+  challenge_token: string
 }
 
 /**
@@ -609,25 +606,25 @@ export type EventAttendanceOut = {
    */
   created_at?: string | null
   /**
+   * Event Id
+   */
+  event_id: string
+  /**
    * Id
    */
   id: string
   /**
-   * User Id
+   * Qr Token
    */
-  user_id: string
-  /**
-   * Event Id
-   */
-  event_id: string
+  qr_token?: string | null
   /**
    * Registered At
    */
   registered_at: string
   /**
-   * Qr Token
+   * User Id
    */
-  qr_token?: string | null
+  user_id: string
 }
 
 /**
@@ -635,29 +632,25 @@ export type EventAttendanceOut = {
  */
 export type EventCreate = {
   /**
-   * Title
+   * About
    */
-  title: string
+  about?: string | null
+  /**
+   * About En
+   */
+  about_en?: string | null
   /**
    * Description
    */
   description?: string | null
   /**
-   * Title En
-   */
-  title_en?: string | null
-  /**
    * Description En
    */
   description_en?: string | null
   /**
-   * Location
+   * Ends At
    */
-  location?: string | null
-  /**
-   * Location En
-   */
-  location_en?: string | null
+  ends_at: string
   /**
    * Event Type
    */
@@ -667,29 +660,33 @@ export type EventCreate = {
    */
   event_type_en?: string | null
   /**
-   * Starts At
+   * Image Url
    */
-  starts_at: string
+  image_url?: string | null
   /**
-   * Ends At
+   * Location
    */
-  ends_at: string
+  location?: string | null
+  /**
+   * Location En
+   */
+  location_en?: string | null
   /**
    * Speaker
    */
   speaker?: string | null
   /**
-   * Image Url
+   * Starts At
    */
-  image_url?: string | null
+  starts_at: string
   /**
-   * About
+   * Title
    */
-  about?: string | null
+  title: string
   /**
-   * About En
+   * Title En
    */
-  about_en?: string | null
+  title_en?: string | null
 }
 
 /**
@@ -701,9 +698,9 @@ export type EventFileOut = {
    */
   created_at?: string | null
   /**
-   * Id
+   * Description
    */
-  id: string
+  description?: string | null
   /**
    * Event Id
    */
@@ -713,9 +710,9 @@ export type EventFileOut = {
    */
   file_url: string
   /**
-   * Description
+   * Id
    */
-  description?: string | null
+  id: string
 }
 
 /**
@@ -723,37 +720,33 @@ export type EventFileOut = {
  */
 export type EventOut = {
   /**
+   * About
+   */
+  about?: string | null
+  /**
+   * About En
+   */
+  about_en?: string | null
+  /**
    * Created At
    */
   created_at: string
   /**
-   * Id
+   * Created By
    */
-  id: string
-  /**
-   * Title
-   */
-  title: string
+  created_by: string | unknown
   /**
    * Description
    */
   description?: string | null
   /**
-   * Title En
-   */
-  title_en?: string | null
-  /**
    * Description En
    */
   description_en?: string | null
   /**
-   * Location
+   * Ends At
    */
-  location?: string | null
-  /**
-   * Location En
-   */
-  location_en?: string | null
+  ends_at: string
   /**
    * Event Type
    */
@@ -763,57 +756,61 @@ export type EventOut = {
    */
   event_type_en?: string | null
   /**
-   * Starts At
+   * Files
    */
-  starts_at: string
+  files?: Array<EventFileOut>
   /**
-   * Ends At
+   * Id
    */
-  ends_at: string
-  /**
-   * Created By
-   */
-  created_by: string | unknown
-  /**
-   * Is Active
-   */
-  is_active: boolean
-  /**
-   * Speaker
-   */
-  speaker?: string | null
+  id: string
   /**
    * Image Url
    */
   image_url?: string | null
   /**
-   * About
+   * Image Url Optimized
    */
-  about?: string | null
+  image_url_optimized?: string | null
   /**
-   * About En
+   * Is Active
    */
-  about_en?: string | null
-  /**
-   * Files
-   */
-  files?: Array<EventFileOut>
-  /**
-   * Participant Count
-   */
-  participant_count?: number
+  is_active: boolean
   /**
    * Is Registered
    */
   is_registered?: boolean | null
   /**
+   * Location
+   */
+  location?: string | null
+  /**
+   * Location En
+   */
+  location_en?: string | null
+  /**
    * My Qr Token
    */
   my_qr_token?: string | null
   /**
-   * Image Url Optimized
+   * Participant Count
    */
-  image_url_optimized?: string | null
+  participant_count?: number
+  /**
+   * Speaker
+   */
+  speaker?: string | null
+  /**
+   * Starts At
+   */
+  starts_at: string
+  /**
+   * Title
+   */
+  title: string
+  /**
+   * Title En
+   */
+  title_en?: string | null
 }
 
 /**
@@ -821,29 +818,25 @@ export type EventOut = {
  */
 export type EventUpdate = {
   /**
-   * Title
+   * About
    */
-  title?: string | null
+  about?: string | null
+  /**
+   * About En
+   */
+  about_en?: string | null
   /**
    * Description
    */
   description?: string | null
   /**
-   * Title En
-   */
-  title_en?: string | null
-  /**
    * Description En
    */
   description_en?: string | null
   /**
-   * Location
+   * Ends At
    */
-  location?: string | null
-  /**
-   * Location En
-   */
-  location_en?: string | null
+  ends_at?: string | null
   /**
    * Event Type
    */
@@ -853,33 +846,37 @@ export type EventUpdate = {
    */
   event_type_en?: string | null
   /**
-   * Starts At
+   * Image Url
    */
-  starts_at?: string | null
-  /**
-   * Ends At
-   */
-  ends_at?: string | null
+  image_url?: string | null
   /**
    * Is Active
    */
   is_active?: boolean | null
   /**
+   * Location
+   */
+  location?: string | null
+  /**
+   * Location En
+   */
+  location_en?: string | null
+  /**
    * Speaker
    */
   speaker?: string | null
   /**
-   * Image Url
+   * Starts At
    */
-  image_url?: string | null
+  starts_at?: string | null
   /**
-   * About
+   * Title
    */
-  about?: string | null
+  title?: string | null
   /**
-   * About En
+   * Title En
    */
-  about_en?: string | null
+  title_en?: string | null
 }
 
 /**
@@ -887,13 +884,9 @@ export type EventUpdate = {
  */
 export type FeatureFlagOut = {
   /**
-   * Name
+   * Config Path
    */
-  name: string
-  /**
-   * Enabled
-   */
-  enabled: boolean
+  config_path: string
   /**
    * Default
    */
@@ -903,9 +896,9 @@ export type FeatureFlagOut = {
    */
   description: string
   /**
-   * Provider
+   * Enabled
    */
-  provider: string
+  enabled: boolean
   /**
    * Evaluation Reason
    */
@@ -915,9 +908,13 @@ export type FeatureFlagOut = {
    */
   management: "gitops"
   /**
-   * Config Path
+   * Name
    */
-  config_path: string
+  name: string
+  /**
+   * Provider
+   */
+  provider: string
 }
 
 /**
@@ -935,13 +932,13 @@ export type ForgotPasswordIn = {
  */
 export type ForwardMessages = {
   /**
-   * Source Chat Id
-   */
-  source_chat_id: string
-  /**
    * Message Ids
    */
   message_ids: Array<string>
+  /**
+   * Source Chat Id
+   */
+  source_chat_id: string
 }
 
 /**
@@ -969,9 +966,17 @@ export type GroupChatCreate = {
  */
 export type GroupOut = {
   /**
+   * Course
+   */
+  course?: number | null
+  /**
    * Created At
    */
   created_at?: string | null
+  /**
+   * Faculty
+   */
+  faculty?: string | null
   /**
    * Id
    */
@@ -980,14 +985,6 @@ export type GroupOut = {
    * Name
    */
   name: string
-  /**
-   * Course
-   */
-  course?: number | null
-  /**
-   * Faculty
-   */
-  faculty?: string | null
 }
 
 /**
@@ -1019,90 +1016,60 @@ export type LoginIn = {
 }
 
 /**
- * LoginPasskeyStartIn
- */
-export type LoginPasskeyStartIn = {
-  /**
-   * Email
-   */
-  email: string
-}
-
-/**
- * LoginPasskeyVerifyIn
- */
-export type LoginPasskeyVerifyIn = {
-  /**
-   * Challenge Token
-   */
-  challenge_token: string
-  /**
-   * Webauthn Response
-   */
-  webauthn_response: {
-    [key: string]: unknown
-  }
-  /**
-   * Trust Device
-   */
-  trust_device?: boolean
-}
-
-/**
  * MessageResponse
  */
 export type MessageResponse = {
-  /**
-   * Content
-   */
-  content: string
-  /**
-   * Id
-   */
-  id: string
-  /**
-   * Chat Id
-   */
-  chat_id: string
-  /**
-   * Sender Id
-   */
-  sender_id: string
-  /**
-   * Created At
-   */
-  created_at: string
-  /**
-   * Read Status
-   */
-  read_status: boolean
-  /**
-   * Read At
-   */
-  read_at?: string | null
-  /**
-   * Edited At
-   */
-  edited_at?: string | null
-  /**
-   * Deleted At
-   */
-  deleted_at?: string | null
-  sender?: ChatParticipant | null
-  sender_presence?: PresenceStatus | null
   /**
    * Attachments
    */
   attachments?: Array<AttachmentResponse>
   /**
-   * Reactions
+   * Chat Id
    */
-  reactions?: Array<ReactionAggregate>
-  reply_to?: ReplyPreview | null
+  chat_id: string
+  /**
+   * Content
+   */
+  content: string
+  /**
+   * Created At
+   */
+  created_at: string
+  /**
+   * Deleted At
+   */
+  deleted_at?: string | null
+  /**
+   * Edited At
+   */
+  edited_at?: string | null
   /**
    * Forwarded From Name
    */
   forwarded_from_name?: string | null
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Reactions
+   */
+  reactions?: Array<ReactionAggregate>
+  /**
+   * Read At
+   */
+  read_at?: string | null
+  /**
+   * Read Status
+   */
+  read_status: boolean
+  reply_to?: ReplyPreview | null
+  sender?: ChatParticipant | null
+  /**
+   * Sender Id
+   */
+  sender_id: string
+  sender_presence?: PresenceStatus | null
 }
 
 /**
@@ -1112,66 +1079,17 @@ export type MessageResponse = {
  */
 export type MessagesListOut = {
   /**
-   * Items
-   */
-  items: Array<MessageResponse>
-  /**
    * Has More
    */
   has_more?: boolean
   /**
+   * Items
+   */
+  items: Array<MessageResponse>
+  /**
    * Next Cursor
    */
   next_cursor?: string | null
-}
-
-/**
- * MfaChallengeOut
- */
-export type MfaChallengeOut = {
-  /**
-   * Created At
-   */
-  created_at: string
-  /**
-   * Id
-   */
-  id: string
-  /**
-   * User Id
-   */
-  user_id: string
-  /**
-   * Session Id
-   */
-  session_id?: string | null
-  /**
-   * Challenge Type
-   */
-  challenge_type: string
-  /**
-   * Token
-   */
-  token: string
-  /**
-   * Expires At
-   */
-  expires_at: string
-  /**
-   * Consumed At
-   */
-  consumed_at?: string | null
-  /**
-   * Payload
-   */
-  payload?: {
-    [key: string]: unknown
-  } | null
-  /**
-   * Attempt Count
-   */
-  attempt_count?: number
-  state?: ChallengeState
 }
 
 /**
@@ -1185,7 +1103,7 @@ export type MfaFactorStatusOut = {
   /**
    * Mfa Default Method
    */
-  mfa_default_method?: string | null
+  mfa_default_method?: "totp" | "email_otp" | null
   /**
    * Mfa Required
    */
@@ -1197,24 +1115,6 @@ export type MfaFactorStatusOut = {
  */
 export type MfaMethodChallengeOut = {
   /**
-   * Method
-   */
-  method: "totp" | "webauthn"
-  /**
-   * Challenge Token
-   */
-  challenge_token: string
-  /**
-   * Challenge Expires At
-   */
-  challenge_expires_at: string
-  /**
-   * Options
-   */
-  options?: {
-    [key: string]: unknown
-  } | null
-  /**
    * Attempt Count
    */
   attempt_count?: number | null
@@ -1223,15 +1123,43 @@ export type MfaMethodChallengeOut = {
    */
   attempt_limit?: number | null
   /**
+   * Challenge Expires At
+   */
+  challenge_expires_at: string
+  /**
+   * Challenge Token
+   */
+  challenge_token: string
+  /**
+   * Delivery Hint
+   */
+  delivery_hint?: string | null
+  /**
+   * Method
+   */
+  method: "totp" | "email_otp"
+  /**
    * Remaining Attempts
    */
   remaining_attempts?: number | null
+  /**
+   * Resend Available At
+   */
+  resend_available_at?: string | null
+  /**
+   * Revision
+   */
+  revision?: number
 }
 
 /**
  * MfaTotpEnrollmentOut
  */
 export type MfaTotpEnrollmentOut = {
+  /**
+   * Confirmed At
+   */
+  confirmed_at?: string | null
   /**
    * Created At
    */
@@ -1241,35 +1169,27 @@ export type MfaTotpEnrollmentOut = {
    */
   id: string
   /**
-   * User Id
+   * Is Active
    */
-  user_id: string
+  is_active: boolean
   /**
    * Label
    */
   label?: string | null
   /**
-   * Is Active
-   */
-  is_active: boolean
-  /**
-   * Confirmed At
-   */
-  confirmed_at?: string | null
-  /**
    * Revoked At
    */
   revoked_at?: string | null
+  /**
+   * User Id
+   */
+  user_id: string
 }
 
 /**
  * MfaVerifyIn
  */
 export type MfaVerifyIn = {
-  /**
-   * Method
-   */
-  method: "totp" | "webauthn" | "recovery_code"
   /**
    * Challenge Token
    */
@@ -1279,15 +1199,9 @@ export type MfaVerifyIn = {
    */
   code?: string | null
   /**
-   * Webauthn Response
+   * Method
    */
-  webauthn_response?: {
-    [key: string]: unknown
-  } | null
-  /**
-   * Trust Device
-   */
-  trust_device?: boolean
+  method: "totp" | "email_otp" | "recovery_code"
 }
 
 /**
@@ -1295,13 +1209,17 @@ export type MfaVerifyIn = {
  */
 export type NewsCommentOut = {
   /**
-   * Id
-   */
-  id: string
-  /**
    * Content
    */
   content: string
+  /**
+   * Created At
+   */
+  created_at: string
+  /**
+   * Id
+   */
+  id: string
   /**
    * User Id
    */
@@ -1310,10 +1228,6 @@ export type NewsCommentOut = {
    * User Name
    */
   user_name: string
-  /**
-   * Created At
-   */
-  created_at: string
 }
 
 /**
@@ -1331,17 +1245,9 @@ export type NewsCommentUpdate = {
  */
 export type NewsCreate = {
   /**
-   * Title
-   */
-  title: string
-  /**
    * Content
    */
   content: string
-  /**
-   * Title En
-   */
-  title_en?: string | null
   /**
    * Content En
    */
@@ -1350,20 +1256,20 @@ export type NewsCreate = {
    * Image Url
    */
   image_url?: string | null
+  /**
+   * Title
+   */
+  title: string
+  /**
+   * Title En
+   */
+  title_en?: string | null
 }
 
 /**
  * NewsInteractionsOut
  */
 export type NewsInteractionsOut = {
-  /**
-   * Likes Count
-   */
-  likes_count: number
-  /**
-   * Is Liked
-   */
-  is_liked: boolean
   /**
    * Comments
    */
@@ -1372,6 +1278,14 @@ export type NewsInteractionsOut = {
    * Comments Count
    */
   comments_count: number
+  /**
+   * Is Liked
+   */
+  is_liked: boolean
+  /**
+   * Likes Count
+   */
+  likes_count: number
 }
 
 /**
@@ -1379,25 +1293,17 @@ export type NewsInteractionsOut = {
  */
 export type NewsOut = {
   /**
-   * Title
+   * Comments Count
    */
-  title: string
+  comments_count?: number
   /**
    * Content
    */
   content: string
   /**
-   * Title En
-   */
-  title_en?: string | null
-  /**
    * Content En
    */
   content_en?: string | null
-  /**
-   * Image Url
-   */
-  image_url?: string | null
   /**
    * Created At
    */
@@ -1407,21 +1313,29 @@ export type NewsOut = {
    */
   id: string
   /**
-   * Likes Count
+   * Image Url
    */
-  likes_count?: number
+  image_url?: string | null
   /**
-   * Comments Count
+   * Image Url Optimized
    */
-  comments_count?: number
+  image_url_optimized?: string | null
   /**
    * Is Liked
    */
   is_liked?: boolean
   /**
-   * Image Url Optimized
+   * Likes Count
    */
-  image_url_optimized?: string | null
+  likes_count?: number
+  /**
+   * Title
+   */
+  title: string
+  /**
+   * Title En
+   */
+  title_en?: string | null
 }
 
 /**
@@ -1429,17 +1343,9 @@ export type NewsOut = {
  */
 export type NewsUpdate = {
   /**
-   * Title
-   */
-  title?: string | null
-  /**
    * Content
    */
   content?: string | null
-  /**
-   * Title En
-   */
-  title_en?: string | null
   /**
    * Content En
    */
@@ -1448,6 +1354,14 @@ export type NewsUpdate = {
    * Image Url
    */
   image_url?: string | null
+  /**
+   * Title
+   */
+  title?: string | null
+  /**
+   * Title En
+   */
+  title_en?: string | null
 }
 
 /**
@@ -1461,6 +1375,12 @@ export type NotificationAction = {
    */
   action: string
   /**
+   * Icon
+   *
+   * Optional icon URL
+   */
+  icon?: string | null
+  /**
    * Title
    *
    * Action button title
@@ -1472,18 +1392,20 @@ export type NotificationAction = {
    * Optional URL to open
    */
   url?: string | null
-  /**
-   * Icon
-   *
-   * Optional icon URL
-   */
-  icon?: string | null
 }
 
 /**
  * NotificationOut
  */
 export type NotificationOut = {
+  /**
+   * Body
+   */
+  body?: string | null
+  /**
+   * Body En
+   */
+  body_en?: string | null
   /**
    * Created At
    */
@@ -1493,30 +1415,6 @@ export type NotificationOut = {
    */
   id: string
   /**
-   * Title
-   */
-  title: string
-  /**
-   * Body
-   */
-  body?: string | null
-  /**
-   * Title En
-   */
-  title_en?: string | null
-  /**
-   * Body En
-   */
-  body_en?: string | null
-  /**
-   * Type
-   */
-  type?: string | null
-  /**
-   * Url
-   */
-  url?: string | null
-  /**
    * Read
    */
   read: boolean
@@ -1524,6 +1422,22 @@ export type NotificationOut = {
    * Read At
    */
   read_at?: string | null
+  /**
+   * Title
+   */
+  title: string
+  /**
+   * Title En
+   */
+  title_en?: string | null
+  /**
+   * Type
+   */
+  type?: string | null
+  /**
+   * Url
+   */
+  url?: string | null
 }
 
 /**
@@ -1531,21 +1445,21 @@ export type NotificationOut = {
  */
 export type NotificationsListOut = {
   /**
-   * Items
-   */
-  items: Array<NotificationOut>
-  /**
-   * Unread Count
-   */
-  unread_count: number
-  /**
    * Has More
    */
   has_more: boolean
   /**
+   * Items
+   */
+  items: Array<NotificationOut>
+  /**
    * Next Cursor
    */
   next_cursor?: string | null
+  /**
+   * Unread Count
+   */
+  unread_count: number
 }
 
 /**
@@ -1553,51 +1467,51 @@ export type NotificationsListOut = {
  */
 export type NotifyBody = {
   /**
-   * Title
+   * Actions
    */
-  title: string
-  /**
-   * Body
-   */
-  body?: string | null
-  /**
-   * Url
-   */
-  url?: string | null
-  /**
-   * Tag
-   */
-  tag?: string | null
+  actions?: Array<NotificationAction> | null
   /**
    * Badge
    */
   badge?: string | null
   /**
-   * Type
+   * Body
    */
-  type?: string | null
-  /**
-   * Ttl
-   */
-  ttl?: number | null
-  /**
-   * Urgency
-   */
-  urgency?: string | null
-  /**
-   * Topic
-   */
-  topic?: string | null
-  /**
-   * Actions
-   */
-  actions?: Array<NotificationAction> | null
+  body?: string | null
   /**
    * Data
    */
   data?: {
     [key: string]: unknown
   } | null
+  /**
+   * Tag
+   */
+  tag?: string | null
+  /**
+   * Title
+   */
+  title: string
+  /**
+   * Topic
+   */
+  topic?: string | null
+  /**
+   * Ttl
+   */
+  ttl?: number | null
+  /**
+   * Type
+   */
+  type?: string | null
+  /**
+   * Urgency
+   */
+  urgency?: string | null
+  /**
+   * Url
+   */
+  url?: string | null
 }
 
 /**
@@ -1605,29 +1519,29 @@ export type NotifyBody = {
  */
 export type PaginatedEvents = {
   /**
+   * Cursor
+   */
+  cursor?: string | null
+  /**
+   * Has More
+   */
+  has_more: boolean
+  /**
    * Items
    */
   items: Array<EventOut>
-  /**
-   * Total
-   */
-  total?: number | null
   /**
    * Limit
    */
   limit: number
   /**
-   * Cursor
-   */
-  cursor?: string | null
-  /**
    * Next Cursor
    */
   next_cursor?: string | null
   /**
-   * Has More
+   * Total
    */
-  has_more: boolean
+  total?: number | null
 }
 
 /**
@@ -1637,13 +1551,13 @@ export type PaginatedEvents = {
  */
 export type PaginatedNews = {
   /**
-   * Items
-   */
-  items: Array<NewsOut>
-  /**
    * Has More
    */
   has_more: boolean
+  /**
+   * Items
+   */
+  items: Array<NewsOut>
   /**
    * Next Cursor
    */
@@ -1669,6 +1583,18 @@ export type PasswordChangeOut = {
  */
 export type PendingMfaResponse = {
   /**
+   * Default Method
+   */
+  default_method?: "totp" | "email_otp" | null
+  /**
+   * Methods
+   */
+  methods: Array<MfaMethodChallengeOut>
+  /**
+   * Session Id
+   */
+  session_id?: string | null
+  /**
    * Status
    */
   status?: "mfa_required"
@@ -1676,18 +1602,6 @@ export type PendingMfaResponse = {
    * User Id
    */
   user_id: string
-  /**
-   * Session Id
-   */
-  session_id?: string | null
-  /**
-   * Default Method
-   */
-  default_method?: "totp" | "webauthn" | null
-  /**
-   * Methods
-   */
-  methods: Array<MfaMethodChallengeOut>
 }
 
 /**
@@ -1746,39 +1660,23 @@ export type PushSubscriptionIn = {
  */
 export type PushSubscriptionKeys = {
   /**
-   * P256Dh
-   *
-   * Base64-encoded public key
-   */
-  p256dh: string
-  /**
    * Auth
    *
    * Authentication secret
    */
   auth: string
+  /**
+   * P256Dh
+   *
+   * Base64-encoded public key
+   */
+  p256dh: string
 }
 
 /**
  * PushSubscriptionOut
  */
 export type PushSubscriptionOut = {
-  /**
-   * Id
-   */
-  id: string
-  /**
-   * User Id
-   */
-  user_id: string
-  /**
-   * Endpoint
-   */
-  endpoint: string
-  /**
-   * P256Dh
-   */
-  p256dh: string
   /**
    * Auth
    */
@@ -1788,21 +1686,37 @@ export type PushSubscriptionOut = {
    */
   created_at: string
   /**
-   * User Agent
+   * Endpoint
    */
-  user_agent?: string | null
+  endpoint: string
+  /**
+   * Id
+   */
+  id: string
   /**
    * Last Seen At
    */
   last_seen_at?: string | null
   /**
-   * Updated At
+   * P256Dh
    */
-  updated_at?: string | null
+  p256dh: string
   /**
    * Topics
    */
   topics?: Array<string>
+  /**
+   * Updated At
+   */
+  updated_at?: string | null
+  /**
+   * User Agent
+   */
+  user_agent?: string | null
+  /**
+   * User Id
+   */
+  user_id: string
 }
 
 /**
@@ -1824,11 +1738,13 @@ export type PushSubscriptionTopicsUpdate = {
  */
 export type PushTestRequest = {
   /**
-   * Title
-   *
-   * Notification title
+   * Actions
    */
-  title?: string
+  actions?: Array<NotificationAction> | null
+  /**
+   * Badge
+   */
+  badge?: string | null
   /**
    * Body
    *
@@ -1836,45 +1752,43 @@ export type PushTestRequest = {
    */
   body?: string | null
   /**
-   * Url
-   *
-   * URL to open when clicking the notification
-   */
-  url?: string | null
-  /**
-   * Tag
-   */
-  tag?: string | null
-  /**
-   * Badge
-   */
-  badge?: string | null
-  /**
-   * Type
-   */
-  type?: string | null
-  /**
-   * Ttl
-   */
-  ttl?: number | null
-  /**
-   * Urgency
-   */
-  urgency?: string | null
-  /**
-   * Topic
-   */
-  topic?: string | null
-  /**
-   * Actions
-   */
-  actions?: Array<NotificationAction> | null
-  /**
    * Data
    */
   data?: {
     [key: string]: unknown
   } | null
+  /**
+   * Tag
+   */
+  tag?: string | null
+  /**
+   * Title
+   *
+   * Notification title
+   */
+  title?: string
+  /**
+   * Topic
+   */
+  topic?: string | null
+  /**
+   * Ttl
+   */
+  ttl?: number | null
+  /**
+   * Type
+   */
+  type?: string | null
+  /**
+   * Urgency
+   */
+  urgency?: string | null
+  /**
+   * Url
+   *
+   * URL to open when clicking the notification
+   */
+  url?: string | null
   /**
    * User Id
    *
@@ -1892,13 +1806,13 @@ export type PushTopicsResponse = {
    */
   allowed: Array<string>
   /**
-   * Topics
-   */
-  topics: Array<string>
-  /**
    * Has Preferences
    */
   has_preferences?: boolean
+  /**
+   * Topics
+   */
+  topics: Array<string>
   /**
    * Updated At
    */
@@ -1917,13 +1831,13 @@ export type PushTopicsResponse = {
  */
 export type ReactionAggregate = {
   /**
-   * Emoji
-   */
-  emoji: string
-  /**
    * Count
    */
   count: number
+  /**
+   * Emoji
+   */
+  emoji: string
   /**
    * Reacted By Me
    */
@@ -1942,17 +1856,17 @@ export type ReactionAggregate = {
  */
 export type ReactorOut = {
   /**
-   * User Id
+   * Avatar Url
    */
-  user_id: string
+  avatar_url?: string | null
   /**
    * Name
    */
   name?: string | null
   /**
-   * Avatar Url
+   * User Id
    */
-  avatar_url?: string | null
+  user_id: string
 }
 
 /**
@@ -1968,13 +1882,13 @@ export type ReactorOut = {
  */
 export type ReadReceiptInfo = {
   /**
-   * User Id
-   */
-  user_id: string
-  /**
    * Last Read At
    */
   last_read_at: string
+  /**
+   * User Id
+   */
+  user_id: string
 }
 
 /**
@@ -2008,6 +1922,14 @@ export type RenameChat = {
  */
 export type ReplyPreview = {
   /**
+   * Content
+   */
+  content: string
+  /**
+   * Deleted At
+   */
+  deleted_at?: string | null
+  /**
    * Id
    */
   id: string
@@ -2019,14 +1941,6 @@ export type ReplyPreview = {
    * Sender Name
    */
   sender_name?: string | null
-  /**
-   * Content
-   */
-  content: string
-  /**
-   * Deleted At
-   */
-  deleted_at?: string | null
 }
 
 /**
@@ -2034,13 +1948,13 @@ export type ReplyPreview = {
  */
 export type ResetPasswordIn = {
   /**
-   * Token
-   */
-  token: string
-  /**
    * Password
    */
   password: string
+  /**
+   * Token
+   */
+  token: string
 }
 
 /**
@@ -2048,9 +1962,29 @@ export type ResetPasswordIn = {
  */
 export type ScheduleCreate = {
   /**
+   * End Time
+   */
+  end_time: string
+  /**
    * Group Id
    */
   group_id: string
+  /**
+   * Lesson Type
+   */
+  lesson_type?: string | null
+  /**
+   * Parity
+   */
+  parity?: string | null
+  /**
+   * Room
+   */
+  room?: string | null
+  /**
+   * Start Time
+   */
+  start_time: string
   /**
    * Subject
    */
@@ -2060,29 +1994,9 @@ export type ScheduleCreate = {
    */
   teacher?: string | null
   /**
-   * Room
-   */
-  room?: string | null
-  /**
    * Weekday
    */
   weekday: string
-  /**
-   * Start Time
-   */
-  start_time: string
-  /**
-   * End Time
-   */
-  end_time: string
-  /**
-   * Parity
-   */
-  parity?: string | null
-  /**
-   * Lesson Type
-   */
-  lesson_type?: string | null
 }
 
 /**
@@ -2090,9 +2004,41 @@ export type ScheduleCreate = {
  */
 export type ScheduleOut = {
   /**
+   * Created At
+   */
+  created_at?: string | null
+  /**
+   * End Time
+   */
+  end_time: string
+  /**
    * Group Id
    */
   group_id: string
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Lesson Type
+   */
+  lesson_type?: string | null
+  /**
+   * Lesson Type Display
+   */
+  lesson_type_display?: string | null
+  /**
+   * Parity
+   */
+  parity?: string | null
+  /**
+   * Room
+   */
+  room?: string | null
+  /**
+   * Start Time
+   */
+  start_time: string
   /**
    * Subject
    */
@@ -2102,41 +2048,9 @@ export type ScheduleOut = {
    */
   teacher?: string | null
   /**
-   * Room
-   */
-  room?: string | null
-  /**
    * Weekday
    */
   weekday: string
-  /**
-   * Start Time
-   */
-  start_time: string
-  /**
-   * End Time
-   */
-  end_time: string
-  /**
-   * Parity
-   */
-  parity?: string | null
-  /**
-   * Lesson Type
-   */
-  lesson_type?: string | null
-  /**
-   * Created At
-   */
-  created_at?: string | null
-  /**
-   * Id
-   */
-  id: string
-  /**
-   * Lesson Type Display
-   */
-  lesson_type_display?: string | null
 }
 
 /**
@@ -2144,9 +2058,29 @@ export type ScheduleOut = {
  */
 export type ScheduleUpdate = {
   /**
+   * End Time
+   */
+  end_time?: string | null
+  /**
    * Group Id
    */
   group_id?: string | null
+  /**
+   * Lesson Type
+   */
+  lesson_type?: string | null
+  /**
+   * Parity
+   */
+  parity?: string | null
+  /**
+   * Room
+   */
+  room?: string | null
+  /**
+   * Start Time
+   */
+  start_time?: string | null
   /**
    * Subject
    */
@@ -2156,29 +2090,9 @@ export type ScheduleUpdate = {
    */
   teacher?: string | null
   /**
-   * Room
-   */
-  room?: string | null
-  /**
    * Weekday
    */
   weekday?: string | null
-  /**
-   * Start Time
-   */
-  start_time?: string | null
-  /**
-   * End Time
-   */
-  end_time?: string | null
-  /**
-   * Parity
-   */
-  parity?: string | null
-  /**
-   * Lesson Type
-   */
-  lesson_type?: string | null
 }
 
 /**
@@ -2186,25 +2100,25 @@ export type ScheduleUpdate = {
  */
 export type SendTestResponse = {
   /**
-   * Total
+   * Detail
    */
-  total?: number
-  /**
-   * Sent
-   */
-  sent: number
-  /**
-   * Removed
-   */
-  removed: number
+  detail?: string | null
   /**
    * Failed
    */
   failed: number
   /**
-   * Detail
+   * Removed
    */
-  detail?: string | null
+  removed: number
+  /**
+   * Sent
+   */
+  sent: number
+  /**
+   * Total
+   */
+  total?: number
 }
 
 /**
@@ -2242,17 +2156,37 @@ export type SpotifyAuthUrl = {
  */
 export type SpotifyNowPlayingOut = {
   /**
-   * Is Playing
+   * Album Image Url
    */
-  is_playing: boolean
+  album_image_url?: string | null
   /**
-   * Progress Ms
+   * Album Name
    */
-  progress_ms?: number | null
+  album_name?: string | null
+  /**
+   * Artists
+   */
+  artists?: Array<string>
   /**
    * Duration Ms
    */
   duration_ms?: number | null
+  /**
+   * Fetched At
+   */
+  fetched_at: string
+  /**
+   * Is Playing
+   */
+  is_playing: boolean
+  /**
+   * Preview Url
+   */
+  preview_url?: string | null
+  /**
+   * Progress Ms
+   */
+  progress_ms?: number | null
   /**
    * Track Id
    */
@@ -2262,51 +2196,15 @@ export type SpotifyNowPlayingOut = {
    */
   track_name?: string | null
   /**
-   * Artists
-   */
-  artists?: Array<string>
-  /**
-   * Album Name
-   */
-  album_name?: string | null
-  /**
-   * Album Image Url
-   */
-  album_image_url?: string | null
-  /**
    * Track Url
    */
   track_url?: string | null
-  /**
-   * Preview Url
-   */
-  preview_url?: string | null
-  /**
-   * Fetched At
-   */
-  fetched_at: string
 }
 
 /**
  * StoryCreate
  */
 export type StoryCreate = {
-  /**
-   * Title
-   */
-  title: string
-  /**
-   * Title En
-   */
-  title_en?: string | null
-  /**
-   * Short Text
-   */
-  short_text: string
-  /**
-   * Short Text En
-   */
-  short_text_en?: string | null
   /**
    * Cover Url
    */
@@ -2315,10 +2213,6 @@ export type StoryCreate = {
    * Cta Url
    */
   cta_url?: string | null
-  /**
-   * Published At
-   */
-  published_at?: string | null
   /**
    * Expires At
    */
@@ -2327,28 +2221,10 @@ export type StoryCreate = {
    * Is Active
    */
   is_active?: boolean
-}
-
-/**
- * StoryOut
- */
-export type StoryOut = {
   /**
-   * Created At
+   * Published At
    */
-  created_at: string
-  /**
-   * Id
-   */
-  id: string
-  /**
-   * Title
-   */
-  title: string
-  /**
-   * Title En
-   */
-  title_en?: string | null
+  published_at?: string | null
   /**
    * Short Text
    */
@@ -2358,6 +2234,78 @@ export type StoryOut = {
    */
   short_text_en?: string | null
   /**
+   * Title
+   */
+  title: string
+  /**
+   * Title En
+   */
+  title_en?: string | null
+}
+
+/**
+ * StoryOut
+ */
+export type StoryOut = {
+  /**
+   * Cover Url
+   */
+  cover_url?: string | null
+  /**
+   * Cover Url Optimized
+   */
+  cover_url_optimized?: string | null
+  /**
+   * Created At
+   */
+  created_at: string
+  /**
+   * Created By
+   */
+  created_by?: string | unknown | null
+  /**
+   * Cta Url
+   */
+  cta_url?: string | null
+  /**
+   * Expires At
+   */
+  expires_at: string
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Is Active
+   */
+  is_active: boolean
+  /**
+   * Published At
+   */
+  published_at: string
+  /**
+   * Short Text
+   */
+  short_text: string
+  /**
+   * Short Text En
+   */
+  short_text_en?: string | null
+  /**
+   * Title
+   */
+  title: string
+  /**
+   * Title En
+   */
+  title_en?: string | null
+}
+
+/**
+ * StoryUpdate
+ */
+export type StoryUpdate = {
+  /**
    * Cover Url
    */
   cover_url?: string | null
@@ -2366,39 +2314,17 @@ export type StoryOut = {
    */
   cta_url?: string | null
   /**
-   * Published At
-   */
-  published_at: string
-  /**
    * Expires At
    */
-  expires_at: string
+  expires_at?: string | null
   /**
    * Is Active
    */
-  is_active: boolean
+  is_active?: boolean | null
   /**
-   * Created By
+   * Published At
    */
-  created_by?: string | unknown | null
-  /**
-   * Cover Url Optimized
-   */
-  cover_url_optimized?: string | null
-}
-
-/**
- * StoryUpdate
- */
-export type StoryUpdate = {
-  /**
-   * Title
-   */
-  title?: string | null
-  /**
-   * Title En
-   */
-  title_en?: string | null
+  published_at?: string | null
   /**
    * Short Text
    */
@@ -2408,25 +2334,13 @@ export type StoryUpdate = {
    */
   short_text_en?: string | null
   /**
-   * Cover Url
+   * Title
    */
-  cover_url?: string | null
+  title?: string | null
   /**
-   * Cta Url
+   * Title En
    */
-  cta_url?: string | null
-  /**
-   * Published At
-   */
-  published_at?: string | null
-  /**
-   * Expires At
-   */
-  expires_at?: string | null
-  /**
-   * Is Active
-   */
-  is_active?: boolean | null
+  title_en?: string | null
 }
 
 /**
@@ -2434,17 +2348,21 @@ export type StoryUpdate = {
  */
 export type TimeTravelResponse = {
   /**
-   * Aggregate Type
-   */
-  aggregate_type: string
-  /**
    * Aggregate Id
    */
   aggregate_id: string
   /**
-   * Target Timestamp
+   * Aggregate Type
    */
-  target_timestamp: string
+  aggregate_type: string
+  /**
+   * Chain Integrity Valid
+   */
+  chain_integrity_valid: boolean
+  /**
+   * Events Replayed
+   */
+  events_replayed: number
   /**
    * State At Timestamp
    */
@@ -2452,21 +2370,17 @@ export type TimeTravelResponse = {
     [key: string]: unknown
   } | null
   /**
-   * Version At Timestamp
-   */
-  version_at_timestamp?: number | null
-  /**
-   * Events Replayed
-   */
-  events_replayed: number
-  /**
-   * Chain Integrity Valid
-   */
-  chain_integrity_valid: boolean
-  /**
    * Tampered Event Id
    */
   tampered_event_id?: string | null
+  /**
+   * Target Timestamp
+   */
+  target_timestamp: string
+  /**
+   * Version At Timestamp
+   */
+  version_at_timestamp?: number | null
 }
 
 /**
@@ -2477,12 +2391,12 @@ export type TokenWithProfile = {
    * Access Token
    */
   access_token?: string | null
+  session?: SessionSigningKeyOut | null
   /**
    * Token Type
    */
   token_type?: string
   user: UserOut
-  session?: SessionSigningKeyOut | null
 }
 
 /**
@@ -2490,13 +2404,13 @@ export type TokenWithProfile = {
  */
 export type TotpEnrollmentConfirmIn = {
   /**
-   * Enrollment Id
-   */
-  enrollment_id: string
-  /**
    * Code
    */
   code: string
+  /**
+   * Enrollment Id
+   */
+  enrollment_id: string
 }
 
 /**
@@ -2519,13 +2433,13 @@ export type TotpEnrollmentStartIn = {
 export type TotpEnrollmentStartOut = {
   enrollment: MfaTotpEnrollmentOut
   /**
-   * Secret
-   */
-  secret: string
-  /**
    * Otpauth Url
    */
   otpauth_url: string
+  /**
+   * Secret
+   */
+  secret: string
 }
 
 /**
@@ -2533,14 +2447,13 @@ export type TotpEnrollmentStartOut = {
  */
 export type UserAdminUpdate = {
   /**
-   * Full Name
-   */
-  full_name?: string | null
-  /**
    * Email
    */
   email?: string | null
-  role?: UserRole | null
+  /**
+   * Full Name
+   */
+  full_name?: string | null
   /**
    * Group Id
    */
@@ -2549,6 +2462,7 @@ export type UserAdminUpdate = {
    * Reset Mfa
    */
   reset_mfa?: boolean | null
+  role?: UserRole | null
 }
 
 /**
@@ -2560,65 +2474,37 @@ export type UserCreate = {
    */
   about?: string | null
   /**
-   * Telegram
+   * Achievements
    */
-  telegram?: string | null
+  achievements?: string | null
   /**
-   * Profile Status
+   * Avatar Url
    */
-  profile_status?: string | null
-  /**
-   * Profile Department
-   */
-  profile_department?: string | null
-  /**
-   * Position
-   */
-  position?: string | null
+  avatar_url?: string | null
   /**
    * Course
    */
   course?: string | null
   /**
-   * Institute
+   * Cover Url
    */
-  institute?: string | null
-  /**
-   * Achievements
-   */
-  achievements?: string | null
-  /**
-   * Education Level
-   */
-  education_level?: string | null
-  /**
-   * Track
-   */
-  track?: string | null
-  /**
-   * Program
-   */
-  program?: string | null
-  /**
-   * Record Book Number
-   */
-  record_book_number?: string | null
-  /**
-   * Timezone
-   */
-  timezone?: string | null
+  cover_url?: string | null
   /**
    * Dnd Enabled
    */
   dnd_enabled?: boolean
   /**
+   * Dnd End
+   */
+  dnd_end?: string | null
+  /**
    * Dnd Start
    */
   dnd_start?: string | null
   /**
-   * Dnd End
+   * Education Level
    */
-  dnd_end?: string | null
+  education_level?: string | null
   /**
    * Email
    */
@@ -2627,19 +2513,43 @@ export type UserCreate = {
    * Full Name
    */
   full_name?: string | null
-  role?: UserRole
   /**
    * Group Id
    */
   group_id?: string | null
   /**
-   * Avatar Url
+   * Institute
    */
-  avatar_url?: string | null
+  institute?: string | null
   /**
-   * Cover Url
+   * Invite Code
    */
-  cover_url?: string | null
+  invite_code?: string | null
+  /**
+   * Password
+   */
+  password: string
+  /**
+   * Position
+   */
+  position?: string | null
+  /**
+   * Profile Department
+   */
+  profile_department?: string | null
+  /**
+   * Profile Status
+   */
+  profile_status?: string | null
+  /**
+   * Program
+   */
+  program?: string | null
+  /**
+   * Record Book Number
+   */
+  record_book_number?: string | null
+  role?: UserRole
   /**
    * Spotify Connected
    */
@@ -2649,23 +2559,23 @@ export type UserCreate = {
    */
   spotify_display_name?: string | null
   /**
-   * Password
+   * Telegram
    */
-  password: string
+  telegram?: string | null
   /**
-   * Invite Code
+   * Timezone
    */
-  invite_code?: string | null
+  timezone?: string | null
+  /**
+   * Track
+   */
+  track?: string | null
 }
 
 /**
  * UserEducationBase
  */
 export type UserEducationBase = {
-  /**
-   * Institute
-   */
-  institute?: string | null
   /**
    * Course
    */
@@ -2675,9 +2585,9 @@ export type UserEducationBase = {
    */
   education_level?: string | null
   /**
-   * Track
+   * Institute
    */
-  track?: string | null
+  institute?: string | null
   /**
    * Program
    */
@@ -2686,6 +2596,10 @@ export type UserEducationBase = {
    * Record Book Number
    */
   record_book_number?: string | null
+  /**
+   * Track
+   */
+  track?: string | null
 }
 
 /**
@@ -2721,41 +2635,112 @@ export type UserOut = {
    */
   about?: string | null
   /**
-   * Telegram
+   * Achievements
    */
-  telegram?: string | null
+  achievements?: string | null
   /**
-   * Profile Status
+   * Avatar Url
    */
-  profile_status?: string | null
+  avatar_url?: string | null
   /**
-   * Profile Department
+   * Avatar Url Optimized
    */
-  profile_department?: string | null
-  /**
-   * Position
-   */
-  position?: string | null
+  avatar_url_optimized?: string | null
   /**
    * Course
    */
   course?: string | null
   /**
-   * Institute
+   * Cover Url
    */
-  institute?: string | null
+  cover_url?: string | null
   /**
-   * Achievements
+   * Cover Url Optimized
    */
-  achievements?: string | null
+  cover_url_optimized?: string | null
+  /**
+   * Created At
+   */
+  created_at?: string | null
+  /**
+   * Dnd Enabled
+   */
+  dnd_enabled?: boolean
+  /**
+   * Dnd End
+   */
+  dnd_end?: string | null
+  /**
+   * Dnd Start
+   */
+  dnd_start?: string | null
   /**
    * Education Level
    */
   education_level?: string | null
+  education_path?: UserEducationBase | null
   /**
-   * Track
+   * Email
    */
-  track?: string | null
+  email: string
+  /**
+   * Email Mfa Enabled At
+   */
+  email_mfa_enabled_at?: string | null
+  /**
+   * Email Verified At
+   */
+  email_verified_at?: string | null
+  /**
+   * Full Name
+   */
+  full_name?: string | null
+  /**
+   * Group Id
+   */
+  group_id?: string | null
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Institute
+   */
+  institute?: string | null
+  /**
+   * Is Active
+   */
+  is_active: boolean
+  /**
+   * Mfa Default Method
+   */
+  mfa_default_method?: "totp" | "email_otp" | null
+  /**
+   * Mfa Last Verified At
+   */
+  mfa_last_verified_at?: string | null
+  /**
+   * Mfa Required
+   */
+  mfa_required?: boolean
+  /**
+   * Pending Email
+   */
+  pending_email?: string | null
+  /**
+   * Position
+   */
+  position?: string | null
+  preferences?: UserPreferencesBase | null
+  /**
+   * Profile Department
+   */
+  profile_department?: string | null
+  profile_detail?: UserProfileBase | null
+  /**
+   * Profile Status
+   */
+  profile_status?: string | null
   /**
    * Program
    */
@@ -2765,42 +2750,10 @@ export type UserOut = {
    */
   record_book_number?: string | null
   /**
-   * Timezone
+   * Recovery Codes Left
    */
-  timezone?: string | null
-  /**
-   * Dnd Enabled
-   */
-  dnd_enabled?: boolean
-  /**
-   * Dnd Start
-   */
-  dnd_start?: string | null
-  /**
-   * Dnd End
-   */
-  dnd_end?: string | null
-  /**
-   * Email
-   */
-  email: string
-  /**
-   * Full Name
-   */
-  full_name?: string | null
+  recovery_codes_left?: number
   role?: UserRole
-  /**
-   * Group Id
-   */
-  group_id?: string | null
-  /**
-   * Avatar Url
-   */
-  avatar_url?: string | null
-  /**
-   * Cover Url
-   */
-  cover_url?: string | null
   /**
    * Spotify Connected
    */
@@ -2810,60 +2763,25 @@ export type UserOut = {
    */
   spotify_display_name?: string | null
   /**
-   * Created At
-   */
-  created_at?: string | null
-  /**
-   * Id
-   */
-  id: string
-  /**
-   * Is Active
-   */
-  is_active: boolean
-  /**
-   * Pending Email
-   */
-  pending_email?: string | null
-  /**
    * Spotify Is Connected
    */
   spotify_is_connected?: boolean | null
   /**
-   * Mfa Required
+   * Telegram
    */
-  mfa_required?: boolean
+  telegram?: string | null
   /**
-   * Mfa Default Method
+   * Timezone
    */
-  mfa_default_method?: string | null
-  /**
-   * Mfa Last Verified At
-   */
-  mfa_last_verified_at?: string | null
+  timezone?: string | null
   /**
    * Totp Enrollments
    */
   totp_enrollments?: Array<MfaTotpEnrollmentOut>
   /**
-   * Mfa Challenges
+   * Track
    */
-  mfa_challenges?: Array<MfaChallengeOut>
-  /**
-   * Recovery Codes Left
-   */
-  recovery_codes_left?: number
-  profile_detail?: UserProfileBase | null
-  preferences?: UserPreferencesBase | null
-  education_path?: UserEducationBase | null
-  /**
-   * Avatar Url Optimized
-   */
-  avatar_url_optimized?: string | null
-  /**
-   * Cover Url Optimized
-   */
-  cover_url_optimized?: string | null
+  track?: string | null
 }
 
 /**
@@ -2893,13 +2811,13 @@ export type UserPreferencesBase = {
    */
   dnd_enabled?: boolean | null
   /**
-   * Dnd Start
-   */
-  dnd_start?: string | null
-  /**
    * Dnd End
    */
   dnd_end?: string | null
+  /**
+   * Dnd Start
+   */
+  dnd_start?: string | null
   /**
    * Timezone
    */
@@ -2915,14 +2833,6 @@ export type UserProfileBase = {
    */
   about?: string | null
   /**
-   * Telegram
-   */
-  telegram?: string | null
-  /**
-   * Status
-   */
-  status?: string | null
-  /**
    * Achievements
    */
   achievements?: string | null
@@ -2934,6 +2844,14 @@ export type UserProfileBase = {
    * Position
    */
   position?: string | null
+  /**
+   * Status
+   */
+  status?: string | null
+  /**
+   * Telegram
+   */
+  telegram?: string | null
 }
 
 /**
@@ -2941,21 +2859,56 @@ export type UserProfileBase = {
  */
 export type UserProfileUpdate = {
   /**
-   * Institute
+   * About
    */
-  institute?: string | null
+  about?: string | null
+  /**
+   * Achievements
+   */
+  achievements?: string | null
   /**
    * Course
    */
   course?: string | null
   /**
+   * Created At
+   */
+  created_at?: string | null
+  /**
+   * Department
+   */
+  department?: string | null
+  /**
+   * Dnd Enabled
+   */
+  dnd_enabled?: boolean | null
+  /**
+   * Dnd End
+   */
+  dnd_end?: string | null
+  /**
+   * Dnd Start
+   */
+  dnd_start?: string | null
+  /**
    * Education Level
    */
   education_level?: string | null
+  education_path?: UserEducationBase | null
   /**
-   * Track
+   * Full Name
    */
-  track?: string | null
+  full_name?: string | null
+  /**
+   * Institute
+   */
+  institute?: string | null
+  /**
+   * Position
+   */
+  position?: string | null
+  preferences?: UserPreferencesBase | null
+  profile_detail?: UserProfileBase | null
   /**
    * Program
    */
@@ -2965,60 +2918,21 @@ export type UserProfileUpdate = {
    */
   record_book_number?: string | null
   /**
-   * Created At
+   * Status
    */
-  created_at?: string | null
-  /**
-   * Dnd Enabled
-   */
-  dnd_enabled?: boolean | null
-  /**
-   * Dnd Start
-   */
-  dnd_start?: string | null
-  /**
-   * Dnd End
-   */
-  dnd_end?: string | null
-  /**
-   * Timezone
-   */
-  timezone?: string | null
-  /**
-   * About
-   */
-  about?: string | null
+  status?: string | null
   /**
    * Telegram
    */
   telegram?: string | null
   /**
-   * Status
+   * Timezone
    */
-  status?: string | null
+  timezone?: string | null
   /**
-   * Achievements
+   * Track
    */
-  achievements?: string | null
-  /**
-   * Department
-   */
-  department?: string | null
-  /**
-   * Position
-   */
-  position?: string | null
-  /**
-   * Full Name
-   */
-  full_name?: string | null
-  /**
-   * Email
-   */
-  email?: string | null
-  profile_detail?: UserProfileBase | null
-  preferences?: UserPreferencesBase | null
-  education_path?: UserEducationBase | null
+  track?: string | null
 }
 
 /**
@@ -3032,64 +2946,64 @@ export type UserPublicOut = {
    */
   about?: string | null
   /**
-   * Telegram
+   * Avatar Url
    */
-  telegram?: string | null
+  avatar_url?: string | null
   /**
-   * Profile Status
+   * Avatar Url Optimized
    */
-  profile_status?: string | null
-  /**
-   * Profile Department
-   */
-  profile_department?: string | null
-  /**
-   * Position
-   */
-  position?: string | null
+  avatar_url_optimized?: string | null
   /**
    * Course
    */
   course?: string | null
   /**
-   * Institute
+   * Cover Url
    */
-  institute?: string | null
+  cover_url?: string | null
   /**
    * Created At
    */
   created_at?: string | null
-  /**
-   * Id
-   */
-  id: string
+  education_path?: UserEducationBase | null
   /**
    * Full Name
    */
   full_name?: string | null
-  role?: UserRole
   /**
    * Group Id
    */
   group_id?: string | null
   /**
-   * Avatar Url
+   * Id
    */
-  avatar_url?: string | null
+  id: string
   /**
-   * Cover Url
+   * Institute
    */
-  cover_url?: string | null
-  profile_detail?: UserProfileBase | null
-  education_path?: UserEducationBase | null
+  institute?: string | null
   /**
    * Is Active
    */
   is_active: boolean
   /**
-   * Avatar Url Optimized
+   * Position
    */
-  avatar_url_optimized?: string | null
+  position?: string | null
+  /**
+   * Profile Department
+   */
+  profile_department?: string | null
+  profile_detail?: UserProfileBase | null
+  /**
+   * Profile Status
+   */
+  profile_status?: string | null
+  role?: UserRole
+  /**
+   * Telegram
+   */
+  telegram?: string | null
 }
 
 /**
@@ -3104,6 +3018,16 @@ export type UserRole = "student" | "teacher" | "admin" | "superuser" | "anonymou
  */
 export type ValidationError = {
   /**
+   * Context
+   */
+  ctx?: {
+    [key: string]: unknown
+  }
+  /**
+   * Input
+   */
+  input?: unknown
+  /**
    * Location
    */
   loc: Array<string | number>
@@ -3115,68 +3039,6 @@ export type ValidationError = {
    * Error Type
    */
   type: string
-  /**
-   * Input
-   */
-  input?: unknown
-  /**
-   * Context
-   */
-  ctx?: {
-    [key: string]: unknown
-  }
-}
-
-/**
- * WebAuthnAuthenticationOptionsOut
- */
-export type WebAuthnAuthenticationOptionsOut = {
-  /**
-   * Publickey
-   */
-  publicKey: {
-    [key: string]: unknown
-  }
-  /**
-   * Challenge Token
-   */
-  challenge_token: string
-}
-
-/**
- * WebAuthnRegistrationOptionsOut
- */
-export type WebAuthnRegistrationOptionsOut = {
-  /**
-   * Publickey
-   */
-  publicKey: {
-    [key: string]: unknown
-  }
-  /**
-   * Challenge Token
-   */
-  challenge_token: string
-}
-
-/**
- * WebAuthnRegistrationVerifyIn
- */
-export type WebAuthnRegistrationVerifyIn = {
-  /**
-   * Challenge
-   */
-  challenge: string
-  /**
-   * Response
-   */
-  response: {
-    [key: string]: unknown
-  }
-  /**
-   * Label
-   */
-  label?: string | null
 }
 
 /**
@@ -3184,13 +3046,13 @@ export type WebAuthnRegistrationVerifyIn = {
  */
 export type WsTicketResponse = {
   /**
-   * Ticket
-   */
-  ticket: string
-  /**
    * Expires In
    */
   expires_in: number
+  /**
+   * Ticket
+   */
+  ticket: string
 }
 
 export type GetRootGetData = {
@@ -3207,65 +3069,152 @@ export type GetRootGetResponses = {
   200: unknown
 }
 
-export type LivenessHealthLiveGetData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/health/live"
-}
-
-export type LivenessHealthLiveGetResponses = {
-  /**
-   * Response Liveness Health Live Get
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: string
-  }
-}
-
-export type LivenessHealthLiveGetResponse =
-  LivenessHealthLiveGetResponses[keyof LivenessHealthLiveGetResponses]
-
-export type HealthzHealthzGetData = {
+export type ListAuditLogsAdminAuditGetData = {
   body?: never
   path?: never
   query?: {
     /**
-     * Brief
+     * Limit
      */
-    brief?: boolean
+    limit?: number
+    /**
+     * Offset
+     */
+    offset?: number
+    /**
+     * Actor Id
+     */
+    actor_id?: string | null
+    /**
+     * Subject Id
+     */
+    subject_id?: string | null
+    /**
+     * Resource Type
+     */
+    resource_type?: string | null
+    /**
+     * Action
+     */
+    action?: string | null
   }
-  url: "/healthz"
+  url: "/admin/audit"
 }
 
-export type HealthzHealthzGetErrors = {
+export type ListAuditLogsAdminAuditGetErrors = {
   /**
    * Validation Error
    */
   422: HttpValidationError
 }
 
-export type HealthzHealthzGetError = HealthzHealthzGetErrors[keyof HealthzHealthzGetErrors]
+export type ListAuditLogsAdminAuditGetError =
+  ListAuditLogsAdminAuditGetErrors[keyof ListAuditLogsAdminAuditGetErrors]
 
-export type HealthzHealthzGetResponses = {
+export type ListAuditLogsAdminAuditGetResponses = {
   /**
    * Successful Response
    */
-  200: unknown
+  200: AuditLogListOut
 }
 
-export type ReadyHealthReadyGetData = {
+export type ListAuditLogsAdminAuditGetResponse =
+  ListAuditLogsAdminAuditGetResponses[keyof ListAuditLogsAdminAuditGetResponses]
+
+export type GetTimeTravelStateAdminAuditTimeTravelGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Aggregate Type
+     *
+     * Aggregate type: 'schedule', 'grade', 'user', 'assessment'
+     */
+    aggregate_type: string
+    /**
+     * Aggregate Id
+     *
+     * UUID of the aggregate entity
+     */
+    aggregate_id: string
+    /**
+     * Target Timestamp
+     *
+     * Target timestamp in ISO format
+     */
+    target_timestamp?: string | null
+    /**
+     * Timestamp
+     *
+     * Target timestamp alias
+     */
+    timestamp?: string | null
+    /**
+     * Verify Chain
+     *
+     * Verify HMAC chain integrity up to target timestamp
+     */
+    verify_chain?: boolean
+  }
+  url: "/admin/audit/time-travel"
+}
+
+export type GetTimeTravelStateAdminAuditTimeTravelGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetTimeTravelStateAdminAuditTimeTravelGetError =
+  GetTimeTravelStateAdminAuditTimeTravelGetErrors[keyof GetTimeTravelStateAdminAuditTimeTravelGetErrors]
+
+export type GetTimeTravelStateAdminAuditTimeTravelGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: TimeTravelResponse
+}
+
+export type GetTimeTravelStateAdminAuditTimeTravelGetResponse =
+  GetTimeTravelStateAdminAuditTimeTravelGetResponses[keyof GetTimeTravelStateAdminAuditTimeTravelGetResponses]
+
+export type ListFeatureFlagsAdminFeatureFlagsGetData = {
   body?: never
   path?: never
   query?: never
-  url: "/health/ready"
+  url: "/admin/feature-flags"
 }
 
-export type ReadyHealthReadyGetResponses = {
+export type ListFeatureFlagsAdminFeatureFlagsGetResponses = {
   /**
-   * Response Ready Health Ready Get
+   * Response List Feature Flags Admin Feature Flags Get
+   *
+   * Successful Response
+   */
+  200: Array<FeatureFlagOut>
+}
+
+export type ListFeatureFlagsAdminFeatureFlagsGetResponse =
+  ListFeatureFlagsAdminFeatureFlagsGetResponses[keyof ListFeatureFlagsAdminFeatureFlagsGetResponses]
+
+export type GetCsrfCookieApiV1AuthCsrfCookieGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/auth/csrf-cookie"
+}
+
+export type GetCsrfCookieApiV1AuthCsrfCookieGetErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type GetCsrfCookieApiV1AuthCsrfCookieGetResponses = {
+  /**
+   * Response Get Csrf Cookie Api V1 Auth Csrf Cookie Get
    *
    * Successful Response
    */
@@ -3274,120 +3223,8 @@ export type ReadyHealthReadyGetResponses = {
   }
 }
 
-export type ReadyHealthReadyGetResponse =
-  ReadyHealthReadyGetResponses[keyof ReadyHealthReadyGetResponses]
-
-export type ReadyReadyGetData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/ready"
-}
-
-export type ReadyReadyGetResponses = {
-  /**
-   * Response Ready Ready Get
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: string
-  }
-}
-
-export type ReadyReadyGetResponse = ReadyReadyGetResponses[keyof ReadyReadyGetResponses]
-
-export type LogoutApiV1AuthLogoutPostData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/auth/logout"
-}
-
-export type LogoutApiV1AuthLogoutPostErrors = {
-  /**
-   * Unauthorized
-   */
-  401: unknown
-}
-
-export type LogoutApiV1AuthLogoutPostResponses = {
-  /**
-   * Response Logout Api V1 Auth Logout Post
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: string
-  }
-}
-
-export type LogoutApiV1AuthLogoutPostResponse =
-  LogoutApiV1AuthLogoutPostResponses[keyof LogoutApiV1AuthLogoutPostResponses]
-
-export type LoginPasskeyStartApiV1AuthLoginPasskeyStartPostData = {
-  body: LoginPasskeyStartIn
-  path?: never
-  query?: never
-  url: "/api/v1/auth/login/passkey/start"
-}
-
-export type LoginPasskeyStartApiV1AuthLoginPasskeyStartPostErrors = {
-  /**
-   * Unauthorized
-   */
-  401: unknown
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type LoginPasskeyStartApiV1AuthLoginPasskeyStartPostError =
-  LoginPasskeyStartApiV1AuthLoginPasskeyStartPostErrors[keyof LoginPasskeyStartApiV1AuthLoginPasskeyStartPostErrors]
-
-export type LoginPasskeyStartApiV1AuthLoginPasskeyStartPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: WebAuthnAuthenticationOptionsOut
-}
-
-export type LoginPasskeyStartApiV1AuthLoginPasskeyStartPostResponse =
-  LoginPasskeyStartApiV1AuthLoginPasskeyStartPostResponses[keyof LoginPasskeyStartApiV1AuthLoginPasskeyStartPostResponses]
-
-export type LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostData = {
-  body: LoginPasskeyVerifyIn
-  path?: never
-  query?: never
-  url: "/api/v1/auth/login/passkey/verify"
-}
-
-export type LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostErrors = {
-  /**
-   * Unauthorized
-   */
-  401: unknown
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostError =
-  LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostErrors[keyof LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostErrors]
-
-export type LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostResponses = {
-  /**
-   * Response Login Passkey Verify Api V1 Auth Login Passkey Verify Post
-   *
-   * Successful Response
-   */
-  200: TokenWithProfile | PendingMfaResponse
-}
-
-export type LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostResponse =
-  LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostResponses[keyof LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostResponses]
+export type GetCsrfCookieApiV1AuthCsrfCookieGetResponse =
+  GetCsrfCookieApiV1AuthCsrfCookieGetResponses[keyof GetCsrfCookieApiV1AuthCsrfCookieGetResponses]
 
 export type LoginApiV1AuthLoginPostData = {
   body: BodyLoginApiV1AuthLoginPost
@@ -3455,6 +3292,348 @@ export type LoginJsonApiV1AuthLoginJsonPostResponses = {
 export type LoginJsonApiV1AuthLoginJsonPostResponse =
   LoginJsonApiV1AuthLoginJsonPostResponses[keyof LoginJsonApiV1AuthLoginJsonPostResponses]
 
+export type LogoutApiV1AuthLogoutPostData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/auth/logout"
+}
+
+export type LogoutApiV1AuthLogoutPostErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type LogoutApiV1AuthLogoutPostResponses = {
+  /**
+   * Response Logout Api V1 Auth Logout Post
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type LogoutApiV1AuthLogoutPostResponse =
+  LogoutApiV1AuthLogoutPostResponses[keyof LogoutApiV1AuthLogoutPostResponses]
+
+export type DisableEmailMfaEndpointApiV1AuthMfaEmailDeleteData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/auth/mfa/email"
+}
+
+export type DisableEmailMfaEndpointApiV1AuthMfaEmailDeleteErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type DisableEmailMfaEndpointApiV1AuthMfaEmailDeleteResponses = {
+  /**
+   * Successful Response
+   */
+  200: MfaFactorStatusOut
+}
+
+export type DisableEmailMfaEndpointApiV1AuthMfaEmailDeleteResponse =
+  DisableEmailMfaEndpointApiV1AuthMfaEmailDeleteResponses[keyof DisableEmailMfaEndpointApiV1AuthMfaEmailDeleteResponses]
+
+export type StartEmailMfaEnablementApiV1AuthMfaEmailEnablePostData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/auth/mfa/email/enable"
+}
+
+export type StartEmailMfaEnablementApiV1AuthMfaEmailEnablePostErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type StartEmailMfaEnablementApiV1AuthMfaEmailEnablePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: MfaMethodChallengeOut
+}
+
+export type StartEmailMfaEnablementApiV1AuthMfaEmailEnablePostResponse =
+  StartEmailMfaEnablementApiV1AuthMfaEmailEnablePostResponses[keyof StartEmailMfaEnablementApiV1AuthMfaEmailEnablePostResponses]
+
+export type ResendEmailMfaChallengeApiV1AuthMfaEmailResendPostData = {
+  body: EmailOtpResendIn
+  path?: never
+  query?: never
+  url: "/api/v1/auth/mfa/email/resend"
+}
+
+export type ResendEmailMfaChallengeApiV1AuthMfaEmailResendPostErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ResendEmailMfaChallengeApiV1AuthMfaEmailResendPostError =
+  ResendEmailMfaChallengeApiV1AuthMfaEmailResendPostErrors[keyof ResendEmailMfaChallengeApiV1AuthMfaEmailResendPostErrors]
+
+export type ResendEmailMfaChallengeApiV1AuthMfaEmailResendPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: MfaMethodChallengeOut
+}
+
+export type ResendEmailMfaChallengeApiV1AuthMfaEmailResendPostResponse =
+  ResendEmailMfaChallengeApiV1AuthMfaEmailResendPostResponses[keyof ResendEmailMfaChallengeApiV1AuthMfaEmailResendPostResponses]
+
+export type StartEmailVerificationApiV1AuthMfaEmailVerificationStartPostData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/auth/mfa/email/verification/start"
+}
+
+export type StartEmailVerificationApiV1AuthMfaEmailVerificationStartPostErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type StartEmailVerificationApiV1AuthMfaEmailVerificationStartPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: MfaMethodChallengeOut
+}
+
+export type StartEmailVerificationApiV1AuthMfaEmailVerificationStartPostResponse =
+  StartEmailVerificationApiV1AuthMfaEmailVerificationStartPostResponses[keyof StartEmailVerificationApiV1AuthMfaEmailVerificationStartPostResponses]
+
+export type GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/auth/mfa/recovery-codes"
+}
+
+export type GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: RecoveryCodesGenerateOut
+}
+
+export type GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponse =
+  GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses[keyof GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses]
+
+export type RequestStepUpApiV1AuthMfaStepUpPostData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/auth/mfa/step-up"
+}
+
+export type RequestStepUpApiV1AuthMfaStepUpPostErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type RequestStepUpApiV1AuthMfaStepUpPostResponses = {
+  /**
+   * Successful Response
+   */
+  202: PendingMfaResponse
+}
+
+export type RequestStepUpApiV1AuthMfaStepUpPostResponse =
+  RequestStepUpApiV1AuthMfaStepUpPostResponses[keyof RequestStepUpApiV1AuthMfaStepUpPostResponses]
+
+export type ListTotpEnrollmentsApiV1AuthMfaTotpGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/auth/mfa/totp"
+}
+
+export type ListTotpEnrollmentsApiV1AuthMfaTotpGetErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
+}
+
+export type ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses = {
+  /**
+   * Response List Totp Enrollments Api V1 Auth Mfa Totp Get
+   *
+   * Successful Response
+   */
+  200: Array<MfaTotpEnrollmentOut>
+}
+
+export type ListTotpEnrollmentsApiV1AuthMfaTotpGetResponse =
+  ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses[keyof ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses]
+
+export type ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostData = {
+  body: TotpEnrollmentConfirmIn
+  path?: never
+  query?: never
+  url: "/api/v1/auth/mfa/totp/confirm"
+}
+
+export type ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostError =
+  ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostErrors[keyof ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostErrors]
+
+export type ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: MfaTotpEnrollmentOut
+}
+
+export type ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostResponse =
+  ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostResponses[keyof ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostResponses]
+
+export type DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Enrollment Id
+     */
+    enrollment_id: string
+  }
+  query?: never
+  url: "/api/v1/auth/mfa/totp/pending/{enrollment_id}"
+}
+
+export type DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteError =
+  DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteErrors[keyof DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteErrors]
+
+export type DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteResponses = {
+  /**
+   * Successful Response
+   */
+  204: void
+}
+
+export type DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteResponse =
+  DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteResponses[keyof DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteResponses]
+
+export type StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostData = {
+  /**
+   * Payload
+   */
+  body?: TotpEnrollmentStartIn | null
+  path?: never
+  query?: never
+  url: "/api/v1/auth/mfa/totp/start"
+}
+
+export type StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostError =
+  StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostErrors[keyof StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostErrors]
+
+export type StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: TotpEnrollmentStartOut
+}
+
+export type StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostResponse =
+  StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostResponses[keyof StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostResponses]
+
+export type DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Enrollment Id
+     */
+    enrollment_id: string
+  }
+  query?: never
+  url: "/api/v1/auth/mfa/totp/{enrollment_id}"
+}
+
+export type DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteErrors = {
+  /**
+   * Unauthorized
+   */
+  401: unknown
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteError =
+  DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteErrors[keyof DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteErrors]
+
+export type DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteResponses = {
+  /**
+   * Successful Response
+   */
+  200: MfaFactorStatusOut
+}
+
+export type DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteResponse =
+  DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteResponses[keyof DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteResponses]
+
 export type VerifyMfaChallengeApiV1AuthMfaVerifyPostData = {
   body: MfaVerifyIn
   path?: never
@@ -3485,34 +3664,6 @@ export type VerifyMfaChallengeApiV1AuthMfaVerifyPostResponses = {
 
 export type VerifyMfaChallengeApiV1AuthMfaVerifyPostResponse =
   VerifyMfaChallengeApiV1AuthMfaVerifyPostResponses[keyof VerifyMfaChallengeApiV1AuthMfaVerifyPostResponses]
-
-export type GetCsrfCookieApiV1AuthCsrfCookieGetData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/auth/csrf-cookie"
-}
-
-export type GetCsrfCookieApiV1AuthCsrfCookieGetErrors = {
-  /**
-   * Unauthorized
-   */
-  401: unknown
-}
-
-export type GetCsrfCookieApiV1AuthCsrfCookieGetResponses = {
-  /**
-   * Response Get Csrf Cookie Api V1 Auth Csrf Cookie Get
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: string
-  }
-}
-
-export type GetCsrfCookieApiV1AuthCsrfCookieGetResponse =
-  GetCsrfCookieApiV1AuthCsrfCookieGetResponses[keyof GetCsrfCookieApiV1AuthCsrfCookieGetResponses]
 
 export type RegisterApiV1AuthRegisterPostData = {
   body: UserCreate
@@ -3573,448 +3724,6 @@ export type GetSessionSigningKeyApiV1AuthSessionSigningKeyGetResponses = {
 export type GetSessionSigningKeyApiV1AuthSessionSigningKeyGetResponse =
   GetSessionSigningKeyApiV1AuthSessionSigningKeyGetResponses[keyof GetSessionSigningKeyApiV1AuthSessionSigningKeyGetResponses]
 
-export type StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostData = {
-  /**
-   * Payload
-   */
-  body?: TotpEnrollmentStartIn | null
-  path?: never
-  query?: never
-  url: "/api/v1/auth/mfa/totp/start"
-}
-
-export type StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostErrors = {
-  /**
-   * Unauthorized
-   */
-  401: unknown
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostError =
-  StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostErrors[keyof StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostErrors]
-
-export type StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: TotpEnrollmentStartOut
-}
-
-export type StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostResponse =
-  StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostResponses[keyof StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostResponses]
-
-export type ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostData = {
-  body: TotpEnrollmentConfirmIn
-  path?: never
-  query?: never
-  url: "/api/v1/auth/mfa/totp/confirm"
-}
-
-export type ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostErrors = {
-  /**
-   * Unauthorized
-   */
-  401: unknown
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostError =
-  ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostErrors[keyof ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostErrors]
-
-export type ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: MfaTotpEnrollmentOut
-}
-
-export type ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostResponse =
-  ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostResponses[keyof ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostResponses]
-
-export type ListTotpEnrollmentsApiV1AuthMfaTotpGetData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/auth/mfa/totp"
-}
-
-export type ListTotpEnrollmentsApiV1AuthMfaTotpGetErrors = {
-  /**
-   * Unauthorized
-   */
-  401: unknown
-}
-
-export type ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses = {
-  /**
-   * Response List Totp Enrollments Api V1 Auth Mfa Totp Get
-   *
-   * Successful Response
-   */
-  200: Array<MfaTotpEnrollmentOut>
-}
-
-export type ListTotpEnrollmentsApiV1AuthMfaTotpGetResponse =
-  ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses[keyof ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses]
-
-export type DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteData = {
-  body?: never
-  path: {
-    /**
-     * Enrollment Id
-     */
-    enrollment_id: string
-  }
-  query?: never
-  url: "/api/v1/auth/mfa/totp/pending/{enrollment_id}"
-}
-
-export type DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteErrors = {
-  /**
-   * Unauthorized
-   */
-  401: unknown
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteError =
-  DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteErrors[keyof DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteErrors]
-
-export type DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteResponses = {
-  /**
-   * Successful Response
-   */
-  204: void
-}
-
-export type DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteResponse =
-  DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteResponses[keyof DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteResponses]
-
-export type DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteData = {
-  body?: never
-  path: {
-    /**
-     * Enrollment Id
-     */
-    enrollment_id: string
-  }
-  query?: never
-  url: "/api/v1/auth/mfa/totp/{enrollment_id}"
-}
-
-export type DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteErrors = {
-  /**
-   * Unauthorized
-   */
-  401: unknown
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteError =
-  DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteErrors[keyof DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteErrors]
-
-export type DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteResponses = {
-  /**
-   * Successful Response
-   */
-  200: MfaFactorStatusOut
-}
-
-export type DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteResponse =
-  DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteResponses[keyof DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteResponses]
-
-export type StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/auth/mfa/webauthn/register/start"
-}
-
-export type StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostErrors = {
-  /**
-   * Unauthorized
-   */
-  401: unknown
-}
-
-export type StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: WebAuthnRegistrationOptionsOut
-}
-
-export type StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostResponse =
-  StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostResponses[keyof StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostResponses]
-
-export type ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostData = {
-  body: WebAuthnRegistrationVerifyIn
-  path?: never
-  query?: never
-  url: "/api/v1/auth/mfa/webauthn/register/confirm"
-}
-
-export type ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostErrors = {
-  /**
-   * Unauthorized
-   */
-  401: unknown
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostError =
-  ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostErrors[keyof ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostErrors]
-
-export type ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: MfaFactorStatusOut
-}
-
-export type ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostResponse =
-  ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostResponses[keyof ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostResponses]
-
-export type ListWebauthnCredentialsApiV1AuthMfaWebauthnGetData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/auth/mfa/webauthn"
-}
-
-export type ListWebauthnCredentialsApiV1AuthMfaWebauthnGetErrors = {
-  /**
-   * Unauthorized
-   */
-  401: unknown
-}
-
-export type ListWebauthnCredentialsApiV1AuthMfaWebauthnGetResponses = {
-  /**
-   * Response List Webauthn Credentials Api V1 Auth Mfa Webauthn Get
-   *
-   * Successful Response
-   */
-  200: Array<{
-    [key: string]: unknown
-  }>
-}
-
-export type ListWebauthnCredentialsApiV1AuthMfaWebauthnGetResponse =
-  ListWebauthnCredentialsApiV1AuthMfaWebauthnGetResponses[keyof ListWebauthnCredentialsApiV1AuthMfaWebauthnGetResponses]
-
-export type DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteData = {
-  body?: never
-  path: {
-    /**
-     * Credential Id
-     */
-    credential_id: string
-  }
-  query?: never
-  url: "/api/v1/auth/mfa/webauthn/{credential_id}"
-}
-
-export type DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteErrors = {
-  /**
-   * Unauthorized
-   */
-  401: unknown
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteError =
-  DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteErrors[keyof DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteErrors]
-
-export type DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteResponses = {
-  /**
-   * Successful Response
-   */
-  200: MfaFactorStatusOut
-}
-
-export type DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteResponse =
-  DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteResponses[keyof DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteResponses]
-
-export type GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/auth/mfa/recovery-codes"
-}
-
-export type GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostErrors = {
-  /**
-   * Unauthorized
-   */
-  401: unknown
-}
-
-export type GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: RecoveryCodesGenerateOut
-}
-
-export type GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponse =
-  GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses[keyof GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses]
-
-export type RequestStepUpApiV1AuthMfaStepUpPostData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/auth/mfa/step-up"
-}
-
-export type RequestStepUpApiV1AuthMfaStepUpPostErrors = {
-  /**
-   * Unauthorized
-   */
-  401: unknown
-}
-
-export type RequestStepUpApiV1AuthMfaStepUpPostResponses = {
-  /**
-   * Successful Response
-   */
-  202: PendingMfaResponse
-}
-
-export type RequestStepUpApiV1AuthMfaStepUpPostResponse =
-  RequestStepUpApiV1AuthMfaStepUpPostResponses[keyof RequestStepUpApiV1AuthMfaStepUpPostResponses]
-
-export type SpotifyAuthUrlApiV1SpotifyAuthUrlGetData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/spotify/auth-url"
-}
-
-export type SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: SpotifyAuthUrl
-}
-
-export type SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponse =
-  SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponses[keyof SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponses]
-
-export type SpotifyCallbackApiV1SpotifyCallbackGetData = {
-  body?: never
-  path?: never
-  query: {
-    /**
-     * Code
-     */
-    code: string
-    /**
-     * State
-     */
-    state: string
-  }
-  url: "/api/v1/spotify/callback"
-}
-
-export type SpotifyCallbackApiV1SpotifyCallbackGetErrors = {
-  /**
-   * Bad Request
-   */
-  400: unknown
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-  /**
-   * Service Unavailable
-   */
-  503: unknown
-}
-
-export type SpotifyCallbackApiV1SpotifyCallbackGetError =
-  SpotifyCallbackApiV1SpotifyCallbackGetErrors[keyof SpotifyCallbackApiV1SpotifyCallbackGetErrors]
-
-export type SpotifyCallbackApiV1SpotifyCallbackGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: unknown
-}
-
-export type NowPlayingApiV1SpotifyNowPlayingGetData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/spotify/now-playing"
-}
-
-export type NowPlayingApiV1SpotifyNowPlayingGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: SpotifyNowPlayingOut
-}
-
-export type NowPlayingApiV1SpotifyNowPlayingGetResponse =
-  NowPlayingApiV1SpotifyNowPlayingGetResponses[keyof NowPlayingApiV1SpotifyNowPlayingGetResponses]
-
-export type DisconnectApiV1SpotifyDisconnectPostData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/spotify/disconnect"
-}
-
-export type DisconnectApiV1SpotifyDisconnectPostResponses = {
-  /**
-   * Response Disconnect Api V1 Spotify Disconnect Post
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: boolean
-  }
-}
-
-export type DisconnectApiV1SpotifyDisconnectPostResponse =
-  DisconnectApiV1SpotifyDisconnectPostResponses[keyof DisconnectApiV1SpotifyDisconnectPostResponses]
-
-export type ListPlaylistsApiV1SpotifyPlaylistsGetData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/spotify/playlists"
-}
-
-export type ListPlaylistsApiV1SpotifyPlaylistsGetResponses = {
-  /**
-   * Response List Playlists Api V1 Spotify Playlists Get
-   *
-   * Successful Response
-   */
-  200: unknown
-}
-
 export type ListSessionsApiV1AuthSessionsGetData = {
   body?: never
   path?: never
@@ -4049,38 +3758,6 @@ export type ListSessionsApiV1AuthSessionsGetResponses = {
 export type ListSessionsApiV1AuthSessionsGetResponse =
   ListSessionsApiV1AuthSessionsGetResponses[keyof ListSessionsApiV1AuthSessionsGetResponses]
 
-export type RevokeSessionApiV1AuthSessionsSessionIdDeleteData = {
-  body?: never
-  path: {
-    /**
-     * Session Id
-     */
-    session_id: string
-  }
-  query?: never
-  url: "/api/v1/auth/sessions/{session_id}"
-}
-
-export type RevokeSessionApiV1AuthSessionsSessionIdDeleteErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type RevokeSessionApiV1AuthSessionsSessionIdDeleteError =
-  RevokeSessionApiV1AuthSessionsSessionIdDeleteErrors[keyof RevokeSessionApiV1AuthSessionsSessionIdDeleteErrors]
-
-export type RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses = {
-  /**
-   * Successful Response
-   */
-  200: ActiveSessionOut
-}
-
-export type RevokeSessionApiV1AuthSessionsSessionIdDeleteResponse =
-  RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses[keyof RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses]
-
 export type RevokeOtherSessionsApiV1AuthSessionsRevokeOthersPostData = {
   body?: never
   path?: never
@@ -4113,2373 +3790,37 @@ export type RevokeOtherSessionsApiV1AuthSessionsRevokeOthersPostResponses = {
 export type RevokeOtherSessionsApiV1AuthSessionsRevokeOthersPostResponse =
   RevokeOtherSessionsApiV1AuthSessionsRevokeOthersPostResponses[keyof RevokeOtherSessionsApiV1AuthSessionsRevokeOthersPostResponses]
 
-export type ClearNotificationsApiV1NotificationsDeleteData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/notifications"
-}
-
-export type ClearNotificationsApiV1NotificationsDeleteResponses = {
-  /**
-   * Response Clear Notifications Api V1 Notifications Delete
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: unknown
-  }
-}
-
-export type ClearNotificationsApiV1NotificationsDeleteResponse =
-  ClearNotificationsApiV1NotificationsDeleteResponses[keyof ClearNotificationsApiV1NotificationsDeleteResponses]
-
-export type ListNotificationsApiV1NotificationsGetData = {
-  body?: never
-  path?: never
-  query?: {
-    /**
-     * Cursor
-     */
-    cursor?: string | null
-    /**
-     * Limit
-     */
-    limit?: number
-  }
-  url: "/api/v1/notifications"
-}
-
-export type ListNotificationsApiV1NotificationsGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type ListNotificationsApiV1NotificationsGetError =
-  ListNotificationsApiV1NotificationsGetErrors[keyof ListNotificationsApiV1NotificationsGetErrors]
-
-export type ListNotificationsApiV1NotificationsGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: NotificationsListOut
-}
-
-export type ListNotificationsApiV1NotificationsGetResponse =
-  ListNotificationsApiV1NotificationsGetResponses[keyof ListNotificationsApiV1NotificationsGetResponses]
-
-export type MarkReadSingleApiV1NotificationsNotifIdReadPatchData = {
+export type RevokeSessionApiV1AuthSessionsSessionIdDeleteData = {
   body?: never
   path: {
     /**
-     * Notif Id
+     * Session Id
      */
-    notif_id: string
+    session_id: string
   }
   query?: never
-  url: "/api/v1/notifications/{notif_id}/read"
+  url: "/api/v1/auth/sessions/{session_id}"
 }
 
-export type MarkReadSingleApiV1NotificationsNotifIdReadPatchErrors = {
+export type RevokeSessionApiV1AuthSessionsSessionIdDeleteErrors = {
   /**
    * Validation Error
    */
   422: HttpValidationError
 }
 
-export type MarkReadSingleApiV1NotificationsNotifIdReadPatchError =
-  MarkReadSingleApiV1NotificationsNotifIdReadPatchErrors[keyof MarkReadSingleApiV1NotificationsNotifIdReadPatchErrors]
+export type RevokeSessionApiV1AuthSessionsSessionIdDeleteError =
+  RevokeSessionApiV1AuthSessionsSessionIdDeleteErrors[keyof RevokeSessionApiV1AuthSessionsSessionIdDeleteErrors]
 
-export type MarkReadSingleApiV1NotificationsNotifIdReadPatchResponses = {
+export type RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses = {
   /**
-   * Response Mark Read Single Api V1 Notifications  Notif Id  Read Patch
-   *
    * Successful Response
    */
-  200: {
-    [key: string]: boolean
-  }
+  200: ActiveSessionOut
 }
 
-export type MarkReadSingleApiV1NotificationsNotifIdReadPatchResponse =
-  MarkReadSingleApiV1NotificationsNotifIdReadPatchResponses[keyof MarkReadSingleApiV1NotificationsNotifIdReadPatchResponses]
-
-export type MarkAllReadApiV1NotificationsReadAllPostData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/notifications/read-all"
-}
-
-export type MarkAllReadApiV1NotificationsReadAllPostResponses = {
-  /**
-   * Response Mark All Read Api V1 Notifications Read All Post
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: unknown
-  }
-}
-
-export type MarkAllReadApiV1NotificationsReadAllPostResponse =
-  MarkAllReadApiV1NotificationsReadAllPostResponses[keyof MarkAllReadApiV1NotificationsReadAllPostResponses]
-
-export type DeleteNotificationApiV1NotificationsNotifIdDeleteData = {
-  body?: never
-  path: {
-    /**
-     * Notif Id
-     */
-    notif_id: string
-  }
-  query?: never
-  url: "/api/v1/notifications/{notif_id}"
-}
-
-export type DeleteNotificationApiV1NotificationsNotifIdDeleteErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type DeleteNotificationApiV1NotificationsNotifIdDeleteError =
-  DeleteNotificationApiV1NotificationsNotifIdDeleteErrors[keyof DeleteNotificationApiV1NotificationsNotifIdDeleteErrors]
-
-export type DeleteNotificationApiV1NotificationsNotifIdDeleteResponses = {
-  /**
-   * Response Delete Notification Api V1 Notifications  Notif Id  Delete
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: boolean
-  }
-}
-
-export type DeleteNotificationApiV1NotificationsNotifIdDeleteResponse =
-  DeleteNotificationApiV1NotificationsNotifIdDeleteResponses[keyof DeleteNotificationApiV1NotificationsNotifIdDeleteResponses]
-
-export type CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostData = {
-  body?: never
-  path?: never
-  query?: {
-    /**
-     * Lookahead Minutes
-     */
-    lookahead_minutes?: number
-  }
-  url: "/api/v1/notifications/check-schedule"
-}
-
-export type CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostError =
-  CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostErrors[keyof CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostErrors]
-
-export type CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostResponses = {
-  /**
-   * Successful Response
-   */
-  200: NotificationsListOut
-}
-
-export type CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostResponse =
-  CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostResponses[keyof CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostResponses]
-
-export type GetVapidPublicKeyApiV1PushVapidPublicKeyGetData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/push/vapid-public-key"
-}
-
-export type GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponses = {
-  /**
-   * Response Get Vapid Public Key Api V1 Push Vapid Public Key Get
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: string | null
-  }
-}
-
-export type GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponse =
-  GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponses[keyof GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponses]
-
-export type SubscribeApiV1PushSubscribePostData = {
-  body: PushSubscriptionIn
-  path?: never
-  query?: never
-  url: "/api/v1/push/subscribe"
-}
-
-export type SubscribeApiV1PushSubscribePostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type SubscribeApiV1PushSubscribePostError =
-  SubscribeApiV1PushSubscribePostErrors[keyof SubscribeApiV1PushSubscribePostErrors]
-
-export type SubscribeApiV1PushSubscribePostResponses = {
-  /**
-   * Successful Response
-   */
-  200: PushSubscriptionOut
-}
-
-export type SubscribeApiV1PushSubscribePostResponse =
-  SubscribeApiV1PushSubscribePostResponses[keyof SubscribeApiV1PushSubscribePostResponses]
-
-export type UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchData = {
-  body: PushSubscriptionTopicsUpdate
-  path?: never
-  query?: never
-  url: "/api/v1/push/subscribe/topics"
-}
-
-export type UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchError =
-  UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchErrors[keyof UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchErrors]
-
-export type UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchResponses = {
-  /**
-   * Successful Response
-   */
-  200: PushSubscriptionOut
-}
-
-export type UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchResponse =
-  UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchResponses[keyof UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchResponses]
-
-export type UnsubscribeApiV1PushUnsubscribePostData = {
-  body: PushSubscriptionDelete
-  path?: never
-  query?: never
-  url: "/api/v1/push/unsubscribe"
-}
-
-export type UnsubscribeApiV1PushUnsubscribePostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UnsubscribeApiV1PushUnsubscribePostError =
-  UnsubscribeApiV1PushUnsubscribePostErrors[keyof UnsubscribeApiV1PushUnsubscribePostErrors]
-
-export type UnsubscribeApiV1PushUnsubscribePostResponses = {
-  /**
-   * Response Unsubscribe Api V1 Push Unsubscribe Post
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: boolean
-  }
-}
-
-export type UnsubscribeApiV1PushUnsubscribePostResponse =
-  UnsubscribeApiV1PushUnsubscribePostResponses[keyof UnsubscribeApiV1PushUnsubscribePostResponses]
-
-export type GetPushTopicsApiV1PushTopicsGetData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/push/topics"
-}
-
-export type GetPushTopicsApiV1PushTopicsGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: PushTopicsResponse
-}
-
-export type GetPushTopicsApiV1PushTopicsGetResponse =
-  GetPushTopicsApiV1PushTopicsGetResponses[keyof GetPushTopicsApiV1PushTopicsGetResponses]
-
-export type SendTestApiV1PushTestPostData = {
-  /**
-   * Payload
-   */
-  body?: PushTestRequest | null
-  path?: never
-  query?: never
-  url: "/api/v1/push/test"
-}
-
-export type SendTestApiV1PushTestPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type SendTestApiV1PushTestPostError =
-  SendTestApiV1PushTestPostErrors[keyof SendTestApiV1PushTestPostErrors]
-
-export type SendTestApiV1PushTestPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: SendTestResponse
-}
-
-export type SendTestApiV1PushTestPostResponse =
-  SendTestApiV1PushTestPostResponses[keyof SendTestApiV1PushTestPostResponses]
-
-export type AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetData = {
-  body?: never
-  path: {
-    /**
-     * User Id
-     */
-    user_id: string
-  }
-  query?: never
-  url: "/api/v1/push/admin/topics/{user_id}"
-}
-
-export type AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetError =
-  AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetErrors[keyof AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetErrors]
-
-export type AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: AdminUserTopicsResponse
-}
-
-export type AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetResponse =
-  AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetResponses[keyof AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetResponses]
-
-export type AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutData = {
-  body: AdminUserTopicsUpdate
-  path: {
-    /**
-     * User Id
-     */
-    user_id: string
-  }
-  query?: never
-  url: "/api/v1/push/admin/topics/{user_id}"
-}
-
-export type AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutError =
-  AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutErrors[keyof AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutErrors]
-
-export type AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutResponses = {
-  /**
-   * Successful Response
-   */
-  200: AdminUserTopicsResponse
-}
-
-export type AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutResponse =
-  AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutResponses[keyof AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutResponses]
-
-export type DisableUserPushApiV1PushAdminDisableUserPostData = {
-  body: DisableUserPushRequest
-  path?: never
-  query?: never
-  url: "/api/v1/push/admin/disable-user"
-}
-
-export type DisableUserPushApiV1PushAdminDisableUserPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type DisableUserPushApiV1PushAdminDisableUserPostError =
-  DisableUserPushApiV1PushAdminDisableUserPostErrors[keyof DisableUserPushApiV1PushAdminDisableUserPostErrors]
-
-export type DisableUserPushApiV1PushAdminDisableUserPostResponses = {
-  /**
-   * Response Disable User Push Api V1 Push Admin Disable User Post
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: number | boolean
-  }
-}
-
-export type DisableUserPushApiV1PushAdminDisableUserPostResponse =
-  DisableUserPushApiV1PushAdminDisableUserPostResponses[keyof DisableUserPushApiV1PushAdminDisableUserPostResponses]
-
-export type BroadcastApiV1PushBroadcastPostData = {
-  body: NotifyBody
-  path?: never
-  query?: never
-  url: "/api/v1/push/broadcast"
-}
-
-export type BroadcastApiV1PushBroadcastPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type BroadcastApiV1PushBroadcastPostError =
-  BroadcastApiV1PushBroadcastPostErrors[keyof BroadcastApiV1PushBroadcastPostErrors]
-
-export type BroadcastApiV1PushBroadcastPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: SendTestResponse
-}
-
-export type BroadcastApiV1PushBroadcastPostResponse =
-  BroadcastApiV1PushBroadcastPostResponses[keyof BroadcastApiV1PushBroadcastPostResponses]
-
-export type DownloadScheduleIcsApiV1ScheduleIcsGetData = {
-  body?: never
-  path?: never
-  query: {
-    /**
-     * Group
-     *
-     * Group identifier
-     */
-    group: string
-  }
-  url: "/api/v1/schedule/ics"
-}
-
-export type DownloadScheduleIcsApiV1ScheduleIcsGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type DownloadScheduleIcsApiV1ScheduleIcsGetError =
-  DownloadScheduleIcsApiV1ScheduleIcsGetErrors[keyof DownloadScheduleIcsApiV1ScheduleIcsGetErrors]
-
-export type DownloadScheduleIcsApiV1ScheduleIcsGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: unknown
-}
-
-export type MeApiV1UsersMeGetData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/users/me"
-}
-
-export type MeApiV1UsersMeGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: UserOut
-}
-
-export type MeApiV1UsersMeGetResponse = MeApiV1UsersMeGetResponses[keyof MeApiV1UsersMeGetResponses]
-
-export type UpdateMeApiV1UsersMePutData = {
-  body: UserProfileUpdate
-  path?: never
-  query?: never
-  url: "/api/v1/users/me"
-}
-
-export type UpdateMeApiV1UsersMePutErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UpdateMeApiV1UsersMePutError =
-  UpdateMeApiV1UsersMePutErrors[keyof UpdateMeApiV1UsersMePutErrors]
-
-export type UpdateMeApiV1UsersMePutResponses = {
-  /**
-   * Successful Response
-   */
-  200: UserOut
-}
-
-export type UpdateMeApiV1UsersMePutResponse =
-  UpdateMeApiV1UsersMePutResponses[keyof UpdateMeApiV1UsersMePutResponses]
-
-export type ChangeEmailApiV1UsersMeEmailPostData = {
-  body: UserEmailChangeIn
-  path?: never
-  query?: never
-  url: "/api/v1/users/me/email"
-}
-
-export type ChangeEmailApiV1UsersMeEmailPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type ChangeEmailApiV1UsersMeEmailPostError =
-  ChangeEmailApiV1UsersMeEmailPostErrors[keyof ChangeEmailApiV1UsersMeEmailPostErrors]
-
-export type ChangeEmailApiV1UsersMeEmailPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: UserOut
-}
-
-export type ChangeEmailApiV1UsersMeEmailPostResponse =
-  ChangeEmailApiV1UsersMeEmailPostResponses[keyof ChangeEmailApiV1UsersMeEmailPostResponses]
-
-export type VerifyEmailChangeApiV1UsersMeEmailConfirmPostData = {
-  body: UserEmailConfirmIn
-  path?: never
-  query?: never
-  url: "/api/v1/users/me/email/confirm"
-}
-
-export type VerifyEmailChangeApiV1UsersMeEmailConfirmPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type VerifyEmailChangeApiV1UsersMeEmailConfirmPostError =
-  VerifyEmailChangeApiV1UsersMeEmailConfirmPostErrors[keyof VerifyEmailChangeApiV1UsersMeEmailConfirmPostErrors]
-
-export type VerifyEmailChangeApiV1UsersMeEmailConfirmPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: UserOut
-}
-
-export type VerifyEmailChangeApiV1UsersMeEmailConfirmPostResponse =
-  VerifyEmailChangeApiV1UsersMeEmailConfirmPostResponses[keyof VerifyEmailChangeApiV1UsersMeEmailConfirmPostResponses]
-
-export type ChangePasswordApiV1UsersMePasswordPostData = {
-  body: UserPasswordChangeIn
-  path?: never
-  query?: never
-  url: "/api/v1/users/me/password"
-}
-
-export type ChangePasswordApiV1UsersMePasswordPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type ChangePasswordApiV1UsersMePasswordPostError =
-  ChangePasswordApiV1UsersMePasswordPostErrors[keyof ChangePasswordApiV1UsersMePasswordPostErrors]
-
-export type ChangePasswordApiV1UsersMePasswordPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: PasswordChangeOut
-}
-
-export type ChangePasswordApiV1UsersMePasswordPostResponse =
-  ChangePasswordApiV1UsersMePasswordPostResponses[keyof ChangePasswordApiV1UsersMePasswordPostResponses]
-
-export type ExportCurrentUserDataApiV1UsersMeExportPostData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/users/me/export"
-}
-
-export type ExportCurrentUserDataApiV1UsersMeExportPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: DataExportOut
-}
-
-export type ExportCurrentUserDataApiV1UsersMeExportPostResponse =
-  ExportCurrentUserDataApiV1UsersMeExportPostResponses[keyof ExportCurrentUserDataApiV1UsersMeExportPostResponses]
-
-export type DeleteCurrentUserAccountApiV1UsersMeDeletePostData = {
-  body: DataDeletionRequest
-  path?: never
-  query?: never
-  url: "/api/v1/users/me/delete"
-}
-
-export type DeleteCurrentUserAccountApiV1UsersMeDeletePostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type DeleteCurrentUserAccountApiV1UsersMeDeletePostError =
-  DeleteCurrentUserAccountApiV1UsersMeDeletePostErrors[keyof DeleteCurrentUserAccountApiV1UsersMeDeletePostErrors]
-
-export type DeleteCurrentUserAccountApiV1UsersMeDeletePostResponses = {
-  /**
-   * Successful Response
-   */
-  200: DataDeletionOut
-}
-
-export type DeleteCurrentUserAccountApiV1UsersMeDeletePostResponse =
-  DeleteCurrentUserAccountApiV1UsersMeDeletePostResponses[keyof DeleteCurrentUserAccountApiV1UsersMeDeletePostResponses]
-
-export type DeleteAvatarApiV1UsersMeAvatarDeleteData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/users/me/avatar"
-}
-
-export type DeleteAvatarApiV1UsersMeAvatarDeleteResponses = {
-  /**
-   * Successful Response
-   */
-  200: UserOut
-}
-
-export type DeleteAvatarApiV1UsersMeAvatarDeleteResponse =
-  DeleteAvatarApiV1UsersMeAvatarDeleteResponses[keyof DeleteAvatarApiV1UsersMeAvatarDeleteResponses]
-
-export type UploadAvatarApiV1UsersMeAvatarPostData = {
-  body: BodyUploadAvatarApiV1UsersMeAvatarPost
-  path?: never
-  query?: never
-  url: "/api/v1/users/me/avatar"
-}
-
-export type UploadAvatarApiV1UsersMeAvatarPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UploadAvatarApiV1UsersMeAvatarPostError =
-  UploadAvatarApiV1UsersMeAvatarPostErrors[keyof UploadAvatarApiV1UsersMeAvatarPostErrors]
-
-export type UploadAvatarApiV1UsersMeAvatarPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: UserOut
-}
-
-export type UploadAvatarApiV1UsersMeAvatarPostResponse =
-  UploadAvatarApiV1UsersMeAvatarPostResponses[keyof UploadAvatarApiV1UsersMeAvatarPostResponses]
-
-export type DeleteCoverApiV1UsersMeCoverDeleteData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/users/me/cover"
-}
-
-export type DeleteCoverApiV1UsersMeCoverDeleteResponses = {
-  /**
-   * Successful Response
-   */
-  200: UserOut
-}
-
-export type DeleteCoverApiV1UsersMeCoverDeleteResponse =
-  DeleteCoverApiV1UsersMeCoverDeleteResponses[keyof DeleteCoverApiV1UsersMeCoverDeleteResponses]
-
-export type UploadCoverApiV1UsersMeCoverPostData = {
-  body: BodyUploadCoverApiV1UsersMeCoverPost
-  path?: never
-  query?: never
-  url: "/api/v1/users/me/cover"
-}
-
-export type UploadCoverApiV1UsersMeCoverPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UploadCoverApiV1UsersMeCoverPostError =
-  UploadCoverApiV1UsersMeCoverPostErrors[keyof UploadCoverApiV1UsersMeCoverPostErrors]
-
-export type UploadCoverApiV1UsersMeCoverPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: UserOut
-}
-
-export type UploadCoverApiV1UsersMeCoverPostResponse =
-  UploadCoverApiV1UsersMeCoverPostResponses[keyof UploadCoverApiV1UsersMeCoverPostResponses]
-
-export type GetUsersApiV1UsersGetData = {
-  body?: never
-  path?: never
-  query?: {
-    /**
-     * Full Name
-     */
-    full_name?: string | null
-    /**
-     * Search
-     */
-    search?: string | null
-    /**
-     * Group Id
-     */
-    group_id?: string | null
-    /**
-     * Role
-     */
-    role?: UserRole | null
-    /**
-     * Limit
-     */
-    limit?: number
-    /**
-     * Offset
-     */
-    offset?: number
-    /**
-     * After Id
-     */
-    after_id?: string | null
-  }
-  url: "/api/v1/users"
-}
-
-export type GetUsersApiV1UsersGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type GetUsersApiV1UsersGetError =
-  GetUsersApiV1UsersGetErrors[keyof GetUsersApiV1UsersGetErrors]
-
-export type GetUsersApiV1UsersGetResponses = {
-  /**
-   * Response Get Users Api V1 Users Get
-   *
-   * Successful Response
-   */
-  200: Array<UserPublicOut | UserOut>
-}
-
-export type GetUsersApiV1UsersGetResponse =
-  GetUsersApiV1UsersGetResponses[keyof GetUsersApiV1UsersGetResponses]
-
-export type CreateUserApiV1UsersPostData = {
-  body: UserCreate
-  path?: never
-  query?: never
-  url: "/api/v1/users"
-}
-
-export type CreateUserApiV1UsersPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type CreateUserApiV1UsersPostError =
-  CreateUserApiV1UsersPostErrors[keyof CreateUserApiV1UsersPostErrors]
-
-export type CreateUserApiV1UsersPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: UserOut
-}
-
-export type CreateUserApiV1UsersPostResponse =
-  CreateUserApiV1UsersPostResponses[keyof CreateUserApiV1UsersPostResponses]
-
-export type ExportAccessAuditApiV1UsersAuditExportGetData = {
-  body?: never
-  path?: never
-  query?: {
-    /**
-     * Start At
-     */
-    start_at?: string | null
-    /**
-     * End At
-     */
-    end_at?: string | null
-  }
-  url: "/api/v1/users/audit/export"
-}
-
-export type ExportAccessAuditApiV1UsersAuditExportGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type ExportAccessAuditApiV1UsersAuditExportGetError =
-  ExportAccessAuditApiV1UsersAuditExportGetErrors[keyof ExportAccessAuditApiV1UsersAuditExportGetErrors]
-
-export type ExportAccessAuditApiV1UsersAuditExportGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: unknown
-}
-
-export type DeleteUserAdminApiV1UsersUserIdDeleteData = {
-  body?: never
-  path: {
-    /**
-     * User Id
-     */
-    user_id: string
-  }
-  query?: never
-  url: "/api/v1/users/{user_id}"
-}
-
-export type DeleteUserAdminApiV1UsersUserIdDeleteErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type DeleteUserAdminApiV1UsersUserIdDeleteError =
-  DeleteUserAdminApiV1UsersUserIdDeleteErrors[keyof DeleteUserAdminApiV1UsersUserIdDeleteErrors]
-
-export type DeleteUserAdminApiV1UsersUserIdDeleteResponses = {
-  /**
-   * Response Delete User Admin Api V1 Users  User Id  Delete
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: unknown
-  }
-}
-
-export type DeleteUserAdminApiV1UsersUserIdDeleteResponse =
-  DeleteUserAdminApiV1UsersUserIdDeleteResponses[keyof DeleteUserAdminApiV1UsersUserIdDeleteResponses]
-
-export type UpdateUserAdminApiV1UsersUserIdPatchData = {
-  body: UserAdminUpdate
-  path: {
-    /**
-     * User Id
-     */
-    user_id: string
-  }
-  query?: never
-  url: "/api/v1/users/{user_id}"
-}
-
-export type UpdateUserAdminApiV1UsersUserIdPatchErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UpdateUserAdminApiV1UsersUserIdPatchError =
-  UpdateUserAdminApiV1UsersUserIdPatchErrors[keyof UpdateUserAdminApiV1UsersUserIdPatchErrors]
-
-export type UpdateUserAdminApiV1UsersUserIdPatchResponses = {
-  /**
-   * Successful Response
-   */
-  200: UserOut
-}
-
-export type UpdateUserAdminApiV1UsersUserIdPatchResponse =
-  UpdateUserAdminApiV1UsersUserIdPatchResponses[keyof UpdateUserAdminApiV1UsersUserIdPatchResponses]
-
-export type ForgotPasswordApiV1PasswordForgotPostData = {
-  body: ForgotPasswordIn
-  path?: never
-  query?: never
-  url: "/api/v1/password/forgot"
-}
-
-export type ForgotPasswordApiV1PasswordForgotPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type ForgotPasswordApiV1PasswordForgotPostError =
-  ForgotPasswordApiV1PasswordForgotPostErrors[keyof ForgotPasswordApiV1PasswordForgotPostErrors]
-
-export type ForgotPasswordApiV1PasswordForgotPostResponses = {
-  /**
-   * Response Forgot Password Api V1 Password Forgot Post
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: boolean
-  }
-}
-
-export type ForgotPasswordApiV1PasswordForgotPostResponse =
-  ForgotPasswordApiV1PasswordForgotPostResponses[keyof ForgotPasswordApiV1PasswordForgotPostResponses]
-
-export type ResetPasswordApiV1PasswordResetPostData = {
-  body: ResetPasswordIn
-  path?: never
-  query?: never
-  url: "/api/v1/password/reset"
-}
-
-export type ResetPasswordApiV1PasswordResetPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type ResetPasswordApiV1PasswordResetPostError =
-  ResetPasswordApiV1PasswordResetPostErrors[keyof ResetPasswordApiV1PasswordResetPostErrors]
-
-export type ResetPasswordApiV1PasswordResetPostResponses = {
-  /**
-   * Response Reset Password Api V1 Password Reset Post
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: boolean
-  }
-}
-
-export type ResetPasswordApiV1PasswordResetPostResponse =
-  ResetPasswordApiV1PasswordResetPostResponses[keyof ResetPasswordApiV1PasswordResetPostResponses]
-
-export type GetGroupsApiV1GroupsGetData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/api/v1/groups"
-}
-
-export type GetGroupsApiV1GroupsGetResponses = {
-  /**
-   * Response Get Groups Api V1 Groups Get
-   *
-   * Successful Response
-   */
-  200: Array<GroupOut>
-}
-
-export type GetGroupsApiV1GroupsGetResponse =
-  GetGroupsApiV1GroupsGetResponses[keyof GetGroupsApiV1GroupsGetResponses]
-
-export type AllEventsApiV1EventsGetData = {
-  body?: never
-  headers?: {
-    /**
-     * If-None-Match
-     */
-    "if-none-match"?: string | null
-  }
-  path?: never
-  query?: {
-    /**
-     * Search
-     */
-    search?: string
-    /**
-     * Type
-     */
-    type?: string
-    /**
-     * Location
-     */
-    location?: string
-    /**
-     * Is Active
-     */
-    is_active?: boolean
-    /**
-     * Limit
-     */
-    limit?: number
-    /**
-     * Cursor
-     */
-    cursor?: string | null
-  }
-  url: "/api/v1/events"
-}
-
-export type AllEventsApiV1EventsGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type AllEventsApiV1EventsGetError =
-  AllEventsApiV1EventsGetErrors[keyof AllEventsApiV1EventsGetErrors]
-
-export type AllEventsApiV1EventsGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: PaginatedEvents
-}
-
-export type AllEventsApiV1EventsGetResponse =
-  AllEventsApiV1EventsGetResponses[keyof AllEventsApiV1EventsGetResponses]
-
-export type CreateEventApiV1EventsPostData = {
-  body: EventCreate
-  path?: never
-  query?: never
-  url: "/api/v1/events"
-}
-
-export type CreateEventApiV1EventsPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type CreateEventApiV1EventsPostError =
-  CreateEventApiV1EventsPostErrors[keyof CreateEventApiV1EventsPostErrors]
-
-export type CreateEventApiV1EventsPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: EventOut
-}
-
-export type CreateEventApiV1EventsPostResponse =
-  CreateEventApiV1EventsPostResponses[keyof CreateEventApiV1EventsPostResponses]
-
-export type UnregisterEventApiV1EventsAttendanceDeleteData = {
-  body: EventAttendanceCreate
-  path?: never
-  query?: never
-  url: "/api/v1/events/attendance"
-}
-
-export type UnregisterEventApiV1EventsAttendanceDeleteErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UnregisterEventApiV1EventsAttendanceDeleteError =
-  UnregisterEventApiV1EventsAttendanceDeleteErrors[keyof UnregisterEventApiV1EventsAttendanceDeleteErrors]
-
-export type UnregisterEventApiV1EventsAttendanceDeleteResponses = {
-  /**
-   * Response Unregister Event Api V1 Events Attendance Delete
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: unknown
-  }
-}
-
-export type UnregisterEventApiV1EventsAttendanceDeleteResponse =
-  UnregisterEventApiV1EventsAttendanceDeleteResponses[keyof UnregisterEventApiV1EventsAttendanceDeleteResponses]
-
-export type AttendApiV1EventsAttendancePostData = {
-  body: EventAttendanceCreate
-  path?: never
-  query?: never
-  url: "/api/v1/events/attendance"
-}
-
-export type AttendApiV1EventsAttendancePostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type AttendApiV1EventsAttendancePostError =
-  AttendApiV1EventsAttendancePostErrors[keyof AttendApiV1EventsAttendancePostErrors]
-
-export type AttendApiV1EventsAttendancePostResponses = {
-  /**
-   * Successful Response
-   */
-  200: EventAttendanceOut
-}
-
-export type AttendApiV1EventsAttendancePostResponse =
-  AttendApiV1EventsAttendancePostResponses[keyof AttendApiV1EventsAttendancePostResponses]
-
-export type MyEventsApiV1EventsMyGetData = {
-  body?: never
-  headers?: {
-    /**
-     * If-None-Match
-     */
-    "if-none-match"?: string | null
-  }
-  path?: never
-  query?: never
-  url: "/api/v1/events/my"
-}
-
-export type MyEventsApiV1EventsMyGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type MyEventsApiV1EventsMyGetError =
-  MyEventsApiV1EventsMyGetErrors[keyof MyEventsApiV1EventsMyGetErrors]
-
-export type MyEventsApiV1EventsMyGetResponses = {
-  /**
-   * Response My Events Api V1 Events My Get
-   *
-   * Successful Response
-   */
-  200: Array<EventOut>
-}
-
-export type MyEventsApiV1EventsMyGetResponse =
-  MyEventsApiV1EventsMyGetResponses[keyof MyEventsApiV1EventsMyGetResponses]
-
-export type UploadEventFileApiV1EventsEventIdUploadFilePostData = {
-  body: BodyUploadEventFileApiV1EventsEventIdUploadFilePost
-  path: {
-    /**
-     * Event Id
-     */
-    event_id: string | number
-  }
-  query?: never
-  url: "/api/v1/events/{event_id}/upload_file"
-}
-
-export type UploadEventFileApiV1EventsEventIdUploadFilePostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UploadEventFileApiV1EventsEventIdUploadFilePostError =
-  UploadEventFileApiV1EventsEventIdUploadFilePostErrors[keyof UploadEventFileApiV1EventsEventIdUploadFilePostErrors]
-
-export type UploadEventFileApiV1EventsEventIdUploadFilePostResponses = {
-  /**
-   * Successful Response
-   */
-  200: EventFileOut
-}
-
-export type UploadEventFileApiV1EventsEventIdUploadFilePostResponse =
-  UploadEventFileApiV1EventsEventIdUploadFilePostResponses[keyof UploadEventFileApiV1EventsEventIdUploadFilePostResponses]
-
-export type GetEventFilesApiV1EventsEventIdFilesGetData = {
-  body?: never
-  path: {
-    /**
-     * Event Id
-     */
-    event_id: string | number
-  }
-  query?: never
-  url: "/api/v1/events/{event_id}/files"
-}
-
-export type GetEventFilesApiV1EventsEventIdFilesGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type GetEventFilesApiV1EventsEventIdFilesGetError =
-  GetEventFilesApiV1EventsEventIdFilesGetErrors[keyof GetEventFilesApiV1EventsEventIdFilesGetErrors]
-
-export type GetEventFilesApiV1EventsEventIdFilesGetResponses = {
-  /**
-   * Response Get Event Files Api V1 Events  Event Id  Files Get
-   *
-   * Successful Response
-   */
-  200: Array<EventFileOut>
-}
-
-export type GetEventFilesApiV1EventsEventIdFilesGetResponse =
-  GetEventFilesApiV1EventsEventIdFilesGetResponses[keyof GetEventFilesApiV1EventsEventIdFilesGetResponses]
-
-export type UploadEventImageApiV1EventsUploadImagePostData = {
-  body: BodyUploadEventImageApiV1EventsUploadImagePost
-  path?: never
-  query?: never
-  url: "/api/v1/events/upload_image"
-}
-
-export type UploadEventImageApiV1EventsUploadImagePostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UploadEventImageApiV1EventsUploadImagePostError =
-  UploadEventImageApiV1EventsUploadImagePostErrors[keyof UploadEventImageApiV1EventsUploadImagePostErrors]
-
-export type UploadEventImageApiV1EventsUploadImagePostResponses = {
-  /**
-   * Response Upload Event Image Api V1 Events Upload Image Post
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: string
-  }
-}
-
-export type UploadEventImageApiV1EventsUploadImagePostResponse =
-  UploadEventImageApiV1EventsUploadImagePostResponses[keyof UploadEventImageApiV1EventsUploadImagePostResponses]
-
-export type DeleteEventApiV1EventsEventIdDeleteData = {
-  body?: never
-  path: {
-    /**
-     * Event Id
-     */
-    event_id: string | number
-  }
-  query?: never
-  url: "/api/v1/events/{event_id}"
-}
-
-export type DeleteEventApiV1EventsEventIdDeleteErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type DeleteEventApiV1EventsEventIdDeleteError =
-  DeleteEventApiV1EventsEventIdDeleteErrors[keyof DeleteEventApiV1EventsEventIdDeleteErrors]
-
-export type DeleteEventApiV1EventsEventIdDeleteResponses = {
-  /**
-   * Response Delete Event Api V1 Events  Event Id  Delete
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: unknown
-  }
-}
-
-export type DeleteEventApiV1EventsEventIdDeleteResponse =
-  DeleteEventApiV1EventsEventIdDeleteResponses[keyof DeleteEventApiV1EventsEventIdDeleteResponses]
-
-export type GetEventApiV1EventsEventIdGetData = {
-  body?: never
-  headers?: {
-    /**
-     * If-None-Match
-     */
-    "if-none-match"?: string | null
-  }
-  path: {
-    /**
-     * Event Id
-     */
-    event_id: string | number
-  }
-  query?: never
-  url: "/api/v1/events/{event_id}"
-}
-
-export type GetEventApiV1EventsEventIdGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type GetEventApiV1EventsEventIdGetError =
-  GetEventApiV1EventsEventIdGetErrors[keyof GetEventApiV1EventsEventIdGetErrors]
-
-export type GetEventApiV1EventsEventIdGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: EventOut
-}
-
-export type GetEventApiV1EventsEventIdGetResponse =
-  GetEventApiV1EventsEventIdGetResponses[keyof GetEventApiV1EventsEventIdGetResponses]
-
-export type UpdateEventApiV1EventsEventIdPatchData = {
-  body: EventUpdate
-  path: {
-    /**
-     * Event Id
-     */
-    event_id: string | number
-  }
-  query?: never
-  url: "/api/v1/events/{event_id}"
-}
-
-export type UpdateEventApiV1EventsEventIdPatchErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UpdateEventApiV1EventsEventIdPatchError =
-  UpdateEventApiV1EventsEventIdPatchErrors[keyof UpdateEventApiV1EventsEventIdPatchErrors]
-
-export type UpdateEventApiV1EventsEventIdPatchResponses = {
-  /**
-   * Successful Response
-   */
-  200: EventOut
-}
-
-export type UpdateEventApiV1EventsEventIdPatchResponse =
-  UpdateEventApiV1EventsEventIdPatchResponses[keyof UpdateEventApiV1EventsEventIdPatchResponses]
-
-export type DeleteEventFileApiV1EventsFileFileIdDeleteData = {
-  body?: never
-  path: {
-    /**
-     * File Id
-     */
-    file_id: string | number
-  }
-  query?: never
-  url: "/api/v1/events/file/{file_id}"
-}
-
-export type DeleteEventFileApiV1EventsFileFileIdDeleteErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type DeleteEventFileApiV1EventsFileFileIdDeleteError =
-  DeleteEventFileApiV1EventsFileFileIdDeleteErrors[keyof DeleteEventFileApiV1EventsFileFileIdDeleteErrors]
-
-export type DeleteEventFileApiV1EventsFileFileIdDeleteResponses = {
-  /**
-   * Response Delete Event File Api V1 Events File  File Id  Delete
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: unknown
-  }
-}
-
-export type DeleteEventFileApiV1EventsFileFileIdDeleteResponse =
-  DeleteEventFileApiV1EventsFileFileIdDeleteResponses[keyof DeleteEventFileApiV1EventsFileFileIdDeleteResponses]
-
-export type SemanticSearchApiV1EventsSearchSemanticGetData = {
-  body?: never
-  headers?: {
-    /**
-     * If-None-Match
-     */
-    "if-none-match"?: string | null
-  }
-  path?: never
-  query: {
-    /**
-     * Query
-     */
-    query: string
-    /**
-     * Limit
-     */
-    limit?: number
-    /**
-     * Min Score
-     */
-    min_score?: number
-  }
-  url: "/api/v1/events/search/semantic"
-}
-
-export type SemanticSearchApiV1EventsSearchSemanticGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type SemanticSearchApiV1EventsSearchSemanticGetError =
-  SemanticSearchApiV1EventsSearchSemanticGetErrors[keyof SemanticSearchApiV1EventsSearchSemanticGetErrors]
-
-export type SemanticSearchApiV1EventsSearchSemanticGetResponses = {
-  /**
-   * Response Semantic Search Api V1 Events Search Semantic Get
-   *
-   * Successful Response
-   */
-  200: Array<EventOut>
-}
-
-export type SemanticSearchApiV1EventsSearchSemanticGetResponse =
-  SemanticSearchApiV1EventsSearchSemanticGetResponses[keyof SemanticSearchApiV1EventsSearchSemanticGetResponses]
-
-export type NewsListApiV1NewsGetData = {
-  body?: never
-  headers?: {
-    /**
-     * If-None-Match
-     */
-    "if-none-match"?: string | null
-  }
-  path?: never
-  query?: {
-    /**
-     * Limit
-     *
-     * Number of items to return
-     */
-    limit?: number
-    /**
-     * Cursor
-     *
-     * Pagination cursor
-     */
-    cursor?: string | null
-  }
-  url: "/api/v1/news"
-}
-
-export type NewsListApiV1NewsGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type NewsListApiV1NewsGetError = NewsListApiV1NewsGetErrors[keyof NewsListApiV1NewsGetErrors]
-
-export type NewsListApiV1NewsGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: PaginatedNews
-}
-
-export type NewsListApiV1NewsGetResponse =
-  NewsListApiV1NewsGetResponses[keyof NewsListApiV1NewsGetResponses]
-
-export type CreateNewsApiV1NewsPostData = {
-  body: NewsCreate
-  path?: never
-  query?: never
-  url: "/api/v1/news"
-}
-
-export type CreateNewsApiV1NewsPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type CreateNewsApiV1NewsPostError =
-  CreateNewsApiV1NewsPostErrors[keyof CreateNewsApiV1NewsPostErrors]
-
-export type CreateNewsApiV1NewsPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: NewsOut
-}
-
-export type CreateNewsApiV1NewsPostResponse =
-  CreateNewsApiV1NewsPostResponses[keyof CreateNewsApiV1NewsPostResponses]
-
-export type DeleteNewsApiV1NewsIdDeleteData = {
-  body?: never
-  path: {
-    /**
-     * Id
-     */
-    id: string
-  }
-  query?: never
-  url: "/api/v1/news/{id}"
-}
-
-export type DeleteNewsApiV1NewsIdDeleteErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type DeleteNewsApiV1NewsIdDeleteError =
-  DeleteNewsApiV1NewsIdDeleteErrors[keyof DeleteNewsApiV1NewsIdDeleteErrors]
-
-export type DeleteNewsApiV1NewsIdDeleteResponses = {
-  /**
-   * Response Delete News Api V1 News  Id  Delete
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: unknown
-  }
-}
-
-export type DeleteNewsApiV1NewsIdDeleteResponse =
-  DeleteNewsApiV1NewsIdDeleteResponses[keyof DeleteNewsApiV1NewsIdDeleteResponses]
-
-export type GetNewsApiV1NewsIdGetData = {
-  body?: never
-  headers?: {
-    /**
-     * If-None-Match
-     */
-    "if-none-match"?: string | null
-  }
-  path: {
-    /**
-     * Id
-     */
-    id: string
-  }
-  query?: never
-  url: "/api/v1/news/{id}"
-}
-
-export type GetNewsApiV1NewsIdGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type GetNewsApiV1NewsIdGetError =
-  GetNewsApiV1NewsIdGetErrors[keyof GetNewsApiV1NewsIdGetErrors]
-
-export type GetNewsApiV1NewsIdGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: NewsOut
-}
-
-export type GetNewsApiV1NewsIdGetResponse =
-  GetNewsApiV1NewsIdGetResponses[keyof GetNewsApiV1NewsIdGetResponses]
-
-export type UpdateNewsApiV1NewsIdPatchData = {
-  /**
-   * Data
-   */
-  body?: NewsUpdate | null
-  path: {
-    /**
-     * Id
-     */
-    id: string
-  }
-  query?: never
-  url: "/api/v1/news/{id}"
-}
-
-export type UpdateNewsApiV1NewsIdPatchErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UpdateNewsApiV1NewsIdPatchError =
-  UpdateNewsApiV1NewsIdPatchErrors[keyof UpdateNewsApiV1NewsIdPatchErrors]
-
-export type UpdateNewsApiV1NewsIdPatchResponses = {
-  /**
-   * Successful Response
-   */
-  200: NewsOut
-}
-
-export type UpdateNewsApiV1NewsIdPatchResponse =
-  UpdateNewsApiV1NewsIdPatchResponses[keyof UpdateNewsApiV1NewsIdPatchResponses]
-
-export type LikeNewsApiV1NewsIdLikePostData = {
-  body?: never
-  path: {
-    /**
-     * Id
-     */
-    id: string
-  }
-  query?: never
-  url: "/api/v1/news/{id}/like"
-}
-
-export type LikeNewsApiV1NewsIdLikePostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type LikeNewsApiV1NewsIdLikePostError =
-  LikeNewsApiV1NewsIdLikePostErrors[keyof LikeNewsApiV1NewsIdLikePostErrors]
-
-export type LikeNewsApiV1NewsIdLikePostResponses = {
-  /**
-   * Response Like News Api V1 News  Id  Like Post
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: boolean
-  }
-}
-
-export type LikeNewsApiV1NewsIdLikePostResponse =
-  LikeNewsApiV1NewsIdLikePostResponses[keyof LikeNewsApiV1NewsIdLikePostResponses]
-
-export type CommentOnNewsApiV1NewsIdCommentPostData = {
-  body: BodyCommentOnNewsApiV1NewsIdCommentPost
-  path: {
-    /**
-     * Id
-     */
-    id: string
-  }
-  query?: never
-  url: "/api/v1/news/{id}/comment"
-}
-
-export type CommentOnNewsApiV1NewsIdCommentPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type CommentOnNewsApiV1NewsIdCommentPostError =
-  CommentOnNewsApiV1NewsIdCommentPostErrors[keyof CommentOnNewsApiV1NewsIdCommentPostErrors]
-
-export type CommentOnNewsApiV1NewsIdCommentPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: NewsCommentOut
-}
-
-export type CommentOnNewsApiV1NewsIdCommentPostResponse =
-  CommentOnNewsApiV1NewsIdCommentPostResponses[keyof CommentOnNewsApiV1NewsIdCommentPostResponses]
-
-export type GetNewsInteractApiV1NewsIdInteractionsGetData = {
-  body?: never
-  path: {
-    /**
-     * Id
-     */
-    id: string
-  }
-  query?: {
-    /**
-     * Limit
-     */
-    limit?: number
-    /**
-     * Offset
-     */
-    offset?: number
-  }
-  url: "/api/v1/news/{id}/interactions"
-}
-
-export type GetNewsInteractApiV1NewsIdInteractionsGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type GetNewsInteractApiV1NewsIdInteractionsGetError =
-  GetNewsInteractApiV1NewsIdInteractionsGetErrors[keyof GetNewsInteractApiV1NewsIdInteractionsGetErrors]
-
-export type GetNewsInteractApiV1NewsIdInteractionsGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: NewsInteractionsOut
-}
-
-export type GetNewsInteractApiV1NewsIdInteractionsGetResponse =
-  GetNewsInteractApiV1NewsIdInteractionsGetResponses[keyof GetNewsInteractApiV1NewsIdInteractionsGetResponses]
-
-export type DeleteCommentApiV1NewsCommentsCommentIdDeleteData = {
-  body?: never
-  path: {
-    /**
-     * Comment Id
-     */
-    comment_id: string
-  }
-  query?: never
-  url: "/api/v1/news/comments/{comment_id}"
-}
-
-export type DeleteCommentApiV1NewsCommentsCommentIdDeleteErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type DeleteCommentApiV1NewsCommentsCommentIdDeleteError =
-  DeleteCommentApiV1NewsCommentsCommentIdDeleteErrors[keyof DeleteCommentApiV1NewsCommentsCommentIdDeleteErrors]
-
-export type DeleteCommentApiV1NewsCommentsCommentIdDeleteResponses = {
-  /**
-   * Response Delete Comment Api V1 News Comments  Comment Id  Delete
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: boolean
-  }
-}
-
-export type DeleteCommentApiV1NewsCommentsCommentIdDeleteResponse =
-  DeleteCommentApiV1NewsCommentsCommentIdDeleteResponses[keyof DeleteCommentApiV1NewsCommentsCommentIdDeleteResponses]
-
-export type UpdateCommentApiV1NewsCommentsCommentIdPatchData = {
-  body: NewsCommentUpdate
-  path: {
-    /**
-     * Comment Id
-     */
-    comment_id: string
-  }
-  query?: never
-  url: "/api/v1/news/comments/{comment_id}"
-}
-
-export type UpdateCommentApiV1NewsCommentsCommentIdPatchErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UpdateCommentApiV1NewsCommentsCommentIdPatchError =
-  UpdateCommentApiV1NewsCommentsCommentIdPatchErrors[keyof UpdateCommentApiV1NewsCommentsCommentIdPatchErrors]
-
-export type UpdateCommentApiV1NewsCommentsCommentIdPatchResponses = {
-  /**
-   * Successful Response
-   */
-  200: NewsCommentOut
-}
-
-export type UpdateCommentApiV1NewsCommentsCommentIdPatchResponse =
-  UpdateCommentApiV1NewsCommentsCommentIdPatchResponses[keyof UpdateCommentApiV1NewsCommentsCommentIdPatchResponses]
-
-export type UploadNewsImageApiV1NewsUploadImagePostData = {
-  body: BodyUploadNewsImageApiV1NewsUploadImagePost
-  path?: never
-  query?: never
-  url: "/api/v1/news/upload_image"
-}
-
-export type UploadNewsImageApiV1NewsUploadImagePostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UploadNewsImageApiV1NewsUploadImagePostError =
-  UploadNewsImageApiV1NewsUploadImagePostErrors[keyof UploadNewsImageApiV1NewsUploadImagePostErrors]
-
-export type UploadNewsImageApiV1NewsUploadImagePostResponses = {
-  /**
-   * Response Upload News Image Api V1 News Upload Image Post
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: string
-  }
-}
-
-export type UploadNewsImageApiV1NewsUploadImagePostResponse =
-  UploadNewsImageApiV1NewsUploadImagePostResponses[keyof UploadNewsImageApiV1NewsUploadImagePostResponses]
-
-export type SemanticSearchApiV1NewsSearchSemanticGetData = {
-  body?: never
-  headers?: {
-    /**
-     * If-None-Match
-     */
-    "if-none-match"?: string | null
-  }
-  path?: never
-  query: {
-    /**
-     * Query
-     */
-    query: string
-    /**
-     * Limit
-     */
-    limit?: number
-    /**
-     * Min Score
-     */
-    min_score?: number
-  }
-  url: "/api/v1/news/search/semantic"
-}
-
-export type SemanticSearchApiV1NewsSearchSemanticGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type SemanticSearchApiV1NewsSearchSemanticGetError =
-  SemanticSearchApiV1NewsSearchSemanticGetErrors[keyof SemanticSearchApiV1NewsSearchSemanticGetErrors]
-
-export type SemanticSearchApiV1NewsSearchSemanticGetResponses = {
-  /**
-   * Response Semantic Search Api V1 News Search Semantic Get
-   *
-   * Successful Response
-   */
-  200: Array<NewsOut>
-}
-
-export type SemanticSearchApiV1NewsSearchSemanticGetResponse =
-  SemanticSearchApiV1NewsSearchSemanticGetResponses[keyof SemanticSearchApiV1NewsSearchSemanticGetResponses]
-
-export type ListStoriesApiV1StoriesGetData = {
-  body?: never
-  headers?: {
-    /**
-     * If-None-Match
-     */
-    "if-none-match"?: string | null
-  }
-  path?: never
-  query?: never
-  url: "/api/v1/stories"
-}
-
-export type ListStoriesApiV1StoriesGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type ListStoriesApiV1StoriesGetError =
-  ListStoriesApiV1StoriesGetErrors[keyof ListStoriesApiV1StoriesGetErrors]
-
-export type ListStoriesApiV1StoriesGetResponses = {
-  /**
-   * Response List Stories Api V1 Stories Get
-   *
-   * Successful Response
-   */
-  200: Array<StoryOut>
-}
-
-export type ListStoriesApiV1StoriesGetResponse =
-  ListStoriesApiV1StoriesGetResponses[keyof ListStoriesApiV1StoriesGetResponses]
-
-export type CreateStoryApiV1StoriesPostData = {
-  body: StoryCreate
-  path?: never
-  query?: never
-  url: "/api/v1/stories"
-}
-
-export type CreateStoryApiV1StoriesPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type CreateStoryApiV1StoriesPostError =
-  CreateStoryApiV1StoriesPostErrors[keyof CreateStoryApiV1StoriesPostErrors]
-
-export type CreateStoryApiV1StoriesPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: StoryOut
-}
-
-export type CreateStoryApiV1StoriesPostResponse =
-  CreateStoryApiV1StoriesPostResponses[keyof CreateStoryApiV1StoriesPostResponses]
-
-export type DeleteStoryApiV1StoriesStoryIdDeleteData = {
-  body?: never
-  path: {
-    /**
-     * Story Id
-     */
-    story_id: string
-  }
-  query?: never
-  url: "/api/v1/stories/{story_id}"
-}
-
-export type DeleteStoryApiV1StoriesStoryIdDeleteErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type DeleteStoryApiV1StoriesStoryIdDeleteError =
-  DeleteStoryApiV1StoriesStoryIdDeleteErrors[keyof DeleteStoryApiV1StoriesStoryIdDeleteErrors]
-
-export type DeleteStoryApiV1StoriesStoryIdDeleteResponses = {
-  /**
-   * Response Delete Story Api V1 Stories  Story Id  Delete
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: unknown
-  }
-}
-
-export type DeleteStoryApiV1StoriesStoryIdDeleteResponse =
-  DeleteStoryApiV1StoriesStoryIdDeleteResponses[keyof DeleteStoryApiV1StoriesStoryIdDeleteResponses]
-
-export type UpdateStoryApiV1StoriesStoryIdPatchData = {
-  /**
-   * Data
-   */
-  body?: StoryUpdate | null
-  path: {
-    /**
-     * Story Id
-     */
-    story_id: string
-  }
-  query?: never
-  url: "/api/v1/stories/{story_id}"
-}
-
-export type UpdateStoryApiV1StoriesStoryIdPatchErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UpdateStoryApiV1StoriesStoryIdPatchError =
-  UpdateStoryApiV1StoriesStoryIdPatchErrors[keyof UpdateStoryApiV1StoriesStoryIdPatchErrors]
-
-export type UpdateStoryApiV1StoriesStoryIdPatchResponses = {
-  /**
-   * Successful Response
-   */
-  200: StoryOut
-}
-
-export type UpdateStoryApiV1StoriesStoryIdPatchResponse =
-  UpdateStoryApiV1StoriesStoryIdPatchResponses[keyof UpdateStoryApiV1StoriesStoryIdPatchResponses]
-
-export type UploadStoryCoverApiV1StoriesUploadCoverPostData = {
-  body: BodyUploadStoryCoverApiV1StoriesUploadCoverPost
-  path?: never
-  query?: never
-  url: "/api/v1/stories/upload_cover"
-}
-
-export type UploadStoryCoverApiV1StoriesUploadCoverPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UploadStoryCoverApiV1StoriesUploadCoverPostError =
-  UploadStoryCoverApiV1StoriesUploadCoverPostErrors[keyof UploadStoryCoverApiV1StoriesUploadCoverPostErrors]
-
-export type UploadStoryCoverApiV1StoriesUploadCoverPostResponses = {
-  /**
-   * Response Upload Story Cover Api V1 Stories Upload Cover Post
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: string
-  }
-}
-
-export type UploadStoryCoverApiV1StoriesUploadCoverPostResponse =
-  UploadStoryCoverApiV1StoriesUploadCoverPostResponses[keyof UploadStoryCoverApiV1StoriesUploadCoverPostResponses]
-
-export type AddScheduleApiV1SchedulePostData = {
-  body: ScheduleCreate
-  path?: never
-  query?: never
-  url: "/api/v1/schedule"
-}
-
-export type AddScheduleApiV1SchedulePostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type AddScheduleApiV1SchedulePostError =
-  AddScheduleApiV1SchedulePostErrors[keyof AddScheduleApiV1SchedulePostErrors]
-
-export type AddScheduleApiV1SchedulePostResponses = {
-  /**
-   * Successful Response
-   */
-  200: ScheduleOut
-}
-
-export type AddScheduleApiV1SchedulePostResponse =
-  AddScheduleApiV1SchedulePostResponses[keyof AddScheduleApiV1SchedulePostResponses]
-
-export type DeleteScheduleApiV1ScheduleIdDeleteData = {
-  body?: never
-  path: {
-    /**
-     * Id
-     */
-    id: string
-  }
-  query?: never
-  url: "/api/v1/schedule/{id}"
-}
-
-export type DeleteScheduleApiV1ScheduleIdDeleteErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type DeleteScheduleApiV1ScheduleIdDeleteError =
-  DeleteScheduleApiV1ScheduleIdDeleteErrors[keyof DeleteScheduleApiV1ScheduleIdDeleteErrors]
-
-export type DeleteScheduleApiV1ScheduleIdDeleteResponses = {
-  /**
-   * Response Delete Schedule Api V1 Schedule  Id  Delete
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: unknown
-  }
-}
-
-export type DeleteScheduleApiV1ScheduleIdDeleteResponse =
-  DeleteScheduleApiV1ScheduleIdDeleteResponses[keyof DeleteScheduleApiV1ScheduleIdDeleteResponses]
-
-export type GetScheduleApiV1ScheduleIdGetData = {
-  body?: never
-  headers?: {
-    /**
-     * If-None-Match
-     */
-    "if-none-match"?: string | null
-  }
-  path: {
-    /**
-     * Id
-     */
-    id: string
-  }
-  query?: never
-  url: "/api/v1/schedule/{id}"
-}
-
-export type GetScheduleApiV1ScheduleIdGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type GetScheduleApiV1ScheduleIdGetError =
-  GetScheduleApiV1ScheduleIdGetErrors[keyof GetScheduleApiV1ScheduleIdGetErrors]
-
-export type GetScheduleApiV1ScheduleIdGetResponses = {
-  /**
-   * Response Get Schedule Api V1 Schedule  Id  Get
-   *
-   * Successful Response
-   */
-  200: Array<ScheduleOut>
-}
-
-export type GetScheduleApiV1ScheduleIdGetResponse =
-  GetScheduleApiV1ScheduleIdGetResponses[keyof GetScheduleApiV1ScheduleIdGetResponses]
-
-export type UpdateScheduleApiV1ScheduleIdPatchData = {
-  body: ScheduleUpdate
-  path: {
-    /**
-     * Id
-     */
-    id: string
-  }
-  query?: never
-  url: "/api/v1/schedule/{id}"
-}
-
-export type UpdateScheduleApiV1ScheduleIdPatchErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type UpdateScheduleApiV1ScheduleIdPatchError =
-  UpdateScheduleApiV1ScheduleIdPatchErrors[keyof UpdateScheduleApiV1ScheduleIdPatchErrors]
-
-export type UpdateScheduleApiV1ScheduleIdPatchResponses = {
-  /**
-   * Successful Response
-   */
-  200: ScheduleOut
-}
-
-export type UpdateScheduleApiV1ScheduleIdPatchResponse =
-  UpdateScheduleApiV1ScheduleIdPatchResponses[keyof UpdateScheduleApiV1ScheduleIdPatchResponses]
-
-export type AttendanceSummaryApiV1StatsAttendanceGetData = {
-  body?: never
-  headers?: {
-    /**
-     * If-None-Match
-     */
-    "if-none-match"?: string | null
-  }
-  path?: never
-  query?: {
-    /**
-     * Period
-     */
-    period?: string
-    /**
-     * Skip Cache
-     */
-    skip_cache?: boolean
-  }
-  url: "/api/v1/stats/attendance"
-}
-
-export type AttendanceSummaryApiV1StatsAttendanceGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type AttendanceSummaryApiV1StatsAttendanceGetError =
-  AttendanceSummaryApiV1StatsAttendanceGetErrors[keyof AttendanceSummaryApiV1StatsAttendanceGetErrors]
-
-export type AttendanceSummaryApiV1StatsAttendanceGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: unknown
-}
-
-export type GradeSummaryApiV1StatsGradesGetData = {
-  body?: never
-  headers?: {
-    /**
-     * If-None-Match
-     */
-    "if-none-match"?: string | null
-  }
-  path?: never
-  query?: {
-    /**
-     * Period
-     */
-    period?: string
-    /**
-     * Skip Cache
-     */
-    skip_cache?: boolean
-  }
-  url: "/api/v1/stats/grades"
-}
-
-export type GradeSummaryApiV1StatsGradesGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type GradeSummaryApiV1StatsGradesGetError =
-  GradeSummaryApiV1StatsGradesGetErrors[keyof GradeSummaryApiV1StatsGradesGetErrors]
-
-export type GradeSummaryApiV1StatsGradesGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: unknown
-}
-
-export type ParticipationSummaryApiV1StatsParticipationGetData = {
-  body?: never
-  headers?: {
-    /**
-     * If-None-Match
-     */
-    "if-none-match"?: string | null
-  }
-  path?: never
-  query?: {
-    /**
-     * Period
-     */
-    period?: string
-    /**
-     * Skip Cache
-     */
-    skip_cache?: boolean
-  }
-  url: "/api/v1/stats/participation"
-}
-
-export type ParticipationSummaryApiV1StatsParticipationGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type ParticipationSummaryApiV1StatsParticipationGetError =
-  ParticipationSummaryApiV1StatsParticipationGetErrors[keyof ParticipationSummaryApiV1StatsParticipationGetErrors]
-
-export type ParticipationSummaryApiV1StatsParticipationGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: unknown
-}
-
-export type StatsSummaryApiV1StatsSummaryGetData = {
-  body?: never
-  headers?: {
-    /**
-     * If-None-Match
-     */
-    "if-none-match"?: string | null
-  }
-  path?: never
-  query?: {
-    /**
-     * Period
-     */
-    period?: string
-    /**
-     * Skip Cache
-     */
-    skip_cache?: boolean
-  }
-  url: "/api/v1/stats/summary"
-}
-
-export type StatsSummaryApiV1StatsSummaryGetErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type StatsSummaryApiV1StatsSummaryGetError =
-  StatsSummaryApiV1StatsSummaryGetErrors[keyof StatsSummaryApiV1StatsSummaryGetErrors]
-
-export type StatsSummaryApiV1StatsSummaryGetResponses = {
-  /**
-   * Successful Response
-   */
-  200: unknown
-}
+export type RevokeSessionApiV1AuthSessionsSessionIdDeleteResponse =
+  RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses[keyof RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses]
 
 export type GetChatsApiV1ChatsGetData = {
   body?: never
@@ -6675,6 +4016,38 @@ export type RenameChatApiV1ChatsChatIdPatchResponses = {
 export type RenameChatApiV1ChatsChatIdPatchResponse =
   RenameChatApiV1ChatsChatIdPatchResponses[keyof RenameChatApiV1ChatsChatIdPatchResponses]
 
+export type ClearChatHistoryApiV1ChatsChatIdClearPostData = {
+  body?: never
+  path: {
+    /**
+     * Chat Id
+     */
+    chat_id: string
+  }
+  query?: never
+  url: "/api/v1/chats/{chat_id}/clear"
+}
+
+export type ClearChatHistoryApiV1ChatsChatIdClearPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ClearChatHistoryApiV1ChatsChatIdClearPostError =
+  ClearChatHistoryApiV1ChatsChatIdClearPostErrors[keyof ClearChatHistoryApiV1ChatsChatIdClearPostErrors]
+
+export type ClearChatHistoryApiV1ChatsChatIdClearPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: ChatMaintenanceResult
+}
+
+export type ClearChatHistoryApiV1ChatsChatIdClearPostResponse =
+  ClearChatHistoryApiV1ChatsChatIdClearPostResponses[keyof ClearChatHistoryApiV1ChatsChatIdClearPostResponses]
+
 export type GetMessagesApiV1ChatsChatIdMessagesGetData = {
   body?: never
   path: {
@@ -6759,76 +4132,6 @@ export type SendMessageApiV1ChatsChatIdMessagesPostResponses = {
 
 export type SendMessageApiV1ChatsChatIdMessagesPostResponse =
   SendMessageApiV1ChatsChatIdMessagesPostResponses[keyof SendMessageApiV1ChatsChatIdMessagesPostResponses]
-
-export type ForwardMessagesApiV1ChatsDestChatIdForwardPostData = {
-  body: ForwardMessages
-  path: {
-    /**
-     * Dest Chat Id
-     */
-    dest_chat_id: string
-  }
-  query?: never
-  url: "/api/v1/chats/{dest_chat_id}/forward"
-}
-
-export type ForwardMessagesApiV1ChatsDestChatIdForwardPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type ForwardMessagesApiV1ChatsDestChatIdForwardPostError =
-  ForwardMessagesApiV1ChatsDestChatIdForwardPostErrors[keyof ForwardMessagesApiV1ChatsDestChatIdForwardPostErrors]
-
-export type ForwardMessagesApiV1ChatsDestChatIdForwardPostResponses = {
-  /**
-   * Response Forward Messages Api V1 Chats  Dest Chat Id  Forward Post
-   *
-   * Successful Response
-   */
-  200: Array<MessageResponse>
-}
-
-export type ForwardMessagesApiV1ChatsDestChatIdForwardPostResponse =
-  ForwardMessagesApiV1ChatsDestChatIdForwardPostResponses[keyof ForwardMessagesApiV1ChatsDestChatIdForwardPostResponses]
-
-export type MarkReadApiV1ChatsChatIdReadPostData = {
-  body?: never
-  path: {
-    /**
-     * Chat Id
-     */
-    chat_id: string
-  }
-  query?: never
-  url: "/api/v1/chats/{chat_id}/read"
-}
-
-export type MarkReadApiV1ChatsChatIdReadPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type MarkReadApiV1ChatsChatIdReadPostError =
-  MarkReadApiV1ChatsChatIdReadPostErrors[keyof MarkReadApiV1ChatsChatIdReadPostErrors]
-
-export type MarkReadApiV1ChatsChatIdReadPostResponses = {
-  /**
-   * Response Mark Read Api V1 Chats  Chat Id  Read Post
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: string
-  }
-}
-
-export type MarkReadApiV1ChatsChatIdReadPostResponse =
-  MarkReadApiV1ChatsChatIdReadPostResponses[keyof MarkReadApiV1ChatsChatIdReadPostResponses]
 
 export type DeleteMessageApiV1ChatsChatIdMessagesMessageIdDeleteData = {
   body?: never
@@ -7038,74 +4341,6 @@ export type AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostResponses =
 export type AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostResponse =
   AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostResponses[keyof AddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPostResponses]
 
-export type TypingIndicatorApiV1ChatsChatIdTypingPostData = {
-  body?: never
-  path: {
-    /**
-     * Chat Id
-     */
-    chat_id: string
-  }
-  query?: never
-  url: "/api/v1/chats/{chat_id}/typing"
-}
-
-export type TypingIndicatorApiV1ChatsChatIdTypingPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type TypingIndicatorApiV1ChatsChatIdTypingPostError =
-  TypingIndicatorApiV1ChatsChatIdTypingPostErrors[keyof TypingIndicatorApiV1ChatsChatIdTypingPostErrors]
-
-export type TypingIndicatorApiV1ChatsChatIdTypingPostResponses = {
-  /**
-   * Response Typing Indicator Api V1 Chats  Chat Id  Typing Post
-   *
-   * Successful Response
-   */
-  200: {
-    [key: string]: string
-  }
-}
-
-export type TypingIndicatorApiV1ChatsChatIdTypingPostResponse =
-  TypingIndicatorApiV1ChatsChatIdTypingPostResponses[keyof TypingIndicatorApiV1ChatsChatIdTypingPostResponses]
-
-export type ClearChatHistoryApiV1ChatsChatIdClearPostData = {
-  body?: never
-  path: {
-    /**
-     * Chat Id
-     */
-    chat_id: string
-  }
-  query?: never
-  url: "/api/v1/chats/{chat_id}/clear"
-}
-
-export type ClearChatHistoryApiV1ChatsChatIdClearPostErrors = {
-  /**
-   * Validation Error
-   */
-  422: HttpValidationError
-}
-
-export type ClearChatHistoryApiV1ChatsChatIdClearPostError =
-  ClearChatHistoryApiV1ChatsChatIdClearPostErrors[keyof ClearChatHistoryApiV1ChatsChatIdClearPostErrors]
-
-export type ClearChatHistoryApiV1ChatsChatIdClearPostResponses = {
-  /**
-   * Successful Response
-   */
-  200: ChatMaintenanceResult
-}
-
-export type ClearChatHistoryApiV1ChatsChatIdClearPostResponse =
-  ClearChatHistoryApiV1ChatsChatIdClearPostResponses[keyof ClearChatHistoryApiV1ChatsChatIdClearPostResponses]
-
 export type AddParticipantApiV1ChatsChatIdParticipantsPostData = {
   body: AddParticipant
   path: {
@@ -7182,6 +4417,613 @@ export type RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteResponses =
 export type RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteResponse =
   RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteResponses[keyof RemoveParticipantApiV1ChatsChatIdParticipantsUserIdDeleteResponses]
 
+export type MarkReadApiV1ChatsChatIdReadPostData = {
+  body?: never
+  path: {
+    /**
+     * Chat Id
+     */
+    chat_id: string
+  }
+  query?: never
+  url: "/api/v1/chats/{chat_id}/read"
+}
+
+export type MarkReadApiV1ChatsChatIdReadPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type MarkReadApiV1ChatsChatIdReadPostError =
+  MarkReadApiV1ChatsChatIdReadPostErrors[keyof MarkReadApiV1ChatsChatIdReadPostErrors]
+
+export type MarkReadApiV1ChatsChatIdReadPostResponses = {
+  /**
+   * Response Mark Read Api V1 Chats  Chat Id  Read Post
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type MarkReadApiV1ChatsChatIdReadPostResponse =
+  MarkReadApiV1ChatsChatIdReadPostResponses[keyof MarkReadApiV1ChatsChatIdReadPostResponses]
+
+export type TypingIndicatorApiV1ChatsChatIdTypingPostData = {
+  body?: never
+  path: {
+    /**
+     * Chat Id
+     */
+    chat_id: string
+  }
+  query?: never
+  url: "/api/v1/chats/{chat_id}/typing"
+}
+
+export type TypingIndicatorApiV1ChatsChatIdTypingPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type TypingIndicatorApiV1ChatsChatIdTypingPostError =
+  TypingIndicatorApiV1ChatsChatIdTypingPostErrors[keyof TypingIndicatorApiV1ChatsChatIdTypingPostErrors]
+
+export type TypingIndicatorApiV1ChatsChatIdTypingPostResponses = {
+  /**
+   * Response Typing Indicator Api V1 Chats  Chat Id  Typing Post
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type TypingIndicatorApiV1ChatsChatIdTypingPostResponse =
+  TypingIndicatorApiV1ChatsChatIdTypingPostResponses[keyof TypingIndicatorApiV1ChatsChatIdTypingPostResponses]
+
+export type ForwardMessagesApiV1ChatsDestChatIdForwardPostData = {
+  body: ForwardMessages
+  path: {
+    /**
+     * Dest Chat Id
+     */
+    dest_chat_id: string
+  }
+  query?: never
+  url: "/api/v1/chats/{dest_chat_id}/forward"
+}
+
+export type ForwardMessagesApiV1ChatsDestChatIdForwardPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ForwardMessagesApiV1ChatsDestChatIdForwardPostError =
+  ForwardMessagesApiV1ChatsDestChatIdForwardPostErrors[keyof ForwardMessagesApiV1ChatsDestChatIdForwardPostErrors]
+
+export type ForwardMessagesApiV1ChatsDestChatIdForwardPostResponses = {
+  /**
+   * Response Forward Messages Api V1 Chats  Dest Chat Id  Forward Post
+   *
+   * Successful Response
+   */
+  200: Array<MessageResponse>
+}
+
+export type ForwardMessagesApiV1ChatsDestChatIdForwardPostResponse =
+  ForwardMessagesApiV1ChatsDestChatIdForwardPostResponses[keyof ForwardMessagesApiV1ChatsDestChatIdForwardPostResponses]
+
+export type ReceiveCspReportApiV1CspReportPostData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/csp-report"
+}
+
+export type ReceiveCspReportApiV1CspReportPostResponses = {
+  /**
+   * Successful Response
+   */
+  204: void
+}
+
+export type ReceiveCspReportApiV1CspReportPostResponse =
+  ReceiveCspReportApiV1CspReportPostResponses[keyof ReceiveCspReportApiV1CspReportPostResponses]
+
+export type AllEventsApiV1EventsGetData = {
+  body?: never
+  headers?: {
+    /**
+     * If-None-Match
+     */
+    "if-none-match"?: string | null
+  }
+  path?: never
+  query?: {
+    /**
+     * Search
+     */
+    search?: string
+    /**
+     * Type
+     */
+    type?: string
+    /**
+     * Location
+     */
+    location?: string
+    /**
+     * Is Active
+     */
+    is_active?: boolean
+    /**
+     * Limit
+     */
+    limit?: number
+    /**
+     * Cursor
+     */
+    cursor?: string | null
+  }
+  url: "/api/v1/events"
+}
+
+export type AllEventsApiV1EventsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type AllEventsApiV1EventsGetError =
+  AllEventsApiV1EventsGetErrors[keyof AllEventsApiV1EventsGetErrors]
+
+export type AllEventsApiV1EventsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: PaginatedEvents
+}
+
+export type AllEventsApiV1EventsGetResponse =
+  AllEventsApiV1EventsGetResponses[keyof AllEventsApiV1EventsGetResponses]
+
+export type CreateEventApiV1EventsPostData = {
+  body: EventCreate
+  path?: never
+  query?: never
+  url: "/api/v1/events"
+}
+
+export type CreateEventApiV1EventsPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type CreateEventApiV1EventsPostError =
+  CreateEventApiV1EventsPostErrors[keyof CreateEventApiV1EventsPostErrors]
+
+export type CreateEventApiV1EventsPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: EventOut
+}
+
+export type CreateEventApiV1EventsPostResponse =
+  CreateEventApiV1EventsPostResponses[keyof CreateEventApiV1EventsPostResponses]
+
+export type UnregisterEventApiV1EventsAttendanceDeleteData = {
+  body: EventAttendanceCreate
+  path?: never
+  query?: never
+  url: "/api/v1/events/attendance"
+}
+
+export type UnregisterEventApiV1EventsAttendanceDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UnregisterEventApiV1EventsAttendanceDeleteError =
+  UnregisterEventApiV1EventsAttendanceDeleteErrors[keyof UnregisterEventApiV1EventsAttendanceDeleteErrors]
+
+export type UnregisterEventApiV1EventsAttendanceDeleteResponses = {
+  /**
+   * Response Unregister Event Api V1 Events Attendance Delete
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type UnregisterEventApiV1EventsAttendanceDeleteResponse =
+  UnregisterEventApiV1EventsAttendanceDeleteResponses[keyof UnregisterEventApiV1EventsAttendanceDeleteResponses]
+
+export type AttendApiV1EventsAttendancePostData = {
+  body: EventAttendanceCreate
+  path?: never
+  query?: never
+  url: "/api/v1/events/attendance"
+}
+
+export type AttendApiV1EventsAttendancePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type AttendApiV1EventsAttendancePostError =
+  AttendApiV1EventsAttendancePostErrors[keyof AttendApiV1EventsAttendancePostErrors]
+
+export type AttendApiV1EventsAttendancePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: EventAttendanceOut
+}
+
+export type AttendApiV1EventsAttendancePostResponse =
+  AttendApiV1EventsAttendancePostResponses[keyof AttendApiV1EventsAttendancePostResponses]
+
+export type DeleteEventFileApiV1EventsFileFileIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * File Id
+     */
+    file_id: string | number
+  }
+  query?: never
+  url: "/api/v1/events/file/{file_id}"
+}
+
+export type DeleteEventFileApiV1EventsFileFileIdDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteEventFileApiV1EventsFileFileIdDeleteError =
+  DeleteEventFileApiV1EventsFileFileIdDeleteErrors[keyof DeleteEventFileApiV1EventsFileFileIdDeleteErrors]
+
+export type DeleteEventFileApiV1EventsFileFileIdDeleteResponses = {
+  /**
+   * Response Delete Event File Api V1 Events File  File Id  Delete
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type DeleteEventFileApiV1EventsFileFileIdDeleteResponse =
+  DeleteEventFileApiV1EventsFileFileIdDeleteResponses[keyof DeleteEventFileApiV1EventsFileFileIdDeleteResponses]
+
+export type MyEventsApiV1EventsMyGetData = {
+  body?: never
+  headers?: {
+    /**
+     * If-None-Match
+     */
+    "if-none-match"?: string | null
+  }
+  path?: never
+  query?: never
+  url: "/api/v1/events/my"
+}
+
+export type MyEventsApiV1EventsMyGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type MyEventsApiV1EventsMyGetError =
+  MyEventsApiV1EventsMyGetErrors[keyof MyEventsApiV1EventsMyGetErrors]
+
+export type MyEventsApiV1EventsMyGetResponses = {
+  /**
+   * Response My Events Api V1 Events My Get
+   *
+   * Successful Response
+   */
+  200: Array<EventOut>
+}
+
+export type MyEventsApiV1EventsMyGetResponse =
+  MyEventsApiV1EventsMyGetResponses[keyof MyEventsApiV1EventsMyGetResponses]
+
+export type SemanticSearchApiV1EventsSearchSemanticGetData = {
+  body?: never
+  headers?: {
+    /**
+     * If-None-Match
+     */
+    "if-none-match"?: string | null
+  }
+  path?: never
+  query: {
+    /**
+     * Query
+     */
+    query: string
+    /**
+     * Limit
+     */
+    limit?: number
+    /**
+     * Min Score
+     */
+    min_score?: number
+  }
+  url: "/api/v1/events/search/semantic"
+}
+
+export type SemanticSearchApiV1EventsSearchSemanticGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SemanticSearchApiV1EventsSearchSemanticGetError =
+  SemanticSearchApiV1EventsSearchSemanticGetErrors[keyof SemanticSearchApiV1EventsSearchSemanticGetErrors]
+
+export type SemanticSearchApiV1EventsSearchSemanticGetResponses = {
+  /**
+   * Response Semantic Search Api V1 Events Search Semantic Get
+   *
+   * Successful Response
+   */
+  200: Array<EventOut>
+}
+
+export type SemanticSearchApiV1EventsSearchSemanticGetResponse =
+  SemanticSearchApiV1EventsSearchSemanticGetResponses[keyof SemanticSearchApiV1EventsSearchSemanticGetResponses]
+
+export type UploadEventImageApiV1EventsUploadImagePostData = {
+  body: BodyUploadEventImageApiV1EventsUploadImagePost
+  path?: never
+  query?: never
+  url: "/api/v1/events/upload_image"
+}
+
+export type UploadEventImageApiV1EventsUploadImagePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UploadEventImageApiV1EventsUploadImagePostError =
+  UploadEventImageApiV1EventsUploadImagePostErrors[keyof UploadEventImageApiV1EventsUploadImagePostErrors]
+
+export type UploadEventImageApiV1EventsUploadImagePostResponses = {
+  /**
+   * Response Upload Event Image Api V1 Events Upload Image Post
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type UploadEventImageApiV1EventsUploadImagePostResponse =
+  UploadEventImageApiV1EventsUploadImagePostResponses[keyof UploadEventImageApiV1EventsUploadImagePostResponses]
+
+export type DeleteEventApiV1EventsEventIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Event Id
+     */
+    event_id: string | number
+  }
+  query?: never
+  url: "/api/v1/events/{event_id}"
+}
+
+export type DeleteEventApiV1EventsEventIdDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteEventApiV1EventsEventIdDeleteError =
+  DeleteEventApiV1EventsEventIdDeleteErrors[keyof DeleteEventApiV1EventsEventIdDeleteErrors]
+
+export type DeleteEventApiV1EventsEventIdDeleteResponses = {
+  /**
+   * Response Delete Event Api V1 Events  Event Id  Delete
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type DeleteEventApiV1EventsEventIdDeleteResponse =
+  DeleteEventApiV1EventsEventIdDeleteResponses[keyof DeleteEventApiV1EventsEventIdDeleteResponses]
+
+export type GetEventApiV1EventsEventIdGetData = {
+  body?: never
+  headers?: {
+    /**
+     * If-None-Match
+     */
+    "if-none-match"?: string | null
+  }
+  path: {
+    /**
+     * Event Id
+     */
+    event_id: string | number
+  }
+  query?: never
+  url: "/api/v1/events/{event_id}"
+}
+
+export type GetEventApiV1EventsEventIdGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetEventApiV1EventsEventIdGetError =
+  GetEventApiV1EventsEventIdGetErrors[keyof GetEventApiV1EventsEventIdGetErrors]
+
+export type GetEventApiV1EventsEventIdGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: EventOut
+}
+
+export type GetEventApiV1EventsEventIdGetResponse =
+  GetEventApiV1EventsEventIdGetResponses[keyof GetEventApiV1EventsEventIdGetResponses]
+
+export type UpdateEventApiV1EventsEventIdPatchData = {
+  body: EventUpdate
+  path: {
+    /**
+     * Event Id
+     */
+    event_id: string | number
+  }
+  query?: never
+  url: "/api/v1/events/{event_id}"
+}
+
+export type UpdateEventApiV1EventsEventIdPatchErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UpdateEventApiV1EventsEventIdPatchError =
+  UpdateEventApiV1EventsEventIdPatchErrors[keyof UpdateEventApiV1EventsEventIdPatchErrors]
+
+export type UpdateEventApiV1EventsEventIdPatchResponses = {
+  /**
+   * Successful Response
+   */
+  200: EventOut
+}
+
+export type UpdateEventApiV1EventsEventIdPatchResponse =
+  UpdateEventApiV1EventsEventIdPatchResponses[keyof UpdateEventApiV1EventsEventIdPatchResponses]
+
+export type GetEventFilesApiV1EventsEventIdFilesGetData = {
+  body?: never
+  path: {
+    /**
+     * Event Id
+     */
+    event_id: string | number
+  }
+  query?: never
+  url: "/api/v1/events/{event_id}/files"
+}
+
+export type GetEventFilesApiV1EventsEventIdFilesGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetEventFilesApiV1EventsEventIdFilesGetError =
+  GetEventFilesApiV1EventsEventIdFilesGetErrors[keyof GetEventFilesApiV1EventsEventIdFilesGetErrors]
+
+export type GetEventFilesApiV1EventsEventIdFilesGetResponses = {
+  /**
+   * Response Get Event Files Api V1 Events  Event Id  Files Get
+   *
+   * Successful Response
+   */
+  200: Array<EventFileOut>
+}
+
+export type GetEventFilesApiV1EventsEventIdFilesGetResponse =
+  GetEventFilesApiV1EventsEventIdFilesGetResponses[keyof GetEventFilesApiV1EventsEventIdFilesGetResponses]
+
+export type UploadEventFileApiV1EventsEventIdUploadFilePostData = {
+  body: BodyUploadEventFileApiV1EventsEventIdUploadFilePost
+  path: {
+    /**
+     * Event Id
+     */
+    event_id: string | number
+  }
+  query?: never
+  url: "/api/v1/events/{event_id}/upload_file"
+}
+
+export type UploadEventFileApiV1EventsEventIdUploadFilePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UploadEventFileApiV1EventsEventIdUploadFilePostError =
+  UploadEventFileApiV1EventsEventIdUploadFilePostErrors[keyof UploadEventFileApiV1EventsEventIdUploadFilePostErrors]
+
+export type UploadEventFileApiV1EventsEventIdUploadFilePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: EventFileOut
+}
+
+export type UploadEventFileApiV1EventsEventIdUploadFilePostResponse =
+  UploadEventFileApiV1EventsEventIdUploadFilePostResponses[keyof UploadEventFileApiV1EventsEventIdUploadFilePostResponses]
+
+export type GetGroupsApiV1GroupsGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/groups"
+}
+
+export type GetGroupsApiV1GroupsGetResponses = {
+  /**
+   * Response Get Groups Api V1 Groups Get
+   *
+   * Successful Response
+   */
+  200: Array<GroupOut>
+}
+
+export type GetGroupsApiV1GroupsGetResponse =
+  GetGroupsApiV1GroupsGetResponses[keyof GetGroupsApiV1GroupsGetResponses]
+
 export type ProxyImageApiV1ImgPathGetData = {
   body?: never
   headers?: {
@@ -7222,22 +5064,1127 @@ export type ProxyImageApiV1ImgPathGetResponses = {
   200: unknown
 }
 
-export type ReceiveCspReportApiV1CspReportPostData = {
+export type NewsListApiV1NewsGetData = {
   body?: never
+  headers?: {
+    /**
+     * If-None-Match
+     */
+    "if-none-match"?: string | null
+  }
   path?: never
-  query?: never
-  url: "/api/v1/csp-report"
+  query?: {
+    /**
+     * Limit
+     *
+     * Number of items to return
+     */
+    limit?: number
+    /**
+     * Cursor
+     *
+     * Pagination cursor
+     */
+    cursor?: string | null
+  }
+  url: "/api/v1/news"
 }
 
-export type ReceiveCspReportApiV1CspReportPostResponses = {
+export type NewsListApiV1NewsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type NewsListApiV1NewsGetError = NewsListApiV1NewsGetErrors[keyof NewsListApiV1NewsGetErrors]
+
+export type NewsListApiV1NewsGetResponses = {
   /**
    * Successful Response
    */
-  204: void
+  200: PaginatedNews
 }
 
-export type ReceiveCspReportApiV1CspReportPostResponse =
-  ReceiveCspReportApiV1CspReportPostResponses[keyof ReceiveCspReportApiV1CspReportPostResponses]
+export type NewsListApiV1NewsGetResponse =
+  NewsListApiV1NewsGetResponses[keyof NewsListApiV1NewsGetResponses]
+
+export type CreateNewsApiV1NewsPostData = {
+  body: NewsCreate
+  path?: never
+  query?: never
+  url: "/api/v1/news"
+}
+
+export type CreateNewsApiV1NewsPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type CreateNewsApiV1NewsPostError =
+  CreateNewsApiV1NewsPostErrors[keyof CreateNewsApiV1NewsPostErrors]
+
+export type CreateNewsApiV1NewsPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: NewsOut
+}
+
+export type CreateNewsApiV1NewsPostResponse =
+  CreateNewsApiV1NewsPostResponses[keyof CreateNewsApiV1NewsPostResponses]
+
+export type DeleteCommentApiV1NewsCommentsCommentIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Comment Id
+     */
+    comment_id: string
+  }
+  query?: never
+  url: "/api/v1/news/comments/{comment_id}"
+}
+
+export type DeleteCommentApiV1NewsCommentsCommentIdDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteCommentApiV1NewsCommentsCommentIdDeleteError =
+  DeleteCommentApiV1NewsCommentsCommentIdDeleteErrors[keyof DeleteCommentApiV1NewsCommentsCommentIdDeleteErrors]
+
+export type DeleteCommentApiV1NewsCommentsCommentIdDeleteResponses = {
+  /**
+   * Response Delete Comment Api V1 News Comments  Comment Id  Delete
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: boolean
+  }
+}
+
+export type DeleteCommentApiV1NewsCommentsCommentIdDeleteResponse =
+  DeleteCommentApiV1NewsCommentsCommentIdDeleteResponses[keyof DeleteCommentApiV1NewsCommentsCommentIdDeleteResponses]
+
+export type UpdateCommentApiV1NewsCommentsCommentIdPatchData = {
+  body: NewsCommentUpdate
+  path: {
+    /**
+     * Comment Id
+     */
+    comment_id: string
+  }
+  query?: never
+  url: "/api/v1/news/comments/{comment_id}"
+}
+
+export type UpdateCommentApiV1NewsCommentsCommentIdPatchErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UpdateCommentApiV1NewsCommentsCommentIdPatchError =
+  UpdateCommentApiV1NewsCommentsCommentIdPatchErrors[keyof UpdateCommentApiV1NewsCommentsCommentIdPatchErrors]
+
+export type UpdateCommentApiV1NewsCommentsCommentIdPatchResponses = {
+  /**
+   * Successful Response
+   */
+  200: NewsCommentOut
+}
+
+export type UpdateCommentApiV1NewsCommentsCommentIdPatchResponse =
+  UpdateCommentApiV1NewsCommentsCommentIdPatchResponses[keyof UpdateCommentApiV1NewsCommentsCommentIdPatchResponses]
+
+export type SemanticSearchApiV1NewsSearchSemanticGetData = {
+  body?: never
+  headers?: {
+    /**
+     * If-None-Match
+     */
+    "if-none-match"?: string | null
+  }
+  path?: never
+  query: {
+    /**
+     * Query
+     */
+    query: string
+    /**
+     * Limit
+     */
+    limit?: number
+    /**
+     * Min Score
+     */
+    min_score?: number
+  }
+  url: "/api/v1/news/search/semantic"
+}
+
+export type SemanticSearchApiV1NewsSearchSemanticGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SemanticSearchApiV1NewsSearchSemanticGetError =
+  SemanticSearchApiV1NewsSearchSemanticGetErrors[keyof SemanticSearchApiV1NewsSearchSemanticGetErrors]
+
+export type SemanticSearchApiV1NewsSearchSemanticGetResponses = {
+  /**
+   * Response Semantic Search Api V1 News Search Semantic Get
+   *
+   * Successful Response
+   */
+  200: Array<NewsOut>
+}
+
+export type SemanticSearchApiV1NewsSearchSemanticGetResponse =
+  SemanticSearchApiV1NewsSearchSemanticGetResponses[keyof SemanticSearchApiV1NewsSearchSemanticGetResponses]
+
+export type UploadNewsImageApiV1NewsUploadImagePostData = {
+  body: BodyUploadNewsImageApiV1NewsUploadImagePost
+  path?: never
+  query?: never
+  url: "/api/v1/news/upload_image"
+}
+
+export type UploadNewsImageApiV1NewsUploadImagePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UploadNewsImageApiV1NewsUploadImagePostError =
+  UploadNewsImageApiV1NewsUploadImagePostErrors[keyof UploadNewsImageApiV1NewsUploadImagePostErrors]
+
+export type UploadNewsImageApiV1NewsUploadImagePostResponses = {
+  /**
+   * Response Upload News Image Api V1 News Upload Image Post
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type UploadNewsImageApiV1NewsUploadImagePostResponse =
+  UploadNewsImageApiV1NewsUploadImagePostResponses[keyof UploadNewsImageApiV1NewsUploadImagePostResponses]
+
+export type DeleteNewsApiV1NewsIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Id
+     */
+    id: string
+  }
+  query?: never
+  url: "/api/v1/news/{id}"
+}
+
+export type DeleteNewsApiV1NewsIdDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteNewsApiV1NewsIdDeleteError =
+  DeleteNewsApiV1NewsIdDeleteErrors[keyof DeleteNewsApiV1NewsIdDeleteErrors]
+
+export type DeleteNewsApiV1NewsIdDeleteResponses = {
+  /**
+   * Response Delete News Api V1 News  Id  Delete
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type DeleteNewsApiV1NewsIdDeleteResponse =
+  DeleteNewsApiV1NewsIdDeleteResponses[keyof DeleteNewsApiV1NewsIdDeleteResponses]
+
+export type GetNewsApiV1NewsIdGetData = {
+  body?: never
+  headers?: {
+    /**
+     * If-None-Match
+     */
+    "if-none-match"?: string | null
+  }
+  path: {
+    /**
+     * Id
+     */
+    id: string
+  }
+  query?: never
+  url: "/api/v1/news/{id}"
+}
+
+export type GetNewsApiV1NewsIdGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetNewsApiV1NewsIdGetError =
+  GetNewsApiV1NewsIdGetErrors[keyof GetNewsApiV1NewsIdGetErrors]
+
+export type GetNewsApiV1NewsIdGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: NewsOut
+}
+
+export type GetNewsApiV1NewsIdGetResponse =
+  GetNewsApiV1NewsIdGetResponses[keyof GetNewsApiV1NewsIdGetResponses]
+
+export type UpdateNewsApiV1NewsIdPatchData = {
+  /**
+   * Data
+   */
+  body?: NewsUpdate | null
+  path: {
+    /**
+     * Id
+     */
+    id: string
+  }
+  query?: never
+  url: "/api/v1/news/{id}"
+}
+
+export type UpdateNewsApiV1NewsIdPatchErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UpdateNewsApiV1NewsIdPatchError =
+  UpdateNewsApiV1NewsIdPatchErrors[keyof UpdateNewsApiV1NewsIdPatchErrors]
+
+export type UpdateNewsApiV1NewsIdPatchResponses = {
+  /**
+   * Successful Response
+   */
+  200: NewsOut
+}
+
+export type UpdateNewsApiV1NewsIdPatchResponse =
+  UpdateNewsApiV1NewsIdPatchResponses[keyof UpdateNewsApiV1NewsIdPatchResponses]
+
+export type CommentOnNewsApiV1NewsIdCommentPostData = {
+  body: BodyCommentOnNewsApiV1NewsIdCommentPost
+  path: {
+    /**
+     * Id
+     */
+    id: string
+  }
+  query?: never
+  url: "/api/v1/news/{id}/comment"
+}
+
+export type CommentOnNewsApiV1NewsIdCommentPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type CommentOnNewsApiV1NewsIdCommentPostError =
+  CommentOnNewsApiV1NewsIdCommentPostErrors[keyof CommentOnNewsApiV1NewsIdCommentPostErrors]
+
+export type CommentOnNewsApiV1NewsIdCommentPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: NewsCommentOut
+}
+
+export type CommentOnNewsApiV1NewsIdCommentPostResponse =
+  CommentOnNewsApiV1NewsIdCommentPostResponses[keyof CommentOnNewsApiV1NewsIdCommentPostResponses]
+
+export type GetNewsInteractApiV1NewsIdInteractionsGetData = {
+  body?: never
+  path: {
+    /**
+     * Id
+     */
+    id: string
+  }
+  query?: {
+    /**
+     * Limit
+     */
+    limit?: number
+    /**
+     * Offset
+     */
+    offset?: number
+  }
+  url: "/api/v1/news/{id}/interactions"
+}
+
+export type GetNewsInteractApiV1NewsIdInteractionsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetNewsInteractApiV1NewsIdInteractionsGetError =
+  GetNewsInteractApiV1NewsIdInteractionsGetErrors[keyof GetNewsInteractApiV1NewsIdInteractionsGetErrors]
+
+export type GetNewsInteractApiV1NewsIdInteractionsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: NewsInteractionsOut
+}
+
+export type GetNewsInteractApiV1NewsIdInteractionsGetResponse =
+  GetNewsInteractApiV1NewsIdInteractionsGetResponses[keyof GetNewsInteractApiV1NewsIdInteractionsGetResponses]
+
+export type LikeNewsApiV1NewsIdLikePostData = {
+  body?: never
+  path: {
+    /**
+     * Id
+     */
+    id: string
+  }
+  query?: never
+  url: "/api/v1/news/{id}/like"
+}
+
+export type LikeNewsApiV1NewsIdLikePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type LikeNewsApiV1NewsIdLikePostError =
+  LikeNewsApiV1NewsIdLikePostErrors[keyof LikeNewsApiV1NewsIdLikePostErrors]
+
+export type LikeNewsApiV1NewsIdLikePostResponses = {
+  /**
+   * Response Like News Api V1 News  Id  Like Post
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: boolean
+  }
+}
+
+export type LikeNewsApiV1NewsIdLikePostResponse =
+  LikeNewsApiV1NewsIdLikePostResponses[keyof LikeNewsApiV1NewsIdLikePostResponses]
+
+export type ClearNotificationsApiV1NotificationsDeleteData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/notifications"
+}
+
+export type ClearNotificationsApiV1NotificationsDeleteResponses = {
+  /**
+   * Response Clear Notifications Api V1 Notifications Delete
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type ClearNotificationsApiV1NotificationsDeleteResponse =
+  ClearNotificationsApiV1NotificationsDeleteResponses[keyof ClearNotificationsApiV1NotificationsDeleteResponses]
+
+export type ListNotificationsApiV1NotificationsGetData = {
+  body?: never
+  path?: never
+  query?: {
+    /**
+     * Cursor
+     */
+    cursor?: string | null
+    /**
+     * Limit
+     */
+    limit?: number
+  }
+  url: "/api/v1/notifications"
+}
+
+export type ListNotificationsApiV1NotificationsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ListNotificationsApiV1NotificationsGetError =
+  ListNotificationsApiV1NotificationsGetErrors[keyof ListNotificationsApiV1NotificationsGetErrors]
+
+export type ListNotificationsApiV1NotificationsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: NotificationsListOut
+}
+
+export type ListNotificationsApiV1NotificationsGetResponse =
+  ListNotificationsApiV1NotificationsGetResponses[keyof ListNotificationsApiV1NotificationsGetResponses]
+
+export type CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostData = {
+  body?: never
+  path?: never
+  query?: {
+    /**
+     * Lookahead Minutes
+     */
+    lookahead_minutes?: number
+  }
+  url: "/api/v1/notifications/check-schedule"
+}
+
+export type CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostError =
+  CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostErrors[keyof CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostErrors]
+
+export type CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: NotificationsListOut
+}
+
+export type CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostResponse =
+  CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostResponses[keyof CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostResponses]
+
+export type MarkAllReadApiV1NotificationsReadAllPostData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/notifications/read-all"
+}
+
+export type MarkAllReadApiV1NotificationsReadAllPostResponses = {
+  /**
+   * Response Mark All Read Api V1 Notifications Read All Post
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type MarkAllReadApiV1NotificationsReadAllPostResponse =
+  MarkAllReadApiV1NotificationsReadAllPostResponses[keyof MarkAllReadApiV1NotificationsReadAllPostResponses]
+
+export type DeleteNotificationApiV1NotificationsNotifIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Notif Id
+     */
+    notif_id: string
+  }
+  query?: never
+  url: "/api/v1/notifications/{notif_id}"
+}
+
+export type DeleteNotificationApiV1NotificationsNotifIdDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteNotificationApiV1NotificationsNotifIdDeleteError =
+  DeleteNotificationApiV1NotificationsNotifIdDeleteErrors[keyof DeleteNotificationApiV1NotificationsNotifIdDeleteErrors]
+
+export type DeleteNotificationApiV1NotificationsNotifIdDeleteResponses = {
+  /**
+   * Response Delete Notification Api V1 Notifications  Notif Id  Delete
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: boolean
+  }
+}
+
+export type DeleteNotificationApiV1NotificationsNotifIdDeleteResponse =
+  DeleteNotificationApiV1NotificationsNotifIdDeleteResponses[keyof DeleteNotificationApiV1NotificationsNotifIdDeleteResponses]
+
+export type MarkReadSingleApiV1NotificationsNotifIdReadPatchData = {
+  body?: never
+  path: {
+    /**
+     * Notif Id
+     */
+    notif_id: string
+  }
+  query?: never
+  url: "/api/v1/notifications/{notif_id}/read"
+}
+
+export type MarkReadSingleApiV1NotificationsNotifIdReadPatchErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type MarkReadSingleApiV1NotificationsNotifIdReadPatchError =
+  MarkReadSingleApiV1NotificationsNotifIdReadPatchErrors[keyof MarkReadSingleApiV1NotificationsNotifIdReadPatchErrors]
+
+export type MarkReadSingleApiV1NotificationsNotifIdReadPatchResponses = {
+  /**
+   * Response Mark Read Single Api V1 Notifications  Notif Id  Read Patch
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: boolean
+  }
+}
+
+export type MarkReadSingleApiV1NotificationsNotifIdReadPatchResponse =
+  MarkReadSingleApiV1NotificationsNotifIdReadPatchResponses[keyof MarkReadSingleApiV1NotificationsNotifIdReadPatchResponses]
+
+export type ForgotPasswordApiV1PasswordForgotPostData = {
+  body: ForgotPasswordIn
+  path?: never
+  query?: never
+  url: "/api/v1/password/forgot"
+}
+
+export type ForgotPasswordApiV1PasswordForgotPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ForgotPasswordApiV1PasswordForgotPostError =
+  ForgotPasswordApiV1PasswordForgotPostErrors[keyof ForgotPasswordApiV1PasswordForgotPostErrors]
+
+export type ForgotPasswordApiV1PasswordForgotPostResponses = {
+  /**
+   * Response Forgot Password Api V1 Password Forgot Post
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: boolean
+  }
+}
+
+export type ForgotPasswordApiV1PasswordForgotPostResponse =
+  ForgotPasswordApiV1PasswordForgotPostResponses[keyof ForgotPasswordApiV1PasswordForgotPostResponses]
+
+export type ResetPasswordApiV1PasswordResetPostData = {
+  body: ResetPasswordIn
+  path?: never
+  query?: never
+  url: "/api/v1/password/reset"
+}
+
+export type ResetPasswordApiV1PasswordResetPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ResetPasswordApiV1PasswordResetPostError =
+  ResetPasswordApiV1PasswordResetPostErrors[keyof ResetPasswordApiV1PasswordResetPostErrors]
+
+export type ResetPasswordApiV1PasswordResetPostResponses = {
+  /**
+   * Response Reset Password Api V1 Password Reset Post
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: boolean
+  }
+}
+
+export type ResetPasswordApiV1PasswordResetPostResponse =
+  ResetPasswordApiV1PasswordResetPostResponses[keyof ResetPasswordApiV1PasswordResetPostResponses]
+
+export type DisableUserPushApiV1PushAdminDisableUserPostData = {
+  body: DisableUserPushRequest
+  path?: never
+  query?: never
+  url: "/api/v1/push/admin/disable-user"
+}
+
+export type DisableUserPushApiV1PushAdminDisableUserPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DisableUserPushApiV1PushAdminDisableUserPostError =
+  DisableUserPushApiV1PushAdminDisableUserPostErrors[keyof DisableUserPushApiV1PushAdminDisableUserPostErrors]
+
+export type DisableUserPushApiV1PushAdminDisableUserPostResponses = {
+  /**
+   * Response Disable User Push Api V1 Push Admin Disable User Post
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: number | boolean
+  }
+}
+
+export type DisableUserPushApiV1PushAdminDisableUserPostResponse =
+  DisableUserPushApiV1PushAdminDisableUserPostResponses[keyof DisableUserPushApiV1PushAdminDisableUserPostResponses]
+
+export type AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetData = {
+  body?: never
+  path: {
+    /**
+     * User Id
+     */
+    user_id: string
+  }
+  query?: never
+  url: "/api/v1/push/admin/topics/{user_id}"
+}
+
+export type AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetError =
+  AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetErrors[keyof AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetErrors]
+
+export type AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: AdminUserTopicsResponse
+}
+
+export type AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetResponse =
+  AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetResponses[keyof AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetResponses]
+
+export type AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutData = {
+  body: AdminUserTopicsUpdate
+  path: {
+    /**
+     * User Id
+     */
+    user_id: string
+  }
+  query?: never
+  url: "/api/v1/push/admin/topics/{user_id}"
+}
+
+export type AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutError =
+  AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutErrors[keyof AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutErrors]
+
+export type AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutResponses = {
+  /**
+   * Successful Response
+   */
+  200: AdminUserTopicsResponse
+}
+
+export type AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutResponse =
+  AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutResponses[keyof AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutResponses]
+
+export type BroadcastApiV1PushBroadcastPostData = {
+  body: NotifyBody
+  path?: never
+  query?: never
+  url: "/api/v1/push/broadcast"
+}
+
+export type BroadcastApiV1PushBroadcastPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type BroadcastApiV1PushBroadcastPostError =
+  BroadcastApiV1PushBroadcastPostErrors[keyof BroadcastApiV1PushBroadcastPostErrors]
+
+export type BroadcastApiV1PushBroadcastPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: SendTestResponse
+}
+
+export type BroadcastApiV1PushBroadcastPostResponse =
+  BroadcastApiV1PushBroadcastPostResponses[keyof BroadcastApiV1PushBroadcastPostResponses]
+
+export type SubscribeApiV1PushSubscribePostData = {
+  body: PushSubscriptionIn
+  path?: never
+  query?: never
+  url: "/api/v1/push/subscribe"
+}
+
+export type SubscribeApiV1PushSubscribePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SubscribeApiV1PushSubscribePostError =
+  SubscribeApiV1PushSubscribePostErrors[keyof SubscribeApiV1PushSubscribePostErrors]
+
+export type SubscribeApiV1PushSubscribePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: PushSubscriptionOut
+}
+
+export type SubscribeApiV1PushSubscribePostResponse =
+  SubscribeApiV1PushSubscribePostResponses[keyof SubscribeApiV1PushSubscribePostResponses]
+
+export type UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchData = {
+  body: PushSubscriptionTopicsUpdate
+  path?: never
+  query?: never
+  url: "/api/v1/push/subscribe/topics"
+}
+
+export type UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchError =
+  UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchErrors[keyof UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchErrors]
+
+export type UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchResponses = {
+  /**
+   * Successful Response
+   */
+  200: PushSubscriptionOut
+}
+
+export type UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchResponse =
+  UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchResponses[keyof UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchResponses]
+
+export type SendTestApiV1PushTestPostData = {
+  /**
+   * Payload
+   */
+  body?: PushTestRequest | null
+  path?: never
+  query?: never
+  url: "/api/v1/push/test"
+}
+
+export type SendTestApiV1PushTestPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type SendTestApiV1PushTestPostError =
+  SendTestApiV1PushTestPostErrors[keyof SendTestApiV1PushTestPostErrors]
+
+export type SendTestApiV1PushTestPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: SendTestResponse
+}
+
+export type SendTestApiV1PushTestPostResponse =
+  SendTestApiV1PushTestPostResponses[keyof SendTestApiV1PushTestPostResponses]
+
+export type GetPushTopicsApiV1PushTopicsGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/push/topics"
+}
+
+export type GetPushTopicsApiV1PushTopicsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: PushTopicsResponse
+}
+
+export type GetPushTopicsApiV1PushTopicsGetResponse =
+  GetPushTopicsApiV1PushTopicsGetResponses[keyof GetPushTopicsApiV1PushTopicsGetResponses]
+
+export type UnsubscribeApiV1PushUnsubscribePostData = {
+  body: PushSubscriptionDelete
+  path?: never
+  query?: never
+  url: "/api/v1/push/unsubscribe"
+}
+
+export type UnsubscribeApiV1PushUnsubscribePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UnsubscribeApiV1PushUnsubscribePostError =
+  UnsubscribeApiV1PushUnsubscribePostErrors[keyof UnsubscribeApiV1PushUnsubscribePostErrors]
+
+export type UnsubscribeApiV1PushUnsubscribePostResponses = {
+  /**
+   * Response Unsubscribe Api V1 Push Unsubscribe Post
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: boolean
+  }
+}
+
+export type UnsubscribeApiV1PushUnsubscribePostResponse =
+  UnsubscribeApiV1PushUnsubscribePostResponses[keyof UnsubscribeApiV1PushUnsubscribePostResponses]
+
+export type GetVapidPublicKeyApiV1PushVapidPublicKeyGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/push/vapid-public-key"
+}
+
+export type GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponses = {
+  /**
+   * Response Get Vapid Public Key Api V1 Push Vapid Public Key Get
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string | null
+  }
+}
+
+export type GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponse =
+  GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponses[keyof GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponses]
+
+export type AddScheduleApiV1SchedulePostData = {
+  body: ScheduleCreate
+  path?: never
+  query?: never
+  url: "/api/v1/schedule"
+}
+
+export type AddScheduleApiV1SchedulePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type AddScheduleApiV1SchedulePostError =
+  AddScheduleApiV1SchedulePostErrors[keyof AddScheduleApiV1SchedulePostErrors]
+
+export type AddScheduleApiV1SchedulePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: ScheduleOut
+}
+
+export type AddScheduleApiV1SchedulePostResponse =
+  AddScheduleApiV1SchedulePostResponses[keyof AddScheduleApiV1SchedulePostResponses]
+
+export type DownloadScheduleIcsApiV1ScheduleIcsGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Group
+     *
+     * Group identifier
+     */
+    group: string
+  }
+  url: "/api/v1/schedule/ics"
+}
+
+export type DownloadScheduleIcsApiV1ScheduleIcsGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DownloadScheduleIcsApiV1ScheduleIcsGetError =
+  DownloadScheduleIcsApiV1ScheduleIcsGetErrors[keyof DownloadScheduleIcsApiV1ScheduleIcsGetErrors]
+
+export type DownloadScheduleIcsApiV1ScheduleIcsGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: unknown
+}
+
+export type DeleteScheduleApiV1ScheduleIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Id
+     */
+    id: string
+  }
+  query?: never
+  url: "/api/v1/schedule/{id}"
+}
+
+export type DeleteScheduleApiV1ScheduleIdDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteScheduleApiV1ScheduleIdDeleteError =
+  DeleteScheduleApiV1ScheduleIdDeleteErrors[keyof DeleteScheduleApiV1ScheduleIdDeleteErrors]
+
+export type DeleteScheduleApiV1ScheduleIdDeleteResponses = {
+  /**
+   * Response Delete Schedule Api V1 Schedule  Id  Delete
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type DeleteScheduleApiV1ScheduleIdDeleteResponse =
+  DeleteScheduleApiV1ScheduleIdDeleteResponses[keyof DeleteScheduleApiV1ScheduleIdDeleteResponses]
+
+export type GetScheduleApiV1ScheduleIdGetData = {
+  body?: never
+  headers?: {
+    /**
+     * If-None-Match
+     */
+    "if-none-match"?: string | null
+  }
+  path: {
+    /**
+     * Id
+     */
+    id: string
+  }
+  query?: never
+  url: "/api/v1/schedule/{id}"
+}
+
+export type GetScheduleApiV1ScheduleIdGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GetScheduleApiV1ScheduleIdGetError =
+  GetScheduleApiV1ScheduleIdGetErrors[keyof GetScheduleApiV1ScheduleIdGetErrors]
+
+export type GetScheduleApiV1ScheduleIdGetResponses = {
+  /**
+   * Response Get Schedule Api V1 Schedule  Id  Get
+   *
+   * Successful Response
+   */
+  200: Array<ScheduleOut>
+}
+
+export type GetScheduleApiV1ScheduleIdGetResponse =
+  GetScheduleApiV1ScheduleIdGetResponses[keyof GetScheduleApiV1ScheduleIdGetResponses]
+
+export type UpdateScheduleApiV1ScheduleIdPatchData = {
+  body: ScheduleUpdate
+  path: {
+    /**
+     * Id
+     */
+    id: string
+  }
+  query?: never
+  url: "/api/v1/schedule/{id}"
+}
+
+export type UpdateScheduleApiV1ScheduleIdPatchErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UpdateScheduleApiV1ScheduleIdPatchError =
+  UpdateScheduleApiV1ScheduleIdPatchErrors[keyof UpdateScheduleApiV1ScheduleIdPatchErrors]
+
+export type UpdateScheduleApiV1ScheduleIdPatchResponses = {
+  /**
+   * Successful Response
+   */
+  200: ScheduleOut
+}
+
+export type UpdateScheduleApiV1ScheduleIdPatchResponse =
+  UpdateScheduleApiV1ScheduleIdPatchResponses[keyof UpdateScheduleApiV1ScheduleIdPatchResponses]
 
 export type UnifiedSearchApiV1SearchGetData = {
   body?: never
@@ -7289,29 +6236,458 @@ export type UnifiedSearchApiV1SearchGetResponses = {
 export type UnifiedSearchApiV1SearchGetResponse =
   UnifiedSearchApiV1SearchGetResponses[keyof UnifiedSearchApiV1SearchGetResponses]
 
-export type ListFeatureFlagsAdminFeatureFlagsGetData = {
+export type SpotifyAuthUrlApiV1SpotifyAuthUrlGetData = {
   body?: never
   path?: never
   query?: never
-  url: "/admin/feature-flags"
+  url: "/api/v1/spotify/auth-url"
 }
 
-export type ListFeatureFlagsAdminFeatureFlagsGetResponses = {
+export type SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponses = {
   /**
-   * Response List Feature Flags Admin Feature Flags Get
+   * Successful Response
+   */
+  200: SpotifyAuthUrl
+}
+
+export type SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponse =
+  SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponses[keyof SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponses]
+
+export type SpotifyCallbackApiV1SpotifyCallbackGetData = {
+  body?: never
+  path?: never
+  query: {
+    /**
+     * Code
+     */
+    code: string
+    /**
+     * State
+     */
+    state: string
+  }
+  url: "/api/v1/spotify/callback"
+}
+
+export type SpotifyCallbackApiV1SpotifyCallbackGetErrors = {
+  /**
+   * Bad Request
+   */
+  400: unknown
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+  /**
+   * Service Unavailable
+   */
+  503: unknown
+}
+
+export type SpotifyCallbackApiV1SpotifyCallbackGetError =
+  SpotifyCallbackApiV1SpotifyCallbackGetErrors[keyof SpotifyCallbackApiV1SpotifyCallbackGetErrors]
+
+export type SpotifyCallbackApiV1SpotifyCallbackGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: unknown
+}
+
+export type DisconnectApiV1SpotifyDisconnectPostData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/spotify/disconnect"
+}
+
+export type DisconnectApiV1SpotifyDisconnectPostResponses = {
+  /**
+   * Response Disconnect Api V1 Spotify Disconnect Post
    *
    * Successful Response
    */
-  200: Array<FeatureFlagOut>
+  200: {
+    [key: string]: boolean
+  }
 }
 
-export type ListFeatureFlagsAdminFeatureFlagsGetResponse =
-  ListFeatureFlagsAdminFeatureFlagsGetResponses[keyof ListFeatureFlagsAdminFeatureFlagsGetResponses]
+export type DisconnectApiV1SpotifyDisconnectPostResponse =
+  DisconnectApiV1SpotifyDisconnectPostResponses[keyof DisconnectApiV1SpotifyDisconnectPostResponses]
 
-export type ListAuditLogsAdminAuditGetData = {
+export type NowPlayingApiV1SpotifyNowPlayingGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/spotify/now-playing"
+}
+
+export type NowPlayingApiV1SpotifyNowPlayingGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: SpotifyNowPlayingOut
+}
+
+export type NowPlayingApiV1SpotifyNowPlayingGetResponse =
+  NowPlayingApiV1SpotifyNowPlayingGetResponses[keyof NowPlayingApiV1SpotifyNowPlayingGetResponses]
+
+export type ListPlaylistsApiV1SpotifyPlaylistsGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/spotify/playlists"
+}
+
+export type ListPlaylistsApiV1SpotifyPlaylistsGetResponses = {
+  /**
+   * Response List Playlists Api V1 Spotify Playlists Get
+   *
+   * Successful Response
+   */
+  200: unknown
+}
+
+export type AttendanceSummaryApiV1StatsAttendanceGetData = {
+  body?: never
+  headers?: {
+    /**
+     * If-None-Match
+     */
+    "if-none-match"?: string | null
+  }
+  path?: never
+  query?: {
+    /**
+     * Period
+     */
+    period?: string
+    /**
+     * Skip Cache
+     */
+    skip_cache?: boolean
+  }
+  url: "/api/v1/stats/attendance"
+}
+
+export type AttendanceSummaryApiV1StatsAttendanceGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type AttendanceSummaryApiV1StatsAttendanceGetError =
+  AttendanceSummaryApiV1StatsAttendanceGetErrors[keyof AttendanceSummaryApiV1StatsAttendanceGetErrors]
+
+export type AttendanceSummaryApiV1StatsAttendanceGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: unknown
+}
+
+export type GradeSummaryApiV1StatsGradesGetData = {
+  body?: never
+  headers?: {
+    /**
+     * If-None-Match
+     */
+    "if-none-match"?: string | null
+  }
+  path?: never
+  query?: {
+    /**
+     * Period
+     */
+    period?: string
+    /**
+     * Skip Cache
+     */
+    skip_cache?: boolean
+  }
+  url: "/api/v1/stats/grades"
+}
+
+export type GradeSummaryApiV1StatsGradesGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type GradeSummaryApiV1StatsGradesGetError =
+  GradeSummaryApiV1StatsGradesGetErrors[keyof GradeSummaryApiV1StatsGradesGetErrors]
+
+export type GradeSummaryApiV1StatsGradesGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: unknown
+}
+
+export type ParticipationSummaryApiV1StatsParticipationGetData = {
+  body?: never
+  headers?: {
+    /**
+     * If-None-Match
+     */
+    "if-none-match"?: string | null
+  }
+  path?: never
+  query?: {
+    /**
+     * Period
+     */
+    period?: string
+    /**
+     * Skip Cache
+     */
+    skip_cache?: boolean
+  }
+  url: "/api/v1/stats/participation"
+}
+
+export type ParticipationSummaryApiV1StatsParticipationGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ParticipationSummaryApiV1StatsParticipationGetError =
+  ParticipationSummaryApiV1StatsParticipationGetErrors[keyof ParticipationSummaryApiV1StatsParticipationGetErrors]
+
+export type ParticipationSummaryApiV1StatsParticipationGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: unknown
+}
+
+export type StatsSummaryApiV1StatsSummaryGetData = {
+  body?: never
+  headers?: {
+    /**
+     * If-None-Match
+     */
+    "if-none-match"?: string | null
+  }
+  path?: never
+  query?: {
+    /**
+     * Period
+     */
+    period?: string
+    /**
+     * Skip Cache
+     */
+    skip_cache?: boolean
+  }
+  url: "/api/v1/stats/summary"
+}
+
+export type StatsSummaryApiV1StatsSummaryGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type StatsSummaryApiV1StatsSummaryGetError =
+  StatsSummaryApiV1StatsSummaryGetErrors[keyof StatsSummaryApiV1StatsSummaryGetErrors]
+
+export type StatsSummaryApiV1StatsSummaryGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: unknown
+}
+
+export type ListStoriesApiV1StoriesGetData = {
+  body?: never
+  headers?: {
+    /**
+     * If-None-Match
+     */
+    "if-none-match"?: string | null
+  }
+  path?: never
+  query?: never
+  url: "/api/v1/stories"
+}
+
+export type ListStoriesApiV1StoriesGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ListStoriesApiV1StoriesGetError =
+  ListStoriesApiV1StoriesGetErrors[keyof ListStoriesApiV1StoriesGetErrors]
+
+export type ListStoriesApiV1StoriesGetResponses = {
+  /**
+   * Response List Stories Api V1 Stories Get
+   *
+   * Successful Response
+   */
+  200: Array<StoryOut>
+}
+
+export type ListStoriesApiV1StoriesGetResponse =
+  ListStoriesApiV1StoriesGetResponses[keyof ListStoriesApiV1StoriesGetResponses]
+
+export type CreateStoryApiV1StoriesPostData = {
+  body: StoryCreate
+  path?: never
+  query?: never
+  url: "/api/v1/stories"
+}
+
+export type CreateStoryApiV1StoriesPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type CreateStoryApiV1StoriesPostError =
+  CreateStoryApiV1StoriesPostErrors[keyof CreateStoryApiV1StoriesPostErrors]
+
+export type CreateStoryApiV1StoriesPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: StoryOut
+}
+
+export type CreateStoryApiV1StoriesPostResponse =
+  CreateStoryApiV1StoriesPostResponses[keyof CreateStoryApiV1StoriesPostResponses]
+
+export type UploadStoryCoverApiV1StoriesUploadCoverPostData = {
+  body: BodyUploadStoryCoverApiV1StoriesUploadCoverPost
+  path?: never
+  query?: never
+  url: "/api/v1/stories/upload_cover"
+}
+
+export type UploadStoryCoverApiV1StoriesUploadCoverPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UploadStoryCoverApiV1StoriesUploadCoverPostError =
+  UploadStoryCoverApiV1StoriesUploadCoverPostErrors[keyof UploadStoryCoverApiV1StoriesUploadCoverPostErrors]
+
+export type UploadStoryCoverApiV1StoriesUploadCoverPostResponses = {
+  /**
+   * Response Upload Story Cover Api V1 Stories Upload Cover Post
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type UploadStoryCoverApiV1StoriesUploadCoverPostResponse =
+  UploadStoryCoverApiV1StoriesUploadCoverPostResponses[keyof UploadStoryCoverApiV1StoriesUploadCoverPostResponses]
+
+export type DeleteStoryApiV1StoriesStoryIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * Story Id
+     */
+    story_id: string
+  }
+  query?: never
+  url: "/api/v1/stories/{story_id}"
+}
+
+export type DeleteStoryApiV1StoriesStoryIdDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteStoryApiV1StoriesStoryIdDeleteError =
+  DeleteStoryApiV1StoriesStoryIdDeleteErrors[keyof DeleteStoryApiV1StoriesStoryIdDeleteErrors]
+
+export type DeleteStoryApiV1StoriesStoryIdDeleteResponses = {
+  /**
+   * Response Delete Story Api V1 Stories  Story Id  Delete
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type DeleteStoryApiV1StoriesStoryIdDeleteResponse =
+  DeleteStoryApiV1StoriesStoryIdDeleteResponses[keyof DeleteStoryApiV1StoriesStoryIdDeleteResponses]
+
+export type UpdateStoryApiV1StoriesStoryIdPatchData = {
+  /**
+   * Data
+   */
+  body?: StoryUpdate | null
+  path: {
+    /**
+     * Story Id
+     */
+    story_id: string
+  }
+  query?: never
+  url: "/api/v1/stories/{story_id}"
+}
+
+export type UpdateStoryApiV1StoriesStoryIdPatchErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UpdateStoryApiV1StoriesStoryIdPatchError =
+  UpdateStoryApiV1StoriesStoryIdPatchErrors[keyof UpdateStoryApiV1StoriesStoryIdPatchErrors]
+
+export type UpdateStoryApiV1StoriesStoryIdPatchResponses = {
+  /**
+   * Successful Response
+   */
+  200: StoryOut
+}
+
+export type UpdateStoryApiV1StoriesStoryIdPatchResponse =
+  UpdateStoryApiV1StoriesStoryIdPatchResponses[keyof UpdateStoryApiV1StoriesStoryIdPatchResponses]
+
+export type GetUsersApiV1UsersGetData = {
   body?: never
   path?: never
   query?: {
+    /**
+     * Full Name
+     */
+    full_name?: string | null
+    /**
+     * Search
+     */
+    search?: string | null
+    /**
+     * Group Id
+     */
+    group_id?: string | null
+    /**
+     * Role
+     */
+    role?: UserRole | null
     /**
      * Limit
      */
@@ -7321,102 +6697,508 @@ export type ListAuditLogsAdminAuditGetData = {
      */
     offset?: number
     /**
-     * Actor Id
+     * After Id
      */
-    actor_id?: string | null
-    /**
-     * Subject Id
-     */
-    subject_id?: string | null
-    /**
-     * Resource Type
-     */
-    resource_type?: string | null
-    /**
-     * Action
-     */
-    action?: string | null
+    after_id?: string | null
   }
-  url: "/admin/audit"
+  url: "/api/v1/users"
 }
 
-export type ListAuditLogsAdminAuditGetErrors = {
+export type GetUsersApiV1UsersGetErrors = {
   /**
    * Validation Error
    */
   422: HttpValidationError
 }
 
-export type ListAuditLogsAdminAuditGetError =
-  ListAuditLogsAdminAuditGetErrors[keyof ListAuditLogsAdminAuditGetErrors]
+export type GetUsersApiV1UsersGetError =
+  GetUsersApiV1UsersGetErrors[keyof GetUsersApiV1UsersGetErrors]
 
-export type ListAuditLogsAdminAuditGetResponses = {
+export type GetUsersApiV1UsersGetResponses = {
+  /**
+   * Response Get Users Api V1 Users Get
+   *
+   * Successful Response
+   */
+  200: Array<UserPublicOut | UserOut>
+}
+
+export type GetUsersApiV1UsersGetResponse =
+  GetUsersApiV1UsersGetResponses[keyof GetUsersApiV1UsersGetResponses]
+
+export type CreateUserApiV1UsersPostData = {
+  body: UserCreate
+  path?: never
+  query?: never
+  url: "/api/v1/users"
+}
+
+export type CreateUserApiV1UsersPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type CreateUserApiV1UsersPostError =
+  CreateUserApiV1UsersPostErrors[keyof CreateUserApiV1UsersPostErrors]
+
+export type CreateUserApiV1UsersPostResponses = {
   /**
    * Successful Response
    */
-  200: AuditLogListOut
+  200: UserOut
 }
 
-export type ListAuditLogsAdminAuditGetResponse =
-  ListAuditLogsAdminAuditGetResponses[keyof ListAuditLogsAdminAuditGetResponses]
+export type CreateUserApiV1UsersPostResponse =
+  CreateUserApiV1UsersPostResponses[keyof CreateUserApiV1UsersPostResponses]
 
-export type GetTimeTravelStateAdminAuditTimeTravelGetData = {
+export type ExportAccessAuditApiV1UsersAuditExportGetData = {
   body?: never
   path?: never
-  query: {
+  query?: {
     /**
-     * Aggregate Type
-     *
-     * Aggregate type: 'schedule', 'grade', 'user', 'assessment'
+     * Start At
      */
-    aggregate_type: string
+    start_at?: string | null
     /**
-     * Aggregate Id
-     *
-     * UUID of the aggregate entity
+     * End At
      */
-    aggregate_id: string
-    /**
-     * Target Timestamp
-     *
-     * Target timestamp in ISO format
-     */
-    target_timestamp?: string | null
-    /**
-     * Timestamp
-     *
-     * Target timestamp alias
-     */
-    timestamp?: string | null
-    /**
-     * Verify Chain
-     *
-     * Verify HMAC chain integrity up to target timestamp
-     */
-    verify_chain?: boolean
+    end_at?: string | null
   }
-  url: "/admin/audit/time-travel"
+  url: "/api/v1/users/audit/export"
 }
 
-export type GetTimeTravelStateAdminAuditTimeTravelGetErrors = {
+export type ExportAccessAuditApiV1UsersAuditExportGetErrors = {
   /**
    * Validation Error
    */
   422: HttpValidationError
 }
 
-export type GetTimeTravelStateAdminAuditTimeTravelGetError =
-  GetTimeTravelStateAdminAuditTimeTravelGetErrors[keyof GetTimeTravelStateAdminAuditTimeTravelGetErrors]
+export type ExportAccessAuditApiV1UsersAuditExportGetError =
+  ExportAccessAuditApiV1UsersAuditExportGetErrors[keyof ExportAccessAuditApiV1UsersAuditExportGetErrors]
 
-export type GetTimeTravelStateAdminAuditTimeTravelGetResponses = {
+export type ExportAccessAuditApiV1UsersAuditExportGetResponses = {
   /**
    * Successful Response
    */
-  200: TimeTravelResponse
+  200: unknown
 }
 
-export type GetTimeTravelStateAdminAuditTimeTravelGetResponse =
-  GetTimeTravelStateAdminAuditTimeTravelGetResponses[keyof GetTimeTravelStateAdminAuditTimeTravelGetResponses]
+export type MeApiV1UsersMeGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/users/me"
+}
+
+export type MeApiV1UsersMeGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: UserOut
+}
+
+export type MeApiV1UsersMeGetResponse = MeApiV1UsersMeGetResponses[keyof MeApiV1UsersMeGetResponses]
+
+export type UpdateMeApiV1UsersMePutData = {
+  body: UserProfileUpdate
+  path?: never
+  query?: never
+  url: "/api/v1/users/me"
+}
+
+export type UpdateMeApiV1UsersMePutErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UpdateMeApiV1UsersMePutError =
+  UpdateMeApiV1UsersMePutErrors[keyof UpdateMeApiV1UsersMePutErrors]
+
+export type UpdateMeApiV1UsersMePutResponses = {
+  /**
+   * Successful Response
+   */
+  200: UserOut
+}
+
+export type UpdateMeApiV1UsersMePutResponse =
+  UpdateMeApiV1UsersMePutResponses[keyof UpdateMeApiV1UsersMePutResponses]
+
+export type DeleteAvatarApiV1UsersMeAvatarDeleteData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/users/me/avatar"
+}
+
+export type DeleteAvatarApiV1UsersMeAvatarDeleteResponses = {
+  /**
+   * Successful Response
+   */
+  200: UserOut
+}
+
+export type DeleteAvatarApiV1UsersMeAvatarDeleteResponse =
+  DeleteAvatarApiV1UsersMeAvatarDeleteResponses[keyof DeleteAvatarApiV1UsersMeAvatarDeleteResponses]
+
+export type UploadAvatarApiV1UsersMeAvatarPostData = {
+  body: BodyUploadAvatarApiV1UsersMeAvatarPost
+  path?: never
+  query?: never
+  url: "/api/v1/users/me/avatar"
+}
+
+export type UploadAvatarApiV1UsersMeAvatarPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UploadAvatarApiV1UsersMeAvatarPostError =
+  UploadAvatarApiV1UsersMeAvatarPostErrors[keyof UploadAvatarApiV1UsersMeAvatarPostErrors]
+
+export type UploadAvatarApiV1UsersMeAvatarPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: UserOut
+}
+
+export type UploadAvatarApiV1UsersMeAvatarPostResponse =
+  UploadAvatarApiV1UsersMeAvatarPostResponses[keyof UploadAvatarApiV1UsersMeAvatarPostResponses]
+
+export type DeleteCoverApiV1UsersMeCoverDeleteData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/users/me/cover"
+}
+
+export type DeleteCoverApiV1UsersMeCoverDeleteResponses = {
+  /**
+   * Successful Response
+   */
+  200: UserOut
+}
+
+export type DeleteCoverApiV1UsersMeCoverDeleteResponse =
+  DeleteCoverApiV1UsersMeCoverDeleteResponses[keyof DeleteCoverApiV1UsersMeCoverDeleteResponses]
+
+export type UploadCoverApiV1UsersMeCoverPostData = {
+  body: BodyUploadCoverApiV1UsersMeCoverPost
+  path?: never
+  query?: never
+  url: "/api/v1/users/me/cover"
+}
+
+export type UploadCoverApiV1UsersMeCoverPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UploadCoverApiV1UsersMeCoverPostError =
+  UploadCoverApiV1UsersMeCoverPostErrors[keyof UploadCoverApiV1UsersMeCoverPostErrors]
+
+export type UploadCoverApiV1UsersMeCoverPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: UserOut
+}
+
+export type UploadCoverApiV1UsersMeCoverPostResponse =
+  UploadCoverApiV1UsersMeCoverPostResponses[keyof UploadCoverApiV1UsersMeCoverPostResponses]
+
+export type DeleteCurrentUserAccountApiV1UsersMeDeletePostData = {
+  body: DataDeletionRequest
+  path?: never
+  query?: never
+  url: "/api/v1/users/me/delete"
+}
+
+export type DeleteCurrentUserAccountApiV1UsersMeDeletePostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteCurrentUserAccountApiV1UsersMeDeletePostError =
+  DeleteCurrentUserAccountApiV1UsersMeDeletePostErrors[keyof DeleteCurrentUserAccountApiV1UsersMeDeletePostErrors]
+
+export type DeleteCurrentUserAccountApiV1UsersMeDeletePostResponses = {
+  /**
+   * Successful Response
+   */
+  200: DataDeletionOut
+}
+
+export type DeleteCurrentUserAccountApiV1UsersMeDeletePostResponse =
+  DeleteCurrentUserAccountApiV1UsersMeDeletePostResponses[keyof DeleteCurrentUserAccountApiV1UsersMeDeletePostResponses]
+
+export type ChangeEmailApiV1UsersMeEmailPostData = {
+  body: UserEmailChangeIn
+  path?: never
+  query?: never
+  url: "/api/v1/users/me/email"
+}
+
+export type ChangeEmailApiV1UsersMeEmailPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ChangeEmailApiV1UsersMeEmailPostError =
+  ChangeEmailApiV1UsersMeEmailPostErrors[keyof ChangeEmailApiV1UsersMeEmailPostErrors]
+
+export type ChangeEmailApiV1UsersMeEmailPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: UserOut
+}
+
+export type ChangeEmailApiV1UsersMeEmailPostResponse =
+  ChangeEmailApiV1UsersMeEmailPostResponses[keyof ChangeEmailApiV1UsersMeEmailPostResponses]
+
+export type VerifyEmailChangeApiV1UsersMeEmailConfirmPostData = {
+  body: UserEmailConfirmIn
+  path?: never
+  query?: never
+  url: "/api/v1/users/me/email/confirm"
+}
+
+export type VerifyEmailChangeApiV1UsersMeEmailConfirmPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type VerifyEmailChangeApiV1UsersMeEmailConfirmPostError =
+  VerifyEmailChangeApiV1UsersMeEmailConfirmPostErrors[keyof VerifyEmailChangeApiV1UsersMeEmailConfirmPostErrors]
+
+export type VerifyEmailChangeApiV1UsersMeEmailConfirmPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: UserOut
+}
+
+export type VerifyEmailChangeApiV1UsersMeEmailConfirmPostResponse =
+  VerifyEmailChangeApiV1UsersMeEmailConfirmPostResponses[keyof VerifyEmailChangeApiV1UsersMeEmailConfirmPostResponses]
+
+export type ExportCurrentUserDataApiV1UsersMeExportPostData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/api/v1/users/me/export"
+}
+
+export type ExportCurrentUserDataApiV1UsersMeExportPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: DataExportOut
+}
+
+export type ExportCurrentUserDataApiV1UsersMeExportPostResponse =
+  ExportCurrentUserDataApiV1UsersMeExportPostResponses[keyof ExportCurrentUserDataApiV1UsersMeExportPostResponses]
+
+export type ChangePasswordApiV1UsersMePasswordPostData = {
+  body: UserPasswordChangeIn
+  path?: never
+  query?: never
+  url: "/api/v1/users/me/password"
+}
+
+export type ChangePasswordApiV1UsersMePasswordPostErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ChangePasswordApiV1UsersMePasswordPostError =
+  ChangePasswordApiV1UsersMePasswordPostErrors[keyof ChangePasswordApiV1UsersMePasswordPostErrors]
+
+export type ChangePasswordApiV1UsersMePasswordPostResponses = {
+  /**
+   * Successful Response
+   */
+  200: PasswordChangeOut
+}
+
+export type ChangePasswordApiV1UsersMePasswordPostResponse =
+  ChangePasswordApiV1UsersMePasswordPostResponses[keyof ChangePasswordApiV1UsersMePasswordPostResponses]
+
+export type DeleteUserAdminApiV1UsersUserIdDeleteData = {
+  body?: never
+  path: {
+    /**
+     * User Id
+     */
+    user_id: string
+  }
+  query?: never
+  url: "/api/v1/users/{user_id}"
+}
+
+export type DeleteUserAdminApiV1UsersUserIdDeleteErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type DeleteUserAdminApiV1UsersUserIdDeleteError =
+  DeleteUserAdminApiV1UsersUserIdDeleteErrors[keyof DeleteUserAdminApiV1UsersUserIdDeleteErrors]
+
+export type DeleteUserAdminApiV1UsersUserIdDeleteResponses = {
+  /**
+   * Response Delete User Admin Api V1 Users  User Id  Delete
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type DeleteUserAdminApiV1UsersUserIdDeleteResponse =
+  DeleteUserAdminApiV1UsersUserIdDeleteResponses[keyof DeleteUserAdminApiV1UsersUserIdDeleteResponses]
+
+export type UpdateUserAdminApiV1UsersUserIdPatchData = {
+  body: UserAdminUpdate
+  path: {
+    /**
+     * User Id
+     */
+    user_id: string
+  }
+  query?: never
+  url: "/api/v1/users/{user_id}"
+}
+
+export type UpdateUserAdminApiV1UsersUserIdPatchErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type UpdateUserAdminApiV1UsersUserIdPatchError =
+  UpdateUserAdminApiV1UsersUserIdPatchErrors[keyof UpdateUserAdminApiV1UsersUserIdPatchErrors]
+
+export type UpdateUserAdminApiV1UsersUserIdPatchResponses = {
+  /**
+   * Successful Response
+   */
+  200: UserOut
+}
+
+export type UpdateUserAdminApiV1UsersUserIdPatchResponse =
+  UpdateUserAdminApiV1UsersUserIdPatchResponses[keyof UpdateUserAdminApiV1UsersUserIdPatchResponses]
+
+export type LivenessHealthLiveGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/health/live"
+}
+
+export type LivenessHealthLiveGetResponses = {
+  /**
+   * Response Liveness Health Live Get
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type LivenessHealthLiveGetResponse =
+  LivenessHealthLiveGetResponses[keyof LivenessHealthLiveGetResponses]
+
+export type ReadyHealthReadyGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/health/ready"
+}
+
+export type ReadyHealthReadyGetResponses = {
+  /**
+   * Response Ready Health Ready Get
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type ReadyHealthReadyGetResponse =
+  ReadyHealthReadyGetResponses[keyof ReadyHealthReadyGetResponses]
+
+export type HealthzHealthzGetData = {
+  body?: never
+  path?: never
+  query?: {
+    /**
+     * Brief
+     */
+    brief?: boolean
+  }
+  url: "/healthz"
+}
+
+export type HealthzHealthzGetErrors = {
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type HealthzHealthzGetError = HealthzHealthzGetErrors[keyof HealthzHealthzGetErrors]
+
+export type HealthzHealthzGetResponses = {
+  /**
+   * Successful Response
+   */
+  200: unknown
+}
+
+export type ReadyReadyGetData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/ready"
+}
+
+export type ReadyReadyGetResponses = {
+  /**
+   * Response Ready Ready Get
+   *
+   * Successful Response
+   */
+  200: {
+    [key: string]: string
+  }
+}
+
+export type ReadyReadyGetResponse = ReadyReadyGetResponses[keyof ReadyReadyGetResponses]
 
 export type IssueWsUpgradeTicketWsTicketPostData = {
   body?: never

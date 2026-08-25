@@ -17,6 +17,7 @@ from app.core.events import (
     EventCreated,
     EventRegistration,
     MessageSent,
+    MfaEmailDeliveryRequested,
     MfaEnabled,
     NewsCreated,
     NotificationSent,
@@ -73,6 +74,29 @@ async def handle_mfa_enabled(event: MfaEnabled) -> None:
     # Could trigger:
     # - Security notification to user
     # - Compliance audit logging
+
+
+async def handle_mfa_email_delivery_requested(
+    event: MfaEmailDeliveryRequested,
+) -> None:
+    """Decrypt and send one leased MFA envelope; failures remain retryable."""
+    if event.delivery_id is None:
+        raise ValueError("MFA delivery event is missing delivery_id")
+    from uuid import UUID
+
+    from app.auth.mfa.email_otp import (
+        SmtpMfaEmailSender,
+        build_configured_email_delivery_service,
+    )
+
+    async with async_session() as db:
+        service = build_configured_email_delivery_service()
+        await service.deliver(
+            db,
+            delivery_id=UUID(str(event.delivery_id)),
+            sender=SmtpMfaEmailSender(),
+        )
+        await db.commit()
 
 
 async def handle_event_created(event: EventCreated) -> None:
@@ -305,6 +329,10 @@ def configure_event_handlers() -> None:
     event_bus.subscribe("user.created", handle_user_created)  # type: ignore[arg-type]
     event_bus.subscribe("auth.login", handle_user_logged_in)  # type: ignore[arg-type]
     event_bus.subscribe("auth.mfa_enabled", handle_mfa_enabled)  # type: ignore[arg-type]
+    event_bus.subscribe(
+        "auth.mfa_email.requested",
+        handle_mfa_email_delivery_requested,  # type: ignore[arg-type]
+    )
     event_bus.subscribe("event.created", handle_event_created)  # type: ignore[arg-type]
     event_bus.subscribe("event.created", generate_event_embedding)  # type: ignore[arg-type]
     event_bus.subscribe("event.updated", generate_event_embedding)  # type: ignore[arg-type]
@@ -333,6 +361,7 @@ __all__ = [
     "configure_event_handlers",
     "handle_event_created",
     "handle_event_registration",
+    "handle_mfa_email_delivery_requested",
     "handle_mfa_enabled",
     "handle_notification_sent",
     "handle_notifications_requested",

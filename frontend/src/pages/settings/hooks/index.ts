@@ -1,6 +1,6 @@
 export { useAvatarUpload } from "./useAvatarUpload"
 export { useCoverUpload } from "./useCoverUpload"
-export { useWebAuthn } from "./useWebAuthn"
+export { useEmailMfa } from "./useEmailMfa"
 export { useDndSettings } from "./useDndSettings"
 export { useSessionManagement } from "./useSessionManagement"
 export { useEmailChange } from "./useEmailChange"

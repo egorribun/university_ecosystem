@@ -491,9 +491,13 @@ def test_deployment_workflows_cannot_report_mock_success() -> None:
     assert "kubectl cluster-info" in cluster
 
     helm = _step(deploy, "Deploy Helm release atomically")["run"]
-    assert "helm upgrade --install" in helm
+    assert "bash .github/scripts/deploy-helm.sh upgrade" in helm
+    helm_script = (WORKFLOWS.parent / "scripts" / "deploy-helm.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "helm upgrade --install" in helm_script
     for flag in ("--atomic", "--wait", "--wait-for-jobs"):
-        assert flag in helm
+        assert flag in helm_script
 
     ws_hub = _step(deploy, "Deploy WS Hub image")["run"]
     assert "kubectl set image" in ws_hub

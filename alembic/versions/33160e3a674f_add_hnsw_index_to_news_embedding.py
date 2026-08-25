@@ -21,14 +21,16 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     """Upgrade schema."""
     # op.execute("COMMIT")
-    op.execute(
-        "CREATE INDEX CONCURRENTLY IF NOT EXISTS news_embedding_hnsw_idx "
-        "ON news USING hnsw (embedding vector_cosine_ops) "
-        "WITH (m = 16, ef_construction = 64);"
-    )
+    with op.get_context().autocommit_block():
+        op.execute(
+            "CREATE INDEX CONCURRENTLY IF NOT EXISTS news_embedding_hnsw_idx "
+            "ON news USING hnsw (embedding vector_cosine_ops) "
+            "WITH (m = 16, ef_construction = 64);"
+        )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     # op.execute("COMMIT")
-    op.execute("DROP INDEX CONCURRENTLY IF EXISTS news_embedding_hnsw_idx;")
+    with op.get_context().autocommit_block():
+        op.execute("DROP INDEX CONCURRENTLY IF EXISTS news_embedding_hnsw_idx;")

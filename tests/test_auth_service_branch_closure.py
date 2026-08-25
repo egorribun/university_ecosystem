@@ -96,6 +96,8 @@ async def test_confirm_email_change_skips_second_attach_for_same_db_user():
     service = _service()
     user = MagicMock()
     user.id = uuid4()
+    user.mfa_epoch = 0
+    user.mfa_default_method = None
     record = SimpleNamespace(
         id=7,
         user_id=user.id,
@@ -105,7 +107,8 @@ async def test_confirm_email_change_skips_second_attach_for_same_db_user():
     )
     service.auth_repo.get_valid_email_change_token = AsyncMock(return_value=record)
     service.user_repo.check_email_exists = AsyncMock(return_value=False)
-    service.user_repo.update = AsyncMock(return_value=user)
+    service.user_repo._get_orm = AsyncMock(return_value=user)
+    service.auth_repo.db.execute = AsyncMock()
     service.auth_repo.mark_email_change_token_used = AsyncMock()
     service.auth_repo.invalidate_other_email_change_tokens = AsyncMock()
     attach = AsyncMock(return_value=user)
@@ -118,6 +121,11 @@ async def test_confirm_email_change_skips_second_attach_for_same_db_user():
             new=AsyncMock(return_value=user),
         ),
         patch.object(auth_module, "attach_pending_email", new=attach),
+        patch.object(
+            auth_module,
+            "refresh_user_mfa_preferences",
+            new=AsyncMock(return_value=None),
+        ),
         patch("app.core.csrf.signal_csrf_rotation"),
     ):
         result = await service.confirm_email_change(user, "token", MagicMock())

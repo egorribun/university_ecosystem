@@ -21,7 +21,6 @@ interface AuthContextActions {
   refresh: AuthContextType["refresh"]
   submitMfaChallenge: AuthContextType["submitMfaChallenge"]
   requireMfa: AuthContextType["requireMfa"]
-  loginWithPasskey: AuthContextType["loginWithPasskey"]
   resetEtagCache: typeof resetEtagCache
   authOperation: boolean
 }
@@ -37,7 +36,6 @@ export const AuthContext = createContext<AuthContextActions>({
   refresh: async () => {},
   submitMfaChallenge: async () => {},
   requireMfa: async () => null,
-  loginWithPasskey: async () => {},
   resetEtagCache,
   authOperation: false,
 } as AuthContextActions)
@@ -109,7 +107,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       ssrAuthHint
     )
 
-  const { login, logout, submitMfaChallenge, requireMfa, loginWithPasskey, refresh } = useAuthApi(
+  const { login, logout, submitMfaChallenge, requireMfa, refresh } = useAuthApi(
     user,
     setUser,
     updatePendingMfa,
@@ -132,9 +130,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       refresh,
       submitMfaChallenge,
       requireMfa,
-      loginWithPasskey,
     }),
-    [login, logout, setUser, refresh, submitMfaChallenge, requireMfa, loginWithPasskey]
+    [login, logout, setUser, refresh, submitMfaChallenge, requireMfa]
   )
 
   const value = useMemo(

@@ -129,8 +129,8 @@ def upgrade() -> None:
             existing_type=sa.VARCHAR(length=20),
             type_=sa.Integer(),
             existing_nullable=False,
-            autoincrement=True,
             postgresql_using="id::integer",
+            **({"autoincrement": True} if bind.dialect.name == "mysql" else {}),
         )
         if "ix_groups_id" in existing_indexes:
             batch_op.drop_index(batch_op.f("ix_groups_id"))
@@ -1469,7 +1469,7 @@ def downgrade() -> None:
             existing_type=sa.Integer(),
             type_=sa.VARCHAR(length=20),
             existing_nullable=False,
-            autoincrement=True,
+            **({"autoincrement": True} if bind.dialect.name == "mysql" else {}),
         )
         if "faculty" in existing_columns:
             batch_op.drop_column("faculty")

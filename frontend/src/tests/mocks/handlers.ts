@@ -56,7 +56,6 @@ export const testUser: User = {
   mfa_last_verified_at: null,
   recovery_codes_left: 0,
   totp_enrollments: [],
-  mfa_challenges: [],
 }
 
 const nowIso = () => new Date().toISOString()
@@ -121,7 +120,6 @@ const createMfaChallenge = ({
       method: "totp",
       challenge_token: "totp-challenge-token-32-characters-long",
       challenge_expires_at: createChallengeExpiresAt(),
-      options: null,
       ...attemptMeta,
     })
   }
@@ -144,7 +142,6 @@ let stepUpChallenge: PendingMfaResponse | null = createMfaChallenge({
 
 const resetUserEnrollments = () => {
   testUser.totp_enrollments!.splice(0, testUser.totp_enrollments!.length)
-  testUser.mfa_challenges!.splice(0, testUser.mfa_challenges!.length)
 }
 
 export const resetTestMfa = () => {
@@ -394,7 +391,6 @@ export const handlers = [
   http.get("*/auth/mfa/totp", () => {
     return HttpResponse.json(testUser.totp_enrollments ?? [])
   }),
-  http.get("*/auth/mfa/webauthn", () => HttpResponse.json([])),
   http.post("*/auth/mfa/totp/start", async ({ request }) => {
     const hasActiveTotp = Boolean(
       testUser.totp_enrollments?.some((entry) => entry.confirmed_at && !entry.revoked_at)
@@ -528,7 +524,9 @@ export const handlers = [
     }
 
     testUser.mfa_last_verified_at = nowIso()
-    testUser.mfa_default_method = body.method
+    if (body.method !== "recovery_code") {
+      testUser.mfa_default_method = body.method
+    }
     testUser.mfa_required = false
 
     if (matchedLogin) {

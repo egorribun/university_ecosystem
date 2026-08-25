@@ -37,10 +37,28 @@ connections:
 # Required keys: jwt-secret, jwt-rsa-private-key, jwt-rsa-public-key,
 # internal-hmac-secret, ws-hub-internal-secret, csrf-hmac-secret,
 # spotify-token-secret, elasticsearch-password, spicedb-preshared-key,
-# audit-log-secret, idempotency-hmac-secret, minio-access-key,
-# minio-secret-key, temporal-api-key.
+# audit-log-secret, idempotency-hmac-secret, all keys configured under
+# applicationSecrets.keys, minio-access-key, minio-secret-key, temporal-api-key.
+# An ExternalSecret may own this Secret; keep its refreshInterval at 1m so both
+# backend and outbox-worker receive overlapping key rings during rotation.
 applicationSecrets:
   existingSecret: ""
+  # Parameterized key names allow an existing Secret/ExternalSecret target to
+  # follow the operator's naming convention without copying secret material
+  # into Helm values or Helm release state.
+  keys:
+    mfaEmailOtpHMACKeys: "mfa-email-otp-hmac-keys"
+    mfaEmailOtpActiveHMACKeyId: "mfa-email-otp-active-hmac-key-id"
+    mfaEmailDeliveryKEKs: "mfa-email-delivery-keks"
+    mfaEmailDeliveryActiveKEKId: "mfa-email-delivery-active-kek-id"
+    mfaTrustedDeviceHMACKeys: "mfa-trusted-device-hmac-keys"
+    mfaTrustedDeviceActiveHMACKeyId: "mfa-trusted-device-active-hmac-key-id"
+
+# Internal render-only contract used by the deployment workflow to discover
+# the exact Secret names and keys after merging the environment values file.
+# Keep disabled for every installed release.
+deploymentContract:
+  enabled: false
 
 # Database backup is opt-in because it requires reachable PostgreSQL and MinIO
 # services plus the Secret keys documented above. The init container produces a
@@ -112,6 +130,15 @@ backend:
     spicedbPresharedKey: ""
     auditLogSecret: ""
     idempotencyHMACSecret: ""
+    # Development-only key-ring material used when existingSecret is empty.
+    # Format: "key-id:base64url-key[,previous-id:base64url-key]". Never set
+    # these values in staging/production; use applicationSecrets.existingSecret.
+    mfaEmailOtpHMACKeys: ""
+    mfaEmailOtpActiveHMACKeyId: ""
+    mfaEmailDeliveryKEKs: ""
+    mfaEmailDeliveryActiveKEKId: ""
+    mfaTrustedDeviceHMACKeys: ""
+    mfaTrustedDeviceActiveHMACKeyId: ""
     # Empty disables the Elasticsearch integration. Production URLs must use
     # HTTPS; the application validates this at startup.
     elasticsearchURL: ""

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import os
 from functools import cached_property
 from typing import Any
 
-from pydantic import Field, ValidationInfo, field_validator
+from pydantic import Field, ValidationInfo, field_validator, model_validator
 
 from app.core.logging import get_logger
 
@@ -123,6 +124,23 @@ class NotificationSettings(BaseAppSettings):
                 "development environments"
             )
         return value
+
+    @model_validator(mode="after")
+    def _require_encrypted_smtp_transport(self) -> NotificationSettings:
+        environment = str(
+            getattr(self, "environment", "")
+            or os.environ.get("ENVIRONMENT", "development")
+        ).lower()
+        if (
+            self.smtp_host.strip()
+            and self.smtp_security == "none"
+            and environment not in _DEVELOPMENT_ENVIRONMENTS
+        ):
+            raise ValueError(
+                "SMTP_SECURITY must be starttls or ssl when SMTP_HOST is configured "
+                "outside development environments"
+            )
+        return self
 
     @field_validator("notifications_allowed_push_topics", mode="before")
     @classmethod

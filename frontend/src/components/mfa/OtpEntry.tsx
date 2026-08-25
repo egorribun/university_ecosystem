@@ -13,13 +13,20 @@ import { Button } from "@/components/settings"
 import { ShieldAlert } from "lucide-react"
 
 type OtpEntryProps = {
+  method?: "totp" | "email_otp"
   loading?: boolean
   error?: string | null
   helperText?: string | null
   onSubmit: (code: string) => Promise<void> | void
 }
 
-export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps) => {
+export const OtpEntry = ({
+  method = "totp",
+  loading,
+  error,
+  helperText,
+  onSubmit,
+}: OtpEntryProps) => {
   const { t } = useTranslation("auth")
   const [digits, setDigits] = useState<string[]>(["", "", "", "", "", ""])
   const [localError, setLocalError] = useState<string | null>(null)
@@ -137,11 +144,11 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
     <div className="w-full">
       <div className="flex flex-col gap-6 items-stretch">
         <h3 className="text-lg font-black tracking-tight text-center text-text-primary">
-          {t("mfa.otp.methods.totp")}
+          {t(`mfa.otp.methods.${method}`)}
         </h3>
 
         <p className="text-sm text-center text-(--text-secondary) font-medium leading-relaxed">
-          {t("mfa.otp.descriptions.totp")}
+          {t(`mfa.otp.descriptions.${method}`)}
         </p>
 
         <div
@@ -162,7 +169,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
               // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus={index === 0}
               disabled={Boolean(loading)}
-              aria-label={t("mfa.otp.methods.totp") + " - digit " + (index + 1)}
+              aria-label={t(`mfa.otp.methods.${method}`) + " - digit " + (index + 1)}
               onChange={(e) => handleChange(index, e.target.value)}
               onKeyDown={(e) => handleKeyDown(index, e)}
               onPaste={index === 0 ? handlePaste : undefined}

@@ -32,6 +32,7 @@ export default defineConfig({
     setupFiles: ["src/setupTests.ts"],
     globals: true,
     css: true,
+    clearMocks: true,
     // Node 26 exposes an experimental process-global localStorage accessor
     // which warns before JSDOM can install its isolated implementation.  Tests
     // must use JSDOM storage, never a process-persistent cross-worker store.

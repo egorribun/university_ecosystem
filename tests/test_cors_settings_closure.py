@@ -21,7 +21,6 @@ class TestCorsSettingsClosure:
             frontend_origins=[" https://A.example/ ", "", "https://a.example"],
             frontend_origin="",
             app_base_url="",
-            webauthn_origin="https://login.example/",
             is_development=True,
         )
 

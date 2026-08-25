@@ -18,6 +18,33 @@ from app.auth.mfa.totp import _ct_verify_totp
 pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
+@pytest.fixture(autouse=True)
+def _bind_direct_challenge_issuance(monkeypatch: pytest.MonkeyPatch):
+    original_issue = mfa.issue_challenge
+    original_verify = mfa.verify_totp_for_user
+    original_consume = mfa.consume_challenge
+
+    async def issue_bound(*args, **kwargs):
+        kwargs.setdefault("flow", "login")
+        kwargs.setdefault("session_identifier", "test-bound-session")
+        kwargs.setdefault("client_fingerprint", "f" * 64)
+        return await original_issue(*args, **kwargs)
+
+    async def verify_bound(*args, **kwargs):
+        kwargs.setdefault("client_fingerprint", "f" * 64)
+        kwargs.setdefault("login_session_identifier", "test-bound-session")
+        return await original_verify(*args, **kwargs)
+
+    async def consume_bound(*args, **kwargs):
+        kwargs.setdefault("client_fingerprint", "f" * 64)
+        kwargs.setdefault("login_session_identifier", "test-bound-session")
+        return await original_consume(*args, **kwargs)
+
+    monkeypatch.setattr(mfa, "issue_challenge", issue_bound)
+    monkeypatch.setattr(mfa, "verify_totp_for_user", verify_bound)
+    monkeypatch.setattr(mfa, "consume_challenge", consume_bound)
+
+
 async def test_mfa_check_helpers(db_session, user_factory):
     from sqlalchemy.orm import selectinload
 
@@ -33,7 +60,6 @@ async def test_mfa_check_helpers(db_session, user_factory):
 
     # Initially no MFA
     assert await mfa.has_totp_enabled(db_session, user) is False
-    assert await mfa.has_webauthn_enabled(db_session, user) is False
     assert await mfa.user_has_active_factor(db_session, user) is False
     assert mfa.user_has_confirmed_interactive_factor(user) is False
 
@@ -103,24 +129,26 @@ async def test_issue_and_get_challenge(db_session, test_user):
         challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
         ttl_seconds=300,
     )
-    assert challenge.token is not None
-    assert challenge.challenge_type == CHALLENGE_TYPE_TOTP_VERIFY
+    assert challenge.challenge_token
+    assert challenge.challenge.challenge_type == CHALLENGE_TYPE_TOTP_VERIFY
 
     retrieved = await mfa.get_challenge(
         db_session,
-        token=challenge.token,
+        token=challenge.challenge_token,
         challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
         user_id=test_user.id,
     )
     assert retrieved.id == challenge.id
 
     # Test expired challenge
-    challenge.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    challenge.challenge.expires_at = datetime.now(UTC) - timedelta(seconds=1)
     await db_session.commit()
 
     with pytest.raises(HTTPException) as exc:
         await mfa.get_challenge(
-            db_session, token=challenge.token, challenge_type=CHALLENGE_TYPE_TOTP_VERIFY
+            db_session,
+            token=challenge.challenge_token,
+            challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
         )
     assert exc.value.status_code == 400
 
@@ -164,7 +192,11 @@ async def test_totp_enrollment_flow(db_session, user_factory):
 
 async def test_recovery_codes_flow(db_session, test_user):
     # Generate codes
-    codes = await mfa.generate_recovery_codes(db_session, user=test_user)
+    codes = await mfa.generate_recovery_codes(
+        db_session,
+        user=test_user,
+        fresh_mfa_verified_at=datetime.now(UTC),
+    )
     assert len(codes) == 10
     assert await mfa.count_remaining_recovery_codes(db_session, user=test_user) == 10
 
@@ -208,7 +240,7 @@ async def test_consume_challenge_totp(db_session, user_factory):
     # Consume with right code
     consumed, _ = await mfa.consume_challenge(
         db_session,
-        challenge_token=challenge.token,
+        challenge_token=challenge.challenge_token,
         challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
         provided_code=totp.now(),
         provided_method=MFA_METHOD_TOTP,
@@ -218,19 +250,30 @@ async def test_consume_challenge_totp(db_session, user_factory):
 
 async def test_trusted_device_flow(db_session, test_user):
     token, _expires_at = await mfa.create_trusted_device_token(
-        db_session, user=test_user
+        db_session,
+        user=test_user,
+        ip_address="192.0.2.20",
+        user_agent="pytest",
     )
     assert token is not None
 
     is_valid = await mfa.verify_trusted_device_token(
-        db_session, user=test_user, token=token
+        db_session,
+        user=test_user,
+        token=token,
+        request_ip="192.0.2.20",
+        request_ua="pytest",
     )
     assert is_valid is True
 
     # Invalid token
     assert (
         await mfa.verify_trusted_device_token(
-            db_session, user=test_user, token="invalid"
+            db_session,
+            user=test_user,
+            token="invalid",
+            request_ip="192.0.2.20",
+            request_ua="pytest",
         )
         is False
     )
@@ -244,7 +287,13 @@ async def test_trusted_device_flow(db_session, test_user):
     await db_session.commit()
 
     assert (
-        await mfa.verify_trusted_device_token(db_session, user=test_user, token=token)
+        await mfa.verify_trusted_device_token(
+            db_session,
+            user=test_user,
+            token=token,
+            request_ip="192.0.2.20",
+            request_ua="pytest",
+        )
         is False
     )
 
@@ -257,7 +306,7 @@ async def test_purge_challenges(db_session, test_user):
         db_session, user_id=test_user.id, challenge_type="test"
     )
 
-    c1.expires_at = datetime.now(UTC) - timedelta(hours=1)
+    c1.challenge.expires_at = datetime.now(UTC) - timedelta(hours=1)
     await db_session.commit()
 
     purged = await mfa.purge_expired_challenges(db_session, grace_period_seconds=0)
@@ -366,6 +415,13 @@ async def test_trusted_device_edge_cases(db_session, test_user):
         )
         is False
     )
+    # A mismatch invalidates the token. Issue a fresh token for each probe.
+    token, _ = await mfa.create_trusted_device_token(
+        db_session,
+        user=test_user,
+        ip_address="192.168.1.1",
+        user_agent="Mozilla/5.0",
+    )
     # Verify with wrong UA
     assert (
         await mfa.verify_trusted_device_token(
@@ -376,6 +432,12 @@ async def test_trusted_device_edge_cases(db_session, test_user):
             request_ua="Firefox/5.0",
         )
         is False
+    )
+    token, _ = await mfa.create_trusted_device_token(
+        db_session,
+        user=test_user,
+        ip_address="192.168.1.1",
+        user_agent="Mozilla/5.0",
     )
     # Verify with correct IP and correct UA
     assert (
@@ -398,23 +460,6 @@ async def test_refresh_preferences_edge_cases(db_session, user_factory):
     assert pref is None
     assert user.mfa_required is False
 
-    # Mock WebAuthn available
-    from app.models import WebAuthnCredential
-
-    cred = WebAuthnCredential(
-        user_id=user.id,
-        credential_id=str(uuid4()),
-        public_key="pk",
-        sign_count=0,
-    )
-    db_session.add(cred)
-    await db_session.commit()
-    await db_session.refresh(user)
-
-    pref = await mfa.refresh_user_mfa_preferences(db_session, user=user)
-    assert pref == "webauthn"
-    assert user.mfa_required is True
-
 
 async def test_disable_totp(db_session, user_factory):
     user = await user_factory()
@@ -428,19 +473,29 @@ async def test_disable_totp(db_session, user_factory):
     await db_session.commit()
 
     # Disable specific enrollment
-    count = await mfa.disable_totp(db_session, user=user, enrollment_id=enrollment.id)
+    count, pending = await mfa.disable_totp(
+        db_session, user=user, enrollment_id=enrollment.id
+    )
     assert count == 1
+    assert pending == []
     assert enrollment.is_active is False
     assert enrollment.revoked_at is not None
 
     # Disable all (none active now)
-    count2 = await mfa.disable_totp(db_session, user=user)
+    count2, pending2 = await mfa.disable_totp(db_session, user=user)
     assert count2 == 0
+    assert pending2 == []
 
 
 async def test_start_totp_verification(db_session, test_user):
-    challenge = await mfa.start_totp_verification(db_session, user=test_user)
-    assert challenge.challenge_type == CHALLENGE_TYPE_TOTP_VERIFY
+    challenge = await mfa.start_totp_verification(
+        db_session,
+        user=test_user,
+        flow="login",
+        session_identifier="start-totp-session",
+        client_fingerprint="f" * 64,
+    )
+    assert challenge.challenge.challenge_type == CHALLENGE_TYPE_TOTP_VERIFY
 
 
 async def test_verify_totp_for_user_edge_cases(db_session, user_factory):
@@ -463,7 +518,7 @@ async def test_verify_totp_for_user_edge_cases(db_session, user_factory):
         db_session,
         user=user,
         code=totp.now(),
-        challenge_token=challenge_for_success.token,
+        challenge_token=challenge_for_success.challenge_token,
     )
     assert res_enr.id == enrollment.id
 
@@ -481,12 +536,13 @@ async def test_verify_totp_for_user_edge_cases(db_session, user_factory):
             db_session,
             user=user,
             code="000000",
-            challenge_token=challenge_for_invalid.token,
+            challenge_token=challenge_for_invalid.challenge_token,
         )
 
     # With challenge token — clear last_used_code_hash to avoid replay
     # rejection, then use totp.now() (always valid in current window).
     enrollment.last_used_code_hash = None
+    enrollment.last_used_timecode = None
     await db_session.commit()
 
     challenge = await mfa.issue_challenge(
@@ -497,7 +553,7 @@ async def test_verify_totp_for_user_edge_cases(db_session, user_factory):
         db_session,
         user=user,
         code=totp.now(),
-        challenge_token=challenge.token,
+        challenge_token=challenge.challenge_token,
     )
     assert res_chal.id == challenge.id
     assert res_chal.consumed_at is not None
@@ -509,7 +565,10 @@ async def test_verify_totp_for_user_edge_cases(db_session, user_factory):
     await db_session.commit()
     with pytest.raises(HTTPException):
         await mfa.verify_totp_for_user(
-            db_session, user=user, code=totp.now(), challenge_token=bad_challenge.token
+            db_session,
+            user=user,
+            code=totp.now(),
+            challenge_token=bad_challenge.challenge_token,
         )
 
     # Session ID mismatch
@@ -538,7 +597,7 @@ async def test_verify_totp_for_user_edge_cases(db_session, user_factory):
             db_session,
             user=user,
             code=totp.now(),
-            challenge_token=chal_with_sid.token,
+            challenge_token=chal_with_sid.challenge_token,
             session_id=sid2,
         )
 
@@ -550,10 +609,8 @@ async def test_mfa_db_fallbacks(db_session, user_factory):
     user.id = uuid4()
     # Mock getattr to return None for relationships to trigger DB fallbacks
     user.totp_enrollments = None
-    user.webauthn_credentials = None
 
     assert await mfa.has_totp_enabled(db_session, user) is False
-    assert await mfa.has_webauthn_enabled(db_session, user) is False
     assert await mfa.user_has_active_factor(db_session, user) is False
 
 
@@ -595,32 +652,6 @@ async def test_enrollment_secret_none(db_session, user_factory):
                 await mfa.verify_totp_for_user(db_session, user=user, code="123456")
 
 
-async def test_consume_challenge_webauthn(db_session, user_factory):
-    user = await user_factory()
-    challenge = await mfa.issue_challenge(
-        db_session,
-        user_id=user.id,
-        challenge_type="webauthn-authentication",
-        payload={"options": {"challenge": "dummy-challenge"}},
-    )
-    await db_session.commit()
-
-    with patch(
-        "app.services.webauthn.WebAuthnService.verify_authentication"
-    ) as mock_verify:
-        mock_verify.return_value = None  # success
-
-        consumed, _ = await mfa.consume_challenge(
-            db_session,
-            challenge_token=challenge.token,
-            challenge_type="webauthn-authentication",
-            provided_webauthn_response={"dummy": "data"},
-            provided_method="webauthn",
-        )
-        assert consumed.consumed_at is not None
-        mock_verify.assert_called_once()
-
-
 async def test_legacy_enrollment_check(db_session, user_factory):
     user = await user_factory()
     user.mfa_default_method = "totp"
@@ -644,7 +675,10 @@ async def test_legacy_enrollment_check(db_session, user_factory):
     )
     await db_session.commit()
     res_enr, _ = await mfa.verify_totp_for_user(
-        db_session, user=user, code=totp.now(), challenge_token=legacy_challenge.token
+        db_session,
+        user=user,
+        code=totp.now(),
+        challenge_token=legacy_challenge.challenge_token,
     )
     assert res_enr.id == enrollment.id
 
@@ -712,7 +746,11 @@ async def test_verify_totp_no_enrollments(db_session, user_factory):
 
     with pytest.raises(HTTPException) as exc_info:
         await mfa.verify_totp_for_user(
-            db_session, user=user, code="123456", challenge=challenge
+            db_session,
+            user=user,
+            code="123456",
+            challenge_token=challenge.challenge_token,
+            challenge=challenge.challenge,
         )
     assert exc_info.value.status_code == 400
 
@@ -731,12 +769,21 @@ async def test_verify_totp_challenge_validation_mismatches(db_session, user_fact
 
     # 1. Challenge type mismatch
     wrong_type_challenge = await mfa.issue_challenge(
-        db_session, user_id=user1.id, challenge_type="webauthn-authentication"
+        db_session,
+        user_id=user1.id,
+        challenge_type="recovery-code",
+        flow="login",
+        session_identifier="test-session",
+        client_fingerprint="f" * 64,
     )
     await db_session.commit()
     with pytest.raises(HTTPException):
         await mfa.verify_totp_for_user(
-            db_session, user=user1, code=totp.now(), challenge=wrong_type_challenge
+            db_session,
+            user=user1,
+            code=totp.now(),
+            challenge_token=wrong_type_challenge.challenge_token,
+            challenge=wrong_type_challenge.challenge,
         )
 
     # 2. User ID mismatch
@@ -746,7 +793,11 @@ async def test_verify_totp_challenge_validation_mismatches(db_session, user_fact
     await db_session.commit()
     with pytest.raises(HTTPException):
         await mfa.verify_totp_for_user(
-            db_session, user=user1, code=totp.now(), challenge=wrong_user_challenge
+            db_session,
+            user=user1,
+            code=totp.now(),
+            challenge_token=wrong_user_challenge.challenge_token,
+            challenge=wrong_user_challenge.challenge,
         )
 
     # 3. Session ID mismatch
@@ -773,7 +824,8 @@ async def test_verify_totp_challenge_validation_mismatches(db_session, user_fact
             db_session,
             user=user1,
             code=totp.now(),
-            challenge=session_challenge,
+            challenge_token=session_challenge.challenge_token,
+            challenge=session_challenge.challenge,
             session_id=uuid.uuid4(),
         )
 
@@ -800,7 +852,11 @@ async def test_verify_totp_disappeared_enrollment_and_decryption_failure(
     ):
         with pytest.raises(HTTPException) as exc_info:
             await mfa.verify_totp_for_user(
-                db_session, user=user, code=totp.now(), challenge=challenge
+                db_session,
+                user=user,
+                code=totp.now(),
+                challenge_token=challenge.challenge_token,
+                challenge=challenge.challenge,
             )
         assert exc_info.value.status_code == 400
 
@@ -820,7 +876,11 @@ async def test_verify_totp_disappeared_enrollment_and_decryption_failure(
 
         with pytest.raises(HTTPException) as exc_info:
             await mfa.verify_totp_for_user(
-                db_session, user=user, code=totp.now(), challenge=challenge
+                db_session,
+                user=user,
+                code=totp.now(),
+                challenge_token=challenge.challenge_token,
+                challenge=challenge.challenge,
             )
         assert exc_info.value.status_code == 400
 
@@ -839,7 +899,11 @@ async def test_verify_totp_replay_prevention(db_session, user_factory):
 
     # First verification succeeds
     res_enr, _ = await mfa.verify_totp_for_user(
-        db_session, user=user, code=code, challenge=challenge
+        db_session,
+        user=user,
+        code=code,
+        challenge_token=challenge.challenge_token,
+        challenge=challenge.challenge,
     )
     assert res_enr.id == enrollment.id
 
@@ -850,7 +914,11 @@ async def test_verify_totp_replay_prevention(db_session, user_factory):
     await db_session.commit()
     with pytest.raises(HTTPException) as exc_info:
         await mfa.verify_totp_for_user(
-            db_session, user=user, code=code, challenge=challenge2
+            db_session,
+            user=user,
+            code=code,
+            challenge_token=challenge2.challenge_token,
+            challenge=challenge2.challenge,
         )
     assert exc_info.value.status_code == 400
 
@@ -860,7 +928,6 @@ async def test_verify_totp_replay_prevention(db_session, user_factory):
 from app.auth.mfa.lifecycle import (
     MfaResetStats,
     has_totp_enabled,
-    has_webauthn_enabled,
     reset_user_mfa,
     user_has_active_factor,
     user_has_confirmed_interactive_factor,
@@ -889,42 +956,11 @@ async def test_user_has_confirmed_interactive_factor_non_orm():
     # Inspection error fallback
     class DummyUser:
         totp_enrollments = None
-        webauthn_credentials = None
         mfa_default_method = None
+        email_mfa_enabled_at = None
 
     dummy = DummyUser()
     assert user_has_confirmed_interactive_factor(dummy) is False
-
-
-async def test_user_has_confirmed_interactive_factor_webauthn(db_session, user_factory):
-    user = await user_factory()
-    # Create WebAuthn credential
-    cred = models.WebAuthnCredential(
-        user_id=user.id,
-        credential_id="cred1",
-        public_key="pubkey1",
-        sign_count=1,
-    )
-    db_session.add(cred)
-    await db_session.commit()
-
-    db_session.expunge_all()
-
-    # Load with webauthn_credentials and totp_enrollments eager loaded
-    from sqlalchemy.orm import selectinload
-
-    stmt = (
-        select(models.User)
-        .where(models.User.id == user.id)
-        .options(
-            selectinload(models.User.webauthn_credentials),
-            selectinload(models.User.totp_enrollments),
-        )
-    )
-    result = await db_session.execute(stmt)
-    db_user = result.scalars().first()
-
-    assert user_has_confirmed_interactive_factor(db_user) is True
 
 
 async def test_fallback_to_db_in_mfa_enabled_checks(db_session, user_factory):
@@ -939,14 +975,6 @@ async def test_fallback_to_db_in_mfa_enabled_checks(db_session, user_factory):
     )
     db_session.add(totp_enrollment)
 
-    # 2. Create a WebAuthn credential in DB
-    cred = models.WebAuthnCredential(
-        user_id=user.id,
-        credential_id="cred2",
-        public_key="pubkey2",
-        sign_count=1,
-    )
-    db_session.add(cred)
     await db_session.commit()
 
     # Query user but disconnect relationships to force DB query fallback
@@ -958,11 +986,9 @@ async def test_fallback_to_db_in_mfa_enabled_checks(db_session, user_factory):
 
     # Delete collections from __dict__ so getattr returns None or lazy load fallback triggers
     db_user.__dict__.pop("totp_enrollments", None)
-    db_user.__dict__.pop("webauthn_credentials", None)
 
     # Call methods which should fallback to DB queries and return True
     assert await has_totp_enabled(db_session, db_user) is True
-    assert await has_webauthn_enabled(db_session, db_user) is True
     assert await user_has_active_factor(db_session, db_user) is True
 
 

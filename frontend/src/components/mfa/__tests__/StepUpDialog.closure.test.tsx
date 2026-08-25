@@ -78,7 +78,6 @@ const makePending = (
       method: "totp",
       challenge_token: "challenge-token-1234567890",
       challenge_expires_at: "2026-08-01T12:00:00Z",
-      options: null,
       attempt_count: 0,
       attempt_limit: 5,
       remaining_attempts: 2,
@@ -151,12 +150,32 @@ describe("StepUpDialog closure", () => {
     await user.click(await screen.findByRole("button", { name: "otp-submit" }))
     await waitFor(() => {
       expect(auth.value.submitMfaChallenge).toHaveBeenCalledWith({
+        method: "totp",
         code: "123456",
         challengeToken: "challenge-token-1234567890",
       })
       expect(onCompleted).toHaveBeenCalledTimes(1)
       expect(onClose).toHaveBeenCalledTimes(1)
     })
+  })
+
+  it("submits the exact email OTP method selected by the challenge", async () => {
+    const user = userEvent.setup()
+    auth.value.requireMfa.mockResolvedValue(
+      makePending({ method: "email_otp", delivery_hint: "u***@example.com" })
+    )
+    auth.value.submitMfaChallenge.mockResolvedValue(undefined)
+
+    renderDialog()
+    await user.click(await screen.findByRole("button", { name: "otp-submit" }))
+
+    await waitFor(() =>
+      expect(auth.value.submitMfaChallenge).toHaveBeenCalledWith({
+        method: "email_otp",
+        code: "123456",
+        challengeToken: "challenge-token-1234567890",
+      })
+    )
   })
 
   it("handles generic verification failures and missing attempt metadata", async () => {

@@ -7,18 +7,20 @@ vi.mock("html-to-image", () => ({
 }))
 
 vi.mock("jspdf", () => ({
-  jsPDF: vi.fn().mockImplementation(() => ({
-    internal: {
-      pageSize: {
-        getWidth: () => 210,
-        getHeight: () => 297,
-      },
-    },
-    setFontSize: vi.fn(),
-    text: vi.fn(),
-    addImage: vi.fn(),
-    save: vi.fn(),
-  })),
+  jsPDF: vi.fn(
+    class MockJsPdf {
+      internal = {
+        pageSize: {
+          getWidth: () => 210,
+          getHeight: () => 297,
+        },
+      }
+      setFontSize = vi.fn()
+      text = vi.fn()
+      addImage = vi.fn()
+      save = vi.fn()
+    }
+  ),
 }))
 
 vi.mock("@/app/logger", () => ({

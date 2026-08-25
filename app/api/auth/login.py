@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import logging
-import secrets
-import time
 from typing import Any
 
 from dishka.integrations.fastapi import FromDishka, inject
@@ -23,34 +21,33 @@ from app.api.deps import (
 )
 from app.auth import constants, mfa
 from app.auth.handlers.logout import router as logout_router
+from app.auth.mfa.email_otp import (
+    MfaNotEmailChallenge,
+    MfaOtpCooldown,
+    MfaOtpRejected,
+    MfaSecurityUnavailable,
+)
 from app.auth.schemas import (
+    EmailOtpResendIn,
     LoginIn,
-    LoginPasskeyStartIn,
-    LoginPasskeyVerifyIn,
+    MfaMethodChallengeOut,
     MfaVerifyIn,
     PendingMfaResponse,
 )
 from app.core.config import settings
-from app.core.fingerprint import (
-    store_mfa_challenge_fingerprints,
-    verify_mfa_fingerprint,
-)
+from app.core.fingerprint import extract_request_fingerprint
 from app.core.localization import resolve_locale, translate
 from app.core.protocols import AsyncDatabaseSession
-from app.core.ratelimit import sensitive_route_limit
-from app.core.timing import ensure_minimum_time
+from app.core.ratelimit import RateLimitExceeded, sensitive_route_limit
 from app.models import User
 from app.schemas.schemas import (
     SessionSigningKeyOut,
     TokenWithProfile,
     UserCreate,
-    WebAuthnAuthenticationOptionsOut,
 )
-from app.services.audit_service import AuditService
 from app.services.auth.login_service import LoginService
+from app.services.auth.mfa_coordinator import MfaCoordinator
 from app.services.user.compliance_service import UserComplianceService
-from app.services.user.profile_service import UserProfileService
-from app.services.webauthn import WebAuthnService
 
 logger = logging.getLogger("app.auth.login")
 
@@ -59,121 +56,12 @@ router = APIRouter(tags=["auth"])
 router.include_router(logout_router)
 
 
-@router.post(
-    "/login/passkey/start",
-    response_model=WebAuthnAuthenticationOptionsOut,
-    dependencies=[Depends(sensitive_route_limit())],
-)
-@inject
-async def login_passkey_start(
-    payload: LoginPasskeyStartIn,
-    request: Request,
-    profile_service: FromDishka[UserProfileService],
-    db: FromDishka[AsyncDatabaseSession],
-    audit: FromDishka[AuditService],
-) -> WebAuthnAuthenticationOptionsOut:
-    normalized_email = payload.email.strip().lower()
-
-    # RZ-1 Fix: Timer MUST start before the database query to normalize total time
-    start = time.perf_counter()
-    user = await profile_service.get_user_by_email(normalized_email)
-
-    service = WebAuthnService(db)
-
-    if not user or not user.is_active:
-        from app.auth.mfa.challenge import issue_dummy_challenge
-
-        await issue_dummy_challenge(db)
-        webauthn_options = service.get_dummy_authentication_options()
-        await ensure_minimum_time(start, settings.auth_min_response_time)
-        return WebAuthnAuthenticationOptionsOut(
-            publicKey=webauthn_options,
-            challenge_token=secrets.token_urlsafe(48),
-        )
-
-    options = await service.get_authentication_options(user)
-    challenge = await mfa.issue_challenge(
-        db,
-        user_id=user.id,
-        challenge_type=mfa.CHALLENGE_TYPE_WEBAUTHN_AUTH,
-        payload={"options": options},
-    )
-    await db.commit()
-
-    audit.log(
-        "auth.login.passkey_start",
-        request,
-        user_id=user.id,
-        reason="issued",
-        extra={"challenge_id": challenge.id},
-    )
-
-    await ensure_minimum_time(start, settings.auth_min_response_time)
-
-    return WebAuthnAuthenticationOptionsOut(
-        publicKey=options,
-        challenge_token=challenge.token,
-    )
-
-
-@router.post(
-    "/login/passkey/verify",
-    response_model=TokenWithProfile | PendingMfaResponse,
-    dependencies=[Depends(sensitive_route_limit())],
-)
-@inject
-async def login_passkey_verify(
-    payload: LoginPasskeyVerifyIn,
-    response: Response,
-    request: Request,
-    bg_tasks: BackgroundTasks,
-    login_service: FromDishka[LoginService],
-    db: FromDishka[AsyncDatabaseSession],
-) -> TokenWithProfile | PendingMfaResponse:
-    try:
-        challenge = await mfa.get_challenge(
-            db,
-            token=payload.challenge_token,
-            challenge_type=mfa.CHALLENGE_TYPE_WEBAUTHN_AUTH,
-            consume=True,
-        )
-        await db.commit()
-    except HTTPException:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid challenge") from None
-
-    # Re-fetch after commit
-    user = await db.get(User, challenge.user_id)
-    if not user or not user.is_active:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "User not found or inactive")
-
-    service = WebAuthnService(db)
-    if challenge.payload is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid challenge payload")
-    payload_dict = challenge.payload
-
-    try:
-        await service.verify_authentication(
-            user,
-            str(payload_dict.get("options", {}).get("challenge", "")),
-            payload.webauthn_response,
-        )
-    except Exception as e:  # RZ-22-01-JUSTIFIED: convert-to-domain — converts WebAuthn errors to HTTP 400 (reviewed TD-27-04)
-        # TD-03 (audit 2026-03-15 Wave 7): log only the exception type, not str(e),
-        # because WebAuthn error strings may contain challenge bytes or credential IDs.
-        logger.warning(
-            "Passkey verification failed for user %s: %s", user.id, type(e).__name__
-        )
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "Passkey verification failed"
-        ) from e
-
-    return await login_service.finalize_login(
-        user=user,
-        request=request,
-        response=response,
-        bg_tasks=bg_tasks,
-        mfa_completed=True,
-        method=mfa.MFA_METHOD_WEBAUTHN,
+def _mfa_rate_limit_error(exc: RateLimitExceeded, *, detail: str) -> HTTPException:
+    retry_after = max(0, int(exc.info.retry_after))
+    return HTTPException(
+        status.HTTP_429_TOO_MANY_REQUESTS,
+        detail,
+        headers={"Retry-After": str(retry_after)},
     )
 
 
@@ -189,19 +77,29 @@ async def login(
     request: Request,
     bg_tasks: BackgroundTasks,
     login_service: FromDishka[LoginService],
+    db: FromDishka[AsyncDatabaseSession],
     trust_device: bool = Form(False),
     form_data: OAuth2PasswordRequestForm = Depends(OAuth2PasswordRequestForm),
 ) -> TokenWithProfile | PendingMfaResponse:
-    result = await login_service.perform_login(
-        email=form_data.username,
-        password=form_data.password,
-        request=request,
-        response=response,
-        bg_tasks=bg_tasks,
-        trust_device=trust_device,
-    )
+    try:
+        result = await login_service.perform_login(
+            email=form_data.username,
+            password=form_data.password,
+            request=request,
+            response=response,
+            bg_tasks=bg_tasks,
+            trust_device=trust_device,
+        )
+    except RateLimitExceeded as exc:
+        await db.rollback()
+        raise _mfa_rate_limit_error(exc, detail="MFA request rejected") from exc
+    except MfaSecurityUnavailable as exc:
+        await db.rollback()
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "MFA service unavailable"
+        ) from exc
     if isinstance(result, PendingMfaResponse):
-        await store_mfa_challenge_fingerprints(request, result.methods)
+        await db.commit()
     return result
 
 
@@ -218,17 +116,27 @@ async def login_json(
     request: Request,
     bg_tasks: BackgroundTasks,
     login_service: FromDishka[LoginService],
+    db: FromDishka[AsyncDatabaseSession],
 ) -> TokenWithProfile | PendingMfaResponse:
-    result = await login_service.perform_login(
-        email=payload.email,
-        password=payload.password,
-        request=request,
-        response=response,
-        bg_tasks=bg_tasks,
-        trust_device=payload.trust_device,
-    )
+    try:
+        result = await login_service.perform_login(
+            email=payload.email,
+            password=payload.password,
+            request=request,
+            response=response,
+            bg_tasks=bg_tasks,
+            trust_device=payload.trust_device,
+        )
+    except RateLimitExceeded as exc:
+        await db.rollback()
+        raise _mfa_rate_limit_error(exc, detail="MFA request rejected") from exc
+    except MfaSecurityUnavailable as exc:
+        await db.rollback()
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "MFA service unavailable"
+        ) from exc
     if isinstance(result, PendingMfaResponse):
-        await store_mfa_challenge_fingerprints(request, result.methods)
+        await db.commit()
     return result
 
 
@@ -249,51 +157,234 @@ async def verify_mfa_challenge(
     login_service: FromDishka[LoginService],
     db: FromDishka[AsyncDatabaseSession],
 ) -> TokenWithProfile:
-    challenge_type: str | list[str] | None = None
+    active_session = getattr(request.state, "active_session", None)
+    active_session_identifier = (
+        str(active_session.id) if active_session is not None else None
+    )
+    login_session_identifier = request.cookies.get(MfaCoordinator.PREAUTH_COOKIE_NAME)
+    client_fingerprint = extract_request_fingerprint(request)
+    from app.core.ratelimit import resolve_client_ip
+
+    client_ip = resolve_client_ip(request) or "unknown"
+
+    challenge_type: str | list[str] = constants.CHALLENGE_TYPE_TOTP_VERIFY
     if payload.method == constants.MFA_METHOD_TOTP:
         challenge_type = constants.CHALLENGE_TYPE_TOTP_VERIFY
-    elif payload.method == constants.MFA_METHOD_WEBAUTHN:
-        challenge_type = constants.CHALLENGE_TYPE_WEBAUTHN_AUTH
     elif payload.method == constants.MFA_METHOD_RECOVERY_CODE:
         # Recovery code can be used for any auth challenge
         challenge_type = [
             constants.CHALLENGE_TYPE_TOTP_VERIFY,
-            constants.CHALLENGE_TYPE_WEBAUTHN_AUTH,
         ]
-    else:
+    elif payload.method != constants.MFA_METHOD_EMAIL_OTP:
         # Invalid method
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid MFA method"
         )
 
-    # RED-03: Fingerprint check — reject if challenge was issued to a different client.
-    # verify_mfa_fingerprint handles Redis unavailability gracefully (returns True).
-    if not await verify_mfa_fingerprint(request, payload.challenge_token):
+    try:
+        if payload.method == constants.MFA_METHOD_EMAIL_OTP:
+            if not payload.code:
+                raise MfaOtpRejected()
+            email_otp_service = login_service.get_email_otp_service()
+            challenge = await email_otp_service.verify_opaque(
+                db,
+                challenge_token=payload.challenge_token,
+                code=payload.code,
+                client_fingerprint=client_fingerprint,
+                client_ip=client_ip,
+                login_session_identifier=login_session_identifier,
+                active_session_identifier=active_session_identifier,
+            )
+        elif payload.method == constants.MFA_METHOD_RECOVERY_CODE:
+            if not payload.code:
+                raise MfaOtpRejected()
+            try:
+                challenge = (
+                    await login_service.get_email_otp_service().consume_recovery_opaque(
+                        db,
+                        challenge_token=payload.challenge_token,
+                        code=payload.code,
+                        client_fingerprint=client_fingerprint,
+                        client_ip=client_ip,
+                        login_session_identifier=login_session_identifier,
+                        active_session_identifier=active_session_identifier,
+                    )
+                )
+            except MfaNotEmailChallenge:
+                challenge, _ = await mfa.consume_challenge(
+                    db,
+                    challenge_token=payload.challenge_token,
+                    challenge_type=challenge_type,
+                    provided_code=payload.code,
+                    provided_method=payload.method,
+                    client_fingerprint=client_fingerprint,
+                    login_session_identifier=login_session_identifier,
+                    active_session_identifier=active_session_identifier,
+                )
+        else:
+            challenge, _ = await mfa.consume_challenge(
+                db,
+                challenge_token=payload.challenge_token,
+                challenge_type=challenge_type,
+                provided_code=payload.code,
+                provided_method=payload.method,
+                client_fingerprint=client_fingerprint,
+                login_session_identifier=login_session_identifier,
+                active_session_identifier=active_session_identifier,
+            )
+    except RateLimitExceeded as exc:
+        await db.rollback()
+        raise _mfa_rate_limit_error(exc, detail="MFA verification failed") from exc
+    except MfaSecurityUnavailable as exc:
+        await db.rollback()
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="mfa_fingerprint_mismatch",
-        )
-
-    challenge, _ = await mfa.consume_challenge(
-        db,
-        challenge_token=payload.challenge_token,
-        challenge_type=challenge_type,
-        provided_code=payload.code,
-        provided_webauthn_response=payload.webauthn_response,
-        provided_method=payload.method,
-    )
+            status.HTTP_503_SERVICE_UNAVAILABLE, "MFA service unavailable"
+        ) from exc
+    except HTTPException as exc:
+        # Failed-attempt CAS mutations must survive FastAPI's exception rollback.
+        await db.commit()
+        if exc.status_code in {
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+        }:
+            raise
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "MFA verification failed"
+        ) from exc
+    except MfaOtpRejected as exc:
+        await db.commit()
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "MFA verification failed"
+        ) from exc
 
     user = await db.get(User, challenge.user_id)
     if not user:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "MFA verification failed")
 
-    return await login_service.finalize_login(
+    if challenge.trust_device_requested:
+        try:
+            token, expires_at = await mfa.create_trusted_device_token(
+                db,
+                user=user,
+                user_agent=request.headers.get("user-agent") or "unknown",
+                ip_address=client_ip,
+            )
+        except (RuntimeError, MfaSecurityUnavailable) as exc:
+            await db.rollback()
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE, "MFA service unavailable"
+            ) from exc
+        response.set_cookie(
+            settings.trusted_device_cookie_name,
+            token,
+            httponly=True,
+            secure=settings.cookie_secure,
+            samesite=settings.cookie_samesite,  # type: ignore[arg-type]
+            expires=expires_at,
+            max_age=settings.trusted_device_expire_days * 86400,
+            path="/",
+        )
+
+    if challenge.flow in {
+        "step_up",
+        "email_verification",
+        "email_mfa_enablement",
+    }:
+        if active_session is None:
+            await db.rollback()
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "MFA verification failed")
+        result = await login_service.complete_step_up(
+            user=user,
+            session=active_session,
+            request=request,
+            method=payload.method,
+        )
+        await db.commit()
+        await login_service.publish_completed_step_up(
+            user=user,
+            session=active_session,
+            request=request,
+        )
+        return result
+
+    result = await login_service.finalize_login(
         user=user,
         request=request,
         response=response,
         bg_tasks=bg_tasks,
         mfa_completed=True,
-        method=str(challenge.challenge_type),
+        method=payload.method,
+    )
+    response.delete_cookie(
+        MfaCoordinator.PREAUTH_COOKIE_NAME,
+        path="/",
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite=settings.cookie_samesite,  # type: ignore[arg-type]
+    )
+    return result
+
+
+@router.post(
+    "/mfa/email/resend",
+    response_model=MfaMethodChallengeOut,
+    dependencies=[
+        Depends(sensitive_route_limit(limit_value=settings.rate_limit_auth_mfa))
+    ],
+)
+@inject
+async def resend_email_mfa_challenge(
+    payload: EmailOtpResendIn,
+    request: Request,
+    login_service: FromDishka[LoginService],
+    db: FromDishka[AsyncDatabaseSession],
+) -> MfaMethodChallengeOut:
+    from app.core.ratelimit import resolve_client_ip
+
+    active_session = getattr(request.state, "active_session", None)
+    try:
+        issued = await login_service.get_email_otp_service().resend_opaque(
+            db,
+            challenge_token=payload.challenge_token,
+            client_fingerprint=extract_request_fingerprint(request),
+            client_ip=resolve_client_ip(request) or "unknown",
+            locale=resolve_locale(request=request),
+            login_session_identifier=request.cookies.get(
+                MfaCoordinator.PREAUTH_COOKIE_NAME
+            ),
+            active_session_identifier=(
+                str(active_session.id) if active_session is not None else None
+            ),
+        )
+        await db.commit()
+    except RateLimitExceeded as exc:
+        await db.rollback()
+        raise _mfa_rate_limit_error(exc, detail="MFA request rejected") from exc
+    except MfaOtpCooldown as exc:
+        await db.rollback()
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS, "MFA request rejected"
+        ) from exc
+    except MfaSecurityUnavailable as exc:
+        await db.rollback()
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "MFA service unavailable"
+        ) from exc
+    except MfaOtpRejected as exc:
+        await db.rollback()
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "MFA request rejected"
+        ) from exc
+    return MfaMethodChallengeOut(
+        method=constants.MFA_METHOD_EMAIL_OTP,
+        challenge_token=issued.challenge_token,
+        challenge_expires_at=issued.expires_at,
+        attempt_count=0,
+        attempt_limit=5,
+        remaining_attempts=5,
+        resend_available_at=issued.resend_available_at,
+        revision=issued.revision,
+        delivery_hint=issued.delivery_hint,
     )
 
 

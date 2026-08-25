@@ -334,7 +334,7 @@ class TestLockChallenge:
         with pytest.raises(Exception):  # noqa: B017
             await _lock_challenge(db, challenge, method="totp", limit=5, locale="en")
 
-        db.commit.assert_called_once()
+        db.flush.assert_awaited()
         assert challenge.consumed_at is not None
 
 
@@ -412,7 +412,7 @@ class TestRegisterFailedAttempt:
         )
 
         db.execute.assert_called_once()
-        db.commit.assert_called_once()
+        db.flush.assert_awaited_once()
 
     @pytest.mark.asyncio
     async def test_already_consumed_noop(self):
@@ -485,36 +485,23 @@ class TestMfaLifecycleEdgeCases:
         result = await has_totp_enabled(db, user)
         assert result is False
 
-    @pytest.mark.asyncio
-    async def test_has_webauthn_enabled_false(self):
-        from app.auth.mfa.lifecycle import has_webauthn_enabled
-
-        db = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalar.return_value = 0
-        db.execute = AsyncMock(return_value=mock_result)
-
-        user = MagicMock()
-        user.id = uuid.uuid4()
-        user.webauthn_credentials = None  # Not loaded → falls to DB query
-        result = await has_webauthn_enabled(db, user)
-        assert result is False
-
     def test_user_has_confirmed_no_factors(self):
         from app.auth.mfa.lifecycle import user_has_confirmed_interactive_factor
 
         user = MagicMock()
         user.mfa_default_method = None
-        user.webauthn_credentials = []
         user.totp_enrollments = []
+        user.email_mfa_enabled_at = None
         assert user_has_confirmed_interactive_factor(user) is False
 
-    def test_user_has_confirmed_with_default_method(self):
+    def test_user_has_confirmed_rejects_stale_default_method(self):
         from app.auth.mfa.lifecycle import user_has_confirmed_interactive_factor
 
         user = MagicMock()
         user.mfa_default_method = "totp"
-        assert user_has_confirmed_interactive_factor(user) is True
+        user.totp_enrollments = []
+        user.email_mfa_enabled_at = None
+        assert user_has_confirmed_interactive_factor(user) is False
 
     def test_user_has_confirmed_with_totp(self):
         from app.auth.mfa.lifecycle import user_has_confirmed_interactive_factor
@@ -525,7 +512,6 @@ class TestMfaLifecycleEdgeCases:
 
         user = MagicMock()
         user.mfa_default_method = None
-        user.webauthn_credentials = []
         user.totp_enrollments = [enrollment]
         assert user_has_confirmed_interactive_factor(user) is True
 
@@ -538,6 +524,6 @@ class TestMfaLifecycleEdgeCases:
 
         user = MagicMock()
         user.mfa_default_method = None
-        user.webauthn_credentials = []
         user.totp_enrollments = [enrollment]
+        user.email_mfa_enabled_at = None
         assert user_has_confirmed_interactive_factor(user) is False

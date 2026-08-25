@@ -1,4 +1,3 @@
-import base64
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -17,7 +16,9 @@ async def test_count_remaining_recovery_codes_coverage(
     assert count == 0
 
     # Generate codes
-    await mfa.generate_recovery_codes(db_session, user=user)
+    await mfa.generate_recovery_codes(
+        db_session, user=user, fresh_mfa_verified_at=datetime.now(UTC)
+    )
     count = await mfa.count_remaining_recovery_codes(db_session, user=user)
     assert count == 10
 
@@ -26,8 +27,9 @@ async def test_count_remaining_recovery_codes_coverage(
 async def test_disable_totp_logic_coverage(db_session: AsyncSession, user_factory):
     user = await user_factory()
     # No TOTP yet
-    count = await mfa.disable_totp(db_session, user=user)
+    count, pending = await mfa.disable_totp(db_session, user=user)
     assert count == 0
+    assert pending == []
 
     # Start enrollment
     enrollment, _, _ = await mfa.start_totp_enrollment(db_session, user=user)
@@ -35,8 +37,9 @@ async def test_disable_totp_logic_coverage(db_session: AsyncSession, user_factor
     enrollment.is_active = True
     await db_session.commit()
 
-    count = await mfa.disable_totp(db_session, user=user)
+    count, pending = await mfa.disable_totp(db_session, user=user)
     assert count == 1
+    assert pending == []
 
     # Verify enrollment is deactivated
     await db_session.refresh(enrollment)
@@ -152,7 +155,9 @@ async def test_verify_recovery_code_invalid_coverage(
     db_session: AsyncSession, user_factory
 ):
     user = await user_factory()
-    await mfa.generate_recovery_codes(db_session, user=user)
+    await mfa.generate_recovery_codes(
+        db_session, user=user, fresh_mfa_verified_at=datetime.now(UTC)
+    )
     res = await mfa.verify_recovery_code(db_session, user=user, code="NOT-VALID-CODE")
     assert res is False
 
@@ -160,15 +165,30 @@ async def test_verify_recovery_code_invalid_coverage(
 @pytest.mark.asyncio
 async def test_trusted_device_coverage(db_session: AsyncSession, user_factory):
     user = await user_factory()
-    token, _expires_at = await mfa.create_trusted_device_token(db_session, user=user)
+    token, _expires_at = await mfa.create_trusted_device_token(
+        db_session,
+        user=user,
+        ip_address="192.0.2.10",
+        user_agent="pytest",
+    )
     assert token is not None
 
     # Verify success
-    is_valid = await mfa.verify_trusted_device_token(db_session, user=user, token=token)
+    is_valid = await mfa.verify_trusted_device_token(
+        db_session,
+        user=user,
+        token=token,
+        request_ip="192.0.2.10",
+        request_ua="pytest",
+    )
     assert is_valid is True
 
     is_valid_invalid = await mfa.verify_trusted_device_token(
-        db_session, user=user, token="invalid-token"
+        db_session,
+        user=user,
+        token="invalid-token",
+        request_ip="192.0.2.10",
+        request_ua="pytest",
     )
     assert is_valid_invalid is False
 
@@ -176,28 +196,32 @@ async def test_trusted_device_coverage(db_session: AsyncSession, user_factory):
 @pytest.mark.asyncio
 async def test_trusted_device_expired_coverage(db_session: AsyncSession, user_factory):
     user = await user_factory()
-    # Create an expired device
-    import hashlib
+    token, _ = await mfa.create_trusted_device_token(
+        db_session,
+        user=user,
+        ip_address="192.0.2.11",
+        user_agent="pytest-expired",
+    )
+    from sqlalchemy import select
 
     from app.models import TrustedDevice
 
-    token = "expired-token"
-    # match _base64url_encode
-    token_hash = (
-        base64.urlsafe_b64encode(hashlib.sha256(token.encode("utf-8")).digest())
-        .decode("utf-8")
-        .rstrip("=")
-    )
-    device = TrustedDevice(
-        user_id=user.id,
-        token_hash=token_hash,
-        expires_at=datetime.now(UTC) - timedelta(days=1),
-    )
-    db_session.add(device)
+    device = (
+        await db_session.execute(
+            select(TrustedDevice).where(TrustedDevice.user_id == user.id)
+        )
+    ).scalar_one()
+    device.expires_at = datetime.now(UTC) - timedelta(days=1)
     await db_session.commit()
 
     # Verification should fail and delete the device
-    is_valid = await mfa.verify_trusted_device_token(db_session, user=user, token=token)
+    is_valid = await mfa.verify_trusted_device_token(
+        db_session,
+        user=user,
+        token=token,
+        request_ip="192.0.2.11",
+        request_ua="pytest-expired",
+    )
     assert is_valid is False
 
 
@@ -214,22 +238,24 @@ async def test_get_challenge_error_coverage(db_session: AsyncSession):
 @pytest.mark.asyncio
 async def test_get_challenge_expired_coverage(db_session: AsyncSession, user_factory):
     user = await user_factory()
-    from app.models import MfaChallenge
-
-    challenge = MfaChallenge(
+    issued = await mfa.issue_challenge(
+        db_session,
         user_id=user.id,
         challenge_type="totp-verify",
-        token="expired-challenge",
-        expires_at=datetime.now(UTC) - timedelta(minutes=1),
+        flow="login",
+        session_identifier="expired-session",
+        client_fingerprint="f" * 64,
     )
-    db_session.add(challenge)
+    issued.challenge.expires_at = datetime.now(UTC) - timedelta(minutes=1)
     await db_session.commit()
 
     from fastapi import HTTPException
 
     with pytest.raises(HTTPException):
         await mfa.get_challenge(
-            db_session, token="expired-challenge", challenge_type="totp-verify"
+            db_session,
+            token=issued.challenge_token,
+            challenge_type="totp-verify",
         )
 
 
@@ -242,22 +268,20 @@ async def test_consume_challenge_coverage(db_session: AsyncSession, user_factory
     the get_challenge function with consume=True parameter instead.
     """
     user = await user_factory()
-    from app.models import MfaChallenge
-
-    challenge_token = "test-consume-token"
-    challenge = MfaChallenge(
+    issued = await mfa.issue_challenge(
+        db_session,
         user_id=user.id,
         challenge_type="totp-verify",
-        token=challenge_token,
-        expires_at=datetime.now(UTC) + timedelta(minutes=10),
+        flow="login",
+        session_identifier="consume-session",
+        client_fingerprint="f" * 64,
     )
-    db_session.add(challenge)
     await db_session.commit()
 
     # Use get_challenge with consume=True to mark it consumed
     retrieved = await mfa.get_challenge(
         db_session,
-        token=challenge_token,
+        token=issued.challenge_token,
         challenge_type="totp-verify",
         consume=True,
     )

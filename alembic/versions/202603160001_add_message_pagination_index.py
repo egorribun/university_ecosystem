@@ -62,14 +62,15 @@ def upgrade() -> None:
     conn = op.get_bind()
     # CONCURRENTLY requires running outside an explicit transaction block.
     # conn.execute(text("COMMIT"))
-    conn.execute(
-        text(
-            f"""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX_MSG_PAGINATION}
-            ON messages (chat_id, created_at DESC, id DESC)
-            """
+    with op.get_context().autocommit_block():
+        conn.execute(
+            text(
+                f"""
+                CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX_MSG_PAGINATION}
+                ON messages (chat_id, created_at DESC, id DESC)
+                """
+            )
         )
-    )
 
 
 def downgrade() -> None:
@@ -77,5 +78,5 @@ def downgrade() -> None:
         return
 
     conn = op.get_bind()
-    conn.execute(text("COMMIT"))
-    conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX_MSG_PAGINATION}"))
+    with op.get_context().autocommit_block():
+        conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX_MSG_PAGINATION}"))

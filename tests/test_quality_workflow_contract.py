@@ -2316,7 +2316,7 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     assert "Prepare full chaos compose environment" in chaos_steps
     assert "Start the full chaos compose stack" in chaos_steps
     assert "docker-compose.ci-loadtest.yml" in chaos_steps
-    assert "54321/ecosystem" in chaos_steps
+    assert "54321/test_ecosystem" in chaos_steps
     assert "Tear down full chaos compose stack" in chaos_steps
     pyo3_source = (
         REPOSITORY_ROOT / "crates" / "pyo3-sanitizer" / "src" / "lib.rs"
@@ -4564,13 +4564,16 @@ def test_deploy_uses_build_digests_for_all_cluster_image_references() -> None:
     workflow = yaml.safe_load(deploy_path.read_text(encoding="utf-8"))
     deploy = workflow["jobs"]["deploy"]
     helm = _provenance_step(deploy, "Deploy Helm release atomically")
-    helm_run = str(helm["run"])
+    helm_run = (REPOSITORY_ROOT / ".github" / "scripts" / "deploy-helm.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "bash .github/scripts/deploy-helm.sh upgrade" in str(helm["run"])
     for setting in (
-        'backend.image.digest="$BACKEND_IMAGE_DIGEST"',
-        'frontend.image.digest="$FRONTEND_IMAGE_DIGEST"',
-        'gateway.image.digest="$GATEWAY_IMAGE_DIGEST"',
-        'fileProcessor.image.digest="$FILE_PROCESSOR_IMAGE_DIGEST"',
-        'outboxWorker.image.digest="$BACKEND_IMAGE_DIGEST"',
+        "backend.image.digest=$BACKEND_IMAGE_DIGEST",
+        "frontend.image.digest=$FRONTEND_IMAGE_DIGEST",
+        "gateway.image.digest=$GATEWAY_IMAGE_DIGEST",
+        "fileProcessor.image.digest=$FILE_PROCESSOR_IMAGE_DIGEST",
+        "outboxWorker.image.digest=$BACKEND_IMAGE_DIGEST",
     ):
         assert setting in helm_run
     assert "global.imageTag" not in helm_run
@@ -4617,3 +4620,81 @@ def test_deploy_uses_build_digests_for_all_cluster_image_references() -> None:
     ).read_text(encoding="utf-8")
     assert 'define "university-ecosystem.image"' in helpers
     assert 'printf "%s/%s@%s"' in helpers
+
+
+def test_nightly_chaos_database_is_explicitly_test_owned() -> None:
+    workflow = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["load-and-chaos"]
+    assert job["env"]["POSTGRES_DB"] == "test_ecosystem"
+    assert str(job["env"]["DATABASE_URL"]).endswith("/test_ecosystem")
+
+    prepare = _provenance_step(job, "Prepare full chaos compose environment")
+    assert "localhost:54321/test_ecosystem" in str(prepare["run"])
+    chaos = _provenance_step(job, "Run chaos and resilience tests")
+    assert str(chaos["env"]["DATABASE_URL"]).endswith("/test_ecosystem")
+
+
+def test_persistent_pytest_reset_jobs_use_explicit_narrow_opt_in() -> None:
+    marker = "UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"
+    reusable = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert reusable["jobs"]["integration-tests"]["env"][marker] == "1"
+
+    db_perf = yaml.safe_load(
+        (REPOSITORY_ROOT / ".github" / "workflows" / "db-perf-gate.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    pytest_step = _provenance_step(
+        db_perf["jobs"]["explain-check"], "Run Pytest to capture query logs"
+    )
+    assert pytest_step["env"][marker] == "1"
+
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    schemathesis = _provenance_step(
+        ci["jobs"]["schemathesis-api-tests-shard"],
+        "Run Schemathesis conformance tests",
+    )
+    chaos = _provenance_step(ci["jobs"]["chaos-tests"], "Run chaos tests")
+    asan = _provenance_step(
+        ci["jobs"]["rust-ffi-asan"], "Run FFI tests under ASan / LSan"
+    )
+    tsan = _provenance_step(ci["jobs"]["rust-ffi-tsan"], "Run FFI tests under TSan")
+    assert schemathesis["env"][marker] == "1"
+    assert chaos["env"][marker] == "1"
+    assert asan["env"][marker] == "1"
+    assert tsan["env"][marker] == "1"
+
+    nightly = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert nightly["jobs"]["container-integration-cells"]["env"][marker] == "1"
+    nightly_chaos = _provenance_step(
+        nightly["jobs"]["load-and-chaos"], "Run chaos and resilience tests"
+    )
+    assert nightly_chaos["env"][marker] == "1"
+
+    assert CI_WORKFLOW_PATH.read_text(encoding="utf-8").count(marker) == 4
+    assert NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8").count(marker) == 2
+    assert BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8").count(marker) == 1
+    db_perf_path = REPOSITORY_ROOT / ".github" / "workflows" / "db-perf-gate.yml"
+    assert db_perf_path.read_text(encoding="utf-8").count(marker) == 1
+
+    contract_tests = REPOSITORY_ROOT / ".github" / "workflows" / "contract-tests.yml"
+    assert marker not in contract_tests.read_text(encoding="utf-8")
+
+    deploy = REPOSITORY_ROOT / ".github" / "workflows" / "deploy.yml"
+    assert marker not in deploy.read_text(encoding="utf-8")
+
+
+def test_local_infra_sandbox_scopes_database_reset_opt_in_to_pytest() -> None:
+    marker = "UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"
+    script = (REPOSITORY_ROOT / "scripts" / "run-test-sandbox.ps1").read_text(
+        encoding="utf-8"
+    )
+    backend = script.split('Invoke-Step "Backend pytest + coverage"', maxsplit=1)[1]
+    backend = backend.split('if ($Filter -in @("all", "rust"))', maxsplit=1)[0]
+    assert "$previousDatabaseResetOptIn = $env:" + marker in backend
+    assert "if ($useInfra)" in backend
+    assert "$env:" + marker + ' = "1"' in backend
+    assert "uv run pytest tests/" in backend
+    assert "finally" in backend
+    assert "Remove-Item Env:\\" + marker in backend
+    assert "$env:" + marker + " = $previousDatabaseResetOptIn" in backend

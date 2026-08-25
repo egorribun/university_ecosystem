@@ -160,6 +160,9 @@ async def test_register_user_success_with_valid_invite(svc, repo, fast_hash):
     assert user_data["email"] == "new.user@example.com"
     assert user_data["hashed_password"] == "hashed"  # pragma: allowlist secret
     assert user_data["role"] == "teacher"
+    assert user_data["mfa_required"] is False
+    assert user_data["mfa_default_method"] is None
+    assert "email_verified_at" not in user_data
     assert "password" not in user_data
     assert call_args[1] is valid_code
 

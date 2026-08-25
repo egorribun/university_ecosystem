@@ -111,6 +111,35 @@ def test_smtp_user_security_validator_covers_dev_and_production_paths() -> None:
     )
 
 
+def test_production_smtp_host_requires_transport_encryption_without_auth(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    with pytest.raises(
+        ValidationError,
+        match="SMTP_SECURITY must be starttls or ssl when SMTP_HOST is configured",
+    ):
+        _settings(
+            smtp_host="relay.internal.example",
+            smtp_security="none",
+            smtp_user="",
+        )
+
+
+@pytest.mark.parametrize("environment", ["development", "testing", "local"])
+def test_plaintext_smtp_remains_available_only_in_development_environments(
+    environment: str, monkeypatch
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", environment)
+    configured = _settings(
+        smtp_host="localhost",
+        smtp_security="none",
+        smtp_user="",
+    )
+
+    assert configured.smtp_security == "none"
+
+
 def test_notification_secret_file_validators_and_cached_keys(
     tmp_path, monkeypatch
 ) -> None:

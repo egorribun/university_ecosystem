@@ -5,6 +5,7 @@ import os
 import tempfile
 import time
 import traceback
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 import asyncpg
 from opentelemetry import trace
 from prometheus_client import REGISTRY, Counter, Gauge, Histogram
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.core.config import settings
 from app.core.database import async_session
@@ -287,6 +288,18 @@ class OutboxWorker:
         MOD-08 (audit 2026-03-14): Provides visibility into undeliverable events
         instead of silently abandoning them after max retries.
         """
+        failed_at = datetime.now(UTC)
+        mfa_delivery_id: uuid.UUID | None = None
+        if se.event_type == "auth.mfa_email.requested":
+            try:
+                mfa_delivery_id = uuid.UUID(str((se.payload or {}).get("delivery_id")))
+            except (AttributeError, TypeError, ValueError):
+                logger.error(
+                    "OutboxWorker: terminal MFA event has invalid delivery id",
+                    extra={"event_id": str(se.id)},
+                )
+                raise RuntimeError("invalid MFA delivery id") from None
+
         from app.models.failed_outbox_events import FailedOutboxEvent
 
         dlq_entry = FailedOutboxEvent(
@@ -297,10 +310,30 @@ class OutboxWorker:
             payload=se.payload or {},
             error_message=last_error[:2000],  # Truncate to prevent huge rows
             retry_count=se.error_count,
-            failed_at=datetime.now(UTC),
+            failed_at=failed_at,
         )
         db.add(dlq_entry)
-        se.processed_at = datetime.now(UTC)  # Mark as processed (dead-lettered)
+        if mfa_delivery_id is not None:
+            from app.models.auth import MfaEmailDelivery
+
+            await db.execute(
+                update(MfaEmailDelivery)
+                .where(
+                    MfaEmailDelivery.id == mfa_delivery_id,
+                    MfaEmailDelivery.status.in_(("pending", "sending")),
+                )
+                .values(
+                    status="cancelled",
+                    envelope_nonce=None,
+                    envelope_ciphertext=None,
+                    wrap_nonce=None,
+                    wrapped_dek=None,
+                    lease_token=None,
+                    lease_expires_at=None,
+                    shredded_at=failed_at,
+                )
+            )
+        se.processed_at = failed_at  # Mark as processed (dead-lettered)
         logger.error(
             "OutboxWorker: event moved to DLQ after %d retries",
             se.error_count,
@@ -324,12 +357,12 @@ class OutboxWorker:
         event_cls = _EVENT_REGISTRY.get(se.event_type)
         if event_cls is None:
             logger.error(
-                "OutboxWorker: unknown event_type %r in stored event %s — skipping",
+                "OutboxWorker: unknown event_type %r in stored event %s — failing closed",
                 se.event_type,
                 se.id,
             )
-            se.error_count += 1
-            return
+            se.error_count = int(se.error_count or 0) + 1
+            raise RuntimeError("Unknown outbox event type")
 
         import dataclasses
 

@@ -42,14 +42,15 @@ def upgrade() -> None:
     conn = op.get_bind()
     # CONCURRENTLY requires autocommit — commit any open transaction first.
     # conn.execute(text("COMMIT"))
-    conn.execute(
-        text(
-            f"""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX}
-            ON {_TABLE} (news_id, created_at ASC, id ASC)
-            """
+    with op.get_context().autocommit_block():
+        conn.execute(
+            text(
+                f"""
+                CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX}
+                ON {_TABLE} (news_id, created_at ASC, id ASC)
+                """
+            )
         )
-    )
 
 
 def downgrade() -> None:
@@ -59,5 +60,5 @@ def downgrade() -> None:
         return
 
     conn = op.get_bind()
-    conn.execute(text("COMMIT"))
-    conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX}"))
+    with op.get_context().autocommit_block():
+        conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX}"))

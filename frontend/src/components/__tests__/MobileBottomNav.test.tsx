@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react"
+import { fireEvent, screen, within } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 import MobileBottomNav from "@/components/layout/MobileBottomNav"
 import i18n from "@/i18n/config"
@@ -26,9 +26,25 @@ describe("MobileBottomNav", () => {
 
     const nav = screen.getByRole("navigation", { name: mainNavLabel() })
     expect(nav).toBeInTheDocument()
-    expect(nav.querySelectorAll("a")).toHaveLength(5)
-    expect(nav).toMatchSnapshot()
-    expect(container).toMatchSnapshot()
+    const links = within(nav).getAllByRole("link")
+    expect(links).toHaveLength(5)
+    expect(
+      links.map((link) => ({
+        label: link.getAttribute("aria-label"),
+        href: link.getAttribute("href"),
+      }))
+    ).toEqual([
+      { label: "Home", href: "/dashboard" },
+      { label: "News", href: "/news" },
+      { label: "Events", href: "/events" },
+      { label: "Schedule", href: "/schedule" },
+      { label: "Profile", href: "/profile" },
+    ])
+    expect(links[0]).toHaveAttribute("aria-current", "page")
+    for (const link of links.slice(1)) {
+      expect(link).not.toHaveAttribute("aria-current")
+    }
+    expect(container.querySelector('span[aria-hidden="true"]')).toBeInTheDocument()
   })
 
   it("scrolls to the top when the active section is clicked again", async () => {

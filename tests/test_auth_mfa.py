@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 import app.models as models
 from app.auth import mfa
+from app.auth.mfa.email_otp import _parse_challenge_id
 from app.auth.security import get_password_hash
 from app.core.config import settings
 from app.core.localization import translate
@@ -21,6 +22,19 @@ from app.management import reset_mfa
 @pytest.fixture(autouse=True)
 def _set_query_budget(async_client):
     async_client.headers["X-Query-Budget"] = "15"
+
+
+@pytest.fixture(autouse=True)
+def _bind_direct_challenge_issuance(monkeypatch: pytest.MonkeyPatch):
+    original = mfa.issue_challenge
+
+    async def issue_bound(*args, **kwargs):
+        kwargs.setdefault("flow", "login")
+        kwargs.setdefault("session_identifier", "auth-mfa-direct-session")
+        kwargs.setdefault("client_fingerprint", "f" * 64)
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(mfa, "issue_challenge", issue_bound)
 
 
 def _base64url(data: bytes) -> str:
@@ -368,7 +382,7 @@ async def test_totp_enrollment_and_verification_flow(
         },
     )
     assert failure.status_code == status.HTTP_400_BAD_REQUEST
-    assert failure.json()["detail"] == translate("errors.mfa.invalid_code", locale="en")
+    assert failure.json()["detail"] == "MFA verification failed"
 
     success = await async_client.post(
         "/auth/mfa/verify",
@@ -390,7 +404,8 @@ async def test_totp_enrollment_and_verification_flow(
 
     result = await db_session.execute(
         select(models.MfaChallenge).where(
-            models.MfaChallenge.token == totp_method["challenge_token"]
+            models.MfaChallenge.id
+            == _parse_challenge_id(totp_method["challenge_token"])
         )
     )
     challenge_row = result.scalars().first()
@@ -425,7 +440,7 @@ async def test_totp_login_requires_mfa_even_when_toggle_disabled(
 
 
 @pytest.mark.asyncio
-async def test_totp_login_handles_legacy_records_without_confirmed_at(
+async def test_totp_login_rejects_legacy_records_without_confirmed_at(
     async_client, user_factory, db_session
 ):
     password = "TotpLegacy123!"
@@ -465,7 +480,8 @@ async def test_totp_login_handles_legacy_records_without_confirmed_at(
             "code": totp.now(),
         },
     )
-    assert verify.status_code == status.HTTP_200_OK
+    assert verify.status_code == status.HTTP_400_BAD_REQUEST
+    assert verify.json()["detail"] == "MFA verification failed"
 
 
 @pytest.mark.asyncio
@@ -491,7 +507,8 @@ async def test_totp_challenge_expiry_blocks_verification(
 
     result = await db_session.execute(
         select(models.MfaChallenge).where(
-            models.MfaChallenge.token == totp_method["challenge_token"]
+            models.MfaChallenge.id
+            == _parse_challenge_id(totp_method["challenge_token"])
         )
     )
     challenge = result.scalars().one()
@@ -507,9 +524,7 @@ async def test_totp_challenge_expiry_blocks_verification(
         },
     )
     assert verify.status_code == status.HTTP_400_BAD_REQUEST
-    assert verify.json()["detail"] == translate(
-        "errors.mfa.invalid_challenge", locale="en"
-    )
+    assert verify.json()["detail"] == "MFA verification failed"
 
 
 @pytest.mark.asyncio
@@ -566,7 +581,8 @@ async def test_totp_attempt_limit_blocks_challenge(
 
     result = await db_session.execute(
         select(models.MfaChallenge).where(
-            models.MfaChallenge.token == totp_method["challenge_token"]
+            models.MfaChallenge.id
+            == _parse_challenge_id(totp_method["challenge_token"])
         )
     )
     challenge_row = result.scalars().first()
@@ -847,13 +863,13 @@ async def test_reset_mfa_command_noop_logs_reason(user_factory, caplog, monkeypa
         user_id=user.id, email=None, notify=False
     )
 
-    assert stats.changed is False
+    assert stats.changed is True
     assert stats.totp_deleted == 0
     assert stats.challenges_revoked == 0
 
     audit_event = _find_audit_event(caplog, "app.users.audit", "users.mfa.reset")
     assert audit_event["user_id"] == str(user.id)
-    assert audit_event["reason"] == "admin_reset_noop"
+    assert audit_event["reason"] == "admin_reset"
 
 
 @pytest.mark.asyncio
@@ -892,14 +908,14 @@ async def test_mfa_verification_rejects_revoked_session(
     response = await async_client.post(
         "/auth/mfa/verify",
         json={
-            "challenge_token": challenge.token,
+            "challenge_token": challenge.challenge_token,
             "method": mfa.MFA_METHOD_TOTP,
             "code": "000000",
         },
     )
 
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert response.json()["detail"] == "Associated session has been revoked"
+    assert response.json()["detail"] == "MFA verification failed"
 
 
 @pytest.mark.asyncio

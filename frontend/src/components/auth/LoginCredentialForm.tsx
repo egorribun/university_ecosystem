@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next"
 import { Link } from "@tanstack/react-router"
-import { Eye, EyeOff, Sparkles, Fingerprint, LogIn } from "lucide-react"
+import { Eye, EyeOff, Sparkles, LogIn } from "lucide-react"
 
 import { FadeIn } from "@/components/ui/motion/FadeIn"
 import { Input } from "@/components/ui/Input"
@@ -35,10 +35,6 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
     // computed
     submitting,
     submitError,
-    passkeyError,
-    webauthnSupported,
-    // actions
-    handlePasskeyLogin,
     onSubmit,
   } = form
 
@@ -148,24 +144,55 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
           className="min-h-6 text-center text-sm font-semibold text-error-text"
           aria-live="assertive"
         >
-          {submitError || passkeyError}
+          {submitError}
         </div>
 
-        <div className="flex items-center gap-3 text-sm font-medium text-text-primary">
-          <Controller
-            control={control}
-            name="trustDevice"
-            render={({ field: { value, onChange, ...field } }) => (
-              <Checkbox
-                {...field}
-                checked={!!value}
-                onCheckedChange={onChange}
-                disabled={submitting}
-                aria-label={t("auth:actions.rememberEmail")}
+        <div className="space-y-3">
+          <div className="flex min-h-11 items-center gap-3 text-sm font-medium text-text-primary">
+            <Controller
+              control={control}
+              name="rememberEmail"
+              render={({ field: { value, onChange, ...field } }) => (
+                <Checkbox
+                  {...field}
+                  id="remember-email"
+                  checked={!!value}
+                  onCheckedChange={onChange}
+                  disabled={submitting}
+                  aria-label={t("auth:actions.rememberEmail")}
+                />
+              )}
+            />
+            <label htmlFor="remember-email" className="flex-1 cursor-pointer">
+              {t("auth:actions.rememberEmail")}
+            </label>
+          </div>
+
+          <div className="rounded-xl border border-warning-border/(--opacity-medium) bg-warning-bg/(--opacity-subtle) p-3">
+            <div className="flex min-h-11 items-center gap-3 text-sm font-semibold text-text-primary">
+              <Controller
+                control={control}
+                name="trustDevice"
+                render={({ field: { value, onChange, ...field } }) => (
+                  <Checkbox
+                    {...field}
+                    id="trust-device"
+                    checked={!!value}
+                    onCheckedChange={onChange}
+                    disabled={submitting}
+                    aria-label={t("auth:actions.trustDevice")}
+                    aria-describedby="trust-device-description"
+                  />
+                )}
               />
-            )}
-          />
-          {t("auth:actions.rememberEmail")}
+              <label htmlFor="trust-device" className="flex-1 cursor-pointer">
+                {t("auth:actions.trustDevice")}
+              </label>
+            </div>
+            <p id="trust-device-description" className="pl-9 text-xs text-text-secondary">
+              {t("auth:actions.trustDeviceHint")}
+            </p>
+          </div>
         </div>
 
         <div className="flex flex-col gap-3">
@@ -182,22 +209,6 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
           >
             {t("auth:actions.signIn")}
           </Button>
-
-          {webauthnSupported && (
-            <Button
-              id="login-passkey"
-              type="button"
-              onClick={handlePasskeyLogin}
-              disabled={submitting}
-              variant="outline"
-              size="lg"
-              fullWidth
-              className="border-brand/(--opacity-medium) bg-brand/(--opacity-subtle) text-lg font-extrabold text-brand hover:bg-brand/(--opacity-dim)"
-              leadingIcon={<Fingerprint className="h-6 w-6" />}
-            >
-              {t("auth:login.signInWithPasskey")}
-            </Button>
-          )}
         </div>
 
         <div className="space-y-2 text-center text-sm">

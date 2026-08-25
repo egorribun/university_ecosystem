@@ -25,21 +25,23 @@ depends_on = None
 
 def upgrade() -> None:
     # Index for events_by_date query (test_events_by_date_no_seq_scan)
-    op.create_index(
-        "ix_events_starts_at_is_active",
-        "events",
-        ["starts_at", "is_active"],
-        unique=False,
-        postgresql_concurrently=True,
-    )
+    with op.get_context().autocommit_block():
+        op.create_index(
+            "ix_events_starts_at_is_active",
+            "events",
+            ["starts_at", "is_active"],
+            unique=False,
+            postgresql_concurrently=True,
+        )
     # Index for user_sessions query (test_user_sessions_no_seq_scan)
-    op.create_index(
-        "ix_active_sessions_user_id_expires_at",
-        "active_sessions",
-        ["user_id", "expires_at"],
-        unique=False,
-        postgresql_concurrently=True,
-    )
+    with op.get_context().autocommit_block():
+        op.create_index(
+            "ix_active_sessions_user_id_expires_at",
+            "active_sessions",
+            ["user_id", "expires_at"],
+            unique=False,
+            postgresql_concurrently=True,
+        )
     # Index for notifications_unread query (test_notifications_unread_count_no_seq_scan)
     op.create_index(
         "ix_notifications_user_id_read",

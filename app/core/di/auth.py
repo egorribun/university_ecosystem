@@ -92,7 +92,10 @@ class AuthProvider(Provider):
     ) -> MfaCoordinator:
         from app.services.auth.mfa_coordinator import MfaCoordinator as _MC
 
-        return _MC(uow=uow, auth_repo=auth_repo)
+        return _MC(
+            uow=uow,
+            auth_repo=auth_repo,
+        )
 
     @provide(scope=Scope.REQUEST)
     def login_service(

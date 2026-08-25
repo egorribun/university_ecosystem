@@ -7,6 +7,7 @@ export const loginSchema = v.object({
     v.email("auth:messages.invalidEmail")
   ),
   password: v.pipe(v.string(), v.minLength(1, "Password is required")),
+  rememberEmail: v.optional(v.boolean()),
   trustDevice: v.optional(v.boolean()),
 })
 

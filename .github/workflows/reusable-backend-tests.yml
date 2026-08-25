@@ -327,6 +327,7 @@ jobs:
             ENVIRONMENT: testing
             OTEL_SDK_DISABLED: "true"
             DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
+            UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
             REDIS_URL: redis://localhost:6379
             REVOCATION_REDIS_URL: redis://localhost:6380/0
             RUN_INTEGRATION_TESTS: "1"

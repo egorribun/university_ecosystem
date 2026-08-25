@@ -194,12 +194,15 @@ async def get_current_user(
             fingerprint=fp,
             mfa_verified_at=session.mfa_verified_at,
             session_id=session.id,
+            mfa_epoch=session.mfa_epoch,
         )
 
     # 4. Security Lifecycle Validation
     if session is None:
         raise_unauthorized(locale, "errors.auth.credentials_invalid")
     assert session is not None  # noqa: S101
+    if session.mfa_epoch != int(user.mfa_epoch):
+        raise_unauthorized(locale, "errors.auth.credentials_invalid")
 
     security_service = AuthSecurityService(db, locale)
     security_service.validate_session_expiry(session)

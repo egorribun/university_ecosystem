@@ -28,32 +28,42 @@ vi.mock("workbox-routing", () => ({
   }),
 }))
 
-vi.mock("workbox-strategies", () => ({
-  NetworkFirst: vi.fn().mockImplementation((opts: Record<string, unknown>) => {
-    networkFirstOptions.push(opts)
-    return {
-      type: "NetworkFirst",
-      opts,
-      handle: vi.fn(() => networkFirstHandleResult),
+vi.mock("workbox-strategies", () => {
+  class NetworkFirstMock {
+    readonly type = "NetworkFirst"
+    readonly handle = vi.fn(() => networkFirstHandleResult)
+
+    constructor(readonly opts: Record<string, unknown>) {
+      networkFirstOptions.push(opts)
     }
-  }),
-  StaleWhileRevalidate: vi
-    .fn()
-    .mockImplementation((opts: any) => ({ type: "StaleWhileRevalidate", opts })),
-}))
+  }
+
+  class StaleWhileRevalidateMock {
+    readonly type = "StaleWhileRevalidate"
+
+    constructor(readonly opts: unknown) {}
+  }
+
+  return {
+    NetworkFirst: NetworkFirstMock,
+    StaleWhileRevalidate: StaleWhileRevalidateMock,
+  }
+})
 
 vi.mock("workbox-cacheable-response", () => ({
-  CacheableResponsePlugin: vi.fn().mockImplementation((opts: any) => ({
-    type: "CacheableResponsePlugin",
-    opts,
-  })),
+  CacheableResponsePlugin: class CacheableResponsePluginMock {
+    readonly type = "CacheableResponsePlugin"
+
+    constructor(readonly opts: unknown) {}
+  },
 }))
 
 vi.mock("workbox-expiration", () => ({
-  ExpirationPlugin: vi.fn().mockImplementation((opts: any) => ({
-    type: "ExpirationPlugin",
-    opts,
-  })),
+  ExpirationPlugin: class ExpirationPluginMock {
+    readonly type = "ExpirationPlugin"
+
+    constructor(readonly opts: unknown) {}
+  },
 }))
 
 vi.mock("./logger", () => ({

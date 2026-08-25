@@ -56,24 +56,26 @@ def upgrade() -> None:
     # conn.execute(text("COMMIT"))
 
     # Index 1: user_id → chat_id covering index.
-    conn.execute(
-        text(
-            f"""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX_USER_CHAT}
-            ON {_TABLE} (user_id, chat_id)
-            """
+    with op.get_context().autocommit_block():
+        conn.execute(
+            text(
+                f"""
+                CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX_USER_CHAT}
+                ON {_TABLE} (user_id, chat_id)
+                """
+            )
         )
-    )
 
     # Index 2: chat_id → user_id covering index.
-    conn.execute(
-        text(
-            f"""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX_CHAT_USER}
-            ON {_TABLE} (chat_id, user_id)
-            """
+    with op.get_context().autocommit_block():
+        conn.execute(
+            text(
+                f"""
+                CREATE INDEX CONCURRENTLY IF NOT EXISTS {_IDX_CHAT_USER}
+                ON {_TABLE} (chat_id, user_id)
+                """
+            )
         )
-    )
 
 
 def downgrade() -> None:
@@ -83,5 +85,7 @@ def downgrade() -> None:
 
     conn = op.get_bind()
     # conn.execute(text("COMMIT"))
-    conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX_USER_CHAT}"))
-    conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX_CHAT_USER}"))
+    with op.get_context().autocommit_block():
+        conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX_USER_CHAT}"))
+    with op.get_context().autocommit_block():
+        conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_IDX_CHAT_USER}"))

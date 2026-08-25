@@ -10,13 +10,13 @@ import { MfaChallengeView } from "./MfaChallengeView"
  *
  * The view renders one of three layouts depending on the available
  * methods on `mfa.loginChallenge`:
- *  - WebAuthn-only;
+ *  - email OTP-only;
  *  - TOTP-only;
  *  - both (separator between);
  *  - neither (warning + start-over).
  *
- * The full interaction flow (TOTP digit entry, WebAuthn navigator
- * call, trust-device persistence) involves AuthContext, navigator
+ * The full interaction flow (OTP entry and resend)
+ * involves AuthContext, timers,
  * APIs, and react-hook-form — covered end-to-end by Track D specs.
  * Here we only pin the ARIA / accessibility contract for each shape.
  */
@@ -24,15 +24,17 @@ import { MfaChallengeView } from "./MfaChallengeView"
 const baseMfa = {
   loginChallenge: null,
   otpChallenge: undefined,
-  webauthnChallenge: undefined,
+  emailChallenge: undefined,
+  resendSeconds: 0,
   mfaBusy: false,
   mfaError: null as string | null,
-  mfaErrorSource: null as null | "totp" | "general",
+  mfaErrorSource: null as null | "totp" | "email_otp" | "general",
   generalMfaError: null,
   setMfaError: vi.fn(),
   setMfaErrorSource: vi.fn(),
   handleOtpVerify: vi.fn(),
-  handleWebAuthnVerify: vi.fn(),
+  handleEmailOtpVerify: vi.fn(),
+  handleResendEmailOtp: vi.fn(),
   showRecoveryInput: false,
   setShowRecoveryInput: vi.fn(),
   handleRecoveryVerify: vi.fn(),
@@ -40,9 +42,6 @@ const baseMfa = {
 
 const props = {
   activeEmail: "user@example.com",
-  trustDevice: false,
-  onTrustDeviceChange: vi.fn(),
-  webauthnSupported: true,
   mfa: baseMfa,
 }
 
@@ -64,6 +63,7 @@ describe("MfaChallengeView — render shapes", () => {
     // OtpEntry renders a digit-input form. We just confirm the page
     // mounted with no crash. (Detailed OtpEntry behaviour is its own test.)
     expect(container).toBeInTheDocument()
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument()
   })
 
   it("uses the account fallback when the active email is empty", () => {
@@ -95,36 +95,8 @@ describe("MfaChallengeView — TOTP interaction", () => {
     }
 
     // Auto-submit fires when 6 digits + !loading + !error. The view's
-    // handleOtpVerify wrapper passes (code, trustDevice).
     await waitFor(() => {
-      expect(handleOtpVerify).toHaveBeenCalledWith("123456", false)
-    })
-  })
-
-  it("propagates trustDevice value to handleOtpVerify", async () => {
-    const handleOtpVerify = vi.fn()
-    const otpChallenge = {
-      method: "totp" as const,
-      challenge_token: "abc",
-      challenge_expires_at: "2099-01-01T00:00:00Z",
-    }
-    const user = userEvent.setup()
-
-    render(
-      <MfaChallengeView
-        {...props}
-        trustDevice={true}
-        mfa={{ ...baseMfa, otpChallenge, handleOtpVerify }}
-      />
-    )
-
-    const inputs = await screen.findAllByLabelText(/digit \d/)
-    for (let i = 0; i < 6; i++) {
-      await user.type(inputs[i] as HTMLInputElement, String(i + 1))
-    }
-
-    await waitFor(() => {
-      expect(handleOtpVerify).toHaveBeenCalledWith("123456", true)
+      expect(handleOtpVerify).toHaveBeenCalledWith("123456")
     })
   })
 
@@ -140,58 +112,32 @@ describe("MfaChallengeView — TOTP interaction", () => {
       expect(input).toBeDisabled()
     }
   })
-
-  it("propagates trust-device checkbox changes", async () => {
-    const onTrustDeviceChange = vi.fn()
-    const otpChallenge = {
-      method: "totp" as const,
-      challenge_token: "abc",
-      challenge_expires_at: "2099-01-01T00:00:00Z",
-    }
-    const user = userEvent.setup()
-
-    render(
-      <MfaChallengeView
-        {...props}
-        onTrustDeviceChange={onTrustDeviceChange}
-        mfa={{ ...baseMfa, otpChallenge }}
-      />
-    )
-
-    await user.click(screen.getByRole("checkbox"))
-    expect(onTrustDeviceChange).toHaveBeenCalledWith(true)
-  })
 })
 
-describe("MfaChallengeView — WebAuthn interaction", () => {
-  it("invokes handleWebAuthnVerify on the security-key button click", async () => {
-    const handleWebAuthnVerify = vi.fn()
-    const webauthnChallenge = {
-      method: "webauthn" as const,
+describe("MfaChallengeView — email OTP interaction", () => {
+  it("renders the masked delivery hint and invokes resend", async () => {
+    const handleResendEmailOtp = vi.fn()
+    const emailChallenge = {
+      method: "email_otp" as const,
       challenge_token: "abc",
       challenge_expires_at: "2099-01-01T00:00:00Z",
-      options: {},
+      delivery_hint: "u***@example.com",
     }
     const user = userEvent.setup()
 
     render(
-      <MfaChallengeView {...props} mfa={{ ...baseMfa, webauthnChallenge, handleWebAuthnVerify }} />
+      <MfaChallengeView {...props} mfa={{ ...baseMfa, emailChallenge, handleResendEmailOtp }} />
     )
-
-    // Look for any button that mentions "security key" / "passkey" / etc.
-    // The translation key is auth:mfa.webauthn.useSecurityKey.
-    const button = screen.getByRole("button", { name: /security key/i })
-    await user.click(button)
-
-    expect(handleWebAuthnVerify).toHaveBeenCalledWith(false)
+    expect(screen.getByText(/u\*\*\*@example\.com/i)).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: /send.*code|resend/i }))
+    expect(handleResendEmailOtp).toHaveBeenCalledOnce()
   })
 
-  it("renders the unsupported warning and the separator for both methods", () => {
-    const webauthnChallenge = {
-      method: "webauthn" as const,
+  it("disables resend during cooldown and renders the separator for both methods", () => {
+    const emailChallenge = {
+      method: "email_otp" as const,
       challenge_token: "abc",
       challenge_expires_at: "2099-01-01T00:00:00Z",
-      options: {},
     }
     const otpChallenge = {
       method: "totp" as const,
@@ -200,15 +146,11 @@ describe("MfaChallengeView — WebAuthn interaction", () => {
     }
 
     const { rerender } = render(
-      <MfaChallengeView
-        {...props}
-        webauthnSupported={false}
-        mfa={{ ...baseMfa, webauthnChallenge }}
-      />
+      <MfaChallengeView {...props} mfa={{ ...baseMfa, emailChallenge, resendSeconds: 42 }} />
     )
-    expect(screen.getByText(/WebAuthn is not available/i)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /42/ })).toBeDisabled()
 
-    rerender(<MfaChallengeView {...props} mfa={{ ...baseMfa, webauthnChallenge, otpChallenge }} />)
+    rerender(<MfaChallengeView {...props} mfa={{ ...baseMfa, emailChallenge, otpChallenge }} />)
     expect(screen.getByText("OR")).toBeInTheDocument()
   })
 })
@@ -227,26 +169,25 @@ describe("MfaChallengeView — recovery interaction", () => {
     render(
       <MfaChallengeView
         {...props}
-        trustDevice={true}
         mfa={{ ...recoveryMfa, handleRecoveryVerify, setShowRecoveryInput }}
       />
     )
 
-    const input = screen.getByRole("textbox", { name: "MFA recovery code" })
+    const input = screen.getByRole("textbox", { name: "Recovery code" })
     await user.type(input, "  ABC-123  ")
     await user.keyboard("{Enter}")
-    expect(handleRecoveryVerify).toHaveBeenCalledWith("ABC-123", true)
+    expect(handleRecoveryVerify).toHaveBeenCalledWith("ABC-123")
 
     await user.clear(input)
     await user.type(input, "XYZ-789")
     await user.click(screen.getByRole("button", { name: /Подтвердить|verify/i }))
-    expect(handleRecoveryVerify).toHaveBeenCalledWith("XYZ-789", true)
+    expect(handleRecoveryVerify).toHaveBeenCalledWith("XYZ-789")
 
     await user.clear(input)
     await user.click(screen.getByRole("button", { name: /Подтвердить|verify/i }))
     expect(handleRecoveryVerify).toHaveBeenCalledTimes(2)
 
-    await user.click(screen.getByRole("button", { name: /Использовать приложение|application/i }))
+    await user.click(screen.getByRole("button", { name: /обычный код|regular verification/i }))
     expect(setShowRecoveryInput).toHaveBeenCalledWith(false)
   })
 
@@ -258,10 +199,10 @@ describe("MfaChallengeView — recovery interaction", () => {
       <MfaChallengeView {...props} mfa={{ ...recoveryMfa, mfaBusy: true, handleRecoveryVerify }} />
     )
 
-    const input = screen.getByRole("textbox", { name: "MFA recovery code" })
+    const input = screen.getByRole("textbox", { name: "Recovery code" })
     expect(input).toBeDisabled()
     expect(screen.getByRole("button", { name: /Подтвердить|verify/i })).toBeDisabled()
-    await user.click(screen.getByRole("button", { name: /Использовать приложение|application/i }))
+    await user.click(screen.getByRole("button", { name: /обычный код|regular verification/i }))
     expect(handleRecoveryVerify).not.toHaveBeenCalled()
   })
 
@@ -270,7 +211,7 @@ describe("MfaChallengeView — recovery interaction", () => {
     render(<MfaChallengeView {...props} mfa={{ ...recoveryMfa, handleRecoveryVerify }} />)
 
     fireEvent.click(screen.getByRole("button", { name: /Подтвердить|verify/i }))
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "MFA recovery code" }), {
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "Recovery code" }), {
       key: "Enter",
     })
     expect(handleRecoveryVerify).not.toHaveBeenCalled()
@@ -373,33 +314,15 @@ describe("MfaChallengeView — accessibility", () => {
     expect(results).toHaveNoViolations()
   })
 
-  it("has no axe violations with WebAuthn unsupported warning", async () => {
-    const webauthnChallenge = {
-      method: "webauthn" as const,
+  it("has no axe violations with an email OTP challenge", async () => {
+    const emailChallenge = {
+      method: "email_otp" as const,
       challenge_token: "abc",
       challenge_expires_at: "2099-01-01T00:00:00Z",
-      options: {},
+      delivery_hint: "u***@example.com",
     }
     const { container } = render(
-      <MfaChallengeView
-        {...props}
-        webauthnSupported={false}
-        mfa={{ ...baseMfa, webauthnChallenge }}
-      />
-    )
-    const results = await axe(container)
-    expect(results).toHaveNoViolations()
-  })
-
-  it("has no axe violations with WebAuthn-supported challenge", async () => {
-    const webauthnChallenge = {
-      method: "webauthn" as const,
-      challenge_token: "abc",
-      challenge_expires_at: "2099-01-01T00:00:00Z",
-      options: {},
-    }
-    const { container } = render(
-      <MfaChallengeView {...props} mfa={{ ...baseMfa, webauthnChallenge }} />
+      <MfaChallengeView {...props} mfa={{ ...baseMfa, emailChallenge }} />
     )
     const results = await axe(container)
     expect(results).toHaveNoViolations()

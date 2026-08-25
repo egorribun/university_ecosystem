@@ -19,6 +19,68 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Control the object-storage health probe with `HEALTH_STORAGE_PROBE_ENABLED` (run a write/delete check when set to `true`) and `HEALTH_STORAGE_PROBE_MIN_INTERVAL_SECONDS` (cache probe results between intervals). When disabled, the probe uses cheap bucket/list calls when available, which is friendlier to external providers.
 - Docker Compose has a production override (`docker-compose.prod.yml`) that marks secrets as mandatory. Create the Compose secrets `secret_key`, `database_url`, and `nats_auth_token`, and provide the PostgreSQL password file through `POSTGRES_PASSWORD_SOURCE_FILE`. The `database_url` secret must point to `postgresql+asyncpg://...@pgbouncer:5432/university`. Then run `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d` with `FRONTEND_ORIGIN` and `FRONTEND_ORIGINS` set explicitly; the Go overlay is required because Caddy routes API and WebSocket traffic through gateway/ws-hub.
 - The Helm chart reads connections from the pre-created `university-connections` Secret (all required keys are documented in `charts/university-ecosystem/values.yaml`). In production, set `applicationSecrets.existingSecret`; it must contain the listed JWT/RSA keys, independent HMAC/integration secrets, MinIO credentials, and Temporal API key. Production rendering rejects plaintext MinIO, Temporal, gRPC, and OTLP so unsafe configuration never reaches the cluster or Helm release state.
+
+### MFA key rotation with External Secrets Operator
+
+Production deployment requires External Secrets Operator and the GitHub
+Environment variable `APPLICATION_EXTERNAL_SECRET_NAME`. The named
+`ExternalSecret` must live in `K8S_NAMESPACE`, set `spec.target.name` to
+`APPLICATION_SECRETS_NAME`, and publish the Secret key names configured under
+`applicationSecrets.keys`. The deployment role needs `get/patch` on
+`externalsecrets.external-secrets.io`; Helm Secret storage needs
+`get/list/watch/create/update/patch/delete`; every resource rendered from the
+selected values needs `get/list/watch/create/update/patch/delete`. Deployment observation
+also needs `get/list/watch/patch`. The workflow checks these permissions before
+mutation, forces reconciliation, waits for `Ready`, a new
+`status.refreshTime`, and a changed target Secret
+`resourceVersion`, then validates every effective Helm-rendered `secretKeyRef`
+before upgrade.
+
+Use this rotation order:
+
+1. First publish overlapping `MFA_EMAIL_OTP_HMAC_KEYS`,
+   `MFA_EMAIL_DELIVERY_KEKS`, and `MFA_TRUSTED_DEVICE_HMAC_KEYS` rings in the
+   secret store. Make the new key active while retaining the previous key for
+   verification or decryption. Publish changed values for
+   `MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID`, `MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID`, and
+   `MFA_TRUSTED_DEVICE_ACTIVE_HMAC_KEY_ID` in the application Secret as well.
+2. Configure the required reviewed script path
+   `MFA_OVERLAP_SMOKE_SCRIPT=.github/deployment-smoke/mfa-key-overlap.sh`, the
+   HTTPS endpoints `MFA_SMOKE_BASE_URL` and `MFA_SMOKE_MAILBOX_URL`, and the
+   environment secrets `MFA_SMOKE_EMAIL`, `MFA_SMOKE_PASSWORD`, and
+   `MFA_SMOKE_MAILBOX_TOKEN`. The mailbox probe must implement the documented
+   `await_email_otp` request and return the delivered challenge token, six-digit
+   code, delivery ID, and delivery timestamp. Blank, missing, modified,
+   untracked, or out-of-directory scripts fail validation.
+3. Run the deployment workflow with `rotate-mfa-keys=true`. Before rotation it
+   scales outbox-worker to zero and issues an old-key OTP, leaving its encrypted
+   delivery envelope queued. It then reconciles the ExternalSecret and verifies
+   both the new `resourceVersion` and all three key-ring transitions: every
+   active ID must change, every new active ID must belong to its ring, and every
+   previous active ID must retain the same key material in the post-rotation
+   overlap ring. The validator stores only SHA-256 fingerprints in mode-0600
+   state and rejects duplicate material under different IDs, reuse of any
+   pre-rotation material as the new active key, and replacement of overlap-key
+   material. Key material, IDs, and fingerprints are never printed. The workflow
+   restores outbox-worker, restarts the
+   backend, and bounds consumer readiness to 90 seconds so the outstanding
+   10-minute OTP is verified immediately, before the unrelated Helm/image
+   rollout. Outbox-worker
+   receives only `MFA_EMAIL_DELIVERY_KEKS`; it does not receive OTP/trusted
+   signing keys or active signing IDs.
+4. Only after the old OTP succeeds does the workflow perform the atomic Helm
+   upgrade and remaining release gates. It then issues, delivers, and verifies
+   a new-key OTP. Readiness-only checks are not accepted as a rotation smoke.
+5. Retire the previous OTP key only after 10 minutes, the delivery KEK only
+   after the outbox and DLQ contain no envelopes for its key ID, and the
+   trusted-device key only after the maximum trusted-device lifetime (30 days
+   by default). Repeat reconciliation, rollout, and overlap smoke after
+   shrinking the rings. Normal deployments leave this input disabled and do
+   not require a synthetic Secret update.
+
+Do not add a synthetic Pod checksum annotation. ExternalSecret content is not
+available to Helm; Ready/refreshTime plus Secret `resourceVersion` are the
+reconciliation proof, and an explicit rollout applies the new values.
 - Healthchecks stay inside the containers (`127.0.0.1`), and the only `extra_hosts` entry is `host.docker.internal`; remove it for production clusters that do not need host access.
 - Prometheus metrics are disabled by default in `docker-compose.yml`. To expose them, set `ENABLE_METRICS_ENDPOINT=true` **and** configure durable values for `METRICS_BASIC_AUTH_USERNAME` and `METRICS_BASIC_AUTH_PASSWORD` (Compose no longer injects placeholders). The backend now fails startup — or returns `503` at runtime — when metrics are enabled without credentials unless the allowlist is strictly loopback-only (`127.0.0.1`, `::1`, `localhost`).
 - To attach the `Cross-Origin-Resource-Policy` header, set `ENABLE_CORP=true`. Customize the value via `CORP_VALUE` (defaults to `same-site`; `same-origin` and `cross-origin` are also accepted).

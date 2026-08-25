@@ -51,13 +51,14 @@ vi.mock("workbox-strategies", () => {
 })
 
 vi.mock("workbox-expiration", () => {
-  const CacheExpiration = vi.fn(() => ({
-    updateTimestamp: vi.fn(async () => {}),
-    expireEntries: vi.fn(async () => {}),
-    delete: vi.fn(async () => {}),
-  }))
+  class CacheExpiration {
+    updateTimestamp = vi.fn(async () => {})
+    expireEntries = vi.fn(async () => {})
+    delete = vi.fn(async () => {})
+  }
+
   return {
-    ExpirationPlugin: vi.fn(() => ({})),
+    ExpirationPlugin: class ExpirationPluginMock {},
     CacheExpiration,
   }
 })

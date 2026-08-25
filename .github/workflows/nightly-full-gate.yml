@@ -591,6 +591,7 @@ jobs:
     timeout-minutes: 30
     env:
       DATABASE_URL: sqlite+aiosqlite:///./test.db
+      UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
       POSTGRES_PASSWORD: postgres # pragma: allowlist secret
       SECRET_KEY: nightly-container-cell-test-secret-32-chars # pragma: allowlist secret
       ENVIRONMENT: testing
@@ -653,9 +654,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/ecosystem # pragma: allowlist secret
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/test_ecosystem # pragma: allowlist secret
       POSTGRES_USER: postgres
-      POSTGRES_DB: ecosystem
+      POSTGRES_DB: test_ecosystem
       POSTGRES_PASSWORD: postgres # pragma: allowlist secret
       SECRET_KEY: dummy_secret_key_for_ci_tests_at_least_32_chars # pragma: allowlist secret
       JWT_SECRET: dummy_jwt_secret_for_ci_tests_at_least_32_chars # pragma: allowlist secret
@@ -725,7 +726,7 @@ jobs:
             echo "COMPOSE_FILE=docker-compose.yml:docker-compose.infra.yml:docker-compose.go.yml:docker-compose.ci-loadtest.yml"
             echo "API_BASE_URL=http://localhost:8000"
             echo "GATEWAY_URL=http://localhost:8080"
-            echo "DATABASE_URL_SYNC=postgresql://postgres:${POSTGRES_PASSWORD}@localhost:54321/ecosystem"
+            echo "DATABASE_URL_SYNC=postgresql://postgres:${POSTGRES_PASSWORD}@localhost:54321/test_ecosystem"
           } >> "$GITHUB_ENV"
 
       - name: Validate the production compose contract
@@ -805,7 +806,8 @@ jobs:
           # The pytest process runs on the GitHub runner, not inside the
           # Compose network. Keep the job-level DATABASE_URL for containers,
           # but point this host-side fixture at the published PostgreSQL port.
-          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:54321/ecosystem # pragma: allowlist secret
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:54321/test_ecosystem # pragma: allowlist secret
+          UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
           COMPOSE_FILE: docker-compose.yml:docker-compose.infra.yml:docker-compose.go.yml:docker-compose.ci-loadtest.yml
         run: uv run pytest tests/chaos/ -v -m chaos --tb=short
 

@@ -7,9 +7,8 @@ import type { MfaMethodChallengeOut } from "@/api/generated"
 // Wave 194 SW2 — MfaChallengeView Storybook fixture.
 //
 // Like LoginCredentialForm, the component consumes the `useMfaFlow()` return as
-// a single `mfa` prop (+ activeEmail/trustDevice/onTrustDeviceChange/
-// webauthnSupported) — never the coupled hook — so the story supplies a tsc-typed
-// mock object. otpChallenge/webauthnChallenge are MfaMethodChallengeOut objects
+// a single `mfa` prop (+ activeEmail) — never the
+// coupled hook — so the story supplies a tsc-typed mock object. Challenges are
 // (method + challenge_token + challenge_expires_at required). The component is a
 // `fixed inset-0` full-screen overlay that renders <ParticleAuthBackground />.
 //
@@ -19,7 +18,7 @@ import type { MfaMethodChallengeOut } from "@/api/generated"
 // auto-accepts the drift; the glass card UI in front is stable. LazyMotion added
 // for any `m.*` descendants (Button/OtpEntry).
 //
-// Variants: OtpOnly (TOTP entry), WebAuthnAndOtp (security-key + OR + TOTP),
+// Variants: OtpOnly, EmailAndOtp, GeneralError,
 // GeneralError (page-level locked banner), DarkMode.
 
 const FUTURE = "2026-12-31T23:59:59Z"
@@ -30,11 +29,12 @@ const otpChallenge: MfaMethodChallengeOut = {
   challenge_expires_at: FUTURE,
 }
 
-const webauthnChallenge: MfaMethodChallengeOut = {
-  method: "webauthn",
-  challenge_token: "mock-webauthn-token",
+const emailChallenge: MfaMethodChallengeOut = {
+  method: "email_otp",
+  challenge_token: "mock-email-token",
   challenge_expires_at: FUTURE,
-  options: { challenge: "mock-challenge" },
+  delivery_hint: "s***@guu.ru",
+  resend_available_at: FUTURE,
 }
 
 function buildMfa(
@@ -43,7 +43,8 @@ function buildMfa(
   return {
     loginChallenge: null,
     otpChallenge,
-    webauthnChallenge: undefined,
+    emailChallenge: undefined,
+    resendSeconds: 0,
     mfaBusy: false,
     mfaError: null,
     mfaErrorSource: null,
@@ -51,7 +52,8 @@ function buildMfa(
     setMfaError: () => {},
     setMfaErrorSource: () => {},
     handleOtpVerify: async () => {},
-    handleWebAuthnVerify: async () => {},
+    handleEmailOtpVerify: async () => {},
+    handleResendEmailOtp: async () => {},
     showRecoveryInput: false,
     setShowRecoveryInput: () => {},
     handleRecoveryVerify: async () => {},
@@ -87,38 +89,24 @@ export default meta
 type Story = StoryObj<typeof MfaChallengeView>
 
 export const OtpOnly: Story = {
-  render: () => (
-    <MfaChallengeView
-      activeEmail="student@guu.ru"
-      trustDevice={false}
-      onTrustDeviceChange={() => {}}
-      webauthnSupported
-      mfa={buildMfa()}
-    />
-  ),
+  render: () => <MfaChallengeView activeEmail="student@guu.ru" mfa={buildMfa()} />,
   decorators: [themed(false)],
   parameters: {
     docs: {
-      description: { story: "TOTP authenticator-code entry only (no WebAuthn method available)." },
+      description: { story: "TOTP authenticator-code entry." },
     },
   },
 }
 
-export const WebAuthnAndOtp: Story = {
+export const EmailAndOtp: Story = {
   render: () => (
-    <MfaChallengeView
-      activeEmail="student@guu.ru"
-      trustDevice={false}
-      onTrustDeviceChange={() => {}}
-      webauthnSupported
-      mfa={buildMfa({ webauthnChallenge })}
-    />
+    <MfaChallengeView activeEmail="student@guu.ru" mfa={buildMfa({ emailChallenge })} />
   ),
   decorators: [themed(false)],
   parameters: {
     docs: {
       description: {
-        story: "Security-key button + OR divider + TOTP fallback (both methods offered).",
+        story: "Email OTP delivery and resend controls with a TOTP fallback.",
       },
     },
   },
@@ -128,9 +116,6 @@ export const GeneralError: Story = {
   render: () => (
     <MfaChallengeView
       activeEmail="student@guu.ru"
-      trustDevice={false}
-      onTrustDeviceChange={() => {}}
-      webauthnSupported
       mfa={buildMfa({
         mfaError: "Your account is temporarily locked. Try again later.",
         mfaErrorSource: "general",
@@ -148,13 +133,7 @@ export const GeneralError: Story = {
 
 export const DarkMode: Story = {
   render: () => (
-    <MfaChallengeView
-      activeEmail="student@guu.ru"
-      trustDevice={false}
-      onTrustDeviceChange={() => {}}
-      webauthnSupported
-      mfa={buildMfa({ webauthnChallenge })}
-    />
+    <MfaChallengeView activeEmail="student@guu.ru" mfa={buildMfa({ emailChallenge })} />
   ),
   decorators: [themed(true)],
   parameters: { backgrounds: { default: "dark" } },

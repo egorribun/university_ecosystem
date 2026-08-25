@@ -51,7 +51,6 @@ class TestCspDevelopmentConnectOverrides:
         monkeypatch.setenv("FRONTEND_ORIGINS", "https://app.example.com")
         monkeypatch.setenv("FRONTEND_ORIGIN", "")
         monkeypatch.setenv("APP_BASE_URL", "")
-        monkeypatch.setenv("WEBAUTHN_ORIGIN", "")
         from app.core.config import Settings
 
         s = Settings()

@@ -63,7 +63,6 @@ async function setupAdminRoutes(page: Page): Promise<void> {
         mfa_last_verified_at: null,
         recovery_codes_left: 5,
         totp_enrollments: [],
-        mfa_challenges: [],
       }),
     })
   })

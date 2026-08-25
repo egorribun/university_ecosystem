@@ -62,6 +62,22 @@ PARTITION_KEYS = {
     "data_access_logs": "created_at",
 }
 
+
+def _is_inherited_partition_constraint(bind, table_name, constraint_name):
+    """Return whether PostgreSQL forbids dropping this child constraint directly."""
+    if bind.dialect.name != "postgresql":
+        return False
+    inherited_count = bind.execute(
+        sa.text(
+            "SELECT c.coninhcount FROM pg_constraint AS c "
+            "WHERE c.conrelid = to_regclass(:table_name) "
+            "AND c.conname = :constraint_name"
+        ),
+        {"table_name": table_name, "constraint_name": constraint_name},
+    ).scalar_one_or_none()
+    return bool(inherited_count)
+
+
 # (Table, Legacy FK Col, Shadow FK Col, Referenced Table)
 FK_TO_SWAP = [
     ("active_sessions", "user_id", "shadow_user_id", "users"),
@@ -385,6 +401,14 @@ def upgrade():
                 for uq in existing_uq:
                     if not uq.get("name"):
                         continue
+                    if _is_inherited_partition_constraint(bind, t_name, uq["name"]):
+                        logger.info(
+                            "Skipping inherited unique constraint %s on partition %s; "
+                            "the parent constraint owns its lifecycle",
+                            uq["name"],
+                            t_name,
+                        )
+                        continue
                     msg = (
                         f"Dropping unique constraint {uq['name']} on {t_name} "
                         "involved in swap"
@@ -693,6 +717,14 @@ def downgrade():
                 if not uq.get("name"):
                     continue
                 if set(uq["column_names"]) & swapped_cols:
+                    if _is_inherited_partition_constraint(bind, t_name, uq["name"]):
+                        logger.info(
+                            "Skipping inherited UQ %s on partition %s; "
+                            "the parent constraint owns its lifecycle",
+                            uq["name"],
+                            t_name,
+                        )
+                        continue
                     logger.info(f"Dropping UQ {uq['name']} on {t_name} for swap")
                     if is_postgresql:
                         op.execute(

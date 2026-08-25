@@ -4,32 +4,32 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 // (no MSW / contract validator needed — per the api-logic batch guidance).
 vi.mock("@/api/generated", () => ({
   confirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost: vi.fn(),
-  confirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPost: vi.fn(),
   deletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDelete: vi.fn(),
   deleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDelete: vi.fn(),
-  deleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDelete: vi.fn(),
+  disableEmailMfaEndpointApiV1AuthMfaEmailDelete: vi.fn(),
   generateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPost: vi.fn(),
   listTotpEnrollmentsApiV1AuthMfaTotpGet: vi.fn(),
-  listWebauthnCredentialsApiV1AuthMfaWebauthnGet: vi.fn(),
+  resendEmailMfaChallengeApiV1AuthMfaEmailResendPost: vi.fn(),
   requestStepUpApiV1AuthMfaStepUpPost: vi.fn(),
+  startEmailMfaEnablementApiV1AuthMfaEmailEnablePost: vi.fn(),
+  startEmailVerificationApiV1AuthMfaEmailVerificationStartPost: vi.fn(),
   startTotpEnrollmentEndpointApiV1AuthMfaTotpStartPost: vi.fn(),
-  startWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPost: vi.fn(),
   verifyMfaChallengeApiV1AuthMfaVerifyPost: vi.fn(),
 }))
 
 import * as gen from "@/api/generated"
 import {
   confirmTotpEnrollment,
-  confirmWebAuthnRegistration,
   deletePendingTotpEnrollment,
   deleteTotpEnrollment,
-  deleteWebAuthnCredential,
+  disableEmailMfa,
   generateRecoveryCodes,
   listTotpEnrollments,
-  listWebAuthnCredentials,
+  resendEmailMfaChallenge,
   requestStepUpChallenge,
+  startEmailMfaEnablement,
+  startEmailVerification,
   startTotpEnrollment,
-  startWebAuthnRegistration,
   verifyMfaChallenge,
 } from "@/api/mfa"
 
@@ -136,56 +136,49 @@ describe("api/mfa — verify + step-up wrappers", () => {
   })
 })
 
-describe("api/mfa — WebAuthn wrappers", () => {
-  it("startWebAuthnRegistration returns the publicKey + challenge token", async () => {
-    const start = { publicKey: { rp: {} }, challenge_token: "ct" }
-    vi.mocked(gen.startWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPost).mockResolvedValue(
-      ok(start) as never
+describe("api/mfa — email OTP wrappers", () => {
+  it("starts email verification and enablement with fail-closed SDK errors", async () => {
+    const challenge = { method: "email_otp", challenge_token: "ct" }
+    vi.mocked(gen.startEmailVerificationApiV1AuthMfaEmailVerificationStartPost).mockResolvedValue(
+      ok(challenge) as never
+    )
+    vi.mocked(gen.startEmailMfaEnablementApiV1AuthMfaEmailEnablePost).mockResolvedValue(
+      ok(challenge) as never
     )
 
-    await expect(startWebAuthnRegistration()).resolves.toEqual(start)
-    expect(gen.startWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPost).toHaveBeenCalledWith(
-      { throwOnError: true }
-    )
-  })
-
-  it("confirmWebAuthnRegistration posts the credential payload and returns status", async () => {
-    const payload = { challenge: "ct", response: { id: "cred" }, label: "Key 1" }
-    const status = { id: "cred", verified: true }
-    vi.mocked(
-      gen.confirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPost
-    ).mockResolvedValue(ok(status) as never)
-
-    await expect(confirmWebAuthnRegistration(payload)).resolves.toEqual(status)
-    expect(
-      gen.confirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPost
-    ).toHaveBeenCalledWith({ body: payload, throwOnError: true })
-  })
-
-  it("listWebAuthnCredentials returns the credential array", async () => {
-    const creds = [{ id: "k1" }, { id: "k2" }]
-    vi.mocked(gen.listWebauthnCredentialsApiV1AuthMfaWebauthnGet).mockResolvedValue(
-      ok(creds) as never
-    )
-
-    await expect(listWebAuthnCredentials()).resolves.toEqual(creds)
-    expect(gen.listWebauthnCredentialsApiV1AuthMfaWebauthnGet).toHaveBeenCalledWith({
+    await expect(startEmailVerification()).resolves.toEqual(challenge)
+    await expect(startEmailMfaEnablement()).resolves.toEqual(challenge)
+    expect(gen.startEmailVerificationApiV1AuthMfaEmailVerificationStartPost).toHaveBeenCalledWith({
+      throwOnError: true,
+    })
+    expect(gen.startEmailMfaEnablementApiV1AuthMfaEmailEnablePost).toHaveBeenCalledWith({
       throwOnError: true,
     })
   })
 
-  it("deleteWebAuthnCredential sends the credential id path param", async () => {
-    vi.mocked(gen.deleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDelete).mockResolvedValue(
-      ok({ status: "deleted" }) as never
+  it("resends by current challenge token and returns the rotated challenge", async () => {
+    const rotated = { method: "email_otp", challenge_token: "rotated" }
+    vi.mocked(gen.resendEmailMfaChallengeApiV1AuthMfaEmailResendPost).mockResolvedValue(
+      ok(rotated) as never
     )
 
-    await deleteWebAuthnCredential("cred-7")
-    expect(gen.deleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDelete).toHaveBeenCalledWith(
-      {
-        path: { credential_id: "cred-7" },
-        throwOnError: true,
-      }
+    await expect(resendEmailMfaChallenge("current-token")).resolves.toEqual(rotated)
+    expect(gen.resendEmailMfaChallengeApiV1AuthMfaEmailResendPost).toHaveBeenCalledWith({
+      body: { challenge_token: "current-token" },
+      throwOnError: true,
+    })
+  })
+
+  it("disables email MFA and returns the resulting factor state", async () => {
+    const state = { disabled: true, mfa_default_method: "totp" }
+    vi.mocked(gen.disableEmailMfaEndpointApiV1AuthMfaEmailDelete).mockResolvedValue(
+      ok(state) as never
     )
+
+    await expect(disableEmailMfa()).resolves.toEqual(state)
+    expect(gen.disableEmailMfaEndpointApiV1AuthMfaEmailDelete).toHaveBeenCalledWith({
+      throwOnError: true,
+    })
   })
 })
 

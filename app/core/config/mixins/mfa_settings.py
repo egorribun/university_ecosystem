@@ -10,20 +10,25 @@ from app.core.config.base import _validate_non_empty, _validate_positive_int
 class MfaSettingsMixin:
     """Multi-factor authentication and password policy settings.
 
-    Covers TOTP, WebAuthn, trusted devices, and password strength requirements.
+    Covers TOTP, email OTP, trusted devices, and password strength requirements.
     """
 
     mfa_enabled: bool = False
     mfa_default_method: str | None = None
     mfa_totp_issuer: str = "University Ecosystem"
     mfa_totp_initial_skew_windows: int = 1
-    mfa_challenge_ttl_seconds: int = 300
+    mfa_challenge_ttl_seconds: int = 600
     mfa_challenge_max_attempts: int = 5
     mfa_step_up_ttl_seconds: int = 300
     mfa_totp_attempt_limit: int = 5
-    webauthn_rp_id: str = "localhost"
-    webauthn_rp_name: str = "University Ecosystem"
-    webauthn_origin: str = "http://localhost:5173"
+    mfa_email_otp_ttl_seconds: int = 600
+    mfa_email_otp_resend_cooldown_seconds: int = 60
+    mfa_email_otp_hmac_keys: str = ""
+    mfa_email_otp_active_hmac_key_id: str = ""
+    mfa_email_delivery_keks: str = ""
+    mfa_email_delivery_active_kek_id: str = ""
+    mfa_trusted_device_hmac_keys: str = ""
+    mfa_trusted_device_active_hmac_key_id: str = ""
     trusted_device_expire_days: int = 30
     trusted_device_cookie_name: str = "trusted_device"
 

@@ -32,7 +32,9 @@ class UserDTO(DTOModel):
     avatar_url: str | None = Field(
         None, validation_alias=AliasPath("profile", "avatar_url")
     )
-    webauthn_id: str | None = None
+    email_verified_at: datetime | None = None
+    email_mfa_enabled_at: datetime | None = None
+    mfa_epoch: int = 0
 
     # Nested DTOs
     profile: UserProfileDTO | None = None

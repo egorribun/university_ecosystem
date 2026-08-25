@@ -19,6 +19,11 @@ on:
         description: "Successful CI run that produced this SHA's quality evidence"
         required: true
         type: string
+      rotate-mfa-keys:
+        description: "Reconcile ExternalSecret and restart MFA consumers"
+        required: true
+        default: false
+        type: boolean
       # TD-W10-09: skip_tests input removed. Pre-deployment tests are mandatory.
       # If the test suite is too slow, parallelise via matrix strategy.
       # Fast deploy ≠ safe deploy — a broken migration that reaches production
@@ -299,6 +304,14 @@ jobs:
           HELM_VALUES_FILE: ${{ vars.HELM_VALUES_FILE }}
           CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
           APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
+          APPLICATION_EXTERNAL_SECRET_NAME: ${{ vars.APPLICATION_EXTERNAL_SECRET_NAME }}
+          ROTATE_MFA_KEYS: ${{ inputs.rotate-mfa-keys }}
+          MFA_OVERLAP_SMOKE_SCRIPT: ${{ vars.MFA_OVERLAP_SMOKE_SCRIPT }}
+          MFA_SMOKE_BASE_URL: ${{ vars.MFA_SMOKE_BASE_URL }}
+          MFA_SMOKE_MAILBOX_URL: ${{ vars.MFA_SMOKE_MAILBOX_URL }}
+          MFA_SMOKE_EMAIL: ${{ secrets.MFA_SMOKE_EMAIL }}
+          MFA_SMOKE_PASSWORD: ${{ secrets.MFA_SMOKE_PASSWORD }}
+          MFA_SMOKE_MAILBOX_TOKEN: ${{ secrets.MFA_SMOKE_MAILBOX_TOKEN }}
           WS_HUB_DEPLOYMENT_NAME: ${{ vars.WS_HUB_DEPLOYMENT_NAME }}
           WS_HUB_CONTAINER_NAME: ${{ vars.WS_HUB_CONTAINER_NAME }}
           DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
@@ -318,7 +331,8 @@ jobs:
           required=(
             OIDC_DEPLOY_ROLE_ARN AWS_REGION EKS_CLUSTER_NAME K8S_NAMESPACE
             HELM_RELEASE_NAME HELM_VALUES_FILE CONNECTIONS_SECRET_NAME
-            APPLICATION_SECRETS_NAME WS_HUB_DEPLOYMENT_NAME
+            APPLICATION_SECRETS_NAME APPLICATION_EXTERNAL_SECRET_NAME
+            WS_HUB_DEPLOYMENT_NAME
             WS_HUB_CONTAINER_NAME DEPLOYMENT_URL GATEWAY_HEALTH_URL
             WS_HUB_HEALTH_URL BACKEND_HEALTH_URL FRONTEND_HEALTH_URL
             DEPLOY_VERSION BACKEND_IMAGE_DIGEST FRONTEND_IMAGE_DIGEST
@@ -332,6 +346,27 @@ jobs:
             fi
           done
 
+          if [[ "$ROTATE_MFA_KEYS" == "true" ]]; then
+            rotation_required=(
+              MFA_OVERLAP_SMOKE_SCRIPT MFA_SMOKE_BASE_URL MFA_SMOKE_MAILBOX_URL
+              MFA_SMOKE_EMAIL MFA_SMOKE_PASSWORD MFA_SMOKE_MAILBOX_TOKEN
+            )
+            for name in "${rotation_required[@]}"; do
+              if [[ -z "${!name:-}" ]]; then
+                echo "::error::Required MFA rotation setting '$name' is not configured for the selected GitHub Environment."
+                exit 1
+              fi
+            done
+            for name in MFA_SMOKE_BASE_URL MFA_SMOKE_MAILBOX_URL; do
+              if [[ ! "${!name}" =~ ^https://[^[:space:]]+$ ]]; then
+                echo "::error::$name must be a non-empty HTTPS URL."
+                exit 1
+              fi
+            done
+            python3 .github/scripts/validate_mfa_smoke_path.py \
+              "$MFA_OVERLAP_SMOKE_SCRIPT" >/dev/null
+          fi
+
           if [[ ! "$AWS_REGION" =~ ^[a-z]{2}(-gov)?-[a-z]+-[0-9]+$ ]]; then
             echo "::error::AWS_REGION is not a valid AWS region identifier."
             exit 1
@@ -340,7 +375,7 @@ jobs:
             echo "::error::EKS_CLUSTER_NAME is not a valid EKS cluster name."
             exit 1
           fi
-          for name in K8S_NAMESPACE HELM_RELEASE_NAME CONNECTIONS_SECRET_NAME APPLICATION_SECRETS_NAME WS_HUB_DEPLOYMENT_NAME WS_HUB_CONTAINER_NAME; do
+          for name in K8S_NAMESPACE HELM_RELEASE_NAME CONNECTIONS_SECRET_NAME APPLICATION_SECRETS_NAME APPLICATION_EXTERNAL_SECRET_NAME WS_HUB_DEPLOYMENT_NAME WS_HUB_CONTAINER_NAME; do
             value="${!name}"
             if [[ "${#value}" -gt 63 || ! "$value" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
               echo "::error::$name must be a lowercase Kubernetes DNS label."
@@ -413,17 +448,363 @@ jobs:
           kubectl cluster-info
 
           if ! kubectl get namespace "$K8S_NAMESPACE" >/dev/null 2>&1; then
+            kubectl auth can-i create namespaces | grep -Fxq yes
             kubectl create namespace "$K8S_NAMESPACE"
           fi
           kubectl auth can-i get deployments --namespace "$K8S_NAMESPACE" | grep -Fxq yes
-          kubectl auth can-i create secrets --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+          kubectl auth can-i list deployments --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+          kubectl auth can-i watch deployments --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+          kubectl auth can-i patch deployments --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+          helm_secret_verbs=(get list watch create update patch delete)
+          for verb in "${helm_secret_verbs[@]}"; do
+            kubectl auth can-i "$verb" secrets --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+          done
+          kubectl auth can-i get externalsecrets.external-secrets.io --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+          kubectl auth can-i patch externalsecrets.external-secrets.io --namespace "$K8S_NAMESPACE" | grep -Fxq yes
 
-      - name: Verify externally managed Kubernetes secrets
+      - name: Build Helm dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if helm dependency build charts/university-ecosystem; then
+              break
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "Helm dependency build failed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
+
+      - name: Verify rendered Helm resource RBAC
+        shell: bash
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          HELM_VALUES_FILE: ${{ vars.HELM_VALUES_FILE }}
+          CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
+          APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.build-frontend.outputs.digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
+        run: |
+          set -euo pipefail
+          rendered="$(mktemp "$RUNNER_TEMP/rendered-release.XXXXXX.yaml")"
+          trap 'rm -f -- "$rendered"' EXIT
+          bash .github/scripts/deploy-helm.sh render > "$rendered"
+          mapfile -t rendered_resources < <(
+            kubectl create --dry-run=client --validate=false \
+              --filename "$rendered" --output name | cut -d/ -f1 | sort -u
+          )
+          if [[ "${#rendered_resources[@]}" -eq 0 ]]; then
+            echo "::error::The selected Helm values rendered no Kubernetes resources."
+            exit 1
+          fi
+          rendered_resource_verbs=(get list watch create update patch delete)
+          for resource in "${rendered_resources[@]}"; do
+            if [[ ! "$resource" =~ ^[a-z0-9.-]+$ ]]; then
+              echo "::error::Rendered an invalid Kubernetes resource identity."
+              exit 1
+            fi
+            for verb in "${rendered_resource_verbs[@]}"; do
+              kubectl auth can-i "$verb" "$resource" \
+                --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+            done
+          done
+
+      - name: Capture pre-rotation MFA key metadata
+        if: ${{ inputs.rotate-mfa-keys }}
+        shell: bash
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          HELM_VALUES_FILE: ${{ vars.HELM_VALUES_FILE }}
+          CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
+          APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.build-frontend.outputs.digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
+          MFA_SMOKE_STATE_DIR: ${{ runner.temp }}/mfa-overlap-smoke
+        run: |
+          set -euo pipefail
+          umask 077
+          contract="$(bash .github/scripts/deploy-helm.sh render-secret-contract)"
+          contract_literal() {
+            local key="$1"
+            local values
+            values="$(sed -n "s/^[[:space:]]*${key}: //p" <<< "$contract")"
+            if [[ "$(wc -l <<< "$values")" -ne 1 || -z "$values" ]]; then
+              echo "::error::Rendered deployment contract has no unique '$key'."
+              exit 1
+            fi
+            printf '%s' "$values"
+          }
+          application_secret_name="$(contract_literal application-secret-name | jq --raw-output '.')"
+          if [[ "$application_secret_name" != "$APPLICATION_SECRETS_NAME" ]]; then
+            echo "::error::Rendered application Secret name does not match the selected environment."
+            exit 1
+          fi
+          contract_file="$(mktemp "$RUNNER_TEMP/mfa-key-contract.XXXXXX.json")"
+          trap 'rm -f -- "$contract_file"' EXIT
+          contract_literal mfa-key-contract.json | jq --raw-output '.' > "$contract_file"
+          kubectl get secret "$APPLICATION_SECRETS_NAME" \
+            --namespace "$K8S_NAMESPACE" --output json | \
+            python3 .github/scripts/verify_mfa_key_rotation.py capture-pre \
+              --state-dir "$MFA_SMOKE_STATE_DIR" \
+              --contract-file "$contract_file" \
+              --expected-secret-name "$APPLICATION_SECRETS_NAME"
+          mv -- "$contract_file" "$MFA_SMOKE_STATE_DIR/mfa-key-contract.json"
+
+      - name: Prepare queued MFA overlap challenge
+        if: ${{ inputs.rotate-mfa-keys }}
         shell: bash
         env:
           K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          MFA_OVERLAP_SMOKE_SCRIPT: ${{ vars.MFA_OVERLAP_SMOKE_SCRIPT }}
+          MFA_SMOKE_BASE_URL: ${{ vars.MFA_SMOKE_BASE_URL }}
+          MFA_SMOKE_MAILBOX_URL: ${{ vars.MFA_SMOKE_MAILBOX_URL }}
+          MFA_SMOKE_EMAIL: ${{ secrets.MFA_SMOKE_EMAIL }}
+          MFA_SMOKE_PASSWORD: ${{ secrets.MFA_SMOKE_PASSWORD }}
+          MFA_SMOKE_MAILBOX_TOKEN: ${{ secrets.MFA_SMOKE_MAILBOX_TOKEN }}
+          MFA_SMOKE_STATE_DIR: ${{ runner.temp }}/mfa-overlap-smoke
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          smoke_script="$(python3 .github/scripts/validate_mfa_smoke_path.py \
+            "$MFA_OVERLAP_SMOKE_SCRIPT")"
+          state_dir="$MFA_SMOKE_STATE_DIR"
+          if [[ ! -d "$state_dir" || \
+                ! -s "$state_dir/pre-key-metadata.json" || \
+                ! -s "$state_dir/mfa-key-contract.json" || \
+                -e "$state_dir/old-challenge.json" ]]; then
+            echo "::error::Prepared MFA key metadata is missing or stale."
+            exit 1
+          fi
+          chmod 700 "$state_dir"
+
+          selector="app.kubernetes.io/instance=$HELM_RELEASE_NAME,app.kubernetes.io/component=outbox-worker"
+          deployments="$(kubectl get deployments --namespace "$K8S_NAMESPACE" \
+            --selector "$selector" --output json)"
+          deployment_name="$(jq --raw-output \
+            'if (.items | length) == 1 then .items[0].metadata.name else empty end' \
+            <<< "$deployments")"
+          replicas="$(jq --raw-output \
+            'if (.items | length) == 1 then (.items[0].spec.replicas // 1) else empty end' \
+            <<< "$deployments")"
+          if [[ -z "$deployment_name" || ! "$replicas" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Expected exactly one running outbox-worker Deployment."
+            exit 1
+          fi
+          printf '%s' "$deployment_name" > "$state_dir/outbox-deployment"
+          printf '%s' "$replicas" > "$state_dir/outbox-replicas"
+
+          restore_on_error() {
+            kubectl scale "deployment/$deployment_name" --namespace "$K8S_NAMESPACE" \
+              --replicas="$replicas" >/dev/null || true
+          }
+          trap restore_on_error ERR
+          kubectl scale "deployment/$deployment_name" --namespace "$K8S_NAMESPACE" \
+            --replicas=0
+          kubectl rollout status "deployment/$deployment_name" \
+            --namespace "$K8S_NAMESPACE" --timeout=5m
+          bash "$smoke_script" prepare
+          trap - ERR
+
+      - name: Reconcile application ExternalSecret
+        id: mfa_secret_reconcile
+        if: ${{ inputs.rotate-mfa-keys }}
+        timeout-minutes: 2
+        shell: bash
+        env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
+          APPLICATION_EXTERNAL_SECRET_NAME: ${{ vars.APPLICATION_EXTERNAL_SECRET_NAME }}
+        run: |
+          set -euo pipefail
+          external_secret_json="$(kubectl get externalsecret "$APPLICATION_EXTERNAL_SECRET_NAME" \
+            --namespace "$K8S_NAMESPACE" --output json)"
+          target_name="$(jq --raw-output '.spec.target.name // empty' \
+            <<< "$external_secret_json")"
+          if [[ "$target_name" != "$APPLICATION_SECRETS_NAME" ]]; then
+            echo "::error::ExternalSecret target '$target_name' does not match APPLICATION_SECRETS_NAME."
+            exit 1
+          fi
+          previous_refresh_time="$(jq --raw-output '.status.refreshTime // empty' \
+            <<< "$external_secret_json")"
+          previous_resource_version="$(kubectl get secret "$APPLICATION_SECRETS_NAME" \
+            --namespace "$K8S_NAMESPACE" --output json 2>/dev/null | \
+            jq --raw-output '.metadata.resourceVersion // empty' || true)"
+
+          kubectl annotate externalsecret "$APPLICATION_EXTERNAL_SECRET_NAME" \
+            --namespace "$K8S_NAMESPACE" \
+            force-sync="$(date +%s%N)" --overwrite
+
+          condition_type="Ready"
+          deadline=$((SECONDS + 90))
+          while (( SECONDS < deadline )); do
+            external_secret_json="$(kubectl get externalsecret \
+              "$APPLICATION_EXTERNAL_SECRET_NAME" --namespace "$K8S_NAMESPACE" \
+              --output json)"
+            ready="$(jq --arg condition_type "$condition_type" \
+              'any(.status.conditions[]?;
+                .type == $condition_type and .status == "True")' \
+              <<< "$external_secret_json")"
+            new_refresh_time="$(jq --raw-output '.status.refreshTime // empty' \
+              <<< "$external_secret_json")"
+            new_resource_version="$(kubectl get secret "$APPLICATION_SECRETS_NAME" \
+              --namespace "$K8S_NAMESPACE" --output json 2>/dev/null | \
+              jq --raw-output '.metadata.resourceVersion // empty' || true)"
+            if [[ "$ready" == "true" && -n "$new_refresh_time" && \
+                  "$new_refresh_time" != "$previous_refresh_time" && \
+                  -n "$new_resource_version" && \
+                  "$new_resource_version" != "$previous_resource_version" ]]; then
+              break
+            fi
+            sleep 5
+          done
+          if [[ "${ready:-false}" != "true" || -z "${new_refresh_time:-}" || \
+                "$new_refresh_time" == "$previous_refresh_time" || \
+                -z "${new_resource_version:-}" || \
+                "$new_resource_version" == "$previous_resource_version" ]]; then
+            echo "::error::ExternalSecret did not publish a fresh Ready Secret within 90 seconds."
+            exit 1
+          fi
+
+      - name: Verify rotated MFA key metadata
+        id: mfa_key_metadata
+        if: ${{ inputs.rotate-mfa-keys }}
+        timeout-minutes: 1
+        shell: bash
+        env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
+          MFA_SMOKE_STATE_DIR: ${{ runner.temp }}/mfa-overlap-smoke
+        run: |
+          set -euo pipefail
+          kubectl get secret "$APPLICATION_SECRETS_NAME" \
+            --namespace "$K8S_NAMESPACE" --output json | \
+            python3 .github/scripts/verify_mfa_key_rotation.py verify-post \
+              --state-dir "$MFA_SMOKE_STATE_DIR" \
+              --contract-file "$MFA_SMOKE_STATE_DIR/mfa-key-contract.json" \
+              --expected-secret-name "$APPLICATION_SECRETS_NAME"
+
+      - name: Restore outbox after MFA Secret reconciliation
+        if: ${{ always() && inputs.rotate-mfa-keys }}
+        shell: bash
+        env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          MFA_SMOKE_STATE_DIR: ${{ runner.temp }}/mfa-overlap-smoke
+          RECONCILE_OUTCOME: ${{ steps.mfa_secret_reconcile.outcome }}
+          ROTATION_METADATA_OUTCOME: ${{ steps.mfa_key_metadata.outcome }}
+        run: |
+          set -euo pipefail
+          deployment_file="$MFA_SMOKE_STATE_DIR/outbox-deployment"
+          replicas_file="$MFA_SMOKE_STATE_DIR/outbox-replicas"
+          if [[ ! -s "$deployment_file" || ! -s "$replicas_file" ]]; then
+            exit 0
+          fi
+          deployment_name="$(<"$deployment_file")"
+          replicas="$(<"$replicas_file")"
+          [[ "$replicas" =~ ^[1-9][0-9]*$ ]]
+          kubectl scale "deployment/$deployment_name" --namespace "$K8S_NAMESPACE" \
+            --replicas="$replicas"
+          if [[ "$RECONCILE_OUTCOME" != "success" || \
+                "$ROTATION_METADATA_OUTCOME" != "success" ]]; then
+            kubectl rollout status "deployment/$deployment_name" \
+              --namespace "$K8S_NAMESPACE" --timeout=3m
+          fi
+
+      - name: Load rotated MFA Secret into consumers
+        if: ${{ inputs.rotate-mfa-keys }}
+        timeout-minutes: 2
+        shell: bash
+        env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+        run: |
+          set -euo pipefail
+          resolve_component() {
+            local component="$1"
+            local selector="app.kubernetes.io/instance=$HELM_RELEASE_NAME,app.kubernetes.io/component=$component"
+            local deployments
+            deployments="$(kubectl get deployments --namespace "$K8S_NAMESPACE" \
+              --selector "$selector" --output json)"
+            jq --exit-status --raw-output \
+              'if (.items | length) == 1 then .items[0].metadata.name else empty end' \
+              <<< "$deployments"
+          }
+          verify_available() {
+            local component="$1"
+            local deployment_name="$2"
+            local deployment
+            deployment="$(kubectl get "deployment/$deployment_name" \
+              --namespace "$K8S_NAMESPACE" --output json)"
+            desired_replicas="$(jq '.spec.replicas // 1' <<< "$deployment")"
+            availableReplicas="$(jq '.status.availableReplicas // 0' <<< "$deployment")"
+            if [[ "$availableReplicas" -ne "$desired_replicas" ]]; then
+              echo "::error::$component has $availableReplicas/$desired_replicas available replicas."
+              exit 1
+            fi
+          }
+
+          backend_deployment="$(resolve_component backend)"
+          outbox_deployment="$(resolve_component outbox-worker)"
+          kubectl rollout restart "deployment/$backend_deployment" \
+            --namespace "$K8S_NAMESPACE"
+          kubectl rollout status "deployment/$backend_deployment" \
+            --namespace "$K8S_NAMESPACE" --timeout=90s &
+          backend_rollout_pid=$!
+          kubectl rollout status "deployment/$outbox_deployment" \
+            --namespace "$K8S_NAMESPACE" --timeout=90s &
+          outbox_rollout_pid=$!
+          rollout_failed=0
+          wait "$backend_rollout_pid" || rollout_failed=1
+          wait "$outbox_rollout_pid" || rollout_failed=1
+          if [[ "$rollout_failed" -ne 0 ]]; then
+            echo "::error::MFA consumers did not load the rotated Secret within 90 seconds."
+            exit 1
+          fi
+          verify_available backend "$backend_deployment"
+          verify_available outbox-worker "$outbox_deployment"
+
+      - name: Verify old MFA key-overlap behavior
+        if: ${{ inputs.rotate-mfa-keys }}
+        timeout-minutes: 4
+        shell: bash
+        env:
+          MFA_OVERLAP_SMOKE_SCRIPT: ${{ vars.MFA_OVERLAP_SMOKE_SCRIPT }}
+          MFA_SMOKE_BASE_URL: ${{ vars.MFA_SMOKE_BASE_URL }}
+          MFA_SMOKE_MAILBOX_URL: ${{ vars.MFA_SMOKE_MAILBOX_URL }}
+          MFA_SMOKE_EMAIL: ${{ secrets.MFA_SMOKE_EMAIL }}
+          MFA_SMOKE_PASSWORD: ${{ secrets.MFA_SMOKE_PASSWORD }}
+          MFA_SMOKE_MAILBOX_TOKEN: ${{ secrets.MFA_SMOKE_MAILBOX_TOKEN }}
+          MFA_SMOKE_STATE_DIR: ${{ runner.temp }}/mfa-overlap-smoke
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          smoke_script="$(python3 .github/scripts/validate_mfa_smoke_path.py \
+            "$MFA_OVERLAP_SMOKE_SCRIPT")"
+          bash "$smoke_script" verify-old
+
+      - name: Verify effective Secret contract
+        shell: bash
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          HELM_VALUES_FILE: ${{ vars.HELM_VALUES_FILE }}
           CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
           APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.build-frontend.outputs.digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
         run: |
           set -euo pipefail
 
@@ -442,15 +823,38 @@ jobs:
             done
           }
 
-          require_secret_keys "$CONNECTIONS_SECRET_NAME" \
-            database-url redis-backend-url redis-gateway-url \
-            redis-revocation-url nats-url nats-auth-token
-          require_secret_keys "$APPLICATION_SECRETS_NAME" \
-            jwt-secret jwt-rsa-private-key jwt-rsa-public-key \
-            internal-hmac-secret ws-hub-internal-secret csrf-hmac-secret \
-            spotify-token-secret elasticsearch-password spicedb-preshared-key \
-            audit-log-secret idempotency-hmac-secret minio-access-key \
-            minio-secret-key temporal-api-key
+          contract="$(bash .github/scripts/deploy-helm.sh render-secret-contract)"
+          contract_literal() {
+            local key="$1"
+            local values
+            values="$(sed -n "s/^[[:space:]]*${key}: //p" <<< "$contract")"
+            if [[ "$(wc -l <<< "$values")" -ne 1 || -z "$values" ]]; then
+              echo "::error::Rendered deployment contract has no unique '$key'."
+              exit 1
+            fi
+            printf '%s' "$values"
+          }
+
+          application_secret_name="$(contract_literal application-secret-name | jq --raw-output '.')"
+          connection_secret_name="$(contract_literal connection-secret-name | jq --raw-output '.')"
+          if [[ "$application_secret_name" != "$APPLICATION_SECRETS_NAME" || \
+                "$connection_secret_name" != "$CONNECTIONS_SECRET_NAME" ]]; then
+            echo "::error::Rendered Secret names do not match the selected environment."
+            exit 1
+          fi
+          mapfile -t application_secret_keys < <(
+            contract_literal application-secret-keys.json | jq --raw-output 'fromjson[]'
+          )
+          mapfile -t connection_secret_keys < <(
+            contract_literal connection-secret-keys.json | jq --raw-output 'fromjson[]'
+          )
+          if [[ "${#application_secret_keys[@]}" -eq 0 || \
+                "${#connection_secret_keys[@]}" -eq 0 ]]; then
+            echo "::error::Rendered Secret key contract is empty."
+            exit 1
+          fi
+          require_secret_keys "$application_secret_name" "${application_secret_keys[@]}"
+          require_secret_keys "$connection_secret_name" "${connection_secret_keys[@]}"
 
       - name: Capture rollback state
         id: rollback_state
@@ -505,59 +909,8 @@ jobs:
           FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
         run: |
           set -euo pipefail
-          for attempt in 1 2 3; do
-            if helm dependency build charts/university-ecosystem; then
-              break
-            fi
-            if [[ "$attempt" -eq 3 ]]; then
-              echo "Helm dependency build failed after 3 attempts." >&2
-              exit 1
-            fi
-            sleep $((attempt * 15))
-          done
-          helm lint --strict charts/university-ecosystem \
-            --values "$HELM_VALUES_FILE" \
-            --set-string global.environment="$DEPLOY_ENVIRONMENT" \
-            --set-string global.imageRegistry="$REGISTRY" \
-            --set-string backend.image.repository="$GITHUB_REPOSITORY/backend" \
-            --set-string backend.image.digest="$BACKEND_IMAGE_DIGEST" \
-            --set-string frontend.image.repository="$GITHUB_REPOSITORY/frontend" \
-            --set-string frontend.image.digest="$FRONTEND_IMAGE_DIGEST" \
-            --set-string gateway.image.repository="$GITHUB_REPOSITORY/gateway" \
-            --set-string gateway.image.digest="$GATEWAY_IMAGE_DIGEST" \
-            --set-string fileProcessor.image.repository="$GITHUB_REPOSITORY/file-processor" \
-            --set-string fileProcessor.image.digest="$FILE_PROCESSOR_IMAGE_DIGEST" \
-            --set-string outboxWorker.image.repository="$GITHUB_REPOSITORY/backend" \
-            --set-string outboxWorker.image.digest="$BACKEND_IMAGE_DIGEST" \
-            --set-string connections.existingSecret="$CONNECTIONS_SECRET_NAME" \
-            --set-string applicationSecrets.existingSecret="$APPLICATION_SECRETS_NAME" \
-            --set fileProcessor.enabled=true \
-            --set outboxWorker.enabled=true
-
-          helm upgrade --install "$HELM_RELEASE_NAME" charts/university-ecosystem \
-            --namespace "$K8S_NAMESPACE" \
-            --values "$HELM_VALUES_FILE" \
-            --set-string global.environment="$DEPLOY_ENVIRONMENT" \
-            --set-string global.imageRegistry="$REGISTRY" \
-            --set-string backend.image.repository="$GITHUB_REPOSITORY/backend" \
-            --set-string backend.image.digest="$BACKEND_IMAGE_DIGEST" \
-            --set-string frontend.image.repository="$GITHUB_REPOSITORY/frontend" \
-            --set-string frontend.image.digest="$FRONTEND_IMAGE_DIGEST" \
-            --set-string gateway.image.repository="$GITHUB_REPOSITORY/gateway" \
-            --set-string gateway.image.digest="$GATEWAY_IMAGE_DIGEST" \
-            --set-string fileProcessor.image.repository="$GITHUB_REPOSITORY/file-processor" \
-            --set-string fileProcessor.image.digest="$FILE_PROCESSOR_IMAGE_DIGEST" \
-            --set-string outboxWorker.image.repository="$GITHUB_REPOSITORY/backend" \
-            --set-string outboxWorker.image.digest="$BACKEND_IMAGE_DIGEST" \
-            --set-string connections.existingSecret="$CONNECTIONS_SECRET_NAME" \
-            --set-string applicationSecrets.existingSecret="$APPLICATION_SECRETS_NAME" \
-            --set fileProcessor.enabled=true \
-            --set outboxWorker.enabled=true \
-            --atomic \
-            --wait \
-            --wait-for-jobs \
-            --timeout 15m \
-            --history-max 10
+          bash .github/scripts/deploy-helm.sh lint
+          bash .github/scripts/deploy-helm.sh upgrade
 
       - name: Deploy WS Hub image
         id: ws_hub_deploy
@@ -649,6 +1002,24 @@ jobs:
           WS_HUB_URL: ${{ vars.WS_HUB_HEALTH_URL }}
           BACKEND_URL: ${{ vars.BACKEND_HEALTH_URL }}
           FRONTEND_URL: ${{ vars.FRONTEND_HEALTH_URL }}
+
+      - name: Verify new MFA key-overlap behavior
+        if: ${{ inputs.rotate-mfa-keys }}
+        shell: bash
+        env:
+          MFA_OVERLAP_SMOKE_SCRIPT: ${{ vars.MFA_OVERLAP_SMOKE_SCRIPT }}
+          MFA_SMOKE_BASE_URL: ${{ vars.MFA_SMOKE_BASE_URL }}
+          MFA_SMOKE_MAILBOX_URL: ${{ vars.MFA_SMOKE_MAILBOX_URL }}
+          MFA_SMOKE_EMAIL: ${{ secrets.MFA_SMOKE_EMAIL }}
+          MFA_SMOKE_PASSWORD: ${{ secrets.MFA_SMOKE_PASSWORD }}
+          MFA_SMOKE_MAILBOX_TOKEN: ${{ secrets.MFA_SMOKE_MAILBOX_TOKEN }}
+          MFA_SMOKE_STATE_DIR: ${{ runner.temp }}/mfa-overlap-smoke
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          smoke_script="$(python3 .github/scripts/validate_mfa_smoke_path.py \
+            "$MFA_OVERLAP_SMOKE_SCRIPT")"
+          bash "$smoke_script" verify-new
 
       - name: Verify Kyverno policy compliance (MOD-14-02)
         shell: bash

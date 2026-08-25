@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from pydantic import ValidationError
 
 import app.models as models
 from app.repositories.user_repository import UserRepository
@@ -79,47 +80,6 @@ async def test_update_user_profile_decomposed_fields():
     mock_uow.commit.assert_called_once()
 
 
-@pytest.mark.asyncio
-async def test_update_user_profile_email_change():
-    # Setup
-    repo = AsyncMock()
-    mock_uow = AsyncMock()
-    mock_uow.users = repo
-    mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
-    mock_uow.__aexit__ = AsyncMock(return_value=None)
-    mock_uow.commit = AsyncMock()
-    audit = MagicMock()
-    notifications = MagicMock()
-    service = UserService(mock_uow, audit, notifications)
-
-    user = models.User(
-        id=1, email="old@example.com", _allow_system_managed_assignment=True
-    )
-    repo.get.return_value = user
-
-    # Mock email uniqueness check
-    repo.check_email_exists.return_value = False
-
-    update_data = schemas.UserProfileUpdate(email="new@example.com")
-    request = MagicMock()
-
-    # Mock repo methods
-    updated_user_mock = MagicMock()
-    updated_user_mock.email = "new@example.com"
-    updated_user_mock.id = 1
-    repo._get_orm = AsyncMock(return_value=user)
-    repo._to_dto = MagicMock(return_value=updated_user_mock)
-    repo.add = MagicMock()
-    repo.flush = AsyncMock()
-    repo.commit = AsyncMock()
-
-    # Execute
-    with patch(
-        "app.services.user.profile_service.attach_pending_email",
-        side_effect=lambda _db, u: u,
-    ):
-        updated_user = await service.update_user_profile(user, update_data, request)
-
-    # Verify
-    assert updated_user.email == "new@example.com"
-    mock_uow.commit.assert_called_once()
+def test_update_user_profile_email_change():
+    with pytest.raises(ValidationError, match="use /users/me/email"):
+        schemas.UserProfileUpdate(email="new@example.com")

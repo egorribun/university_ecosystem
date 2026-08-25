@@ -958,7 +958,10 @@ jobs:
           from app.main import app
 
           schema_path = pathlib.Path("frontend/openapi.json")
-          schema_path.write_text(json.dumps(app.openapi()))
+          schema_path.write_text(
+              json.dumps(app.openapi(), indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
           PY
 
       - name: Generate API types
@@ -970,10 +973,12 @@ jobs:
       - name: Verify generated API types are up to date
         shell: pwsh
         run: |
-          $diff = git diff --quiet -- frontend/src/api/generated/schema.ts
+          git diff --exit-code -- `
+            frontend/openapi.json `
+            frontend/src/api/generated/ `
+            frontend/src/tests/mocks/generated/
           if ($LASTEXITCODE -ne 0) {
-            echo "::error::Generated API types are not up to date. Run 'npm run generate:api'."
-            git diff -- frontend/src/api/generated/schema.ts
+            echo "::error::Generated OpenAPI, TypeScript SDK, or MSW mocks are not up to date. Run 'npm run generate:api'."
             exit 1
           }
 
@@ -1375,6 +1380,7 @@ jobs:
           DATABASE_URL: "sqlite+aiosqlite:///./test_schemathesis.db"
           ENVIRONMENT: testing
           OTEL_SDK_DISABLED: "true"
+          UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
           SCHEMATHESIS_MAX_EXAMPLES: "25"
           SCHEMATHESIS_SHARD_COUNT: "4"
           SCHEMATHESIS_SHARD_INDEX: ${{ matrix.shard }}
@@ -1475,7 +1481,10 @@ jobs:
           import json, pathlib
           from app.main import app
           schema_path = pathlib.Path("frontend/openapi.json")
-          schema_path.write_text(json.dumps(app.openapi()))
+          schema_path.write_text(
+              json.dumps(app.openapi(), indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
           PY
 
       - name: Regenerate MSW mock handlers from OpenAPI spec
@@ -1544,6 +1553,7 @@ jobs:
         env:
           ENVIRONMENT: testing
           DATABASE_URL: "sqlite+aiosqlite:///./test_asan.db"
+          UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
           SECRET_KEY: ${{ secrets.CI_TEST_SECRET_KEY || 'test-secret-key-1234567890abcdef' }}
         run: bash scripts/run_asan_tests.sh
 
@@ -1603,6 +1613,7 @@ jobs:
         env:
           ENVIRONMENT: testing
           DATABASE_URL: "sqlite+aiosqlite:///./test_tsan.db"
+          UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
           SECRET_KEY: ${{ secrets.CI_TEST_SECRET_KEY || 'test-secret-key-1234567890abcdef' }}
         run: bash scripts/run_tsan_tests.sh
 
@@ -2308,6 +2319,7 @@ jobs:
         env:
           TOXIPROXY_URL: http://localhost:8474
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5433/testdb  # pragma: allowlist secret
+          UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
           CACHE_REDIS_URL: redis://localhost:6380/0
           NATS_URL: nats://localhost:4223
           MINIO_PROXY_ENDPOINT: http://localhost:9003

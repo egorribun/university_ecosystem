@@ -74,7 +74,6 @@
     "@opentelemetry/sdk-trace-web": "^2.8.0",
     "@opentelemetry/semantic-conventions": "^1.41.1",
     "@sentry/react": "^10.20.0",
-    "@simplewebauthn/browser": "^13.2.2",
     "@tanstack/query-sync-storage-persister": "^5.90.22",
     "@tanstack/react-query": "^5.90.21",
     "@tanstack/react-query-persist-client": "^5.90.23",

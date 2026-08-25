@@ -3,9 +3,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from app.api.auth.mfa import confirm_totp_enrollment, confirm_webauthn_registration
+from app.api.auth.mfa import (
+    confirm_totp_enrollment,
+    delete_totp_enrollment,
+    disable_email_mfa_endpoint,
+    request_step_up,
+)
 from app.auth.schemas import TotpEnrollmentConfirmIn
-from app.schemas.schemas import WebAuthnRegistrationVerifyIn
 
 
 @pytest.mark.asyncio
@@ -46,44 +50,6 @@ async def test_confirm_totp_enrollment_failure(mock_complete):
 
 
 @pytest.mark.asyncio
-@patch("app.auth.mfa.get_challenge", new_callable=AsyncMock)
-@patch(
-    "app.services.webauthn.WebAuthnService.verify_registration", new_callable=AsyncMock
-)
-async def test_confirm_webauthn_registration_failure(mock_verify, mock_get_challenge):
-    mock_verify.side_effect = Exception("Registration Error")
-
-    challenge = MagicMock(payload={"options": {"challenge": "abc"}})
-    mock_get_challenge.return_value = challenge
-
-    payload = MagicMock(
-        spec=WebAuthnRegistrationVerifyIn, challenge="token", response={}, label="mykey"
-    )
-    db = AsyncMock()
-    audit = AsyncMock()
-    user = MagicMock(id="user_123")
-
-    request = MagicMock()
-    import typing
-
-    async def mock_get(dep, *a, **kw):
-        if dep is typing.Any:
-            return db
-        if "AuditService" in str(dep):
-            return audit
-
-    request.state.dishka_container.get.side_effect = mock_get
-
-    with pytest.raises(HTTPException) as exc:
-        await confirm_webauthn_registration(payload=payload, request=request, user=user)
-    assert exc.value.status_code == 400
-    assert exc.value.detail == "Passkey verification failed"
-
-
-from app.api.auth.mfa import delete_webauthn_credential, request_step_up
-
-
-@pytest.mark.asyncio
 async def test_confirm_totp_enrollment_not_found():
     from app.auth.schemas import TotpEnrollmentConfirmIn
 
@@ -118,35 +84,130 @@ async def test_confirm_totp_enrollment_not_found():
 
 
 @pytest.mark.asyncio
-async def test_delete_webauthn_credential_not_found():
+async def test_confirm_totp_rollback_does_not_publish_redis_revocations():
+    payload = MagicMock(
+        spec=TotpEnrollmentConfirmIn, enrollment_id="123", code="123456"
+    )
     db = AsyncMock()
-    db.get.return_value = None
-
+    db.get.return_value = MagicMock(user_id="user_123")
+    db.commit.side_effect = RuntimeError("commit failed")
+    audit = MagicMock()
+    user = MagicMock(id="user_123")
     request = MagicMock()
+    request.state.active_session = MagicMock(id="session_123")
 
     async def mock_get(dep, *a, **kw):
+        if "AuditService" in str(dep):
+            return audit
         return db
 
-    request.state.dishka_container.get.side_effect = mock_get
+    request.state.dishka_container.get = AsyncMock(side_effect=mock_get)
+    with (
+        patch(
+            "app.api.auth.mfa.mfa.complete_totp_enrollment",
+            AsyncMock(return_value=MagicMock()),
+        ),
+        patch("app.api.auth.mfa.mfa.refresh_user_mfa_preferences", AsyncMock()),
+        patch(
+            "app.api.auth.mfa.mfa.revoke_sibling_sessions_for_factor_change",
+            AsyncMock(return_value=[MagicMock()]),
+        ),
+        patch("app.api.auth.mfa.mfa.record_mfa_success", AsyncMock()),
+        patch(
+            "app.api.auth.mfa.mfa.publish_mfa_session_revocations", AsyncMock()
+        ) as publish,
+    ):
+        with pytest.raises(RuntimeError, match="commit failed"):
+            await confirm_totp_enrollment(
+                payload=payload,
+                request=request,
+                user=user,
+            )
 
+    db.rollback.assert_awaited_once()
+    publish.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_disable_email_commit_failure_rolls_back_without_redis_publish():
+    db = AsyncMock()
+    db.commit.side_effect = RuntimeError("commit failed")
+    request = MagicMock()
     user = MagicMock(id="user_123")
+    pending = [MagicMock()]
+    with (
+        patch(
+            "app.api.auth.mfa.mfa.disable_email_mfa",
+            AsyncMock(return_value=pending),
+        ),
+        patch(
+            "app.api.auth.mfa.mfa.publish_mfa_session_revocations", AsyncMock()
+        ) as publish,
+    ):
+        with pytest.raises(RuntimeError, match="commit failed"):
+            await disable_email_mfa_endpoint.__dishka_orig_func__(
+                request, db, MagicMock(), user
+            )
 
-    with pytest.raises(HTTPException) as exc:
-        await delete_webauthn_credential(
-            credential_id="cred_123", request=request, user=user
-        )
-    assert exc.value.status_code == 404
-    assert exc.value.detail == "Credential not found"
+    db.rollback.assert_awaited_once()
+    publish.assert_not_awaited()
 
-    # Credential belongs to different user
-    cred = MagicMock(user_id="user_other")
-    db.get.return_value = cred
-    with pytest.raises(HTTPException) as exc:
-        await delete_webauthn_credential(
-            credential_id="cred_123", request=request, user=user
+
+@pytest.mark.asyncio
+async def test_disable_totp_publishes_revocations_only_after_commit():
+    events: list[str] = []
+    db = AsyncMock()
+    db.commit.side_effect = lambda: events.append("commit")
+    request = MagicMock()
+    user = MagicMock(id="user_123", mfa_default_method=None, mfa_required=False)
+    pending = [MagicMock()]
+
+    async def publish(_pending):
+        events.append("publish")
+
+    with (
+        patch(
+            "app.api.auth.mfa.mfa.disable_totp",
+            AsyncMock(return_value=(1, pending)),
+        ),
+        patch("app.api.auth.mfa.mfa.refresh_user_mfa_preferences", AsyncMock()),
+        patch(
+            "app.api.auth.mfa.mfa.publish_mfa_session_revocations",
+            AsyncMock(side_effect=publish),
+        ),
+    ):
+        await delete_totp_enrollment.__dishka_orig_func__(
+            "enrollment_123", request, db, MagicMock(), None, user
         )
-    assert exc.value.status_code == 404
-    assert exc.value.detail == "Credential not found"
+
+    assert events == ["commit", "publish"]
+
+
+@pytest.mark.asyncio
+async def test_disable_totp_commit_failure_rolls_back_without_redis_publish():
+    db = AsyncMock()
+    db.commit.side_effect = RuntimeError("commit failed")
+    request = MagicMock()
+    user = MagicMock(id="user_123", mfa_default_method=None, mfa_required=False)
+    pending = [MagicMock()]
+
+    with (
+        patch(
+            "app.api.auth.mfa.mfa.disable_totp",
+            AsyncMock(return_value=(1, pending)),
+        ),
+        patch("app.api.auth.mfa.mfa.refresh_user_mfa_preferences", AsyncMock()),
+        patch(
+            "app.api.auth.mfa.mfa.publish_mfa_session_revocations", AsyncMock()
+        ) as publish,
+    ):
+        with pytest.raises(RuntimeError, match="commit failed"):
+            await delete_totp_enrollment.__dishka_orig_func__(
+                "enrollment_123", request, db, MagicMock(), None, user
+            )
+
+    db.rollback.assert_awaited_once()
+    publish.assert_not_awaited()
 
 
 @pytest.mark.asyncio

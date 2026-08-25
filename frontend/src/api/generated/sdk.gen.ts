@@ -58,9 +58,6 @@ import type {
   ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostData,
   ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostErrors,
   ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostResponses,
-  ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostData,
-  ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostErrors,
-  ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostResponses,
   CreateChatApiV1ChatsPostData,
   CreateChatApiV1ChatsPostErrors,
   CreateChatApiV1ChatsPostResponses,
@@ -122,9 +119,9 @@ import type {
   DeleteUserAdminApiV1UsersUserIdDeleteData,
   DeleteUserAdminApiV1UsersUserIdDeleteErrors,
   DeleteUserAdminApiV1UsersUserIdDeleteResponses,
-  DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteData,
-  DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteErrors,
-  DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteResponses,
+  DisableEmailMfaEndpointApiV1AuthMfaEmailDeleteData,
+  DisableEmailMfaEndpointApiV1AuthMfaEmailDeleteErrors,
+  DisableEmailMfaEndpointApiV1AuthMfaEmailDeleteResponses,
   DisableUserPushApiV1PushAdminDisableUserPostData,
   DisableUserPushApiV1PushAdminDisableUserPostErrors,
   DisableUserPushApiV1PushAdminDisableUserPostResponses,
@@ -227,9 +224,6 @@ import type {
   ListTotpEnrollmentsApiV1AuthMfaTotpGetData,
   ListTotpEnrollmentsApiV1AuthMfaTotpGetErrors,
   ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses,
-  ListWebauthnCredentialsApiV1AuthMfaWebauthnGetData,
-  ListWebauthnCredentialsApiV1AuthMfaWebauthnGetErrors,
-  ListWebauthnCredentialsApiV1AuthMfaWebauthnGetResponses,
   LivenessHealthLiveGetData,
   LivenessHealthLiveGetResponses,
   LoginApiV1AuthLoginPostData,
@@ -238,12 +232,6 @@ import type {
   LoginJsonApiV1AuthLoginJsonPostData,
   LoginJsonApiV1AuthLoginJsonPostErrors,
   LoginJsonApiV1AuthLoginJsonPostResponses,
-  LoginPasskeyStartApiV1AuthLoginPasskeyStartPostData,
-  LoginPasskeyStartApiV1AuthLoginPasskeyStartPostErrors,
-  LoginPasskeyStartApiV1AuthLoginPasskeyStartPostResponses,
-  LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostData,
-  LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostErrors,
-  LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostResponses,
   LogoutApiV1AuthLogoutPostData,
   LogoutApiV1AuthLogoutPostErrors,
   LogoutApiV1AuthLogoutPostResponses,
@@ -292,6 +280,9 @@ import type {
   RequestStepUpApiV1AuthMfaStepUpPostData,
   RequestStepUpApiV1AuthMfaStepUpPostErrors,
   RequestStepUpApiV1AuthMfaStepUpPostResponses,
+  ResendEmailMfaChallengeApiV1AuthMfaEmailResendPostData,
+  ResendEmailMfaChallengeApiV1AuthMfaEmailResendPostErrors,
+  ResendEmailMfaChallengeApiV1AuthMfaEmailResendPostResponses,
   ResetPasswordApiV1PasswordResetPostData,
   ResetPasswordApiV1PasswordResetPostErrors,
   ResetPasswordApiV1PasswordResetPostResponses,
@@ -318,12 +309,15 @@ import type {
   SpotifyCallbackApiV1SpotifyCallbackGetData,
   SpotifyCallbackApiV1SpotifyCallbackGetErrors,
   SpotifyCallbackApiV1SpotifyCallbackGetResponses,
+  StartEmailMfaEnablementApiV1AuthMfaEmailEnablePostData,
+  StartEmailMfaEnablementApiV1AuthMfaEmailEnablePostErrors,
+  StartEmailMfaEnablementApiV1AuthMfaEmailEnablePostResponses,
+  StartEmailVerificationApiV1AuthMfaEmailVerificationStartPostData,
+  StartEmailVerificationApiV1AuthMfaEmailVerificationStartPostErrors,
+  StartEmailVerificationApiV1AuthMfaEmailVerificationStartPostResponses,
   StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostData,
   StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostErrors,
   StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostResponses,
-  StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostData,
-  StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostErrors,
-  StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostResponses,
   StatsSummaryApiV1StatsSummaryGetData,
   StatsSummaryApiV1StatsSummaryGetErrors,
   StatsSummaryApiV1StatsSummaryGetResponses,
@@ -425,145 +419,90 @@ export const getRootGet = <ThrowOnError extends boolean = false>(
   })
 
 /**
- * Liveness Probe
+ * List Audit Logs
  *
- * Liveness Probe
+ * List audit logs with filtering and integrity verification.
  */
-export const livenessHealthLiveGet = <ThrowOnError extends boolean = false>(
-  options?: Options<LivenessHealthLiveGetData, ThrowOnError>
-): RequestResult<LivenessHealthLiveGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<LivenessHealthLiveGetResponses, unknown, ThrowOnError>({
-    responseType: "json",
-    url: "/health/live",
-    ...options,
-  })
-
-/**
- * Full Health Check
- *
- * Full Health Check
- */
-export const healthzHealthzGet = <ThrowOnError extends boolean = false>(
-  options?: Options<HealthzHealthzGetData, ThrowOnError>
-): RequestResult<HealthzHealthzGetResponses, HealthzHealthzGetErrors, ThrowOnError> =>
+export const listAuditLogsAdminAuditGet = <ThrowOnError extends boolean = false>(
+  options?: Options<ListAuditLogsAdminAuditGetData, ThrowOnError>
+): RequestResult<
+  ListAuditLogsAdminAuditGetResponses,
+  ListAuditLogsAdminAuditGetErrors,
+  ThrowOnError
+> =>
   (options?.client ?? client).get<
-    HealthzHealthzGetResponses,
-    HealthzHealthzGetErrors,
+    ListAuditLogsAdminAuditGetResponses,
+    ListAuditLogsAdminAuditGetErrors,
     ThrowOnError
   >({
     responseType: "json",
-    url: "/healthz",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/admin/audit",
     ...options,
   })
 
 /**
- * Readiness Probe
+ * Get Time Travel State
  *
- * Readiness Probe
+ * Reconstruct state of an aggregate entity at a target timestamp in history.
  */
-export const readyHealthReadyGet = <ThrowOnError extends boolean = false>(
-  options?: Options<ReadyHealthReadyGetData, ThrowOnError>
-): RequestResult<ReadyHealthReadyGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<ReadyHealthReadyGetResponses, unknown, ThrowOnError>({
-    responseType: "json",
-    url: "/health/ready",
-    ...options,
-  })
-
-/**
- * Legacy Readiness Check
- *
- * Legacy Readiness Check
- */
-export const readyReadyGet = <ThrowOnError extends boolean = false>(
-  options?: Options<ReadyReadyGetData, ThrowOnError>
-): RequestResult<ReadyReadyGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<ReadyReadyGetResponses, unknown, ThrowOnError>({
-    responseType: "json",
-    url: "/ready",
-    ...options,
-  })
-
-/**
- * Logout
- *
- * Terminate the client session.
- *
- * Revokes the current session in the database and clears all
- * authentication-related cookies. Also sets Clear-Site-Data header
- * to ensure browser removes cached data.
- */
-export const logoutApiV1AuthLogoutPost = <ThrowOnError extends boolean = false>(
-  options?: Options<LogoutApiV1AuthLogoutPostData, ThrowOnError>
+export const getTimeTravelStateAdminAuditTimeTravelGet = <ThrowOnError extends boolean = false>(
+  options: Options<GetTimeTravelStateAdminAuditTimeTravelGetData, ThrowOnError>
 ): RequestResult<
-  LogoutApiV1AuthLogoutPostResponses,
-  LogoutApiV1AuthLogoutPostErrors,
+  GetTimeTravelStateAdminAuditTimeTravelGetResponses,
+  GetTimeTravelStateAdminAuditTimeTravelGetErrors,
   ThrowOnError
 > =>
-  (options?.client ?? client).post<
-    LogoutApiV1AuthLogoutPostResponses,
-    LogoutApiV1AuthLogoutPostErrors,
+  (options.client ?? client).get<
+    GetTimeTravelStateAdminAuditTimeTravelGetResponses,
+    GetTimeTravelStateAdminAuditTimeTravelGetErrors,
     ThrowOnError
   >({
     responseType: "json",
-    url: "/api/v1/auth/logout",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/admin/audit/time-travel",
     ...options,
   })
 
 /**
- * Login Passkey Start
+ * List Feature Flags
  *
- * Login Passkey Start
+ * List registered flags and their effective read-only evaluations.
  */
-export const loginPasskeyStartApiV1AuthLoginPasskeyStartPost = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<LoginPasskeyStartApiV1AuthLoginPasskeyStartPostData, ThrowOnError>
-): RequestResult<
-  LoginPasskeyStartApiV1AuthLoginPasskeyStartPostResponses,
-  LoginPasskeyStartApiV1AuthLoginPasskeyStartPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    LoginPasskeyStartApiV1AuthLoginPasskeyStartPostResponses,
-    LoginPasskeyStartApiV1AuthLoginPasskeyStartPostErrors,
+export const listFeatureFlagsAdminFeatureFlagsGet = <ThrowOnError extends boolean = false>(
+  options?: Options<ListFeatureFlagsAdminFeatureFlagsGetData, ThrowOnError>
+): RequestResult<ListFeatureFlagsAdminFeatureFlagsGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    ListFeatureFlagsAdminFeatureFlagsGetResponses,
+    unknown,
     ThrowOnError
   >({
     responseType: "json",
-    url: "/api/v1/auth/login/passkey/start",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/admin/feature-flags",
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
   })
 
 /**
- * Login Passkey Verify
+ * Initialize CSRF token
  *
- * Login Passkey Verify
+ * This endpoint sets a new robust CSRF cookie and is intended for SPAs to call before attempting a login.
  */
-export const loginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPost = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostData, ThrowOnError>
+export const getCsrfCookieApiV1AuthCsrfCookieGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetCsrfCookieApiV1AuthCsrfCookieGetData, ThrowOnError>
 ): RequestResult<
-  LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostResponses,
-  LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostErrors,
+  GetCsrfCookieApiV1AuthCsrfCookieGetResponses,
+  GetCsrfCookieApiV1AuthCsrfCookieGetErrors,
   ThrowOnError
 > =>
-  (options.client ?? client).post<
-    LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostResponses,
-    LoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPostErrors,
+  (options?.client ?? client).get<
+    GetCsrfCookieApiV1AuthCsrfCookieGetResponses,
+    GetCsrfCookieApiV1AuthCsrfCookieGetErrors,
     ThrowOnError
   >({
     responseType: "json",
-    url: "/api/v1/auth/login/passkey/verify",
+    url: "/api/v1/auth/csrf-cookie",
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
   })
 
 /**
@@ -616,6 +555,316 @@ export const loginJsonApiV1AuthLoginJsonPost = <ThrowOnError extends boolean = f
   })
 
 /**
+ * Logout
+ *
+ * Terminate the client session.
+ *
+ * Revokes the current session in the database and clears all
+ * authentication-related cookies. Also sets Clear-Site-Data header
+ * to ensure browser removes cached data.
+ */
+export const logoutApiV1AuthLogoutPost = <ThrowOnError extends boolean = false>(
+  options?: Options<LogoutApiV1AuthLogoutPostData, ThrowOnError>
+): RequestResult<
+  LogoutApiV1AuthLogoutPostResponses,
+  LogoutApiV1AuthLogoutPostErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).post<
+    LogoutApiV1AuthLogoutPostResponses,
+    LogoutApiV1AuthLogoutPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    url: "/api/v1/auth/logout",
+    ...options,
+  })
+
+/**
+ * Disable Email Mfa Endpoint
+ *
+ * Disable Email Mfa Endpoint
+ */
+export const disableEmailMfaEndpointApiV1AuthMfaEmailDelete = <
+  ThrowOnError extends boolean = false,
+>(
+  options?: Options<DisableEmailMfaEndpointApiV1AuthMfaEmailDeleteData, ThrowOnError>
+): RequestResult<
+  DisableEmailMfaEndpointApiV1AuthMfaEmailDeleteResponses,
+  DisableEmailMfaEndpointApiV1AuthMfaEmailDeleteErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).delete<
+    DisableEmailMfaEndpointApiV1AuthMfaEmailDeleteResponses,
+    DisableEmailMfaEndpointApiV1AuthMfaEmailDeleteErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/auth/mfa/email",
+    ...options,
+  })
+
+/**
+ * Start Email Mfa Enablement
+ *
+ * Start Email Mfa Enablement
+ */
+export const startEmailMfaEnablementApiV1AuthMfaEmailEnablePost = <
+  ThrowOnError extends boolean = false,
+>(
+  options?: Options<StartEmailMfaEnablementApiV1AuthMfaEmailEnablePostData, ThrowOnError>
+): RequestResult<
+  StartEmailMfaEnablementApiV1AuthMfaEmailEnablePostResponses,
+  StartEmailMfaEnablementApiV1AuthMfaEmailEnablePostErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).post<
+    StartEmailMfaEnablementApiV1AuthMfaEmailEnablePostResponses,
+    StartEmailMfaEnablementApiV1AuthMfaEmailEnablePostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/auth/mfa/email/enable",
+    ...options,
+  })
+
+/**
+ * Resend Email Mfa Challenge
+ *
+ * Resend Email Mfa Challenge
+ */
+export const resendEmailMfaChallengeApiV1AuthMfaEmailResendPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<ResendEmailMfaChallengeApiV1AuthMfaEmailResendPostData, ThrowOnError>
+): RequestResult<
+  ResendEmailMfaChallengeApiV1AuthMfaEmailResendPostResponses,
+  ResendEmailMfaChallengeApiV1AuthMfaEmailResendPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    ResendEmailMfaChallengeApiV1AuthMfaEmailResendPostResponses,
+    ResendEmailMfaChallengeApiV1AuthMfaEmailResendPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    url: "/api/v1/auth/mfa/email/resend",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Start Email Verification
+ *
+ * Start Email Verification
+ */
+export const startEmailVerificationApiV1AuthMfaEmailVerificationStartPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options?: Options<StartEmailVerificationApiV1AuthMfaEmailVerificationStartPostData, ThrowOnError>
+): RequestResult<
+  StartEmailVerificationApiV1AuthMfaEmailVerificationStartPostResponses,
+  StartEmailVerificationApiV1AuthMfaEmailVerificationStartPostErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).post<
+    StartEmailVerificationApiV1AuthMfaEmailVerificationStartPostResponses,
+    StartEmailVerificationApiV1AuthMfaEmailVerificationStartPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/auth/mfa/email/verification/start",
+    ...options,
+  })
+
+/**
+ * Generate Recovery Codes Endpoint
+ *
+ * Generate Recovery Codes Endpoint
+ */
+export const generateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options?: Options<GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostData, ThrowOnError>
+): RequestResult<
+  GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses,
+  GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).post<
+    GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses,
+    GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/auth/mfa/recovery-codes",
+    ...options,
+  })
+
+/**
+ * Request Step Up
+ *
+ * Request Step Up
+ */
+export const requestStepUpApiV1AuthMfaStepUpPost = <ThrowOnError extends boolean = false>(
+  options?: Options<RequestStepUpApiV1AuthMfaStepUpPostData, ThrowOnError>
+): RequestResult<
+  RequestStepUpApiV1AuthMfaStepUpPostResponses,
+  RequestStepUpApiV1AuthMfaStepUpPostErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).post<
+    RequestStepUpApiV1AuthMfaStepUpPostResponses,
+    RequestStepUpApiV1AuthMfaStepUpPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/auth/mfa/step-up",
+    ...options,
+  })
+
+/**
+ * List Totp Enrollments
+ *
+ * List Totp Enrollments
+ */
+export const listTotpEnrollmentsApiV1AuthMfaTotpGet = <ThrowOnError extends boolean = false>(
+  options?: Options<ListTotpEnrollmentsApiV1AuthMfaTotpGetData, ThrowOnError>
+): RequestResult<
+  ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses,
+  ListTotpEnrollmentsApiV1AuthMfaTotpGetErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses,
+    ListTotpEnrollmentsApiV1AuthMfaTotpGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/auth/mfa/totp",
+    ...options,
+  })
+
+/**
+ * Confirm Totp Enrollment
+ *
+ * Confirm Totp Enrollment
+ */
+export const confirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostData, ThrowOnError>
+): RequestResult<
+  ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostResponses,
+  ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostResponses,
+    ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/auth/mfa/totp/confirm",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Delete Pending Totp Enrollment
+ *
+ * Delete Pending Totp Enrollment
+ */
+export const deletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDelete = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<
+    DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteData,
+    ThrowOnError
+  >
+): RequestResult<
+  DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteResponses,
+  DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).delete<
+    DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteResponses,
+    DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/auth/mfa/totp/pending/{enrollment_id}",
+    ...options,
+  })
+
+/**
+ * Start Totp Enrollment Endpoint
+ *
+ * Start Totp Enrollment Endpoint
+ */
+export const startTotpEnrollmentEndpointApiV1AuthMfaTotpStartPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options?: Options<StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostData, ThrowOnError>
+): RequestResult<
+  StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostResponses,
+  StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).post<
+    StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostResponses,
+    StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/auth/mfa/totp/start",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  })
+
+/**
+ * Delete Totp Enrollment
+ *
+ * Delete Totp Enrollment
+ */
+export const deleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDelete = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteData, ThrowOnError>
+): RequestResult<
+  DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteResponses,
+  DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).delete<
+    DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteResponses,
+    DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/auth/mfa/totp/{enrollment_id}",
+    ...options,
+  })
+
+/**
  * Verify Mfa Challenge
  *
  * Verify Mfa Challenge
@@ -639,28 +888,6 @@ export const verifyMfaChallengeApiV1AuthMfaVerifyPost = <ThrowOnError extends bo
       "Content-Type": "application/json",
       ...options.headers,
     },
-  })
-
-/**
- * Initialize CSRF token
- *
- * This endpoint sets a new robust CSRF cookie and is intended for SPAs to call before attempting a login.
- */
-export const getCsrfCookieApiV1AuthCsrfCookieGet = <ThrowOnError extends boolean = false>(
-  options?: Options<GetCsrfCookieApiV1AuthCsrfCookieGetData, ThrowOnError>
-): RequestResult<
-  GetCsrfCookieApiV1AuthCsrfCookieGetResponses,
-  GetCsrfCookieApiV1AuthCsrfCookieGetErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).get<
-    GetCsrfCookieApiV1AuthCsrfCookieGetResponses,
-    GetCsrfCookieApiV1AuthCsrfCookieGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    url: "/api/v1/auth/csrf-cookie",
-    ...options,
   })
 
 /**
@@ -715,395 +942,6 @@ export const getSessionSigningKeyApiV1AuthSessionSigningKeyGet = <
   })
 
 /**
- * Start Totp Enrollment Endpoint
- *
- * Start Totp Enrollment Endpoint
- */
-export const startTotpEnrollmentEndpointApiV1AuthMfaTotpStartPost = <
-  ThrowOnError extends boolean = false,
->(
-  options?: Options<StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostData, ThrowOnError>
-): RequestResult<
-  StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostResponses,
-  StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).post<
-    StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostResponses,
-    StartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/auth/mfa/totp/start",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  })
-
-/**
- * Confirm Totp Enrollment
- *
- * Confirm Totp Enrollment
- */
-export const confirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostData, ThrowOnError>
-): RequestResult<
-  ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostResponses,
-  ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostResponses,
-    ConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/auth/mfa/totp/confirm",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * List Totp Enrollments
- *
- * List Totp Enrollments
- */
-export const listTotpEnrollmentsApiV1AuthMfaTotpGet = <ThrowOnError extends boolean = false>(
-  options?: Options<ListTotpEnrollmentsApiV1AuthMfaTotpGetData, ThrowOnError>
-): RequestResult<
-  ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses,
-  ListTotpEnrollmentsApiV1AuthMfaTotpGetErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).get<
-    ListTotpEnrollmentsApiV1AuthMfaTotpGetResponses,
-    ListTotpEnrollmentsApiV1AuthMfaTotpGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/auth/mfa/totp",
-    ...options,
-  })
-
-/**
- * Delete Pending Totp Enrollment
- *
- * Delete Pending Totp Enrollment
- */
-export const deletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDelete = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<
-    DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteData,
-    ThrowOnError
-  >
-): RequestResult<
-  DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteResponses,
-  DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).delete<
-    DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteResponses,
-    DeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDeleteErrors,
-    ThrowOnError
-  >({
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/auth/mfa/totp/pending/{enrollment_id}",
-    ...options,
-  })
-
-/**
- * Delete Totp Enrollment
- *
- * Delete Totp Enrollment
- */
-export const deleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDelete = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteData, ThrowOnError>
-): RequestResult<
-  DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteResponses,
-  DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).delete<
-    DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteResponses,
-    DeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDeleteErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/auth/mfa/totp/{enrollment_id}",
-    ...options,
-  })
-
-/**
- * Start Webauthn Registration
- *
- * Start Webauthn Registration
- */
-export const startWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPost = <
-  ThrowOnError extends boolean = false,
->(
-  options?: Options<
-    StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostData,
-    ThrowOnError
-  >
-): RequestResult<
-  StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostResponses,
-  StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).post<
-    StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostResponses,
-    StartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/auth/mfa/webauthn/register/start",
-    ...options,
-  })
-
-/**
- * Confirm Webauthn Registration
- *
- * Confirm Webauthn Registration
- */
-export const confirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPost = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<
-    ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostData,
-    ThrowOnError
-  >
-): RequestResult<
-  ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostResponses,
-  ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostResponses,
-    ConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/auth/mfa/webauthn/register/confirm",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * List Webauthn Credentials
- *
- * List Webauthn Credentials
- */
-export const listWebauthnCredentialsApiV1AuthMfaWebauthnGet = <
-  ThrowOnError extends boolean = false,
->(
-  options?: Options<ListWebauthnCredentialsApiV1AuthMfaWebauthnGetData, ThrowOnError>
-): RequestResult<
-  ListWebauthnCredentialsApiV1AuthMfaWebauthnGetResponses,
-  ListWebauthnCredentialsApiV1AuthMfaWebauthnGetErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).get<
-    ListWebauthnCredentialsApiV1AuthMfaWebauthnGetResponses,
-    ListWebauthnCredentialsApiV1AuthMfaWebauthnGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/auth/mfa/webauthn",
-    ...options,
-  })
-
-/**
- * Delete Webauthn Credential
- *
- * Delete Webauthn Credential
- */
-export const deleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDelete = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteData, ThrowOnError>
-): RequestResult<
-  DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteResponses,
-  DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).delete<
-    DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteResponses,
-    DeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDeleteErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/auth/mfa/webauthn/{credential_id}",
-    ...options,
-  })
-
-/**
- * Generate Recovery Codes Endpoint
- *
- * Generate Recovery Codes Endpoint
- */
-export const generateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPost = <
-  ThrowOnError extends boolean = false,
->(
-  options?: Options<GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostData, ThrowOnError>
-): RequestResult<
-  GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses,
-  GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).post<
-    GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostResponses,
-    GenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/auth/mfa/recovery-codes",
-    ...options,
-  })
-
-/**
- * Request Step Up
- *
- * Request Step Up
- */
-export const requestStepUpApiV1AuthMfaStepUpPost = <ThrowOnError extends boolean = false>(
-  options?: Options<RequestStepUpApiV1AuthMfaStepUpPostData, ThrowOnError>
-): RequestResult<
-  RequestStepUpApiV1AuthMfaStepUpPostResponses,
-  RequestStepUpApiV1AuthMfaStepUpPostErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).post<
-    RequestStepUpApiV1AuthMfaStepUpPostResponses,
-    RequestStepUpApiV1AuthMfaStepUpPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/auth/mfa/step-up",
-    ...options,
-  })
-
-/**
- * Spotify Auth Url
- *
- * Spotify Auth Url
- */
-export const spotifyAuthUrlApiV1SpotifyAuthUrlGet = <ThrowOnError extends boolean = false>(
-  options?: Options<SpotifyAuthUrlApiV1SpotifyAuthUrlGetData, ThrowOnError>
-): RequestResult<SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<
-    SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponses,
-    unknown,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/spotify/auth-url",
-    ...options,
-  })
-
-/**
- * Spotify Callback
- *
- * Spotify Callback
- */
-export const spotifyCallbackApiV1SpotifyCallbackGet = <ThrowOnError extends boolean = false>(
-  options: Options<SpotifyCallbackApiV1SpotifyCallbackGetData, ThrowOnError>
-): RequestResult<
-  SpotifyCallbackApiV1SpotifyCallbackGetResponses,
-  SpotifyCallbackApiV1SpotifyCallbackGetErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).get<
-    SpotifyCallbackApiV1SpotifyCallbackGetResponses,
-    SpotifyCallbackApiV1SpotifyCallbackGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    url: "/api/v1/spotify/callback",
-    ...options,
-  })
-
-/**
- * Now Playing
- *
- * Now Playing
- */
-export const nowPlayingApiV1SpotifyNowPlayingGet = <ThrowOnError extends boolean = false>(
-  options?: Options<NowPlayingApiV1SpotifyNowPlayingGetData, ThrowOnError>
-): RequestResult<NowPlayingApiV1SpotifyNowPlayingGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<
-    NowPlayingApiV1SpotifyNowPlayingGetResponses,
-    unknown,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/spotify/now-playing",
-    ...options,
-  })
-
-/**
- * Disconnect
- *
- * Disconnect
- */
-export const disconnectApiV1SpotifyDisconnectPost = <ThrowOnError extends boolean = false>(
-  options?: Options<DisconnectApiV1SpotifyDisconnectPostData, ThrowOnError>
-): RequestResult<DisconnectApiV1SpotifyDisconnectPostResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).post<
-    DisconnectApiV1SpotifyDisconnectPostResponses,
-    unknown,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/spotify/disconnect",
-    ...options,
-  })
-
-/**
- * List Playlists
- *
- * List Playlists
- */
-export const listPlaylistsApiV1SpotifyPlaylistsGet = <ThrowOnError extends boolean = false>(
-  options?: Options<ListPlaylistsApiV1SpotifyPlaylistsGetData, ThrowOnError>
-): RequestResult<ListPlaylistsApiV1SpotifyPlaylistsGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<
-    ListPlaylistsApiV1SpotifyPlaylistsGetResponses,
-    unknown,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/spotify/playlists",
-    ...options,
-  })
-
-/**
  * List Sessions
  *
  * List Sessions
@@ -1123,29 +961,6 @@ export const listSessionsApiV1AuthSessionsGet = <ThrowOnError extends boolean = 
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
     url: "/api/v1/auth/sessions",
-    ...options,
-  })
-
-/**
- * Revoke Session
- *
- * Revoke Session
- */
-export const revokeSessionApiV1AuthSessionsSessionIdDelete = <ThrowOnError extends boolean = false>(
-  options: Options<RevokeSessionApiV1AuthSessionsSessionIdDeleteData, ThrowOnError>
-): RequestResult<
-  RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses,
-  RevokeSessionApiV1AuthSessionsSessionIdDeleteErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).delete<
-    RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses,
-    RevokeSessionApiV1AuthSessionsSessionIdDeleteErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/auth/sessions/{session_id}",
     ...options,
   })
 
@@ -1175,1778 +990,25 @@ export const revokeOtherSessionsApiV1AuthSessionsRevokeOthersPost = <
   })
 
 /**
- * Clear Notifications
+ * Revoke Session
  *
- * Clear Notifications
+ * Revoke Session
  */
-export const clearNotificationsApiV1NotificationsDelete = <ThrowOnError extends boolean = false>(
-  options?: Options<ClearNotificationsApiV1NotificationsDeleteData, ThrowOnError>
-): RequestResult<ClearNotificationsApiV1NotificationsDeleteResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).delete<
-    ClearNotificationsApiV1NotificationsDeleteResponses,
-    unknown,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/notifications",
-    ...options,
-  })
-
-/**
- * List Notifications
- *
- * List Notifications
- */
-export const listNotificationsApiV1NotificationsGet = <ThrowOnError extends boolean = false>(
-  options?: Options<ListNotificationsApiV1NotificationsGetData, ThrowOnError>
+export const revokeSessionApiV1AuthSessionsSessionIdDelete = <ThrowOnError extends boolean = false>(
+  options: Options<RevokeSessionApiV1AuthSessionsSessionIdDeleteData, ThrowOnError>
 ): RequestResult<
-  ListNotificationsApiV1NotificationsGetResponses,
-  ListNotificationsApiV1NotificationsGetErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).get<
-    ListNotificationsApiV1NotificationsGetResponses,
-    ListNotificationsApiV1NotificationsGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/notifications",
-    ...options,
-  })
-
-/**
- * Mark Read Single
- *
- * Mark Read Single
- */
-export const markReadSingleApiV1NotificationsNotifIdReadPatch = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<MarkReadSingleApiV1NotificationsNotifIdReadPatchData, ThrowOnError>
-): RequestResult<
-  MarkReadSingleApiV1NotificationsNotifIdReadPatchResponses,
-  MarkReadSingleApiV1NotificationsNotifIdReadPatchErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).patch<
-    MarkReadSingleApiV1NotificationsNotifIdReadPatchResponses,
-    MarkReadSingleApiV1NotificationsNotifIdReadPatchErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/notifications/{notif_id}/read",
-    ...options,
-  })
-
-/**
- * Mark All Read
- *
- * Mark All Read
- */
-export const markAllReadApiV1NotificationsReadAllPost = <ThrowOnError extends boolean = false>(
-  options?: Options<MarkAllReadApiV1NotificationsReadAllPostData, ThrowOnError>
-): RequestResult<MarkAllReadApiV1NotificationsReadAllPostResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).post<
-    MarkAllReadApiV1NotificationsReadAllPostResponses,
-    unknown,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/notifications/read-all",
-    ...options,
-  })
-
-/**
- * Delete Notification
- *
- * Delete Notification
- */
-export const deleteNotificationApiV1NotificationsNotifIdDelete = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<DeleteNotificationApiV1NotificationsNotifIdDeleteData, ThrowOnError>
-): RequestResult<
-  DeleteNotificationApiV1NotificationsNotifIdDeleteResponses,
-  DeleteNotificationApiV1NotificationsNotifIdDeleteErrors,
+  RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses,
+  RevokeSessionApiV1AuthSessionsSessionIdDeleteErrors,
   ThrowOnError
 > =>
   (options.client ?? client).delete<
-    DeleteNotificationApiV1NotificationsNotifIdDeleteResponses,
-    DeleteNotificationApiV1NotificationsNotifIdDeleteErrors,
+    RevokeSessionApiV1AuthSessionsSessionIdDeleteResponses,
+    RevokeSessionApiV1AuthSessionsSessionIdDeleteErrors,
     ThrowOnError
   >({
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/notifications/{notif_id}",
-    ...options,
-  })
-
-/**
- * Check Schedule And Generate
- *
- * Check Schedule And Generate
- */
-export const checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost = <
-  ThrowOnError extends boolean = false,
->(
-  options?: Options<CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostData, ThrowOnError>
-): RequestResult<
-  CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostResponses,
-  CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).post<
-    CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostResponses,
-    CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/notifications/check-schedule",
-    ...options,
-  })
-
-/**
- * Get Vapid Public Key
- *
- * Return configured VAPID public key.
- */
-export const getVapidPublicKeyApiV1PushVapidPublicKeyGet = <ThrowOnError extends boolean = false>(
-  options?: Options<GetVapidPublicKeyApiV1PushVapidPublicKeyGetData, ThrowOnError>
-): RequestResult<GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<
-    GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponses,
-    unknown,
-    ThrowOnError
-  >({
-    responseType: "json",
-    url: "/api/v1/push/vapid-public-key",
-    ...options,
-  })
-
-/**
- * Subscribe
- *
- * Subscribe
- */
-export const subscribeApiV1PushSubscribePost = <ThrowOnError extends boolean = false>(
-  options: Options<SubscribeApiV1PushSubscribePostData, ThrowOnError>
-): RequestResult<
-  SubscribeApiV1PushSubscribePostResponses,
-  SubscribeApiV1PushSubscribePostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    SubscribeApiV1PushSubscribePostResponses,
-    SubscribeApiV1PushSubscribePostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/push/subscribe",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Update Subscription Topics
- *
- * Update Subscription Topics
- */
-export const updateSubscriptionTopicsApiV1PushSubscribeTopicsPatch = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchData, ThrowOnError>
-): RequestResult<
-  UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchResponses,
-  UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).patch<
-    UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchResponses,
-    UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/push/subscribe/topics",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Unsubscribe
- *
- * Unsubscribe
- */
-export const unsubscribeApiV1PushUnsubscribePost = <ThrowOnError extends boolean = false>(
-  options: Options<UnsubscribeApiV1PushUnsubscribePostData, ThrowOnError>
-): RequestResult<
-  UnsubscribeApiV1PushUnsubscribePostResponses,
-  UnsubscribeApiV1PushUnsubscribePostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    UnsubscribeApiV1PushUnsubscribePostResponses,
-    UnsubscribeApiV1PushUnsubscribePostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/push/unsubscribe",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Get Push Topics
- *
- * Get Push Topics
- */
-export const getPushTopicsApiV1PushTopicsGet = <ThrowOnError extends boolean = false>(
-  options?: Options<GetPushTopicsApiV1PushTopicsGetData, ThrowOnError>
-): RequestResult<GetPushTopicsApiV1PushTopicsGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<GetPushTopicsApiV1PushTopicsGetResponses, unknown, ThrowOnError>({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/push/topics",
-    ...options,
-  })
-
-/**
- * Send Test
- *
- * Send Test
- */
-export const sendTestApiV1PushTestPost = <ThrowOnError extends boolean = false>(
-  options?: Options<SendTestApiV1PushTestPostData, ThrowOnError>
-): RequestResult<
-  SendTestApiV1PushTestPostResponses,
-  SendTestApiV1PushTestPostErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).post<
-    SendTestApiV1PushTestPostResponses,
-    SendTestApiV1PushTestPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/push/test",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options?.headers,
-    },
-  })
-
-/**
- * Admin Get User Topics
- *
- * Admin Get User Topics
- */
-export const adminGetUserTopicsApiV1PushAdminTopicsUserIdGet = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetData, ThrowOnError>
-): RequestResult<
-  AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetResponses,
-  AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).get<
-    AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetResponses,
-    AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/push/admin/topics/{user_id}",
-    ...options,
-  })
-
-/**
- * Admin Update User Topics
- *
- * Admin Update User Topics
- */
-export const adminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutData, ThrowOnError>
-): RequestResult<
-  AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutResponses,
-  AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).put<
-    AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutResponses,
-    AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/push/admin/topics/{user_id}",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Disable User Push
- *
- * Disable User Push
- */
-export const disableUserPushApiV1PushAdminDisableUserPost = <ThrowOnError extends boolean = false>(
-  options: Options<DisableUserPushApiV1PushAdminDisableUserPostData, ThrowOnError>
-): RequestResult<
-  DisableUserPushApiV1PushAdminDisableUserPostResponses,
-  DisableUserPushApiV1PushAdminDisableUserPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    DisableUserPushApiV1PushAdminDisableUserPostResponses,
-    DisableUserPushApiV1PushAdminDisableUserPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/push/admin/disable-user",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Broadcast
- *
- * Broadcast
- */
-export const broadcastApiV1PushBroadcastPost = <ThrowOnError extends boolean = false>(
-  options: Options<BroadcastApiV1PushBroadcastPostData, ThrowOnError>
-): RequestResult<
-  BroadcastApiV1PushBroadcastPostResponses,
-  BroadcastApiV1PushBroadcastPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    BroadcastApiV1PushBroadcastPostResponses,
-    BroadcastApiV1PushBroadcastPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/push/broadcast",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Download Schedule Ics
- *
- * Download Schedule Ics
- */
-export const downloadScheduleIcsApiV1ScheduleIcsGet = <ThrowOnError extends boolean = false>(
-  options: Options<DownloadScheduleIcsApiV1ScheduleIcsGetData, ThrowOnError>
-): RequestResult<
-  DownloadScheduleIcsApiV1ScheduleIcsGetResponses,
-  DownloadScheduleIcsApiV1ScheduleIcsGetErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).get<
-    DownloadScheduleIcsApiV1ScheduleIcsGetResponses,
-    DownloadScheduleIcsApiV1ScheduleIcsGetErrors,
-    ThrowOnError
-  >({ url: "/api/v1/schedule/ics", ...options })
-
-/**
- * Me
- *
- * Me
- */
-export const meApiV1UsersMeGet = <ThrowOnError extends boolean = false>(
-  options?: Options<MeApiV1UsersMeGetData, ThrowOnError>
-): RequestResult<MeApiV1UsersMeGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<MeApiV1UsersMeGetResponses, unknown, ThrowOnError>({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/users/me",
-    ...options,
-  })
-
-/**
- * Update Me
- *
- * Update Me
- */
-export const updateMeApiV1UsersMePut = <ThrowOnError extends boolean = false>(
-  options: Options<UpdateMeApiV1UsersMePutData, ThrowOnError>
-): RequestResult<UpdateMeApiV1UsersMePutResponses, UpdateMeApiV1UsersMePutErrors, ThrowOnError> =>
-  (options.client ?? client).put<
-    UpdateMeApiV1UsersMePutResponses,
-    UpdateMeApiV1UsersMePutErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/users/me",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Change Email
- *
- * Change Email
- */
-export const changeEmailApiV1UsersMeEmailPost = <ThrowOnError extends boolean = false>(
-  options: Options<ChangeEmailApiV1UsersMeEmailPostData, ThrowOnError>
-): RequestResult<
-  ChangeEmailApiV1UsersMeEmailPostResponses,
-  ChangeEmailApiV1UsersMeEmailPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    ChangeEmailApiV1UsersMeEmailPostResponses,
-    ChangeEmailApiV1UsersMeEmailPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/users/me/email",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Confirm Email Change
- *
- * Confirm Email Change
- */
-export const verifyEmailChangeApiV1UsersMeEmailConfirmPost = <ThrowOnError extends boolean = false>(
-  options: Options<VerifyEmailChangeApiV1UsersMeEmailConfirmPostData, ThrowOnError>
-): RequestResult<
-  VerifyEmailChangeApiV1UsersMeEmailConfirmPostResponses,
-  VerifyEmailChangeApiV1UsersMeEmailConfirmPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    VerifyEmailChangeApiV1UsersMeEmailConfirmPostResponses,
-    VerifyEmailChangeApiV1UsersMeEmailConfirmPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/users/me/email/confirm",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Change Password
- *
- * Change Password
- */
-export const changePasswordApiV1UsersMePasswordPost = <ThrowOnError extends boolean = false>(
-  options: Options<ChangePasswordApiV1UsersMePasswordPostData, ThrowOnError>
-): RequestResult<
-  ChangePasswordApiV1UsersMePasswordPostResponses,
-  ChangePasswordApiV1UsersMePasswordPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    ChangePasswordApiV1UsersMePasswordPostResponses,
-    ChangePasswordApiV1UsersMePasswordPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/users/me/password",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Export Current User Data
- *
- * Export Current User Data
- */
-export const exportCurrentUserDataApiV1UsersMeExportPost = <ThrowOnError extends boolean = false>(
-  options?: Options<ExportCurrentUserDataApiV1UsersMeExportPostData, ThrowOnError>
-): RequestResult<ExportCurrentUserDataApiV1UsersMeExportPostResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).post<
-    ExportCurrentUserDataApiV1UsersMeExportPostResponses,
-    unknown,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/users/me/export",
-    ...options,
-  })
-
-/**
- * Delete Current User Account
- *
- * Delete Current User Account
- */
-export const deleteCurrentUserAccountApiV1UsersMeDeletePost = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<DeleteCurrentUserAccountApiV1UsersMeDeletePostData, ThrowOnError>
-): RequestResult<
-  DeleteCurrentUserAccountApiV1UsersMeDeletePostResponses,
-  DeleteCurrentUserAccountApiV1UsersMeDeletePostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    DeleteCurrentUserAccountApiV1UsersMeDeletePostResponses,
-    DeleteCurrentUserAccountApiV1UsersMeDeletePostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/users/me/delete",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Delete Avatar
- *
- * Delete Avatar
- */
-export const deleteAvatarApiV1UsersMeAvatarDelete = <ThrowOnError extends boolean = false>(
-  options?: Options<DeleteAvatarApiV1UsersMeAvatarDeleteData, ThrowOnError>
-): RequestResult<DeleteAvatarApiV1UsersMeAvatarDeleteResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).delete<
-    DeleteAvatarApiV1UsersMeAvatarDeleteResponses,
-    unknown,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/users/me/avatar",
-    ...options,
-  })
-
-/**
- * Upload Avatar
- *
- * Upload Avatar
- */
-export const uploadAvatarApiV1UsersMeAvatarPost = <ThrowOnError extends boolean = false>(
-  options: Options<UploadAvatarApiV1UsersMeAvatarPostData, ThrowOnError>
-): RequestResult<
-  UploadAvatarApiV1UsersMeAvatarPostResponses,
-  UploadAvatarApiV1UsersMeAvatarPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    UploadAvatarApiV1UsersMeAvatarPostResponses,
-    UploadAvatarApiV1UsersMeAvatarPostErrors,
-    ThrowOnError
-  >({
-    ...formDataBodySerializer,
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/users/me/avatar",
-    ...options,
-    headers: {
-      "Content-Type": null,
-      ...options.headers,
-    },
-  })
-
-/**
- * Delete Cover
- *
- * Delete Cover
- */
-export const deleteCoverApiV1UsersMeCoverDelete = <ThrowOnError extends boolean = false>(
-  options?: Options<DeleteCoverApiV1UsersMeCoverDeleteData, ThrowOnError>
-): RequestResult<DeleteCoverApiV1UsersMeCoverDeleteResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).delete<
-    DeleteCoverApiV1UsersMeCoverDeleteResponses,
-    unknown,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/users/me/cover",
-    ...options,
-  })
-
-/**
- * Upload Cover
- *
- * Upload Cover
- */
-export const uploadCoverApiV1UsersMeCoverPost = <ThrowOnError extends boolean = false>(
-  options: Options<UploadCoverApiV1UsersMeCoverPostData, ThrowOnError>
-): RequestResult<
-  UploadCoverApiV1UsersMeCoverPostResponses,
-  UploadCoverApiV1UsersMeCoverPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    UploadCoverApiV1UsersMeCoverPostResponses,
-    UploadCoverApiV1UsersMeCoverPostErrors,
-    ThrowOnError
-  >({
-    ...formDataBodySerializer,
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/users/me/cover",
-    ...options,
-    headers: {
-      "Content-Type": null,
-      ...options.headers,
-    },
-  })
-
-/**
- * Search Users
- *
- * Search for users.
- * Admins see full profiles (UserOut), others see only public info (UserPublicOut).
- */
-export const getUsersApiV1UsersGet = <ThrowOnError extends boolean = false>(
-  options?: Options<GetUsersApiV1UsersGetData, ThrowOnError>
-): RequestResult<GetUsersApiV1UsersGetResponses, GetUsersApiV1UsersGetErrors, ThrowOnError> =>
-  (options?.client ?? client).get<
-    GetUsersApiV1UsersGetResponses,
-    GetUsersApiV1UsersGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/users",
-    ...options,
-  })
-
-/**
- * Create User
- *
- * Create User
- */
-export const createUserApiV1UsersPost = <ThrowOnError extends boolean = false>(
-  options: Options<CreateUserApiV1UsersPostData, ThrowOnError>
-): RequestResult<CreateUserApiV1UsersPostResponses, CreateUserApiV1UsersPostErrors, ThrowOnError> =>
-  (options.client ?? client).post<
-    CreateUserApiV1UsersPostResponses,
-    CreateUserApiV1UsersPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/users",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Export Access Audit
- *
- * Export Access Audit
- */
-export const exportAccessAuditApiV1UsersAuditExportGet = <ThrowOnError extends boolean = false>(
-  options?: Options<ExportAccessAuditApiV1UsersAuditExportGetData, ThrowOnError>
-): RequestResult<
-  ExportAccessAuditApiV1UsersAuditExportGetResponses,
-  ExportAccessAuditApiV1UsersAuditExportGetErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).get<
-    ExportAccessAuditApiV1UsersAuditExportGetResponses,
-    ExportAccessAuditApiV1UsersAuditExportGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/users/audit/export",
-    ...options,
-  })
-
-/**
- * Delete User Admin
- *
- * Delete User Admin
- */
-export const deleteUserAdminApiV1UsersUserIdDelete = <ThrowOnError extends boolean = false>(
-  options: Options<DeleteUserAdminApiV1UsersUserIdDeleteData, ThrowOnError>
-): RequestResult<
-  DeleteUserAdminApiV1UsersUserIdDeleteResponses,
-  DeleteUserAdminApiV1UsersUserIdDeleteErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).delete<
-    DeleteUserAdminApiV1UsersUserIdDeleteResponses,
-    DeleteUserAdminApiV1UsersUserIdDeleteErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/users/{user_id}",
-    ...options,
-  })
-
-/**
- * Update User Admin
- *
- * Update User Admin
- */
-export const updateUserAdminApiV1UsersUserIdPatch = <ThrowOnError extends boolean = false>(
-  options: Options<UpdateUserAdminApiV1UsersUserIdPatchData, ThrowOnError>
-): RequestResult<
-  UpdateUserAdminApiV1UsersUserIdPatchResponses,
-  UpdateUserAdminApiV1UsersUserIdPatchErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).patch<
-    UpdateUserAdminApiV1UsersUserIdPatchResponses,
-    UpdateUserAdminApiV1UsersUserIdPatchErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/users/{user_id}",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Forgot Password
- *
- * Forgot Password
- */
-export const forgotPasswordApiV1PasswordForgotPost = <ThrowOnError extends boolean = false>(
-  options: Options<ForgotPasswordApiV1PasswordForgotPostData, ThrowOnError>
-): RequestResult<
-  ForgotPasswordApiV1PasswordForgotPostResponses,
-  ForgotPasswordApiV1PasswordForgotPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    ForgotPasswordApiV1PasswordForgotPostResponses,
-    ForgotPasswordApiV1PasswordForgotPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    url: "/api/v1/password/forgot",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Reset Password
- *
- * Reset Password
- */
-export const resetPasswordApiV1PasswordResetPost = <ThrowOnError extends boolean = false>(
-  options: Options<ResetPasswordApiV1PasswordResetPostData, ThrowOnError>
-): RequestResult<
-  ResetPasswordApiV1PasswordResetPostResponses,
-  ResetPasswordApiV1PasswordResetPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    ResetPasswordApiV1PasswordResetPostResponses,
-    ResetPasswordApiV1PasswordResetPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    url: "/api/v1/password/reset",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Get Groups
- *
- * Get Groups
- */
-export const getGroupsApiV1GroupsGet = <ThrowOnError extends boolean = false>(
-  options?: Options<GetGroupsApiV1GroupsGetData, ThrowOnError>
-): RequestResult<GetGroupsApiV1GroupsGetResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).get<GetGroupsApiV1GroupsGetResponses, unknown, ThrowOnError>({
-    responseType: "json",
-    url: "/api/v1/groups",
-    ...options,
-  })
-
-/**
- * List Events
- *
- * Get a paginated list of events.
- */
-export const allEventsApiV1EventsGet = <ThrowOnError extends boolean = false>(
-  options?: Options<AllEventsApiV1EventsGetData, ThrowOnError>
-): RequestResult<AllEventsApiV1EventsGetResponses, AllEventsApiV1EventsGetErrors, ThrowOnError> =>
-  (options?.client ?? client).get<
-    AllEventsApiV1EventsGetResponses,
-    AllEventsApiV1EventsGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/events",
-    ...options,
-  })
-
-/**
- * Create Event
- *
- * Create Event
- */
-export const createEventApiV1EventsPost = <ThrowOnError extends boolean = false>(
-  options: Options<CreateEventApiV1EventsPostData, ThrowOnError>
-): RequestResult<
-  CreateEventApiV1EventsPostResponses,
-  CreateEventApiV1EventsPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    CreateEventApiV1EventsPostResponses,
-    CreateEventApiV1EventsPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/events",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Unregister Event
- *
- * Unregister Event
- */
-export const unregisterEventApiV1EventsAttendanceDelete = <ThrowOnError extends boolean = false>(
-  options: Options<UnregisterEventApiV1EventsAttendanceDeleteData, ThrowOnError>
-): RequestResult<
-  UnregisterEventApiV1EventsAttendanceDeleteResponses,
-  UnregisterEventApiV1EventsAttendanceDeleteErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).delete<
-    UnregisterEventApiV1EventsAttendanceDeleteResponses,
-    UnregisterEventApiV1EventsAttendanceDeleteErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/events/attendance",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Attend Event
- *
- * Register attendance for an event.
- */
-export const attendApiV1EventsAttendancePost = <ThrowOnError extends boolean = false>(
-  options: Options<AttendApiV1EventsAttendancePostData, ThrowOnError>
-): RequestResult<
-  AttendApiV1EventsAttendancePostResponses,
-  AttendApiV1EventsAttendancePostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    AttendApiV1EventsAttendancePostResponses,
-    AttendApiV1EventsAttendancePostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/events/attendance",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * My Events
- *
- * My Events
- */
-export const myEventsApiV1EventsMyGet = <ThrowOnError extends boolean = false>(
-  options?: Options<MyEventsApiV1EventsMyGetData, ThrowOnError>
-): RequestResult<MyEventsApiV1EventsMyGetResponses, MyEventsApiV1EventsMyGetErrors, ThrowOnError> =>
-  (options?.client ?? client).get<
-    MyEventsApiV1EventsMyGetResponses,
-    MyEventsApiV1EventsMyGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/events/my",
-    ...options,
-  })
-
-/**
- * Upload Event File
- *
- * Upload Event File
- */
-export const uploadEventFileApiV1EventsEventIdUploadFilePost = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<UploadEventFileApiV1EventsEventIdUploadFilePostData, ThrowOnError>
-): RequestResult<
-  UploadEventFileApiV1EventsEventIdUploadFilePostResponses,
-  UploadEventFileApiV1EventsEventIdUploadFilePostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    UploadEventFileApiV1EventsEventIdUploadFilePostResponses,
-    UploadEventFileApiV1EventsEventIdUploadFilePostErrors,
-    ThrowOnError
-  >({
-    ...formDataBodySerializer,
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/events/{event_id}/upload_file",
-    ...options,
-    headers: {
-      "Content-Type": null,
-      ...options.headers,
-    },
-  })
-
-/**
- * Get Event Files
- *
- * Get Event Files
- */
-export const getEventFilesApiV1EventsEventIdFilesGet = <ThrowOnError extends boolean = false>(
-  options: Options<GetEventFilesApiV1EventsEventIdFilesGetData, ThrowOnError>
-): RequestResult<
-  GetEventFilesApiV1EventsEventIdFilesGetResponses,
-  GetEventFilesApiV1EventsEventIdFilesGetErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).get<
-    GetEventFilesApiV1EventsEventIdFilesGetResponses,
-    GetEventFilesApiV1EventsEventIdFilesGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    url: "/api/v1/events/{event_id}/files",
-    ...options,
-  })
-
-/**
- * Upload Event Image
- *
- * Upload Event Image
- */
-export const uploadEventImageApiV1EventsUploadImagePost = <ThrowOnError extends boolean = false>(
-  options: Options<UploadEventImageApiV1EventsUploadImagePostData, ThrowOnError>
-): RequestResult<
-  UploadEventImageApiV1EventsUploadImagePostResponses,
-  UploadEventImageApiV1EventsUploadImagePostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    UploadEventImageApiV1EventsUploadImagePostResponses,
-    UploadEventImageApiV1EventsUploadImagePostErrors,
-    ThrowOnError
-  >({
-    ...formDataBodySerializer,
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/events/upload_image",
-    ...options,
-    headers: {
-      "Content-Type": null,
-      ...options.headers,
-    },
-  })
-
-/**
- * Delete Event
- *
- * Delete Event
- */
-export const deleteEventApiV1EventsEventIdDelete = <ThrowOnError extends boolean = false>(
-  options: Options<DeleteEventApiV1EventsEventIdDeleteData, ThrowOnError>
-): RequestResult<
-  DeleteEventApiV1EventsEventIdDeleteResponses,
-  DeleteEventApiV1EventsEventIdDeleteErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).delete<
-    DeleteEventApiV1EventsEventIdDeleteResponses,
-    DeleteEventApiV1EventsEventIdDeleteErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/events/{event_id}",
-    ...options,
-  })
-
-/**
- * Get Event
- *
- * Get Event
- */
-export const getEventApiV1EventsEventIdGet = <ThrowOnError extends boolean = false>(
-  options: Options<GetEventApiV1EventsEventIdGetData, ThrowOnError>
-): RequestResult<
-  GetEventApiV1EventsEventIdGetResponses,
-  GetEventApiV1EventsEventIdGetErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).get<
-    GetEventApiV1EventsEventIdGetResponses,
-    GetEventApiV1EventsEventIdGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/events/{event_id}",
-    ...options,
-  })
-
-/**
- * Update Event
- *
- * Update Event
- */
-export const updateEventApiV1EventsEventIdPatch = <ThrowOnError extends boolean = false>(
-  options: Options<UpdateEventApiV1EventsEventIdPatchData, ThrowOnError>
-): RequestResult<
-  UpdateEventApiV1EventsEventIdPatchResponses,
-  UpdateEventApiV1EventsEventIdPatchErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).patch<
-    UpdateEventApiV1EventsEventIdPatchResponses,
-    UpdateEventApiV1EventsEventIdPatchErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/events/{event_id}",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Delete Event File
- *
- * Delete Event File
- */
-export const deleteEventFileApiV1EventsFileFileIdDelete = <ThrowOnError extends boolean = false>(
-  options: Options<DeleteEventFileApiV1EventsFileFileIdDeleteData, ThrowOnError>
-): RequestResult<
-  DeleteEventFileApiV1EventsFileFileIdDeleteResponses,
-  DeleteEventFileApiV1EventsFileFileIdDeleteErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).delete<
-    DeleteEventFileApiV1EventsFileFileIdDeleteResponses,
-    DeleteEventFileApiV1EventsFileFileIdDeleteErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/events/file/{file_id}",
-    ...options,
-  })
-
-/**
- * Semantic Search
- *
- * Semantic search for events using embeddings.
- */
-export const semanticSearchApiV1EventsSearchSemanticGet = <ThrowOnError extends boolean = false>(
-  options: Options<SemanticSearchApiV1EventsSearchSemanticGetData, ThrowOnError>
-): RequestResult<
-  SemanticSearchApiV1EventsSearchSemanticGetResponses,
-  SemanticSearchApiV1EventsSearchSemanticGetErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).get<
-    SemanticSearchApiV1EventsSearchSemanticGetResponses,
-    SemanticSearchApiV1EventsSearchSemanticGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/events/search/semantic",
-    ...options,
-  })
-
-/**
- * List News
- *
- * Get a paginated list of news articles.
- */
-export const newsListApiV1NewsGet = <ThrowOnError extends boolean = false>(
-  options?: Options<NewsListApiV1NewsGetData, ThrowOnError>
-): RequestResult<NewsListApiV1NewsGetResponses, NewsListApiV1NewsGetErrors, ThrowOnError> =>
-  (options?.client ?? client).get<
-    NewsListApiV1NewsGetResponses,
-    NewsListApiV1NewsGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/news",
-    ...options,
-  })
-
-/**
- * Create News
- *
- * Create News
- */
-export const createNewsApiV1NewsPost = <ThrowOnError extends boolean = false>(
-  options: Options<CreateNewsApiV1NewsPostData, ThrowOnError>
-): RequestResult<CreateNewsApiV1NewsPostResponses, CreateNewsApiV1NewsPostErrors, ThrowOnError> =>
-  (options.client ?? client).post<
-    CreateNewsApiV1NewsPostResponses,
-    CreateNewsApiV1NewsPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/news",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Delete News
- *
- * Delete News
- */
-export const deleteNewsApiV1NewsIdDelete = <ThrowOnError extends boolean = false>(
-  options: Options<DeleteNewsApiV1NewsIdDeleteData, ThrowOnError>
-): RequestResult<
-  DeleteNewsApiV1NewsIdDeleteResponses,
-  DeleteNewsApiV1NewsIdDeleteErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).delete<
-    DeleteNewsApiV1NewsIdDeleteResponses,
-    DeleteNewsApiV1NewsIdDeleteErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/news/{id}",
-    ...options,
-  })
-
-/**
- * Get News Item
- *
- * Get a specific news article by ID.
- */
-export const getNewsApiV1NewsIdGet = <ThrowOnError extends boolean = false>(
-  options: Options<GetNewsApiV1NewsIdGetData, ThrowOnError>
-): RequestResult<GetNewsApiV1NewsIdGetResponses, GetNewsApiV1NewsIdGetErrors, ThrowOnError> =>
-  (options.client ?? client).get<
-    GetNewsApiV1NewsIdGetResponses,
-    GetNewsApiV1NewsIdGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/news/{id}",
-    ...options,
-  })
-
-/**
- * Update News
- *
- * Update News
- */
-export const updateNewsApiV1NewsIdPatch = <ThrowOnError extends boolean = false>(
-  options: Options<UpdateNewsApiV1NewsIdPatchData, ThrowOnError>
-): RequestResult<
-  UpdateNewsApiV1NewsIdPatchResponses,
-  UpdateNewsApiV1NewsIdPatchErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).patch<
-    UpdateNewsApiV1NewsIdPatchResponses,
-    UpdateNewsApiV1NewsIdPatchErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/news/{id}",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Like News
- *
- * Like News
- */
-export const likeNewsApiV1NewsIdLikePost = <ThrowOnError extends boolean = false>(
-  options: Options<LikeNewsApiV1NewsIdLikePostData, ThrowOnError>
-): RequestResult<
-  LikeNewsApiV1NewsIdLikePostResponses,
-  LikeNewsApiV1NewsIdLikePostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    LikeNewsApiV1NewsIdLikePostResponses,
-    LikeNewsApiV1NewsIdLikePostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/news/{id}/like",
-    ...options,
-  })
-
-/**
- * Comment On News
- *
- * Comment On News
- */
-export const commentOnNewsApiV1NewsIdCommentPost = <ThrowOnError extends boolean = false>(
-  options: Options<CommentOnNewsApiV1NewsIdCommentPostData, ThrowOnError>
-): RequestResult<
-  CommentOnNewsApiV1NewsIdCommentPostResponses,
-  CommentOnNewsApiV1NewsIdCommentPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    CommentOnNewsApiV1NewsIdCommentPostResponses,
-    CommentOnNewsApiV1NewsIdCommentPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/news/{id}/comment",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Get News Interact
- *
- * Get News Interact
- */
-export const getNewsInteractApiV1NewsIdInteractionsGet = <ThrowOnError extends boolean = false>(
-  options: Options<GetNewsInteractApiV1NewsIdInteractionsGetData, ThrowOnError>
-): RequestResult<
-  GetNewsInteractApiV1NewsIdInteractionsGetResponses,
-  GetNewsInteractApiV1NewsIdInteractionsGetErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).get<
-    GetNewsInteractApiV1NewsIdInteractionsGetResponses,
-    GetNewsInteractApiV1NewsIdInteractionsGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/news/{id}/interactions",
-    ...options,
-  })
-
-/**
- * Delete Comment
- *
- * Delete Comment
- */
-export const deleteCommentApiV1NewsCommentsCommentIdDelete = <ThrowOnError extends boolean = false>(
-  options: Options<DeleteCommentApiV1NewsCommentsCommentIdDeleteData, ThrowOnError>
-): RequestResult<
-  DeleteCommentApiV1NewsCommentsCommentIdDeleteResponses,
-  DeleteCommentApiV1NewsCommentsCommentIdDeleteErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).delete<
-    DeleteCommentApiV1NewsCommentsCommentIdDeleteResponses,
-    DeleteCommentApiV1NewsCommentsCommentIdDeleteErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/news/comments/{comment_id}",
-    ...options,
-  })
-
-/**
- * Update Comment
- *
- * Update Comment
- */
-export const updateCommentApiV1NewsCommentsCommentIdPatch = <ThrowOnError extends boolean = false>(
-  options: Options<UpdateCommentApiV1NewsCommentsCommentIdPatchData, ThrowOnError>
-): RequestResult<
-  UpdateCommentApiV1NewsCommentsCommentIdPatchResponses,
-  UpdateCommentApiV1NewsCommentsCommentIdPatchErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).patch<
-    UpdateCommentApiV1NewsCommentsCommentIdPatchResponses,
-    UpdateCommentApiV1NewsCommentsCommentIdPatchErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/news/comments/{comment_id}",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Upload News Image
- *
- * Upload News Image
- */
-export const uploadNewsImageApiV1NewsUploadImagePost = <ThrowOnError extends boolean = false>(
-  options: Options<UploadNewsImageApiV1NewsUploadImagePostData, ThrowOnError>
-): RequestResult<
-  UploadNewsImageApiV1NewsUploadImagePostResponses,
-  UploadNewsImageApiV1NewsUploadImagePostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    UploadNewsImageApiV1NewsUploadImagePostResponses,
-    UploadNewsImageApiV1NewsUploadImagePostErrors,
-    ThrowOnError
-  >({
-    ...formDataBodySerializer,
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/news/upload_image",
-    ...options,
-    headers: {
-      "Content-Type": null,
-      ...options.headers,
-    },
-  })
-
-/**
- * Semantic Search
- *
- * Semantic search for news articles using embeddings.
- */
-export const semanticSearchApiV1NewsSearchSemanticGet = <ThrowOnError extends boolean = false>(
-  options: Options<SemanticSearchApiV1NewsSearchSemanticGetData, ThrowOnError>
-): RequestResult<
-  SemanticSearchApiV1NewsSearchSemanticGetResponses,
-  SemanticSearchApiV1NewsSearchSemanticGetErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).get<
-    SemanticSearchApiV1NewsSearchSemanticGetResponses,
-    SemanticSearchApiV1NewsSearchSemanticGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/news/search/semantic",
-    ...options,
-  })
-
-/**
- * List Stories
- *
- * List Stories
- */
-export const listStoriesApiV1StoriesGet = <ThrowOnError extends boolean = false>(
-  options?: Options<ListStoriesApiV1StoriesGetData, ThrowOnError>
-): RequestResult<
-  ListStoriesApiV1StoriesGetResponses,
-  ListStoriesApiV1StoriesGetErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).get<
-    ListStoriesApiV1StoriesGetResponses,
-    ListStoriesApiV1StoriesGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    url: "/api/v1/stories",
-    ...options,
-  })
-
-/**
- * Create Story
- *
- * Create Story
- */
-export const createStoryApiV1StoriesPost = <ThrowOnError extends boolean = false>(
-  options: Options<CreateStoryApiV1StoriesPostData, ThrowOnError>
-): RequestResult<
-  CreateStoryApiV1StoriesPostResponses,
-  CreateStoryApiV1StoriesPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    CreateStoryApiV1StoriesPostResponses,
-    CreateStoryApiV1StoriesPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/stories",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Delete Story
- *
- * Delete Story
- */
-export const deleteStoryApiV1StoriesStoryIdDelete = <ThrowOnError extends boolean = false>(
-  options: Options<DeleteStoryApiV1StoriesStoryIdDeleteData, ThrowOnError>
-): RequestResult<
-  DeleteStoryApiV1StoriesStoryIdDeleteResponses,
-  DeleteStoryApiV1StoriesStoryIdDeleteErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).delete<
-    DeleteStoryApiV1StoriesStoryIdDeleteResponses,
-    DeleteStoryApiV1StoriesStoryIdDeleteErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/stories/{story_id}",
-    ...options,
-  })
-
-/**
- * Update Story
- *
- * Update Story
- */
-export const updateStoryApiV1StoriesStoryIdPatch = <ThrowOnError extends boolean = false>(
-  options: Options<UpdateStoryApiV1StoriesStoryIdPatchData, ThrowOnError>
-): RequestResult<
-  UpdateStoryApiV1StoriesStoryIdPatchResponses,
-  UpdateStoryApiV1StoriesStoryIdPatchErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).patch<
-    UpdateStoryApiV1StoriesStoryIdPatchResponses,
-    UpdateStoryApiV1StoriesStoryIdPatchErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/stories/{story_id}",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Upload Story Cover
- *
- * Upload Story Cover
- */
-export const uploadStoryCoverApiV1StoriesUploadCoverPost = <ThrowOnError extends boolean = false>(
-  options: Options<UploadStoryCoverApiV1StoriesUploadCoverPostData, ThrowOnError>
-): RequestResult<
-  UploadStoryCoverApiV1StoriesUploadCoverPostResponses,
-  UploadStoryCoverApiV1StoriesUploadCoverPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    UploadStoryCoverApiV1StoriesUploadCoverPostResponses,
-    UploadStoryCoverApiV1StoriesUploadCoverPostErrors,
-    ThrowOnError
-  >({
-    ...formDataBodySerializer,
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/stories/upload_cover",
-    ...options,
-    headers: {
-      "Content-Type": null,
-      ...options.headers,
-    },
-  })
-
-/**
- * Add Schedule
- *
- * Add Schedule
- */
-export const addScheduleApiV1SchedulePost = <ThrowOnError extends boolean = false>(
-  options: Options<AddScheduleApiV1SchedulePostData, ThrowOnError>
-): RequestResult<
-  AddScheduleApiV1SchedulePostResponses,
-  AddScheduleApiV1SchedulePostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    AddScheduleApiV1SchedulePostResponses,
-    AddScheduleApiV1SchedulePostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/schedule",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Delete Schedule
- *
- * Delete Schedule
- */
-export const deleteScheduleApiV1ScheduleIdDelete = <ThrowOnError extends boolean = false>(
-  options: Options<DeleteScheduleApiV1ScheduleIdDeleteData, ThrowOnError>
-): RequestResult<
-  DeleteScheduleApiV1ScheduleIdDeleteResponses,
-  DeleteScheduleApiV1ScheduleIdDeleteErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).delete<
-    DeleteScheduleApiV1ScheduleIdDeleteResponses,
-    DeleteScheduleApiV1ScheduleIdDeleteErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/schedule/{id}",
-    ...options,
-  })
-
-/**
- * Get Schedule
- *
- * Get Schedule
- */
-export const getScheduleApiV1ScheduleIdGet = <ThrowOnError extends boolean = false>(
-  options: Options<GetScheduleApiV1ScheduleIdGetData, ThrowOnError>
-): RequestResult<
-  GetScheduleApiV1ScheduleIdGetResponses,
-  GetScheduleApiV1ScheduleIdGetErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).get<
-    GetScheduleApiV1ScheduleIdGetResponses,
-    GetScheduleApiV1ScheduleIdGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/schedule/{id}",
-    ...options,
-  })
-
-/**
- * Update Schedule
- *
- * Update Schedule
- */
-export const updateScheduleApiV1ScheduleIdPatch = <ThrowOnError extends boolean = false>(
-  options: Options<UpdateScheduleApiV1ScheduleIdPatchData, ThrowOnError>
-): RequestResult<
-  UpdateScheduleApiV1ScheduleIdPatchResponses,
-  UpdateScheduleApiV1ScheduleIdPatchErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).patch<
-    UpdateScheduleApiV1ScheduleIdPatchResponses,
-    UpdateScheduleApiV1ScheduleIdPatchErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/schedule/{id}",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Attendance Summary
- *
- * Attendance Summary
- */
-export const attendanceSummaryApiV1StatsAttendanceGet = <ThrowOnError extends boolean = false>(
-  options?: Options<AttendanceSummaryApiV1StatsAttendanceGetData, ThrowOnError>
-): RequestResult<
-  AttendanceSummaryApiV1StatsAttendanceGetResponses,
-  AttendanceSummaryApiV1StatsAttendanceGetErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).get<
-    AttendanceSummaryApiV1StatsAttendanceGetResponses,
-    AttendanceSummaryApiV1StatsAttendanceGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/stats/attendance",
-    ...options,
-  })
-
-/**
- * Grade Summary
- *
- * Grade Summary
- */
-export const gradeSummaryApiV1StatsGradesGet = <ThrowOnError extends boolean = false>(
-  options?: Options<GradeSummaryApiV1StatsGradesGetData, ThrowOnError>
-): RequestResult<
-  GradeSummaryApiV1StatsGradesGetResponses,
-  GradeSummaryApiV1StatsGradesGetErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).get<
-    GradeSummaryApiV1StatsGradesGetResponses,
-    GradeSummaryApiV1StatsGradesGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/stats/grades",
-    ...options,
-  })
-
-/**
- * Participation Summary
- *
- * Participation Summary
- */
-export const participationSummaryApiV1StatsParticipationGet = <
-  ThrowOnError extends boolean = false,
->(
-  options?: Options<ParticipationSummaryApiV1StatsParticipationGetData, ThrowOnError>
-): RequestResult<
-  ParticipationSummaryApiV1StatsParticipationGetResponses,
-  ParticipationSummaryApiV1StatsParticipationGetErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).get<
-    ParticipationSummaryApiV1StatsParticipationGetResponses,
-    ParticipationSummaryApiV1StatsParticipationGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/stats/participation",
-    ...options,
-  })
-
-/**
- * Stats Summary
- *
- * Return attendance, grades and participation stats in a single request.
- *
- * PERF-1 (audit 2026-03): replaces three separate client-side round-trips.
- * All three sub-queries run concurrently via asyncio.gather and share the
- * same Redis cache entries as the individual endpoints.
- */
-export const statsSummaryApiV1StatsSummaryGet = <ThrowOnError extends boolean = false>(
-  options?: Options<StatsSummaryApiV1StatsSummaryGetData, ThrowOnError>
-): RequestResult<
-  StatsSummaryApiV1StatsSummaryGetResponses,
-  StatsSummaryApiV1StatsSummaryGetErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).get<
-    StatsSummaryApiV1StatsSummaryGetResponses,
-    StatsSummaryApiV1StatsSummaryGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/stats/summary",
+    url: "/api/v1/auth/sessions/{session_id}",
     ...options,
   })
 
@@ -3100,6 +1162,29 @@ export const renameChatApiV1ChatsChatIdPatch = <ThrowOnError extends boolean = f
   })
 
 /**
+ * Clear Chat History
+ *
+ * Remove all messages (and attachments) from a chat for its participants.
+ */
+export const clearChatHistoryApiV1ChatsChatIdClearPost = <ThrowOnError extends boolean = false>(
+  options: Options<ClearChatHistoryApiV1ChatsChatIdClearPostData, ThrowOnError>
+): RequestResult<
+  ClearChatHistoryApiV1ChatsChatIdClearPostResponses,
+  ClearChatHistoryApiV1ChatsChatIdClearPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    ClearChatHistoryApiV1ChatsChatIdClearPostResponses,
+    ClearChatHistoryApiV1ChatsChatIdClearPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/chats/{chat_id}/clear",
+    ...options,
+  })
+
+/**
  * Get Messages
  *
  * Get messages for a chat with cursor-based pagination (oldest first).
@@ -3148,63 +1233,6 @@ export const sendMessageApiV1ChatsChatIdMessagesPost = <ThrowOnError extends boo
       "Content-Type": null,
       ...options.headers,
     },
-  })
-
-/**
- * Forward Messages
- *
- * Forward 1..N messages from a source chat into this destination chat (Wave 211).
- *
- * Snapshot-copy: copies the source content + attachments + a "Forwarded from X"
- * label; the source is never dereferenced cross-chat (privacy). The actor must be
- * a participant of BOTH the source chat (to read) AND this destination chat (to
- * send) — see ChatMessageDispatcher.forward_messages.
- */
-export const forwardMessagesApiV1ChatsDestChatIdForwardPost = <
-  ThrowOnError extends boolean = false,
->(
-  options: Options<ForwardMessagesApiV1ChatsDestChatIdForwardPostData, ThrowOnError>
-): RequestResult<
-  ForwardMessagesApiV1ChatsDestChatIdForwardPostResponses,
-  ForwardMessagesApiV1ChatsDestChatIdForwardPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    ForwardMessagesApiV1ChatsDestChatIdForwardPostResponses,
-    ForwardMessagesApiV1ChatsDestChatIdForwardPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/chats/{dest_chat_id}/forward",
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  })
-
-/**
- * Mark Read
- *
- * Mark all messages in a chat as read.
- */
-export const markReadApiV1ChatsChatIdReadPost = <ThrowOnError extends boolean = false>(
-  options: Options<MarkReadApiV1ChatsChatIdReadPostData, ThrowOnError>
-): RequestResult<
-  MarkReadApiV1ChatsChatIdReadPostResponses,
-  MarkReadApiV1ChatsChatIdReadPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    MarkReadApiV1ChatsChatIdReadPostResponses,
-    MarkReadApiV1ChatsChatIdReadPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/chats/{chat_id}/read",
-    ...options,
   })
 
 /**
@@ -3366,59 +1394,6 @@ export const addReactionApiV1ChatsChatIdMessagesMessageIdReactionsPost = <
   })
 
 /**
- * Typing Indicator
- *
- * Broadcast a 'typing' indicator to the other chat participants (Wave 207).
- *
- * The frontend WS connects to ws-hub, which drops "typing" frames at its parse
- * boundary — so typing can't relay peer-to-peer over the socket. This REST endpoint
- * does the participant authz + broadcast (W204 bridge → ws-hub chat.* fan-out → the
- * other participants' live TypingIndicator). A permissive 180/60 limiter (vs the
- * strict 5/60 default) gives headroom over the client's 500ms (~2/sec) throttle while
- * capping broadcast-spam abuse. W174 auto-cookie covers POST CSRF.
- */
-export const typingIndicatorApiV1ChatsChatIdTypingPost = <ThrowOnError extends boolean = false>(
-  options: Options<TypingIndicatorApiV1ChatsChatIdTypingPostData, ThrowOnError>
-): RequestResult<
-  TypingIndicatorApiV1ChatsChatIdTypingPostResponses,
-  TypingIndicatorApiV1ChatsChatIdTypingPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    TypingIndicatorApiV1ChatsChatIdTypingPostResponses,
-    TypingIndicatorApiV1ChatsChatIdTypingPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/chats/{chat_id}/typing",
-    ...options,
-  })
-
-/**
- * Clear Chat History
- *
- * Remove all messages (and attachments) from a chat for its participants.
- */
-export const clearChatHistoryApiV1ChatsChatIdClearPost = <ThrowOnError extends boolean = false>(
-  options: Options<ClearChatHistoryApiV1ChatsChatIdClearPostData, ThrowOnError>
-): RequestResult<
-  ClearChatHistoryApiV1ChatsChatIdClearPostResponses,
-  ClearChatHistoryApiV1ChatsChatIdClearPostErrors,
-  ThrowOnError
-> =>
-  (options.client ?? client).post<
-    ClearChatHistoryApiV1ChatsChatIdClearPostResponses,
-    ClearChatHistoryApiV1ChatsChatIdClearPostErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/api/v1/chats/{chat_id}/clear",
-    ...options,
-  })
-
-/**
  * Add Participant
  *
  * Add a member to a group (Wave 209 G1 — any participant). W174 auto-cookie.
@@ -3475,6 +1450,442 @@ export const removeParticipantApiV1ChatsChatIdParticipantsUserIdDelete = <
   })
 
 /**
+ * Mark Read
+ *
+ * Mark all messages in a chat as read.
+ */
+export const markReadApiV1ChatsChatIdReadPost = <ThrowOnError extends boolean = false>(
+  options: Options<MarkReadApiV1ChatsChatIdReadPostData, ThrowOnError>
+): RequestResult<
+  MarkReadApiV1ChatsChatIdReadPostResponses,
+  MarkReadApiV1ChatsChatIdReadPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    MarkReadApiV1ChatsChatIdReadPostResponses,
+    MarkReadApiV1ChatsChatIdReadPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/chats/{chat_id}/read",
+    ...options,
+  })
+
+/**
+ * Typing Indicator
+ *
+ * Broadcast a 'typing' indicator to the other chat participants (Wave 207).
+ *
+ * The frontend WS connects to ws-hub, which drops "typing" frames at its parse
+ * boundary — so typing can't relay peer-to-peer over the socket. This REST endpoint
+ * does the participant authz + broadcast (W204 bridge → ws-hub chat.* fan-out → the
+ * other participants' live TypingIndicator). A permissive 180/60 limiter (vs the
+ * strict 5/60 default) gives headroom over the client's 500ms (~2/sec) throttle while
+ * capping broadcast-spam abuse. W174 auto-cookie covers POST CSRF.
+ */
+export const typingIndicatorApiV1ChatsChatIdTypingPost = <ThrowOnError extends boolean = false>(
+  options: Options<TypingIndicatorApiV1ChatsChatIdTypingPostData, ThrowOnError>
+): RequestResult<
+  TypingIndicatorApiV1ChatsChatIdTypingPostResponses,
+  TypingIndicatorApiV1ChatsChatIdTypingPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    TypingIndicatorApiV1ChatsChatIdTypingPostResponses,
+    TypingIndicatorApiV1ChatsChatIdTypingPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/chats/{chat_id}/typing",
+    ...options,
+  })
+
+/**
+ * Forward Messages
+ *
+ * Forward 1..N messages from a source chat into this destination chat (Wave 211).
+ *
+ * Snapshot-copy: copies the source content + attachments + a "Forwarded from X"
+ * label; the source is never dereferenced cross-chat (privacy). The actor must be
+ * a participant of BOTH the source chat (to read) AND this destination chat (to
+ * send) — see ChatMessageDispatcher.forward_messages.
+ */
+export const forwardMessagesApiV1ChatsDestChatIdForwardPost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<ForwardMessagesApiV1ChatsDestChatIdForwardPostData, ThrowOnError>
+): RequestResult<
+  ForwardMessagesApiV1ChatsDestChatIdForwardPostResponses,
+  ForwardMessagesApiV1ChatsDestChatIdForwardPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    ForwardMessagesApiV1ChatsDestChatIdForwardPostResponses,
+    ForwardMessagesApiV1ChatsDestChatIdForwardPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/chats/{dest_chat_id}/forward",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Receive Csp Report
+ *
+ * Receive CSP violation reports from browsers.
+ *
+ * Browsers send POST requests with Content-Type: application/csp-report
+ * when a CSP policy is violated.
+ */
+export const receiveCspReportApiV1CspReportPost = <ThrowOnError extends boolean = false>(
+  options?: Options<ReceiveCspReportApiV1CspReportPostData, ThrowOnError>
+): RequestResult<ReceiveCspReportApiV1CspReportPostResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).post<
+    ReceiveCspReportApiV1CspReportPostResponses,
+    unknown,
+    ThrowOnError
+  >({ url: "/api/v1/csp-report", ...options })
+
+/**
+ * List Events
+ *
+ * Get a paginated list of events.
+ */
+export const allEventsApiV1EventsGet = <ThrowOnError extends boolean = false>(
+  options?: Options<AllEventsApiV1EventsGetData, ThrowOnError>
+): RequestResult<AllEventsApiV1EventsGetResponses, AllEventsApiV1EventsGetErrors, ThrowOnError> =>
+  (options?.client ?? client).get<
+    AllEventsApiV1EventsGetResponses,
+    AllEventsApiV1EventsGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/events",
+    ...options,
+  })
+
+/**
+ * Create Event
+ *
+ * Create Event
+ */
+export const createEventApiV1EventsPost = <ThrowOnError extends boolean = false>(
+  options: Options<CreateEventApiV1EventsPostData, ThrowOnError>
+): RequestResult<
+  CreateEventApiV1EventsPostResponses,
+  CreateEventApiV1EventsPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    CreateEventApiV1EventsPostResponses,
+    CreateEventApiV1EventsPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/events",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Unregister Event
+ *
+ * Unregister Event
+ */
+export const unregisterEventApiV1EventsAttendanceDelete = <ThrowOnError extends boolean = false>(
+  options: Options<UnregisterEventApiV1EventsAttendanceDeleteData, ThrowOnError>
+): RequestResult<
+  UnregisterEventApiV1EventsAttendanceDeleteResponses,
+  UnregisterEventApiV1EventsAttendanceDeleteErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).delete<
+    UnregisterEventApiV1EventsAttendanceDeleteResponses,
+    UnregisterEventApiV1EventsAttendanceDeleteErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/events/attendance",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Attend Event
+ *
+ * Register attendance for an event.
+ */
+export const attendApiV1EventsAttendancePost = <ThrowOnError extends boolean = false>(
+  options: Options<AttendApiV1EventsAttendancePostData, ThrowOnError>
+): RequestResult<
+  AttendApiV1EventsAttendancePostResponses,
+  AttendApiV1EventsAttendancePostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    AttendApiV1EventsAttendancePostResponses,
+    AttendApiV1EventsAttendancePostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/events/attendance",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Delete Event File
+ *
+ * Delete Event File
+ */
+export const deleteEventFileApiV1EventsFileFileIdDelete = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteEventFileApiV1EventsFileFileIdDeleteData, ThrowOnError>
+): RequestResult<
+  DeleteEventFileApiV1EventsFileFileIdDeleteResponses,
+  DeleteEventFileApiV1EventsFileFileIdDeleteErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).delete<
+    DeleteEventFileApiV1EventsFileFileIdDeleteResponses,
+    DeleteEventFileApiV1EventsFileFileIdDeleteErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/events/file/{file_id}",
+    ...options,
+  })
+
+/**
+ * My Events
+ *
+ * My Events
+ */
+export const myEventsApiV1EventsMyGet = <ThrowOnError extends boolean = false>(
+  options?: Options<MyEventsApiV1EventsMyGetData, ThrowOnError>
+): RequestResult<MyEventsApiV1EventsMyGetResponses, MyEventsApiV1EventsMyGetErrors, ThrowOnError> =>
+  (options?.client ?? client).get<
+    MyEventsApiV1EventsMyGetResponses,
+    MyEventsApiV1EventsMyGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/events/my",
+    ...options,
+  })
+
+/**
+ * Semantic Search
+ *
+ * Semantic search for events using embeddings.
+ */
+export const semanticSearchApiV1EventsSearchSemanticGet = <ThrowOnError extends boolean = false>(
+  options: Options<SemanticSearchApiV1EventsSearchSemanticGetData, ThrowOnError>
+): RequestResult<
+  SemanticSearchApiV1EventsSearchSemanticGetResponses,
+  SemanticSearchApiV1EventsSearchSemanticGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    SemanticSearchApiV1EventsSearchSemanticGetResponses,
+    SemanticSearchApiV1EventsSearchSemanticGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/events/search/semantic",
+    ...options,
+  })
+
+/**
+ * Upload Event Image
+ *
+ * Upload Event Image
+ */
+export const uploadEventImageApiV1EventsUploadImagePost = <ThrowOnError extends boolean = false>(
+  options: Options<UploadEventImageApiV1EventsUploadImagePostData, ThrowOnError>
+): RequestResult<
+  UploadEventImageApiV1EventsUploadImagePostResponses,
+  UploadEventImageApiV1EventsUploadImagePostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    UploadEventImageApiV1EventsUploadImagePostResponses,
+    UploadEventImageApiV1EventsUploadImagePostErrors,
+    ThrowOnError
+  >({
+    ...formDataBodySerializer,
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/events/upload_image",
+    ...options,
+    headers: {
+      "Content-Type": null,
+      ...options.headers,
+    },
+  })
+
+/**
+ * Delete Event
+ *
+ * Delete Event
+ */
+export const deleteEventApiV1EventsEventIdDelete = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteEventApiV1EventsEventIdDeleteData, ThrowOnError>
+): RequestResult<
+  DeleteEventApiV1EventsEventIdDeleteResponses,
+  DeleteEventApiV1EventsEventIdDeleteErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).delete<
+    DeleteEventApiV1EventsEventIdDeleteResponses,
+    DeleteEventApiV1EventsEventIdDeleteErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/events/{event_id}",
+    ...options,
+  })
+
+/**
+ * Get Event
+ *
+ * Get Event
+ */
+export const getEventApiV1EventsEventIdGet = <ThrowOnError extends boolean = false>(
+  options: Options<GetEventApiV1EventsEventIdGetData, ThrowOnError>
+): RequestResult<
+  GetEventApiV1EventsEventIdGetResponses,
+  GetEventApiV1EventsEventIdGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetEventApiV1EventsEventIdGetResponses,
+    GetEventApiV1EventsEventIdGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/events/{event_id}",
+    ...options,
+  })
+
+/**
+ * Update Event
+ *
+ * Update Event
+ */
+export const updateEventApiV1EventsEventIdPatch = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateEventApiV1EventsEventIdPatchData, ThrowOnError>
+): RequestResult<
+  UpdateEventApiV1EventsEventIdPatchResponses,
+  UpdateEventApiV1EventsEventIdPatchErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).patch<
+    UpdateEventApiV1EventsEventIdPatchResponses,
+    UpdateEventApiV1EventsEventIdPatchErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/events/{event_id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Event Files
+ *
+ * Get Event Files
+ */
+export const getEventFilesApiV1EventsEventIdFilesGet = <ThrowOnError extends boolean = false>(
+  options: Options<GetEventFilesApiV1EventsEventIdFilesGetData, ThrowOnError>
+): RequestResult<
+  GetEventFilesApiV1EventsEventIdFilesGetResponses,
+  GetEventFilesApiV1EventsEventIdFilesGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetEventFilesApiV1EventsEventIdFilesGetResponses,
+    GetEventFilesApiV1EventsEventIdFilesGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    url: "/api/v1/events/{event_id}/files",
+    ...options,
+  })
+
+/**
+ * Upload Event File
+ *
+ * Upload Event File
+ */
+export const uploadEventFileApiV1EventsEventIdUploadFilePost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<UploadEventFileApiV1EventsEventIdUploadFilePostData, ThrowOnError>
+): RequestResult<
+  UploadEventFileApiV1EventsEventIdUploadFilePostResponses,
+  UploadEventFileApiV1EventsEventIdUploadFilePostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    UploadEventFileApiV1EventsEventIdUploadFilePostResponses,
+    UploadEventFileApiV1EventsEventIdUploadFilePostErrors,
+    ThrowOnError
+  >({
+    ...formDataBodySerializer,
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/events/{event_id}/upload_file",
+    ...options,
+    headers: {
+      "Content-Type": null,
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Groups
+ *
+ * Get Groups
+ */
+export const getGroupsApiV1GroupsGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetGroupsApiV1GroupsGetData, ThrowOnError>
+): RequestResult<GetGroupsApiV1GroupsGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<GetGroupsApiV1GroupsGetResponses, unknown, ThrowOnError>({
+    responseType: "json",
+    url: "/api/v1/groups",
+    ...options,
+  })
+
+/**
  * Proxy Image
  *
  * Public image proxy endpoint.
@@ -3499,21 +1910,846 @@ export const proxyImageApiV1ImgPathGet = <ThrowOnError extends boolean = false>(
   })
 
 /**
- * Receive Csp Report
+ * List News
  *
- * Receive CSP violation reports from browsers.
- *
- * Browsers send POST requests with Content-Type: application/csp-report
- * when a CSP policy is violated.
+ * Get a paginated list of news articles.
  */
-export const receiveCspReportApiV1CspReportPost = <ThrowOnError extends boolean = false>(
-  options?: Options<ReceiveCspReportApiV1CspReportPostData, ThrowOnError>
-): RequestResult<ReceiveCspReportApiV1CspReportPostResponses, unknown, ThrowOnError> =>
-  (options?.client ?? client).post<
-    ReceiveCspReportApiV1CspReportPostResponses,
+export const newsListApiV1NewsGet = <ThrowOnError extends boolean = false>(
+  options?: Options<NewsListApiV1NewsGetData, ThrowOnError>
+): RequestResult<NewsListApiV1NewsGetResponses, NewsListApiV1NewsGetErrors, ThrowOnError> =>
+  (options?.client ?? client).get<
+    NewsListApiV1NewsGetResponses,
+    NewsListApiV1NewsGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/news",
+    ...options,
+  })
+
+/**
+ * Create News
+ *
+ * Create News
+ */
+export const createNewsApiV1NewsPost = <ThrowOnError extends boolean = false>(
+  options: Options<CreateNewsApiV1NewsPostData, ThrowOnError>
+): RequestResult<CreateNewsApiV1NewsPostResponses, CreateNewsApiV1NewsPostErrors, ThrowOnError> =>
+  (options.client ?? client).post<
+    CreateNewsApiV1NewsPostResponses,
+    CreateNewsApiV1NewsPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/news",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Delete Comment
+ *
+ * Delete Comment
+ */
+export const deleteCommentApiV1NewsCommentsCommentIdDelete = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteCommentApiV1NewsCommentsCommentIdDeleteData, ThrowOnError>
+): RequestResult<
+  DeleteCommentApiV1NewsCommentsCommentIdDeleteResponses,
+  DeleteCommentApiV1NewsCommentsCommentIdDeleteErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).delete<
+    DeleteCommentApiV1NewsCommentsCommentIdDeleteResponses,
+    DeleteCommentApiV1NewsCommentsCommentIdDeleteErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/news/comments/{comment_id}",
+    ...options,
+  })
+
+/**
+ * Update Comment
+ *
+ * Update Comment
+ */
+export const updateCommentApiV1NewsCommentsCommentIdPatch = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateCommentApiV1NewsCommentsCommentIdPatchData, ThrowOnError>
+): RequestResult<
+  UpdateCommentApiV1NewsCommentsCommentIdPatchResponses,
+  UpdateCommentApiV1NewsCommentsCommentIdPatchErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).patch<
+    UpdateCommentApiV1NewsCommentsCommentIdPatchResponses,
+    UpdateCommentApiV1NewsCommentsCommentIdPatchErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/news/comments/{comment_id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Semantic Search
+ *
+ * Semantic search for news articles using embeddings.
+ */
+export const semanticSearchApiV1NewsSearchSemanticGet = <ThrowOnError extends boolean = false>(
+  options: Options<SemanticSearchApiV1NewsSearchSemanticGetData, ThrowOnError>
+): RequestResult<
+  SemanticSearchApiV1NewsSearchSemanticGetResponses,
+  SemanticSearchApiV1NewsSearchSemanticGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    SemanticSearchApiV1NewsSearchSemanticGetResponses,
+    SemanticSearchApiV1NewsSearchSemanticGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/news/search/semantic",
+    ...options,
+  })
+
+/**
+ * Upload News Image
+ *
+ * Upload News Image
+ */
+export const uploadNewsImageApiV1NewsUploadImagePost = <ThrowOnError extends boolean = false>(
+  options: Options<UploadNewsImageApiV1NewsUploadImagePostData, ThrowOnError>
+): RequestResult<
+  UploadNewsImageApiV1NewsUploadImagePostResponses,
+  UploadNewsImageApiV1NewsUploadImagePostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    UploadNewsImageApiV1NewsUploadImagePostResponses,
+    UploadNewsImageApiV1NewsUploadImagePostErrors,
+    ThrowOnError
+  >({
+    ...formDataBodySerializer,
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/news/upload_image",
+    ...options,
+    headers: {
+      "Content-Type": null,
+      ...options.headers,
+    },
+  })
+
+/**
+ * Delete News
+ *
+ * Delete News
+ */
+export const deleteNewsApiV1NewsIdDelete = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteNewsApiV1NewsIdDeleteData, ThrowOnError>
+): RequestResult<
+  DeleteNewsApiV1NewsIdDeleteResponses,
+  DeleteNewsApiV1NewsIdDeleteErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).delete<
+    DeleteNewsApiV1NewsIdDeleteResponses,
+    DeleteNewsApiV1NewsIdDeleteErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/news/{id}",
+    ...options,
+  })
+
+/**
+ * Get News Item
+ *
+ * Get a specific news article by ID.
+ */
+export const getNewsApiV1NewsIdGet = <ThrowOnError extends boolean = false>(
+  options: Options<GetNewsApiV1NewsIdGetData, ThrowOnError>
+): RequestResult<GetNewsApiV1NewsIdGetResponses, GetNewsApiV1NewsIdGetErrors, ThrowOnError> =>
+  (options.client ?? client).get<
+    GetNewsApiV1NewsIdGetResponses,
+    GetNewsApiV1NewsIdGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/news/{id}",
+    ...options,
+  })
+
+/**
+ * Update News
+ *
+ * Update News
+ */
+export const updateNewsApiV1NewsIdPatch = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateNewsApiV1NewsIdPatchData, ThrowOnError>
+): RequestResult<
+  UpdateNewsApiV1NewsIdPatchResponses,
+  UpdateNewsApiV1NewsIdPatchErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).patch<
+    UpdateNewsApiV1NewsIdPatchResponses,
+    UpdateNewsApiV1NewsIdPatchErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/news/{id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Comment On News
+ *
+ * Comment On News
+ */
+export const commentOnNewsApiV1NewsIdCommentPost = <ThrowOnError extends boolean = false>(
+  options: Options<CommentOnNewsApiV1NewsIdCommentPostData, ThrowOnError>
+): RequestResult<
+  CommentOnNewsApiV1NewsIdCommentPostResponses,
+  CommentOnNewsApiV1NewsIdCommentPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    CommentOnNewsApiV1NewsIdCommentPostResponses,
+    CommentOnNewsApiV1NewsIdCommentPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/news/{id}/comment",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get News Interact
+ *
+ * Get News Interact
+ */
+export const getNewsInteractApiV1NewsIdInteractionsGet = <ThrowOnError extends boolean = false>(
+  options: Options<GetNewsInteractApiV1NewsIdInteractionsGetData, ThrowOnError>
+): RequestResult<
+  GetNewsInteractApiV1NewsIdInteractionsGetResponses,
+  GetNewsInteractApiV1NewsIdInteractionsGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetNewsInteractApiV1NewsIdInteractionsGetResponses,
+    GetNewsInteractApiV1NewsIdInteractionsGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/news/{id}/interactions",
+    ...options,
+  })
+
+/**
+ * Like News
+ *
+ * Like News
+ */
+export const likeNewsApiV1NewsIdLikePost = <ThrowOnError extends boolean = false>(
+  options: Options<LikeNewsApiV1NewsIdLikePostData, ThrowOnError>
+): RequestResult<
+  LikeNewsApiV1NewsIdLikePostResponses,
+  LikeNewsApiV1NewsIdLikePostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    LikeNewsApiV1NewsIdLikePostResponses,
+    LikeNewsApiV1NewsIdLikePostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/news/{id}/like",
+    ...options,
+  })
+
+/**
+ * Clear Notifications
+ *
+ * Clear Notifications
+ */
+export const clearNotificationsApiV1NotificationsDelete = <ThrowOnError extends boolean = false>(
+  options?: Options<ClearNotificationsApiV1NotificationsDeleteData, ThrowOnError>
+): RequestResult<ClearNotificationsApiV1NotificationsDeleteResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).delete<
+    ClearNotificationsApiV1NotificationsDeleteResponses,
     unknown,
     ThrowOnError
-  >({ url: "/api/v1/csp-report", ...options })
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/notifications",
+    ...options,
+  })
+
+/**
+ * List Notifications
+ *
+ * List Notifications
+ */
+export const listNotificationsApiV1NotificationsGet = <ThrowOnError extends boolean = false>(
+  options?: Options<ListNotificationsApiV1NotificationsGetData, ThrowOnError>
+): RequestResult<
+  ListNotificationsApiV1NotificationsGetResponses,
+  ListNotificationsApiV1NotificationsGetErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    ListNotificationsApiV1NotificationsGetResponses,
+    ListNotificationsApiV1NotificationsGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/notifications",
+    ...options,
+  })
+
+/**
+ * Check Schedule And Generate
+ *
+ * Check Schedule And Generate
+ */
+export const checkScheduleAndGenerateApiV1NotificationsCheckSchedulePost = <
+  ThrowOnError extends boolean = false,
+>(
+  options?: Options<CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostData, ThrowOnError>
+): RequestResult<
+  CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostResponses,
+  CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).post<
+    CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostResponses,
+    CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/notifications/check-schedule",
+    ...options,
+  })
+
+/**
+ * Mark All Read
+ *
+ * Mark All Read
+ */
+export const markAllReadApiV1NotificationsReadAllPost = <ThrowOnError extends boolean = false>(
+  options?: Options<MarkAllReadApiV1NotificationsReadAllPostData, ThrowOnError>
+): RequestResult<MarkAllReadApiV1NotificationsReadAllPostResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).post<
+    MarkAllReadApiV1NotificationsReadAllPostResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/notifications/read-all",
+    ...options,
+  })
+
+/**
+ * Delete Notification
+ *
+ * Delete Notification
+ */
+export const deleteNotificationApiV1NotificationsNotifIdDelete = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<DeleteNotificationApiV1NotificationsNotifIdDeleteData, ThrowOnError>
+): RequestResult<
+  DeleteNotificationApiV1NotificationsNotifIdDeleteResponses,
+  DeleteNotificationApiV1NotificationsNotifIdDeleteErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).delete<
+    DeleteNotificationApiV1NotificationsNotifIdDeleteResponses,
+    DeleteNotificationApiV1NotificationsNotifIdDeleteErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/notifications/{notif_id}",
+    ...options,
+  })
+
+/**
+ * Mark Read Single
+ *
+ * Mark Read Single
+ */
+export const markReadSingleApiV1NotificationsNotifIdReadPatch = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<MarkReadSingleApiV1NotificationsNotifIdReadPatchData, ThrowOnError>
+): RequestResult<
+  MarkReadSingleApiV1NotificationsNotifIdReadPatchResponses,
+  MarkReadSingleApiV1NotificationsNotifIdReadPatchErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).patch<
+    MarkReadSingleApiV1NotificationsNotifIdReadPatchResponses,
+    MarkReadSingleApiV1NotificationsNotifIdReadPatchErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/notifications/{notif_id}/read",
+    ...options,
+  })
+
+/**
+ * Forgot Password
+ *
+ * Forgot Password
+ */
+export const forgotPasswordApiV1PasswordForgotPost = <ThrowOnError extends boolean = false>(
+  options: Options<ForgotPasswordApiV1PasswordForgotPostData, ThrowOnError>
+): RequestResult<
+  ForgotPasswordApiV1PasswordForgotPostResponses,
+  ForgotPasswordApiV1PasswordForgotPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    ForgotPasswordApiV1PasswordForgotPostResponses,
+    ForgotPasswordApiV1PasswordForgotPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    url: "/api/v1/password/forgot",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Reset Password
+ *
+ * Reset Password
+ */
+export const resetPasswordApiV1PasswordResetPost = <ThrowOnError extends boolean = false>(
+  options: Options<ResetPasswordApiV1PasswordResetPostData, ThrowOnError>
+): RequestResult<
+  ResetPasswordApiV1PasswordResetPostResponses,
+  ResetPasswordApiV1PasswordResetPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    ResetPasswordApiV1PasswordResetPostResponses,
+    ResetPasswordApiV1PasswordResetPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    url: "/api/v1/password/reset",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Disable User Push
+ *
+ * Disable User Push
+ */
+export const disableUserPushApiV1PushAdminDisableUserPost = <ThrowOnError extends boolean = false>(
+  options: Options<DisableUserPushApiV1PushAdminDisableUserPostData, ThrowOnError>
+): RequestResult<
+  DisableUserPushApiV1PushAdminDisableUserPostResponses,
+  DisableUserPushApiV1PushAdminDisableUserPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    DisableUserPushApiV1PushAdminDisableUserPostResponses,
+    DisableUserPushApiV1PushAdminDisableUserPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/push/admin/disable-user",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Admin Get User Topics
+ *
+ * Admin Get User Topics
+ */
+export const adminGetUserTopicsApiV1PushAdminTopicsUserIdGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetData, ThrowOnError>
+): RequestResult<
+  AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetResponses,
+  AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetResponses,
+    AdminGetUserTopicsApiV1PushAdminTopicsUserIdGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/push/admin/topics/{user_id}",
+    ...options,
+  })
+
+/**
+ * Admin Update User Topics
+ *
+ * Admin Update User Topics
+ */
+export const adminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutData, ThrowOnError>
+): RequestResult<
+  AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutResponses,
+  AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).put<
+    AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutResponses,
+    AdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPutErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/push/admin/topics/{user_id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Broadcast
+ *
+ * Broadcast
+ */
+export const broadcastApiV1PushBroadcastPost = <ThrowOnError extends boolean = false>(
+  options: Options<BroadcastApiV1PushBroadcastPostData, ThrowOnError>
+): RequestResult<
+  BroadcastApiV1PushBroadcastPostResponses,
+  BroadcastApiV1PushBroadcastPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    BroadcastApiV1PushBroadcastPostResponses,
+    BroadcastApiV1PushBroadcastPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/push/broadcast",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Subscribe
+ *
+ * Subscribe
+ */
+export const subscribeApiV1PushSubscribePost = <ThrowOnError extends boolean = false>(
+  options: Options<SubscribeApiV1PushSubscribePostData, ThrowOnError>
+): RequestResult<
+  SubscribeApiV1PushSubscribePostResponses,
+  SubscribeApiV1PushSubscribePostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    SubscribeApiV1PushSubscribePostResponses,
+    SubscribeApiV1PushSubscribePostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/push/subscribe",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Update Subscription Topics
+ *
+ * Update Subscription Topics
+ */
+export const updateSubscriptionTopicsApiV1PushSubscribeTopicsPatch = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchData, ThrowOnError>
+): RequestResult<
+  UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchResponses,
+  UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).patch<
+    UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchResponses,
+    UpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatchErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/push/subscribe/topics",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Send Test
+ *
+ * Send Test
+ */
+export const sendTestApiV1PushTestPost = <ThrowOnError extends boolean = false>(
+  options?: Options<SendTestApiV1PushTestPostData, ThrowOnError>
+): RequestResult<
+  SendTestApiV1PushTestPostResponses,
+  SendTestApiV1PushTestPostErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).post<
+    SendTestApiV1PushTestPostResponses,
+    SendTestApiV1PushTestPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/push/test",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options?.headers,
+    },
+  })
+
+/**
+ * Get Push Topics
+ *
+ * Get Push Topics
+ */
+export const getPushTopicsApiV1PushTopicsGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetPushTopicsApiV1PushTopicsGetData, ThrowOnError>
+): RequestResult<GetPushTopicsApiV1PushTopicsGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<GetPushTopicsApiV1PushTopicsGetResponses, unknown, ThrowOnError>({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/push/topics",
+    ...options,
+  })
+
+/**
+ * Unsubscribe
+ *
+ * Unsubscribe
+ */
+export const unsubscribeApiV1PushUnsubscribePost = <ThrowOnError extends boolean = false>(
+  options: Options<UnsubscribeApiV1PushUnsubscribePostData, ThrowOnError>
+): RequestResult<
+  UnsubscribeApiV1PushUnsubscribePostResponses,
+  UnsubscribeApiV1PushUnsubscribePostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    UnsubscribeApiV1PushUnsubscribePostResponses,
+    UnsubscribeApiV1PushUnsubscribePostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/push/unsubscribe",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Get Vapid Public Key
+ *
+ * Return configured VAPID public key.
+ */
+export const getVapidPublicKeyApiV1PushVapidPublicKeyGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetVapidPublicKeyApiV1PushVapidPublicKeyGetData, ThrowOnError>
+): RequestResult<GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    GetVapidPublicKeyApiV1PushVapidPublicKeyGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: "json",
+    url: "/api/v1/push/vapid-public-key",
+    ...options,
+  })
+
+/**
+ * Add Schedule
+ *
+ * Add Schedule
+ */
+export const addScheduleApiV1SchedulePost = <ThrowOnError extends boolean = false>(
+  options: Options<AddScheduleApiV1SchedulePostData, ThrowOnError>
+): RequestResult<
+  AddScheduleApiV1SchedulePostResponses,
+  AddScheduleApiV1SchedulePostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    AddScheduleApiV1SchedulePostResponses,
+    AddScheduleApiV1SchedulePostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/schedule",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Download Schedule Ics
+ *
+ * Download Schedule Ics
+ */
+export const downloadScheduleIcsApiV1ScheduleIcsGet = <ThrowOnError extends boolean = false>(
+  options: Options<DownloadScheduleIcsApiV1ScheduleIcsGetData, ThrowOnError>
+): RequestResult<
+  DownloadScheduleIcsApiV1ScheduleIcsGetResponses,
+  DownloadScheduleIcsApiV1ScheduleIcsGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    DownloadScheduleIcsApiV1ScheduleIcsGetResponses,
+    DownloadScheduleIcsApiV1ScheduleIcsGetErrors,
+    ThrowOnError
+  >({ url: "/api/v1/schedule/ics", ...options })
+
+/**
+ * Delete Schedule
+ *
+ * Delete Schedule
+ */
+export const deleteScheduleApiV1ScheduleIdDelete = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteScheduleApiV1ScheduleIdDeleteData, ThrowOnError>
+): RequestResult<
+  DeleteScheduleApiV1ScheduleIdDeleteResponses,
+  DeleteScheduleApiV1ScheduleIdDeleteErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).delete<
+    DeleteScheduleApiV1ScheduleIdDeleteResponses,
+    DeleteScheduleApiV1ScheduleIdDeleteErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/schedule/{id}",
+    ...options,
+  })
+
+/**
+ * Get Schedule
+ *
+ * Get Schedule
+ */
+export const getScheduleApiV1ScheduleIdGet = <ThrowOnError extends boolean = false>(
+  options: Options<GetScheduleApiV1ScheduleIdGetData, ThrowOnError>
+): RequestResult<
+  GetScheduleApiV1ScheduleIdGetResponses,
+  GetScheduleApiV1ScheduleIdGetErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).get<
+    GetScheduleApiV1ScheduleIdGetResponses,
+    GetScheduleApiV1ScheduleIdGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/schedule/{id}",
+    ...options,
+  })
+
+/**
+ * Update Schedule
+ *
+ * Update Schedule
+ */
+export const updateScheduleApiV1ScheduleIdPatch = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateScheduleApiV1ScheduleIdPatchData, ThrowOnError>
+): RequestResult<
+  UpdateScheduleApiV1ScheduleIdPatchResponses,
+  UpdateScheduleApiV1ScheduleIdPatchErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).patch<
+    UpdateScheduleApiV1ScheduleIdPatchResponses,
+    UpdateScheduleApiV1ScheduleIdPatchErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/schedule/{id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
 
 /**
  * Unified Search
@@ -3542,67 +2778,762 @@ export const unifiedSearchApiV1SearchGet = <ThrowOnError extends boolean = false
   })
 
 /**
- * List Feature Flags
+ * Spotify Auth Url
  *
- * List registered flags and their effective read-only evaluations.
+ * Spotify Auth Url
  */
-export const listFeatureFlagsAdminFeatureFlagsGet = <ThrowOnError extends boolean = false>(
-  options?: Options<ListFeatureFlagsAdminFeatureFlagsGetData, ThrowOnError>
-): RequestResult<ListFeatureFlagsAdminFeatureFlagsGetResponses, unknown, ThrowOnError> =>
+export const spotifyAuthUrlApiV1SpotifyAuthUrlGet = <ThrowOnError extends boolean = false>(
+  options?: Options<SpotifyAuthUrlApiV1SpotifyAuthUrlGetData, ThrowOnError>
+): RequestResult<SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponses, unknown, ThrowOnError> =>
   (options?.client ?? client).get<
-    ListFeatureFlagsAdminFeatureFlagsGetResponses,
+    SpotifyAuthUrlApiV1SpotifyAuthUrlGetResponses,
     unknown,
     ThrowOnError
   >({
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/admin/feature-flags",
+    url: "/api/v1/spotify/auth-url",
     ...options,
   })
 
 /**
- * List Audit Logs
+ * Spotify Callback
  *
- * List audit logs with filtering and integrity verification.
+ * Spotify Callback
  */
-export const listAuditLogsAdminAuditGet = <ThrowOnError extends boolean = false>(
-  options?: Options<ListAuditLogsAdminAuditGetData, ThrowOnError>
+export const spotifyCallbackApiV1SpotifyCallbackGet = <ThrowOnError extends boolean = false>(
+  options: Options<SpotifyCallbackApiV1SpotifyCallbackGetData, ThrowOnError>
 ): RequestResult<
-  ListAuditLogsAdminAuditGetResponses,
-  ListAuditLogsAdminAuditGetErrors,
-  ThrowOnError
-> =>
-  (options?.client ?? client).get<
-    ListAuditLogsAdminAuditGetResponses,
-    ListAuditLogsAdminAuditGetErrors,
-    ThrowOnError
-  >({
-    responseType: "json",
-    security: [{ scheme: "bearer", type: "http" }],
-    url: "/admin/audit",
-    ...options,
-  })
-
-/**
- * Get Time Travel State
- *
- * Reconstruct state of an aggregate entity at a target timestamp in history.
- */
-export const getTimeTravelStateAdminAuditTimeTravelGet = <ThrowOnError extends boolean = false>(
-  options: Options<GetTimeTravelStateAdminAuditTimeTravelGetData, ThrowOnError>
-): RequestResult<
-  GetTimeTravelStateAdminAuditTimeTravelGetResponses,
-  GetTimeTravelStateAdminAuditTimeTravelGetErrors,
+  SpotifyCallbackApiV1SpotifyCallbackGetResponses,
+  SpotifyCallbackApiV1SpotifyCallbackGetErrors,
   ThrowOnError
 > =>
   (options.client ?? client).get<
-    GetTimeTravelStateAdminAuditTimeTravelGetResponses,
-    GetTimeTravelStateAdminAuditTimeTravelGetErrors,
+    SpotifyCallbackApiV1SpotifyCallbackGetResponses,
+    SpotifyCallbackApiV1SpotifyCallbackGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    url: "/api/v1/spotify/callback",
+    ...options,
+  })
+
+/**
+ * Disconnect
+ *
+ * Disconnect
+ */
+export const disconnectApiV1SpotifyDisconnectPost = <ThrowOnError extends boolean = false>(
+  options?: Options<DisconnectApiV1SpotifyDisconnectPostData, ThrowOnError>
+): RequestResult<DisconnectApiV1SpotifyDisconnectPostResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).post<
+    DisconnectApiV1SpotifyDisconnectPostResponses,
+    unknown,
     ThrowOnError
   >({
     responseType: "json",
     security: [{ scheme: "bearer", type: "http" }],
-    url: "/admin/audit/time-travel",
+    url: "/api/v1/spotify/disconnect",
+    ...options,
+  })
+
+/**
+ * Now Playing
+ *
+ * Now Playing
+ */
+export const nowPlayingApiV1SpotifyNowPlayingGet = <ThrowOnError extends boolean = false>(
+  options?: Options<NowPlayingApiV1SpotifyNowPlayingGetData, ThrowOnError>
+): RequestResult<NowPlayingApiV1SpotifyNowPlayingGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    NowPlayingApiV1SpotifyNowPlayingGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/spotify/now-playing",
+    ...options,
+  })
+
+/**
+ * List Playlists
+ *
+ * List Playlists
+ */
+export const listPlaylistsApiV1SpotifyPlaylistsGet = <ThrowOnError extends boolean = false>(
+  options?: Options<ListPlaylistsApiV1SpotifyPlaylistsGetData, ThrowOnError>
+): RequestResult<ListPlaylistsApiV1SpotifyPlaylistsGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<
+    ListPlaylistsApiV1SpotifyPlaylistsGetResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/spotify/playlists",
+    ...options,
+  })
+
+/**
+ * Attendance Summary
+ *
+ * Attendance Summary
+ */
+export const attendanceSummaryApiV1StatsAttendanceGet = <ThrowOnError extends boolean = false>(
+  options?: Options<AttendanceSummaryApiV1StatsAttendanceGetData, ThrowOnError>
+): RequestResult<
+  AttendanceSummaryApiV1StatsAttendanceGetResponses,
+  AttendanceSummaryApiV1StatsAttendanceGetErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    AttendanceSummaryApiV1StatsAttendanceGetResponses,
+    AttendanceSummaryApiV1StatsAttendanceGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/stats/attendance",
+    ...options,
+  })
+
+/**
+ * Grade Summary
+ *
+ * Grade Summary
+ */
+export const gradeSummaryApiV1StatsGradesGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GradeSummaryApiV1StatsGradesGetData, ThrowOnError>
+): RequestResult<
+  GradeSummaryApiV1StatsGradesGetResponses,
+  GradeSummaryApiV1StatsGradesGetErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    GradeSummaryApiV1StatsGradesGetResponses,
+    GradeSummaryApiV1StatsGradesGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/stats/grades",
+    ...options,
+  })
+
+/**
+ * Participation Summary
+ *
+ * Participation Summary
+ */
+export const participationSummaryApiV1StatsParticipationGet = <
+  ThrowOnError extends boolean = false,
+>(
+  options?: Options<ParticipationSummaryApiV1StatsParticipationGetData, ThrowOnError>
+): RequestResult<
+  ParticipationSummaryApiV1StatsParticipationGetResponses,
+  ParticipationSummaryApiV1StatsParticipationGetErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    ParticipationSummaryApiV1StatsParticipationGetResponses,
+    ParticipationSummaryApiV1StatsParticipationGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/stats/participation",
+    ...options,
+  })
+
+/**
+ * Stats Summary
+ *
+ * Return attendance, grades and participation stats in a single request.
+ *
+ * PERF-1 (audit 2026-03): replaces three separate client-side round-trips.
+ * All three sub-queries run concurrently via asyncio.gather and share the
+ * same Redis cache entries as the individual endpoints.
+ */
+export const statsSummaryApiV1StatsSummaryGet = <ThrowOnError extends boolean = false>(
+  options?: Options<StatsSummaryApiV1StatsSummaryGetData, ThrowOnError>
+): RequestResult<
+  StatsSummaryApiV1StatsSummaryGetResponses,
+  StatsSummaryApiV1StatsSummaryGetErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    StatsSummaryApiV1StatsSummaryGetResponses,
+    StatsSummaryApiV1StatsSummaryGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/stats/summary",
+    ...options,
+  })
+
+/**
+ * List Stories
+ *
+ * List Stories
+ */
+export const listStoriesApiV1StoriesGet = <ThrowOnError extends boolean = false>(
+  options?: Options<ListStoriesApiV1StoriesGetData, ThrowOnError>
+): RequestResult<
+  ListStoriesApiV1StoriesGetResponses,
+  ListStoriesApiV1StoriesGetErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    ListStoriesApiV1StoriesGetResponses,
+    ListStoriesApiV1StoriesGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    url: "/api/v1/stories",
+    ...options,
+  })
+
+/**
+ * Create Story
+ *
+ * Create Story
+ */
+export const createStoryApiV1StoriesPost = <ThrowOnError extends boolean = false>(
+  options: Options<CreateStoryApiV1StoriesPostData, ThrowOnError>
+): RequestResult<
+  CreateStoryApiV1StoriesPostResponses,
+  CreateStoryApiV1StoriesPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    CreateStoryApiV1StoriesPostResponses,
+    CreateStoryApiV1StoriesPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/stories",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Upload Story Cover
+ *
+ * Upload Story Cover
+ */
+export const uploadStoryCoverApiV1StoriesUploadCoverPost = <ThrowOnError extends boolean = false>(
+  options: Options<UploadStoryCoverApiV1StoriesUploadCoverPostData, ThrowOnError>
+): RequestResult<
+  UploadStoryCoverApiV1StoriesUploadCoverPostResponses,
+  UploadStoryCoverApiV1StoriesUploadCoverPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    UploadStoryCoverApiV1StoriesUploadCoverPostResponses,
+    UploadStoryCoverApiV1StoriesUploadCoverPostErrors,
+    ThrowOnError
+  >({
+    ...formDataBodySerializer,
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/stories/upload_cover",
+    ...options,
+    headers: {
+      "Content-Type": null,
+      ...options.headers,
+    },
+  })
+
+/**
+ * Delete Story
+ *
+ * Delete Story
+ */
+export const deleteStoryApiV1StoriesStoryIdDelete = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteStoryApiV1StoriesStoryIdDeleteData, ThrowOnError>
+): RequestResult<
+  DeleteStoryApiV1StoriesStoryIdDeleteResponses,
+  DeleteStoryApiV1StoriesStoryIdDeleteErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).delete<
+    DeleteStoryApiV1StoriesStoryIdDeleteResponses,
+    DeleteStoryApiV1StoriesStoryIdDeleteErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/stories/{story_id}",
+    ...options,
+  })
+
+/**
+ * Update Story
+ *
+ * Update Story
+ */
+export const updateStoryApiV1StoriesStoryIdPatch = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateStoryApiV1StoriesStoryIdPatchData, ThrowOnError>
+): RequestResult<
+  UpdateStoryApiV1StoriesStoryIdPatchResponses,
+  UpdateStoryApiV1StoriesStoryIdPatchErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).patch<
+    UpdateStoryApiV1StoriesStoryIdPatchResponses,
+    UpdateStoryApiV1StoriesStoryIdPatchErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/stories/{story_id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Search Users
+ *
+ * Search for users.
+ * Admins see full profiles (UserOut), others see only public info (UserPublicOut).
+ */
+export const getUsersApiV1UsersGet = <ThrowOnError extends boolean = false>(
+  options?: Options<GetUsersApiV1UsersGetData, ThrowOnError>
+): RequestResult<GetUsersApiV1UsersGetResponses, GetUsersApiV1UsersGetErrors, ThrowOnError> =>
+  (options?.client ?? client).get<
+    GetUsersApiV1UsersGetResponses,
+    GetUsersApiV1UsersGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/users",
+    ...options,
+  })
+
+/**
+ * Create User
+ *
+ * Create User
+ */
+export const createUserApiV1UsersPost = <ThrowOnError extends boolean = false>(
+  options: Options<CreateUserApiV1UsersPostData, ThrowOnError>
+): RequestResult<CreateUserApiV1UsersPostResponses, CreateUserApiV1UsersPostErrors, ThrowOnError> =>
+  (options.client ?? client).post<
+    CreateUserApiV1UsersPostResponses,
+    CreateUserApiV1UsersPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/users",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Export Access Audit
+ *
+ * Export Access Audit
+ */
+export const exportAccessAuditApiV1UsersAuditExportGet = <ThrowOnError extends boolean = false>(
+  options?: Options<ExportAccessAuditApiV1UsersAuditExportGetData, ThrowOnError>
+): RequestResult<
+  ExportAccessAuditApiV1UsersAuditExportGetResponses,
+  ExportAccessAuditApiV1UsersAuditExportGetErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    ExportAccessAuditApiV1UsersAuditExportGetResponses,
+    ExportAccessAuditApiV1UsersAuditExportGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/users/audit/export",
+    ...options,
+  })
+
+/**
+ * Me
+ *
+ * Me
+ */
+export const meApiV1UsersMeGet = <ThrowOnError extends boolean = false>(
+  options?: Options<MeApiV1UsersMeGetData, ThrowOnError>
+): RequestResult<MeApiV1UsersMeGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<MeApiV1UsersMeGetResponses, unknown, ThrowOnError>({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/users/me",
+    ...options,
+  })
+
+/**
+ * Update Me
+ *
+ * Update Me
+ */
+export const updateMeApiV1UsersMePut = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateMeApiV1UsersMePutData, ThrowOnError>
+): RequestResult<UpdateMeApiV1UsersMePutResponses, UpdateMeApiV1UsersMePutErrors, ThrowOnError> =>
+  (options.client ?? client).put<
+    UpdateMeApiV1UsersMePutResponses,
+    UpdateMeApiV1UsersMePutErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/users/me",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Delete Avatar
+ *
+ * Delete Avatar
+ */
+export const deleteAvatarApiV1UsersMeAvatarDelete = <ThrowOnError extends boolean = false>(
+  options?: Options<DeleteAvatarApiV1UsersMeAvatarDeleteData, ThrowOnError>
+): RequestResult<DeleteAvatarApiV1UsersMeAvatarDeleteResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).delete<
+    DeleteAvatarApiV1UsersMeAvatarDeleteResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/users/me/avatar",
+    ...options,
+  })
+
+/**
+ * Upload Avatar
+ *
+ * Upload Avatar
+ */
+export const uploadAvatarApiV1UsersMeAvatarPost = <ThrowOnError extends boolean = false>(
+  options: Options<UploadAvatarApiV1UsersMeAvatarPostData, ThrowOnError>
+): RequestResult<
+  UploadAvatarApiV1UsersMeAvatarPostResponses,
+  UploadAvatarApiV1UsersMeAvatarPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    UploadAvatarApiV1UsersMeAvatarPostResponses,
+    UploadAvatarApiV1UsersMeAvatarPostErrors,
+    ThrowOnError
+  >({
+    ...formDataBodySerializer,
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/users/me/avatar",
+    ...options,
+    headers: {
+      "Content-Type": null,
+      ...options.headers,
+    },
+  })
+
+/**
+ * Delete Cover
+ *
+ * Delete Cover
+ */
+export const deleteCoverApiV1UsersMeCoverDelete = <ThrowOnError extends boolean = false>(
+  options?: Options<DeleteCoverApiV1UsersMeCoverDeleteData, ThrowOnError>
+): RequestResult<DeleteCoverApiV1UsersMeCoverDeleteResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).delete<
+    DeleteCoverApiV1UsersMeCoverDeleteResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/users/me/cover",
+    ...options,
+  })
+
+/**
+ * Upload Cover
+ *
+ * Upload Cover
+ */
+export const uploadCoverApiV1UsersMeCoverPost = <ThrowOnError extends boolean = false>(
+  options: Options<UploadCoverApiV1UsersMeCoverPostData, ThrowOnError>
+): RequestResult<
+  UploadCoverApiV1UsersMeCoverPostResponses,
+  UploadCoverApiV1UsersMeCoverPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    UploadCoverApiV1UsersMeCoverPostResponses,
+    UploadCoverApiV1UsersMeCoverPostErrors,
+    ThrowOnError
+  >({
+    ...formDataBodySerializer,
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/users/me/cover",
+    ...options,
+    headers: {
+      "Content-Type": null,
+      ...options.headers,
+    },
+  })
+
+/**
+ * Delete Current User Account
+ *
+ * Delete Current User Account
+ */
+export const deleteCurrentUserAccountApiV1UsersMeDeletePost = <
+  ThrowOnError extends boolean = false,
+>(
+  options: Options<DeleteCurrentUserAccountApiV1UsersMeDeletePostData, ThrowOnError>
+): RequestResult<
+  DeleteCurrentUserAccountApiV1UsersMeDeletePostResponses,
+  DeleteCurrentUserAccountApiV1UsersMeDeletePostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    DeleteCurrentUserAccountApiV1UsersMeDeletePostResponses,
+    DeleteCurrentUserAccountApiV1UsersMeDeletePostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/users/me/delete",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Change Email
+ *
+ * Change Email
+ */
+export const changeEmailApiV1UsersMeEmailPost = <ThrowOnError extends boolean = false>(
+  options: Options<ChangeEmailApiV1UsersMeEmailPostData, ThrowOnError>
+): RequestResult<
+  ChangeEmailApiV1UsersMeEmailPostResponses,
+  ChangeEmailApiV1UsersMeEmailPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    ChangeEmailApiV1UsersMeEmailPostResponses,
+    ChangeEmailApiV1UsersMeEmailPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/users/me/email",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Confirm Email Change
+ *
+ * Confirm Email Change
+ */
+export const verifyEmailChangeApiV1UsersMeEmailConfirmPost = <ThrowOnError extends boolean = false>(
+  options: Options<VerifyEmailChangeApiV1UsersMeEmailConfirmPostData, ThrowOnError>
+): RequestResult<
+  VerifyEmailChangeApiV1UsersMeEmailConfirmPostResponses,
+  VerifyEmailChangeApiV1UsersMeEmailConfirmPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    VerifyEmailChangeApiV1UsersMeEmailConfirmPostResponses,
+    VerifyEmailChangeApiV1UsersMeEmailConfirmPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/users/me/email/confirm",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Export Current User Data
+ *
+ * Export Current User Data
+ */
+export const exportCurrentUserDataApiV1UsersMeExportPost = <ThrowOnError extends boolean = false>(
+  options?: Options<ExportCurrentUserDataApiV1UsersMeExportPostData, ThrowOnError>
+): RequestResult<ExportCurrentUserDataApiV1UsersMeExportPostResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).post<
+    ExportCurrentUserDataApiV1UsersMeExportPostResponses,
+    unknown,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/users/me/export",
+    ...options,
+  })
+
+/**
+ * Change Password
+ *
+ * Change Password
+ */
+export const changePasswordApiV1UsersMePasswordPost = <ThrowOnError extends boolean = false>(
+  options: Options<ChangePasswordApiV1UsersMePasswordPostData, ThrowOnError>
+): RequestResult<
+  ChangePasswordApiV1UsersMePasswordPostResponses,
+  ChangePasswordApiV1UsersMePasswordPostErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    ChangePasswordApiV1UsersMePasswordPostResponses,
+    ChangePasswordApiV1UsersMePasswordPostErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/users/me/password",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Delete User Admin
+ *
+ * Delete User Admin
+ */
+export const deleteUserAdminApiV1UsersUserIdDelete = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteUserAdminApiV1UsersUserIdDeleteData, ThrowOnError>
+): RequestResult<
+  DeleteUserAdminApiV1UsersUserIdDeleteResponses,
+  DeleteUserAdminApiV1UsersUserIdDeleteErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).delete<
+    DeleteUserAdminApiV1UsersUserIdDeleteResponses,
+    DeleteUserAdminApiV1UsersUserIdDeleteErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/users/{user_id}",
+    ...options,
+  })
+
+/**
+ * Update User Admin
+ *
+ * Update User Admin
+ */
+export const updateUserAdminApiV1UsersUserIdPatch = <ThrowOnError extends boolean = false>(
+  options: Options<UpdateUserAdminApiV1UsersUserIdPatchData, ThrowOnError>
+): RequestResult<
+  UpdateUserAdminApiV1UsersUserIdPatchResponses,
+  UpdateUserAdminApiV1UsersUserIdPatchErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).patch<
+    UpdateUserAdminApiV1UsersUserIdPatchResponses,
+    UpdateUserAdminApiV1UsersUserIdPatchErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/users/{user_id}",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Liveness Probe
+ *
+ * Liveness Probe
+ */
+export const livenessHealthLiveGet = <ThrowOnError extends boolean = false>(
+  options?: Options<LivenessHealthLiveGetData, ThrowOnError>
+): RequestResult<LivenessHealthLiveGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<LivenessHealthLiveGetResponses, unknown, ThrowOnError>({
+    responseType: "json",
+    url: "/health/live",
+    ...options,
+  })
+
+/**
+ * Readiness Probe
+ *
+ * Readiness Probe
+ */
+export const readyHealthReadyGet = <ThrowOnError extends boolean = false>(
+  options?: Options<ReadyHealthReadyGetData, ThrowOnError>
+): RequestResult<ReadyHealthReadyGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<ReadyHealthReadyGetResponses, unknown, ThrowOnError>({
+    responseType: "json",
+    url: "/health/ready",
+    ...options,
+  })
+
+/**
+ * Full Health Check
+ *
+ * Full Health Check
+ */
+export const healthzHealthzGet = <ThrowOnError extends boolean = false>(
+  options?: Options<HealthzHealthzGetData, ThrowOnError>
+): RequestResult<HealthzHealthzGetResponses, HealthzHealthzGetErrors, ThrowOnError> =>
+  (options?.client ?? client).get<
+    HealthzHealthzGetResponses,
+    HealthzHealthzGetErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    url: "/healthz",
+    ...options,
+  })
+
+/**
+ * Legacy Readiness Check
+ *
+ * Legacy Readiness Check
+ */
+export const readyReadyGet = <ThrowOnError extends boolean = false>(
+  options?: Options<ReadyReadyGetData, ThrowOnError>
+): RequestResult<ReadyReadyGetResponses, unknown, ThrowOnError> =>
+  (options?.client ?? client).get<ReadyReadyGetResponses, unknown, ThrowOnError>({
+    responseType: "json",
+    url: "/ready",
     ...options,
   })
 

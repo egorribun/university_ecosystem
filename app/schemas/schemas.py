@@ -268,29 +268,8 @@ class MfaChallengeOut(OrmModel):
 
 class MfaFactorStatusOut(BaseModel):
     disabled: bool
-    mfa_default_method: str | None = None
+    mfa_default_method: Literal["totp", "email_otp"] | None = None
     mfa_required: bool = False
-
-
-class WebAuthnRegistrationOptionsOut(BaseModel):
-    publicKey: dict[str, Any]
-    challenge_token: str
-
-
-class WebAuthnRegistrationVerifyIn(BaseModel):
-    challenge: str
-    response: dict[str, Any]
-    label: str | None = None
-
-
-class WebAuthnAuthenticationOptionsOut(BaseModel):
-    publicKey: dict[str, Any]
-    challenge_token: str
-
-
-class WebAuthnAuthenticationVerifyIn(BaseModel):
-    challenge: str
-    response: dict[str, Any]
 
 
 class RecoveryCodesGenerateOut(BaseModel):
@@ -306,14 +285,13 @@ class UserOut(OrmModel, UserBase):
     id: uuid.UUID
     is_active: bool
     pending_email: EmailStr | None = None
+    email_verified_at: datetime | None = None
+    email_mfa_enabled_at: datetime | None = None
     spotify_is_connected: bool | None = None
     mfa_required: bool = False
-    mfa_default_method: str | None = None
+    mfa_default_method: Literal["totp", "email_otp"] | None = None
     mfa_last_verified_at: datetime | None = None
     totp_enrollments: list[MfaTotpEnrollmentOut] = Field(
-        default_factory=list, json_schema_extra={"default": []}
-    )
-    mfa_challenges: list[MfaChallengeOut] = Field(
         default_factory=list, json_schema_extra={"default": []}
     )
     recovery_codes_left: int = 0
@@ -376,7 +354,6 @@ class UserAdminUpdate(BaseModel):
 
 class UserMfaMethodsOut(BaseModel):
     totp_enrollments: list[MfaTotpEnrollmentOut] = Field(default_factory=list)
-    pending_challenges: list[MfaChallengeOut] = Field(default_factory=list)
 
 
 class PasswordChangeOut(BaseModel):
@@ -392,7 +369,7 @@ class DataExportOut(BaseModel):
     profile: dict[str, Any]
     sessions: list[dict[str, Any]] = Field(default_factory=list)
     notifications: list[dict[str, Any]] = Field(default_factory=list)
-    mfa_challenges: list[dict[str, Any]] = Field(default_factory=list)
+    mfa_challenge_count: int = 0
     mfa_enrollments: list[dict[str, Any]] = Field(default_factory=list)
     access_logs: list[dict[str, Any]] = Field(default_factory=list)
 
@@ -408,10 +385,19 @@ class DataDeletionOut(BaseModel):
 
 class UserProfileUpdate(UserProfileBase, UserPreferencesBase, UserEducationBase):
     full_name: str | None = None
-    email: EmailStr | None = None
     profile_detail: UserProfileBase | None = None
     preferences: UserPreferencesBase | None = None
     education_path: UserEducationBase | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_email_mutation(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "email" in data:
+            raise ValueError(
+                "Email cannot be changed through the profile endpoint; "
+                "use /users/me/email"
+            )
+        return data
 
 
 class GroupCreate(BaseModel):
@@ -698,7 +684,7 @@ class ActiveSessionOut(OrmModel):
     last_seen_at: datetime | None = None
     mfa_required: bool = False
     mfa_completed_at: datetime | None = None
-    mfa_method: str | None = None
+    mfa_method: Literal["totp", "email_otp", "recovery_code"] | None = None
     mfa_verified_at: datetime | None = None
     is_current: bool = False
 

@@ -10,7 +10,6 @@ import pytest
 from fastapi import FastAPI, HTTPException, Response
 from sqlalchemy.exc import IntegrityError, NoSuchTableError, SQLAlchemyError
 
-import app.api.auth.mfa as mfa_api
 import app.api.notifications as notifications_api
 import app.api.spotify as spotify_api
 import app.api.users as users_api
@@ -22,7 +21,6 @@ import app.core.observability as observability_core
 import app.routers.notifications as push_router
 from app.models import PushSubscription, UserPushTopic
 from app.models.enums import UserRole
-from app.schemas.schemas import WebAuthnRegistrationVerifyIn
 
 
 # Helper to mock Dishka container on request
@@ -1022,113 +1020,6 @@ def test_shutdown_observability():
         observability_core.shutdown_observability()
         dummy_trace.shutdown.assert_called_once()
         dummy_meter.shutdown.assert_called_once()
-
-
-# =========================================================================
-# 5. app/api/auth/mfa.py
-# =========================================================================
-
-
-@pytest.mark.asyncio
-async def test_complete_passkey_enrollment_invalid_payload():
-    request = MagicMock()
-    request.state = MagicMock()
-    db = AsyncMock()
-    user = MagicMock()
-    user.id = uuid.uuid4()
-    setup_dishka_mock(request, db)
-
-    mock_challenge = MagicMock()
-    mock_challenge.payload = None
-
-    payload = WebAuthnRegistrationVerifyIn(
-        challenge="token",
-        response={"clientDataJSON": "", "attestationObject": "", "transports": []},
-        label="my key",
-    )
-
-    with patch(
-        "app.api.auth.mfa.mfa.get_challenge", AsyncMock(return_value=mock_challenge)
-    ):
-        with pytest.raises(HTTPException) as exc:
-            await mfa_api.confirm_webauthn_registration(
-                payload=payload, request=request, user=user
-            )
-        assert exc.value.status_code == 400
-
-
-@pytest.mark.asyncio
-async def test_complete_passkey_enrollment_verification_fails():
-    request = MagicMock()
-    request.state = MagicMock()
-    db = AsyncMock()
-    user = MagicMock()
-    user.id = uuid.uuid4()
-    setup_dishka_mock(request, db)
-
-    mock_challenge = MagicMock()
-    mock_challenge.payload = {"options": {"challenge": "challenge_str"}}
-
-    payload = WebAuthnRegistrationVerifyIn(
-        challenge="token",
-        response={"clientDataJSON": "", "attestationObject": "", "transports": []},
-        label="my key",
-    )
-
-    with (
-        patch(
-            "app.api.auth.mfa.mfa.get_challenge", AsyncMock(return_value=mock_challenge)
-        ),
-        patch(
-            "app.services.webauthn.WebAuthnService.verify_registration",
-            AsyncMock(side_effect=ValueError("invalid signature")),
-        ),
-        patch("app.api.auth.mfa.logger"),
-    ):
-        with pytest.raises(HTTPException) as exc:
-            await mfa_api.confirm_webauthn_registration(
-                payload=payload, request=request, user=user
-            )
-        assert exc.value.status_code == 400
-
-
-@pytest.mark.asyncio
-async def test_complete_passkey_enrollment_success():
-    request = MagicMock()
-    request.state = MagicMock()
-    db = AsyncMock()
-    user = MagicMock()
-    user.id = uuid.uuid4()
-    user.mfa_default_method = "webauthn"
-    user.mfa_required = True
-
-    mock_challenge = MagicMock()
-    mock_challenge.payload = {"options": {"challenge": "challenge_str"}}
-
-    payload = WebAuthnRegistrationVerifyIn(
-        challenge="token",
-        response={"clientDataJSON": "", "attestationObject": "", "transports": []},
-        label="my key",
-    )
-
-    with (
-        patch(
-            "app.api.auth.mfa.mfa.get_challenge", AsyncMock(return_value=mock_challenge)
-        ),
-        patch("app.services.webauthn.WebAuthnService.verify_registration", AsyncMock()),
-        patch("app.api.auth.mfa.mfa.refresh_user_mfa_preferences", AsyncMock()),
-        patch("app.api.auth.mfa.mfa.record_mfa_success", AsyncMock()),
-        patch("app.api.auth.mfa.AuditService") as mock_audit,
-    ):
-        mock_audit_inst = MagicMock()
-        mock_audit.return_value = mock_audit_inst
-        setup_dishka_mock(request, db, mock_audit_inst)
-
-        res = await mfa_api.confirm_webauthn_registration(
-            payload=payload, request=request, user=user
-        )
-        assert res.mfa_required is True
-        assert res.disabled is False
 
 
 # =========================================================================

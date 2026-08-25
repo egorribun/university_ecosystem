@@ -593,7 +593,6 @@ describe("useAuth outside AuthProvider", () => {
       await result.current.refresh()
       await result.current.submitMfaChallenge({ code: "123456" })
       expect(await result.current.requireMfa()).toBeNull()
-      await result.current.loginWithPasskey("user@example.com")
     })
 
     expect(warningSpy).toHaveBeenCalledWith("AuthContext setUser called outside provider")

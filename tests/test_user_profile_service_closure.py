@@ -60,18 +60,16 @@ async def test_update_user_profile_raises_when_orm_user_is_missing(profile_servi
 
 
 @pytest.mark.asyncio
-async def test_update_user_profile_validates_and_normalizes_email(profile_service):
+async def test_update_user_profile_applies_non_email_fields(profile_service):
     user_id = uuid4()
     db_user = MagicMock()
     updated_user = SimpleNamespace(id=user_id)
     profile_service.repo.get_orm_for_update_with_relations.return_value = db_user
     profile_service.repo._to_dto.return_value = updated_user
     data = MagicMock()
-    data.model_dump.return_value = {"email": "  USER@Example.COM  "}
-    validate_email = AsyncMock(return_value="user@example.com")
+    data.model_dump.return_value = {"full_name": "New Name"}
 
     with (
-        patch("app.services.user.logic.validate_user_email", validate_email),
         patch(
             "app.services.user.profile_service.update_user_attributes"
         ) as update_attributes,
@@ -85,10 +83,7 @@ async def test_update_user_profile_validates_and_normalizes_email(profile_servic
         )
 
     assert result is updated_user
-    validate_email.assert_awaited_once_with(
-        profile_service.repo, "  USER@Example.COM  ", exclude_user_id=user_id
-    )
-    update_attributes.assert_called_once_with(db_user, {"email": "user@example.com"})
+    update_attributes.assert_called_once_with(db_user, {"full_name": "New Name"})
 
 
 @pytest.mark.asyncio
@@ -211,7 +206,7 @@ async def test_admin_update_user_resets_mfa_and_notifies_target(profile_service)
         )
 
     assert result is updated_user
-    reset_mfa.assert_awaited_once_with(profile_service.repo.db, user_id=str(user_id))
+    reset_mfa.assert_awaited_once_with(profile_service.repo.db, user=db_user)
     profile_service.audit.log.assert_any_call(
         "users.mfa.reset", request, user_id=user_id, reason="admin_reset"
     )
@@ -220,3 +215,120 @@ async def test_admin_update_user_resets_mfa_and_notifies_target(profile_service)
         title="notifications.mfa.reset.title",
         body="notifications.mfa.reset.body",
     )
+
+
+@pytest.mark.asyncio
+async def test_admin_reset_returns_fresh_mfa_dto_and_commits_notification_first(
+    profile_service,
+) -> None:
+    user_id = uuid4()
+    db_user = SimpleNamespace(
+        id=user_id,
+        mfa_required=True,
+        mfa_default_method="totp",
+        email_mfa_enabled_at=MagicMock(),
+    )
+    profile_service.repo.get_orm_for_update_with_relations.return_value = db_user
+    profile_service.repo._to_dto.side_effect = lambda user: SimpleNamespace(
+        id=user.id,
+        mfa_required=user.mfa_required,
+        mfa_default_method=user.mfa_default_method,
+        email_mfa_enabled_at=user.email_mfa_enabled_at,
+    )
+    data = MagicMock()
+    data.model_dump.return_value = {"reset_mfa": True}
+    events: list[str] = []
+    pending = [MagicMock()]
+    stats = SimpleNamespace(session_revocations=pending)
+
+    async def reset(_db, **kwargs):
+        events.append("reset")
+        reset_user = kwargs.get("user")
+        if reset_user is not None:
+            reset_user.mfa_required = False
+            reset_user.mfa_default_method = None
+            reset_user.email_mfa_enabled_at = None
+        return stats
+
+    async def notify(**_kwargs):
+        events.append("notification")
+        return 1
+
+    async def commit():
+        events.append("commit")
+
+    async def publish(_pending):
+        events.append("publish")
+
+    profile_service.uow.commit.side_effect = commit
+    profile_service.notifications.send_security_notification.side_effect = notify
+    with (
+        patch(
+            "app.services.user.profile_service.mfa.reset_user_mfa",
+            new=AsyncMock(side_effect=reset),
+        ) as reset_mfa,
+        patch(
+            "app.services.user.profile_service.mfa.publish_mfa_session_revocations",
+            new=AsyncMock(side_effect=publish),
+        ),
+        patch("app.services.user.profile_service.resolve_locale", return_value="en"),
+        patch(
+            "app.services.user.profile_service.translate",
+            side_effect=lambda key, locale: key,
+        ),
+    ):
+        result = await profile_service.admin_update_user(
+            user_id, data, MagicMock(), SimpleNamespace(role="admin")
+        )
+
+    assert result.mfa_required is False
+    assert result.mfa_default_method is None
+    assert result.email_mfa_enabled_at is None
+    reset_mfa.assert_awaited_once_with(profile_service.repo.db, user=db_user)
+    assert events == ["reset", "notification", "commit", "publish"]
+
+
+@pytest.mark.asyncio
+async def test_admin_reset_commit_failure_rolls_back_without_redis_publish(
+    profile_service,
+) -> None:
+    user_id = uuid4()
+    db_user = SimpleNamespace(id=user_id)
+    updated_user = SimpleNamespace(id=user_id)
+    profile_service.repo.get_orm_for_update_with_relations.return_value = db_user
+    profile_service.repo._to_dto.return_value = updated_user
+    data = MagicMock()
+    data.model_dump.return_value = {"reset_mfa": True}
+    stats = SimpleNamespace(session_revocations=[MagicMock()])
+    profile_service.uow.commit.side_effect = RuntimeError("commit failed")
+    profile_service.uow.rollback = AsyncMock()
+
+    async def exit_uow(exc_type, _exc, _tb):
+        if exc_type is not None:
+            await profile_service.uow.rollback()
+        return False
+
+    profile_service.uow.__aexit__.side_effect = exit_uow
+    with (
+        patch(
+            "app.services.user.profile_service.mfa.reset_user_mfa",
+            new=AsyncMock(return_value=stats),
+        ),
+        patch(
+            "app.services.user.profile_service.mfa.publish_mfa_session_revocations",
+            new=AsyncMock(),
+        ) as publish,
+        patch("app.services.user.profile_service.resolve_locale", return_value="en"),
+        patch(
+            "app.services.user.profile_service.translate",
+            side_effect=lambda key, locale: key,
+        ),
+        pytest.raises(RuntimeError, match="commit failed"),
+    ):
+        await profile_service.admin_update_user(
+            user_id, data, MagicMock(), SimpleNamespace(role="admin")
+        )
+
+    profile_service.notifications.send_security_notification.assert_awaited_once()
+    profile_service.uow.rollback.assert_awaited_once()
+    publish.assert_not_awaited()

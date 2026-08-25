@@ -10,7 +10,7 @@ import { VitePWA } from "vite-plugin-pwa"
 // Its plugin must remain before React's Vite plugin.
 import { tanstackStart } from "@tanstack/react-start/plugin/vite"
 import { visualizer } from "rollup-plugin-visualizer"
-import { MASKABLE_ICON_BASE64 } from "./pwa-maskable-icons"
+import { MASKABLE_ICON_BASE64 } from "./pwa-maskable-icons.ts"
 import { generateManifests } from "./scripts/generate-manifests.mjs"
 // Shared with the Windows-safe standalone build orchestrator.
 import { PWA_INJECT_CONFIG } from "./scripts/workbox-config.mjs"
@@ -415,8 +415,7 @@ export default defineConfig(({ mode }) => {
             // independent chunks so opening an English form does not download
             // the Russian dictionary (or vice versa). Workbox intentionally
             // omits these optional chunks from install-time precaching.
-            if (id.includes("node_modules/@zxcvbn-ts/core"))
-              return "vendor-password-strength-core"
+            if (id.includes("node_modules/@zxcvbn-ts/core")) return "vendor-password-strength-core"
             if (id.includes("node_modules/@zxcvbn-ts/language-common"))
               return "vendor-password-strength-common"
             if (id.includes("node_modules/@zxcvbn-ts/language-en"))
@@ -448,7 +447,6 @@ export default defineConfig(({ mode }) => {
             )
               return "vendor-i18n"
             if (id.includes("node_modules/axios")) return "vendor-http"
-            if (id.includes("node_modules/@simplewebauthn/browser")) return "vendor-security"
             // Keep the offline database implementation out of the application
             // entry chunk. RxDB pulls Dexie, AJV and its query/storage helpers
             // into the provider tree even though database access is lazy at

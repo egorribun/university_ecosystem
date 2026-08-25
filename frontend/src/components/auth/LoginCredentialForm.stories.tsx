@@ -17,8 +17,7 @@ import type { LoginValues } from "@/features/auth/schemas"
 // The `<Link>`s need RouterProvider (global preview decorator ✓); `<FadeIn>`
 // uses framer-motion `m.*` → the decorator adds LazyMotion (W124 SW1 mirror).
 //
-// Variants: Default, WithError (root submitError), WithEmailSuggestion (typo
-// banner), NoPasskey (webauthnSupported false → hides passkey button), DarkMode.
+// Variants: Default, WithError, WithEmailSuggestion, and DarkMode.
 
 const themed = (dark: boolean): Decorator => {
   // eslint-disable-next-line react/display-name -- Storybook decorator, not a render component
@@ -40,7 +39,7 @@ const themed = (dark: boolean): Decorator => {
 
 function LoginHarness({ overrides }: { overrides?: Partial<ReturnType<typeof useLoginForm>> }) {
   const form = useForm<LoginValues>({
-    defaultValues: { email: "", password: "", trustDevice: false },
+    defaultValues: { email: "", password: "", rememberEmail: false, trustDevice: false },
   })
   const [caps, setCaps] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -58,11 +57,6 @@ function LoginHarness({ overrides }: { overrides?: Partial<ReturnType<typeof use
     activeEmail: "",
     submitting: false,
     submitError: undefined,
-    passkeyError: null,
-    webauthnSupported: true,
-    trustDevice: false,
-    setTrustDevice: () => {},
-    handlePasskeyLogin: async () => {},
     onSubmit: form.handleSubmit(async () => {}),
     pendingMfa: null,
     ...overrides,
@@ -104,16 +98,6 @@ export const WithEmailSuggestion: Story = {
   parameters: {
     docs: {
       description: { story: "Fuzzy email-domain suggestion banner with the apply-suggestion CTA." },
-    },
-  },
-}
-
-export const NoPasskey: Story = {
-  render: () => <LoginHarness overrides={{ webauthnSupported: false }} />,
-  decorators: [themed(false)],
-  parameters: {
-    docs: {
-      description: { story: "webauthnSupported=false hides the 'Sign in with Passkey' button." },
     },
   },
 }

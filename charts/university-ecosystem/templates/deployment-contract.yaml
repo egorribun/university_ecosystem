@@ -1,0 +1,34 @@
+{{- if .Values.deploymentContract.enabled -}}
+{{- $mfaKeys := list .Values.applicationSecrets.keys.mfaEmailOtpHMACKeys .Values.applicationSecrets.keys.mfaEmailOtpActiveHMACKeyId .Values.applicationSecrets.keys.mfaEmailDeliveryKEKs .Values.applicationSecrets.keys.mfaEmailDeliveryActiveKEKId .Values.applicationSecrets.keys.mfaTrustedDeviceHMACKeys .Values.applicationSecrets.keys.mfaTrustedDeviceActiveHMACKeyId -}}
+{{- $backendKeys := concat (list "jwt-secret" "jwt-rsa-private-key" "internal-hmac-secret" "ws-hub-internal-secret" "csrf-hmac-secret" "spotify-token-secret" "elasticsearch-password" "spicedb-preshared-key" "audit-log-secret" "idempotency-hmac-secret") $mfaKeys | uniq | sortAlpha -}}
+{{- $outboxKeys := list "jwt-secret" "jwt-rsa-private-key" "internal-hmac-secret" "ws-hub-internal-secret" "csrf-hmac-secret" "spotify-token-secret" "elasticsearch-password" "spicedb-preshared-key" "audit-log-secret" "idempotency-hmac-secret" .Values.applicationSecrets.keys.mfaEmailDeliveryKEKs | uniq | sortAlpha -}}
+{{- $applicationKeys := concat $backendKeys $outboxKeys -}}
+{{- if .Values.fileProcessor.enabled -}}
+  {{- $applicationKeys = concat $applicationKeys (list "jwt-rsa-public-key" "minio-access-key" "minio-secret-key" "temporal-api-key") -}}
+{{- end -}}
+{{- if .Values.backup.enabled -}}
+  {{- $applicationKeys = concat $applicationKeys (list "minio-access-key" "minio-secret-key") -}}
+{{- end -}}
+{{- $connectionKeys := list .Values.connections.databaseURLKey .Values.connections.redisBackendURLKey .Values.connections.redisGatewayURLKey .Values.connections.redisRevocationURLKey .Values.connections.natsURLKey .Values.connections.natsAuthTokenKey -}}
+{{- if and .Values.keda.enabled .Values.keda.outboxWorker.enabled .Values.keda.outboxWorker.postgresql.enabled -}}
+  {{- $connectionKeys = append $connectionKeys .Values.connections.kedaPostgresqlURLKey -}}
+{{- end -}}
+{{- if .Values.backup.enabled -}}
+  {{- $connectionKeys = append $connectionKeys .Values.connections.backupDatabaseURLKey -}}
+{{- end -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-deployment-contract
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: deployment-contract
+data:
+  application-secret-name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
+  application-secret-keys.json: {{ $applicationKeys | uniq | sortAlpha | toJson | quote }}
+  connection-secret-name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret | quote }}
+  connection-secret-keys.json: {{ $connectionKeys | uniq | sortAlpha | toJson | quote }}
+  backend-secret-keys.json: {{ $backendKeys | toJson | quote }}
+  outbox-worker-secret-keys.json: {{ $outboxKeys | toJson | quote }}
+  mfa-key-contract.json: {{ dict "otp" (dict "ring" .Values.applicationSecrets.keys.mfaEmailOtpHMACKeys "active" .Values.applicationSecrets.keys.mfaEmailOtpActiveHMACKeyId) "delivery" (dict "ring" .Values.applicationSecrets.keys.mfaEmailDeliveryKEKs "active" .Values.applicationSecrets.keys.mfaEmailDeliveryActiveKEKId) "trusted" (dict "ring" .Values.applicationSecrets.keys.mfaTrustedDeviceHMACKeys "active" .Values.applicationSecrets.keys.mfaTrustedDeviceActiveHMACKeyId) | toJson | quote }}
+{{- end -}}

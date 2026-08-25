@@ -33,7 +33,14 @@ export const StepUpDialog = ({
   const [verifying, setVerifying] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const challenge = useMemo<ChallengeMethod>(() => pending?.methods?.[0] ?? null, [pending])
+  const challenge = useMemo<ChallengeMethod>(() => {
+    if (!pending) return null
+    return (
+      pending.methods.find((candidate) => candidate.method === pending.default_method) ??
+      pending.methods[0] ??
+      null
+    )
+  }, [pending])
   const refreshChallenges = useCallback(async () => {
     const result = await requireMfa()
     setPending(result)
@@ -116,7 +123,11 @@ export const StepUpDialog = ({
   const handleOtpSubmit = useCallback(
     async (code: string) => {
       // OtpEntry is mounted only while a challenge exists.
-      await handleSubmit({ code, challengeToken: challenge!.challenge_token })
+      await handleSubmit({
+        method: challenge!.method,
+        code,
+        challengeToken: challenge!.challenge_token,
+      })
     },
     [challenge, handleSubmit]
   )
@@ -177,6 +188,7 @@ export const StepUpDialog = ({
               </p>
               {challenge ? (
                 <OtpEntry
+                  method={challenge.method}
                   loading={verifying}
                   error={error}
                   helperText={helperText}

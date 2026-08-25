@@ -46,7 +46,6 @@ vi.mock("@/hooks/auth/useAuthApi", () => ({
     logout: vi.fn(),
     submitMfaChallenge: vi.fn(),
     requireMfa: vi.fn(),
-    loginWithPasskey: vi.fn(),
     refresh: vi.fn(),
   }),
 }))

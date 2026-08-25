@@ -15,9 +15,6 @@ previously-uncovered line ranges from the fresh coverage run:
 - L428, 442      TOTP empty-secret skip + invalid-code raise
 - L447-465       recovery-code branch (code required / user missing / invalid
                  code / success fall-through)
-- L473, 480-483  WebAuthn response-required + user-not-found guards
-- L490, 493, 496, 502-510  WebAuthn payload type-confusion guards routed
-                 through the failed-attempt wrap
 
 Harness mirrors tests/test_compliance_service_coverage.py (AsyncMock +
 module-level monkeypatch.setattr) and tests/test_mfa_challenge_cleanup.py
@@ -42,19 +39,17 @@ import app.auth.mfa.recovery as recovery_module
 from app.auth.constants import (
     CHALLENGE_TYPE_RECOVERY_CODE,
     CHALLENGE_TYPE_TOTP_AUTH,
-    CHALLENGE_TYPE_WEBAUTHN_AUTH,
     MFA_METHOD_RECOVERY_CODE,
     MFA_METHOD_TOTP,
-    MFA_METHOD_WEBAUTHN,
 )
 from app.auth.mfa.challenge import (
     _extract_attempt_limit,
     _register_failed_attempt,
     consume_challenge,
     get_challenge,
+    issue_challenge,
     issue_dummy_challenge,
 )
-from app.models import MfaChallenge
 from app.models.auth import ChallengeState
 
 
@@ -72,8 +67,20 @@ def _fake_challenge(**overrides: Any) -> SimpleNamespace:
         "payload": None,
         "attempt_count": 0,
         "state": ChallengeState.PENDING,
+        "flow": "login",
+        "session_identifier": "bound-login-session",
+        "client_fingerprint": "f" * 64,
+        "method": MFA_METHOD_TOTP,
+        "token_digest": "d" * 64,
+        "token_key_id": "app-primary",
+        "revision": 1,
     }
     defaults.update(overrides)
+    if (
+        defaults["challenge_type"] == CHALLENGE_TYPE_RECOVERY_CODE
+        and "method" not in overrides
+    ):
+        defaults["method"] = MFA_METHOD_RECOVERY_CODE
     return SimpleNamespace(**defaults)
 
 
@@ -82,6 +89,23 @@ def _result_with_challenge(challenge: SimpleNamespace | None) -> MagicMock:
     result = MagicMock()
     result.scalars.return_value.first.return_value = challenge
     return result
+
+
+def _locked_user_result(
+    challenge: SimpleNamespace, *, present: bool = True
+) -> MagicMock:
+    result = MagicMock()
+    result.scalars.return_value.first.return_value = (
+        SimpleNamespace(id=challenge.user_id) if present else None
+    )
+    return result
+
+
+def _binding(challenge: SimpleNamespace) -> dict[str, str]:
+    return {
+        "client_fingerprint": challenge.client_fingerprint,
+        "login_session_identifier": challenge.session_identifier,
+    }
 
 
 @pytest.fixture
@@ -142,7 +166,7 @@ async def test_register_failed_attempt_raises_when_lock_just_acquired() -> None:
         )
 
     assert exc_info.value.status_code == 429
-    db.commit.assert_awaited_once()
+    db.flush.assert_awaited_once()
 
 
 async def test_register_failed_attempt_noop_when_row_already_finalized() -> None:
@@ -160,7 +184,7 @@ async def test_register_failed_attempt_noop_when_row_already_finalized() -> None
         locale="en",
     )
 
-    db.commit.assert_awaited_once()
+    db.flush.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -189,31 +213,36 @@ async def test_get_challenge_accepts_list_of_challenge_types(
 ) -> None:
     """List-typed challenge_type applies the IN() filter (L314)."""
     user = await user_factory()
-    challenge = MfaChallenge(
+    issued = await issue_challenge(
+        db_session,
         user_id=user.id,
         challenge_type=CHALLENGE_TYPE_TOTP_AUTH,
-        token=f"s10-list-{uuid.uuid4().hex}",  # pragma: allowlist secret
-        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+        flow="login",
+        session_identifier="list-challenge-session",
+        client_fingerprint="f" * 64,
+        method=MFA_METHOD_TOTP,
     )
-    db_session.add(challenge)
-    await db_session.flush()
 
     found = await get_challenge(
         db_session,
-        token=challenge.token,
-        challenge_type=[CHALLENGE_TYPE_TOTP_AUTH, CHALLENGE_TYPE_WEBAUTHN_AUTH],
+        token=issued.challenge_token,
+        challenge_type=[CHALLENGE_TYPE_TOTP_AUTH, CHALLENGE_TYPE_RECOVERY_CODE],
         user_id=user.id,
     )
 
-    assert found.id == challenge.id
+    assert found.id == issued.challenge.id
 
 
-async def test_get_challenge_normalizes_naive_expires_at() -> None:
+async def test_get_challenge_normalizes_naive_expires_at(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Naive (tz-less) expires_at is coerced to UTC before comparison (L331)."""
     naive_future = datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=5)
     challenge = _fake_challenge(expires_at=naive_future)
     db = AsyncMock()
     db.execute = AsyncMock(return_value=_result_with_challenge(challenge))
+    monkeypatch.setattr(challenge_module, "_parse_challenge_id", lambda _: challenge.id)
+    monkeypatch.setattr(challenge_module.hmac, "compare_digest", lambda *_: True)
 
     found = await get_challenge(
         db, token=challenge.token, challenge_type=CHALLENGE_TYPE_TOTP_AUTH
@@ -222,12 +251,16 @@ async def test_get_challenge_normalizes_naive_expires_at() -> None:
     assert found is challenge
 
 
-async def test_get_challenge_rejects_naive_consumed_at() -> None:
+async def test_get_challenge_rejects_naive_consumed_at(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Naive consumed_at is coerced to UTC and still rejects the challenge (L334)."""
     naive_past = datetime.now(UTC).replace(tzinfo=None) - timedelta(minutes=1)
     challenge = _fake_challenge(consumed_at=naive_past)
     db = AsyncMock()
     db.execute = AsyncMock(return_value=_result_with_challenge(challenge))
+    monkeypatch.setattr(challenge_module, "_parse_challenge_id", lambda _: challenge.id)
+    monkeypatch.setattr(challenge_module.hmac, "compare_digest", lambda *_: True)
 
     with pytest.raises(HTTPException) as exc_info:
         await get_challenge(
@@ -248,6 +281,7 @@ async def test_consume_challenge_rejects_revoked_session(
     challenge = _fake_challenge(session_id=uuid.uuid4())
     patched_get_challenge(challenge)
     db = AsyncMock()
+    db.execute = AsyncMock(return_value=_locked_user_result(challenge))
     db.get = AsyncMock(return_value=SimpleNamespace(revoked_at=datetime.now(UTC)))
 
     with pytest.raises(HTTPException) as exc_info:
@@ -255,6 +289,7 @@ async def test_consume_challenge_rejects_revoked_session(
             db,
             challenge_token=challenge.token,
             challenge_type=CHALLENGE_TYPE_TOTP_AUTH,
+            **_binding(challenge),
         )
 
     assert exc_info.value.status_code == 400
@@ -266,29 +301,15 @@ async def test_consume_challenge_infers_totp_and_requires_code(
     """TOTP_AUTH type infers MFA_METHOD_TOTP and demands a code (L395-399, 407)."""
     challenge = _fake_challenge(challenge_type=CHALLENGE_TYPE_TOTP_AUTH)
     patched_get_challenge(challenge)
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=_locked_user_result(challenge))
 
     with pytest.raises(HTTPException) as exc_info:
         await consume_challenge(
-            AsyncMock(),
+            db,
             challenge_token=challenge.token,
             challenge_type=CHALLENGE_TYPE_TOTP_AUTH,
-        )
-
-    assert exc_info.value.status_code == 400
-
-
-async def test_consume_challenge_infers_webauthn_and_requires_response(
-    patched_get_challenge,
-) -> None:
-    """WEBAUTHN_AUTH type infers webauthn and demands a response (L400-401, 473)."""
-    challenge = _fake_challenge(challenge_type=CHALLENGE_TYPE_WEBAUTHN_AUTH)
-    patched_get_challenge(challenge)
-
-    with pytest.raises(HTTPException) as exc_info:
-        await consume_challenge(
-            AsyncMock(),
-            challenge_token=challenge.token,
-            challenge_type=CHALLENGE_TYPE_WEBAUTHN_AUTH,
+            **_binding(challenge),
         )
 
     assert exc_info.value.status_code == 400
@@ -300,12 +321,15 @@ async def test_consume_challenge_infers_recovery_and_requires_code(
     """RECOVERY_CODE type infers recovery method and demands a code (L402-403, 447-450)."""
     challenge = _fake_challenge(challenge_type=CHALLENGE_TYPE_RECOVERY_CODE)
     patched_get_challenge(challenge)
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=_locked_user_result(challenge))
 
     with pytest.raises(HTTPException) as exc_info:
         await consume_challenge(
-            AsyncMock(),
+            db,
             challenge_token=challenge.token,
             challenge_type=CHALLENGE_TYPE_RECOVERY_CODE,
+            **_binding(challenge),
         )
 
     assert exc_info.value.status_code == 400
@@ -320,7 +344,7 @@ async def test_consume_challenge_totp_user_missing(patched_get_challenge) -> Non
     challenge = _fake_challenge()
     patched_get_challenge(challenge)
     db = AsyncMock()
-    db.get = AsyncMock(return_value=None)
+    db.execute = AsyncMock(return_value=_locked_user_result(challenge, present=False))
 
     with pytest.raises(HTTPException) as exc_info:
         await consume_challenge(
@@ -329,13 +353,14 @@ async def test_consume_challenge_totp_user_missing(patched_get_challenge) -> Non
             challenge_type=CHALLENGE_TYPE_TOTP_AUTH,
             provided_method=MFA_METHOD_TOTP,
             provided_code="123456",
+            **_binding(challenge),
         )
 
     assert exc_info.value.status_code == 400
 
 
 async def test_consume_challenge_totp_invalid_code_registers_failed_attempt(
-    patched_get_challenge, failed_attempt_spy
+    patched_get_challenge, failed_attempt_spy, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Empty-secret enrollment is skipped (L428); a wrong code raises (L442)."""
     secret = pyotp.random_base32()
@@ -351,13 +376,17 @@ async def test_consume_challenge_totp_invalid_code_registers_failed_attempt(
     challenge = _fake_challenge()
     patched_get_challenge(challenge)
     db = AsyncMock()
-    db.get = AsyncMock(return_value=SimpleNamespace(id=challenge.user_id))
-    enrollments = MagicMock()
-    enrollments.scalars.return_value.all.return_value = [
-        SimpleNamespace(secret=""),  # skipped via `continue`
-        SimpleNamespace(secret=secret),
-    ]
-    db.execute = AsyncMock(return_value=enrollments)
+    db.execute = AsyncMock(return_value=_locked_user_result(challenge))
+
+    async def reject_totp(*_args, **_kwargs):
+        await failed_attempt_spy(
+            db, challenge, method=MFA_METHOD_TOTP, limit=5, locale="en"
+        )
+        raise HTTPException(400, "invalid code")
+
+    monkeypatch.setattr(
+        "app.auth.mfa.totp.verify_totp_for_user", AsyncMock(side_effect=reject_totp)
+    )
 
     with pytest.raises(HTTPException) as exc_info:
         await consume_challenge(
@@ -366,6 +395,7 @@ async def test_consume_challenge_totp_invalid_code_registers_failed_attempt(
             challenge_type=CHALLENGE_TYPE_TOTP_AUTH,
             provided_method=MFA_METHOD_TOTP,
             provided_code=wrong_code,
+            **_binding(challenge),
         )
 
     assert exc_info.value.status_code == 400
@@ -384,7 +414,7 @@ async def test_consume_challenge_recovery_user_missing(
     challenge = _fake_challenge(challenge_type=CHALLENGE_TYPE_RECOVERY_CODE)
     patched_get_challenge(challenge)
     db = AsyncMock()
-    db.get = AsyncMock(return_value=None)
+    db.execute = AsyncMock(return_value=_locked_user_result(challenge, present=False))
 
     with pytest.raises(HTTPException) as exc_info:
         await consume_challenge(
@@ -393,6 +423,7 @@ async def test_consume_challenge_recovery_user_missing(
             challenge_type=CHALLENGE_TYPE_RECOVERY_CODE,
             provided_method=MFA_METHOD_RECOVERY_CODE,
             provided_code="AAAA-BBBB",
+            **_binding(challenge),
         )
 
     assert exc_info.value.status_code == 400
@@ -409,7 +440,7 @@ async def test_consume_challenge_recovery_invalid_code_registers_failed_attempt(
         recovery_module, "verify_recovery_code", AsyncMock(return_value=False)
     )
     db = AsyncMock()
-    db.get = AsyncMock(return_value=SimpleNamespace(id=challenge.user_id))
+    db.execute = AsyncMock(return_value=_locked_user_result(challenge))
 
     with pytest.raises(HTTPException) as exc_info:
         await consume_challenge(
@@ -418,11 +449,43 @@ async def test_consume_challenge_recovery_invalid_code_registers_failed_attempt(
             challenge_type=CHALLENGE_TYPE_RECOVERY_CODE,
             provided_method=MFA_METHOD_RECOVERY_CODE,
             provided_code="AAAA-BBBB",
+            **_binding(challenge),
         )
 
     assert exc_info.value.status_code == 400
     failed_attempt_spy.assert_awaited_once()
     assert failed_attempt_spy.await_args.kwargs["method"] == MFA_METHOD_RECOVERY_CODE
+
+
+@pytest.mark.parametrize("flow", ["email_verification", "email_mfa_enablement"])
+async def test_consume_challenge_rejects_recovery_for_email_only_flows(
+    flow: str,
+    patched_get_challenge,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    challenge = _fake_challenge(
+        challenge_type=CHALLENGE_TYPE_RECOVERY_CODE,
+        flow=flow,
+    )
+    patched_get_challenge(challenge)
+    verify = AsyncMock(return_value=True)
+    monkeypatch.setattr(recovery_module, "verify_recovery_code", verify)
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=_locked_user_result(challenge))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await consume_challenge(
+            db,
+            challenge_token=challenge.token,
+            challenge_type=CHALLENGE_TYPE_RECOVERY_CODE,
+            provided_method=MFA_METHOD_RECOVERY_CODE,
+            provided_code="AAAA-BBBB",
+            client_fingerprint=challenge.client_fingerprint,
+            active_session_identifier=challenge.session_identifier,
+        )
+
+    assert exc_info.value.status_code == 400
+    verify.assert_not_awaited()
 
 
 async def test_consume_challenge_recovery_success_consumes_challenge(
@@ -434,7 +497,7 @@ async def test_consume_challenge_recovery_success_consumes_challenge(
         recovery_module, "verify_recovery_code", AsyncMock(return_value=True)
     )
     db = AsyncMock()
-    db.get = AsyncMock(return_value=SimpleNamespace(id=challenge.user_id))
+    db.execute = AsyncMock(return_value=_locked_user_result(challenge))
 
     consumed, session = await consume_challenge(
         db,
@@ -442,71 +505,11 @@ async def test_consume_challenge_recovery_success_consumes_challenge(
         challenge_type=CHALLENGE_TYPE_RECOVERY_CODE,
         provided_method=MFA_METHOD_RECOVERY_CODE,
         provided_code="AAAA-BBBB",
+        **_binding(challenge),
     )
 
     assert consumed is challenge
     assert session is None
     assert challenge.consumed_at is not None
     assert challenge.state == ChallengeState.CONSUMED
-    db.commit.assert_awaited_once()
-
-
-# ---------------------------------------------------------------------------
-# consume_challenge — WebAuthn branch (L480-483, L490, L493, L496, L502-510)
-# ---------------------------------------------------------------------------
-
-
-async def test_consume_challenge_webauthn_user_missing(
-    patched_get_challenge,
-) -> None:
-    challenge = _fake_challenge(challenge_type=CHALLENGE_TYPE_WEBAUTHN_AUTH)
-    patched_get_challenge(challenge)
-    db = AsyncMock()
-    db.get = AsyncMock(return_value=None)
-
-    with pytest.raises(HTTPException) as exc_info:
-        await consume_challenge(
-            db,
-            challenge_token=challenge.token,
-            challenge_type=CHALLENGE_TYPE_WEBAUTHN_AUTH,
-            provided_method=MFA_METHOD_WEBAUTHN,
-            provided_webauthn_response={"id": "credential"},
-        )
-
-    assert exc_info.value.status_code == 400
-
-
-@pytest.mark.parametrize(
-    "payload",
-    [
-        pytest.param(None, id="payload-not-dict"),
-        pytest.param({"options": "not-a-dict"}, id="options-not-dict"),
-        pytest.param({"options": {"challenge": 123}}, id="challenge-not-string"),
-    ],
-)
-async def test_consume_challenge_webauthn_payload_type_confusion(
-    patched_get_challenge,
-    failed_attempt_spy,
-    payload: dict[str, Any] | None,
-) -> None:
-    """Each malformed payload shape raises TypeError, lands in the except wrap
-    (L502-510) and surfaces as invalid_code after recording a failed attempt."""
-    challenge = _fake_challenge(
-        challenge_type=CHALLENGE_TYPE_WEBAUTHN_AUTH, payload=payload
-    )
-    patched_get_challenge(challenge)
-    db = AsyncMock()
-    db.get = AsyncMock(return_value=SimpleNamespace(id=challenge.user_id))
-
-    with pytest.raises(HTTPException) as exc_info:
-        await consume_challenge(
-            db,
-            challenge_token=challenge.token,
-            challenge_type=CHALLENGE_TYPE_WEBAUTHN_AUTH,
-            provided_method=MFA_METHOD_WEBAUTHN,
-            provided_webauthn_response={"id": "credential"},
-        )
-
-    assert exc_info.value.status_code == 400
-    failed_attempt_spy.assert_awaited_once()
-    assert failed_attempt_spy.await_args.kwargs["method"] == MFA_METHOD_WEBAUTHN
+    db.flush.assert_awaited_once()
