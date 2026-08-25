@@ -130,16 +130,19 @@ const Register = () => {
 
   const heroPerks = [
     {
+      id: "community",
       icon: UsersRound,
       title: t("auth:register.hero.perks.community.title"),
       description: t("auth:register.hero.perks.community.description"),
     },
     {
+      id: "secure",
       icon: ShieldCheck,
       title: t("auth:register.hero.perks.secure.title"),
       description: t("auth:register.hero.perks.secure.description"),
     },
     {
+      id: "experience",
       icon: Sparkles,
       title: t("auth:register.hero.perks.experience.title"),
       description: t("auth:register.hero.perks.experience.description"),
@@ -173,8 +176,8 @@ const Register = () => {
             {t("auth:register.hero.description")}
           </p>
           <div className="mt-8 grid gap-5 sm:grid-cols-2">
-            {heroPerks.map(({ icon: Icon, title, description }) => (
-              <div key={title} className="auth-perk-card group">
+            {heroPerks.map(({ id, icon: Icon, title, description }) => (
+              <div key={id} className="auth-perk-card group">
                 <div className="flex items-center gap-3">
                   <div className="flex size-12 items-center justify-center rounded-md bg-brand-subtle-bg text-brand">
                     <Icon className="h-5 w-5" aria-hidden="true" />

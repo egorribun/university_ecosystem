@@ -1,27 +1,39 @@
 import type { ZxcvbnFactory, ZxcvbnResult } from "@zxcvbn-ts/core"
 
-let analyzer: ZxcvbnFactory | undefined
-let analyzerPromise: Promise<ZxcvbnFactory> | undefined
+type PasswordAnalyzer = Pick<ZxcvbnFactory, "check">
+type PasswordAnalyzerLoader = () => Promise<PasswordAnalyzer>
 
-async function loadPasswordAnalyzer(): Promise<ZxcvbnFactory> {
-  if (analyzer) return analyzer
+export function createPasswordStrengthAnalyzer(loadAnalyzer: PasswordAnalyzerLoader) {
+  let analyzer: PasswordAnalyzer | undefined
+  let analyzerPromise: Promise<PasswordAnalyzer> | undefined
 
-  analyzerPromise ??= Promise.all([import("@zxcvbn-ts/core"), import("@zxcvbn-ts/language-common")])
-    .then(([{ ZxcvbnFactory: Factory }, common]) => {
-      analyzer = new Factory({
-        dictionary: common.dictionary,
-        graphs: common.adjacencyGraphs,
+  async function loadPasswordAnalyzer(): Promise<PasswordAnalyzer> {
+    if (analyzer) return analyzer
+
+    analyzerPromise ??= loadAnalyzer()
+      .then((loadedAnalyzer) => {
+        analyzer = loadedAnalyzer
+        return loadedAnalyzer
       })
-      return analyzer
-    })
-    .catch((error: unknown) => {
-      analyzerPromise = undefined
-      throw error
-    })
+      .catch((error: unknown) => {
+        analyzerPromise = undefined
+        throw error
+      })
 
-  return analyzerPromise
+    return analyzerPromise
+  }
+
+  return async (password: string): Promise<ZxcvbnResult> =>
+    (await loadPasswordAnalyzer()).check(password)
 }
 
-export async function analyzePasswordStrength(password: string): Promise<ZxcvbnResult> {
-  return (await loadPasswordAnalyzer()).check(password)
-}
+export const analyzePasswordStrength = createPasswordStrengthAnalyzer(async () => {
+  const [{ ZxcvbnFactory: Factory }, common] = await Promise.all([
+    import("@zxcvbn-ts/core"),
+    import("@zxcvbn-ts/language-common"),
+  ])
+  return new Factory({
+    dictionary: common.dictionary,
+    graphs: common.adjacencyGraphs,
+  })
+})

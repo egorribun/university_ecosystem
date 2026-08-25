@@ -240,13 +240,16 @@ describe("Register page", () => {
 
   it("omits optional password labels when translations are unavailable", async () => {
     const translationSpy = vi.spyOn(i18n, "t").mockReturnValue(undefined as never)
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined)
 
     try {
       await renderRegister()
 
       expect(document.querySelectorAll("button[aria-label]")).toHaveLength(0)
       expect(document.querySelectorAll("button[title]")).toHaveLength(0)
+      expect(consoleError).not.toHaveBeenCalled()
     } finally {
+      consoleError.mockRestore()
       translationSpy.mockRestore()
     }
   })
