@@ -5,8 +5,10 @@
   "tabs": {
     "ariaLabel": "Разделы настроек",
     "general": "Общее",
-    "account": "Аккаунт",
+    "account": "Профиль",
     "security": "Безопасность",
+    "notifications": "Уведомления",
+    "sessions": "Сессии",
     "integrations": "Интеграции"
   },
   "appearance": {

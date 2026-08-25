@@ -4,6 +4,7 @@ import {
   type UseQueryOptions,
   type UseQueryResult,
 } from "@tanstack/react-query"
+import { isCancel } from "axios"
 
 import api from "@/api/client"
 import type {
@@ -63,6 +64,25 @@ export type ActivityQueryParams = {
 
 export type ActivityQueryKey = readonly ["activity", "summary", PeriodKey, string]
 
+export class ActivitySummaryUnavailableError extends Error {
+  override name = "ActivitySummaryUnavailableError"
+
+  constructor() {
+    super("All activity summary sources are unavailable")
+  }
+}
+
+const isRequestCancellation = (error: unknown): boolean => {
+  if (isCancel(error)) return true
+  if (!error || typeof error !== "object") return false
+  const candidate = error as { name?: string; code?: string }
+  return (
+    candidate.name === "AbortError" ||
+    candidate.name === "CanceledError" ||
+    candidate.code === "ERR_CANCELED"
+  )
+}
+
 /**
  * Canonical query-key factory for the activity-summary cache. Always
  * use this rather than hand-rolling the tuple — both the period and the
@@ -100,7 +120,8 @@ const fetchActivitySummary = async (
       grades: summary.data?.grades ?? null,
       participation: summary.data?.participation ?? null,
     }
-  } catch {
+  } catch (error) {
+    if (signal?.aborted || isRequestCancellation(error)) throw error
     // Fallback: per-endpoint requests for older backend or partial outage.
     const [a, g, p] = await Promise.allSettled([
       api.get<AttendanceSummaryResponse>("/stats/attendance", {
@@ -116,6 +137,9 @@ const fetchActivitySummary = async (
         signal,
       }),
     ])
+    if (a.status === "rejected" && g.status === "rejected" && p.status === "rejected") {
+      throw new ActivitySummaryUnavailableError()
+    }
     return {
       attendance: a.status === "fulfilled" ? a.value.data : null,
       grades: g.status === "fulfilled" ? g.value.data : null,

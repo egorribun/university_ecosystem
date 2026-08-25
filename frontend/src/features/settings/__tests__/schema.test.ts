@@ -65,16 +65,18 @@ describe("settingsSearchSchema — tab field", () => {
     expect(parse({ tab: -1 }).tab).toBe(0)
   })
 
-  it("returns 0 (fallback) when tab is out of range (>3)", () => {
-    expect(parse({ tab: 4 }).tab).toBe(0)
+  it("returns 0 (fallback) when tab is out of range (>5)", () => {
+    expect(parse({ tab: 6 }).tab).toBe(0)
     expect(parse({ tab: 999 }).tab).toBe(0)
   })
 
-  it("accepts all valid tab indices (0-3)", () => {
+  it("accepts all valid tab indices (0-5)", () => {
     expect(parse({ tab: 0 }).tab).toBe(0)
     expect(parse({ tab: 1 }).tab).toBe(1)
     expect(parse({ tab: 2 }).tab).toBe(2)
     expect(parse({ tab: 3 }).tab).toBe(3)
+    expect(parse({ tab: 4 }).tab).toBe(4)
+    expect(parse({ tab: 5 }).tab).toBe(5)
   })
 
   it("accepts numeric-string for all valid indices", () => {
@@ -82,6 +84,8 @@ describe("settingsSearchSchema — tab field", () => {
     expect(parse({ tab: "1" }).tab).toBe(1)
     expect(parse({ tab: "2" }).tab).toBe(2)
     expect(parse({ tab: "3" }).tab).toBe(3)
+    expect(parse({ tab: "4" }).tab).toBe(4)
+    expect(parse({ tab: "5" }).tab).toBe(5)
   })
 })
 
@@ -114,12 +118,17 @@ describe("SETTINGS_TAB constants", () => {
     expect(SETTINGS_TAB.ACCOUNT).toBe(1)
   })
 
-  it("SECURITY is index 2 — used by routes/_auth/settings.tsx loader for sessions prefetch gate", () => {
+  it("SECURITY is index 2", () => {
     expect(SETTINGS_TAB.SECURITY).toBe(2)
   })
 
-  it("INTEGRATIONS is index 3 (matches Settings.tsx tab=3 mount)", () => {
-    expect(SETTINGS_TAB.INTEGRATIONS).toBe(3)
+  it("NOTIFICATIONS and SESSIONS have dedicated stable indices", () => {
+    expect(SETTINGS_TAB.NOTIFICATIONS).toBe(3)
+    expect(SETTINGS_TAB.SESSIONS).toBe(4)
+  })
+
+  it("INTEGRATIONS is index 5 (matches Settings.tsx tab=5 mount)", () => {
+    expect(SETTINGS_TAB.INTEGRATIONS).toBe(5)
   })
 
   it("constants are unique (no aliasing)", () => {

@@ -8,6 +8,7 @@ import { currentUserQueryKey, fetchCurrentUser } from "@/hooks/auth/useProfileSy
 import { resolveMediaUrl, addVersionParam } from "@/utils/media"
 import type { User } from "@/types/User"
 import type { SetSnackbar } from "@/pages/settings/types"
+import { useObjectUrlPreview } from "./useObjectUrlPreview"
 
 const DEFAULT_AVATAR = "https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y"
 const MAX_FILE_SIZE_MB = 12
@@ -23,13 +24,14 @@ export function useAvatarUpload(setSnackbar: SetSnackbar) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const [busy, setBusy] = useState(false)
   const [version, setVersion] = useState(Date.now())
+  const { previewUrl, beginPreview, clearPreview } = useObjectUrlPreview()
 
   const avatarUrl = user?.avatar_url ?? undefined
 
   const avatarSrc = useMemo(() => {
     const resolved = resolveMediaUrl(avatarUrl)
-    return resolved ? addVersionParam(resolved, version) : DEFAULT_AVATAR
-  }, [avatarUrl, version])
+    return previewUrl ?? (resolved ? addVersionParam(resolved, version) : DEFAULT_AVATAR)
+  }, [avatarUrl, previewUrl, version])
 
   const refreshUser = useCallback(async () => {
     const fresh = await queryClient.fetchQuery<User>({
@@ -62,6 +64,7 @@ export function useAvatarUpload(setSnackbar: SetSnackbar) {
         return
       }
 
+      beginPreview(file)
       setBusy(true)
       try {
         const formData = new FormData()
@@ -81,10 +84,11 @@ export function useAvatarUpload(setSnackbar: SetSnackbar) {
           severity: "error",
         })
       } finally {
+        clearPreview()
         setBusy(false)
       }
     },
-    [refreshUser, setSnackbar, t]
+    [beginPreview, clearPreview, refreshUser, setSnackbar, t]
   )
 
   const remove = useCallback(async () => {

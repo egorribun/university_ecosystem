@@ -16,12 +16,10 @@ export const Route = createFileRoute("/_auth/settings")({
   //
   // Wave 134 SW2 — added validateSearch (Valibot tab + spotify) so the
   // tab index becomes a deep-linkable URL param (?tab=2 lands on
-  // Security; ?tab=3 lands on Integrations). loaderDeps surfaces the
-  // tab value to the loader for conditional prefetch decisions:
-  //   tab=0 (General)      → /users/me only (preferences live there)
-  //   tab=1 (Account)      → /users/me only (profile data lives there)
-  //   tab=2 (Security)     → /users/me + sessions list (separate endpoint)
-  //   tab=3 (Integrations) → /users/me only (Spotify status in user payload)
+  // Security; ?tab=4 lands on Sessions). loaderDeps surfaces the
+  // tab value to the loader for conditional prefetch decisions. The
+  // dedicated Sessions tab is the only one that also prefetches the
+  // sessions endpoint; all other tabs need only /users/me.
   //
   // Browser path uses withCredentials. Node SSR uses W133 SW1
   // requestCookieStorage via the axios interceptor.
@@ -32,10 +30,10 @@ export const Route = createFileRoute("/_auth/settings")({
       .ensureQueryData(currentUserQueryOptions())
       .catch(() => null)
 
-    if (deps.tab === SETTINGS_TAB.SECURITY && userResult?.id) {
-      // Tab=2 (Security) — prefetch sessions list. Best-effort: any
+    if (deps.tab === SETTINGS_TAB.SESSIONS && userResult?.id) {
+      // Sessions tab — prefetch sessions list. Best-effort: any
       // failure (backend down, expired session) does not block the
-      // loader, the security tab will fall back to its client-side
+      // loader, the sessions tab will fall back to its client-side
       // useQuery which fires when tabActive becomes true. Mirrors
       // W128 SW3-followup Promise.allSettled pattern.
       await context.queryClient

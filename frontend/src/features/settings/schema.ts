@@ -5,9 +5,9 @@ import * as v from "valibot"
  *
  * Two URL params are recognised:
  *
- *   tab — active tab index (0 = General, 1 = Account/Profile, 2 = Security,
- *         3 = Integrations). Pre-W134 tab state was useState-only; SW2
- *         elevates it to a deep-linkable URL param so notification emails
+ *   tab — active tab index (0 = General, 1 = Profile, 2 = Security,
+ *         3 = Notifications, 4 = Sessions, 5 = Integrations). Pre-W134 tab
+ *         state was useState-only; SW2 elevates it to a deep-linkable URL param so notification emails
  *         (e.g. "MFA enrolment expiring → /settings?tab=2") can land on
  *         the correct tab. Absent or invalid values fall back to 0.
  *   spotify — Spotify OAuth callback status ("connected" | "error").
@@ -41,7 +41,7 @@ const tabField = v.fallback(
       // Reject NaN (parseInt returns NaN for non-numeric strings).
       v.check((n) => Number.isFinite(n), "tab must be finite"),
       v.minValue(0),
-      v.maxValue(3)
+      v.maxValue(5)
     )
   ),
   // Fallback for invalid input → General tab (index 0).
@@ -63,7 +63,9 @@ export const SETTINGS_TAB = {
   GENERAL: 0,
   ACCOUNT: 1,
   SECURITY: 2,
-  INTEGRATIONS: 3,
+  NOTIFICATIONS: 3,
+  SESSIONS: 4,
+  INTEGRATIONS: 5,
 } as const
 
 export type SettingsTabIndex = (typeof SETTINGS_TAB)[keyof typeof SETTINGS_TAB]

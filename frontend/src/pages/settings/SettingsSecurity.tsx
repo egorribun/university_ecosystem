@@ -1,16 +1,9 @@
-import React from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth } from "@/contexts/AuthContext"
 
-import { EmailSection, PasswordSection, SessionsSection } from "./sections"
+import { EmailSection, PasswordSection } from "./sections"
 
-import {
-  useEmailChange,
-  usePasswordChange,
-  useSessionManagement,
-  useTotpEnrollment,
-  useEmailMfa,
-} from "./hooks"
+import { useEmailChange, usePasswordChange, useTotpEnrollment, useEmailMfa } from "./hooks"
 
 import {
   SectionCard,
@@ -30,10 +23,11 @@ import type { SetSnackbar } from "./types"
 interface SettingsSecurityProps {
   setSnackbar: SetSnackbar
   openStepUpFor: (action: () => Promise<void>) => void
-  isActive: boolean
+  /** Kept optional for compatibility with embedded security surfaces. */
+  isActive?: boolean
 }
 
-export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: SettingsSecurityProps) {
+export function SettingsSecurity({ setSnackbar, openStepUpFor }: SettingsSecurityProps) {
   const { t } = useTranslation(["settings", "common"])
   const { user } = useAuth()
 
@@ -72,35 +66,6 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
     sessionsQueryKey: ["auth", "sessions", user?.id ?? "me"],
     openStepUpFor,
   })
-
-  // --- Sessions ---
-  const {
-    sessions,
-    sortedSessions,
-    sessionsFetching,
-    sessionsIsError,
-    sessionsError,
-    handleRevokeSession,
-    handleRevokeAllSessions,
-    revokeSessionBusy,
-    revokeAllSessionsBusy,
-    formatSessionTimestamp,
-  } = useSessionManagement({
-    setSnackbar,
-    tabActive: isActive,
-    openStepUpFor,
-  })
-
-  const sessionsErrorMessage = React.useMemo(() => {
-    if (!sessionsIsError) return null
-    const err = sessionsError as {
-      response?: { status?: number; data?: { detail?: string | string[]; message?: string } }
-    }
-    if (err?.response?.data?.detail) {
-      return String(err.response.data.detail)
-    }
-    return sessionsError instanceof Error ? sessionsError.message : t("settings:sessions.error")
-  }, [sessionsIsError, sessionsError, t])
 
   // --- TOTP ---
   // --- TOTP ---
@@ -326,19 +291,6 @@ export function SettingsSecurity({ setSnackbar, openStepUpFor, isActive }: Setti
           </AccordionSection>
         </div>
       </SectionCard>
-
-      <SessionsSection
-        setSnackbar={setSnackbar}
-        sessions={sessions}
-        sortedSessions={sortedSessions}
-        sessionsFetching={sessionsFetching}
-        sessionsErrorMessage={sessionsErrorMessage}
-        revokeAllPending={revokeAllSessionsBusy}
-        revokeSessionPending={revokeSessionBusy}
-        onRevokeSession={handleRevokeSession}
-        onRevokeAllSessions={handleRevokeAllSessions}
-        formatSessionTimestamp={formatSessionTimestamp}
-      />
     </div>
   )
 }

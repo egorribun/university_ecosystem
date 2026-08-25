@@ -12,6 +12,8 @@ import { breakpoints } from "@/theme/tokens"
 import { SettingsGeneral } from "./settings/SettingsGeneral"
 import { SettingsProfile } from "./settings/SettingsProfile"
 import { SettingsSecurity } from "./settings/SettingsSecurity"
+import { SettingsNotifications } from "./settings/SettingsNotifications"
+import { SettingsSessions } from "./settings/SettingsSessions"
 import { SettingsIntegrations } from "./settings/SettingsIntegrations"
 
 export default function Settings() {
@@ -183,6 +185,8 @@ export default function Settings() {
               <Tab label={t("settings:tabs.general")} />
               <Tab label={t("settings:tabs.account")} />
               <Tab label={t("settings:tabs.security")} />
+              <Tab label={t("settings:tabs.notifications")} />
+              <Tab label={t("settings:tabs.sessions")} />
               <Tab label={t("settings:tabs.integrations")} />
             </Tabs>
           </div>
@@ -201,13 +205,17 @@ export default function Settings() {
             {tab === 0 && <SettingsGeneral setSnackbar={setSnackbar} />}
             {tab === 1 && <SettingsProfile setSnackbar={setSnackbar} />}
             {tab === 2 && (
-              <SettingsSecurity
+              <SettingsSecurity setSnackbar={setSnackbar} openStepUpFor={openStepUpFor} />
+            )}
+            {tab === 3 && <SettingsNotifications setSnackbar={setSnackbar} />}
+            {tab === 4 && (
+              <SettingsSessions
                 setSnackbar={setSnackbar}
                 openStepUpFor={openStepUpFor}
-                isActive={tab === 2}
+                isActive={tab === 4}
               />
             )}
-            {tab === 3 && <SettingsIntegrations setSnackbar={setSnackbar} />}
+            {tab === 5 && <SettingsIntegrations setSnackbar={setSnackbar} />}
           </section>
 
           {/* StepUp Dialog */}

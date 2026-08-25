@@ -151,6 +151,17 @@
     "title": "No activity yet",
     "description": "Your activity will appear here as you attend classes and participate in events"
   },
+  "error": {
+    "title": "Activity is temporarily unavailable",
+    "description": "We couldn't load your activity. Check your connection and try again.",
+    "retry": "Try again"
+  },
+  "partial": {
+    "title": "Some activity data is unavailable",
+    "description": "Available sections are shown below. You can retry the missing sources.",
+    "retry": "Retry missing data",
+    "feedUnavailable": "This section couldn't be loaded."
+  },
   "dialog": {
     "close": "Close"
   },

@@ -77,6 +77,12 @@ describe("useActivityData", () => {
     expect(result.current.attendance?.percent).toBe(95)
     expect(result.current.grades?.average).toBe(4.8)
     expect(result.current.participation?.events).toBe(10)
+    expect(result.current.availability).toEqual({
+      attendance: true,
+      grades: true,
+      participation: true,
+    })
+    expect(result.current.isPartial).toBe(false)
   })
 
   it("derives chart data correctly", () => {
@@ -116,7 +122,7 @@ describe("useActivityData", () => {
     expect(result.current.heatmapData.get("2026-04-21")).toBe(2)
   })
 
-  it("returns fallback data when query succeeds with no data", () => {
+  it("preserves an honest empty state when the backend returns no data", () => {
     vi.mocked(useActivitySummaryQuery).mockReturnValue({
       data: null,
       isFetching: false,
@@ -125,9 +131,46 @@ describe("useActivityData", () => {
 
     const { result } = renderHook(() => useActivityData())
 
-    // Hook provides hardcoded defaults for UX when backend has no data yet
-    expect(result.current.attendance?.percent).toBe(92)
-    expect(result.current.grades?.average).toBe(4.4)
-    expect(result.current.participation?.events).toBe(6)
+    expect(result.current.attendance).toBeNull()
+    expect(result.current.grades).toBeNull()
+    expect(result.current.participation).toBeNull()
+    expect(result.current.hasAnyData).toBe(false)
+  })
+
+  it("exposes query failure and a stable retry action", () => {
+    const refetch = vi.fn()
+    vi.mocked(useActivitySummaryQuery).mockReturnValue({
+      data: undefined,
+      isFetching: false,
+      isSuccess: false,
+      isError: true,
+      error: new Error("offline"),
+      refetch,
+    } as unknown as ReturnType<typeof useActivitySummaryQuery>)
+
+    const { result } = renderHook(() => useActivityData())
+    expect(result.current.isError).toBe(true)
+    expect(result.current.error).toEqual(new Error("offline"))
+    expect(result.current.refetch).toBe(refetch)
+  })
+
+  it("exposes feed-level availability for a partial envelope", () => {
+    vi.mocked(useActivitySummaryQuery).mockReturnValue({
+      data: { ...mockData, attendance: null },
+      isFetching: false,
+      isSuccess: true,
+      isError: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useActivitySummaryQuery>)
+
+    const { result } = renderHook(() => useActivityData())
+    expect(result.current.attendance).toBeNull()
+    expect(result.current.availability).toEqual({
+      attendance: false,
+      grades: true,
+      participation: true,
+    })
+    expect(result.current.isPartial).toBe(true)
   })
 })

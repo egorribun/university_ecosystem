@@ -5,8 +5,10 @@
   "tabs": {
     "ariaLabel": "Settings sections",
     "general": "General",
-    "account": "Account",
+    "account": "Profile",
     "security": "Security",
+    "notifications": "Notifications",
+    "sessions": "Sessions",
     "integrations": "Integrations"
   },
   "appearance": {

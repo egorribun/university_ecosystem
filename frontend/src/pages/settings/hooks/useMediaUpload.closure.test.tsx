@@ -61,6 +61,8 @@ beforeEach(() => {
   mocks.fetchCurrentUser.mockResolvedValue(freshUser)
   mocks.api.post.mockResolvedValue({ data: {} })
   mocks.api.delete.mockResolvedValue({ data: {} })
+  vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:local-preview")
+  vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
 })
 
 describe.each([
@@ -155,6 +157,35 @@ describe.each([
       severity: "success",
     })
     expect(result.current.busy).toBe(false)
+  })
+
+  it("shows a local preview immediately and revokes it after completion and unmount", async () => {
+    let resolveUpload: (() => void) | undefined
+    mocks.api.post.mockImplementationOnce(
+      () =>
+        new Promise<{ data: object }>((resolve) => (resolveUpload = () => resolve({ data: {} })))
+    )
+    const { result, unmount } = renderHook(() => useUpload(vi.fn()))
+
+    let uploadPromise: Promise<void> | undefined
+    act(() => {
+      uploadPromise = result.current.upload(imageFile())
+    })
+    const src = "avatarSrc" in result.current ? result.current.avatarSrc : result.current.coverSrc
+    expect(src).toBe("blob:local-preview")
+
+    await act(async () => {
+      resolveUpload?.()
+      await uploadPromise
+    })
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:local-preview")
+
+    mocks.api.post.mockImplementationOnce(() => new Promise(() => undefined))
+    act(() => {
+      void result.current.upload(imageFile("second.png"))
+    })
+    unmount()
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(2)
   })
 
   it("reports upload failures and always clears busy state", async () => {
