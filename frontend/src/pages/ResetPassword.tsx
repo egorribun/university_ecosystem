@@ -175,7 +175,7 @@ export default function ResetPassword() {
       <AuthBackdrop prefersReducedMotion={prefersReducedMotion} />
 
       <m.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-(--layout-max-modal) z-modal"
       >
@@ -185,7 +185,7 @@ export default function ResetPassword() {
               {isSuccess ? (
                 <m.div
                   key="success"
-                  initial={{ opacity: 0, scale: 0.95 }}
+                  initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   className="space-y-6 pt-4 text-center"
                 >
@@ -217,7 +217,7 @@ export default function ResetPassword() {
               ) : (
                 <m.div
                   key="form"
-                  initial={{ opacity: 0 }}
+                  initial={prefersReducedMotion ? false : { opacity: 0 }}
                   animate={{ opacity: 1 }}
                   className="space-y-6"
                 >
@@ -230,7 +230,7 @@ export default function ResetPassword() {
                     </p>
                   </div>
 
-                  <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-6">
+                  <form onSubmit={handleSubmit(onSubmit)} autoComplete="on" className="space-y-6">
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <TextField
@@ -245,6 +245,7 @@ export default function ResetPassword() {
                           onKeyDown={(event: React.KeyboardEvent<HTMLInputElement>) =>
                             setCapsPass(event.getModifierState("CapsLock"))
                           }
+                          autoComplete="new-password"
                           disabled={isSubmitting}
                           className="rounded-lg"
                           error={!!errors.password}
@@ -254,10 +255,19 @@ export default function ResetPassword() {
                               id="reset-password-toggle"
                               type="button"
                               onClick={() => setShowPass(!showPass)}
-                              className="p-1 hover:bg-black/(--opacity-subtle) dark:hover:bg-white/(--opacity-subtle) rounded-md transition-colors"
-                              tabIndex={-1}
+                              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md transition-colors hover:bg-black/(--opacity-subtle) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:hover:bg-white/(--opacity-subtle)"
+                              aria-label={t(
+                                showPass
+                                  ? "auth:actions.hideCredential"
+                                  : "auth:actions.showPassword"
+                              )}
+                              aria-pressed={showPass}
                             >
-                              {showPass ? <VisibilityOff size={16} /> : <Visibility size={16} />}
+                              {showPass ? (
+                                <VisibilityOff size={16} aria-hidden="true" />
+                              ) : (
+                                <Visibility size={16} aria-hidden="true" />
+                              )}
                             </button>
                           }
                         />
@@ -325,10 +335,19 @@ export default function ResetPassword() {
                               id="reset-confirm-toggle"
                               type="button"
                               onClick={() => setShowConfirm(!showConfirm)}
-                              className="p-1 hover:bg-black/(--opacity-subtle) dark:hover:bg-white/(--opacity-subtle) rounded-md transition-colors"
-                              tabIndex={-1}
+                              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md transition-colors hover:bg-black/(--opacity-subtle) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:hover:bg-white/(--opacity-subtle)"
+                              aria-label={t(
+                                showConfirm
+                                  ? "auth:actions.hideCredential"
+                                  : "auth:actions.showPassword"
+                              )}
+                              aria-pressed={showConfirm}
                             >
-                              {showConfirm ? <VisibilityOff size={16} /> : <Visibility size={16} />}
+                              {showConfirm ? (
+                                <VisibilityOff size={16} aria-hidden="true" />
+                              ) : (
+                                <Visibility size={16} aria-hidden="true" />
+                              )}
                             </button>
                           }
                         />
@@ -351,7 +370,7 @@ export default function ResetPassword() {
                     </div>
 
                     {errors.root?.message && (
-                      <p className="text-sm font-bold text-error-text text-center animate-bounce">
+                      <p role="alert" className="text-center text-sm font-bold text-error-text">
                         {errors.root.message}
                       </p>
                     )}

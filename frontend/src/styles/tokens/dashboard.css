@@ -9,33 +9,34 @@
     --dash-conic-2: var(--color-indigo-400);
     --dash-conic-3: var(--color-purple-400);
     --dash-conic-accent: var(--color-pink-400);
+    --flare-primary: radial-gradient(circle, var(--primary-subtle-bg), transparent 72%);
 
     /* Dashboard specialized flares */
     --flare-highlight: radial-gradient(circle, var(--dash-hero-highlight), transparent);
     --grad-dash-conic: conic-gradient(
       from 120deg at 50% 50%,
-      var(--dash-hero-conic-primary),
-      var(--dash-hero-conic-secondary),
-      var(--dash-hero-conic-tertiary),
-      var(--dash-hero-conic-accent)
+      var(--dash-conic-1),
+      var(--dash-conic-2),
+      var(--dash-conic-3),
+      var(--dash-conic-accent)
     );
     --grad-dash-conic-90: conic-gradient(
       from 90deg at 50% 50%,
-      var(--dash-hero-conic-primary),
-      var(--dash-hero-conic-secondary),
-      var(--dash-hero-conic-tertiary),
-      var(--dash-hero-conic-accent)
+      var(--dash-conic-1),
+      var(--dash-conic-2),
+      var(--dash-conic-3),
+      var(--dash-conic-accent)
     );
     --grad-dash-conic-130: conic-gradient(
       from 130deg at 50% 50%,
-      var(--dash-hero-conic-primary),
-      var(--dash-hero-conic-secondary),
+      var(--dash-conic-1),
+      var(--dash-conic-2),
       transparent 85%
     );
     --grad-dash-conic-simple: conic-gradient(
       from 140deg at 50% 50%,
-      var(--dash-hero-conic-primary),
-      var(--dash-hero-conic-secondary),
+      var(--dash-conic-1),
+      var(--dash-conic-2),
       transparent 85%
     );
     --grad-schedule-flare: radial-gradient(

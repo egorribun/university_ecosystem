@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config"
 import react from "@vitejs/plugin-react"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import coverageSourcePolicy from "../quality/coverage-source-policy.json"
+import coverageSourcePolicy from "../quality/coverage-source-policy.json" with { type: "json" }
 
 // Vite's bundled config loader preserves import.meta.dirname, while the
 // module-runner path remains compatible with older Node versions via the URL

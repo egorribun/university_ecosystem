@@ -41,6 +41,34 @@ afterEach(async () => {
 })
 
 describe("RxDB database lifecycle", () => {
+  it("does not register the noisy development plugin in the test runtime", async () => {
+    vi.stubEnv("DEV", true)
+    vi.stubEnv("MODE", "test")
+    vi.resetModules()
+    addRxPlugin.mockClear()
+
+    try {
+      await import("../index")
+      expect(addRxPlugin).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it("registers the development plugin for an actual development build", async () => {
+    vi.stubEnv("DEV", true)
+    vi.stubEnv("MODE", "development")
+    vi.resetModules()
+    addRxPlugin.mockClear()
+
+    try {
+      await import("../index")
+      expect(addRxPlugin).toHaveBeenCalledWith("dev-mode-plugin")
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it("does not register the development plugin in production", async () => {
     vi.stubEnv("DEV", false)
     vi.resetModules()

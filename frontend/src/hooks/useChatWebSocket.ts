@@ -19,7 +19,7 @@ import {
 import { logError } from "@/app/logger"
 import { parseWsMessage } from "@/api/schemas/wsMessage"
 import api from "@/api/client"
-import { getDatabase } from "@/db"
+import { getDatabaseLazily } from "@/db/lazy"
 
 // Reconnection configuration
 const RECONNECT_BASE_DELAY_MS = 1000 // 1 second
@@ -437,7 +437,7 @@ export function useChatWebSocket({
                 if (validated.message.sender_id === currentUserIdRef.current) break
 
                 // Persist message to RxDB
-                getDatabase()
+                getDatabaseLazily()
                   .then((db) => {
                     const msg = validated.message as Message
                     db.messages

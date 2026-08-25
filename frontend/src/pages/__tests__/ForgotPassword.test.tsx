@@ -27,6 +27,30 @@ const toPlainText = (markup: string) => {
 }
 
 describe("ForgotPassword page", () => {
+  it("does not hide or translate the form entrance when reduced motion is requested", async () => {
+    const matchMedia = vi.spyOn(window, "matchMedia").mockImplementation(
+      (query) =>
+        ({
+          matches: query === "(prefers-reduced-motion: reduce)",
+          media: query,
+          onchange: null,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }) as unknown as MediaQueryList
+    )
+
+    try {
+      const { container } = await renderForgot()
+      const entrance = container.querySelector(".z-modal")
+      expect(entrance?.getAttribute("style") ?? "").not.toMatch(/opacity:\s*0|translate/i)
+    } finally {
+      matchMedia.mockRestore()
+    }
+  })
+
   it("shows validation message for malformed email", async () => {
     const user = userEvent.setup()
     await renderForgot()
@@ -35,7 +59,11 @@ describe("ForgotPassword page", () => {
     await user.type(emailInput, "invalid")
     await user.tab()
 
-    expect(screen.getByText(tAuth("messages.invalidEmail"))).toBeInTheDocument()
+    const error = screen.getByText(tAuth("messages.invalidEmail"))
+    expect(error).toBeInTheDocument()
+    expect(error).toHaveAttribute("role", "alert")
+    expect(emailInput).toHaveAttribute("aria-describedby", error.id)
+    expect(emailInput.closest("form")).toHaveAttribute("autocomplete", "on")
     expect(screen.getByRole("button", { name: tAuth("forgot.sendLink") })).toBeDisabled()
   })
 

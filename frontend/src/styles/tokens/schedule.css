@@ -1347,12 +1347,12 @@
 
 /* Urgency mode — last 5 minutes: red glow + colon bounce (FIX-68-17) */
 .sched-flip-countdown[data-urgent] .sched-flip-digit {
-  box-shadow: 0 0 12px color-mix(in srgb, var(--color-error) 40%, transparent);
-  border-color: color-mix(in srgb, var(--color-error) 30%, var(--glass-border));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--error-text) 40%, transparent);
+  border-color: color-mix(in srgb, var(--error-text) 30%, var(--glass-border));
 }
 
 .sched-flip-countdown[data-urgent] .sched-flip-colon {
-  color: var(--color-error);
+  color: var(--error-text);
   animation: sched-colon-bounce 0.6s ease-in-out infinite;
 }
 

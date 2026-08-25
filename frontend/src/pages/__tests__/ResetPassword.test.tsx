@@ -51,6 +51,30 @@ describe("ResetPassword page", () => {
     passwordAnalysis.suggestions = ["Add another word"]
   })
 
+  it("does not hide or translate the form entrance when reduced motion is requested", async () => {
+    const matchMedia = vi.spyOn(window, "matchMedia").mockImplementation(
+      (query) =>
+        ({
+          matches: query === "(prefers-reduced-motion: reduce)",
+          media: query,
+          onchange: null,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }) as unknown as MediaQueryList
+    )
+
+    try {
+      const { container } = await renderWithToken()
+      const entrance = container.querySelector(".z-modal")
+      expect(entrance?.getAttribute("style") ?? "").not.toMatch(/opacity:\s*0|translate/i)
+    } finally {
+      matchMedia.mockRestore()
+    }
+  })
+
   it("propagates API errors to the user", async () => {
     server.use(
       http.post("*/password/reset", () =>
@@ -137,11 +161,22 @@ describe("ResetPassword page", () => {
     const passwordToggle = document.getElementById("reset-password-toggle")!
     const confirmToggle = document.getElementById("reset-confirm-toggle")!
 
+    expect(password.closest("form")).toHaveAttribute("autocomplete", "on")
+    expect(password).toHaveAttribute("autocomplete", "new-password")
+    expect(passwordToggle).toHaveClass("min-h-11", "min-w-11")
+    expect(confirmToggle).toHaveClass("min-h-11", "min-w-11")
+    expect(passwordToggle).not.toHaveAttribute("tabindex", "-1")
+    expect(confirmToggle).not.toHaveAttribute("tabindex", "-1")
+    expect(passwordToggle).toHaveAccessibleName(tAuth("actions.showPassword"))
+    expect(confirmToggle).toHaveAccessibleName(tAuth("actions.showPassword"))
+
     expect(password).toHaveAttribute("type", "password")
     await user.click(passwordToggle)
     expect(password).toHaveAttribute("type", "text")
+    expect(passwordToggle).toHaveAccessibleName(tAuth("actions.hideCredential"))
     await user.click(confirmToggle)
     expect(confirmPassword).toHaveAttribute("type", "text")
+    expect(confirmToggle).toHaveAccessibleName(tAuth("actions.hideCredential"))
 
     const modifierState = vi
       .spyOn(window.KeyboardEvent.prototype, "getModifierState")

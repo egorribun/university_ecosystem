@@ -94,7 +94,7 @@ describe("NotificationsSection — push and quiet-hours branches", () => {
 
   it("toggles notifications, handles busy guards, and updates DND controls", async () => {
     const { props, rerender, openNotificationAccordion } = await renderSection()
-    const switches = screen.getAllByRole("checkbox")
+    const switches = screen.getAllByRole("switch")
     expect(switches).toHaveLength(2)
 
     fireEvent.click(switches[0]!)
@@ -103,17 +103,17 @@ describe("NotificationsSection — push and quiet-hours branches", () => {
     pushState.value = { ...pushState.value, notificationsEnabled: true, pushBusy: true }
     rerender(<NotificationsSection {...props} />)
     openNotificationAccordion()
-    expect(screen.getAllByRole("checkbox")[0]).toBeDisabled()
-    fireEvent.click(screen.getAllByRole("checkbox")[0]!)
+    expect(screen.getAllByRole("switch")[0]).toBeDisabled()
+    fireEvent.click(screen.getAllByRole("switch")[0]!)
     expect(pushState.value.disableNotifications).not.toHaveBeenCalled()
 
     pushState.value = { ...pushState.value, pushBusy: false }
     rerender(<NotificationsSection {...props} />)
     openNotificationAccordion()
-    fireEvent.click(screen.getAllByRole("checkbox")[0]!)
+    fireEvent.click(screen.getAllByRole("switch")[0]!)
     expect(pushState.value.disableNotifications).toHaveBeenCalledOnce()
 
-    fireEvent.click(screen.getAllByRole("checkbox")[1]!)
+    fireEvent.click(screen.getAllByRole("switch")[1]!)
     expect(props.onDndToggle).toHaveBeenCalledWith(expect.anything(), false)
 
     const timeInputs = screen.getAllByDisplayValue(/:/)
@@ -129,7 +129,7 @@ describe("NotificationsSection — push and quiet-hours branches", () => {
 
     rerender(<NotificationsSection {...props} dndEnabled={false} dndSaving />)
     openNotificationAccordion()
-    expect(screen.getAllByRole("checkbox")[1]).toBeDisabled()
+    expect(screen.getAllByRole("switch")[1]).toBeDisabled()
     expect(screen.getAllByDisplayValue(/:/)[0]).toBeDisabled()
   })
 })

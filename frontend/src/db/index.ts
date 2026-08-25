@@ -7,7 +7,7 @@ import { scheduleSchema, type ScheduleDoc } from "./schemas/schedule"
 import { notesSchema, type NoteDoc } from "./schemas/notes"
 import { messagesSchema, type MessageDoc } from "./schemas/messages"
 
-if (import.meta.env.DEV) {
+if (import.meta.env.DEV && import.meta.env.MODE !== "test") {
   addRxPlugin(RxDBDevModePlugin)
 }
 

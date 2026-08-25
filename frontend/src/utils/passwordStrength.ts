@@ -1,18 +1,18 @@
 import type { ZxcvbnFactory, ZxcvbnResult } from "@zxcvbn-ts/core"
 
 type PasswordAnalyzer = Pick<ZxcvbnFactory, "check">
-export type PasswordStrengthLocale = "en" | "ru"
-type PasswordAnalyzerLoader = (locale: PasswordStrengthLocale) => Promise<PasswordAnalyzer>
+export type StrengthLocale = "en" | "ru"
+type PasswordAnalyzerLoader = (locale: StrengthLocale) => Promise<PasswordAnalyzer>
 
-export function normalizePasswordStrengthLocale(language?: string): PasswordStrengthLocale {
+export function normalizePasswordStrengthLocale(language?: string): StrengthLocale {
   return language?.toLowerCase().startsWith("en") ? "en" : "ru"
 }
 
 export function createPasswordStrengthAnalyzer(loadAnalyzer: PasswordAnalyzerLoader) {
-  const analyzers = new Map<PasswordStrengthLocale, PasswordAnalyzer>()
-  const analyzerPromises = new Map<PasswordStrengthLocale, Promise<PasswordAnalyzer>>()
+  const analyzers = new Map<StrengthLocale, PasswordAnalyzer>()
+  const analyzerPromises = new Map<StrengthLocale, Promise<PasswordAnalyzer>>()
 
-  async function loadPasswordAnalyzer(locale: PasswordStrengthLocale): Promise<PasswordAnalyzer> {
+  async function loadPasswordAnalyzer(locale: StrengthLocale): Promise<PasswordAnalyzer> {
     const analyzer = analyzers.get(locale)
     if (analyzer) return analyzer
 

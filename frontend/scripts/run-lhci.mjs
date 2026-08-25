@@ -175,7 +175,7 @@ async function createConfig() {
       //      screenshots during the page load"). Runs `25988551157` +
       //      `25989078530` + `25989579477`. CLS/LCP/TBT measured cleanly.
       //
-      //   2. W161 SW1 Approach A (drop `--disable-gpu`): CI run
+      //   2. W161 SW1 Approach A (restore GPU-backed capture): CI run
       //      `25997872114` Perf=null at run 1; workflow cancelled at 25m.
       //
       //   3. W161 SW1 Approach B (swap `--headless=new` → `--headless=chrome`
@@ -242,7 +242,7 @@ async function createConfig() {
       // Monitoring snapshot (2026-05-21): the upstream issue remained OPEN
       // without maintainer activity. The GitHub issue state is the source of
       // truth for future reassessment. Until upstream behavior changes, Linux
-      // CI keeps `categories:performance` at the advisory warn@0.40 level.
+      // The current MVP contract supersedes this historical advisory floor.
       //
       // W180 SW1 — monitoring tick at W180 open (2026-05-21). WebFetch re-
       // verified at session start: state OPEN, still NO triage, NO maintainer
@@ -307,10 +307,10 @@ async function createConfig() {
       // canonical Perf measurement per W162 SW1 acceptance. See
       // memory/wave192_lighthouse_upstream_check.md for full snapshot.
       chromeFlags:
-        "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --disable-gpu --headless=new",
+        "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --headless=new",
       throttlingMethod: "devtools",
       emulatedFormFactor: "mobile",
-      budgetPath: path.resolve(frontendRoot, "../../budget.json"),
+      budgetPath: path.resolve(frontendRoot, "../budget.json"),
       maxWaitForFcp: 45000,
       maxWaitForLoad: 60000,
     },
@@ -407,8 +407,7 @@ async function createConfig() {
       //     by 50%. SAFE — confirmed all 9 URLs measure ≤ 0.044 across 81
       //     LHRs (worst single-run value also 0.044).
       //
-      // (2) Perf HOLD warn@0.40 — STRUCTURAL Linux CI blocker. Chrome flags
-      //     `--headless=new --disable-gpu` (this file lines 130 inline) fail
+      // (2) Historical Linux CI measurements used GPU-disabled headless mode and failed
       //     to collect screenshots → `categories.performance.score = null`
       //     for ALL 9 URLs × 81 LHRs. Lighthouse audits `speed-index`,
       //     `screenshot-thumbnails`, `metrics` all error with "Chrome didn't
@@ -417,35 +416,27 @@ async function createConfig() {
       //     all of them including speed-index. Cannot ratchet Perf this wave.
       //     Routine-e5 calibration drift PARTIALLY closed (acknowledged +
       //     structurally documented in W160 SW2; full closure pending W161+
-      //     Lighthouse chrome flags investigation — likely drop `--disable-gpu`
+      //     Lighthouse chrome flags investigation — restore GPU-backed capture
       //     or switch `--headless=chrome` to restore screenshot collection).
       //
-      // (3) LCP HOLD warn@2500ms — worst cross-session median 2895ms on /
-      //     (above 2500ms ceiling). Mobile devtools throttling on Linux CI
-      //     is harsher than Windows wrapper baselines (W159 SW2 measured
-      //     LCP 2000ms on /; CI Linux measures 2895ms — same dist, different
-      //     throttling environment). Realistic mobile measurement, but
-      //     ratchet warn→error would block merges. Hold until perf work
-      //     lands (W161+ or later).
+      // (3) LCP is now blocking at 2500ms. The older measurements above are
+      //     retained as provenance for the ratchet and are not the current gate.
       //
-      // (4) TBT HOLD warn@200ms — worst cross-session median 549ms on /
-      //     (above 200ms ceiling). Same mobile throttling reality as LCP.
-      //     Hold.
+      // (4) TBT is now the blocking lab responsiveness proxy at 200ms.
       assert: {
         assertions: {
-          // W125-pending — relaxed from `error@0.40` to `warn@0.40` after
-          // routine-e5 found dev/CI calibration drift. W160 SW2 confirmed
-          // CI Linux Perf score unmeasurable under current chrome flags;
-          // hold at warn@0.40 pending W161+ Chrome flags fix.
-          "categories:performance": ["warn", { minScore: 0.4 }],
+          // INP is a field metric, not a Lighthouse navigation audit. Production
+          // p75 aggregation is a separate release-closure requirement; TBT is the
+          // blocking lab responsiveness proxy in this configuration.
+          "categories:performance": ["error", { minScore: 0.95 }],
           "categories:accessibility": ["error", { minScore: 0.95 }],
           "categories:best-practices": ["error", { minScore: 0.95 }],
           "categories:seo": ["error", { minScore: 0.9 }],
           "largest-contentful-paint": [
-            "warn",
+            "error",
             { maxNumericValue: 2500, aggregationMethod: "median" },
           ],
-          "total-blocking-time": ["warn", { maxNumericValue: 200, aggregationMethod: "median" }],
+          "total-blocking-time": ["error", { maxNumericValue: 200, aggregationMethod: "median" }],
           "cumulative-layout-shift": [
             "error",
             // W160 SW2 — ratcheted error@0.10 → error@0.05 after 3-session

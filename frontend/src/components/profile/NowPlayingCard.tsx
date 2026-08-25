@@ -187,7 +187,7 @@ export const NowPlayingCard = memo(function NowPlayingCard({ data }: { data: Now
                   : {
                       transform: "scale(1.012)",
                       transition:
-                        "transform var(--duration-lazy) cubic-bezier(0.22, 0.61, 0.36, 1)",
+                        "transform var(--motion-duration-lazy) cubic-bezier(0.22, 0.61, 0.36, 1)",
                     }
               }
               onMouseEnter={(e) => {

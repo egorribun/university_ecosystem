@@ -6,6 +6,7 @@ import { FadeIn } from "@/components/ui/motion/FadeIn"
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { Checkbox } from "@/components/ui/Checkbox"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import type { useLoginForm } from "@/hooks/auth/useLoginFlow"
 
 type LoginCredentialFormProps = {
@@ -18,6 +19,7 @@ import { Controller } from "react-hook-form"
 
 export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
   const { t } = useTranslation(["auth"])
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const {
     form: {
@@ -40,9 +42,10 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
 
   return (
     <FadeIn
+      {...(prefersReducedMotion ? { initial: false as const } : {})}
       direction="up"
-      distance={200}
-      duration={0.5}
+      distance={8}
+      duration={0.2}
       delay={0.2}
       className="auth-card-glass flex w-full min-w-0 flex-col justify-center bg-surface/(--opacity-hover) p-6 sm:p-10"
     >
@@ -74,8 +77,13 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
             inputMode="email"
             required
             error={!!errors.email}
+            aria-describedby={errors.email ? "login-email-error" : undefined}
           />
-          <p className="text-xs text-text-secondary/(--opacity-hover)">
+          <p
+            id="login-email-error"
+            role={errors.email ? "alert" : undefined}
+            className="text-xs text-text-secondary/(--opacity-hover)"
+          >
             {errors.email ? t(errors.email.message || "auth:messages.invalidFormat") : " "}
           </p>
           {emailSuggestion ? (
@@ -97,20 +105,24 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
             </label>
             <button
               type="button"
-              onMouseDown={() => setShowPassword(true)}
-              onMouseUp={() => setShowPassword(false)}
-              onMouseLeave={() => setShowPassword(false)}
               onClick={() => setShowPassword((v) => !v)}
-              className="inline-flex items-center gap-2 rounded-full border border-transparent px-3 py-1 text-xs font-bold uppercase tracking-widest text-brand transition hover:bg-brand/5 focus:outline-none focus:ring-2 focus:ring-brand/20"
-              title={t("auth:actions.holdReveal") ?? undefined}
-              aria-label={t("auth:actions.showPassword") ?? undefined}
+              className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full border border-transparent px-3 py-1 text-xs font-bold uppercase tracking-widest text-brand transition hover:bg-brand/5 focus:outline-none focus:ring-2 focus:ring-brand/20"
+              title={
+                t(showPassword ? "auth:actions.hideCredential" : "auth:actions.showPassword") ??
+                undefined
+              }
+              aria-label={
+                t(showPassword ? "auth:actions.hideCredential" : "auth:actions.showPassword") ??
+                undefined
+              }
+              aria-pressed={showPassword}
             >
               {showPassword ? (
                 <EyeOff className="h-4 w-4" aria-hidden="true" />
               ) : (
                 <Eye className="h-4 w-4" aria-hidden="true" />
               )}
-              {t("auth:actions.showPassword")}
+              {t(showPassword ? "auth:actions.hideCredential" : "auth:actions.showPassword")}
             </button>
           </div>
           <div className="relative">
@@ -126,6 +138,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
               disabled={submitting}
               required
               error={!!errors.password}
+              aria-describedby={errors.password ? "login-password-error" : undefined}
             />
             {caps ? (
               <span className="absolute inset-y-0 right-4 flex items-center text-xs font-semibold text-warning-text">
@@ -134,13 +147,14 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
             ) : null}
           </div>
           {errors.password && (
-            <p className="text-xs text-error-text">
+            <p id="login-password-error" role="alert" className="text-xs text-error-text">
               {t(errors.password.message || "auth:messages.passwordRequired")}
             </p>
           )}
         </div>
 
         <div
+          role={submitError ? "alert" : undefined}
           className="min-h-6 text-center text-sm font-semibold text-error-text"
           aria-live="assertive"
         >

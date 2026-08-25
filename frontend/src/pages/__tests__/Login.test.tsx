@@ -138,7 +138,7 @@ describe("Login page", () => {
       "secret123"
     )
     await user.click(screen.getByLabelText(tAuth("actions.showPassword")))
-    await user.click(screen.getByLabelText(tAuth("actions.showPassword")))
+    await user.click(screen.getByLabelText(tAuth("actions.hideCredential")))
     await user.click(screen.getByRole("button", { name: tAuth("actions.signIn") }))
 
     await waitFor(() => expect(screen.getByText("Welcome!")).toBeInTheDocument())

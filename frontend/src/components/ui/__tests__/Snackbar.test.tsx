@@ -10,7 +10,10 @@ describe("Snackbar", () => {
 
   it("renders the message when open", () => {
     render(<Snackbar open message="Saved!" onClose={() => {}} />)
-    expect(screen.getByText("Saved!")).toBeInTheDocument()
+    const status = screen.getByRole("status")
+    expect(status).toHaveTextContent("Saved!")
+    expect(status).toHaveAttribute("aria-live", "polite")
+    expect(status).toHaveAttribute("aria-atomic", "true")
   })
 
   it("renders nothing when closed", () => {

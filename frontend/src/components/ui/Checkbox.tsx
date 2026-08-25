@@ -12,23 +12,31 @@ interface CheckboxProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>
 
 const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
   ({ className, checked, onCheckedChange, disabled, ...props }, ref) => {
+    const inputRef = React.useRef<HTMLInputElement>(null)
     const isIndeterminate = checked === "indeterminate"
     const isChecked = checked === true || isIndeterminate
+
+    React.useImperativeHandle(ref, () => inputRef.current as HTMLInputElement)
+
+    React.useEffect(() => {
+      if (inputRef.current) inputRef.current.indeterminate = isIndeterminate
+    }, [isIndeterminate])
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       onCheckedChange?.(e.target.checked)
     }
 
     return (
-      <label className="relative inline-flex cursor-pointer items-center">
+      <label className="relative inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center">
         <input
+          {...props}
+          ref={inputRef}
           type="checkbox"
-          ref={ref}
           className="peer sr-only"
           checked={checked === true}
+          aria-checked={isIndeterminate ? "mixed" : undefined}
           disabled={disabled}
           onChange={handleChange}
-          {...props}
         />
         <div
           className={cn(

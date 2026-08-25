@@ -387,14 +387,16 @@ describe("NewsDetail", () => {
         animationFrames.push(callback)
         return animationFrames.length
       })
+    const cancelAnimationFrame = vi.spyOn(window, "cancelAnimationFrame")
 
     const view = render(<NewsDetail />)
     window.dispatchEvent(new Event("scroll"))
     view.unmount()
-    animationFrames[0]?.(0)
 
     expect(requestAnimationFrame).toHaveBeenCalledOnce()
+    expect(cancelAnimationFrame).toHaveBeenCalledWith(1)
     requestAnimationFrame.mockRestore()
+    cancelAnimationFrame.mockRestore()
   })
 
   it("dismisses transient notifications after the toast timeout", () => {

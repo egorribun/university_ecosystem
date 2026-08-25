@@ -12,6 +12,7 @@ export const spacingScale = {
   "05": "var(--space-05)",
   "1": "var(--space-1)",
   "10": "var(--space-10)",
+  "11": "var(--space-11)",
   "12": "var(--space-12)",
   "125": "var(--space-125)",
   "15": "var(--space-15)",
@@ -75,6 +76,7 @@ export const zIndexTokens = {
   content: "var(--z-content)",
   decor: "var(--z-decor)",
   deep: "var(--z-deep)",
+  dialog: "var(--z-dialog)",
   dropdown: "var(--z-dropdown)",
   floating: "var(--z-floating)",
   hide: "var(--z-hide)",
@@ -134,6 +136,7 @@ export const opacity = {
   faint: "var(--opacity-faint)",
   heavy: "var(--opacity-heavy)",
   hover: "var(--opacity-hover)",
+  low: "var(--opacity-low)",
   medium: "var(--opacity-medium)",
   micro: "var(--opacity-micro)",
   soft: "var(--opacity-soft)",
@@ -176,7 +179,9 @@ export const motion = {
   staggerDelay: 0.08,
 } as const
 
-export const icon = {} as const
+export const icon = {
+  sm: "var(--size-icon-sm)",
+} as const
 
 export const letterSpacing = {
   body: "var(--tracking-body)",

@@ -27,6 +27,8 @@ export type DialogProps = {
   bodyClassName?: string
   footerClassName?: string
   closeLabel?: string
+  /** Accessible name used when the dialog intentionally has no visible title. */
+  ariaLabel?: string
   initialFocus?: UseFocusTrapOptions["initialFocus"]
 }
 
@@ -43,6 +45,7 @@ export function Dialog({
   bodyClassName,
   footerClassName,
   closeLabel = "Close",
+  ariaLabel,
   initialFocus,
 }: DialogProps) {
   const [portalNode, setPortalNode] = useState<HTMLElement | null>(null)
@@ -111,6 +114,7 @@ export function Dialog({
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}
+        aria-label={labelledBy ? undefined : (ariaLabel ?? closeLabel)}
         aria-describedby={describedBy}
         className={cn(
           "relative z-surface w-full max-w-(--dialog-max-w)",
@@ -139,7 +143,7 @@ export function Dialog({
             ref={closeButtonRef}
             type="button"
             onClick={onClose}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/(--opacity-subtle) bg-(--glass-bg)/(--opacity-hover) text-(--primary-main) shadow-surface transition hover:bg-(--glass-bg) focus-ring-premium"
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/(--opacity-subtle) bg-(--glass-bg)/(--opacity-hover) text-(--primary-main) shadow-surface transition hover:bg-(--glass-bg) focus-ring-premium"
           >
             <span className="sr-only">{closeLabel}</span>
             <X className="h-4 w-4 text-(--primary-main)" aria-hidden />

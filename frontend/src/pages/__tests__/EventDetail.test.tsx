@@ -490,6 +490,8 @@ describe("EventDetail", () => {
       frameCallback = callback
       return 1
     })
+    const cancelAnimationFrame = vi.fn()
+    vi.stubGlobal("cancelAnimationFrame", cancelAnimationFrame)
     mocks.id = ""
 
     const { unmount } = render(<EventDetail />)
@@ -501,6 +503,7 @@ describe("EventDetail", () => {
 
     fireEvent.scroll(window)
     unmount()
+    expect(cancelAnimationFrame).toHaveBeenCalledWith(1)
     expect(() => frameCallback?.(0)).not.toThrow()
   })
 })

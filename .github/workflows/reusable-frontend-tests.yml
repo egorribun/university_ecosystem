@@ -451,8 +451,7 @@ jobs:
           path: ${{ inputs.working-directory }}/dist
           if-no-files-found: error
 
-  # MOD-23-06 (audit 2026-03-25 Wave 23): Bundle size analysis.
-  # Alerts on >500 KB main chunk growth and generates a JSON report for trend tracking.
+  # Fail-closed bundle budgets and a machine-readable report for trend tracking.
   bundle-analysis:
     name: Bundle Analysis
     needs: build
@@ -466,40 +465,22 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
       - name: Download production bundle
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: frontend-dist
           path: ${{ inputs.working-directory }}/dist
 
+      - name: Test bundle analyzer
+        run: node --test scripts/check-bundle-budget.test.mjs
+
       - name: Analyze bundle size
-        run: |
-          # Generate JSON report of all chunks
-          echo '{}' > bundle-report.json
-          total_size=0
-          main_chunk_size=0
-          for f in dist/client/assets/*.js; do
-            size=$(wc -c < "$f")
-            name=$(basename "$f")
-            total_size=$((total_size + size))
-            # Track main/index chunk specifically
-            if echo "$name" | grep -qE '^(index|main)'; then
-              main_chunk_size=$size
-            fi
-            echo "  $name: $(( size / 1024 )) KB"
-          done
-          echo ""
-          echo "Total JS: $(( total_size / 1024 )) KB"
-          echo "Main chunk: $(( main_chunk_size / 1024 )) KB"
-          echo ""
-          # Fail if main chunk exceeds 500 KB (gzipped will be ~150 KB)
-          LIMIT_KB=500
-          main_kb=$(( main_chunk_size / 1024 ))
-          if [ "$main_kb" -gt "$LIMIT_KB" ]; then
-            echo "::error::Main chunk ($main_kb KB) exceeds $LIMIT_KB KB budget"
-            exit 1
-          fi
-          echo "::notice::Bundle analysis passed — main chunk $main_kb KB (limit: $LIMIT_KB KB)"
+        run: node scripts/check-bundle-budget.mjs
 
       - name: Upload bundle report
         if: always()

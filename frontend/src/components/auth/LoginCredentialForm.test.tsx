@@ -101,6 +101,32 @@ describe("LoginCredentialForm — default render", () => {
     ).not.toBeChecked()
     expect(screen.getByText(/future sign-ins.*skip MFA for 30 days/i)).toBeInTheDocument()
   })
+
+  it("does not hide or translate the form entrance when reduced motion is requested", async () => {
+    const matchMedia = vi.spyOn(window, "matchMedia").mockImplementation(
+      (query) =>
+        ({
+          matches: query === "(prefers-reduced-motion: reduce)",
+          media: query,
+          onchange: null,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }) as unknown as MediaQueryList
+    )
+
+    try {
+      await mountWithStub(() => ({}))
+      const entrance = screen
+        .getByRole("button", { name: /^sign in$/i })
+        .closest("form")?.parentElement
+      expect(entrance?.getAttribute("style") ?? "").not.toMatch(/opacity:\s*0|translate/i)
+    } finally {
+      matchMedia.mockRestore()
+    }
+  })
 })
 
 // ── 2. Email suggestion ─────────────────────────────────────────────────────
@@ -167,6 +193,10 @@ describe("LoginCredentialForm — show password", () => {
     await mountWithStub(() => ({ showPassword: true }))
     const input = screen.getByLabelText(/password/i, { selector: "input" })
     expect(input).toHaveAttribute("type", "text")
+    expect(screen.getByRole("button", { name: /hide password/i })).toHaveClass(
+      "min-h-11",
+      "min-w-11"
+    )
   })
 
   it("renders password input as type='password' when showPassword is false", async () => {
@@ -215,6 +245,16 @@ describe("LoginCredentialForm — errors", () => {
 
     expect(await screen.findByText("Invalid email format")).toBeInTheDocument()
     expect(screen.getByText("Password validation failed")).toBeInTheDocument()
+
+    const email = screen.getByLabelText(/^e-mail$/i, { selector: "input" })
+    const password = screen.getByLabelText(/password/i, { selector: "input" })
+    const emailError = screen.getByText("Invalid email format")
+    const passwordError = screen.getByText("Password validation failed")
+
+    expect(email).toHaveAttribute("aria-describedby", emailError.id)
+    expect(password).toHaveAttribute("aria-describedby", passwordError.id)
+    expect(emailError).toHaveAttribute("role", "alert")
+    expect(passwordError).toHaveAttribute("role", "alert")
   })
 
   it("renders the password fallback message when the validator omits a message", async () => {

@@ -14,6 +14,7 @@
     --layout-max-ultrawide: 1920px;
     --layout-max-modal: 460px;
     --layout-max-dialog: 440px;
+    --dialog-max-w: var(--layout-max-dialog);
     --layout-max-sidebar: 400px;
     --layout-max-dropdown: 220px;
 

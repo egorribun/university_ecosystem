@@ -47,6 +47,24 @@ describe("Dialog", () => {
     expect(screen.getByText("dialog body")).toBeInTheDocument()
   })
 
+  it("supports an explicit accessible name without a visible title", async () => {
+    render(
+      <Dialog open onClose={vi.fn()} ariaLabel="Keyboard shortcuts">
+        body
+      </Dialog>
+    )
+    expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeInTheDocument()
+  })
+
+  it("keeps the close control at least 44px square", async () => {
+    render(
+      <Dialog open onClose={vi.fn()} title="Close target" closeLabel="Dismiss">
+        body
+      </Dialog>
+    )
+    expect(await screen.findByRole("button", { name: "Dismiss" })).toHaveClass("h-11", "w-11")
+  })
+
   it("calls onClose from the close button + backdrop click", async () => {
     const onClose = vi.fn()
     render(

@@ -46,14 +46,14 @@ const buttonVariants = cva(
         ),
       },
       size: {
-        sm: "min-h-10 px-3 py-2 text-(--fs-sm)",
+        sm: "min-h-11 px-3 py-2 text-(--fs-sm)",
         md: "min-h-12 px-5 py-2.5 text-(--fs-base)",
         lg: "min-h-14 px-7 py-3 text-(--fs-lg)",
-        icon: "h-10 w-10 min-h-0 p-0 rounded-lg",
+        icon: "h-11 w-11 min-h-11 min-w-11 p-0 rounded-lg",
       },
       fullWidth: {
         true: "w-full",
-        false: "w-auto",
+        false: "",
       },
     },
     defaultVariants: {

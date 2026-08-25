@@ -1,4 +1,6 @@
 #!/usr/bin/env sh
+set -eu
+
 # W156 SW4 Tier 2 — fixed `--prefix root/frontend` → `--prefix frontend`
 # (pre-W156 path was a stale doc placeholder that never resolved → lint-staged
 # silently skipped → anti-pattern #15 prettier-drift recurred 5 consecutive

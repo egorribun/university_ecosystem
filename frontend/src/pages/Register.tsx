@@ -166,9 +166,9 @@ const Register = () => {
       <div className="relative z-surface mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-stretch gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:px-8">
         {/* Left Column - Hero */}
         <m.div
-          initial={{ x: -200 }}
+          initial={prefersReducedMotion ? false : { x: -8 }}
           animate={{ x: 0 }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
           className="auth-card-matte flex w-full min-w-0 flex-col justify-center border-glass-border-subtle p-8 lg:p-12"
         >
           <div className="flex items-center gap-3 text-sm font-semibold uppercase tracking-widest text-text-primary/(--opacity-strong)">
@@ -198,14 +198,14 @@ const Register = () => {
 
         {/* Right Column - Form */}
         <m.div
-          initial={{ y: 200 }}
+          initial={prefersReducedMotion ? false : { y: 8 }}
           animate={{ y: 0 }}
-          transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
+          transition={{ duration: 0.2, ease: "easeOut", delay: 0.05 }}
           className="auth-card-matte flex w-full min-w-0 flex-col justify-center border-glass-border-subtle bg-surface/(--opacity-hover) p-6 sm:p-10"
         >
           <form
             onSubmit={handleSubmit(onSubmit)}
-            autoComplete="off"
+            autoComplete="on"
             className="flex flex-col gap-6"
             noValidate
           >
@@ -220,10 +220,13 @@ const Register = () => {
                   autoComplete="name"
                   disabled={isSubmitting}
                   error={!!errors.full_name}
+                  aria-describedby={errors.full_name ? "register-name-error" : undefined}
                   placeholder={t("auth:register.namePlaceholder") ?? undefined}
                 />
                 {errors.full_name && (
-                  <p className="text-xs text-error-text">{errors.full_name.message}</p>
+                  <p id="register-name-error" role="alert" className="text-xs text-error-text">
+                    {errors.full_name.message}
+                  </p>
                 )}
               </div>
 
@@ -239,6 +242,7 @@ const Register = () => {
                       <Select
                         id="register-role"
                         aria-labelledby="register-role-label"
+                        aria-describedby="register-role-description"
                         value={field.value}
                         onValueChange={field.onChange}
                         options={[
@@ -251,7 +255,9 @@ const Register = () => {
                       />
                     )}
                   />
-                  <span className="text-text-muted-subtle text-sm">{inviteHint}</span>
+                  <span id="register-role-description" className="text-text-muted-subtle text-sm">
+                    {inviteHint}
+                  </span>
                 </div>
               </div>
             </div>
@@ -270,9 +276,14 @@ const Register = () => {
                 }}
                 disabled={isSubmitting}
                 error={!!errors.email}
+                aria-describedby={errors.email ? "register-email-error" : undefined}
                 placeholder="name@university.edu"
               />
-              <p className="text-text-secondary text-xs font-medium">
+              <p
+                id="register-email-error"
+                role={errors.email ? "alert" : undefined}
+                className="text-text-secondary text-xs font-medium"
+              >
                 {errors.email ? t(errors.email.message || "auth:messages.invalidFormat") : " "}
               </p>
               {emailSuggestion ? (
@@ -302,10 +313,13 @@ const Register = () => {
                   autoComplete="one-time-code"
                   disabled={isSubmitting}
                   error={!!errors.invite_code}
+                  aria-describedby={errors.invite_code ? "register-invite-error" : undefined}
                   placeholder="ABCD-1234"
                 />
                 {errors.invite_code && (
-                  <p className="text-xs text-error-text">{errors.invite_code.message}</p>
+                  <p id="register-invite-error" role="alert" className="text-xs text-error-text">
+                    {errors.invite_code.message}
+                  </p>
                 )}
               </div>
             ) : null}
@@ -328,16 +342,18 @@ const Register = () => {
                   autoComplete="new-password"
                   disabled={isSubmitting}
                   error={!!errors.password}
+                  className="pr-14"
+                  aria-describedby={`register-password-hint${errors.password ? " register-password-error" : ""}`}
                 />
                 <button
                   type="button"
-                  onMouseDown={() => setShowPass(true)}
-                  onMouseUp={() => setShowPass(false)}
-                  onMouseLeave={() => setShowPass(false)}
                   onClick={() => setShowPass((v) => !v)}
-                  className="absolute inset-y-0 right-4 flex items-center text-brand"
-                  aria-label={t("auth:actions.showPassword") ?? undefined}
-                  title={t("auth:actions.holdReveal") ?? undefined}
+                  className="absolute inset-y-0 right-1 flex min-h-11 min-w-11 items-center justify-center rounded-md text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                  aria-label={
+                    t(showPass ? "auth:actions.hideCredential" : "auth:actions.showPassword") ??
+                    undefined
+                  }
+                  aria-pressed={showPass}
                 >
                   {showPass ? (
                     <EyeOff className="h-5 w-5" aria-hidden="true" />
@@ -346,7 +362,9 @@ const Register = () => {
                   )}
                 </button>
               </div>
-              <p className="text-xs text-text-muted-subtle">{t("auth:register.passwordHint")}</p>
+              <p id="register-password-hint" className="text-xs text-text-muted-subtle">
+                {t("auth:register.passwordHint")}
+              </p>
               {passwordStrengthPercent !== null ? (
                 <div className="space-y-1">
                   <div className="h-3 w-full rounded-full bg-surface-hover">
@@ -390,7 +408,9 @@ const Register = () => {
                 </p>
               )}
               {errors.password && (
-                <p className="text-xs text-error-text">{errors.password.message}</p>
+                <p id="register-password-error" role="alert" className="text-xs text-error-text">
+                  {errors.password.message}
+                </p>
               )}
             </div>
 
@@ -412,16 +432,20 @@ const Register = () => {
                   autoComplete="new-password"
                   disabled={isSubmitting}
                   error={!!errors.confirmPassword}
+                  className="pr-14"
+                  aria-describedby={
+                    errors.confirmPassword ? "register-confirm-password-error" : undefined
+                  }
                 />
                 <button
                   type="button"
-                  onMouseDown={() => setShowConfirm(true)}
-                  onMouseUp={() => setShowConfirm(false)}
-                  onMouseLeave={() => setShowConfirm(false)}
                   onClick={() => setShowConfirm((v) => !v)}
-                  className="absolute inset-y-0 right-4 flex items-center text-brand"
-                  aria-label={t("auth:actions.showPassword") ?? undefined}
-                  title={t("auth:actions.holdReveal") ?? undefined}
+                  className="absolute inset-y-0 right-1 flex min-h-11 min-w-11 items-center justify-center rounded-md text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                  aria-label={
+                    t(showConfirm ? "auth:actions.hideCredential" : "auth:actions.showPassword") ??
+                    undefined
+                  }
+                  aria-pressed={showConfirm}
                 >
                   {showConfirm ? (
                     <EyeOff className="h-5 w-5" aria-hidden="true" />
@@ -436,12 +460,19 @@ const Register = () => {
                 </p>
               )}
               {errors.confirmPassword && (
-                <p className="text-xs text-error-text">{errors.confirmPassword.message}</p>
+                <p
+                  id="register-confirm-password-error"
+                  role="alert"
+                  className="text-xs text-error-text"
+                >
+                  {errors.confirmPassword.message}
+                </p>
               )}
             </div>
 
             {errors.root?.message && (
               <div
+                role="alert"
                 className="min-h-6 text-center text-sm font-semibold text-error-text"
                 aria-live="assertive"
               >

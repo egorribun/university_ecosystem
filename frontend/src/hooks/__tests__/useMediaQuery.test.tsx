@@ -1,4 +1,5 @@
 import { act, renderHook } from "@testing-library/react"
+import { hydrateRoot } from "react-dom/client"
 import { renderToString } from "react-dom/server"
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest"
 import useMediaQuery from "../useMediaQuery"
@@ -51,6 +52,33 @@ describe("useMediaQuery", () => {
     } finally {
       if (descriptor) Object.defineProperty(globalThis, "window", descriptor)
     }
+  })
+
+  it("uses the server snapshot during hydration before applying the client match", async () => {
+    const Probe = () => <span>{String(useMediaQuery("(prefers-reduced-motion: reduce)"))}</span>
+    const html = renderToString(<Probe />)
+    expect(html).toContain(">false<")
+
+    vi.mocked(window.matchMedia).mockImplementation((query: string) =>
+      createMediaQueryList(query, true)
+    )
+    const container = document.createElement("div")
+    container.innerHTML = html
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined)
+
+    let root: ReturnType<typeof hydrateRoot> | undefined
+    await act(async () => {
+      root = hydrateRoot(container, <Probe />)
+    })
+
+    expect(container.textContent).toBe("true")
+    expect(
+      consoleError.mock.calls.some(([message]) =>
+        String(message).toLowerCase().includes("hydration")
+      )
+    ).toBe(false)
+
+    await act(async () => root?.unmount())
   })
 
   it("updates when the media query changes", () => {

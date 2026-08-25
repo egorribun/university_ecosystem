@@ -22,8 +22,8 @@ const mocks = vi.hoisted(() => ({
   getDatabase: vi.fn(),
 }))
 
-vi.mock("@/db", () => ({
-  getDatabase: mocks.getDatabase,
+vi.mock("@/db/lazy", () => ({
+  getDatabaseLazily: mocks.getDatabase,
 }))
 
 // Fixed valid-format UUIDs for frame fixtures (parseWsMessage validates v.uuid()).

@@ -2680,14 +2680,47 @@ def test_lighthouse_config_uses_supported_budget_path_and_audit() -> None:
     assert "budgetsPath:" not in lighthouse_config
     assert "budgets:" not in lighthouse_config
     assert '"total-blocking-time": [' in lighthouse_config
-    assert '"categories:performance": ["warn"' in lighthouse_config
+    assert (
+        '"categories:performance": ["error", { minScore: 0.95 }]' in lighthouse_config
+    )
+    assert (
+        '"categories:accessibility": ["error", { minScore: 0.95 }]' in lighthouse_config
+    )
+    assert '"largest-contentful-paint": [\n          "error"' in lighthouse_config
+    assert '"total-blocking-time": [\n          "error"' in lighthouse_config
+    assert "INP is a field metric" in lighthouse_config
+    assert "--disable-gpu" not in lighthouse_config
 
 
 def test_lhci_collection_uses_lighthouse_budget_path_inside_settings() -> None:
     lhci_script = LHCI_SCRIPT_PATH.read_text(encoding="utf-8")
 
-    assert 'budgetPath: path.resolve(frontendRoot, "../../budget.json")' in lhci_script
+    assert 'budgetPath: path.resolve(frontendRoot, "../budget.json")' in lhci_script
     assert "budgetsPath:" not in lhci_script
+    assert '"categories:performance": ["error", { minScore: 0.95 }]' in lhci_script
+    assert '"categories:accessibility": ["error", { minScore: 0.95 }]' in lhci_script
+    assert "INP is a field metric" in lhci_script
+    assert "--disable-gpu" not in lhci_script
+
+
+def test_bundle_analysis_uses_portable_fail_closed_analyzer_and_real_report() -> None:
+    workflow = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    analysis_job = workflow["jobs"]["bundle-analysis"]
+    test_step = next(
+        step
+        for step in analysis_job["steps"]
+        if step.get("name") == "Test bundle analyzer"
+    )
+    analyze_step = next(
+        step
+        for step in analysis_job["steps"]
+        if step.get("name") == "Analyze bundle size"
+    )
+
+    assert test_step["run"] == "node --test scripts/check-bundle-budget.test.mjs"
+    assert analyze_step["run"] == "node scripts/check-bundle-budget.mjs"
+    assert not analyze_step.get("continue-on-error", False)
+    assert "echo '{}'" not in FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8")
 
 
 def test_lhci_command_runner_uses_shell_free_platform_resolution() -> None:

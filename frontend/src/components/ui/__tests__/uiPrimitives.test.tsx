@@ -127,7 +127,7 @@ describe("ProgressBar", () => {
 // --------------------------------------------------------------------------- #
 
 describe("Tooltip", () => {
-  it("applies title + data-tooltip + aria-describedby for string content", () => {
+  it("renders the element referenced by aria-describedby for string content", () => {
     render(
       <Tooltip content="Help text">
         <button>act</button>
@@ -136,9 +136,9 @@ describe("Tooltip", () => {
     const btn = screen.getByRole("button", { name: "act" })
     expect(btn).toHaveAttribute("title", "Help text")
     expect(btn).toHaveAttribute("data-tooltip", "Help text")
-    expect(btn).toHaveAttribute("aria-describedby")
-    // String content uses the native title, not a separate sr-only region.
-    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
+    const tooltip = screen.getByRole("tooltip")
+    expect(btn).toHaveAttribute("aria-describedby", tooltip.id)
+    expect(tooltip).toHaveTextContent("Help text")
   })
 
   it("renders an sr-only tooltip region for node content (no title attr)", () => {
@@ -157,6 +157,15 @@ describe("Tooltip", () => {
 // --------------------------------------------------------------------------- #
 
 describe("Checkbox", () => {
+  it("provides a 44px target and exposes the native indeterminate state", () => {
+    const { container } = renderMotion(<Checkbox checked="indeterminate" />)
+    const checkbox = screen.getByRole("checkbox") as HTMLInputElement
+    expect(checkbox.closest("label")).toHaveClass("min-h-11", "min-w-11")
+    expect(checkbox.indeterminate).toBe(true)
+    expect(checkbox).toHaveAttribute("aria-checked", "mixed")
+    expect(container.querySelector(".lucide-minus")).toBeInTheDocument()
+  })
+
   it("shows the check glyph when checked and fires onCheckedChange on click", () => {
     const onChange = vi.fn()
     const { container } = renderMotion(<Checkbox checked={false} onCheckedChange={onChange} />)
@@ -185,17 +194,18 @@ describe("Switch", () => {
   it("fires onCheckedChange and tracks focus/blur", () => {
     const onChange = vi.fn()
     renderMotion(<Switch checked={false} onCheckedChange={onChange} />)
-    const input = screen.getByRole("checkbox")
+    const input = screen.getByRole("switch")
 
     fireEvent.focus(input)
     fireEvent.click(input)
     fireEvent.blur(input)
 
     expect(onChange).toHaveBeenCalledWith(true)
+    expect(input.closest("span")).toHaveClass("min-h-11")
   })
 
   it("renders disabled without crashing", () => {
     renderMotion(<Switch checked disabled />)
-    expect(screen.getByRole("checkbox")).toBeDisabled()
+    expect(screen.getByRole("switch")).toBeDisabled()
   })
 })

@@ -16,8 +16,10 @@ describe("Tooltip", () => {
 
     expect(trigger).toHaveAttribute("title", "Helpful hint")
     expect(tooltipId).toBeTruthy()
-    // String tooltips rely on the title attribute only, so no live tooltip node is rendered.
-    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
+    const liveTooltip = tooltipId ? document.getElementById(tooltipId) : null
+    expect(liveTooltip).toHaveAttribute("role", "tooltip")
+    expect(liveTooltip).toHaveTextContent("Helpful hint")
+    expect(liveTooltip).toHaveClass("sr-only")
   })
 
   it("renders sr-only tooltip content when React nodes are provided", () => {

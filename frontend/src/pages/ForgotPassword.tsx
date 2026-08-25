@@ -90,7 +90,7 @@ export default function ForgotPassword() {
       <AuthBackdrop prefersReducedMotion={prefersReducedMotion} />
 
       <m.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-(--layout-max-dialog) z-modal"
       >
@@ -109,7 +109,7 @@ export default function ForgotPassword() {
               {isSuccess ? (
                 <m.div
                   key="success"
-                  initial={{ opacity: 0, scale: 0.95 }}
+                  initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   className="space-y-6 pt-4"
                 >
@@ -159,11 +159,11 @@ export default function ForgotPassword() {
               ) : (
                 <m.div
                   key="form"
-                  initial={{ opacity: 0 }}
+                  initial={prefersReducedMotion ? false : { opacity: 0 }}
                   animate={{ opacity: 1 }}
                   className="space-y-6"
                 >
-                  <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-6">
+                  <form onSubmit={handleSubmit(onSubmit)} autoComplete="on" className="space-y-6">
                     <div className="space-y-3">
                       <TextField
                         id="forgot-email-input"
@@ -181,7 +181,10 @@ export default function ForgotPassword() {
                       />
 
                       {emailSuggestion && (
-                        <m.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}>
+                        <m.div
+                          initial={prefersReducedMotion ? false : { opacity: 0, x: -10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                        >
                           <Chip
                             label={t("auth:messages.emailSuggestion", {
                               suggestion: emailSuggestion,

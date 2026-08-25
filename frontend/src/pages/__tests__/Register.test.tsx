@@ -61,6 +61,32 @@ describe("Register page", () => {
     passwordAnalysis.pending = []
   })
 
+  it("does not translate the form entrance when reduced motion is requested", async () => {
+    const matchMedia = vi.spyOn(window, "matchMedia").mockImplementation(
+      (query) =>
+        ({
+          matches: query === "(prefers-reduced-motion: reduce)",
+          media: query,
+          onchange: null,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }) as unknown as MediaQueryList
+    )
+
+    try {
+      await renderRegister()
+      const entrance = screen
+        .getByRole("button", { name: tAuth("actions.signUp") })
+        .closest("form")?.parentElement
+      expect(entrance?.getAttribute("style") ?? "").not.toMatch(/translate/i)
+    } finally {
+      matchMedia.mockRestore()
+    }
+  })
+
   it("surfaces API error messages", async () => {
     server.use(
       http.post("*/auth/register", () =>
@@ -174,9 +200,16 @@ describe("Register page", () => {
     })
 
     for (const button of revealButtons) {
-      fireEvent.mouseDown(button)
-      fireEvent.mouseUp(button)
-      fireEvent.mouseLeave(button)
+      expect(button).toHaveClass("min-h-11", "min-w-11")
+    }
+
+    await user.click(revealButtons[0]!)
+    expect(
+      screen.getByRole("button", { name: tAuth("actions.hideCredential") })
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: tAuth("actions.hideCredential") }))
+
+    for (const button of revealButtons) {
       fireEvent.click(button)
       fireEvent.click(button)
     }
@@ -221,22 +254,24 @@ describe("Register page", () => {
     passwordAnalysis.deferred = true
     await renderRegister()
     const passwordInput = screen.getByLabelText(matchText(tAuth("fields.password")))
+    const olderInputValue = "older-input-value"
+    const newerInputValue = "newer-input-value"
 
-    fireEvent.change(passwordInput, { target: { value: "older-password" } })
+    fireEvent.change(passwordInput, { target: { value: olderInputValue } })
     await waitFor(() =>
-      expect(passwordAnalysis.pending.some(({ password }) => password === "older-password")).toBe(
+      expect(passwordAnalysis.pending.some(({ password }) => password === olderInputValue)).toBe(
         true
       )
     )
-    fireEvent.change(passwordInput, { target: { value: "newer-password" } })
+    fireEvent.change(passwordInput, { target: { value: newerInputValue } })
     await waitFor(() =>
-      expect(passwordAnalysis.pending.some(({ password }) => password === "newer-password")).toBe(
+      expect(passwordAnalysis.pending.some(({ password }) => password === newerInputValue)).toBe(
         true
       )
     )
 
-    const older = passwordAnalysis.pending.find(({ password }) => password === "older-password")!
-    const newer = passwordAnalysis.pending.find(({ password }) => password === "newer-password")!
+    const older = passwordAnalysis.pending.find(({ password }) => password === olderInputValue)!
+    const newer = passwordAnalysis.pending.find(({ password }) => password === newerInputValue)!
     await act(async () => newer.resolve({ score: 4 }))
     expect(screen.getByText(tAuth("register.passwordStrengthLevel.excellent"))).toBeInTheDocument()
 
@@ -360,10 +395,24 @@ describe("Register page", () => {
 
     await user.click(screen.getByRole("button", { name: tAuth("actions.signUp") }))
 
-    expect(await screen.findByText("Name must be at least 2 characters")).toBeInTheDocument()
-    expect(screen.getByText("Invalid email address")).toBeInTheDocument()
-    expect(screen.getByText("Password must be at least 8 characters")).toBeInTheDocument()
-    expect(screen.getByText("Please confirm your password")).toBeInTheDocument()
+    const nameError = await screen.findByText("Name must be at least 2 characters")
+    const emailError = screen.getByText("Invalid email address")
+    const passwordError = screen.getByText("Password must be at least 8 characters")
+    const confirmError = screen.getByText("Please confirm your password")
+
+    const name = screen.getByLabelText(matchText(tAuth("fields.name")))
+    const email = screen.getByLabelText(matchText(tAuth("fields.email")))
+    const password = screen.getByLabelText(matchText(tAuth("fields.password")))
+    const confirm = screen.getByLabelText(matchText(tAuth("fields.confirmPassword")))
+
+    expect(name.closest("form")).toHaveAttribute("autocomplete", "on")
+    expect(name).toHaveAttribute("aria-describedby", nameError.id)
+    expect(email).toHaveAttribute("aria-describedby", emailError.id)
+    expect(password).toHaveAttribute("aria-describedby", expect.stringContaining(passwordError.id))
+    expect(confirm).toHaveAttribute("aria-describedby", confirmError.id)
+    for (const error of [nameError, emailError, passwordError, confirmError]) {
+      expect(error).toHaveAttribute("role", "alert")
+    }
   })
 
   it("passes automated accessibility checks", async () => {
