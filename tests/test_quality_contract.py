@@ -282,13 +282,14 @@ def test_rejects_repository_root_artifact_paths(
     root_path: str,
 ) -> None:
     contract = _load_contract()
-    contract["required_artifacts"] = [root_path]
+    contract["coverage_reports"][0]["path"] = root_path
 
     result = _run_contract(tmp_path, contract)
 
     assert result.returncode == 1
     assert (
-        "required_artifacts[0] must not refer to the repository root" in result.stderr
+        "coverage_reports[0].path must not refer to the repository root"
+        in result.stderr
     )
 
 
@@ -308,12 +309,14 @@ def test_rejects_repository_root_exclusion_paths(
 
 def test_rejects_windows_rooted_artifact_paths(tmp_path: Path) -> None:
     contract = _load_contract()
-    contract["required_artifacts"] = [r"\outside-repo\coverage.xml"]
+    contract["coverage_reports"][0]["path"] = r"\outside-repo\coverage.xml"
 
     result = _run_contract(tmp_path, contract)
 
     assert result.returncode == 1
-    assert "required_artifacts[0] must be a repository-relative path" in result.stderr
+    assert (
+        "coverage_reports[0].path must be a repository-relative path" in result.stderr
+    )
 
 
 def test_accepts_quarantines_with_shared_path_and_distinct_tests(
@@ -404,7 +407,7 @@ def test_rejects_non_integer_contract_version(tmp_path: Path) -> None:
     result = _run_contract(tmp_path, contract)
 
     assert result.returncode == 1
-    assert "version must equal 1" in result.stderr
+    assert "version must equal 2" in result.stderr
 
 
 def test_rejects_tier0_coverage_below_100(tmp_path: Path) -> None:
@@ -430,68 +433,19 @@ def test_rejects_policy_floor_below_100(tmp_path: Path, field: str) -> None:
     assert f"policy.{field} must equal 100" in result.stderr
 
 
-def test_manifest_enforces_tier0_coverage_per_file(tmp_path: Path) -> None:
+def test_manifest_rejects_obsolete_v1_shape_before_semantic_validation(
+    tmp_path: Path,
+) -> None:
     manifest_path = tmp_path / "quality-manifest.json"
     manifest_path.write_text(
-        json.dumps(
-            {
-                "tier0": {
-                    "files": [
-                        {
-                            "path": "app/api/auth/login.py",
-                            "metrics": {
-                                "lines": {
-                                    "status": "native",
-                                    "percent": 100,
-                                },
-                                "branches": {
-                                    "status": "native",
-                                    "percent": 100,
-                                },
-                                "functions": {
-                                    "status": "native",
-                                    "percent": 99.0,
-                                },
-                            },
-                        }
-                    ]
-                }
-            }
-        ),
+        json.dumps({"schema_version": 1, "tier0": {"files": []}}),
         encoding="utf-8",
     )
 
     result = _run_validator(tmp_path, manifest=manifest_path)
 
     assert result.returncode == 1
-    assert "app/api/auth/login.py.functions must equal 100%" in result.stderr
-
-
-def test_manifest_accepts_fully_covered_tier0_files(tmp_path: Path) -> None:
-    manifest_path = tmp_path / "quality-manifest.json"
-    manifest_path.write_text(
-        json.dumps(
-            {
-                "tier0": {
-                    "files": [
-                        {
-                            "path": "app/api/auth/login.py",
-                            "metrics": {
-                                metric: {"status": "native", "percent": 100}
-                                for metric in ("lines", "branches", "functions")
-                            },
-                        }
-                    ]
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    result = _run_validator(tmp_path, manifest=manifest_path)
-
-    assert result.returncode == 0
-    assert "Quality contract is valid." in result.stdout
+    assert "schema" in result.stderr
 
 
 def test_rejects_malformed_json_with_usage_error(tmp_path: Path) -> None:

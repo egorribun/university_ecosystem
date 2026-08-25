@@ -4723,6 +4723,18 @@ wheels = [
 ]
 
 [[package]]
+name = "types-jsonschema"
+version = "4.25.1.20251008"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "referencing" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/9e/4e/a6fd46c446654336161c5912f1e43ead87ad3e03338d982fae8fde21847e/types_jsonschema-4.25.1.20251008.tar.gz", hash = "sha256:f206abf739c2d84f46632b65db99474a2e3b2f651df417c491ff038022c89c10", size = 15637, upload-time = "2025-10-08T02:51:46.824Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/81/c6/9ce29f16fe8f708f64fc1bc6c287f76f890d97c8ff15bba72c7cd40ce437/types_jsonschema-4.25.1.20251008-py3-none-any.whl", hash = "sha256:5a01e1e104e3aac4f1d7ba2b1f000694297d7d63eae951213b0ebd65ee476525", size = 15926, upload-time = "2025-10-08T02:51:45.942Z" },
+]
+
+[[package]]
 name = "types-pyopenssl"
 version = "24.1.0.20240722"
 source = { registry = "https://pypi.org/simple" }
@@ -4907,6 +4919,7 @@ dev = [
     { name = "fakeredis" },
     { name = "httpx2" },
     { name = "hypothesis" },
+    { name = "jsonschema" },
     { name = "maturin" },
     { name = "mutmut" },
     { name = "mypy" },
@@ -4923,6 +4936,7 @@ dev = [
     { name = "schemathesis" },
     { name = "testcontainers" },
     { name = "types-aiofiles" },
+    { name = "types-jsonschema" },
     { name = "types-pyyaml" },
     { name = "types-redis" },
     { name = "types-requests" },
@@ -5021,6 +5035,7 @@ dev = [
     { name = "fakeredis", specifier = ">=2.35.1" },
     { name = "httpx2", specifier = ">=2.9.1,<3" },
     { name = "hypothesis", specifier = ">=6.151.12" },
+    { name = "jsonschema", specifier = ">=4.25.1,<5" },
     { name = "maturin", specifier = ">=1.13.1,<2" },
     { name = "mutmut", specifier = "==3.7.0" },
     { name = "mypy", specifier = ">=1.20.1,<2.4" },
@@ -5037,6 +5052,7 @@ dev = [
     { name = "schemathesis", specifier = ">=4.0.0,<5" },
     { name = "testcontainers", specifier = ">=4.14.2" },
     { name = "types-aiofiles", specifier = ">=25.1.0.20260409" },
+    { name = "types-jsonschema", specifier = "==4.25.1.20251008" },
     { name = "types-pyyaml", specifier = ">=6.0.12.20260408" },
     { name = "types-redis", specifier = ">=4.6.0.20241004" },
     { name = "types-requests", specifier = ">=2.33.0.20260408" },
