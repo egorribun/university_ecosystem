@@ -25,8 +25,8 @@ import { resolve, dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 
 // ── Local type aliases ────────────────────────────────────────────────────────
-// WHY: openapi-typescript is a CLI code-generation tool, not a runtime library.
-// Its type exports are not stable for direct import.  We define minimal local
+// WHY: OpenAPI generation is a build-time concern, not a runtime library API.
+// Generator type exports are not stable for direct import. We define minimal local
 // aliases that cover the OpenAPI 3.x structures we actually traverse so that
 // the validator compiles cleanly without depending on private package internals.
 

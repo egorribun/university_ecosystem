@@ -33,6 +33,9 @@ const options = {
     "husky",
     "prettier-plugin-organize-imports",
     "@lhci/cli",
+    // Peer runtimes consumed by the active API mock generator and Lighthouse.
+    "openapi-types",
+    "proxy-agent",
     "@vitest/coverage-v8",
     "typescript",
     "typescript-eslint",
@@ -60,7 +63,6 @@ const options = {
     "babel-plugin-react-compiler",
     "fake-indexeddb",
     "jest-axe",
-    "openapi-typescript",
     "rollup-plugin-visualizer",
     "sharp",
     "vite-plugin-wasm",

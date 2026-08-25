@@ -1,7 +1,6 @@
 // For more info, see https://github.com/storybookjs/eslint-plugin-storybook#configuration-flat-config-format
 import storybook from "eslint-plugin-storybook"
 
-import { fixupConfigRules } from "@eslint/compat"
 import js from "@eslint/js"
 import globals from "globals"
 import tseslint from "typescript-eslint"
@@ -43,8 +42,8 @@ export default tseslint.config(
     },
   },
   ...tseslint.configs.recommended,
-  ...fixupConfigRules(reactPlugin.configs.flat.recommended),
-  ...fixupConfigRules(jsxA11y.flatConfigs.recommended),
+  reactPlugin.configs.flat.recommended,
+  jsxA11y.flatConfigs.recommended,
   {
     settings: {
       react: { version: "detect" },
