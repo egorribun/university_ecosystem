@@ -402,6 +402,19 @@ export default defineConfig(({ mode }) => {
         output: {
           // Vite 8: object-form manualChunks removed — use function form
           manualChunks(id: string) {
+            // Password strength is requested only from auth/password forms.
+            // Keep the engine, common data and each locale in deterministic
+            // independent chunks so opening an English form does not download
+            // the Russian dictionary (or vice versa). Workbox intentionally
+            // omits these optional chunks from install-time precaching.
+            if (id.includes("node_modules/@zxcvbn-ts/core"))
+              return "vendor-password-strength-core"
+            if (id.includes("node_modules/@zxcvbn-ts/language-common"))
+              return "vendor-password-strength-common"
+            if (id.includes("node_modules/@zxcvbn-ts/language-en"))
+              return "vendor-password-strength-en"
+            if (id.includes("node_modules/@zxcvbn-ts/language-ru"))
+              return "vendor-password-strength-ru"
             // React and ReactDOM form the shared framework chunk.
             if (id.includes("node_modules/react-dom") || id.includes("node_modules/react/"))
               return "vendor-react"

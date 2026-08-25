@@ -104,6 +104,10 @@ export const PWA_INJECT_CONFIG = {
     "**/jspdf*.js",
     "**/html2canvas*.js",
     "**/purify*.js",
+    // The password analyzer is imported on demand from auth/password forms.
+    // Locale dictionaries remain network-loadable when the feature is used,
+    // but do not inflate every service-worker installation.
+    "**/vendor-password-strength-*.js",
     // MapLibre is a lazy route; excluding its vendor/runtime chunks keeps
     // Firefox/WebKit service-worker installation within CacheStorage quotas.
     "**/vendor-map-*.js",

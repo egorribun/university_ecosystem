@@ -208,28 +208,33 @@ if (typeof window !== "undefined") {
     }
 
     if (typeof window.Storage !== "undefined") {
-      window.Storage.prototype.getItem = vi.fn(function (this: any, key: string) {
+      // Keep these baseline implementations as plain functions. `vi.spyOn`
+      // must be able to replace and then restore them between tests. Wrapping
+      // the baseline in `vi.fn` makes `spyOn` reuse the same mock object, so a
+      // test-specific throwing implementation leaks into later tests even
+      // after `vi.restoreAllMocks()`.
+      window.Storage.prototype.getItem = function (this: any, key: string) {
         const store = getStore(this)
-        return store[key] || null
-      })
-      window.Storage.prototype.setItem = vi.fn(function (this: any, key: string, value: string) {
+        return store[key] ?? null
+      }
+      window.Storage.prototype.setItem = function (this: any, key: string, value: string) {
         const store = getStore(this)
         store[key] = String(value)
-      })
-      window.Storage.prototype.removeItem = vi.fn(function (this: any, key: string) {
+      }
+      window.Storage.prototype.removeItem = function (this: any, key: string) {
         const store = getStore(this)
         delete store[key]
-      })
-      window.Storage.prototype.clear = vi.fn(function (this: any) {
+      }
+      window.Storage.prototype.clear = function (this: any) {
         const store = getStore(this)
         for (const k of Object.keys(store)) {
           delete store[k]
         }
-      })
-      window.Storage.prototype.key = vi.fn(function (this: any, index: number) {
+      }
+      window.Storage.prototype.key = function (this: any, index: number) {
         const store = getStore(this)
-        return Object.keys(store)[index] || null
-      })
+        return Object.keys(store)[index] ?? null
+      }
       Object.defineProperty(window.Storage.prototype, "length", {
         get(this: any) {
           const store = getStore(this)

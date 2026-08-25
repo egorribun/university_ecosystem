@@ -14,6 +14,12 @@ import {
 
 const scriptPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "build-orchestrated.mjs")
 const scriptSource = await readFile(scriptPath, "utf8")
+const viteConfigPath = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "vite.config.mts"
+)
+const viteConfigSource = await readFile(viteConfigPath, "utf8")
 
 test("build orchestrator exposes bounded memory controls", () => {
   assert.match(scriptSource, /FRONTEND_BUILD_MAX_RSS_MB/)
@@ -56,6 +62,26 @@ test("PWA precache config excludes optional map chunks", () => {
   }
 
   assert.ok(!ignores.some((pattern) => pattern.includes("offline.html")))
+})
+
+test("optional password-strength dictionaries have stable lazy chunk names and stay out of precache", () => {
+  const ignores = PWA_INJECT_CONFIG.globIgnores ?? []
+
+  for (const [dependency, chunkName] of [
+    ["@zxcvbn-ts/core", "vendor-password-strength-core"],
+    ["@zxcvbn-ts/language-common", "vendor-password-strength-common"],
+    ["@zxcvbn-ts/language-en", "vendor-password-strength-en"],
+    ["@zxcvbn-ts/language-ru", "vendor-password-strength-ru"],
+  ]) {
+    assert.ok(
+      viteConfigSource.includes(dependency),
+      `missing manual chunk dependency: ${dependency}`
+    )
+    assert.ok(viteConfigSource.includes(chunkName), `missing deterministic chunk: ${chunkName}`)
+  }
+
+  assert.ok(ignores.includes("**/vendor-password-strength-*.js"))
+  assert.equal(MAX_PRECACHE_BYTES, 4_800_000)
 })
 
 test("PWA precache fails closed when the aggregate browser budget is exceeded", () => {

@@ -1024,6 +1024,12 @@ describe("useProfileSync — handleUnauthorized / clearProfile / setUser", () =>
     expect(result.current.user?.full_name).toBe("Persist failure")
   })
 
+  it("restores Storage methods after a simulated persistence failure", () => {
+    localStorage.setItem("profile-sync-storage-isolation", "available")
+
+    expect(localStorage.getItem("profile-sync-storage-isolation")).toBe("available")
+  })
+
   it("continues without localStorage in restricted browser mode", async () => {
     vi.spyOn(api, "get").mockResolvedValue({ data: testUser } as any)
     const originalStorage = globalThis.localStorage
