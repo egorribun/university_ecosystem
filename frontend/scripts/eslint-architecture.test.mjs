@@ -122,5 +122,31 @@ test("alias traversal is unresolved and remains a lint violation", async () => {
   )
 
   assert.deepEqual(result, { found: false })
-  assert.equal(messages.some(({ ruleId }) => ruleId === "no-restricted-imports"), true)
+  assert.equal(
+    messages.some(({ ruleId }) => ruleId === "no-restricted-imports"),
+    true
+  )
+})
+
+test("alias resolution rejects a lexical in-root path whose realpath escapes", () => {
+  const target = path.join(frontendRoot, "src")
+  const lexicalPath = path.join(target, "features", "index.ts")
+  const escapedRealPath = path.join(frontendRoot, "package.json")
+  const resolve = aliasResolver.createResolver({
+    realpathSync(candidate) {
+      if (path.resolve(candidate) === path.resolve(target)) {
+        return target
+      }
+
+      assert.equal(path.resolve(candidate), path.resolve(lexicalPath))
+      return escapedRealPath
+    },
+  })
+
+  const result = resolve("@/features/index", import.meta.filename, {
+    alias: "@",
+    target,
+  })
+
+  assert.deepEqual(result, { found: false })
 })
