@@ -1118,6 +1118,10 @@ jobs:
           )
           PY
 
+      - name: Normalize generated OpenAPI schema
+        working-directory: frontend
+        run: npm exec -- prettier --write openapi.json
+
       - name: Generate API types
         working-directory: frontend
         env:
@@ -1640,6 +1644,10 @@ jobs:
               encoding="utf-8",
           )
           PY
+
+      - name: Normalize generated OpenAPI schema
+        working-directory: frontend
+        run: npm exec -- prettier --write openapi.json
 
       - name: Regenerate MSW mock handlers from OpenAPI spec
         working-directory: frontend

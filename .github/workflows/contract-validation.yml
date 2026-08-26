@@ -239,6 +239,10 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Normalize generated OpenAPI schema
+        working-directory: frontend
+        run: npm exec -- prettier --write openapi.json
+
       - name: Regenerate TypeScript client and MSW mocks
         working-directory: frontend
         run: npm run generate:api

@@ -3,13 +3,27 @@ const HYDRATION_ERROR_PATTERN =
 const UNAUTHENTICATED_PROFILE_PATH = "/api/v1/users/me"
 const RESOURCE_401_PATTERN = /Failed to load resource:.*status of 401/iu
 
-function hasExactPath(url, expectedPath) {
+function hasExactLocation(url, expectedOrigin, expectedPath) {
   try {
     const parsed = new URL(url)
-    return parsed.pathname === expectedPath && parsed.search === "" && parsed.hash === ""
+    const origin = new URL(expectedOrigin).origin
+    return (
+      parsed.origin === origin &&
+      parsed.pathname === expectedPath &&
+      parsed.search === "" &&
+      parsed.hash === ""
+    )
   } catch {
     return false
   }
+}
+
+function isUnauthenticatedProfileProbe({ method, url, status }, expectedOrigin) {
+  return (
+    method === "GET" &&
+    status === 401 &&
+    hasExactLocation(url, expectedOrigin, UNAUTHENTICATED_PROFILE_PATH)
+  )
 }
 
 export function responseRecord(response) {
@@ -48,34 +62,37 @@ export function classifySmokeFailures({
   networkResponses,
   networkFailures = [],
   allowUnauthenticatedProfileProbe = false,
+  expectedOrigin = null,
 }) {
   const rawConsoleErrors = consoleMessages.filter(
     ({ type }) => type === "error" || type === "pageerror"
   )
-  const expectedProbeIndex = allowUnauthenticatedProfileProbe
-    ? networkResponses.findIndex(
-        ({ method, url, status }) =>
-          method === "GET" && status === 401 && hasExactPath(url, UNAUTHENTICATED_PROFILE_PATH)
-      )
-    : -1
-  let probeConsoleConsumed = false
+  const expectedProbeCount = allowUnauthenticatedProfileProbe
+    ? networkResponses.filter((response) => isUnauthenticatedProfileProbe(response, expectedOrigin))
+        .length
+    : 0
+  let remainingProbeConsoleCount = expectedProbeCount
   const consoleErrors = rawConsoleErrors.filter((message) => {
     const locationUrl = message.location?.url
     const isExpectedProbeConsole =
-      expectedProbeIndex >= 0 &&
-      !probeConsoleConsumed &&
+      remainingProbeConsoleCount > 0 &&
       message.type === "error" &&
       typeof locationUrl === "string" &&
-      hasExactPath(locationUrl, UNAUTHENTICATED_PROFILE_PATH) &&
+      hasExactLocation(locationUrl, expectedOrigin, UNAUTHENTICATED_PROFILE_PATH) &&
       RESOURCE_401_PATTERN.test(message.text)
-    if (isExpectedProbeConsole) probeConsoleConsumed = true
+    if (isExpectedProbeConsole) remainingProbeConsoleCount -= 1
     return !isExpectedProbeConsole
   })
   return {
     consoleErrors,
     hydrationErrors: consoleMessages.filter(({ text }) => HYDRATION_ERROR_PATTERN.test(text)),
     nonSuccessfulResponses: networkResponses.filter(
-      ({ status }, index) => (status < 200 || status >= 400) && index !== expectedProbeIndex
+      (response) =>
+        (response.status < 200 || response.status >= 400) &&
+        !(
+          allowUnauthenticatedProfileProbe &&
+          isUnauthenticatedProfileProbe(response, expectedOrigin)
+        )
     ),
     networkFailures,
   }

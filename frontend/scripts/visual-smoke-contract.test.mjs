@@ -91,6 +91,7 @@ test("classifySmokeFailures recognizes minified and descriptive hydration failur
 test("classifySmokeFailures accepts exactly one located unauthenticated profile probe", () => {
   const failures = classifySmokeFailures({
     allowUnauthenticatedProfileProbe: true,
+    expectedOrigin: "http://localhost",
     consoleMessages: [
       {
         type: "error",
@@ -105,10 +106,16 @@ test("classifySmokeFailures accepts exactly one located unauthenticated profile 
   assert.deepEqual(failures.nonSuccessfulResponses, [])
 })
 
-test("classifySmokeFailures never blanket-ignores unrelated or repeated 401 failures", () => {
+test("classifySmokeFailures accepts every exact profile probe without hiding unrelated failures", () => {
   const failures = classifySmokeFailures({
     allowUnauthenticatedProfileProbe: true,
+    expectedOrigin: "http://localhost",
     consoleMessages: [
+      {
+        type: "error",
+        text: "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        location: { url: "http://localhost/api/v1/users/me" },
+      },
       {
         type: "error",
         text: "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
@@ -119,14 +126,69 @@ test("classifySmokeFailures never blanket-ignores unrelated or repeated 401 fail
         text: "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
         location: { url: "http://localhost/api/v1/admin" },
       },
+      {
+        type: "pageerror",
+        text: "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        location: { url: "http://localhost/api/v1/users/me" },
+      },
+      {
+        type: "error",
+        text: "profile request failed with 401",
+        location: { url: "http://localhost/api/v1/users/me" },
+      },
+      {
+        type: "error",
+        text: "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        location: { url: "http://localhost/api/v1/users/me?retry=1" },
+      },
     ],
     networkResponses: [
       { method: "GET", url: "http://localhost/api/v1/users/me", status: 401 },
       { method: "GET", url: "http://localhost/api/v1/users/me", status: 401 },
       { method: "GET", url: "http://localhost/api/v1/admin", status: 401 },
+      { method: "POST", url: "http://localhost/api/v1/users/me", status: 401 },
+      { method: "GET", url: "http://localhost/api/v1/users/me", status: 403 },
+      { method: "GET", url: "http://localhost/api/v1/users/me?retry=1", status: 401 },
+    ],
+  })
+
+  assert.equal(failures.consoleErrors.length, 4)
+  assert.equal(failures.nonSuccessfulResponses.length, 4)
+})
+
+test("classifySmokeFailures rejects a foreign-origin profile 401", () => {
+  const failures = classifySmokeFailures({
+    allowUnauthenticatedProfileProbe: true,
+    expectedOrigin: "http://localhost",
+    consoleMessages: [
+      {
+        type: "error",
+        text: "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+        location: { url: "https://foreign.example/api/v1/users/me" },
+      },
+    ],
+    networkResponses: [
+      { method: "GET", url: "https://foreign.example/api/v1/users/me", status: 401 },
     ],
   })
 
   assert.equal(failures.consoleErrors.length, 1)
-  assert.equal(failures.nonSuccessfulResponses.length, 2)
+  assert.equal(failures.nonSuccessfulResponses.length, 1)
+})
+
+test("classifySmokeFailures retains profile console errors beyond matched network probes", () => {
+  const profileConsoleError = {
+    type: "error",
+    text: "Failed to load resource: the server responded with a status of 401 (Unauthorized)",
+    location: { url: "http://localhost/api/v1/users/me" },
+  }
+  const failures = classifySmokeFailures({
+    allowUnauthenticatedProfileProbe: true,
+    expectedOrigin: "http://localhost",
+    consoleMessages: [profileConsoleError, { ...profileConsoleError }],
+    networkResponses: [{ method: "GET", url: "http://localhost/api/v1/users/me", status: 401 }],
+  })
+
+  assert.equal(failures.consoleErrors.length, 1)
+  assert.deepEqual(failures.nonSuccessfulResponses, [])
 })

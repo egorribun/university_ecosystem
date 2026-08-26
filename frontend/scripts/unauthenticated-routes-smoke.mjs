@@ -174,6 +174,7 @@ async function smokePublicRoute(page, routePath, theme, outDir) {
     networkResponses,
     networkFailures,
     allowUnauthenticatedProfileProbe: true,
+    expectedOrigin: new URL(ORIGIN).origin,
   })
 
   // Persist one JSON sidecar per route for CI artifact inspection.
