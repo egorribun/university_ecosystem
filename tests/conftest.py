@@ -1,4 +1,5 @@
 import atexit
+import base64
 import hashlib
 import os
 import shutil
@@ -331,6 +332,16 @@ os.environ["RATE_LIMIT_AUTH_REGISTER"] = "4/minute"
 os.environ["RATE_LIMIT_AUTH_PASSWORD_RESET"] = "4/minute"
 os.environ["IMGPROXY_KEY"] = ""
 os.environ["IMGPROXY_SALT"] = ""
+os.environ.setdefault(
+    "MFA_EMAIL_OTP_HMAC_KEYS",
+    f"pytest-hmac:{base64.b64encode(b'h' * 32).decode('ascii')}",
+)
+os.environ.setdefault("MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID", "pytest-hmac")
+os.environ.setdefault(
+    "MFA_EMAIL_DELIVERY_KEKS",
+    f"pytest-kek:{base64.b64encode(b'k' * 32).decode('ascii')}",
+)
+os.environ.setdefault("MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID", "pytest-kek")
 
 Path(os.environ.get("STATIC_DIR", "app/test-static")).mkdir(parents=True, exist_ok=True)
 

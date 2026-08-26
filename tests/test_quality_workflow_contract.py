@@ -2978,6 +2978,52 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert "frontend/coverage/lcov.info" in staging_step["run"]
 
 
+def test_frontend_mutation_required_context_is_fail_closed() -> None:
+    """Keep the legacy ruleset context bound to both validated artifacts."""
+
+    jobs = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))["jobs"]
+    context_job = jobs["frontend-mutation-required-context"]
+
+    assert context_job["name"] == "Incremental Mutation Tests (frontend)"
+    assert context_job["needs"] == [
+        "stryker-aggregate",
+        "stryker-evidence-roundtrip",
+    ]
+    assert context_job["if"] == (
+        "${{ always() && github.event_name == 'pull_request' }}"
+    )
+    assert context_job["permissions"] == {}
+    assert context_job["timeout-minutes"] == 5
+
+    assert len(context_job["steps"]) == 1
+    gate = context_job["steps"][0]
+    assert gate["name"] == "Require validated frontend mutation evidence"
+    assert gate["shell"] == "bash"
+    assert gate["run"].splitlines() == [
+        "set -euo pipefail",
+        'aggregate_result="${{ needs.stryker-aggregate.result }}"',
+        'roundtrip_result="${{ needs.stryker-evidence-roundtrip.result }}"',
+        'if [[ "$aggregate_result" != "success" || "$roundtrip_result" != "success" ]]; then',
+        '  echo "::error::Frontend mutation evidence is not fully validated " \\',
+        '    "(aggregate=$aggregate_result, roundtrip=$roundtrip_result)."',
+        "  exit 1",
+        "fi",
+        'echo "Frontend mutation evidence is complete and round-trip verified."',
+    ]
+
+    ci_success = jobs["ci-success"]
+    assert "frontend-mutation-required-context" in ci_success["needs"]
+    ci_gate = ci_success["steps"][0]["run"]
+    assert (
+        'assert_event_result "frontend-mutation-required-context" '
+        '"${{ needs.frontend-mutation-required-context.result }}" "success"' in ci_gate
+    )
+    assert (
+        'assert_event_result "frontend-mutation-required-context" '
+        '"${{ needs.frontend-mutation-required-context.result }}" "skipped"' in ci_gate
+    )
+
+
 def test_quality_promotion_workflow_uses_fail_closed_stabilization_checker() -> None:
     workflow = yaml.safe_load(
         QUALITY_PROMOTION_WORKFLOW_PATH.read_text(encoding="utf-8")
@@ -4176,6 +4222,49 @@ def test_performance_history_is_main_only_and_advisory() -> None:
         assert forbidden_fragment not in combined_workflow_text
     for job in jobs.values():
         assert "${{" not in str(job["runs-on"])
+
+
+@pytest.mark.parametrize(
+    "workflow_path",
+    [
+        REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+        MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+    ],
+)
+def test_gateway_hash_ring_budget_uses_uninstrumented_benchmark_evidence(
+    workflow_path: Path,
+) -> None:
+    """The 250k lookup budget belongs to a repeated benchmark, not test coverage."""
+
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["benchmark"]["steps"]
+    budget_step = next(
+        step
+        for step in steps
+        if step.get("name") == "Enforce gateway HashRing lookup budget"
+    )
+    assert budget_step == {
+        "name": "Enforce gateway HashRing lookup budget",
+        "shell": "bash",
+        "run": """\
+set -euo pipefail
+(
+  cd services/gateway
+  go test -run=^$ -bench=^BenchmarkHashRingLookup$ -benchtime=1s -count=5 .
+) 2>&1 | tee artifacts/performance/advisory/go/gateway-hashring-budget.txt
+python3 scripts/quality/check_go_benchmark_budget.py \\
+  artifacts/performance/advisory/go/gateway-hashring-budget.txt \\
+  --benchmark BenchmarkHashRingLookup \\
+  --metric ns/op \\
+  --exclusive-maximum 4000 \\
+  --expected-samples 5
+""",
+    }
+    command = budget_step["run"]
+    _assert_fail_closed_shell_mode(command)
+    _assert_no_shell_indirection_or_option_control(command)
+    assert "-race" not in command
+    assert "-cover" not in command
 
 
 def test_manual_performance_evidence_uses_distinct_read_only_paired_contexts() -> None:

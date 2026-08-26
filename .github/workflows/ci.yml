@@ -728,6 +728,29 @@ jobs:
         working-directory: frontend
         run: npm run test:mutation:verify
 
+  frontend-mutation-required-context:
+    name: Incremental Mutation Tests (frontend)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    needs:
+      - stryker-aggregate
+      - stryker-evidence-roundtrip
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    permissions: {}
+    steps:
+      - name: Require validated frontend mutation evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          aggregate_result="${{ needs.stryker-aggregate.result }}"
+          roundtrip_result="${{ needs.stryker-evidence-roundtrip.result }}"
+          if [[ "$aggregate_result" != "success" || "$roundtrip_result" != "success" ]]; then
+            echo "::error::Frontend mutation evidence is not fully validated " \
+              "(aggregate=$aggregate_result, roundtrip=$roundtrip_result)."
+            exit 1
+          fi
+          echo "Frontend mutation evidence is complete and round-trip verified."
+
   # Wave 122 polish A1 — wires up the Playwright E2E suite + the W122 SW3
   # cross-env URL_STATE_E2E step. The default Chromium suite is split into
   # four isolated shards so all 114 tests finish within the job timeout
@@ -3270,6 +3293,7 @@ jobs:
       - mutation-tests-incremental
       - stryker-aggregate
       - stryker-evidence-roundtrip
+      - frontend-mutation-required-context
       - chaos-tests
       - chaos-loadtest-orchestrator
       - db-migration-integrity
@@ -3360,9 +3384,11 @@ jobs:
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "success"
             assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "success"
+            assert_event_result "frontend-mutation-required-context" "${{ needs.frontend-mutation-required-context.result }}" "success"
           else
             assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "skipped"
             assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "skipped"
+            assert_event_result "frontend-mutation-required-context" "${{ needs.frontend-mutation-required-context.result }}" "skipped"
           fi
 
           if [[ "$EVENT_NAME" == "push" && "$EVENT_REF" == "refs/heads/main" ]]; then

@@ -47,6 +47,21 @@ jobs:
             artifacts/performance/advisory/go/wshub-bench.txt \
             > artifacts/performance/advisory/go/benchmarks.txt
 
+      - name: Enforce gateway HashRing lookup budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd services/gateway
+            go test -run=^$ -bench=^BenchmarkHashRingLookup$ -benchtime=1s -count=5 .
+          ) 2>&1 | tee artifacts/performance/advisory/go/gateway-hashring-budget.txt
+          python3 scripts/quality/check_go_benchmark_budget.py \
+            artifacts/performance/advisory/go/gateway-hashring-budget.txt \
+            --benchmark BenchmarkHashRingLookup \
+            --metric ns/op \
+            --exclusive-maximum 4000 \
+            --expected-samples 5
+
       - name: Upload advisory Go benchmark evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

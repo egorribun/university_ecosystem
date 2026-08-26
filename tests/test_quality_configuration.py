@@ -245,6 +245,7 @@ def test_governance_quality_configuration_matches_contract() -> None:
     assert "@security-team" not in codeowners
     assert "@devops-team" not in codeowners
     for protected_path in (
+        "scripts/quality/check_go_benchmark_budget.py",
         "scripts/quality/compare_paired_benchmarks.py",
         "scripts/quality/capture_isolated_benchmarks.py",
         "containers/quality/Dockerfile.performance-rust",

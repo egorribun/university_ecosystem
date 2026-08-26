@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.test_helm_staging_contract import _resolved_staging_args
+
 
 def _find_repo_root() -> Path:
     current = Path(__file__).resolve().parent
@@ -1459,66 +1461,69 @@ def test_helm_supports_an_externally_managed_application_secret() -> None:
     assert "managed-application-secrets" in secret_refs
 
 
-def test_helm_production_render_rejects_plaintext_data_planes() -> None:
-    helm = shutil.which("helm")
-    if helm is None:
-        pytest.skip("Helm is not installed")  # QUALITY-123 @egorribun
-
-    base_command = [
+def _production_render_command(helm: str) -> list[str]:
+    return [
         helm,
         "template",
         "production",
         str(ROOT / "charts" / "university-ecosystem"),
         *_helm_skip_dep_flag(helm),
-        "--set",
-        "redis.enabled=false",
-        "--set",
-        "revocationRedis.enabled=false",
-        "--set",
-        "nats.enabled=false",
-        "--set",
+        "--values",
+        str(ROOT / "charts" / "university-ecosystem" / "values-staging.yaml"),
+        *_resolved_staging_args(),
+        "--set-string",
         "global.environment=production",
-        "--set",
-        "applicationSecrets.existingSecret=managed-application-secrets",
         "--set-string",
-        "global.imageTag=9d08136558b95d1182f889574f67b1b1d21abc9f",
+        "ingress.issuer.kind=ClusterIssuer",
         "--set-string",
-        "backend.image.digest=sha256:" + ("a" * 64),
-        "--set-string",
-        "frontend.image.digest=sha256:" + ("a" * 64),
-        "--set-string",
-        "gateway.image.digest=sha256:" + ("a" * 64),
-        "--set-string",
-        "fileProcessor.image.digest=sha256:" + ("a" * 64),
-        "--set-string",
-        "outboxWorker.image.digest=sha256:" + ("a" * 64),
-        "--set",
-        "ingress.enabled=true",
+        "ingress.issuer.name=letsencrypt-prod",
     ]
+
+
+@pytest.mark.parametrize(
+    ("override", "expected_error"),
+    [
+        ("backend.config.minioSecure=false", "backend.config.minioSecure=true"),
+        ("gateway.config.grpcUseTLS=false", "gateway.config.grpcUseTLS=true"),
+        (
+            "fileProcessor.config.minioSecure=false",
+            "fileProcessor.config.minioSecure=true",
+        ),
+        (
+            "fileProcessor.config.temporalTLSDisabled=true",
+            "fileProcessor.config.temporalTLSDisabled=false",
+        ),
+        (
+            "fileProcessor.config.otlpInsecure=true",
+            "fileProcessor.config.otlpInsecure=false",
+        ),
+    ],
+)
+def test_helm_production_render_rejects_plaintext_data_planes(
+    override: str, expected_error: str
+) -> None:
+    helm = shutil.which("helm")
+    if helm is None:
+        pytest.skip("Helm is not installed")  # QUALITY-123 @egorribun
+
     insecure = subprocess.run(  # noqa: S603 - fixed Helm contract command
-        base_command,
+        [*_production_render_command(helm), "--set", override],
         check=False,
         capture_output=True,
         text=True,
         encoding="utf-8",
     )
     assert insecure.returncode != 0
-    assert "backend.config.minioSecure=true" in insecure.stderr
+    assert expected_error in insecure.stderr
+
+
+def test_helm_production_render_accepts_secure_data_planes() -> None:
+    helm = shutil.which("helm")
+    if helm is None:
+        pytest.skip("Helm is not installed")  # QUALITY-123 @egorribun
 
     secure = subprocess.run(  # noqa: S603 - fixed Helm contract command
-        [
-            *base_command,
-            "--set",
-            "backend.config.minioSecure=true",
-            "--set",
-            "gateway.config.grpcUseTLS=true",
-            "--set",
-            "fileProcessor.config.minioSecure=true",
-            "--set",
-            "fileProcessor.config.temporalTLSDisabled=false",
-            "--set",
-            "fileProcessor.config.otlpInsecure=false",
-        ],
+        _production_render_command(helm),
         check=False,
         capture_output=True,
         text=True,
