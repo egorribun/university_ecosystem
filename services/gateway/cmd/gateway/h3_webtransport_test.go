@@ -214,17 +214,21 @@ func writeGatewayMTLSMaterial(t *testing.T) (string, string, string, string) {
 
 func TestConventionalGRPCClientCredentials(t *testing.T) {
 	caPath, certPath, keyPath, identity := writeGatewayMTLSMaterial(t)
-
-	credentials, err := conventionalGRPCClientCredentials(&config.Config{
+	cfg := &config.Config{
 		GRPCCAFile:            caPath,
 		GRPCClientCertFile:    certPath,
 		GRPCClientKeyFile:     keyPath,
 		GRPCServerName:        "file-processor.example.test",
 		GRPCClientIdentityURI: identity,
-	})
+	}
+
+	tlsConfig, err := conventionalGRPCClientTLSConfig(cfg)
+	require.NoError(t, err)
+	assert.Equal(t, "file-processor.example.test", tlsConfig.ServerName)
+
+	credentials, err := conventionalGRPCClientCredentials(cfg)
 	require.NoError(t, err)
 	require.NotNil(t, credentials)
-	assert.Equal(t, "file-processor.example.test", credentials.Info().ServerName)
 	connection, client, err := initGRPC(&config.Config{
 		FileProcessorAddr:     "localhost:50051",
 		GrpcUseTLS:            true,

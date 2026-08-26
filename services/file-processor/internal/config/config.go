@@ -71,6 +71,22 @@ type Config struct {
 
 // Load loads the configuration from environment variables using Viper.
 func Load() (*Config, error) {
+	configureViper()
+	if err := bindConfigEnvironment(); err != nil {
+		return nil, err
+	}
+
+	var cfg Config
+	if err := unmarshalConfigFunc(&cfg); err != nil {
+		return nil, err
+	}
+	if err := validateConfig(&cfg); err != nil {
+		return nil, err
+	}
+	return &cfg, nil
+}
+
+func configureViper() {
 	viper.Reset()
 	viper.AllowEmptyEnv(true)
 	// LOW-W19: set prefix "FP" so this service reads FP_GRPC_PORT etc. and does
@@ -98,6 +114,13 @@ func Load() (*Config, error) {
 	viper.SetDefault("allowed_client_spiffe_ids", []string{"spiffe://university.ecosystem/ns/default/sa/gateway"})
 	viper.SetDefault("grpc_allowed_client_uris", []string{})
 
+	viper.SetDefault("otlp_endpoint", "tempo:4317")
+	// Default to insecure only in development; production deployments must
+	// set OTLP_INSECURE=false and provide a valid TLS CA / cert-manager cert.
+	viper.SetDefault("otlp_insecure", true)
+}
+
+func bindConfigEnvironment() error {
 	bindEnvs := map[string]string{
 		"grpc_port":                 "GRPC_PORT",
 		"nats_url":                  "NATS_URL",
@@ -128,62 +151,57 @@ func Load() (*Config, error) {
 
 	for key, env := range bindEnvs {
 		if err := bindEnvFunc(key, env); err != nil {
-			return nil, fmt.Errorf("failed to bind env %s: %w", env, err)
+			return fmt.Errorf("failed to bind env %s: %w", env, err)
 		}
 	}
+	return nil
+}
 
-	viper.SetDefault("otlp_endpoint", "tempo:4317")
-	// Default to insecure only in development; production deployments must
-	// set OTLP_INSECURE=false and provide a valid TLS CA / cert-manager cert.
-	viper.SetDefault("otlp_insecure", true)
-
-	var cfg Config
-	if err := unmarshalConfigFunc(&cfg); err != nil {
-		return nil, err
-	}
-
+func validateConfig(cfg *Config) error {
 	if cfg.MinioAccessKey == "" || cfg.MinioSecretKey == "" {
-		return nil, fmt.Errorf("MINIO_ACCESS_KEY and MINIO_SECRET_KEY are required")
+		return fmt.Errorf("MINIO_ACCESS_KEY and MINIO_SECRET_KEY are required")
 	}
 
 	if cfg.JWTSecret == "" && cfg.RSAPublicKeyPEM == "" && cfg.RSAPublicKeyFile == "" {
-		return nil, fmt.Errorf(
+		return fmt.Errorf(
 			"one of FP_JWT_SECRET, FP_RSA_PUBLIC_KEY_PEM, or FP_RSA_PUBLIC_KEY_FILE must be set",
 		)
 	}
 
 	environment := strings.ToLower(strings.TrimSpace(cfg.Environment))
-	if environment == "production" || environment == "staging" {
-		if !cfg.MinioSecure {
-			return nil, fmt.Errorf("FP_MINIO_SECURE=true is required in %s", environment)
-		}
-		if cfg.TemporalTLSDisabled {
-			return nil, fmt.Errorf("FP_TEMPORAL_TLS_DISABLED=false is required in %s", environment)
-		}
-		if cfg.OTLPInsecure {
-			return nil, fmt.Errorf("FP_OTLP_INSECURE=false is required in %s", environment)
-		}
-		if !cfg.SpiffeEnabled {
-			required := []struct {
-				name  string
-				value string
-			}{
-				{name: "FP_GRPC_TLS_CERT_FILE", value: cfg.GRPCTLSCertFile},
-				{name: "FP_GRPC_TLS_KEY_FILE", value: cfg.GRPCTLSKeyFile},
-				{name: "FP_GRPC_CLIENT_CA_FILE", value: cfg.GRPCClientCAFile},
-			}
-			for _, item := range required {
-				if strings.TrimSpace(item.value) == "" {
-					return nil, fmt.Errorf("%s is required for conventional gRPC mTLS in %s", item.name, environment)
-				}
-			}
-			if err := ValidateGRPCAllowedClientURIs(cfg.GRPCAllowedClientURIs); err != nil {
-				return nil, err
-			}
+	if environment != "production" && environment != "staging" {
+		return nil
+	}
+	return validateReleaseConfig(cfg, environment)
+}
+
+func validateReleaseConfig(cfg *Config, environment string) error {
+	if !cfg.MinioSecure {
+		return fmt.Errorf("FP_MINIO_SECURE=true is required in %s", environment)
+	}
+	if cfg.TemporalTLSDisabled {
+		return fmt.Errorf("FP_TEMPORAL_TLS_DISABLED=false is required in %s", environment)
+	}
+	if cfg.OTLPInsecure {
+		return fmt.Errorf("FP_OTLP_INSECURE=false is required in %s", environment)
+	}
+	if cfg.SpiffeEnabled {
+		return nil
+	}
+	required := []struct {
+		name  string
+		value string
+	}{
+		{name: "FP_GRPC_TLS_CERT_FILE", value: cfg.GRPCTLSCertFile},
+		{name: "FP_GRPC_TLS_KEY_FILE", value: cfg.GRPCTLSKeyFile},
+		{name: "FP_GRPC_CLIENT_CA_FILE", value: cfg.GRPCClientCAFile},
+	}
+	for _, item := range required {
+		if strings.TrimSpace(item.value) == "" {
+			return fmt.Errorf("%s is required for conventional gRPC mTLS in %s", item.name, environment)
 		}
 	}
-
-	return &cfg, nil
+	return ValidateGRPCAllowedClientURIs(cfg.GRPCAllowedClientURIs)
 }
 
 // ValidateGRPCAllowedClientURIs rejects ambiguous or aliasable identities.
@@ -195,12 +213,8 @@ func ValidateGRPCAllowedClientURIs(values []string) error {
 	}
 	seen := make(map[string]struct{}, len(values))
 	for _, value := range values {
-		if value == "" || strings.TrimSpace(value) != value {
-			return fmt.Errorf("FP_GRPC_ALLOWED_CLIENT_URIS contains a blank or non-canonical URI")
-		}
-		parsed, err := url.Parse(value)
-		if err != nil || parsed.Scheme != "spiffe" || parsed.Host == "" || parsed.Host != strings.ToLower(parsed.Host) || parsed.Host != parsed.Hostname() || !validSPIFFETrustDomain(parsed.Host) || parsed.User != nil || parsed.Opaque != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.RawFragment != "" || parsed.ForceQuery || strings.Contains(value, "%") || path.Clean(parsed.Path) != parsed.Path || !spiffePathPattern.MatchString(parsed.Path) || parsed.String() != value {
-			return fmt.Errorf("FP_GRPC_ALLOWED_CLIENT_URIS contains invalid exact URI %q", value)
+		if err := validateCanonicalClientURI(value); err != nil {
+			return err
 		}
 		if _, duplicate := seen[value]; duplicate {
 			return fmt.Errorf("FP_GRPC_ALLOWED_CLIENT_URIS contains duplicate URI %q", value)
@@ -208,6 +222,29 @@ func ValidateGRPCAllowedClientURIs(values []string) error {
 		seen[value] = struct{}{}
 	}
 	return nil
+}
+
+func validateCanonicalClientURI(value string) error {
+	if value == "" || strings.TrimSpace(value) != value {
+		return fmt.Errorf("FP_GRPC_ALLOWED_CLIENT_URIS contains a blank or non-canonical URI")
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || !hasCanonicalSPIFFEAuthority(parsed) || !hasCanonicalSPIFFEPath(parsed, value) {
+		return fmt.Errorf("FP_GRPC_ALLOWED_CLIENT_URIS contains invalid exact URI %q", value)
+	}
+	return nil
+}
+
+func hasCanonicalSPIFFEAuthority(parsed *url.URL) bool {
+	return parsed.Scheme == "spiffe" && parsed.Host != "" &&
+		parsed.Host == strings.ToLower(parsed.Host) && parsed.Host == parsed.Hostname() &&
+		validSPIFFETrustDomain(parsed.Host) && parsed.User == nil && parsed.Opaque == "" &&
+		parsed.RawQuery == "" && parsed.Fragment == "" && parsed.RawFragment == "" && !parsed.ForceQuery
+}
+
+func hasCanonicalSPIFFEPath(parsed *url.URL, value string) bool {
+	return !strings.Contains(value, "%") && path.Clean(parsed.Path) == parsed.Path &&
+		spiffePathPattern.MatchString(parsed.Path) && parsed.String() == value
 }
 
 func validSPIFFETrustDomain(value string) bool {

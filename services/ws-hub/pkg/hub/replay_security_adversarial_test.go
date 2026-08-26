@@ -1,12 +1,14 @@
 package hub
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +22,42 @@ func signedTokenPart(secret, payload string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(payload))
 	return payload + "." + base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+func TestServerOwnedReplayMetadataCannotBeInjected(t *testing.T) {
+	t.Run("client ingress strips replay fields", func(t *testing.T) {
+		message := Message{
+			Type: "message",
+			MessageReplayMetadata: &MessageReplayMetadata{
+				Seq:         99,
+				ResumeToken: "attacker-token",
+				Stream:      "CHAT_EVENTS",
+			},
+		}
+		stripClientReplayMetadata(&message)
+		assert.Nil(t, message.MessageReplayMetadata)
+	})
+
+	t.Run("core fallback strips publisher replay fields", func(t *testing.T) {
+		h := setupTestHub()
+		message := &nats.Msg{
+			Subject: "chat.room",
+			Data: []byte(`{"type":"new_message","room":"room","payload":{"chat_id":"room"},` +
+				`"seq":99,"resume_token":"attacker-token"}`),
+		}
+		h.processChatDelivery(context.Background(), message, false)
+
+		select {
+		case delivered := <-h.Broadcast:
+			assert.Nil(t, delivered.MessageReplayMetadata)
+			encoded, err := json.Marshal(delivered)
+			require.NoError(t, err)
+			assert.NotContains(t, string(encoded), `"seq"`)
+			assert.NotContains(t, string(encoded), `"resume_token"`)
+		default:
+			t.Fatal("core fallback message was not delivered")
+		}
+	})
 }
 
 func newReplayState() *roomReplayState {
@@ -98,7 +136,7 @@ func TestClientInvalidResumeTokenKeepsOnlyLiveMembership(t *testing.T) {
 	payload, err := json.Marshal(joinPayload{ResumeToken: token + "tampered"})
 	require.NoError(t, err)
 
-	client.handleJoin(Message{Type: "join", Room: "room", Payload: payload})
+	client.handleJoin(client.ctx, Message{Type: "join", Room: "room", Payload: payload})
 
 	client.mu.Lock()
 	assert.True(t, client.Rooms["room"])
@@ -262,10 +300,10 @@ func TestReplayQueueAndFlushAdversarialStateTransitions(t *testing.T) {
 	client := &Client{UserID: "user", Hub: h, Send: make(chan []byte, 8), replays: make(map[string]*roomReplayState), ctx: ctx, cancel: cancel}
 
 	assert.Equal(t, roomEnqueueReplayFatal, (&Client{Hub: setupTestHub(), Send: make(chan []byte, 1), ctx: context.Background()}).enqueueRoomBroadcast(
-		&Message{Room: "room", Seq: 1, Stream: "CHAT_EVENTS"}, []byte(`{}`),
+		&Message{Room: "room", MessageReplayMetadata: &MessageReplayMetadata{Seq: 1, Stream: "CHAT_EVENTS"}}, []byte(`{}`),
 	))
 	assert.Equal(t, roomEnqueueReplayFatal, client.enqueueRoomBroadcast(
-		&Message{Room: "room", Seq: 1, Stream: h.streamChat}, []byte(`not-json`),
+		&Message{Room: "room", MessageReplayMetadata: &MessageReplayMetadata{Seq: 1, Stream: h.streamChat}}, []byte(`not-json`),
 	))
 
 	state := newReplayState()
@@ -278,7 +316,7 @@ func TestReplayQueueAndFlushAdversarialStateTransitions(t *testing.T) {
 	state.bufferedBytes = len("old")
 	client.replays["room"] = state
 	assert.Equal(t, roomEnqueueBuffered, client.enqueueRoomBroadcast(
-		&Message{Room: "room", Seq: 2, Stream: h.streamChat}, []byte(`{"type":"new_message"}`),
+		&Message{Room: "room", MessageReplayMetadata: &MessageReplayMetadata{Seq: 2, Stream: h.streamChat}}, []byte(`{"type":"new_message"}`),
 	))
 	assert.NotEqual(t, "old", string(state.buffered[2]))
 
@@ -289,14 +327,14 @@ func TestReplayQueueAndFlushAdversarialStateTransitions(t *testing.T) {
 	state.bufferedBytes = replayLiveBufferLimit
 	client.replays["room"] = state
 	assert.Equal(t, roomEnqueueReplayFatal, client.enqueueRoomBroadcast(
-		&Message{Room: "room", Seq: replayLiveBufferLimit + 1, Stream: h.streamChat}, []byte(`{}`),
+		&Message{Room: "room", MessageReplayMetadata: &MessageReplayMetadata{Seq: replayLiveBufferLimit + 1, Stream: h.streamChat}}, []byte(`{}`),
 	))
 
 	state = newReplayState()
 	state.bufferedBytes = replayLiveBufferBytes
 	client.replays["room"] = state
 	assert.Equal(t, roomEnqueueReplayFatal, client.enqueueRoomBroadcast(
-		&Message{Room: "room", Seq: 1, Stream: h.streamChat}, []byte(`{}`),
+		&Message{Room: "room", MessageReplayMetadata: &MessageReplayMetadata{Seq: 1, Stream: h.streamChat}}, []byte(`{}`),
 	))
 
 	originalMarshal := hubJSONMarshalFunc
@@ -308,7 +346,7 @@ func TestReplayQueueAndFlushAdversarialStateTransitions(t *testing.T) {
 		return nil, errors.New("personalization marshal failed")
 	}
 	assert.Equal(t, roomEnqueueReplayFatal, client.enqueueRoomBroadcast(
-		&Message{Room: "other", Seq: 1, Stream: h.streamChat}, []byte(`{}`),
+		&Message{Room: "other", MessageReplayMetadata: &MessageReplayMetadata{Seq: 1, Stream: h.streamChat}}, []byte(`{}`),
 	))
 	hubJSONMarshalFunc = json.Marshal
 
@@ -339,10 +377,12 @@ func TestReplayCancellationAdaptersAndConnectionFailurePaths(t *testing.T) {
 	originalNak := nakOfflineMessageFunc
 	originalTerm := termOfflineMessageFunc
 	originalJetStreamTerm := jetStreamTermFunc
+	originalJetStreamNak := jetStreamNakFunc
 	t.Cleanup(func() {
 		nakOfflineMessageFunc = originalNak
 		termOfflineMessageFunc = originalTerm
 		jetStreamTermFunc = originalJetStreamTerm
+		jetStreamNakFunc = originalJetStreamNak
 	})
 	assert.Error(t, nakOfflineMessageFunc(&nats.Msg{}, time.Millisecond))
 	assert.Error(t, termOfflineMessageFunc(&nats.Msg{}))
@@ -353,19 +393,37 @@ func TestReplayCancellationAdaptersAndConnectionFailurePaths(t *testing.T) {
 		termCalls++
 		return nil
 	}
-	safeTerm(nil)
+	require.NoError(t, safeTerm(nil))
 	assert.Zero(t, termCalls, "nil poison messages must not reach the NATS adapter")
-	safeTerm(&nats.Msg{})
+	require.NoError(t, safeTerm(&nats.Msg{}))
 	assert.Equal(t, 1, termCalls)
 
+	var logs bytes.Buffer
 	h := setupTestHub()
+	h.Logger = slog.New(slog.NewJSONHandler(&logs, nil))
+	jetStreamTermFunc = func(*nats.Msg) error { return errors.New("term unavailable") }
+	jetStreamNakCalls := 0
+	jetStreamNakFunc = func(msg *nats.Msg, delay time.Duration) error {
+		require.NotNil(t, msg)
+		assert.Equal(t, 5*time.Second, delay)
+		jetStreamNakCalls++
+		return nil
+	}
+	h.terminateChatMessage(context.Background(), &nats.Msg{Subject: "chat.room"}, "binding mismatch")
+	assert.Contains(t, logs.String(), "Failed to terminate rejected NATS chat message")
+	assert.Contains(t, logs.String(), "term unavailable")
+	assert.Equal(t, 1, jetStreamNakCalls, "failed TERM must request bounded redelivery")
+	jetStreamTermFunc = func(*nats.Msg) error { return nats.ErrMsgNotBound }
+	h.terminateChatMessage(context.Background(), &nats.Msg{Subject: "chat.room"}, "core fallback")
+	assert.Equal(t, 1, jetStreamNakCalls, "core NATS messages have no JetStream redelivery adapter")
+
 	client := &Client{Hub: h, ctx: context.Background()}
 	nakCalls := 0
 	nakOfflineMessageFunc = func(*nats.Msg, time.Duration) error {
 		nakCalls++
 		return errors.New("nak failed")
 	}
-	client.nakOfflineReplay(&nats.Msg{})
+	client.nakOfflineReplay(client.ctx, &nats.Msg{})
 	assert.Equal(t, 1, nakCalls)
 
 	emptyRoomCtx, cancelEmptyRoom := context.WithCancel(context.Background())
@@ -439,7 +497,7 @@ func TestReplayContextCancellationAndGenerationReplacement(t *testing.T) {
 		<-releaseFetch
 		return nil, nats.ErrTimeout
 	}
-	client.startRoomReplay("room", 1, "")
+	client.startRoomReplay(client.ctx, "room", 1, "")
 	<-fetchStarted
 	client.replayMu.Lock()
 	client.replays["room"] = newReplayState()

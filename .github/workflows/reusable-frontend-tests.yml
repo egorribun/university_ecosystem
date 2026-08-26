@@ -105,7 +105,7 @@ jobs:
           set -euo pipefail
           test -s frontend/coverage/coverage-final.json
           node_version="$(node -p 'process.versions.node')"
-          vitest_version="$(node -p \"require('./frontend/node_modules/vitest/package.json').version\")"
+          vitest_version="$(node -p 'require("./frontend/node_modules/vitest/package.json").version')"
           python3 scripts/quality/coverage_provenance.py write \
             --repository-root "$GITHUB_WORKSPACE" \
             --output frontend/coverage/coverage-provenance.json \
@@ -283,7 +283,7 @@ jobs:
           test -s frontend/coverage/coverage-final.json
           test "$(find frontend/coverage -maxdepth 1 -type f | wc -l)" -eq 2
           node_version="$(node -p 'process.versions.node')"
-          vitest_version="$(node -p \"require('./frontend/node_modules/vitest/package.json').version\")"
+          vitest_version="$(node -p 'require("./frontend/node_modules/vitest/package.json").version')"
           python3 scripts/quality/coverage_provenance.py write \
             --repository-root "$GITHUB_WORKSPACE" \
             --output frontend/coverage/coverage-provenance.json \

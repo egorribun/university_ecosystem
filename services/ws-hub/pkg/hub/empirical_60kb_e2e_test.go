@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"context"
 	"encoding/json"
 	"testing"
 	"time"
@@ -23,7 +24,7 @@ func TestEmpirical_WS60KBPayloadRejection_E2E(t *testing.T) {
 	client := newClientOn(h, srvConn, "c-60kb-test", "u-60kb-test")
 
 	// Start client read pump in background
-	go client.ReadPump()
+	go client.ReadPump(context.Background())
 
 	// Also start a write pump loop to relay messages from client.Send to srvConn
 	go func() {

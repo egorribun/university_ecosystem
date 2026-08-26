@@ -246,12 +246,12 @@ func TestHandleIncomingMessage_JoinLeaveDispatch(t *testing.T) {
 	srv, _ := newConnPair(t)
 	c := newClientOn(h, srv, "c-disp", "u-disp")
 
-	c.handleIncomingMessage(Message{Type: "join", Room: "room-d"}, nil)
+	c.handleIncomingMessage(c.ctx, Message{Type: "join", Room: "room-d"}, nil)
 	h.mu.RLock()
 	assert.Len(t, h.Rooms["room-d"], 1)
 	h.mu.RUnlock()
 
-	c.handleIncomingMessage(Message{Type: "leave", Room: "room-d"}, nil)
+	c.handleIncomingMessage(c.ctx, Message{Type: "leave", Room: "room-d"}, nil)
 	h.mu.RLock()
 	_, ok := h.Rooms["room-d"]
 	h.mu.RUnlock()
@@ -272,7 +272,7 @@ func TestHandleIncomingMessage_UnknownTypeIncrementsMetric(t *testing.T) {
 	c := newClientOn(h, srv, "c-unk", "u-unk")
 
 	before := testutil.ToFloat64(UnknownMsgTypeTotal)
-	c.handleIncomingMessage(Message{Type: "totally-bogus"}, nil)
+	c.handleIncomingMessage(c.ctx, Message{Type: "totally-bogus"}, nil)
 	assert.Equal(t, before+1, testutil.ToFloat64(UnknownMsgTypeTotal))
 }
 
@@ -280,7 +280,7 @@ func TestHandleJoin_EmptyRoomNoOp(t *testing.T) {
 	h := setupTestHub()
 	srv, _ := newConnPair(t)
 	c := newClientOn(h, srv, "c-empty", "u-empty")
-	c.handleJoin(Message{Type: "join", Room: ""})
+	c.handleJoin(c.ctx, Message{Type: "join", Room: ""})
 	h.mu.RLock()
 	assert.Empty(t, h.Rooms)
 	h.mu.RUnlock()
@@ -294,7 +294,7 @@ func TestHandleJoin_DeniedIncrementsAuthFailures(t *testing.T) {
 	c := newClientOn(h, srv, "c-deny", "u-deny")
 
 	before := testutil.ToFloat64(AuthFailuresTotal.WithLabelValues("room_join_denied"))
-	c.handleJoin(Message{Type: "join", Room: "secret"})
+	c.handleJoin(c.ctx, Message{Type: "join", Room: "secret"})
 	assert.Equal(t, before+1,
 		testutil.ToFloat64(AuthFailuresTotal.WithLabelValues("room_join_denied")))
 	h.mu.RLock()
@@ -321,7 +321,7 @@ func TestReadPump_InvalidJSONThenJoin(t *testing.T) {
 		return ok
 	}, 2*time.Second, 10*time.Millisecond)
 
-	go c.ReadPump()
+	go c.ReadPump(c.ctx)
 
 	require.NoError(t, cli.WriteMessage(websocket.TextMessage, []byte("{not valid json")))
 	require.NoError(t, cli.WriteJSON(map[string]string{"type": "join", "room": "room-r"}))
@@ -347,7 +347,7 @@ func TestReadPump_DisallowedTypeOverSocket(t *testing.T) {
 	srv, cli := newConnPair(t)
 	c := newClientOn(h, srv, "c-bad", "u-bad")
 	h.Register <- c
-	go c.ReadPump()
+	go c.ReadPump(c.ctx)
 
 	before := testutil.ToFloat64(UnknownMsgTypeTotal)
 	// "ping" is not in allowedMessageTypes → rejected at the parse boundary.
@@ -373,7 +373,7 @@ func TestReadPump_HubCtxDoneTeardown(t *testing.T) {
 	c := newClientOn(h, srv, "c-ctx", "u-ctx")
 
 	done := make(chan struct{})
-	go func() { c.ReadPump(); close(done) }()
+	go func() { c.ReadPump(c.ctx); close(done) }()
 	require.NoError(t, cli.Close()) // ends the read loop → teardown
 	select {
 	case <-done:

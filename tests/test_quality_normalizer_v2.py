@@ -16,6 +16,7 @@ from tests.quality_normalizer_v2_testkit import (
     TOOL_VERSION_ARGUMENTS,
     write_complete_evidence,
 )
+from tests.symlink_support import DIRECTORY_SYMLINKS_SUPPORTED
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 NORMALIZER_PATH = (
@@ -158,7 +159,20 @@ def test_normalizer_v2_rejects_sha_mismatch_before_writing(evidence_repo: Path) 
     assert not (evidence_repo / "artifacts/coverage/quality-manifest.json").exists()
 
 
-@pytest.mark.parametrize("fault", ["missing", "empty", "symlink"])
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "missing",
+        "empty",
+        pytest.param(
+            "symlink",
+            marks=pytest.mark.skipif(
+                not DIRECTORY_SYMLINKS_SUPPORTED,
+                reason="symlink creation is unavailable on this platform",
+            ),
+        ),
+    ],
+)
 def test_normalizer_v2_rejects_incomplete_or_unsafe_python_json(
     evidence_repo: Path,
     fault: str,
@@ -172,10 +186,7 @@ def test_normalizer_v2_rejects_incomplete_or_unsafe_python_json(
         target = report.with_suffix(".target")
         target.write_bytes(report.read_bytes())
         report.unlink()
-        try:
-            report.symlink_to(target)
-        except OSError:
-            pytest.skip("symlink creation is unavailable on this platform")
+        report.symlink_to(target)
 
     result = _run(evidence_repo, _full_arguments(evidence_repo))
 
@@ -367,6 +378,10 @@ def test_normalizer_v2_allows_generated_raw_coverage_artifact_changes(
     assert result.returncode == 0, result.stderr
 
 
+@pytest.mark.skipif(
+    not DIRECTORY_SYMLINKS_SUPPORTED,
+    reason="directory symlink creation is unavailable",
+)
 def test_normalizer_v2_rejects_output_parent_symlink_before_writing(
     evidence_repo: Path,
 ) -> None:
@@ -379,10 +394,7 @@ def test_normalizer_v2_rejects_output_parent_symlink_before_writing(
     outside = evidence_repo.parent / f"{evidence_repo.name}-outside"
     outside.mkdir()
     output_parent = evidence_repo / "artifacts/manifests"
-    try:
-        output_parent.symlink_to(outside, target_is_directory=True)
-    except OSError:
-        pytest.skip("directory symlink creation is unavailable")
+    output_parent.symlink_to(outside, target_is_directory=True)
 
     arguments = _full_arguments(evidence_repo)
     arguments[arguments.index("--output") + 1] = str(

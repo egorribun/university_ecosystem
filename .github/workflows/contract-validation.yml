@@ -223,7 +223,9 @@ jobs:
           import json, pathlib
           from app.main import app
           spec = app.openapi()
-          pathlib.Path('frontend/openapi.json').write_text(json.dumps(spec, indent=2))
+          pathlib.Path('frontend/openapi.json').write_text(
+              json.dumps(spec, indent=2, sort_keys=True) + '\n'
+          )
           "
 
       - name: Set up Node.js

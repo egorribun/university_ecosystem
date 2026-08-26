@@ -365,7 +365,7 @@ func setupHubWithRevocation(ctx context.Context, cfg *config.Config, logger *slo
 	}
 
 	h.StartLimiterCleanup(ctx)
-	go h.Run(ctx)
+	hub.StartTrackedGoroutine(func() { h.Run(ctx) })
 	if nc != nil {
 		if err := subscribeNATSFunc(h, ctx); err != nil {
 			h.Stop() //nolint:contextcheck // Hub.Stop cancels its own lifecycle context.
@@ -605,23 +605,23 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 	// goroutine — ensures deferred cleanup (NATS close, Redis close, tracer
 	// shutdown) always executes. Matches gateway pattern (RZ-31-01).
 	errChan := make(chan error, 2)
-	go func() {
+	hub.StartTrackedGoroutine(func() {
 		logger.InfoContext(context.Background(), "Starting WebSocket Hub (TCP)", "port", cfg.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errChan <- err
 		}
-	}()
+	})
 
 	wtReady := make(chan struct{})
 	wtDone := make(chan struct{})
-	go func() {
+	hub.StartTrackedGoroutine(func() {
 		defer close(wtDone)
 		logger.InfoContext(context.Background(), "Starting WebTransport Hub (UDP HTTP/3)", "port", wtPort)
 		err := serveWebTransport(wtServer, wtPort, cfg, logger, wtReady)
 		if err != nil && err != http.ErrServerClosed {
 			logger.WarnContext(context.Background(), "WebTransport HTTP/3 listener stopped", "err", err)
 		}
-	}()
+	})
 
 	runErr, shutdownRequested := waitForWebTransportStartup(quit, wtReady, wtDone, errChan, logger)
 	if !shutdownRequested {

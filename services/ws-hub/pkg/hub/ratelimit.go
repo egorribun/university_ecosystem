@@ -69,7 +69,7 @@ func NewWSUpgradeRateLimiter(capacity int, windowSec int) *WSUpgradeRateLimiter 
 		gcDone:      make(chan struct{}),
 		gcInterval:  time.Minute,
 	}
-	go l.gcLoop()
+	StartTrackedGoroutine(l.gcLoop)
 	return l
 }
 

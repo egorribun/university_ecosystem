@@ -234,7 +234,7 @@ func TestHandleJoin_WithLastSeqAndMsgID(t *testing.T) {
 		Payload: json.RawMessage(`{"last_seq": 42, "last_msg_id": "msg-42"}`),
 	}
 
-	client.handleJoin(joinMsg)
+	client.handleJoin(client.ctx, joinMsg)
 
 	client.mu.Lock()
 	inRoom := client.Rooms["room-replay"]

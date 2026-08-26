@@ -11,6 +11,8 @@ from types import ModuleType
 
 import pytest
 
+from tests.symlink_support import DIRECTORY_SYMLINKS_SUPPORTED
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 VALIDATOR_PATH = (
     REPOSITORY_ROOT / "scripts" / "quality" / "validate_quality_contract.py"
@@ -342,6 +344,10 @@ def test_v2_manifest_rejects_noncanonical_report_registry(
     assert any("report" in error.lower() for error in errors)
 
 
+@pytest.mark.skipif(
+    not DIRECTORY_SYMLINKS_SUPPORTED,
+    reason="symlink creation is unavailable on this platform",
+)
 def test_v2_manifest_rejects_symlinked_report(git_evidence_root: Path) -> None:
     validator = _load_validator()
     contract, manifest, manifest_path = _valid_manifest_fixture(git_evidence_root)
@@ -350,10 +356,7 @@ def test_v2_manifest_rejects_symlinked_report(git_evidence_root: Path) -> None:
     target = report_path.with_suffix(".target")
     target.write_bytes(report_path.read_bytes())
     report_path.unlink()
-    try:
-        report_path.symlink_to(target)
-    except OSError:
-        pytest.skip("symlink creation is unavailable on this platform")
+    report_path.symlink_to(target)
 
     errors = _validate(validator, manifest, contract, manifest_path, git_evidence_root)
 

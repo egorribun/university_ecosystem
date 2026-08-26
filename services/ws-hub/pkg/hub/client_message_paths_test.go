@@ -524,12 +524,12 @@ func TestClientHandleJoin_SerializesReplayBeforeBufferedLiveDelivery(t *testing.
 	ackOfflineMessageFunc = func(*nats.Msg) error { return nil }
 	unsubscribePullFunc = func(*nats.Subscription) error { return nil }
 
-	client.handleJoin(Message{
+	client.handleJoin(client.ctx, Message{
 		Type: "join", Room: "room", Payload: resumeJoinPayload(t, h, client.UserID, "room", 9),
 	})
 	<-fetchStarted
 	h.broadcastMessage(context.Background(), &Message{
-		Type: "new_message", Room: "room", Seq: 20, Stream: "CHAT_EVENTS",
+		Type: "new_message", Room: "room", MessageReplayMetadata: &MessageReplayMetadata{Seq: 20, Stream: "CHAT_EVENTS"},
 		Payload: json.RawMessage(`{"type":"new_message"}`),
 	})
 	close(releaseReplay)
@@ -623,7 +623,7 @@ func TestClientHandleJoin_ClosesForCheckpointResumeAfterRetryExhaustion(t *testi
 	}
 	unsubscribePullFunc = func(*nats.Subscription) error { return nil }
 
-	client.handleJoin(Message{Type: "join", Room: "room", Payload: resumeJoinPayload(t, h, client.UserID, "room", 79)})
+	client.handleJoin(client.ctx, Message{Type: "join", Room: "room", Payload: resumeJoinPayload(t, h, client.UserID, "room", 79)})
 
 	require.Eventually(t, func() bool { return client.ctx.Err() != nil }, time.Second, 10*time.Millisecond)
 	_, firstOpen := <-client.Send
@@ -673,9 +673,9 @@ func TestClientHandleJoin_RejoinCancelsStaleReplaySingleFlight(t *testing.T) {
 	ackOfflineMessageFunc = func(*nats.Msg) error { return nil }
 	unsubscribePullFunc = func(*nats.Subscription) error { return nil }
 
-	client.handleJoin(Message{Type: "join", Room: "room", Payload: resumeJoinPayload(t, h, client.UserID, "room", 19)})
+	client.handleJoin(client.ctx, Message{Type: "join", Room: "room", Payload: resumeJoinPayload(t, h, client.UserID, "room", 19)})
 	<-firstStarted
-	client.handleJoin(Message{Type: "join", Room: "room", Payload: resumeJoinPayload(t, h, client.UserID, "room", 29)})
+	client.handleJoin(client.ctx, Message{Type: "join", Room: "room", Payload: resumeJoinPayload(t, h, client.UserID, "room", 29)})
 	require.Eventually(t, func() bool { return len(client.Send) == 1 }, time.Second, 10*time.Millisecond)
 	close(releaseFirst)
 	time.Sleep(50 * time.Millisecond)
@@ -722,7 +722,7 @@ func TestClientLeaveRoom_CancelsReplayAndDiscardsPendingDelivery(t *testing.T) {
 	ackOfflineMessageFunc = func(*nats.Msg) error { return nil }
 	unsubscribePullFunc = func(*nats.Subscription) error { return nil }
 
-	client.handleJoin(Message{Type: "join", Room: "room", Payload: resumeJoinPayload(t, h, client.UserID, "room", 39)})
+	client.handleJoin(client.ctx, Message{Type: "join", Room: "room", Payload: resumeJoinPayload(t, h, client.UserID, "room", 39)})
 	<-fetchStarted
 	client.LeaveRoom("room")
 	close(releaseReplay)
@@ -789,11 +789,11 @@ func TestClientHandleJoin_RateLimitsReplayConsumerChurn(t *testing.T) {
 	unsubscribePullFunc = func(*nats.Subscription) error { return nil }
 	beforeLimited := testutil.ToFloat64(ReplayJoinRateLimitedTotal)
 
-	for sequence := 1; sequence <= 3; sequence++ {
+	for sequence := uint64(1); sequence <= 3; sequence++ {
 		room := fmt.Sprintf("room-%d", sequence)
-		client.handleJoin(Message{
+		client.handleJoin(client.ctx, Message{
 			Type: "join", Room: room,
-			Payload: resumeJoinPayload(t, h, client.UserID, room, uint64(sequence)),
+			Payload: resumeJoinPayload(t, h, client.UserID, room, sequence),
 		})
 	}
 
@@ -849,7 +849,7 @@ func TestClientHandleJoin_RejectsUnsignedCursorButKeepsLiveMembership(t *testing
 		Rooms: make(map[string]bool), Send: make(chan []byte, 1), ctx: ctx, cancel: cancel,
 	}
 
-	client.handleJoin(Message{Type: "join", Room: "room", Payload: json.RawMessage(`{"last_seq":999999}`)})
+	client.handleJoin(client.ctx, Message{Type: "join", Room: "room", Payload: json.RawMessage(`{"last_seq":999999}`)})
 
 	assert.Zero(t, pullCalls, "a browser-controlled integer must never choose the durable replay cursor")
 	client.mu.Lock()
@@ -893,10 +893,10 @@ func TestHubBroadcast_SequencedBackpressureDisconnectsBeforeLaterSequence(t *tes
 	h.Rooms["room"] = map[*Client]bool{client: true}
 	client.Send <- []byte("already-full")
 
-	h.broadcastMessage(context.Background(), &Message{Type: "new_message", Room: "room", Seq: 10, Stream: "CHAT_EVENTS"})
+	h.broadcastMessage(context.Background(), &Message{Type: "new_message", Room: "room", MessageReplayMetadata: &MessageReplayMetadata{Seq: 10, Stream: "CHAT_EVENTS"}})
 	require.Error(t, client.ctx.Err(), "dropping a sequenced frame must invalidate the connection")
 	assert.Equal(t, "already-full", string(<-client.Send))
-	h.broadcastMessage(context.Background(), &Message{Type: "new_message", Room: "room", Seq: 11, Stream: "CHAT_EVENTS"})
+	h.broadcastMessage(context.Background(), &Message{Type: "new_message", Room: "room", MessageReplayMetadata: &MessageReplayMetadata{Seq: 11, Stream: "CHAT_EVENTS"}})
 	assert.Empty(t, client.Send, "a disconnected client must never accept a later sequence")
 }
 
@@ -924,9 +924,9 @@ func TestHubRun_SerializesSequencedChatAcrossBroadcastWorkers(t *testing.T) {
 		h.Run(ctx)
 		close(done)
 	}()
-	h.Broadcast <- &Message{Type: "new_message", Room: "room", Seq: 1}
+	h.Broadcast <- &Message{Type: "new_message", Room: "room", MessageReplayMetadata: &MessageReplayMetadata{Seq: 1}}
 	<-firstStarted
-	h.Broadcast <- &Message{Type: "new_message", Room: "room", Seq: 2}
+	h.Broadcast <- &Message{Type: "new_message", Room: "room", MessageReplayMetadata: &MessageReplayMetadata{Seq: 2}}
 	time.Sleep(25 * time.Millisecond)
 	close(releaseFirst)
 	require.Eventually(t, func() bool {
@@ -970,11 +970,11 @@ func TestHubRun_SequencedLaneOverflowDisconnectsRoomClients(t *testing.T) {
 		close(done)
 	}()
 
-	h.Broadcast <- &Message{Type: "new_message", Room: "room", Seq: 1}
+	h.Broadcast <- &Message{Type: "new_message", Room: "room", MessageReplayMetadata: &MessageReplayMetadata{Seq: 1}}
 	<-firstStarted
-	h.Broadcast <- &Message{Type: "new_message", Room: "room", Seq: 2}
+	h.Broadcast <- &Message{Type: "new_message", Room: "room", MessageReplayMetadata: &MessageReplayMetadata{Seq: 2}}
 	require.Eventually(t, func() bool { return len(h.Broadcast) == 0 }, time.Second, time.Millisecond)
-	h.Broadcast <- &Message{Type: "new_message", Room: "room", Seq: 3}
+	h.Broadcast <- &Message{Type: "new_message", Room: "room", MessageReplayMetadata: &MessageReplayMetadata{Seq: 3}}
 	require.Eventually(t, func() bool { return client.ctx.Err() != nil }, time.Second, time.Millisecond)
 
 	close(releaseFirst)
@@ -1031,7 +1031,7 @@ func TestClientProcessNextMessage_LogsNonNormalReadError(t *testing.T) {
 		Conn: &readErrorSession{err: errors.New("transport failed")},
 		ctx:  context.Background(),
 	}
-	assert.False(t, client.processNextMessage())
+	assert.False(t, client.processNextMessage(client.ctx))
 }
 
 func TestClientHandleJoin_MalformedPayloadAndReplayTrigger(t *testing.T) {
@@ -1041,8 +1041,8 @@ func TestClientHandleJoin_MalformedPayloadAndReplayTrigger(t *testing.T) {
 	}}
 	srv, _ := newConnPair(t)
 	c := newClientOn(h, srv, "join-runtime", "join-user")
-	c.handleJoin(Message{Type: "join", Room: "room", Payload: []byte(`{not-json`)})
-	c.handleJoin(Message{Type: "join", Room: "room", Payload: []byte(`{"last_seq":1}`)})
+	c.handleJoin(c.ctx, Message{Type: "join", Room: "room", Payload: []byte(`{not-json`)})
+	c.handleJoin(c.ctx, Message{Type: "join", Room: "room", Payload: []byte(`{"last_seq":1}`)})
 	var errorFrame map[string]any
 	require.NoError(t, json.Unmarshal(<-c.Send, &errorFrame))
 	assert.Equal(t, "resume_token_required", errorFrame["code"])

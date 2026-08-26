@@ -4714,6 +4714,82 @@ def test_release_and_deploy_build_the_validated_source_sha() -> None:
         )
 
 
+def test_deploy_never_checks_out_untrusted_release_input() -> None:
+    workflow = yaml.safe_load(
+        (REPOSITORY_ROOT / ".github" / "workflows" / "deploy.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    for job_name in ("validate", "deploy", "rollback"):
+        steps = workflow["jobs"][job_name]["steps"]
+        checkout_index = next(
+            index
+            for index, step in enumerate(steps)
+            if str(step.get("uses", "")).startswith("actions/checkout@")
+        )
+        checkout = steps[checkout_index]
+        assert checkout["with"]["ref"] == "${{ github.sha }}"
+        assert checkout["with"]["persist-credentials"] is False
+        assert "inputs.release-sha" not in str(checkout)
+
+        verify = steps[checkout_index + 1]
+        assert verify["name"].startswith("Verify trusted release checkout")
+        assert verify["env"]["RELEASE_SHA"] == "${{ inputs.release-sha }}"
+        run = str(verify["run"])
+        assert '[[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]' in run
+        assert 'test "$(git rev-parse HEAD)" = "$RELEASE_SHA"' in run
+        assert (
+            "git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1" in run
+        )
+        assert 'test "$(git rev-parse origin/main)" = "$RELEASE_SHA"' in run
+
+
+def test_contract_drift_serializes_openapi_deterministically() -> None:
+    workflow = yaml.safe_load(
+        CONTRACT_VALIDATION_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    step = _provenance_step(
+        workflow["jobs"]["openapi-typescript-drift"],
+        "Generate current OpenAPI spec",
+    )
+
+    assert "json.dumps(spec, indent=2, sort_keys=True) + '\\n'" in str(step["run"])
+
+
+def test_hosted_browser_smokes_bound_frontend_build_memory() -> None:
+    workflow_jobs = (
+        ("unauthenticated-routes-smoke.yml", "unauthed-smoke"),
+        ("admin-smoke-monitoring.yml", "admin-smoke"),
+        ("visual-audit.yml", "visual-audit"),
+    )
+
+    for workflow_name, job_name in workflow_jobs:
+        workflow = yaml.safe_load(
+            (REPOSITORY_ROOT / ".github" / "workflows" / workflow_name).read_text(
+                encoding="utf-8"
+            )
+        )
+        build = next(
+            step
+            for step in workflow["jobs"][job_name]["steps"]
+            if str(step.get("name", "")).startswith("Build frontend")
+        )
+        assert build["env"]["FRONTEND_BUILD_MAX_RSS_MB"] == "2048"
+        assert build["env"]["FRONTEND_BUILD_MAX_OLD_SPACE_MB"] == "1536"
+
+
+def test_frontend_provenance_version_queries_are_shell_safe() -> None:
+    source = FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8")
+    safe_query = (
+        'vitest_version="$(node -p '
+        '\'require("./frontend/node_modules/vitest/package.json").version\')"'
+    )
+
+    assert source.count(safe_query) == 2
+    assert 'node -p \\"require(' not in source
+
+
 def test_backend_shards_publish_and_aggregate_current_attempt_lineage() -> None:
     backend = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
     unit_job = backend["jobs"]["unit-tests"]

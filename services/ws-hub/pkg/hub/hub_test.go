@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
@@ -40,6 +41,54 @@ func setupTestHub() *Hub {
 	}
 	// We pass nil for nats.Conn and redis.Client to avoid external dependencies.
 	return trackTestHub(NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
+}
+
+func TestMessageReplayMetadataJSON(t *testing.T) {
+	t.Run("common messages do not allocate replay metadata", func(t *testing.T) {
+		var message Message
+		require.NoError(t, json.Unmarshal([]byte(`{"type":"chat","payload":{}}`), &message))
+		assert.Nil(t, message.MessageReplayMetadata)
+
+		encoded, err := json.Marshal(message)
+		require.NoError(t, err)
+		assert.NotContains(t, string(encoded), `"seq"`)
+		assert.NotContains(t, string(encoded), `"resume_token"`)
+	})
+
+	t.Run("replay fields retain the flat wire contract", func(t *testing.T) {
+		var message Message
+		require.NoError(t, json.Unmarshal([]byte(`{"type":"chat","payload":{},"seq":42,"resume_token":"token"}`), &message))
+		require.NotNil(t, message.MessageReplayMetadata)
+		assert.Equal(t, uint64(42), message.Seq)
+		assert.Equal(t, "token", message.ResumeToken)
+
+		encoded, err := json.Marshal(message)
+		require.NoError(t, err)
+		assert.JSONEq(t, `{"type":"chat","payload":{},"seq":42,"resume_token":"token"}`, string(encoded))
+	})
+}
+
+func TestStartTrackedGoroutineBalancesMetric(t *testing.T) {
+	baseline := testutil.ToFloat64(ActiveGoroutines)
+	started := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan struct{})
+
+	StartTrackedGoroutine(func() {
+		close(started)
+		<-release
+		close(done)
+	})
+	<-started
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(ActiveGoroutines) == baseline+1
+	}, time.Second, time.Millisecond)
+
+	close(release)
+	<-done
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(ActiveGoroutines) == baseline
+	}, time.Second, time.Millisecond)
 }
 
 func TestHub_RegisterUnregister(t *testing.T) {
@@ -214,7 +263,7 @@ func TestClient_HandleIncomingMessage_JoinLeave(t *testing.T) {
 
 	// Test join
 	joinMsg := Message{Type: "join", Room: "room1"}
-	client.handleIncomingMessage(joinMsg, []byte(`{"type":"join","room":"room1"}`))
+	client.handleIncomingMessage(client.ctx, joinMsg, []byte(`{"type":"join","room":"room1"}`))
 	h.mu.RLock()
 	if !client.Rooms["room1"] {
 		t.Errorf("Expected client to have joined room1")
@@ -226,7 +275,7 @@ func TestClient_HandleIncomingMessage_JoinLeave(t *testing.T) {
 
 	// Test leave
 	leaveMsg := Message{Type: "leave", Room: "room1"}
-	client.handleIncomingMessage(leaveMsg, []byte(`{"type":"leave","room":"room1"}`))
+	client.handleIncomingMessage(client.ctx, leaveMsg, []byte(`{"type":"leave","room":"room1"}`))
 	h.mu.RLock()
 	if client.Rooms["room1"] {
 		t.Errorf("Expected client to have left room1")
@@ -296,7 +345,7 @@ func TestClient_HandleIncomingMessage_Invalid(t *testing.T) {
 
 	// Unknown type message
 	invalidMsg := Message{Type: "unknown_type", Room: "room1"}
-	client.handleIncomingMessage(invalidMsg, []byte(`{"type":"unknown_type","room":"room1"}`))
+	client.handleIncomingMessage(client.ctx, invalidMsg, []byte(`{"type":"unknown_type","room":"room1"}`))
 
 	// Should do nothing (no panic, rooms unaffected)
 	if len(client.Rooms) != 0 {

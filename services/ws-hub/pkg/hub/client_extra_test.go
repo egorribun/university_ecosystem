@@ -91,7 +91,7 @@ func TestClient_ReadPump_ErrorPaths(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		c.ReadPump()
+		c.ReadPump(c.ctx)
 		close(done)
 	}()
 

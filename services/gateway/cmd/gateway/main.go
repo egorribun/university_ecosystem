@@ -470,6 +470,14 @@ func initGRPC(cfg *config.Config, logger *slog.Logger, spiffeClients ...*spiffe.
 }
 
 func conventionalGRPCClientCredentials(cfg *config.Config) (credentials.TransportCredentials, error) {
+	tlsConfig, err := conventionalGRPCClientTLSConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return credentials.NewTLS(tlsConfig), nil
+}
+
+func conventionalGRPCClientTLSConfig(cfg *config.Config) (*tls.Config, error) {
 	caPEM, err := os.ReadFile(cfg.GRPCCAFile)
 	if err != nil {
 		return nil, fmt.Errorf("read gRPC client CA: %w", err)
@@ -485,12 +493,12 @@ func conventionalGRPCClientCredentials(cfg *config.Config) (credentials.Transpor
 	if err := validateConventionalClientCertificate(certificate, cfg.GRPCClientIdentityURI, time.Now()); err != nil {
 		return nil, err
 	}
-	return credentials.NewTLS(&tls.Config{
+	return &tls.Config{
 		MinVersion:   tls.VersionTLS13,
 		RootCAs:      roots,
 		Certificates: []tls.Certificate{certificate},
 		ServerName:   cfg.GRPCServerName,
-	}), nil
+	}, nil
 }
 
 func validateConventionalClientCertificate(certificate tls.Certificate, expectedIdentity string, now time.Time) error {

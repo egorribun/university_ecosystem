@@ -10,6 +10,7 @@ import time
 import uuid
 from contextlib import closing
 from pathlib import Path
+from threading import Event
 
 import pytest
 import sqlalchemy as sa
@@ -430,11 +431,13 @@ def test_opted_in_test_named_explicit_sqlite_preserves_unmanaged_tables(
         )
 
 
+@pytest.mark.skipif(
+    os.environ.get("PYTEST_EXPLICIT_DATABASE_PRECLEAN_PROBE") != "1",
+    reason="subprocess-only explicit database pre-clean probe",
+)
 async def test_explicit_database_first_test_is_preclean_probe(
     db_session: AsyncSession,
 ) -> None:
-    if os.environ.get("PYTEST_EXPLICIT_DATABASE_PRECLEAN_PROBE") != "1":
-        pytest.skip("subprocess-only explicit database pre-clean probe")
     from app.models.schedule import Group
 
     count = await db_session.scalar(sa.select(sa.func.count()).select_from(Group))
@@ -622,11 +625,16 @@ def test_postgres_xdist_database_name_is_unique_per_test_run() -> None:
     assert len(second_url.database or "") <= 63
 
 
+@pytest.mark.skipif(
+    not (
+        os.environ.get("PYTEST_TMP_PATH_ISOLATION_PROBE_ID")
+        and os.environ.get("PYTEST_TMP_PATH_ISOLATION_BARRIER")
+    ),
+    reason="subprocess-only tmp_path isolation probe",
+)
 def test_tmp_path_subprocess_probe(tmp_path: Path) -> None:
     probe_id = os.environ.get("PYTEST_TMP_PATH_ISOLATION_PROBE_ID")
     barrier_value = os.environ.get("PYTEST_TMP_PATH_ISOLATION_BARRIER")
-    if probe_id is None or barrier_value is None:
-        pytest.skip("subprocess-only tmp_path isolation probe")
     assert probe_id is not None
     assert barrier_value is not None
     barrier = Path(barrier_value)
@@ -634,13 +642,14 @@ def test_tmp_path_subprocess_probe(tmp_path: Path) -> None:
     marker.write_text(probe_id, encoding="utf-8")
     (barrier / f"ready-{probe_id}").write_text("ready", encoding="utf-8")
     deadline = time.monotonic() + 15
+    poll_interval = Event()
     while len(list(barrier.glob("ready-*"))) < 2:
         if time.monotonic() >= deadline:
             pytest.fail("concurrent tmp_path probe timed out at barrier")
-        time.sleep(0.05)
+        poll_interval.wait(0.05)
     for _ in range(40):
         assert marker.read_text(encoding="utf-8") == probe_id
-        time.sleep(0.05)
+        poll_interval.wait(0.05)
 
 
 def test_independent_pytest_processes_get_distinct_tmp_path_roots() -> None:

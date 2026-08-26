@@ -12,7 +12,7 @@
     "@semantic-release/exec": "^7.1.0",
     "@semantic-release/github": "^12.0.9",
     "@semantic-release/release-notes-generator": "^14.1.1",
-    "npm": "file:tools/npm-cli-shim",
+    "runner-npm-cli-bridge": "file:tools/npm-cli-shim",
     "semantic-release": "^25.0.9"
   },
   "overrides": {
@@ -24,7 +24,7 @@
     "micromatch": {
       "picomatch": "^2.3.2"
     },
-    "npm": "$npm",
+    "npm": "$runner-npm-cli-bridge",
     "tinyglobby": {
       "picomatch": "^4.0.4"
     }

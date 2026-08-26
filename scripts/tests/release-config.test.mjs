@@ -35,12 +35,20 @@ test("release plugins are explicit, resolvable, and exclude npm publishing", () 
   }
 });
 
-test("the npm transitive dependency resolves only to the audited local shim", () => {
+test("the npm transitive dependency resolves only to the audited local bridge", () => {
   const packageDocument = readJson("package.json");
   const lockDocument = readJson("package-lock.json");
 
-  assert.equal(packageDocument.devDependencies.npm, "file:tools/npm-cli-shim");
-  assert.equal(packageDocument.overrides.npm, "$npm");
+  assert.equal(
+    packageDocument.devDependencies["runner-npm-cli-bridge"],
+    "file:tools/npm-cli-shim",
+  );
+  assert.equal(packageDocument.devDependencies.npm, undefined);
+  assert.equal(packageDocument.overrides.npm, "$runner-npm-cli-bridge");
+  assert.equal(
+    lockDocument.packages["tools/npm-cli-shim"].name,
+    "runner-npm-cli-bridge",
+  );
   assert.deepEqual(lockDocument.packages["node_modules/npm"], {
     resolved: "tools/npm-cli-shim",
     link: true,

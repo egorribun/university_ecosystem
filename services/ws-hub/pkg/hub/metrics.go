@@ -59,7 +59,7 @@ var (
 	// on active_goroutines > expected_workers + active_connections.
 	ActiveGoroutines = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "ws_hub_active_goroutines",
-		Help: "Number of active goroutines managed by the hub (broadcast workers, NATS handlers).",
+		Help: "Number of active goroutines managed by ws-hub, including listeners, pumps, replay, workers, and cleanup tasks.",
 	})
 
 	// RZ-27-02: Incoming messages dropped due to exceeding the size limit.
@@ -111,3 +111,13 @@ var (
 		Help: "Total number of replay-bearing room joins rejected by the per-client limiter.",
 	})
 )
+
+// StartTrackedGoroutine launches run and keeps ActiveGoroutines balanced for
+// the complete lifetime of the background task.
+func StartTrackedGoroutine(run func()) {
+	ActiveGoroutines.Inc()
+	go func() {
+		defer ActiveGoroutines.Dec()
+		run()
+	}()
+}

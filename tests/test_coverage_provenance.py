@@ -16,6 +16,7 @@ from scripts.quality.coverage_provenance import (
     verify_metadata,
     write_metadata,
 )
+from tests.symlink_support import DIRECTORY_SYMLINKS_SUPPORTED
 
 COMMIT_SHA = "0123456789abcdef0123456789abcdef01234567"  # pragma: allowlist secret
 WORKFLOW_SHA = "89abcdef0123456789abcdef0123456789abcdef"  # pragma: allowlist secret
@@ -194,16 +195,17 @@ def test_write_metadata_fails_closed_for_invalid_inputs(
         )
 
 
+@pytest.mark.skipif(
+    not DIRECTORY_SYMLINKS_SUPPORTED,
+    reason="directory symlinks are unavailable",
+)
 def test_write_metadata_rejects_report_through_symlinked_ancestor(
     provenance_repository: Path,
 ) -> None:
     outside = provenance_repository.with_name(f"{provenance_repository.name}-outside")
     outside.mkdir()
     alias = provenance_repository / "artifacts"
-    try:
-        alias.symlink_to(outside, target_is_directory=True)
-    except OSError:
-        pytest.skip("directory symlinks are unavailable")
+    alias.symlink_to(outside, target_is_directory=True)
     (outside / "coverage.xml").write_bytes(b"coverage\n")
 
     with pytest.raises(ProvenanceError, match="symlink"):

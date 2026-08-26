@@ -20,7 +20,6 @@ import (
 	"github.com/quic-go/webtransport-go"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // PERF-W15-03 (audit 2026-03-23 Wave 15): Rate-limit forced JWKS refreshes.
@@ -122,12 +121,10 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	//   If the client stalls, the upgrade is aborted cleanly within 5 seconds
 	//   rather than holding a goroutine open indefinitely.
 	//
-	// Phase 2 — clientCtx: detached from r.Context() via context.Background()
-	//   so that the long-lived WebSocket connection is not cancelled when the
-	//   HTTP handler returns (which happens immediately after upgrader.Upgrade).
-	//   The OTel span from the originating HTTP request is carried forward via
-	//   trace.ContextWithSpan so that ReadPump/WritePump activity remains
-	//   correlated with the upgrade request in distributed traces.
+	// Phase 2 — clientCtx: context.WithoutCancel preserves request-scoped values,
+	//   including the OTel span, while detaching the long-lived connection from
+	//   request cancellation when the HTTP handler returns. The explicit cancel
+	//   remains owned by the client lifecycle.
 	setupCtx, setupCancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer setupCancel()
 
@@ -204,8 +201,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 
 	// Phase 2: long-lived client context, detached from the HTTP request
 	// but with the OTel span propagated for distributed trace correlation.
-	clientCtx, clientCancel := context.WithCancel(context.Background())
-	clientCtx = trace.ContextWithSpan(clientCtx, trace.SpanFromContext(r.Context()))
+	clientCtx, clientCancel := context.WithCancel(context.WithoutCancel(r.Context()))
 	if tenantID != "" {
 		clientCtx = context.WithValue(clientCtx, tenantIDKey, tenantID)
 	}
@@ -223,8 +219,8 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	}
 
 	h.Register <- client
-	go client.WritePump()
-	go client.ReadPump()
+	StartTrackedGoroutine(client.WritePump)
+	StartTrackedGoroutine(func() { client.ReadPump(clientCtx) })
 }
 
 // HandleWebTransport upgrades HTTP/3 connections to WebTransport and registers clients.
@@ -282,8 +278,7 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 		return
 	}
 
-	clientCtx, clientCancel := context.WithCancel(context.Background())
-	clientCtx = trace.ContextWithSpan(clientCtx, trace.SpanFromContext(r.Context()))
+	clientCtx, clientCancel := context.WithCancel(context.WithoutCancel(r.Context()))
 	if tenantID != "" {
 		clientCtx = context.WithValue(clientCtx, tenantIDKey, tenantID)
 	}
@@ -301,8 +296,8 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 	}
 
 	h.Register <- client
-	go client.WritePump()
-	go client.ReadPump()
+	StartTrackedGoroutine(client.WritePump)
+	StartTrackedGoroutine(func() { client.ReadPump(clientCtx) })
 }
 
 // validateUpgradeTicket atomically consumes a one-time WS upgrade ticket from

@@ -232,6 +232,8 @@ jobs:
         # 2. VITE_E2E_MODE branch IS bundled (`data-e2e-stub` markers present)
         working-directory: frontend
         env:
+          FRONTEND_BUILD_MAX_RSS_MB: "2048"
+          FRONTEND_BUILD_MAX_OLD_SPACE_MB: "1536"
           VITE_BACKEND_ORIGIN: http://localhost
           VITE_E2E_MODE: "1"
         run: |
