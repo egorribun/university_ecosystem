@@ -344,14 +344,17 @@ func TestStartNatsSubscriber_FailGracefully(t *testing.T) {
 	})
 }
 
+func useRepositoryGraphQLSchema(t *testing.T) {
+	t.Helper()
+	schemaPath, err := filepath.Abs("../../schema.graphql")
+	require.NoError(t, err)
+	_, err = os.Stat(schemaPath)
+	require.NoError(t, err)
+	t.Setenv("FP_SCHEMA_PATH", schemaPath)
+}
+
 func TestSetupGraphQLServer(t *testing.T) {
-	content, err := os.ReadFile("../../schema.graphql")
-	if err == nil {
-		require.NoError(t, os.WriteFile("schema.graphql", content, 0600)) // #nosec G703 -- test-only fixed schema path.
-		t.Cleanup(func() {
-			require.NoError(t, os.Remove("schema.graphql"))
-		})
-	}
+	useRepositoryGraphQLSchema(t)
 
 	cfg := &config.Config{
 		GraphQLPort: "0",
@@ -411,13 +414,7 @@ func TestSetupGraphQLServer_ConvertsSchemaParserPanicToError(t *testing.T) {
 }
 
 func TestRunServers_CleanShutdown(t *testing.T) {
-	content, err := os.ReadFile("../../schema.graphql")
-	if err == nil {
-		require.NoError(t, os.WriteFile("schema.graphql", content, 0600)) // #nosec G703 -- test-only fixed schema path.
-		t.Cleanup(func() {
-			require.NoError(t, os.Remove("schema.graphql"))
-		})
-	}
+	useRepositoryGraphQLSchema(t)
 
 	cfg := &config.Config{
 		GRPCPort:    "0",
@@ -642,13 +639,7 @@ func TestRunServers_GRPCListenFailure(t *testing.T) {
 }
 
 func TestSetupGraphQLServer_RestrictIntrospection(t *testing.T) {
-	content, err := os.ReadFile("../../schema.graphql")
-	if err == nil {
-		require.NoError(t, os.WriteFile("schema.graphql", content, 0600)) // #nosec
-		t.Cleanup(func() {
-			require.NoError(t, os.Remove("schema.graphql"))
-		})
-	}
+	useRepositoryGraphQLSchema(t)
 	cfg := &config.Config{
 		GraphQLPort: "0",
 		MinioBucket: "test-bucket",
@@ -829,15 +820,7 @@ func TestMain_SuccessLifecycle(t *testing.T) {
 	require.NoError(t, os.Setenv("FP_JWT_SECRET", "my-secret-key-12345"))
 	require.NoError(t, os.Setenv("FP_NATS_URL", "nats://127.0.0.1:1"))
 
-	content, err := os.ReadFile("../../schema.graphql")
-	if err == nil {
-		require.NoError(t, os.WriteFile("schema.graphql", content, 0600)) // #nosec
-		t.Cleanup(func() {
-			if err := os.Remove("schema.graphql"); err != nil {
-				t.Log(err)
-			}
-		})
-	}
+	useRepositoryGraphQLSchema(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

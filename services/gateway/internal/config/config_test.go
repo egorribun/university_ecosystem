@@ -452,3 +452,89 @@ func TestLoad_H3AndWebTransportDefaults(t *testing.T) {
 	assert.Equal(t, 2592000, cfg.H3AltSvcMaxAge)
 	assert.Equal(t, "http://ws-hub:8081", cfg.WsHubURL)
 }
+
+func TestLoad_ReleaseGRPCTLSRequiresConventionalMTLSFiles(t *testing.T) {
+	required := map[string]string{
+		"GRPC_CA_FILE":             "GRPC_CA_FILE",
+		"GRPC_CLIENT_CERT_FILE":    "GRPC_CLIENT_CERT_FILE",
+		"GRPC_CLIENT_KEY_FILE":     "GRPC_CLIENT_KEY_FILE",
+		"GRPC_SERVER_NAME":         "GRPC_SERVER_NAME",
+		"GRPC_CLIENT_IDENTITY_URI": "GRPC_CLIENT_IDENTITY_URI",
+	}
+	for missing, expected := range required {
+		t.Run(missing, func(t *testing.T) {
+			t.Setenv("JWT_SECRET", "test-secret-at-least-32-chars-long")
+			t.Setenv("VITE_ENVIRONMENT", "staging")
+			t.Setenv("GRPC_USE_TLS", "true")
+			t.Setenv("SPIFFE_ENABLED", "false")
+			for name := range required {
+				t.Setenv(name, "/run/secrets/internal-grpc-mtls/value")
+			}
+			t.Setenv("GRPC_SERVER_NAME", "file-processor.university.svc")
+			t.Setenv("GRPC_CLIENT_IDENTITY_URI", "spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway")
+			t.Setenv(missing, "")
+
+			cfg, err := Load()
+
+			assert.Nil(t, cfg)
+			assert.ErrorContains(t, err, expected)
+		})
+	}
+}
+
+func TestLoad_DevelopmentAllowsPlaintextGRPCWithoutMTLSFiles(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-at-least-32-chars-long")
+	t.Setenv("VITE_ENVIRONMENT", "development")
+	t.Setenv("GRPC_USE_TLS", "false")
+	t.Setenv("SPIFFE_ENABLED", "false")
+	for _, name := range []string{
+		"GRPC_CA_FILE", "GRPC_CLIENT_CERT_FILE", "GRPC_CLIENT_KEY_FILE", "GRPC_SERVER_NAME",
+	} {
+		t.Setenv(name, "")
+	}
+
+	cfg, err := Load()
+
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg)
+}
+
+func TestValidateGRPCClientIdentityURIRejectsNonCanonicalValues(t *testing.T) {
+	for name, value := range map[string]string{
+		"empty":         "",
+		"wrong scheme":  "https://university.ecosystem/ns/university-ecosystem/sa/gateway",
+		"query":         "spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway?alias=true",
+		"percent alias": "spiffe://university.ecosystem/ns/university-ecosystem/sa/gate%77ay",
+	} {
+		t.Run(name, func(t *testing.T) { assert.Error(t, ValidateGRPCClientIdentityURI(value)) })
+	}
+	assert.NoError(t, ValidateGRPCClientIdentityURI("spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway"))
+}
+
+func TestLoad_ReleaseRejectsNonCanonicalGRPCClientIdentityURI(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-at-least-32-chars-long")
+	t.Setenv("VITE_ENVIRONMENT", "staging")
+	t.Setenv("GRPC_USE_TLS", "true")
+	t.Setenv("SPIFFE_ENABLED", "false")
+	t.Setenv("GRPC_CA_FILE", "/run/secrets/internal-grpc-mtls/ca.crt")
+	t.Setenv("GRPC_CLIENT_CERT_FILE", "/run/secrets/internal-grpc-mtls/tls.crt")
+	t.Setenv("GRPC_CLIENT_KEY_FILE", "/run/secrets/internal-grpc-mtls/tls.key")
+	t.Setenv("GRPC_SERVER_NAME", "file-processor.university.svc")
+	t.Setenv("GRPC_CLIENT_IDENTITY_URI", "https://example.test/gateway")
+
+	cfg, err := Load()
+
+	assert.Nil(t, cfg)
+	assert.ErrorContains(t, err, "GRPC_CLIENT_IDENTITY_URI")
+}
+
+func TestLoad_ReleaseRejectsPlaintextGRPC(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret-at-least-32-chars-long")
+	t.Setenv("VITE_ENVIRONMENT", "production")
+	t.Setenv("GRPC_USE_TLS", "false")
+
+	cfg, err := Load()
+
+	assert.Nil(t, cfg)
+	assert.ErrorContains(t, err, "GRPC_USE_TLS=true")
+}

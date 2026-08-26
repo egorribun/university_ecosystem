@@ -13,6 +13,8 @@ import type { CampusBuilding, BuildingId } from "@/data/campusBuildings"
 import { isOpenNow } from "@/utils/buildingHours"
 import { getPrimaryIcon } from "@/utils/buildingCategoryIcons"
 import { useStripMaplibreMarkerChrome } from "@/utils/stripMaplibreMarkerChrome"
+import { MAP_INTERACTIVE_TARGET_PX } from "@/constants/campus"
+import type { MapMarkerOffset } from "@/features/map/markerCollisionLayout"
 
 interface BuildingMarkerProps {
   building: CampusBuilding
@@ -27,6 +29,7 @@ interface BuildingMarkerProps {
   onPopupClose?: () => void
   /** Number of upcoming events at this building (FIX-109-11) */
   eventCount?: number
+  offset?: MapMarkerOffset
 }
 
 export function BuildingMarker({
@@ -39,6 +42,7 @@ export function BuildingMarker({
   onPopupOpen,
   onPopupClose,
   eventCount = 0,
+  offset,
 }: BuildingMarkerProps) {
   const { t } = useTranslation("map")
   const markerRef = useRef<MarkerInstance | null>(null)
@@ -65,6 +69,7 @@ export function BuildingMarker({
         longitude={building.geoCoords[1]}
         latitude={building.geoCoords[0]}
         anchor="bottom"
+        offset={offset}
       >
         <div
           role="button"
@@ -76,7 +81,12 @@ export function BuildingMarker({
           })}
           className={`map-building-pin map-building-pin--entering${isActive ? " map-building-pin--active" : ""}${isHighlighted && !isActive ? " map-building-pin--pulse" : ""}`}
           style={
-            { "--stagger-index": index, "--_pin-color": building.colorHex } as React.CSSProperties
+            {
+              "--stagger-index": index,
+              "--_pin-color": building.colorHex,
+              minWidth: MAP_INTERACTIVE_TARGET_PX,
+              minHeight: MAP_INTERACTIVE_TARGET_PX,
+            } as React.CSSProperties
           }
           onClick={(e) => {
             e.stopPropagation()

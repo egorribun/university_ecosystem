@@ -244,7 +244,7 @@ async def test_get_push_topics_with_record():
 
     res = await push_router.get_push_topics(db, user)
     assert res.has_preferences is True
-    assert "system" in res.topics
+    assert "system.release" in res.topics
 
 
 @pytest.mark.asyncio
@@ -503,7 +503,7 @@ async def test_admin_get_user_topics_success():
         res = await push_router.admin_get_user_topics(target_user.id, request, db, user)
         assert res.user_id == target_user.id
         assert res.email == target_user.email
-        assert "system" in res.topics
+        assert "system.release" in res.topics
 
 
 @pytest.mark.asyncio
@@ -581,7 +581,7 @@ async def test_admin_update_user_topics_success():
             target_user.id, payload, request, db, user
         )
         assert res.user_id == target_user.id
-        assert "system" in res.topics
+        assert "system.release" in res.topics
 
 
 @pytest.mark.asyncio
@@ -1000,22 +1000,18 @@ def test_shutdown_observability():
             pass
 
     with (
-        patch(
-            "app.core.observability.trace.get_tracer_provider"
-        ) as mock_trace_provider,
-        patch(
-            "app.core.observability.metrics.get_meter_provider"
-        ) as mock_meter_provider,
         patch("app.core.observability._otel_logging_handler"),
         patch("app.core.observability._otel_logger_provider"),
     ):
         dummy_trace = DummyTracerProvider()
         dummy_trace.shutdown = MagicMock()
-        mock_trace_provider.return_value = dummy_trace
 
         dummy_meter = DummyMeterProvider()
         dummy_meter.shutdown = MagicMock()
-        mock_meter_provider.return_value = dummy_meter
+        # Teardown is deliberately ownership based: process-global providers may
+        # belong to another in-process SDK user and must never be shut down here.
+        observability_core._otel_tracer_provider = dummy_trace
+        observability_core._otel_meter_provider = dummy_meter
 
         observability_core.shutdown_observability()
         dummy_trace.shutdown.assert_called_once()

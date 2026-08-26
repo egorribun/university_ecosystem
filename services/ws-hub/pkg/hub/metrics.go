@@ -103,4 +103,11 @@ var (
 		Name: "ws_hub_jetstream_replayed_total",
 		Help: "Total number of JetStream messages replayed to reconnecting clients.",
 	})
+
+	// ReplayJoinRateLimitedTotal tracks replay-bearing join requests rejected
+	// before they can churn JetStream pull consumers.
+	ReplayJoinRateLimitedTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "ws_hub_replay_join_rate_limited_total",
+		Help: "Total number of replay-bearing room joins rejected by the per-client limiter.",
+	})
 )

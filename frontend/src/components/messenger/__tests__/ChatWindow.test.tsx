@@ -165,6 +165,22 @@ describe("ChatWindow — stable end-anchored virtualization", () => {
     fireEvent.click(screen.getByRole("button", { name: "messenger:history.loadOlder" }))
     expect(onLoadOlder).toHaveBeenCalledTimes(1)
   })
+
+  it("shows the pending and failed older-history states", () => {
+    render(
+      <ChatWindow
+        messages={mockMessages}
+        hasMore
+        onLoadOlder={vi.fn()}
+        isLoadingOlder
+        olderMessagesError
+      />,
+      { wrapper }
+    )
+
+    expect(screen.getByRole("button", { name: "messenger:history.loadingOlder" })).toBeDisabled()
+    expect(screen.getByRole("alert")).toHaveTextContent("messenger:history.loadOlderError")
+  })
 })
 
 describe("ChatWindow — W184 SW1 search-filter render path", () => {

@@ -50,8 +50,10 @@ def test_deploy_preflight_uses_the_same_helm_input_builder_as_upgrade() -> None:
         "APPLICATION_SECRETS_NAME",
         "BACKEND_IMAGE_DIGEST",
         "FRONTEND_IMAGE_DIGEST",
+        "WS_HUB_IMAGE_DIGEST",
         "GATEWAY_IMAGE_DIGEST",
         "FILE_PROCESSOR_IMAGE_DIGEST",
+        "DEPLOY_VERSION",
     }
     assert common_env <= set(verify["env"])
     assert common_env <= set(rbac["env"])
@@ -69,6 +71,7 @@ def test_deploy_preflight_uses_the_same_helm_input_builder_as_upgrade() -> None:
     for repository in (
         "$REGISTRY/$GITHUB_REPOSITORY/backend",
         "$REGISTRY/$GITHUB_REPOSITORY/frontend",
+        "$REGISTRY/$GITHUB_REPOSITORY/ws-hub",
         "$REGISTRY/$GITHUB_REPOSITORY/gateway",
         "$REGISTRY/$GITHUB_REPOSITORY/file-processor",
     ):
@@ -86,8 +89,106 @@ def test_preflight_validates_effective_connection_and_application_secret_keys() 
     assert "jq --raw-output 'fromjson[]'" in run
     assert 'require_secret_keys "$application_secret_name"' in run
     assert 'require_secret_keys "$connection_secret_name"' in run
+    for peer in (
+        "internal-grpc-gateway-client",
+        "internal-grpc-file-processor-server",
+    ):
+        assert f"{peer}-secret-name" in run
+        assert f"{peer}-secret-keys.json" in run
+    assert 'require_secret_keys "$grpc_gateway_client_secret_name"' in run
+    assert 'require_secret_keys "$grpc_file_processor_server_secret_name"' in run
+    assert "internal-grpc-file-processor-probe" not in run
+    assert "grpc_file_processor_probe_secret_name" not in run
     assert "kubectl get secret" in run
     assert "missing non-empty key" in run
+
+
+def test_ws_hub_is_only_deployed_and_rolled_back_by_helm() -> None:
+    workflow = _workflow()
+    steps = workflow["jobs"]["deploy"]["steps"]
+    names = {step.get("name") for step in steps}
+    text = WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    assert "Deploy WS Hub image" not in names
+    assert "WS_HUB_DEPLOYMENT_NAME" not in text
+    assert "WS_HUB_CONTAINER_NAME" not in text
+    assert "PREVIOUS_WS_HUB_IMAGE" not in text
+    assert 'kubectl set image "deployment/$WS_HUB_DEPLOYMENT_NAME"' not in text
+    rollback = _step("Roll back a deployment that failed verification")
+    assert "helm rollback" in str(rollback["run"])
+    assert "helm uninstall" in str(rollback["run"])
+    assert "kubectl set image" not in str(rollback["run"])
+
+
+def test_every_helm_path_receives_ws_digest_and_exact_source_sha() -> None:
+    script = (ROOT / ".github" / "scripts" / "deploy-helm.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "DEPLOY_VERSION" in script
+    assert "WS_HUB_IMAGE_DIGEST" in script
+    assert '--set-string "global.imageTag=$DEPLOY_VERSION"' in script
+    assert (
+        '--set-string "wsHub.image.repository=$REGISTRY/$GITHUB_REPOSITORY/ws-hub"'
+        in script
+    )
+    assert '--set-string "wsHub.image.digest=$WS_HUB_IMAGE_DIGEST"' in script
+    assert "backend.env.CWV_" not in script
+
+    for step_name in (
+        "Verify rendered Helm resource RBAC",
+        "Verify effective Secret contract",
+        "Deploy Helm release atomically",
+    ):
+        env = _step(step_name)["env"]
+        assert env["WS_HUB_IMAGE_DIGEST"] == (
+            "${{ needs.build-ws-hub.outputs.digest }}"
+        )
+        assert env["DEPLOY_VERSION"] == "${{ needs.prepare.outputs.version }}"
+        assert env["DEPLOYMENT_URL"] == "${{ vars.DEPLOYMENT_URL }}"
+        assert env["CWV_EXPORT_OIDC_SUBJECT"] == ("${{ vars.CWV_EXPORT_OIDC_SUBJECT }}")
+    required_staging_block = script.split("fi\n", 1)[0]
+    assert "CWV_DEPLOYED_AT" not in required_staging_block
+
+
+def test_namespace_bootstrap_enforces_restricted_pod_security() -> None:
+    step = _step("Configure and verify cluster access")
+    run = str(step["run"])
+    for mode in ("enforce", "audit", "warn"):
+        assert f"pod-security.kubernetes.io/{mode}=restricted" in run
+
+
+def test_cancelled_unverified_release_uses_helm_rollback() -> None:
+    rollback = _step("Roll back a deployment that failed verification")
+    assert "cancelled()" in str(rollback["if"])
+    assert "helm rollback" in str(rollback["run"])
+
+
+def test_helm_rollout_verification_includes_ws_hub_digest() -> None:
+    verify = _step("Verify Helm-managed rollouts")
+    assert verify["env"]["WS_HUB_IMAGE_DIGEST"] == (
+        "${{ needs.build-ws-hub.outputs.digest }}"
+    )
+    run = str(verify["run"])
+    assert (
+        'verify_image ws-hub ws-hub "$image_prefix/ws-hub@$WS_HUB_IMAGE_DIGEST"' in run
+    )
+
+
+def test_secret_preflight_covers_connections_redis_and_nats_config() -> None:
+    verify = _step("Verify effective Secret contract")
+    run = str(verify["run"])
+    for contract_key in (
+        "redis-secret-name",
+        "redis-secret-keys.json",
+        "revocation-redis-secret-name",
+        "revocation-redis-secret-keys.json",
+        "nats-config-secret-name",
+        "nats-config-secret-keys.json",
+    ):
+        assert contract_key in run
+    assert 'require_secret_keys "$redis_secret_name"' in run
+    assert 'require_secret_keys "$revocation_redis_secret_name"' in run
+    assert 'require_secret_keys "$nats_config_secret_name"' in run
 
 
 def test_external_secret_reconciliation_waits_for_fresh_ready_secret() -> None:

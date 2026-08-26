@@ -28,11 +28,32 @@ metadata:
     {{- include "university-ecosystem.labels" . | nindent 4 }}
     app.kubernetes.io/component: deployment-contract
 data:
+  source-sha: {{ .Values.global.imageTag | quote }}
   application-secret-name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
   application-secret-keys.json: {{ $applicationKeys | uniq | sortAlpha | toJson | quote }}
   connection-secret-name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret | quote }}
   connection-secret-keys.json: {{ $connectionKeys | uniq | sortAlpha | toJson | quote }}
+  {{- if and .Values.redis.enabled .Values.redis.auth.enabled }}
+  redis-secret-name: {{ required "redis.auth.existingSecret must be set" .Values.redis.auth.existingSecret | quote }}
+  redis-secret-keys.json: {{ list .Values.redis.auth.existingSecretPasswordKey | toJson | quote }}
+  {{- end }}
+  {{- if and .Values.revocationRedis.enabled .Values.revocationRedis.auth.enabled }}
+  revocation-redis-secret-name: {{ required "revocationRedis.auth.existingSecret must be set" .Values.revocationRedis.auth.existingSecret | quote }}
+  revocation-redis-secret-keys.json: {{ list .Values.revocationRedis.auth.existingSecretPasswordKey | toJson | quote }}
+  {{- end }}
+  {{- if and .Values.nats.enabled .Values.nats.existingSecret }}
+  nats-config-secret-name: {{ .Values.nats.existingSecret | quote }}
+  nats-config-secret-keys.json: {{ list "nats-server.conf" | toJson | quote }}
+  {{- end }}
   backend-secret-keys.json: {{ $backendKeys | toJson | quote }}
   outbox-worker-secret-keys.json: {{ $outboxKeys | toJson | quote }}
   mfa-key-contract.json: {{ dict "otp" (dict "ring" .Values.applicationSecrets.keys.mfaEmailOtpHMACKeys "active" .Values.applicationSecrets.keys.mfaEmailOtpActiveHMACKeyId) "delivery" (dict "ring" .Values.applicationSecrets.keys.mfaEmailDeliveryKEKs "active" .Values.applicationSecrets.keys.mfaEmailDeliveryActiveKEKId) "trusted" (dict "ring" .Values.applicationSecrets.keys.mfaTrustedDeviceHMACKeys "active" .Values.applicationSecrets.keys.mfaTrustedDeviceActiveHMACKeyId) | toJson | quote }}
+  {{- if .Values.internalGrpcMTLS.enabled }}
+  internal-grpc-gateway-client-secret-name: {{ required "internalGrpcMTLS.gatewayClient.existingSecret must be set" .Values.internalGrpcMTLS.gatewayClient.existingSecret | quote }}
+  internal-grpc-gateway-client-secret-keys.json: {{ list .Values.internalGrpcMTLS.gatewayClient.certKey .Values.internalGrpcMTLS.gatewayClient.privateKeyKey .Values.internalGrpcMTLS.gatewayClient.caKey | uniq | sortAlpha | toJson | quote }}
+  internal-grpc-file-processor-server-secret-name: {{ required "internalGrpcMTLS.fileProcessorServer.existingSecret must be set" .Values.internalGrpcMTLS.fileProcessorServer.existingSecret | quote }}
+  internal-grpc-file-processor-server-secret-keys.json: {{ list .Values.internalGrpcMTLS.fileProcessorServer.certKey .Values.internalGrpcMTLS.fileProcessorServer.privateKeyKey .Values.internalGrpcMTLS.fileProcessorServer.clientCAKey | uniq | sortAlpha | toJson | quote }}
+  internal-grpc-allowed-client-uris.json: {{ .Values.internalGrpcMTLS.allowedClientURIs | uniq | sortAlpha | toJson | quote }}
+  internal-grpc-gateway-identity-uri: {{ .Values.internalGrpcMTLS.gatewayIdentityURI | quote }}
+  {{- end }}
 {{- end -}}

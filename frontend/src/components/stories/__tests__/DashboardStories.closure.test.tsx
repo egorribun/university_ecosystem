@@ -6,6 +6,8 @@ import type { StoryItem } from "@/types/Story"
 type ViewerProps = {
   onNext: () => void
   onPrev: () => void
+  onPause: () => void
+  onResume: () => void
 }
 
 type ListProps = {
@@ -65,5 +67,26 @@ describe("DashboardStories defensive closure", () => {
     act(() => mocks.viewerProps?.onPrev())
 
     expect(onStoryOpen).toHaveBeenCalledTimes(1)
+  })
+
+  it("makes repeated interaction pauses idempotent and resumes only while visible", () => {
+    const stories = [{ id: "one", title: "One" }] as StoryItem[]
+    const now = vi.spyOn(performance, "now").mockReturnValue(1_000)
+    render(<DashboardStories stories={stories} />)
+    act(() => mocks.listProps?.onOpenStory(stories[0]!, 0))
+
+    act(() => {
+      mocks.viewerProps?.onPause()
+      mocks.viewerProps?.onPause()
+      mocks.viewerProps?.onResume()
+    })
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    })
+    act(() => document.dispatchEvent(new Event("visibilitychange")))
+    act(() => mocks.viewerProps?.onResume())
+    now.mockRestore()
   })
 })

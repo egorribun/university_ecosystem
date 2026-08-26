@@ -545,6 +545,12 @@ func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Public
 			return nil, fmt.Errorf("failed to create SPIFFE gRPC server credentials: %w", err)
 		}
 		serverOpts = append(serverOpts, grpc.Creds(creds))
+	} else if cfg.GRPCTLSCertFile != "" || cfg.GRPCTLSKeyFile != "" || cfg.GRPCClientCAFile != "" {
+		creds, err := conventionalGRPCServerCredentials(cfg)
+		if err != nil {
+			return nil, err
+		}
+		serverOpts = append(serverOpts, grpc.Creds(creds))
 	}
 
 	grpcServer := grpc.NewServer(serverOpts...)
@@ -559,6 +565,96 @@ func setupGRPCServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Public
 	healthServer.SetServingStatus("file_processor.v1.FileProcessingService", grpc_health_v1.HealthCheckResponse_SERVING)
 
 	return grpcServer, nil
+}
+
+func conventionalGRPCServerCredentials(cfg *config.Config) (credentials.TransportCredentials, error) {
+	certificate, err := tls.LoadX509KeyPair(cfg.GRPCTLSCertFile, cfg.GRPCTLSKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("load gRPC server certificate: %w", err)
+	}
+	if err := validateConventionalServerCertificate(certificate, time.Now()); err != nil {
+		return nil, err
+	}
+	caPEM, err := os.ReadFile(cfg.GRPCClientCAFile)
+	if err != nil {
+		return nil, fmt.Errorf("read gRPC client CA: %w", err)
+	}
+	clientCAs := x509.NewCertPool()
+	if !clientCAs.AppendCertsFromPEM(caPEM) {
+		return nil, errors.New("parse gRPC client CA: no certificates found")
+	}
+	if err := config.ValidateGRPCAllowedClientURIs(cfg.GRPCAllowedClientURIs); err != nil {
+		return nil, err
+	}
+	allowedClientURIs := make(map[string]struct{}, len(cfg.GRPCAllowedClientURIs))
+	for _, identity := range cfg.GRPCAllowedClientURIs {
+		allowedClientURIs[identity] = struct{}{}
+	}
+	return credentials.NewTLS(&tls.Config{
+		MinVersion:   tls.VersionTLS13,
+		Certificates: []tls.Certificate{certificate},
+		ClientCAs:    clientCAs,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		VerifyConnection: func(state tls.ConnectionState) error {
+			return verifyAllowedClientURI(allowedClientURIs, state)
+		},
+	}), nil
+}
+
+func verifyAllowedClientURI(allowedClientURIs map[string]struct{}, state tls.ConnectionState) error {
+	if len(state.VerifiedChains) == 0 || len(state.VerifiedChains[0]) == 0 {
+		return errors.New("verified client certificate chain is missing")
+	}
+	leaf := state.VerifiedChains[0][0]
+	if leaf.IsCA {
+		return errors.New("client certificate leaf must not be a CA")
+	}
+	now := time.Now()
+	if now.Before(leaf.NotBefore) || now.After(leaf.NotAfter) {
+		return errors.New("client certificate is outside its validity period")
+	}
+	if len(leaf.ExtKeyUsage) != 1 || leaf.ExtKeyUsage[0] != x509.ExtKeyUsageClientAuth || len(leaf.UnknownExtKeyUsage) != 0 {
+		return errors.New("client certificate must be clientAuth-only")
+	}
+	identities := leaf.URIs
+	if len(identities) != 1 {
+		return errors.New("client certificate must contain exactly one URI SAN")
+	}
+	if err := config.ValidateGRPCAllowedClientURIs([]string{identities[0].String()}); err != nil {
+		return errors.New("client certificate URI SAN is not canonical")
+	}
+	if _, allowed := allowedClientURIs[identities[0].String()]; allowed {
+		return nil
+	}
+	return errors.New("client certificate URI SAN is not allowed")
+}
+
+func validateConventionalServerCertificate(certificate tls.Certificate, now time.Time) error {
+	var leaf *x509.Certificate
+	leafCount := 0
+	for index, rawCertificate := range certificate.Certificate {
+		parsed, err := x509.ParseCertificate(rawCertificate)
+		if err != nil {
+			return fmt.Errorf("parse gRPC server certificate chain: %w", err)
+		}
+		if !parsed.IsCA {
+			leafCount++
+			leaf = parsed
+			if index != 0 {
+				return errors.New("gRPC server certificate leaf must be first in the chain")
+			}
+		}
+	}
+	if leafCount != 1 || leaf == nil {
+		return errors.New("gRPC server certificate must contain exactly one non-CA leaf")
+	}
+	if now.Before(leaf.NotBefore) || now.After(leaf.NotAfter) {
+		return errors.New("gRPC server certificate is outside its validity period")
+	}
+	if len(leaf.ExtKeyUsage) != 1 || leaf.ExtKeyUsage[0] != x509.ExtKeyUsageServerAuth || len(leaf.UnknownExtKeyUsage) != 0 {
+		return errors.New("gRPC server certificate must be serverAuth-only")
+	}
+	return nil
 }
 
 func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, logger *slog.Logger) (srv *http.Server, err error) {

@@ -5,6 +5,7 @@
  */
 import { EventCreateDialog } from "@/components/events/EventCreateDialog"
 import { logError } from "@/app/logger"
+import { captureActiveTelemetryContext } from "@/utils/telemetryContext"
 
 interface EventFormDialogProps {
   open: boolean
@@ -19,14 +20,15 @@ export const EventFormDialog = ({ open, onClose, onSuccess, language }: EventFor
       open={open}
       onClose={onClose}
       onCreated={async (draft) => {
+        const telemetryContext = captureActiveTelemetryContext()
         // The createEvent call is handled by the parent EventsFeature
         // For now, delegate directly to the legacy dialog's onCreated
         // which will be unified in a later wave
         const { createEvent } = await import("@/api/events")
         try {
-          await createEvent(draft)
+          await telemetryContext.run(() => createEvent(draft))
           onClose()
-          onSuccess()
+          telemetryContext.run(onSuccess)
           window.scrollTo({ top: 0, behavior: "smooth" })
         } catch (err) {
           logError("[EventFormDialog] createEvent failed:", err)

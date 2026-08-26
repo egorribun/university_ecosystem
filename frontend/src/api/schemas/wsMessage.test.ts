@@ -88,6 +88,122 @@ describe("parseWsMessage — new_message MessageSchema.read_at (Wave 203 SW5)", 
       expect(frame.message.read_at).toBeNull()
     }
   })
+
+  it("rejects a new_message with a malformed created_at timestamp", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "new_message",
+        chat_id: CHAT_ID,
+        message: { ...baseMessage, created_at: "not-a-timestamp" },
+      })
+    )
+
+    expect(frame).toBeNull()
+  })
+
+  it("exposes a validated JetStream sequence from the ws-hub envelope", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "new_message",
+        room: CHAT_ID,
+        payload: { type: "new_message", chat_id: CHAT_ID, message: baseMessage },
+        seq: 42,
+        resume_token: "signed-resume-token-42",
+        replayed: true,
+      })
+    ) as ReturnType<typeof parseWsMessage> & {
+      stream_seq?: number
+      replayed?: boolean
+    }
+
+    expect(frame).not.toBeNull()
+    expect(frame?.stream_seq).toBe(42)
+    expect(frame?.replayed).toBe(true)
+  })
+
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, "42"])(
+    "rejects an unsafe JetStream sequence %s instead of silently ignoring it",
+    (seq) => {
+      expect(
+        parseWsMessage(
+          JSON.stringify({
+            type: "new_message",
+            room: CHAT_ID,
+            payload: { type: "new_message", chat_id: CHAT_ID, message: baseMessage },
+            seq,
+            resume_token: "signed-resume-token",
+          })
+        )
+      ).toBeNull()
+    }
+  )
+
+  it("rejects a sequenced envelope whose authorized room disagrees with the payload chat", () => {
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          room: USER_ID,
+          payload: { type: "new_message", chat_id: CHAT_ID, message: baseMessage },
+          seq: 42,
+          resume_token: "signed-resume-token-42",
+        })
+      )
+    ).toBeNull()
+  })
+
+  it("rejects a flat frame that tries to forge a durable stream sequence", () => {
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          chat_id: CHAT_ID,
+          message: baseMessage,
+          seq: 42,
+          resume_token: "signed-resume-token-42",
+        })
+      )
+    ).toBeNull()
+  })
+
+  it("rejects replay metadata without its mandatory durable sequence", () => {
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          room: CHAT_ID,
+          payload: { type: "new_message", chat_id: CHAT_ID, message: baseMessage },
+          replayed: true,
+        })
+      )
+    ).toBeNull()
+  })
+
+  it("rejects a durable sequence without its signed resume token", () => {
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          room: CHAT_ID,
+          payload: { type: "new_message", chat_id: CHAT_ID, message: baseMessage },
+          seq: 42,
+        })
+      )
+    ).toBeNull()
+  })
+
+  it("rejects a resume token without its durable sequence", () => {
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          room: CHAT_ID,
+          payload: { type: "new_message", chat_id: CHAT_ID, message: baseMessage },
+          resume_token: "signed-resume-token",
+        })
+      )
+    ).toBeNull()
+  })
 })
 
 describe("parseWsMessage — Wave 204 SW3 ws-hub envelope unwrap + control frames", () => {
@@ -163,6 +279,27 @@ describe("parseWsMessage — Wave 204 SW3 ws-hub envelope unwrap + control frame
       JSON.stringify({ type: "new_message", room: CHAT_ID, payload: { type: "new_message" } })
     )
     expect(frame).toBeNull()
+  })
+
+  it("accepts an enveloped replay checkpoint for a terminal poison event", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "replay_checkpoint",
+        room: CHAT_ID,
+        seq: 42,
+        resume_token: "signed-resume-token-42",
+        replayed: true,
+        payload: { type: "replay_checkpoint", chat_id: CHAT_ID },
+      })
+    )
+
+    expect(frame).toEqual({
+      type: "replay_checkpoint",
+      chat_id: CHAT_ID,
+      stream_seq: 42,
+      replayed: true,
+      resume_token: "signed-resume-token-42",
+    })
   })
 
   it("returns null for a non-object payload envelope (validates outer, which fails)", () => {

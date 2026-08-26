@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, type FormEvent } from "react"
 import api from "@/api/client"
 import { useParams, useSearch, Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
@@ -21,6 +21,10 @@ import AuthBackdrop from "@/components/auth/AuthBackdrop"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { newPasswordSchema, type NewPasswordValues } from "@/features/auth/schemas"
 import { analyzePasswordStrength } from "@/utils/passwordStrength"
+import {
+  captureActiveTelemetryContext,
+  type CapturedTelemetryContext,
+} from "@/utils/telemetryContext"
 
 const RESET_URL = "/password/reset"
 const STRENGTH_VALUES = [10, 30, 55, 75, 100]
@@ -141,14 +145,14 @@ export default function ResetPassword() {
     }
   }, [password, passwordStrengthLanguage])
 
-  const onSubmit = async (data: NewPasswordValues) => {
+  const onSubmit = async (data: NewPasswordValues, telemetryContext: CapturedTelemetryContext) => {
     if (!token) {
       setError("root", { message: t("auth:reset.invalidLink") })
       return
     }
 
     try {
-      await api.post(RESET_URL, { token, password: data.password })
+      await telemetryContext.run(() => api.post(RESET_URL, { token, password: data.password }))
       setIsSuccess(true)
     } catch (error: unknown) {
       let errorMessage = t("auth:reset.errorGeneric")
@@ -158,6 +162,11 @@ export default function ResetPassword() {
       }
       setError("root", { message: errorMessage })
     }
+  }
+
+  const handleTelemetrySubmit = (event: FormEvent<HTMLFormElement>) => {
+    const telemetryContext = captureActiveTelemetryContext()
+    return handleSubmit((data) => onSubmit(data, telemetryContext))(event)
   }
 
   // Initial token check
@@ -230,7 +239,7 @@ export default function ResetPassword() {
                     </p>
                   </div>
 
-                  <form onSubmit={handleSubmit(onSubmit)} autoComplete="on" className="space-y-6">
+                  <form onSubmit={handleTelemetrySubmit} autoComplete="on" className="space-y-6">
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <TextField

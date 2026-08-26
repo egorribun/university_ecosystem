@@ -408,9 +408,17 @@ jobs:
           MFA_SMOKE_EMAIL: ${{ secrets.MFA_SMOKE_EMAIL }}
           MFA_SMOKE_PASSWORD: ${{ secrets.MFA_SMOKE_PASSWORD }}
           MFA_SMOKE_MAILBOX_TOKEN: ${{ secrets.MFA_SMOKE_MAILBOX_TOKEN }}
-          WS_HUB_DEPLOYMENT_NAME: ${{ vars.WS_HUB_DEPLOYMENT_NAME }}
-          WS_HUB_CONTAINER_NAME: ${{ vars.WS_HUB_CONTAINER_NAME }}
           DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
+          CWV_EXPORT_OIDC_SUBJECT: ${{ vars.CWV_EXPORT_OIDC_SUBJECT }}
+          FRONTEND_HOST: ${{ vars.FRONTEND_HOST }}
+          API_HOST: ${{ vars.API_HOST }}
+          TLS_SECRET_NAME: ${{ vars.TLS_SECRET_NAME }}
+          CERT_MANAGER_ISSUER_NAME: ${{ vars.CERT_MANAGER_ISSUER_NAME }}
+          ELASTICSEARCH_URL: ${{ vars.ELASTICSEARCH_URL }}
+          FLAGD_HOST: ${{ vars.FLAGD_HOST }}
+          OTLP_ENDPOINT: ${{ vars.OTLP_ENDPOINT }}
+          MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}
+          TEMPORAL_HOST: ${{ vars.TEMPORAL_HOST }}
           GATEWAY_HEALTH_URL: ${{ vars.GATEWAY_HEALTH_URL }}
           WS_HUB_HEALTH_URL: ${{ vars.WS_HUB_HEALTH_URL }}
           BACKEND_HEALTH_URL: ${{ vars.BACKEND_HEALTH_URL }}
@@ -421,6 +429,11 @@ jobs:
           WS_HUB_IMAGE_DIGEST: ${{ needs.build-ws-hub.outputs.digest }}
           GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
           FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
+          REDIS_IMAGE_DIGEST: ${{ vars.REDIS_IMAGE_DIGEST }}
+          REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REDIS_METRICS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+          NATS_IMAGE_DIGEST: ${{ vars.NATS_IMAGE_DIGEST }}
         run: |
           set -euo pipefail
 
@@ -428,12 +441,15 @@ jobs:
             OIDC_DEPLOY_ROLE_ARN AWS_REGION EKS_CLUSTER_NAME K8S_NAMESPACE
             HELM_RELEASE_NAME HELM_VALUES_FILE CONNECTIONS_SECRET_NAME
             APPLICATION_SECRETS_NAME APPLICATION_EXTERNAL_SECRET_NAME
-            WS_HUB_DEPLOYMENT_NAME
-            WS_HUB_CONTAINER_NAME DEPLOYMENT_URL GATEWAY_HEALTH_URL
+            DEPLOYMENT_URL CWV_EXPORT_OIDC_SUBJECT FRONTEND_HOST API_HOST
+            TLS_SECRET_NAME CERT_MANAGER_ISSUER_NAME ELASTICSEARCH_URL FLAGD_HOST
+            OTLP_ENDPOINT MINIO_ENDPOINT TEMPORAL_HOST GATEWAY_HEALTH_URL
             WS_HUB_HEALTH_URL BACKEND_HEALTH_URL FRONTEND_HEALTH_URL
             DEPLOY_VERSION BACKEND_IMAGE_DIGEST FRONTEND_IMAGE_DIGEST
             WS_HUB_IMAGE_DIGEST GATEWAY_IMAGE_DIGEST
-            FILE_PROCESSOR_IMAGE_DIGEST
+            FILE_PROCESSOR_IMAGE_DIGEST REDIS_IMAGE_DIGEST
+            REDIS_METRICS_IMAGE_DIGEST REVOCATION_REDIS_IMAGE_DIGEST
+            REVOCATION_REDIS_METRICS_IMAGE_DIGEST NATS_IMAGE_DIGEST
           )
           for name in "${required[@]}"; do
             if [[ -z "${!name:-}" ]]; then
@@ -471,7 +487,7 @@ jobs:
             echo "::error::EKS_CLUSTER_NAME is not a valid EKS cluster name."
             exit 1
           fi
-          for name in K8S_NAMESPACE HELM_RELEASE_NAME CONNECTIONS_SECRET_NAME APPLICATION_SECRETS_NAME APPLICATION_EXTERNAL_SECRET_NAME WS_HUB_DEPLOYMENT_NAME WS_HUB_CONTAINER_NAME; do
+          for name in K8S_NAMESPACE HELM_RELEASE_NAME CONNECTIONS_SECRET_NAME APPLICATION_SECRETS_NAME APPLICATION_EXTERNAL_SECRET_NAME TLS_SECRET_NAME CERT_MANAGER_ISSUER_NAME; do
             value="${!name}"
             if [[ "${#value}" -gt 63 || ! "$value" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
               echo "::error::$name must be a lowercase Kubernetes DNS label."
@@ -482,7 +498,7 @@ jobs:
             echo "::error::DEPLOY_VERSION must be the immutable 40-character commit SHA."
             exit 1
           fi
-          for name in BACKEND_IMAGE_DIGEST FRONTEND_IMAGE_DIGEST WS_HUB_IMAGE_DIGEST GATEWAY_IMAGE_DIGEST FILE_PROCESSOR_IMAGE_DIGEST; do
+          for name in BACKEND_IMAGE_DIGEST FRONTEND_IMAGE_DIGEST WS_HUB_IMAGE_DIGEST GATEWAY_IMAGE_DIGEST FILE_PROCESSOR_IMAGE_DIGEST REDIS_IMAGE_DIGEST REDIS_METRICS_IMAGE_DIGEST REVOCATION_REDIS_IMAGE_DIGEST REVOCATION_REDIS_METRICS_IMAGE_DIGEST NATS_IMAGE_DIGEST; do
             if [[ ! "${!name}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
               echo "::error::$name is not an immutable sha256 image digest."
               exit 1
@@ -491,6 +507,26 @@ jobs:
           for name in DEPLOYMENT_URL GATEWAY_HEALTH_URL WS_HUB_HEALTH_URL BACKEND_HEALTH_URL FRONTEND_HEALTH_URL; do
             if [[ ! "${!name}" =~ ^https://[^[:space:]]+$ ]]; then
               echo "::error::$name must be a non-empty HTTPS URL."
+              exit 1
+            fi
+          done
+          for name in FRONTEND_HOST API_HOST FLAGD_HOST; do
+            if [[ ! "${!name}" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]]; then
+              echo "::error::$name must be a valid DNS host name."
+              exit 1
+            fi
+          done
+          if [[ "$DEPLOYMENT_URL" != "https://$FRONTEND_HOST" ]]; then
+            echo "::error::DEPLOYMENT_URL must exactly match the HTTPS frontend host."
+            exit 1
+          fi
+          if [[ ! "$ELASTICSEARCH_URL" =~ ^https://[^[:space:]]+$ ]]; then
+            echo "::error::ELASTICSEARCH_URL must be a non-empty HTTPS URL."
+            exit 1
+          fi
+          for name in OTLP_ENDPOINT MINIO_ENDPOINT TEMPORAL_HOST; do
+            if [[ ! "${!name}" =~ ^[^[:space:]:]+:[0-9]{1,5}$ ]]; then
+              echo "::error::$name must be a host:port endpoint."
               exit 1
             fi
           done
@@ -547,6 +583,15 @@ jobs:
             kubectl auth can-i create namespaces | grep -Fxq yes
             kubectl create namespace "$K8S_NAMESPACE"
           fi
+          kubectl label namespace "$K8S_NAMESPACE" \
+            pod-security.kubernetes.io/enforce=restricted \
+            pod-security.kubernetes.io/audit=restricted \
+            pod-security.kubernetes.io/warn=restricted \
+            --overwrite
+          for mode in enforce audit warn; do
+            test "$(kubectl get namespace "$K8S_NAMESPACE" \
+              --output "jsonpath={.metadata.labels.pod-security\\.kubernetes\\.io/${mode}}")" = restricted
+          done
           kubectl auth can-i get deployments --namespace "$K8S_NAMESPACE" | grep -Fxq yes
           kubectl auth can-i list deployments --namespace "$K8S_NAMESPACE" | grep -Fxq yes
           kubectl auth can-i watch deployments --namespace "$K8S_NAMESPACE" | grep -Fxq yes
@@ -584,8 +629,26 @@ jobs:
           APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
           BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
           FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.build-ws-hub.outputs.digest }}
           GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
           FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
+          DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
+          DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
+          CWV_EXPORT_OIDC_SUBJECT: ${{ vars.CWV_EXPORT_OIDC_SUBJECT }}
+          FRONTEND_HOST: ${{ vars.FRONTEND_HOST }}
+          API_HOST: ${{ vars.API_HOST }}
+          TLS_SECRET_NAME: ${{ vars.TLS_SECRET_NAME }}
+          CERT_MANAGER_ISSUER_NAME: ${{ vars.CERT_MANAGER_ISSUER_NAME }}
+          ELASTICSEARCH_URL: ${{ vars.ELASTICSEARCH_URL }}
+          FLAGD_HOST: ${{ vars.FLAGD_HOST }}
+          OTLP_ENDPOINT: ${{ vars.OTLP_ENDPOINT }}
+          MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}
+          TEMPORAL_HOST: ${{ vars.TEMPORAL_HOST }}
+          REDIS_IMAGE_DIGEST: ${{ vars.REDIS_IMAGE_DIGEST }}
+          REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REDIS_METRICS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+          NATS_IMAGE_DIGEST: ${{ vars.NATS_IMAGE_DIGEST }}
         run: |
           set -euo pipefail
           rendered="$(mktemp "$RUNNER_TEMP/rendered-release.XXXXXX.yaml")"
@@ -623,8 +686,26 @@ jobs:
           APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
           BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
           FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.build-ws-hub.outputs.digest }}
           GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
           FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
+          DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
+          DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
+          CWV_EXPORT_OIDC_SUBJECT: ${{ vars.CWV_EXPORT_OIDC_SUBJECT }}
+          FRONTEND_HOST: ${{ vars.FRONTEND_HOST }}
+          API_HOST: ${{ vars.API_HOST }}
+          TLS_SECRET_NAME: ${{ vars.TLS_SECRET_NAME }}
+          CERT_MANAGER_ISSUER_NAME: ${{ vars.CERT_MANAGER_ISSUER_NAME }}
+          ELASTICSEARCH_URL: ${{ vars.ELASTICSEARCH_URL }}
+          FLAGD_HOST: ${{ vars.FLAGD_HOST }}
+          OTLP_ENDPOINT: ${{ vars.OTLP_ENDPOINT }}
+          MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}
+          TEMPORAL_HOST: ${{ vars.TEMPORAL_HOST }}
+          REDIS_IMAGE_DIGEST: ${{ vars.REDIS_IMAGE_DIGEST }}
+          REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REDIS_METRICS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+          NATS_IMAGE_DIGEST: ${{ vars.NATS_IMAGE_DIGEST }}
           MFA_SMOKE_STATE_DIR: ${{ runner.temp }}/mfa-overlap-smoke
         run: |
           set -euo pipefail
@@ -899,8 +980,26 @@ jobs:
           APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
           BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
           FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.build-ws-hub.outputs.digest }}
           GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
           FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
+          DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
+          DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
+          CWV_EXPORT_OIDC_SUBJECT: ${{ vars.CWV_EXPORT_OIDC_SUBJECT }}
+          FRONTEND_HOST: ${{ vars.FRONTEND_HOST }}
+          API_HOST: ${{ vars.API_HOST }}
+          TLS_SECRET_NAME: ${{ vars.TLS_SECRET_NAME }}
+          CERT_MANAGER_ISSUER_NAME: ${{ vars.CERT_MANAGER_ISSUER_NAME }}
+          ELASTICSEARCH_URL: ${{ vars.ELASTICSEARCH_URL }}
+          FLAGD_HOST: ${{ vars.FLAGD_HOST }}
+          OTLP_ENDPOINT: ${{ vars.OTLP_ENDPOINT }}
+          MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}
+          TEMPORAL_HOST: ${{ vars.TEMPORAL_HOST }}
+          REDIS_IMAGE_DIGEST: ${{ vars.REDIS_IMAGE_DIGEST }}
+          REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REDIS_METRICS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+          NATS_IMAGE_DIGEST: ${{ vars.NATS_IMAGE_DIGEST }}
         run: |
           set -euo pipefail
 
@@ -944,13 +1043,43 @@ jobs:
           mapfile -t connection_secret_keys < <(
             contract_literal connection-secret-keys.json | jq --raw-output 'fromjson[]'
           )
+          redis_secret_name="$(contract_literal redis-secret-name | jq --raw-output '.')"
+          revocation_redis_secret_name="$(contract_literal revocation-redis-secret-name | jq --raw-output '.')"
+          nats_config_secret_name="$(contract_literal nats-config-secret-name | jq --raw-output '.')"
+          mapfile -t redis_secret_keys < <(
+            contract_literal redis-secret-keys.json | jq --raw-output 'fromjson[]'
+          )
+          mapfile -t revocation_redis_secret_keys < <(
+            contract_literal revocation-redis-secret-keys.json | jq --raw-output 'fromjson[]'
+          )
+          mapfile -t nats_config_secret_keys < <(
+            contract_literal nats-config-secret-keys.json | jq --raw-output 'fromjson[]'
+          )
+          grpc_gateway_client_secret_name="$(contract_literal internal-grpc-gateway-client-secret-name | jq --raw-output '.')"
+          grpc_file_processor_server_secret_name="$(contract_literal internal-grpc-file-processor-server-secret-name | jq --raw-output '.')"
+          mapfile -t grpc_gateway_client_secret_keys < <(
+            contract_literal internal-grpc-gateway-client-secret-keys.json | jq --raw-output 'fromjson[]'
+          )
+          mapfile -t grpc_file_processor_server_secret_keys < <(
+            contract_literal internal-grpc-file-processor-server-secret-keys.json | jq --raw-output 'fromjson[]'
+          )
           if [[ "${#application_secret_keys[@]}" -eq 0 || \
-                "${#connection_secret_keys[@]}" -eq 0 ]]; then
+                "${#connection_secret_keys[@]}" -eq 0 || \
+                "${#redis_secret_keys[@]}" -eq 0 || \
+                "${#revocation_redis_secret_keys[@]}" -eq 0 || \
+                "${#nats_config_secret_keys[@]}" -eq 0 || \
+                "${#grpc_gateway_client_secret_keys[@]}" -eq 0 || \
+                "${#grpc_file_processor_server_secret_keys[@]}" -eq 0 ]]; then
             echo "::error::Rendered Secret key contract is empty."
             exit 1
           fi
           require_secret_keys "$application_secret_name" "${application_secret_keys[@]}"
           require_secret_keys "$connection_secret_name" "${connection_secret_keys[@]}"
+          require_secret_keys "$redis_secret_name" "${redis_secret_keys[@]}"
+          require_secret_keys "$revocation_redis_secret_name" "${revocation_redis_secret_keys[@]}"
+          require_secret_keys "$nats_config_secret_name" "${nats_config_secret_keys[@]}"
+          require_secret_keys "$grpc_gateway_client_secret_name" "${grpc_gateway_client_secret_keys[@]}"
+          require_secret_keys "$grpc_file_processor_server_secret_name" "${grpc_file_processor_server_secret_keys[@]}"
 
       - name: Capture rollback state
         id: rollback_state
@@ -958,8 +1087,6 @@ jobs:
         env:
           K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
           HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
-          WS_HUB_DEPLOYMENT_NAME: ${{ vars.WS_HUB_DEPLOYMENT_NAME }}
-          WS_HUB_CONTAINER_NAME: ${{ vars.WS_HUB_CONTAINER_NAME }}
         run: |
           set -euo pipefail
           releases="$(helm list --namespace "$K8S_NAMESPACE" \
@@ -976,18 +1103,7 @@ jobs:
             exit 1
           fi
 
-          ws_hub_image="$(kubectl get deployment "$WS_HUB_DEPLOYMENT_NAME" \
-            --namespace "$K8S_NAMESPACE" --output json | \
-            jq --raw-output --arg name "$WS_HUB_CONTAINER_NAME" \
-              '[.spec.template.spec.containers[] |
-                select(.name == $name) | .image] |
-               if length == 1 then .[0] else empty end')"
-          if [[ -z "$ws_hub_image" ]]; then
-            echo "::error::Unable to capture exactly one WS Hub container image."
-            exit 1
-          fi
           echo "helm_revision=$previous_revision" >> "$GITHUB_OUTPUT"
-          echo "ws_hub_image=$ws_hub_image" >> "$GITHUB_OUTPUT"
 
       - name: Capture field-evidence timestamp
         id: field-evidence-time
@@ -1007,44 +1123,31 @@ jobs:
           APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
           BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
           FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.build-ws-hub.outputs.digest }}
           GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
           FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
           DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
           DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
           CWV_DEPLOYED_AT: ${{ steps.field-evidence-time.outputs.timestamp }}
           CWV_EXPORT_OIDC_SUBJECT: ${{ vars.CWV_EXPORT_OIDC_SUBJECT }}
+          FRONTEND_HOST: ${{ vars.FRONTEND_HOST }}
+          API_HOST: ${{ vars.API_HOST }}
+          TLS_SECRET_NAME: ${{ vars.TLS_SECRET_NAME }}
+          CERT_MANAGER_ISSUER_NAME: ${{ vars.CERT_MANAGER_ISSUER_NAME }}
+          ELASTICSEARCH_URL: ${{ vars.ELASTICSEARCH_URL }}
+          FLAGD_HOST: ${{ vars.FLAGD_HOST }}
+          OTLP_ENDPOINT: ${{ vars.OTLP_ENDPOINT }}
+          MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}
+          TEMPORAL_HOST: ${{ vars.TEMPORAL_HOST }}
+          REDIS_IMAGE_DIGEST: ${{ vars.REDIS_IMAGE_DIGEST }}
+          REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REDIS_METRICS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+          NATS_IMAGE_DIGEST: ${{ vars.NATS_IMAGE_DIGEST }}
         run: |
           set -euo pipefail
           bash .github/scripts/deploy-helm.sh lint
           bash .github/scripts/deploy-helm.sh upgrade
-
-      - name: Deploy WS Hub image
-        id: ws_hub_deploy
-        shell: bash
-        env:
-          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
-          WS_HUB_DEPLOYMENT_NAME: ${{ vars.WS_HUB_DEPLOYMENT_NAME }}
-          WS_HUB_CONTAINER_NAME: ${{ vars.WS_HUB_CONTAINER_NAME }}
-          WS_HUB_IMAGE_DIGEST: ${{ needs.build-ws-hub.outputs.digest }}
-        run: |
-          set -euo pipefail
-          image="$REGISTRY/$GITHUB_REPOSITORY/ws-hub@$WS_HUB_IMAGE_DIGEST"
-          kubectl get deployment "$WS_HUB_DEPLOYMENT_NAME" \
-            --namespace "$K8S_NAMESPACE" >/dev/null
-          kubectl set image "deployment/$WS_HUB_DEPLOYMENT_NAME" \
-            "$WS_HUB_CONTAINER_NAME=$image" \
-            --namespace "$K8S_NAMESPACE"
-          kubectl rollout status "deployment/$WS_HUB_DEPLOYMENT_NAME" \
-            --namespace "$K8S_NAMESPACE" \
-            --timeout=5m
-          actual="$(kubectl get deployment "$WS_HUB_DEPLOYMENT_NAME" \
-            --namespace "$K8S_NAMESPACE" --output json | \
-            jq --raw-output --arg name "$WS_HUB_CONTAINER_NAME" \
-              '.spec.template.spec.containers[] | select(.name == $name) | .image')"
-          if [[ "$actual" != "$image" ]]; then
-            echo "::error::WS Hub rollout uses '$actual' instead of '$image'."
-            exit 1
-          fi
 
       - name: Verify Helm-managed rollouts
         shell: bash
@@ -1053,6 +1156,7 @@ jobs:
           HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
           BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
           FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.build-ws-hub.outputs.digest }}
           GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
           FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
         run: |
@@ -1087,6 +1191,7 @@ jobs:
           image_prefix="$REGISTRY/$GITHUB_REPOSITORY"
           verify_image backend backend "$image_prefix/backend@$BACKEND_IMAGE_DIGEST"
           verify_image frontend frontend "$image_prefix/frontend@$FRONTEND_IMAGE_DIGEST"
+          verify_image ws-hub ws-hub "$image_prefix/ws-hub@$WS_HUB_IMAGE_DIGEST"
           verify_image gateway gateway "$image_prefix/gateway@$GATEWAY_IMAGE_DIGEST"
           verify_image file-processor file-processor "$image_prefix/file-processor@$FILE_PROCESSOR_IMAGE_DIGEST"
           verify_image outbox-worker outbox-worker "$image_prefix/backend@$BACKEND_IMAGE_DIGEST"
@@ -1223,15 +1328,12 @@ jobs:
           retention-days: 30
 
       - name: Roll back a deployment that failed verification
-        if: ${{ failure() && steps.rollback_state.outcome == 'success' }}
+        if: ${{ (failure() || cancelled()) && steps.rollback_state.outcome == 'success' }}
         shell: bash
         env:
           K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
           HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
-          WS_HUB_DEPLOYMENT_NAME: ${{ vars.WS_HUB_DEPLOYMENT_NAME }}
-          WS_HUB_CONTAINER_NAME: ${{ vars.WS_HUB_CONTAINER_NAME }}
           PREVIOUS_HELM_REVISION: ${{ steps.rollback_state.outputs.helm_revision }}
-          PREVIOUS_WS_HUB_IMAGE: ${{ steps.rollback_state.outputs.ws_hub_image }}
           HELM_DEPLOY_OUTCOME: ${{ steps.helm_deploy.outcome }}
         run: |
           set -uo pipefail
@@ -1251,17 +1353,6 @@ jobs:
               echo "::error::Unable to roll Helm back to revision $PREVIOUS_HELM_REVISION."
               rollback_failed=1
             fi
-          fi
-
-          if ! kubectl set image "deployment/$WS_HUB_DEPLOYMENT_NAME" \
-            "$WS_HUB_CONTAINER_NAME=$PREVIOUS_WS_HUB_IMAGE" \
-            --namespace "$K8S_NAMESPACE"; then
-            echo "::error::Unable to restore the previous WS Hub image."
-            rollback_failed=1
-          elif ! kubectl rollout status "deployment/$WS_HUB_DEPLOYMENT_NAME" \
-            --namespace "$K8S_NAMESPACE" --timeout=5m; then
-            echo "::error::The restored WS Hub deployment did not become ready."
-            rollback_failed=1
           fi
 
           if [[ "$rollback_failed" -ne 0 ]]; then

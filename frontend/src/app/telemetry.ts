@@ -1,11 +1,10 @@
-import { WebTracerProvider } from "@opentelemetry/sdk-trace-web"
+import { StackContextManager, WebTracerProvider } from "@opentelemetry/sdk-trace-web"
 import { BatchSpanProcessor, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base"
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http"
 import { registerInstrumentations } from "@opentelemetry/instrumentation"
 import { FetchInstrumentation } from "@opentelemetry/instrumentation-fetch"
 import { XMLHttpRequestInstrumentation } from "@opentelemetry/instrumentation-xml-http-request"
 import { UserInteractionInstrumentation } from "@opentelemetry/instrumentation-user-interaction"
-import { ZoneContextManager } from "@opentelemetry/context-zone"
 import { resourceFromAttributes } from "@opentelemetry/resources"
 import { ATTR_SERVICE_NAME, ATTR_SERVICE_VERSION } from "@opentelemetry/semantic-conventions"
 
@@ -45,11 +44,13 @@ export function initTelemetry(env: ImportMetaEnv = import.meta.env) {
     spanProcessors: [processor],
   })
 
-  // ZoneContextManager propagates trace context across async boundaries
-  // (Promise chains, setTimeout, etc.) using Zone.js.  Without it, a span
-  // created on a button click is lost before the resulting fetch completes,
-  // breaking the frontend → gateway correlation in Grafana Tempo.
-  provider.register({ contextManager: new ZoneContextManager() })
+  // StackContextManager deliberately avoids Zone.js monkey-patching. Zone's
+  // Promise/IndexedDB patches make Dexie transactions commit before RxDB's
+  // async collection setup finishes in Chromium (`PrematureCommitError`).
+  // StackContextManager is synchronous: handlers that await before starting a
+  // later API operation must capture and explicitly re-enter their interaction
+  // context with captureActiveTelemetryContext().
+  provider.register({ contextManager: new StackContextManager() })
 
   const backendOrigin = (env.VITE_BACKEND_ORIGIN || "").replace(/\/+$/, "")
   const backendApiPattern = backendOrigin

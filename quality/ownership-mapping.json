@@ -43,7 +43,6 @@
     "**/spicedb/**",
     "**/rebac/**",
     "**/csrf/**",
-    "**/webauthn/**",
     "**/mfa/**",
     "**/ticketing/**",
     "alembic/versions/**",

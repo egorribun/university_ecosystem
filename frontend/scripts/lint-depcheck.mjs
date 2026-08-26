@@ -73,10 +73,8 @@ const options = {
     "workbox-strategies",
     "web-vitals",
     "wasm-sanitizer",
-    "@hey-api/client-axios",
     "@types/*",
     "@types/qrcode",
-    "@types/qrcode.react",
     "@types/react",
     "@types/react-dom",
     "@types/node",
@@ -99,7 +97,6 @@ const options = {
     "jspdf",
     "qrcode",
     "depcheck",
-    "dexie",
     "@stryker-mutator/*",
   ],
   parsers: {

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.12
 
 # Stage 1: Base
-FROM node:24-alpine@sha256:01743339035a5c3c11a373cd7c83aeab6ed1457b55da6a69e014a95ac4e4700b AS base
+FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS base
 WORKDIR /app
 
 # Stage 2: WASM — build Rust WASM packages (rust-crypto + wasm-sanitizer)
@@ -15,7 +15,7 @@ RUN wasm-pack build rust-crypto --target web \
 
 # Stage 3: Dependencies
 FROM base AS deps
-COPY frontend/package.json frontend/package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 COPY frontend/scripts ./scripts/
 # Copy built WASM packages so local file: dependencies exist and satisfy ensure-wasm preinstall check
 COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg
@@ -80,7 +80,7 @@ RUN rm -rf dist && npm run build
 # `dist/server/server.js` imports external runtime deps (react, @tanstack/*,
 # h3-v2, seroval, jose, ...) that must be resolvable at runtime.
 FROM base AS prod-deps
-COPY frontend/package.json frontend/package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 COPY frontend/scripts ./scripts/
 # Copy built WASM packages so local file: dependencies exist and satisfy ensure-wasm preinstall check
 COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg
@@ -115,7 +115,7 @@ RUN --mount=type=cache,target=/root/.npm \
 #
 # The obsolete nginx runtime and `frontend/nginx.conf` were removed after the
 # SSR rollout. Edge routing is owned by `services/caddy/Caddyfile`.
-FROM node:24-alpine@sha256:01743339035a5c3c11a373cd7c83aeab6ed1457b55da6a69e014a95ac4e4700b AS runtime
+FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS runtime
 
 WORKDIR /app
 
@@ -147,6 +147,9 @@ COPY --from=wasm-builder --chown=node:node /wasm/wasm-sanitizer/pkg ./wasm-sanit
 # doesn't need them.
 COPY --chown=node:node frontend/scripts/server-prod.mjs ./scripts/server-prod.mjs
 COPY --chown=node:node frontend/scripts/contentTypes.mjs ./scripts/contentTypes.mjs
+COPY --chown=node:node frontend/scripts/server-response-stream.mjs ./scripts/server-response-stream.mjs
+COPY --chown=node:node frontend/scripts/server-readiness.mjs ./scripts/server-readiness.mjs
+COPY --chown=node:node frontend/scripts/server-request-log.mjs ./scripts/server-request-log.mjs
 
 # Build artifacts:
 #   dist/client/_shell.html + dist/client/index.html (mirror) + dist/client/assets/

@@ -38,6 +38,7 @@ class UnitOfWork:
         """
         self._session_factory = session_factory
         self._session: AsyncDatabaseSession | None = None
+        self._owns_session = False
 
     def _bind_repositories(self, session: AsyncDatabaseSession) -> None:
         """Bind all repositories to *session*. Single source of truth."""
@@ -54,15 +55,19 @@ class UnitOfWork:
 
     async def __aenter__(self) -> UnitOfWork:
         """Enter async context and initialize repositories."""
-        self._session = self._session_factory()
-        self._bind_repositories(self._session)
+        if self._session is None:
+            self._session = self._session_factory()
+            self._bind_repositories(self._session)
+            self._owns_session = True
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Exit async context, rollback if exception occurred."""
         if exc_type is not None:
             await self.rollback()
-        await self._close()
+        if self._owns_session:
+            await self._close()
+            self._owns_session = False
 
     async def commit(self) -> None:
         """Commit the current transaction."""
@@ -103,7 +108,9 @@ def uow_from_session(session: AsyncDatabaseSession) -> UnitOfWork:
 
     Use this when you already have a session (e.g. from FastAPI Depends() or a
     test fixture) and need to pass a UnitOfWork to services that access
-    ``uow.users``, ``uow.events``, etc. in their ``__init__``.
+    ``uow.users``, ``uow.events``, etc. in their ``__init__``. The caller
+    retains lifecycle ownership: context exit may roll back on failure, but
+    never closes the borrowed session.
     """
     uow = UnitOfWork(lambda: session)
     uow._session = session

@@ -7,8 +7,9 @@ chart="charts/university-ecosystem"
 required=(
   DEPLOY_ENVIRONMENT K8S_NAMESPACE HELM_RELEASE_NAME HELM_VALUES_FILE
   CONNECTIONS_SECRET_NAME APPLICATION_SECRETS_NAME REGISTRY GITHUB_REPOSITORY
+  DEPLOY_VERSION
   BACKEND_IMAGE_DIGEST FRONTEND_IMAGE_DIGEST GATEWAY_IMAGE_DIGEST
-  FILE_PROCESSOR_IMAGE_DIGEST
+  FILE_PROCESSOR_IMAGE_DIGEST WS_HUB_IMAGE_DIGEST
 )
 for name in "${required[@]}"; do
   if [[ -z "${!name:-}" ]]; then
@@ -18,9 +19,51 @@ for name in "${required[@]}"; do
 done
 
 cwv_enabled=false
+release_args=()
+if [[ "$DEPLOY_ENVIRONMENT" == "staging" || "$DEPLOY_ENVIRONMENT" == "production" ]]; then
+  release_required=(
+    DEPLOYMENT_URL CWV_EXPORT_OIDC_SUBJECT FRONTEND_HOST API_HOST
+    TLS_SECRET_NAME CERT_MANAGER_ISSUER_NAME ELASTICSEARCH_URL FLAGD_HOST
+    OTLP_ENDPOINT MINIO_ENDPOINT TEMPORAL_HOST REDIS_IMAGE_DIGEST
+    REDIS_METRICS_IMAGE_DIGEST REVOCATION_REDIS_IMAGE_DIGEST
+    REVOCATION_REDIS_METRICS_IMAGE_DIGEST NATS_IMAGE_DIGEST
+  )
+  for name in "${release_required[@]}"; do
+    if [[ -z "${!name:-}" ]]; then
+      echo "Required release Helm input '$name' is empty." >&2
+      exit 1
+    fi
+  done
+  issuer_kind="Issuer"
+  if [[ "$DEPLOY_ENVIRONMENT" == "production" ]]; then
+    issuer_kind="ClusterIssuer"
+  fi
+  release_args=(
+    --set-string "backend.config.elasticsearchURL=$ELASTICSEARCH_URL"
+    --set-string "backend.config.flagdHost=$FLAGD_HOST"
+    --set-string "gateway.config.otelEndpoint=$OTLP_ENDPOINT"
+    --set-string "wsHub.config.allowedOrigins[0]=https://$FRONTEND_HOST"
+    --set-string "wsHub.config.otelEndpoint=$OTLP_ENDPOINT"
+    --set-string "fileProcessor.config.minioEndpoint=$MINIO_ENDPOINT"
+    --set-string "fileProcessor.config.temporalHost=$TEMPORAL_HOST"
+    --set-string "fileProcessor.config.otlpEndpoint=$OTLP_ENDPOINT"
+    --set-string "ingress.issuer.kind=$issuer_kind"
+    --set-string "ingress.issuer.name=$CERT_MANAGER_ISSUER_NAME"
+    --set-string "ingress.hosts[0].host=$FRONTEND_HOST"
+    --set-string "ingress.hosts[1].host=$API_HOST"
+    --set-string "ingress.tls[0].secretName=$TLS_SECRET_NAME"
+    --set-string "ingress.tls[0].hosts[0]=$FRONTEND_HOST"
+    --set-string "ingress.tls[0].hosts[1]=$API_HOST"
+    --set-string "redis.image.digest=$REDIS_IMAGE_DIGEST"
+    --set-string "redis.metrics.image.digest=$REDIS_METRICS_IMAGE_DIGEST"
+    --set-string "revocationRedis.image.digest=$REVOCATION_REDIS_IMAGE_DIGEST"
+    --set-string "revocationRedis.metrics.image.digest=$REVOCATION_REDIS_METRICS_IMAGE_DIGEST"
+    --set-string "nats.image.digest=$NATS_IMAGE_DIGEST"
+  )
+fi
 if [[ "$DEPLOY_ENVIRONMENT" == "staging" ]]; then
   cwv_enabled=true
-  for name in DEPLOY_VERSION DEPLOYMENT_URL GITHUB_RUN_ID GITHUB_RUN_ATTEMPT CWV_DEPLOYED_AT CWV_EXPORT_OIDC_SUBJECT; do
+  for name in DEPLOY_VERSION DEPLOYMENT_URL GITHUB_RUN_ID GITHUB_RUN_ATTEMPT CWV_EXPORT_OIDC_SUBJECT; do
     if [[ -z "${!name:-}" ]]; then
       echo "Required staging CWV input '$name' is empty." >&2
       exit 1
@@ -37,22 +80,25 @@ common_args=(
   --values "$HELM_VALUES_FILE"
   --set-string "global.environment=$DEPLOY_ENVIRONMENT"
   --set-string "global.imageRegistry="
+  --set-string "global.imageTag=$DEPLOY_VERSION"
   --set-string "backend.image.repository=$REGISTRY/$GITHUB_REPOSITORY/backend"
   --set-string "backend.image.digest=$BACKEND_IMAGE_DIGEST"
-  --set-string "backend.env.CWV_RUM_ENABLED=$cwv_enabled"
-  --set-string "backend.env.CWV_RELEASE_SHA=$cwv_release_sha"
-  --set-string "backend.env.CWV_FRONTEND_IMAGE_DIGEST=$FRONTEND_IMAGE_DIGEST"
-  --set-string "backend.env.CWV_DEPLOYMENT_RUN_ID=$cwv_run_id"
-  --set-string "backend.env.CWV_DEPLOYMENT_RUN_ATTEMPT=$cwv_run_attempt"
-  --set-string "backend.env.CWV_DEPLOYMENT_URL=$cwv_deployment_url"
-  --set-string "backend.env.CWV_DEPLOYED_AT=$cwv_deployed_at"
-  --set-string "backend.env.CWV_ALLOWED_ORIGINS=$cwv_deployment_url"
-  --set-string "backend.env.CWV_EXPORT_OIDC_ENABLED=$cwv_enabled"
-  --set-string "backend.env.CWV_EXPORT_OIDC_REPOSITORY=$GITHUB_REPOSITORY"
-  --set-string "backend.env.CWV_EXPORT_OIDC_WORKFLOW_REF=$GITHUB_REPOSITORY/.github/workflows/cwv-field-certification.yml@refs/heads/main"
-  --set-string "backend.env.CWV_EXPORT_OIDC_SUBJECT=${CWV_EXPORT_OIDC_SUBJECT:-disabled}"
+  --set "cwv.rumEnabled=$cwv_enabled"
+  --set-string "cwv.releaseSHA=$cwv_release_sha"
+  --set-string "cwv.frontendImageDigest=$FRONTEND_IMAGE_DIGEST"
+  --set "cwv.deploymentRunID=$cwv_run_id"
+  --set "cwv.deploymentRunAttempt=$cwv_run_attempt"
+  --set-string "cwv.deploymentURL=$cwv_deployment_url"
+  --set-string "cwv.deployedAt=$cwv_deployed_at"
+  --set-string "cwv.allowedOrigins[0]=$cwv_deployment_url"
+  --set "cwv.exportOIDC.enabled=$cwv_enabled"
+  --set-string "cwv.exportOIDC.repository=$GITHUB_REPOSITORY"
+  --set-string "cwv.exportOIDC.workflowRef=$GITHUB_REPOSITORY/.github/workflows/cwv-field-certification.yml@refs/heads/main"
+  --set-string "cwv.exportOIDC.subject=${CWV_EXPORT_OIDC_SUBJECT:-disabled}"
   --set-string "frontend.image.repository=$REGISTRY/$GITHUB_REPOSITORY/frontend"
   --set-string "frontend.image.digest=$FRONTEND_IMAGE_DIGEST"
+  --set-string "wsHub.image.repository=$REGISTRY/$GITHUB_REPOSITORY/ws-hub"
+  --set-string "wsHub.image.digest=$WS_HUB_IMAGE_DIGEST"
   --set-string "gateway.image.repository=$REGISTRY/$GITHUB_REPOSITORY/gateway"
   --set-string "gateway.image.digest=$GATEWAY_IMAGE_DIGEST"
   --set-string "fileProcessor.image.repository=$REGISTRY/$GITHUB_REPOSITORY/file-processor"
@@ -64,6 +110,7 @@ common_args=(
   --set fileProcessor.enabled=true
   --set outboxWorker.enabled=true
   --set deploymentContract.enabled=false
+  "${release_args[@]}"
 )
 
 case "$mode" in

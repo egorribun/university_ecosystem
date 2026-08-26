@@ -1,10 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-const mockState = vi.hoisted(() => ({ attempts: 0 }))
+const mockState = vi.hoisted(() => ({ attempts: 0, setWorkerUrl: vi.fn() }))
+
+vi.mock("maplibre-gl", () => ({ setWorkerUrl: mockState.setWorkerUrl }))
+vi.mock("maplibre-gl/dist/maplibre-gl-worker.mjs?url", () => ({
+  default: "/assets/maplibre-worker-hash.mjs",
+}))
 
 describe("loadMapLibre", () => {
   beforeEach(() => {
     mockState.attempts = 0
+    mockState.setWorkerUrl.mockReset()
     vi.resetModules()
     vi.doUnmock("@/components/map/MapLibreMap")
   })
@@ -17,6 +23,7 @@ describe("loadMapLibre", () => {
 
     expect(second).toBe(first)
     await expect(first).resolves.toHaveProperty("default")
+    expect(mockState.setWorkerUrl).toHaveBeenCalledWith("/assets/maplibre-worker-hash.mjs")
   })
 
   it("allows a later route activation to retry a failed chunk load", async () => {

@@ -170,14 +170,16 @@ func TestSetupHubAndHandlers_ProbesHealth(t *testing.T) {
 		assert.Contains(t, rec.Body.String(), "healthy")
 	})
 
-	t.Run("websocket endpoint rejects non-upgrade", func(t *testing.T) {
-		rec := httptest.NewRecorder()
-		req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "/ws", nil)
-		require.NoError(t, err)
-		mux.ServeHTTP(rec, req)
-		// websocket upgrade should fail with unauthorized due to missing ticket
-		assert.Equal(t, http.StatusUnauthorized, rec.Code)
-	})
+	for _, path := range []string{"/ws", "/ws/chat"} {
+		t.Run("websocket endpoint rejects non-upgrade at "+path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
+			require.NoError(t, err)
+			mux.ServeHTTP(rec, req)
+			// websocket upgrade should fail with unauthorized due to missing ticket
+			assert.Equal(t, http.StatusUnauthorized, rec.Code)
+		})
+	}
 
 	t.Run("metrics endpoint", func(t *testing.T) {
 		rec := httptest.NewRecorder()

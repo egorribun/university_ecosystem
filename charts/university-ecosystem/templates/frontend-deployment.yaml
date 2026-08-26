@@ -18,6 +18,8 @@ spec:
       labels:
         {{- include "university-ecosystem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: frontend
+      annotations:
+        university-ecosystem.io/source-sha: {{ .Values.global.imageTag | quote }}
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:

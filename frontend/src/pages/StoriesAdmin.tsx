@@ -27,6 +27,7 @@ import {
   Divider,
 } from "@/components/settings"
 import { Badge, Card, ConfirmDialog } from "@/components/ui"
+import { captureActiveTelemetryContext } from "@/utils/telemetryContext"
 
 // dayjs extensions removed
 
@@ -121,13 +122,16 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
       setActionError(t("stories:errors.expirationAfterPublish"))
       return
     }
+    const telemetryContext = captureActiveTelemetryContext()
     setSavingTime(true)
     try {
-      await updateStory(story.id, {
-        published_at: publishIso,
-        expires_at: expiresIso,
-      })
-      onRefresh()
+      await telemetryContext.run(() =>
+        updateStory(story.id, {
+          published_at: publishIso,
+          expires_at: expiresIso,
+        })
+      )
+      telemetryContext.run(onRefresh)
     } catch (error: unknown) {
       setActionError(getErrorMessage(error, t("stories:errors.updateFailed")))
     } finally {
@@ -158,14 +162,16 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
 
   const handleCoverUpdate = async () => {
     if (!coverFile) return
+    const selectedCover = coverFile
+    const telemetryContext = captureActiveTelemetryContext()
     setActionError(null)
     setUpdatingCover(true)
     try {
-      const uploaded = await uploadStoryCover(coverFile)
+      const uploaded = await telemetryContext.run(() => uploadStoryCover(selectedCover))
       const url = ((uploaded as Record<string, unknown>).url as string | undefined) ?? ""
-      await updateStory(story.id, { cover_url: url })
+      await telemetryContext.run(() => updateStory(story.id, { cover_url: url }))
       handleCoverReset()
-      onRefresh()
+      telemetryContext.run(onRefresh)
     } catch (error: unknown) {
       setActionError(getErrorMessage(error, t("stories:errors.coverUpdateFailed")))
     } finally {
@@ -174,11 +180,12 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
   }
 
   const handleUnpublish = async () => {
+    const telemetryContext = captureActiveTelemetryContext()
     setActionError(null)
     setUnpublishing(true)
     try {
-      await updateStory(story.id, { is_active: false })
-      onRefresh()
+      await telemetryContext.run(() => updateStory(story.id, { is_active: false }))
+      telemetryContext.run(onRefresh)
     } catch (error: unknown) {
       setActionError(getErrorMessage(error, t("stories:errors.unpublishFailed")))
     } finally {
@@ -187,11 +194,12 @@ function StoryAdminItem({ story, formatDate, onRefresh }: StoryAdminItemProps) {
   }
 
   const executeDelete = async () => {
+    const telemetryContext = captureActiveTelemetryContext()
     setActionError(null)
     setDeleting(true)
     try {
-      await deleteStory(story.id)
-      onRefresh()
+      await telemetryContext.run(() => deleteStory(story.id))
+      telemetryContext.run(onRefresh)
       setShowDeleteConfirm(false)
     } catch (error: unknown) {
       setActionError(getErrorMessage(error, t("stories:errors.deleteFailed")))
@@ -465,27 +473,31 @@ export default function StoriesAdmin() {
       setFormError(t("stories:errors.expirationAfterPublish"))
       return
     }
+    const telemetryContext = captureActiveTelemetryContext()
     setSubmitting(true)
     try {
       let coverUrl: string | null = null
-      if (coverFile) {
-        const uploaded = await uploadStoryCover(coverFile)
+      const selectedCover = coverFile
+      if (selectedCover) {
+        const uploaded = await telemetryContext.run(() => uploadStoryCover(selectedCover))
         coverUrl = ((uploaded as Record<string, unknown>).url as string | undefined) ?? null
       }
-      await createStory({
-        title: formState.titleRu,
-        short_text: formState.shortTextRu,
-        ...(formState.titleEn.trim() ? { title_en: formState.titleEn.trim() } : {}),
-        ...(formState.shortTextEn.trim() ? { short_text_en: formState.shortTextEn.trim() } : {}),
-        ...(formState.ctaUrl.trim() ? { cta_url: formState.ctaUrl.trim() } : {}),
-        published_at: publishIso,
-        expires_at: expiresIso,
-        ...(coverUrl ? { cover_url: coverUrl } : {}),
-        is_active: true,
-      })
+      await telemetryContext.run(() =>
+        createStory({
+          title: formState.titleRu,
+          short_text: formState.shortTextRu,
+          ...(formState.titleEn.trim() ? { title_en: formState.titleEn.trim() } : {}),
+          ...(formState.shortTextEn.trim() ? { short_text_en: formState.shortTextEn.trim() } : {}),
+          ...(formState.ctaUrl.trim() ? { cta_url: formState.ctaUrl.trim() } : {}),
+          published_at: publishIso,
+          expires_at: expiresIso,
+          ...(coverUrl ? { cover_url: coverUrl } : {}),
+          is_active: true,
+        })
+      )
       resetForm()
       setFormSuccess(t("stories:form.success"))
-      void fetchStories()
+      void telemetryContext.run(fetchStories)
     } catch (error: unknown) {
       setFormError(getErrorMessage(error, t("stories:errors.createFailed")))
     } finally {

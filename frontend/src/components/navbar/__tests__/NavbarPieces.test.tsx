@@ -255,6 +255,8 @@ describe("UserMenu", () => {
     expect(profileButtons[0]).toHaveClass("size-11")
     await userEvent.click(profileButtons[0]!)
     expect(go).toHaveBeenCalledWith("/profile")
+    await userEvent.click(profileButtons[1]!)
+    expect(go).toHaveBeenLastCalledWith("/profile")
     await userEvent.click(screen.getByAltText("navigation:aria.profileAvatarNamed"))
     expect(go).toHaveBeenLastCalledWith("/profile")
     await userEvent.click(screen.getByRole("button", { name: "navigation:menu.settings" }))

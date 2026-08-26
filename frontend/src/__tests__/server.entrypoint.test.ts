@@ -39,6 +39,7 @@ import serverEntry from "../server"
 type ServerGlobals = typeof globalThis & {
   __ssrAuthGetter__?: () => unknown
   __ssrCookieGetter__?: () => string | undefined
+  __ssrFingerprintHeadersGetter__?: () => { userAgent: string; acceptLanguage: string } | undefined
   __ssrThemeGetter__?: () => string | undefined
   __ssrLangGetter__?: () => string | undefined
   __ssrI18nGetter__?: () => I18nInstance | undefined
@@ -61,6 +62,7 @@ beforeEach(() => {
 afterAll(() => {
   delete globals.__ssrAuthGetter__
   delete globals.__ssrCookieGetter__
+  delete globals.__ssrFingerprintHeadersGetter__
   delete globals.__ssrThemeGetter__
   delete globals.__ssrLangGetter__
   delete globals.__ssrI18nGetter__
@@ -78,7 +80,7 @@ describe("server entrypoint", () => {
     expect(mocks.handlerFetch).not.toHaveBeenCalled()
   })
 
-  it("scopes auth, cookies, theme, and language to a regular SSR request", async () => {
+  it("scopes auth, cookies, fingerprint headers, theme, and language to a regular SSR request", async () => {
     const auth = {
       isAuth: true,
       user: { role: "admin" },
@@ -91,6 +93,10 @@ describe("server entrypoint", () => {
     mocks.handlerFetch.mockImplementation(async () => {
       expect(globals.__ssrAuthGetter__?.()).toEqual(auth)
       expect(globals.__ssrCookieGetter__?.()).toBe("access_token_v2=opaque; ue-mode=dark")
+      expect(globals.__ssrFingerprintHeadersGetter__?.()).toEqual({
+        userAgent: "Browser/123",
+        acceptLanguage: "en-GB,en;q=0.9",
+      })
       expect(globals.__ssrThemeGetter__?.()).toBe("dark")
       expect(globals.__ssrLangGetter__?.()).toBe("en")
       expect(globals.__ssrI18nGetter__?.()?.t("navigation:brandName")).toBe("GUU Ecosystem")
@@ -98,7 +104,11 @@ describe("server entrypoint", () => {
     })
 
     const request = new Request("https://app.example/dashboard", {
-      headers: { cookie: "access_token_v2=opaque; ue-mode=dark" },
+      headers: {
+        cookie: "access_token_v2=opaque; ue-mode=dark",
+        "user-agent": "Browser/123",
+        "accept-language": "en-GB,en;q=0.9",
+      },
     })
     const response = await serverEntry.fetch(request)
 
@@ -107,6 +117,7 @@ describe("server entrypoint", () => {
     expect(mocks.extractLangFromRequest).toHaveBeenCalledWith(request)
     expect(globals.__ssrAuthGetter__?.()).toBeUndefined()
     expect(globals.__ssrCookieGetter__?.()).toBeUndefined()
+    expect(globals.__ssrFingerprintHeadersGetter__?.()).toBeUndefined()
     expect(globals.__ssrThemeGetter__?.()).toBeUndefined()
     expect(globals.__ssrLangGetter__?.()).toBeUndefined()
     expect(globals.__ssrI18nGetter__?.()).toBeUndefined()

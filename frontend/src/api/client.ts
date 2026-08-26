@@ -106,6 +106,13 @@ if (import.meta.env.VITE_LHCI === "true") {
 // Hook the generated client to our customized axios instance
 generatedClient.setConfig({
   axios: api,
+  // The generated singleton starts with baseURL="/". Keeping that value
+  // makes its URL builder concatenate "/" + "/api/v1/..." into the
+  // protocol-relative "//api/v1/...", which browsers interpret as host
+  // "api". An empty override delegates base URL ownership to our configured
+  // Axios instance; the interceptor below then normalizes the duplicated API
+  // prefix while preserving a same-origin path.
+  baseURL: "",
 })
 
 export const resetEtagCache = () => {
@@ -297,9 +304,18 @@ api.interceptors.request.use(async (config) => {
   // contains the access_token_v2 HttpOnly cookie.
   if (typeof window === "undefined") {
     const cookie = globalThis.__ssrCookieGetter__?.()
-    if (cookie && cookie.length > 0) {
+    const fingerprintHeaders = globalThis.__ssrFingerprintHeadersGetter__?.()
+    if (cookie || fingerprintHeaders) {
       const headers = AxiosHeaders.from(config.headers)
-      headers.set("Cookie", cookie)
+      if (cookie && cookie.length > 0) {
+        headers.set("Cookie", cookie)
+      }
+      if (fingerprintHeaders?.userAgent) {
+        headers.set("User-Agent", fingerprintHeaders.userAgent)
+      }
+      if (fingerprintHeaders?.acceptLanguage) {
+        headers.set("Accept-Language", fingerprintHeaders.acceptLanguage)
+      }
       config.headers = headers
     }
   }

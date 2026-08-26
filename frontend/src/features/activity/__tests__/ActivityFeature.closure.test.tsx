@@ -247,4 +247,19 @@ describe("ActivityFeature closure", () => {
     fireEvent.click(screen.getByRole("button", { name: "activity:partial.retry" }))
     expect(activityData.refetch).toHaveBeenCalledOnce()
   })
+
+  it("renders skeleton cards and every unavailable participation/chart branch", () => {
+    activityData.hasInitiallyLoaded = false
+    const { rerender } = render(<ActivityFeature />)
+    expect(screen.getByTestId("participation-card")).toBeInTheDocument()
+
+    activityData.hasInitiallyLoaded = true
+    activityData.availability = { attendance: true, grades: false, participation: false }
+    rerender(<ActivityFeature />)
+
+    expect(screen.queryByTestId("grades-card")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("participation-card")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("activity-bar-chart")).not.toBeInTheDocument()
+    expect(screen.getAllByTestId("activity-unavailable-card").length).toBeGreaterThanOrEqual(3)
+  })
 })

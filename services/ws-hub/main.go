@@ -9,8 +9,10 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -199,12 +201,18 @@ func getInitNats() func(context.Context, *config.Config, *slog.Logger) (*nats.Co
 }
 
 func defaultInitNats(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*nats.Conn, error) {
+	if err := validateNATSAuthentication(cfg); err != nil {
+		return nil, err
+	}
+
 	natsOpts := []nats.Option{
 		nats.RetryOnFailedConnect(true),
 		nats.MaxReconnects(-1),
 		nats.ReconnectWait(2 * time.Second),
 	}
-	if cfg.NatsUser != "" || cfg.NatsPassword != "" {
+	if cfg.NatsAuthToken != "" {
+		natsOpts = append(natsOpts, nats.Token(cfg.NatsAuthToken))
+	} else if cfg.NatsUser != "" || cfg.NatsPassword != "" {
 		natsOpts = append(natsOpts, nats.UserInfo(cfg.NatsUser, cfg.NatsPassword))
 	}
 	nc, err := nats.Connect(cfg.NatsURL, natsOpts...)
@@ -215,12 +223,52 @@ func defaultInitNats(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	return nc, nil
 }
 
-func initRedis(ctx context.Context, cfg *config.Config, logger *slog.Logger) *redis.Client {
-	rdb := redis.NewClient(&redis.Options{
+func validateNATSAuthentication(cfg *config.Config) error {
+	if cfg.NatsAuthToken != "" && (cfg.NatsUser != "" || cfg.NatsPassword != "") {
+		return errors.New("NATS_AUTH_TOKEN is mutually exclusive with NATS_USER and NATS_PASSWORD")
+	}
+	if cfg.NatsAuthToken == "" && cfg.NatsUser == "" && cfg.NatsPassword == "" {
+		return nil
+	}
+
+	for _, serverURL := range strings.Split(cfg.NatsURL, ",") {
+		parsed, err := url.Parse(strings.TrimSpace(serverURL))
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return errors.New("NATS_URL is invalid for explicit authentication")
+		}
+		if parsed.User != nil {
+			return errors.New("NATS_URL must not contain credentials when explicit NATS authentication is configured")
+		}
+	}
+	return nil
+}
+
+func redisOptions(cfg *config.Config) (*redis.Options, error) {
+	if strings.HasPrefix(cfg.RedisURL, "redis://") || strings.HasPrefix(cfg.RedisURL, "rediss://") {
+		options, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			return nil, errors.New("REDIS_URL is invalid")
+		}
+		if options.TLSConfig != nil && options.TLSConfig.InsecureSkipVerify {
+			return nil, errors.New("REDIS_URL must not disable TLS certificate verification")
+		}
+		return options, nil
+	}
+
+	return &redis.Options{
 		Addr:     cfg.RedisURL,
 		Password: cfg.RedisPassword,
 		DB:       cfg.RedisDB,
-	})
+	}, nil
+}
+
+func initRedis(ctx context.Context, cfg *config.Config, logger *slog.Logger) *redis.Client {
+	options, err := redisOptions(cfg)
+	if err != nil {
+		logger.WarnContext(ctx, "Redis configuration is invalid, continuing without L2 cache", "err", err)
+		return nil
+	}
+	rdb := redis.NewClient(options)
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		logger.WarnContext(ctx, "Redis connection failed, continuing without L2 cache", "err", err)
 		if closeErr := closeRedisFunc(rdb); closeErr != nil {
@@ -228,17 +276,29 @@ func initRedis(ctx context.Context, cfg *config.Config, logger *slog.Logger) *re
 		}
 		return nil
 	}
-	logger.InfoContext(ctx, "Redis connected (L2 Cache enabled)", "addr", cfg.RedisURL)
+	logger.InfoContext(ctx, "Redis connected (L2 Cache enabled)", "addr", options.Addr)
 	return rdb
+}
+
+func revocationRedisOptions(rawURL string) (*redis.Options, error) {
+	options, err := redis.ParseURL(rawURL)
+	if err != nil {
+		// net/url parse errors can echo the complete input, including userinfo.
+		return nil, errors.New("REVOCATION_REDIS_URL is invalid")
+	}
+	if options.TLSConfig != nil && options.TLSConfig.InsecureSkipVerify {
+		return nil, errors.New("REVOCATION_REDIS_URL must not disable TLS certificate verification")
+	}
+	return options, nil
 }
 
 func initRevocationRedis(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*redis.Client, error) {
 	if cfg.RevocationRedisURL == "" {
 		return nil, errors.New("REVOCATION_REDIS_URL is not set")
 	}
-	options, err := redis.ParseURL(cfg.RevocationRedisURL)
+	options, err := revocationRedisOptions(cfg.RevocationRedisURL)
 	if err != nil {
-		return nil, fmt.Errorf("parse REVOCATION_REDIS_URL: %w", err)
+		return nil, err
 	}
 	client := redis.NewClient(options)
 	pingCtx, pingCancel := context.WithTimeout(ctx, 5*time.Second)
@@ -355,9 +415,11 @@ func setupHandlers(mux *http.ServeMux, h *hub.Hub, cfg *config.Config, logger *s
 	if len(revocationClients) > 0 {
 		revocationRDB = revocationClients[0]
 	}
-	mux.Handle("/ws", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	websocketHandler := otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.HandleWebSocket(w, r, cfg)
-	}), "websocket_upgrade"))
+	}), "websocket_upgrade")
+	mux.Handle("/ws", websocketHandler)
+	mux.Handle("/ws/chat", websocketHandler)
 
 	mux.Handle("/wt", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.HandleWebTransport(w, r, cfg)

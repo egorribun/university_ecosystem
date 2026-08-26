@@ -18,6 +18,11 @@ spec:
       labels:
         {{- include "university-ecosystem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: backend
+        {{ printf "%s-redis-client" .Release.Name }}: "true"
+        {{ printf "%s-revocationRedis-client" .Release.Name }}: "true"
+        {{ printf "%s-nats-client" .Release.Name }}: "true"
+      annotations:
+        university-ecosystem.io/source-sha: {{ .Values.global.imageTag | quote }}
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:
@@ -52,7 +57,7 @@ spec:
               protocol: TCP
           env:
             {{- range $key, $value := .Values.backend.env }}
-            {{- if not (has $key (list "DATABASE_URL" "CACHE_REDIS_URL" "REVOCATION_REDIS_URL" "NATS_URL" "NATS_AUTH_TOKEN" "ENVIRONMENT" "SECRET_KEY" "ALGORITHM" "JWT_PRIVATE_KEY_PATH" "INTERNAL_HMAC_SECRET" "WS_HUB_INTERNAL_SECRET" "CSRF_HMAC_SECRET" "SPOTIFY_TOKEN_SECRET" "ELASTICSEARCH_PASSWORD" "SPICEDB_PRESHARED_KEY" "AUDIT_LOG_SECRET" "IDEMPOTENCY_HMAC_SECRET" "CWV_RUM_SIGNING_SECRET" "MFA_EMAIL_OTP_HMAC_KEYS" "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID" "MFA_EMAIL_DELIVERY_KEKS" "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID" "MFA_TRUSTED_DEVICE_HMAC_KEYS" "MFA_TRUSTED_DEVICE_ACTIVE_HMAC_KEY_ID" "MINIO_SECURE" "ELASTICSEARCH_URL")) }}
+            {{- if not (has $key (list "DATABASE_URL" "CACHE_REDIS_URL" "REVOCATION_REDIS_URL" "NATS_URL" "NATS_AUTH_TOKEN" "ENVIRONMENT" "SECRET_KEY" "ALGORITHM" "JWT_PRIVATE_KEY_PATH" "INTERNAL_HMAC_SECRET" "WS_HUB_INTERNAL_SECRET" "CSRF_HMAC_SECRET" "SPOTIFY_TOKEN_SECRET" "ELASTICSEARCH_PASSWORD" "SPICEDB_PRESHARED_KEY" "AUDIT_LOG_SECRET" "IDEMPOTENCY_HMAC_SECRET" "CWV_RUM_SIGNING_SECRET" "CWV_RUM_ENABLED" "CWV_RELEASE_SHA" "CWV_FRONTEND_IMAGE_DIGEST" "CWV_DEPLOYMENT_RUN_ID" "CWV_DEPLOYMENT_RUN_ATTEMPT" "CWV_DEPLOYMENT_URL" "CWV_DEPLOYED_AT" "CWV_ALLOWED_ORIGINS" "CWV_EXPORT_OIDC_ENABLED" "CWV_EXPORT_OIDC_REPOSITORY" "CWV_EXPORT_OIDC_WORKFLOW_REF" "CWV_EXPORT_OIDC_SUBJECT" "MFA_EMAIL_OTP_HMAC_KEYS" "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID" "MFA_EMAIL_DELIVERY_KEKS" "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID" "MFA_TRUSTED_DEVICE_HMAC_KEYS" "MFA_TRUSTED_DEVICE_ACTIVE_HMAC_KEY_ID" "MINIO_SECURE" "ELASTICSEARCH_URL")) }}
             - name: {{ $key }}
               value: {{ tpl $value $ | quote }}
             {{- end }}
@@ -65,6 +70,30 @@ spec:
                 secretKeyRef:
                   name: {{ include "university-ecosystem.applicationSecretName" $ | quote }}
                   key: idempotency-hmac-secret
+            - name: CWV_RUM_ENABLED
+              value: {{ .Values.cwv.rumEnabled | quote }}
+            - name: CWV_RELEASE_SHA
+              value: {{ .Values.cwv.releaseSHA | quote }}
+            - name: CWV_FRONTEND_IMAGE_DIGEST
+              value: {{ .Values.cwv.frontendImageDigest | quote }}
+            - name: CWV_DEPLOYMENT_RUN_ID
+              value: {{ .Values.cwv.deploymentRunID | quote }}
+            - name: CWV_DEPLOYMENT_RUN_ATTEMPT
+              value: {{ .Values.cwv.deploymentRunAttempt | quote }}
+            - name: CWV_DEPLOYMENT_URL
+              value: {{ .Values.cwv.deploymentURL | quote }}
+            - name: CWV_DEPLOYED_AT
+              value: {{ .Values.cwv.deployedAt | quote }}
+            - name: CWV_ALLOWED_ORIGINS
+              value: {{ join "," .Values.cwv.allowedOrigins | quote }}
+            - name: CWV_EXPORT_OIDC_ENABLED
+              value: {{ .Values.cwv.exportOIDC.enabled | quote }}
+            - name: CWV_EXPORT_OIDC_REPOSITORY
+              value: {{ .Values.cwv.exportOIDC.repository | quote }}
+            - name: CWV_EXPORT_OIDC_WORKFLOW_REF
+              value: {{ .Values.cwv.exportOIDC.workflowRef | quote }}
+            - name: CWV_EXPORT_OIDC_SUBJECT
+              value: {{ .Values.cwv.exportOIDC.subject | quote }}
             {{- if eq .Values.global.environment "staging" }}
             - name: CWV_MANUAL_TESTER_USER_IDS
               valueFrom:

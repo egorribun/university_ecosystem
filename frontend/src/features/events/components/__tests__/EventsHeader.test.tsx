@@ -131,6 +131,65 @@ describe("EventsHeader", () => {
     expect(tabs[1]).toHaveFocus()
   })
 
+  it("supports Home, End, left navigation, and active-tab fallback focus", () => {
+    render(<EventsHeader {...defaultProps} tab="archive" />)
+    const tablist = screen.getByRole("tablist")
+    const tabs = screen.getAllByRole("tab")
+
+    fireEvent.keyDown(tablist, { key: "Enter" })
+    expect(defaultProps.onTabChange).not.toHaveBeenCalled()
+
+    tabs[1]!.focus()
+    fireEvent.keyDown(tablist, { key: "ArrowLeft" })
+    expect(defaultProps.onTabChange).toHaveBeenLastCalledWith("active")
+    expect(tabs[0]).toHaveFocus()
+
+    fireEvent.keyDown(tablist, { key: "End" })
+    expect(defaultProps.onTabChange).toHaveBeenLastCalledWith("my")
+    expect(tabs[2]).toHaveFocus()
+
+    fireEvent.keyDown(tablist, { key: "Home" })
+    expect(defaultProps.onTabChange).toHaveBeenLastCalledWith("active")
+    expect(tabs[0]).toHaveFocus()
+
+    const outside = document.createElement("button")
+    document.body.appendChild(outside)
+    outside.focus()
+    fireEvent.keyDown(tablist, { key: "ArrowRight" })
+    expect(defaultProps.onTabChange).toHaveBeenLastCalledWith("my")
+    expect(tabs[2]).toHaveFocus()
+    outside.remove()
+  })
+
+  it("leaves focus unchanged when a tablist temporarily has no usable destination", () => {
+    render(<EventsHeader {...defaultProps} />)
+    const tablist = screen.getByRole("tablist")
+    const tabs = screen.getAllByRole("tab")
+
+    const querySelectorAllSpy = vi.spyOn(tablist, "querySelectorAll")
+    querySelectorAllSpy.mockReturnValueOnce([] as unknown as NodeListOf<HTMLButtonElement>)
+    fireEvent.keyDown(tablist, { key: "ArrowRight" })
+    expect(defaultProps.onTabChange).not.toHaveBeenCalled()
+
+    const extraButton = document.createElement("button")
+    tabs[2]!.focus()
+    querySelectorAllSpy.mockReturnValueOnce([
+      ...tabs,
+      extraButton,
+    ] as unknown as NodeListOf<HTMLButtonElement>)
+    fireEvent.keyDown(tablist, { key: "End" })
+    expect(defaultProps.onTabChange).not.toHaveBeenCalled()
+
+    tabs[0]!.focus()
+    querySelectorAllSpy.mockReturnValueOnce([
+      tabs[0],
+      undefined,
+      tabs[2],
+    ] as unknown as NodeListOf<HTMLButtonElement>)
+    fireEvent.keyDown(tablist, { key: "ArrowRight" })
+    expect(defaultProps.onTabChange).not.toHaveBeenCalled()
+  })
+
   it("calls onCategoryChange when a category is clicked", () => {
     render(<EventsHeader {...defaultProps} />)
     // There should be a generic "all" category first

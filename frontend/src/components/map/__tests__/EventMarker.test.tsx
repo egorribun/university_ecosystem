@@ -60,7 +60,10 @@ describe("EventMarker", () => {
 
   it("renders the event pin with an accessible label", () => {
     render(<EventMarker {...baseProps} />)
-    expect(screen.getByRole("button", { name: "events.markerLabel" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "events.markerLabel" })).toHaveStyle({
+      minWidth: "44px",
+      minHeight: "44px",
+    })
   })
 
   it("fires onPopupOpen when the pin is clicked", async () => {

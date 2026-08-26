@@ -27,6 +27,7 @@ export default function CardShell({
 
   return (
     <div
+      role="group"
       className={cn("activity-card-matte", className)}
       style={accent ? ({ "--_accent": accent } as CSSProperties) : undefined}
       aria-label={ariaLabel}

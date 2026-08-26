@@ -25,6 +25,8 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import type { CampusPOI, POIIconName } from "@/data/campusPOI"
+import { MAP_INTERACTIVE_TARGET_PX } from "@/constants/campus"
+import type { MapMarkerOffset } from "@/features/map/markerCollisionLayout"
 
 /* ── Icon lookup by lucide icon name ── */
 const ICON_MAP: Record<POIIconName, LucideIcon> = {
@@ -53,9 +55,10 @@ interface POIMarkerProps {
   isPopupOpen?: boolean
   onPopupOpen?: () => void
   onPopupClose?: () => void
+  offset?: MapMarkerOffset
 }
 
-export function POIMarker({ poi, isPopupOpen, onPopupOpen, onPopupClose }: POIMarkerProps) {
+export function POIMarker({ poi, isPopupOpen, onPopupOpen, onPopupClose, offset }: POIMarkerProps) {
   const { t } = useTranslation("map")
   const [isHovered, setIsHovered] = useState(false)
   const markerRef = useRef<MarkerInstance | null>(null)
@@ -73,7 +76,13 @@ export function POIMarker({ poi, isPopupOpen, onPopupOpen, onPopupClose }: POIMa
 
   return (
     <>
-      <Marker ref={markerRef} longitude={poi.coords[1]} latitude={poi.coords[0]} anchor="center">
+      <Marker
+        ref={markerRef}
+        longitude={poi.coords[1]}
+        latitude={poi.coords[0]}
+        anchor="center"
+        offset={offset}
+      >
         <div
           role="button"
           tabIndex={0}
@@ -82,6 +91,8 @@ export function POIMarker({ poi, isPopupOpen, onPopupOpen, onPopupClose }: POIMa
           style={
             {
               "--_poi-color": colorVar,
+              minWidth: MAP_INTERACTIVE_TARGET_PX,
+              minHeight: MAP_INTERACTIVE_TARGET_PX,
             } as React.CSSProperties
           }
           onPointerEnter={() => setIsHovered(true)}

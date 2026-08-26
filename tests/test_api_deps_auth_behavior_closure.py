@@ -36,6 +36,7 @@ def _session(*, user_id=None, jti="jti") -> SimpleNamespace:
         accept_language="en",
         fingerprint_hash=None,
         mfa_verified_at=None,
+        mfa_epoch=0,
         last_seen_at=None,
     )
 
@@ -50,7 +51,7 @@ async def _run_db_success(
     settings_value: SimpleNamespace | None = None,
     use_factory: bool = False,
 ):
-    user = SimpleNamespace(id=user_id, is_active=True)
+    user = SimpleNamespace(id=user_id, is_active=True, mfa_epoch=0)
     session = _session(user_id=user_id, jti=jti)
     repo = MagicMock()
     repo.get_active_session_with_user = AsyncMock(return_value=(user, session))
@@ -399,14 +400,12 @@ def test_fresh_mfa_all_lifecycle_branches():
 
 @pytest.mark.asyncio
 async def test_require_fresh_mfa_delegates_only_for_confirmed_factor():
-    user = SimpleNamespace(id=uuid4())
+    user = SimpleNamespace(id=uuid4(), email_mfa_enabled_at=None)
     db = AsyncMock()
     request = _request()
     with (
         patch.object(module, "ensure_mfa_relationships_loaded", new=AsyncMock()),
-        patch.object(
-            module.mfa, "user_has_confirmed_interactive_factor", return_value=False
-        ),
+        patch.object(module.mfa, "has_totp_enabled", new=AsyncMock(return_value=False)),
         patch.object(module, "_enforce_fresh_mfa") as enforce,
     ):
         await module.require_fresh_mfa(request, user, db)
@@ -414,9 +413,7 @@ async def test_require_fresh_mfa_delegates_only_for_confirmed_factor():
 
     with (
         patch.object(module, "ensure_mfa_relationships_loaded", new=AsyncMock()),
-        patch.object(
-            module.mfa, "user_has_confirmed_interactive_factor", return_value=True
-        ),
+        patch.object(module.mfa, "has_totp_enabled", new=AsyncMock(return_value=True)),
         patch.object(module, "_enforce_fresh_mfa") as enforce,
     ):
         await module.require_fresh_mfa(request, user, db)

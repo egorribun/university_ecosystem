@@ -309,7 +309,7 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
     assert "required_results=(" in gate
     assert 'if [[ "$result" != "success" ]]' in gate
     assert '"$res" != "success" && "$res" != "skipped"' not in gate
-    assert 'assert_event_result "stryker-incremental"' in gate
+    assert 'assert_event_result "stryker-aggregate"' in gate
     assert 'assert_event_result "codecov-upload"' in gate
     assert '"sbom-generate|${{ needs.sbom-generate.result }}"' in gate
     for advisory in (
@@ -473,8 +473,6 @@ def test_deployment_workflows_cannot_report_mock_success() -> None:
         "HELM_VALUES_FILE",
         "CONNECTIONS_SECRET_NAME",
         "APPLICATION_SECRETS_NAME",
-        "WS_HUB_DEPLOYMENT_NAME",
-        "WS_HUB_CONTAINER_NAME",
         "DEPLOYMENT_URL",
         "GATEWAY_HEALTH_URL",
         "WS_HUB_HEALTH_URL",
@@ -499,19 +497,18 @@ def test_deployment_workflows_cannot_report_mock_success() -> None:
     for flag in ("--atomic", "--wait", "--wait-for-jobs"):
         assert flag in helm_script
 
-    ws_hub = _step(deploy, "Deploy WS Hub image")["run"]
-    assert "kubectl set image" in ws_hub
-    assert "kubectl rollout status" in ws_hub
+    assert not any(step.get("name") == "Deploy WS Hub image" for step in steps)
 
     capture = _step(deploy, "Capture rollback state")
     rollback = _step(deploy, "Roll back a deployment that failed verification")
     assert capture["id"] == "rollback_state"
     assert "helm list" in capture["run"]
-    assert "ws_hub_image=" in capture["run"]
+    assert "ws_hub_image=" not in capture["run"]
     assert "failure()" in rollback["if"]
     assert "helm rollback" in rollback["run"]
     assert "helm uninstall" in rollback["run"]
-    assert "PREVIOUS_WS_HUB_IMAGE" in rollback["run"]
+    assert "PREVIOUS_WS_HUB_IMAGE" not in rollback["run"]
+    assert "kubectl set image" not in rollback["run"]
 
     smoke = _step(deploy, "Post-deployment smoke test")
     assert smoke["env"] == {

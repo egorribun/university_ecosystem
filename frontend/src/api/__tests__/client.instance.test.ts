@@ -9,6 +9,7 @@ import api, {
   SKIP_UNAUTHORIZED_HEADER,
 } from "@/api/client"
 import { registerSigningKeyAccessor } from "@/api/interceptors/etagCache"
+import { allEventsApiV1EventsGet } from "@/api/generated/sdk.gen"
 
 type CapturedConfig = InternalAxiosRequestConfig & {
   etagCacheKey?: string
@@ -68,6 +69,16 @@ describe("api/client — module exports + instance config", () => {
 })
 
 describe("api/client — request interceptor: GET pass-through", () => {
+  it("keeps generated SDK requests same-origin instead of creating a protocol-relative host", async () => {
+    const seen = installAdapter()
+
+    await allEventsApiV1EventsGet({ query: { limit: 50 } })
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.url).toBe("/api/v1/events?limit=50")
+    expect(seen[0]!.url).not.toMatch(/^\/\//u)
+  })
+
   it("issues a GET and runs through the interceptors without mutating data", async () => {
     const seen = installAdapter(() => ({ data: { items: [42] } }))
     const res = await api.get("/news")

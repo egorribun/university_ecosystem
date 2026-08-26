@@ -15,15 +15,200 @@
     {{- fail "MFA Secret key names must not collide with fixed application Secret keys" -}}
   {{- end -}}
 {{- end -}}
+{{- if .Values.applicationSecrets.existingSecret -}}
+  {{- if or .Values.backend.config.mfaEmailOtpHMACKeys .Values.backend.config.mfaEmailOtpActiveHMACKeyId .Values.backend.config.mfaEmailDeliveryKEKs .Values.backend.config.mfaEmailDeliveryActiveKEKId .Values.backend.config.mfaTrustedDeviceHMACKeys .Values.backend.config.mfaTrustedDeviceActiveHMACKeyId -}}
+    {{- fail "MFA key material must not be stored in Helm values when applicationSecrets.existingSecret is configured; inline secret material must not be stored in Helm values" -}}
+  {{- end -}}
+  {{- if or .Values.gateway.config.jwtSecret .Values.backend.config.jwtPrivateKeyPEM .Values.backend.config.internalHMACSecret .Values.backend.config.wsHubInternalSecret .Values.backend.config.csrfHMACSecret .Values.backend.config.spotifyTokenSecret .Values.backend.config.elasticsearchPassword .Values.backend.config.spicedbPresharedKey .Values.backend.config.auditLogSecret .Values.backend.config.idempotencyHMACSecret .Values.fileProcessor.config.rsaPublicKeyPEM .Values.fileProcessor.config.minioAccessKey .Values.fileProcessor.config.minioSecretKey .Values.fileProcessor.config.temporalAPIKey -}}
+    {{- fail "Application secret material must not be stored in Helm values when applicationSecrets.existingSecret is configured" -}}
+  {{- end -}}
+{{- end -}}
+{{- if and .Values.nats.existingSecret (or .Values.nats.auth.token .Values.nats.auth.password .Values.nats.auth.usersCredentials .Values.nats.cluster.auth.password) -}}
+  {{- fail "NATS auth material must not be stored in Helm values when nats.existingSecret is configured; inline secret material must not be stored in Helm values" -}}
+{{- end -}}
+{{- $redisACLUsers := dig "auth" "acl" "users" (list) .Values.redis -}}
+{{- $redisGlobalPassword := dig "global" "redis" "password" "" .Values.redis -}}
+{{- if and .Values.redis.auth.existingSecret (or .Values.redis.auth.password $redisACLUsers $redisGlobalPassword) -}}
+  {{- fail "Redis secret material must not be stored in Helm values when redis.auth.existingSecret is configured" -}}
+{{- end -}}
+{{- $revocationRedisACLUsers := dig "auth" "acl" "users" (list) .Values.revocationRedis -}}
+{{- $revocationRedisGlobalPassword := dig "global" "redis" "password" "" .Values.revocationRedis -}}
+{{- if and .Values.revocationRedis.auth.existingSecret (or .Values.revocationRedis.auth.password $revocationRedisACLUsers $revocationRedisGlobalPassword) -}}
+  {{- fail "Revocation Redis secret material must not be stored in Helm values when revocationRedis.auth.existingSecret is configured" -}}
+{{- end -}}
 {{- if or (eq $environment "production") (eq $environment "staging") -}}
+  {{- if or (gt (len .Values.backend.env) 0) (gt (len .Values.outboxWorker.env) 0) -}}
+    {{- fail "backend.env and outboxWorker.env must be empty in staging/production; use explicit chart configuration or Secret references so inline values do not enter Helm release state" -}}
+  {{- end -}}
+  {{- $unsafeSubchartExtensions := list
+    (dig "extraDeploy" (list) .Values.redis)
+    (dig "master" "extraEnvVars" (list) .Values.redis)
+    (dig "master" "sidecars" (list) .Values.redis)
+    (dig "master" "initContainers" (list) .Values.redis)
+    (dig "replica" "extraEnvVars" (list) .Values.redis)
+    (dig "replica" "sidecars" (list) .Values.redis)
+    (dig "replica" "initContainers" (list) .Values.redis)
+    (dig "sentinel" "extraEnvVars" (list) .Values.redis)
+    (dig "metrics" "extraEnvVars" (list) .Values.redis)
+    (dig "volumePermissions" "extraEnvVars" (list) .Values.redis)
+    (dig "extraDeploy" (list) .Values.revocationRedis)
+    (dig "master" "extraEnvVars" (list) .Values.revocationRedis)
+    (dig "master" "sidecars" (list) .Values.revocationRedis)
+    (dig "master" "initContainers" (list) .Values.revocationRedis)
+    (dig "replica" "extraEnvVars" (list) .Values.revocationRedis)
+    (dig "replica" "sidecars" (list) .Values.revocationRedis)
+    (dig "replica" "initContainers" (list) .Values.revocationRedis)
+    (dig "sentinel" "extraEnvVars" (list) .Values.revocationRedis)
+    (dig "metrics" "extraEnvVars" (list) .Values.revocationRedis)
+    (dig "volumePermissions" "extraEnvVars" (list) .Values.revocationRedis)
+    (dig "extraDeploy" (list) .Values.nats)
+    (dig "extraEnvVars" (list) .Values.nats)
+    (dig "sidecars" (list) .Values.nats)
+    (dig "initContainers" (list) .Values.nats)
+  -}}
+  {{- range $extension := $unsafeSubchartExtensions -}}
+    {{- if $extension -}}
+      {{- fail "arbitrary subchart extraEnvVars, sidecars, initContainers, and extraDeploy are forbidden in staging/production; use reviewed chart fields and existing Secret references" -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if or
+    (dig "volumePermissions" "enabled" false .Values.redis)
+    (dig "sysctl" "enabled" false .Values.redis)
+    (dig "volumePermissions" "enabled" false .Values.revocationRedis)
+    (dig "sysctl" "enabled" false .Values.revocationRedis)
+    (dig "metrics" "enabled" false .Values.nats)
+  -}}
+    {{- fail "unreviewed subchart helper containers are forbidden in staging/production because their images are outside the immutable image contract" -}}
+  {{- end -}}
+  {{- if contains "REQUIRED_" (toJson .Values) -}}
+    {{- fail "staging/production values contain an unresolved REQUIRED_ marker" -}}
+  {{- end -}}
   {{- if not .Values.applicationSecrets.existingSecret -}}
     {{- fail "applicationSecrets.existingSecret must be set in staging/production so credentials do not enter Helm release state" -}}
   {{- end -}}
-  {{- if or .Values.backend.config.mfaEmailOtpHMACKeys .Values.backend.config.mfaEmailOtpActiveHMACKeyId .Values.backend.config.mfaEmailDeliveryKEKs .Values.backend.config.mfaEmailDeliveryActiveKEKId .Values.backend.config.mfaTrustedDeviceHMACKeys .Values.backend.config.mfaTrustedDeviceActiveHMACKeyId -}}
-    {{- fail "MFA key material must not be stored in Helm values in staging/production; use applicationSecrets.existingSecret" -}}
+  {{- if not (regexMatch "^[0-9a-f]{40}([0-9a-f]{24})?$" .Values.global.imageTag) -}}
+    {{- fail "global.imageTag must be the exact 40- or 64-character lowercase Git SHA in staging/production" -}}
+  {{- end -}}
+  {{- if ne .Values.cwv.releaseSHA .Values.global.imageTag -}}
+    {{- fail "cwv.releaseSHA must exactly equal global.imageTag in staging/production" -}}
+  {{- end -}}
+  {{- if ne .Values.cwv.frontendImageDigest .Values.frontend.image.digest -}}
+    {{- fail "cwv.frontendImageDigest must exactly equal frontend.image.digest in staging/production" -}}
+  {{- end -}}
+  {{- if or (lt (int .Values.cwv.deploymentRunID) 1) (lt (int .Values.cwv.deploymentRunAttempt) 1) -}}
+    {{- fail "cwv deployment run ID and attempt must be positive in staging/production" -}}
+  {{- end -}}
+  {{- if or (not .Values.wsHub.enabled) (lt (int .Values.wsHub.replicaCount) 2) -}}
+    {{- fail "wsHub.enabled=true and wsHub.replicaCount>=2 are required in staging/production" -}}
+  {{- end -}}
+  {{- if ne (int .Values.wsHub.service.port) 8081 -}}
+    {{- fail "wsHub.service.port must be 8081 in staging/production" -}}
+  {{- end -}}
+  {{- if or (not .Values.wsHub.autoscaling.enabled) (lt (int .Values.wsHub.autoscaling.minReplicas) 2) (lt (int .Values.wsHub.autoscaling.maxReplicas) (int .Values.wsHub.autoscaling.minReplicas)) -}}
+    {{- fail "wsHub.autoscaling.enabled=true, wsHub.autoscaling.minReplicas>=2, and maxReplicas>=minReplicas are required in staging/production" -}}
+  {{- end -}}
+  {{- if not .Values.wsHub.config.allowedOrigins -}}
+    {{- fail "wsHub.config.allowedOrigins must be non-empty in staging/production" -}}
+  {{- end -}}
+  {{- range $origin := .Values.wsHub.config.allowedOrigins -}}
+    {{- if not (hasPrefix "https://" $origin) -}}
+      {{- fail "every wsHub.config.allowedOrigins entry must use https:// in staging/production" -}}
+    {{- end -}}
+  {{- end -}}
+  {{- $frontendOrigin := printf "https://%s" (index .Values.ingress.hosts 0).host -}}
+  {{- if or (ne (len .Values.wsHub.config.allowedOrigins) 1) (ne (index .Values.wsHub.config.allowedOrigins 0) $frontendOrigin) -}}
+    {{- fail "wsHub.config.allowedOrigins must exactly equal the frontend ingress origin" -}}
+  {{- end -}}
+  {{- if .Values.wsHub.config.otelInsecure -}}
+    {{- fail "wsHub.config.otelInsecure=false is required in staging/production" -}}
+  {{- end -}}
+  {{- if not .Values.wsHub.config.jetstream.enabled -}}
+    {{- fail "wsHub.config.jetstream.enabled=true is required in staging/production" -}}
+  {{- end -}}
+  {{- $workloadImages := dict "backend" .Values.backend.image "frontend" .Values.frontend.image "gateway" .Values.gateway.image -}}
+  {{- $_ := set $workloadImages "wsHub" .Values.wsHub.image -}}
+  {{- if .Values.fileProcessor.enabled -}}
+    {{- $_ := set $workloadImages "fileProcessor" .Values.fileProcessor.image -}}
+  {{- end -}}
+  {{- if .Values.outboxWorker.enabled -}}
+    {{- $_ := set $workloadImages "outboxWorker" .Values.outboxWorker.image -}}
+  {{- end -}}
+  {{- range $component, $image := $workloadImages -}}
+    {{- if not (regexMatch "^sha256:[0-9a-f]{64}$" ($image.digest | default "")) -}}
+      {{- fail (printf "%s.image.digest requires an immutable sha256 digest in staging/production" $component) -}}
+    {{- end -}}
+    {{- if ne $image.pullPolicy "Always" -}}
+      {{- fail (printf "%s.image.pullPolicy=Always is required in staging/production" $component) -}}
+    {{- end -}}
+  {{- end -}}
+  {{- $dependencyImages := dict -}}
+  {{- if .Values.redis.enabled -}}
+    {{- $_ := set $dependencyImages "redis" .Values.redis.image -}}
+    {{- if .Values.redis.metrics.enabled -}}
+      {{- $_ := set $dependencyImages "redis.metrics" .Values.redis.metrics.image -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if .Values.revocationRedis.enabled -}}
+    {{- $_ := set $dependencyImages "revocationRedis" .Values.revocationRedis.image -}}
+    {{- if .Values.revocationRedis.metrics.enabled -}}
+      {{- $_ := set $dependencyImages "revocationRedis.metrics" .Values.revocationRedis.metrics.image -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if .Values.nats.enabled -}}
+    {{- $_ := set $dependencyImages "nats" .Values.nats.image -}}
+  {{- end -}}
+  {{- range $component, $image := $dependencyImages -}}
+    {{- if not (regexMatch "^sha256:[0-9a-f]{64}$" ($image.digest | default "")) -}}
+      {{- fail (printf "%s.image.digest requires an immutable sha256 digest in staging/production" $component) -}}
+    {{- end -}}
+    {{- if ne $image.pullPolicy "Always" -}}
+      {{- fail (printf "%s.image.pullPolicy=Always is required in staging/production" $component) -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if .Values.backup.enabled -}}
+    {{- if not (regexMatch "^.+@sha256:[0-9a-f]{64}$" .Values.backup.postgresImage) -}}
+      {{- fail "backup.postgresImage requires an immutable @sha256 digest in staging/production" -}}
+    {{- end -}}
+    {{- if not (regexMatch "^.+@sha256:[0-9a-f]{64}$" .Values.backup.minioClientImage) -}}
+      {{- fail "backup.minioClientImage requires an immutable @sha256 digest in staging/production" -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if .Values.nats.enabled -}}
+    {{- if not .Values.nats.existingSecret -}}
+      {{- fail "nats.existingSecret is required in staging/production so authentication config stays out of Helm state" -}}
+    {{- end -}}
+    {{- if or .Values.nats.auth.enabled .Values.nats.cluster.auth.enabled -}}
+      {{- fail "nats.auth.enabled and nats.cluster.auth.enabled must be false when nats.existingSecret owns staging authentication" -}}
+    {{- end -}}
+    {{- if or (not .Values.nats.jetstream.enabled) (not .Values.nats.persistence.enabled) -}}
+      {{- fail "nats.jetstream.enabled=true and nats.persistence.enabled=true are required in staging/production" -}}
+    {{- end -}}
+    {{- if lt (int .Values.nats.replicaCount) 3 -}}
+      {{- fail "nats.replicaCount must be at least 3 in staging/production" -}}
+    {{- end -}}
+  {{- end -}}
+  {{- if and .Values.backend.autoscaling.enabled (lt (int .Values.backend.autoscaling.maxReplicas) (int .Values.backend.autoscaling.minReplicas)) -}}
+    {{- fail "backend.autoscaling.maxReplicas must be greater than or equal to minReplicas" -}}
+  {{- end -}}
+  {{- if or (not .Values.ingress.enabled) (not .Values.ingress.className) (not .Values.ingress.tls) -}}
+    {{- fail "ingress.enabled, ingress.className, and ingress.tls are required in staging/production" -}}
+  {{- end -}}
+  {{- if or (hasKey .Values.ingress.annotations "cert-manager.io/issuer") (hasKey .Values.ingress.annotations "cert-manager.io/cluster-issuer") -}}
+    {{- fail "cert-manager issuer annotations are generated from ingress.issuer and must not be duplicated in ingress.annotations" -}}
+  {{- end -}}
+  {{- if and (eq $environment "staging") (ne .Values.ingress.issuer.kind "Issuer") -}}
+    {{- fail "ingress.issuer.kind must be Issuer in staging" -}}
+  {{- end -}}
+  {{- if and (eq $environment "production") (ne .Values.ingress.issuer.kind "ClusterIssuer") -}}
+    {{- fail "ingress.issuer.kind must be ClusterIssuer in production" -}}
   {{- end -}}
   {{- if not .Values.backend.config.minioSecure -}}
     {{- fail "backend.config.minioSecure=true is required in staging/production" -}}
+  {{- end -}}
+  {{- range $name, $dependency := dict "redis" .Values.redis "revocationRedis" .Values.revocationRedis "nats" .Values.nats -}}
+    {{- if or (not $dependency.networkPolicy.enabled) $dependency.networkPolicy.allowExternal $dependency.networkPolicy.allowExternalEgress -}}
+      {{- fail (printf "%s.networkPolicy must be enabled with allowExternal=false and allowExternalEgress=false in staging/production" $name) -}}
+    {{- end -}}
   {{- end -}}
   {{- if and .Values.backend.config.elasticsearchURL (not (hasPrefix "https://" .Values.backend.config.elasticsearchURL)) -}}
     {{- fail "backend.config.elasticsearchURL must use https:// in staging/production" -}}
@@ -32,6 +217,29 @@
     {{- fail "gateway.config.grpcUseTLS=true is required in staging/production" -}}
   {{- end -}}
   {{- if .Values.fileProcessor.enabled -}}
+    {{- if not .Values.internalGrpcMTLS.enabled -}}
+      {{- fail "internalGrpcMTLS.enabled=true is required when fileProcessor is enabled in staging/production" -}}
+    {{- end -}}
+    {{- if not .Values.internalGrpcMTLS.serverName -}}
+      {{- fail "internalGrpcMTLS.serverName is required in staging/production" -}}
+    {{- end -}}
+    {{- if not .Values.internalGrpcMTLS.gatewayIdentityURI -}}
+      {{- fail "internalGrpcMTLS.gatewayIdentityURI is required in staging/production" -}}
+    {{- end -}}
+    {{- if or (ne (len .Values.internalGrpcMTLS.allowedClientURIs) 1) (not (has .Values.internalGrpcMTLS.gatewayIdentityURI .Values.internalGrpcMTLS.allowedClientURIs)) -}}
+      {{- fail "internalGrpcMTLS.allowedClientURIs must exactly equal gatewayIdentityURI" -}}
+    {{- end -}}
+    {{- if not .Values.internalGrpcMTLS.gatewayClient.existingSecret -}}
+      {{- fail "internalGrpcMTLS.gatewayClient.existingSecret is required in staging/production" -}}
+    {{- end -}}
+    {{- if not .Values.internalGrpcMTLS.fileProcessorServer.existingSecret -}}
+      {{- fail "internalGrpcMTLS.fileProcessorServer.existingSecret is required in staging/production" -}}
+    {{- end -}}
+    {{- $gatewaySecret := .Values.internalGrpcMTLS.gatewayClient.existingSecret -}}
+    {{- $serverSecret := .Values.internalGrpcMTLS.fileProcessorServer.existingSecret -}}
+    {{- if eq $gatewaySecret $serverSecret -}}
+      {{- fail "internalGrpcMTLS gatewayClient and fileProcessorServer Secret names must be distinct" -}}
+    {{- end -}}
     {{- if not .Values.fileProcessor.config.minioSecure -}}
       {{- fail "fileProcessor.config.minioSecure=true is required in staging/production" -}}
     {{- end -}}

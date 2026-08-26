@@ -513,7 +513,7 @@ async def test_notify_reply_supersedes_quoted_author_off_generic() -> None:
     assert reply["url"] == f"/messenger/{chat_id}"
     assert reply["tag"] == f"chat-reply:{replied.id}"
     assert reply["dedupe_key"] == f"chat-reply:{message.id}"
-    assert reply["topic"] == "chat"
+    assert reply["topic"] == "chat.message.created"
     payload = reply["payload_data"]
     assert payload["chatId"] == str(chat_id)
     assert payload["repliedToMessageId"] == str(replied.id)

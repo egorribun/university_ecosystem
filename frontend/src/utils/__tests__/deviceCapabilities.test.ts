@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { isLowPowerDevice } from "@/utils/deviceCapabilities"
 
 describe("isLowPowerDevice", () => {
@@ -14,5 +14,14 @@ describe("isLowPowerDevice", () => {
   it("keeps effects on for capable and unknown profiles", () => {
     expect(isLowPowerDevice({ deviceMemory: 8, hardwareConcurrency: 8 })).toBe(false)
     expect(isLowPowerDevice({})).toBe(false)
+  })
+
+  it("defaults to the live browser profile and stays safe during server rendering", () => {
+    vi.stubGlobal("navigator", { deviceMemory: 2, hardwareConcurrency: 8 })
+    expect(isLowPowerDevice()).toBe(true)
+
+    vi.stubGlobal("navigator", undefined)
+    expect(isLowPowerDevice()).toBe(false)
+    vi.unstubAllGlobals()
   })
 })

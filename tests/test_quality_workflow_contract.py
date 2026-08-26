@@ -2777,23 +2777,176 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     manual_workflow = yaml.safe_load(
         MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH.read_text(encoding="utf-8")
     )
+    nightly_workflow = yaml.safe_load(
+        NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
     jobs = ci_workflow["jobs"]
-    mutation_job = jobs["stryker-incremental"]
-    mutation_condition = mutation_job["if"]
+    mutation_shards = jobs["stryker-shards"]
+    mutation_condition = mutation_shards["if"]
     assert "github.event_name == 'pull_request'" in mutation_condition
     assert "workflow_dispatch" not in mutation_condition
-    assert "stryker-incremental" in jobs["ci-success"]["needs"]
-    result_check = jobs["ci-success"]["steps"][0]["run"]
-    assert "needs.stryker-incremental.result" in result_check
-
-    manual_stryker = manual_workflow["jobs"]["manual-frontend-mutation-tests"]
-    assert manual_stryker["name"] == "Manual Mutation Evidence (frontend Stryker)"
-    manual_stryker_run = next(
+    assert mutation_shards["strategy"]["fail-fast"] is False
+    assert mutation_shards["strategy"]["max-parallel"] == 8
+    assert mutation_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
+    assert mutation_shards["timeout-minutes"] == 120
+    assert mutation_shards["env"] == {
+        "STRYKER_SHARD_COUNT": "64",
+        "STRYKER_SHARD_INDEX": "${{ matrix.shard-index }}",
+        "STRYKER_CONCURRENCY": "2",
+    }
+    shard_run = next(
         step["run"]
-        for step in manual_stryker["steps"]
-        if step.get("name") == "Run manual incremental Stryker gate"
+        for step in mutation_shards["steps"]
+        if step.get("name") == "Run fresh Stryker shard"
     )
-    assert "npm run test:mutation -- --incremental" in manual_stryker_run
+    assert shard_run == "npm run test:mutation"
+
+    mutation_replay = jobs["stryker-shard-replay"]
+    assert mutation_replay["needs"] == "stryker-shards"
+    assert mutation_replay["strategy"]["matrix"]["shard-index"] == list(range(64))
+    mutation_aggregate = jobs["stryker-aggregate"]
+    assert mutation_aggregate["needs"] == "stryker-shard-replay"
+    assert mutation_aggregate["env"]["STRYKER_AGGREGATE_ROOT"] == (
+        "reports/mutation/external"
+    )
+    aggregate_run = next(
+        step["run"]
+        for step in mutation_aggregate["steps"]
+        if step.get("name") == "Aggregate and verify fresh frontend mutation evidence"
+    )
+    assert aggregate_run.splitlines() == [
+        "npm run test:mutation",
+        "npm run test:mutation:verify",
+    ]
+    assert "stryker-aggregate" in jobs["ci-success"]["needs"]
+    result_check = jobs["ci-success"]["steps"][0]["run"]
+    assert "needs.stryker-aggregate.result" in result_check
+    mutation_roundtrip = jobs["stryker-evidence-roundtrip"]
+    assert mutation_roundtrip["needs"] == "stryker-aggregate"
+    assert "stryker-evidence-roundtrip" in jobs["ci-success"]["needs"]
+    assert "needs.stryker-evidence-roundtrip.result" in result_check
+
+    manual_shards = manual_workflow["jobs"]["manual-frontend-mutation-shards"]
+    assert manual_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
+    assert manual_shards["strategy"]["max-parallel"] == 8
+    assert manual_shards["timeout-minutes"] == 120
+    manual_replay = manual_workflow["jobs"]["manual-frontend-mutation-shard-replay"]
+    assert manual_replay["needs"] == "manual-frontend-mutation-shards"
+    manual_aggregate = manual_workflow["jobs"]["manual-frontend-mutation-aggregate"]
+    assert manual_aggregate["needs"] == "manual-frontend-mutation-shard-replay"
+    assert (
+        manual_aggregate["name"] == "Manual Mutation Evidence (frontend Stryker 100%)"
+    )
+
+    nightly_shards = nightly_workflow["jobs"]["frontend-mutation-shards"]
+    assert nightly_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
+    assert nightly_shards["strategy"]["max-parallel"] == 8
+    assert nightly_shards["timeout-minutes"] == 120
+    nightly_replay = nightly_workflow["jobs"]["frontend-mutation-shard-replay"]
+    assert nightly_replay["needs"] == "frontend-mutation-shards"
+    nightly_aggregate = nightly_workflow["jobs"]["frontend-mutation-tests-full"]
+    assert nightly_aggregate["needs"] == "frontend-mutation-shard-replay"
+    manual_roundtrip = manual_workflow["jobs"]["manual-frontend-mutation-roundtrip"]
+    assert manual_roundtrip["needs"] == "manual-frontend-mutation-aggregate"
+    nightly_roundtrip = nightly_workflow["jobs"]["frontend-mutation-roundtrip"]
+    assert nightly_roundtrip["needs"] == "frontend-mutation-tests-full"
+    nightly_failure_needs = nightly_workflow["jobs"]["notify-failure"]["needs"]
+    assert "frontend-mutation-shards" in nightly_failure_needs
+    assert "frontend-mutation-shard-replay" in nightly_failure_needs
+    assert "frontend-mutation-tests-full" in nightly_failure_needs
+    assert "frontend-mutation-roundtrip" in nightly_failure_needs
+
+    for roundtrip_job in (
+        mutation_roundtrip,
+        manual_roundtrip,
+        nightly_roundtrip,
+    ):
+        download = next(
+            step
+            for step in roundtrip_job["steps"]
+            if "Download validated" in step.get("name", "")
+        )
+        assert "github.run_id" in download["with"]["name"]
+        assert "github.run_attempt" in download["with"]["name"]
+        assert download["with"]["path"] == "frontend/reports/mutation"
+        verification = next(
+            step["run"]
+            for step in roundtrip_job["steps"]
+            if "Re-verify" in step.get("name", "")
+        )
+        assert verification == "npm run test:mutation:verify"
+
+    for aggregate_job in (
+        mutation_aggregate,
+        manual_aggregate,
+        nightly_aggregate,
+    ):
+        validated_upload = next(
+            step
+            for step in aggregate_job["steps"]
+            if step.get("name", "").startswith("Upload validated")
+        )
+        uploaded_paths = validated_upload["with"]["path"]
+        assert "frontend/reports/mutation/external/**/mutation.json" in uploaded_paths
+        assert (
+            "frontend/reports/mutation/external/**/SHARD_EVIDENCE.json"
+            in uploaded_paths
+        )
+        assert validated_upload["with"]["if-no-files-found"] == "error"
+        assert "success()" in validated_upload["if"]
+        assert "github.run_attempt" in validated_upload["with"]["name"]
+
+    for workflow_path in (
+        CI_WORKFLOW_PATH,
+        MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH,
+        NIGHTLY_FULL_WORKFLOW_PATH,
+    ):
+        workflow_text = workflow_path.read_text(encoding="utf-8")
+        assert "npm run test:mutation --" not in workflow_text
+        assert "npm run test:mutation:verify" in workflow_text
+
+    manual_download = next(
+        step
+        for step in manual_aggregate["steps"]
+        if step.get("name") == "Download all manual frontend mutation shards"
+    )
+    assert manual_download["with"]["pattern"] == (
+        "manual-frontend-mutation-shard-${{ github.run_id }}-"
+        "${{ github.run_attempt }}-*"
+    )
+
+    for shard_job in (mutation_shards, manual_shards, nightly_shards):
+        shard_cache = next(
+            step
+            for step in shard_job["steps"]
+            if "Cache successful" in step.get("name", "")
+        )
+        assert shard_cache["uses"].startswith("actions/cache/save@")
+        assert shard_cache["with"]["path"] == "frontend/reports/mutation/shards"
+        assert "github.run_id" in shard_cache["with"]["key"]
+        assert "github.sha" in shard_cache["with"]["key"]
+        assert "github.run_attempt" not in shard_cache["with"]["key"]
+
+    for replay_job in (mutation_replay, manual_replay, nightly_replay):
+        assert replay_job["strategy"]["fail-fast"] is False
+        assert replay_job["strategy"]["matrix"]["shard-index"] == list(range(64))
+        restore = next(
+            step
+            for step in replay_job["steps"]
+            if step.get("name") == "Restore exact successful shard"
+        )
+        assert restore["uses"].startswith("actions/cache/restore@")
+        assert restore["with"]["fail-on-cache-miss"] is True
+        assert "github.run_id" in restore["with"]["key"]
+        assert "github.sha" in restore["with"]["key"]
+        assert "github.run_attempt" not in restore["with"]["key"]
+        replay_upload = next(
+            step
+            for step in replay_job["steps"]
+            if "Replay shard evidence" in step.get("name", "")
+        )
+        assert "github.run_id" in replay_upload["with"]["name"]
+        assert "github.run_attempt" in replay_upload["with"]["name"]
 
     frontend_workflow = yaml.safe_load(
         (
@@ -4605,21 +4758,21 @@ def test_deploy_uses_build_digests_for_all_cluster_image_references() -> None:
     for setting in (
         "backend.image.digest=$BACKEND_IMAGE_DIGEST",
         "frontend.image.digest=$FRONTEND_IMAGE_DIGEST",
+        "wsHub.image.digest=$WS_HUB_IMAGE_DIGEST",
         "gateway.image.digest=$GATEWAY_IMAGE_DIGEST",
         "fileProcessor.image.digest=$FILE_PROCESSOR_IMAGE_DIGEST",
         "outboxWorker.image.digest=$BACKEND_IMAGE_DIGEST",
     ):
         assert setting in helm_run
-    assert "global.imageTag" not in helm_run
-
-    ws_hub = _provenance_step(deploy, "Deploy WS Hub image")
-    assert 'image="$REGISTRY/$GITHUB_REPOSITORY/ws-hub@$WS_HUB_IMAGE_DIGEST"' in str(
-        ws_hub["run"]
+    assert "global.imageTag=$DEPLOY_VERSION" in helm_run
+    assert not any(
+        step.get("name") == "Deploy WS Hub image" for step in deploy["steps"]
     )
     verify = _provenance_step(deploy, "Verify Helm-managed rollouts")
     verify_run = str(verify["run"])
     assert "$image_prefix/backend@$BACKEND_IMAGE_DIGEST" in verify_run
     assert "$image_prefix/frontend@$FRONTEND_IMAGE_DIGEST" in verify_run
+    assert "$image_prefix/ws-hub@$WS_HUB_IMAGE_DIGEST" in verify_run
     assert "$image_prefix/gateway@$GATEWAY_IMAGE_DIGEST" in verify_run
     assert "$image_prefix/file-processor@$FILE_PROCESSOR_IMAGE_DIGEST" in verify_run
     assert "$image_prefix/backend:$DEPLOY_VERSION" not in verify_run
@@ -4732,3 +4885,22 @@ def test_local_infra_sandbox_scopes_database_reset_opt_in_to_pytest() -> None:
     assert "finally" in backend
     assert "Remove-Item Env:\\" + marker in backend
     assert "$env:" + marker + " = $previousDatabaseResetOptIn" in backend
+
+
+def test_frontend_npm_installs_require_node_24_and_npm_11() -> None:
+    workflow_sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((REPOSITORY_ROOT / ".github" / "workflows").glob("*.yml"))
+    )
+    package = json.loads(
+        (REPOSITORY_ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
+    )
+    npmrc = (REPOSITORY_ROOT / "frontend" / ".npmrc").read_text(encoding="utf-8")
+
+    assert 'node-version: "22"' not in workflow_sources
+    assert 'default: "20"' not in workflow_sources
+    assert 'default: "22"' not in workflow_sources
+    assert package["engines"] == {"node": ">=24.0.0", "npm": ">=11.0.0"}
+    assert package["packageManager"] == "npm@11.17.0"
+    assert "engine-strict=true" in npmrc.splitlines()
+    assert "strict-allow-scripts=true" in npmrc.splitlines()

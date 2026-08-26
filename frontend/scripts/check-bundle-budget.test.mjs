@@ -37,6 +37,7 @@ test("normalizes Windows asset paths before classifying chunks", () => {
 test("locks baseline-aware initial and general lazy ratchets", () => {
   assert.equal(BUNDLE_BUDGETS.initialJsGzipKb, 420)
   assert.equal(BUNDLE_BUDGETS.generalLazyJsGzipKb, 280)
+  assert.equal(BUNDLE_BUDGETS.passwordDictionaryRawKb, 1250)
 })
 
 test("reports the real HTML preload graph and writes useful JSON", async () => {
@@ -107,6 +108,7 @@ test("fails closed when the initial preload graph exceeds its compressed ratchet
       largestGeneralLazyJsGzipBytes: 1,
       largestGeneralLazyJsPath: "client/assets/Feature-ABC.js",
       largestPasswordDictionaryGzipBytes: 1,
+      largestPasswordDictionaryRawBytes: 1,
       largestPasswordDictionaryPath: dictionaryChunkPath,
     },
   }
@@ -124,6 +126,7 @@ test("keeps a bounded exception for lazy password dictionaries", () => {
       largestGeneralLazyJsGzipBytes: BUNDLE_BUDGETS.generalLazyJsGzipKb * 1024,
       largestGeneralLazyJsPath: "client/assets/Feature-ABC.js",
       largestPasswordDictionaryGzipBytes: BUNDLE_BUDGETS.passwordDictionaryGzipKb * 1024,
+      largestPasswordDictionaryRawBytes: BUNDLE_BUDGETS.passwordDictionaryRawKb * 1024,
       largestPasswordDictionaryPath: dictionaryChunkPath,
     },
   }
@@ -131,8 +134,33 @@ test("keeps a bounded exception for lazy password dictionaries", () => {
   assert.doesNotThrow(() => assertBundleBudgets(report))
 })
 
+test("fails closed when an interactive password dictionary exceeds its raw ceiling", () => {
+  const report = {
+    assets: [],
+    summary: {
+      mainJsRawBytes: 1,
+      mainJsPath: "client/assets/index-ABC.js",
+      initialJsGzipBytes: 1,
+      largestGeneralLazyJsGzipBytes: 1,
+      largestGeneralLazyJsPath: "client/assets/Feature-ABC.js",
+      largestPasswordDictionaryRawBytes: BUNDLE_BUDGETS.passwordDictionaryRawKb * 1024 + 1,
+      largestPasswordDictionaryGzipBytes: 1,
+      largestPasswordDictionaryPath: dictionaryChunkPath,
+    },
+  }
+
+  assert.throws(() => assertBundleBudgets(report), /Password dictionary .* exceeds raw budget/u)
+})
+
 test("the checked-in analyzer remains directly executable", async () => {
   const source = await readFile(new URL("./check-bundle-budget.mjs", import.meta.url), "utf8")
   assert.match(source, /import\.meta\.url/)
   assert.match(source, /bundle-report\.json/)
+})
+
+test("Vite chunk warnings use the largest machine-enforced raw chunk budget", async () => {
+  const source = await readFile(new URL("../vite.config.mts", import.meta.url), "utf8")
+
+  assert.match(source, /chunkSizeWarningLimit:\s*BUNDLE_BUDGETS\.passwordDictionaryRawKb/u)
+  assert.doesNotMatch(source, /chunkSizeWarningLimit:\s*\d+/u)
 })

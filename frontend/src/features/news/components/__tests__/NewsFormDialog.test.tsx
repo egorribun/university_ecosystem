@@ -8,6 +8,13 @@ const apiMocks = vi.hoisted(() => ({
   uploadNewsImage: vi.fn(),
 }))
 
+const telemetryMocks = vi.hoisted(() => ({
+  run: vi.fn(<T,>(operation: () => T): T => operation()),
+  capture: vi.fn(),
+}))
+
+telemetryMocks.capture.mockImplementation(() => ({ run: telemetryMocks.run }))
+
 vi.mock("@/api/news", async () => {
   const actual = await vi.importActual<typeof import("@/api/news")>("@/api/news")
   return {
@@ -15,6 +22,10 @@ vi.mock("@/api/news", async () => {
     uploadNewsImage: apiMocks.uploadNewsImage,
   }
 })
+
+vi.mock("@/utils/telemetryContext", () => ({
+  captureActiveTelemetryContext: telemetryMocks.capture,
+}))
 
 import { server } from "@/tests/mocks/server"
 import { NewsFormDialog } from "../NewsFormDialog"
@@ -27,7 +38,10 @@ const renderWithProviders = (ui: React.ReactElement) => {
     },
   })
 
-  return render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>)
+  return {
+    ...render(<QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>),
+    queryClient,
+  }
 }
 
 describe("NewsFormDialog", () => {
@@ -39,6 +53,7 @@ describe("NewsFormDialog", () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    telemetryMocks.capture.mockImplementation(() => ({ run: telemetryMocks.run }))
     server.resetHandlers()
   })
 
@@ -72,7 +87,8 @@ describe("NewsFormDialog", () => {
       })
     )
 
-    renderWithProviders(<NewsFormDialog {...defaultProps} />)
+    const { queryClient } = renderWithProviders(<NewsFormDialog {...defaultProps} />)
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries")
 
     const titleInput = screen.getByLabelText(/^Title(?! \()/i)
     const contentInput = screen.getByLabelText(/^News text(?! \()/i)
@@ -86,6 +102,9 @@ describe("NewsFormDialog", () => {
     await waitFor(() => {
       expect(defaultProps.onSuccess).toHaveBeenCalledTimes(1)
     })
+    expect(invalidateQueries).toHaveBeenCalledTimes(1)
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ["news", "list"] })
+    expect(telemetryMocks.run).toHaveBeenCalledTimes(3)
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1)
   })
 

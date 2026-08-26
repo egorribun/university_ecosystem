@@ -120,6 +120,16 @@ describe("rateLimit interceptor — client queue slot acquire/release", () => {
     const config = makeConfig("get", controller.signal)
     await expect(waitForClientQueueSlot(config)).rejects.toBe(reason)
   })
+
+  it("normalizes a primitive abort reason to an AbortError", async () => {
+    const controller = new AbortController()
+    controller.abort("navigation cancelled")
+    const { waitForClientQueueSlot } = await import("../rateLimit")
+
+    await expect(
+      waitForClientQueueSlot(makeConfig("get", controller.signal))
+    ).rejects.toMatchObject({ name: "AbortError" })
+  })
 })
 
 describe("rateLimit interceptor — rate-limit window scheduling", () => {

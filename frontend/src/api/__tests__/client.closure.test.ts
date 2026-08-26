@@ -303,6 +303,10 @@ describe("api/client — SSR request branches", () => {
       "__ssrCookieGetter__",
       vi.fn(() => "access_token_v2=server-token")
     )
+    vi.stubGlobal(
+      "__ssrFingerprintHeadersGetter__",
+      vi.fn(() => ({ userAgent: "Browser/123", acceptLanguage: "en-GB,en;q=0.9" }))
+    )
     vi.stubEnv("VITE_BACKEND_ORIGIN", "")
     vi.stubEnv("BACKEND_ORIGIN", "")
   })
@@ -326,6 +330,8 @@ describe("api/client — SSR request branches", () => {
     await ensureCsrfCookie()
 
     expect(AxiosHeaders.from(seen[0]!.headers).get("Cookie")).toBe("access_token_v2=server-token")
+    expect(AxiosHeaders.from(seen[0]!.headers).get("User-Agent")).toBe("Browser/123")
+    expect(AxiosHeaders.from(seen[0]!.headers).get("Accept-Language")).toBe("en-GB,en;q=0.9")
     const { resolveSsrBackendOrigin } = await import("@/api/backendOrigin")
     expect(resolveSsrBackendOrigin()).toBe("http://localhost:8000")
   })

@@ -4,11 +4,14 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"hash"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"log/slog"
@@ -31,12 +34,15 @@ import (
 
 // Message represents a WebSocket message.
 type Message struct {
-	Type     string            `json:"type"`
-	Room     string            `json:"room,omitempty"`
-	Payload  json.RawMessage   `json:"payload"`
-	From     string            `json:"from,omitempty"`
-	To       string            `json:"to,omitempty"`
-	TraceCtx map[string]string `json:"trace_ctx,omitempty"`
+	Type        string            `json:"type"`
+	Room        string            `json:"room,omitempty"`
+	Payload     json.RawMessage   `json:"payload"`
+	From        string            `json:"from,omitempty"`
+	To          string            `json:"to,omitempty"`
+	TraceCtx    map[string]string `json:"trace_ctx,omitempty"`
+	Seq         uint64            `json:"seq,omitempty"`
+	ResumeToken string            `json:"resume_token,omitempty"`
+	Stream      string            `json:"-"`
 }
 
 // LOCK HIERARCHY — RZ-22-04 (Wave 22 audit)
@@ -104,6 +110,25 @@ type Hub struct {
 	durableChat     string
 	durableNotif    string
 	enableJetStream bool
+	// chatReplayAvailable is true only when the live chat subscription itself
+	// uses JetStream. A non-nil JS context is insufficient after core fallback.
+	chatReplayAvailable   atomic.Bool
+	chatStreamIncarnation string
+}
+
+const (
+	resumeTokenVersion = 1
+	resumeTokenTTL     = 24 * time.Hour
+)
+
+type resumeTokenClaims struct {
+	Version     int    `json:"v"`
+	UserID      string `json:"uid"`
+	Room        string `json:"room"`
+	Stream      string `json:"stream"`
+	Incarnation string `json:"inc"`
+	Sequence    uint64 `json:"seq"`
+	ExpiresAt   int64  `json:"exp"`
 }
 
 var (
@@ -113,12 +138,14 @@ var (
 	}
 	jetStreamAckFunc      = func(msg *nats.Msg) error { return msg.Ack() }
 	jetStreamNakFunc      = func(msg *nats.Msg, delay time.Duration) error { return msg.NakWithDelay(delay) }
+	jetStreamTermFunc     = func(msg *nats.Msg) error { return msg.Term() }
 	jetStreamContextFunc  = func(conn *nats.Conn) (nats.JetStreamContext, error) { return conn.JetStream() }
 	hubJSONMarshalFunc    = json.Marshal
 	hubJSONUnmarshalFunc  = json.Unmarshal
 	hmacWriteFunc         = func(dst hash.Hash, data []byte) (int, error) { return dst.Write(data) }
 	broadcastMessageFunc  = func(h *Hub, ctx context.Context, msg *Message) { h.broadcastMessage(ctx, msg) }
 	queueDepthInterval    = 5 * time.Second
+	resumeTokenNowFunc    = time.Now
 	coreNATSSubscribeFunc = func(nc *nats.Conn, subject string, handler nats.MsgHandler) (*nats.Subscription, error) {
 		return nc.Subscribe(subject, handler)
 	}
@@ -144,6 +171,135 @@ func safeNakWithDelay(msg *nats.Msg, delay time.Duration) {
 	if err == nil {
 		JetStreamNaksTotal.Inc()
 	}
+}
+
+// safeTerm permanently rejects a malformed JetStream message whose contents cannot
+// become valid through redelivery. This prevents a poison event from retrying forever.
+func safeTerm(msg *nats.Msg) {
+	if msg == nil {
+		return
+	}
+	_ = jetStreamTermFunc(msg)
+}
+
+func (h *Hub) issueResumeToken(userID, room, stream string, sequence uint64) (string, error) {
+	if h == nil || h.internalSecret == "" || h.chatStreamIncarnation == "" ||
+		userID == "" || room == "" || stream == "" || sequence == 0 {
+		return "", fmt.Errorf("resume token prerequisites are incomplete")
+	}
+	claims := resumeTokenClaims{
+		Version:     resumeTokenVersion,
+		UserID:      userID,
+		Room:        room,
+		Stream:      stream,
+		Incarnation: h.chatStreamIncarnation,
+		Sequence:    sequence,
+		ExpiresAt:   resumeTokenNowFunc().Add(resumeTokenTTL).Unix(),
+	}
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		return "", err
+	}
+	encodedPayload := base64.RawURLEncoding.EncodeToString(payload)
+	mac := hmac.New(sha256.New, []byte(h.internalSecret))
+	_, _ = mac.Write([]byte(encodedPayload))
+	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return encodedPayload + "." + signature, nil
+}
+
+func (h *Hub) verifyResumeToken(token, userID, room string) (uint64, error) {
+	if h == nil || h.internalSecret == "" || h.chatStreamIncarnation == "" {
+		return 0, fmt.Errorf("resume tokens are unavailable")
+	}
+	if len(token) == 0 || len(token) > 4096 {
+		return 0, fmt.Errorf("resume token size is invalid")
+	}
+	payloadPart, signaturePart, found := strings.Cut(token, ".")
+	if !found || payloadPart == "" || signaturePart == "" || strings.Contains(signaturePart, ".") {
+		return 0, fmt.Errorf("malformed resume token")
+	}
+	signature, err := base64.RawURLEncoding.DecodeString(signaturePart)
+	if err != nil {
+		return 0, fmt.Errorf("invalid resume token signature: %w", err)
+	}
+	mac := hmac.New(sha256.New, []byte(h.internalSecret))
+	_, _ = mac.Write([]byte(payloadPart))
+	if !hmac.Equal(signature, mac.Sum(nil)) {
+		return 0, fmt.Errorf("resume token signature mismatch")
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(payloadPart)
+	if err != nil {
+		return 0, fmt.Errorf("invalid resume token payload: %w", err)
+	}
+	var claims resumeTokenClaims
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return 0, fmt.Errorf("invalid resume token claims: %w", err)
+	}
+	if claims.Version != resumeTokenVersion || claims.UserID != userID || claims.Room != room ||
+		claims.Stream != h.streamChat || claims.Incarnation != h.chatStreamIncarnation ||
+		claims.Sequence == 0 || claims.ExpiresAt <= resumeTokenNowFunc().Unix() {
+		return 0, fmt.Errorf("resume token claims mismatch or expired")
+	}
+	return claims.Sequence, nil
+}
+
+func chatSubjectMatchesRoom(subject, room string) bool {
+	subjectRoom, found := strings.CutPrefix(subject, "chat.")
+	return found && subjectRoom != "" && !strings.Contains(subjectRoom, ".") && subjectRoom == room
+}
+
+func chatPayloadMatchesRoom(room string, payload any) bool {
+	payloadMap, ok := payload.(map[string]any)
+	if !ok {
+		return false
+	}
+	for _, key := range []string{"chat_id", "room"} {
+		if declared, exists := payloadMap[key]; exists {
+			declaredRoom, valid := declared.(string)
+			if !valid || declaredRoom != room {
+				return false
+			}
+		}
+	}
+	if message, exists := payloadMap["message"]; exists {
+		messageMap, valid := message.(map[string]any)
+		if !valid {
+			return false
+		}
+		if declared, exists := messageMap["chat_id"]; exists {
+			declaredRoom, valid := declared.(string)
+			if !valid || declaredRoom != room {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func validateLiveChatBinding(subject string, message *Message) bool {
+	if message == nil || !chatSubjectMatchesRoom(subject, message.Room) {
+		return false
+	}
+	if len(message.Payload) == 0 {
+		return true
+	}
+	var payload any
+	if err := json.Unmarshal(message.Payload, &payload); err != nil {
+		return false
+	}
+	return chatPayloadMatchesRoom(message.Room, payload)
+}
+
+func validateReplayChatBinding(subject, room string, frame map[string]any) bool {
+	if !chatSubjectMatchesRoom(subject, room) {
+		return false
+	}
+	declaredRoom, valid := frame["room"].(string)
+	if !valid || declaredRoom != room {
+		return false
+	}
+	payload, exists := frame["payload"]
+	return exists && chatPayloadMatchesRoom(room, payload)
 }
 
 // NewHub creates a new Hub instance.
@@ -309,6 +465,7 @@ func (h *Hub) Run(ctx context.Context) {
 		workers = 4 // safe minimum
 	}
 	broadcastCh := make(chan *Message, cap(h.Broadcast))
+	sequencedBroadcastCh := make(chan *Message, cap(h.Broadcast))
 	// RZ-23-07 (audit 2026-03-25 Wave 23): Track broadcast worker goroutines
 	// with WaitGroup so shutdown can verify all workers drained.
 	var broadcastWg sync.WaitGroup
@@ -323,6 +480,18 @@ func (h *Hub) Run(ctx context.Context) {
 			}
 		}()
 	}
+	// JetStream sequence order is a transport correctness boundary: multiple
+	// generic workers can otherwise complete seq N+1 before seq N. Keep the
+	// sequenced lane single-consumer while retaining the pool for core/control.
+	broadcastWg.Add(1)
+	ActiveGoroutines.Inc()
+	go func() {
+		defer broadcastWg.Done()
+		defer ActiveGoroutines.Dec()
+		for msg := range sequencedBroadcastCh {
+			broadcastMessageFunc(h, runCtx, msg)
+		}
+	}()
 
 	// PERF-W17-03: Sample broadcast queue depth every 5s for Prometheus.
 	queueDepthTicker := time.NewTicker(queueDepthInterval)
@@ -333,6 +502,7 @@ func (h *Hub) Run(ctx context.Context) {
 		case <-runCtx.Done():
 			h.Logger.InfoContext(runCtx, "Hub.Run: context cancelled, stopping loop")
 			close(broadcastCh)
+			close(sequencedBroadcastCh)
 			broadcastWg.Wait() // RZ-23-07: ensure all broadcast workers drained before return
 			return
 
@@ -343,18 +513,40 @@ func (h *Hub) Run(ctx context.Context) {
 			h.handleUnregister(ctx, client)
 
 		case msg := <-h.Broadcast:
+			target := broadcastCh
+			if msg.Seq > 0 {
+				target = sequencedBroadcastCh
+			}
 			select {
-			case broadcastCh <- msg:
+			case target <- msg:
 			default:
 				BroadcastDropsTotal.Inc()
+				if msg.Seq > 0 {
+					h.failRoomClients(msg.Room)
+				}
 				h.Logger.WarnContext(ctx, "Broadcast worker pool full, dropping message",
 					"type", msg.Type,
 					"room", msg.Room)
 			}
 
 		case <-queueDepthTicker.C:
-			BroadcastQueueDepth.Set(float64(len(broadcastCh)))
+			BroadcastQueueDepth.Set(float64(len(broadcastCh) + len(sequencedBroadcastCh)))
 		}
+	}
+}
+
+func (h *Hub) failRoomClients(room string) {
+	if room == "" {
+		return
+	}
+	h.mu.RLock()
+	clients := make([]*Client, 0, len(h.Rooms[room]))
+	for client := range h.Rooms[room] {
+		clients = append(clients, client)
+	}
+	h.mu.RUnlock()
+	for _, client := range clients {
+		client.failReplayConnection()
 	}
 }
 
@@ -386,6 +578,7 @@ func (h *Hub) handleRegister(ctx context.Context, client *Client) {
 }
 
 func (h *Hub) handleUnregister(ctx context.Context, client *Client) {
+	client.cancelAllRoomReplays()
 	h.mu.Lock()
 	if existingClient, ok := h.Clients[client.ID]; ok && existingClient == client {
 		delete(h.Clients, client.ID)
@@ -517,8 +710,20 @@ func (h *Hub) broadcastMessage(parentCtx context.Context, msg *Message) {
 
 	recipients := h.collectRecipients(msg, span)
 	for _, r := range recipients {
-		if safeSend(r.client.Send, data) {
+		enqueueResult := r.client.enqueueRoomBroadcast(msg, data)
+		if enqueueResult == roomEnqueueDelivered {
 			MessagesDeliveredTotal.Inc()
+			continue
+		}
+		if enqueueResult == roomEnqueueBuffered {
+			continue
+		}
+		if enqueueResult == roomEnqueueReplayFatal {
+			r.client.failReplayConnection()
+			continue
+		}
+		if msg.Seq > 0 && enqueueResult == roomEnqueueBackpressured {
+			r.client.failReplayConnection()
 			continue
 		}
 		if !r.evictOnFull {
@@ -567,6 +772,7 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 
 	var chatSub *nats.Subscription
 	var err error
+	h.chatReplayAvailable.Store(false)
 
 	if h.js != nil && h.enableJetStream {
 		chatSub, err = h.js.Subscribe("chat.*", h.handleChat(appCtx),
@@ -574,12 +780,22 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 			nats.AckExplicit(),
 			nats.ManualAck(),
 		)
+		if err == nil {
+			streamInfo, infoErr := h.js.StreamInfo(h.streamChat)
+			if infoErr == nil && streamInfo != nil && h.internalSecret != "" {
+				h.chatStreamIncarnation = streamInfo.Created.UTC().Format(time.RFC3339Nano)
+				h.chatReplayAvailable.Store(true)
+			} else if h.Logger != nil {
+				h.Logger.WarnContext(appCtx, "Secure chat replay unavailable",
+					"stream", h.streamChat, "err", infoErr)
+			}
+		}
 		if err != nil {
 			h.Logger.WarnContext(appCtx, "JetStream chat subscription failed, falling back to core NATS", "err", err)
-			chatSub, err = coreNATSSubscribeFunc(h.Nats, "chat.*", h.handleChat(appCtx))
+			chatSub, err = coreNATSSubscribeFunc(h.Nats, "chat.*", h.handleCoreChat(appCtx))
 		}
 	} else {
-		chatSub, err = coreNATSSubscribeFunc(h.Nats, "chat.*", h.handleChat(appCtx))
+		chatSub, err = coreNATSSubscribeFunc(h.Nats, "chat.*", h.handleCoreChat(appCtx))
 	}
 	if err != nil {
 		h.Logger.ErrorContext(appCtx, "NATS chat subscription failed — hub cannot deliver messages", "err", err)
@@ -632,7 +848,7 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 		h.subs = append(h.subs, jwksSub)
 	}
 
-	if h.js != nil && h.enableJetStream {
+	if h.chatReplayAvailable.Load() {
 		h.Logger.InfoContext(appCtx, "Subscribed to NATS JetStream streams (CHAT_EVENTS, NOTIFICATIONS_EVENTS)")
 	} else {
 		h.Logger.InfoContext(appCtx, "Subscribed to NATS topics")
@@ -641,6 +857,14 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 }
 
 func (h *Hub) handleChat(appCtx context.Context) nats.MsgHandler {
+	return h.handleChatDelivery(appCtx, h.enableJetStream)
+}
+
+func (h *Hub) handleCoreChat(appCtx context.Context) nats.MsgHandler {
+	return h.handleChatDelivery(appCtx, false)
+}
+
+func (h *Hub) handleChatDelivery(appCtx context.Context, requireSequence bool) nats.MsgHandler {
 	const natsCallbackTimeout = 30 * time.Second
 	return func(msg *nats.Msg) {
 		defer func() {
@@ -687,6 +911,22 @@ func (h *Hub) handleChat(appCtx context.Context) nats.MsgHandler {
 			safeAck(msg)
 			return
 		}
+		if !validateLiveChatBinding(msg.Subject, &wsMsg) {
+			h.Logger.WarnContext(msgCtx, "ws-hub: chat subject/envelope/payload room mismatch",
+				"subject", msg.Subject, "room", wsMsg.Room)
+			safeTerm(msg)
+			return
+		}
+		metadata, metadataErr := msg.Metadata()
+		if metadataErr == nil && metadata.Sequence.Stream > 0 {
+			wsMsg.Seq = metadata.Sequence.Stream
+			wsMsg.Stream = metadata.Stream
+		} else if requireSequence {
+			h.Logger.WarnContext(msgCtx, "ws-hub: unsequenced JetStream chat message rejected",
+				"subject", msg.Subject, "err", metadataErr)
+			safeTerm(msg)
+			return
+		}
 		select {
 		case h.Broadcast <- &wsMsg:
 			if msgID != "" && h.dedupCache != nil {
@@ -695,6 +935,9 @@ func (h *Hub) handleChat(appCtx context.Context) nats.MsgHandler {
 			safeAck(msg)
 		default:
 			BroadcastDropsTotal.Inc()
+			if requireSequence && wsMsg.Seq > 0 {
+				h.failRoomClients(wsMsg.Room)
+			}
 			h.Logger.WarnContext(msgCtx, "Broadcast channel full, dropping NATS chat message",
 				"subject", msg.Subject)
 			safeNakWithDelay(msg, 5*time.Second)

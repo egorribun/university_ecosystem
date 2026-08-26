@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, type FormEvent } from "react"
 import axios from "@/api/client"
 import { Link } from "@tanstack/react-router"
 import { useTranslation, Trans } from "react-i18next"
@@ -12,6 +12,10 @@ import { valibotResolver } from "@hookform/resolvers/valibot"
 
 import { suggestEmailDomain } from "@/utils/authUtils"
 import { resetPasswordSchema, type ResetPasswordValues } from "@/features/auth/schemas"
+import {
+  captureActiveTelemetryContext,
+  type CapturedTelemetryContext,
+} from "@/utils/telemetryContext"
 
 const FORGOT_URL = "/password/forgot"
 const RESEND_COOLDOWN_SEC = 30
@@ -58,9 +62,12 @@ export default function ForgotPassword() {
     }
   }
 
-  const onSubmit = async (data: ResetPasswordValues) => {
+  const onSubmit = async (
+    data: ResetPasswordValues,
+    telemetryContext: CapturedTelemetryContext
+  ) => {
     try {
-      await axios.post(FORGOT_URL, { email: data.email })
+      await telemetryContext.run(() => axios.post(FORGOT_URL, { email: data.email }))
       // Even if API fails (security reasons), we often show success or generic message.
       // But here we'll assume success for the UX flow if no error thrown.
       // If the backend throws for non-existent email, we might want to catch that.
@@ -73,6 +80,11 @@ export default function ForgotPassword() {
       setCooldown(RESEND_COOLDOWN_SEC)
       setIsSuccess(true)
     }
+  }
+
+  const handleTelemetrySubmit = (event: FormEvent<HTMLFormElement>) => {
+    const telemetryContext = captureActiveTelemetryContext()
+    return handleSubmit((data) => onSubmit(data, telemetryContext))(event)
   }
 
   const resetRequest = () => {
@@ -163,7 +175,7 @@ export default function ForgotPassword() {
                   animate={{ opacity: 1 }}
                   className="space-y-6"
                 >
-                  <form onSubmit={handleSubmit(onSubmit)} autoComplete="on" className="space-y-6">
+                  <form onSubmit={handleTelemetrySubmit} autoComplete="on" className="space-y-6">
                     <div className="space-y-3">
                       <TextField
                         id="forgot-email-input"
@@ -182,6 +194,7 @@ export default function ForgotPassword() {
 
                       {emailSuggestion && (
                         <m.div
+                          data-testid="email-suggestion-motion"
                           initial={prefersReducedMotion ? false : { opacity: 0, x: -10 }}
                           animate={{ opacity: 1, x: 0 }}
                         >

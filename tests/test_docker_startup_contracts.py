@@ -298,6 +298,9 @@ def test_all_caddy_configs_expose_the_same_auth_and_websocket_routes() -> None:
         assert "rewrite * /ws" in caddyfile
         assert "reverse_proxy gateway:8080" in caddyfile
         assert "reverse_proxy ws-hub:8081" in caddyfile
+        frontend_block = caddyfile[caddyfile.index("reverse_proxy frontend:3000 {") :]
+        assert "health_uri /healthz" in frontend_block
+        assert "health_timeout 20s" in frontend_block
         assert (
             caddyfile.index("handle /ws/ticket")
             < caddyfile.index("handle /ws/chat*")
@@ -642,6 +645,73 @@ def test_postgres_database_bootstrap_is_cleanly_idempotent() -> None:
     assert 'psql -U postgres -c "CREATE DATABASE spicedb"' not in launcher
 
 
+def test_compose_files_do_not_claim_global_project_or_container_names() -> None:
+    """Compose-generated project resources must not have globally fixed names.
+
+    Host ports are intentionally fixed by the local developer contract, so this
+    check prevents container/network/volume name collisions rather than
+    claiming that two complete stacks can bind the same ports concurrently.
+    """
+    compose_paths = sorted(ROOT.glob("docker-compose*.yml"))
+    assert compose_paths, "No supported Compose files were discovered"
+
+    for compose_path in compose_paths:
+        relative_path = compose_path.relative_to(ROOT).as_posix()
+        compose = _compose(relative_path)
+        assert "name" not in compose, (
+            f"{relative_path} fixes a global Compose project name instead of "
+            "allowing the launcher or worktree directory to provide one"
+        )
+        services = compose.get("services", {})
+        offenders = sorted(
+            service_name
+            for service_name, service in services.items()
+            if service is not None and "container_name" in service
+        )
+        assert offenders == [], (
+            f"{relative_path} contains globally conflicting container_name values: "
+            f"{offenders}"
+        )
+
+
+def test_launcher_seed_commands_are_compose_project_safe() -> None:
+    launcher = _read("start-docker.ps1")
+
+    assert "university_ecosystem-backend-1" not in launcher
+    assert "docker compose -f `$ComposeFile --env-file `$EnvFile cp" not in launcher
+    expected_commands = (
+        "docker compose -f $ComposeFile --env-file $EnvFile cp "
+        "scripts/seed_demo_data.py backend:/app/seed_demo_data.py",
+        "docker compose -f $ComposeFile --env-file $EnvFile exec -T -w /app "
+        "backend python seed_demo_data.py",
+        "docker compose -f $ComposeFile --env-file $EnvFile cp "
+        "scripts/seed_admin_data.py backend:/app/seed_admin_data.py",
+        "docker compose -f $ComposeFile --env-file $EnvFile exec -T -w /app "
+        "backend python seed_admin_data.py",
+    )
+    for command in expected_commands:
+        assert launcher.count(command) == 1, (
+            f"Expected exactly one launcher command: {command}"
+        )
+
+
+def test_sandbox_runner_uses_a_worktree_scoped_compose_project() -> None:
+    runner = _read("scripts/run-test-sandbox.ps1")
+
+    assert "SHA256]::HashData" in runner
+    assert '$composeProject = "ue-sandbox-$worktreeHash"' in runner
+    assert (
+        runner.count("docker compose --project-name $composeProject -f $compose") == 2
+    )
+    assert "docker compose -f $compose up" not in runner
+    assert "docker compose -f $compose down" not in runner
+
+
+def test_smoke_script_is_printable_in_the_windows_launcher_console() -> None:
+    """The supported PowerShell flow may inherit the default CP1251 code page."""
+    _read("scripts/smoke_test.py").encode("cp1251")
+
+
 def test_local_temporal_and_spicedb_opt_out_of_external_auth_telemetry_noise() -> None:
     assert "--allow-no-auth" in _read("services/temporal/entrypoint.sh")
     for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):
@@ -944,7 +1014,7 @@ def test_helm_outbox_scaler_targets_a_real_database_backed_worker() -> None:
     assert "stored_events" in keda
     assert "OUTBOX_EVENTS" not in keda
     assert (
-        'list "backend" "gateway" "frontend" "file-processor" "outbox-worker" "backup"'
+        'list "backend" "gateway" "frontend" "ws-hub" "file-processor" "outbox-worker" "backup"'
         in rbac
     )
     assert "app.kubernetes.io/component: outbox-worker" in network_policy
@@ -983,7 +1053,7 @@ def test_helm_references_only_real_workloads_and_services_select_their_pods() ->
     assert 'prometheus.io/path: "/metrics"' in gateway_deployment
     assert "containerPort: 9102" in gateway_deployment
     assert (
-        'list "backend" "gateway" "frontend" "file-processor" "outbox-worker" "backup"'
+        'list "backend" "gateway" "frontend" "ws-hub" "file-processor" "outbox-worker" "backup"'
         in rbac
     )
     assert "app.kubernetes.io/component: file-processor" in network_policy
@@ -1410,6 +1480,20 @@ def test_helm_production_render_rejects_plaintext_data_planes() -> None:
         "global.environment=production",
         "--set",
         "applicationSecrets.existingSecret=managed-application-secrets",
+        "--set-string",
+        "global.imageTag=9d08136558b95d1182f889574f67b1b1d21abc9f",
+        "--set-string",
+        "backend.image.digest=sha256:" + ("a" * 64),
+        "--set-string",
+        "frontend.image.digest=sha256:" + ("a" * 64),
+        "--set-string",
+        "gateway.image.digest=sha256:" + ("a" * 64),
+        "--set-string",
+        "fileProcessor.image.digest=sha256:" + ("a" * 64),
+        "--set-string",
+        "outboxWorker.image.digest=sha256:" + ("a" * 64),
+        "--set",
+        "ingress.enabled=true",
     ]
     insecure = subprocess.run(  # noqa: S603 - fixed Helm contract command
         base_command,

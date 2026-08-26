@@ -5,6 +5,11 @@ import type { MapRef } from "react-map-gl/maplibre"
 
 const translationState = vi.hoisted(() => ({ resolvedLanguage: "en" as string | undefined }))
 const renderedMapProps = vi.hoisted(() => ({ current: {} as Record<string, unknown> }))
+const renderedMarkerProps = vi.hoisted(() => ({
+  buildings: [] as Record<string, unknown>[],
+  pois: [] as Record<string, unknown>[],
+  events: [] as Record<string, unknown>[],
+}))
 
 vi.mock("react-map-gl/maplibre", async () => {
   const base = (await import("@/tests/helpers/mapGlMock")).mapGlMock()
@@ -60,6 +65,7 @@ vi.mock("react-i18next", () => ({
 // by their own tests.
 vi.mock("@/components/map/BuildingMarker", () => ({
   BuildingMarker: (props: Record<string, unknown>) => {
+    renderedMarkerProps.buildings.push(props)
     const building = props.building as { letter: string }
     const invoke = (callback: unknown) => {
       if (typeof callback === "function") callback()
@@ -90,6 +96,7 @@ vi.mock("@/components/map/BuildingMarker", () => ({
 }))
 vi.mock("@/components/map/POIMarker", () => ({
   POIMarker: (props: Record<string, unknown>) => {
+    renderedMarkerProps.pois.push(props)
     const invoke = (callback: unknown) => {
       if (typeof callback === "function") callback()
     }
@@ -111,6 +118,7 @@ vi.mock("@/components/map/POIMarker", () => ({
 }))
 vi.mock("@/components/map/EventMarker", () => ({
   EventMarker: (props: Record<string, unknown>) => {
+    renderedMarkerProps.events.push(props)
     const invoke = (callback: unknown) => {
       if (typeof callback === "function") callback()
     }
@@ -145,6 +153,7 @@ type MockMap = {
   getZoom: ReturnType<typeof vi.fn>
   getPitch: ReturnType<typeof vi.fn>
   getBearing: ReturnType<typeof vi.fn>
+  project: ReturnType<typeof vi.fn>
 }
 
 function makeMap(): MockMap {
@@ -158,6 +167,10 @@ function makeMap(): MockMap {
     getZoom: vi.fn(() => 16),
     getPitch: vi.fn(() => 45),
     getBearing: vi.fn(() => 0),
+    project: vi.fn(([longitude, latitude]: [number, number]) => ({
+      x: longitude * 10_000,
+      y: latitude * 10_000,
+    })),
   }
 }
 
@@ -174,11 +187,19 @@ const baseProps = {
 }
 
 describe("MapLibreMap", () => {
+  it("starts at a campus-detail zoom that keeps interactive markers separated", () => {
+    render(<MapLibreMapComponent {...baseProps} />)
+
+    expect(renderedMapProps.current.initialViewState).toEqual(expect.objectContaining({ zoom: 17 }))
+  })
   let originalMatchMedia: any
 
   beforeEach(() => {
     originalMatchMedia = window.matchMedia
     renderedMapProps.current = {}
+    renderedMarkerProps.buildings = []
+    renderedMarkerProps.pois = []
+    renderedMarkerProps.events = []
   })
 
   afterEach(() => {
@@ -198,6 +219,21 @@ describe("MapLibreMap", () => {
     const region = screen.getByRole("application", { name: "a11y.mapContainer" })
     expect(region).toHaveStyle({ overscrollBehavior: "contain" })
     expect(renderedMapProps.current.reuseMaps).not.toBe(true)
+  })
+
+  it("assigns distinct deterministic offsets to collocated focusable markers", () => {
+    render(<MapLibreMapComponent {...baseProps} mapRef={makeRef(makeMap())} />)
+
+    const poiOffset = (id: string) => {
+      const marker = renderedMarkerProps.pois.find(
+        (props) => (props.poi as { id: string }).id === id
+      )
+      return marker?.offset
+    }
+
+    expect(poiOffset("gorzdrav")).toEqual(expect.any(Array))
+    expect(poiOffset("fix-price")).toEqual(expect.any(Array))
+    expect(poiOffset("gorzdrav")).not.toEqual(poiOffset("fix-price"))
   })
 
   it("on map-ready resizes, sets the sky, and runs the cinematic flyTo intro", async () => {
@@ -298,10 +334,46 @@ describe("MapLibreMap", () => {
         {...baseProps}
         mapRef={makeRef(makeMap())}
         activeCategory={"study" as typeof baseProps.activeCategory}
-        mapEvents={[{ id: "e1", buildingId: "ГУК" } as never]}
+        mapEvents={[{ id: "e1", buildingId: "ГУК", geoCoords: [55.71405, 37.81165] } as never]}
       />
     )
     expect(screen.getByRole("application")).toBeInTheDocument()
+  })
+
+  it("refreshes a live projection when async map events arrive", async () => {
+    const requestFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        callback(0)
+        return 1
+      })
+    const map = makeMap()
+    const ref = makeRef(map)
+    const event = {
+      id: "late-event",
+      buildingId: "ГУК",
+      geoCoords: [55.71405, 37.81165],
+    } as never
+
+    try {
+      const { rerender } = render(
+        <MapLibreMapComponent {...baseProps} mapRef={ref} mapEvents={[]} />
+      )
+      await waitFor(() => expect(map.project).toHaveBeenCalled())
+
+      expect(() =>
+        rerender(<MapLibreMapComponent {...baseProps} mapRef={ref} mapEvents={[event]} />)
+      ).not.toThrow()
+      await waitFor(() =>
+        expect(
+          renderedMarkerProps.events.some(
+            (props) => (props.event as { id: string }).id === "late-event"
+          )
+        ).toBe(true)
+      )
+    } finally {
+      requestFrame.mockRestore()
+    }
   })
 
   it("dispatches map, marker-popup, weather, and move-end interactions", () => {
@@ -314,7 +386,7 @@ describe("MapLibreMap", () => {
         onMapMoveEnd={onMapMoveEnd}
         mapRef={makeRef(makeMap())}
         weatherCondition="rain"
-        mapEvents={[{ id: "event-1", buildingId: "ГУК" } as never]}
+        mapEvents={[{ id: "event-1", buildingId: "ГУК", geoCoords: [55.71405, 37.81165] } as never]}
       />
     )
 

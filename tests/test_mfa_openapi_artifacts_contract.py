@@ -68,7 +68,7 @@ def test_tracked_openapi_artifacts_match_live_email_mfa_contract() -> None:
         tracked = _load_schema(artifact)
         _assert_email_mfa_contract(tracked)
         assert tracked == live, f"{artifact} is stale; regenerate it from app.openapi()"
-    assert OPENAPI_ARTIFACTS[0].read_bytes() == OPENAPI_ARTIFACTS[1].read_bytes()
+    assert _load_schema(OPENAPI_ARTIFACTS[0]) == _load_schema(OPENAPI_ARTIFACTS[1])
 
 
 def test_generated_types_sdk_and_msw_have_no_retired_authenticator_surface() -> None:

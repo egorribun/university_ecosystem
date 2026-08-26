@@ -137,6 +137,18 @@ describe("useActivityComparative — attendance", () => {
     )
     expect(stats.attendance.current).toBe(50)
   })
+
+  it("counts a previous-half absence without increasing the present total", () => {
+    const stats = run(
+      makeAttendance([
+        { date: "2026-05-14", status: "present" },
+        { date: "2026-04-20", status: "absent" },
+      ]),
+      null,
+      null
+    )
+    expect(stats.attendance.previous).toBe(0)
+  })
 })
 
 // ── Grades: average in current vs previous ──────────────────────────────────

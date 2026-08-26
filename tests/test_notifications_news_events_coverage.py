@@ -96,7 +96,7 @@ async def test_notify_about_comment_sends_to_admins(fake_create, admin_ids):
     fake_create.assert_awaited_once()
     kwargs = fake_create.await_args.kwargs
     assert kwargs["type"] == "news.comment"
-    assert kwargs["topic"] == "news"
+    assert kwargs["topic"] == "news.published"
     assert kwargs["user_ids"] == admin_ids
     assert kwargs["title"]
     assert kwargs["body"]
@@ -215,7 +215,7 @@ async def test_notify_about_news_uses_localized_fallback_and_active_users(
     assert result == 3
     kwargs = fake_create.await_args.kwargs
     assert kwargs["type"] == "news.new"
-    assert kwargs["topic"] == "news"
+    assert kwargs["topic"] == "news.published"
     assert kwargs["user_ids"] == active_ids
     assert kwargs["url"] == f"/news/{news.id}"
     assert kwargs["payload_data"]["category"] == "news"
@@ -281,7 +281,7 @@ async def test_notify_about_event_uses_default_payload_and_active_users(
     assert result == 3
     kwargs = fake_create.await_args.kwargs
     assert kwargs["type"] == "events.new"
-    assert kwargs["topic"] == "events"
+    assert kwargs["topic"] == "events.published"
     assert kwargs["user_ids"] == active_ids
     assert kwargs["payload_data"]["location"] == "Корпус А"
     assert kwargs["payload_data"]["speaker"] == "Иван Петров"

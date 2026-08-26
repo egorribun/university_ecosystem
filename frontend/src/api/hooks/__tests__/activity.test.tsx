@@ -10,6 +10,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { renderHook, waitFor } from "@testing-library/react"
 import type { PropsWithChildren } from "react"
+import { CanceledError } from "axios"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 // ── Mock the axios-based API client ─────────────────────────────────────────
@@ -235,6 +236,42 @@ describe("useActivitySummaryQuery", () => {
     expect(apiMock.get).toHaveBeenCalledTimes(1)
   })
 
+  it("recognizes an Axios cancellation even before its AbortSignal flips", async () => {
+    const canceled = new CanceledError("route changed")
+    apiMock.get.mockRejectedValueOnce(canceled)
+    const options = activitySummaryOptions({ period: "30d", language: "en" })
+
+    await expect(
+      options.queryFn?.({
+        queryKey: options.queryKey,
+        signal: new AbortController().signal,
+        meta: undefined,
+        client: queryClient,
+      })
+    ).rejects.toBe(canceled)
+
+    expect(apiMock.get).toHaveBeenCalledTimes(1)
+  })
+
+  it("treats a primitive primary rejection as an outage and uses healthy fallback feeds", async () => {
+    apiMock.get
+      .mockRejectedValueOnce("summary unavailable")
+      .mockResolvedValueOnce({ data: ATTENDANCE_STUB })
+      .mockRejectedValueOnce(new Error("grades unavailable"))
+      .mockRejectedValueOnce(new Error("participation unavailable"))
+    const options = activitySummaryOptions({ period: "30d", language: "en" })
+
+    await expect(
+      options.queryFn?.({
+        queryKey: options.queryKey,
+        signal: new AbortController().signal,
+        meta: undefined,
+        client: queryClient,
+      })
+    ).resolves.toEqual({ attendance: ATTENDANCE_STUB, grades: null, participation: null })
+    expect(apiMock.get).toHaveBeenCalledTimes(4)
+  })
+
   it("cancels an obsolete period request without starting fallback feeds", async () => {
     const canceled = Object.assign(new Error("period changed"), { name: "CanceledError" })
     apiMock.get.mockImplementation(
@@ -273,6 +310,20 @@ describe("useActivitySummaryQuery", () => {
 
     expect(result.current.data?.grades).toBeNull()
     expect(result.current.data?.participation).toBeNull()
+  })
+
+  it("normalises an empty successful response body to a null envelope", async () => {
+    apiMock.get.mockResolvedValueOnce({ data: undefined })
+    const options = activitySummaryOptions({ period: "30d", language: "en" })
+
+    await expect(
+      options.queryFn?.({
+        queryKey: options.queryKey,
+        signal: new AbortController().signal,
+        meta: undefined,
+        client: queryClient,
+      })
+    ).resolves.toEqual({ attendance: null, grades: null, participation: null })
   })
 
   it("respects the enabled option (disabled does not fire fetch)", async () => {

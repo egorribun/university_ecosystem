@@ -12,13 +12,14 @@ import (
 type Config struct {
 	Port    string
 	NatsURL string
-	// NatsUser / NatsPassword pass credentials via nats.UserInfo() so they do
-	// not appear in the connection URL string (which may be written to logs or
-	// visible in /proc/<pid>/environ).  If set, NatsURL must be credential-free:
-	//   NATS_URL=nats://nats:4222  +  NATS_USER=...  NATS_PASSWORD=...
+	// NatsUser / NatsPassword and NatsAuthToken pass credentials through NATS
+	// client options rather than embedding them in NatsURL. Token auth is
+	// mutually exclusive with user/password auth, and NatsURL must remain
+	// credential-free whenever either explicit authentication mode is used.
 	// MOD-W10-04 (audit 2026-03-16)
-	NatsUser     string
-	NatsPassword string
+	NatsUser      string
+	NatsPassword  string
+	NatsAuthToken string
 	// JWTSecrets holds one or more HMAC signing secrets in priority order.
 	// Multiple secrets allow zero-downtime key rotation: new tokens are signed
 	// with the first secret; old tokens signed with any remaining secret are
@@ -117,6 +118,7 @@ func LoadConfig() *Config {
 		NatsURL:                  getEnv("NATS_URL", "nats://nats:4222"),
 		NatsUser:                 os.Getenv("NATS_USER"),     // empty means no auth override
 		NatsPassword:             os.Getenv("NATS_PASSWORD"), // empty means no auth override
+		NatsAuthToken:            os.Getenv("NATS_AUTH_TOKEN"),
 		JWTSecrets:               loadJWTSecrets(),
 		SentryDSN:                getEnv("SENTRY_DSN", ""),
 		Environment:              getEnv("VITE_ENVIRONMENT", "development"),

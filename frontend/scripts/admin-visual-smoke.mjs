@@ -114,6 +114,8 @@ import process from "node:process"
 import { fileURLToPath } from "node:url"
 import { chromium } from "playwright"
 
+import { loginBrowserContext } from "./visual-smoke-auth.mjs"
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const PROJECT_ROOT = path.resolve(__dirname, "..")
@@ -192,67 +194,13 @@ async function checkJwksEndpoint() {
 
 async function performLogin(context) {
   console.log(`-> API login: POST ${ORIGIN}/api/v1/auth/login/json as ${TEST_EMAIL}`)
-
-  const origin = new URL(ORIGIN)
-  const isHttps = origin.protocol === "https:"
-  const cookieDomain = origin.hostname
-
-  const csrfResp = await fetch(`${ORIGIN}/api/v1/auth/csrf`)
-  const csrfCookieHeader =
-    csrfResp.headers.getSetCookie?.() ?? csrfResp.headers.raw?.()?.["set-cookie"] ?? []
-  let csrfToken
-  for (const setCookie of csrfCookieHeader) {
-    const match = setCookie.match(/csrf_token=([^;]+)/)
-    if (match) {
-      csrfToken = match[1]
-      break
-    }
-  }
-  if (!csrfToken) {
-    throw new Error(`CSRF token cookie not received from /api/v1/auth/csrf`)
-  }
-
-  const loginResp = await fetch(`${ORIGIN}/api/v1/auth/login/json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-CSRF-Token": csrfToken,
-      Cookie: `csrf_token=${csrfToken}`,
-    },
-    body: JSON.stringify({ email: TEST_EMAIL, password: TEST_PASSWORD }),
+  const { cookies, cookieJar } = await loginBrowserContext({
+    context,
+    origin: ORIGIN,
+    email: TEST_EMAIL,
+    password: TEST_PASSWORD,
   })
-  if (loginResp.status !== 200) {
-    const body = await loginResp.text()
-    throw new Error(`Login failed: HTTP ${loginResp.status} -- ${body.slice(0, 200)}`)
-  }
-
-  const loginCookieHeader =
-    loginResp.headers.getSetCookie?.() ?? loginResp.headers.raw?.()?.["set-cookie"] ?? []
-  const cookies = []
-  let accessTokenValue = null
-  for (const setCookie of loginCookieHeader) {
-    for (const name of ["access_token_v2", "csrf_token"]) {
-      const re = new RegExp(`${name}=([^;]+)`)
-      const match = setCookie.match(re)
-      if (match) {
-        cookies.push({
-          name,
-          value: match[1],
-          domain: cookieDomain,
-          path: "/",
-          httpOnly: name === "access_token_v2",
-          secure: isHttps,
-          sameSite: "Lax",
-        })
-        if (name === "access_token_v2") {
-          accessTokenValue = match[1]
-        }
-      }
-    }
-  }
-  if (!accessTokenValue) {
-    throw new Error("access_token_v2 cookie not in login response")
-  }
+  const accessTokenValue = cookieJar.get("access_token_v2")
 
   const { header, payload } = decodeJwtUnverified(accessTokenValue)
   console.log(`   JWT header: alg=${header.alg} kid=${header.kid ?? "(none)"}`)
@@ -263,8 +211,7 @@ async function performLogin(context) {
     throw new RS256Error(`JWT alg=${header.alg}, expected "RS256"`)
   }
 
-  await context.addCookies(cookies)
-  console.log(`OK Login OK; injected ${cookies.length} cookies`)
+  console.log(`OK Login OK; browser context holds ${cookies.length} cookies`)
   return { cookies, jwtHeader: header, jwtPayload: payload }
 }
 

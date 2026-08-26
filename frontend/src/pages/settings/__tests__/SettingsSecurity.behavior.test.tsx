@@ -231,6 +231,7 @@ describe("SettingsSecurity", () => {
 
     mocks.emailMfa = {
       ...makeEmailMfaState(),
+      emailMfaError: "Email delivery failed",
       emailChallenge: {
         method: "email_otp",
         challenge_token: "challenge-token",
@@ -239,6 +240,7 @@ describe("SettingsSecurity", () => {
       },
     }
     rerender(<SettingsSecurity setSnackbar={vi.fn()} openStepUpFor={vi.fn()} isActive />)
+    expect(screen.getByRole("alert")).toHaveTextContent("Email delivery failed")
     expect(screen.getByText("settings:security.emailMfa.sentTo")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "otp-submit" }))
     fireEvent.click(screen.getByRole("button", { name: "settings:security.emailMfa.resend" }))
@@ -254,5 +256,28 @@ describe("SettingsSecurity", () => {
     rerender(<SettingsSecurity setSnackbar={vi.fn()} openStepUpFor={vi.fn()} isActive />)
     fireEvent.click(screen.getByRole("button", { name: "settings:security.emailMfa.disable" }))
     expect(mocks.emailMfa.handleDisableEmailMfa).toHaveBeenCalledTimes(1)
+  })
+
+  it("covers email delivery fallbacks and the unverified-account action", () => {
+    mocks.auth = { user: { id: "user-1", email: "user@example.com" } as never }
+    mocks.emailMfa = {
+      ...makeEmailMfaState(),
+      emailChallenge: {
+        method: "email_otp",
+        challenge_token: "challenge-token",
+        challenge_expires_at: "2026-08-25T16:00:00Z",
+      },
+    }
+    const { rerender } = renderSecurity()
+    expect(screen.getByText("settings:security.emailMfa.sentTo")).toBeInTheDocument()
+
+    mocks.auth = { user: null }
+    rerender(<SettingsSecurity setSnackbar={vi.fn()} openStepUpFor={vi.fn()} isActive />)
+    expect(screen.getByText("settings:security.emailMfa.sentTo")).toBeInTheDocument()
+
+    mocks.emailMfa = { ...makeEmailMfaState(), emailVerified: false }
+    rerender(<SettingsSecurity setSnackbar={vi.fn()} openStepUpFor={vi.fn()} isActive />)
+    fireEvent.click(screen.getByRole("button", { name: "settings:security.emailMfa.verifyEmail" }))
+    expect(mocks.emailMfa.handleStartEmailMfa).toHaveBeenCalledOnce()
   })
 })

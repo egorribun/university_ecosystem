@@ -18,6 +18,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 
 from app.api.deps import (
     get_current_user,
+    get_current_user_optional,
 )
 from app.auth import constants, mfa
 from app.auth.handlers.logout import router as logout_router
@@ -63,6 +64,21 @@ def _mfa_rate_limit_error(exc: RateLimitExceeded, *, detail: str) -> HTTPExcepti
         detail,
         headers={"Retry-After": str(retry_after)},
     )
+
+
+async def _load_optional_active_session(
+    request: Request, db: AsyncDatabaseSession
+) -> Any:
+    """Populate and return the session bound to an optional bearer/cookie JWT."""
+    authorization = request.headers.get("authorization", "")
+    bearer_token = (
+        authorization[7:].strip()
+        if isinstance(authorization, str)
+        and authorization.lower().startswith("bearer ")
+        else None
+    )
+    await get_current_user_optional(request, bearer_token, db)
+    return getattr(request.state, "active_session", None)
 
 
 @router.post(
@@ -157,7 +173,7 @@ async def verify_mfa_challenge(
     login_service: FromDishka[LoginService],
     db: FromDishka[AsyncDatabaseSession],
 ) -> TokenWithProfile:
-    active_session = getattr(request.state, "active_session", None)
+    active_session = await _load_optional_active_session(request, db)
     active_session_identifier = (
         str(active_session.id) if active_session is not None else None
     )
@@ -341,7 +357,7 @@ async def resend_email_mfa_challenge(
 ) -> MfaMethodChallengeOut:
     from app.core.ratelimit import resolve_client_ip
 
-    active_session = getattr(request.state, "active_session", None)
+    active_session = await _load_optional_active_session(request, db)
     try:
         issued = await login_service.get_email_otp_service().resend_opaque(
             db,

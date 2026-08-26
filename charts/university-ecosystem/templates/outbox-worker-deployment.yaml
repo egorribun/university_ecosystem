@@ -20,6 +20,11 @@ spec:
       labels:
         {{- include "university-ecosystem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: outbox-worker
+        {{ printf "%s-redis-client" .Release.Name }}: "true"
+        {{ printf "%s-revocationRedis-client" .Release.Name }}: "true"
+        {{ printf "%s-nats-client" .Release.Name }}: "true"
+      annotations:
+        university-ecosystem.io/source-sha: {{ .Values.global.imageTag | quote }}
     spec:
       {{- with .Values.global.imagePullSecrets }}
       imagePullSecrets:

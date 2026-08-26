@@ -48,6 +48,9 @@ import { pathToFileURL } from "node:url"
 // (`scripts/contentTypes.mjs`) so regression tests can import the map
 // without triggering this script's top-level createServer + listen.
 import { CONTENT_TYPES } from "./contentTypes.mjs"
+import { pipeResponseBody } from "./server-response-stream.mjs"
+import { warmSsrRuntime } from "./server-readiness.mjs"
+import { sanitizeRequestTarget } from "./server-request-log.mjs"
 
 const PORT = Number(process.env.PORT ?? 3000)
 const HOST = process.env.HOST ?? "0.0.0.0"
@@ -192,12 +195,7 @@ async function pipeWebResponse(webResponse, res, extraHeaders) {
     res.end()
     return
   }
-  const nodeStream = Readable.fromWeb(webResponse.body)
-  nodeStream.on("error", (err) => {
-    console.error("server-prod: response stream error:", err)
-    if (!res.writableEnded) res.end()
-  })
-  nodeStream.pipe(res)
+  await pipeResponseBody(webResponse, res)
 }
 
 function protectHtmlFromSharedCaching(webResponse) {
@@ -223,6 +221,7 @@ function protectHtmlFromSharedCaching(webResponse) {
 
 const server = createServer(async (req, res) => {
   const start = Date.now()
+  const logTarget = sanitizeRequestTarget(req.url)
   try {
     // Wave 131 SW7 — static-first request flow:
     //   1. Try to serve from `dist/client/` (assets, sw.js, manifest, etc.).
@@ -234,7 +233,7 @@ const server = createServer(async (req, res) => {
     if ((req.method === "GET" || req.method === "HEAD") && urlPath !== "/") {
       if (serveStatic(req, res, urlPath)) {
         const ms = Date.now() - start
-        console.log(`${req.method} ${req.url} ${res.statusCode} ${ms}ms (static)`)
+        console.log(`${req.method} ${logTarget} ${res.statusCode} ${ms}ms (static)`)
         return
       }
     }
@@ -261,7 +260,7 @@ const server = createServer(async (req, res) => {
         : { "Server-Timing": `ssr;dur=${ssrDur.toFixed(2)};desc="ssr-render"` }
     await pipeWebResponse(response, res, extraHeaders)
     const ms = Date.now() - start
-    console.log(`${req.method} ${req.url} ${res.statusCode} ${ms}ms`)
+    console.log(`${req.method} ${logTarget} ${res.statusCode} ${ms}ms`)
   } catch (err) {
     console.error("server-prod: handler error:", err)
     if (!res.headersSent) {
@@ -272,8 +271,21 @@ const server = createServer(async (req, res) => {
   }
 })
 
-server.listen(PORT, HOST, () => {
-  console.log(`server-prod: listening on http://${HOST}:${PORT} (Node ${process.version})`)
+async function startServer() {
+  const warmupStarted = Date.now()
+  await warmSsrRuntime(handler, { url: `http://${DEFAULT_REQUEST_HOST}/login` })
+  console.log(`server-prod: SSR readiness warmup completed in ${Date.now() - warmupStarted}ms`)
+  server.listen(PORT, HOST, () => {
+    console.log(`server-prod: listening on http://${HOST}:${PORT} (Node ${process.version})`)
+  })
+}
+
+void startServer().catch((error) => {
+  console.error("server-prod: readiness warmup failed:", error)
+  // Fail closed immediately. The SSR bundle may own timers or open handles,
+  // so setting exitCode alone can leave an alive container that never binds
+  // its health port and never terminates.
+  process.exit(1)
 })
 
 const shutdown = (signal) => {

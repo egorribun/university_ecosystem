@@ -5,6 +5,7 @@ import { Button } from "@/components/ui"
 import { cn } from "@/utils/cn"
 import api from "@/api/client"
 import { logError } from "@/app/logger"
+import { captureActiveTelemetryContext } from "@/utils/telemetryContext"
 import type { Event } from "@/types/Event"
 
 interface EventAboutEditorProps {
@@ -49,13 +50,16 @@ export function EventAboutEditor({
   }
 
   const handleSave = async () => {
+    const telemetryContext = captureActiveTelemetryContext()
     setSaving(true)
     try {
       const payloadKey = language === "en" ? "about_en" : "about"
-      await api.patch(`/events/${event.id}`, { [payloadKey]: draft.trim() })
+      await telemetryContext.run(() =>
+        api.patch(`/events/${event.id}`, { [payloadKey]: draft.trim() })
+      )
       setEditing(false)
       onSuccess(t("events:detail.messages.aboutUpdated"))
-      await onUpdate()
+      await telemetryContext.run(onUpdate)
       setTimeout(() => sectionRef.current?.focus?.(), 0)
     } catch (err) {
       logError("[EventAboutEditor] Save failed:", err)

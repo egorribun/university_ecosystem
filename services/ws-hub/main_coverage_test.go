@@ -6,6 +6,7 @@ package main
 // stay out of the default run.
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -34,11 +35,75 @@ func TestInitLogger_ReturnsLogger(t *testing.T) {
 
 func TestInitRedis_SuccessWithMiniredis(t *testing.T) {
 	mr := miniredis.RunT(t)
-	cfg := &config.Config{RedisURL: mr.Addr()}
+	mr.RequireAuth("fallback-password")
+	cfg := &config.Config{RedisURL: mr.Addr(), RedisPassword: "fallback-password", RedisDB: 4}
 	rdb := initRedis(context.Background(), cfg, discardLogger())
 	require.NotNil(t, rdb, "Ping must succeed against miniredis → L2 enabled")
 	t.Cleanup(func() { _ = rdb.Close() }) //nolint:errcheck // best-effort cleanup
 	require.NoError(t, rdb.Ping(context.Background()).Err())
+	assert.Equal(t, mr.Addr(), rdb.Options().Addr)
+	assert.Equal(t, "fallback-password", rdb.Options().Password)
+	assert.Equal(t, 4, rdb.Options().DB)
+}
+
+func TestInitRedis_ParsesRedisURL(t *testing.T) {
+	mr := miniredis.RunT(t)
+	mr.RequireAuth("url-password")
+	cfg := &config.Config{
+		RedisURL:      "redis://:url-password@" + mr.Addr() + "/3",
+		RedisPassword: "fallback-password",
+		RedisDB:       4,
+	}
+	rdb := initRedis(context.Background(), cfg, discardLogger())
+	require.NotNil(t, rdb)
+	t.Cleanup(func() { require.NoError(t, rdb.Close()) })
+	assert.Equal(t, mr.Addr(), rdb.Options().Addr)
+	assert.Equal(t, "url-password", rdb.Options().Password)
+	assert.Equal(t, 3, rdb.Options().DB)
+}
+
+func TestInitRedis_RedisURLSuccessDoesNotLogCredentials(t *testing.T) {
+	mr := miniredis.RunT(t)
+	const secret = "url-supersecret" // pragma: allowlist secret
+	mr.RequireAuth(secret)
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+
+	rdb := initRedis(context.Background(), &config.Config{
+		RedisURL: "redis://:" + secret + "@" + mr.Addr() + "/0",
+	}, logger)
+	require.NotNil(t, rdb)
+	t.Cleanup(func() { require.NoError(t, rdb.Close()) })
+	assert.Contains(t, logs.String(), mr.Addr())
+	assert.NotContains(t, logs.String(), secret)
+}
+
+func TestRedisOptions_RedissRequiresCertificateVerification(t *testing.T) {
+	options, err := redisOptions(&config.Config{RedisURL: "rediss://redis.example.com:6380/2"})
+	require.NoError(t, err)
+	require.NotNil(t, options.TLSConfig)
+	assert.False(t, options.TLSConfig.InsecureSkipVerify)
+	assert.Equal(t, "redis.example.com:6380", options.Addr)
+	assert.Equal(t, 2, options.DB)
+
+	options, err = redisOptions(&config.Config{RedisURL: "rediss://redis.example.com:6380/2?skip_verify=true"})
+	assert.Nil(t, options)
+	assert.EqualError(t, err, "REDIS_URL must not disable TLS certificate verification")
+}
+
+func TestInitRedis_MalformedURLDoesNotLeakCredentials(t *testing.T) {
+	const secret = "supersecret" // pragma: allowlist secret
+	cfg := &config.Config{RedisURL: "rediss://user:" + secret + "@redis.example.com:%"}
+
+	options, err := redisOptions(cfg)
+	assert.Nil(t, options)
+	assert.EqualError(t, err, "REDIS_URL is invalid")
+	assert.NotContains(t, err.Error(), secret)
+
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+	assert.Nil(t, initRedis(context.Background(), cfg, logger))
+	assert.NotContains(t, logs.String(), secret)
 }
 
 func TestInitRedis_PingFailureReturnsNil(t *testing.T) {
@@ -64,7 +129,28 @@ func TestInitRevocationRedis_ValidatesConfigurationAndConnectivity(t *testing.T)
 			logger,
 		)
 		assert.Nil(t, client)
-		require.ErrorContains(t, err, "parse REVOCATION_REDIS_URL")
+		require.EqualError(t, err, "REVOCATION_REDIS_URL is invalid")
+	})
+
+	t.Run("invalid URL and insecure TLS do not expose credentials", func(t *testing.T) {
+		const secret = "revocation-supersecret" // pragma: allowlist secret
+		options, err := revocationRedisOptions(
+			"rediss://user:" + secret + "@redis.example.com:%",
+		)
+		assert.Nil(t, options)
+		require.EqualError(t, err, "REVOCATION_REDIS_URL is invalid")
+		assert.NotContains(t, err.Error(), secret)
+
+		options, err = revocationRedisOptions(
+			"rediss://user:" + secret + "@redis.example.com:6380/0?skip_verify=true",
+		)
+		assert.Nil(t, options)
+		require.EqualError(
+			t,
+			err,
+			"REVOCATION_REDIS_URL must not disable TLS certificate verification",
+		)
+		assert.NotContains(t, err.Error(), secret)
 	})
 
 	t.Run("ping failure", func(t *testing.T) {
@@ -137,6 +223,48 @@ func TestDefaultInitNats_RejectsMalformedURL(t *testing.T) {
 	nc, err := defaultInitNats(context.Background(), cfg, discardLogger())
 	assert.Nil(t, nc)
 	assert.Error(t, err)
+}
+
+func TestDefaultInitNats_RejectsMixedAuthentication(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  *config.Config
+	}{
+		{
+			name: "token and user",
+			cfg:  &config.Config{NatsURL: "nats://127.0.0.1:1", NatsAuthToken: "token", NatsUser: "user"},
+		},
+		{
+			name: "token and password",
+			cfg:  &config.Config{NatsURL: "nats://127.0.0.1:1", NatsAuthToken: "token", NatsPassword: "password"},
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			nc, err := defaultInitNats(context.Background(), test.cfg, discardLogger())
+			assert.Nil(t, nc)
+			assert.EqualError(t, err, "NATS_AUTH_TOKEN is mutually exclusive with NATS_USER and NATS_PASSWORD")
+		})
+	}
+}
+
+func TestValidateNATSAuthentication_RejectsURLCredentialsWithoutLeakingThem(t *testing.T) {
+	const secret = "url-supersecret" // pragma: allowlist secret
+	err := validateNATSAuthentication(&config.Config{
+		NatsURL:       "nats://user:" + secret + "@nats.example.com:4222",
+		NatsAuthToken: "explicit-token",
+	})
+	require.Error(t, err)
+	assert.EqualError(t, err, "NATS_URL must not contain credentials when explicit NATS authentication is configured")
+	assert.NotContains(t, err.Error(), secret)
+
+	err = validateNATSAuthentication(&config.Config{
+		NatsURL:  "nats://user:" + secret + "@%",
+		NatsUser: "explicit-user",
+	})
+	assert.EqualError(t, err, "NATS_URL is invalid for explicit authentication")
+	assert.NotContains(t, err.Error(), secret)
 }
 
 func TestCleanupHelpersAreNilSafe(t *testing.T) {

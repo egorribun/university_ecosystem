@@ -386,6 +386,31 @@ describe("Service Worker - Push Notifications", () => {
       })
     })
 
+    it("uses an empty metadata object when notification options omit data", async () => {
+      vi.mocked(parsePushEventData).mockReturnValue({
+        body: "Fallback body",
+        url: "/payload-url",
+        data: { type: "in-app" },
+      } as never)
+      vi.mocked(buildNotificationDetails).mockReturnValue({
+        title: "No option data",
+        options: { body: "Fallback body" },
+      } as never)
+      const mockClient = { visibilityState: "visible", postMessage: vi.fn() }
+      ;((self as any).clients.matchAll as any).mockResolvedValue([mockClient])
+      const mockEvent = {
+        data: { type: "in-app" },
+        waitUntil: vi.fn((promise) => promise),
+      }
+
+      await (eventListeners.push as any)(mockEvent)
+
+      expect(mockClient.postMessage).toHaveBeenCalledWith({
+        type: "PUSH_NOTIFICATION",
+        toast: { title: "No option data", body: "Fallback body", url: "/payload-url" },
+      })
+    })
+
     it("queues the root navigation when a click has no URL", async () => {
       vi.mocked(storePendingNavigation).mockClear()
       ;((self as any).clients.matchAll as any).mockResolvedValue([])
@@ -427,6 +452,31 @@ describe("Service Worker - Push Notifications", () => {
       await (mockEvent.waitUntil.mock.results[0] as any).value
 
       expect(fetchMock).not.toHaveBeenCalled()
+      expect(storePendingReport).not.toHaveBeenCalled()
+    })
+
+    it("queues navigation when an unsafe report URL and window opening both fail", async () => {
+      vi.mocked(storePendingNavigation).mockClear()
+      ;((self as any).clients.matchAll as any).mockResolvedValue([])
+      ;((self as any).clients.openWindow as any).mockResolvedValue(null)
+      const mockEvent = {
+        notification: {
+          close: vi.fn(),
+          data: {
+            url: "/safe",
+            reportUrl: "https://evil.example/collect",
+          },
+        },
+        waitUntil: vi.fn((promise) => promise),
+      }
+
+      await (eventListeners.notificationclick as any)(mockEvent)
+      await (mockEvent.waitUntil.mock.results[0] as any).value
+
+      expect(storePendingNavigation).toHaveBeenCalledWith({
+        url: `${window.location.origin}/safe`,
+        timestamp: expect.any(Number),
+      })
       expect(storePendingReport).not.toHaveBeenCalled()
     })
 

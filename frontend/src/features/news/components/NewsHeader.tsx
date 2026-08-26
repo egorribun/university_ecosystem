@@ -128,7 +128,9 @@ export const NewsHeader = ({
               event.currentTarget.querySelectorAll<HTMLButtonElement>("button")
             )
             const focusedIndex = buttons.indexOf(document.activeElement as HTMLButtonElement)
-            if (focusedIndex < 0 || buttons.length === 0) return
+            // A non-negative index already proves that the rendered toolbar
+            // contains at least one button.
+            if (focusedIndex < 0) return
             event.preventDefault()
             const nextIndex =
               event.key === "ArrowRight"

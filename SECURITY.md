@@ -13,7 +13,8 @@ If you discover a vulnerability, please report it privately so we can address it
 - **Algorithm**: Password hashing relies **exclusively on Argon2id** (Passlib parameters: Time: 3, Memory: 64 MB, Parallelism: 4).
 - **Legacy Verification Removed**: Bcrypt verification has been completely removed (TD-21-04). All accounts use Argon2id.
 - **Argon2 Concurrency Cap**: Argon2 hashing concurrency is capped at 4 concurrent hashing tasks per worker process to cap peak memory allocation at 128 MiB (PERF-24-04).
-- **Hardware & Passkey MFA**: Native support for **WebAuthn / FIDO2** (Passkeys) alongside TOTP.
+- **MFA Factors**: Interactive MFA uses **TOTP** or a six-digit **email OTP**; single-use **recovery codes** remain available only as an emergency recovery factor.
+- **Factor Migration Safety**: Legacy hardware-key-only accounts are never migrated silently. A migration preflight selects an existing TOTP factor or a verified-email OTP path and blocks accounts without either path until controlled remediation is complete.
 - **Pwned Password Checks**: SHA-1 is used *exclusively* for the [Have I Been Pwned API](https://haveibeenpwned.com/API/v3#PwnedPasswords) k-anonymity check. Only the first 5 characters of the hash are transmitted; the full hash is never stored.
 
 ---

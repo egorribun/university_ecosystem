@@ -83,7 +83,12 @@ vi.mock("@/db/lazy", () => ({
 }))
 
 // Import after mocks
-import { useChatWebSocket, WebSocketProvider, applyReadFrame } from "../useChatWebSocket"
+import {
+  useChatWebSocket,
+  WebSocketProvider,
+  applyReadFrame,
+  appendLiveMessageToCache,
+} from "../useChatWebSocket"
 import type { ChatsListResponse, Message, MessagesListResponse } from "@/api/chat"
 
 // ---------- Helpers ----------
@@ -103,6 +108,7 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  window.sessionStorage.clear()
   mocks.apiPost.mockResolvedValue({ data: { ticket: "mock-ticket", expires_in: 15 } })
   mocks.parseWsMessage.mockReturnValue(null)
   mocks.dbUpsert.mockResolvedValue(undefined)
@@ -114,6 +120,166 @@ afterEach(() => {
 })
 
 // ---------- Tests ----------
+
+describe("appendLiveMessageToCache boundaries", () => {
+  const message = (index: number) =>
+    ({
+      id: `boundary-${index}`,
+      chat_id: "chat-boundary",
+      sender_id: "peer",
+      content: String(index),
+      created_at: new Date(Date.UTC(2026, 7, 26, 0, 0, 0, index)).toISOString(),
+      read_status: false,
+      attachments: [],
+    }) as Message
+
+  it.each([0, 199])(
+    "keeps all %i terminal-history messages while the cache stays within its bound",
+    (size) => {
+      const cached: MessagesListResponse = {
+        items: Array.from({ length: size }, (_, index) => message(index)),
+        has_more: false,
+        next_cursor: null,
+      }
+      const result = appendLiveMessageToCache(cached, message(size))
+
+      expect(result.items).toHaveLength(size + 1)
+      expect(result.items[0]?.id).toBe("boundary-0")
+      expect(result.has_more).toBe(false)
+      expect(result.next_cursor).toBeNull()
+    }
+  )
+
+  it.each([200, 201])(
+    "bounds %i terminal-history messages and synthesizes a lossless recovery cursor",
+    (size) => {
+      const cached: MessagesListResponse = {
+        items: Array.from({ length: size }, (_, index) => message(index)),
+        has_more: false,
+        next_cursor: null,
+      }
+      const result = appendLiveMessageToCache(cached, message(size))
+      const newOldest = result.items[0]!
+
+      expect(result.items).toHaveLength(200)
+      expect(result.has_more).toBe(true)
+      expect(result.next_cursor).toBe(`${Date.parse(newOldest.created_at) * 1000}:${newOldest.id}`)
+    }
+  )
+
+  it("keeps a hard render bound when legacy cache contains a malformed timestamp", () => {
+    const cached: MessagesListResponse = {
+      items: Array.from({ length: 200 }, (_, index) => message(index)),
+      has_more: false,
+      next_cursor: null,
+    }
+    cached.items[1] = { ...cached.items[1]!, created_at: "not-a-datetime" }
+
+    const result = appendLiveMessageToCache(cached, message(200))
+
+    expect(result.items).toHaveLength(200)
+    expect(result.items[0]?.id).toBe("boundary-1")
+    expect(result.has_more).toBe(true)
+    expect(result.next_cursor).toBeNull()
+  })
+
+  it("never exceeds the render bound under an adversarial malformed timestamp stream", () => {
+    let cached: MessagesListResponse = {
+      items: [],
+      has_more: false,
+      next_cursor: null,
+    }
+
+    for (let index = 0; index < 1000; index += 1) {
+      cached = appendLiveMessageToCache(cached, {
+        ...message(index),
+        id: `malformed-${index}`,
+        created_at: "not-a-timestamp",
+      })
+      expect(cached.items.length).toBeLessThanOrEqual(200)
+    }
+
+    expect(cached.items[0]?.id).toBe("malformed-800")
+    expect(cached.items.at(-1)?.id).toBe("malformed-999")
+    expect(cached.has_more).toBe(true)
+  })
+
+  it("preserves the server cursor when appending does not trim continuing history", () => {
+    const cached: MessagesListResponse = {
+      items: Array.from({ length: 199 }, (_, index) => message(index)),
+      has_more: true,
+      next_cursor: "recoverable-older-edge",
+    }
+    const result = appendLiveMessageToCache(cached, message(199))
+
+    expect(result.items).toHaveLength(200)
+    expect(result.next_cursor).toBe("recoverable-older-edge")
+  })
+
+  it("orders delayed messages by created_at and uses id as the deterministic tie-breaker", () => {
+    const first = message(1)
+    const last = message(3)
+    const sameTimeLowerId = { ...first, id: "boundary-0" }
+    const exactTie = { ...first }
+    const sameTimeHigherId = { ...first, id: "boundary-z" }
+    const delayedMiddle = message(2)
+    const cached: MessagesListResponse = {
+      items: [first, last],
+      has_more: false,
+      next_cursor: null,
+    }
+
+    const withMiddle = appendLiveMessageToCache(cached, delayedMiddle)
+    const withTie = appendLiveMessageToCache(withMiddle, sameTimeLowerId)
+    const withExactTie = appendLiveMessageToCache(withTie, exactTie)
+    const withHigherTie = appendLiveMessageToCache(withExactTie, sameTimeHigherId)
+
+    expect(withHigherTie.items.map((item) => item.id)).toEqual([
+      "boundary-0",
+      "boundary-1",
+      "boundary-1",
+      "boundary-z",
+      "boundary-2",
+      "boundary-3",
+    ])
+    expect(withHigherTie.items[1]).toBe(first)
+    expect(withHigherTie.items[2]).toBe(exactTie)
+  })
+
+  it("trims a delayed message outside the render window using the actual retained oldest", () => {
+    const cached: MessagesListResponse = {
+      items: Array.from({ length: 200 }, (_, index) => message(index + 1)),
+      has_more: false,
+      next_cursor: null,
+    }
+
+    const result = appendLiveMessageToCache(cached, message(0))
+
+    expect(result.items.map((item) => item.id)).toEqual(cached.items.map((item) => item.id))
+    expect(result.has_more).toBe(true)
+    expect(result.next_cursor).toBe(
+      `${Date.parse(cached.items[0]!.created_at) * 1000}:${cached.items[0]!.id}`
+    )
+  })
+
+  it.each([200, 201])(
+    "bounds %i continuing-history messages while advancing the recovery cursor",
+    (size) => {
+      const cached: MessagesListResponse = {
+        items: Array.from({ length: size }, (_, index) => message(index)),
+        has_more: true,
+        next_cursor: "recoverable-older-edge",
+      }
+      const result = appendLiveMessageToCache(cached, message(size))
+
+      expect(result.items).toHaveLength(200)
+      expect(result.items.at(-1)?.id).toBe(`boundary-${size}`)
+      expect(result.has_more).toBe(true)
+      const newOldest = result.items[0]!
+      expect(result.next_cursor).toBe(`${Date.parse(newOldest.created_at) * 1000}:${newOldest.id}`)
+    }
+  )
+})
 
 describe("useChatWebSocket", () => {
   it("pauses ticket acquisition while offline and reconnects on the online event", async () => {
@@ -232,6 +398,12 @@ describe("useChatWebSocket", () => {
       read_status: false,
       attachments: [],
     }
+    const priorMessage: Message = {
+      ...message,
+      id: "message-prior",
+      content: "prior",
+      created_at: "2026-08-25T11:59:00Z",
+    }
     queryClient.setQueryData<MessagesListResponse>(["messages", "chat-1"], {
       items: [],
       has_more: false,
@@ -243,6 +415,7 @@ describe("useChatWebSocket", () => {
           id: "chat-1",
           participants: [],
           unread_count: 0,
+          last_message: priorMessage,
           created_at: "2026-08-25T11:00:00Z",
           updated_at: "2026-08-25T11:00:00Z",
         },
@@ -268,11 +441,839 @@ describe("useChatWebSocket", () => {
       queryClient.getQueryData<MessagesListResponse>(["messages", "chat-1"])?.items
     ).toHaveLength(1)
     expect(queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[0]?.unread_count).toBe(1)
+    expect(queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[0]?.last_message).toEqual(
+      message
+    )
     expect(onNewMessage).toHaveBeenCalledTimes(1)
     vi.unstubAllGlobals()
   })
 
-  it("retains the 201st live message when the cached history is fully loaded", async () => {
+  it("seeds replay protection from a duplicate already present in the render cache", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <WebSocketProvider>{children}</WebSocketProvider>
+      </QueryClientProvider>
+    )
+    const message: Message = {
+      id: "preloaded-message",
+      chat_id: "chat-1",
+      sender_id: "peer",
+      content: "already hydrated",
+      created_at: "2026-08-25T12:00:00Z",
+      read_status: false,
+      attachments: [],
+    }
+    const cached: MessagesListResponse = {
+      items: [message],
+      has_more: false,
+      next_cursor: null,
+    }
+    queryClient.setQueryData<MessagesListResponse>(["messages", "chat-1"], cached)
+    mocks.parseWsMessage.mockReturnValue({ type: "new_message", chat_id: "chat-1", message })
+    const onNewMessage = vi.fn()
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries")
+
+    renderHook(() => useChatWebSocket({ enabled: true, currentUserId: "me", onNewMessage }), {
+      wrapper: localWrapper,
+    })
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    act(() => {
+      TestWebSocket.instances[0]?.onmessage?.({ data: "preloaded-1" } as MessageEvent)
+      TestWebSocket.instances[0]?.onmessage?.({ data: "preloaded-2" } as MessageEvent)
+    })
+    await act(async () => Promise.resolve())
+
+    expect(queryClient.getQueryData<MessagesListResponse>(["messages", "chat-1"])).toBe(cached)
+    expect(mocks.dbUpsert).not.toHaveBeenCalled()
+    expect(invalidateQueries).not.toHaveBeenCalled()
+    expect(onNewMessage).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it("keeps delayed live delivery ordered without rolling back the chat preview", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <WebSocketProvider>{children}</WebSocketProvider>
+      </QueryClientProvider>
+    )
+    const newerMessage: Message = {
+      id: "message-newer",
+      chat_id: "chat-1",
+      sender_id: "peer",
+      content: "newer",
+      created_at: "2026-08-25T12:02:00.000000Z",
+      read_status: false,
+      attachments: [],
+    }
+    const delayedMessage: Message = {
+      ...newerMessage,
+      id: "message-delayed",
+      content: "delayed",
+      created_at: "2026-08-25T12:01:00.000000Z",
+    }
+    queryClient.setQueryData<MessagesListResponse>(["messages", "chat-1"], {
+      items: [newerMessage],
+      has_more: false,
+      next_cursor: null,
+    })
+    queryClient.setQueryData<ChatsListResponse>(["chats"], {
+      items: [
+        {
+          id: "chat-1",
+          participants: [],
+          unread_count: 4,
+          last_message: newerMessage,
+          created_at: "2026-08-25T11:00:00Z",
+          updated_at: "2026-08-25T12:02:00Z",
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+    mocks.parseWsMessage.mockReturnValue({
+      type: "new_message",
+      chat_id: "chat-1",
+      message: delayedMessage,
+    })
+    const onNewMessage = vi.fn()
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries")
+
+    renderHook(() => useChatWebSocket({ enabled: true, currentUserId: "me", onNewMessage }), {
+      wrapper: localWrapper,
+    })
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    act(() => {
+      TestWebSocket.instances[0]?.onmessage?.({ data: "delayed-frame" } as MessageEvent)
+    })
+    await waitFor(() => expect(mocks.dbUpsert).toHaveBeenCalledTimes(1))
+
+    expect(
+      queryClient
+        .getQueryData<MessagesListResponse>(["messages", "chat-1"])
+        ?.items.map((message) => message.id)
+    ).toEqual(["message-delayed", "message-newer"])
+    expect(queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[0]).toMatchObject({
+      unread_count: 5,
+      last_message: { id: "message-newer" },
+    })
+    expect(onNewMessage).toHaveBeenCalledTimes(1)
+
+    const invalidTimestampMessage = {
+      ...delayedMessage,
+      id: "message-invalid-timestamp",
+      created_at: "not-a-timestamp",
+    }
+    mocks.parseWsMessage.mockReturnValue({
+      type: "new_message",
+      chat_id: "chat-1",
+      message: invalidTimestampMessage,
+    })
+    act(() => {
+      TestWebSocket.instances[0]?.onmessage?.({ data: "invalid-timestamp-frame" } as MessageEvent)
+    })
+    await waitFor(() => expect(mocks.dbUpsert).toHaveBeenCalledTimes(2))
+
+    expect(queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[0]).toMatchObject({
+      unread_count: 6,
+      last_message: { id: "message-newer" },
+    })
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["messages", "chat-1"],
+      refetchType: "active",
+    })
+    expect(onNewMessage).toHaveBeenCalledTimes(2)
+
+    invalidateQueries.mockClear()
+    const recoveryMessage = {
+      ...newerMessage,
+      id: "message-recovery",
+      created_at: "2026-08-25T12:03:00.000000Z",
+    }
+    mocks.parseWsMessage.mockReturnValue({
+      type: "new_message",
+      chat_id: "chat-1",
+      message: recoveryMessage,
+    })
+    act(() => {
+      TestWebSocket.instances[0]?.onmessage?.({ data: "recovery-frame" } as MessageEvent)
+    })
+    await waitFor(() => expect(mocks.dbUpsert).toHaveBeenCalledTimes(3))
+
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["messages", "chat-1"],
+      refetchType: "active",
+    })
+    expect(queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[0]).toMatchObject({
+      unread_count: 7,
+      last_message: { id: "message-recovery" },
+    })
+    expect(onNewMessage).toHaveBeenCalledTimes(3)
+    vi.unstubAllGlobals()
+  })
+
+  it("drops an at-least-once replay after the original message leaves the render cache", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <WebSocketProvider>{children}</WebSocketProvider>
+      </QueryClientProvider>
+    )
+    const messages = Array.from({ length: 201 }, (_, index): Message => ({
+      id: `message-${index + 1}`,
+      chat_id: "chat-1",
+      sender_id: "peer",
+      content: `message ${index + 1}`,
+      created_at: new Date(Date.UTC(2026, 7, 25, 12, 0, index + 1)).toISOString(),
+      read_status: false,
+      attachments: [],
+    }))
+    queryClient.setQueryData<MessagesListResponse>(["messages", "chat-1"], {
+      items: [],
+      has_more: false,
+      next_cursor: null,
+    })
+    queryClient.setQueryData<ChatsListResponse>(["chats"], {
+      items: [
+        {
+          id: "chat-1",
+          participants: [],
+          unread_count: 0,
+          created_at: "2026-08-25T11:00:00Z",
+          updated_at: "2026-08-25T11:00:00Z",
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+    mocks.parseWsMessage.mockImplementation((frame: string) => {
+      const index = Number(frame.slice("message-".length)) - 1
+      return { type: "new_message", chat_id: "chat-1", message: messages[index]! }
+    })
+    const onNewMessage = vi.fn()
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries")
+
+    renderHook(() => useChatWebSocket({ enabled: true, currentUserId: "me", onNewMessage }), {
+      wrapper: localWrapper,
+    })
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    const socket = TestWebSocket.instances[0]!
+
+    act(() => {
+      for (const message of messages) {
+        socket.onmessage?.({ data: message.id } as MessageEvent)
+      }
+    })
+    await waitFor(() => expect(mocks.dbUpsert).toHaveBeenCalledTimes(201))
+    const acceptedCache = queryClient.getQueryData<MessagesListResponse>(["messages", "chat-1"])!
+    const acceptedItems = acceptedCache.items
+    expect(acceptedItems.map((message) => message.id)).toEqual(
+      messages.slice(1).map((message) => message.id)
+    )
+
+    act(() => window.dispatchEvent(new Event("offline")))
+    act(() => window.dispatchEvent(new Event("online")))
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(2))
+    const replaySocket = TestWebSocket.instances[1]!
+
+    act(() => {
+      replaySocket.onmessage?.({ data: "message-1" } as MessageEvent)
+    })
+    await act(async () => Promise.resolve())
+
+    expect(queryClient.getQueryData<MessagesListResponse>(["messages", "chat-1"])).toBe(
+      acceptedCache
+    )
+    expect(queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[0]).toMatchObject({
+      unread_count: 201,
+      last_message: { id: "message-201" },
+    })
+    expect(mocks.dbUpsert).toHaveBeenCalledTimes(201)
+    expect(onNewMessage).toHaveBeenCalledTimes(201)
+    expect(invalidateQueries).toHaveBeenCalledTimes(402)
+    vi.unstubAllGlobals()
+  })
+
+  it("bounds replay memory with LRU eviction while retaining recently replayed IDs", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <WebSocketProvider>{children}</WebSocketProvider>
+      </QueryClientProvider>
+    )
+    const messages = Array.from({ length: 4097 }, (_, index): Message => ({
+      id: `lru-message-${index + 1}`,
+      chat_id: "chat-lru",
+      sender_id: "peer",
+      content: String(index + 1),
+      created_at: new Date(Date.UTC(2026, 7, 25, 12, 0, index + 1)).toISOString(),
+      read_status: false,
+      attachments: [],
+    }))
+    queryClient.setQueryData<MessagesListResponse>(["messages", "chat-lru"], {
+      items: [],
+      has_more: false,
+      next_cursor: null,
+    })
+    mocks.parseWsMessage.mockImplementation((frame: string) => {
+      const index = Number(frame.slice("lru-message-".length)) - 1
+      return {
+        type: "new_message",
+        chat_id: "chat-lru",
+        message: messages[index]!,
+        stream_seq: index + 1,
+        resume_token: `lru-token-${index + 1}`,
+      }
+    })
+    const onNewMessage = vi.fn()
+
+    renderHook(() => useChatWebSocket({ enabled: true, currentUserId: "me", onNewMessage }), {
+      wrapper: localWrapper,
+    })
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    const socket = TestWebSocket.instances[0]!
+
+    act(() => {
+      for (const message of messages.slice(0, 4096)) {
+        socket.onmessage?.({ data: message.id } as MessageEvent)
+      }
+      // Refresh ID 1, then overflow the 4096-entry LRU. ID 2 must be the
+      // evicted member while the recently replayed ID 1 remains protected.
+      socket.onmessage?.({ data: "lru-message-1" } as MessageEvent)
+      socket.onmessage?.({ data: "lru-message-4097" } as MessageEvent)
+      socket.onmessage?.({ data: "lru-message-2" } as MessageEvent)
+      socket.onmessage?.({ data: "lru-message-1" } as MessageEvent)
+    })
+
+    expect(onNewMessage).toHaveBeenCalledTimes(4097)
+    expect(
+      queryClient.getQueryData<MessagesListResponse>(["messages", "chat-lru"])?.items.at(-1)?.id
+    ).toBe("lru-message-4097")
+    vi.unstubAllGlobals()
+  })
+
+  it("resumes a room from the durable sequence after reconnect", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <WebSocketProvider>{children}</WebSocketProvider>
+      </QueryClientProvider>
+    )
+    const message: Message = {
+      id: "checkpoint-message",
+      chat_id: "chat-checkpoint",
+      sender_id: "peer",
+      content: "checkpoint",
+      created_at: "2026-08-25T12:00:00Z",
+      read_status: false,
+      attachments: [],
+    }
+    mocks.parseWsMessage.mockReturnValue({
+      type: "new_message",
+      chat_id: "chat-checkpoint",
+      message,
+      stream_seq: 73,
+      resume_token: "checkpoint-token-73",
+    })
+
+    const { result } = renderHook(
+      () => useChatWebSocket({ enabled: true, currentUserId: "checkpoint-user" }),
+      { wrapper: localWrapper }
+    )
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    const firstSocket = TestWebSocket.instances[0]!
+    act(() => result.current.sendJoin("chat-checkpoint"))
+    act(() => firstSocket.onmessage?.({ data: "checkpoint-frame" } as MessageEvent))
+
+    act(() => window.dispatchEvent(new Event("offline")))
+    act(() => window.dispatchEvent(new Event("online")))
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(2))
+    const replaySocket = TestWebSocket.instances[1]!
+    act(() => replaySocket.onopen?.())
+
+    expect(replaySocket.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "join", room: "chat-checkpoint", resume_token: "checkpoint-token-73" })
+    )
+    vi.unstubAllGlobals()
+  })
+
+  it("forgets an expired opaque cursor after the server rejects it", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const userId = "expired-cursor-user"
+    const chatId = "8ef3bb0c-a893-4f74-bdb4-01544a532629"
+    window.sessionStorage.setItem(
+      `university.chat.replay.v2:${userId}`,
+      JSON.stringify({ entries: [[chatId, 73, "expired-token-73"]] })
+    )
+    mocks.parseWsMessage.mockReturnValue({
+      type: "error",
+      code: "invalid_resume_token",
+      room: chatId,
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <WebSocketProvider>{children}</WebSocketProvider>
+      </QueryClientProvider>
+    )
+    const session = renderHook(() => useChatWebSocket({ enabled: true, currentUserId: userId }), {
+      wrapper: localWrapper,
+    })
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    const socket = TestWebSocket.instances[0]!
+
+    act(() => session.result.current.sendJoin(chatId))
+    expect(socket.send).toHaveBeenLastCalledWith(
+      JSON.stringify({ type: "join", room: chatId, resume_token: "expired-token-73" })
+    )
+    act(() => socket.onmessage?.({ data: "invalid-token" } as MessageEvent))
+    act(() => session.result.current.sendJoin(chatId))
+    expect(socket.send).toHaveBeenLastCalledWith(JSON.stringify({ type: "join", room: chatId }))
+
+    session.unmount()
+    vi.unstubAllGlobals()
+  })
+
+  it("persists a checkpoint at most once per accepted sequenced frame", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const setItem = vi.spyOn(Storage.prototype, "setItem")
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <WebSocketProvider>{children}</WebSocketProvider>
+      </QueryClientProvider>
+    )
+    const message: Message = {
+      id: "storage-write-message",
+      chat_id: "storage-write-chat",
+      sender_id: "peer",
+      content: "checkpoint",
+      created_at: "2026-08-25T12:00:00Z",
+      read_status: false,
+      attachments: [],
+    }
+    let sequence = 10
+    mocks.parseWsMessage.mockImplementation(() => ({
+      type: "new_message",
+      chat_id: "storage-write-chat",
+      message: { ...message, id: `storage-write-message-${sequence}` },
+      stream_seq: sequence++,
+      resume_token: `storage-token-${sequence}`,
+    }))
+
+    const session = renderHook(
+      () => useChatWebSocket({ enabled: true, currentUserId: "storage-write-user" }),
+      { wrapper: localWrapper }
+    )
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    act(() => {
+      TestWebSocket.instances[0]?.onmessage?.({ data: "first" } as MessageEvent)
+      TestWebSocket.instances[0]?.onmessage?.({ data: "second" } as MessageEvent)
+    })
+
+    expect(setItem).toHaveBeenCalledTimes(2)
+    session.unmount()
+    setItem.mockRestore()
+    vi.unstubAllGlobals()
+  })
+
+  it("advances replay state from a terminal poison checkpoint without message side effects", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <WebSocketProvider>{children}</WebSocketProvider>
+      </QueryClientProvider>
+    )
+    const onNewMessage = vi.fn()
+    const chatId = "8ef3bb0c-a893-4f74-bdb4-01544a532621"
+    mocks.parseWsMessage.mockReturnValue({
+      type: "replay_checkpoint",
+      chat_id: chatId,
+      stream_seq: 42,
+      resume_token: "poison-token-42",
+      replayed: true,
+    })
+
+    const session = renderHook(
+      () =>
+        useChatWebSocket({
+          enabled: true,
+          currentUserId: "poison-checkpoint-user",
+          onNewMessage,
+        }),
+      { wrapper: localWrapper }
+    )
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    act(() => TestWebSocket.instances[0]?.onmessage?.({ data: "checkpoint" } as MessageEvent))
+    act(() => session.result.current.sendJoin(chatId))
+
+    expect(onNewMessage).not.toHaveBeenCalled()
+    expect(TestWebSocket.instances[0]?.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "join", room: chatId, resume_token: "poison-token-42" })
+    )
+    session.unmount()
+    vi.unstubAllGlobals()
+  })
+
+  it("keeps a durable room checkpoint across hook remounts for the same session", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const makeWrapper = () => {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      })
+      const RemountWrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>
+          <WebSocketProvider>{children}</WebSocketProvider>
+        </QueryClientProvider>
+      )
+      RemountWrapper.displayName = "RemountWebSocketTestWrapper"
+      return RemountWrapper
+    }
+    const message: Message = {
+      id: "remount-message",
+      chat_id: "chat-remount",
+      sender_id: "peer",
+      content: "persist me",
+      created_at: "2026-08-25T12:00:00Z",
+      read_status: false,
+      attachments: [],
+    }
+    mocks.parseWsMessage.mockReturnValue({
+      type: "new_message",
+      chat_id: "chat-remount",
+      message,
+      stream_seq: 91,
+      resume_token: "remount-token-91",
+    })
+
+    const first = renderHook(
+      () => useChatWebSocket({ enabled: true, currentUserId: "remount-user" }),
+      { wrapper: makeWrapper() }
+    )
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    act(() => TestWebSocket.instances[0]?.onmessage?.({ data: "checkpoint" } as MessageEvent))
+    first.unmount()
+
+    const second = renderHook(
+      () => useChatWebSocket({ enabled: true, currentUserId: "remount-user" }),
+      { wrapper: makeWrapper() }
+    )
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(2))
+    act(() => second.result.current.sendJoin("chat-remount"))
+    expect(TestWebSocket.instances[1]?.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "join", room: "chat-remount", resume_token: "remount-token-91" })
+    )
+    second.unmount()
+    vi.unstubAllGlobals()
+  })
+
+  it("releases process memory on final unmount and reloads the persisted checkpoint", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const makeWrapper = () => {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      })
+      const FinalUnmountWrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>
+          <WebSocketProvider>{children}</WebSocketProvider>
+        </QueryClientProvider>
+      )
+      FinalUnmountWrapper.displayName = "FinalUnmountWebSocketTestWrapper"
+      return FinalUnmountWrapper
+    }
+    const chatId = "8ef3bb0c-a893-4f74-bdb4-01544a532622"
+    mocks.parseWsMessage.mockReturnValue({
+      type: "replay_checkpoint",
+      chat_id: chatId,
+      stream_seq: 91,
+      resume_token: "final-token-91",
+      replayed: true,
+    })
+
+    const first = renderHook(
+      () => useChatWebSocket({ enabled: true, currentUserId: "final-unmount-user" }),
+      { wrapper: makeWrapper() }
+    )
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    act(() => TestWebSocket.instances[0]?.onmessage?.({ data: "checkpoint" } as MessageEvent))
+    first.unmount()
+    const storageKey = "university.chat.replay.v2:final-unmount-user"
+    window.sessionStorage.setItem(
+      storageKey,
+      JSON.stringify({ entries: [[chatId, 37, "persisted-token-37"]] })
+    )
+
+    const second = renderHook(
+      () => useChatWebSocket({ enabled: true, currentUserId: "final-unmount-user" }),
+      { wrapper: makeWrapper() }
+    )
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(2))
+    act(() => second.result.current.sendJoin(chatId))
+
+    expect(TestWebSocket.instances[1]?.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "join", room: chatId, resume_token: "persisted-token-37" })
+    )
+    second.unmount()
+    vi.unstubAllGlobals()
+  })
+
+  it("globally bounds user checkpoint registries while preserving session storage", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <WebSocketProvider>{children}</WebSocketProvider>
+      </QueryClientProvider>
+    )
+    const chatId = "8ef3bb0c-a893-4f74-bdb4-01544a532623"
+    mocks.parseWsMessage.mockImplementation((frame: string) => ({
+      type: "replay_checkpoint",
+      chat_id: chatId,
+      stream_seq: Number(frame.slice("global-checkpoint-".length)) + 1,
+      resume_token: `global-token-${frame.slice("global-checkpoint-".length)}`,
+      replayed: true,
+    }))
+    const sessions: Array<{
+      result: { current: ReturnType<typeof useChatWebSocket> }
+      unmount: () => void
+    }> = []
+
+    for (let index = 0; index < 17; index += 1) {
+      const session = renderHook(
+        () => useChatWebSocket({ enabled: true, currentUserId: `global-user-${index}` }),
+        { wrapper: localWrapper }
+      )
+      sessions.push(session)
+      await waitFor(() => expect(TestWebSocket.instances).toHaveLength(index + 1))
+      act(() =>
+        TestWebSocket.instances[index]?.onmessage?.({
+          data: `global-checkpoint-${index}`,
+        } as MessageEvent)
+      )
+    }
+
+    // The 17th active account evicts the least-recently-used in-memory registry
+    // while its durable session value remains independently reloadable.
+    window.sessionStorage.setItem(
+      "university.chat.replay.v2:global-user-0",
+      JSON.stringify({ entries: [[chatId, 99, "persisted-global-token-99"]] })
+    )
+    act(() => sessions[0]?.result.current.sendJoin(chatId))
+    expect(TestWebSocket.instances[0]?.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "join", room: chatId, resume_token: "persisted-global-token-99" })
+    )
+
+    sessions.forEach((session) => session.unmount())
+    vi.unstubAllGlobals()
+  })
+
+  it("clears durable checkpoints when the authenticated session logs out", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const makeWrapper = () => {
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+      })
+      const LogoutWrapper = ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={queryClient}>
+          <WebSocketProvider>{children}</WebSocketProvider>
+        </QueryClientProvider>
+      )
+      LogoutWrapper.displayName = "LogoutWebSocketTestWrapper"
+      return LogoutWrapper
+    }
+    const message: Message = {
+      id: "logout-message",
+      chat_id: "chat-logout",
+      sender_id: "peer",
+      content: "clear me",
+      created_at: "2026-08-25T12:00:00Z",
+      read_status: false,
+      attachments: [],
+    }
+    mocks.parseWsMessage.mockReturnValue({
+      type: "new_message",
+      chat_id: "chat-logout",
+      message,
+      stream_seq: 101,
+      resume_token: "logout-token-101",
+    })
+
+    const session = renderHook(
+      ({ userId }) => useChatWebSocket({ enabled: true, currentUserId: userId }),
+      { wrapper: makeWrapper(), initialProps: { userId: "logout-user" as string | undefined } }
+    )
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    act(() => TestWebSocket.instances[0]?.onmessage?.({ data: "checkpoint" } as MessageEvent))
+    session.rerender({ userId: undefined })
+    await act(async () => Promise.resolve())
+    session.unmount()
+
+    const nextSession = renderHook(
+      () => useChatWebSocket({ enabled: true, currentUserId: "logout-user" }),
+      { wrapper: makeWrapper() }
+    )
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(2))
+    act(() => nextSession.result.current.sendJoin("chat-logout"))
+    expect(TestWebSocket.instances[1]?.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "join", room: "chat-logout" })
+    )
+    nextSession.unmount()
+    vi.unstubAllGlobals()
+  })
+
+  it("bounds the persisted room registry without evicting the active room", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <WebSocketProvider>{children}</WebSocketProvider>
+      </QueryClientProvider>
+    )
+    mocks.parseWsMessage.mockImplementation((frame: string) => {
+      const index = Number(frame.slice("checkpoint-".length))
+      const chatId = `checkpoint-chat-${index}`
+      return {
+        type: "new_message",
+        chat_id: chatId,
+        message: {
+          id: `checkpoint-message-${index}`,
+          chat_id: chatId,
+          sender_id: "peer",
+          content: String(index),
+          created_at: new Date(Date.UTC(2026, 7, 25, 12, 0, index)).toISOString(),
+          read_status: false,
+          attachments: [],
+        },
+        stream_seq: index + 1,
+        resume_token: `bounded-token-${index + 1}`,
+      }
+    })
+
+    const first = renderHook(
+      () => useChatWebSocket({ enabled: true, currentUserId: "bounded-checkpoint-user" }),
+      { wrapper: localWrapper }
+    )
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    act(() => first.result.current.sendJoin("checkpoint-chat-0"))
+    act(() => {
+      for (let index = 0; index <= 256; index += 1) {
+        TestWebSocket.instances[0]?.onmessage?.({ data: `checkpoint-${index}` } as MessageEvent)
+      }
+    })
+    first.unmount()
+
+    expect(window.sessionStorage).toHaveLength(1)
+    const registry = JSON.parse(window.sessionStorage.getItem(window.sessionStorage.key(0)!)!) as {
+      entries: Array<[string, number, string]>
+    }
+    expect(registry.entries).toHaveLength(256)
+    expect(registry.entries).toContainEqual(["checkpoint-chat-0", 1, "bounded-token-1"])
+
+    const second = renderHook(
+      () => useChatWebSocket({ enabled: true, currentUserId: "bounded-checkpoint-user" }),
+      { wrapper: localWrapper }
+    )
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(2))
+    act(() => second.result.current.sendJoin("checkpoint-chat-0"))
+    expect(TestWebSocket.instances[1]?.send).toHaveBeenCalledWith(
+      JSON.stringify({ type: "join", room: "checkpoint-chat-0", resume_token: "bounded-token-1" })
+    )
+    second.unmount()
+    vi.unstubAllGlobals()
+  })
+
+  it("resets replay protection when the authenticated user session changes", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <WebSocketProvider>{children}</WebSocketProvider>
+      </QueryClientProvider>
+    )
+    const message: Message = {
+      id: "session-message",
+      chat_id: "chat-session",
+      sender_id: "peer",
+      content: "new session",
+      created_at: "2026-08-25T12:00:00Z",
+      read_status: false,
+      attachments: [],
+    }
+    const emptyCache = (): MessagesListResponse => ({
+      items: [],
+      has_more: false,
+      next_cursor: null,
+    })
+    queryClient.setQueryData<MessagesListResponse>(["messages", "chat-session"], emptyCache())
+    mocks.parseWsMessage.mockReturnValue({
+      type: "new_message",
+      chat_id: "chat-session",
+      message,
+    })
+    const onNewMessage = vi.fn()
+    const { rerender } = renderHook(
+      ({ currentUserId }) => useChatWebSocket({ enabled: true, currentUserId, onNewMessage }),
+      { wrapper: localWrapper, initialProps: { currentUserId: "session-user-1" } }
+    )
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    const socket = TestWebSocket.instances[0]!
+    act(() => socket.onmessage?.({ data: "first-session" } as MessageEvent))
+
+    queryClient.setQueryData<MessagesListResponse>(["messages", "chat-session"], emptyCache())
+    rerender({ currentUserId: "session-user-2" })
+    act(() => socket.onmessage?.({ data: "second-session" } as MessageEvent))
+
+    expect(onNewMessage).toHaveBeenCalledTimes(2)
+    expect(
+      queryClient.getQueryData<MessagesListResponse>(["messages", "chat-session"])?.items
+    ).toEqual([message])
+    vi.unstubAllGlobals()
+  })
+
+  it("bounds the 201st live message while keeping the trimmed edge recoverable", async () => {
     TestWebSocket.instances = []
     vi.stubGlobal("WebSocket", TestWebSocket)
     const queryClient = new QueryClient({
@@ -321,10 +1322,10 @@ describe("useChatWebSocket", () => {
     })
 
     const cached = queryClient.getQueryData<MessagesListResponse>(["messages", "chat-1"])
-    expect(cached?.items).toHaveLength(201)
-    expect(cached?.items[0]?.id).toBe("message-0")
-    expect(cached?.has_more).toBe(false)
-    expect(cached?.next_cursor).toBeNull()
+    expect(cached?.items).toHaveLength(200)
+    expect(cached?.items[0]?.id).toBe("message-1")
+    expect(cached?.has_more).toBe(true)
+    expect(cached?.next_cursor).toBe(`${Date.parse(initialItems[1]!.created_at) * 1000}:message-1`)
     vi.unstubAllGlobals()
   })
 

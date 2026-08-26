@@ -1,9 +1,9 @@
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, type FormEvent } from "react"
 import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Eye, EyeOff, Sparkles, UsersRound, ShieldCheck, Crown } from "lucide-react"
 import { m } from "framer-motion"
-import { useForm, Controller, type SubmitHandler } from "react-hook-form"
+import { useForm, Controller } from "react-hook-form"
 import { valibotResolver } from "@hookform/resolvers/valibot"
 
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
@@ -17,6 +17,13 @@ import { suggestEmailDomain } from "@/utils/authUtils"
 import { cn } from "@/utils/cn"
 import { registerSchema, type RegisterValues } from "@/features/auth/schemas"
 import { analyzePasswordStrength } from "@/utils/passwordStrength"
+import {
+  captureActiveTelemetryContext,
+  type CapturedTelemetryContext,
+} from "@/utils/telemetryContext"
+
+export const resolveRegistrationEmailErrorKey = (message?: string): string =>
+  message || "auth:messages.invalidFormat"
 
 const Register = () => {
   const { t, i18n } = useTranslation(["auth"])
@@ -96,15 +103,17 @@ const Register = () => {
     }
   }, [password, passwordStrengthLanguage])
 
-  const onSubmit: SubmitHandler<RegisterValues> = async (data) => {
+  const onSubmit = async (data: RegisterValues, telemetryContext: CapturedTelemetryContext) => {
     try {
-      await api.post("/auth/register", {
-        full_name: data.full_name,
-        email: data.email,
-        password: data.password,
-        role: data.role,
-        invite_code: data.invite_code,
-      })
+      await telemetryContext.run(() =>
+        api.post("/auth/register", {
+          full_name: data.full_name,
+          email: data.email,
+          password: data.password,
+          role: data.role,
+          invite_code: data.invite_code,
+        })
+      )
       navigate({ to: "/login" })
     } catch (error: unknown) {
       let errorMessage = t("auth:register.error")
@@ -116,6 +125,11 @@ const Register = () => {
       }
       setError("root", { message: errorMessage })
     }
+  }
+
+  const handleTelemetrySubmit = (event: FormEvent<HTMLFormElement>) => {
+    const telemetryContext = captureActiveTelemetryContext()
+    return handleSubmit((data) => onSubmit(data, telemetryContext))(event)
   }
 
   const passwordStrengthPercent = useMemo(() => {
@@ -204,7 +218,7 @@ const Register = () => {
           className="auth-card-matte flex w-full min-w-0 flex-col justify-center border-glass-border-subtle bg-surface/(--opacity-hover) p-6 sm:p-10"
         >
           <form
-            onSubmit={handleSubmit(onSubmit)}
+            onSubmit={handleTelemetrySubmit}
             autoComplete="on"
             className="flex flex-col gap-6"
             noValidate
@@ -284,7 +298,7 @@ const Register = () => {
                 role={errors.email ? "alert" : undefined}
                 className="text-text-secondary text-xs font-medium"
               >
-                {errors.email ? t(errors.email.message || "auth:messages.invalidFormat") : " "}
+                {errors.email ? t(resolveRegistrationEmailErrorKey(errors.email.message)) : " "}
               </p>
               {emailSuggestion ? (
                 <button

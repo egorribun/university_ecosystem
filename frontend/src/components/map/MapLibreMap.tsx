@@ -12,7 +12,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { Map, Layer } from "react-map-gl/maplibre"
 import type { MapRef, LayerProps } from "react-map-gl/maplibre"
 import { useTranslation } from "react-i18next"
-import { CAMPUS_COORDINATES } from "@/constants/campus"
+import { CAMPUS_COORDINATES, CAMPUS_DETAIL_ZOOM } from "@/constants/campus"
 import { getCampusBuildings, type BuildingId, type MapCategory } from "@/data/campusBuildings"
 import { CAMPUS_POIS } from "@/data/campusPOI"
 import type { MapViewport } from "@/features/map/schema"
@@ -23,6 +23,12 @@ import { WeatherParticles } from "./WeatherParticles"
 import { EventMarker } from "./EventMarker"
 import type { WeatherCondition } from "@/utils/weatherCodes"
 import type { MapEvent } from "@/hooks/useMapEvents"
+import {
+  layoutMapMarkerOffsets,
+  layoutProjectedMapMarkerOffsets,
+  type MapMarkerCollisionItem,
+  type ScreenPoint,
+} from "@/features/map/markerCollisionLayout"
 import "maplibre-gl/dist/maplibre-gl.css"
 
 /* ── Tile styles ── */
@@ -154,6 +160,10 @@ export function MapLibreMapComponent({
    *  programmatic easeTo for building selection) sync to URL since they
    *  represent user intent. */
   const enableUrlSyncRef = useRef(!!urlInitialViewport)
+  const [projectedMarkerLayout, setProjectedMarkerLayout] = useState<{
+    markers: readonly MapMarkerCollisionItem[]
+    points: ReadonlyMap<string, ScreenPoint>
+  } | null>(null)
 
   const buildings = useMemo(
     () => getCampusBuildings(i18n.resolvedLanguage ?? i18n.language),
@@ -187,6 +197,56 @@ export function MapLibreMapComponent({
     }
     return counts
   }, [mapEvents])
+
+  const collisionMarkers = useMemo<readonly MapMarkerCollisionItem[]>(
+    () => [
+      ...buildings.map((building) => ({
+        id: `building-${building.letter}`,
+        latitude: building.geoCoords[0],
+        longitude: building.geoCoords[1],
+        width: 44,
+        height: 50,
+        anchor: "bottom" as const,
+      })),
+      ...CAMPUS_POIS.map((poi) => ({
+        id: `poi-${poi.id}`,
+        latitude: poi.coords[0],
+        longitude: poi.coords[1],
+        width: 44,
+        height: 44,
+        anchor: "center" as const,
+      })),
+      ...(mapEvents ?? []).map((event) => ({
+        id: `event-${event.id}`,
+        latitude: event.geoCoords[0],
+        longitude: event.geoCoords[1],
+        width: 44,
+        height: 45,
+        anchor: "bottom" as const,
+      })),
+    ],
+    [buildings, mapEvents]
+  )
+
+  const markerOffsets = useMemo(
+    () =>
+      projectedMarkerLayout?.markers === collisionMarkers
+        ? layoutProjectedMapMarkerOffsets(collisionMarkers, projectedMarkerLayout.points)
+        : layoutMapMarkerOffsets(collisionMarkers),
+    [collisionMarkers, projectedMarkerLayout]
+  )
+
+  const updateCollisionProjection = useCallback(
+    (map: ReturnType<MapRef["getMap"]>) => {
+      const nextPoints = new globalThis.Map<string, ScreenPoint>()
+      for (const marker of collisionMarkers) {
+        const point = map.project([marker.longitude, marker.latitude])
+        nextPoints.set(marker.id, { x: point.x, y: point.y })
+      }
+      setProjectedMarkerLayout({ markers: collisionMarkers, points: nextPoints })
+    },
+    [collisionMarkers]
+  )
 
   const mapStyle = isDark ? STYLE_DARK : STYLE_LIGHT
 
@@ -225,6 +285,7 @@ export function MapLibreMapComponent({
 
       // Canvas resize (FIX-109-01: fixes stale drag handlers after View Transition)
       map.resize()
+      updateCollisionProjection(map)
 
       // Sky/fog atmosphere
       map.setSky(getSkyConfig(!!isDark, timePeriod))
@@ -248,7 +309,7 @@ export function MapLibreMapComponent({
         } else if (prefersReduced) {
           map.jumpTo({
             center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
-            zoom: 16,
+            zoom: CAMPUS_DETAIL_ZOOM,
             pitch: 45,
             bearing: 0,
           })
@@ -257,7 +318,7 @@ export function MapLibreMapComponent({
             if (cancelled) return
             map.flyTo({
               center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
-              zoom: 16,
+              zoom: CAMPUS_DETAIL_ZOOM,
               pitch: 45,
               bearing: 0,
               duration: 2500,
@@ -278,11 +339,25 @@ export function MapLibreMapComponent({
         introTimeoutRef.current = null
       }
     }
-  }, [mapRef, isDark, timePeriod, urlInitialViewport])
+  }, [mapRef, isDark, timePeriod, urlInitialViewport, updateCollisionProjection])
+
+  useEffect(() => {
+    const map = mapRef?.current?.getMap()
+    if (map?.loaded()) updateCollisionProjection(map)
+  }, [mapRef, updateCollisionProjection])
 
   /* ── URL-sync onMoveEnd handler (Wave 120 SW5) ── */
   const handleMoveEnd = useCallback(
     (evt: { originalEvent?: unknown }) => {
+      const map = mapRef?.current?.getMap()
+      if (!map) return
+      const nextCamera = {
+        zoom: map.getZoom(),
+        pitch: map.getPitch(),
+        bearing: map.getBearing(),
+      }
+      updateCollisionProjection(map)
+
       // Skip programmatic moves until first user interaction (intro / sky setup).
       // After first user-initiated move, originalEvent is set on subsequent
       // user events; we latch enableUrlSyncRef so even programmatic easeTo
@@ -294,18 +369,16 @@ export function MapLibreMapComponent({
           return
         }
       }
-      const map = mapRef?.current?.getMap()
-      if (!map) return
       const center = map.getCenter()
       onMapMoveEnd?.({
-        zoom: map.getZoom(),
+        zoom: nextCamera.zoom,
         latitude: center.lat,
         longitude: center.lng,
-        pitch: map.getPitch(),
-        bearing: map.getBearing(),
+        pitch: nextCamera.pitch,
+        bearing: nextCamera.bearing,
       })
     },
-    [mapRef, onMapMoveEnd]
+    [mapRef, onMapMoveEnd, updateCollisionProjection]
   )
 
   /* ── Update sky on theme/time-of-day change ── */
@@ -344,7 +417,7 @@ export function MapLibreMapComponent({
             : {
                 longitude: CAMPUS_COORDINATES.lon,
                 latitude: CAMPUS_COORDINATES.lat,
-                zoom: 13,
+                zoom: CAMPUS_DETAIL_ZOOM,
                 pitch: 0,
                 bearing: -20,
               }
@@ -375,6 +448,7 @@ export function MapLibreMapComponent({
             onPopupOpen={() => setActivePopupId(`bldg-${building.letter}`)}
             onPopupClose={() => setActivePopupId(null)}
             eventCount={eventCountByBuilding[building.letter] ?? 0}
+            offset={markerOffsets.get(`building-${building.letter}`)}
           />
         ))}
 
@@ -389,6 +463,7 @@ export function MapLibreMapComponent({
               onDeselectBuilding()
             }}
             onPopupClose={() => setActivePopupId(null)}
+            offset={markerOffsets.get(`poi-${poi.id}`)}
           />
         ))}
 
@@ -403,6 +478,7 @@ export function MapLibreMapComponent({
               onDeselectBuilding()
             }}
             onPopupClose={() => setActivePopupId(null)}
+            offset={markerOffsets.get(`event-${event.id}`)}
           />
         ))}
       </Map>

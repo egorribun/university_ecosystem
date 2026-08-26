@@ -5,9 +5,14 @@ import type { useNotifications } from "@/hooks/useNotifications"
 import NotificationsBell from "../feedback/NotificationsBell"
 
 const useNotificationsMock = vi.fn()
+const motionState = vi.hoisted(() => ({ reducedMotion: false }))
 
 vi.mock("@/hooks/useNotifications", () => ({
   useNotifications: () => useNotificationsMock(),
+}))
+
+vi.mock("@/hooks/useMediaQuery", () => ({
+  default: () => motionState.reducedMotion,
 }))
 
 const translations: Record<string, string> = {
@@ -86,7 +91,7 @@ vi.mock("framer-motion", () => {
     domMax: {},
     motion: motionProxy,
     m: motionProxy,
-    useReducedMotion: () => false,
+    useReducedMotion: () => motionState.reducedMotion,
   }
 })
 
@@ -116,6 +121,7 @@ describe("NotificationsBell", () => {
 
   beforeEach(() => {
     useNotificationsMock.mockReset()
+    motionState.reducedMotion = false
   })
 
   it("exposes dialog state and closes with Escape while restoring trigger focus", async () => {
@@ -131,6 +137,18 @@ describe("NotificationsBell", () => {
     await user.keyboard("{Escape}")
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     expect(trigger).toHaveFocus()
+  })
+
+  it("keeps the dialog open for non-Escape keys under reduced motion", async () => {
+    motionState.reducedMotion = true
+    useNotificationsMock.mockReturnValue(baseState())
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+
+    await user.click(screen.getByRole("button", { name: "Open notifications" }))
+    fireEvent.keyDown(document, { key: "Enter" })
+
+    expect(screen.getByRole("dialog", { name: "Notifications" })).toBeInTheDocument()
   })
 
   it("renders an error message and disables bulk actions when loading fails", async () => {

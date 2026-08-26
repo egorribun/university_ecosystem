@@ -38,7 +38,9 @@ async def test_confirm_totp_enrollment_failure(mock_complete):
     request.state.dishka_container.get.side_effect = mock_get
 
     with pytest.raises(HTTPException) as exc:
-        await confirm_totp_enrollment(payload=payload, request=request, user=user)
+        await confirm_totp_enrollment(
+            payload=payload, request=request, db=db, user=user
+        )
     assert exc.value.status_code == 400
     audit.log.assert_called_with(
         "auth.mfa.totp.enroll_failure",
@@ -70,7 +72,9 @@ async def test_confirm_totp_enrollment_not_found():
     user = MagicMock(id="user_123")
 
     with pytest.raises(HTTPException) as exc:
-        await confirm_totp_enrollment(payload=payload, request=request, user=user)
+        await confirm_totp_enrollment(
+            payload=payload, request=request, db=db, user=user
+        )
     assert exc.value.status_code == 404
     assert exc.value.detail == "Enrollment not found"
 
@@ -78,7 +82,9 @@ async def test_confirm_totp_enrollment_not_found():
     enrollment = MagicMock(user_id="user_other")
     db.get.return_value = enrollment
     with pytest.raises(HTTPException) as exc:
-        await confirm_totp_enrollment(payload=payload, request=request, user=user)
+        await confirm_totp_enrollment(
+            payload=payload, request=request, db=db, user=user
+        )
     assert exc.value.status_code == 404
     assert exc.value.detail == "Enrollment not found"
 
@@ -121,6 +127,7 @@ async def test_confirm_totp_rollback_does_not_publish_redis_revocations():
             await confirm_totp_enrollment(
                 payload=payload,
                 request=request,
+                db=db,
                 user=user,
             )
 
@@ -211,16 +218,11 @@ async def test_disable_totp_commit_failure_rolls_back_without_redis_publish():
 
 
 @pytest.mark.asyncio
-@patch("app.api.auth.mfa.mfa.user_has_confirmed_interactive_factor", return_value=False)
-@patch(
-    "app.models.user_loaders.ensure_mfa_relationships_loaded", new_callable=AsyncMock
-)
-async def test_request_step_up_missing_interactive_factor(
-    mock_ensure_loaded, mock_has_factor
-):
+async def test_request_step_up_missing_interactive_factor():
     db = AsyncMock()
     audit = MagicMock()
     login_service = AsyncMock()
+    login_service._resolve_mfa_capabilities.return_value = {}
 
     request = MagicMock()
     request.state.active_session = MagicMock()
@@ -261,7 +263,7 @@ async def test_generate_recovery_codes_endpoint(mock_generate):
     request.state.dishka_container.get = AsyncMock(side_effect=mock_get)
     user = MagicMock(id="user_123")
 
-    res = await generate_recovery_codes_endpoint(request=request, user=user)
+    res = await generate_recovery_codes_endpoint(request=request, db=db, user=user)
     assert res.codes == ["code1", "code2"]
     db.commit.assert_awaited_once()
     audit.log.assert_called_once()

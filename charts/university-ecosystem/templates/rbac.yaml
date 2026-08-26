@@ -11,7 +11,7 @@
 # access (S3, SSM, Secrets Manager) without static credentials. Set
 #   serviceAccount.roleArn in values.yaml per component.
 
-{{- range $component := list "backend" "gateway" "frontend" "file-processor" "outbox-worker" "backup" }}
+{{- range $component := list "backend" "gateway" "frontend" "ws-hub" "file-processor" "outbox-worker" "backup" }}
 ---
 apiVersion: v1
 kind: ServiceAccount

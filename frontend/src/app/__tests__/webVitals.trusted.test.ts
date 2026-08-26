@@ -37,6 +37,7 @@ describe("trusted field CWV transport", () => {
   })
 
   afterEach(() => {
+    document.cookie = "csrf_token=; Max-Age=0; path=/"
     vi.useRealTimers()
     resetWebVitalsForTesting()
     vi.restoreAllMocks()
@@ -176,5 +177,173 @@ describe("trusted field CWV transport", () => {
     })
     const observation = JSON.parse(fetchMock.mock.calls[2]![1]!.body as string)
     expect(observation.envelope).toBe("renewed-dashboard-envelope")
+  })
+
+  it("decodes a CSRF cookie for trusted requests and omits a malformed cookie", async () => {
+    document.cookie = "csrf_token=bound%20token; path=/"
+    const fetchMock = vi.fn().mockRejectedValue(new Error("offline"))
+    vi.stubGlobal("fetch", fetchMock)
+
+    expect(initWebVitals(env)).toBe(true)
+    expect(fetchMock.mock.calls[0]![1]).toEqual(
+      expect.objectContaining({
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": "bound token",
+        },
+      })
+    )
+
+    resetWebVitalsForTesting()
+    vi.clearAllMocks()
+    document.cookie = "csrf_token=%E0%A4%A; path=/"
+    expect(initWebVitals(env)).toBe(true)
+    expect(fetchMock.mock.calls[0]![1]).toEqual(
+      expect.objectContaining({ headers: { "Content-Type": "application/json" } })
+    )
+  })
+
+  it("rejects malformed and cross-origin trusted endpoints before registration", () => {
+    expect(initWebVitals({ ...env, VITE_WEB_VITALS_ENDPOINT: "http://[invalid" })).toBe(false)
+    expect(initWebVitals({ ...env, VITE_WEB_VITALS_ENDPOINT: "https://metrics.example/v1" })).toBe(
+      false
+    )
+  })
+
+  it("reuses a healthy cached envelope for multiple observations", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            envelope: "cached-envelope",
+            expires_at: new Date(Date.now() + 300_000).toISOString(),
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+      .mockResolvedValue(new Response(null, { status: 202 }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    expect(initWebVitals(env)).toBe(true)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    await new Promise((resolve) => window.setTimeout(resolve, 0))
+
+    vi.mocked(onLCP).mock.calls[0]![0]({ name: "LCP", value: 2000 } as never)
+    vi.mocked(onFCP).mock.calls[0]![0]({ name: "INP", value: 100 } as never)
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/v1/cwv/envelope",
+      "/api/v1/cwv/observations",
+      "/api/v1/cwv/observations",
+    ])
+  })
+
+  it("binds a desktop envelope when the initial viewport is wider than mobile", () => {
+    vi.mocked(window.matchMedia).mockReturnValue({ matches: false } as MediaQueryList)
+    const fetchMock = vi.fn().mockRejectedValue(new Error("offline"))
+    vi.stubGlobal("fetch", fetchMock)
+
+    expect(initWebVitals(env)).toBe(true)
+
+    expect(JSON.parse(fetchMock.mock.calls[0]![1]!.body as string)).toEqual({
+      pathname: "/",
+      device_class: "desktop",
+    })
+  })
+
+  it.each([
+    ["missing envelope", { expires_at: new Date(Date.now() + 300_000).toISOString() }],
+    ["non-string expiry", { envelope: "signed", expires_at: 123 }],
+    ["invalid expiry", { envelope: "signed", expires_at: "not-a-date" }],
+    ["expired envelope", { envelope: "signed", expires_at: "2020-01-01T00:00:00Z" }],
+  ])(
+    "drops a %s response and requests a fresh envelope for a later metric",
+    async (_case, body) => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      vi.stubGlobal("fetch", fetchMock)
+
+      expect(initWebVitals(env)).toBe(true)
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+      await new Promise((resolve) => window.setTimeout(resolve, 0))
+      vi.mocked(onLCP).mock.calls[0]![0]({ name: "LCP", value: 2400 } as never)
+
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+      expect(fetchMock.mock.calls.every(([url]) => url === "/api/v1/cwv/envelope")).toBe(true)
+    }
+  )
+
+  it("deduplicates certification metrics while the envelope request is pending", async () => {
+    let resolveEnvelope!: (value: Response) => void
+    const pendingEnvelope = new Promise<Response>((resolve) => {
+      resolveEnvelope = resolve
+    })
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(pendingEnvelope)
+      .mockResolvedValue(new Response(null, { status: 202 }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    expect(initWebVitals(env)).toBe(true)
+    vi.mocked(onLCP).mock.calls[0]![0]({ name: "LCP", value: 2200 } as never)
+    vi.mocked(onFCP).mock.calls[0]![0]({ name: "CLS", value: 0.05 } as never)
+    expect(fetchMock).toHaveBeenCalledOnce()
+
+    resolveEnvelope(
+      new Response(
+        JSON.stringify({
+          envelope: "shared-envelope",
+          expires_at: new Date(Date.now() + 300_000).toISOString(),
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      )
+    )
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/v1/cwv/envelope")).toHaveLength(1)
+  })
+
+  it("retries envelope collection after a non-success response", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 503 }))
+    vi.stubGlobal("fetch", fetchMock)
+
+    expect(initWebVitals(env)).toBe(true)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    await new Promise((resolve) => window.setTimeout(resolve, 0))
+
+    vi.mocked(onLCP).mock.calls[0]![0]({ name: "LCP", value: 2400 } as never)
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(fetchMock.mock.calls.every(([url]) => url === "/api/v1/cwv/envelope")).toBe(true)
+  })
+
+  it("absorbs an observation transport rejection after a valid envelope", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            envelope: "signed-envelope",
+            expires_at: new Date(Date.now() + 300_000).toISOString(),
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      )
+      .mockRejectedValueOnce(new Error("observation endpoint offline"))
+    vi.stubGlobal("fetch", fetchMock)
+
+    expect(initWebVitals(env)).toBe(true)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    await Promise.resolve()
+    vi.mocked(onLCP).mock.calls[0]![0]({ name: "LCP", value: 2400 } as never)
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    await expect(Promise.resolve()).resolves.toBeUndefined()
   })
 })

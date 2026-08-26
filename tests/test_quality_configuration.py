@@ -634,13 +634,15 @@ def test_vitest_does_not_discover_stryker_sandbox_tests() -> None:
 
 def test_stryker_does_not_copy_generated_caches_or_sandboxes() -> None:
     config = _read_text("frontend/stryker.config.mjs")
+    runner = _read_text("frontend/scripts/run-stryker.mjs")
 
-    assert (
-        'const strykerTempRoot = path.join(os.tmpdir(), "university-ecosystem-stryker")'
-        in config
-    )
+    assert "process.env.STRYKER_TEMP_DIR ?? path.join(os.tmpdir()" in config
+    assert '"university-ecosystem-stryker-unscoped"' in config
     assert "tempDirName: strykerTempRoot" in config
     assert 'cleanTempDir: "always"' in config
+    assert '"university-ecosystem-stryker-runs"' in runner
+    assert "assertOwnedTemporaryDirectory(temporaryRoot, runId)" in runner
+    assert "STRYKER_TEMP_DIR: shardTemp" in runner
     for fragment in (
         '"**/.codex_*/**"',
         '"**/target/**"',

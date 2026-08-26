@@ -204,10 +204,11 @@ describe("useMessengerController", () => {
       })
       const current = makeApiMessage("m-current", "2026-08-25T12:00:00Z")
       const older = makeApiMessage("m-older", "2026-08-25T11:00:00Z")
+      const olderTie = makeApiMessage("m-before-older", "2026-08-25T11:00:00Z")
       mocks.chatApi.getMessages.mockImplementation((_chatId: string, cursor?: string) =>
         cursor
           ? Promise.resolve({
-              items: [older, current],
+              items: [older, current, olderTie],
               has_more: false,
               next_cursor: null,
             })
@@ -229,6 +230,7 @@ describe("useMessengerController", () => {
 
       await waitFor(() =>
         expect(result.current.messages.map((message) => message.id)).toEqual([
+          "m-before-older",
           "m-older",
           "m-current",
         ])
@@ -290,6 +292,114 @@ describe("useMessengerController", () => {
       await act(async () => {
         await Promise.all([first, second])
       })
+    })
+
+    it("does not request older history without a selected chat or a complete cursor", async () => {
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+
+      await act(() => result.current.handleLoadOlderMessages())
+      expect(mocks.chatApi.getMessages).not.toHaveBeenCalled()
+
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      mocks.chatApi.getMessages.mockResolvedValueOnce({
+        items: [],
+        has_more: true,
+        next_cursor: null,
+      })
+      rerender()
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+      await act(() => result.current.handleLoadOlderMessages())
+
+      expect(mocks.chatApi.getMessages).toHaveBeenCalledOnce()
+      expect(result.current.isLoadingOlderMessages).toBe(false)
+    })
+
+    it("surfaces a non-aborted older-history failure and allows retry", async () => {
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      mocks.chatApi.getMessages.mockImplementation((_chatId: string, cursor?: string) =>
+        cursor
+          ? Promise.reject(new Error("history unavailable"))
+          : Promise.resolve({ items: [], has_more: true, next_cursor: "cursor-older" })
+      )
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.hasMoreMessages).toBe(true))
+
+      await act(() => result.current.handleLoadOlderMessages())
+
+      expect(result.current.olderMessagesError).toBe(true)
+      expect(result.current.isLoadingOlderMessages).toBe(false)
+    })
+
+    it("aborts an older-history failure on unmount without surfacing an error", async () => {
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      let rejectOlder!: (reason?: unknown) => void
+      const olderRequest = new Promise<never>((_resolve, reject) => {
+        rejectOlder = reject
+      })
+      mocks.chatApi.getMessages.mockImplementation((_chatId: string, cursor?: string) =>
+        cursor
+          ? olderRequest
+          : Promise.resolve({ items: [], has_more: true, next_cursor: "cursor-older" })
+      )
+      const { result, unmount } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.hasMoreMessages).toBe(true))
+
+      let request!: Promise<void>
+      act(() => {
+        request = result.current.handleLoadOlderMessages()
+      })
+      const signal = mocks.chatApi.getMessages.mock.calls.find(
+        (call) => call[1] === "cursor-older"
+      )?.[3] as AbortSignal
+      unmount()
+      expect(signal.aborted).toBe(true)
+
+      rejectOlder(new Error("cancelled"))
+      await request
+    })
+
+    it("drops an older page that resolves after navigation to another chat", async () => {
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      let resolveOlder!: (value: {
+        items: ReturnType<typeof makeApiMessage>[]
+        has_more: false
+        next_cursor: null
+      }) => void
+      const olderRequest = new Promise<{
+        items: ReturnType<typeof makeApiMessage>[]
+        has_more: false
+        next_cursor: null
+      }>((resolve) => {
+        resolveOlder = resolve
+      })
+      mocks.chatApi.getMessages.mockImplementation((_chatId: string, cursor?: string) =>
+        cursor
+          ? olderRequest
+          : Promise.resolve({ items: [], has_more: true, next_cursor: "cursor-older" })
+      )
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.hasMoreMessages).toBe(true))
+
+      let request!: Promise<void>
+      act(() => {
+        request = result.current.handleLoadOlderMessages()
+      })
+      const signal = mocks.chatApi.getMessages.mock.calls.find(
+        (call) => call[1] === "cursor-older"
+      )?.[3] as AbortSignal
+      mocks.paramsRef.current = { chatId: "chat-2" }
+      rerender()
+      await waitFor(() => expect(signal.aborted).toBe(true))
+
+      resolveOlder({
+        items: [makeApiMessage("stale-older", "2026-08-25T10:00:00Z")],
+        has_more: false,
+        next_cursor: null,
+      })
+      await request
+
+      expect(result.current.messages.some((message) => message.id === "stale-older")).toBe(false)
+      expect(result.current.olderMessagesError).toBe(false)
     })
 
     it("preserves a WebSocket-only message when REST hydration resolves later", async () => {

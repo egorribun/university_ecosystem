@@ -8,6 +8,7 @@ import sys
 import tempfile
 import time
 import uuid
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -131,9 +132,10 @@ def test_explicit_sqlite_database_is_refused_without_reset_opt_in(
     tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "university.db"
-    with sqlite3.connect(database_path) as connection:
+    with closing(sqlite3.connect(database_path)) as connection:
         connection.execute("CREATE TABLE sentinel (value TEXT NOT NULL)")
         connection.execute("INSERT INTO sentinel VALUES ('preserve-me')")
+        connection.commit()
     explicit_url = f"sqlite+aiosqlite:///{database_path.resolve().as_posix()}"
     environment = os.environ.copy()
     for variable in (
@@ -175,7 +177,7 @@ def test_explicit_sqlite_database_is_refused_without_reset_opt_in(
         "explicit database reset is not authorized"
         in (process.stdout + process.stderr).lower()
     )
-    with sqlite3.connect(database_path) as connection:
+    with closing(sqlite3.connect(database_path)) as connection:
         assert connection.execute("SELECT value FROM sentinel").fetchone() == (
             "preserve-me",
         )
@@ -185,9 +187,10 @@ def test_environment_and_integration_selectors_do_not_authorize_database_reset(
     tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "selector-test.db"
-    with sqlite3.connect(database_path) as connection:
+    with closing(sqlite3.connect(database_path)) as connection:
         connection.execute("CREATE TABLE sentinel (value TEXT NOT NULL)")
         connection.execute("INSERT INTO sentinel VALUES ('preserve-me')")
+        connection.commit()
     environment = os.environ.copy()
     for variable in (
         _AUTO_DATABASE_URL_ENV,
@@ -230,7 +233,7 @@ def test_environment_and_integration_selectors_do_not_authorize_database_reset(
         "explicit database reset is not authorized"
         in (process.stdout + process.stderr).lower()
     )
-    with sqlite3.connect(database_path) as connection:
+    with closing(sqlite3.connect(database_path)) as connection:
         assert connection.execute("SELECT value FROM sentinel").fetchone() == (
             "preserve-me",
         )
@@ -318,13 +321,14 @@ def test_automatic_database_cleanup_requires_intact_ownership_sentinel() -> None
         shutil.rmtree(database_dir, ignore_errors=True)
 
 
-def test_stale_scavenger_is_bounded_and_requires_valid_sentinel_age_and_dead_pid() -> (
-    None
-):
+def test_stale_scavenger_is_bounded_and_requires_valid_sentinel_age_and_dead_pid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     import tests.conftest as test_bootstrap
 
-    root = (Path(tempfile.gettempdir()) / "university-ecosystem-pytest").resolve()
+    root = (tmp_path / "university-ecosystem-pytest").resolve()
     root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(test_bootstrap, "_AUTO_DATABASE_ROOT", root)
     now = time.time()
     old = now - 7200
 
@@ -380,9 +384,10 @@ def test_opted_in_test_named_explicit_sqlite_preserves_unmanaged_tables(
     tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "ci-test.db"
-    with sqlite3.connect(database_path) as connection:
+    with closing(sqlite3.connect(database_path)) as connection:
         connection.execute("CREATE TABLE sentinel (value TEXT NOT NULL)")
         connection.execute("INSERT INTO sentinel VALUES ('preserve-me')")
+        connection.commit()
     environment = os.environ.copy()
     for variable in (
         _AUTO_DATABASE_URL_ENV,
@@ -419,7 +424,7 @@ def test_opted_in_test_named_explicit_sqlite_preserves_unmanaged_tables(
     )
 
     assert process.returncode == 0, process.stdout + process.stderr
-    with sqlite3.connect(database_path) as connection:
+    with closing(sqlite3.connect(database_path)) as connection:
         assert connection.execute("SELECT value FROM sentinel").fetchone() == (
             "preserve-me",
         )
@@ -493,7 +498,7 @@ def test_opted_in_explicit_database_is_clean_before_first_test_and_after(
     )
 
     assert process.returncode == 0, process.stdout + process.stderr
-    with sqlite3.connect(database_path) as connection:
+    with closing(sqlite3.connect(database_path)) as connection:
         assert connection.execute("SELECT COUNT(*) FROM groups").fetchone() == (0,)
 
 
@@ -531,7 +536,11 @@ def test_test_named_explicit_postgres_still_requires_caller_opt_in() -> None:
         env=environment,
         capture_output=True,
         text=True,
-        timeout=30,
+        # Importing the full application/plugin graph on Windows can exceed 30
+        # seconds on a contended CI worker before the fail-closed reset guard is
+        # evaluated. Keep the probe bounded while matching neighboring
+        # subprocess integration checks.
+        timeout=60,
         check=False,
     )
 

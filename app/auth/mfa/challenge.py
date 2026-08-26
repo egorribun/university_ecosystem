@@ -433,7 +433,6 @@ async def get_challenge(
         raise_http_error(
             status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
         )
-        raise ValueError("Invalid challenge")
     expected_digest = hmac.new(
         settings.secret_key.encode("utf-8"),
         _digest_message(
@@ -517,7 +516,6 @@ async def consume_challenge(
         raise_http_error(
             status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
         )
-        raise ValueError("Unreachable")
     challenge = await get_challenge(
         db,
         token=challenge_token,
@@ -611,6 +609,14 @@ async def consume_challenge(
             raise_http_error(
                 status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_code", locale
             )
+    else:
+        # Generic challenge consumption is restricted to factors whose proof is
+        # verified in this function. Email OTP has its own opaque-token path;
+        # accepting any other value here would consume a challenge without
+        # authenticating the caller.
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
+        )
 
     challenge.consumed_at = _utcnow()
     challenge.state = ChallengeState.CONSUMED

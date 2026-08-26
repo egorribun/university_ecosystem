@@ -15,15 +15,32 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	grpc_health_v1 "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
+
+type fakeReadinessClient struct {
+	response *grpc_health_v1.HealthCheckResponse
+	err      error
+	check    func(context.Context) (*grpc_health_v1.HealthCheckResponse, error)
+	service  string
+}
+
+func (f *fakeReadinessClient) Check(ctx context.Context, request *grpc_health_v1.HealthCheckRequest, _ ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error) {
+	f.service = request.GetService()
+	if f.check != nil {
+		return f.check(ctx)
+	}
+	return f.response, f.err
+}
 
 type closeNotifyingRecorder struct {
 	*httptest.ResponseRecorder
@@ -69,6 +86,45 @@ func TestHealthHandler_ReturnsCorrectJSON(t *testing.T) {
 	body := recorder.Body.String()
 	assert.Contains(t, body, `"status":"healthy"`)
 	assert.Contains(t, body, `"service":"gateway"`)
+}
+
+func TestReadinessHandlerChecksFileProcessorServingState(t *testing.T) {
+	for name, testCase := range map[string]struct {
+		client     fileProcessorHealthChecker
+		wantStatus int
+	}{
+		"serving":        {client: &fakeReadinessClient{response: &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_SERVING}}, wantStatus: http.StatusOK},
+		"not serving":    {client: &fakeReadinessClient{response: &grpc_health_v1.HealthCheckResponse{Status: grpc_health_v1.HealthCheckResponse_NOT_SERVING}}, wantStatus: http.StatusServiceUnavailable},
+		"rpc failure":    {client: &fakeReadinessClient{err: errors.New("unavailable")}, wantStatus: http.StatusServiceUnavailable},
+		"missing client": {client: nil, wantStatus: http.StatusServiceUnavailable},
+	} {
+		t.Run(name, func(t *testing.T) {
+			router := gin.New()
+			router.GET("/health/ready", ReadinessHandler(testCase.client, 50*time.Millisecond))
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/ready", nil))
+			assert.Equal(t, testCase.wantStatus, recorder.Code)
+			if client, ok := testCase.client.(*fakeReadinessClient); ok {
+				assert.Equal(t, "file_processor.v1.FileProcessingService", client.service)
+			}
+		})
+	}
+}
+
+func TestReadinessHandlerBoundsAndCancelsHealthRPC(t *testing.T) {
+	completed := make(chan error, 1)
+	client := &fakeReadinessClient{check: func(ctx context.Context) (*grpc_health_v1.HealthCheckResponse, error) {
+		<-ctx.Done()
+		completed <- context.Cause(ctx)
+		return nil, ctx.Err()
+	}}
+	router := gin.New()
+	router.GET("/health/ready", ReadinessHandler(client, 10*time.Millisecond))
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/health/ready", nil))
+
+	assert.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+	assert.ErrorIs(t, <-completed, context.DeadlineExceeded)
 }
 
 func TestProxyHandler_SetsRequestIDHeader(t *testing.T) {

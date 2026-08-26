@@ -30,6 +30,27 @@ def test_webauthn_dependency_is_retired() -> None:
     assert '"webauthn' not in pyproject
 
 
+def test_security_policy_describes_only_current_mfa_factors() -> None:
+    policy = (ROOT / "SECURITY.md").read_text(encoding="utf-8").lower()
+
+    assert "webauthn" not in policy
+    assert "passkey" not in policy
+    assert "totp" in policy
+    assert "email otp" in policy
+    assert "recovery code" in policy
+    assert "remediation" in policy
+
+
+def test_active_quality_contracts_have_no_retired_factor_references() -> None:
+    findings: list[str] = []
+    for path in (ROOT / "quality").glob("*.json"):
+        content = path.read_text(encoding="utf-8").lower()
+        if "webauthn" in content or "passkey" in content:
+            findings.append(str(path.relative_to(ROOT)))
+
+    assert findings == []
+
+
 def test_historical_migration_references_are_confined_to_immutable_history() -> None:
     assert ALLOWED_HISTORY.is_dir()
 

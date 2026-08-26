@@ -1,4 +1,6 @@
 # Global settings
+fullnameOverride: ""
+
 global:
   environment: "development"
   # Leave empty so dependency charts can use their own verified registries.
@@ -60,6 +62,45 @@ applicationSecrets:
 # Keep disabled for every installed release.
 deploymentContract:
   enabled: false
+
+# Typed Core Web Vitals release binding. These values are rendered explicitly
+# into the backend Deployment so workflow overrides cannot collide with the
+# free-form backend.env map.
+cwv:
+  rumEnabled: false
+  releaseSHA: "0000000000000000000000000000000000000000"
+  frontendImageDigest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  deploymentRunID: 1
+  deploymentRunAttempt: 1
+  deploymentURL: "https://disabled.invalid"
+  deployedAt: "1970-01-01T00:00:00Z"
+  allowedOrigins:
+    - "https://disabled.invalid"
+  exportOIDC:
+    enabled: false
+    repository: "disabled/disabled"
+    workflowRef: "disabled/disabled/.github/workflows/cwv-field-certification.yml@refs/heads/main"
+    subject: "disabled"
+
+# Conventional certificate-backed mTLS for the gateway -> file-processor gRPC
+# boundary. Secrets are created by cert-manager/ExternalSecrets and never by
+# this chart. Development keeps this disabled and uses NetworkPolicy-isolated
+# plaintext; staging/production validation requires it.
+internalGrpcMTLS:
+  enabled: false
+  serverName: ""
+  gatewayIdentityURI: ""
+  allowedClientURIs: []
+  gatewayClient:
+    existingSecret: ""
+    certKey: "tls.crt"
+    privateKeyKey: "tls.key" # pragma: allowlist secret
+    caKey: "ca.crt"
+  fileProcessorServer:
+    existingSecret: ""
+    certKey: "tls.crt"
+    privateKeyKey: "tls.key" # pragma: allowlist secret
+    clientCAKey: "ca.crt"
 
 # Database backup is opt-in because it requires reachable PostgreSQL and MinIO
 # services plus the Secret keys documented above. The init container produces a
@@ -199,6 +240,55 @@ gateway:
     # operators intentionally expose UDP and mount a trusted certificate.
     h3Enabled: false
 
+# WebSocket Hub (Go). The release owns this component atomically alongside the
+# gateway/backend; do not patch its image with an out-of-band kubectl rollout.
+wsHub:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: university-ws-hub
+    pullPolicy: Always
+    digest: ""
+    tag: ""
+  service:
+    type: ClusterIP
+    port: 8081
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  config:
+    allowedOrigins:
+      - "http://localhost:3000"
+      - "http://localhost:5173"
+    trustedProxies:
+      - "127.0.0.1"
+      - "::1"
+    sendBufferSize: 256
+    broadcastBufferSize: 4096
+    broadcastWorkers: 8
+    maxClients: 10000
+    clientMessageRateLimit: 10
+    clientMessageBurst: 20
+    ticketTTLSeconds: 15
+    otelEndpoint: "otel-collector:4317"
+    otelInsecure: true
+    jetstream:
+      enabled: true
+      chatStream: "CHAT_EVENTS"
+      notificationsStream: "NOTIFICATIONS_EVENTS"
+      chatDurable: "ws-hub-chat"
+      notificationsDurable: "ws-hub-notifications"
+
 # File Processor (Go)
 fileProcessor:
   enabled: true
@@ -266,7 +356,9 @@ ingress:
     nginx.ingress.kubernetes.io/limit-rps: "50"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
     nginx.ingress.kubernetes.io/limit-connections: "20"
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  issuer:
+    kind: ClusterIssuer
+    name: letsencrypt-prod
   hosts:
     - host: university.example.com
       paths:
@@ -275,6 +367,12 @@ ingress:
           service: frontend
     - host: api.university.example.com
       paths:
+        - path: /ws/ticket
+          pathType: Exact
+          service: gateway
+        - path: /ws/chat
+          pathType: Exact
+          service: ws-hub
         - path: /
           pathType: Prefix
           # Keep authentication, rate limiting, and gRPC dispatch at the edge.
@@ -325,6 +423,10 @@ postgresql:
 # Docs: https://github.com/bitnami/charts/tree/main/bitnami/redis
 redis:
   enabled: true
+  networkPolicy:
+    enabled: true
+    allowExternal: false
+    allowExternalEgress: false
   architecture: standalone  # standalone for dev; replication for prod
   auth:
     enabled: true
@@ -371,6 +473,10 @@ redis:
 # churn and pod restarts, and noeviction prevents revoked tokens resurrecting.
 revocationRedis:
   enabled: true
+  networkPolicy:
+    enabled: true
+    allowExternal: false
+    allowExternalEgress: false
   architecture: standalone
   auth:
     enabled: true
@@ -416,8 +522,23 @@ revocationRedis:
 # Docs: https://github.com/bitnami/charts/tree/main/bitnami/nats
 nats:
   enabled: true
+  networkPolicy:
+    enabled: true
+    allowExternal: false
+    allowExternalEgress: false
   resourceType: statefulset
   replicaCount: 1  # standalone for dev; 3 for prod cluster
+  # Development runs without client/cluster auth. Staging supplies a complete,
+  # authenticated nats-server.conf through nats.existingSecret so credentials
+  # never enter Helm release state.
+  existingSecret: ""
+  auth:
+    enabled: false
+  cluster:
+    auth:
+      enabled: false
+  image:
+    pullPolicy: Always
   resources:
     requests:
       cpu: 100m
@@ -425,15 +546,15 @@ nats:
     limits:
       cpu: 500m
       memory: 512Mi
-  nats:
-    jetstream:
-      enabled: true
-      memStorage:
-        enabled: true
-        size: 512Mi
-      fileStorage:
-        enabled: true
-        size: 10Gi
+  # Bitnami NATS 8.x consumes jetstream and persistence at the subchart root.
+  # Keep these paths aligned with Chart.lock; a nested `nats.jetstream` object is
+  # silently ignored by Helm and starts a non-durable Core NATS server.
+  jetstream:
+    enabled: true
+    maxMemory: 512Mi
+  persistence:
+    enabled: true
+    size: 10Gi
   # Pod security hardening
   podSecurityContext:
     runAsNonRoot: true

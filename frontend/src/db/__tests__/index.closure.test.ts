@@ -82,7 +82,7 @@ describe("RxDB database lifecycle", () => {
     }
   })
 
-  it("creates the validated database once and adds all application collections", async () => {
+  it("creates the validated database once and opens the Dexie collections", async () => {
     const database = makeDatabase()
     createRxDatabase.mockResolvedValue(database)
 
@@ -98,6 +98,7 @@ describe("RxDB database lifecycle", () => {
     })
     expect(getRxStorageDexie).toHaveBeenCalledOnce()
     expect(wrappedValidateAjvStorage).toHaveBeenCalledWith({ storage: "dexie-storage" })
+    expect(database.addCollections).toHaveBeenCalledOnce()
     expect(database.addCollections).toHaveBeenCalledWith({
       schedule: expect.objectContaining({ schema: expect.any(Object) }),
       notes: expect.objectContaining({ schema: expect.any(Object) }),

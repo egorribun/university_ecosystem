@@ -55,11 +55,17 @@ def test_webpush_subject_rejects_invalid_values(subject: str, message: str) -> N
 
 def test_notification_topics_are_normalized_deduplicated_and_cached() -> None:
     settings = _settings(notifications_allowed_push_topics=" News, events,news, ")
-    assert settings.notifications_allowed_push_topics == ["news", "events"]
+    assert settings.notifications_allowed_push_topics == [
+        "news.published",
+        "events.published",
+    ]
     assert settings.notifications_allowed_push_topics_set == frozenset(
-        {"news", "events"}
+        {"news.published", "events.published"}
     )
-    assert settings.notifications_allowed_push_topics_list == ["news", "events"]
+    assert settings.notifications_allowed_push_topics_list == [
+        "news.published",
+        "events.published",
+    ]
 
 
 def test_notification_topics_must_not_be_empty() -> None:

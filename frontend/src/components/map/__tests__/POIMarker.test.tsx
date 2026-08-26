@@ -50,7 +50,10 @@ const baseProps = { poi: POI }
 describe("POIMarker", () => {
   it("renders the POI pin with an accessible label", () => {
     render(<POIMarker {...baseProps} />)
-    expect(screen.getByRole("button", { name: /poi\.items\.cafe-1\.name/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /poi\.items\.cafe-1\.name/ })).toHaveStyle({
+      minWidth: "44px",
+      minHeight: "44px",
+    })
   })
 
   it("fires onPopupOpen when the pin is clicked", async () => {

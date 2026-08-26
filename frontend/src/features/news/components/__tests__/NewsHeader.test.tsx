@@ -4,7 +4,7 @@
  * Functions coverage was 1/8 — the inline JSX handlers (search change/clear,
  * category pills, saved filter, sort toggle, admin add) were unexercised.
  */
-import { screen } from "@testing-library/react"
+import { fireEvent, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
@@ -82,6 +82,13 @@ describe("NewsHeader", () => {
     allButton.focus()
     await userEvent.keyboard("{ArrowRight}")
     expect(categoryButtons[1]).toHaveFocus()
+    await userEvent.keyboard("{ArrowLeft}")
+    expect(allButton).toHaveFocus()
+
+    fireEvent.keyDown(toolbar, { key: "Enter" })
+    allButton.blur()
+    fireEvent.keyDown(toolbar, { key: "ArrowRight" })
+    expect(document.activeElement).not.toBe(categoryButtons[1])
   })
 
   it("shows the saved filter only when bookmarks exist and selects it", async () => {

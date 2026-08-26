@@ -1,0 +1,20 @@
+{{- if .Values.wsHub.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-ws-hub
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ws-hub
+spec:
+  type: {{ .Values.wsHub.service.type }}
+  selector:
+    {{- include "university-ecosystem.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: ws-hub
+  ports:
+    - name: http
+      port: {{ .Values.wsHub.service.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}

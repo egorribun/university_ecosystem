@@ -132,7 +132,11 @@
 		reverse_proxy frontend:3000 {
 			health_uri /healthz
 			health_interval 10s
-			health_timeout 5s
+			# A cold authenticated SSR route can synchronously load a large route
+			# graph before the Node event loop services this probe. Keep the probe
+			# above that bounded cold-start window so Caddy does not evict the only
+			# healthy upstream and return a spurious 503 to the next request.
+			health_timeout 20s
 			fail_duration 30s
 			unhealthy_status 5xx
 			header_up X-Real-IP {http.request.remote}

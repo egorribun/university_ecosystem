@@ -25,11 +25,6 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-def _base64url_encode(data: bytes) -> str:
-    encoded = base64.urlsafe_b64encode(data).decode("utf-8")
-    return encoded.rstrip("=")
-
-
 def _base64url_decode(data: str) -> bytes:
     padding = "=" * ((4 - len(data) % 4) % 4)
     return base64.urlsafe_b64decode(data + padding)

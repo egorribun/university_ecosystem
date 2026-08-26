@@ -224,9 +224,19 @@ class TestExtractFingerprint:
         fp = extract_fingerprint(request)
 
         assert fp.user_agent == "Mozilla/5.0 Chrome/120"
-        assert fp.accept_language == "en-US,en;q=0.9"
+        assert fp.accept_language == "en"
         assert fp.ip_address == "192.168.1.1"
         assert len(fp.fingerprint_hash) == 32
+
+    def test_normalizes_browser_language_variant(self):
+        request = MagicMock()
+        request.headers = {
+            "user-agent": "Chrome",
+            "accept-language": "ru-RU,ru;q=0.9,en;q=0.8",
+        }
+        request.client.host = "192.0.2.1"
+
+        assert extract_fingerprint(request).accept_language == "ru"
 
 
 class TestSuspiciousActivityEvent:

@@ -22,10 +22,17 @@ def _reset_otel():
     obs.shutdown_observability()
     original_configured = obs._otel_configured
     original_instrumented = obs._sqlalchemy_instrumented
+    original_shutdown = obs._otel_shutdown
+    obs._otel_shutdown = False
     obs._otel_configured = False
     obs._sqlalchemy_instrumented = False
-    yield
-    obs.shutdown_observability()
+    with (
+        patch("app.core.observability.trace.set_tracer_provider"),
+        patch("app.core.observability.metrics.set_meter_provider"),
+    ):
+        yield
+        obs.shutdown_observability()
+    obs._otel_shutdown = original_shutdown
     obs._otel_configured = original_configured
     obs._sqlalchemy_instrumented = original_instrumented
 

@@ -7,6 +7,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/spiffe/go-spiffe/v2/spiffeid"
 )
 
 // getEnvFloat64 reads a float64 from the given environment variable, returning
@@ -52,7 +54,12 @@ type Config struct {
 	OtelEndpoint string
 	AppVersion   string
 	// CRIT-02 (audit 2026-03-11): Toggle for gRPC TLS.
-	GrpcUseTLS bool
+	GrpcUseTLS            bool
+	GRPCCAFile            string
+	GRPCClientCertFile    string
+	GRPCClientKeyFile     string
+	GRPCServerName        string
+	GRPCClientIdentityURI string
 	// InternalHMACSecret is the shared secret used to sign X-User-ID/X-Session-ID
 	// headers set by this gateway (RZ-14-05). The backend verifies the resulting
 	// X-Internal-Signature to reject requests that bypass the gateway.
@@ -112,7 +119,12 @@ func Load() (*Config, error) {
 		AppVersion:         getEnv("APP_VERSION", "unknown"),
 		// AUDIT-INFRA-05: Fail-closed — TLS on by default. Set GRPC_USE_TLS=false
 		// ONLY for local dev (docker-compose.yml). Production/K8s inherit TLS=true.
-		GrpcUseTLS: os.Getenv("GRPC_USE_TLS") != "false",
+		GrpcUseTLS:            os.Getenv("GRPC_USE_TLS") != "false",
+		GRPCCAFile:            os.Getenv("GRPC_CA_FILE"),
+		GRPCClientCertFile:    os.Getenv("GRPC_CLIENT_CERT_FILE"),
+		GRPCClientKeyFile:     os.Getenv("GRPC_CLIENT_KEY_FILE"),
+		GRPCServerName:        os.Getenv("GRPC_SERVER_NAME"),
+		GRPCClientIdentityURI: os.Getenv("GRPC_CLIENT_IDENTITY_URI"),
 		// RZ-14-05: optional in dev, required in production.
 		InternalHMACSecret: os.Getenv("INTERNAL_HMAC_SECRET"),
 		// MOD-W17-03: JWKS hot-reload. Set JWKS_ENDPOINT to enable.
@@ -146,6 +158,32 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("JWT_AUDIENCE environment variable must not be blank")
 	}
 
+	environment := strings.ToLower(strings.TrimSpace(cfg.Environment))
+	isRelease := environment == "staging" || environment == "production"
+	if isRelease && !cfg.GrpcUseTLS {
+		return nil, fmt.Errorf("GRPC_USE_TLS=true is required in %s", environment)
+	}
+	if isRelease && !cfg.SpiffeEnabled {
+		required := []struct {
+			name  string
+			value string
+		}{
+			{name: "GRPC_CA_FILE", value: cfg.GRPCCAFile},
+			{name: "GRPC_CLIENT_CERT_FILE", value: cfg.GRPCClientCertFile},
+			{name: "GRPC_CLIENT_KEY_FILE", value: cfg.GRPCClientKeyFile},
+			{name: "GRPC_SERVER_NAME", value: cfg.GRPCServerName},
+			{name: "GRPC_CLIENT_IDENTITY_URI", value: cfg.GRPCClientIdentityURI},
+		}
+		for _, item := range required {
+			if strings.TrimSpace(item.value) == "" {
+				return nil, fmt.Errorf("%s is required for conventional gRPC mTLS in %s", item.name, environment)
+			}
+		}
+		if err := ValidateGRPCClientIdentityURI(cfg.GRPCClientIdentityURI); err != nil {
+			return nil, err
+		}
+	}
+
 	// RZ-33-02: If JWKS hot-reload is enabled but refresh interval is invalid,
 	// fall back to the default (300s) to prevent tight-loop polling.
 	if cfg.JWKSEndpoint != "" && cfg.JWKSRefreshInterval <= 0 {
@@ -153,6 +191,17 @@ func Load() (*Config, error) {
 	}
 
 	return cfg, nil
+}
+
+// ValidateGRPCClientIdentityURI accepts one canonical SPIFFE URI only. The
+// certificate validator compares the parsed URI SAN byte-for-byte to this
+// value, so aliases must fail at configuration load rather than at runtime.
+func ValidateGRPCClientIdentityURI(value string) error {
+	identity, err := spiffeid.FromString(value)
+	if err != nil || identity.String() != value {
+		return fmt.Errorf("GRPC_CLIENT_IDENTITY_URI must be one canonical SPIFFE URI")
+	}
+	return nil
 }
 
 func getEnv(key, defaultValue string) string {

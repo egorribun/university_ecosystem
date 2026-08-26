@@ -153,6 +153,26 @@ describe("MfaChallengeView — email OTP interaction", () => {
     rerender(<MfaChallengeView {...props} mfa={{ ...baseMfa, emailChallenge, otpChallenge }} />)
     expect(screen.getByText("OR")).toBeInTheDocument()
   })
+
+  it("shows only an email-specific error in the email OTP entry", () => {
+    const emailChallenge = {
+      method: "email_otp" as const,
+      challenge_token: "abc",
+      challenge_expires_at: "2099-01-01T00:00:00Z",
+    }
+    render(
+      <MfaChallengeView
+        {...props}
+        mfa={{
+          ...baseMfa,
+          emailChallenge,
+          mfaError: "Invalid email code",
+          mfaErrorSource: "email_otp",
+        }}
+      />
+    )
+    expect(screen.getByText("Invalid email code")).toBeInTheDocument()
+  })
 })
 
 describe("MfaChallengeView — recovery interaction", () => {

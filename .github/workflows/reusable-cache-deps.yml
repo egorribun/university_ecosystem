@@ -17,7 +17,7 @@ on:
                 description: "Node.js version"
                 required: false
                 type: string
-                default: "22"
+                default: "24"
             go-version:
                 description: "Go version"
                 required: false

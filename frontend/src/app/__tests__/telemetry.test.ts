@@ -20,6 +20,9 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock("@opentelemetry/sdk-trace-web", () => ({
+  StackContextManager: class {
+    readonly kind = "stack"
+  },
   WebTracerProvider: class {
     register = vi.fn()
     getTracer = vi.fn((name: string) => ({ name }))
@@ -76,7 +79,6 @@ vi.mock("@opentelemetry/instrumentation-user-interaction", () => ({
     }
   },
 }))
-vi.mock("@opentelemetry/context-zone", () => ({ ZoneContextManager: class {} }))
 vi.mock("@opentelemetry/resources", () => ({
   resourceFromAttributes: mocks.resourceFromAttributes,
 }))
@@ -123,6 +125,9 @@ describe("frontend telemetry", () => {
       "service.version": "1.0.0",
     })
     expect(mocks.providers[0]?.register).toHaveBeenCalledOnce()
+    expect(mocks.providers[0]?.register).toHaveBeenCalledWith({
+      contextManager: { kind: "stack" },
+    })
     expect(mocks.registerInstrumentations).toHaveBeenCalledOnce()
 
     const filter = mocks.interactionOptions[0]?.shouldPreventSpanCreation

@@ -76,7 +76,7 @@ beforeEach(() => {
   }
 })
 
-const mfaLogin = (): PendingMfaState => ({
+const mfaLogin = (resendAvailableAt = "2020-01-01T00:00:00Z"): PendingMfaState => ({
   status: "mfa_required",
   user_id: "u-1",
   reason: "login",
@@ -90,7 +90,7 @@ const mfaLogin = (): PendingMfaState => ({
       challenge_token: "ct-email",
       challenge_expires_at: "2026-08-25T16:00:00Z",
       delivery_hint: "u***@example.com",
-      resend_available_at: "2020-01-01T00:00:00Z",
+      resend_available_at: resendAvailableAt,
     } as PendingMfaState["methods"][number],
   ],
 })
@@ -520,6 +520,126 @@ describe("useMfaFlow email OTP", () => {
       await result.current.handleResendEmailOtp()
     })
     expect(result.current.mfaError).toBe("Cooldown active")
+    expect(result.current.mfaErrorSource).toBe("general")
+  })
+
+  it("counts down a future resend window and cancels its timer on unmount", () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date("2026-08-25T15:50:00Z"))
+      mocks.pendingMfa = mfaLogin("2026-08-25T15:50:02Z")
+      const clearTimeoutSpy = vi.spyOn(window, "clearTimeout")
+      const { result, unmount } = renderHook(() => useMfaFlow())
+
+      expect(result.current.resendSeconds).toBe(2)
+      act(() => vi.advanceTimersByTime(1000))
+      expect(result.current.resendSeconds).toBe(1)
+
+      unmount()
+      expect(clearTimeoutSpy).toHaveBeenCalled()
+      clearTimeoutSpy.mockRestore()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("does not resend before the server cooldown expires", async () => {
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(new Date("2026-08-25T15:50:00Z"))
+      mocks.pendingMfa = mfaLogin("2026-08-25T15:51:00Z")
+      const { result } = renderHook(() => useMfaFlow())
+
+      await act(() => result.current.handleResendEmailOtp())
+
+      expect(result.current.resendSeconds).toBe(60)
+      expect(mocks.resendEmailMfaChallenge).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("keeps a regular email-code error beside the email input", async () => {
+    mocks.pendingMfa = mfaLogin()
+    mocks.submitMfaChallenge.mockRejectedValueOnce(new Error("Invalid email code"))
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(() => result.current.handleEmailOtpVerify("000000"))
+
+    expect(result.current.mfaError).toBe("Invalid email code")
+    expect(result.current.mfaErrorSource).toBe("email_otp")
+    expect(result.current.mfaBusy).toBe(false)
+  })
+
+  it("prefers the API detail for an email-code error", async () => {
+    mocks.pendingMfa = mfaLogin()
+    const error = new AxiosError("bad")
+    error.response = {
+      status: 400,
+      headers: {},
+      data: { detail: "Email code expired" },
+      statusText: "",
+      config: {} as never,
+    }
+    mocks.submitMfaChallenge.mockRejectedValueOnce(error)
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(() => result.current.handleEmailOtpVerify("000000"))
+
+    expect(result.current.mfaError).toBe("Email code expired")
+    expect(result.current.mfaErrorSource).toBe("email_otp")
+  })
+
+  it("routes a locked email-code challenge to the general banner", async () => {
+    mocks.pendingMfa = mfaLogin()
+    mocks.submitMfaChallenge.mockRejectedValueOnce(new ChallengeLockedError("Email MFA locked"))
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(() => result.current.handleEmailOtpVerify("000000"))
+
+    expect(result.current.mfaError).toBe("Email MFA locked")
+    expect(result.current.mfaErrorSource).toBe("general")
+    expect(result.current.generalMfaError).toBe("Email MFA locked")
+  })
+
+  it("uses the translated fallback for a non-Error email-code rejection", async () => {
+    mocks.pendingMfa = mfaLogin()
+    mocks.submitMfaChallenge.mockRejectedValueOnce("email verification unavailable")
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(() => result.current.handleEmailOtpVerify("000000"))
+
+    expect(result.current.mfaError).toBe("auth:mfa.errors.generic")
+    expect(result.current.mfaErrorSource).toBe("email_otp")
+  })
+
+  it("prefers the API detail when resend is rejected", async () => {
+    mocks.pendingMfa = mfaLogin()
+    const error = new AxiosError("bad")
+    error.response = {
+      status: 429,
+      headers: {},
+      data: { detail: "Resend cooldown active" },
+      statusText: "",
+      config: {} as never,
+    }
+    mocks.resendEmailMfaChallenge.mockRejectedValueOnce(error)
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(() => result.current.handleResendEmailOtp())
+
+    expect(result.current.mfaError).toBe("Resend cooldown active")
+    expect(result.current.mfaErrorSource).toBe("general")
+  })
+
+  it("uses the translated fallback for a non-Error resend rejection", async () => {
+    mocks.pendingMfa = mfaLogin()
+    mocks.resendEmailMfaChallenge.mockRejectedValueOnce("resend unavailable")
+    const { result } = renderHook(() => useMfaFlow())
+
+    await act(() => result.current.handleResendEmailOtp())
+
+    expect(result.current.mfaError).toBe("auth:mfa.errors.generic")
     expect(result.current.mfaErrorSource).toBe("general")
   })
 })

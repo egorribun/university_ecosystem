@@ -27,6 +27,24 @@ spec:
       {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
 {{- end }}
 
+{{- if and .Values.wsHub.enabled (gt (int .Values.wsHub.replicaCount) 1) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-ws-hub
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ws-hub
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: ws-hub
+      {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
+{{- end }}
+
 {{- if gt (int .Values.gateway.replicaCount) 1 }}
 ---
 apiVersion: policy/v1

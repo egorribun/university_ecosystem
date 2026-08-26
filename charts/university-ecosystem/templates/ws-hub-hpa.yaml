@@ -1,0 +1,30 @@
+{{- if and .Values.wsHub.enabled .Values.wsHub.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-ws-hub
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ws-hub
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "university-ecosystem.fullname" . }}-ws-hub
+  minReplicas: {{ .Values.wsHub.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.wsHub.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.wsHub.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.wsHub.autoscaling.targetMemoryUtilizationPercentage }}
+{{- end }}

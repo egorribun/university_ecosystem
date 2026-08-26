@@ -20,6 +20,7 @@ import * as v from "valibot"
 
 const UuidString = v.pipe(v.string(), v.uuid())
 const NonEmptyString = v.pipe(v.string(), v.minLength(1), v.maxLength(4096))
+const IsoTimestampString = v.pipe(NonEmptyString, v.isoTimestamp())
 
 // Mirrors the backend Message schema — only the fields the FE actually uses.
 const MessageSchema = v.object({
@@ -27,7 +28,7 @@ const MessageSchema = v.object({
   chat_id: UuidString,
   sender_id: UuidString,
   content: v.pipe(v.string(), v.maxLength(32_768)),
-  created_at: NonEmptyString,
+  created_at: IsoTimestampString,
   read_status: v.boolean(),
   // Wave 203 SW5 — read-receipt timestamp. optional+nullable so a cached
   // new_message frame serialized before the column existed still parses.
@@ -83,6 +84,7 @@ const ErrorSchema = v.object({
   // backend error frames without a code still validate.
   code: v.optional(v.pipe(v.string(), v.maxLength(256))),
   detail: v.optional(v.pipe(v.string(), v.maxLength(1024))),
+  room: v.optional(v.pipe(v.string(), v.minLength(1), v.maxLength(512))),
 })
 
 // Wave 204 SW3 — ws-hub emits this directly to the client socket when a client
@@ -160,6 +162,13 @@ const ReactionChangedSchema = v.object({
   action: v.picklist(["added", "removed"]),
 })
 
+// A terminal replay checkpoint lets ws-hub advance the durable browser cursor
+// past a permanently malformed JetStream event without exposing its payload.
+const ReplayCheckpointSchema = v.object({
+  type: v.literal("replay_checkpoint"),
+  chat_id: UuidString,
+})
+
 // ── Discriminated union of all valid server→client frames ─────────────────────
 
 export const WsServerMessageSchema = v.variant("type", [
@@ -174,9 +183,18 @@ export const WsServerMessageSchema = v.variant("type", [
   MessageEditedSchema,
   MessageDeletedSchema,
   ReactionChangedSchema,
+  ReplayCheckpointSchema,
 ])
 
-export type WsServerMessage = v.InferOutput<typeof WsServerMessageSchema>
+type WsServerMessagePayload = v.InferOutput<typeof WsServerMessageSchema>
+
+export type WsServerMessage = WsServerMessagePayload & {
+  stream_seq?: number
+  replayed?: boolean
+  resume_token?: string
+}
+
+const StreamSequenceSchema = v.pipe(v.number(), v.safeInteger(), v.minValue(1))
 
 /**
  * Parse a raw WebSocket frame. Returns the typed message on success, or null
@@ -198,17 +216,57 @@ export function parseWsMessage(raw: string): WsServerMessage | null {
   // "rate_limit_exceeded"}) — those have no `payload`, so we validate them
   // as-is. Key off `payload` PRESENCE (not the outer `type`) so ws-hub's
   // notifications-sub re-typing (hub.go:501) doesn't matter here.
-  const frame =
-    parsed !== null &&
-    typeof parsed === "object" &&
-    "payload" in parsed &&
-    typeof (parsed as { payload?: unknown }).payload === "object" &&
-    (parsed as { payload?: unknown }).payload !== null
-      ? (parsed as { payload: unknown }).payload
-      : parsed
+  const parsedRecord =
+    parsed !== null && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null
+  const hasEnvelopePayload =
+    parsedRecord !== null &&
+    "payload" in parsedRecord &&
+    typeof parsedRecord.payload === "object" &&
+    parsedRecord.payload !== null
+  const frame = hasEnvelopePayload ? parsedRecord.payload : parsed
   const result = v.safeParse(WsServerMessageSchema, frame)
   if (!result.success) {
     return null
   }
-  return result.output
+
+  let streamSequence: number | undefined
+  let replayed: boolean | undefined
+  let resumeToken: string | undefined
+  if (parsedRecord && "seq" in parsedRecord) {
+    const sequenceResult = v.safeParse(StreamSequenceSchema, parsedRecord.seq)
+    if (!sequenceResult.success) return null
+    streamSequence = sequenceResult.output
+  }
+  if (parsedRecord && "replayed" in parsedRecord) {
+    const replayedResult = v.safeParse(v.boolean(), parsedRecord.replayed)
+    if (!replayedResult.success) return null
+    replayed = replayedResult.output
+  }
+  if (parsedRecord && "resume_token" in parsedRecord) {
+    const tokenResult = v.safeParse(
+      v.pipe(v.string(), v.minLength(1), v.maxLength(4096)),
+      parsedRecord.resume_token
+    )
+    if (!tokenResult.success) return null
+    resumeToken = tokenResult.output
+  }
+
+  if (streamSequence !== undefined && !hasEnvelopePayload) return null
+  if (replayed !== undefined && streamSequence === undefined) return null
+  if ((streamSequence === undefined) !== (resumeToken === undefined)) return null
+
+  if (streamSequence !== undefined) {
+    if (!("chat_id" in result.output)) return null
+    if (hasEnvelopePayload) {
+      const roomResult = v.safeParse(UuidString, parsedRecord.room)
+      if (!roomResult.success || roomResult.output !== result.output.chat_id) return null
+    }
+  }
+
+  return {
+    ...result.output,
+    ...(streamSequence === undefined ? {} : { stream_seq: streamSequence }),
+    ...(replayed === undefined ? {} : { replayed }),
+    ...(resumeToken === undefined ? {} : { resume_token: resumeToken }),
+  }
 }

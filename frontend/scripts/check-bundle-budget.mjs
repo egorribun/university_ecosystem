@@ -14,6 +14,10 @@ export const BUNDLE_BUDGETS = Object.freeze({
   mainJsRawKb: 500,
   initialJsGzipKb: 420,
   generalLazyJsGzipKb: 280,
+  // The language dictionaries are fetched only after explicit password-field
+  // interaction. Keep their raw ceiling bounded too, while allowing Vite's
+  // global warning threshold to reflect the largest intentional lazy asset.
+  passwordDictionaryRawKb: 1250,
   passwordDictionaryGzipKb: 600,
 })
 
@@ -166,6 +170,7 @@ export async function analyzeBundle(distDir = DEFAULT_DIST_DIR, options = {}) {
       largestGeneralLazyJsPath: largestGeneralLazy?.path ?? null,
       largestGeneralLazyJsGzipBytes: largestGeneralLazy?.gzipBytes ?? 0,
       largestPasswordDictionaryPath: largestPasswordDictionary?.path ?? null,
+      largestPasswordDictionaryRawBytes: largestPasswordDictionary?.rawBytes ?? 0,
       largestPasswordDictionaryGzipBytes: largestPasswordDictionary?.gzipBytes ?? 0,
     },
     assets,
@@ -190,6 +195,11 @@ export function getBundleBudgetViolations(report) {
       actualBytes: summary.largestGeneralLazyJsGzipBytes,
       limitKb: BUNDLE_BUDGETS.generalLazyJsGzipKb,
       message: `Lazy JS chunk '${summary.largestGeneralLazyJsPath}' exceeds gzip budget`,
+    },
+    {
+      actualBytes: summary.largestPasswordDictionaryRawBytes ?? 0,
+      limitKb: BUNDLE_BUDGETS.passwordDictionaryRawKb,
+      message: `Password dictionary '${summary.largestPasswordDictionaryPath}' exceeds raw budget`,
     },
     {
       actualBytes: summary.largestPasswordDictionaryGzipBytes,
@@ -227,6 +237,7 @@ async function main() {
     mainJsRawKiB: formatKiB(report.summary.mainJsRawBytes),
     initialJsGzipKiB: formatKiB(report.summary.initialJsGzipBytes),
     largestGeneralLazyJsGzipKiB: formatKiB(report.summary.largestGeneralLazyJsGzipBytes),
+    largestPasswordDictionaryRawKiB: formatKiB(report.summary.largestPasswordDictionaryRawBytes),
     largestPasswordDictionaryGzipKiB: formatKiB(report.summary.largestPasswordDictionaryGzipBytes),
   })
 }

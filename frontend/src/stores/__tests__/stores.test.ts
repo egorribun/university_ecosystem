@@ -100,6 +100,46 @@ describe("notificationStore", () => {
     expect(useNotificationStore.getState().topics["schedule.changed"]).toBe(true)
     expect(useNotificationStore.getState().topics["news.published"]).toBe(true)
   })
+
+  it.each([null, false, "legacy", {}, { topics: null }, { topics: "invalid" }])(
+    "keeps defaults when persisted notification preferences are malformed: %j",
+    async (persistedState) => {
+      const { useNotificationStore } = await import("../notificationStore")
+      const migrate = useNotificationStore.persist.getOptions().migrate
+
+      expect(migrate).toBeTypeOf("function")
+      const migrated = await migrate!(persistedState, 1)
+
+      expect(migrated).toEqual({})
+    }
+  )
+
+  it("migrates legacy topic aliases, ignores unknown topics, and keeps new defaults", async () => {
+    const { useNotificationStore } = await import("../notificationStore")
+    const migrate = useNotificationStore.persist.getOptions().migrate
+
+    const migrated = await migrate!(
+      {
+        topics: {
+          news: 0,
+          schedule: "enabled",
+          "events.published": false,
+          unknown: true,
+        },
+      },
+      1
+    )
+
+    expect(migrated).toEqual({
+      topics: {
+        "news.published": false,
+        "schedule.changed": true,
+        "events.published": false,
+        "chat.message.created": true,
+        "system.release": true,
+      },
+    })
+  })
 })
 
 describe("scheduleUIStore", () => {

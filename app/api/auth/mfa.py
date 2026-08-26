@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Annotated, Literal, cast
 from uuid import UUID
 
 from dishka.integrations.fastapi import FromDishka, inject
@@ -26,6 +26,7 @@ from app.auth.schemas import (
     TotpEnrollmentStartIn,
     TotpEnrollmentStartOut,
 )
+from app.core.database import get_db
 from app.core.fingerprint import extract_request_fingerprint
 from app.core.protocols import AsyncDatabaseSession
 from app.core.ratelimit import RateLimitExceeded
@@ -127,7 +128,7 @@ async def _issue_email_challenge_for_session(
 @inject
 async def start_email_verification(
     request: Request,
-    db: FromDishka[AsyncDatabaseSession],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
     login_service: FromDishka[LoginService],
     user: User = Depends(get_current_user),
 ) -> auth_schemas.MfaMethodChallengeOut:
@@ -148,7 +149,7 @@ async def start_email_verification(
 @inject
 async def start_email_mfa_enablement(
     request: Request,
-    db: FromDishka[AsyncDatabaseSession],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
     login_service: FromDishka[LoginService],
     user: User = Depends(get_current_user),
 ) -> auth_schemas.MfaMethodChallengeOut:
@@ -169,7 +170,7 @@ async def start_email_mfa_enablement(
 @inject
 async def disable_email_mfa_endpoint(
     request: Request,
-    db: FromDishka[AsyncDatabaseSession],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
     audit: FromDishka[AuditService],
     user: User = Depends(get_current_user),
 ) -> MfaFactorStatusOut:
@@ -191,7 +192,7 @@ async def disable_email_mfa_endpoint(
 @inject
 async def start_totp_enrollment_endpoint(
     request: Request,
-    db: FromDishka[AsyncDatabaseSession],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
     audit: FromDishka[AuditService],
     payload: TotpEnrollmentStartIn | None = None,
     user: User = Depends(get_current_user),
@@ -237,7 +238,7 @@ async def start_totp_enrollment_endpoint(
 async def confirm_totp_enrollment(
     payload: TotpEnrollmentConfirmIn,
     request: Request,
-    db: FromDishka[AsyncDatabaseSession],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
     audit: FromDishka[AuditService],
     user: User = Depends(get_current_user),
 ) -> MfaTotpEnrollmentOut:
@@ -307,8 +308,8 @@ async def confirm_totp_enrollment(
 @router.get("/mfa/totp", response_model=list[MfaTotpEnrollmentOut])
 @inject
 async def list_totp_enrollments(
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
     user: User = Depends(get_current_user),
-    db: FromDishka[AsyncDatabaseSession] = Depends(),
 ) -> list[MfaTotpEnrollmentOut]:
     stmt = (
         select(MfaTotpEnrollment)
@@ -327,7 +328,7 @@ async def list_totp_enrollments(
 async def delete_pending_totp_enrollment(
     enrollment_id: UUID,
     request: Request,
-    db: FromDishka[AsyncDatabaseSession],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
     audit: FromDishka[AuditService],
     user: User = Depends(get_current_user),
 ) -> None:
@@ -354,7 +355,7 @@ async def delete_pending_totp_enrollment(
 async def delete_totp_enrollment(
     enrollment_id: UUID,
     request: Request,
-    db: FromDishka[AsyncDatabaseSession],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
     audit: FromDishka[AuditService],
     _: None = Depends(require_fresh_mfa),
     user: User = Depends(get_current_user),
@@ -389,7 +390,7 @@ async def delete_totp_enrollment(
 @inject
 async def generate_recovery_codes_endpoint(
     request: Request,
-    db: FromDishka[AsyncDatabaseSession],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
     audit: FromDishka[AuditService],
     _: None = Depends(require_fresh_mfa),
     user: User = Depends(get_current_user),
@@ -437,11 +438,12 @@ async def request_step_up(
 
     capabilities = await login_service._resolve_mfa_capabilities(user)
 
-    from app.models.user_loaders import ensure_mfa_relationships_loaded
-
-    await ensure_mfa_relationships_loaded(db, user)
-
-    if not mfa.user_has_confirmed_interactive_factor(user):
+    # Capabilities are resolved from the authoritative MFA repository.  Do not
+    # use the request's ``lazy="noload"`` relationship collection here: an
+    # empty identity-map value is not proof that the account has no factor.
+    if not capabilities.get(mfa.MFA_METHOD_TOTP, False) and not capabilities.get(
+        mfa.MFA_METHOD_EMAIL_OTP, False
+    ):
         raise_http_error(
             status.HTTP_400_BAD_REQUEST,
             "errors.auth.mfa_totp_missing",

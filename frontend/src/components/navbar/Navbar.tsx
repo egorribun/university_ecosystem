@@ -48,6 +48,7 @@ const Navbar = () => {
     <>
       <nav
         ref={navRef}
+        style={{ boxShadow: "none" }}
         className={cn(
           "vt-navbar sticky top-0 z-(--z-navbar) w-full",
           // FIXED height — never changes, no layout shift

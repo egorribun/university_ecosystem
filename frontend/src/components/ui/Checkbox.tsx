@@ -19,7 +19,9 @@ const Checkbox = React.forwardRef<HTMLInputElement, CheckboxProps>(
     React.useImperativeHandle(ref, () => inputRef.current as HTMLInputElement)
 
     React.useEffect(() => {
-      if (inputRef.current) inputRef.current.indeterminate = isIndeterminate
+      // React assigns host refs before effects run, so the input is available
+      // for the whole lifetime of this mounted effect.
+      inputRef.current!.indeterminate = isIndeterminate
     }, [isIndeterminate])
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {

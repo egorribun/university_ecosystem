@@ -12,6 +12,8 @@ import { tanstackStart } from "@tanstack/react-start/plugin/vite"
 import { visualizer } from "rollup-plugin-visualizer"
 import { MASKABLE_ICON_BASE64 } from "./pwa-maskable-icons.ts"
 import { generateManifests } from "./scripts/generate-manifests.mjs"
+import { BUNDLE_BUDGETS } from "./scripts/check-bundle-budget.mjs"
+import { mapLibreWorkerAssets } from "./scripts/maplibre-worker-assets.mjs"
 // Shared with the Windows-safe standalone build orchestrator.
 import { PWA_INJECT_CONFIG } from "./scripts/workbox-config.mjs"
 
@@ -215,6 +217,7 @@ export default defineConfig(({ mode }) => {
     }),
     wasm(),
     withGeneratedManifests(),
+    mapLibreWorkerAssets(),
     react(),
     // MOD-W5-08: React Compiler via @rolldown/plugin-babel (plugin-react v6 uses Oxc,
     // no longer bundles Babel). Stable mode — compiler validates React rules and
@@ -373,7 +376,12 @@ export default defineConfig(({ mode }) => {
       // symbolication but does NOT add //# sourceMappingURL= to .js bundles,
       // so browsers and attackers cannot download the full TypeScript source.
       sourcemap: isUnminified ? true : mode === "production" ? "hidden" : true,
-      chunkSizeWarningLimit: 768,
+      // Vite applies one raw-size threshold to every chunk, including the
+      // intentionally lazy language dictionaries. The analyzer separately
+      // enforces the stricter 500 KiB main-chunk limit and compressed lazy
+      // budgets; this threshold is therefore the largest machine-enforced raw
+      // exception, not a relaxation of the initial-load contract.
+      chunkSizeWarningLimit: BUNDLE_BUDGETS.passwordDictionaryRawKb,
       // Vite auto-injects `<link rel="modulepreload">` for every
       // chunk reachable from the entry import graph — including chunks loaded
       // only via dynamic `await import()` at user click. PDF-export libs

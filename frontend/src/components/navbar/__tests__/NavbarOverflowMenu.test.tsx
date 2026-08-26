@@ -72,6 +72,8 @@ describe("NavbarOverflowMenu", () => {
 
     await user.keyboard("{ArrowDown}")
     expect(screen.getByRole("menuitem", { name: "Events" })).toHaveFocus()
+    await user.keyboard("{ArrowUp}")
+    expect(screen.getByRole("menuitem", { name: "News" })).toHaveFocus()
     await user.keyboard("{Home}")
     expect(screen.getByRole("menuitem", { name: "News" })).toHaveFocus()
     await user.keyboard("{End}")

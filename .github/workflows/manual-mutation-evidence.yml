@@ -336,10 +336,19 @@ jobs:
             mutants/mutmut-exact-evidence/
           if-no-files-found: error
 
-  manual-frontend-mutation-tests:
-    name: Manual Mutation Evidence (frontend Stryker)
+  manual-frontend-mutation-shards:
+    name: Manual Mutation Evidence (frontend shard ${{ matrix.shard-index }}/63)
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard-index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
+    env:
+      STRYKER_SHARD_COUNT: "64"
+      STRYKER_SHARD_INDEX: ${{ matrix.shard-index }}
+      STRYKER_CONCURRENCY: "2"
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -347,7 +356,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -355,14 +364,123 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Run manual incremental Stryker gate
+      - name: Run fresh manual Stryker shard
         working-directory: frontend
-        run: npm run test:mutation -- --incremental
+        run: npm run test:mutation
 
-      - name: Upload manual frontend mutation evidence
-        if: always()
+      # Preserve successful producers across a failed-jobs rerun. The exact
+      # run_id+SHA cache is only transport and is fully verified downstream.
+      - name: Cache successful manual frontend mutation shard
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: frontend/reports/mutation/shards
+          key: stryker-shard-v1-${{ github.run_id }}-${{ github.sha }}-${{ matrix.shard-index }}
+
+  manual-frontend-mutation-shard-replay:
+    name: Manual Mutation Evidence (replay frontend shard ${{ matrix.shard-index }}/63)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    needs: manual-frontend-mutation-shards
+    strategy:
+      fail-fast: false
+      max-parallel: 16
+      matrix:
+        shard-index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
+    steps:
+      - name: Restore exact successful shard
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: frontend/reports/mutation/shards
+          key: stryker-shard-v1-${{ github.run_id }}-${{ github.sha }}-${{ matrix.shard-index }}
+          fail-on-cache-miss: true
+
+      - name: Replay shard evidence into current attempt
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: manual-frontend-mutation-evidence-${{ github.run_id }}
-          path: frontend/reports/mutation/
-          if-no-files-found: ignore
+          name: manual-frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard-index }}
+          path: |
+            frontend/reports/mutation/shards/**/mutation.json
+            frontend/reports/mutation/shards/**/SHARD_EVIDENCE.json
+          if-no-files-found: error
+
+  manual-frontend-mutation-aggregate:
+    name: Manual Mutation Evidence (frontend Stryker 100%)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: manual-frontend-mutation-shard-replay
+    env:
+      STRYKER_SHARD_COUNT: "64"
+      STRYKER_AGGREGATE_ROOT: reports/mutation/external
+      STRYKER_CONCURRENCY: "2"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Download all manual frontend mutation shards
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: manual-frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-*
+          path: frontend/reports/mutation/external
+
+      - name: Aggregate and verify manual frontend mutation evidence
+        working-directory: frontend
+        run: |
+          npm run test:mutation
+          npm run test:mutation:verify
+
+      - name: Upload validated manual frontend mutation evidence
+        if: ${{ success() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: manual-frontend-mutation-validated-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            frontend/reports/mutation/mutation.json
+            frontend/reports/mutation/inventory.json
+            frontend/reports/mutation/preflight.json
+            frontend/reports/mutation/VALIDATED.json
+            frontend/reports/mutation/external/**/mutation.json
+            frontend/reports/mutation/external/**/SHARD_EVIDENCE.json
+          if-no-files-found: error
+
+  manual-frontend-mutation-roundtrip:
+    name: Manual Mutation Evidence (frontend artifact round-trip)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: manual-frontend-mutation-aggregate
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Download validated manual frontend mutation evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: manual-frontend-mutation-validated-${{ github.run_id }}-${{ github.run_attempt }}
+          path: frontend/reports/mutation
+
+      - name: Re-verify downloaded manual frontend mutation evidence
+        working-directory: frontend
+        run: npm run test:mutation:verify

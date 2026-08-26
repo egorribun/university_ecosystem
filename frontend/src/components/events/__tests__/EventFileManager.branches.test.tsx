@@ -1,10 +1,25 @@
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-const mocks = vi.hoisted(() => ({
-  post: vi.fn(() => Promise.resolve({ data: {} })),
-  del: vi.fn(() => Promise.resolve({ data: {} })),
-}))
+const mocks = vi.hoisted(() => {
+  const telemetryState = { active: false }
+  const run = vi.fn(<T,>(operation: () => T): T => {
+    telemetryState.active = true
+    try {
+      return operation()
+    } finally {
+      telemetryState.active = false
+    }
+  })
+
+  return {
+    post: vi.fn(() => Promise.resolve({ data: {} })),
+    del: vi.fn(() => Promise.resolve({ data: {} })),
+    telemetryState,
+    run,
+    capture: vi.fn(() => ({ run })),
+  }
+})
 
 vi.mock("@/api/client", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>()
@@ -14,6 +29,9 @@ vi.mock("@/api/client", async (importOriginal) => {
   }
 })
 vi.mock("@/app/logger", () => ({ logError: vi.fn() }))
+vi.mock("@/utils/telemetryContext", () => ({
+  captureActiveTelemetryContext: mocks.capture,
+}))
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (key: string) => key,
@@ -118,6 +136,9 @@ describe("EventFileManager branches", () => {
     mocks.post.mockResolvedValue({ data: {} })
     mocks.del.mockReset()
     mocks.del.mockResolvedValue({ data: {} })
+    mocks.capture.mockClear()
+    mocks.run.mockClear()
+    mocks.telemetryState.active = false
   })
 
   it("disables the submit button until a file is selected", () => {
@@ -162,6 +183,18 @@ describe("EventFileManager branches", () => {
     expect(props.onUpdate).not.toHaveBeenCalled()
   })
 
+  it("captures telemetry synchronously at the DOM submit boundary", () => {
+    render(<EventFileManager {...makeProps()} />)
+    const form = document.querySelector("form")
+    expect(form).not.toBeNull()
+    form!.addEventListener("submit", (event) => event.preventDefault(), { once: true })
+
+    fireEvent.submit(form!)
+
+    expect(mocks.capture).toHaveBeenCalledTimes(1)
+    expect(mocks.post).not.toHaveBeenCalled()
+  })
+
   it("re-selecting a file after an error resets the inline error message", async () => {
     render(<EventFileManager {...makeProps()} />)
     submitForm()
@@ -179,7 +212,15 @@ describe("EventFileManager branches", () => {
   })
 
   it("uploads a selected file, removes the optimistic row, and refreshes the event", async () => {
-    const props = makeProps()
+    mocks.post.mockImplementationOnce(() => {
+      expect(mocks.telemetryState.active).toBe(true)
+      return Promise.resolve({ data: {} })
+    })
+    const onUpdate = vi.fn(() => {
+      expect(mocks.telemetryState.active).toBe(true)
+      return Promise.resolve()
+    })
+    const props = makeProps({ onUpdate })
     const file = makeFile("slides.pdf")
     render(<EventFileManager {...props} />)
 
@@ -194,6 +235,8 @@ describe("EventFileManager branches", () => {
       })
     })
 
+    expect(mocks.capture).toHaveBeenCalledTimes(1)
+    expect(mocks.run).toHaveBeenCalledTimes(2)
     expect(screen.queryByText("slides.pdf")).not.toBeInTheDocument()
   })
 

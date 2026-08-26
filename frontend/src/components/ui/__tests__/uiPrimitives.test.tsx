@@ -1,4 +1,5 @@
 import { LazyMotion, domAnimation } from "framer-motion"
+import { createRef } from "react"
 import { describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 
@@ -183,6 +184,18 @@ describe("Checkbox", () => {
   it("renders a check glyph when checked", () => {
     const { container } = renderMotion(<Checkbox checked />)
     expect(container.querySelector(".lucide-check")).toBeInTheDocument()
+  })
+
+  it("forwards the native input ref and renders the disabled contract", () => {
+    const ref = createRef<HTMLInputElement>()
+    const { container } = renderMotion(<Checkbox ref={ref} disabled className="custom-checkbox" />)
+
+    expect(ref.current).toBe(screen.getByRole("checkbox"))
+    expect(ref.current).toBeDisabled()
+    expect(container.querySelector(".custom-checkbox")).toHaveStyle({
+      opacity: "var(--opacity-medium)",
+    })
+    fireEvent.click(ref.current!)
   })
 })
 

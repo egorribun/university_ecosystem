@@ -2,6 +2,9 @@ package config
 
 import (
 	"fmt"
+	"net/url"
+	"path"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -10,6 +13,7 @@ import (
 var (
 	bindEnvFunc         = func(input ...string) error { return viper.BindEnv(input...) }
 	unmarshalConfigFunc = func(rawVal any) error { return viper.Unmarshal(rawVal) }
+	spiffePathPattern   = regexp.MustCompile(`^/[A-Za-z0-9._~-]+(?:/[A-Za-z0-9._~-]+)*$`)
 )
 
 // Config holds processor configuration.
@@ -55,6 +59,14 @@ type Config struct {
 	SpiffeTrustDomain      string   `mapstructure:"spiffe_trust_domain"`
 	SpiffeMyID             string   `mapstructure:"spiffe_my_id"`
 	AllowedClientSpiffeIDs []string `mapstructure:"allowed_client_spiffe_ids"`
+
+	GRPCTLSCertFile  string `mapstructure:"grpc_tls_cert_file"`
+	GRPCTLSKeyFile   string `mapstructure:"grpc_tls_key_file"`
+	GRPCClientCAFile string `mapstructure:"grpc_client_ca_file"`
+	// GRPCAllowedClientURIs is the exact URI SAN allowlist for conventional
+	// certificate-backed mTLS clients. CA membership alone is not a workload
+	// identity because a CA can issue certificates to multiple services.
+	GRPCAllowedClientURIs []string `mapstructure:"grpc_allowed_client_uris"`
 }
 
 // Load loads the configuration from environment variables using Viper.
@@ -84,6 +96,7 @@ func Load() (*Config, error) {
 	viper.SetDefault("spiffe_trust_domain", "university.ecosystem")
 	viper.SetDefault("spiffe_my_id", "spiffe://university.ecosystem/ns/default/sa/file-processor")
 	viper.SetDefault("allowed_client_spiffe_ids", []string{"spiffe://university.ecosystem/ns/default/sa/gateway"})
+	viper.SetDefault("grpc_allowed_client_uris", []string{})
 
 	bindEnvs := map[string]string{
 		"grpc_port":                 "GRPC_PORT",
@@ -107,6 +120,10 @@ func Load() (*Config, error) {
 		"spiffe_trust_domain":       "SPIFFE_TRUST_DOMAIN",
 		"spiffe_my_id":              "SPIFFE_MY_ID",
 		"allowed_client_spiffe_ids": "ALLOWED_CLIENT_SPIFFE_IDS",
+		"grpc_tls_cert_file":        "GRPC_TLS_CERT_FILE",
+		"grpc_tls_key_file":         "GRPC_TLS_KEY_FILE",
+		"grpc_client_ca_file":       "GRPC_CLIENT_CA_FILE",
+		"grpc_allowed_client_uris":  "GRPC_ALLOWED_CLIENT_URIS",
 	}
 
 	for key, env := range bindEnvs {
@@ -146,7 +163,70 @@ func Load() (*Config, error) {
 		if cfg.OTLPInsecure {
 			return nil, fmt.Errorf("FP_OTLP_INSECURE=false is required in %s", environment)
 		}
+		if !cfg.SpiffeEnabled {
+			required := []struct {
+				name  string
+				value string
+			}{
+				{name: "FP_GRPC_TLS_CERT_FILE", value: cfg.GRPCTLSCertFile},
+				{name: "FP_GRPC_TLS_KEY_FILE", value: cfg.GRPCTLSKeyFile},
+				{name: "FP_GRPC_CLIENT_CA_FILE", value: cfg.GRPCClientCAFile},
+			}
+			for _, item := range required {
+				if strings.TrimSpace(item.value) == "" {
+					return nil, fmt.Errorf("%s is required for conventional gRPC mTLS in %s", item.name, environment)
+				}
+			}
+			if err := ValidateGRPCAllowedClientURIs(cfg.GRPCAllowedClientURIs); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	return &cfg, nil
+}
+
+// ValidateGRPCAllowedClientURIs rejects ambiguous or aliasable identities.
+// URI SANs are compared byte-for-byte during the TLS handshake, so release
+// configuration must use a canonical absolute URI with an authority and path.
+func ValidateGRPCAllowedClientURIs(values []string) error {
+	if len(values) == 0 {
+		return fmt.Errorf("FP_GRPC_ALLOWED_CLIENT_URIS must contain at least one exact URI SAN")
+	}
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if value == "" || strings.TrimSpace(value) != value {
+			return fmt.Errorf("FP_GRPC_ALLOWED_CLIENT_URIS contains a blank or non-canonical URI")
+		}
+		parsed, err := url.Parse(value)
+		if err != nil || parsed.Scheme != "spiffe" || parsed.Host == "" || parsed.Host != strings.ToLower(parsed.Host) || parsed.Host != parsed.Hostname() || !validSPIFFETrustDomain(parsed.Host) || parsed.User != nil || parsed.Opaque != "" || parsed.RawQuery != "" || parsed.Fragment != "" || parsed.RawFragment != "" || parsed.ForceQuery || strings.Contains(value, "%") || path.Clean(parsed.Path) != parsed.Path || !spiffePathPattern.MatchString(parsed.Path) || parsed.String() != value {
+			return fmt.Errorf("FP_GRPC_ALLOWED_CLIENT_URIS contains invalid exact URI %q", value)
+		}
+		if _, duplicate := seen[value]; duplicate {
+			return fmt.Errorf("FP_GRPC_ALLOWED_CLIENT_URIS contains duplicate URI %q", value)
+		}
+		seen[value] = struct{}{}
+	}
+	return nil
+}
+
+func validSPIFFETrustDomain(value string) bool {
+	if len(value) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(value, ".") {
+		if len(label) == 0 || len(label) > 63 || !isLowerAlphaNumeric(label[0]) || !isLowerAlphaNumeric(label[len(label)-1]) {
+			return false
+		}
+		for index := 1; index < len(label)-1; index++ {
+			if !isLowerAlphaNumeric(label[index]) && label[index] != '-' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func isLowerAlphaNumeric(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= '0' && value <= '9'
 }

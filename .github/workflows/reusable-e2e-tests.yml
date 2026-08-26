@@ -12,7 +12,7 @@ on:
         description: "Node.js version to use"
         required: false
         type: string
-        default: "22"
+        default: "24"
       python-version:
         description: "Python version for backend"
         required: false

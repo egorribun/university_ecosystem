@@ -34,6 +34,7 @@ import app.auth.security as security_module
 import app.core.csrf as csrf_module
 import app.models as models
 import app.services.auth_service as auth_module
+from app.auth.constants import MFA_METHOD_EMAIL_OTP
 from app.core.exceptions.domain import EntityNotFound
 from app.schemas import schemas
 from app.services.auth_service import (
@@ -365,7 +366,7 @@ async def test_confirm_email_change_success(auth_service, request_mock, monkeypa
     db_user = MagicMock(spec=models.User)
     db_user.id = user.id
     db_user.mfa_epoch = 0
-    db_user.mfa_default_method = None
+    db_user.mfa_default_method = MFA_METHOD_EMAIL_OTP
 
     auth_service.auth_repo.get_valid_email_change_token = AsyncMock(return_value=record)
     auth_service.user_repo.check_email_exists = AsyncMock(return_value=False)
@@ -388,6 +389,7 @@ async def test_confirm_email_change_success(auth_service, request_mock, monkeypa
     assert db_user.email == record.new_email
     assert db_user.email_verified_at <= datetime.now(UTC)
     assert db_user.email_verified_at >= datetime.now(UTC) - timedelta(seconds=2)
+    assert db_user.mfa_default_method is None
     auth_service.auth_repo.mark_email_change_token_used.assert_awaited_once_with(12)
     # db_user is not the original user → second attach call fires (L359-360)
     assert attach_mock.await_count == 2

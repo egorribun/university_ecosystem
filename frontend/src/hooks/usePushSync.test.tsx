@@ -187,6 +187,18 @@ describe("usePushSync — internal flows", () => {
     expect(mockPush.softSyncPushSubscription).not.toHaveBeenCalled()
   })
 
+  it("stops when unmounted while the lazy push module import is pending", async () => {
+    const { unmount } = renderHook(() => usePushSync(true))
+
+    vi.advanceTimersByTime(100)
+    unmount()
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(mockPush.isPushSupported).not.toHaveBeenCalled()
+    expect(mockPush.recoverPushConsentFromBrowser).not.toHaveBeenCalled()
+  })
+
   it("logs warning and error if softSync fails", async () => {
     mockPush.isPushSupported.mockReturnValue(true)
     mockPush.hasPushConsent.mockReturnValue(true)

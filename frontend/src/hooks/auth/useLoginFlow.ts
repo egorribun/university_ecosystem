@@ -24,7 +24,7 @@
  * specs) — the unit-level kernel is the deterministic email-suggestion
  * utility (covered by ``utils/authUtils.test.ts``).
  */
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState, type BaseSyntheticEvent } from "react"
 import { useNavigate, useRouterState } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
@@ -38,6 +38,10 @@ import { useLocalStorage } from "@/hooks/useLocalStorage"
 import { suggestEmailDomain } from "@/utils/authUtils"
 import { resolveRedirectPath } from "@/utils/redirect"
 import { loginSchema, type LoginValues } from "@/features/auth/schemas"
+import {
+  captureActiveTelemetryContext,
+  type CapturedTelemetryContext,
+} from "@/utils/telemetryContext"
 
 type ChallengeMethod = PendingMfaState["methods"][number]
 export type ChallengeWithAttempts = ChallengeMethod &
@@ -109,9 +113,11 @@ export function useLoginForm() {
   // Watch values for UI logic
   const currentEmail = watch("email")
 
-  const onSubmit = async (data: LoginValues) => {
+  const onSubmit = async (data: LoginValues, telemetryContext: CapturedTelemetryContext) => {
     try {
-      const challenge = await login(data.email, data.password, !!data.trustDevice)
+      const challenge = await telemetryContext.run(() =>
+        login(data.email, data.password, !!data.trustDevice)
+      )
 
       if (data.rememberEmail) {
         setSavedEmail(data.email)
@@ -135,6 +141,11 @@ export function useLoginForm() {
       // Set root error
       setError("root", { type: "server", message })
     }
+  }
+
+  const handleTelemetrySubmit = (event?: BaseSyntheticEvent) => {
+    const telemetryContext = captureActiveTelemetryContext()
+    return handleSubmit((data) => onSubmit(data, telemetryContext))(event)
   }
 
   const handleEmailBlur = async () => {
@@ -172,7 +183,7 @@ export function useLoginForm() {
     submitting,
     submitError: errors.root?.message,
     // Actions
-    onSubmit: handleSubmit(onSubmit),
+    onSubmit: handleTelemetrySubmit,
     // Auth context
     pendingMfa,
   }

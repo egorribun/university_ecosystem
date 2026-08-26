@@ -45,6 +45,12 @@ import process from "node:process"
 import { fileURLToPath } from "node:url"
 import { chromium } from "playwright"
 
+import {
+  classifySmokeFailures,
+  requestFailureRecord,
+  responseRecord,
+} from "./visual-smoke-contract.mjs"
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const PROJECT_ROOT = path.resolve(__dirname, "..")
@@ -81,32 +87,30 @@ function safeFilename(routePath) {
 
 async function smokePublicRoute(page, routePath, theme, outDir) {
   const consoleMessages = []
-  const networkRequests = []
+  const networkResponses = []
+  const networkFailures = []
 
   const consoleHandler = (msg) => {
     consoleMessages.push({
       type: msg.type(),
       text: msg.text(),
+      location: msg.location(),
     })
   }
   const pageErrorHandler = (err) => {
     consoleMessages.push({ type: "pageerror", text: err.message })
   }
-  const requestHandler = (req) => {
-    networkRequests.push({
-      method: req.method(),
-      url: req.url(),
-    })
-  }
   const responseHandler = (res) => {
-    const idx = networkRequests.findLastIndex((r) => r.url === res.url() && !("status" in r))
-    if (idx >= 0) networkRequests[idx].status = res.status()
+    networkResponses.push(responseRecord(res))
+  }
+  const requestFailedHandler = (request) => {
+    networkFailures.push(requestFailureRecord(request))
   }
 
   page.on("console", consoleHandler)
   page.on("pageerror", pageErrorHandler)
-  page.on("request", requestHandler)
   page.on("response", responseHandler)
+  page.on("requestfailed", requestFailedHandler)
 
   // Initialize all three theme sources before page.goto so both
   // SSR initial render AND client hydration converge on the correct theme.
@@ -162,8 +166,15 @@ async function smokePublicRoute(page, routePath, theme, outDir) {
 
   page.off("console", consoleHandler)
   page.off("pageerror", pageErrorHandler)
-  page.off("request", requestHandler)
   page.off("response", responseHandler)
+  page.off("requestfailed", requestFailedHandler)
+
+  const { consoleErrors, hydrationErrors, nonSuccessfulResponses } = classifySmokeFailures({
+    consoleMessages,
+    networkResponses,
+    networkFailures,
+    allowUnauthenticatedProfileProbe: true,
+  })
 
   // Persist one JSON sidecar per route for CI artifact inspection.
   const sidecarPath = path.join(outDir, `${safeFilename(routePath)}_${theme}.json`)
@@ -178,22 +189,14 @@ async function smokePublicRoute(page, routePath, theme, outDir) {
         httpStatus,
         navigationError: navError?.message ?? null,
         consoleMessages,
-        networkRequestCount: networkRequests.length,
-        networkRequests: networkRequests.slice(0, 50),
+        networkResponseCount: networkResponses.length,
+        networkResponses,
+        nonSuccessfulResponses,
+        networkFailures,
       },
       null,
       2
     )
-  )
-
-  const errors = consoleMessages.filter((m) => m.type === "error" || m.type === "pageerror")
-  // Catch descriptive hydration messages and the minified React error family.
-  const hydrationErrors = consoleMessages.filter(
-    (m) =>
-      m.text.includes("hydrat") ||
-      m.text.includes("Hydration") ||
-      m.text.includes("did not match") ||
-      /Minified React error #(418|419|420|421|422|423|424|425|426|427)/.test(m.text)
   )
 
   return {
@@ -201,10 +204,13 @@ async function smokePublicRoute(page, routePath, theme, outDir) {
     theme,
     httpStatus,
     finalUrl,
-    consoleErrorCount: errors.length,
+    consoleErrorCount: consoleErrors.length,
     hydrationErrorCount: hydrationErrors.length,
-    networkRequestCount: networkRequests.length,
-    sampleErrors: errors.slice(0, 3).map((e) => e.text),
+    networkErrorCount: nonSuccessfulResponses.length + networkFailures.length,
+    networkResponseCount: networkResponses.length,
+    sampleErrors: consoleErrors.slice(0, 3).map((e) => e.text),
+    sampleNetworkErrors: nonSuccessfulResponses.slice(0, 3),
+    sampleNetworkFailures: networkFailures.slice(0, 3),
     navError: navError?.message ?? null,
   }
 }
@@ -219,7 +225,7 @@ function printSummary(summaries, theme) {
     `${padR("Path", 20)}${padR("HTTP", 8)}${padR("Console err", 14)}${padR(
       "Hydr err",
       12
-    )}${padR("Net req", 10)}Final URL`
+    )}${padR("Net err", 10)}${padR("Net resp", 10)}Final URL`
   )
   console.log("-".repeat(120))
   for (const s of summaries) {
@@ -227,7 +233,10 @@ function printSummary(summaries, theme) {
       `${padR(s.path, 20)}${padR(s.httpStatus ?? "-", 8)}${padR(
         s.consoleErrorCount,
         14
-      )}${padR(s.hydrationErrorCount, 12)}${padR(s.networkRequestCount, 10)}${s.finalUrl ?? "n/a"}`
+      )}${padR(s.hydrationErrorCount, 12)}${padR(s.networkErrorCount, 10)}${padR(
+        s.networkResponseCount,
+        10
+      )}${s.finalUrl ?? "n/a"}`
     )
   }
   console.log("=".repeat(120))
@@ -251,34 +260,32 @@ async function main() {
     browser = await chromium.launch({ headless: true })
   }
 
-  const context = await browser.newContext({
-    viewport: { width: 1280, height: 800 },
-  })
-
-  // Use a fresh page per route. Reusing one page lets service-worker and
-  // navigation state leak between cases and makes later failures ambiguous.
+  // Isolate service workers, IndexedDB, cookies, and storage per route so
+  // route lifecycle defects cannot contaminate or hide another route's result.
   const summaries = []
   for (const route of PUBLIC_ROUTES) {
     console.log(`→ ${route}`)
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } })
     const routePage = await context.newPage()
     routePage.setDefaultTimeout(30_000)
     routePage.setDefaultNavigationTimeout(30_000)
     const result = await smokePublicRoute(routePage, route, THEME, OUT_DIR)
     await routePage.close()
+    await context.close()
     summaries.push(result)
     const glyph = result.httpStatus === 200 ? "✓" : "✗"
     console.log(
-      `  ${glyph} http=${result.httpStatus} final=${result.finalUrl ? new URL(result.finalUrl).pathname : "n/a"} console_err=${result.consoleErrorCount} hydr_err=${result.hydrationErrorCount} net_req=${result.networkRequestCount}`
+      `  ${glyph} http=${result.httpStatus} final=${result.finalUrl ? new URL(result.finalUrl).pathname : "n/a"} console_err=${result.consoleErrorCount} hydr_err=${result.hydrationErrorCount} net_err=${result.networkErrorCount} net_resp=${result.networkResponseCount}`
     )
   }
 
-  await context.close()
   await browser.close()
 
   printSummary(summaries, THEME)
 
   const failed = summaries.filter((s) => s.httpStatus !== 200)
   const hydrationIssues = summaries.filter((s) => s.hydrationErrorCount > 0)
+  const runtimeIssues = summaries.filter((s) => s.consoleErrorCount > 0 || s.networkErrorCount > 0)
 
   if (failed.length > 0) {
     console.error(
@@ -289,6 +296,12 @@ async function main() {
   if (hydrationIssues.length > 0) {
     console.error(`\n✗ ${hydrationIssues.length}/${summaries.length} routes had hydration errors`)
     process.exit(2)
+  }
+  if (runtimeIssues.length > 0) {
+    console.error(
+      `\n✗ ${runtimeIssues.length}/${summaries.length} routes had console/page/network errors`
+    )
+    process.exit(3)
   }
   console.log(
     `\n✓ All ${summaries.length} unauthed routes returned 200 + 0 hydration errors through Caddy → Node SSR → backend chain (theme=${THEME})`

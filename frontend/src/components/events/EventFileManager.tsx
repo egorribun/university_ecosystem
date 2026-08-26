@@ -4,6 +4,10 @@ import { Trash2 as DeleteIcon } from "lucide-react"
 import { isAxiosError } from "axios"
 import api from "@/api/client"
 import { logError } from "@/app/logger"
+import {
+  captureActiveTelemetryContext,
+  type CapturedTelemetryContext,
+} from "@/utils/telemetryContext"
 import { Button } from "@/components/ui"
 import { resolveMediaUrl } from "@/utils/media"
 
@@ -34,6 +38,7 @@ export function EventFileManager({
   const { t } = useTranslation(["events", "common"])
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const uploadTelemetryContextRef = useRef<CapturedTelemetryContext | null>(null)
 
   const [optimisticFiles, mutateFiles] = useOptimistic<OptimisticEventFile[], FileOptimisticAction>(
     event.files ?? [],
@@ -42,6 +47,8 @@ export function EventFileManager({
 
   const [uploadState, uploadAction, uploadPending] = useActionState<UploadState, FormData>(
     async (_prev, input) => {
+      const telemetryContext = uploadTelemetryContextRef.current ?? captureActiveTelemetryContext()
+      uploadTelemetryContextRef.current = null
       if (input.get("__upload_reset__") === "1") {
         return { status: "idle" }
       }
@@ -66,12 +73,12 @@ export function EventFileManager({
       try {
         const data = new FormData()
         data.append("file", file)
-        await api.post(`/events/${event.id}/upload_file`, data)
+        await telemetryContext.run(() => api.post(`/events/${event.id}/upload_file`, data))
         mutateFiles({ type: "remove", id: optimisticId })
         onSuccess(t("events:detail.messages.fileAdded"))
         setSelectedFile(null)
         if (fileInputRef.current) fileInputRef.current.value = ""
-        await onUpdate()
+        await telemetryContext.run(onUpdate)
         return { status: "success" }
       } catch (err) {
         logError("[EventFileManager] Upload failed:", err)
@@ -98,16 +105,21 @@ export function EventFileManager({
     }
   }
 
+  const handleUploadSubmit = () => {
+    uploadTelemetryContextRef.current = captureActiveTelemetryContext()
+  }
+
   const handleDeleteFile = async (fileId: string) => {
+    const telemetryContext = captureActiveTelemetryContext()
     mutateFiles({ type: "remove", id: fileId })
     try {
-      await api.delete(`/events/file/${fileId}`)
+      await telemetryContext.run(() => api.delete(`/events/file/${fileId}`))
       onSuccess(t("events:detail.messages.fileDeleted"))
     } catch (err) {
       logError("[EventFileManager] Delete failed:", err)
       onError(t("events:detail.messages.fileDeleteFailed"))
     } finally {
-      await onUpdate()
+      await telemetryContext.run(onUpdate)
     }
   }
 
@@ -115,7 +127,11 @@ export function EventFileManager({
     <>
       {canEdit && (
         <div>
-          <form action={uploadAction} className="flex flex-wrap items-center gap-2">
+          <form
+            action={uploadAction}
+            onSubmit={handleUploadSubmit}
+            className="flex flex-wrap items-center gap-2"
+          >
             <Button variant="solid" as="label" disabled={uploadPending}>
               {t("events:detail.sections.files.pickFile")}
               <input

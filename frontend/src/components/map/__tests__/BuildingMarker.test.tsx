@@ -101,6 +101,7 @@ describe("BuildingMarker", () => {
     const active = screen.getByRole("button", { name: "a11y.buildingSelected" })
     expect(active).toHaveClass("map-building-pin--active")
     expect(active).not.toHaveClass("map-building-pin--pulse")
+    expect(active).toHaveStyle({ minWidth: "44px", minHeight: "44px" })
   })
 
   it("renders a photo popup and open-hours styling", () => {

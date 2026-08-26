@@ -91,6 +91,21 @@ class HangingLogExporter(OTLPLogExporter):
         time.sleep(10.0)  # pragma: allowlist bound
 
 
+@pytest.fixture(autouse=True)
+def reset_owned_otel_lifecycle() -> None:
+    obs.shutdown_observability()
+    obs._otel_shutdown = False
+    obs._otel_configured = False
+    obs._otel_tracer_provider = None
+    obs._otel_meter_provider = None
+    yield
+    obs.shutdown_observability()
+    obs._otel_shutdown = False
+    obs._otel_configured = False
+    obs._otel_tracer_provider = None
+    obs._otel_meter_provider = None
+
+
 def test_shutdown_observability_unreachable_endpoint_benchmark():
     """Benchmark shutdown_observability under unreachable collector endpoint (http://127.0.0.1:49999).
 
@@ -100,24 +115,24 @@ def test_shutdown_observability_unreachable_endpoint_benchmark():
     resource = Resource.create({"service.name": "benchmark-test"})
 
     # Setup TracerProvider with unreachable endpoint
-    span_exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
+    span_exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True, timeout=0.75)
     tracer_provider = TracerProvider(resource=resource)
     tracer_provider.add_span_processor(BatchSpanProcessor(span_exporter))
-    trace.set_tracer_provider(tracer_provider)
 
     # Setup MeterProvider with unreachable endpoint
-    metric_exporter = OTLPMetricExporter(endpoint=endpoint, insecure=True)
+    metric_exporter = OTLPMetricExporter(endpoint=endpoint, insecure=True, timeout=0.75)
     meter_reader = PeriodicExportingMetricReader(
         metric_exporter, export_interval_millis=60000
     )
     meter_provider = MeterProvider(resource=resource, metric_readers=[meter_reader])
-    metrics.set_meter_provider(meter_provider)
 
     # Setup LoggerProvider with unreachable endpoint
-    log_exporter = OTLPLogExporter(endpoint=endpoint, insecure=True)
+    log_exporter = OTLPLogExporter(endpoint=endpoint, insecure=True, timeout=0.75)
     logger_provider = LoggerProvider(resource=resource)
     logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
     obs._otel_logger_provider = logger_provider
+    obs._otel_tracer_provider = tracer_provider
+    obs._otel_meter_provider = meter_provider
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
@@ -155,22 +170,24 @@ def test_shutdown_observability_multi_trial_statistical_benchmark():
     latencies = []
 
     for trial in range(5):
-        span_exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
+        span_exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True, timeout=0.75)
         tracer_provider = TracerProvider(resource=resource)
         tracer_provider.add_span_processor(BatchSpanProcessor(span_exporter))
-        trace.set_tracer_provider(tracer_provider)
 
-        metric_exporter = OTLPMetricExporter(endpoint=endpoint, insecure=True)
+        metric_exporter = OTLPMetricExporter(
+            endpoint=endpoint, insecure=True, timeout=0.75
+        )
         meter_reader = PeriodicExportingMetricReader(
             metric_exporter, export_interval_millis=60000
         )
         meter_provider = MeterProvider(resource=resource, metric_readers=[meter_reader])
-        metrics.set_meter_provider(meter_provider)
 
-        log_exporter = OTLPLogExporter(endpoint=endpoint, insecure=True)
+        log_exporter = OTLPLogExporter(endpoint=endpoint, insecure=True, timeout=0.75)
         logger_provider = LoggerProvider(resource=resource)
         logger_provider.add_log_record_processor(BatchLogRecordProcessor(log_exporter))
         obs._otel_logger_provider = logger_provider
+        obs._otel_tracer_provider = tracer_provider
+        obs._otel_meter_provider = meter_provider
 
         obs._otel_configured = True
 
@@ -207,19 +224,19 @@ def test_shutdown_observability_hanging_providers_bounded_timeout():
     tracer_provider.add_span_processor(
         BatchSpanProcessor(HangingSpanExporter(insecure=True))
     )
-    trace.set_tracer_provider(tracer_provider)
 
     meter_reader = PeriodicExportingMetricReader(
         HangingMetricExporter(insecure=True), export_interval_millis=60000
     )
     meter_provider = MeterProvider(resource=resource, metric_readers=[meter_reader])
-    metrics.set_meter_provider(meter_provider)
 
     logger_provider = LoggerProvider(resource=resource)
     logger_provider.add_log_record_processor(
         BatchLogRecordProcessor(HangingLogExporter(insecure=True))
     )
     obs._otel_logger_provider = logger_provider
+    obs._otel_tracer_provider = tracer_provider
+    obs._otel_meter_provider = meter_provider
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", DeprecationWarning)
@@ -247,8 +264,7 @@ provider = TracerProvider()
 def hanging_shutdown(*args, **kwargs):
     time.sleep(30)  # pragma: allowlist bound (subprocess timeout bounds the child)
 provider.shutdown = hanging_shutdown
-obs.trace.get_tracer_provider = lambda: provider
-obs.metrics.get_meter_provider = lambda: object()
+obs._otel_tracer_provider = provider
 started = time.monotonic()
 obs.shutdown_observability()
 print(f'shutdown-returned {time.monotonic() - started:.4f}', flush=True)
@@ -257,9 +273,11 @@ print(f'shutdown-returned {time.monotonic() - started:.4f}', flush=True)
         [sys.executable, "-c", script],
         capture_output=True,
         text=True,
-        # Importing the full observability stack on Windows can take several
-        # seconds; the assertion below measures the shutdown operation itself.
-        timeout=10,
+        # Importing the full observability stack on a contended Windows CI host
+        # can take well over ten seconds. Keep the process timeout below the
+        # deliberately hanging 30-second exporter while measuring the actual
+        # shutdown SLA from the child process output below.
+        timeout=20,
         cwd=str(REPO_ROOT),
         check=False,
     )
@@ -278,10 +296,12 @@ def test_concurrent_shutdown_calls_no_deadlock():
     tracer_provider = TracerProvider(resource=resource)
     tracer_provider.add_span_processor(
         BatchSpanProcessor(
-            OTLPSpanExporter(endpoint="http://127.0.0.1:49999", insecure=True)
+            OTLPSpanExporter(
+                endpoint="http://127.0.0.1:49999", insecure=True, timeout=0.75
+            )
         )
     )
-    trace.set_tracer_provider(tracer_provider)
+    obs._otel_tracer_provider = tracer_provider
     obs._otel_configured = True
 
     num_threads = 20
@@ -433,9 +453,15 @@ def test_concurrency_stress_notification_queue_metrics_reinitialization():
 
 
 @pytest.mark.asyncio
-async def test_lifecycle_reconfiguration_and_teardown_churn():
-    """Stress test: 5 rapid cycles of full configure/telemetry/shutdown with real async engine."""
+async def test_lifecycle_reconfiguration_and_teardown_churn(caplog):
+    """Shutdown is bounded, idempotent, and cannot orphan replacement providers."""
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    preexisting_shutdown_threads = {
+        thread.ident
+        for thread in threading.enumerate()
+        if thread.is_alive() and thread.name.startswith("otel-shutdown-")
+    }
+    obs._otel_shutdown = False
     try:
         for cycle in range(5):
             with (
@@ -446,14 +472,22 @@ async def test_lifecycle_reconfiguration_and_teardown_churn():
                     settings, "otel_exporter_otlp_endpoint", "http://127.0.0.1:49999"
                 ),
                 patch.object(obs, "_sqlalchemy_instrumented", True),
+                patch.object(obs.trace, "set_tracer_provider"),
+                patch.object(obs.metrics, "set_meter_provider"),
             ):
-                obs._configure_otel(engine)
-                assert obs._otel_configured is True
+                provider = obs._configure_otel(engine)
+                if cycle == 0:
+                    assert provider is not None
+                    assert obs._otel_configured is True
+                else:
+                    assert provider is None
+                    assert obs._otel_configured is False
 
                 # Emit
-                tracer = trace.get_tracer_provider().get_tracer("lifecycle_test")
-                with tracer.start_as_current_span(f"span_{cycle}"):
-                    pass
+                if cycle == 0:
+                    tracer = provider.get_tracer("lifecycle_test")
+                    with tracer.start_as_current_span(f"span_{cycle}"):
+                        pass
 
                 # Shutdown
                 t0 = time.perf_counter()
@@ -461,6 +495,19 @@ async def test_lifecycle_reconfiguration_and_teardown_churn():
                 dt = time.perf_counter() - t0
                 assert dt <= 2.05, f"Cycle {cycle} shutdown exceeded SLA: {dt:.4f}s"
                 assert obs._otel_configured is False
+
+        messages = [record.getMessage() for record in caplog.records]
+        assert not any("Overriding of current" in message for message in messages)
+        assert not any(
+            "shutdown can only be called once" in message for message in messages
+        )
+        assert not any("retrying in" in message for message in messages)
+        assert not any(
+            thread.is_alive()
+            and thread.name.startswith("otel-shutdown-")
+            and thread.ident not in preexisting_shutdown_threads
+            for thread in threading.enumerate()
+        )
     finally:
         await engine.dispose()
 
@@ -491,6 +538,8 @@ def test_concurrent_double_checked_initialization_no_deadlock():
         patch.object(obs, "SQLAlchemyInstrumentor"),
         patch.object(obs, "RedisInstrumentor"),
         patch.object(obs, "HTTPXClientInstrumentor"),
+        patch.object(obs.trace, "set_tracer_provider"),
+        patch.object(obs.metrics, "set_meter_provider"),
     ):
         threads = [threading.Thread(target=init_worker) for _ in range(num_threads)]
         for t in threads:

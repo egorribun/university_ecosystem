@@ -132,11 +132,17 @@ async def test_verify_mfa_challenge_genericizes_binding_mismatch() -> None:
     request = _request_with_services()
     payload = MagicMock(method="totp", challenge_token="a" * 32, code="123456")
 
-    with patch(
-        "app.api.auth.login.mfa.consume_challenge",
-        new_callable=AsyncMock,
-        side_effect=HTTPException(400, "binding mismatch"),
-    ) as consume_challenge:
+    with (
+        patch(
+            "app.api.auth.login.get_current_user_optional",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.api.auth.login.mfa.consume_challenge",
+            new_callable=AsyncMock,
+            side_effect=HTTPException(400, "binding mismatch"),
+        ) as consume_challenge,
+    ):
         with pytest.raises(HTTPException) as exc:
             await verify_mfa_challenge(
                 payload=payload,

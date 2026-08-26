@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -90,6 +91,10 @@ func TestLoad_RejectsInsecureProductionDataPlanes(t *testing.T) {
 	t.Setenv("FP_MINIO_SECURE", "true")
 	t.Setenv("FP_TEMPORAL_TLS_DISABLED", "false")
 	t.Setenv("FP_OTLP_INSECURE", "false")
+	t.Setenv("FP_GRPC_TLS_CERT_FILE", "/run/secrets/internal-grpc-mtls/tls.crt")
+	t.Setenv("FP_GRPC_TLS_KEY_FILE", "/run/secrets/internal-grpc-mtls/tls.key")
+	t.Setenv("FP_GRPC_CLIENT_CA_FILE", "/run/secrets/internal-grpc-mtls/ca.crt")
+	t.Setenv("FP_GRPC_ALLOWED_CLIENT_URIS", "spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway,spiffe://university.ecosystem/ns/university-ecosystem/sa/file-processor-probe")
 	secureCfg, err := Load()
 	assert.NoError(t, err)
 	assert.Equal(t, "production", secureCfg.Environment)
@@ -157,4 +162,99 @@ func TestLoad_UnmarshalErrorIsReturned(t *testing.T) {
 
 	_, err := Load()
 	assert.EqualError(t, err, "synthetic unmarshal failure")
+}
+
+func TestLoad_ReleaseWithoutSPIFFERequiresConventionalMTLSFiles(t *testing.T) {
+	required := map[string]string{
+		"FP_GRPC_TLS_CERT_FILE":       "FP_GRPC_TLS_CERT_FILE",
+		"FP_GRPC_TLS_KEY_FILE":        "FP_GRPC_TLS_KEY_FILE",
+		"FP_GRPC_CLIENT_CA_FILE":      "FP_GRPC_CLIENT_CA_FILE",
+		"FP_GRPC_ALLOWED_CLIENT_URIS": "FP_GRPC_ALLOWED_CLIENT_URIS",
+	}
+	for missing, expected := range required {
+		t.Run(missing, func(t *testing.T) {
+			t.Setenv("FP_JWT_SECRET", "dummy-secret-value-for-testing-purposes-only")
+			t.Setenv("FP_ENVIRONMENT", "staging")
+			t.Setenv("FP_MINIO_SECURE", "true")
+			t.Setenv("FP_TEMPORAL_TLS_DISABLED", "false")
+			t.Setenv("FP_OTLP_INSECURE", "false")
+			t.Setenv("FP_SPIFFE_ENABLED", "false")
+			for name := range required {
+				t.Setenv(name, "/run/secrets/internal-grpc-mtls/value")
+			}
+			t.Setenv(missing, "")
+
+			cfg, err := Load()
+
+			assert.Nil(t, cfg)
+			assert.ErrorContains(t, err, expected)
+		})
+	}
+}
+
+func TestLoad_ReleaseValidatesAllowedClientURIs(t *testing.T) {
+	setSecureRelease := func(t *testing.T, allowed string) {
+		t.Helper()
+		t.Setenv("FP_JWT_SECRET", "dummy-secret-value-for-testing-purposes-only")
+		t.Setenv("FP_ENVIRONMENT", "staging")
+		t.Setenv("FP_MINIO_SECURE", "true")
+		t.Setenv("FP_TEMPORAL_TLS_DISABLED", "false")
+		t.Setenv("FP_OTLP_INSECURE", "false")
+		t.Setenv("FP_SPIFFE_ENABLED", "false")
+		t.Setenv("FP_GRPC_TLS_CERT_FILE", "/run/secrets/internal-grpc-mtls-server/tls.crt")
+		t.Setenv("FP_GRPC_TLS_KEY_FILE", "/run/secrets/internal-grpc-mtls-server/tls.key")
+		t.Setenv("FP_GRPC_CLIENT_CA_FILE", "/run/secrets/internal-grpc-mtls-server/ca.crt")
+		t.Setenv("FP_GRPC_ALLOWED_CLIENT_URIS", allowed)
+	}
+
+	t.Run("accepts exact absolute URI SAN allowlist", func(t *testing.T) {
+		setSecureRelease(t, "spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway,spiffe://university.ecosystem/ns/university-ecosystem/sa/file-processor-probe")
+		cfg, err := Load()
+		assert.NoError(t, err)
+		assert.Equal(t, []string{
+			"spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway",
+			"spiffe://university.ecosystem/ns/university-ecosystem/sa/file-processor-probe",
+		}, cfg.GRPCAllowedClientURIs)
+	})
+
+	for name, value := range map[string]string{
+		"relative":       "gateway",
+		"missing host":   "spiffe:///ns/university-ecosystem/sa/gateway",
+		"query alias":    "spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway?alias=true",
+		"fragment alias": "spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway#alias",
+		"whitespace":     " spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway",
+		"wrong scheme":   "https://university.ecosystem/ns/university-ecosystem/sa/gateway",
+		"scheme case":    "SPIFFE://university.ecosystem/ns/university-ecosystem/sa/gateway",
+		"host case":      "spiffe://UNIVERSITY.ecosystem/ns/university-ecosystem/sa/gateway",
+		"port alias":     "spiffe://university.ecosystem:443/ns/university-ecosystem/sa/gateway",
+		"dot segment":    "spiffe://university.ecosystem/ns/university-ecosystem/sa/../sa/gateway",
+		"percent escape": "spiffe://university.ecosystem/ns/university-ecosystem/sa/gate%77ay",
+		"long domain":    "spiffe://" + strings.Repeat("a", 254) + "/ns/gateway",
+		"empty label":    "spiffe://university..ecosystem/ns/gateway",
+		"invalid label":  "spiffe://university_ecosystem/ns/gateway",
+		"duplicate":      "spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway,spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway",
+	} {
+		t.Run(name, func(t *testing.T) {
+			setSecureRelease(t, value)
+			cfg, err := Load()
+			assert.Nil(t, cfg)
+			assert.ErrorContains(t, err, "FP_GRPC_ALLOWED_CLIENT_URIS")
+		})
+	}
+}
+
+func TestLoad_DevelopmentAllowsPlaintextGRPCWithoutMTLSFiles(t *testing.T) {
+	t.Setenv("FP_JWT_SECRET", "dummy-secret-value-for-testing-purposes-only")
+	t.Setenv("FP_ENVIRONMENT", "development")
+	t.Setenv("FP_SPIFFE_ENABLED", "false")
+	for _, name := range []string{
+		"FP_GRPC_TLS_CERT_FILE", "FP_GRPC_TLS_KEY_FILE", "FP_GRPC_CLIENT_CA_FILE",
+	} {
+		t.Setenv(name, "")
+	}
+
+	cfg, err := Load()
+
+	assert.NoError(t, err)
+	assert.NotNil(t, cfg)
 }

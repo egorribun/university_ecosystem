@@ -39,12 +39,13 @@
  *
  * ## Exit codes
  *
- *   0: all routes scanned cleanly (HTTP 200, no critical/serious axe violations)
+ *   0: all routes scanned cleanly (HTTP 200, no runtime errors, no critical/serious axe violations)
  *   1: JWKS pre-check failed OR login failed OR a route returned non-200
  *   2: hydration errors detected
  *   3: JWT alg !== "RS256" (W137 SW1 backend RS256 enablement broken)
  *   4: JWKS returned 0 keys (backend RSA key not loaded)
  *   5: critical or serious axe violations found
+ *   6: console/page errors or failed subresource/API requests detected
  */
 
 import { Buffer } from "node:buffer"
@@ -53,6 +54,12 @@ import path from "node:path"
 import process from "node:process"
 import { fileURLToPath } from "node:url"
 import { chromium } from "playwright"
+
+import { loginBrowserContext } from "./visual-smoke-auth.mjs"
+import {
+  classifyAuthenticatedAuditSummaries,
+  requestFailureRecord,
+} from "./visual-smoke-contract.mjs"
 
 // Inject the audited, locally installed axe-core bundle as an init script.
 // Playwright evaluates init scripts before page code and independently of the
@@ -74,16 +81,10 @@ const OUT_DIR = path.resolve(
   process.env.OUT_DIR ?? ".screenshots/authenticated-visual-audit"
 )
 
-// W145 SW3 — added /messenger + /messenger/placeholder-chat-id for messenger
-// × 2 polish arc baseline coverage. Both routes are `ssr: false` (W128 SW2
-// opt-down — chat is WebSocket-driven; SSR brings no LCP benefit). Empty-state
-// DOM (no real chat data without ws-hub) is still good a11y scope target.
-//
-// Per SW1 Outcome A (CI run 25747112501 axeError=axe-inject-timeout-30s),
-// these routes will deterministically hit the same fast-fail at 30s.
-// Sidecar JSON captures HTTP 200 + AUTHED + 0 hydration errors as structural
-// verification baseline. Full axe coverage pending W146+ injection strategy
-// pivot (page.addInitScript() / chunked / different bundle).
+// The default messenger audit covers the real empty/list state. A detail route
+// must be supplied with ROUTES only when a valid seeded chat ID is available;
+// deliberately invalid placeholder IDs would turn expected 422 responses into
+// false-positive runtime noise.
 const DEFAULT_ROUTES = [
   "/dashboard",
   "/events",
@@ -94,7 +95,6 @@ const DEFAULT_ROUTES = [
   "/map",
   "/activity",
   "/messenger",
-  "/messenger/placeholder-chat-id",
 ]
 
 // Normalize each route — accept both "/dashboard" and "dashboard" forms.
@@ -201,66 +201,13 @@ async function checkJwksEndpoint() {
 
 async function performLogin(context) {
   console.log(`→ API login: POST ${ORIGIN}/api/v1/auth/login/json as ${TEST_EMAIL}`)
-  const origin = new URL(ORIGIN)
-  const isHttps = origin.protocol === "https:"
-  const cookieDomain = origin.hostname
-
-  const csrfResp = await fetch(`${ORIGIN}/api/v1/auth/csrf`)
-  const csrfCookieHeader =
-    csrfResp.headers.getSetCookie?.() ?? csrfResp.headers.raw?.()?.["set-cookie"] ?? []
-  let csrfToken
-  for (const setCookie of csrfCookieHeader) {
-    const match = setCookie.match(/csrf_token=([^;]+)/)
-    if (match) {
-      csrfToken = match[1]
-      break
-    }
-  }
-  if (!csrfToken) {
-    throw new Error(`CSRF token cookie not received`)
-  }
-
-  const loginResp = await fetch(`${ORIGIN}/api/v1/auth/login/json`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-CSRF-Token": csrfToken,
-      Cookie: `csrf_token=${csrfToken}`,
-    },
-    body: JSON.stringify({ email: TEST_EMAIL, password: TEST_PASSWORD }),
+  const { cookies, cookieJar } = await loginBrowserContext({
+    context,
+    origin: ORIGIN,
+    email: TEST_EMAIL,
+    password: TEST_PASSWORD,
   })
-  if (loginResp.status !== 200) {
-    const body = await loginResp.text()
-    throw new Error(`Login failed: HTTP ${loginResp.status} — ${body.slice(0, 200)}`)
-  }
-
-  const loginCookieHeader =
-    loginResp.headers.getSetCookie?.() ?? loginResp.headers.raw?.()?.["set-cookie"] ?? []
-  const cookies = []
-  let accessTokenValue = null
-  for (const setCookie of loginCookieHeader) {
-    for (const name of ["access_token_v2", "csrf_token"]) {
-      const re = new RegExp(`${name}=([^;]+)`)
-      const match = setCookie.match(re)
-      if (match) {
-        cookies.push({
-          name,
-          value: match[1],
-          domain: cookieDomain,
-          path: "/",
-          httpOnly: name === "access_token_v2",
-          secure: isHttps,
-          sameSite: "Lax",
-        })
-        if (name === "access_token_v2") {
-          accessTokenValue = match[1]
-        }
-      }
-    }
-  }
-  if (!accessTokenValue) {
-    throw new Error("access_token_v2 cookie not in login response")
-  }
+  const accessTokenValue = cookieJar.get("access_token_v2")
 
   const { header, payload } = decodeJwtUnverified(accessTokenValue)
   if (header.alg !== "RS256") {
@@ -270,8 +217,7 @@ async function performLogin(context) {
     throw new Error(`JWT aud=${payload.aud}, expected "university-ecosystem-api".`)
   }
 
-  await context.addCookies(cookies)
-  console.log(`✓ Login OK; injected ${cookies.length} cookies`)
+  console.log(`✓ Login OK; browser context holds ${cookies.length} cookies`)
   return { cookies, jwtHeader: header, jwtPayload: payload }
 }
 
@@ -285,6 +231,7 @@ async function performLogin(context) {
 async function auditRoute(page, routePath, outDir) {
   const consoleMessages = []
   const networkRequests = []
+  const networkFailures = []
 
   const consoleHandler = (msg) => {
     consoleMessages.push({ type: msg.type(), text: msg.text() })
@@ -299,11 +246,15 @@ async function auditRoute(page, routePath, outDir) {
     const idx = networkRequests.findLastIndex((r) => r.url === res.url() && !("status" in r))
     if (idx >= 0) networkRequests[idx].status = res.status()
   }
+  const requestFailedHandler = (request) => {
+    networkFailures.push(requestFailureRecord(request))
+  }
 
   page.on("console", consoleHandler)
   page.on("pageerror", pageErrorHandler)
   page.on("request", requestHandler)
   page.on("response", responseHandler)
+  page.on("requestfailed", requestFailedHandler)
 
   const targetUrl = `${ORIGIN}${routePath}`
   let httpStatus = null
@@ -372,26 +323,32 @@ async function auditRoute(page, routePath, outDir) {
       }
 
       console.log(`[${routePath}] before-axeRun timeout-ms=${axeTimeoutMs}`)
-      const results = await Promise.race([
-        page.evaluate(async (options) => {
-          // `window.axe` is the eval-injected global from the page.evaluate
-          // above. Evaluated inside browser context; ESLint Node-side
-          // `no-undef` doesn't apply because Playwright stringifies + ships
-          // this fn to the page.
-          // eslint-disable-next-line no-undef
-          const mainEl = document.querySelector("#main-content")
-          // eslint-disable-next-line no-undef
-          const scopeContext = mainEl ?? document
-          // eslint-disable-next-line no-undef
-          return await window.axe.run(scopeContext, options)
-        }, axeRunOptions),
-        new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`axe-analyze-timeout-${axeTimeoutMs / 1000}s`)),
-            axeTimeoutMs
-          )
-        ),
-      ])
+      let axeTimeout
+      let results
+      try {
+        results = await Promise.race([
+          page.evaluate(async (options) => {
+            // `window.axe` is the eval-injected global from the page.evaluate
+            // above. Evaluated inside browser context; ESLint Node-side
+            // `no-undef` doesn't apply because Playwright stringifies + ships
+            // this fn to the page.
+            // eslint-disable-next-line no-undef
+            const mainEl = document.querySelector("#main-content")
+            // eslint-disable-next-line no-undef
+            const scopeContext = mainEl ?? document
+            // eslint-disable-next-line no-undef
+            return await window.axe.run(scopeContext, options)
+          }, axeRunOptions),
+          new Promise((_, reject) => {
+            axeTimeout = setTimeout(
+              () => reject(new Error(`axe-analyze-timeout-${axeTimeoutMs / 1000}s`)),
+              axeTimeoutMs
+            )
+          }),
+        ])
+      } finally {
+        if (axeTimeout) clearTimeout(axeTimeout)
+      }
       console.log(`[${routePath}] after-axeRun violations=${results?.violations?.length ?? 0}`)
       axeViolations = results.violations.filter(
         (v) => v.impact === "critical" || v.impact === "serious"
@@ -407,6 +364,12 @@ async function auditRoute(page, routePath, outDir) {
   page.off("pageerror", pageErrorHandler)
   page.off("request", requestHandler)
   page.off("response", responseHandler)
+  page.off("requestfailed", requestFailedHandler)
+
+  const errors = consoleMessages.filter((m) => m.type === "error" || m.type === "pageerror")
+  const failedNetworkRequests = networkRequests.filter(
+    (request) => typeof request.status === "number" && request.status >= 400
+  )
 
   // Sidecar JSON
   const sidecarPath = path.join(outDir, `${safeFilename(routePath)}.json`)
@@ -422,6 +385,8 @@ async function auditRoute(page, routePath, outDir) {
         consoleMessages,
         networkRequestCount: networkRequests.length,
         networkRequests: networkRequests.slice(0, 50),
+        networkFailures,
+        failedNetworkRequests,
         axeError,
         axeViolationCount: axeViolations.length,
         axeViolations: axeViolations.map((v) => ({
@@ -444,7 +409,6 @@ async function auditRoute(page, routePath, outDir) {
     )
   )
 
-  const errors = consoleMessages.filter((m) => m.type === "error" || m.type === "pageerror")
   const hydrationErrors = consoleMessages.filter(
     (m) =>
       m.text.includes("hydrat") || m.text.includes("Hydration") || m.text.includes("did not match")
@@ -458,11 +422,13 @@ async function auditRoute(page, routePath, outDir) {
     finalUrl,
     redirectedToLogin,
     consoleErrorCount: errors.length,
+    failedNetworkRequestCount: failedNetworkRequests.length + networkFailures.length,
     hydrationErrorCount: hydrationErrors.length,
     networkRequestCount: networkRequests.length,
     axeError,
     axeViolationCount: axeViolations.length,
     sampleErrors: errors.slice(0, 3).map((e) => e.text),
+    failedNetworkRequests: [...failedNetworkRequests, ...networkFailures],
     navError: navError?.message ?? null,
   }
 }
@@ -590,7 +556,10 @@ async function main() {
     await routePage.close()
     summaries.push(result)
     const glyph =
-      result.httpStatus === 200 && !result.redirectedToLogin && result.axeViolationCount === 0
+      result.httpStatus === 200 &&
+      !result.redirectedToLogin &&
+      !result.axeError &&
+      result.axeViolationCount === 0
         ? "✓"
         : "✗"
     console.log(
@@ -603,9 +572,13 @@ async function main() {
 
   printSummary(summaries)
 
-  const failed = summaries.filter((s) => s.httpStatus !== 200 || s.redirectedToLogin)
-  const hydrationIssues = summaries.filter((s) => s.hydrationErrorCount > 0)
-  const axeIssues = summaries.filter((s) => s.axeViolationCount > 0)
+  const {
+    failedRoutes: failed,
+    hydrationIssues,
+    axeErrors,
+    axeIssues,
+    runtimeIssues,
+  } = classifyAuthenticatedAuditSummaries(summaries)
 
   if (failed.length > 0) {
     console.error(
@@ -617,12 +590,26 @@ async function main() {
     console.error(`\n✗ ${hydrationIssues.length}/${summaries.length} routes had hydration errors`)
     process.exit(2)
   }
+  if (axeErrors.length > 0) {
+    console.error(
+      `\n✗ ${axeErrors.length}/${summaries.length} routes did not complete axe analysis`
+    )
+    console.error(`  See sidecar JSON in ${OUT_DIR} for the exact axe errors.`)
+    process.exit(5)
+  }
   if (axeIssues.length > 0) {
     console.error(
       `\n✗ ${axeIssues.length}/${summaries.length} routes had critical/serious axe violations`
     )
     console.error(`  See sidecar JSON in ${OUT_DIR} for full details.`)
     process.exit(5)
+  }
+  if (runtimeIssues.length > 0) {
+    console.error(
+      `\n✗ ${runtimeIssues.length}/${summaries.length} routes had console/page errors or failed network requests`
+    )
+    console.error(`  See sidecar JSON in ${OUT_DIR} for exact URLs and statuses.`)
+    process.exit(6)
   }
   console.log(
     `\n✓ All ${summaries.length} routes passed: HTTP 200 + 0 hydration errors + 0 axe critical/serious violations`

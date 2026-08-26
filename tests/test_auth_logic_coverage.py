@@ -386,9 +386,9 @@ async def test_trusted_device_edge_cases(db_session, test_user):
         is False
     )
 
-    # Token hashing exception (unlikely but covered)
+    # A digest backend failure must not authenticate the token.
     with patch(
-        "app.auth.mfa.trusted_device._base64url_encode", side_effect=Exception("fail")
+        "app.auth.mfa.trusted_device._token_digest", side_effect=Exception("fail")
     ):
         assert (
             await mfa.verify_trusted_device_token(

@@ -62,6 +62,27 @@ async def test_mfa_loader_refreshes_only_unloaded_known_relationships():
 
 
 @pytest.mark.asyncio
+async def test_mfa_loader_explicitly_refreshes_noload_relationships():
+    db = AsyncMock()
+    value = SimpleNamespace()
+    state = SimpleNamespace(
+        unloaded=set(),
+        mapper=SimpleNamespace(
+            relationships={
+                "totp_enrollments": SimpleNamespace(lazy="noload"),
+                "profile": SimpleNamespace(lazy="joined"),
+            }
+        ),
+    )
+
+    with patch.object(user_loaders, "inspect", return_value=state):
+        assert await user_loaders.ensure_mfa_relationships_loaded(db, value) is value
+
+    db.refresh.assert_awaited_once_with(value, attribute_names=["totp_enrollments"])
+    assert value._mfa_loaded is True
+
+
+@pytest.mark.asyncio
 async def test_mfa_loader_marks_loaded_without_refresh_and_handles_slots():
     db = AsyncMock()
     value = SimpleNamespace()

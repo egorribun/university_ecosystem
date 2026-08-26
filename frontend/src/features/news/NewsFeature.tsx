@@ -149,7 +149,7 @@ export const NewsFeature = () => {
         registerCardRef={registerRef}
       />
 
-      <NewsFormDialog open={addOpen} onClose={() => setAddOpen(false)} onSuccess={refreshNews} />
+      <NewsFormDialog open={addOpen} onClose={() => setAddOpen(false)} />
 
       <NewsShortcutsOverlay />
     </div>

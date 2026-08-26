@@ -21,11 +21,24 @@ const passwordAnalysis = vi.hoisted(() => ({
   shouldThrow: false,
   score: 3,
   suggestions: ["Add another word"],
+  deferred: false,
+  pending: [] as Array<{
+    resolve: (result: {
+      score: number
+      feedback: { warning: string; suggestions: string[] }
+    }) => void
+    reject: (error: unknown) => void
+  }>,
 }))
 vi.mock("@zxcvbn-ts/core", () => ({
   ZxcvbnFactory: class {
     check() {
       if (passwordAnalysis.shouldThrow) throw new Error("analysis unavailable")
+      if (passwordAnalysis.deferred) {
+        return new Promise((resolve, reject) => {
+          passwordAnalysis.pending.push({ resolve, reject })
+        })
+      }
       return {
         score: passwordAnalysis.score,
         feedback: { warning: "", suggestions: passwordAnalysis.suggestions },
@@ -49,6 +62,19 @@ describe("ResetPassword page", () => {
     passwordAnalysis.shouldThrow = false
     passwordAnalysis.score = 3
     passwordAnalysis.suggestions = ["Add another word"]
+    passwordAnalysis.deferred = false
+    passwordAnalysis.pending = []
+  })
+
+  it("uses the i18n language when no resolved language is available", async () => {
+    const resolvedLanguage = i18n.resolvedLanguage
+    i18n.resolvedLanguage = undefined
+    try {
+      await renderWithToken()
+      expect(screen.getByRole("button", { name: tAuth("reset.saveButton") })).toBeInTheDocument()
+    } finally {
+      i18n.resolvedLanguage = resolvedLanguage
+    }
   })
 
   it("does not hide or translate the form entrance when reduced motion is requested", async () => {
@@ -135,6 +161,39 @@ describe("ResetPassword page", () => {
 
     await waitFor(() => expect(screen.getByText(tAuth("reset.successTitle"))).toBeInTheDocument())
     expect(payloads).toEqual([{ password: "Password123!", token: "token123" }])
+  })
+
+  it("shows the success state without an entrance transform under reduced motion", async () => {
+    const matchMedia = vi.spyOn(window, "matchMedia").mockImplementation(
+      (query) =>
+        ({
+          matches: query === "(prefers-reduced-motion: reduce)",
+          media: query,
+          onchange: null,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }) as unknown as MediaQueryList
+    )
+    try {
+      const user = userEvent.setup()
+      const { container } = await renderWithToken()
+      await user.type(screen.getByLabelText(matchText(tAuth("fields.password"))), "Password123!")
+      await user.type(
+        screen.getByLabelText(matchText(tAuth("fields.confirmPassword"))),
+        "Password123!"
+      )
+      await user.click(screen.getByRole("button", { name: tAuth("reset.saveButton") }))
+
+      await screen.findByText(tAuth("reset.successTitle"))
+      expect(
+        container.querySelector(".space-y-6.pt-4.text-center")?.getAttribute("style") ?? ""
+      ).not.toMatch(/opacity:\s*0|scale/i)
+    } finally {
+      matchMedia.mockRestore()
+    }
   })
 
   it("rejects a reset page without a route or query token", async () => {
@@ -271,6 +330,34 @@ describe("ResetPassword page", () => {
     consoleError.mockRestore()
     fetchMock.mockRestore()
   })
+
+  it.each(["resolve", "reject"] as const)(
+    "does not start a breach lookup when password analysis settles after unmount (%s)",
+    async (outcome) => {
+      passwordAnalysis.deferred = true
+      const fetchMock = vi.spyOn(globalThis, "fetch")
+      const { unmount } = await renderWithToken()
+      fireEvent.change(screen.getByLabelText(matchText(tAuth("fields.password"))), {
+        target: { value: "Password123!" },
+      })
+      await waitFor(() => expect(passwordAnalysis.pending).toHaveLength(1))
+
+      unmount()
+      await act(async () => {
+        if (outcome === "resolve") {
+          passwordAnalysis.pending[0]!.resolve({
+            score: 3,
+            feedback: { warning: "", suggestions: [] },
+          })
+        } else {
+          passwordAnalysis.pending[0]!.reject(new Error("analysis unavailable"))
+        }
+      })
+
+      expect(fetchMock).not.toHaveBeenCalled()
+      fetchMock.mockRestore()
+    }
+  )
 
   it("swallows password-analysis and breach-service failures", async () => {
     passwordAnalysis.shouldThrow = true

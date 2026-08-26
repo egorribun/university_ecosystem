@@ -117,6 +117,77 @@ spec:
         - protocol: TCP
           port: 53
 
+{{- if .Values.wsHub.enabled }}
+---
+# WS Hub: ingress only from the edge controller; egress only to its explicit
+# backend, Redis, NATS, telemetry and DNS dependencies.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-ws-hub-policy
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ws-hub
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ws-hub
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.ingressController.namespaceSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+          podSelector:
+            matchLabels:
+              {{- range $k, $v := .Values.networkPolicy.ingressController.podSelector }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.wsHub.service.port }}
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: backend
+      ports:
+        - protocol: TCP
+          port: {{ .Values.backend.service.port }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: nats
+      ports:
+        - protocol: TCP
+          port: 4222
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- end }}
+
 {{- if .Values.backup.enabled }}
 
 ---
@@ -205,6 +276,7 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
 spec:
   podSelector:
     matchLabels:
@@ -217,6 +289,13 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/component: gateway
+      ports:
+        - protocol: TCP
+          port: 8000
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: ws-hub
       ports:
         - protocol: TCP
           port: 8000

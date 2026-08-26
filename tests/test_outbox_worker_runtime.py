@@ -88,7 +88,7 @@ async def test_stop_sets_is_running_false_and_wakes_event(worker: OutboxWorker):
 
 @pytest.mark.asyncio
 async def test_dispatch_event_unknown_type(worker: OutboxWorker):
-    """Unknown event_type increments error_count and fails closed."""
+    """Unknown event_type fails closed for process_batch to dead-letter."""
     se = make_stored_event(event_type="NoSuchEvent")
     original_error_count = se.error_count
 
@@ -96,8 +96,7 @@ async def test_dispatch_event_unknown_type(worker: OutboxWorker):
         with pytest.raises(RuntimeError, match="Unknown outbox event type"):
             await worker._dispatch_event(se)
 
-    # error_count should be bumped
-    assert se.error_count == original_error_count + 1
+    assert se.error_count == original_error_count
 
 
 @pytest.mark.asyncio
@@ -161,7 +160,7 @@ async def test_dispatch_event_with_metadata(worker: OutboxWorker):
 
 @pytest.mark.asyncio
 async def test_dispatch_event_constructor_raises(worker: OutboxWorker):
-    """If event constructor fails, error_count is incremented and exception re-raised."""
+    """A direct dispatch failure is re-raised for process_batch to journal."""
 
     @dataclasses.dataclass
     class BadEvent:
@@ -179,7 +178,7 @@ async def test_dispatch_event_constructor_raises(worker: OutboxWorker):
         with pytest.raises(ValueError):
             await worker._dispatch_event(se)
 
-    assert se.error_count == 1
+    assert se.error_count == 0
 
 
 # ---------------------------------------------------------------------------

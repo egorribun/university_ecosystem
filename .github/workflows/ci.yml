@@ -564,17 +564,142 @@ jobs:
       contents: read
     uses: ./.github/workflows/reusable-frontend-tests.yml
     with:
-      node-version: "22"
+      node-version: "24"
       run-lighthouse: true
 
-  stryker-incremental:
-    name: Incremental Mutation Tests (frontend)
+  stryker-shards:
+    name: Frontend mutation shard ${{ matrix.shard-index }}/63
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    needs: pre-commit-check
+    if: ${{ github.event_name == 'pull_request' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard-index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
+    permissions:
+      contents: read
+    env:
+      STRYKER_SHARD_COUNT: "64"
+      STRYKER_SHARD_INDEX: ${{ matrix.shard-index }}
+      STRYKER_CONCURRENCY: "2"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run fresh Stryker shard
+        working-directory: frontend
+        run: npm run test:mutation
+
+      # Artifacts from an earlier run_attempt are not reliably downloadable after
+      # a partial GitHub rerun. This exact run_id+SHA cache is an immutable
+      # transport only; the replay and aggregate jobs treat it as untrusted input.
+      - name: Cache successful frontend mutation shard
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: frontend/reports/mutation/shards
+          key: stryker-shard-v1-${{ github.run_id }}-${{ github.sha }}-${{ matrix.shard-index }}
+
+  stryker-shard-replay:
+    name: Replay frontend mutation shard ${{ matrix.shard-index }}/63
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    needs: stryker-shards
+    if: ${{ github.event_name == 'pull_request' }}
+    strategy:
+      fail-fast: false
+      max-parallel: 16
+      matrix:
+        shard-index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
+    permissions:
+      contents: read
+    steps:
+      - name: Restore exact successful shard
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: frontend/reports/mutation/shards
+          key: stryker-shard-v1-${{ github.run_id }}-${{ github.sha }}-${{ matrix.shard-index }}
+          fail-on-cache-miss: true
+
+      - name: Replay shard evidence into current attempt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard-index }}
+          path: |
+            frontend/reports/mutation/shards/**/mutation.json
+            frontend/reports/mutation/shards/**/SHARD_EVIDENCE.json
+          if-no-files-found: error
+
+  stryker-aggregate:
+    name: Frontend Mutation Evidence (100%)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    needs: pre-commit-check
-    # This required context only runs for an actual PR event. Operator-run
-    # mutation evidence is isolated in manual-mutation-evidence.yml so a
-    # skipped manual run cannot satisfy branch protection.
+    needs: stryker-shard-replay
+    if: ${{ github.event_name == 'pull_request' }}
+    permissions:
+      contents: read
+    env:
+      STRYKER_SHARD_COUNT: "64"
+      STRYKER_AGGREGATE_ROOT: reports/mutation/external
+      STRYKER_CONCURRENCY: "2"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Download all frontend mutation shards
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-*
+          path: frontend/reports/mutation/external
+
+      - name: Aggregate and verify fresh frontend mutation evidence
+        working-directory: frontend
+        run: |
+          npm run test:mutation
+          npm run test:mutation:verify
+
+      - name: Upload validated frontend mutation evidence
+        if: ${{ success() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: frontend-mutation-validated-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            frontend/reports/mutation/mutation.json
+            frontend/reports/mutation/inventory.json
+            frontend/reports/mutation/preflight.json
+            frontend/reports/mutation/VALIDATED.json
+            frontend/reports/mutation/external/**/mutation.json
+            frontend/reports/mutation/external/**/SHARD_EVIDENCE.json
+          if-no-files-found: error
+
+  stryker-evidence-roundtrip:
+    name: Frontend Mutation Artifact Round-trip
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: stryker-aggregate
     if: ${{ github.event_name == 'pull_request' }}
     permissions:
       contents: read
@@ -585,7 +710,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -593,9 +718,15 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Run blocking incremental Stryker gate
+      - name: Download validated frontend mutation evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: frontend-mutation-validated-${{ github.run_id }}-${{ github.run_attempt }}
+          path: frontend/reports/mutation
+
+      - name: Re-verify downloaded frontend mutation evidence
         working-directory: frontend
-        run: npm run test:mutation -- --incremental
+        run: npm run test:mutation:verify
 
   # Wave 122 polish A1 — wires up the Playwright E2E suite + the W122 SW3
   # cross-env URL_STATE_E2E step. The default Chromium suite is split into
@@ -612,7 +743,7 @@ jobs:
         shard-index: [1, 2, 3, 4]
     uses: ./.github/workflows/reusable-e2e-tests.yml
     with:
-      node-version: "22"
+      node-version: "24"
       python-version: "3.14"
       browser: chromium
       shard-index: ${{ matrix.shard-index }}
@@ -634,7 +765,7 @@ jobs:
         browser: [firefox, webkit, mobile-webkit]
     uses: ./.github/workflows/reusable-e2e-tests.yml
     with:
-      node-version: "22"
+      node-version: "24"
       python-version: "3.14"
       browser: ${{ matrix.browser }}
       shard-index: 1
@@ -651,7 +782,7 @@ jobs:
     uses: ./.github/workflows/reusable-security-audit.yml
     with:
       python-version: "3.14"
-      node-version: "22"
+      node-version: "24"
 
   # MOD-21-04 (audit 2026-03-25 Wave 21): Generate Software Bill of Materials
   # for supply chain security compliance (CycloneDX/SPDX).  Uploads as a build
@@ -902,7 +1033,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -1061,7 +1192,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -1430,7 +1561,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -3034,7 +3165,7 @@ jobs:
       - name: Set up Node.js for harness TypeScript checks
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -3137,7 +3268,8 @@ jobs:
       - rust-tests
       - mutation-tests-stats
       - mutation-tests-incremental
-      - stryker-incremental
+      - stryker-aggregate
+      - stryker-evidence-roundtrip
       - chaos-tests
       - chaos-loadtest-orchestrator
       - db-migration-integrity
@@ -3226,9 +3358,11 @@ jobs:
           }
 
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            assert_event_result "stryker-incremental" "${{ needs.stryker-incremental.result }}" "success"
+            assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "success"
+            assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "success"
           else
-            assert_event_result "stryker-incremental" "${{ needs.stryker-incremental.result }}" "skipped"
+            assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "skipped"
+            assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "skipped"
           fi
 
           if [[ "$EVENT_NAME" == "push" && "$EVENT_REF" == "refs/heads/main" ]]; then
@@ -3251,7 +3385,8 @@ jobs:
           gw=${{ needs.go-integration-gateway.result }}
           browsers=${{ needs.e2e-tests-cross-browser.result }}
           mut=${{ needs.mutation-tests-incremental.result }}
-          stryker=${{ needs.stryker-incremental.result }}
+          stryker=${{ needs.stryker-aggregate.result }}
+          stryker_roundtrip=${{ needs.stryker-evidence-roundtrip.result }}
           toxi=${{ needs.chaos-tests.result }}
           dbmig=${{ needs.db-migration-integrity.result }}
           {
@@ -3263,12 +3398,13 @@ jobs:
             echo "| file-processor | $fp |";
             echo "| gateway | $gw |";
             echo "";
-            echo "## Incremental mutation gate (blocking)";
+            echo "## Mutation gates (blocking)";
             echo "";
             echo "| Job | Result |";
             echo "|-----|--------|";
             echo "| mutation-tests-incremental | $mut |";
-            echo "| stryker-incremental (frontend) | $stryker |";
+            echo "| stryker-aggregate (frontend, 100%) | $stryker |";
+            echo "| stryker-evidence-roundtrip | $stryker_roundtrip |";
             echo "";
             echo "## Load & chaos resilience (advisory)";
             echo "";

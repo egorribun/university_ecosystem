@@ -1,0 +1,155 @@
+{{- if .Values.wsHub.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-ws-hub
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ws-hub
+spec:
+  replicas: {{ .Values.wsHub.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "university-ecosystem.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ws-hub
+  template:
+    metadata:
+      labels:
+        {{- include "university-ecosystem.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ws-hub
+        {{ printf "%s-redis-client" .Release.Name }}: "true"
+        {{ printf "%s-revocationRedis-client" .Release.Name }}: "true"
+        {{ printf "%s-nats-client" .Release.Name }}: "true"
+      annotations:
+        university-ecosystem.io/source-sha: {{ .Values.global.imageTag | quote }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.wsHub.service.port | quote }}
+        prometheus.io/path: "/metrics"
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ .Release.Name }}-ws-hub
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: ws-hub
+          image: {{ include "university-ecosystem.image" (dict "root" . "image" .Values.wsHub.image) | quote }}
+          imagePullPolicy: {{ .Values.wsHub.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.wsHub.service.port }}
+              protocol: TCP
+          env:
+            - name: WS_HUB_PORT
+              value: {{ .Values.wsHub.service.port | quote }}
+            - name: VITE_ENVIRONMENT
+              value: {{ .Values.global.environment | quote }}
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
+                  key: jwt-secret
+            - name: WS_HUB_INTERNAL_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
+                  key: ws-hub-internal-secret
+            - name: NATS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.natsURLKey must be set" .Values.connections.natsURLKey | quote }}
+            - name: NATS_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.natsAuthTokenKey must be set" .Values.connections.natsAuthTokenKey | quote }}
+            - name: REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.redisBackendURLKey must be set" .Values.connections.redisBackendURLKey | quote }}
+            - name: REVOCATION_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey | quote }}
+            - name: BACKEND_INTERNAL_URL
+              value: {{ printf "http://%s-backend:%v" (include "university-ecosystem.fullname" .) .Values.backend.service.port | quote }}
+            - name: JWKS_URL
+              value: {{ printf "http://%s-backend:%v/.well-known/jwks.json" (include "university-ecosystem.fullname" .) .Values.backend.service.port | quote }}
+            - name: ALLOWED_ORIGINS
+              value: {{ join "," .Values.wsHub.config.allowedOrigins | quote }}
+            - name: WS_ALLOWED_ORIGINS
+              value: {{ join "," .Values.wsHub.config.allowedOrigins | quote }}
+            - name: TRUSTED_PROXIES
+              value: {{ join "," .Values.wsHub.config.trustedProxies | quote }}
+            - name: WS_SEND_BUFFER_SIZE
+              value: {{ .Values.wsHub.config.sendBufferSize | quote }}
+            - name: WS_BROADCAST_BUFFER_SIZE
+              value: {{ .Values.wsHub.config.broadcastBufferSize | quote }}
+            - name: WS_BROADCAST_WORKERS
+              value: {{ .Values.wsHub.config.broadcastWorkers | quote }}
+            - name: WS_HUB_MAX_CLIENTS
+              value: {{ .Values.wsHub.config.maxClients | quote }}
+            - name: WS_CLIENT_MSG_RATE_LIMIT
+              value: {{ .Values.wsHub.config.clientMessageRateLimit | quote }}
+            - name: WS_CLIENT_MSG_BURST
+              value: {{ .Values.wsHub.config.clientMessageBurst | quote }}
+            - name: WS_TICKET_TTL_SECONDS
+              value: {{ .Values.wsHub.config.ticketTTLSeconds | quote }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ .Values.wsHub.config.otelEndpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_INSECURE
+              value: {{ .Values.wsHub.config.otelInsecure | quote }}
+            - name: ENABLE_JETSTREAM
+              value: {{ .Values.wsHub.config.jetstream.enabled | quote }}
+            - name: NATS_STREAM_CHAT
+              value: {{ .Values.wsHub.config.jetstream.chatStream | quote }}
+            - name: NATS_STREAM_NOTIFICATIONS
+              value: {{ .Values.wsHub.config.jetstream.notificationsStream | quote }}
+            - name: NATS_DURABLE_CHAT
+              value: {{ .Values.wsHub.config.jetstream.chatDurable | quote }}
+            - name: NATS_DURABLE_NOTIFICATIONS
+              value: {{ .Values.wsHub.config.jetstream.notificationsDurable | quote }}
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            {{- toYaml .Values.wsHub.resources | nindent 12 }}
+{{- end }}

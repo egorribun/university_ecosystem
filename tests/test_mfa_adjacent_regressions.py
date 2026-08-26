@@ -61,6 +61,32 @@ async def test_generic_consumption_has_no_unbound_internal_bypass(
         )
 
 
+@pytest.mark.asyncio
+async def test_totp_opaque_challenge_rejects_wrong_fingerprint_fail_closed(
+    db_session: AsyncSession, test_user: User
+) -> None:
+    issued = await issue_challenge(
+        db_session,
+        user_id=test_user.id,
+        challenge_type="totp-verify",
+        flow="login",
+        session_identifier="required-login-session",
+        client_fingerprint="f" * 64,
+        method="totp",
+    )
+
+    with pytest.raises(HTTPException):
+        await consume_challenge(
+            db_session,
+            challenge_token=issued.challenge_token,
+            challenge_type="totp-verify",
+            provided_code="123456",
+            provided_method="totp",
+            client_fingerprint="a" * 64,
+            login_session_identifier="required-login-session",
+        )
+
+
 def test_request_fingerprint_uses_trusted_client_ip_resolver(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -10,8 +10,6 @@
 # Self-contained: no .env dependency, no external networks, no auth on the test
 # brokers (isolated + ephemeral — torn down with `down -v`). Image pins match
 # ADR-022 / docker-compose.full.yml so the sandbox mirrors production wire formats.
-name: ue-sandbox
-
 services:
   postgres:
     image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f

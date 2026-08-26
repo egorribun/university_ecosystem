@@ -98,7 +98,7 @@ export function NavbarOverflowMenu({
             className="absolute right-0 top-full z-dropdown mt-2 min-w-48 rounded-xl border border-(--glass-border) bg-(--pill-bg) p-1.5 shadow-md"
             onKeyDown={(event) => {
               const menuItems = Array.from(
-                menuRef.current?.querySelectorAll<HTMLElement>("[role='menuitem']") ?? []
+                event.currentTarget.querySelectorAll<HTMLElement>("[role='menuitem']")
               )
               const currentIndex = menuItems.indexOf(document.activeElement as HTMLElement)
               let nextIndex: number | undefined

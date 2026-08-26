@@ -39,6 +39,12 @@ $root = $root -replace '/', '\'
 Set-Location $root
 
 $compose = "docker-compose.sandbox.yml"
+$worktreeHash = ([Convert]::ToHexString(
+  [Security.Cryptography.SHA256]::HashData(
+    [Text.Encoding]::UTF8.GetBytes($root)
+  )
+)).Substring(0, 12).ToLowerInvariant()
+$composeProject = "ue-sandbox-$worktreeHash"
 $useInfra = -not $Hermetic
 $failed = [System.Collections.Generic.List[string]]::new()
 
@@ -84,7 +90,7 @@ if (-not (Get-Command vips -ErrorAction SilentlyContinue) -and -not $env:VIPS_HO
 try {
   if ($useInfra) {
     Invoke-Step "Sandbox infra up (Postgres/Redis/NATS/MinIO)" {
-      docker compose -f $compose up -d --wait
+      docker compose --project-name $composeProject -f $compose up -d --wait
     }
   }
 
@@ -154,7 +160,7 @@ try {
 } finally {
   if ($useInfra -and -not $KeepUp) {
     Write-Host "`n=== Sandbox infra down ===" -ForegroundColor Cyan
-    docker compose -f $compose down -v
+    docker compose --project-name $composeProject -f $compose down -v
   }
 }
 

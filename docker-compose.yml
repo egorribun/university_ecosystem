@@ -80,10 +80,10 @@ services:
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
       # Spotify
-      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
-      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
-      SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI}
-      SPOTIFY_SCOPES: ${SPOTIFY_SCOPES}
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
+      SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI:-}
+      SPOTIFY_SCOPES: ${SPOTIFY_SCOPES:-}
       # MOD-06 (audit 2026-03-11): Send OTLP traces to Tempo via gRPC.
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
     volumes:
@@ -221,10 +221,10 @@ services:
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
       # Spotify
-      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
-      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
-      SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI}
-      SPOTIFY_SCOPES: ${SPOTIFY_SCOPES}
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
+      SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI:-}
+      SPOTIFY_SCOPES: ${SPOTIFY_SCOPES:-}
     depends_on:
       valkey:
         condition: service_healthy
@@ -579,7 +579,6 @@ services:
   # db_net/service_net topology of this compose.)
   temporal-admin-tools:
     image: temporalio/admin-tools:1.30.2@sha256:024c6473df113e4b220b3caf6056d30964582ffcae6f6e46a1074aa6c67968d3
-    container_name: temporal-admin-tools
     environment:
       SQL_PLUGIN: postgres12
       SQL_HOST: postgres
@@ -619,7 +618,6 @@ services:
     # Temporal actually boots (it had been crash-looping exit(1) since the
     # plain-server migration — net win for prod, not just the CI Load-and-Chaos job).
     image: temporalio/server:1.30.2@sha256:d5334ee3ddce1617efbe280a10afc85916cf8d81798415c98988dbda2b46773e
-    container_name: temporal
     ports:
       # RZ-8 (audit 2026-03-05): Bind to localhost only — Temporal gRPC has no
       # built-in auth. External access via SSH tunnel: ssh -L 7233:localhost:7233 host
@@ -675,7 +673,6 @@ services:
   # server's gRPC frontend is accepting traffic. `restart: "no"`.
   temporal-namespace-init:
     image: temporalio/admin-tools:1.30.2@sha256:024c6473df113e4b220b3caf6056d30964582ffcae6f6e46a1074aa6c67968d3
-    container_name: temporal-namespace-init
     environment:
       # W144 SW2 NEW (z) #20: set both the v1 (_CLI) and v2 env names + pass
       # --address explicitly to avoid env-var-precedence ambiguity.
@@ -728,7 +725,6 @@ services:
 
   temporal-ui:
     image: temporalio/ui:2.48.1@sha256:edb5dd1b3e0ddb35611939dde9b573533afd6fbafbbf077b73c7131a30ca91ff
-    container_name: temporal-ui
     ports:
       # MOD-9: Temporal UI is admin-only. Expose on localhost only to prevent
       # unauthenticated workflow access from external networks. Access via SSH
@@ -751,7 +747,6 @@ services:
 
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-    container_name: minio
     # Ports only exposed on internal network for security
     # Access via backend service or SSH tunnel for console
     expose:
@@ -842,7 +837,6 @@ services:
     ports:
       - "127.0.0.1:15052:50051"
     image: authzed/spicedb:v1.51.0@sha256:f2e6e77f89f8a0c087d9fd26b9ecd443ea601aa5422c92912f7ca95c412eb929
-    container_name: spicedb
     # P1-10 (audit 2026-03-06): Key removed from CLI args — `docker ps --no-trunc`
     # and `docker inspect` expose full command including secrets. The
     # SPICEDB_GRPC_PRESHARED_KEY env var (below) is read automatically by SpiceDB.
@@ -886,7 +880,6 @@ services:
 
   pyroscope:
     image: grafana/pyroscope:1.19.1@sha256:d5d38187f7593fdf5643ba29e67099206e8d4dee6207f78d028ea3fe621cc04d
-    container_name: pyroscope
     ports:
       # RZ-9 (audit 2026-03-05): Bind to localhost only — Pyroscope CPU flame graphs
       # expose critical operational intelligence. Access via SSH tunnel for remote.
@@ -904,7 +897,6 @@ services:
     # MOD-06 (audit 2026-03-11): Grafana Tempo for distributed tracing via OTLP.
     # Backend sends traces to tempo:4317 (gRPC) via OTEL_EXPORTER_OTLP_ENDPOINT.
     image: grafana/tempo:2.10.3@sha256:cac9de2ac9f6da8efca5b64b690a7cb8c786a0c49cac7b4517dd1b0089a6c703
-    container_name: tempo
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
       - ./infrastructure/observability/tempo.yaml:/etc/tempo.yaml:ro

@@ -30,6 +30,7 @@ import { NewsDetailNavigation } from "@/components/news/NewsDetailNavigation"
 import { useBookmarks } from "@/hooks/useBookmarks"
 import { useRelatedNews } from "@/hooks/useRelatedNews"
 import { useArticleNavigation } from "@/hooks/useArticleNavigation"
+import { captureActiveTelemetryContext } from "@/utils/telemetryContext"
 import { useSwipe } from "@/hooks/useSwipe"
 import { inferCategory } from "@/features/news/categories"
 import { useAuth } from "@/contexts/AuthContext"
@@ -171,12 +172,15 @@ export default function NewsDetail() {
   /* ── Handlers ── */
   const handleDelete = async () => {
     if (!query.data) return
+    const telemetryContext = captureActiveTelemetryContext()
     setDeleting(true)
     try {
-      await deleteNews(query.data.id)
+      await telemetryContext.run(() => deleteNews(query.data.id))
       setSnackbar(t("news:notifications.deleted"))
       queryClient.removeQueries({ queryKey: ["news", id] })
-      await queryClient.invalidateQueries({ queryKey: ["news", "list"] })
+      await telemetryContext.run(() =>
+        queryClient.invalidateQueries({ queryKey: ["news", "list"] })
+      )
       if (window.history.length > 1) window.history.back()
       else void navigate({ to: "/news" })
     } catch {

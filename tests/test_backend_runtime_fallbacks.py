@@ -57,7 +57,7 @@ async def test_mfa_delete_pending_totp_enrollment_errors():
     db.get = AsyncMock(return_value=None)
     with pytest.raises(HTTPException) as exc:
         await mfa_api.delete_pending_totp_enrollment(
-            enrollment_id=uuid.uuid4(), request=request, user=user
+            enrollment_id=uuid.uuid4(), request=request, db=db, user=user
         )
     assert exc.value.status_code == 404
 
@@ -67,7 +67,7 @@ async def test_mfa_delete_pending_totp_enrollment_errors():
     db.get = AsyncMock(return_value=other_enrollment)
     with pytest.raises(HTTPException) as exc:
         await mfa_api.delete_pending_totp_enrollment(
-            enrollment_id=uuid.uuid4(), request=request, user=user
+            enrollment_id=uuid.uuid4(), request=request, db=db, user=user
         )
     assert exc.value.status_code == 404
 
@@ -79,7 +79,7 @@ async def test_mfa_delete_pending_totp_enrollment_errors():
     db.get = AsyncMock(return_value=confirmed_enrollment)
     with pytest.raises(HTTPException) as exc:
         await mfa_api.delete_pending_totp_enrollment(
-            enrollment_id=uuid.uuid4(), request=request, user=user
+            enrollment_id=uuid.uuid4(), request=request, db=db, user=user
         )
     assert exc.value.status_code == 400
 
@@ -111,7 +111,7 @@ async def test_mfa_confirm_totp_enrollment_failure():
     ):
         with pytest.raises(HTTPException) as exc:
             await mfa_api.confirm_totp_enrollment(
-                payload=payload, request=request, user=user
+                payload=payload, request=request, db=db, user=user
             )
         assert exc.value.status_code == 400
         audit.log.assert_called_once()
@@ -146,7 +146,7 @@ async def test_mfa_start_totp_enrollment_endpoint():
         ),
     ):
         res = await mfa_api.start_totp_enrollment_endpoint(
-            request=request, payload=payload, user=user
+            request=request, db=db, payload=payload, user=user
         )
         assert res.secret == "secret"  # pragma: allowlist secret
         assert res.otpauth_url == "url"

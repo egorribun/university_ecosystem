@@ -63,7 +63,6 @@ from app.auth.mfa.totp import (
 )
 from app.auth.mfa.trusted_device import (
     _base64url_decode,
-    _base64url_encode,
     create_trusted_device_token,
     verify_and_rotate_trusted_device_token,
     verify_trusted_device_token,
@@ -93,7 +92,6 @@ __all__ = [
     "MfaTotpEnrollment",
     "RecoveryCode",
     "_base64url_decode",
-    "_base64url_encode",
     "_utcnow",
     "build_totp_uri",
     "collect_mfa_session_revocations",

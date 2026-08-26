@@ -14,6 +14,8 @@ import { CalendarDays } from "lucide-react"
 import type { MapEvent } from "@/hooks/useMapEvents"
 import { logError } from "@/app/logger"
 import { useStripMaplibreMarkerChrome } from "@/utils/stripMaplibreMarkerChrome"
+import { MAP_INTERACTIVE_TARGET_PX } from "@/constants/campus"
+import type { MapMarkerOffset } from "@/features/map/markerCollisionLayout"
 
 /**
  * Event pin color — uses CSS token var(--map-event-color) in stylesheets.
@@ -28,6 +30,7 @@ interface EventMarkerProps {
   isPopupOpen?: boolean
   onPopupOpen?: () => void
   onPopupClose?: () => void
+  offset?: MapMarkerOffset
 }
 
 /**
@@ -50,7 +53,13 @@ function formatEventDate(isoString: string, locale: string): string {
   }
 }
 
-export function EventMarker({ event, isPopupOpen, onPopupOpen, onPopupClose }: EventMarkerProps) {
+export function EventMarker({
+  event,
+  isPopupOpen,
+  onPopupOpen,
+  onPopupClose,
+  offset,
+}: EventMarkerProps) {
   const { t, i18n } = useTranslation("map")
   const markerRef = useRef<MarkerInstance | null>(null)
   // Wave 116 polish — see BuildingMarker + utils/stripMaplibreMarkerChrome.ts.
@@ -73,12 +82,17 @@ export function EventMarker({ event, isPopupOpen, onPopupOpen, onPopupClose }: E
         longitude={event.geoCoords[1]}
         latitude={event.geoCoords[0]}
         anchor="bottom"
+        offset={offset}
       >
         <div
           role="button"
           tabIndex={0}
           aria-label={ariaLabel}
           className="map-event-pin"
+          style={{
+            minWidth: MAP_INTERACTIVE_TARGET_PX,
+            minHeight: MAP_INTERACTIVE_TARGET_PX,
+          }}
           onClick={(e) => {
             e.stopPropagation()
             onPopupOpen?.()

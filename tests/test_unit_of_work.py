@@ -11,7 +11,7 @@ from app.repositories.news_repository import NewsRepository
 from app.repositories.notification_repository import NotificationRepository
 from app.repositories.schedule_repository import GroupRepository, ScheduleRepository
 from app.repositories.story_repository import StoryRepository
-from app.repositories.unit_of_work import UnitOfWork, get_unit_of_work
+from app.repositories.unit_of_work import UnitOfWork, get_unit_of_work, uow_from_session
 from app.repositories.user_repository import UserRepository
 
 
@@ -140,3 +140,33 @@ async def test_uow_no_session_ops():
     await uow.rollback()
     await uow.flush()
     await uow._close()
+
+
+@pytest.mark.asyncio
+async def test_borrowed_session_is_not_closed_on_context_exit():
+    """A request-scoped session remains owned by its dependency provider."""
+    mock_session = AsyncMock(spec=AsyncSession)
+    uow = uow_from_session(mock_session)
+
+    async with uow as entered:
+        assert entered.session is mock_session
+        assert entered.users.db is mock_session
+
+    mock_session.close.assert_not_awaited()
+    assert uow.session is mock_session
+    assert uow.users.db is mock_session
+
+
+@pytest.mark.asyncio
+async def test_borrowed_session_rolls_back_but_is_not_closed_on_error():
+    """A borrowed transaction still rolls back without stealing lifecycle ownership."""
+    mock_session = AsyncMock(spec=AsyncSession)
+    uow = uow_from_session(mock_session)
+
+    with pytest.raises(ValueError, match="borrowed transaction failed"):
+        async with uow:
+            raise ValueError("borrowed transaction failed")
+
+    mock_session.rollback.assert_awaited_once()
+    mock_session.close.assert_not_awaited()
+    assert uow.session is mock_session

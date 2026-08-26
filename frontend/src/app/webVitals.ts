@@ -130,9 +130,6 @@ function createTrustedReporter(endpoint: string): WebVitalReporter | undefined {
     if (envelopeRequest?.navigationKey === navigationKey) {
       return envelopeRequest.promise
     }
-    if (envelopeRequest) {
-      return envelopeRequest.promise.then(getEnvelope, getEnvelope)
-    }
     const renewalEnvelope =
       cachedEnvelope?.navigationKey === navigationKey ? cachedEnvelope.envelope : undefined
     const body: Record<string, string> = {
@@ -171,7 +168,7 @@ function createTrustedReporter(endpoint: string): WebVitalReporter | undefined {
     })
     envelopeRequest = { navigationKey, promise: pending }
     const clearPending = () => {
-      if (envelopeRequest?.promise === pending) envelopeRequest = undefined
+      envelopeRequest = undefined
     }
     void pending.then(clearPending, clearPending)
     return pending

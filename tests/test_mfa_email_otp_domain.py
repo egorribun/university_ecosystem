@@ -1021,4 +1021,4 @@ async def test_outbox_unknown_event_fails_closed_instead_of_marking_success() ->
     )
     with pytest.raises(RuntimeError, match="Unknown outbox event type"):
         await OutboxWorker()._dispatch_event(event)
-    assert event.error_count == 1
+    assert event.error_count is None

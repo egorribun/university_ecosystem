@@ -27,11 +27,12 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,js,jsx,json,css,scss,md}\" \"tests/**/*.{ts,tsx,js,jsx}\" vite.config.mts playwright.config.ts vitest.config.ts tsconfig.json pwa-maskable-icons.ts \"scripts/**/*.mjs\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --configLoader runner",
-    "test:ci": "npm run test:wasm && vitest run --configLoader runner --coverage --reporter=default --reporter=junit --outputFile=vitest-report.xml",
-    "test:client-production": "vitest run --configLoader runner --mode production src/api/__tests__/client.csrf.production.test.ts --silent=true --maxWorkers=1 --minWorkers=1",
-    "test:mutation": "stryker run",
+    "test:ci": "npm run test:wasm && vitest run --configLoader runner --coverage --maxWorkers=4 --reporter=default --reporter=junit --outputFile=vitest-report.xml",
+    "test:client-production": "vitest run --configLoader runner --mode production src/api/__tests__/client.csrf.production.test.ts --silent=true --maxWorkers=1",
+    "test:mutation": "node ./scripts/run-stryker.mjs",
+    "test:mutation:verify": "node ./scripts/verify-stryker-evidence.mjs",
     "test:wasm-artifacts": "node --test scripts/verify-wasm-artifacts.test.mjs",
-    "test:wasm": "node --test scripts/verify-wasm-artifacts.test.mjs scripts/build-wasm.test.mjs scripts/wasm-runtime-smoke.test.mjs scripts/merge-vitest-coverage.test.mjs scripts/build-orchestrated.contract.test.mjs",
+    "test:wasm": "node --test scripts/verify-wasm-artifacts.test.mjs scripts/build-wasm.test.mjs scripts/wasm-runtime-smoke.test.mjs scripts/merge-vitest-coverage.test.mjs scripts/build-orchestrated.contract.test.mjs scripts/frontend-quality-contract.test.mjs scripts/maplibre-worker-assets.test.mjs scripts/stryker-inventory.test.mjs scripts/run-stryker.test.mjs scripts/server-readiness.test.mjs scripts/server-request-log.test.mjs scripts/server-response-stream.test.mjs scripts/verify-stryker-evidence.test.mjs scripts/visual-smoke-auth.test.mjs scripts/visual-smoke-contract.test.mjs",
     "test:watch": "vitest --configLoader runner",
     "i18n:check": "vitest run --configLoader runner src/tests/translationParity.test.ts",
     "test:e2e": "playwright test",
@@ -53,8 +54,10 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "packageManager": "npm@11.17.0",
   "engines": {
-    "node": ">=22.0.0"
+    "node": ">=24.0.0",
+    "npm": ">=11.0.0"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -66,7 +69,6 @@
     "@hookform/resolvers": "^5.2.2",
     "@noble/hashes": "^2.3.0",
     "@opentelemetry/api": "^1.9.0",
-    "@opentelemetry/context-zone": "^2.8.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.221.0",
     "@opentelemetry/instrumentation-fetch": "^0.221.0",
     "@opentelemetry/instrumentation-user-interaction": "^0.65.0",
@@ -92,7 +94,6 @@
     "brace-expansion": "^5.0.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "dexie": "^4.4.4",
     "focus-trap": "^8.2.2",
     "framer-motion": "^13.1.0",
     "html-to-image": "^1.11.13",
@@ -126,7 +127,6 @@
     "@chromatic-com/storybook": "^5.1.2",
     "@eslint/js": "^9.39.5",
     "@faker-js/faker": "^10.4.0",
-    "@hey-api/client-axios": "^0.9.1",
     "@hey-api/openapi-ts": "^0.99.0",
     "@lhci/cli": "^0.15.1",
     "@opentelemetry/instrumentation": "^0.221.0",
@@ -139,6 +139,7 @@
     "@storybook/addon-vitest": "^10.2.13",
     "@storybook/react-vite": "^10.2.13",
     "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/instrumenter": "9.6.1",
     "@stryker-mutator/vitest-runner": "^9.6.1",
     "@tailwindcss/postcss": "^4.1.18",
     "@testing-library/jest-dom": "^7.0.1",
@@ -146,9 +147,8 @@
     "@testing-library/user-event": "^14.5.2",
     "@types/jest-axe": "^3.5.9",
     "@types/jsdom": "^30.0.0",
-    "@types/node": "^26.2.0",
+    "@types/node": "^24.13.3",
     "@types/qrcode": "^1.5.5",
-    "@types/qrcode.react": "^3.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@types/trusted-types": "^2.0.7",
@@ -221,7 +221,8 @@
   },
   "overrides": {
     "tmp": "^0.2.4",
-    "glob": "11.1.0",
+    "glob": "13.0.6",
+    "chrome-launcher": "1.2.1",
     "fast-uri": "3.1.5",
     "ip-address": "10.4.0",
     "qs": "6.15.3",
@@ -240,5 +241,13 @@
     "eslint-plugin-react-hooks": {
       "zod-validation-error": "4.0.2"
     }
+  },
+  "allowScripts": {
+    "@sentry/cli@2.58.6": true,
+    "esbuild@0.28.1": true,
+    "core-js": false,
+    "fsevents@2.3.2": false,
+    "fsevents@2.3.3": false,
+    "msw": false
   }
 }

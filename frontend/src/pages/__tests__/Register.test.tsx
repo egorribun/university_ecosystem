@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { axe } from "jest-axe"
 
-import Register from "../Register"
+import Register, { resolveRegistrationEmailErrorKey } from "../Register"
 import api from "@/api/client"
 import { server } from "@/tests/mocks/server"
 import i18n from "../../i18n/config"
@@ -21,6 +21,7 @@ const passwordAnalysis = vi.hoisted(() => ({
   pending: [] as Array<{
     password: string
     resolve: (result: { score: number }) => void
+    reject: (error: unknown) => void
   }>,
 }))
 
@@ -34,8 +35,8 @@ vi.mock("@zxcvbn-ts/core", () => ({
       passwordAnalysis.calls += 1
       if (passwordAnalysis.mode === "throw") throw new Error("analysis unavailable")
       if (passwordAnalysis.deferred) {
-        return new Promise<{ score: number }>((resolve) => {
-          passwordAnalysis.pending.push({ password, resolve })
+        return new Promise<{ score: number }>((resolve, reject) => {
+          passwordAnalysis.pending.push({ password, resolve, reject })
         })
       }
       return { score: passwordAnalysis.mode === "unknown" ? 99 : 3 }
@@ -59,6 +60,23 @@ describe("Register page", () => {
     passwordAnalysis.constructors = 0
     passwordAnalysis.deferred = false
     passwordAnalysis.pending = []
+  })
+
+  it("uses the i18n language when no resolved language is available", async () => {
+    const resolvedLanguage = i18n.resolvedLanguage
+    i18n.resolvedLanguage = undefined
+    try {
+      await renderRegister()
+      expect(screen.getByRole("button", { name: tAuth("actions.signUp") })).toBeInTheDocument()
+    } finally {
+      i18n.resolvedLanguage = resolvedLanguage
+    }
+  })
+
+  it("provides a stable fallback key for missing email validation messages", () => {
+    expect(resolveRegistrationEmailErrorKey(undefined)).toBe("auth:messages.invalidFormat")
+    expect(resolveRegistrationEmailErrorKey("")).toBe("auth:messages.invalidFormat")
+    expect(resolveRegistrationEmailErrorKey("custom.message")).toBe("custom.message")
   })
 
   it("does not translate the form entrance when reduced motion is requested", async () => {
@@ -280,6 +298,23 @@ describe("Register page", () => {
     expect(
       screen.queryByText(tAuth("register.passwordStrengthLevel.veryWeak"))
     ).not.toBeInTheDocument()
+  })
+
+  it("keeps the newest password score when an older analysis rejects last", async () => {
+    passwordAnalysis.deferred = true
+    await renderRegister()
+    const passwordInput = screen.getByLabelText(matchText(tAuth("fields.password")))
+
+    fireEvent.change(passwordInput, { target: { value: "older-input-value" } })
+    await waitFor(() => expect(passwordAnalysis.pending).toHaveLength(1))
+    fireEvent.change(passwordInput, { target: { value: "newer-input-value" } })
+    await waitFor(() => expect(passwordAnalysis.pending).toHaveLength(2))
+
+    await act(async () => passwordAnalysis.pending[1]!.resolve({ score: 4 }))
+    expect(screen.getByText(tAuth("register.passwordStrengthLevel.excellent"))).toBeInTheDocument()
+    await act(async () => passwordAnalysis.pending[0]!.reject(new Error("stale analysis")))
+
+    expect(screen.getByText(tAuth("register.passwordStrengthLevel.excellent"))).toBeInTheDocument()
   })
 
   it("hides password strength when analysis fails", async () => {

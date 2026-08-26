@@ -345,6 +345,12 @@ async def require_fresh_mfa(
     db: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> None:
     await ensure_mfa_relationships_loaded(db, user)
-    if not mfa.user_has_confirmed_interactive_factor(user):
+    # Treat PostgreSQL as authoritative at this authorization boundary.  A
+    # ``lazy="noload"`` collection can legitimately be empty in the identity
+    # map even when a confirmed enrollment exists; relying only on that cached
+    # collection allowed destructive endpoints to skip step-up enforcement.
+    has_totp = await mfa.has_totp_enabled(db, user)
+    has_email_otp = user.email_mfa_enabled_at is not None
+    if not has_totp and not has_email_otp:
         return
     _enforce_fresh_mfa(request)

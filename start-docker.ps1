@@ -1093,11 +1093,12 @@ Write-Host "  Alloy:                http://localhost:12345" -ForegroundColor Dar
 Write-Host ""
 Write-Host "Seed data:" -ForegroundColor Cyan
 Write-Host "  1) Demo content (idempotent - student user + news + events + schedule + stories):"
-Write-Host "       docker exec -w /app university_ecosystem-backend-1 python scripts/seed_demo_data.py"
+Write-Host "       docker compose -f $ComposeFile --env-file $EnvFile cp scripts/seed_demo_data.py backend:/app/seed_demo_data.py"
+Write-Host "       docker compose -f $ComposeFile --env-file $EnvFile exec -T -w /app backend python seed_demo_data.py"
 Write-Host "       Login: test@university.dev / TestPass@2024x"
 Write-Host "  2) Admin content (idempotent - admin user + 6 users + 12 audit logs + 4 dead-letter jobs):"
-Write-Host "       docker cp scripts/seed_admin_data.py university_ecosystem-backend-1:/app/seed_admin_data.py"
-Write-Host "       docker exec -w /app university_ecosystem-backend-1 python seed_admin_data.py"
+Write-Host "       docker compose -f $ComposeFile --env-file $EnvFile cp scripts/seed_admin_data.py backend:/app/seed_admin_data.py"
+Write-Host "       docker compose -f $ComposeFile --env-file $EnvFile exec -T -w /app backend python seed_admin_data.py"
 Write-Host "       Login: admin@university.dev / Admin@2024test"
 Write-Host ""
 Write-Host "Commands:" -ForegroundColor Gray

@@ -115,6 +115,18 @@ def _compute_fingerprint_hash(
     return hashlib.sha256(content.encode()).hexdigest()[:32]
 
 
+def _normalize_accept_language(value: str) -> str:
+    """Return a stable primary locale for session fingerprinting.
+
+    Browsers send a locale preference list while the API client deliberately
+    sends the selected application locale. Treat region and quality variants
+    of the same language as one device characteristic so legitimate SSR and
+    browser API requests share a fingerprint.
+    """
+    primary = value.split(",", 1)[0].split(";", 1)[0].strip().lower()
+    return primary.split("-", 1)[0]
+
+
 def extract_fingerprint(request: Request) -> SessionFingerprint:
     """
     Extract session fingerprint from an HTTP request.
@@ -123,7 +135,9 @@ def extract_fingerprint(request: Request) -> SessionFingerprint:
     should remain stable within a session.
     """
     user_agent = request.headers.get("user-agent", "")[:500]  # Limit length
-    accept_language = request.headers.get("accept-language", "")[:100]
+    accept_language = _normalize_accept_language(
+        request.headers.get("accept-language", "")[:100]
+    )
     ip_address = _get_client_ip(request)
 
     fingerprint_hash = _compute_fingerprint_hash(

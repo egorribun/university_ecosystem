@@ -380,8 +380,10 @@ def test_deploy_renderer_clears_values_registry_without_rewriting_dependencies(
         "APPLICATION_SECRETS_NAME": "application",  # pragma: allowlist secret
         "REGISTRY": "ghcr.io",
         "GITHUB_REPOSITORY": "example/university",
+        "DEPLOY_VERSION": "9d08136558b95d1182f889574f67b1b1d21abc9f",  # pragma: allowlist secret
         "BACKEND_IMAGE_DIGEST": digest,
         "FRONTEND_IMAGE_DIGEST": digest,
+        "WS_HUB_IMAGE_DIGEST": digest,
         "GATEWAY_IMAGE_DIGEST": digest,
         "FILE_PROCESSOR_IMAGE_DIGEST": digest,
     }
@@ -405,7 +407,13 @@ def test_deploy_renderer_clears_values_registry_without_rewriting_dependencies(
     }
     expected_first_party = {
         f"ghcr.io/example/university/{component}@{digest}"
-        for component in ("backend", "frontend", "gateway", "file-processor")
+        for component in (
+            "backend",
+            "frontend",
+            "ws-hub",
+            "gateway",
+            "file-processor",
+        )
     }
     assert expected_first_party <= images
     assert not any(image.startswith("mirror.invalid/") for image in images)
@@ -414,4 +422,70 @@ def test_deploy_renderer_clears_values_registry_without_rewriting_dependencies(
     assert any("nats" in image for image in dependency_images)
     assert not any(
         image.startswith("ghcr.io/example/university/") for image in dependency_images
+    )
+
+
+def test_deploy_renderer_executes_canonical_staging_without_required_markers() -> None:
+    bash = _bash()
+    digest = f"sha256:{'a' * 64}"
+    environment = {
+        **os.environ,
+        "DEPLOY_ENVIRONMENT": "staging",
+        "K8S_NAMESPACE": "university-ecosystem",
+        "HELM_RELEASE_NAME": "staging-execution-contract",
+        "HELM_VALUES_FILE": str(CHART / "values-staging.yaml"),
+        "CONNECTIONS_SECRET_NAME": "university-connections",  # pragma: allowlist secret
+        "APPLICATION_SECRETS_NAME": "university-application",  # pragma: allowlist secret
+        "REGISTRY": "ghcr.io",
+        "GITHUB_REPOSITORY": "example/university",
+        "DEPLOY_VERSION": "9d08136558b95d1182f889574f67b1b1d21abc9f",  # pragma: allowlist secret
+        "DEPLOYMENT_URL": "https://university.staging.example.org",
+        "CWV_EXPORT_OIDC_SUBJECT": ("repo:example/university:environment:staging"),
+        "GITHUB_RUN_ID": "123",
+        "GITHUB_RUN_ATTEMPT": "1",
+        "FRONTEND_HOST": "university.staging.example.org",
+        "API_HOST": "api.university.staging.example.org",
+        "TLS_SECRET_NAME": "university-ecosystem-tls",  # pragma: allowlist secret
+        "CERT_MANAGER_ISSUER_NAME": "university-staging-issuer",
+        "ELASTICSEARCH_URL": "https://elasticsearch.staging.internal",
+        "FLAGD_HOST": "flagd.staging.internal",
+        "OTLP_ENDPOINT": "otel-collector.staging.internal:4317",
+        "MINIO_ENDPOINT": "minio.staging.internal:443",
+        "TEMPORAL_HOST": "temporal.staging.internal:7233",
+        "BACKEND_IMAGE_DIGEST": digest,
+        "FRONTEND_IMAGE_DIGEST": digest,
+        "WS_HUB_IMAGE_DIGEST": digest,
+        "GATEWAY_IMAGE_DIGEST": digest,
+        "FILE_PROCESSOR_IMAGE_DIGEST": digest,
+        "REDIS_IMAGE_DIGEST": digest,
+        "REDIS_METRICS_IMAGE_DIGEST": digest,
+        "REVOCATION_REDIS_IMAGE_DIGEST": digest,
+        "REVOCATION_REDIS_METRICS_IMAGE_DIGEST": digest,
+        "NATS_IMAGE_DIGEST": digest,
+    }
+    result = subprocess.run(  # noqa: S603 - fixed repository deploy renderer
+        [bash, ".github/scripts/deploy-helm.sh", "render"],
+        cwd=ROOT,
+        env=environment,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert "REQUIRED_" not in result.stdout
+    resources = [item for item in yaml.safe_load_all(result.stdout) if item]
+    ws_hub = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "Deployment"
+        and resource.get("metadata", {})
+        .get("labels", {})
+        .get("app.kubernetes.io/component")
+        == "ws-hub"
+    )
+    assert (
+        ws_hub["spec"]["template"]["metadata"]["annotations"][
+            "university-ecosystem.io/source-sha"
+        ]
+        == environment["DEPLOY_VERSION"]
     )
