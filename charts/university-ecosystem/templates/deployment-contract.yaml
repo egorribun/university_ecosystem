@@ -20,6 +20,37 @@
 {{- if .Values.backup.enabled -}}
   {{- $connectionKeys = append $connectionKeys .Values.connections.backupDatabaseURLKey -}}
 {{- end -}}
+{{- $dependencyImages := dict -}}
+{{- if .Values.redis.enabled -}}
+  {{- $redisRegistry := default .Values.redis.image.registry .Values.global.imageRegistry -}}
+  {{- $_ := set $dependencyImages "redis" (printf "%s/%s@%s" $redisRegistry .Values.redis.image.repository .Values.redis.image.digest) -}}
+  {{- if .Values.redis.metrics.enabled -}}
+    {{- $redisMetricsRegistry := default .Values.redis.metrics.image.registry .Values.global.imageRegistry -}}
+    {{- $_ := set $dependencyImages "redis.metrics" (printf "%s/%s@%s" $redisMetricsRegistry .Values.redis.metrics.image.repository .Values.redis.metrics.image.digest) -}}
+  {{- end -}}
+{{- end -}}
+{{- if .Values.revocationRedis.enabled -}}
+  {{- $revocationRegistry := default .Values.revocationRedis.image.registry .Values.global.imageRegistry -}}
+  {{- $_ := set $dependencyImages "revocationRedis" (printf "%s/%s@%s" $revocationRegistry .Values.revocationRedis.image.repository .Values.revocationRedis.image.digest) -}}
+  {{- if .Values.revocationRedis.metrics.enabled -}}
+    {{- $revocationMetricsRegistry := default .Values.revocationRedis.metrics.image.registry .Values.global.imageRegistry -}}
+    {{- $_ := set $dependencyImages "revocationRedis.metrics" (printf "%s/%s@%s" $revocationMetricsRegistry .Values.revocationRedis.metrics.image.repository .Values.revocationRedis.metrics.image.digest) -}}
+  {{- end -}}
+{{- end -}}
+{{- if .Values.nats.enabled -}}
+  {{- $natsRegistry := default .Values.nats.image.registry .Values.global.imageRegistry -}}
+  {{- $_ := set $dependencyImages "nats" (printf "%s/%s@%s" $natsRegistry .Values.nats.image.repository .Values.nats.image.digest) -}}
+{{- end -}}
+{{- $dependencyChartVersions := dict -}}
+{{- if .Values.redis.enabled -}}
+  {{- $_ := set $dependencyChartVersions "redis" .Subcharts.redis.Chart.Version -}}
+{{- end -}}
+{{- if .Values.revocationRedis.enabled -}}
+  {{- $_ := set $dependencyChartVersions "revocationRedis" .Subcharts.revocationRedis.Chart.Version -}}
+{{- end -}}
+{{- if .Values.nats.enabled -}}
+  {{- $_ := set $dependencyChartVersions "nats" .Subcharts.nats.Chart.Version -}}
+{{- end -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -33,6 +64,8 @@ data:
   application-secret-keys.json: {{ $applicationKeys | uniq | sortAlpha | toJson | quote }}
   connection-secret-name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret | quote }}
   connection-secret-keys.json: {{ $connectionKeys | uniq | sortAlpha | toJson | quote }}
+  dependency-images.json: {{ $dependencyImages | toJson | quote }}
+  dependency-chart-versions.json: {{ $dependencyChartVersions | toJson | quote }}
   {{- if and .Values.redis.enabled .Values.redis.auth.enabled }}
   redis-secret-name: {{ required "redis.auth.existingSecret must be set" .Values.redis.auth.existingSecret | quote }}
   redis-secret-keys.json: {{ list .Values.redis.auth.existingSecretPasswordKey | toJson | quote }}

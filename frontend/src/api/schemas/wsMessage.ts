@@ -229,13 +229,13 @@ export function parseWsMessage(raw: string): WsServerMessage | null {
     return null
   }
 
-  let streamSequence: number | undefined
+  let streamMetadata: { sequence: number; source: Record<string, unknown> } | undefined
   let replayed: boolean | undefined
   let resumeToken: string | undefined
   if (parsedRecord && "seq" in parsedRecord) {
     const sequenceResult = v.safeParse(StreamSequenceSchema, parsedRecord.seq)
     if (!sequenceResult.success) return null
-    streamSequence = sequenceResult.output
+    streamMetadata = { sequence: sequenceResult.output, source: parsedRecord }
   }
   if (parsedRecord && "replayed" in parsedRecord) {
     const replayedResult = v.safeParse(v.boolean(), parsedRecord.replayed)
@@ -251,21 +251,21 @@ export function parseWsMessage(raw: string): WsServerMessage | null {
     resumeToken = tokenResult.output
   }
 
-  if (streamSequence !== undefined && !hasEnvelopePayload) return null
-  if (replayed !== undefined && streamSequence === undefined) return null
-  if ((streamSequence === undefined) !== (resumeToken === undefined)) return null
+  if (streamMetadata !== undefined && !hasEnvelopePayload) return null
+  if (replayed !== undefined && streamMetadata === undefined) return null
+  if ((streamMetadata === undefined) !== (resumeToken === undefined)) return null
 
-  if (streamSequence !== undefined) {
+  if (streamMetadata !== undefined) {
     if (!("chat_id" in result.output)) return null
-    if (hasEnvelopePayload) {
-      const roomResult = v.safeParse(UuidString, parsedRecord.room)
-      if (!roomResult.success || roomResult.output !== result.output.chat_id) return null
-    }
+    // The guard above already rejects sequenced flat frames, so a sequenced
+    // result is necessarily an envelope and its room must bind to chat_id.
+    const roomResult = v.safeParse(UuidString, streamMetadata.source.room)
+    if (!roomResult.success || roomResult.output !== result.output.chat_id) return null
   }
 
   return {
     ...result.output,
-    ...(streamSequence === undefined ? {} : { stream_seq: streamSequence }),
+    ...(streamMetadata === undefined ? {} : { stream_seq: streamMetadata.sequence }),
     ...(replayed === undefined ? {} : { replayed }),
     ...(resumeToken === undefined ? {} : { resume_token: resumeToken }),
   }

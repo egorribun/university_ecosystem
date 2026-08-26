@@ -33,11 +33,17 @@ def _resolved_staging_args() -> list[str]:
     digest = "sha256:" + ("a" * 64)
     overrides = {
         "global.imageTag": "9d08136558b95d1182f889574f67b1b1d21abc9f",  # pragma: allowlist secret
+        "backend.image.repository": "ghcr.io/example/university/backend",
         "backend.image.digest": digest,
+        "frontend.image.repository": "ghcr.io/example/university/frontend",
         "frontend.image.digest": digest,
+        "gateway.image.repository": "ghcr.io/example/university/gateway",
         "gateway.image.digest": digest,
+        "wsHub.image.repository": "ghcr.io/example/university/ws-hub",
         "wsHub.image.digest": digest,
+        "fileProcessor.image.repository": ("ghcr.io/example/university/file-processor"),
         "fileProcessor.image.digest": digest,
+        "outboxWorker.image.repository": "ghcr.io/example/university/backend",
         "outboxWorker.image.digest": digest,
         "redis.image.digest": digest,
         "redis.metrics.image.digest": digest,
@@ -142,10 +148,10 @@ def test_canonical_staging_values_are_secure_and_fail_closed() -> None:
 
     assert values["global"] == {
         "environment": "staging",
-        "imageRegistry": "ghcr.io",
+        "imageRegistry": "",
         "imageTag": "REQUIRED_GIT_SHA",
         "imagePullSecrets": ["ghcr-pull"],
-        "security": {"allowInsecureImages": True},
+        "security": {"allowInsecureImages": False},
     }
     assert values["fullnameOverride"] == "university-ecosystem"
     assert values["applicationSecrets"]["existingSecret"] == (
@@ -154,14 +160,16 @@ def test_canonical_staging_values_are_secure_and_fail_closed() -> None:
     expected_connections_secret = "university-connections"  # pragma: allowlist secret
     assert values["connections"]["existingSecret"] == expected_connections_secret
 
-    for component in (
-        "backend",
-        "frontend",
-        "gateway",
-        "fileProcessor",
-        "outboxWorker",
-    ):
+    repositories = {
+        "backend": "backend",
+        "frontend": "frontend",
+        "gateway": "gateway",
+        "fileProcessor": "file-processor",
+        "outboxWorker": "backend",
+    }
+    for component, repository in repositories.items():
         assert values[component]["image"] == {
+            "repository": f"ghcr.io/REQUIRED_REPOSITORY/{repository}",
             "digest": "REQUIRED_SHA256_DIGEST",
             "pullPolicy": "Always",
         }
@@ -175,7 +183,13 @@ def test_canonical_staging_values_are_secure_and_fail_closed() -> None:
     assert nats["replicaCount"] == 3
 
     for dependency in ("redis", "revocationRedis"):
+        assert values[dependency]["image"]["registry"] == "docker.io"
+        assert values[dependency]["image"]["repository"] == "bitnami/redis"
         assert values[dependency]["image"]["pullPolicy"] == "Always"
+        assert values[dependency]["metrics"]["image"]["registry"] == "docker.io"
+        assert values[dependency]["metrics"]["image"]["repository"] == (
+            "bitnami/redis-exporter"
+        )
         assert values[dependency]["metrics"]["image"]["pullPolicy"] == "Always"
         assert values[dependency]["networkPolicy"] == {
             "enabled": True,
@@ -187,6 +201,8 @@ def test_canonical_staging_values_are_secure_and_fail_closed() -> None:
         "allowExternal": False,
         "allowExternalEgress": False,
     }
+    assert values["nats"]["image"]["registry"] == "docker.io"
+    assert values["nats"]["image"]["repository"] == "bitnami/nats"
 
     assert values["backend"]["autoscaling"]["enabled"] is True
     assert values["ingress"]["enabled"] is True
@@ -234,6 +250,36 @@ def test_chart_documents_staging_secret_and_release_contracts() -> None:
         "helm rollback",
     ):
         assert required_text in documentation
+
+    assert "signature, SBOM, and provenance" not in documentation
+    assert "docker.io/bitnami/redis" in documentation
+    assert "docker.io/bitnami/redis-exporter" in documentation
+    assert "docker.io/bitnami/nats" in documentation
+
+
+def test_chart_lock_pins_the_reviewed_dependency_set() -> None:
+    lock = _values(CHART / "Chart.lock")
+    assert lock["dependencies"] == [
+        {
+            "name": "redis",
+            "repository": "oci://registry-1.docker.io/bitnamicharts",
+            "version": "20.13.4",
+        },
+        {
+            "name": "redis",
+            "repository": "oci://registry-1.docker.io/bitnamicharts",
+            "version": "20.13.4",
+        },
+        {
+            "name": "nats",
+            "repository": "oci://registry-1.docker.io/bitnamicharts",
+            "version": "8.5.4",
+        },
+    ]
+    assert lock["digest"].startswith("sha256:")
+    assert len(lock["digest"]) == 71
+    assert (CHART / "charts" / "redis-20.13.4.tgz").is_file()
+    assert (CHART / "charts" / "nats-8.5.4.tgz").is_file()
 
 
 def test_values_schema_closes_staging_sensitive_configuration_trees() -> None:
@@ -646,6 +692,20 @@ def test_resolved_staging_render_is_immutable_and_kyverno_compatible() -> None:
     assert json.loads(contract["data"]["revocation-redis-secret-keys.json"]) == [
         "redis-password"
     ]
+    assert json.loads(contract["data"]["dependency-images.json"]) == {
+        "nats": "docker.io/bitnami/nats@sha256:" + ("a" * 64),
+        "redis": "docker.io/bitnami/redis@sha256:" + ("a" * 64),
+        "redis.metrics": ("docker.io/bitnami/redis-exporter@sha256:" + ("a" * 64)),
+        "revocationRedis": "docker.io/bitnami/redis@sha256:" + ("a" * 64),
+        "revocationRedis.metrics": (
+            "docker.io/bitnami/redis-exporter@sha256:" + ("a" * 64)
+        ),
+    }
+    assert json.loads(contract["data"]["dependency-chart-versions.json"]) == {
+        "nats": "8.5.4",
+        "redis": "20.13.4",
+        "revocationRedis": "20.13.4",
+    }
 
     pod_specs = []
     for resource in resources:
@@ -671,7 +731,17 @@ def test_resolved_staging_render_is_immutable_and_kyverno_compatible() -> None:
     assert containers
     assert all(container["imagePullPolicy"] == "Always" for container in containers)
     assert all("@sha256:" in container["image"] for container in containers)
-    assert all(container["image"].startswith("ghcr.io/") for container in containers)
+    assert all(
+        container["image"].startswith(
+            (
+                "ghcr.io/example/university/",
+                "docker.io/bitnami/redis@",
+                "docker.io/bitnami/redis-exporter@",
+                "docker.io/bitnami/nats@",
+            )
+        )
+        for container in containers
+    )
     assert all(container.get("resources", {}).get("limits") for container in containers)
     for spec in pod_specs:
         assert spec["securityContext"]["runAsNonRoot"] is True
@@ -1078,6 +1148,39 @@ def test_release_rejects_permissive_dependency_network_policy(override: str) -> 
     )
     assert result.returncode != 0
     assert "networkPolicy" in result.stderr
+
+
+@pytest.mark.parametrize(
+    "flag, override",
+    [
+        ("--set", "global.security.allowInsecureImages=true"),
+        ("--set-string", "global.imageRegistry=mirror.invalid"),
+        ("--set-string", "redis.image.registry=mirror.invalid"),
+        ("--set-string", "redis.image.repository=attacker/redis"),
+        ("--set-string", "redis.metrics.image.repository=attacker/exporter"),
+        ("--set-string", "revocationRedis.image.repository=attacker/redis"),
+        (
+            "--set-string",
+            "revocationRedis.metrics.image.repository=attacker/exporter",
+        ),
+        ("--set-string", "nats.image.repository=attacker/nats"),
+    ],
+)
+def test_release_rejects_dependency_repository_substitution_or_bypass(
+    flag: str, override: str
+) -> None:
+    result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
+        _existing_secret_command("staging", flag, override),
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert result.returncode != 0
+    assert any(
+        marker in result.stderr
+        for marker in ("dependency image repository", "allowInsecureImages")
+    )
 
 
 @pytest.mark.parametrize(

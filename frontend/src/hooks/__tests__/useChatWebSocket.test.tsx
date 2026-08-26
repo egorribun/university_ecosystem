@@ -88,6 +88,7 @@ import {
   WebSocketProvider,
   applyReadFrame,
   appendLiveMessageToCache,
+  rememberLiveMessage,
 } from "../useChatWebSocket"
 import type { ChatsListResponse, Message, MessagesListResponse } from "@/api/chat"
 
@@ -448,6 +449,145 @@ describe("useChatWebSocket", () => {
     vi.unstubAllGlobals()
   })
 
+  it("reconciles an absent self-authored replay before advancing its opaque cursor", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <WebSocketProvider>{children}</WebSocketProvider>
+      </QueryClientProvider>
+    )
+    const message: Message = {
+      id: "self-replayed-message",
+      chat_id: "self-replay-chat",
+      sender_id: "me",
+      content: "recovered optimistic gap",
+      created_at: "2026-08-25T12:00:00Z",
+      read_status: true,
+      attachments: [],
+    }
+    queryClient.setQueryData<MessagesListResponse>(["messages", message.chat_id], {
+      items: [],
+      has_more: false,
+      next_cursor: null,
+    })
+    queryClient.setQueryData<ChatsListResponse>(["chats"], {
+      items: [
+        {
+          id: message.chat_id,
+          participants: [],
+          unread_count: 5,
+          created_at: "2026-08-25T11:00:00Z",
+          updated_at: "2026-08-25T11:00:00Z",
+        },
+      ],
+      has_more: false,
+      next_cursor: null,
+    })
+    mocks.parseWsMessage.mockReturnValue({
+      type: "new_message",
+      chat_id: message.chat_id,
+      message,
+      stream_seq: 88,
+      resume_token: "self-resume-token-88",
+      replayed: true,
+    })
+    const onNewMessage = vi.fn()
+    const session = renderHook(
+      () => useChatWebSocket({ enabled: true, currentUserId: "me", onNewMessage }),
+      { wrapper: localWrapper }
+    )
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    const socket = TestWebSocket.instances[0]!
+
+    act(() => {
+      socket.onmessage?.({ data: "self-replay" } as MessageEvent)
+      socket.onmessage?.({ data: "self-replay-duplicate" } as MessageEvent)
+    })
+
+    expect(
+      queryClient.getQueryData<MessagesListResponse>(["messages", message.chat_id])?.items
+    ).toEqual([message])
+    expect(queryClient.getQueryData<ChatsListResponse>(["chats"])?.items[0]).toMatchObject({
+      unread_count: 5,
+      last_message: message,
+    })
+    expect(onNewMessage).not.toHaveBeenCalled()
+    act(() => session.result.current.sendJoin(message.chat_id))
+    expect(socket.send).toHaveBeenLastCalledWith(
+      JSON.stringify({
+        type: "join",
+        room: message.chat_id,
+        resume_token: "self-resume-token-88",
+      })
+    )
+    session.unmount()
+    vi.unstubAllGlobals()
+  })
+
+  it("deduplicates a self-authored echo already present in the optimistic cache", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <WebSocketProvider>{children}</WebSocketProvider>
+      </QueryClientProvider>
+    )
+    const message: Message = {
+      id: "optimistic-self-message",
+      chat_id: "optimistic-self-chat",
+      sender_id: "me",
+      content: "already optimistic",
+      created_at: "2026-08-25T12:00:00Z",
+      read_status: true,
+      attachments: [],
+    }
+    const cached: MessagesListResponse = {
+      items: [message],
+      has_more: false,
+      next_cursor: null,
+    }
+    queryClient.setQueryData<MessagesListResponse>(["messages", message.chat_id], cached)
+    mocks.parseWsMessage.mockReturnValue({
+      type: "new_message",
+      chat_id: message.chat_id,
+      message,
+      stream_seq: 89,
+      resume_token: "optimistic-self-token-89",
+    })
+    const onNewMessage = vi.fn()
+    const session = renderHook(
+      () => useChatWebSocket({ enabled: true, currentUserId: "me", onNewMessage }),
+      { wrapper: localWrapper }
+    )
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    const socket = TestWebSocket.instances[0]!
+
+    act(() => socket.onmessage?.({ data: "optimistic-self-echo" } as MessageEvent))
+
+    expect(queryClient.getQueryData<MessagesListResponse>(["messages", message.chat_id])).toBe(
+      cached
+    )
+    expect(onNewMessage).not.toHaveBeenCalled()
+    act(() => session.result.current.sendJoin(message.chat_id))
+    expect(socket.send).toHaveBeenLastCalledWith(
+      JSON.stringify({
+        type: "join",
+        room: message.chat_id,
+        resume_token: "optimistic-self-token-89",
+      })
+    )
+
+    session.unmount()
+    vi.unstubAllGlobals()
+  })
+
   it("seeds replay protection from a duplicate already present in the render cache", async () => {
     TestWebSocket.instances = []
     vi.stubGlobal("WebSocket", TestWebSocket)
@@ -707,66 +847,19 @@ describe("useChatWebSocket", () => {
     vi.unstubAllGlobals()
   })
 
-  it("bounds replay memory with LRU eviction while retaining recently replayed IDs", async () => {
-    TestWebSocket.instances = []
-    vi.stubGlobal("WebSocket", TestWebSocket)
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-    })
-    const localWrapper = ({ children }: { children: ReactNode }) => (
-      <QueryClientProvider client={queryClient}>
-        <WebSocketProvider>{children}</WebSocketProvider>
-      </QueryClientProvider>
-    )
-    const messages = Array.from({ length: 4097 }, (_, index): Message => ({
-      id: `lru-message-${index + 1}`,
-      chat_id: "chat-lru",
-      sender_id: "peer",
-      content: String(index + 1),
-      created_at: new Date(Date.UTC(2026, 7, 25, 12, 0, index + 1)).toISOString(),
-      read_status: false,
-      attachments: [],
-    }))
-    queryClient.setQueryData<MessagesListResponse>(["messages", "chat-lru"], {
-      items: [],
-      has_more: false,
-      next_cursor: null,
-    })
-    mocks.parseWsMessage.mockImplementation((frame: string) => {
-      const index = Number(frame.slice("lru-message-".length)) - 1
-      return {
-        type: "new_message",
-        chat_id: "chat-lru",
-        message: messages[index]!,
-        stream_seq: index + 1,
-        resume_token: `lru-token-${index + 1}`,
-      }
-    })
-    const onNewMessage = vi.fn()
+  it("bounds replay memory with LRU eviction while retaining recently replayed IDs", () => {
+    const seen = new Map<string, true>()
+    for (let index = 1; index <= 4096; index += 1) {
+      expect(rememberLiveMessage(seen, "chat-lru", `lru-message-${index}`)).toBe(true)
+    }
 
-    renderHook(() => useChatWebSocket({ enabled: true, currentUserId: "me", onNewMessage }), {
-      wrapper: localWrapper,
-    })
-    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
-    const socket = TestWebSocket.instances[0]!
-
-    act(() => {
-      for (const message of messages.slice(0, 4096)) {
-        socket.onmessage?.({ data: message.id } as MessageEvent)
-      }
-      // Refresh ID 1, then overflow the 4096-entry LRU. ID 2 must be the
-      // evicted member while the recently replayed ID 1 remains protected.
-      socket.onmessage?.({ data: "lru-message-1" } as MessageEvent)
-      socket.onmessage?.({ data: "lru-message-4097" } as MessageEvent)
-      socket.onmessage?.({ data: "lru-message-2" } as MessageEvent)
-      socket.onmessage?.({ data: "lru-message-1" } as MessageEvent)
-    })
-
-    expect(onNewMessage).toHaveBeenCalledTimes(4097)
-    expect(
-      queryClient.getQueryData<MessagesListResponse>(["messages", "chat-lru"])?.items.at(-1)?.id
-    ).toBe("lru-message-4097")
-    vi.unstubAllGlobals()
+    // Refresh ID 1, then overflow the 4096-entry LRU. ID 2 must be the
+    // evicted member while the recently replayed ID 1 remains protected.
+    expect(rememberLiveMessage(seen, "chat-lru", "lru-message-1")).toBe(false)
+    expect(rememberLiveMessage(seen, "chat-lru", "lru-message-4097")).toBe(true)
+    expect(rememberLiveMessage(seen, "chat-lru", "lru-message-2")).toBe(true)
+    expect(rememberLiveMessage(seen, "chat-lru", "lru-message-1")).toBe(false)
+    expect(seen).toHaveLength(4096)
   })
 
   it("resumes a room from the durable sequence after reconnect", async () => {
@@ -835,6 +928,7 @@ describe("useChatWebSocket", () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     })
+    const invalidateQueries = vi.spyOn(queryClient, "invalidateQueries")
     const localWrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={queryClient}>
         <WebSocketProvider>{children}</WebSocketProvider>
@@ -851,6 +945,14 @@ describe("useChatWebSocket", () => {
       JSON.stringify({ type: "join", room: chatId, resume_token: "expired-token-73" })
     )
     act(() => socket.onmessage?.({ data: "invalid-token" } as MessageEvent))
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["messages", chatId],
+      refetchType: "all",
+    })
+    expect(invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ["chats"],
+      refetchType: "all",
+    })
     act(() => session.result.current.sendJoin(chatId))
     expect(socket.send).toHaveBeenLastCalledWith(JSON.stringify({ type: "join", room: chatId }))
 
@@ -901,6 +1003,141 @@ describe("useChatWebSocket", () => {
     expect(setItem).toHaveBeenCalledTimes(2)
     session.unmount()
     setItem.mockRestore()
+    vi.unstubAllGlobals()
+  })
+
+  it.each([
+    ["oversized", () => "x".repeat(65_537)],
+    ["non-array entries", () => JSON.stringify({ entries: {} })],
+    [
+      "invalid entry",
+      () => JSON.stringify({ entries: [["storage-chat", 0, "invalid-sequence-token"]] }),
+    ],
+  ])("fails closed for a %s persisted checkpoint registry", async (_label, storedValue) => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const userId = `invalid-storage-${_label}`
+    const storageKey = `university.chat.replay.v2:${encodeURIComponent(userId)}`
+    window.sessionStorage.setItem(storageKey, storedValue())
+    const removeItem = vi.spyOn(Storage.prototype, "removeItem")
+
+    const session = renderHook(() => useChatWebSocket({ enabled: true, currentUserId: userId }), {
+      wrapper,
+    })
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    act(() => session.result.current.sendJoin("storage-chat"))
+
+    expect(TestWebSocket.instances[0]?.send).toHaveBeenLastCalledWith(
+      JSON.stringify({ type: "join", room: "storage-chat" })
+    )
+    expect(removeItem).toHaveBeenCalledWith(storageKey)
+    expect(window.sessionStorage.getItem(storageKey)).toBeNull()
+
+    session.unmount()
+    vi.unstubAllGlobals()
+  })
+
+  it("ignores replay checkpoint operations for an anonymous session", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const chatId = "8ef3bb0c-a893-4f74-bdb4-01544a532625"
+    mocks.parseWsMessage.mockReturnValue({
+      type: "replay_checkpoint",
+      chat_id: chatId,
+      stream_seq: 65,
+      resume_token: "anonymous-token-65",
+      replayed: true,
+    })
+    const session = renderHook(
+      () => useChatWebSocket({ enabled: true, currentUserId: undefined }),
+      { wrapper }
+    )
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    const socket = TestWebSocket.instances[0]!
+
+    act(() => socket.onmessage?.({ data: "anonymous-checkpoint" } as MessageEvent))
+    act(() => session.result.current.sendJoin(chatId))
+    expect(socket.send).toHaveBeenLastCalledWith(JSON.stringify({ type: "join", room: chatId }))
+
+    mocks.parseWsMessage.mockReturnValue({
+      type: "error",
+      code: "invalid_resume_token",
+      room: chatId,
+    })
+    act(() => socket.onmessage?.({ data: "anonymous-invalid-token" } as MessageEvent))
+
+    session.unmount()
+    vi.unstubAllGlobals()
+  })
+
+  it("treats invalidation of an absent replay checkpoint as an idempotent no-op", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const chatId = "8ef3bb0c-a893-4f74-bdb4-01544a532626"
+    mocks.parseWsMessage.mockReturnValue({
+      type: "error",
+      code: "invalid_resume_token",
+      room: chatId,
+    })
+    const session = renderHook(
+      () => useChatWebSocket({ enabled: true, currentUserId: "empty-checkpoint-user" }),
+      { wrapper }
+    )
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+
+    act(() =>
+      TestWebSocket.instances[0]?.onmessage?.({ data: "missing-invalid-token" } as MessageEvent)
+    )
+    act(() => session.result.current.sendJoin(chatId))
+    expect(TestWebSocket.instances[0]?.send).toHaveBeenLastCalledWith(
+      JSON.stringify({ type: "join", room: chatId })
+    )
+
+    session.unmount()
+    vi.unstubAllGlobals()
+  })
+
+  it("retains shared replay memory until the final same-user hook unmounts", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const userId = "shared-mount-user"
+    const chatId = "8ef3bb0c-a893-4f74-bdb4-01544a532627"
+    const storageKey = `university.chat.replay.v2:${encodeURIComponent(userId)}`
+    mocks.parseWsMessage.mockReturnValue({
+      type: "replay_checkpoint",
+      chat_id: chatId,
+      stream_seq: 77,
+      resume_token: "in-memory-token-77",
+      replayed: true,
+    })
+    const first = renderHook(
+      ({ enabled, currentUserId }) => useChatWebSocket({ enabled, currentUserId }),
+      {
+        wrapper,
+        initialProps: { enabled: false, currentUserId: undefined as string | undefined },
+      }
+    )
+    first.rerender({ enabled: true, currentUserId: userId })
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    act(() =>
+      TestWebSocket.instances[0]?.onmessage?.({ data: "shared-checkpoint" } as MessageEvent)
+    )
+    const second = renderHook(() => useChatWebSocket({ enabled: true, currentUserId: userId }), {
+      wrapper,
+    })
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(2))
+
+    first.unmount()
+    window.sessionStorage.setItem(
+      storageKey,
+      JSON.stringify({ entries: [[chatId, 99, "storage-token-99"]] })
+    )
+    act(() => second.result.current.sendJoin(chatId))
+    expect(TestWebSocket.instances[1]?.send).toHaveBeenLastCalledWith(
+      JSON.stringify({ type: "join", room: chatId, resume_token: "in-memory-token-77" })
+    )
+
+    second.unmount()
     vi.unstubAllGlobals()
   })
 

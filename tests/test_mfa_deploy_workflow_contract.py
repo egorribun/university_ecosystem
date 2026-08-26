@@ -150,6 +150,37 @@ def test_every_helm_path_receives_ws_digest_and_exact_source_sha() -> None:
     assert "CWV_DEPLOYED_AT" not in required_staging_block
 
 
+def test_helm_paths_pin_dependency_repositories_and_validate_chart_lock() -> None:
+    script = (ROOT / ".github" / "scripts" / "deploy-helm.sh").read_text(
+        encoding="utf-8"
+    )
+    for override in (
+        "global.security.allowInsecureImages=false",
+        "redis.image.registry=docker.io",
+        "redis.image.repository=bitnami/redis",
+        "redis.metrics.image.registry=docker.io",
+        "redis.metrics.image.repository=bitnami/redis-exporter",
+        "revocationRedis.image.registry=docker.io",
+        "revocationRedis.image.repository=bitnami/redis",
+        "revocationRedis.metrics.image.registry=docker.io",
+        "revocationRedis.metrics.image.repository=bitnami/redis-exporter",
+        "nats.image.registry=docker.io",
+        "nats.image.repository=bitnami/nats",
+    ):
+        assert override in script
+    assert 'test -s "$chart/Chart.lock"' in script
+    assert 'helm dependency list "$chart"' in script
+    assert "dependency_status" in script
+
+    build = _step("Build Helm dependencies")
+    run = str(build["run"])
+    assert "Chart.lock" in run
+    assert "sha256sum" in run
+    assert "helm dependency build --skip-refresh" in run
+    assert "git diff --exit-code --" in run
+    assert "helm dependency list" in run
+
+
 def test_namespace_bootstrap_enforces_restricted_pod_security() -> None:
     step = _step("Configure and verify cluster access")
     run = str(step["run"])
@@ -189,6 +220,11 @@ def test_secret_preflight_covers_connections_redis_and_nats_config() -> None:
     assert 'require_secret_keys "$redis_secret_name"' in run
     assert 'require_secret_keys "$revocation_redis_secret_name"' in run
     assert 'require_secret_keys "$nats_config_secret_name"' in run
+    assert "dependency-images.json" in run
+    assert "dependency-chart-versions.json" in run
+    assert "docker.io/bitnami/redis@" in run
+    assert "docker.io/bitnami/redis-exporter@" in run
+    assert "docker.io/bitnami/nats@" in run
 
 
 def test_external_secret_reconciliation_waits_for_fresh_ready_secret() -> None:

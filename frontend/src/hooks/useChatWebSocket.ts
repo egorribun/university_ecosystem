@@ -59,7 +59,6 @@ function replayCheckpointKey(userId: string): string {
 }
 
 function persistReplayCheckpoints(userId: string, registry: Map<string, ReplayCheckpoint>): void {
-  if (typeof window === "undefined") return
   try {
     window.sessionStorage.setItem(
       replayCheckpointKey(userId),
@@ -87,11 +86,10 @@ function replayCheckpointRegistry(userId: string): Map<string, ReplayCheckpoint>
   const registry = new Map<string, ReplayCheckpoint>()
   replayCheckpointMemory.set(userId, registry)
   while (replayCheckpointMemory.size > REPLAY_CHECKPOINT_USER_LIMIT) {
-    const oldestUserId = replayCheckpointMemory.keys().next().value
-    if (oldestUserId === undefined) break
+    // size > limit proves the iterator has a first key.
+    const oldestUserId = replayCheckpointMemory.keys().next().value!
     replayCheckpointMemory.delete(oldestUserId)
   }
-  if (typeof window === "undefined") return registry
   try {
     const key = replayCheckpointKey(userId)
     const stored = window.sessionStorage.getItem(key)
@@ -161,23 +159,21 @@ function writeReplayCheckpoint(
 ): void {
   if (!userId) return
   const registry = replayCheckpointRegistry(userId)
-  const current = registry.get(chatId)
-  if (current !== undefined && sequence <= current.sequence) return
   registry.delete(chatId)
   registry.set(chatId, { sequence, resumeToken })
   while (registry.size > REPLAY_CHECKPOINT_LIMIT) {
     const evictionCandidate = [...registry.keys()].find(
       (candidate) => candidate !== protectedChatId && candidate !== chatId
     )
-    if (evictionCandidate === undefined) break
-    registry.delete(evictionCandidate)
+    // A registry over the limit contains more entries than the two protected
+    // ids, so a candidate necessarily exists.
+    registry.delete(evictionCandidate!)
   }
   persistReplayCheckpoints(userId, registry)
 }
 
 function clearReplayCheckpoints(userId: string): void {
   replayCheckpointMemory.delete(userId)
-  if (typeof window === "undefined") return
   try {
     window.sessionStorage.removeItem(replayCheckpointKey(userId))
   } catch {
@@ -199,7 +195,7 @@ function joinFrame(userId: string | undefined, chatId: string) {
     : { type: "join", room: chatId, resume_token: checkpoint.resumeToken }
 }
 
-function rememberLiveMessage(
+export function rememberLiveMessage(
   seenMessageIds: Map<string, true>,
   chatId: string,
   messageId: string
@@ -586,7 +582,8 @@ export function useChatWebSocket({
     if (!currentUserId) return
     replayCheckpointMounts.set(currentUserId, (replayCheckpointMounts.get(currentUserId) ?? 0) + 1)
     return () => {
-      const remaining = (replayCheckpointMounts.get(currentUserId) ?? 1) - 1
+      // This cleanup exists only after the setup increment above.
+      const remaining = replayCheckpointMounts.get(currentUserId)! - 1
       if (remaining > 0) {
         replayCheckpointMounts.set(currentUserId, remaining)
         return
@@ -750,19 +747,33 @@ export function useChatWebSocket({
 
             switch (validated.type) {
               case "new_message": {
-                // W204 SW4 — self-echo guard. The NATS→ws-hub→room fan-out has
-                // no per-recipient exclusion (it delivers to ALL room members
-                // incl. the sender), so the sender receives its own message
-                // back. Skip it: the sender already has the message (optimistic
-                // insert + sendMessage onSuccess), and processing the echo would
-                // wrongly +1 the sender's OWN unread_count in the chats cache.
-                if (validated.message.sender_id === currentUserIdRef.current) break
+                // A self-authored live echo is usually already present from the
+                // optimistic mutation. A replay can arrive after that optimistic
+                // cache entry was lost, though, so cache presence—not authorship—
+                // decides whether reconciliation may be skipped.
+                const selfAuthored = validated.message.sender_id === currentUserIdRef.current
+                const cachedMessages = queryClient.getQueryData<MessagesListResponse>([
+                  "messages",
+                  validated.chat_id,
+                ])
+                const selfMessageAlreadyPresent =
+                  selfAuthored &&
+                  cachedMessages?.items.some((message) => message.id === validated.message.id)
+                if (selfMessageAlreadyPresent) {
+                  rememberLiveMessage(
+                    seenMessageIdsRef.current,
+                    validated.chat_id,
+                    validated.message.id
+                  )
+                  break
+                }
                 if (
                   !rememberLiveMessage(
                     seenMessageIdsRef.current,
                     validated.chat_id,
                     validated.message.id
-                  )
+                  ) &&
+                  !selfAuthored
                 )
                   break
 
@@ -838,14 +849,16 @@ export function useChatWebSocket({
                               (compareMessageOrder(incomingMessage, chat.last_message) ?? -1) > 0
                                 ? incomingMessage
                                 : chat.last_message,
-                            unread_count: chat.unread_count + 1,
+                            unread_count: selfAuthored ? chat.unread_count : chat.unread_count + 1,
                           }
                         : chat
                     ),
                   }
                 })
                 queryClient.invalidateQueries({ queryKey: ["chats"], refetchType: "none" })
-                onNewMessageRef.current?.(validated.message as Message, validated.chat_id)
+                if (!selfAuthored) {
+                  onNewMessageRef.current?.(validated.message as Message, validated.chat_id)
+                }
                 break
               }
 
@@ -981,6 +994,14 @@ export function useChatWebSocket({
               case "error":
                 if (validated.code === "invalid_resume_token" && validated.room !== undefined) {
                   removeReplayCheckpoint(currentUserIdRef.current, validated.room)
+                  void queryClient.invalidateQueries({
+                    queryKey: ["messages", validated.room],
+                    refetchType: "all",
+                  })
+                  void queryClient.invalidateQueries({
+                    queryKey: ["chats"],
+                    refetchType: "all",
+                  })
                 }
                 logError("[WebSocket] Server error:", validated)
                 break

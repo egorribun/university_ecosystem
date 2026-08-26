@@ -734,9 +734,10 @@ func TestClientLeaveRoom_CancelsReplayAndDiscardsPendingDelivery(t *testing.T) {
 	client.replayMu.Unlock()
 }
 
-func TestClientHandleJoin_CoreFallbackDoesNotStartReplayWithStaleJSContext(t *testing.T) {
+func TestClientHandleJoin_JetStreamFailureCannotExposeCoreFallback(t *testing.T) {
 	h := setupTestHub()
 	h.enableJetStream = true
+	h.internalSecret = "replay-signing-secret" // pragma: allowlist secret -- inert unit-test fixture
 	h.Nats = &nats.Conn{}
 	pullCalls := 0
 	h.js = &scriptedSubscribeJetStream{
@@ -749,25 +750,16 @@ func TestClientHandleJoin_CoreFallbackDoesNotStartReplayWithStaleJSContext(t *te
 		},
 	}
 	oldCoreSubscribe := coreNATSSubscribeFunc
+	coreCalls := 0
 	t.Cleanup(func() { coreNATSSubscribeFunc = oldCoreSubscribe })
 	coreNATSSubscribeFunc = func(*nats.Conn, string, nats.MsgHandler) (*nats.Subscription, error) {
+		coreCalls++
 		return &nats.Subscription{}, nil
 	}
-	require.NoError(t, h.SubscribeToNATS(context.Background()))
+	require.Error(t, h.SubscribeToNATS(context.Background()))
 	assert.False(t, h.chatReplayAvailable.Load())
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	client := &Client{
-		ID: "core-fallback", UserID: "core-user", Hub: h,
-		Rooms: make(map[string]bool), Send: make(chan []byte, 2), ctx: ctx, cancel: cancel,
-	}
-
-	client.handleJoin(Message{Type: "join", Room: "room"})
-	h.broadcastMessage(context.Background(), &Message{Type: "new_message", Room: "room"})
-
 	assert.Zero(t, pullCalls)
-	require.Len(t, client.Send, 1, "unsequenced core delivery must remain live after fallback")
-	assert.False(t, client.ctx.Err() != nil, "core delivery must not fatally disconnect the client")
+	assert.Zero(t, coreCalls, "replay-capable startup must fail instead of serving an inconsistent core mode")
 }
 
 func TestClientHandleJoin_RateLimitsReplayConsumerChurn(t *testing.T) {

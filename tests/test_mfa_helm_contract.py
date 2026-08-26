@@ -245,11 +245,14 @@ def test_render_rejects_non_canonical_environment_names(environment: str) -> Non
 def test_non_development_render_rejects_inline_mfa_key_material(
     environment: str,
 ) -> None:
+    issuer_kind = "Issuer" if environment == "staging" else "ClusterIssuer"
     result = subprocess.run(  # noqa: S603 - fixed Helm contract command
         [
             *_base_args(),
             "--set",
             f"global.environment={environment}",
+            "--set-string",
+            f"ingress.issuer.kind={issuer_kind}",
             "--set",
             "applicationSecrets.existingSecret=eso-application-secret",
             "--set",

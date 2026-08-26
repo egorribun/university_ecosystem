@@ -312,6 +312,48 @@ describe("parseWsMessage — Wave 204 SW3 ws-hub envelope unwrap + control frame
   it("returns null on JSON garbage", () => {
     expect(parseWsMessage("{not json")).toBeNull()
   })
+
+  it("rejects JSON primitives before envelope validation", () => {
+    expect(parseWsMessage("42")).toBeNull()
+  })
+
+  it.each([
+    ["replayed", "yes"],
+    ["resume_token", ""],
+  ])("rejects invalid %s stream metadata", (field, value) => {
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "read",
+          room: CHAT_ID,
+          seq: 42,
+          resume_token: "signed-resume-token-42",
+          replayed: true,
+          payload: {
+            type: "read",
+            chat_id: CHAT_ID,
+            user_id: USER_ID,
+            read_at: READ_AT,
+          },
+          [field]: value,
+        })
+      )
+    ).toBeNull()
+  })
+
+  it("rejects sequenced envelopes whose payload has no chat identity", () => {
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "rate_limit_exceeded",
+          room: CHAT_ID,
+          seq: 42,
+          resume_token: "signed-resume-token-42",
+          payload: { type: "rate_limit_exceeded" },
+        })
+      )
+    ).toBeNull()
+  })
 })
 
 describe("parseWsMessage — message_edited / message_deleted (Wave 205)", () => {

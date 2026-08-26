@@ -7,15 +7,14 @@ fullnameOverride: university-ecosystem
 
 global:
   environment: staging
-  imageRegistry: ghcr.io
+  # First-party repositories are set explicitly by deploy-helm.sh. Keeping the
+  # global registry empty preserves the reviewed upstream dependency identity.
+  imageRegistry: ""
   imageTag: REQUIRED_GIT_SHA
   imagePullSecrets:
     - ghcr-pull
-  # Bitnami rejects approved-registry mirrors as unknown images. Staging permits
-  # the mirror only together with immutable digests, signature verification,
-  # SBOM verification, and provenance checks in the deployment pipeline.
   security:
-    allowInsecureImages: true
+    allowInsecureImages: false
 
 connections:
   existingSecret: university-connections # pragma: allowlist secret
@@ -61,6 +60,7 @@ internalGrpcMTLS:
 
 backend:
   image:
+    repository: ghcr.io/REQUIRED_REPOSITORY/backend
     digest: REQUIRED_SHA256_DIGEST
     pullPolicy: Always
   autoscaling:
@@ -76,11 +76,13 @@ backend:
 
 frontend:
   image:
+    repository: ghcr.io/REQUIRED_REPOSITORY/frontend
     digest: REQUIRED_SHA256_DIGEST
     pullPolicy: Always
 
 gateway:
   image:
+    repository: ghcr.io/REQUIRED_REPOSITORY/gateway
     digest: REQUIRED_SHA256_DIGEST
     pullPolicy: Always
   config:
@@ -91,6 +93,7 @@ wsHub:
   enabled: true
   replicaCount: 2
   image:
+    repository: ghcr.io/REQUIRED_REPOSITORY/ws-hub
     digest: REQUIRED_SHA256_DIGEST
     pullPolicy: Always
   autoscaling:
@@ -109,6 +112,7 @@ wsHub:
 
 fileProcessor:
   image:
+    repository: ghcr.io/REQUIRED_REPOSITORY/file-processor
     digest: REQUIRED_SHA256_DIGEST
     pullPolicy: Always
   config:
@@ -121,6 +125,7 @@ fileProcessor:
 
 outboxWorker:
   image:
+    repository: ghcr.io/REQUIRED_REPOSITORY/backend
     digest: REQUIRED_SHA256_DIGEST
     pullPolicy: Always
 
@@ -159,10 +164,14 @@ redis:
     allowExternal: false
     allowExternalEgress: false
   image:
+    registry: docker.io
+    repository: bitnami/redis
     digest: REQUIRED_SHA256_DIGEST
     pullPolicy: Always
   metrics:
     image:
+      registry: docker.io
+      repository: bitnami/redis-exporter
       digest: REQUIRED_SHA256_DIGEST
       pullPolicy: Always
 
@@ -172,10 +181,14 @@ revocationRedis:
     allowExternal: false
     allowExternalEgress: false
   image:
+    registry: docker.io
+    repository: bitnami/redis
     digest: REQUIRED_SHA256_DIGEST
     pullPolicy: Always
   metrics:
     image:
+      registry: docker.io
+      repository: bitnami/redis-exporter
       digest: REQUIRED_SHA256_DIGEST
       pullPolicy: Always
 
@@ -192,6 +205,8 @@ nats:
     auth:
       enabled: false
   image:
+    registry: docker.io
+    repository: bitnami/nats
     digest: REQUIRED_SHA256_DIGEST
     pullPolicy: Always
   jetstream:

@@ -3,12 +3,14 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 )
 
@@ -305,6 +307,52 @@ func TestHandleChat_SequencedBroadcastFullDisconnectsRoomBeforeNak(t *testing.T)
 	assert.Error(t, client.ctx.Err(), "a saturated sequenced ingress lane must invalidate room clients")
 	assert.Equal(t, 1, nakCalls)
 	assert.Equal(t, "dummy", (<-h.Broadcast).Type)
+}
+
+func TestSubscribeToNATS_SecureReplayInitializationFailsClosed(t *testing.T) {
+	created := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
+	for _, testCase := range []struct {
+		name       string
+		secret     string
+		streamInfo *nats.StreamInfo
+		streamErr  error
+	}{
+		{name: "missing signing secret", streamInfo: &nats.StreamInfo{Created: created}},
+		{name: "stream metadata unavailable", secret: "signing-secret", streamErr: errors.New("metadata unavailable")},
+		{name: "stream incarnation absent", secret: "signing-secret", streamInfo: &nats.StreamInfo{}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			h := setupTestHub()
+			h.Nats = &nats.Conn{}
+			h.enableJetStream = true
+			h.internalSecret = testCase.secret // pragma: allowlist secret -- table-driven test fixture only
+			subscribeCalls := 0
+			h.js = &scriptedSubscribeJetStream{
+				subscribe: func(string, nats.MsgHandler, ...nats.SubOpt) (*nats.Subscription, error) {
+					subscribeCalls++
+					return &nats.Subscription{}, nil
+				},
+				streamInfo: func(string, ...nats.JSOpt) (*nats.StreamInfo, error) {
+					return testCase.streamInfo, testCase.streamErr
+				},
+			}
+			oldCoreSubscribe := coreNATSSubscribeFunc
+			coreCalls := 0
+			coreNATSSubscribeFunc = func(*nats.Conn, string, nats.MsgHandler) (*nats.Subscription, error) {
+				coreCalls++
+				return &nats.Subscription{}, nil
+			}
+			t.Cleanup(func() { coreNATSSubscribeFunc = oldCoreSubscribe })
+
+			err := h.SubscribeToNATS(context.Background())
+
+			require.Error(t, err)
+			assert.False(t, h.chatReplayAvailable.Load())
+			assert.Empty(t, h.subs)
+			assert.Zero(t, coreCalls, "replay-capable mode must never silently downgrade to core NATS")
+			assert.LessOrEqual(t, subscribeCalls, 1, "secure prerequisites must be transactional")
+		})
+	}
 }
 
 func TestHandleNotifications_BroadcastFull_NotCachedAndNaked(t *testing.T) {

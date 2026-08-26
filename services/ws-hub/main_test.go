@@ -249,7 +249,10 @@ func TestSetupHubAndHandlers_ReadinessHealthy(t *testing.T) {
 
 	nc, err := nats.Connect("nats://" + l.Addr().String())
 	require.NoError(t, err)
-	defer nc.Close()
+	t.Cleanup(func() {
+		closeNATSConnection(nc)
+		assert.False(t, nc.IsConnected())
+	})
 
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})

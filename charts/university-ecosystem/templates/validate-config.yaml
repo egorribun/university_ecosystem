@@ -165,6 +165,17 @@
       {{- fail (printf "%s.image.pullPolicy=Always is required in staging/production" $component) -}}
     {{- end -}}
   {{- end -}}
+  {{- if .Values.global.security.allowInsecureImages -}}
+    {{- fail "global.security.allowInsecureImages=true is forbidden in staging/production" -}}
+  {{- end -}}
+  {{- $expectedDependencyRepositories := dict "redis" "docker.io/bitnami/redis" "redis.metrics" "docker.io/bitnami/redis-exporter" "revocationRedis" "docker.io/bitnami/redis" "revocationRedis.metrics" "docker.io/bitnami/redis-exporter" "nats" "docker.io/bitnami/nats" -}}
+  {{- range $component, $image := $dependencyImages -}}
+    {{- $registry := default $image.registry $.Values.global.imageRegistry -}}
+    {{- $repository := printf "%s/%s" $registry $image.repository -}}
+    {{- if ne $repository (index $expectedDependencyRepositories $component) -}}
+      {{- fail (printf "%s dependency image repository must be exactly %s, got %s" $component (index $expectedDependencyRepositories $component) $repository) -}}
+    {{- end -}}
+  {{- end -}}
   {{- if .Values.backup.enabled -}}
     {{- if not (regexMatch "^.+@sha256:[0-9a-f]{64}$" .Values.backup.postgresImage) -}}
       {{- fail "backup.postgresImage requires an immutable @sha256 digest in staging/production" -}}

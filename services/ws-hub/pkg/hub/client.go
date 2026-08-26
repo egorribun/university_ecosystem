@@ -601,7 +601,7 @@ func (c *Client) deliverOfflineMessageBatch(
 					return false
 				}
 				var checkpointErr error
-				checkpoint, checkpointErr = json.Marshal(map[string]any{
+				checkpoint, checkpointErr = hubJSONMarshalFunc(map[string]any{
 					"type":         "replay_checkpoint",
 					"room":         room,
 					"seq":          sequence,
@@ -648,7 +648,7 @@ func (c *Client) deliverOfflineMessageBatch(
 		raw["seq"] = sequence
 		raw["replayed"] = true
 		raw["resume_token"] = resumeToken
-		data, marshalErr := json.Marshal(raw)
+		data, marshalErr := hubJSONMarshalFunc(raw)
 		if marshalErr != nil {
 			if err := termOfflineMessageFunc(m); err != nil {
 				c.nakOfflineReplay(m)
@@ -674,18 +674,15 @@ func (c *Client) sendReplayWithRetry(ctx context.Context, data []byte) bool {
 		if safeSend(c.Send, data) {
 			return true
 		}
-		if attempt+1 == offlineReplaySendTries {
-			return false
-		}
-		delay := offlineReplaySendDelay << attempt
-		timer := time.NewTimer(delay)
-		select {
-		case <-ctx.Done():
-			if !timer.Stop() {
-				<-timer.C
+		if attempt+1 < offlineReplaySendTries {
+			delay := offlineReplaySendDelay << attempt
+			timer := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return false
+			case <-timer.C:
 			}
-			return false
-		case <-timer.C:
 		}
 	}
 	return false
@@ -717,7 +714,7 @@ func (c *Client) enqueueRoomBroadcast(msg *Message, data []byte) roomEnqueueResu
 			return roomEnqueueReplayFatal
 		}
 		frame["resume_token"] = resumeToken
-		personalized, err := json.Marshal(frame)
+		personalized, err := hubJSONMarshalFunc(frame)
 		if err != nil {
 			return roomEnqueueReplayFatal
 		}

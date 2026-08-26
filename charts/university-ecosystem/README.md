@@ -24,11 +24,15 @@ Security policies apply. Before rendering or installing the application:
 5. Replace the required ingress hosts, verify DNS, and wait for the referenced
    TLS certificate to become Ready.
 
-Mirrored Bitnami images require `global.security.allowInsecureImages=true`
-because their original registry identity changes. This flag is acceptable only
-when the release gate independently verifies the mirror digest, signature,
-SBOM, and provenance. It does not permit mutable tags: staging validation still
-requires immutable digests and `imagePullPolicy: Always`.
+The dependency trust boundary is deliberately narrow: Redis must render as
+`docker.io/bitnami/redis`, its metrics sidecar as
+`docker.io/bitnami/redis-exporter`, and NATS as `docker.io/bitnami/nats`.
+Staging and production require immutable digests, `imagePullPolicy: Always`,
+and `global.security.allowInsecureImages=false`; registry mirrors and repository
+substitution fail rendering. Digest and repository pinning establish the
+currently implemented artifact identity boundary. Independent signature and
+attestation verification must not be claimed until reviewed signer roots and
+attestation policies are configured.
 
 When backups are enabled, `backup.postgresImage` and
 `backup.minioClientImage` must also use `repository@sha256:<digest>` and are

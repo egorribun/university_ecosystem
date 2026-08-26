@@ -607,8 +607,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          chart="charts/university-ecosystem"
+          test -s "$chart/Chart.lock"
+          lock_digest_before="$(sha256sum "$chart/Chart.lock" | awk '{print $1}')"
           for attempt in 1 2 3; do
-            if helm dependency build charts/university-ecosystem; then
+            if helm dependency build --skip-refresh "$chart"; then
               break
             fi
             if [[ "$attempt" -eq 3 ]]; then
@@ -617,6 +620,17 @@ jobs:
             fi
             sleep $((attempt * 15))
           done
+          lock_digest_after="$(sha256sum "$chart/Chart.lock" | awk '{print $1}')"
+          test "$lock_digest_after" = "$lock_digest_before"
+          git diff --exit-code -- "$chart/Chart.yaml" "$chart/Chart.lock"
+          dependency_status="$(helm dependency list "$chart")"
+          actual_dependencies="$(awk 'NR > 1 && NF {print $1 "|" $3 "|" $4}' <<< "$dependency_status")"
+          expected_dependencies=$'redis|oci://registry-1.docker.io/bitnamicharts|ok\nredis|oci://registry-1.docker.io/bitnamicharts|ok\nnats|oci://registry-1.docker.io/bitnamicharts|ok'
+          if [[ "$actual_dependencies" != "$expected_dependencies" ]]; then
+            echo "::error::Helm dependencies do not match the reviewed Chart.lock contract."
+            printf '%s\n' "$dependency_status" >&2
+            exit 1
+          fi
 
       - name: Verify rendered Helm resource RBAC
         shell: bash
@@ -1055,6 +1069,21 @@ jobs:
           mapfile -t nats_config_secret_keys < <(
             contract_literal nats-config-secret-keys.json | jq --raw-output 'fromjson[]'
           )
+          dependency_images="$(contract_literal dependency-images.json | jq --raw-output '.')"
+          jq --exit-status \
+            --arg redis "docker.io/bitnami/redis@$REDIS_IMAGE_DIGEST" \
+            --arg redis_metrics "docker.io/bitnami/redis-exporter@$REDIS_METRICS_IMAGE_DIGEST" \
+            --arg revocation "docker.io/bitnami/redis@$REVOCATION_REDIS_IMAGE_DIGEST" \
+            --arg revocation_metrics "docker.io/bitnami/redis-exporter@$REVOCATION_REDIS_METRICS_IMAGE_DIGEST" \
+            --arg nats "docker.io/bitnami/nats@$NATS_IMAGE_DIGEST" \
+            '. == {"redis": $redis, "redis.metrics": $redis_metrics,
+                   "revocationRedis": $revocation,
+                   "revocationRedis.metrics": $revocation_metrics,
+                   "nats": $nats}' <<< "$dependency_images" >/dev/null
+          dependency_chart_versions="$(contract_literal dependency-chart-versions.json | jq --raw-output '.')"
+          jq --exit-status \
+            '. == {"redis": "20.13.4", "revocationRedis": "20.13.4",
+                   "nats": "8.5.4"}' <<< "$dependency_chart_versions" >/dev/null
           grpc_gateway_client_secret_name="$(contract_literal internal-grpc-gateway-client-secret-name | jq --raw-output '.')"
           grpc_file_processor_server_secret_name="$(contract_literal internal-grpc-file-processor-server-secret-name | jq --raw-output '.')"
           mapfile -t grpc_gateway_client_secret_keys < <(

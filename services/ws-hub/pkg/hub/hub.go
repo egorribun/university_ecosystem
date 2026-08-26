@@ -196,7 +196,7 @@ func (h *Hub) issueResumeToken(userID, room, stream string, sequence uint64) (st
 		Sequence:    sequence,
 		ExpiresAt:   resumeTokenNowFunc().Add(resumeTokenTTL).Unix(),
 	}
-	payload, err := json.Marshal(claims)
+	payload, err := hubJSONMarshalFunc(claims)
 	if err != nil {
 		return "", err
 	}
@@ -764,64 +764,62 @@ func (h *Hub) SubscribeToNATS(appCtx context.Context) error {
 		return err
 	}
 
-	if h.js == nil && h.Nats != nil && h.enableJetStream {
-		if js, err := h.Nats.JetStream(); err == nil {
-			h.js = js
-		}
-	}
-
 	var chatSub *nats.Subscription
+	var notifSub *nats.Subscription
 	var err error
 	h.chatReplayAvailable.Store(false)
+	h.chatStreamIncarnation = ""
 
-	if h.js != nil && h.enableJetStream {
-		chatSub, err = h.js.Subscribe("chat.*", h.handleChat(appCtx),
-			nats.Durable(h.durableChat),
-			nats.AckExplicit(),
-			nats.ManualAck(),
-		)
-		if err == nil {
-			streamInfo, infoErr := h.js.StreamInfo(h.streamChat)
-			if infoErr == nil && streamInfo != nil && h.internalSecret != "" {
-				h.chatStreamIncarnation = streamInfo.Created.UTC().Format(time.RFC3339Nano)
-				h.chatReplayAvailable.Store(true)
-			} else if h.Logger != nil {
-				h.Logger.WarnContext(appCtx, "Secure chat replay unavailable",
-					"stream", h.streamChat, "err", infoErr)
+	if h.enableJetStream {
+		if h.internalSecret == "" {
+			return fmt.Errorf("secure chat replay requires a non-empty signing secret")
+		}
+		if h.js == nil {
+			h.js, err = jetStreamContextFunc(h.Nats)
+			if err != nil {
+				return fmt.Errorf("initialize JetStream context: %w", err)
 			}
 		}
-		if err != nil {
-			h.Logger.WarnContext(appCtx, "JetStream chat subscription failed, falling back to core NATS", "err", err)
-			chatSub, err = coreNATSSubscribeFunc(h.Nats, "chat.*", h.handleCoreChat(appCtx))
+		streamInfo, infoErr := h.js.StreamInfo(h.streamChat)
+		if infoErr != nil {
+			return fmt.Errorf("load chat stream metadata: %w", infoErr)
 		}
-	} else {
-		chatSub, err = coreNATSSubscribeFunc(h.Nats, "chat.*", h.handleCoreChat(appCtx))
-	}
-	if err != nil {
-		h.Logger.ErrorContext(appCtx, "NATS chat subscription failed — hub cannot deliver messages", "err", err)
-		return err
-	}
-	h.subs = append(h.subs, chatSub)
-
-	var notifSub *nats.Subscription
-	if h.js != nil && h.enableJetStream {
-		notifSub, err = h.js.Subscribe("notifications.*", h.handleNotifications(appCtx),
-			nats.Durable(h.durableNotif),
+		if streamInfo == nil || streamInfo.Created.IsZero() {
+			return fmt.Errorf("chat stream incarnation is unavailable")
+		}
+		incarnation := streamInfo.Created.UTC().Format(time.RFC3339Nano)
+		chatSub, err = h.js.Subscribe("chat.*", h.handleChat(appCtx),
+			nats.DeliverNew(),
 			nats.AckExplicit(),
 			nats.ManualAck(),
 		)
 		if err != nil {
-			h.Logger.WarnContext(appCtx, "JetStream notifications subscription failed, falling back to core NATS", "err", err)
-			notifSub, err = coreNATSSubscribeFunc(h.Nats, "notifications.*", h.handleNotifications(appCtx))
+			return fmt.Errorf("subscribe to JetStream chat events: %w", err)
 		}
+		notifSub, err = h.js.Subscribe("notifications.*", h.handleNotifications(appCtx),
+			nats.DeliverNew(),
+			nats.AckExplicit(),
+			nats.ManualAck(),
+		)
+		if err != nil {
+			_ = chatSub.Unsubscribe()
+			return fmt.Errorf("subscribe to JetStream notification events: %w", err)
+		}
+		h.chatStreamIncarnation = incarnation
+		h.chatReplayAvailable.Store(true)
 	} else {
+		chatSub, err = coreNATSSubscribeFunc(h.Nats, "chat.*", h.handleCoreChat(appCtx))
+		if err != nil {
+			h.Logger.ErrorContext(appCtx, "NATS chat subscription failed — hub cannot deliver messages", "err", err)
+			return err
+		}
 		notifSub, err = coreNATSSubscribeFunc(h.Nats, "notifications.*", h.handleNotifications(appCtx))
 	}
 	if err != nil {
 		h.Logger.ErrorContext(appCtx, "NATS notifications subscription failed — hub cannot deliver messages", "err", err)
 		return err
 	}
-	h.subs = append(h.subs, notifSub)
+	h.subs = append(h.subs, chatSub, notifSub)
 
 	invSub, err := coreNATSSubscribeFunc(h.Nats, "cache.invalidate", h.handleCacheInvalidation(appCtx))
 	if err != nil {

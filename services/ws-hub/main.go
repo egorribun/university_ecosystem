@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -76,6 +77,10 @@ func run() error {
 		logger.ErrorContext(context.Background(), "WS_HUB_INTERNAL_SECRET is not set — generate with: openssl rand -hex 32")
 		return errors.New("WS_HUB_INTERNAL_SECRET is not set")
 	}
+	if err := validateListenPorts(cfg); err != nil {
+		logger.ErrorContext(context.Background(), "Listen port configuration is invalid", "err", err)
+		return err
+	}
 
 	if err := telemetry.InitSentry(cfg); err != nil {
 		logger.ErrorContext(context.Background(), "Sentry initialization failed", "err", err)
@@ -115,6 +120,22 @@ func run() error {
 	mux := http.NewServeMux()
 	setupHandlers(mux, h, cfg, logger, nc, rdb, revocationRDB)
 	return runServerFunc(cfg, logger, h, mux)
+}
+
+func validateListenPorts(cfg *config.Config) error {
+	for _, listen := range []struct {
+		name  string
+		value string
+	}{
+		{name: "WebSocket", value: cfg.Port},
+		{name: "WebTransport", value: cfg.WebTransportPort},
+	} {
+		port, err := strconv.Atoi(listen.value)
+		if err != nil || port < 0 || port > 65535 {
+			return fmt.Errorf("%s invalid port: listen port must be between 0 and 65535", listen.name)
+		}
+	}
+	return nil
 }
 
 func initializeTracerShutdown(ctx context.Context, cfg *config.Config, logger *slog.Logger) func() {
