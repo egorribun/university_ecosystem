@@ -123,6 +123,45 @@ def _groups_id_is_integer(inspector: Any) -> bool:
     return bool(id_column and isinstance(id_column["type"], sa.Integer))
 
 
+def _reject_composite_groups_foreign_keys() -> None:
+    """Abort before the shadow swap if ``groups.id`` is part of a composite FK.
+
+    The migration owns only the single-column ``groups.id`` key. A composite
+    FK would require preserving/rebuilding its parent unique index (which may
+    include a column added by this revision), so silently rewriting it would
+    risk changing referential semantics. Fail closed while the transaction is
+    still untouched and require the caller to remediate that schema first.
+    """
+
+    op.execute(
+        sa.text(
+            """
+            DO $$
+            DECLARE fk RECORD;
+            BEGIN
+                FOR fk IN
+                    SELECT c.conname
+                    FROM pg_constraint AS c
+                    JOIN pg_attribute AS parent
+                      ON parent.attrelid = c.confrelid
+                     AND parent.attnum = ANY(c.confkey)
+                    WHERE c.contype = 'f'
+                      AND c.confrelid = 'groups'::regclass
+                    GROUP BY c.oid, c.conname, c.confkey
+                    HAVING array_length(c.confkey, 1) > 1
+                       AND bool_or(parent.attname = 'id')
+                LOOP
+                    RAISE EXCEPTION
+                        'groups.id conversion cannot proceed with composite FK %; remediate before 148642dd1207',
+                        fk.conname;
+                END LOOP;
+            END
+            $$;
+            """
+        )
+    )
+
+
 def _postgresql_groups_id_upgrade(inspector: Any) -> None:
     """Convert the legacy groups key with an additive, validated cutover.
 
@@ -148,6 +187,8 @@ def _postgresql_groups_id_upgrade(inspector: Any) -> None:
         if "ix_groups_id" in existing_indexes:
             op.execute("DROP INDEX IF EXISTS ix_groups_id")
         return
+
+    _reject_composite_groups_foreign_keys()
 
     # Validate the source before casting.  The CASE expression prevents an
     # invalid value from being evaluated as numeric by PostgreSQL's planner.
@@ -265,7 +306,6 @@ def _postgresql_groups_id_upgrade(inspector: Any) -> None:
         "ALTER TABLE groups ADD CONSTRAINT groups_pkey PRIMARY KEY USING INDEX groups_pkey_idx"
     )
     op.execute("CREATE INDEX IF NOT EXISTS ix_groups_id ON groups (id)")
-    op.execute("UPDATE _groups_fk_restore SET parent_columns = ARRAY['id']")
     op.execute(
         sa.text(
             """
@@ -297,11 +337,14 @@ def _capture_groups_foreign_keys() -> None:
             SELECT
                 c.conname,
                 c.conrelid::regclass::text AS child_table,
+                c.confrelid::regclass::text AS parent_table,
+                array_agg(child.attname ORDER BY key.ord) AS child_names,
                 array_agg(format('%I', child.attname) ORDER BY key.ord) AS child_columns,
                 array_agg(
                     format_type(child.atttypid, child.atttypmod)
                     ORDER BY key.ord
                 ) AS child_types,
+                array_agg(parent.attname ORDER BY key.ord) AS parent_names,
                 array_agg(format('%I', parent.attname) ORDER BY key.ord) AS parent_columns,
                 c.confmatchtype,
                 c.confupdtype,
@@ -322,7 +365,9 @@ def _capture_groups_foreign_keys() -> None:
             WHERE c.contype = 'f'
               AND c.confrelid = 'groups'::regclass
             GROUP BY c.oid, c.conname, c.conrelid, c.confmatchtype,
-                     c.confupdtype, c.confdeltype, c.condeferrable, c.condeferred;
+                     c.confrelid, c.confupdtype, c.confdeltype,
+                     c.condeferrable, c.condeferred
+            HAVING bool_or(parent.attname = 'id');
             """
         )
     )
@@ -378,8 +423,15 @@ def _convert_captured_fk_columns(target_type: str) -> None:
             BEGIN
                 FOR fk IN SELECT * FROM _groups_fk_restore LOOP
                     FOR ordinal IN 1..array_length(fk.child_columns, 1) LOOP
-                        column_name := trim(both '"' FROM fk.child_columns[ordinal]);
+                        column_name := fk.child_names[ordinal];
                         column_type := lower(fk.child_types[ordinal]);
+
+                        -- Convert only the child column paired with groups.id.
+                        -- A non-id component in a composite relation retains
+                        -- its original type and mapping.
+                        IF fk.parent_names[ordinal] <> 'id' THEN
+                            CONTINUE;
+                        END IF;
 
                         IF column_type = lower('__TARGET_TYPE__') THEN
                             CONTINUE;
@@ -471,10 +523,11 @@ def _restore_groups_foreign_keys() -> None:
                     END;
                     EXECUTE format(
                         'ALTER TABLE %s ADD CONSTRAINT %I FOREIGN KEY (%s) '
-                        'REFERENCES groups (%s)%s%s%s%s',
+                        'REFERENCES %s (%s)%s%s%s%s',
                         fk.child_table,
                         fk.conname,
                         array_to_string(fk.child_columns, ', '),
+                        fk.parent_table,
                         array_to_string(fk.parent_columns, ', '),
                         match_clause,
                         update_clause,
@@ -494,6 +547,8 @@ def _postgresql_groups_id_downgrade(inspector: Any) -> None:
 
     if inspector is not None and not inspector.has_table("groups"):
         return
+
+    _reject_composite_groups_foreign_keys()
 
     op.execute("ALTER TABLE groups ADD COLUMN IF NOT EXISTS id__varchar VARCHAR(20)")
     op.execute(
@@ -554,7 +609,6 @@ def _postgresql_groups_id_downgrade(inspector: Any) -> None:
         "ALTER TABLE groups ADD CONSTRAINT groups_pkey PRIMARY KEY USING INDEX groups_pkey_idx"
     )
     op.execute("CREATE INDEX IF NOT EXISTS ix_groups_id ON groups (id)")
-    op.execute("UPDATE _groups_fk_restore SET parent_columns = ARRAY['id']")
     op.execute(
         sa.text(
             """

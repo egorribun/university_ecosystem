@@ -75,3 +75,16 @@ def test_fk_conversion_preflight_uses_a_short_circuit_numeric_cast() -> None:
     # that column in 148642dd1207 would make the later cutover fail with a
     # duplicate-column error.
     assert "legacy_id" not in source
+
+
+def test_fk_capture_preserves_non_id_mapping_and_rejects_composites() -> None:
+    """The groups swap must never retarget a non-id FK to the new primary key."""
+
+    source = MIGRATION.read_text(encoding="utf-8")
+
+    assert "HAVING bool_or(parent.attname = 'id')" in source
+    assert "fk.parent_names[ordinal] <> 'id'" in source
+    assert "_reject_composite_groups_foreign_keys()" in source
+    # Parent columns are captured from pg_catalog and restored verbatim; the
+    # old implementation rewrote every relation to ``groups(id)``.
+    assert "parent_columns = ARRAY['id']" not in source
