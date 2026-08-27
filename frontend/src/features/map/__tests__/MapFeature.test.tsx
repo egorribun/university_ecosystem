@@ -23,6 +23,13 @@ vi.mock("@/hooks/useMediaQuery", () => ({ default: () => mq.value }))
 /* Sidestep the entire maplibre stack — the lazy child is replaced with null. */
 vi.mock("@/components/map/MapLibreMap", () => ({ default: () => null }))
 
+/* MapFeature's lazy loader also imports MapLibre's worker asset. Mock the
+   loader at this unit-test boundary so shell renders never depend on the
+   browser-only worker/CSS graph (including isolated Stryker sandboxes). */
+vi.mock("@/features/map/loadMapLibre", () => ({
+  loadMapLibre: () => import("@/components/map/MapLibreMap"),
+}))
+
 /* Module-mock every data/router hook MapFeature reaches. */
 vi.mock("@/hooks/useURLState", () => ({
   useURLState: () => ({ params: {}, setParam: vi.fn(), setParams: vi.fn() }),

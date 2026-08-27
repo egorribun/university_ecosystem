@@ -60,6 +60,14 @@ vi.mock("@/components/map/MapLibreMap", () => ({
   },
 }))
 
+/* Keep this orchestration test independent from MapLibre's worker and CSS
+   side effects. MapFeature owns the lazy loader, so mocking only the child
+   module still executes loadMapLibre's browser-only Promise.all path in a
+   Stryker sandbox where those assets are unavailable. */
+vi.mock("@/features/map/loadMapLibre", () => ({
+  loadMapLibre: () => import("@/components/map/MapLibreMap"),
+}))
+
 /* Capture the keyboard-shortcut options so we can invoke them directly. */
 // Named methods (not a string-index Record) so dot-access isn't widened to
 // `| undefined` by noUncheckedIndexedAccess when we invoke them below.
