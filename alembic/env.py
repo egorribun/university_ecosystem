@@ -14,7 +14,10 @@ from alembic import context
 from alembic.config import Config
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from scripts.quality.alembic_schema_drift import filter_check_backed_nullable_diffs
+from scripts.quality.alembic_schema_drift import (
+    build_partition_aware_include_object,
+    filter_check_backed_nullable_diffs,
+)
 from app.core.config import Settings
 import app.models as models
 
@@ -167,6 +170,7 @@ def _configure_context(connection: SyncConnection) -> None:
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
+        include_object=build_partition_aware_include_object(connection),
         compare_type=True,
         render_as_batch=True,
         transactional_ddl=True,

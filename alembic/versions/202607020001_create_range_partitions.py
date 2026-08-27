@@ -68,7 +68,15 @@ def _get_relkind(conn, table_name: str) -> str | None:
         ),
         {"tbl": table_name},
     ).fetchone()
-    return row[0] if row else None
+    if not row:
+        return None
+    # asyncpg exposes PostgreSQL's ``char`` catalog type as a one-byte
+    # ``bytes`` value, while psycopg exposes a string.  Normalize both forms
+    # before comparing with the documented relkind codes below; otherwise a
+    # live partitioned table is misclassified and the migration silently
+    # skips its partition reconciliation.
+    value = row[0]
+    return value.decode("ascii") if isinstance(value, bytes) else str(value)
 
 
 def _existing_partition_names(conn, parent_table: str) -> set[str]:
@@ -80,7 +88,8 @@ def _existing_partition_names(conn, parent_table: str) -> set[str]:
             "JOIN pg_class child  ON pg_inherits.inhrelid  = child.oid "
             "JOIN pg_class parent ON pg_inherits.inhparent = parent.oid "
             "JOIN pg_namespace n  ON n.oid = parent.relnamespace "
-            "WHERE parent.relname = :tbl AND n.nspname = 'public'"
+            "WHERE parent.relname = :tbl AND n.nspname = 'public' "
+            "AND parent.relkind = 'p' AND child.relispartition"
         ),
         {"tbl": parent_table},
     ).fetchall()

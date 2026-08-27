@@ -272,7 +272,10 @@ async def prepare_database() -> AsyncIterator[None]:
                     ),
                     {"t": tbl},
                 )
-                if rk_row.scalar() != "p":
+                relkind = rk_row.scalar()
+                if isinstance(relkind, bytes):
+                    relkind = relkind.decode("ascii")
+                if relkind != "p":
                     continue  # table absent or not range-partitioned
 
                 # DEFAULT partition — absorbs any out-of-range insert.

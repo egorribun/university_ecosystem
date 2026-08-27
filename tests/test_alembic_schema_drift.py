@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any
 
 from alembic.operations import ops
@@ -30,6 +31,21 @@ class _Connection:
 
     def execute(self, _statement: Any, parameters: dict[str, str]) -> _Result:
         return _Result(self._checks.get(parameters["constraint_name"]))
+
+
+class _PartitionConnection:
+    class dialect:
+        name = "postgresql"
+
+    def __init__(self, names: tuple[str, ...]) -> None:
+        self._names = names
+        self.query_count = 0
+        self.statements: list[str] = []
+
+    def execute(self, _statement: Any) -> list[tuple[str]]:
+        self.query_count += 1
+        self.statements.append(str(_statement))
+        return [(name,) for name in self._names]
 
 
 class _MigrationContext:
@@ -147,3 +163,65 @@ def test_non_postgresql_connection_never_filters_contract_diffs() -> None:
     )
 
     assert table_ops.ops == [operation]
+
+
+def test_partition_discovery_excludes_only_reflected_partition_objects() -> None:
+    connection = _PartitionConnection(("notifications_2026_08",))
+    callback = alembic_schema_drift.build_partition_aware_include_object(connection)
+
+    # Building the callback must not execute a metadata query.  In the async
+    # Alembic CLI, an eager query would autobegin the SQLAlchemy connection
+    # before ``context.configure`` and make migrations using
+    # ``autocommit_block`` fail with no Alembic transaction handle.
+    assert connection.query_count == 0
+
+    reflected_partition = SimpleNamespace(name="notifications_2026_08")
+    reflected_index = SimpleNamespace(
+        table=SimpleNamespace(name="notifications_2026_08")
+    )
+    reflected_partition_fk = SimpleNamespace(
+        elements=(SimpleNamespace(target_fullname="notifications_2026_08.id"),),
+        table=SimpleNamespace(name="notification_deliveries"),
+    )
+    reflected_parent = SimpleNamespace(name="notifications")
+
+    assert (
+        callback(reflected_partition, "notifications_2026_08", "table", True, None)
+        is False
+    )
+    assert connection.query_count == 1
+    assert "parent.relkind = 'p'" in connection.statements[0]
+    assert "child.relispartition" in connection.statements[0]
+    assert callback(reflected_index, "partition_idx", "index", True, None) is False
+    assert (
+        callback(
+            reflected_partition_fk,
+            "partition_fk",
+            "foreign_key_constraint",
+            True,
+            None,
+        )
+        is False
+    )
+    assert callback(reflected_parent, "notifications", "table", True, None) is True
+    assert connection.query_count == 1
+    assert (
+        callback(reflected_partition, "notifications_2026_08", "table", False, None)
+        is True
+    )
+
+
+def test_partition_discovery_is_noop_for_non_postgresql_connections() -> None:
+    class _SQLiteConnection:
+        class dialect:
+            name = "sqlite"
+
+        def execute(self, _statement: Any) -> None:
+            raise AssertionError("SQLite must not query pg_inherits")
+
+    callback = alembic_schema_drift.build_partition_aware_include_object(
+        _SQLiteConnection()
+    )
+    assert (
+        callback(SimpleNamespace(name="events"), "events", "table", True, None) is True
+    )

@@ -85,7 +85,14 @@ def ensure_partitioned(table_name: str, create_sql: str, partition_key: str) -> 
         {"table_name": table_name},
     ).fetchone()
 
-    if res and res[0] == "p":  # 'p' means partitioned table
+    # asyncpg exposes PostgreSQL's ``char`` catalog type as bytes, whereas
+    # psycopg returns text.  Normalize before checking the partitioned-table
+    # marker so a valid parent is not rebuilt or skipped on one driver only.
+    relkind = None
+    if res:
+        value = res[0]
+        relkind = value.decode("ascii") if isinstance(value, bytes) else str(value)
+    if relkind == "p":  # 'p' means partitioned table
         return
 
     # Table exists but is not partitioned. We must convert it.

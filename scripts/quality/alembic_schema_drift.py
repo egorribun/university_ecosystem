@@ -54,6 +54,98 @@ _CHECK_BACKED_KEYS = frozenset(
 )
 
 
+_POSTGRES_PARTITION_NAMES_SQL = sa.text(
+    """
+    SELECT child.relname
+    FROM pg_inherits AS inheritance
+    JOIN pg_class AS parent ON parent.oid = inheritance.inhparent
+    JOIN pg_class AS child ON child.oid = inheritance.inhrelid
+    JOIN pg_namespace AS namespace ON namespace.oid = child.relnamespace
+    WHERE namespace.nspname = current_schema()
+      AND parent.relkind = 'p'
+      AND child.relispartition
+    """
+)
+
+
+def postgres_partition_table_names(connection: Any) -> frozenset[str]:
+    """Return physical PostgreSQL partition names for one live connection.
+
+    Declarative metadata describes the partitioned parent tables only.  The
+    child tables are implementation details managed by the partition manager
+    and must not be interpreted by Alembic as application tables to remove.
+    Discovery is deliberately performed against ``pg_inherits`` rather than a
+    naming convention: operators may use arbitrary, valid partition names.
+    Any database error is allowed to propagate so schema checks fail closed
+    instead of silently ignoring an unknown set of physical tables.
+    """
+
+    if connection is None or getattr(connection.dialect, "name", None) != "postgresql":
+        return frozenset()
+    result = connection.execute(_POSTGRES_PARTITION_NAMES_SQL)
+    return frozenset(str(row[0]) for row in result)
+
+
+def build_partition_aware_include_object(connection: Any) -> Any:
+    """Build Alembic's ``include_object`` callback for a live connection.
+
+    The callback excludes only reflected partition children.  It also guards
+    nested reflected columns, indexes, and constraints because Alembic may
+    visit those objects independently while comparing a reflected table.  A
+    metadata (non-reflected) object is never excluded, and non-PostgreSQL
+    connections retain the default comparison behavior.
+
+    Partition names are loaded lazily.  ``EnvironmentContext`` determines
+    whether a connection is externally managed while ``context.configure``
+    runs.  Executing a metadata query before that call would autobegin an
+    asyncpg transaction and make Alembic classify the connection as external;
+    migrations that use ``autocommit_block`` would then fail because Alembic
+    has no transaction handle to rotate.  Deferring the read until Alembic
+    invokes this callback keeps configuration side-effect free while still
+    caching one stable snapshot for the comparison.
+    """
+
+    partition_names: frozenset[str] | None = None
+
+    def _partition_names() -> frozenset[str]:
+        nonlocal partition_names
+        if partition_names is None:
+            partition_names = postgres_partition_table_names(connection)
+        return partition_names
+
+    def include_object(
+        object_: Any,
+        name: str,
+        object_type: str,
+        reflected: bool,
+        _compare_to: Any,
+    ) -> bool:
+        # Metadata objects are always retained and do not require a database
+        # lookup.  This also keeps the callback side-effect free until
+        # reflection actually asks us to classify a live object.
+        if not reflected:
+            return True
+        names = _partition_names()
+        if not names:
+            return True
+        if object_type == "table" and name in names:
+            return False
+        if object_type == "foreign_key_constraint":
+            # PostgreSQL exposes the inherited FK from a partitioned parent
+            # (for example ``notification_deliveries``) once per child
+            # partition.  Those physical edges are not part of the ORM's
+            # logical metadata and must not appear as remove_fk drift.
+            for element in getattr(object_, "elements", ()):
+                target = getattr(element, "target_fullname", "")
+                target_table = target.rsplit(".", 1)[0].rsplit(".", 1)[-1]
+                if target_table in names:
+                    return False
+        parent = getattr(object_, "table", None)
+        return getattr(parent, "name", None) not in names
+
+    return include_object
+
+
 def _normalize_constraint_definition(definition: str) -> str:
     """Normalize pg_get_constraintdef output without changing its meaning."""
 
