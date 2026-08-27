@@ -36,6 +36,7 @@ describe("hydration boundary", () => {
 
     expect(window.__APP_HYDRATED).toBe(true)
     expect(onHydrated).toHaveBeenCalledOnce()
+    vi.advanceTimersByTime(0)
     expect(loader).toHaveAttribute("data-state", "exiting")
     expect(loader).toHaveAttribute("aria-busy", "false")
     expect(loader).toBeInTheDocument()
@@ -71,6 +72,7 @@ describe("hydration boundary", () => {
     markAppHydrated()
 
     expect(onHydrated).toHaveBeenCalledOnce()
+    vi.advanceTimersByTime(0)
     vi.advanceTimersByTime(BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS)
     expect(loader).not.toBeInTheDocument()
 

@@ -30,16 +30,13 @@ describe("RxDB runtime closure", () => {
     expect(getDatabase).toHaveBeenCalledOnce()
   })
 
-  it("ignores a cancelled idle callback even if the browser delivers it late", () => {
-    let idleCallback: IdleRequestCallback | undefined
-    vi.stubGlobal(
-      "requestIdleCallback",
-      vi.fn((callback: IdleRequestCallback) => {
-        idleCallback = callback
-        return 37
-      })
-    )
-    vi.stubGlobal("cancelIdleCallback", vi.fn())
+  it("ignores a cancelled timer callback even if the browser delivers it late", () => {
+    let timerCallback: (() => void) | undefined
+    vi.spyOn(window, "setTimeout").mockImplementation(((callback: TimerHandler, delay?: number) => {
+      if (delay === 10_000) timerCallback = callback as () => void
+      return 37
+    }) as typeof window.setTimeout)
+    vi.spyOn(window, "clearTimeout").mockImplementation(() => undefined)
 
     const { unmount } = render(
       <RxDBProvider>
@@ -47,7 +44,7 @@ describe("RxDB runtime closure", () => {
       </RxDBProvider>
     )
     unmount()
-    act(() => idleCallback?.({ didTimeout: true, timeRemaining: () => 0 }))
+    act(() => timerCallback?.())
 
     expect(getDatabase).not.toHaveBeenCalled()
   })
@@ -70,6 +67,7 @@ describe("RxDB runtime closure", () => {
     unmount()
     act(() => timerCallback?.())
 
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 10_000)
     expect(setTimeoutSpy).toHaveBeenCalledOnce()
     expect(clearTimeoutSpy).toHaveBeenCalledWith(73)
     expect(getDatabase).not.toHaveBeenCalled()
@@ -82,22 +80,19 @@ describe("RxDB runtime closure", () => {
         resolveDatabase = resolve
       })
     )
-    let idleCallback: IdleRequestCallback | undefined
-    vi.stubGlobal(
-      "requestIdleCallback",
-      vi.fn((callback: IdleRequestCallback) => {
-        idleCallback = callback
-        return 81
-      })
-    )
-    vi.stubGlobal("cancelIdleCallback", vi.fn())
+    let timerCallback: (() => void) | undefined
+    vi.spyOn(window, "setTimeout").mockImplementation(((callback: TimerHandler, delay?: number) => {
+      if (delay === 10_000) timerCallback = callback as () => void
+      return 81
+    }) as typeof window.setTimeout)
+    vi.spyOn(window, "clearTimeout").mockImplementation(() => undefined)
     const { unmount } = render(
       <RxDBProvider>
         <Consumer />
       </RxDBProvider>
     )
 
-    act(() => idleCallback?.({ didTimeout: false, timeRemaining: () => 20 }))
+    act(() => timerCallback?.())
     unmount()
     await act(async () => resolveDatabase?.({ schedule: {} }))
 
@@ -111,15 +106,12 @@ describe("RxDB runtime closure", () => {
         rejectDatabase = reject
       })
     )
-    let idleCallback: IdleRequestCallback | undefined
-    vi.stubGlobal(
-      "requestIdleCallback",
-      vi.fn((callback: IdleRequestCallback) => {
-        idleCallback = callback
-        return 91
-      })
-    )
-    vi.stubGlobal("cancelIdleCallback", vi.fn())
+    let timerCallback: (() => void) | undefined
+    vi.spyOn(window, "setTimeout").mockImplementation(((callback: TimerHandler, delay?: number) => {
+      if (delay === 10_000) timerCallback = callback as () => void
+      return 91
+    }) as typeof window.setTimeout)
+    vi.spyOn(window, "clearTimeout").mockImplementation(() => undefined)
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined)
     const { unmount } = render(
       <RxDBProvider>
@@ -127,7 +119,7 @@ describe("RxDB runtime closure", () => {
       </RxDBProvider>
     )
 
-    act(() => idleCallback?.({ didTimeout: false, timeRemaining: () => 20 }))
+    act(() => timerCallback?.())
     unmount()
     await act(async () => rejectDatabase?.(new Error("late failure")))
 

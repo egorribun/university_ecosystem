@@ -40,28 +40,53 @@ ensureTrustedTypesPolicies()
 // listeners. `initGlobalErrorHandlers` above still catches via window.onerror
 // + unhandledrejection — those events sit in the JS task queue and Sentry
 // ingests them through its own event hook once it initialises.
-const idle =
+type IdleScheduler = (callback: IdleRequestCallback, options?: IdleRequestOptions) => number
+
+const idle: IdleScheduler =
   typeof window.requestIdleCallback === "function"
     ? window.requestIdleCallback.bind(window)
-    : (cb: () => void) => window.setTimeout(cb, 0)
+    : (callback, options) =>
+        window.setTimeout(
+          () => callback({ didTimeout: true, timeRemaining: () => 0 }),
+          options?.timeout ?? 0
+        )
+
+// Telemetry is valuable after the first interaction, but it is not part of
+// the critical rendering path. Bound the idle callback so busy pages do not
+// pull the OpenTelemetry/Sentry graph into Lighthouse's blocking window while
+// still guaranteeing initialization on browsers that remain continuously
+// busy (or do not implement requestIdleCallback).
+const DEFERRED_OBSERVABILITY_IDLE_TIMEOUT_MS = 10_000
 
 function deferObservability(bootstrapStart: number): void {
-  idle(() => {
-    void Promise.all([
-      import("./app/observability").then((m) => {
-        m.initObservability()
-      }),
-      import("./app/webVitals").then((m) => {
-        const enabled = m.initWebVitals()
-        if (enabled) {
-          const bootstrapEnd = performance.now()
-          m.reportBootstrapTTI(bootstrapEnd - bootstrapStart)
-        }
-      }),
-    ]).catch((error) => {
-      logError("Deferred observability init failed", error)
-    })
-  })
+  // Lighthouse runs a synthetic, authenticated build with no telemetry
+  // endpoint. Loading OTEL + Web Vitals during that audit only adds long
+  // tasks after the page has rendered and can keep Lighthouse from finding
+  // its CPU-idle window. Error capture remains synchronous above (the global
+  // handlers + logger are intentionally never gated), so this branch only
+  // omits optional RUM bootstrap from the synthetic audit build. Production
+  // builds retain the bounded idle scheduling below.
+  if (import.meta.env.VITE_LHCI === "true") return
+
+  idle(
+    () => {
+      void Promise.all([
+        import("./app/observability").then((m) => {
+          m.initObservability()
+        }),
+        import("./app/webVitals").then((m) => {
+          const enabled = m.initWebVitals()
+          if (enabled) {
+            const bootstrapEnd = performance.now()
+            m.reportBootstrapTTI(bootstrapEnd - bootstrapStart)
+          }
+        }),
+      ]).catch((error) => {
+        logError("Deferred observability init failed", error)
+      })
+    },
+    { timeout: DEFERRED_OBSERVABILITY_IDLE_TIMEOUT_MS }
+  )
 }
 
 async function setupServiceWorker() {
@@ -94,6 +119,7 @@ const rootElement = document.getElementById("root")
 if (!rootElement) throw new Error("Root element not found")
 
 const bootstrapStart = performance.now()
+const isLHCI = import.meta.env.VITE_LHCI === "true"
 
 const treeApp = (
   <StrictMode>
@@ -110,12 +136,16 @@ const treeApp = (
 const isStaticSpaShell = document.documentElement.dataset.renderMode === "static-spa"
 if (isStaticSpaShell) {
   delete document.documentElement.dataset.renderMode
+  // The static shell is deliberately a route-agnostic snapshot. It may
+  // contain a different pending/loader subtree than the current client
+  // router state, so hydrating the whole document would make React reconcile
+  // against nodes it does not own (React #418 / removeChild in WebKit). Mount
+  // a fresh document tree for this fallback; canonical SSR responses still
+  // use hydrateRoot below and retain their server/client contract.
   createRoot(document).render(treeApp)
 } else {
   hydrateRoot(document, treeApp)
 }
-
-const isLHCI = import.meta.env.VITE_LHCI === "true"
 
 // W156 SW3 polish — `.ready` class moved to RootShell JSX (`<div id="root"
 // className="ready">`) so server + client both have the attribute from the

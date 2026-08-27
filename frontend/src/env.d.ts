@@ -13,6 +13,8 @@ interface ImportMetaEnv {
   readonly VITE_SERVICE_VERSION?: string
   readonly VITE_VAPID_PUBLIC_KEY?: string
   readonly VITE_LHCI?: string
+  /** Keep optional realtime bootstrap enabled for URL-state chat E2E flows. */
+  readonly VITE_LHCI_ENABLE_MESSENGER?: string
   readonly VITE_ENABLE_WEB_VITALS?: string
   readonly VITE_WEB_VITALS_ENDPOINT?: string
   readonly VITE_CWV_TRUSTED_RUM?: string

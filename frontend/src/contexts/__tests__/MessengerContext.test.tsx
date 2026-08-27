@@ -60,6 +60,7 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.unstubAllEnvs()
   mocks.useAuth.mockReturnValue({ isAuth: true, user: undefined })
   mocks.useChatWebSocket.mockReturnValue({
     isConnected: true,
@@ -178,6 +179,41 @@ describe("MessengerContext", () => {
       expect(mocks.useChatWebSocket).toHaveBeenCalledWith(
         expect.objectContaining({ enabled: true })
       )
+    })
+
+    it("keeps the messenger context mounted but defers realtime bootstrap during LHCI", async () => {
+      vi.stubEnv("VITE_LHCI", "true")
+      mocks.useAuth.mockReturnValue({ isAuth: true, user: { id: "current-user" } })
+
+      const { result } = renderHook(() => useMessenger(), { wrapper })
+
+      expect(mocks.useChatWebSocket).toHaveBeenCalledWith(
+        expect.objectContaining({ enabled: false, currentUserId: "current-user" })
+      )
+      await waitFor(() => expect(mocks.chatApi.getChats).not.toHaveBeenCalled())
+      expect(result.current).toMatchObject({
+        unreadCount: 0,
+        presenceMap: {},
+        isConnected: true,
+        sendTyping: expect.any(Function),
+        sendRead: expect.any(Function),
+        sendJoin: expect.any(Function),
+        sendLeave: expect.any(Function),
+        getTypingUsersForChat: expect.any(Function),
+      })
+    })
+
+    it("allows URL-state chat E2E to opt realtime bootstrap back in", async () => {
+      vi.stubEnv("VITE_LHCI", "true")
+      vi.stubEnv("VITE_LHCI_ENABLE_MESSENGER", "true")
+      mocks.useAuth.mockReturnValue({ isAuth: true, user: { id: "current-user" } })
+
+      renderHook(() => useMessenger(), { wrapper })
+
+      expect(mocks.useChatWebSocket).toHaveBeenCalledWith(
+        expect.objectContaining({ enabled: true, currentUserId: "current-user" })
+      )
+      await waitFor(() => expect(mocks.chatApi.getChats).toHaveBeenCalledOnce())
     })
   })
 

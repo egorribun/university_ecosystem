@@ -24,8 +24,8 @@ const BUILD_COMMAND = E2E_COVERAGE_MODE
   ? "npx cross-env FRONTEND_BUILD_UNMINIFIED=true npm run build"
   : "npm run build"
 const URL_STATE_BUILD_COMMAND = E2E_COVERAGE_MODE
-  ? "npx cross-env VITE_LHCI=true FRONTEND_BUILD_UNMINIFIED=true npm run build"
-  : "npx cross-env VITE_LHCI=true npm run build"
+  ? "npx cross-env VITE_LHCI=true VITE_LHCI_ENABLE_MESSENGER=true FRONTEND_BUILD_UNMINIFIED=true npm run build"
+  : "npx cross-env VITE_LHCI=true VITE_LHCI_ENABLE_MESSENGER=true npm run build"
 
 export default defineConfig({
   testDir: "./tests/e2e",
