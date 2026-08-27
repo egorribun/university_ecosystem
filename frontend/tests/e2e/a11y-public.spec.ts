@@ -1,4 +1,4 @@
-import { expect, test } from "./test"
+import { blockBackgroundNetwork, expect, test } from "./test"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
@@ -142,14 +142,12 @@ test.describe("@a11y public routes axe scan", () => {
         await page.emulateMedia({ colorScheme: theme.scheme, reducedMotion: "reduce" })
         await page.goto(route.path, { waitUntil: "domcontentloaded", timeout: 30_000 })
 
-        // W147 SW2 — block ALL subsequent network requests so React Query
-        // / useProfileSync / dynamic chunks / service workers can't starve
-        // the page event loop and prevent axe.run from scheduling. The
-        // DOM tree axe scans is already rendered post-goto. See
-        // `a11y-cdn-axe.spec.ts` for the full root-cause narrative.
-        // Inner param renamed `r` to avoid shadowing the outer for-loop
-        // `route` (PUBLIC_ROUTES element).
-        await page.route("**/*", (r) => r.abort())
+        // W147 SW2 — quiesce background API/realtime traffic so React Query
+        // / useProfileSync / service workers can't starve the page event loop
+        // and prevent axe.run from scheduling, while lazy application chunks
+        // remain available. The DOM tree axe scans is already rendered
+        // post-goto. See `a11y-cdn-axe.spec.ts` for the root-cause narrative.
+        await blockBackgroundNetwork(page)
 
         // Wave 146 polish-v4 — removed `page.waitForLoadState("networkidle")`
         // which hung tests deterministically when backend is up and serving

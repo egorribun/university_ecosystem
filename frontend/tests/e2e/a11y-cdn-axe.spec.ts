@@ -1,4 +1,4 @@
-import { expect, test } from "./test"
+import { blockBackgroundNetwork, expect, test } from "./test"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
@@ -49,11 +49,12 @@ import path from "node:path"
  *     internal `requestIdleCallback` / `setTimeout` scheduler never got
  *     a yield slot → axe.run never resolved.
  *
- *     Fix: `await page.route("**\/*", (r) => r.abort())` AFTER `page.goto`
- *     blocks all subsequent network requests. Page freezes in its
- *     post-goto static state (DOM tree unchanged, axe-auditable), but
- *     background loops stop competing for the event loop. axe.run
- *     completes in ~1-2s. Closes W140 NEW #5 chronic since Wave 140 —
+ *     Fix: quiesce background API/realtime traffic AFTER `page.goto` while
+ *     allowing document, script, style, image, and font requests to finish.
+ *     The page settles in its post-goto static state (DOM tree unchanged,
+ *     axe-auditable), while unbounded background loops stop competing for the
+ *     event loop. axe.run completes in ~1-2s. Closes W140 NEW #5 chronic since
+ *     Wave 140 —
  *     this was the SAME failure class W113-W116 + W144-W146 wrestled
  *     with under various injection mechanisms (CDN, eval, AxeBuilder).
  *     The injection was a red herring; event-loop starvation was the
@@ -138,9 +139,9 @@ test.describe("@a11y local-injected axe-core regression", () => {
     await page.emulateMedia({ reducedMotion: "reduce" })
     await page.goto("/login", { waitUntil: "domcontentloaded", timeout: 30_000 })
 
-    // W147 SW1 — block ALL subsequent network requests so React Query +
-    // useProfileSync + dynamic chunks + service workers can't starve the
-    // event loop and prevent axe.run's internal scheduler from yielding.
+    // W147 SW1 — quiesce background API/realtime traffic so React Query +
+    // useProfileSync + service workers can't starve the event loop, while
+    // keeping application code/assets available for any pending lazy import.
     //
     // ROOT CAUSE (empirically identified in iter 4-5 via diagnostic logs):
     // Pre-W147, `axe.run()` on chromium hung deterministically even on
@@ -152,17 +153,17 @@ test.describe("@a11y local-injected axe-core regression", () => {
     // axe-core's internal `requestIdleCallback` / `setTimeout` scheduler
     // never got a yield slot.
     //
-    // Aborting all subsequent network freezes the page in a static state
-    // post-goto. The DOM tree axe scans is unchanged (page rendered
-    // enough to be auditable post-goto + waitForTimeout settle), but
-    // background loops stop competing for the event loop. axe.run
-    // completes in ~1-2s.
+    // Aborting only background traffic leaves the page in a static state
+    // post-goto. The DOM tree axe scans is unchanged (page rendered enough to
+    // be auditable post-goto + waitForTimeout settle), but background loops
+    // stop competing for the event loop while lazy assets still finish.
+    // axe.run completes in ~1-2s.
     //
     // This is the SAME failure class W113-W116 + W144-W146 wrestled with
     // under various injection mechanisms (CDN script-tag, eval inject,
     // AxeBuilder.analyze). Injection wasn't the issue — event-loop
     // starvation was. W147 SW1 closes the real root cause.
-    await page.route("**/*", (r) => r.abort())
+    await blockBackgroundNetwork(page)
     // Wave 146 polish-v2 — removed `page.waitForLoadState("networkidle")` which
     // hung the test under W146 SW1 CSP-block elimination. The 1500ms settle
     // covers Framer Motion entrance animations + React Query observers under

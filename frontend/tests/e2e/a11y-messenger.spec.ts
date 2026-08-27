@@ -1,4 +1,4 @@
-import { expect, test } from "./test"
+import { blockBackgroundNetwork, expect, test } from "./test"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
@@ -7,8 +7,9 @@ import path from "node:path"
  * Messenger-page accessibility scan — Wave 182 SW5 / closes W181 gap item #8.
  *
  * Adapts the W147 SW2 axe-on-chromium-headless structural pattern from
- * `a11y-public.spec.ts` (page.addInitScript pre-injection + page.route abort
- * post-goto + Promise.race timeout wrapper) to authenticated /messenger.
+ * `a11y-public.spec.ts` (page.addInitScript pre-injection + background
+ * traffic quiescing post-goto + Promise.race timeout wrapper) to
+ * authenticated /messenger.
  *
  * **Required environment**: `URL_STATE_E2E=true` (Wave 121 SW3 / Wave 122 SW3
  * pattern). Sets `cross-env VITE_LHCI=true npm run build` for the auto-managed
@@ -85,11 +86,11 @@ test.describe("@a11y messenger route axe scan", () => {
       await page.emulateMedia({ colorScheme: theme.scheme, reducedMotion: "reduce" })
       await page.goto("/messenger", { waitUntil: "domcontentloaded", timeout: 30_000 })
 
-      // W148 SW3 pattern — block ALL subsequent network so React Query
-      // retries / dynamic chunks / SW workbox don't starve the event loop
-      // and prevent axe.run from scheduling. The DOM tree axe scans is
-      // already rendered post-goto.
-      await page.route("**/*", (r) => r.abort())
+      // W148 SW3 pattern — quiesce background API/realtime traffic so React
+      // Query retries / SW workbox don't starve the event loop and prevent
+      // axe.run from scheduling, without cancelling pending application
+      // chunks. The DOM tree axe scans is already rendered post-goto.
+      await blockBackgroundNetwork(page)
 
       // Framer Motion entrance animations + React Query observers settle.
       // Under `reducedMotion: "reduce"` + MotionConfig `reducedMotion="user"`

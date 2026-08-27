@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises"
 import { dirname } from "node:path"
-import { expect, test as base, devices } from "@playwright/test"
+import { expect, test as base, devices, type Page } from "@playwright/test"
 
 // Playwright exposes JavaScript coverage only for Chromium. Keep collection
 // opt-in so normal E2E and the Firefox/WebKit stabilization matrix have no
@@ -29,6 +29,24 @@ export const test = base.extend({
     }
   },
 })
+
+/**
+ * Quiesce background activity without aborting application code or assets.
+ *
+ * Accessibility/visual audits need a stable DOM, but aborting every request
+ * also cancels lazy JavaScript chunks that may still be loading on a busy CI
+ * runner.  Keep document, script, style, image, and font requests alive; only
+ * stop the unbounded API/realtime classes that can starve axe's scheduler.
+ */
+export async function blockBackgroundNetwork(page: Page): Promise<void> {
+  const backgroundTypes = new Set(["fetch", "xhr", "websocket", "eventsource"])
+  await page.route("**/*", (route) => {
+    if (backgroundTypes.has(route.request().resourceType())) {
+      return route.abort()
+    }
+    return route.continue()
+  })
+}
 
 export { devices, expect }
 export type { BrowserContext, Page, Route } from "@playwright/test"
