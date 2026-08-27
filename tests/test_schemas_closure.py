@@ -137,8 +137,13 @@ def test_event_time_validators_cover_success_and_missing_end() -> None:
 
 
 def test_dead_letter_job_ids_are_unique_and_non_empty() -> None:
-    payload = schemas.NotificationDeadLetterReplayIn(job_ids=["a", "a", "b"])
-    assert payload.job_ids == ["a", "b"]
+    first_id = uuid.uuid4()
+    second_id = uuid.uuid4()
+    payload = schemas.NotificationDeadLetterReplayIn(job_ids=[first_id, second_id])
+    assert payload.job_ids == [first_id, second_id]
 
-    with pytest.raises(ValueError, match="at least one"):
-        schemas._NotificationDeadLetterJobIds._ensure_unique([])
+    with pytest.raises(ValueError, match="duplicate"):
+        schemas.NotificationDeadLetterReplayIn(job_ids=[first_id, first_id, second_id])
+
+    with pytest.raises(ValueError, match="at least 1"):
+        schemas.NotificationDeadLetterReplayIn(job_ids=[])
