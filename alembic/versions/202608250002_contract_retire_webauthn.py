@@ -18,6 +18,22 @@ downgrade_reason = "MFA security-key retirement is irreversible"
 
 _LOCK_ID = 824_250_002
 
+# Keep the logical NOT NULL contract while avoiding a table-wide validating
+# lock during this destructive migration.  PostgreSQL validates each check in
+# a separate pass after the metadata-only ``ADD CONSTRAINT ... NOT VALID``;
+# the constraint then rejects future NULL writes just like a NOT NULL column.
+_REQUIRED_COLUMNS = (
+    ("mfa_challenges", "flow"),
+    ("mfa_challenges", "session_identifier"),
+    ("mfa_challenges", "client_fingerprint"),
+    ("mfa_challenges", "method"),
+    ("mfa_challenges", "revision"),
+    ("mfa_challenges", "token_digest"),
+    ("mfa_challenges", "token_key_id"),
+    ("trusted_devices", "token_key_id"),
+    ("trusted_devices", "binding_digest"),
+)
+
 
 class MfaMigrationSafetyError(RuntimeError):
     pass
@@ -168,6 +184,36 @@ def _drop_column_constraints(bind: Any, table: str, column: str) -> None:
             op.drop_index(index["name"], table_name=table)
 
 
+def _enforce_required_columns(bind: Any) -> None:
+    """Enforce required fields without a blocking PostgreSQL table scan.
+
+    PostgreSQL's direct ``ALTER COLUMN ... SET NOT NULL`` takes an
+    ``ACCESS EXCLUSIVE`` lock while scanning the full table.  A validated
+    ``CHECK (column IS NOT NULL)`` has the same write-time semantics, while
+    ``NOT VALID`` lets the constraint be attached quickly and ``VALIDATE``
+    performs the scan under a weaker lock.  The non-PostgreSQL branch keeps
+    the existing SQLite development behavior, where PostgreSQL's ``NOT VALID``
+    and ``VALIDATE CONSTRAINT`` syntax is unavailable.
+    """
+
+    if bind.dialect.name != "postgresql":
+        for table, column in _REQUIRED_COLUMNS:
+            op.alter_column(table, column, nullable=False)
+        return
+
+    for table, column in _REQUIRED_COLUMNS:
+        constraint_name = f"ck_{table}_{column}_not_null"
+        op.create_check_constraint(
+            constraint_name,
+            table,
+            f"{column} IS NOT NULL",
+            postgresql_not_valid=True,
+        )
+        op.execute(
+            sa.text(f"ALTER TABLE {table} VALIDATE CONSTRAINT {constraint_name}")
+        )
+
+
 def _contract_body(bind: Any) -> None:
     run_preflight(bind)
     # Remove only legacy rows. Digest-bound challenges created during the
@@ -195,18 +241,7 @@ def _contract_body(bind: Any) -> None:
     if "token" in _columns(bind, "mfa_challenges"):
         _drop_column_constraints(bind, "mfa_challenges", "token")
         op.drop_column("mfa_challenges", "token")
-    for column in (
-        "flow",
-        "session_identifier",
-        "client_fingerprint",
-        "method",
-        "revision",
-        "token_digest",
-        "token_key_id",
-    ):
-        op.alter_column("mfa_challenges", column, nullable=False)
-    op.alter_column("trusted_devices", "token_key_id", nullable=False)
-    op.alter_column("trusted_devices", "binding_digest", nullable=False)
+    _enforce_required_columns(bind)
     op.create_check_constraint(
         "ck_mfa_challenges_email_recipient_digest",
         "mfa_challenges",
@@ -232,9 +267,13 @@ def upgrade() -> None:
     bind = op.get_bind()
     is_postgres = bind.dialect.name == "postgresql"
     if is_postgres:
-        bind.exec_driver_sql("SET LOCAL lock_timeout = '10s'")
-        bind.execute(
-            sa.text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": _LOCK_ID}
+        # Use Alembic operations rather than ``exec_driver_sql`` so the same
+        # lock guards render through the offline MockConnection used by CI.
+        op.execute(sa.text("SET LOCAL lock_timeout = '10s'"))
+        op.execute(
+            sa.text("SELECT pg_advisory_xact_lock(:lock_id)").bindparams(
+                sa.bindparam("lock_id", value=_LOCK_ID, literal_execute=True)
+            )
         )
         lock_tables = [
             table
@@ -250,9 +289,11 @@ def upgrade() -> None:
             )
             if table in _tables(bind)
         ]
-        bind.exec_driver_sql(
-            "LOCK TABLE " + ", ".join(lock_tables) + " IN ACCESS EXCLUSIVE MODE"
-        )
+        if lock_tables:
+            lock_sql = (
+                "LOCK TABLE " + ", ".join(lock_tables) + " IN ACCESS EXCLUSIVE MODE"
+            )
+            op.execute(sa.text(lock_sql))
     _contract_body(bind)
 
 

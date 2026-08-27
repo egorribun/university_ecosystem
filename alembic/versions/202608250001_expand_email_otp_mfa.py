@@ -59,6 +59,7 @@ def remediate_verified_email(
 
 
 def _upgrade_body(bind: Any) -> None:
+    is_postgres = bind.dialect.name == "postgresql"
     _add_column_if_missing(
         bind,
         "users",
@@ -122,15 +123,49 @@ def _upgrade_body(bind: Any) -> None:
     for column in challenge_columns:
         _add_column_if_missing(bind, "mfa_challenges", column)
     # The expansion/runtime overlap must accept digest-only inserts while
-    # immediately invalidating legacy plaintext-token challenges.
-    op.alter_column("mfa_challenges", "token", nullable=True)
-    bind.execute(
-        sa.text(
-            "UPDATE mfa_challenges SET consumed_at=CURRENT_TIMESTAMP, "
-            "state='locked', payload=NULL, token=NULL "
-            "WHERE token_digest IS NULL"
+    # immediately invalidating legacy plaintext-token challenges.  Keep the
+    # legacy NOT NULL invariant for old writers; a sequence-backed, non-secret
+    # sentinel satisfies it for new digest-only rows and is owned by ``token``
+    # so PostgreSQL removes the sequence with the contract's column drop.
+    if is_postgres:
+        op.execute(
+            sa.text("CREATE SEQUENCE IF NOT EXISTS mfa_challenges_digest_token_seq")
         )
-    )
+        op.execute(
+            sa.text(
+                "ALTER SEQUENCE mfa_challenges_digest_token_seq "
+                "OWNED BY mfa_challenges.token"
+            )
+        )
+        op.alter_column(
+            "mfa_challenges",
+            "token",
+            server_default=sa.text(
+                "'__mfa_digest_only__:' || "
+                "nextval('mfa_challenges_digest_token_seq')::text"
+            ),
+        )
+    if is_postgres:
+        bind.execute(
+            sa.text(
+                "UPDATE mfa_challenges SET consumed_at=CURRENT_TIMESTAMP, "
+                "state='locked', payload=NULL, "
+                "token='__mfa_digest_only__:' || "
+                "nextval('mfa_challenges_digest_token_seq') "
+                "WHERE token_digest IS NULL"
+            )
+        )
+    else:
+        # SQLite's development dialect has no sequence support.  Keep its
+        # legacy NOT NULL/UNIQUE contract with a row-bound, non-secret marker.
+        bind.execute(
+            sa.text(
+                "UPDATE mfa_challenges SET consumed_at=CURRENT_TIMESTAMP, "
+                "state='locked', payload=NULL, "
+                "token='__mfa_digest_only__:' || CAST(id AS TEXT) "
+                "WHERE token_digest IS NULL"
+            )
+        )
 
     tables = set(sa.inspect(bind).get_table_names())
     if "mfa_email_deliveries" not in tables:

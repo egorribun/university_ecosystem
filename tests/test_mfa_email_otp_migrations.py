@@ -192,12 +192,73 @@ def test_expansion_renders_postgresql_offline_sql_with_lock_guards() -> None:
 
     assert result.returncode == 0, result.stderr
     sql = result.stdout.upper()
+    normalized_sql = " ".join(sql.split())
     assert "SET LOCAL LOCK_TIMEOUT = '10S';" in sql
     assert "SELECT PG_ADVISORY_XACT_LOCK(824250001);" in sql
     assert (
         "LOCK TABLE USERS, ACTIVE_SESSIONS, TRUSTED_DEVICES, MFA_CHALLENGES "
         "IN SHARE ROW EXCLUSIVE MODE;"
     ) in sql
+    assert "ALTER TABLE MFA_CHALLENGES ALTER COLUMN TOKEN DROP NOT NULL;" not in sql
+    assert "CREATE SEQUENCE IF NOT EXISTS MFA_CHALLENGES_DIGEST_TOKEN_SEQ;" in sql
+    assert (
+        "ALTER SEQUENCE MFA_CHALLENGES_DIGEST_TOKEN_SEQ OWNED BY MFA_CHALLENGES.TOKEN;"
+    ) in normalized_sql
+    assert (
+        "ALTER TABLE MFA_CHALLENGES ALTER COLUMN TOKEN SET DEFAULT "
+        "'__MFA_DIGEST_ONLY__:' || NEXTVAL('MFA_CHALLENGES_DIGEST_TOKEN_SEQ')::TEXT;"
+    ) in normalized_sql
+    assert (
+        "TOKEN='__MFA_DIGEST_ONLY__:' || "
+        "NEXTVAL('MFA_CHALLENGES_DIGEST_TOKEN_SEQ') WHERE TOKEN_DIGEST IS NULL;"
+    ) in normalized_sql
+    assert "TOKEN=NULL WHERE TOKEN_DIGEST IS NULL;" not in normalized_sql
+
+
+def test_contract_renders_postgresql_offline_sql_with_lock_guards() -> None:
+    """The irreversible contract migration must render under Alembic offline mode."""
+
+    env = os.environ.copy()
+    env["DATABASE_URL"] = "postgresql+asyncpg://migration@localhost:5432/test"
+    result = subprocess.run(  # noqa: S603 - fixed local Alembic module invocation
+        [
+            sys.executable,
+            "-m",
+            "alembic",
+            "upgrade",
+            "202608250001:202608250002",
+            "--sql",
+        ],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    sql = " ".join(result.stdout.upper().split())
+    assert "SET LOCAL LOCK_TIMEOUT = '10S';" in sql
+    assert "SELECT PG_ADVISORY_XACT_LOCK(824250002);" in sql
+    assert "LOCK TABLE  IN ACCESS EXCLUSIVE MODE" not in sql
+    assert "ALTER TABLE MFA_CHALLENGES ALTER COLUMN FLOW SET NOT NULL;" not in sql
+    required_columns = (
+        ("MFA_CHALLENGES", "FLOW"),
+        ("MFA_CHALLENGES", "SESSION_IDENTIFIER"),
+        ("MFA_CHALLENGES", "CLIENT_FINGERPRINT"),
+        ("MFA_CHALLENGES", "METHOD"),
+        ("MFA_CHALLENGES", "REVISION"),
+        ("MFA_CHALLENGES", "TOKEN_DIGEST"),
+        ("MFA_CHALLENGES", "TOKEN_KEY_ID"),
+        ("TRUSTED_DEVICES", "TOKEN_KEY_ID"),
+        ("TRUSTED_DEVICES", "BINDING_DIGEST"),
+    )
+    for table, column in required_columns:
+        constraint_name = f"CK_{table}_{column}_NOT_NULL"
+        assert (
+            f"ADD CONSTRAINT {constraint_name} CHECK ({column} IS NOT NULL) NOT VALID;"
+        ) in sql
+        assert (f"ALTER TABLE {table} VALIDATE CONSTRAINT {constraint_name};") in sql
 
 
 def test_contract_coerces_postgres_user_ids_to_uuid() -> None:

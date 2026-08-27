@@ -100,6 +100,33 @@ def _assert_contract_abort_and_lock(sync_url: str) -> None:
             },
         )
     _upgrade(sync_url, "202608250001")
+    digest_challenge_id = uuid4()
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO mfa_challenges "
+                "(id,user_id,challenge_type,expires_at,flow,session_identifier,"
+                "client_fingerprint,method,token_digest,token_key_id,recipient_digest) "
+                "VALUES (:id,:user_id,'email_otp',:expires_at,'login',:session_id,"
+                ":fingerprint,'email_otp',:token_digest,:token_key_id,:recipient_digest)"
+            ),
+            {
+                "id": digest_challenge_id,
+                "user_id": USER_ID,
+                "expires_at": NOW,
+                "session_id": f"digest-{SESSION_ID}",
+                "fingerprint": FINGERPRINT,
+                "token_digest": "a" * 64,
+                "token_key_id": "pg-hmac",
+                "recipient_digest": "e" * 64,
+            },
+        )
+        digest_row = connection.execute(
+            text("SELECT token,payload FROM mfa_challenges WHERE id=:id"),
+            {"id": digest_challenge_id},
+        ).one()
+        assert digest_row.token.startswith("__mfa_digest_only__:")
+        assert digest_row.payload is None
     with pytest.raises(RuntimeError, match="Unsafe MFA retirement"):
         _upgrade(sync_url, "202608250002")
     with engine.connect() as connection:
@@ -180,6 +207,13 @@ def _assert_contract_abort_and_lock(sync_url: str) -> None:
             column["name"]
             for column in inspect(connection).get_columns("mfa_challenges")
         }
+        assert (
+            connection.execute(
+                text("SELECT token_digest FROM mfa_challenges WHERE id=:id"),
+                {"id": digest_challenge_id},
+            ).scalar_one()
+            == "a" * 64
+        )
     engine.dispose()
 
 
