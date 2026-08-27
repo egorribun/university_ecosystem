@@ -22,19 +22,27 @@ test.describe("MFA Lost Recovery Flows", () => {
     await expect(toggleBtn).toBeVisible()
     await toggleBtn.click()
 
-    // Assert recovery input UI is now displayed
-    await expect(page.getByLabel("MFA recovery code")).toBeVisible()
+    // The label is localized by the auth namespace (RU is the deterministic
+    // mock locale, while EN is used by browser smoke runs). Query the
+    // accessible role/name contract instead of a single-language label.
+    const recoveryCodeInput = page.getByRole("textbox", {
+      name: /Recovery code|Резервный код/i,
+    })
+    const verifyRecoveryButton = page.getByRole("button", {
+      name: /Verify(?: recovery code)?|Подтвердить(?: резервный)? код/i,
+    })
+    await expect(recoveryCodeInput).toBeVisible()
 
     // Try an invalid recovery code
-    await page.getByLabel("MFA recovery code").fill("INVALID-RECOVERY")
-    await page.getByRole("button", { name: /Подтвердить код|Verify/i }).click()
+    await recoveryCodeInput.fill("INVALID-RECOVERY")
+    await verifyRecoveryButton.click()
 
     // Assert warning text appears
-    await expect(page.getByText("Неверный код")).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/Неверный код|Invalid code/i)).toBeVisible({ timeout: 10000 })
 
     // Use a valid recovery code
-    await page.getByLabel("MFA recovery code").fill("VALID-RECOVERY")
-    await page.getByRole("button", { name: /Подтвердить код|Verify/i }).click()
+    await recoveryCodeInput.fill("VALID-RECOVERY")
+    await verifyRecoveryButton.click()
 
     // Verify successful login redirect to dashboard
     await expect(page).toHaveURL(/\/dashboard$/, { timeout: 15000 })

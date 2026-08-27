@@ -354,7 +354,10 @@ test.describe("Push notifications", () => {
     await page.getByRole("button", { name: /^(Open|Открыть)$/i }).click()
 
     await page.waitForURL(/\/news$/)
-    const heading = page.getByRole("heading", { level: 1 })
+    // The application shell can contain an announcement heading outside the
+    // route content. Scope the assertion to the page main landmark so a
+    // legitimate shell heading cannot make the locator strictness fail.
+    const heading = page.locator("#main-content").getByRole("heading", { level: 1 })
     // Use unicode for robustness against mojibake
     await expect(heading).toContainText(/News|\u041d\u043e\u0432\u043e\u0441\u0442/i)
   })

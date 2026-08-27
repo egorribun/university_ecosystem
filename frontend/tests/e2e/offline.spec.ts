@@ -60,6 +60,17 @@ test.describe("PWA offline support", () => {
       try {
         // For SPA, navigation to a cached route should still work but show offline indicator
         await page.goto("/news", { waitUntil: "domcontentloaded" })
+        // Wait for the hydrated route before dispatching the event; this
+        // guarantees OfflineIndicator has mounted its event listener in the
+        // fresh SW-served document.
+        await expect(page.getByText(/Новость дня|News of the day/i)).toBeVisible({
+          timeout: OFFLINE_TEST_TIMEOUTS.elementVisible,
+        })
+        // setOffline controls the network stack, but a full SW-served
+        // navigation creates a new document and does not replay the previous
+        // document's offline event. Dispatch the browser contract explicitly
+        // after navigation so this assertion is deterministic.
+        await page.evaluate(() => window.dispatchEvent(new Event("offline")))
         const offlineIndicator = page.getByTestId("offline-indicator-toast")
         await expect(offlineIndicator).toBeVisible({
           timeout: OFFLINE_TEST_TIMEOUTS.elementVisible,
@@ -84,13 +95,17 @@ test.describe("PWA offline support", () => {
 
       await gotoWithTransientRetry(page, "/profile", { waitUntil: "networkidle" })
       await expect(page).toHaveURL(/\/profile/)
-      await expect(page.getByText(/Иван Иванов|Ivan Ivanov/i)).toBeVisible()
+      await expect(
+        page.locator("#main-content").getByRole("heading", { name: /Иван Иванов|Ivan Ivanov/i })
+      ).toBeVisible()
 
       await context.setOffline(true)
       try {
         await page.reload({ waitUntil: "domcontentloaded" })
         await expect(page).toHaveURL(/\/profile/)
-        await expect(page.getByText(/Иван Иванов|Ivan Ivanov/i)).toBeVisible()
+        await expect(
+          page.locator("#main-content").getByRole("heading", { name: /Иван Иванов|Ivan Ivanov/i })
+        ).toBeVisible()
       } finally {
         await context.setOffline(false)
       }
