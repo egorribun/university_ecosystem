@@ -17,10 +17,9 @@ test.describe("Admin notification queue", () => {
         name: /Дополнительная навигация|Открыть меню|Additional navigation|Open menu/i,
       })
       .click()
-    // The drawer exposes a `navigation` landmark containing real links, not
-    // an ARIA `menu` widget. Keep the locator aligned with the product's
-    // semantics so every browser engine exercises the same accessible path.
-    await page.getByRole("link", { name: /Очередь уведомлений|Notification queue/i }).click()
+    // The overflow control is an ARIA `menu` widget. Use its menuitem role so
+    // every browser engine exercises the same accessible navigation contract.
+    await page.getByRole("menuitem", { name: /Очередь уведомлений|Notification queue/i }).click()
     await page.waitForURL(/\/admin\/notifications$/)
 
     await expect(

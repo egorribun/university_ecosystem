@@ -1,6 +1,11 @@
 import { Link } from "@tanstack/react-router"
 import { Mail } from "lucide-react"
-import guuLogo from "@/assets/guu_logo.png"
+// Keep the shared logo as a real immutable asset instead of an inline data URI.
+// The source is just below Vite's default inline threshold, so importing it
+// normally duplicates its base64 payload in every SSR logo/srcset occurrence
+// (eight copies in the shell). `?url` emits one cacheable file and keeps the
+// initial HTML small without changing the rendered image contract.
+import guuLogo from "@/assets/guu_logo.png?url&no-inline"
 import SmartImage from "@/components/media/SmartImage"
 import { useTranslation } from "react-i18next"
 

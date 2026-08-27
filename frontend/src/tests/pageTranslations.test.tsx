@@ -409,7 +409,7 @@ vi.mock("@/components/media/SmartImage", () => ({
 }))
 
 vi.mock("@/assets/background.jpg", () => ({ default: "profile-bg.jpg" }))
-vi.mock("@/assets/guu_logo.png", () => ({ default: "guu-logo.png" }))
+vi.mock("@/assets/guu_logo.png?url&no-inline", () => ({ default: "guu-logo.png" }))
 
 vi.mock("@/api/client", () => ({
   __esModule: true,

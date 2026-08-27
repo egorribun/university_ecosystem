@@ -19,12 +19,12 @@ function releaseStaticBrandBootLoader(): void {
   loader.dataset.state = "exiting"
   loader.setAttribute("aria-busy", "false")
 
-  let timeoutId: number | undefined
+  // Initialise with the browser's harmless no-op timer id so a synchronous
+  // test/runtime callback cannot observe an uninitialised handle.
+  let timeoutId = 0
   const removeLoader = () => {
-    if (timeoutId !== undefined) {
-      window.clearTimeout(timeoutId)
-      timeoutId = undefined
-    }
+    window.clearTimeout(timeoutId)
+    timeoutId = 0
     loader.removeEventListener("transitionend", removeLoader)
     // Do not remove a node that was adopted by a client-rendered root while
     // the transition was in progress.

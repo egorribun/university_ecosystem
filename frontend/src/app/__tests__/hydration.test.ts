@@ -49,6 +49,37 @@ describe("hydration boundary", () => {
     window.removeEventListener(APP_HYDRATED_EVENT, onHydrated)
   })
 
+  it("removes the legacy loader on transition end and cancels its fallback timer", () => {
+    const loader = appendLoader()
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout")
+
+    markAppHydrated()
+    vi.advanceTimersByTime(0)
+    loader.dispatchEvent(new Event("transitionend"))
+
+    expect(loader).not.toBeInTheDocument()
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(expect.anything())
+    vi.advanceTimersByTime(BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS)
+    expect(loader).not.toBeInTheDocument()
+  })
+
+  it("does not remove a legacy loader adopted by the client root during its exit", () => {
+    const root = document.createElement("div")
+    root.id = "root"
+    document.body.append(root)
+    const loader = appendLoader()
+
+    markAppHydrated()
+    vi.advanceTimersByTime(0)
+    root.append(loader)
+    loader.dispatchEvent(new Event("transitionend"))
+
+    expect(loader).toBeInTheDocument()
+    expect(loader.closest("#root")).toBe(root)
+    vi.advanceTimersByTime(BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS)
+    expect(loader).toBeInTheDocument()
+  })
+
   it("does not remove a loader that belongs to the client root", () => {
     const root = document.createElement("div")
     root.id = "root"
@@ -72,6 +103,23 @@ describe("hydration boundary", () => {
     markAppHydrated()
 
     expect(onHydrated).toHaveBeenCalledOnce()
+    vi.advanceTimersByTime(0)
+    vi.advanceTimersByTime(BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS)
+    expect(loader).not.toBeInTheDocument()
+
+    window.removeEventListener(APP_HYDRATED_EVENT, onHydrated)
+  })
+
+  it("does not schedule a second legacy cleanup while the first is queued", () => {
+    const loader = appendLoader()
+    const onHydrated = vi.fn()
+    window.addEventListener(APP_HYDRATED_EVENT, onHydrated)
+
+    markAppHydrated()
+    delete window.__APP_HYDRATED
+    markAppHydrated()
+
+    expect(onHydrated).toHaveBeenCalledTimes(2)
     vi.advanceTimersByTime(0)
     vi.advanceTimersByTime(BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS)
     expect(loader).not.toBeInTheDocument()

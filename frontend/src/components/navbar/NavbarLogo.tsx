@@ -1,6 +1,9 @@
 import { Link } from "@tanstack/react-router"
 import { type TFunction } from "i18next"
-import guuLogo from "@/assets/guu_logo.png"
+// Force a cacheable URL for the shared logo. The default import is inlined by
+// Vite and is repeated in every SSR src/srcset entry; `?url` avoids that HTML
+// duplication while preserving the same image and responsive behavior.
+import guuLogo from "@/assets/guu_logo.png?url&no-inline"
 import SmartImage from "@/components/media/SmartImage"
 import { cn } from "@/utils/cn"
 import { breakpoints } from "@/theme/tokens"

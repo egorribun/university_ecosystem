@@ -7,13 +7,10 @@ import {
 } from "@tanstack/react-router"
 import type { RouterContext } from "@/router"
 import MainLayout from "@/components/layout/MainLayout"
-import InstallPrompt from "@/components/pwa/InstallPrompt"
+import DeferredGlobalOverlays from "@/components/layout/DeferredGlobalOverlays"
 import { BrandBootLoader } from "@/components/feedback/BrandBootLoader"
 import { BRAND_BOOT_LOADER_CSS } from "@/components/feedback/brandBootLoaderCss"
-import LivePushToasts from "@/components/feedback/LivePushToasts"
-import OfflineIndicator from "@/components/feedback/OfflineIndicator"
 import { PageErrorBoundary } from "@/components/error/PageErrorBoundary"
-import { SearchDialog } from "@/components/search/SearchDialog"
 import { AppProviders } from "@/AppProviders"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import { QueryClientProvider } from "@tanstack/react-query"
@@ -290,14 +287,6 @@ function RootShell({ children }: { children: React.ReactNode }) {
           main.tsx still hides the lhci-marker on LHCI builds (separate concern).
         */}
         <div id="root" className="ready">
-          {/*
-            Keep the boot loader in the same React-owned boundary as the
-            client tree.  Rendering it as a sibling of `#root` made
-            `hydrateRoot(document, ...)` reconcile a node that the client
-            never rendered, which produced `removeChild` errors in Chromium
-            and WebKit during the public-route smoke.
-          */}
-          <BrandBootLoader />
           {children}
         </div>
         <noscript>
@@ -347,15 +336,19 @@ function RootComponent() {
     <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
       <ThemeProvider>
         <AppProviders>
+          {/*
+            Keep the boot loader in the route tree, rather than only in the
+            document shell.  Both the server and client trees then own the
+            same node, so static-SPA mounting and hydrateRoot can complete the
+            loader lifecycle without leaving an orphaned hit target behind.
+          */}
+          <BrandBootLoader />
           <MainLayout>
             <PageErrorBoundary>
               <Outlet />
             </PageErrorBoundary>
 
-            <SearchDialog />
-            <LivePushToasts />
-            <OfflineIndicator />
-            <InstallPrompt />
+            <DeferredGlobalOverlays />
           </MainLayout>
         </AppProviders>
       </ThemeProvider>
@@ -378,25 +371,25 @@ function SsrRoot() {
   //      server-side (suspense / placeholderData paths use cached data).
   //
   // Mirrors the W127 SW1 client branch tree (ThemeProvider → AppProviders →
-  // MainLayout → PageErrorBoundary → Outlet) plus the post-Outlet siblings
-  // (SearchDialog, LivePushToasts, OfflineIndicator, InstallPrompt) so
-  // hydration trees match exactly. Mid-tree mismatch (server emits Outlet
-  // without MainLayout, client wraps with MainLayout) would cause full
-  // subtree re-render per CLAUDE.md gotcha "React 19 hydration mismatch".
+  // MainLayout → PageErrorBoundary → Outlet) plus one
+  // DeferredGlobalOverlays placeholder. The placeholder is null during SSR
+  // and the first client render, then mounts the optional overlays in a
+  // follow-up task; this keeps hydration deterministic while removing those
+  // non-critical implementations from the initial module graph.
   const { queryClient } = useRouteContext({ from: "__root__" })
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AppProviders>
+          {/* Mirror the client tree so the SSR loader is reconciled by React
+              and can transition out after AppProviders publishes hydration. */}
+          <BrandBootLoader />
           <MainLayout>
             <PageErrorBoundary>
               <Outlet />
             </PageErrorBoundary>
 
-            <SearchDialog />
-            <LivePushToasts />
-            <OfflineIndicator />
-            <InstallPrompt />
+            <DeferredGlobalOverlays />
           </MainLayout>
         </AppProviders>
       </ThemeProvider>

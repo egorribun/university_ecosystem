@@ -14,6 +14,7 @@ import "@fontsource-variable/inter"
 import "@fontsource-variable/outfit"
 import "./styles/tailwind.css"
 import { ensureTrustedTypesPolicies } from "./utils/trustedTypes"
+import { getIdleScheduler } from "./app/idleScheduler"
 // Wave 127 SW1 — ThemeProvider hoisted to __root.tsx RootComponent (server +
 // client). Removed from main.tsx render tree.
 
@@ -40,16 +41,7 @@ ensureTrustedTypesPolicies()
 // listeners. `initGlobalErrorHandlers` above still catches via window.onerror
 // + unhandledrejection — those events sit in the JS task queue and Sentry
 // ingests them through its own event hook once it initialises.
-type IdleScheduler = (callback: IdleRequestCallback, options?: IdleRequestOptions) => number
-
-const idle: IdleScheduler =
-  typeof window.requestIdleCallback === "function"
-    ? window.requestIdleCallback.bind(window)
-    : (callback, options) =>
-        window.setTimeout(
-          () => callback({ didTimeout: true, timeRemaining: () => 0 }),
-          options?.timeout ?? 0
-        )
+const idle = getIdleScheduler()
 
 // Telemetry is valuable after the first interaction, but it is not part of
 // the critical rendering path. Bound the idle callback so busy pages do not

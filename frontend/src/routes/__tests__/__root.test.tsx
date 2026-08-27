@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import { QueryClient } from "@tanstack/react-query"
 import { Route } from "../__root"
+import { BrandBootLoader } from "@/components/feedback/BrandBootLoader"
 
 vi.mock("@tanstack/react-router", async (importOriginal) => {
   const actual = await importOriginal<any>()
@@ -76,17 +77,12 @@ describe("__root.tsx components", () => {
       expect(document.documentElement.className).toContain("dark")
 
       expect(screen.getByText("Test Child")).toBeInTheDocument()
-      const loader = document.querySelector("[data-brand-boot-loader]")
       const root = document.getElementById("root")
-      expect(loader).toBeInTheDocument()
-      expect(document.querySelectorAll("[data-brand-boot-loader]")).toHaveLength(1)
       expect(root).toBeInTheDocument()
-
-      if (!loader || !root) {
-        throw new Error("Root shell must render the brand loader inside the application root")
-      }
-
-      expect(root.contains(loader)).toBe(true)
+      // The shell owns the document scaffold only.  BrandBootLoader is
+      // mounted by both RootComponent and SsrRoot so React also owns its
+      // lifecycle during static-SPA mounts and hydration.
+      expect(document.querySelectorAll("[data-brand-boot-loader]")).toHaveLength(0)
       expect(document.head.textContent).toContain("@keyframes brand-boot-loader-mark-exit")
       expect(document.head.textContent).not.toContain("@keyframes status-exit")
     })
@@ -107,7 +103,7 @@ describe("__root.tsx components", () => {
       const Shell = (Route.options as any).shellComponent
       render(
         <Shell>
-          <div>Test Child</div>
+          <BrandBootLoader />
         </Shell>
       )
 
@@ -130,6 +126,7 @@ describe("__root.tsx components", () => {
 
       expect(screen.getByTestId("theme-provider")).toBeInTheDocument()
       expect(screen.getByTestId("app-providers")).toBeInTheDocument()
+      expect(document.querySelectorAll("[data-brand-boot-loader]")).toHaveLength(1)
     })
 
     it("renders SsrRoot component when import.meta.env.SSR is true", () => {
@@ -140,6 +137,7 @@ describe("__root.tsx components", () => {
 
       expect(screen.getByTestId("theme-provider")).toBeInTheDocument()
       expect(screen.getByTestId("app-providers")).toBeInTheDocument()
+      expect(document.querySelectorAll("[data-brand-boot-loader]")).toHaveLength(1)
     })
 
     it("evaluates head() function to return SEO metadata tags", () => {
