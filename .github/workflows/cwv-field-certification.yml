@@ -48,7 +48,9 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ inputs.release-sha }}
+          # A dispatch input binds certified artifacts only; it must not select
+          # the privileged workflow source before the guard below executes.
+          ref: ${{ github.sha }}
 
       - name: Verify exact successful staging deployment
         env:
@@ -64,6 +66,7 @@ jobs:
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$DEPLOY_RUN_ID" =~ ^[1-9][0-9]*$ ]]
           [[ "$DEPLOY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          test "$GITHUB_REF" = "refs/heads/main"
           test "$WORKFLOW_SHA" = "$RELEASE_SHA"
           test "$DISPATCH_SHA" = "$RELEASE_SHA"
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"

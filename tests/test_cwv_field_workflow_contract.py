@@ -99,9 +99,21 @@ def test_field_certification_accepts_only_exact_protected_main_deploy() -> None:
         "attestations": "write",
     }
 
+    steps = certify["steps"]
+    checkout_index = next(
+        index
+        for index, item in enumerate(steps)
+        if str(item.get("uses", "")).startswith("actions/checkout@")
+    )
+    checkout = steps[checkout_index]
+    assert checkout["with"]["ref"] == "${{ github.sha }}"
+    assert checkout["with"]["persist-credentials"] is False
+    assert "inputs.release-sha" not in str(checkout)
+
     verify = _step(certify, "Verify exact successful staging deployment")
     assert verify["env"]["WORKFLOW_SHA"] == "${{ github.workflow_sha }}"
     assert verify["env"]["DISPATCH_SHA"] == "${{ github.sha }}"
+    assert steps.index(verify) == checkout_index + 1
     script = verify["run"]
     for invariant in (
         ".head_sha",
@@ -115,6 +127,7 @@ def test_field_certification_accepts_only_exact_protected_main_deploy() -> None:
         "staging-deployment-$RELEASE_SHA-attempt-$DEPLOY_RUN_ATTEMPT",
     ):
         assert invariant in script
+    assert 'test "$GITHUB_REF" = "refs/heads/main"' in script
     assert 'test "$WORKFLOW_SHA" = "$RELEASE_SHA"' in script
     assert 'test "$DISPATCH_SHA" = "$RELEASE_SHA"' in script
 
