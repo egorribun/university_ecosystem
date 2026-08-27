@@ -125,7 +125,7 @@ test.describe("University ecosystem app", () => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
-    await page.goto("/settings")
+    await gotoWithTransientRetry(page, "/settings")
     await expect(page.getByRole("heading", { name: /Settings|Настройки/i })).toBeVisible()
 
     // Sessions is a dedicated settings section. Keep the test aligned with
