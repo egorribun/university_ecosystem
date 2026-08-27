@@ -2,7 +2,7 @@
  * SkeletonMorph — Smooth skeleton-to-content transition
  *
  * Instead of replacing skeleton with content (pop-in), the skeleton
- * morphs into content with a blur dissolve effect.
+ * morphs into content with an opacity dissolve effect.
  *
  * @example
  * ```tsx
