@@ -11,7 +11,11 @@ async function holdApplicationScripts(page: Page) {
   })
 
   await page.route("**/*", async (route) => {
-    if (route.request().resourceType() === "script") {
+    const request = route.request()
+    const requestUrl = new URL(request.url())
+    const isApplicationEntry =
+      request.resourceType() === "script" && /\/assets\/index-[^/]+\.js$/.test(requestUrl.pathname)
+    if (isApplicationEntry && !released) {
       await gate
     }
     await route.continue()
@@ -21,7 +25,12 @@ async function holdApplicationScripts(page: Page) {
     if (released) return
     released = true
     releaseGate()
-    await page.unrouteAll({ behavior: "ignoreErrors" })
+    // Keep the pass-through route installed after releasing the gate. WebKit
+    // can still have a module request in flight when the gate resolves;
+    // unrouteAll() immediately aborts that request before its handler reaches
+    // `route.continue()`, leaving the document in its unstyled SSR shell and
+    // preventing the hydration sentinel from being published. The route now
+    // continues every subsequent request and is cleaned up with the page.
   }
 }
 

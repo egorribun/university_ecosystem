@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState, type TransitionEvent } from "react"
 
-import { APP_HYDRATED_EVENT } from "@/app/hydration"
+import { APP_HYDRATED_EVENT, BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS } from "@/app/hydration"
+
+export { BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS } from "@/app/hydration"
 
 type BrandBootLoaderPhase = "active" | "exiting" | "hidden"
-
-export const BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS = 600
 
 const BODY_PATH =
   "M 432.53,279.03 A 102.77 102.77 0 0 0 356.91,313.10 L 184.73,504.69 A 20.43 20.43 0 0 0 215.20,532.06 L 384.10,343.81 A 68.71 68.71 0 0 1 434.70,320.99 L 813.00,318.00 A 46.0 46.0 0 0 1 823.00,405.00 L 458.17,405.16 A 23.73 23.73 0 0 0 440.53,413.02 L 358.13,504.69 A 22.39 22.39 0 0 0 374.96,542.05 L 761.598,539.011 A 2 2 0 0 0 763.069,538.349 L 870.501,419.037 A 85.7985 85.7985 0 0 0 806.844,276.072 Z"
