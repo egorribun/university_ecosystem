@@ -120,6 +120,15 @@ def _create_model_indexes(bind: Any) -> None:
 
 
 def _drop_model_indexes(bind: Any) -> None:
+    # Offline Alembic has no catalog to inspect.  The target revision is the
+    # pre-reconciliation schema, so render every drop with ``IF EXISTS`` and
+    # keep generated rollback SQL deterministic instead of silently leaving
+    # the additive indexes behind.
+    if context.is_offline_mode():
+        for name, table, _ in reversed(_MODEL_INDEXES):
+            op.drop_index(name, table_name=table, if_exists=True)
+        return
+
     existing_by_table = {
         table: {item["name"] for item in _inspector(bind).get_indexes(table)}
         for _, table, _ in _MODEL_INDEXES

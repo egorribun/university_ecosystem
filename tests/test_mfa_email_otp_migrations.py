@@ -327,3 +327,37 @@ def test_schema_reconciliation_migration_closes_model_drift() -> None:
         ("IX_USERS_EMAIL_VERIFIED_AT", "USERS"),
     ):
         assert f"CREATE INDEX {index} ON {table}" in sql
+
+
+def test_schema_reconciliation_downgrade_renders_index_drops_offline() -> None:
+    """Offline rollback must not silently retain additive model indexes."""
+
+    env = os.environ.copy()
+    env["DATABASE_URL"] = "postgresql+asyncpg://migration@localhost:5432/test"
+    result = subprocess.run(  # noqa: S603 - fixed local Alembic module invocation
+        [
+            sys.executable,
+            "-m",
+            "alembic",
+            "downgrade",
+            "202608270001:202608250003",
+            "--sql",
+        ],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    sql = " ".join(result.stdout.upper().split())
+    for index in (
+        "IX_MFA_CHALLENGES_FLOW",
+        "IX_MFA_CHALLENGES_METHOD",
+        "IX_MFA_CHALLENGES_RESEND_AVAILABLE_AT",
+        "IX_MFA_CHALLENGES_SESSION_IDENTIFIER",
+        "IX_USERS_EMAIL_MFA_ENABLED_AT",
+        "IX_USERS_EMAIL_VERIFIED_AT",
+    ):
+        assert f"DROP INDEX IF EXISTS {index}" in sql
