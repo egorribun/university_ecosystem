@@ -25,5 +25,5 @@ def test_mutmut_also_copy_covers_contract_inputs() -> None:
     configured = set(project["tool"]["mutmut"]["also_copy"])
     assert REQUIRED_ALSO_COPY <= configured
 
-    missing = sorted(path for path in REQUIRED_ALSO_COPY if not (ROOT / path).is_file())
+    missing = sorted(path for path in REQUIRED_ALSO_COPY if not (ROOT / path).exists())
     assert not missing, f"also_copy contract inputs are missing: {missing}"
