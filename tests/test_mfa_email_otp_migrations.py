@@ -241,7 +241,7 @@ def test_contract_renders_postgresql_offline_sql_with_lock_guards() -> None:
     assert "SET LOCAL LOCK_TIMEOUT = '10S';" in sql
     assert "SELECT PG_ADVISORY_XACT_LOCK(824250002);" in sql
     assert "LOCK TABLE  IN ACCESS EXCLUSIVE MODE" not in sql
-    assert "ALTER TABLE MFA_CHALLENGES ALTER COLUMN FLOW SET NOT NULL;" not in sql
+    assert " SET NOT NULL;" not in sql
     required_columns = (
         ("MFA_CHALLENGES", "FLOW"),
         ("MFA_CHALLENGES", "SESSION_IDENTIFIER"),
