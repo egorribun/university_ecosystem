@@ -491,6 +491,61 @@ def test_release_jobs_check_out_event_sha_before_trusting_dispatch_inputs() -> N
         )
 
 
+def test_canonical_image_pipeline_checks_trusted_source_before_privileged_tools() -> (
+    None
+):
+    """Input SHAs may bind artifacts, but never select executable workflow code."""
+
+    producer = yaml.safe_load(PRODUCER_WORKFLOW.read_text(encoding="utf-8"))
+    certify = producer["jobs"]["certify"]
+    certify_checkout = _step(certify, "Checkout certified source")
+    certify_verify = _step(certify, "Verify release SHA and quality run")
+    assert certify_checkout["with"]["ref"] == "${{ github.sha }}"
+    assert certify_checkout["with"]["persist-credentials"] is False
+    assert "inputs.release-sha" not in str(certify_checkout)
+    certify_steps = certify["steps"]
+    assert (
+        certify_steps.index(certify_verify) == certify_steps.index(certify_checkout) + 1
+    )
+    certify_run = str(certify_verify["run"])
+    for fragment in (
+        '[[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]',
+        'test "$GITHUB_REF" = "refs/heads/main"',
+        'test "$RELEASE_SHA" = "$GITHUB_SHA"',
+        'test "$RELEASE_SHA" = "$GITHUB_WORKFLOW_SHA"',
+        'test "$(git rev-parse HEAD)" = "$RELEASE_SHA"',
+        "git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1",
+        'test "$(git rev-parse origin/main)" = "$RELEASE_SHA"',
+    ):
+        assert fragment in certify_run
+    assert certify_run.index('test "$GITHUB_REF"') < certify_run.index("gh api")
+    assert certify_steps.index(_step(certify, "Setup release quality runtime")) > (
+        certify_steps.index(certify_verify)
+    )
+
+    aggregate = producer["jobs"]["aggregate-image-provenance"]
+    aggregate_checkout = _step(aggregate, "Checkout certified source")
+    aggregate_verify = _step(aggregate, "Verify aggregate source")
+    assert aggregate_checkout["with"]["ref"] == "${{ github.sha }}"
+    assert aggregate_checkout["with"]["persist-credentials"] is False
+    assert "inputs.release-sha" not in str(aggregate_checkout)
+    aggregate_steps = aggregate["steps"]
+    assert aggregate_steps.index(aggregate_verify) == (
+        aggregate_steps.index(aggregate_checkout) + 1
+    )
+    aggregate_run = str(aggregate_verify["run"])
+    for fragment in (
+        '[[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]',
+        'test "$GITHUB_REF" = "refs/heads/main"',
+        'test "$RELEASE_SHA" = "$GITHUB_SHA"',
+        'test "$RELEASE_SHA" = "$GITHUB_WORKFLOW_SHA"',
+        'test "$(git rev-parse HEAD)" = "$RELEASE_SHA"',
+        "git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1",
+        'test "$(git rev-parse origin/main)" = "$RELEASE_SHA"',
+    ):
+        assert fragment in aggregate_run
+
+
 def test_policy_binds_each_check_to_a_workflow_and_repository() -> None:
     policy = json.loads(POLICY_PATH.read_text(encoding="utf-8"))
     event = policy["events"]["push_main"]

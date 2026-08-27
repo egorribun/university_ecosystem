@@ -4760,9 +4760,25 @@ def test_canonical_producer_builds_the_validated_source_sha() -> None:
     reusable = yaml.safe_load(reusable_path.read_text(encoding="utf-8"))
     source_sha = _workflow_triggers(reusable)["workflow_call"]["inputs"]["source-sha"]
     assert source_sha["required"] is True
-    checkout = _provenance_step(reusable["jobs"]["build"], "Checkout")
-    assert checkout["with"]["ref"] == "${{ inputs.source-sha }}"
+    job = reusable["jobs"]["build"]
+    checkout = _provenance_step(job, "Checkout")
+    assert checkout["with"]["ref"] == "${{ github.sha }}"
     assert checkout["with"]["persist-credentials"] is False
+    assert job["if"] == "${{ github.ref == 'refs/heads/main' }}"
+    verify = _provenance_step(job, "Verify source checkout")
+    verify_run = str(verify["run"])
+    assert verify["env"]["SOURCE_SHA"] == "${{ inputs.source-sha }}"
+    for fragment in (
+        '[[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]',
+        'test "$GITHUB_REF" = "refs/heads/main"',
+        'test "$SOURCE_SHA" = "$GITHUB_SHA"',
+        'test "$SOURCE_SHA" = "$GITHUB_WORKFLOW_SHA"',
+        'test "$(git rev-parse HEAD)" = "$SOURCE_SHA"',
+        "git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1",
+        'test "$(git rev-parse origin/main)" = "$SOURCE_SHA"',
+    ):
+        assert fragment in verify_run
+    assert job["steps"].index(verify) == job["steps"].index(checkout) + 1
 
     producer = yaml.safe_load(
         (

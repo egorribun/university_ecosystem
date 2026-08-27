@@ -53,6 +53,10 @@ on:
 
 jobs:
   build:
+    # This reusable workflow is reserved for the canonical protected-main
+    # producer.  Reject calls from feature refs before allocating privileged
+    # build, registry, or attestation permissions.
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -66,7 +70,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.source-sha }}
+          # A workflow-call input is untrusted data.  Checkout the immutable
+          # event source first, then bind source-sha to the protected main
+          # revision before any build, cache, or credential-bearing action.
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Verify source checkout
@@ -75,7 +82,12 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$SOURCE_SHA" = "$GITHUB_SHA"
+          test "$SOURCE_SHA" = "$GITHUB_WORKFLOW_SHA"
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          test "$(git rev-parse origin/main)" = "$SOURCE_SHA"
 
       - name: Resolve local scan and final image references
         id: references
