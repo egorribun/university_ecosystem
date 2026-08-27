@@ -289,3 +289,41 @@ def test_unused_recovery_row_is_not_misclassified_as_a_usable_path() -> None:
     finally:
         conn.close()
         engine.dispose()
+
+
+def test_schema_reconciliation_migration_closes_model_drift() -> None:
+    """The post-contract migration must materialize ORM indexes and nullability."""
+
+    migration = _load("202608270001_reconcile_mfa_schema.py")
+    assert migration.down_revision == "202608250003"
+
+    env = os.environ.copy()
+    env["DATABASE_URL"] = "postgresql+asyncpg://migration@localhost:5432/test"
+    result = subprocess.run(  # noqa: S603 - fixed local Alembic module invocation
+        [
+            sys.executable,
+            "-m",
+            "alembic",
+            "upgrade",
+            "202608250003:202608270001",
+            "--sql",
+        ],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    sql = " ".join(result.stdout.upper().split())
+    assert "ALTER TABLE MFA_CHALLENGES ALTER COLUMN FLOW SET NOT NULL" not in sql
+    for index, table in (
+        ("IX_MFA_CHALLENGES_FLOW", "MFA_CHALLENGES"),
+        ("IX_MFA_CHALLENGES_METHOD", "MFA_CHALLENGES"),
+        ("IX_MFA_CHALLENGES_RESEND_AVAILABLE_AT", "MFA_CHALLENGES"),
+        ("IX_MFA_CHALLENGES_SESSION_IDENTIFIER", "MFA_CHALLENGES"),
+        ("IX_USERS_EMAIL_MFA_ENABLED_AT", "USERS"),
+        ("IX_USERS_EMAIL_VERIFIED_AT", "USERS"),
+    ):
+        assert f"CREATE INDEX {index} ON {table}" in sql

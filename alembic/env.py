@@ -12,6 +12,7 @@ from sqlalchemy.engine.base import Connection as SyncConnection
 
 from alembic import context
 from alembic.config import Config
+from scripts.quality.alembic_schema_drift import filter_check_backed_nullable_diffs
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from app.core.config import Settings
@@ -156,6 +157,7 @@ def run_migrations_offline() -> None:
         render_as_batch=True,
         transactional_ddl=True,
         transaction_per_migration=True,
+        process_revision_directives=filter_check_backed_nullable_diffs,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -169,6 +171,7 @@ def _configure_context(connection: SyncConnection) -> None:
         render_as_batch=True,
         transactional_ddl=True,
         transaction_per_migration=True,
+        process_revision_directives=filter_check_backed_nullable_diffs,
     )
 
 
