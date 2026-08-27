@@ -56,6 +56,13 @@ test("build orchestrator accepts only complete, non-empty Vite artifacts", () =>
   assert.match(scriptSource, /hasClientAsset/)
 })
 
+test("Workbox inject stages into a distinct file before replacing the service worker", () => {
+  assert.match(scriptSource, /workboxTempPath/)
+  assert.match(scriptSource, /swDest: workboxTempPath/)
+  assert.match(scriptSource, /rename\(workboxTempPath, swPath\)/)
+  assert.doesNotMatch(scriptSource, /swSrc: swPath,\s*swDest: swPath/u)
+})
+
 test("PWA precache config excludes optional map chunks", () => {
   const ignores = PWA_INJECT_CONFIG.globIgnores ?? []
 
