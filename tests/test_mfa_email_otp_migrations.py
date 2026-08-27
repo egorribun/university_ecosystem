@@ -329,8 +329,8 @@ def test_schema_reconciliation_migration_closes_model_drift() -> None:
         assert f"CREATE INDEX {index} ON {table}" in sql
 
 
-def test_schema_reconciliation_downgrade_renders_index_drops_offline() -> None:
-    """Offline rollback must not silently retain additive model indexes."""
+def test_schema_reconciliation_downgrade_preserves_indexes_offline() -> None:
+    """Offline rollback must not delete indexes it cannot prove it owns."""
 
     env = os.environ.copy()
     env["DATABASE_URL"] = "postgresql+asyncpg://migration@localhost:5432/test"
@@ -360,4 +360,5 @@ def test_schema_reconciliation_downgrade_renders_index_drops_offline() -> None:
         "IX_USERS_EMAIL_MFA_ENABLED_AT",
         "IX_USERS_EMAIL_VERIFIED_AT",
     ):
-        assert f"DROP INDEX IF EXISTS {index}" in sql
+        assert f"DROP INDEX {index}" not in sql
+        assert f"DROP INDEX IF EXISTS {index}" not in sql

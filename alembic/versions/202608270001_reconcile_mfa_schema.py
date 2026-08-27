@@ -9,7 +9,9 @@ verifies those checks remain validated, and creates the model indexes.  The
 catalog-level nullable representation is reconciled by the explicit,
 check-backed Alembic comparator in ``scripts/quality/alembic_schema_drift.py``
 so this migration never takes an ``ACCESS EXCLUSIVE`` lock to rewrite a live
-table.
+table.  Downgrade is deliberately non-destructive: because indexes can
+pre-date this revision, it never drops them without durable ownership
+provenance.
 """
 
 from __future__ import annotations
@@ -119,23 +121,21 @@ def _create_model_indexes(bind: Any) -> None:
             op.create_index(name, table, list(columns), unique=False)
 
 
-def _drop_model_indexes(bind: Any) -> None:
-    # Offline Alembic has no catalog to inspect.  The target revision is the
-    # pre-reconciliation schema, so render every drop with ``IF EXISTS`` and
-    # keep generated rollback SQL deterministic instead of silently leaving
-    # the additive indexes behind.
-    if context.is_offline_mode():
-        for name, table, _ in reversed(_MODEL_INDEXES):
-            op.drop_index(name, table_name=table, if_exists=True)
-        return
+def _drop_model_indexes(_bind: Any) -> None:
+    """Keep additive model indexes during downgrade.
 
-    existing_by_table = {
-        table: {item["name"] for item in _inspector(bind).get_indexes(table)}
-        for _, table, _ in _MODEL_INDEXES
-    }
-    for name, table, _ in reversed(_MODEL_INDEXES):
-        if name in existing_by_table[table]:
-            op.drop_index(name, table_name=table)
+    The reconciliation is intentionally idempotent: an index may have been
+    created by an operator, ``Base.metadata.create_all`` in a test harness, or
+    this revision itself.  Alembic does not retain which actor created an
+    existing index, so a rollback that drops by name could delete a baseline
+    object it does not own.  These indexes are additive and remain valid for
+    the parent revision, therefore downgrade is explicitly non-destructive.
+    """
+
+    # Deliberately no-op in both online and offline modes.  Keeping the
+    # objects also makes generated rollback SQL deterministic and safe when
+    # applied to a database whose pre-reconciliation catalog is unknown.
+    return
 
 
 def _lock_postgresql(bind: Any) -> None:
