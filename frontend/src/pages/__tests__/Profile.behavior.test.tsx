@@ -323,11 +323,11 @@ describe("Profile behavior", () => {
       "/users/me",
       expect.objectContaining({
         full_name: user.full_name,
-        email: user.email,
         profile_detail: expect.objectContaining({ telegram: "@ada" }),
         education_path: expect.objectContaining({ program: "Computer Science" }),
       })
     )
+    expect(apiState.put.mock.calls[0]?.[1]).not.toHaveProperty("email")
   })
 
   it("renders profile details, now playing, responsive backdrop, and dialogs", () => {
@@ -398,11 +398,11 @@ describe("Profile behavior", () => {
       "/users/me",
       expect.objectContaining({
         full_name: "Grace Lovelace",
-        email: user.email,
         profile_detail: expect.objectContaining({ telegram: "@ada" }),
         education_path: expect.objectContaining({ program: "Computer Science" }),
       })
     )
+    expect(apiState.put.mock.calls[0]?.[1]).not.toHaveProperty("email")
     expect(authState.setUser).toHaveBeenCalledWith(updatedUser)
     expect(navigate).toHaveBeenCalledWith({ to: "/profile", replace: true })
     expect(screen.getByTestId("snackbar")).toHaveTextContent("profile:snackbar.profileUpdated")

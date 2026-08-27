@@ -192,6 +192,17 @@ func TestLoad_ReleaseWithoutSPIFFERequiresConventionalMTLSFiles(t *testing.T) {
 	}
 }
 
+func TestValidateReleaseConfig_SPIFFEProvidesReleaseTransportIdentity(t *testing.T) {
+	cfg := &Config{
+		MinioSecure:         true,
+		TemporalTLSDisabled: false,
+		OTLPInsecure:        false,
+		SpiffeEnabled:       true,
+	}
+
+	assert.NoError(t, validateReleaseConfig(cfg, "staging"))
+}
+
 func TestLoad_ReleaseValidatesAllowedClientURIs(t *testing.T) {
 	setSecureRelease := func(t *testing.T, allowed string) {
 		t.Helper()

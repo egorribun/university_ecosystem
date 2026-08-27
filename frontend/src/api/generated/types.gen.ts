@@ -1459,6 +1459,100 @@ export type NotificationAction = {
 }
 
 /**
+ * NotificationDeadLetterJobOut
+ */
+export type NotificationDeadLetterJobOut = {
+  /**
+   * Attempts
+   */
+  attempts: number
+  /**
+   * Claimed At
+   */
+  claimed_at?: string | null
+  /**
+   * Enqueued At
+   */
+  enqueued_at: string
+  /**
+   * Id
+   */
+  id: string
+  /**
+   * Kind
+   */
+  kind: string
+  /**
+   * Last Error
+   */
+  last_error?: string | null
+  /**
+   * Locale
+   */
+  locale?: string | null
+  /**
+   * Next Retry At
+   */
+  next_retry_at?: string | null
+  /**
+   * Record Id
+   */
+  record_id: string
+}
+
+/**
+ * NotificationDeadLetterListOut
+ */
+export type NotificationDeadLetterListOut = {
+  /**
+   * Items
+   */
+  items: Array<NotificationDeadLetterJobOut>
+  /**
+   * Total
+   */
+  total: number
+}
+
+/**
+ * NotificationDeadLetterMutationOut
+ */
+export type NotificationDeadLetterMutationOut = {
+  /**
+   * Affected Count
+   */
+  affected_count: number
+  /**
+   * Job Ids
+   */
+  job_ids: Array<string>
+  /**
+   * Success
+   */
+  success: true
+}
+
+/**
+ * NotificationDeadLetterPurgeIn
+ */
+export type NotificationDeadLetterPurgeIn = {
+  /**
+   * Job Ids
+   */
+  job_ids: Array<string>
+}
+
+/**
+ * NotificationDeadLetterReplayIn
+ */
+export type NotificationDeadLetterReplayIn = {
+  /**
+   * Job Ids
+   */
+  job_ids: Array<string>
+}
+
+/**
  * NotificationOut
  */
 export type NotificationOut = {
@@ -5685,6 +5779,128 @@ export type ListNotificationsApiV1NotificationsGetResponses = {
 
 export type ListNotificationsApiV1NotificationsGetResponse =
   ListNotificationsApiV1NotificationsGetResponses[keyof ListNotificationsApiV1NotificationsGetResponses]
+
+export type ListNotificationDeadLettersData = {
+  body?: never
+  path?: never
+  query?: {
+    /**
+     * Limit
+     */
+    limit?: number
+    /**
+     * Offset
+     */
+    offset?: number
+  }
+  url: "/api/v1/notifications/admin/dead-letter"
+}
+
+export type ListNotificationDeadLettersErrors = {
+  /**
+   * Authentication required
+   */
+  401: unknown
+  /**
+   * Administrator access required
+   */
+  403: unknown
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type ListNotificationDeadLettersError =
+  ListNotificationDeadLettersErrors[keyof ListNotificationDeadLettersErrors]
+
+export type ListNotificationDeadLettersResponses = {
+  /**
+   * Successful Response
+   */
+  200: NotificationDeadLetterListOut
+}
+
+export type ListNotificationDeadLettersResponse =
+  ListNotificationDeadLettersResponses[keyof ListNotificationDeadLettersResponses]
+
+export type PurgeNotificationDeadLettersData = {
+  body: NotificationDeadLetterPurgeIn
+  path?: never
+  query?: never
+  url: "/api/v1/notifications/admin/dead-letter/purge"
+}
+
+export type PurgeNotificationDeadLettersErrors = {
+  /**
+   * Authentication required
+   */
+  401: unknown
+  /**
+   * Administrator access required
+   */
+  403: unknown
+  /**
+   * Dead-letter selection is stale
+   */
+  409: unknown
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type PurgeNotificationDeadLettersError =
+  PurgeNotificationDeadLettersErrors[keyof PurgeNotificationDeadLettersErrors]
+
+export type PurgeNotificationDeadLettersResponses = {
+  /**
+   * Successful Response
+   */
+  200: NotificationDeadLetterMutationOut
+}
+
+export type PurgeNotificationDeadLettersResponse =
+  PurgeNotificationDeadLettersResponses[keyof PurgeNotificationDeadLettersResponses]
+
+export type RetryNotificationDeadLettersData = {
+  body: NotificationDeadLetterReplayIn
+  path?: never
+  query?: never
+  url: "/api/v1/notifications/admin/dead-letter/retry"
+}
+
+export type RetryNotificationDeadLettersErrors = {
+  /**
+   * Authentication required
+   */
+  401: unknown
+  /**
+   * Administrator access required
+   */
+  403: unknown
+  /**
+   * Dead-letter selection is stale
+   */
+  409: unknown
+  /**
+   * Validation Error
+   */
+  422: HttpValidationError
+}
+
+export type RetryNotificationDeadLettersError =
+  RetryNotificationDeadLettersErrors[keyof RetryNotificationDeadLettersErrors]
+
+export type RetryNotificationDeadLettersResponses = {
+  /**
+   * Successful Response
+   */
+  200: NotificationDeadLetterMutationOut
+}
+
+export type RetryNotificationDeadLettersResponse =
+  RetryNotificationDeadLettersResponses[keyof RetryNotificationDeadLettersResponses]
 
 export type CheckScheduleAndGenerateApiV1NotificationsCheckSchedulePostData = {
   body?: never

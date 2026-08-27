@@ -15,14 +15,15 @@ vi.mock("@/api/generated", () => ({
   listNotificationsApiV1NotificationsGet: vi.fn(),
   markAllReadApiV1NotificationsReadAllPost: vi.fn(),
   markReadSingleApiV1NotificationsNotifIdReadPatch: vi.fn(),
+  listNotificationDeadLetters: vi.fn(),
+  purgeNotificationDeadLetters: vi.fn(),
+  retryNotificationDeadLetters: vi.fn(),
   subscribeApiV1PushSubscribePost: vi.fn(),
   sendTestApiV1PushTestPost: vi.fn(),
 }))
 
-const apiClientGet = vi.fn()
-const apiClientPost = vi.fn()
 vi.mock("@/api/client", () => ({
-  default: { get: apiClientGet, post: apiClientPost },
+  default: {},
 }))
 
 import * as gen from "@/api/generated"
@@ -295,33 +296,33 @@ describe("admin topics", () => {
   })
 })
 
-describe("dead-letter queue (lazy axios client)", () => {
+describe("dead-letter queue (generated client)", () => {
   it("fetchDeadLetterQueue validates + forwards params/signal", async () => {
-    apiClientGet.mockResolvedValue({
+    vi.mocked(gen.listNotificationDeadLetters).mockResolvedValue({
       data: { items: [], total: 0 },
-    })
+    } as never)
     const controller = new AbortController()
     const result = await fetchDeadLetterQueue({ limit: 10, offset: 0 }, controller.signal)
     expect(result).toEqual({ items: [], total: 0 })
-    expect(apiClientGet).toHaveBeenCalledWith("/api/v1/notifications/admin/dead-letter", {
-      params: { limit: 10, offset: 0 },
+    expect(gen.listNotificationDeadLetters).toHaveBeenCalledWith({
+      query: { limit: 10, offset: 0 },
       signal: controller.signal,
+      throwOnError: true,
     })
   })
 
   it("retry + purge post the job ids", async () => {
-    apiClientPost.mockResolvedValue({ data: {} })
+    vi.mocked(gen.retryNotificationDeadLetters).mockResolvedValue({ data: {} } as never)
+    vi.mocked(gen.purgeNotificationDeadLetters).mockResolvedValue({ data: {} } as never)
     await retryDeadLetterJobs(["j1"])
     await purgeDeadLetterJobs(["j2"])
-    expect(apiClientPost).toHaveBeenNthCalledWith(
-      1,
-      "/api/v1/notifications/admin/dead-letter/retry",
-      { job_ids: ["j1"] }
-    )
-    expect(apiClientPost).toHaveBeenNthCalledWith(
-      2,
-      "/api/v1/notifications/admin/dead-letter/purge",
-      { job_ids: ["j2"] }
-    )
+    expect(gen.retryNotificationDeadLetters).toHaveBeenCalledWith({
+      body: { job_ids: ["j1"] },
+      throwOnError: true,
+    })
+    expect(gen.purgeNotificationDeadLetters).toHaveBeenCalledWith({
+      body: { job_ids: ["j2"] },
+      throwOnError: true,
+    })
   })
 })

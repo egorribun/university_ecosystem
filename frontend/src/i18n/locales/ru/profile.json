@@ -64,6 +64,7 @@
   "form": {
     "name": "Имя",
     "email": "Email",
+    "emailHint": "Изменить email можно в разделе «Настройки → Безопасность».",
     "telegram": "Telegram",
     "telegramHint": "Можно ввести @username или ссылку",
     "department": "Кафедра/отдел",

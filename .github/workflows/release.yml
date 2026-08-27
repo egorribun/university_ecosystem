@@ -16,9 +16,15 @@ on:
 
 permissions: read-all
 
+# Serialize every main release so different source SHAs cannot race immutable
+# image publication, signing, attestations, or GitHub Releases.
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
 jobs:
-  release:
-    name: Release
+  certify:
+    name: Certify Release
     # Release credentials must never reach code from an arbitrary dispatch ref.
     # The main branch is protected and is the only trusted release source.
     if: ${{ github.ref == 'refs/heads/main' }}
@@ -26,9 +32,7 @@ jobs:
     timeout-minutes: 20 # CI-03 (audit Wave 10)
     permissions:
       actions: read
-      contents: write
-      issues: write
-      pull-requests: write
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -36,12 +40,22 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ inputs.release-sha }}
-          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Setup release quality runtime
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install locked certification dependencies
+        run: |
+          set -euo pipefail
+          uv sync --frozen --only-group release-certification --no-install-project
 
       - name: Verify release SHA and quality run
         id: quality-run
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           RELEASE_SHA: ${{ inputs.release-sha }}
           QUALITY_RUN_ID: ${{ inputs.quality-run-id }}
         run: |
@@ -61,9 +75,14 @@ jobs:
           run_attempt="$(jq -r .run_attempt artifacts/quality/quality-run.json)"
           [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]]
           echo "run-attempt=$run_attempt" >> "$GITHUB_OUTPUT"
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALITY_RUN_ID/artifacts?per_page=100" \
-            > artifacts/quality/quality-artifacts.json
-          test "$(jq --arg name "quality-evidence-$RELEASE_SHA" '[.artifacts[] | select(.name == $name and .expired == false)] | length' artifacts/quality/quality-artifacts.json)" -eq 1
+          gh api --paginate --slurp \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$QUALITY_RUN_ID/artifacts?per_page=100" \
+            > artifacts/quality/quality-artifact-pages.json
+          python scripts/quality/validate_release_artifact_evidence.py \
+            --pages artifacts/quality/quality-artifact-pages.json \
+            --expected-name "quality-evidence-$RELEASE_SHA"
 
       - name: Clean quality evidence destinations
         run: |
@@ -85,13 +104,15 @@ jobs:
           RELEASE_SHA: ${{ inputs.release-sha }}
           QUALITY_RUN_ID: ${{ inputs.quality-run-id }}
           QUALITY_RUN_ATTEMPT: ${{ steps.quality-run.outputs.run-attempt }}
+          UV_OFFLINE: "true"
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           test -s artifacts/coverage/quality-manifest.json
           test -s artifacts/coverage/quality-manifest.json.sha256
           sha256sum --check artifacts/coverage/quality-manifest.json.sha256
-          python scripts/quality/validate_quality_contract.py \
+          uv run --frozen --no-sync --only-group release-certification python \
+            scripts/quality/validate_quality_contract.py \
             --schema quality/coverage-manifest.schema.json \
             --artifact-root "$GITHUB_WORKSPACE" \
             --mutation-registry quality/mutation-exclusions.json \
@@ -104,66 +125,74 @@ jobs:
             --expected-workflow-ref "$GITHUB_REPOSITORY/.github/workflows/ci.yml@refs/heads/main" \
             --expected-workflow-job coverage-policy-gate
 
+      - name: Collect SHA-bound release check evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        run: |
+          set -euo pipefail
+          gh api --paginate --slurp \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/$GITHUB_REPOSITORY/commits/$RELEASE_SHA/check-runs?per_page=100&filter=latest" \
+            > artifacts/quality/check-run-pages.json
+          python scripts/quality/collect_release_check_evidence.py \
+            --pages artifacts/quality/check-run-pages.json \
+            --policy quality/release-required-checks.json \
+            --event push_main \
+            --repository "$GITHUB_REPOSITORY" \
+            --commit-sha "$RELEASE_SHA" \
+            --output artifacts/quality/check-runs.json
+
       - name: Generate quality certification record
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           QUALITY_CERTIFICATION_KEY: ${{ secrets.QUALITY_CERTIFICATION_KEY }}
           RELEASE_SHA: ${{ inputs.release-sha }}
+          UV_OFFLINE: "true"
         run: |
           set -euo pipefail
           test -n "$QUALITY_CERTIFICATION_KEY" || {
             echo "::error::QUALITY_CERTIFICATION_KEY is required for a signed release certification";
             exit 1;
           }
-          gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_SHA/check-runs?per_page=100" > artifacts/quality/check-runs.json
-          python -c 'import json; raw=json.load(open("artifacts/quality/check-runs.json", encoding="utf-8")); checks={item["name"]: item.get("conclusion", "unknown") for item in raw.get("check_runs", [])}; assert checks, "no completed check runs found for release SHA"; json.dump({"check_runs": checks}, open("artifacts/quality/required-checks.json", "w", encoding="utf-8"), indent=2); print(f"collected {len(checks)} check runs")'
-          python scripts/quality/generate_certification.py \
+          uv run --frozen --no-sync --only-group release-certification python \
+            scripts/quality/generate_certification.py \
             --commit-sha "$RELEASE_SHA" \
             --contract quality/quality-contract.json \
-            --checks artifacts/quality/required-checks.json \
+            --checks artifacts/quality/check-runs.json \
+            --check-policy quality/release-required-checks.json \
+            --check-event push_main \
             --report-dir artifacts/coverage \
             --output artifacts/quality/certification.json \
             --limitation "This record hashes the same-SHA validated canonical v2 quality evidence bundle and contract."
 
+      - name: Verify signed certification
+        env:
+          QUALITY_CERTIFICATION_KEY: ${{ secrets.QUALITY_CERTIFICATION_KEY }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          UV_OFFLINE: "true"
+        run: |
+          set -euo pipefail
+          uv run --frozen --no-sync --only-group release-certification python \
+            -m scripts.quality.verify_certification \
+            --record artifacts/quality/certification.json \
+            --expected-commit-sha "$RELEASE_SHA"
+
       - name: Upload quality certification
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: quality-certification-${{ github.sha }}
+          name: quality-certification-${{ inputs.release-sha }}
           path: artifacts/quality/certification.json
           if-no-files-found: error
 
-      - name: Setup Node.js
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          # Pin a runtime supported by semantic-release 25 and its plugins.
-          node-version: 24.15.0
-          cache: "npm"
-          cache-dependency-path: package-lock.json
-
-      - name: Install dependencies
-        # npm ci installs from the lockfile exactly — reproducible and faster than npm install.
-        run: npm ci
-
-      - name: Verify release toolchain
-        run: npm run test:release-toolchain
-
-      - name: Release
-        id: semantic
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-        # Execute the exact integrity-checked package installed by `npm ci`
-        # without invoking npm while the write-capable token is present.
-        run: node node_modules/semantic-release/bin/semantic-release.js
-
   build:
     name: Build & Sign Releases
-    needs: [release]
+    needs: [certify]
     permissions:
       contents: read
       packages: write # Required: push Docker images to GHCR
       id-token: write
       attestations: write
-      security-events: write # Required: upload SARIF security scan results
     strategy:
       matrix:
         include:
@@ -189,5 +218,192 @@ jobs:
       context: ${{ matrix.context }}
       file: ${{ matrix.file }}
       tags: |
-        ghcr.io/${{ github.repository }}/${{ matrix.image_name }}:latest
         ghcr.io/${{ github.repository }}/${{ matrix.image_name }}:${{ inputs.release-sha }}
+
+  aggregate-image-provenance:
+    name: Aggregate Image Provenance
+    needs: [certify, build]
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+      attestations: write
+      id-token: write
+    steps:
+      - name: Checkout certified source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.release-sha }}
+
+      - name: Verify aggregate source
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+
+      - name: Download verified image digest evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: image-digest-evidence-*-${{ inputs.release-sha }}
+          path: artifacts/image-evidence
+          merge-multiple: true
+
+      - name: Download signed certification
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: quality-certification-${{ inputs.release-sha }}
+          path: artifacts/quality
+
+      - name: Aggregate exact release image inventory
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        run: |
+          set -euo pipefail
+          python scripts/quality/aggregate_release_image_evidence.py \
+            --evidence-dir artifacts/image-evidence \
+            --repository "$GITHUB_REPOSITORY" \
+            --source-sha "$RELEASE_SHA" \
+            --certification artifacts/quality/certification.json \
+            --output artifacts/release-images/release-image-manifest.json
+          (
+            cd artifacts/release-images
+            sha256sum release-image-manifest.json > release-image-manifest.json.sha256
+            sha256sum --check release-image-manifest.json.sha256
+          )
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Reverify every immutable image subject
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t image_refs < <(jq -er '.images[].reference' artifacts/release-images/release-image-manifest.json)
+          test "${#image_refs[@]}" -eq 5
+          for image_ref in "${image_refs[@]}"; do
+            cosign verify \
+              --certificate-identity "https://github.com/${GITHUB_WORKFLOW_REF}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "$image_ref" > /dev/null
+            gh attestation verify "oci://$image_ref" \
+              --repo "$GITHUB_REPOSITORY" \
+              --format json > /dev/null
+          done
+
+      - name: Attest release image digest manifest
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: artifacts/release-images/release-image-manifest.json
+
+      - name: Upload release image provenance
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-image-provenance-${{ inputs.release-sha }}
+          path: |
+            artifacts/release-images/release-image-manifest.json
+            artifacts/release-images/release-image-manifest.json.sha256
+          if-no-files-found: error
+
+  publish:
+    name: Publish Release
+    needs: [certify, aggregate-image-provenance]
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      attestations: read
+      contents: write
+      issues: write
+      packages: read
+      pull-requests: write
+    steps:
+      - name: Checkout certified source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.release-sha }}
+
+      - name: Verify publish source
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
+
+      - name: Download signed certification
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: quality-certification-${{ inputs.release-sha }}
+          path: artifacts/quality
+
+      - name: Require signed certification
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        run: |
+          set -euo pipefail
+          test -s artifacts/quality/certification.json
+          test "$(jq -r .commit_sha artifacts/quality/certification.json)" = "$RELEASE_SHA"
+          test "$(jq -r .hmac_sha256 artifacts/quality/certification.json)" != null
+
+      - name: Download attested release image provenance
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-image-provenance-${{ inputs.release-sha }}
+          path: artifacts/release-images
+
+      - name: Require exact attested release image manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        run: |
+          set -euo pipefail
+          (
+            cd artifacts/release-images
+            sha256sum --check release-image-manifest.json.sha256
+          )
+          test "$(jq -er .source_sha artifacts/release-images/release-image-manifest.json)" = "$RELEASE_SHA"
+          test "$(jq -er '.images | length' artifacts/release-images/release-image-manifest.json)" -eq 5
+          jq -e 'all(.images[]; (.reference | test("@sha256:[0-9a-f]{64}$")))' \
+            artifacts/release-images/release-image-manifest.json > /dev/null
+          gh attestation verify artifacts/release-images/release-image-manifest.json \
+            --repo "$GITHUB_REPOSITORY" > /dev/null
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          # Pin a runtime supported by semantic-release 25 and its plugins.
+          node-version: 24.15.0
+          cache: "npm"
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify release toolchain
+        run: npm run test:release-toolchain
+
+      - name: Release
+        id: semantic
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        # Execute the exact integrity-checked package installed by `npm ci`
+        # without invoking npm while the write-capable token is present.
+        run: |
+          set -euo pipefail
+          # Re-close the main/SHA TOCTOU window after all setup and immediately
+          # before the sole write-capable publisher runs.
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
+          node node_modules/semantic-release/bin/semantic-release.js

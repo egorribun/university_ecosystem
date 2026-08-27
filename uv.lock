@@ -4905,6 +4905,9 @@ dev = [
     { name = "types-requests" },
     { name = "virtualenv" },
 ]
+release-certification = [
+    { name = "jsonschema" },
+]
 security = [
     { name = "bandit", extra = ["toml"] },
     { name = "pip-audit" },
@@ -5020,6 +5023,7 @@ dev = [
     { name = "types-requests", specifier = ">=2.33.0.20260408" },
     { name = "virtualenv", specifier = ">=21.2.1" },
 ]
+release-certification = [{ name = "jsonschema", specifier = "==4.25.1" }]
 security = [
     { name = "bandit", extras = ["toml"], specifier = ">=1.9.4" },
     { name = "pip-audit", specifier = "==2.10.1" },

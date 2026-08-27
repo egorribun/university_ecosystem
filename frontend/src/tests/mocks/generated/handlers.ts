@@ -188,6 +188,72 @@ export const handlers = [
         : body;
     return HttpResponse.json(responseJson, init);
   }),
+  http.post(
+    `${baseURL}/api/v1/notifications/admin/dead-letter/purge`,
+    async ({ request }) => {
+      const shouldEchoRequestBody = false;
+      let requestJson = null;
+      if (shouldEchoRequestBody && ["post", "put", "patch"].includes("post")) {
+        try {
+          requestJson = await request.clone().json();
+        } catch (e) {
+          requestJson = null;
+        }
+      }
+
+      const resultArray = [
+        [await getPurgeNotificationDeadLetters200Response(), { status: 200 }],
+        [undefined, { status: 401 }],
+        [undefined, { status: 403 }],
+        [undefined, { status: 409 }],
+        [await getPurgeNotificationDeadLetters422Response(), { status: 422 }],
+      ] as [any, { status: number }][];
+
+      const [body, init] =
+        resultArray[
+          next(`post /api/v1/notifications/admin/dead-letter/purge`) %
+            resultArray.length
+        ];
+      const responseJson =
+        requestJson && body && typeof body === "object" && !Array.isArray(body)
+          ? { ...body, ...requestJson }
+          : body;
+      return HttpResponse.json(responseJson, init);
+    },
+  ),
+  http.post(
+    `${baseURL}/api/v1/notifications/admin/dead-letter/retry`,
+    async ({ request }) => {
+      const shouldEchoRequestBody = false;
+      let requestJson = null;
+      if (shouldEchoRequestBody && ["post", "put", "patch"].includes("post")) {
+        try {
+          requestJson = await request.clone().json();
+        } catch (e) {
+          requestJson = null;
+        }
+      }
+
+      const resultArray = [
+        [await getRetryNotificationDeadLetters200Response(), { status: 200 }],
+        [undefined, { status: 401 }],
+        [undefined, { status: 403 }],
+        [undefined, { status: 409 }],
+        [await getRetryNotificationDeadLetters422Response(), { status: 422 }],
+      ] as [any, { status: number }][];
+
+      const [body, init] =
+        resultArray[
+          next(`post /api/v1/notifications/admin/dead-letter/retry`) %
+            resultArray.length
+        ];
+      const responseJson =
+        requestJson && body && typeof body === "object" && !Array.isArray(body)
+          ? { ...body, ...requestJson }
+          : body;
+      return HttpResponse.json(responseJson, init);
+    },
+  ),
   http.post(`${baseURL}/api/v1/users/me/email/confirm`, async ({ request }) => {
     const shouldEchoRequestBody = false;
     let requestJson = null;
@@ -422,6 +488,38 @@ export const handlers = [
         : body;
     return HttpResponse.json(responseJson, init);
   }),
+  http.get(
+    `${baseURL}/api/v1/notifications/admin/dead-letter`,
+    async ({ request }) => {
+      const shouldEchoRequestBody = false;
+      let requestJson = null;
+      if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
+        try {
+          requestJson = await request.clone().json();
+        } catch (e) {
+          requestJson = null;
+        }
+      }
+
+      const resultArray = [
+        [await getListNotificationDeadLetters200Response(), { status: 200 }],
+        [undefined, { status: 401 }],
+        [undefined, { status: 403 }],
+        [await getListNotificationDeadLetters422Response(), { status: 422 }],
+      ] as [any, { status: number }][];
+
+      const [body, init] =
+        resultArray[
+          next(`get /api/v1/notifications/admin/dead-letter`) %
+            resultArray.length
+        ];
+      const responseJson =
+        requestJson && body && typeof body === "object" && !Array.isArray(body)
+          ? { ...body, ...requestJson }
+          : body;
+      return HttpResponse.json(responseJson, init);
+    },
+  ),
   http.get(`${baseURL}/api/v1/users/audit/export`, async ({ request }) => {
     const shouldEchoRequestBody = false;
     let requestJson = null;
@@ -8478,6 +8576,165 @@ export function getListNotificationsApiV1NotificationsGet200Response() {
 }
 
 export function getListNotificationsApiV1NotificationsGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getListNotificationDeadLetters200Response() {
+  return {
+    items: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        attempts: faker.number.int(),
+        claimed_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        enqueued_at: faker.date.anytime().toISOString(),
+        id: faker.string.uuid(),
+        kind: faker.lorem.words(),
+        last_error: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        locale: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        next_retry_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        record_id: faker.string.uuid(),
+      }));
+    })(),
+    total: faker.number.int(),
+  };
+}
+
+export function getListNotificationDeadLetters422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getPurgeNotificationDeadLetters200Response() {
+  return {
+    affected_count: faker.number.int({ min: 0 }),
+    job_ids: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => faker.string.uuid());
+    })(),
+    success: true,
+  };
+}
+
+export function getPurgeNotificationDeadLetters422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getRetryNotificationDeadLetters200Response() {
+  return {
+    affected_count: faker.number.int({ min: 0 }),
+    job_ids: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => faker.string.uuid());
+    })(),
+    success: true,
+  };
+}
+
+export function getRetryNotificationDeadLetters422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;

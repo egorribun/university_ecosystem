@@ -1,0 +1,111 @@
+{
+  "$schema": "./release-required-checks.schema.json",
+  "schema_version": 2,
+  "events": {
+    "push_main": {
+      "github_event": "push",
+      "github_ref": "refs/heads/main",
+      "github_repository": "egorribun/university_ecosystem",
+      "required_checks": [
+        {
+          "name": "CI Success",
+          "workflow_path": ".github/workflows/ci.yml",
+          "category": "aggregate",
+          "allowed_conclusions": ["success"],
+          "rationale": "Canonical CI aggregate includes the SHA-bound quality manifest, coverage and mutation policy, internal security audit, API contract, Schemathesis, OpenAPI drift, infrastructure, and integration gates."
+        },
+        {
+          "name": "Trusted Codecov Upload",
+          "workflow_path": ".github/workflows/ci.yml",
+          "category": "quality_manifest",
+          "allowed_conclusions": ["success"],
+          "rationale": "The protected main push must publish the same canonical coverage evidence accepted by CI Success."
+        },
+        {
+          "name": "Gitleaks scan",
+          "workflow_path": ".github/workflows/gitleaks.yml",
+          "category": "security",
+          "allowed_conclusions": ["success"],
+          "rationale": "Independent full-history secret scanning is release-critical."
+        },
+        {
+          "name": "TruffleHog Scan",
+          "workflow_path": ".github/workflows/trufflehog.yml",
+          "category": "security",
+          "allowed_conclusions": ["success"],
+          "rationale": "Independent verified-secret scanning of the full history is release-critical."
+        },
+        {
+          "name": "Analyze (actions)",
+          "workflow_path": ".github/workflows/codeql.yml",
+          "category": "security",
+          "allowed_conclusions": ["success"],
+          "rationale": "CodeQL must accept the release workflow surface."
+        },
+        {
+          "name": "Analyze (go)",
+          "workflow_path": ".github/workflows/codeql.yml",
+          "category": "security",
+          "allowed_conclusions": ["success"],
+          "rationale": "CodeQL must accept all release Go services."
+        },
+        {
+          "name": "Analyze (javascript-typescript)",
+          "workflow_path": ".github/workflows/codeql.yml",
+          "category": "security",
+          "allowed_conclusions": ["success"],
+          "rationale": "CodeQL must accept the frontend and JavaScript tooling surface."
+        },
+        {
+          "name": "Analyze (python)",
+          "workflow_path": ".github/workflows/codeql.yml",
+          "category": "security",
+          "allowed_conclusions": ["success"],
+          "rationale": "CodeQL must accept the backend and Python release tooling surface."
+        },
+        {
+          "name": "Analyze (rust)",
+          "workflow_path": ".github/workflows/codeql.yml",
+          "category": "security",
+          "allowed_conclusions": ["success"],
+          "rationale": "CodeQL must accept the native and WebAssembly Rust surface."
+        },
+        {
+          "name": "Cargo Deny Scan",
+          "workflow_path": ".github/workflows/cargo-deny.yml",
+          "category": "security",
+          "allowed_conclusions": ["success"],
+          "rationale": "Rust dependency advisories, licenses, bans, and sources must pass."
+        },
+        {
+          "name": "Checkov Scan",
+          "workflow_path": ".github/workflows/checkov.yml",
+          "category": "security",
+          "allowed_conclusions": ["success"],
+          "rationale": "Infrastructure-as-code security policy must pass independently."
+        },
+        {
+          "name": "Zizmor Actions Scan",
+          "workflow_path": ".github/workflows/zizmor.yml",
+          "category": "security",
+          "allowed_conclusions": ["success"],
+          "rationale": "GitHub Actions security analysis must pass independently."
+        },
+        {
+          "name": "SQLMap Scan",
+          "workflow_path": ".github/workflows/sqlmap.yml",
+          "category": "security",
+          "allowed_conclusions": ["success"],
+          "rationale": "The release API must pass the independent SQL injection scan."
+        },
+        {
+          "name": "Vulnerability gate (CRITICAL/HIGH)",
+          "workflow_path": ".github/workflows/sbom.yml",
+          "category": "security",
+          "allowed_conclusions": ["success"],
+          "rationale": "The cross-ecosystem Python, Go, and Rust dependency vulnerability gate must pass."
+        }
+      ]
+    }
+  }
+}

@@ -216,6 +216,9 @@ import type {
   ListAuditLogsAdminAuditGetResponses,
   ListFeatureFlagsAdminFeatureFlagsGetData,
   ListFeatureFlagsAdminFeatureFlagsGetResponses,
+  ListNotificationDeadLettersData,
+  ListNotificationDeadLettersErrors,
+  ListNotificationDeadLettersResponses,
   ListNotificationsApiV1NotificationsGetData,
   ListNotificationsApiV1NotificationsGetErrors,
   ListNotificationsApiV1NotificationsGetResponses,
@@ -265,6 +268,9 @@ import type {
   ProxyImageApiV1ImgPathGetData,
   ProxyImageApiV1ImgPathGetErrors,
   ProxyImageApiV1ImgPathGetResponses,
+  PurgeNotificationDeadLettersData,
+  PurgeNotificationDeadLettersErrors,
+  PurgeNotificationDeadLettersResponses,
   ReadyHealthReadyGetData,
   ReadyHealthReadyGetResponses,
   ReadyReadyGetData,
@@ -292,6 +298,9 @@ import type {
   ResetPasswordApiV1PasswordResetPostData,
   ResetPasswordApiV1PasswordResetPostErrors,
   ResetPasswordApiV1PasswordResetPostResponses,
+  RetryNotificationDeadLettersData,
+  RetryNotificationDeadLettersErrors,
+  RetryNotificationDeadLettersResponses,
   RevokeOtherSessionsApiV1AuthSessionsRevokeOthersPostData,
   RevokeOtherSessionsApiV1AuthSessionsRevokeOthersPostErrors,
   RevokeOtherSessionsApiV1AuthSessionsRevokeOthersPostResponses,
@@ -2294,6 +2303,83 @@ export const listNotificationsApiV1NotificationsGet = <ThrowOnError extends bool
     security: [{ scheme: "bearer", type: "http" }],
     url: "/api/v1/notifications",
     ...options,
+  })
+
+/**
+ * List notification queue dead letters
+ *
+ * List notification queue dead letters
+ */
+export const listNotificationDeadLetters = <ThrowOnError extends boolean = false>(
+  options?: Options<ListNotificationDeadLettersData, ThrowOnError>
+): RequestResult<
+  ListNotificationDeadLettersResponses,
+  ListNotificationDeadLettersErrors,
+  ThrowOnError
+> =>
+  (options?.client ?? client).get<
+    ListNotificationDeadLettersResponses,
+    ListNotificationDeadLettersErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/notifications/admin/dead-letter",
+    ...options,
+  })
+
+/**
+ * Purge notification queue dead letters
+ *
+ * Purge notification queue dead letters
+ */
+export const purgeNotificationDeadLetters = <ThrowOnError extends boolean = false>(
+  options: Options<PurgeNotificationDeadLettersData, ThrowOnError>
+): RequestResult<
+  PurgeNotificationDeadLettersResponses,
+  PurgeNotificationDeadLettersErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    PurgeNotificationDeadLettersResponses,
+    PurgeNotificationDeadLettersErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/notifications/admin/dead-letter/purge",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
+  })
+
+/**
+ * Retry notification queue dead letters
+ *
+ * Retry notification queue dead letters
+ */
+export const retryNotificationDeadLetters = <ThrowOnError extends boolean = false>(
+  options: Options<RetryNotificationDeadLettersData, ThrowOnError>
+): RequestResult<
+  RetryNotificationDeadLettersResponses,
+  RetryNotificationDeadLettersErrors,
+  ThrowOnError
+> =>
+  (options.client ?? client).post<
+    RetryNotificationDeadLettersResponses,
+    RetryNotificationDeadLettersErrors,
+    ThrowOnError
+  >({
+    responseType: "json",
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/api/v1/notifications/admin/dead-letter/retry",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers,
+    },
   })
 
 /**

@@ -392,6 +392,11 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
     env:
       VITE_BACKEND_ORIGIN: http://localhost:8000
+      # The 1536 MiB V8 heap cap excludes Rolldown's Rust worker pool and
+      # other native allocations. Keep finite RSS headroom around that heap;
+      # this same bounded pair is exercised by the Linux E2E/browser builds.
+      FRONTEND_BUILD_MAX_RSS_MB: "2048"
+      FRONTEND_BUILD_MAX_OLD_SPACE_MB: "1536"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

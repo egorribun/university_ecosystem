@@ -41,6 +41,19 @@ function normalizePath(value) {
   return value.replaceAll("\\", "/").replace(/^\.\//u, "")
 }
 
+export async function stageStrykerSandboxInputs(tempDir, policyPath = sourcePolicyPath) {
+  const policyBytes = await readFile(policyPath)
+  const policyDirectory = path.join(tempDir, "quality")
+  const stagedPolicyPath = path.join(policyDirectory, "coverage-source-policy.json")
+  await mkdir(policyDirectory, { recursive: false })
+  await writeFile(stagedPolicyPath, policyBytes, { flag: "wx" })
+  const stagedPolicyBytes = await readFile(stagedPolicyPath)
+  if (sha256(stagedPolicyBytes) !== sha256(policyBytes)) {
+    throw new Error("Staged Stryker coverage policy differs from the canonical policy")
+  }
+  return stagedPolicyPath
+}
+
 function sortedObject(value) {
   return Object.fromEntries(
     Object.entries(value).sort(([left], [right]) => left.localeCompare(right))
@@ -691,6 +704,10 @@ async function main() {
           mkdir(shardRoot, { recursive: false }),
           mkdir(shardTemp, { recursive: false }),
         ])
+        // Stryker creates its working directory as `shardTemp/sandbox-*`.
+        // Vitest's canonical config imports `../quality/coverage-source-policy.json`,
+        // so place an exact, fail-closed copy beside (never inside) the sandbox.
+        await stageStrykerSandboxInputs(shardTemp)
         await runNode(
           [strykerEntry, "run"],
           `Stryker ${shard.id}`,

@@ -744,7 +744,9 @@ class NotificationMarkReadIn(BaseModel):
     ids: list[str | Any] | None = None
 
 
-class NotificationDeadLetterJobOut(OrmModel):
+class NotificationDeadLetterJobOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True, extra="ignore")
+
     id: uuid.UUID
     kind: str
     record_id: uuid.UUID
@@ -762,22 +764,14 @@ class NotificationDeadLetterListOut(BaseModel):
 
 
 class _NotificationDeadLetterJobIds(BaseModel):
-    job_ids: list[str | Any] = Field(min_length=1)
+    job_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
 
     @field_validator("job_ids")
     @classmethod
-    def _ensure_unique(cls, value: list[str | Any]) -> list[str | Any]:
-        normalized: list[str | Any] = []
-        seen: set[str | Any] = set()
-        for raw in value:
-            parsed = raw  # No longer forcing int
-            if parsed in seen:
-                continue
-            seen.add(parsed)
-            normalized.append(parsed)
-        if not normalized:
-            raise ValueError("job_ids must contain at least one value")
-        return normalized
+    def _ensure_unique(cls, value: list[uuid.UUID]) -> list[uuid.UUID]:
+        if len(set(value)) != len(value):
+            raise ValueError("job_ids must not contain duplicate values")
+        return value
 
 
 class NotificationDeadLetterReplayIn(_NotificationDeadLetterJobIds):
@@ -786,6 +780,12 @@ class NotificationDeadLetterReplayIn(_NotificationDeadLetterJobIds):
 
 class NotificationDeadLetterPurgeIn(_NotificationDeadLetterJobIds):
     pass
+
+
+class NotificationDeadLetterMutationOut(BaseModel):
+    success: Literal[True]
+    affected_count: int = Field(ge=0)
+    job_ids: list[uuid.UUID]
 
 
 class FeatureFlagOut(BaseModel):

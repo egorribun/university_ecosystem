@@ -12,6 +12,10 @@ revision = "202608250001"
 down_revision = "202607280001"
 branch_labels = None
 depends_on = None
+downgrade_policy = "irreversible"
+downgrade_reason = (
+    "email OTP MFA expansion is irreversible after plaintext token shredding"
+)
 
 _LOCK_ID = 824_250_001
 
@@ -217,6 +221,4 @@ def downgrade() -> None:
     # upgrade() permanently shreds legacy plaintext challenge tokens.  A
     # downgrade cannot reconstruct those values or restore a schema usable by
     # the legacy runtime, so fail before making any partial schema changes.
-    raise RuntimeError(
-        "email OTP MFA expansion is irreversible after plaintext token shredding"
-    )
+    raise RuntimeError(downgrade_reason)

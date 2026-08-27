@@ -163,7 +163,6 @@ export default function Profile() {
     try {
       const response = await api.put<User>("/users/me", {
         full_name: fullName,
-        email,
         profile_detail: {
           about,
           status,

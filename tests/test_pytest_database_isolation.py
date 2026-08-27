@@ -311,10 +311,7 @@ def test_automatic_database_cleanup_requires_intact_ownership_sentinel() -> None
     try:
         assert (
             database_dir.parent
-            == (
-                Path(os.getenv("TEMP", database_dir.parent))
-                / "university-ecosystem-pytest"
-            ).resolve()
+            == (Path(tempfile.gettempdir()) / "university-ecosystem-pytest").resolve()
         )
         assert database_dir.name.startswith("pytest-")
         assert (database_dir / "preserve.txt").read_text(encoding="utf-8") == "safe"

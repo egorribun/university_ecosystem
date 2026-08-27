@@ -64,6 +64,7 @@
   "form": {
     "name": "Name",
     "email": "Email",
+    "emailHint": "Change your email in Settings → Security.",
     "telegram": "Telegram",
     "telegramHint": "You can enter @username or a link",
     "department": "Department",

@@ -27,6 +27,9 @@ NOW = datetime(2026, 8, 25, 12, 0, tzinfo=UTC)
 SHA = "a" * 40
 DIGEST = "sha256:" + "b" * 64
 SECRET = "cwv-signing-secret-with-at-least-32-bytes"  # pragma: allowlist secret
+INTERNAL_HMAC_SECRET = (
+    "internal-hmac-secret-for-isolated-settings-tests"  # pragma: allowlist secret
+)
 TESTER_IDS = [f"00000000-0000-0000-0000-{index:012d}" for index in range(1, 26)]
 
 
@@ -481,6 +484,7 @@ def _settings_values() -> dict[str, object]:
         "environment": "staging",
         "database_url": "sqlite+aiosqlite:///:memory:",
         "algorithm": "RS256",
+        "internal_hmac_secret": INTERNAL_HMAC_SECRET,
         "cwv_rum_enabled": True,
         "cwv_rum_signing_secret": SECRET,
         "cwv_release_sha": SHA,

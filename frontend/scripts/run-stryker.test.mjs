@@ -50,6 +50,28 @@ test("canonical cleanup removes only stale mutation evidence", async (t) => {
   await assert.rejects(() => readFile(path.join(root, "runs", "old", "report.json")), /ENOENT/u)
 })
 
+test("stages the canonical coverage policy beside every Stryker sandbox", async (t) => {
+  const { stageStrykerSandboxInputs } = await import(runnerUrl)
+  const root = await mkdtemp(path.join(os.tmpdir(), "stryker-sandbox-inputs-"))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const sourceRoot = path.join(root, "source")
+  const shardTemp = path.join(root, "shard-000")
+  const sourcePolicy = path.join(sourceRoot, "coverage-source-policy.json")
+  const policyText = '{"frontend":{"include":["src/**/*.ts"],"exclude":[]}}\n'
+  await Promise.all([mkdir(sourceRoot, { recursive: true }), mkdir(shardTemp, { recursive: true })])
+  await writeFile(sourcePolicy, policyText)
+
+  const stagedPolicy = await stageStrykerSandboxInputs(shardTemp, sourcePolicy)
+
+  assert.equal(stagedPolicy, path.join(shardTemp, "quality", "coverage-source-policy.json"))
+  assert.equal(await readFile(stagedPolicy, "utf8"), policyText)
+  await assert.rejects(
+    () => stageStrykerSandboxInputs(shardTemp, sourcePolicy),
+    /already exists|EEXIST/u,
+    "A stale or pre-seeded sandbox policy must fail closed instead of being overwritten"
+  )
+})
+
 test("exclusive run locks fail closed and release only their owner", async (t) => {
   const { acquireRunLock } = await import(runnerUrl)
   const root = await mkdtemp(path.join(os.tmpdir(), "stryker-lock-"))

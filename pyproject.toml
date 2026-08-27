@@ -369,6 +369,11 @@ output = "coverage.xml"
 output = "artifacts/coverage/python/coverage.json"
 
 [dependency-groups]
+release-certification = [
+  # This isolated group is installed from uv.lock before the HMAC key enters
+  # the environment; secret-bearing steps execute its interpreter with no sync.
+  "jsonschema==4.25.1",
+]
 dev = [
   "asgi-lifespan>=2.1.0",
   "fakeredis>=2.35.1",
@@ -542,6 +547,7 @@ pytest_add_cli_args_test_selection = [
 #   - test_caddy_routing           → infrastructure/Caddyfile  (routing contract)
 #   - test_ws_hub_environment      → docker-compose.full.yml   (ws-hub env contract)
 #   - test_backend_dockerfile      → backend.Dockerfile         (uv image pin)
+#   - test_helm_staging_contract   → charts/university-ecosystem (Helm values contract)
 #   - test_quality_configuration   → .dockerignore and Dockerfile.test.dockerignore
 #                                      plus .gitignore (test-image and xdist contracts)
 #                                      plus the canonical AGENTS/CLAUDE/TESTING
@@ -561,6 +567,7 @@ also_copy = [
     ".lighthouserc.js",
     ".trivyignore.yaml",
     "quality",
+    "charts/university-ecosystem",
     "infrastructure",
     "infra/oss-fuzz",
     "alembic",

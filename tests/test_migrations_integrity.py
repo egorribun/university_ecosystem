@@ -1,7 +1,4 @@
-"""
-W21: Migration integrity tests — every migration must be reversible.
-Runs against the alembic/versions directory without a live database.
-"""
+"""W21 migration integrity tests for explicit downgrade contracts."""
 
 from __future__ import annotations
 
@@ -14,13 +11,13 @@ _MIGRATIONS_DIR = _PROJECT_ROOT / "alembic" / "versions"
 
 
 @pytest.mark.slow
-async def test_every_migration_has_downgrade(tmp_path):
-    """Every Alembic migration script must implement a non-trivial downgrade().
+async def test_every_migration_has_downgrade_contract(tmp_path):
+    """Every migration must implement a non-trivial downgrade contract.
 
-    WHY: a downgrade() that is absent or is just `pass` makes the migration
-    irreversible, which prevents controlled rollbacks and violates Zero-Downtime
-    Deployment guarantees.  This gate catches those regressions statically,
-    before the migration reaches any environment.
+    Reversible migrations perform the rollback. An intentional data-loss
+    boundary fails before schema changes and is separately validated by
+    ``test_migration_downgrade_policy.py``. Missing and no-op downgrade
+    contracts remain forbidden.
     """
     assert _MIGRATIONS_DIR.exists(), (
         f"alembic/versions directory not found at {_MIGRATIONS_DIR}"

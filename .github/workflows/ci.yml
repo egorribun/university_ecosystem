@@ -946,16 +946,8 @@ jobs:
           fi
           while IFS= read -r migration; do
             [ -z "$migration" ] && continue
-            read -r revision down_revision < <(uv run python - "$migration" <<'PY'
-          import re, sys
-          from pathlib import Path
-          text = Path(sys.argv[1]).read_text(encoding="utf-8")
-          rev = re.search(r"^revision\s*=\s*['\"]([^'\"]+)", text, re.MULTILINE)
-          down = re.search(r"^down_revision\s*=\s*['\"]([^'\"]+)", text, re.MULTILINE)
-          if not rev:
-              raise SystemExit(f"cannot resolve revision from {sys.argv[1]}")
-          print(rev.group(1), down.group(1) if down else "base")
-          PY
+            read -r revision down_revision < <(
+              uv run python scripts/quality/read_alembic_revision.py "$migration"
             )
             echo "Checking $migration ($down_revision -> $revision)"
             uv run alembic upgrade "$down_revision:$revision" --sql \
@@ -1001,14 +993,22 @@ jobs:
           asyncio.run(create_tables())
           PY
 
-      - name: Run Alembic upgrade and downgrade
+      - name: Resolve fail-closed migration downgrade policy
+        id: migration-policy
+        run: uv run python scripts/quality/migration_downgrade_policy.py plan >> "$GITHUB_OUTPUT"
+
+      - name: Run Alembic upgrade and supported downgrade
         env:
           SECRET_KEY: ${{ env.SECRET_KEY }}
           ENVIRONMENT: testing
-        shell: pwsh
+          SAFE_DOWNGRADE_TARGET: ${{ steps.migration-policy.outputs.safe_target }}
+        shell: bash
         run: |
+          set -euo pipefail
           uv run alembic -c alembic.ini upgrade head
-          uv run alembic -c alembic.ini downgrade base
+          uv run alembic -c alembic.ini downgrade "$SAFE_DOWNGRADE_TARGET"
+          uv run python scripts/quality/migration_downgrade_policy.py assert-boundary
+          uv run alembic -c alembic.ini upgrade head
 
       # MOD-22-05 (audit 2026-03-25 Wave 22): Assert exactly 1 migration head.
       # Multiple heads indicate an un-merged migration branch — alembic upgrade
@@ -1408,9 +1408,9 @@ jobs:
 
 
   # MOD-W15-04 (audit 2026-03-23 Wave 15): Postgres migration gate.
-  # Validates alembic upgrade head + downgrade base + upgrade head round-trip
-  # on a real Postgres instance (not SQLite) to catch migration regressions.
-  # Note: "downgrade -1" fails on merge heads (ambiguous walk) — use "base".
+  # Validates alembic upgrade + the supported downgrade range + upgrade on a
+  # real Postgres instance. Declared data-loss boundaries are exercised
+  # separately and must fail with their exact audited reason.
   db-migration-gate:
     name: DB Migration Gate (Postgres)
     runs-on: ubuntu-24.04
@@ -1438,17 +1438,25 @@ jobs:
       - name: Install dependencies
         run: uv sync --group dev
 
-      - name: Run migration round-trip (up → down base → up)
+      - name: Resolve fail-closed migration downgrade policy
+        id: migration-policy
+        run: uv run python scripts/quality/migration_downgrade_policy.py plan >> "$GITHUB_OUTPUT"
+
+      - name: Run supported migration round-trip and verify boundary
         env:
           DATABASE_URL: postgresql+asyncpg://test:test@localhost:5433/test_migration
           ENVIRONMENT: test
           SECRET_KEY: test-secret-key-for-ci-migration-gate-only  # pragma: allowlist secret
+          SAFE_DOWNGRADE_TARGET: ${{ steps.migration-policy.outputs.safe_target }}
         run: |
           echo "=== Upgrade to HEAD ==="
           uv run alembic upgrade head
 
-          echo "=== Downgrade to base ==="
-          uv run alembic downgrade base
+          echo "=== Downgrade supported range to $SAFE_DOWNGRADE_TARGET ==="
+          uv run alembic downgrade "$SAFE_DOWNGRADE_TARGET"
+
+          echo "=== Verify declared irreversible boundary ==="
+          uv run python scripts/quality/migration_downgrade_policy.py assert-boundary
 
           echo "=== Upgrade back to HEAD ==="
           uv run alembic upgrade head
@@ -2542,14 +2550,22 @@ jobs:
           version: "0.7.x"
       - name: Install dependencies
         run: uv sync --frozen
+      - name: Resolve fail-closed migration downgrade policy
+        id: migration-policy
+        run: uv run python scripts/quality/migration_downgrade_policy.py plan >> "$GITHUB_OUTPUT"
       - name: Apply all migrations
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/migtest # pragma: allowlist secret
         run: uv run alembic upgrade head
-      - name: Rollback all migrations
+      - name: Roll back the supported migration range
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/migtest # pragma: allowlist secret
-        run: uv run alembic downgrade base
+          SAFE_DOWNGRADE_TARGET: ${{ steps.migration-policy.outputs.safe_target }}
+        run: uv run alembic downgrade "$SAFE_DOWNGRADE_TARGET"
+      - name: Verify declared irreversible migration boundary
+        env:
+          DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/migtest # pragma: allowlist secret
+        run: uv run python scripts/quality/migration_downgrade_policy.py assert-boundary
       - name: Re-apply all migrations
         env:
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/migtest # pragma: allowlist secret

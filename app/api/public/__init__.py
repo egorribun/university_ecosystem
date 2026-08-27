@@ -8,6 +8,7 @@ from app.api.events import router as events_router
 from app.api.images import router as images_router
 from app.api.internal.csp_report import router as csp_report_router
 from app.api.news import router as news_router
+from app.api.notification_dead_letters import router as notification_dead_letters_router
 from app.api.notifications import router as notifications_router
 from app.api.schedule import router as schedule_api_router
 from app.api.search import router as search_router
@@ -31,6 +32,7 @@ router.include_router(
 router.include_router(spotify_router)
 router.include_router(sessions_router)
 router.include_router(notifications_router)
+router.include_router(notification_dead_letters_router)
 router.include_router(push_router)
 router.include_router(schedule_router)
 router.include_router(users_router)

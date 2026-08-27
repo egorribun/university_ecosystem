@@ -3,11 +3,14 @@
 npm:
   overrides:
     - package: glob
-      pinned_version: "11.1.0"
+      pinned_version: "13.0.6"
       owner: frontend@university.example
       expires: 2026-12-31
       reason: |
-        Tailwind CSS 3.x pulls in sucrase's glob CLI; pinning ensures we stay on the patched release until the Tailwind 4 upgrade.
+        Build tooling currently spans workbox-build (^11.0.1), Storybook
+        docgen (^13.0.1), and Sentry bundler plugins (^13.0.6). Pinning the
+        shared override to audited glob 13.0.6 avoids retaining an older
+        duplicate while all CI and production builds run on Node.js 24.
   advisories:
     - id: "1130129"
       package: fast-uri

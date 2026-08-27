@@ -360,7 +360,10 @@ def test_values_schema_rejects_unknown_staging_sensitive_keys(
     )
 
     assert result.returncode != 0
-    assert "additional properties" in result.stderr
+    # Helm 3.17 reports ``Additional property`` while newer releases use
+    # ``additional properties``. Both messages prove the same fail-closed
+    # JSON-Schema rejection.
+    assert "additional propert" in result.stderr.lower()
 
 
 def test_canonical_staging_values_reject_unresolved_required_markers() -> None:
@@ -485,7 +488,9 @@ def test_staging_schema_rejects_invalid_kubernetes_secret_resource_names(
     )
 
     assert result.returncode != 0
-    assert "does not match pattern" in result.stderr
+    # Helm's gojsonschema renderer changed from "does not match pattern" to
+    # "does not match" for oneOf-backed string schemas in 3.17.
+    assert "does not match" in result.stderr.lower()
 
 
 @pytest.mark.parametrize(
@@ -1257,7 +1262,8 @@ def test_release_rejects_wrong_typed_certificate_issuer(
         encoding="utf-8",
     )
     assert result.returncode != 0
-    assert "/ingress/issuer/kind" in result.stderr
+    normalized_error = result.stderr.lower().replace(".", "/")
+    assert "ingress/issuer/kind" in normalized_error
 
 
 def test_backend_cwv_environment_is_typed_and_not_in_backend_env_values() -> None:

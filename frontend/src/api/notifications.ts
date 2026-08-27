@@ -11,6 +11,9 @@ import {
   listNotificationsApiV1NotificationsGet,
   markAllReadApiV1NotificationsReadAllPost,
   markReadSingleApiV1NotificationsNotifIdReadPatch,
+  listNotificationDeadLetters,
+  purgeNotificationDeadLetters,
+  retryNotificationDeadLetters,
   subscribeApiV1PushSubscribePost,
   sendTestApiV1PushTestPost,
 } from "@/api/generated"
@@ -100,20 +103,11 @@ export const fetchDeadLetterQueue = async (
   params?: { limit?: number; offset?: number },
   signal?: AbortSignal
 ) => {
-  // This endpoint seems to be missing from the generated SDK or has a different name.
-  // Using direct import to avoid circular dependency or missing import errors.
-  //
-  // Wave 164 SW3 (Tier 4) — optional `signal?: AbortSignal` 2nd arg forwarded
-  // to the underlying axios call. Closes W163 SW3 NEW caveat (signal
-  // propagation polish carry-forward). Callers that don't have a signal pass
-  // undefined; axios treats absent `signal` as non-cancellable. The factory
-  // queryFn at `@/api/hooks/adminNotifications` now propagates the TanStack
-  // Query AbortSignal so route unmounts and refetch-replacement abort the
-  // in-flight request.
-  const { default: api } = await import("@/api/client")
-  const response = await api.get("/api/v1/notifications/admin/dead-letter", {
-    params,
+  await import("@/api/client")
+  const response = await listNotificationDeadLetters({
+    query: params,
     signal,
+    throwOnError: true,
   })
   return ensureValidResponse(
     deadLetterListSchema,
@@ -123,13 +117,19 @@ export const fetchDeadLetterQueue = async (
 }
 
 export const retryDeadLetterJobs = async (jobIds: string[]) => {
-  const { default: api } = await import("@/api/client")
-  return api.post("/api/v1/notifications/admin/dead-letter/retry", { job_ids: jobIds })
+  await import("@/api/client")
+  return retryNotificationDeadLetters({
+    body: { job_ids: jobIds },
+    throwOnError: true,
+  })
 }
 
 export const purgeDeadLetterJobs = async (jobIds: string[]) => {
-  const { default: api } = await import("@/api/client")
-  return api.post("/api/v1/notifications/admin/dead-letter/purge", { job_ids: jobIds })
+  await import("@/api/client")
+  return purgeNotificationDeadLetters({
+    body: { job_ids: jobIds },
+    throwOnError: true,
+  })
 }
 
 export async function saveSubscription(

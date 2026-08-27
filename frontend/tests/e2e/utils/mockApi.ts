@@ -72,6 +72,8 @@ type MockApiOptions = {
 const MOCK_TOTP_SECRET = "JBSW Y3DP EHJK" // pragma: allowlist secret
 export const MOCK_NEWS_ID = "11111111-1111-4111-8111-111111111111"
 const MOCK_SECOND_NEWS_ID = "22222222-2222-4222-8222-222222222222"
+export const MOCK_DEAD_LETTER_ID_1 = "33333333-3333-4333-8333-333333333331"
+export const MOCK_DEAD_LETTER_ID_2 = "33333333-3333-4333-8333-333333333332"
 
 const createBaseProfile = (): User => ({
   id: "uuid-1",
@@ -174,9 +176,9 @@ const mockEvents = Array.from({ length: MOCK_EVENTS_COUNT }, (_, index) => {
 
 const createDeadLetterJobs = (): AdminDeadLetterJob[] => [
   {
-    id: "uuid-1",
+    id: MOCK_DEAD_LETTER_ID_1,
     kind: "event",
-    record_id: "record-1001",
+    record_id: "44444444-4444-4444-8444-444444444441",
     locale: "ru",
     enqueued_at: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
     claimed_at: null,
@@ -185,9 +187,9 @@ const createDeadLetterJobs = (): AdminDeadLetterJob[] => [
     next_retry_at: null,
   },
   {
-    id: "uuid-2",
+    id: MOCK_DEAD_LETTER_ID_2,
     kind: "news",
-    record_id: "record-2002",
+    record_id: "44444444-4444-4444-8444-444444444442",
     locale: "en",
     enqueued_at: new Date(now.getTime() - 2 * 60 * 1000).toISOString(),
     claimed_at: null,
@@ -940,28 +942,112 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
 
     // --- Notifications & Admin ---
     if (normPath.includes("api/notifications/admin/dead-letter")) {
+      const authHeader = request.headers()["authorization"] || request.headers()["Authorization"]
+      const cookieHeader = request.headers()["cookie"] || request.headers()["Cookie"] || ""
+      const hasAuth =
+        state.loggedIn ||
+        Boolean(authHeader && authHeader.toLowerCase().includes("bearer")) ||
+        cookieHeader.includes(SSR_E2E_AUTH_COOKIE)
+      if (!hasAuth) {
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Unauthorized" }),
+        })
+        return
+      }
+      if (state.profile.role !== "admin") {
+        await route.fulfill({
+          status: 403,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Forbidden" }),
+        })
+        return
+      }
+
       if (normPath.includes("retry")) {
-        // Retry removes the first job (simulating successful retry)
-        if (state.deadLetterJobs.length > 0) {
-          state.deadLetterJobs = state.deadLetterJobs.slice(1)
+        const body = route.request().postDataJSON() as { job_ids?: unknown }
+        const jobIds = Array.isArray(body.job_ids) ? body.job_ids : []
+        const uniqueJobIds = new Set(jobIds)
+        const selectionIsValid =
+          jobIds.length >= 1 &&
+          jobIds.length <= 100 &&
+          uniqueJobIds.size === jobIds.length &&
+          jobIds.every((id) => state.deadLetterJobs.some((job) => job.id === id))
+        if (!selectionIsValid) {
+          await route.fulfill({
+            status: jobIds.length >= 1 && jobIds.length <= 100 ? 409 : 422,
+            contentType: "application/json",
+            body: JSON.stringify({ detail: "Dead-letter selection is stale" }),
+          })
+          return
         }
-        await route.fulfill({ status: 200, body: JSON.stringify({ success: true }) })
+        state.deadLetterJobs = state.deadLetterJobs.filter((job) => !uniqueJobIds.has(job.id))
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            success: true,
+            affected_count: jobIds.length,
+            job_ids: jobIds,
+          }),
+        })
         return
       }
       if (normPath.includes("purge")) {
-        // Purge removes remaining jobs
-        state.deadLetterJobs = []
-        await route.fulfill({ status: 200, body: JSON.stringify({ success: true }) })
+        const body = route.request().postDataJSON() as { job_ids?: unknown }
+        const jobIds = Array.isArray(body.job_ids) ? body.job_ids : []
+        const uniqueJobIds = new Set(jobIds)
+        const selectionIsValid =
+          jobIds.length >= 1 &&
+          jobIds.length <= 100 &&
+          uniqueJobIds.size === jobIds.length &&
+          jobIds.every((id) => state.deadLetterJobs.some((job) => job.id === id))
+        if (!selectionIsValid) {
+          await route.fulfill({
+            status: jobIds.length >= 1 && jobIds.length <= 100 ? 409 : 422,
+            contentType: "application/json",
+            body: JSON.stringify({ detail: "Dead-letter selection is stale" }),
+          })
+          return
+        }
+        state.deadLetterJobs = state.deadLetterJobs.filter((job) => !uniqueJobIds.has(job.id))
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            success: true,
+            affected_count: jobIds.length,
+            job_ids: jobIds,
+          }),
+        })
+        return
+      }
+
+      const limit = Number(url.searchParams.get("limit") ?? "20")
+      const offset = Number(url.searchParams.get("offset") ?? "0")
+      if (
+        !Number.isSafeInteger(limit) ||
+        limit < 1 ||
+        limit > 100 ||
+        !Number.isSafeInteger(offset) ||
+        offset < 0 ||
+        offset > 10_000
+      ) {
+        await route.fulfill({
+          status: 422,
+          contentType: "application/json",
+          body: JSON.stringify({ detail: "Validation error" }),
+        })
         return
       }
 
       await route.fulfill({
         status: 200,
+        contentType: "application/json",
         body: JSON.stringify({
-          items: state.deadLetterJobs,
-
+          items: state.deadLetterJobs.slice(offset, offset + limit),
           total: state.deadLetterJobs.length,
-          notifications: [],
         }),
       })
       return
@@ -978,7 +1064,7 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
           items: [],
           unread_count: 0,
           has_more: false,
-          notifications: [],
+          next_cursor: null,
         }),
       })
       return

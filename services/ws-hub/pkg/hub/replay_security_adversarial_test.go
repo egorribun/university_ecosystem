@@ -451,6 +451,55 @@ func TestReplayCancellationAdaptersAndConnectionFailurePaths(t *testing.T) {
 	assert.Error(t, err, "replay failure must close the underlying transport")
 }
 
+func TestReplayHelpersCoverFailClosedEdgeContracts(t *testing.T) {
+	t.Run("subscription without checkpoint binds the canonical stream", func(t *testing.T) {
+		opts := offlineReplaySubscriptionOptions("", 0, "")
+		assert.Len(t, opts, 1)
+	})
+
+	t.Run("null personalized frame is rejected", func(t *testing.T) {
+		h := setupTestHub()
+		enableSecureReplayForTest(h)
+		client := &Client{Hub: h, UserID: "user-a"}
+		message := &Message{
+			Room: "room-a",
+			MessageReplayMetadata: &MessageReplayMetadata{
+				Seq:    1,
+				Stream: h.streamChat,
+			},
+		}
+
+		personalized, err := client.personalizeRoomBroadcast(message, []byte("null"))
+		require.ErrorContains(t, err, "broadcast frame is null")
+		assert.Nil(t, personalized)
+	})
+
+	t.Run("connection close failures are logged and unregistered", func(t *testing.T) {
+		var logs bytes.Buffer
+		h := setupTestHub()
+		h.Logger = slog.New(slog.NewJSONHandler(&logs, nil))
+		h.Unregister = make(chan *Client, 1)
+		client := &Client{
+			ID:   "replay-close-error",
+			Hub:  h,
+			Conn: &recordingSession{closeErr: errors.New("close failed")},
+			Send: make(chan []byte, 1),
+			ctx:  context.Background(),
+		}
+
+		client.failReplayConnection()
+
+		assert.Contains(t, logs.String(), "Failed to close replay session")
+		require.Same(t, client, <-h.Unregister)
+	})
+
+	t.Run("missing replay metadata has no stream", func(t *testing.T) {
+		var nilMessage *Message
+		assert.Empty(t, nilMessage.replayStream())
+		assert.Empty(t, (&Message{}).replayStream())
+	})
+}
+
 func TestReplayContextCancellationAndGenerationReplacement(t *testing.T) {
 	h := setupTestHub()
 	enableSecureReplayForTest(h)

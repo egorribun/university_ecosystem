@@ -1249,6 +1249,16 @@ def test_e2e_linux_build_memory_budget_keeps_both_limits_bounded() -> None:
     assert env["FRONTEND_BUILD_MAX_OLD_SPACE_MB"] == "1536"
 
 
+def test_frontend_build_memory_budget_keeps_native_headroom_bounded() -> None:
+    workflow = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    env = workflow["jobs"]["build"]["env"]
+
+    # RSS includes Rolldown's native worker pool in addition to V8's bounded
+    # heap, so the process ceiling must retain finite native-memory headroom.
+    assert env["FRONTEND_BUILD_MAX_RSS_MB"] == "2048"
+    assert env["FRONTEND_BUILD_MAX_OLD_SPACE_MB"] == "1536"
+
+
 def test_linux_build_reproducibility_gate_canonicalizes_known_metadata() -> None:
     workflow = yaml.safe_load(
         BUILD_ORCHESTRATED_LINUX_WORKFLOW_PATH.read_text(encoding="utf-8")
@@ -4652,7 +4662,7 @@ def test_release_and_deploy_require_the_same_sha_bound_quality_bundle() -> None:
         assert inputs["release-sha"]["required"] is True
         assert inputs["quality-run-id"]["required"] is True
         gate = workflow["jobs"][
-            "release" if workflow_path.name == "release.yml" else "validate"
+            "certify" if workflow_path.name == "release.yml" else "validate"
         ]
         text = _run_text(gate)
         assert "quality-evidence-$RELEASE_SHA" in text
@@ -4675,6 +4685,65 @@ def test_release_and_deploy_require_the_same_sha_bound_quality_bundle() -> None:
         assert '--expected-commit-sha "$RELEASE_SHA"' in validate_run
         assert '--expected-workflow-run-id "$QUALITY_RUN_ID"' in validate_run
         assert '--expected-workflow-run-attempt "$QUALITY_RUN_ATTEMPT"' in validate_run
+
+
+def test_release_uses_actual_image_digest_provenance_after_build() -> None:
+    obsolete = REPOSITORY_ROOT / ".github" / "workflows" / "slsa-provenance.yml"
+    assert not obsolete.exists(), (
+        "release-published provenance cannot run before release images exist"
+    )
+
+    reusable_path = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "reusable-build-and-sign.yml"
+    )
+    reusable = yaml.safe_load(reusable_path.read_text(encoding="utf-8"))
+    steps = reusable["jobs"]["build"]["steps"]
+    build = _provenance_step(
+        reusable["jobs"]["build"], "Build local image for security scan"
+    )
+    provenance = _provenance_step(
+        reusable["jobs"]["build"],
+        "Attest build provenance for the published digest",
+    )
+    attest = _provenance_step(
+        reusable["jobs"]["build"], "Attest SBOM for the built image"
+    )
+    sign = _provenance_step(reusable["jobs"]["build"], "Sign image (Keyless)")
+
+    assert build["with"]["push"] is False
+    assert build["with"]["load"] is True
+    assert build["with"]["platforms"] == "linux/amd64"
+    assert provenance["with"]["subject-digest"] == (
+        "${{ steps.publish.outputs.digest }}"
+    )
+    assert provenance["with"]["push-to-registry"] is True
+    assert str(attest["uses"]).startswith("actions/attest-sbom@")
+    assert attest["with"]["subject-digest"] == "${{ steps.publish.outputs.digest }}"
+    assert attest["with"]["sbom-path"] == "sbom.json"
+    assert "github.sha" not in str(attest)
+    assert steps.index(build) < steps.index(attest) < steps.index(sign)
+
+
+def test_release_installs_checksum_pinned_trivy_before_registry_login() -> None:
+    reusable_path = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "reusable-build-and-sign.yml"
+    )
+    reusable = yaml.safe_load(reusable_path.read_text(encoding="utf-8"))
+    job = reusable["jobs"]["build"]
+    steps = job["steps"]
+    install = _provenance_step(job, "Install checksum-pinned Trivy")
+    login = _provenance_step(job, "Login to GHCR after local security gates")
+    scan = _provenance_step(job, "Scan local image before registry access (Trivy)")
+
+    assert steps.index(install) < steps.index(login)
+    assert install["env"]["TRIVY_VERSION"] == "0.73.0"
+    assert re.fullmatch(r"[0-9a-f]{64}", install["env"]["TRIVY_ARCHIVE_SHA256"])
+    install_run = str(install["run"])
+    assert "releases/download/v${TRIVY_VERSION}/" in install_run
+    assert "sha256sum --check" in install_run
+    assert "apt-get" not in install_run
+    assert "trivy-repo" not in install_run
+    assert scan["with"]["skip-setup-trivy"] is True
 
 
 def test_release_and_deploy_build_the_validated_source_sha() -> None:
@@ -4712,6 +4781,96 @@ def test_release_and_deploy_build_the_validated_source_sha() -> None:
         assert deploy["jobs"][job_name]["with"]["source-sha"] == (
             "${{ inputs.release-sha }}"
         )
+
+
+def test_release_build_publishes_only_the_immutable_sha_tag() -> None:
+    release = yaml.safe_load(
+        (REPOSITORY_ROOT / ".github" / "workflows" / "release.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    build = release["jobs"]["build"]
+    assert build["permissions"] == {
+        "contents": "read",
+        "packages": "write",
+        "id-token": "write",
+        "attestations": "write",
+    }
+    tags = str(build["with"]["tags"]).splitlines()
+    assert tags == [
+        "ghcr.io/${{ github.repository }}/${{ matrix.image_name }}:${{ inputs.release-sha }}"
+    ]
+    assert not any(tag.endswith(":latest") for tag in tags)
+
+    publish = release["jobs"]["publish"]
+    release_step = _provenance_step(publish, "Release")
+    release_run = str(release_step["run"])
+    assert "git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1" in (
+        release_run
+    )
+    assert 'test "$(git rev-parse origin/main)" = "$RELEASE_SHA"' in release_run
+
+
+def test_release_scans_local_image_before_any_registry_publication() -> None:
+    reusable_path = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "reusable-build-and-sign.yml"
+    )
+    reusable = yaml.safe_load(reusable_path.read_text(encoding="utf-8"))
+    job = reusable["jobs"]["build"]
+    steps = job["steps"]
+    build = _provenance_step(job, "Build local image for security scan")
+    scan = _provenance_step(job, "Scan local image before registry access (Trivy)")
+    sbom = _provenance_step(job, "Generate SBOM (CycloneDX)")
+    login = _provenance_step(job, "Login to GHCR after local security gates")
+    publish = _provenance_step(job, "Publish scanned image and resolve registry digest")
+    attest = _provenance_step(job, "Attest SBOM for the built image")
+    sign = _provenance_step(job, "Sign image (Keyless)")
+    verify = _provenance_step(job, "Verify final signature and attestation")
+
+    assert build["with"]["push"] is False
+    assert build["with"]["load"] is True
+    assert scan["with"]["image-ref"] == "${{ steps.references.outputs.local_ref }}"
+    assert "quarantine" not in reusable_path.read_text(encoding="utf-8").lower()
+    assert steps.index(build) < steps.index(scan) < steps.index(sbom)
+    assert steps.index(sbom) < steps.index(login)
+    assert steps.index(login) < steps.index(publish) < steps.index(attest)
+    assert steps.index(attest) < steps.index(sign) < steps.index(verify)
+    assert "docker push" in str(publish["run"])
+    assert "published_image_id" in str(publish["run"])
+    assert "steps.publish.outputs.digest" in str(attest)
+
+
+def test_release_aggregates_exact_digest_inventory_before_publish() -> None:
+    release = yaml.safe_load(
+        (REPOSITORY_ROOT / ".github" / "workflows" / "release.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    aggregate = release["jobs"]["aggregate-image-provenance"]
+    assert aggregate["needs"] == ["certify", "build"]
+    aggregate_text = _run_text(aggregate)
+    assert "aggregate_release_image_evidence.py" in aggregate_text
+    assert "cosign verify" in aggregate_text
+    assert "gh attestation verify" in aggregate_text
+    assert "sha256sum --check" in aggregate_text
+    assert any(
+        str(step.get("uses", "")).startswith("actions/attest-build-provenance@")
+        for step in aggregate["steps"]
+    )
+    assert any(
+        str(step.get("uses", "")).startswith("actions/upload-artifact@")
+        and step.get("with", {}).get("name")
+        == "release-image-provenance-${{ inputs.release-sha }}"
+        for step in aggregate["steps"]
+    )
+
+    publish = release["jobs"]["publish"]
+    assert publish["needs"] == ["certify", "aggregate-image-provenance"]
+    publish_text = _run_text(publish)
+    assert "release-image-manifest.json.sha256" in publish_text
+    assert "gh attestation verify" in publish_text
 
 
 def test_deploy_never_checks_out_untrusted_release_input() -> None:

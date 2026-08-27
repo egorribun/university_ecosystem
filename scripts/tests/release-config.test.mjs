@@ -35,6 +35,24 @@ test("release plugins are explicit, resolvable, and exclude npm publishing", () 
   }
 });
 
+test("the GitHub Release publishes the attested image digest inventory", () => {
+  const releaseConfig = readJson(".releaserc.json");
+  const githubPlugin = releaseConfig.plugins.find(
+    (entry) => Array.isArray(entry) && entry[0] === "@semantic-release/github",
+  );
+  assert.ok(githubPlugin);
+  assert.deepEqual(githubPlugin[1].assets, [
+    {
+      path: "artifacts/release-images/release-image-manifest.json",
+      label: "Release image digest manifest",
+    },
+    {
+      path: "artifacts/release-images/release-image-manifest.json.sha256",
+      label: "Release image digest manifest checksum",
+    },
+  ]);
+});
+
 test("the npm transitive dependency resolves only to the audited local bridge", () => {
   const packageDocument = readJson("package.json");
   const lockDocument = readJson("package-lock.json");
@@ -68,7 +86,7 @@ test("the token-bearing release step bypasses npm and verifies the toolchain fir
   );
   const verifyIndex = workflow.indexOf("run: npm run test:release-toolchain");
   const releaseIndex = workflow.indexOf(
-    "run: node node_modules/semantic-release/bin/semantic-release.js",
+    "node node_modules/semantic-release/bin/semantic-release.js",
   );
 
   assert.ok(

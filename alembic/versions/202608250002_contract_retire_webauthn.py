@@ -13,6 +13,8 @@ revision = "202608250002"
 down_revision = "202608250001"
 branch_labels = None
 depends_on = None
+downgrade_policy = "irreversible"
+downgrade_reason = "MFA security-key retirement is irreversible"
 
 _LOCK_ID = 824_250_002
 
@@ -255,4 +257,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise RuntimeError("MFA security-key retirement is irreversible")
+    raise RuntimeError(downgrade_reason)

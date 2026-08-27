@@ -238,7 +238,8 @@ def test_render_rejects_non_canonical_environment_names(environment: str) -> Non
     )
 
     assert result.returncode != 0
-    assert "global/environment" in result.stderr
+    normalized_error = result.stderr.lower().replace(".", "/")
+    assert "global/environment" in normalized_error
 
 
 @pytest.mark.parametrize("environment", ["staging", "production"])

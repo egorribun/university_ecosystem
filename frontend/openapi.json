@@ -2542,6 +2542,163 @@
         "title": "NotificationAction",
         "type": "object"
       },
+      "NotificationDeadLetterJobOut": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "claimed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claimed At"
+          },
+          "enqueued_at": {
+            "format": "date-time",
+            "title": "Enqueued At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "locale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locale"
+          },
+          "next_retry_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Retry At"
+          },
+          "record_id": {
+            "format": "uuid",
+            "title": "Record Id",
+            "type": "string"
+          }
+        },
+        "required": ["id", "kind", "record_id", "enqueued_at", "attempts"],
+        "title": "NotificationDeadLetterJobOut",
+        "type": "object"
+      },
+      "NotificationDeadLetterListOut": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/NotificationDeadLetterJobOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": ["items", "total"],
+        "title": "NotificationDeadLetterListOut",
+        "type": "object"
+      },
+      "NotificationDeadLetterMutationOut": {
+        "additionalProperties": false,
+        "properties": {
+          "affected_count": {
+            "minimum": 0.0,
+            "title": "Affected Count",
+            "type": "integer"
+          },
+          "job_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Job Ids",
+            "type": "array"
+          },
+          "success": {
+            "const": true,
+            "title": "Success",
+            "type": "boolean"
+          }
+        },
+        "required": ["success", "affected_count", "job_ids"],
+        "title": "NotificationDeadLetterMutationOut",
+        "type": "object"
+      },
+      "NotificationDeadLetterPurgeIn": {
+        "additionalProperties": false,
+        "properties": {
+          "job_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Job Ids",
+            "type": "array"
+          }
+        },
+        "required": ["job_ids"],
+        "title": "NotificationDeadLetterPurgeIn",
+        "type": "object"
+      },
+      "NotificationDeadLetterReplayIn": {
+        "additionalProperties": false,
+        "properties": {
+          "job_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "minItems": 1,
+            "title": "Job Ids",
+            "type": "array"
+          }
+        },
+        "required": ["job_ids"],
+        "title": "NotificationDeadLetterReplayIn",
+        "type": "object"
+      },
       "NotificationOut": {
         "properties": {
           "body": {
@@ -10093,6 +10250,181 @@
         "tags": ["notifications"]
       }
     },
+    "/api/v1/notifications/admin/dead-letter": {
+      "get": {
+        "description": "List notification queue dead letters",
+        "operationId": "listNotificationDeadLetters",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "maximum": 10000,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationDeadLetterListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Administrator access required"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "List notification queue dead letters",
+        "tags": ["admin-notifications"]
+      }
+    },
+    "/api/v1/notifications/admin/dead-letter/purge": {
+      "post": {
+        "description": "Purge notification queue dead letters",
+        "operationId": "purgeNotificationDeadLetters",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationDeadLetterPurgeIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationDeadLetterMutationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Administrator access required"
+          },
+          "409": {
+            "description": "Dead-letter selection is stale"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Purge notification queue dead letters",
+        "tags": ["admin-notifications"]
+      }
+    },
+    "/api/v1/notifications/admin/dead-letter/retry": {
+      "post": {
+        "description": "Retry notification queue dead letters",
+        "operationId": "retryNotificationDeadLetters",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationDeadLetterReplayIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationDeadLetterMutationOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Administrator access required"
+          },
+          "409": {
+            "description": "Dead-letter selection is stale"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "summary": "Retry notification queue dead letters",
+        "tags": ["admin-notifications"]
+      }
+    },
     "/api/v1/notifications/check-schedule": {
       "post": {
         "description": "Check Schedule And Generate",
@@ -12769,6 +13101,10 @@
     {
       "description": "Admin feature flags API operations.",
       "name": "admin-feature-flags"
+    },
+    {
+      "description": "Admin notifications API operations.",
+      "name": "admin-notifications"
     },
     {
       "description": "Auth API operations.",
