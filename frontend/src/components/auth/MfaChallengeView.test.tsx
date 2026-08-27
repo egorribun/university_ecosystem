@@ -328,6 +328,18 @@ describe("MfaChallengeView — error display", () => {
 })
 
 describe("MfaChallengeView — accessibility", () => {
+  it("keeps tall challenge content reachable in a safe-area scroll container", () => {
+    const { container } = render(<MfaChallengeView {...props} />)
+    const scrollShell = container.firstElementChild as HTMLElement
+    const layout = scrollShell.children[1] as HTMLElement
+
+    expect(scrollShell).toHaveClass("overflow-y-auto", "overscroll-contain")
+    expect(layout).toHaveClass(
+      "pt-[max(3rem,var(--safe-area-top))]",
+      "pb-[max(3rem,var(--safe-area-bottom))]"
+    )
+  })
+
   it("has no axe violations in the no-methods state", async () => {
     const { container } = render(<MfaChallengeView {...props} />)
     const results = await axe(container)
