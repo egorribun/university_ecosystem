@@ -354,10 +354,12 @@ test.describe("Push notifications", () => {
     await page.getByRole("button", { name: /^(Open|Открыть)$/i }).click()
 
     await page.waitForURL(/\/news$/)
-    // The application shell can contain an announcement heading outside the
-    // route content. Scope the assertion to the page main landmark so a
-    // legitimate shell heading cannot make the locator strictness fail.
-    const heading = page.locator("#main-content").getByRole("heading", { level: 1 })
+    // Assert the canonical News route heading. A loading/offline fallback can
+    // legitimately render its own h1 during a navigation race, so querying
+    // every level-one heading is ambiguous even inside the main landmark.
+    const heading = page
+      .locator("#main-content")
+      .getByRole("heading", { name: /Новости университета|University news/i })
     // Use unicode for robustness against mojibake
     await expect(heading).toContainText(/News|\u041d\u043e\u0432\u043e\u0441\u0442/i)
   })
