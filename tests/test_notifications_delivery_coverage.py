@@ -19,7 +19,8 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import insert, select
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -27,6 +28,7 @@ from app.models import Notification, NotificationDelivery, PushSubscription
 from app.services import stats_cache
 from app.services import webpush as webpush_module
 from app.services.notifications import delivery as notifications_delivery
+from app.services.notifications.core import _build_delivery_row
 from app.services.notifications.delivery import create_notifications_for_users
 from app.services.webpush import WebPushResult
 
@@ -111,6 +113,40 @@ async def _delivery_rows_for_user(
         )
     )
     return list(rows.scalars().all())
+
+
+def test_delivery_rows_have_a_uniform_postgresql_insert_shape() -> None:
+    """Mixed delivery outcomes must compile as one PostgreSQL multi-row insert.
+
+    SQLAlchemy's PostgreSQL compiler rejects heterogeneous ``values`` mappings
+    when one row omits a nullable column that another row supplies.  Broadcast
+    fan-out legitimately mixes successful (status code only) and failed
+    (detail only) deliveries, so the row builder must include both optional
+    columns consistently.
+    """
+
+    notification_id = uuid.uuid4()
+    created_at = datetime.now(UTC)
+    rows = [
+        _build_delivery_row(
+            notification_id,
+            created_at,
+            status="sent",
+            status_code=201,
+        ),
+        _build_delivery_row(
+            notification_id,
+            created_at,
+            status="error",
+            detail="provider unavailable",
+        ),
+    ]
+
+    compiled = (
+        insert(NotificationDelivery).values(rows).compile(dialect=postgresql.dialect())
+    )
+    assert "status_code" in compiled.string
+    assert "detail" in compiled.string
 
 
 @pytest.fixture
