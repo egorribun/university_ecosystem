@@ -21,6 +21,7 @@ const mocks = vi.hoisted(() => ({
   isSamePath: vi.fn(),
   focusOptions: undefined as
     { active: boolean; onDeactivate?: () => void; escapeDeactivates?: boolean } | undefined,
+  mediaQueries: [] as string[],
   getNavigationConfig: vi.fn(() => [{ to: "/dashboard" }]),
   parseCacheVersion: vi.fn(() => "cache-v"),
 }))
@@ -41,6 +42,7 @@ vi.mock("@/contexts/AuthContext", () => ({
 }))
 vi.mock("@/hooks/useMediaQuery", () => ({
   default: (query: string) => {
+    mocks.mediaQueries.push(query)
     if (query.includes("prefers-reduced-motion")) return mocks.reducedMotion
     if (query.includes("min-width")) return mocks.viewport === "tablet"
     if (query.includes("768") || query.includes("767")) return mocks.viewport === "phone"
@@ -85,6 +87,7 @@ describe("useNavbarLogic", () => {
     mocks.getNavigationConfig.mockClear()
     mocks.parseCacheVersion.mockClear()
     mocks.focusOptions = undefined
+    mocks.mediaQueries = []
   })
 
   it("derives anonymous and authenticated presentation state", async () => {
@@ -150,6 +153,16 @@ describe("useNavbarLogic", () => {
       false,
       true,
     ])
+  })
+
+  it("reserves the full labelled navigation for the wide desktop envelope", async () => {
+    renderHook(() => useNavbarLogic())
+
+    await waitFor(() =>
+      expect(mocks.mediaQueries).toContain(
+        "(min-width: 768px) and (max-width: calc(1350px - 0.02px))"
+      )
+    )
   })
 
   it("recognizes dashboard descendants and exact non-dashboard routes", async () => {

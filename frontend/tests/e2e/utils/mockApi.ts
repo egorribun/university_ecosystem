@@ -287,8 +287,16 @@ const decodeCursor = (value: string | null): number => {
 const encodeCursor = (index: number): string => index.toString()
 
 export async function useMockApi(page: Page, options: MockApiOptions = {}) {
+  const authenticated = options.authenticated ?? true
   const state: MockState = {
-    loggedIn: false,
+    // The fixture seeds both browser tokens and the SSR marker below when
+    // `authenticated` is true. Keep the in-memory state in sync from the
+    // moment routes are registered so API-only tests (which intentionally do
+    // not call `login`) receive the same authenticated contract in every
+    // browser engine. WebKit can omit the synthetic cookie from an early
+    // intercepted request, so deriving auth solely from headers made those
+    // tests spuriously return 401 while Chromium happened to pass.
+    loggedIn: authenticated,
     newsVersion: "news-v1",
     newsOffline: false,
     offline: false,
@@ -311,7 +319,6 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
   }
 
   const preserveServiceWorker = options.serviceWorker === "preserve"
-  const authenticated = options.authenticated ?? true
 
   await page.addInitScript(
     ({ preserveServiceWorker, authenticated }) => {

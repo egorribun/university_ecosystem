@@ -58,7 +58,12 @@ export const useNavbarLogic = () => {
   // Disable "scrolled" state on mobile to avoid layout shifts or too much blur
   const rawIsPhone = useMediaQuery(`(max-width: calc(${breakpoints.mobile} - 0.02px))`)
   const rawIsTablet = useMediaQuery(
-    `(min-width: ${breakpoints.mobile}) and (max-width: calc(${breakpoints.desktop} - 0.02px))`
+    // The desktop navigation needs room for six labelled links, the user
+    // actions and the profile affordance without shrinking touch targets.
+    // Treat the 1280px browser envelope as tablet-sized so the overflow menu
+    // owns the lower-priority links.  `wide` is the first viewport at which
+    // the complete labelled navigation can fit without overlap (WCAG 2.5.8).
+    `(min-width: ${breakpoints.mobile}) and (max-width: calc(${breakpoints.wide} - 0.02px))`
   )
   const rawPrefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   useEffect(() => {
