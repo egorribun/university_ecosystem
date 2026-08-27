@@ -544,6 +544,7 @@ pytest_add_cli_args_test_selection = [
 # in the isolated tree so stats collection can complete. Keep the small,
 # source-controlled roots below in sync with the paths asserted by those tests:
 #   - test_migrations_runtime.py  → alembic/ ScriptDirectory (head convergence)
+#   - test_mfa_email_otp_migrations → alembic.ini (offline migration config)
 #   - test_caddy_routing           → infrastructure/Caddyfile  (routing contract)
 #   - test_ws_hub_environment      → docker-compose.full.yml   (ws-hub env contract)
 #   - test_backend_dockerfile      → backend.Dockerfile         (uv image pin)
@@ -552,6 +553,7 @@ pytest_add_cli_args_test_selection = [
 #                                      plus .gitignore (test-image and xdist contracts)
 #                                      plus the canonical AGENTS/CLAUDE/TESTING
 #                                      instruction and quality documents
+#   - test_husky_fail_closed        → .husky/pre-commit (hook policy)
 # Copy the repository-contract paths into the isolated tree so the full nightly
 # run can measure them without a false collection failure. The mutation-score
 # parser contract imports `scripts/check_mutation_score.py`; copying its parent
@@ -563,6 +565,7 @@ also_copy = [
     "TESTING.md",
     "SECURITY.md",
     ".github",
+    ".husky",
     ".gitignore",
     ".dockerignore",
     ".lighthouserc.js",
@@ -576,6 +579,7 @@ also_copy = [
     "infrastructure",
     "infra/oss-fuzz",
     "alembic",
+    "alembic.ini",
     "scripts",
     "Dockerfile.test",
     "Dockerfile.test.dockerignore",
@@ -605,6 +609,13 @@ also_copy = [
     "crates/pyo3-sanitizer/src",
     "frontend/scripts",
     "frontend/openapi.json",
+    # Generated SDK/types and MSW handlers are asserted by auth contract tests
+    # during mutmut's isolated baseline run; include their exact source roots
+    # so the test cannot silently disappear from mutation inventory.
+    "frontend/src/api",
+    "frontend/src/api/generated",
+    "frontend/src/tests/mocks",
+    "frontend/src/tests/mocks/generated",
     "frontend/tests/e2e/utils",
     "frontend/package.json",
     "frontend/stryker.config.mjs",

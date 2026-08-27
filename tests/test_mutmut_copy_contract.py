@@ -11,8 +11,14 @@ REQUIRED_ALSO_COPY = {
     "SECURITY.md",
     "security",
     "security/audit-allowlist.yaml",
+    ".husky",
     "start-docker.ps1",
+    "alembic.ini",
     "frontend/openapi.json",
+    "frontend/src/api",
+    "frontend/src/api/generated",
+    "frontend/src/tests/mocks",
+    "frontend/src/tests/mocks/generated",
 }
 
 
