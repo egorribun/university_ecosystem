@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from jsonschema import Draft202012Validator, FormatChecker
 
 from scripts.quality.evaluate_cwv_field import (
     CwvCertificationError,
@@ -20,9 +21,13 @@ from scripts.quality.evaluate_cwv_field import (
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = ROOT / "quality" / "cwv-field-report.schema.json"
 DEPLOYMENT_SCHEMA = ROOT / "quality" / "cwv-deployment-metadata.schema.json"
+VERDICT_SCHEMA = ROOT / "quality" / "cwv-field-verdict.schema.json"
 POLICY = ROOT / "quality" / "cwv-field-policy.json"
 COMMIT_SHA = "1" * 40
 IMAGE_DIGEST = f"sha256:{'2' * 64}"
+IMAGE_MANIFEST_SHA256 = "3" * 64
+IMAGE_BUILD_RUN_ID = 987654
+IMAGE_BUILD_RUN_ATTEMPT = 3
 DEPLOYED_AT = datetime(2026, 8, 24, 23, tzinfo=UTC)
 WINDOW_START = datetime(2026, 8, 25, tzinfo=UTC)
 WINDOW_END = datetime(2026, 8, 26, tzinfo=UTC)
@@ -111,10 +116,21 @@ def _write_deployment_evidence(tmp_path: Path) -> tuple[Path, Path]:
     metadata_path.write_text(
         json.dumps(
             {
-                "schema_version": 1,
+                "schema_version": 2,
                 "environment": "staging",
                 "release_sha": COMMIT_SHA,
                 "frontend_image_digest": IMAGE_DIGEST,
+                "image_manifest_sha256": IMAGE_MANIFEST_SHA256,
+                "image_build_run_id": IMAGE_BUILD_RUN_ID,
+                "image_build_run_attempt": IMAGE_BUILD_RUN_ATTEMPT,
+                "images": {
+                    "backend": f"sha256:{'4' * 64}",
+                    "caddy": f"sha256:{'5' * 64}",
+                    "frontend": IMAGE_DIGEST,
+                    "ws-hub": f"sha256:{'6' * 64}",
+                    "gateway": f"sha256:{'7' * 64}",
+                    "file-processor": f"sha256:{'8' * 64}",
+                },
                 "deployment_url": DEPLOYMENT_URL,
                 "deployed_at": _timestamp(DEPLOYED_AT),
                 "workflow_run_id": 123456,
@@ -158,9 +174,13 @@ def _evaluate(
 def test_field_cwv_report_passes_at_exact_thresholds(tmp_path: Path) -> None:
     verdict = _evaluate(tmp_path)
 
+    assert verdict["schema_version"] == 2
     assert verdict["valid"] is True
     assert verdict["release_sha"] == COMMIT_SHA
     assert verdict["frontend_image_digest"] == IMAGE_DIGEST
+    assert verdict["image_manifest_sha256"] == IMAGE_MANIFEST_SHA256
+    assert verdict["image_build_run_id"] == IMAGE_BUILD_RUN_ID
+    assert verdict["image_build_run_attempt"] == IMAGE_BUILD_RUN_ATTEMPT
     segments = verdict["segments"]
     assert isinstance(segments, dict)
     assert set(segments) == {
@@ -171,6 +191,9 @@ def test_field_cwv_report_passes_at_exact_thresholds(tmp_path: Path) -> None:
     assert segments["mobile/INP"]["p75"] == 200.0
     assert len(verdict["report_sha256"]) == 64
     assert len(verdict["policy_sha256"]) == 64
+    verdict_schema = json.loads(VERDICT_SCHEMA.read_text(encoding="utf-8"))
+    validator = Draft202012Validator(verdict_schema, format_checker=FormatChecker())
+    assert list(validator.iter_errors(verdict)) == []
 
 
 def test_nearest_rank_has_stable_boundaries() -> None:
@@ -568,6 +591,8 @@ def test_cli_removes_stale_verdict_before_failed_validation(
             str(deployment_checksum_path),
             "--deployment-schema",
             str(DEPLOYMENT_SCHEMA),
+            "--verdict-schema",
+            str(VERDICT_SCHEMA),
             "--policy",
             str(POLICY),
             "--expected-commit-sha",

@@ -14,6 +14,7 @@ from jsonschema import Draft202012Validator
 
 ROOT = Path(__file__).resolve().parents[1]
 RELEASE_WORKFLOW = ROOT / ".github" / "workflows" / "release.yml"
+PRODUCER_WORKFLOW = ROOT / ".github" / "workflows" / "build-release-images.yml"
 POLICY_PATH = ROOT / "quality" / "release-required-checks.json"
 POLICY_SCHEMA_PATH = ROOT / "quality" / "release-required-checks.schema.json"
 
@@ -146,7 +147,7 @@ def _evidence(sha: str) -> dict[str, Any]:
 
 
 def test_release_collects_every_paginated_check_run_for_exact_sha() -> None:
-    workflow = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
+    workflow = yaml.safe_load(PRODUCER_WORKFLOW.read_text(encoding="utf-8"))
     certify = workflow["jobs"]["certify"]
     collect = _step(certify, "Collect SHA-bound release check evidence")
     script = str(collect["run"])
@@ -162,7 +163,7 @@ def test_release_collects_every_paginated_check_run_for_exact_sha() -> None:
 
 
 def test_release_collects_and_validates_every_quality_artifact_page() -> None:
-    workflow = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
+    workflow = yaml.safe_load(PRODUCER_WORKFLOW.read_text(encoding="utf-8"))
     verify = _step(workflow["jobs"]["certify"], "Verify release SHA and quality run")
     script = str(verify["run"])
 
@@ -356,7 +357,7 @@ def test_collector_rejects_job_not_bound_to_check_run() -> None:
 
 
 def test_release_certification_is_gated_by_canonical_policy() -> None:
-    workflow = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
+    workflow = yaml.safe_load(PRODUCER_WORKFLOW.read_text(encoding="utf-8"))
     certify = workflow["jobs"]["certify"]
     runtime = _step(certify, "Setup release quality runtime")
     assert str(runtime["uses"]).startswith("astral-sh/setup-uv@")
@@ -405,22 +406,21 @@ def test_release_certification_dependency_group_is_lock_pinned() -> None:
 
 def test_semantic_release_waits_for_every_signed_image() -> None:
     workflow = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
+    producer = yaml.safe_load(PRODUCER_WORKFLOW.read_text(encoding="utf-8"))
 
     assert workflow["concurrency"] == {
         "group": "release-main",
         "cancel-in-progress": False,
     }
-    assert workflow["jobs"]["build"]["needs"] == ["certify"]
-    assert set(workflow["jobs"]["aggregate-image-provenance"]["needs"]) == {
+    assert producer["jobs"]["build"]["needs"] == ["certify"]
+    assert set(producer["jobs"]["aggregate-image-provenance"]["needs"]) == {
         "certify",
         "build",
     }
-    assert set(workflow["jobs"]["publish"]["needs"]) == {
-        "certify",
-        "aggregate-image-provenance",
-    }
+    assert workflow["jobs"]["publish"]["needs"] == ["resolve-images"]
     assert "Release" not in {
-        step.get("name") for step in workflow["jobs"]["certify"]["steps"]
+        step.get("name")
+        for step in producer["jobs"]["aggregate-image-provenance"]["steps"]
     }
     release = _step(workflow["jobs"]["publish"], "Release")
     assert "semantic-release" in release["run"]

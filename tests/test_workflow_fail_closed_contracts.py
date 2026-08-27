@@ -452,16 +452,15 @@ def test_deployment_workflows_cannot_report_mock_success() -> None:
     assert "deployed successfully" not in text.lower()
     assert "example.com" not in text
     assert not re.search(r"(?m)^\s*#\s*(?:helm|kubectl)\b", text)
-    for job_name in (
-        "build-backend",
-        "build-frontend",
-        "build-ws-hub",
-        "build-gateway",
-        "build-file-processor",
-    ):
-        tags = workflow["jobs"][job_name]["with"]["tags"].splitlines()
-        assert len(tags) == 1
-        assert "${{ needs.prepare.outputs.version }}" in tags[0]
+    assert not any(name.startswith("build-") for name in workflow["jobs"])
+    resolve = workflow["jobs"]["resolve-images"]
+    resolve_text = "\n".join(str(step.get("run", "")) for step in resolve["steps"])
+    assert ".github/workflows/build-release-images.yml" in resolve_text
+    assert "verify_release_image_manifest.py" in resolve_text
+    assert (
+        "release-image-provenance-$RELEASE_SHA-attempt-$BUILD_RUN_ATTEMPT"
+        in resolve_text
+    )
 
     validate = _step(deploy, "Validate deployment contract")["run"]
     for setting in (

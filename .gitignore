@@ -24,6 +24,10 @@ final_check.txt
 *_logs_*.txt
 *_log.txt
 smoke_*_logs.txt
+.root*
+**/.root*
+\$*
+**/$*
 
 # Go coverage output
 cover.out

@@ -574,10 +574,13 @@ def evaluate_report(
             }
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "valid": True,
         "release_sha": expected_commit_sha,
         "frontend_image_digest": expected_image_digest,
+        "image_manifest_sha256": trusted_deployment["image_manifest_sha256"],
+        "image_build_run_id": trusted_deployment["image_build_run_id"],
+        "image_build_run_attempt": trusted_deployment["image_build_run_attempt"],
         "environment": expected_environment,
         "deployment_workflow_run_id": expected_run,
         "deployment_workflow_run_attempt": expected_attempt,
@@ -599,6 +602,7 @@ def main() -> int:
     parser.add_argument("--deployment-metadata", type=Path, required=True)
     parser.add_argument("--deployment-checksum", type=Path, required=True)
     parser.add_argument("--deployment-schema", type=Path, required=True)
+    parser.add_argument("--verdict-schema", type=Path, required=True)
     parser.add_argument("--policy", type=Path, required=True)
     parser.add_argument("--expected-commit-sha", required=True)
     parser.add_argument("--expected-image-digest", required=True)
@@ -617,6 +621,7 @@ def main() -> int:
                 args.deployment_metadata,
                 args.deployment_checksum,
                 args.deployment_schema,
+                args.verdict_schema,
                 args.policy,
             ),
         )
@@ -634,6 +639,7 @@ def main() -> int:
             expected_deployment_run_id=args.expected_deployment_run_id,
             expected_deployment_run_attempt=args.expected_deployment_run_attempt,
         )
+        _validate_schema(verdict, _load_json(args.verdict_schema))
         _atomic_write(args.output, verdict)
     except CwvCertificationError as error:
         parser.exit(1, f"field CWV certification failed: {error}\n")

@@ -1545,6 +1545,11 @@ def test_non_root_python_images_create_the_declared_home_directory() -> None:
 def test_caddy_plugin_dependency_is_version_pinned() -> None:
     dockerfile = _read("services/caddy/Dockerfile")
 
+    assert "ARG XCADDY_VERSION=v0.4.5" in dockerfile
+    assert "go install" in dockerfile
+    assert "github.com/caddyserver/xcaddy/cmd/xcaddy@${XCADDY_VERSION}" in dockerfile
+    assert "ca-certificates=20260611-r0" in dockerfile
+    assert "git=2.54.0-r0" in dockerfile
     assert "github.com/mholt/caddy-ratelimit@v0.1.0" in dockerfile
     assert not re.search(
         r"--with github\.com/mholt/caddy-ratelimit\s*$", dockerfile, re.M
@@ -1557,9 +1562,25 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
     dockerfile = _read("services/caddy/Dockerfile")
     full_caddy = _compose("docker-compose.full.yml")["services"]["caddy"]
 
-    assert "caddy:2.11.4-builder-alpine@sha256:" in dockerfile
+    assert "golang:1.26.6-alpine3.24@sha256:" in dockerfile
     assert "caddy:2.11.4-alpine@sha256:" in dockerfile
     assert "ARG CADDY_VERSION=2.11.4" in dockerfile
+    assert "--replace golang.org/x/net=golang.org/x/net@v0.56.0" in dockerfile
+    assert "--replace golang.org/x/text=golang.org/x/text@v0.39.0" in dockerfile
+    assert (
+        "--replace google.golang.org/grpc=google.golang.org/grpc@v1.82.1" in dockerfile
+    )
+    for package in (
+        "libapk=3.0.7-r0",
+        "apk-tools=3.0.7-r0",
+        "libcrypto3=3.5.8-r0",
+        "libssl3=3.5.8-r0",
+        "c-ares=1.34.8-r0",
+        "libcurl=8.20.0-r0",
+        "curl=8.20.0-r0",
+    ):
+        assert package in dockerfile
+    assert "apk upgrade" not in dockerfile
     assert "build" in full_caddy
     assert full_caddy["build"]["context"] == "./services/caddy"
     assert full_caddy["build"]["dockerfile"] == "Dockerfile"

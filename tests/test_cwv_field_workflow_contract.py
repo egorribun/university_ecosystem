@@ -40,14 +40,23 @@ def test_staging_deploy_emits_sha_bound_metadata_after_verification() -> None:
 
     assert create_index > smoke_index
     assert create["if"] == "${{ inputs.environment == 'staging' }}"
-    assert create["env"] == {
+    expected_environment = {
         "RELEASE_SHA": "${{ inputs.release-sha }}",
-        "FRONTEND_IMAGE_DIGEST": "${{ steps.release-images.outputs.frontend-digest }}",
+        "FRONTEND_IMAGE_DIGEST": "${{ needs.resolve-images.outputs.frontend-digest }}",
+        "IMAGE_MANIFEST_SHA256": "${{ needs.resolve-images.outputs.manifest-sha256 }}",
+        "IMAGE_BUILD_RUN_ID": "${{ inputs.image-build-run-id }}",
+        "IMAGE_BUILD_RUN_ATTEMPT": "${{ inputs.image-build-run-attempt }}",
+        "BACKEND_IMAGE_DIGEST": "${{ needs.resolve-images.outputs.backend-digest }}",
+        "CADDY_IMAGE_DIGEST": "${{ needs.resolve-images.outputs.caddy-digest }}",
+        "WS_HUB_IMAGE_DIGEST": "${{ needs.resolve-images.outputs.ws-hub-digest }}",
+        "GATEWAY_IMAGE_DIGEST": "${{ needs.resolve-images.outputs.gateway-digest }}",
+        "FILE_PROCESSOR_IMAGE_DIGEST": "${{ needs.resolve-images.outputs.file-processor-digest }}",
         "DEPLOYMENT_URL": "${{ vars.DEPLOYMENT_URL }}",
         "DEPLOYED_AT": "${{ steps.field-evidence-time.outputs.timestamp }}",
         "DEPLOY_RUN_ID": "${{ github.run_id }}",
         "DEPLOY_RUN_ATTEMPT": "${{ github.run_attempt }}",
     }
+    assert create["env"] == expected_environment
     create_script = create["run"]
     assert "staging-deployment.json" in create_script
     assert "staging-deployment.json.sha256" in create_script
@@ -55,7 +64,9 @@ def test_staging_deploy_emits_sha_bound_metadata_after_verification() -> None:
 
     assert upload["if"] == "${{ inputs.environment == 'staging' }}"
     assert str(upload["uses"]).startswith("actions/upload-artifact@")
-    assert upload["with"]["name"] == "staging-deployment-${{ inputs.release-sha }}"
+    assert upload["with"]["name"] == (
+        "staging-deployment-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}"
+    )
     assert upload["with"]["path"] == (
         "artifacts/cwv/staging-deployment.json\n"
         "artifacts/cwv/staging-deployment.json.sha256\n"
@@ -72,7 +83,8 @@ def test_field_certification_accepts_only_exact_protected_main_deploy() -> None:
         "deploy-run-id",
         "deploy-run-attempt",
         "release-sha",
-        "frontend-image-digest",
+        "image-build-run-id",
+        "image-build-run-attempt",
     }
     assert all(item["required"] is True for item in dispatch["inputs"].values())
     assert workflow["permissions"] == {"contents": "read", "actions": "read"}
@@ -100,7 +112,7 @@ def test_field_certification_accepts_only_exact_protected_main_deploy() -> None:
         ".path",
         ".github/workflows/deploy.yml",
         "refs/remotes/origin/main",
-        "staging-deployment-$RELEASE_SHA",
+        "staging-deployment-$RELEASE_SHA-attempt-$DEPLOY_RUN_ATTEMPT",
     ):
         assert invariant in script
     assert 'test "$WORKFLOW_SHA" = "$RELEASE_SHA"' in script
@@ -109,7 +121,7 @@ def test_field_certification_accepts_only_exact_protected_main_deploy() -> None:
     download = _step(certify, "Download exact deployment metadata")
     assert str(download["uses"]).startswith("actions/download-artifact@")
     assert download["with"] == {
-        "name": "staging-deployment-${{ inputs.release-sha }}",
+        "name": "staging-deployment-${{ inputs.release-sha }}-attempt-${{ inputs.deploy-run-attempt }}",
         "run-id": "${{ inputs.deploy-run-id }}",
         "github-token": "${{ github.token }}",
         "path": "artifacts/cwv/deployment",
@@ -162,6 +174,7 @@ def test_field_report_comes_from_oidc_authenticated_staging_exporter() -> None:
         "--deployment-schema quality/cwv-deployment-metadata.schema.json"
         in validate_script
     )
+    assert "--verdict-schema quality/cwv-field-verdict.schema.json" in validate_script
     assert '--expected-commit-sha "$RELEASE_SHA"' in validate_script
     assert '--expected-image-digest "$FRONTEND_IMAGE_DIGEST"' in validate_script
     assert '--expected-deployment-run-id "$DEPLOY_RUN_ID"' in validate_script
@@ -169,7 +182,9 @@ def test_field_report_comes_from_oidc_authenticated_staging_exporter() -> None:
 
     upload = _step(certify, "Upload field certification evidence")
     assert str(upload["uses"]).startswith("actions/upload-artifact@")
-    assert upload["with"]["name"] == "cwv-field-certificate-${{ inputs.release-sha }}"
+    assert upload["with"]["name"] == (
+        "cwv-field-certificate-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}"
+    )
     assert upload["with"]["path"] == (
         "artifacts/cwv/certificate/**\n"
         "artifacts/cwv/deployment/**\n"
@@ -187,15 +202,12 @@ def test_production_deploy_requires_exact_field_certificate() -> None:
     workflow = _load(DEPLOY_WORKFLOW)
     dispatch = _triggers(workflow)["workflow_dispatch"]
     assert "cwv-certification-run-id" in dispatch["inputs"]
-    assert "cwv-certified-frontend-image-digest" in dispatch["inputs"]
+    assert "cwv-certification-run-attempt" in dispatch["inputs"]
+    assert "cwv-certified-frontend-image-digest" not in dispatch["inputs"]
+    assert "image-build-run-id" in dispatch["inputs"]
+    assert "image-build-run-attempt" in dispatch["inputs"]
     deploy = workflow["jobs"]["deploy"]
     assert deploy["permissions"]["actions"] == "read"
-
-    select_image = _step(deploy, "Select immutable frontend image")
-    assert select_image["env"]["CERTIFIED_FRONTEND_IMAGE_DIGEST"] == (
-        "${{ inputs.cwv-certified-frontend-image-digest }}"
-    )
-    assert "^sha256:[0-9a-f]{64}$" in select_image["run"]
 
     verify = _step(deploy, "Verify production field certification run")
     download = _step(deploy, "Download production field certification")
@@ -215,7 +227,7 @@ def test_production_deploy_requires_exact_field_certificate() -> None:
         ".head_branch",
         ".path",
         ".github/workflows/cwv-field-certification.yml",
-        "cwv-field-certificate-$RELEASE_SHA",
+        "cwv-field-certificate-$RELEASE_SHA-attempt-$CERTIFICATION_RUN_ATTEMPT",
     ):
         assert invariant in verify_script
     assert download["with"]["run-id"] == "${{ inputs.cwv-certification-run-id }}"
@@ -224,6 +236,10 @@ def test_production_deploy_requires_exact_field_certificate() -> None:
     assert "sha256sum --check field-verdict.json.sha256" in validate_script
     assert '--arg sha "$RELEASE_SHA"' in validate_script
     assert '--arg digest "$FRONTEND_IMAGE_DIGEST"' in validate_script
+    assert ".schema_version == 2" in validate_script
+    assert "image_manifest_sha256" in validate_script
+    assert "image_build_run_id" in validate_script
+    assert "image_build_run_attempt" in validate_script
     assert ".valid == true" in validate_script
     assert "generated_at" in validate_script
     assert "current_epoch - generated_epoch" in validate_script

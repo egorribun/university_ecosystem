@@ -19,13 +19,21 @@ on:
         description: "Successful CI run that produced this SHA's quality evidence"
         required: true
         type: string
+      image-build-run-id:
+        description: "Successful canonical six-image producer workflow run ID"
+        required: true
+        type: string
+      image-build-run-attempt:
+        description: "Exact canonical image producer run attempt"
+        required: true
+        type: string
       cwv-certification-run-id:
         description: "Successful field-CWV certification run (required for production)"
         required: false
         default: ""
         type: string
-      cwv-certified-frontend-image-digest:
-        description: "Exact staging-certified frontend digest (required for production)"
+      cwv-certification-run-attempt:
+        description: "Exact field-CWV certification run attempt (required for production)"
         required: false
         default: ""
         type: string
@@ -101,9 +109,14 @@ jobs:
           run_attempt="$(jq -r .run_attempt artifacts/quality/quality-run.json)"
           [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]]
           echo "run-attempt=$run_attempt" >> "$GITHUB_OUTPUT"
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALITY_RUN_ID/artifacts?per_page=100" \
-            > artifacts/quality/quality-artifacts.json
-          test "$(jq --arg name "quality-evidence-$RELEASE_SHA" '[.artifacts[] | select(.name == $name and .expired == false)] | length' artifacts/quality/quality-artifacts.json)" -eq 1
+          gh api --paginate --slurp \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$QUALITY_RUN_ID/artifacts?per_page=100" \
+            > artifacts/quality/quality-artifact-pages.json
+          python scripts/quality/validate_release_artifact_evidence.py \
+            --pages artifacts/quality/quality-artifact-pages.json \
+            --expected-name "quality-evidence-$RELEASE_SHA"
 
       - name: Clean quality evidence destinations
         run: |
@@ -195,93 +208,106 @@ jobs:
           VERSION="$RELEASE_SHA"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-  build-backend:
-    name: Build Backend
+  resolve-images:
+    name: Resolve canonical release images
     needs: [prepare]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
+      actions: read
+      attestations: read
       contents: read
-      packages: write  # Required: push Docker images to GHCR
-      id-token: write
-      attestations: write
-    uses: ./.github/workflows/reusable-build-and-sign.yml
-    with:
-      image_name: "backend"
-      source-sha: ${{ inputs.release-sha }}
-      file: "backend.Dockerfile"
-      tags: |
-        ghcr.io/${{ github.repository }}/backend:${{ needs.prepare.outputs.version }}
+      packages: read
+    outputs:
+      backend-digest: ${{ steps.manifest.outputs.backend-digest }}
+      caddy-digest: ${{ steps.manifest.outputs.caddy-digest }}
+      frontend-digest: ${{ steps.manifest.outputs.frontend-digest }}
+      ws-hub-digest: ${{ steps.manifest.outputs.ws-hub-digest }}
+      gateway-digest: ${{ steps.manifest.outputs.gateway-digest }}
+      file-processor-digest: ${{ steps.manifest.outputs.file-processor-digest }}
+      manifest-sha256: ${{ steps.manifest.outputs.manifest-sha256 }}
+    steps:
+      - name: Checkout trusted release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
 
-  build-frontend:
-    name: Build Frontend
-    needs: [prepare]
-    permissions:
-      contents: read
-      packages: write  # Required: push Docker images to GHCR
-      id-token: write
-      attestations: write
-    uses: ./.github/workflows/reusable-build-and-sign.yml
-    with:
-      image_name: "frontend"
-      source-sha: ${{ inputs.release-sha }}
-      file: "frontend.Dockerfile"
-      tags: |
-        ghcr.io/${{ github.repository }}/frontend:${{ needs.prepare.outputs.version }}
-      build_args: |
-        VITE_APP_RELEASE=${{ inputs.release-sha }}
-        VITE_ENABLE_WEB_VITALS=${{ inputs.environment == 'staging' }}
-        VITE_CWV_TRUSTED_RUM=${{ inputs.environment == 'staging' }}
-        VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv
+      - name: Verify canonical image producer run and artifact inventory
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          BUILD_RUN_ID: ${{ inputs.image-build-run-id }}
+          BUILD_RUN_ATTEMPT: ${{ inputs.image-build-run-attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$BUILD_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$BUILD_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
+          mkdir -p artifacts/release-images/provenance
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID" \
+            > artifacts/release-images/provenance/build-run.json
+          jq --exit-status \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg sha "$RELEASE_SHA" \
+            --argjson attempt "$BUILD_RUN_ATTEMPT" \
+            '.repository.full_name == $repository and .head_sha == $sha and
+             .run_attempt == $attempt and .conclusion == "success" and
+             .event == "workflow_dispatch" and .head_branch == "main" and
+             .path == ".github/workflows/build-release-images.yml"' \
+            artifacts/release-images/provenance/build-run.json >/dev/null
+          gh api --paginate --slurp \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID/artifacts?per_page=100" \
+            > artifacts/release-images/provenance/artifact-pages.json
+          python scripts/quality/validate_release_artifact_evidence.py \
+            --pages artifacts/release-images/provenance/artifact-pages.json \
+            --expected-name "release-image-provenance-$RELEASE_SHA-attempt-$BUILD_RUN_ATTEMPT"
 
-  build-ws-hub:
-    name: Build WS Hub
-    needs: [prepare]
-    permissions:
-      contents: read
-      packages: write  # Required: push Docker images to GHCR
-      id-token: write
-      attestations: write
-    uses: ./.github/workflows/reusable-build-and-sign.yml
-    with:
-      image_name: "ws-hub"
-      source-sha: ${{ inputs.release-sha }}
-      context: "."
-      file: "services/ws-hub/Dockerfile"
-      tags: |
-        ghcr.io/${{ github.repository }}/ws-hub:${{ needs.prepare.outputs.version }}
+      - name: Download exact canonical image manifest
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-image-provenance-${{ inputs.release-sha }}-attempt-${{ inputs.image-build-run-attempt }}
+          run-id: ${{ inputs.image-build-run-id }}
+          github-token: ${{ github.token }}
+          path: artifacts/release-images
 
-  build-gateway:
-    name: Build Gateway
-    needs: [prepare]
-    permissions:
-      contents: read
-      packages: write  # Required: push Docker images to GHCR
-      id-token: write
-      attestations: write
-    uses: ./.github/workflows/reusable-build-and-sign.yml
-    with:
-      image_name: "gateway"
-      source-sha: ${{ inputs.release-sha }}
-      context: "."
-      file: "services/gateway/Dockerfile"
-      tags: |
-        ghcr.io/${{ github.repository }}/gateway:${{ needs.prepare.outputs.version }}
+      - name: Verify attested canonical image manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        run: |
+          set -euo pipefail
+          gh attestation verify artifacts/release-images/release-image-manifest.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build-release-images.yml" \
+            --source-digest "$RELEASE_SHA" \
+            --source-ref refs/heads/main \
+            --deny-self-hosted-runners > /dev/null
 
-  build-file-processor:
-    name: Build File Processor
-    needs: [prepare]
-    permissions:
-      contents: read
-      packages: write  # Required: push Docker images to GHCR
-      id-token: write
-      attestations: write
-    uses: ./.github/workflows/reusable-build-and-sign.yml
-    with:
-      image_name: "file-processor"
-      source-sha: ${{ inputs.release-sha }}
-      context: "."
-      file: "services/file-processor/Dockerfile"
-      tags: |
-        ghcr.io/${{ github.repository }}/file-processor:${{ needs.prepare.outputs.version }}
+      - name: Resolve exact image digests
+        id: manifest
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          BUILD_RUN_ID: ${{ inputs.image-build-run-id }}
+          BUILD_RUN_ATTEMPT: ${{ inputs.image-build-run-attempt }}
+          QUALITY_RUN_ID: ${{ inputs.quality-run-id }}
+        run: |
+          set -euo pipefail
+          python scripts/quality/verify_release_image_manifest.py \
+            --manifest artifacts/release-images/release-image-manifest.json \
+            --checksum artifacts/release-images/release-image-manifest.json.sha256 \
+            --repository "$GITHUB_REPOSITORY" \
+            --source-sha "$RELEASE_SHA" \
+            --build-run-id "$BUILD_RUN_ID" \
+            --build-run-attempt "$BUILD_RUN_ATTEMPT" \
+            --quality-run-id "$QUALITY_RUN_ID" \
+            --github-output "$GITHUB_OUTPUT"
 
   deploy:
     name: Deploy to ${{ inputs.environment }}
@@ -289,11 +315,7 @@ jobs:
     needs:
       [
         prepare,
-        build-backend,
-        build-frontend,
-        build-ws-hub,
-        build-gateway,
-        build-file-processor,
+        resolve-images,
       ]
     permissions:
       contents: read
@@ -321,58 +343,45 @@ jobs:
           git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
           test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
 
-      - name: Select immutable frontend image
-        id: release-images
-        shell: bash
-        env:
-          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
-          BUILT_FRONTEND_IMAGE_DIGEST: ${{ needs.build-frontend.outputs.digest }}
-          CERTIFIED_FRONTEND_IMAGE_DIGEST: ${{ inputs.cwv-certified-frontend-image-digest }}
-        run: |
-          set -euo pipefail
-          selected="$BUILT_FRONTEND_IMAGE_DIGEST"
-          if [[ "$DEPLOY_ENVIRONMENT" == "production" ]]; then
-            [[ "$CERTIFIED_FRONTEND_IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
-            selected="$CERTIFIED_FRONTEND_IMAGE_DIGEST"
-          fi
-          [[ "$selected" =~ ^sha256:[0-9a-f]{64}$ ]]
-          echo "frontend-digest=$selected" >> "$GITHUB_OUTPUT"
-
       - name: Verify production field certification run
         if: ${{ inputs.environment == 'production' }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_SHA: ${{ inputs.release-sha }}
-          FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.frontend-digest }}
           CERTIFICATION_RUN_ID: ${{ inputs.cwv-certification-run-id }}
+          CERTIFICATION_RUN_ATTEMPT: ${{ inputs.cwv-certification-run-attempt }}
         run: |
           set -euo pipefail
           [[ "$CERTIFICATION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$CERTIFICATION_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
           mkdir -p artifacts/cwv/production-provenance
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CERTIFICATION_RUN_ID" \
             > artifacts/cwv/production-provenance/certification-run.json
           jq --exit-status \
             --arg sha "$RELEASE_SHA" \
+            --argjson attempt "$CERTIFICATION_RUN_ATTEMPT" \
             '.head_sha == $sha and .conclusion == "success" and
+             .run_attempt == $attempt and
              .event == "workflow_dispatch" and .head_branch == "main" and
              .path == ".github/workflows/cwv-field-certification.yml"' \
             artifacts/cwv/production-provenance/certification-run.json >/dev/null
-          gh api \
+          gh api --paginate --slurp \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
             "repos/$GITHUB_REPOSITORY/actions/runs/$CERTIFICATION_RUN_ID/artifacts?per_page=100" \
-            > artifacts/cwv/production-provenance/certification-artifacts.json
-          test "$(jq --arg name "cwv-field-certificate-$RELEASE_SHA" \
-            --arg sha "$RELEASE_SHA" \
-            '[.artifacts[] | select(.name == $name and .expired == false and
-              .workflow_run.head_sha == $sha)] | length' \
-            artifacts/cwv/production-provenance/certification-artifacts.json)" -eq 1
+            > artifacts/cwv/production-provenance/certification-artifact-pages.json
+          python scripts/quality/validate_release_artifact_evidence.py \
+            --pages artifacts/cwv/production-provenance/certification-artifact-pages.json \
+            --expected-name "cwv-field-certificate-$RELEASE_SHA-attempt-$CERTIFICATION_RUN_ATTEMPT"
           test -n "$FRONTEND_IMAGE_DIGEST"
 
       - name: Download production field certification
         if: ${{ inputs.environment == 'production' }}
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: cwv-field-certificate-${{ inputs.release-sha }}
+          name: cwv-field-certificate-${{ inputs.release-sha }}-attempt-${{ inputs.cwv-certification-run-attempt }}
           run-id: ${{ inputs.cwv-certification-run-id }}
           github-token: ${{ github.token }}
           path: artifacts/cwv/production-certificate
@@ -382,7 +391,10 @@ jobs:
         shell: bash
         env:
           RELEASE_SHA: ${{ inputs.release-sha }}
-          FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.frontend-digest }}
+          IMAGE_MANIFEST_SHA256: ${{ needs.resolve-images.outputs.manifest-sha256 }}
+          IMAGE_BUILD_RUN_ID: ${{ inputs.image-build-run-id }}
+          IMAGE_BUILD_RUN_ATTEMPT: ${{ inputs.image-build-run-attempt }}
         run: |
           set -euo pipefail
           cd artifacts/cwv/production-certificate/certificate
@@ -392,10 +404,31 @@ jobs:
           jq --exit-status \
             --arg sha "$RELEASE_SHA" \
             --arg digest "$FRONTEND_IMAGE_DIGEST" \
-            '.schema_version == 1 and .valid == true and
+            --arg manifest_sha256 "$IMAGE_MANIFEST_SHA256" \
+            --argjson build_run_id "$IMAGE_BUILD_RUN_ID" \
+            --argjson build_run_attempt "$IMAGE_BUILD_RUN_ATTEMPT" \
+            '.schema_version == 2 and .valid == true and
              .environment == "staging" and .release_sha == $sha and
-             .frontend_image_digest == $digest' \
+             .frontend_image_digest == $digest and
+             .image_manifest_sha256 == $manifest_sha256 and
+             .image_build_run_id == $build_run_id and
+             .image_build_run_attempt == $build_run_attempt' \
             field-verdict.json >/dev/null
+          test -s ../deployment/staging-deployment.json
+          test -s ../deployment/staging-deployment.json.sha256
+          (cd ../deployment && sha256sum --check staging-deployment.json.sha256)
+          jq --exit-status \
+            --arg sha "$RELEASE_SHA" \
+            --arg digest "$FRONTEND_IMAGE_DIGEST" \
+            --arg manifest_sha256 "$IMAGE_MANIFEST_SHA256" \
+            --argjson build_run_id "$IMAGE_BUILD_RUN_ID" \
+            --argjson build_run_attempt "$IMAGE_BUILD_RUN_ATTEMPT" \
+            '.schema_version == 2 and .environment == "staging" and
+             .release_sha == $sha and .frontend_image_digest == $digest and
+             .image_manifest_sha256 == $manifest_sha256 and
+             .image_build_run_id == $build_run_id and
+             .image_build_run_attempt == $build_run_attempt' \
+            ../deployment/staging-deployment.json >/dev/null
           generated_epoch="$(date -u -d "$(jq -r '.generated_at' field-verdict.json)" +%s)"
           current_epoch="$(date -u +%s)"
           test "$generated_epoch" -le "$current_epoch"
@@ -436,11 +469,13 @@ jobs:
           BACKEND_HEALTH_URL: ${{ vars.BACKEND_HEALTH_URL }}
           FRONTEND_HEALTH_URL: ${{ vars.FRONTEND_HEALTH_URL }}
           DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
-          BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
-          FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
-          WS_HUB_IMAGE_DIGEST: ${{ needs.build-ws-hub.outputs.digest }}
-          GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
-          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.frontend-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.ws-hub-digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.gateway-digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.file-processor-digest }}
+          CADDY_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.caddy-digest }}
+          IMAGE_MANIFEST_SHA256: ${{ needs.resolve-images.outputs.manifest-sha256 }}
           REDIS_IMAGE_DIGEST: ${{ vars.REDIS_IMAGE_DIGEST }}
           REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REDIS_METRICS_IMAGE_DIGEST }}
           REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
@@ -458,8 +493,8 @@ jobs:
             OTLP_ENDPOINT MINIO_ENDPOINT TEMPORAL_HOST GATEWAY_HEALTH_URL
             WS_HUB_HEALTH_URL BACKEND_HEALTH_URL FRONTEND_HEALTH_URL
             DEPLOY_VERSION BACKEND_IMAGE_DIGEST FRONTEND_IMAGE_DIGEST
-            WS_HUB_IMAGE_DIGEST GATEWAY_IMAGE_DIGEST
-            FILE_PROCESSOR_IMAGE_DIGEST REDIS_IMAGE_DIGEST
+            WS_HUB_IMAGE_DIGEST GATEWAY_IMAGE_DIGEST CADDY_IMAGE_DIGEST
+            FILE_PROCESSOR_IMAGE_DIGEST IMAGE_MANIFEST_SHA256 REDIS_IMAGE_DIGEST
             REDIS_METRICS_IMAGE_DIGEST REVOCATION_REDIS_IMAGE_DIGEST
             REVOCATION_REDIS_METRICS_IMAGE_DIGEST NATS_IMAGE_DIGEST
           )
@@ -510,12 +545,13 @@ jobs:
             echo "::error::DEPLOY_VERSION must be the immutable 40-character commit SHA."
             exit 1
           fi
-          for name in BACKEND_IMAGE_DIGEST FRONTEND_IMAGE_DIGEST WS_HUB_IMAGE_DIGEST GATEWAY_IMAGE_DIGEST FILE_PROCESSOR_IMAGE_DIGEST REDIS_IMAGE_DIGEST REDIS_METRICS_IMAGE_DIGEST REVOCATION_REDIS_IMAGE_DIGEST REVOCATION_REDIS_METRICS_IMAGE_DIGEST NATS_IMAGE_DIGEST; do
+          for name in BACKEND_IMAGE_DIGEST FRONTEND_IMAGE_DIGEST WS_HUB_IMAGE_DIGEST GATEWAY_IMAGE_DIGEST FILE_PROCESSOR_IMAGE_DIGEST CADDY_IMAGE_DIGEST REDIS_IMAGE_DIGEST REDIS_METRICS_IMAGE_DIGEST REVOCATION_REDIS_IMAGE_DIGEST REVOCATION_REDIS_METRICS_IMAGE_DIGEST NATS_IMAGE_DIGEST; do
             if [[ ! "${!name}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
               echo "::error::$name is not an immutable sha256 image digest."
               exit 1
             fi
           done
+          [[ "$IMAGE_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]
           for name in DEPLOYMENT_URL GATEWAY_HEALTH_URL WS_HUB_HEALTH_URL BACKEND_HEALTH_URL FRONTEND_HEALTH_URL; do
             if [[ ! "${!name}" =~ ^https://[^[:space:]]+$ ]]; then
               echo "::error::$name must be a non-empty HTTPS URL."
@@ -653,11 +689,11 @@ jobs:
           HELM_VALUES_FILE: ${{ vars.HELM_VALUES_FILE }}
           CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
           APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
-          BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
-          FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
-          WS_HUB_IMAGE_DIGEST: ${{ needs.build-ws-hub.outputs.digest }}
-          GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
-          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.frontend-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.ws-hub-digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.gateway-digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.file-processor-digest }}
           DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
           DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
           CWV_EXPORT_OIDC_SUBJECT: ${{ vars.CWV_EXPORT_OIDC_SUBJECT }}
@@ -710,11 +746,11 @@ jobs:
           HELM_VALUES_FILE: ${{ vars.HELM_VALUES_FILE }}
           CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
           APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
-          BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
-          FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
-          WS_HUB_IMAGE_DIGEST: ${{ needs.build-ws-hub.outputs.digest }}
-          GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
-          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.frontend-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.ws-hub-digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.gateway-digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.file-processor-digest }}
           DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
           DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
           CWV_EXPORT_OIDC_SUBJECT: ${{ vars.CWV_EXPORT_OIDC_SUBJECT }}
@@ -1004,11 +1040,11 @@ jobs:
           HELM_VALUES_FILE: ${{ vars.HELM_VALUES_FILE }}
           CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
           APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
-          BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
-          FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
-          WS_HUB_IMAGE_DIGEST: ${{ needs.build-ws-hub.outputs.digest }}
-          GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
-          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.frontend-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.ws-hub-digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.gateway-digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.file-processor-digest }}
           DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
           DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
           CWV_EXPORT_OIDC_SUBJECT: ${{ vars.CWV_EXPORT_OIDC_SUBJECT }}
@@ -1162,11 +1198,11 @@ jobs:
           HELM_VALUES_FILE: ${{ vars.HELM_VALUES_FILE }}
           CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
           APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
-          BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
-          FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
-          WS_HUB_IMAGE_DIGEST: ${{ needs.build-ws-hub.outputs.digest }}
-          GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
-          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.frontend-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.ws-hub-digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.gateway-digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.file-processor-digest }}
           DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
           DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
           CWV_DEPLOYED_AT: ${{ steps.field-evidence-time.outputs.timestamp }}
@@ -1195,11 +1231,11 @@ jobs:
         env:
           K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
           HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
-          BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
-          FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
-          WS_HUB_IMAGE_DIGEST: ${{ needs.build-ws-hub.outputs.digest }}
-          GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
-          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.frontend-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.ws-hub-digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.gateway-digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.file-processor-digest }}
         run: |
           set -euo pipefail
           helm status "$HELM_RELEASE_NAME" --namespace "$K8S_NAMESPACE"
@@ -1319,7 +1355,15 @@ jobs:
         shell: bash
         env:
           RELEASE_SHA: ${{ inputs.release-sha }}
-          FRONTEND_IMAGE_DIGEST: ${{ steps.release-images.outputs.frontend-digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.frontend-digest }}
+          IMAGE_MANIFEST_SHA256: ${{ needs.resolve-images.outputs.manifest-sha256 }}
+          IMAGE_BUILD_RUN_ID: ${{ inputs.image-build-run-id }}
+          IMAGE_BUILD_RUN_ATTEMPT: ${{ inputs.image-build-run-attempt }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
+          CADDY_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.caddy-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.ws-hub-digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.gateway-digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.file-processor-digest }}
           DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
           DEPLOYED_AT: ${{ steps.field-evidence-time.outputs.timestamp }}
           DEPLOY_RUN_ID: ${{ github.run_id }}
@@ -1330,15 +1374,34 @@ jobs:
           jq --null-input \
             --arg release_sha "$RELEASE_SHA" \
             --arg frontend_image_digest "$FRONTEND_IMAGE_DIGEST" \
+            --arg image_manifest_sha256 "$IMAGE_MANIFEST_SHA256" \
+            --arg backend_image_digest "$BACKEND_IMAGE_DIGEST" \
+            --arg caddy_image_digest "$CADDY_IMAGE_DIGEST" \
+            --arg ws_hub_image_digest "$WS_HUB_IMAGE_DIGEST" \
+            --arg gateway_image_digest "$GATEWAY_IMAGE_DIGEST" \
+            --arg file_processor_image_digest "$FILE_PROCESSOR_IMAGE_DIGEST" \
             --arg deployment_url "$DEPLOYMENT_URL" \
             --arg deployed_at "$DEPLOYED_AT" \
             --argjson workflow_run_id "$DEPLOY_RUN_ID" \
             --argjson workflow_run_attempt "$DEPLOY_RUN_ATTEMPT" \
+            --argjson image_build_run_id "$IMAGE_BUILD_RUN_ID" \
+            --argjson image_build_run_attempt "$IMAGE_BUILD_RUN_ATTEMPT" \
             '{
-              schema_version: 1,
+              schema_version: 2,
               environment: "staging",
               release_sha: $release_sha,
               frontend_image_digest: $frontend_image_digest,
+              image_manifest_sha256: $image_manifest_sha256,
+              image_build_run_id: $image_build_run_id,
+              image_build_run_attempt: $image_build_run_attempt,
+              images: {
+                backend: $backend_image_digest,
+                caddy: $caddy_image_digest,
+                frontend: $frontend_image_digest,
+                "ws-hub": $ws_hub_image_digest,
+                gateway: $gateway_image_digest,
+                "file-processor": $file_processor_image_digest
+              },
               deployment_url: $deployment_url,
               deployed_at: $deployed_at,
               workflow_run_id: $workflow_run_id,
@@ -1349,8 +1412,15 @@ jobs:
             --arg digest "$FRONTEND_IMAGE_DIGEST" \
             --argjson run_id "$DEPLOY_RUN_ID" \
             --argjson run_attempt "$DEPLOY_RUN_ATTEMPT" \
-            '.schema_version == 1 and .environment == "staging" and
+            --arg manifest_sha256 "$IMAGE_MANIFEST_SHA256" \
+            --argjson build_run_id "$IMAGE_BUILD_RUN_ID" \
+            --argjson build_run_attempt "$IMAGE_BUILD_RUN_ATTEMPT" \
+            '.schema_version == 2 and .environment == "staging" and
              .release_sha == $sha and .frontend_image_digest == $digest and
+             .image_manifest_sha256 == $manifest_sha256 and
+             .image_build_run_id == $build_run_id and
+             .image_build_run_attempt == $build_run_attempt and
+             (.images | length) == 6 and .images.frontend == $digest and
              .workflow_run_id == $run_id and
              .workflow_run_attempt == $run_attempt' \
             artifacts/cwv/staging-deployment.json >/dev/null
@@ -1361,7 +1431,7 @@ jobs:
         if: ${{ inputs.environment == 'staging' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: staging-deployment-${{ inputs.release-sha }}
+          name: staging-deployment-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}
           path: |
             artifacts/cwv/staging-deployment.json
             artifacts/cwv/staging-deployment.json.sha256
@@ -1503,7 +1573,7 @@ jobs:
   notify:
     name: Notify deployment status
     runs-on: ubuntu-24.04
-    needs: [prepare, build-backend, deploy, rollback]
+    needs: [prepare, resolve-images, deploy, rollback]
     if: always()
     steps:
       - name: Deployment summary

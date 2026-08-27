@@ -34,6 +34,11 @@ on:
         description: "Newline-separated list of build arguments"
         required: false
         type: string
+      canonical_frontend:
+        description: "Build the one staging-certified promotable frontend variant"
+        required: false
+        default: false
+        type: boolean
       target:
         description: "Target stage in multi-stage build"
         required: false
@@ -76,17 +81,25 @@ jobs:
         id: references
         env:
           FINAL_TAGS: ${{ inputs.tags }}
+          CANONICAL_FRONTEND: ${{ inputs.canonical_frontend }}
           IMAGE_NAME: ${{ inputs.image_name }}
           SOURCE_SHA: ${{ inputs.source-sha }}
         run: |
           set -euo pipefail
           [[ "$IMAGE_NAME" =~ ^[a-z0-9][a-z0-9._-]*$ ]]
+          if [[ "$IMAGE_NAME" == "frontend" ]]; then
+            test "$CANONICAL_FRONTEND" = "true"
+          else
+            test "$CANONICAL_FRONTEND" = "false"
+          fi
           expected="ghcr.io/${GITHUB_REPOSITORY}/${IMAGE_NAME}:${SOURCE_SHA}"
           normalized="$(printf '%s\n' "$FINAL_TAGS" | sed '/^[[:space:]]*$/d')"
           test "$normalized" = "$expected"
-          echo "final_ref=$expected" >> "$GITHUB_OUTPUT"
-          echo "subject_name=ghcr.io/${GITHUB_REPOSITORY}/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
-          echo "local_ref=university-ecosystem/${IMAGE_NAME}:scan-${SOURCE_SHA}" >> "$GITHUB_OUTPUT"
+          {
+            echo "final_ref=$expected"
+            echo "subject_name=ghcr.io/${GITHUB_REPOSITORY}/${IMAGE_NAME}"
+            echo "local_ref=university-ecosystem/${IMAGE_NAME}:scan-${SOURCE_SHA}"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Install checksum-pinned Trivy
         env:
@@ -125,7 +138,15 @@ jobs:
           load: true
           platforms: linux/amd64
           tags: ${{ steps.references.outputs.local_ref }}
-          build-args: ${{ inputs.build_args }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ inputs.source-sha }}
+          build-args: |
+            ${{ inputs.build_args }}
+            ${{ inputs.canonical_frontend && format('VITE_APP_RELEASE={0}', inputs.source-sha) || '' }}
+            ${{ inputs.canonical_frontend && 'VITE_ENABLE_WEB_VITALS=true' || '' }}
+            ${{ inputs.canonical_frontend && 'VITE_CWV_TRUSTED_RUM=true' || '' }}
+            ${{ inputs.canonical_frontend && 'VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv' || '' }}
           target: ${{ inputs.target }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -162,7 +183,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish scanned image and resolve registry digest
+      - name: Publish or reuse scanned immutable image
         id: publish
         env:
           FINAL_REF: ${{ steps.references.outputs.final_ref }}
@@ -170,17 +191,11 @@ jobs:
           SUBJECT_NAME: ${{ steps.references.outputs.subject_name }}
         run: |
           set -euo pipefail
-          local_image_id="$(docker image inspect --format '{{.Id}}' "$LOCAL_REF")"
-          [[ "$local_image_id" =~ ^sha256:[0-9a-f]{64}$ ]]
-          docker tag "$LOCAL_REF" "$FINAL_REF"
-          docker push "$FINAL_REF"
-          digest="$(docker buildx imagetools inspect "$FINAL_REF" --format '{{json .Manifest.Digest}}' | tr -d '"')"
-          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-          docker pull "$SUBJECT_NAME@$digest"
-          published_image_id="$(docker image inspect --format '{{.Id}}' "$SUBJECT_NAME@$digest")"
-          test "$published_image_id" = "$local_image_id"
-          echo "digest=$digest" >> "$GITHUB_OUTPUT"
-          echo "local_image_id=$local_image_id" >> "$GITHUB_OUTPUT"
+          python scripts/quality/publish_immutable_image.py \
+            --final-ref "$FINAL_REF" \
+            --local-ref "$LOCAL_REF" \
+            --subject-name "$SUBJECT_NAME" \
+            --github-output "$GITHUB_OUTPUT"
 
       - name: Attest build provenance for the published digest
         uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
@@ -261,6 +276,6 @@ jobs:
       - name: Upload verified image digest evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: image-digest-evidence-${{ inputs.image_name }}-${{ inputs.source-sha }}
+          name: image-digest-evidence-${{ inputs.image_name }}-${{ inputs.source-sha }}-attempt-${{ github.run_attempt }}
           path: artifacts/image-evidence/${{ inputs.image_name }}.json
           if-no-files-found: error

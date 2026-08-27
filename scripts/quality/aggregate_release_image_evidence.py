@@ -11,11 +11,17 @@ from pathlib import Path
 from typing import Any
 
 EXPECTED_IMAGE_NAMES = frozenset(
-    {"backend", "frontend", "ws-hub", "gateway", "file-processor"}
+    {"backend", "caddy", "frontend", "ws-hub", "gateway", "file-processor"}
 )
 _COMMIT_SHA = re.compile(r"^[0-9a-f]{40}$")
 _DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 _REPOSITORY = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
+
+def _positive_integer(value: int, *, name: str) -> int:
+    if isinstance(value, bool) or value <= 0:
+        raise ValueError(f"{name} must be a positive integer")
+    return value
 
 
 def _load_object(path: Path) -> dict[str, Any]:
@@ -35,8 +41,11 @@ def aggregate_image_evidence(
     expected_repository: str,
     expected_sha: str,
     certification_path: Path,
+    build_run_id: int,
+    build_run_attempt: int,
+    quality_run_id: int,
 ) -> dict[str, Any]:
-    """Validate exactly five signed image records and bind them to certification."""
+    """Validate exactly six signed image records and bind them to certification."""
     if not _REPOSITORY.fullmatch(expected_repository):
         raise ValueError("expected repository must be an owner/name pair")
     if not _COMMIT_SHA.fullmatch(expected_sha):
@@ -47,6 +56,9 @@ def aggregate_image_evidence(
         raise ValueError(f"image evidence directory does not exist: {evidence_dir}")
     if not certification_path.is_file():
         raise ValueError(f"certification record does not exist: {certification_path}")
+    _positive_integer(build_run_id, name="build run id")
+    _positive_integer(build_run_attempt, name="build run attempt")
+    _positive_integer(quality_run_id, name="quality run id")
 
     certification = _load_object(certification_path)
     if certification.get("commit_sha") != expected_sha:
@@ -109,9 +121,28 @@ def aggregate_image_evidence(
     if seen_names != EXPECTED_IMAGE_NAMES:
         raise ValueError("release evidence does not match the exact image inventory")
     return {
-        "schema_version": 1,
+        "schema_version": 2,
+        "repository": expected_repository,
         "source_sha": expected_sha,
+        "source_ref": "refs/heads/main",
+        "builder": {
+            "workflow_path": ".github/workflows/build-release-images.yml",
+            "workflow_ref": (
+                f"{expected_repository}/.github/workflows/"
+                "build-release-images.yml@refs/heads/main"
+            ),
+            "event": "workflow_dispatch",
+            "run_id": build_run_id,
+            "run_attempt": build_run_attempt,
+        },
+        "quality_run_id": quality_run_id,
         "certification_sha256": _sha256(certification_path),
+        "frontend_build_contract": {
+            "VITE_APP_RELEASE": expected_sha,
+            "VITE_ENABLE_WEB_VITALS": "true",
+            "VITE_CWV_TRUSTED_RUM": "true",
+            "VITE_WEB_VITALS_ENDPOINT": "/api/v1/cwv",
+        },
         "images": sorted(images, key=lambda item: item["image_name"]),
     }
 
@@ -122,6 +153,9 @@ def main() -> int:
     parser.add_argument("--repository", required=True)
     parser.add_argument("--source-sha", required=True)
     parser.add_argument("--certification", type=Path, required=True)
+    parser.add_argument("--build-run-id", type=int, required=True)
+    parser.add_argument("--build-run-attempt", type=int, required=True)
+    parser.add_argument("--quality-run-id", type=int, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
@@ -130,6 +164,9 @@ def main() -> int:
             expected_repository=args.repository,
             expected_sha=args.source_sha,
             certification_path=args.certification,
+            build_run_id=args.build_run_id,
+            build_run_attempt=args.build_run_attempt,
+            quality_run_id=args.quality_run_id,
         )
     except (OSError, json.JSONDecodeError, ValueError) as error:
         parser.error(str(error))

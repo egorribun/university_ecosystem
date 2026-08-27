@@ -1,0 +1,354 @@
+name: Build Canonical Release Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      release-sha:
+        description: "Exact current protected-main commit to build"
+        required: true
+        type: string
+      quality-run-id:
+        description: "Successful main CI run that produced this SHA's quality evidence"
+        required: true
+        type: string
+
+permissions: read-all
+
+# There is one canonical producer for all promotable image sets. Serializing the
+# producer also prevents two different source SHAs from racing registry writes.
+concurrency:
+  group: canonical-release-images-main
+  cancel-in-progress: false
+
+jobs:
+  certify:
+    name: Certify canonical image source
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout certified source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ inputs.release-sha }}
+
+      - name: Setup release quality runtime
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install locked certification dependencies
+        run: |
+          set -euo pipefail
+          uv sync --frozen --only-group release-certification --no-install-project
+
+      - name: Verify release SHA and quality run
+        id: quality-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          QUALITY_RUN_ID: ${{ inputs.quality-run-id }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$QUALITY_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          test "$GITHUB_WORKFLOW_SHA" = "$RELEASE_SHA"
+          test "$GITHUB_SHA" = "$RELEASE_SHA"
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
+          mkdir -p artifacts/quality
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALITY_RUN_ID" \
+            > artifacts/quality/quality-run.json
+          jq --exit-status \
+            --arg sha "$RELEASE_SHA" \
+            '.head_sha == $sha and .conclusion == "success" and
+             .event == "push" and .head_branch == "main" and
+             .path == ".github/workflows/ci.yml"' \
+            artifacts/quality/quality-run.json >/dev/null
+          run_attempt="$(jq -er .run_attempt artifacts/quality/quality-run.json)"
+          [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]]
+          echo "run-attempt=$run_attempt" >> "$GITHUB_OUTPUT"
+          gh api --paginate --slurp \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$QUALITY_RUN_ID/artifacts?per_page=100" \
+            > artifacts/quality/quality-artifact-pages.json
+          python scripts/quality/validate_release_artifact_evidence.py \
+            --pages artifacts/quality/quality-artifact-pages.json \
+            --expected-name "quality-evidence-$RELEASE_SHA"
+
+      - name: Clean quality evidence destinations
+        run: |
+          set -euo pipefail
+          rm -f -- coverage.xml
+          rm -rf -- frontend/coverage artifacts/coverage
+
+      - name: Download SHA-bound quality evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: quality-evidence-${{ inputs.release-sha }}
+          run-id: ${{ inputs.quality-run-id }}
+          github-token: ${{ github.token }}
+          path: .
+
+      - name: Validate SHA-bound quality evidence
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          QUALITY_RUN_ID: ${{ inputs.quality-run-id }}
+          QUALITY_RUN_ATTEMPT: ${{ steps.quality-run.outputs.run-attempt }}
+          UV_OFFLINE: "true"
+        run: |
+          set -euo pipefail
+          test -s artifacts/coverage/quality-manifest.json
+          test -s artifacts/coverage/quality-manifest.json.sha256
+          sha256sum --check artifacts/coverage/quality-manifest.json.sha256
+          uv run --frozen --no-sync --only-group release-certification python \
+            scripts/quality/validate_quality_contract.py \
+            --schema quality/coverage-manifest.schema.json \
+            --artifact-root "$GITHUB_WORKSPACE" \
+            --mutation-registry quality/mutation-exclusions.json \
+            --manifest artifacts/coverage/quality-manifest.json \
+            --expected-commit-sha "$RELEASE_SHA" \
+            --expected-workflow-run-id "$QUALITY_RUN_ID" \
+            --expected-workflow-run-attempt "$QUALITY_RUN_ATTEMPT" \
+            --expected-workflow-event push \
+            --expected-workflow-repository "$GITHUB_REPOSITORY" \
+            --expected-workflow-ref "$GITHUB_REPOSITORY/.github/workflows/ci.yml@refs/heads/main" \
+            --expected-workflow-job coverage-policy-gate
+
+      - name: Collect SHA-bound release check evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        run: |
+          set -euo pipefail
+          gh api --paginate --slurp \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/$GITHUB_REPOSITORY/commits/$RELEASE_SHA/check-runs?per_page=100&filter=latest" \
+            > artifacts/quality/check-run-pages.json
+          python scripts/quality/collect_release_check_evidence.py \
+            --pages artifacts/quality/check-run-pages.json \
+            --policy quality/release-required-checks.json \
+            --event push_main \
+            --repository "$GITHUB_REPOSITORY" \
+            --commit-sha "$RELEASE_SHA" \
+            --output artifacts/quality/check-runs.json
+
+      - name: Generate quality certification record
+        env:
+          QUALITY_CERTIFICATION_KEY: ${{ secrets.QUALITY_CERTIFICATION_KEY }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          UV_OFFLINE: "true"
+        run: |
+          set -euo pipefail
+          test -n "$QUALITY_CERTIFICATION_KEY" || {
+            echo "::error::QUALITY_CERTIFICATION_KEY is required";
+            exit 1;
+          }
+          uv run --frozen --no-sync --only-group release-certification python \
+            scripts/quality/generate_certification.py \
+            --commit-sha "$RELEASE_SHA" \
+            --contract quality/quality-contract.json \
+            --checks artifacts/quality/check-runs.json \
+            --check-policy quality/release-required-checks.json \
+            --check-event push_main \
+            --report-dir artifacts/coverage \
+            --output artifacts/quality/certification.json \
+            --limitation "This record certifies the source of the canonical six-image release set."
+
+      - name: Verify signed certification
+        env:
+          QUALITY_CERTIFICATION_KEY: ${{ secrets.QUALITY_CERTIFICATION_KEY }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          UV_OFFLINE: "true"
+        run: |
+          set -euo pipefail
+          uv run --frozen --no-sync --only-group release-certification python \
+            -m scripts.quality.verify_certification \
+            --record artifacts/quality/certification.json \
+            --expected-commit-sha "$RELEASE_SHA"
+
+      - name: Upload quality certification
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-certification-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}
+          path: artifacts/quality/certification.json
+          if-no-files-found: error
+          retention-days: 90
+
+  build:
+    name: Build and sign canonical release image
+    needs: [certify]
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image_name: backend
+            file: backend.Dockerfile
+            context: .
+          - image_name: frontend
+            file: frontend.Dockerfile
+            context: .
+          - image_name: ws-hub
+            file: services/ws-hub/Dockerfile
+            context: .
+          - image_name: gateway
+            file: services/gateway/Dockerfile
+            context: .
+          - image_name: file-processor
+            file: services/file-processor/Dockerfile
+            context: .
+          - image_name: caddy
+            file: services/caddy/Dockerfile
+            context: services/caddy
+    uses: ./.github/workflows/reusable-build-and-sign.yml
+    with:
+      image_name: ${{ matrix.image_name }}
+      source-sha: ${{ inputs.release-sha }}
+      context: ${{ matrix.context }}
+      file: ${{ matrix.file }}
+      canonical_frontend: ${{ matrix.image_name == 'frontend' }}
+      tags: |
+        ghcr.io/${{ github.repository }}/${{ matrix.image_name }}:${{ inputs.release-sha }}
+
+  aggregate-image-provenance:
+    name: Aggregate canonical image provenance
+    needs: [certify, build]
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+      attestations: write
+      id-token: write
+    steps:
+      - name: Checkout certified source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.release-sha }}
+
+      - name: Verify aggregate source
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_WORKFLOW_SHA" = "$RELEASE_SHA"
+          test "$GITHUB_SHA" = "$RELEASE_SHA"
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+
+      - name: Download verified image digest evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          BUILD_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/image-evidence-provenance
+          gh api --paginate --slurp \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
+            > artifacts/image-evidence-provenance/artifact-pages.json
+          for image in backend caddy frontend ws-hub gateway file-processor; do
+            python scripts/quality/validate_release_artifact_evidence.py \
+              --pages artifacts/image-evidence-provenance/artifact-pages.json \
+              --expected-name "image-digest-evidence-$image-$RELEASE_SHA-attempt-$BUILD_RUN_ATTEMPT"
+          done
+
+      - name: Download exact verified image digest evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: image-digest-evidence-*-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}
+          path: artifacts/image-evidence
+          merge-multiple: true
+
+      - name: Download signed certification
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: quality-certification-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}
+          path: artifacts/quality
+
+      - name: Aggregate exact release image inventory
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          QUALITY_RUN_ID: ${{ inputs.quality-run-id }}
+          BUILD_RUN_ID: ${{ github.run_id }}
+          BUILD_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          python scripts/quality/aggregate_release_image_evidence.py \
+            --evidence-dir artifacts/image-evidence \
+            --repository "$GITHUB_REPOSITORY" \
+            --source-sha "$RELEASE_SHA" \
+            --certification artifacts/quality/certification.json \
+            --build-run-id "$BUILD_RUN_ID" \
+            --build-run-attempt "$BUILD_RUN_ATTEMPT" \
+            --quality-run-id "$QUALITY_RUN_ID" \
+            --output artifacts/release-images/release-image-manifest.json
+          (
+            cd artifacts/release-images
+            sha256sum release-image-manifest.json > release-image-manifest.json.sha256
+            sha256sum --check release-image-manifest.json.sha256
+          )
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Login to GHCR for private image verification
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Reverify every immutable image subject
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        run: |
+          set -euo pipefail
+          mapfile -t image_refs < <(jq -er '.images[].reference' artifacts/release-images/release-image-manifest.json)
+          test "${#image_refs[@]}" -eq 6
+          for image_ref in "${image_refs[@]}"; do
+            cosign verify \
+              --certificate-identity "https://github.com/${GITHUB_WORKFLOW_REF}" \
+              --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+              "$image_ref" > /dev/null
+            gh attestation verify "oci://$image_ref" \
+              --repo "$GITHUB_REPOSITORY" \
+              --source-digest "$RELEASE_SHA" \
+              --source-ref refs/heads/main \
+              --deny-self-hosted-runners \
+              --format json > /dev/null
+          done
+
+      - name: Attest canonical image digest manifest
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: artifacts/release-images/release-image-manifest.json
+
+      - name: Upload canonical image provenance
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-image-provenance-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}
+          path: |
+            artifacts/release-images/release-image-manifest.json
+            artifacts/release-images/release-image-manifest.json.sha256
+          if-no-files-found: error
+          retention-days: 90

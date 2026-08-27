@@ -141,7 +141,7 @@ def test_every_helm_path_receives_ws_digest_and_exact_source_sha() -> None:
     ):
         env = _step(step_name)["env"]
         assert env["WS_HUB_IMAGE_DIGEST"] == (
-            "${{ needs.build-ws-hub.outputs.digest }}"
+            "${{ needs.resolve-images.outputs.ws-hub-digest }}"
         )
         assert env["DEPLOY_VERSION"] == "${{ needs.prepare.outputs.version }}"
         assert env["DEPLOYMENT_URL"] == "${{ vars.DEPLOYMENT_URL }}"
@@ -197,7 +197,7 @@ def test_cancelled_unverified_release_uses_helm_rollback() -> None:
 def test_helm_rollout_verification_includes_ws_hub_digest() -> None:
     verify = _step("Verify Helm-managed rollouts")
     assert verify["env"]["WS_HUB_IMAGE_DIGEST"] == (
-        "${{ needs.build-ws-hub.outputs.digest }}"
+        "${{ needs.resolve-images.outputs.ws-hub-digest }}"
     )
     run = str(verify["run"])
     assert (

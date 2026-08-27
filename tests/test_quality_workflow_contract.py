@@ -4653,16 +4653,19 @@ def test_quality_evidence_bundle_is_hashed_after_validation_and_required() -> No
 
 
 def test_release_and_deploy_require_the_same_sha_bound_quality_bundle() -> None:
+    producer_path = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "build-release-images.yml"
+    )
     release_path = REPOSITORY_ROOT / ".github" / "workflows" / "release.yml"
     deploy_path = REPOSITORY_ROOT / ".github" / "workflows" / "deploy.yml"
-    for workflow_path in (release_path, deploy_path):
+    for workflow_path in (producer_path, deploy_path):
         workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
         dispatch = _workflow_triggers(workflow)["workflow_dispatch"]
         inputs = dispatch["inputs"]
         assert inputs["release-sha"]["required"] is True
         assert inputs["quality-run-id"]["required"] is True
         gate = workflow["jobs"][
-            "certify" if workflow_path.name == "release.yml" else "validate"
+            "certify" if workflow_path == producer_path else "validate"
         ]
         text = _run_text(gate)
         assert "quality-evidence-$RELEASE_SHA" in text
@@ -4685,6 +4688,10 @@ def test_release_and_deploy_require_the_same_sha_bound_quality_bundle() -> None:
         assert '--expected-commit-sha "$RELEASE_SHA"' in validate_run
         assert '--expected-workflow-run-id "$QUALITY_RUN_ID"' in validate_run
         assert '--expected-workflow-run-attempt "$QUALITY_RUN_ATTEMPT"' in validate_run
+
+    release = yaml.safe_load(release_path.read_text(encoding="utf-8"))
+    assert "reusable-build-and-sign.yml" not in release_path.read_text(encoding="utf-8")
+    assert release["jobs"]["publish"]["needs"] == ["resolve-images"]
 
 
 def test_release_uses_actual_image_digest_provenance_after_build() -> None:
@@ -4746,7 +4753,7 @@ def test_release_installs_checksum_pinned_trivy_before_registry_login() -> None:
     assert scan["with"]["skip-setup-trivy"] is True
 
 
-def test_release_and_deploy_build_the_validated_source_sha() -> None:
+def test_canonical_producer_builds_the_validated_source_sha() -> None:
     reusable_path = (
         REPOSITORY_ROOT / ".github" / "workflows" / "reusable-build-and-sign.yml"
     )
@@ -4757,40 +4764,88 @@ def test_release_and_deploy_build_the_validated_source_sha() -> None:
     assert checkout["with"]["ref"] == "${{ inputs.source-sha }}"
     assert checkout["with"]["persist-credentials"] is False
 
-    release = yaml.safe_load(
-        (REPOSITORY_ROOT / ".github" / "workflows" / "release.yml").read_text(
-            encoding="utf-8"
-        )
+    producer = yaml.safe_load(
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "build-release-images.yml"
+        ).read_text(encoding="utf-8")
     )
-    assert release["jobs"]["build"]["with"]["source-sha"] == (
+    assert producer["jobs"]["build"]["with"]["source-sha"] == (
         "${{ inputs.release-sha }}"
     )
 
-    deploy = yaml.safe_load(
-        (REPOSITORY_ROOT / ".github" / "workflows" / "deploy.yml").read_text(
-            encoding="utf-8"
+    for consumer_name in ("deploy.yml", "release.yml"):
+        consumer = yaml.safe_load(
+            (REPOSITORY_ROOT / ".github" / "workflows" / consumer_name).read_text(
+                encoding="utf-8"
+            )
         )
+        assert "reusable-build-and-sign.yml" not in str(consumer)
+
+
+def test_canonical_producer_matrix_uses_repository_root_docker_build_context() -> None:
+    producer = yaml.safe_load(
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "build-release-images.yml"
+        ).read_text(encoding="utf-8")
     )
-    for job_name in (
-        "build-backend",
-        "build-frontend",
-        "build-ws-hub",
-        "build-gateway",
-        "build-file-processor",
-    ):
-        assert deploy["jobs"][job_name]["with"]["source-sha"] == (
-            "${{ inputs.release-sha }}"
-        )
+    include = producer["jobs"]["build"]["strategy"]["matrix"]["include"]
+    matrix = {entry["image_name"]: entry for entry in include}
 
+    assert set(matrix) == {
+        "backend",
+        "caddy",
+        "frontend",
+        "ws-hub",
+        "gateway",
+        "file-processor",
+    }
+    # Every app Dockerfile copies repository-root inputs. In particular, each Go
+    # service copies the shared root module, generated clients and shared SPIFFE
+    # package before its own source, so a service-directory context cannot build.
+    assert {entry["context"] for name, entry in matrix.items() if name != "caddy"} == {
+        "."
+    }
+    assert matrix["caddy"] == {
+        "image_name": "caddy",
+        "file": "services/caddy/Dockerfile",
+        "context": "services/caddy",
+    }
+    assert matrix["gateway"]["file"] == "services/gateway/Dockerfile"
+    assert matrix["ws-hub"]["file"] == "services/ws-hub/Dockerfile"
+    assert matrix["file-processor"]["file"] == ("services/file-processor/Dockerfile")
 
-def test_release_build_publishes_only_the_immutable_sha_tag() -> None:
-    release = yaml.safe_load(
-        (REPOSITORY_ROOT / ".github" / "workflows" / "release.yml").read_text(
-            encoding="utf-8"
-        )
+    assert producer["jobs"]["build"]["with"]["canonical_frontend"] == (
+        "${{ matrix.image_name == 'frontend' }}"
     )
 
-    build = release["jobs"]["build"]
+    reusable = yaml.safe_load(
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "reusable-build-and-sign.yml"
+        ).read_text(encoding="utf-8")
+    )
+    build = _provenance_step(
+        reusable["jobs"]["build"], "Build local image for security scan"
+    )
+    build_args = str(build["with"]["build-args"])
+    assert "VITE_APP_RELEASE={0}" in build_args
+    assert "VITE_ENABLE_WEB_VITALS=true" in build_args
+    assert "VITE_CWV_TRUSTED_RUM=true" in build_args
+    assert "VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv" in build_args
+    labels = str(build["with"]["labels"]).splitlines()
+    assert labels == [
+        "org.opencontainers.image.source=https://github.com/${{ github.repository }}",
+        "org.opencontainers.image.revision=${{ inputs.source-sha }}",
+    ]
+
+
+def test_canonical_producer_publishes_only_the_immutable_sha_tag() -> None:
+    producer = yaml.safe_load(
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "build-release-images.yml"
+        ).read_text(encoding="utf-8")
+    )
+
+    build = producer["jobs"]["build"]
     assert build["permissions"] == {
         "contents": "read",
         "packages": "write",
@@ -4803,6 +4858,11 @@ def test_release_build_publishes_only_the_immutable_sha_tag() -> None:
     ]
     assert not any(tag.endswith(":latest") for tag in tags)
 
+    release = yaml.safe_load(
+        (REPOSITORY_ROOT / ".github" / "workflows" / "release.yml").read_text(
+            encoding="utf-8"
+        )
+    )
     publish = release["jobs"]["publish"]
     release_step = _provenance_step(publish, "Release")
     release_run = str(release_step["run"])
@@ -4823,7 +4883,7 @@ def test_release_scans_local_image_before_any_registry_publication() -> None:
     scan = _provenance_step(job, "Scan local image before registry access (Trivy)")
     sbom = _provenance_step(job, "Generate SBOM (CycloneDX)")
     login = _provenance_step(job, "Login to GHCR after local security gates")
-    publish = _provenance_step(job, "Publish scanned image and resolve registry digest")
+    publish = _provenance_step(job, "Publish or reuse scanned immutable image")
     attest = _provenance_step(job, "Attest SBOM for the built image")
     sign = _provenance_step(job, "Sign image (Keyless)")
     verify = _provenance_step(job, "Verify final signature and attestation")
@@ -4836,20 +4896,62 @@ def test_release_scans_local_image_before_any_registry_publication() -> None:
     assert steps.index(sbom) < steps.index(login)
     assert steps.index(login) < steps.index(publish) < steps.index(attest)
     assert steps.index(attest) < steps.index(sign) < steps.index(verify)
-    assert "docker push" in str(publish["run"])
-    assert "published_image_id" in str(publish["run"])
+    publish_run = str(publish["run"])
+    assert "publish_immutable_image.py" in publish_run
+    assert '--final-ref "$FINAL_REF"' in publish_run
+    assert '--local-ref "$LOCAL_REF"' in publish_run
+    assert '--subject-name "$SUBJECT_NAME"' in publish_run
     assert "steps.publish.outputs.digest" in str(attest)
 
 
-def test_release_aggregates_exact_digest_inventory_before_publish() -> None:
+def test_release_keeps_global_serialization_for_immutable_tag_creation() -> None:
     release = yaml.safe_load(
         (REPOSITORY_ROOT / ".github" / "workflows" / "release.yml").read_text(
             encoding="utf-8"
         )
     )
 
-    aggregate = release["jobs"]["aggregate-image-provenance"]
+    assert release["concurrency"] == {
+        "group": "release-main",
+        "cancel-in-progress": False,
+    }
+
+
+def test_canonical_producer_aggregates_exact_digest_inventory() -> None:
+    producer = yaml.safe_load(
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "build-release-images.yml"
+        ).read_text(encoding="utf-8")
+    )
+
+    aggregate = producer["jobs"]["aggregate-image-provenance"]
     assert aggregate["needs"] == ["certify", "build"]
+    aggregate_inventory = _provenance_step(
+        aggregate, "Aggregate exact release image inventory"
+    )
+    install_cosign = _provenance_step(aggregate, "Install cosign")
+    registry_login = _provenance_step(
+        aggregate, "Login to GHCR for private image verification"
+    )
+    reverify = _provenance_step(aggregate, "Reverify every immutable image subject")
+    aggregate_steps = aggregate["steps"]
+    assert aggregate_steps.index(aggregate_inventory) < aggregate_steps.index(
+        install_cosign
+    )
+    assert aggregate_steps.index(install_cosign) < aggregate_steps.index(registry_login)
+    assert aggregate_steps.index(registry_login) < aggregate_steps.index(reverify)
+    assert str(registry_login["uses"]).startswith("docker/login-action@")
+    assert registry_login["with"] == {
+        "registry": "ghcr.io",
+        "username": "${{ github.actor }}",
+        "password": "${{ github.token }}",
+    }
+    steps_after_login = aggregate_steps[aggregate_steps.index(registry_login) + 1 :]
+    assert [step["name"] for step in steps_after_login] == [
+        "Reverify every immutable image subject",
+        "Attest canonical image digest manifest",
+        "Upload canonical image provenance",
+    ]
     aggregate_text = _run_text(aggregate)
     assert "aggregate_release_image_evidence.py" in aggregate_text
     assert "cosign verify" in aggregate_text
@@ -4862,12 +4964,17 @@ def test_release_aggregates_exact_digest_inventory_before_publish() -> None:
     assert any(
         str(step.get("uses", "")).startswith("actions/upload-artifact@")
         and step.get("with", {}).get("name")
-        == "release-image-provenance-${{ inputs.release-sha }}"
+        == "release-image-provenance-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}"
         for step in aggregate["steps"]
     )
 
+    release = yaml.safe_load(
+        (REPOSITORY_ROOT / ".github" / "workflows" / "release.yml").read_text(
+            encoding="utf-8"
+        )
+    )
     publish = release["jobs"]["publish"]
-    assert publish["needs"] == ["certify", "aggregate-image-provenance"]
+    assert publish["needs"] == ["resolve-images"]
     publish_text = _run_text(publish)
     assert "release-image-manifest.json.sha256" in publish_text
     assert "gh attestation verify" in publish_text
