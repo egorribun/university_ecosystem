@@ -19,7 +19,7 @@ interface AppProvidersProps {
 
 function ProvidersInner({ children }: AppProvidersProps) {
   return (
-    <RxDBProvider>
+    <RxDBProvider autoInitialize={false}>
       <LiveRegionProvider>
         <AppShellProvider>
           <AuthProvider>

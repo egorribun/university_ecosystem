@@ -36,13 +36,28 @@ function captureInitializationTimer() {
 }
 
 describe("RxDBContext closure", () => {
+  it("does not schedule offline initialization when explicitly opted out", () => {
+    const { setTimeoutSpy, requestIdleSpy } = captureInitializationTimer()
+
+    render(
+      <RxDBProvider autoInitialize={false}>
+        <Consumer />
+      </RxDBProvider>
+    )
+
+    expect(screen.getByTestId("db-state")).toHaveTextContent("empty")
+    expect(setTimeoutSpy).not.toHaveBeenCalled()
+    expect(requestIdleSpy).not.toHaveBeenCalled()
+    expect(mockGetDatabase).not.toHaveBeenCalled()
+  })
+
   it("defers the offline database behind a deterministic ten-second timer", async () => {
     const database = { schedule: {} }
     mockGetDatabase.mockResolvedValue(database)
     const { setTimeoutSpy, requestIdleSpy, timerCallback } = captureInitializationTimer()
 
     render(
-      <RxDBProvider>
+      <RxDBProvider autoInitialize>
         <Consumer />
       </RxDBProvider>
     )

@@ -49,7 +49,17 @@ vi.mock("@/components/ui/GlobalHapticsListener", () => ({
   GlobalHapticsListener: () => <span data-testid="global-haptics" />,
 }))
 vi.mock("@/db/RxDBContext", () => ({
-  RxDBProvider: provider("rxdb"),
+  RxDBProvider: ({
+    children,
+    autoInitialize,
+  }: {
+    children?: ReactNode
+    autoInitialize?: boolean
+  }) => (
+    <div data-provider="rxdb" data-auto-initialize={String(autoInitialize)}>
+      {children}
+    </div>
+  ),
 }))
 
 const loadProviders = async (lhci: string) => {
@@ -87,6 +97,10 @@ describe("AppProviders closure", () => {
     ]) {
       expect(document.querySelector(`[data-provider="${name}"]`)).toBeInTheDocument()
     }
+    expect(document.querySelector('[data-provider="rxdb"]')).toHaveAttribute(
+      "data-auto-initialize",
+      "false"
+    )
     await waitFor(() => expect(window.__APP_HYDRATED).toBe(true))
   })
 
@@ -101,6 +115,10 @@ describe("AppProviders closure", () => {
 
     expect(screen.getByText("lhci child")).toBeInTheDocument()
     expect(screen.getByTestId("motion-config")).toHaveAttribute("data-reduced-motion", "always")
+    expect(document.querySelector('[data-provider="rxdb"]')).toHaveAttribute(
+      "data-auto-initialize",
+      "false"
+    )
     await waitFor(() => expect(window.__APP_HYDRATED).toBe(true))
   })
 

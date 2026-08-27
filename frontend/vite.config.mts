@@ -457,9 +457,9 @@ export default defineConfig(({ mode }) => {
             if (id.includes("node_modules/axios")) return "vendor-http"
             // Keep the offline database implementation out of the application
             // entry chunk. RxDB pulls Dexie, AJV and its query/storage helpers
-            // into the provider tree even though database access is lazy at
-            // runtime. The provider still loads this vendor chunk eagerly when
-            // the app starts; the split is only for the entry-size budget.
+            // into a feature-loaded vendor chunk; the application shell opts
+            // out of background initialization and offline-capable hooks load
+            // it on demand.
             if (id.includes("node_modules/rxdb") || id.includes("node_modules/dexie"))
               return "vendor-rxdb"
             // focus-trap is used by modal components but is imported through a
