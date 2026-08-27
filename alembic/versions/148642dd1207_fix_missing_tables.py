@@ -355,6 +355,13 @@ def _convert_captured_fk_columns(target_type: str) -> None:
     exclusively from ``pg_catalog`` and are quoted by ``format``.  Conversion
     is intentionally performed inside the migration transaction after a
     fail-closed preflight, so a bad value leaves the schema untouched.
+
+    The ``ALTER COLUMN`` is catalog-driven deliberately: callers can add a
+    foreign key from any schema/table, so a static identifier list would either
+    lose constraints or force a destructive abort.  ``target_type`` is
+    allow-listed above, identifiers are emitted through PostgreSQL's ``%I``
+    formatter, and the preflight makes the conversion deterministic before the
+    transactional DDL runs; this is not a lint bypass or user-controlled SQL.
     """
 
     if target_type not in {"INTEGER", "VARCHAR(20)"}:
