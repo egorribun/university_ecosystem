@@ -206,13 +206,22 @@ def upgrade() -> None:
     bind = op.get_bind()
     is_postgres = bind.dialect.name == "postgresql"
     if is_postgres:
-        bind.exec_driver_sql("SET LOCAL lock_timeout = '10s'")
-        bind.execute(
-            sa.text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": _LOCK_ID}
+        # Route session/lock guards through Alembic's operation API.  The
+        # offline SQL renderer exposes an ``execute``-only MockConnection,
+        # while a live PostgreSQL connection executes the same statements
+        # normally; using ``exec_driver_sql`` here made ``--sql`` fail before
+        # the migration body could be rendered.
+        op.execute(sa.text("SET LOCAL lock_timeout = '10s'"))
+        op.execute(
+            sa.text("SELECT pg_advisory_xact_lock(:lock_id)").bindparams(
+                sa.bindparam("lock_id", value=_LOCK_ID, literal_execute=True)
+            )
         )
-        bind.exec_driver_sql(
-            "LOCK TABLE users, active_sessions, trusted_devices, mfa_challenges "
-            "IN SHARE ROW EXCLUSIVE MODE"
+        op.execute(
+            sa.text(
+                "LOCK TABLE users, active_sessions, trusted_devices, mfa_challenges "
+                "IN SHARE ROW EXCLUSIVE MODE"
+            )
         )
     _upgrade_body(bind)
 

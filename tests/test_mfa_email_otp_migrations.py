@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import importlib.util
+import os
+import subprocess
+import sys
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
@@ -164,6 +167,37 @@ def test_expansion_adds_nullable_totp_timecode_for_online_compatibility() -> Non
     ).read_text(encoding="utf-8")
     assert '"mfa_totp_enrollments"' in source
     assert 'sa.Column("last_used_timecode", sa.BigInteger(), nullable=True)' in source
+
+
+def test_expansion_renders_postgresql_offline_sql_with_lock_guards() -> None:
+    """Alembic's offline MockConnection must render, not execute, lock guards."""
+
+    env = os.environ.copy()
+    env["DATABASE_URL"] = "postgresql+asyncpg://migration@localhost:5432/test"
+    result = subprocess.run(  # noqa: S603 - fixed local Alembic module invocation
+        [
+            sys.executable,
+            "-m",
+            "alembic",
+            "upgrade",
+            "202607280001:202608250001",
+            "--sql",
+        ],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    sql = result.stdout.upper()
+    assert "SET LOCAL LOCK_TIMEOUT = '10S';" in sql
+    assert "SELECT PG_ADVISORY_XACT_LOCK(824250001);" in sql
+    assert (
+        "LOCK TABLE USERS, ACTIVE_SESSIONS, TRUSTED_DEVICES, MFA_CHALLENGES "
+        "IN SHARE ROW EXCLUSIVE MODE;"
+    ) in sql
 
 
 def test_contract_coerces_postgres_user_ids_to_uuid() -> None:
