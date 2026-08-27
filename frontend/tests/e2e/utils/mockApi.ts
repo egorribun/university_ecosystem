@@ -384,10 +384,15 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
 
   // SSR runs before browser init scripts, so mirror the mocked auth state with
   // a test-only cookie for protected direct navigations.
+  // Keep the SSR marker scoped to the actual preview origin. CI supplies a
+  // complete PLAYWRIGHT_BASE_URL, while local focused runs commonly override
+  // only PLAYWRIGHT_PORT/PLAYWRIGHT_HOST; falling back to a hard-coded 5173
+  // then leaves the marker on the wrong port and makes WebKit appear logged
+  // out during the initial SSR redirect.
   const e2eBaseUrl =
     process.env["PLAYWRIGHT_BASE_URL"] ||
     process.env["URL_STATE_E2E_BASE"] ||
-    "http://127.0.0.1:5173"
+    `http://${process.env["PLAYWRIGHT_HOST"] || "127.0.0.1"}:${process.env["PLAYWRIGHT_PORT"] || "5173"}`
   const e2eOrigin = new URL(e2eBaseUrl).origin
   await page.context().addCookies([
     ...(authenticated ? [{ name: SSR_E2E_AUTH_COOKIE, value: "mock", url: e2eOrigin }] : []),
