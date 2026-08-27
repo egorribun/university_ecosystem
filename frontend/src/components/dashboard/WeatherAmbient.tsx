@@ -44,7 +44,10 @@ export function WeatherAmbient({ animation, disabled = false }: WeatherAmbientPr
   if (count === 0) return null
 
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden z-[1]" aria-hidden="true">
+    <div
+      className="weather-ambient pointer-events-none absolute inset-0 overflow-hidden z-[1]"
+      aria-hidden="true"
+    >
       {particles.map((p) => (
         <span
           key={p.id}

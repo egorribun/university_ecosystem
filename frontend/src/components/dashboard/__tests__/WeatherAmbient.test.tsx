@@ -19,6 +19,7 @@ describe("WeatherAmbient", () => {
     const particles = Array.from(container.querySelectorAll("span"))
 
     expect(particles).toHaveLength(count)
+    expect(container.firstElementChild).toHaveClass("weather-ambient")
     expect(particles[0]).toHaveClass("bg-sky-300/40")
     expect(particles[0]).toHaveStyle({ animationName: "weather-rain-fall", width: "1px" })
   })
