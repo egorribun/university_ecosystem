@@ -12,9 +12,9 @@ from sqlalchemy.engine.base import Connection as SyncConnection
 
 from alembic import context
 from alembic.config import Config
-from scripts.quality.alembic_schema_drift import filter_check_backed_nullable_diffs
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from scripts.quality.alembic_schema_drift import filter_check_backed_nullable_diffs
 from app.core.config import Settings
 import app.models as models
 
