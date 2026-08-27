@@ -66,34 +66,8 @@ pub fn scrypt_derive(
     fill_scrypt_output(password, salt, &params, &mut res).map(|_| res)
 }
 
+// Keep private-helper coverage in a dedicated test-only module. Its fixtures
+// are generated at runtime, so the production crypto implementation contains
+// no hard-coded key, password, salt, or digest material.
 #[cfg(test)]
-mod tests {
-    use super::{fill_scrypt_output, hmac_sha256_sign, scrypt_derive, ScryptParams};
-
-    #[test]
-    fn hmac_sha256_sign_is_deterministic_and_hex_encoded() {
-        let first = hmac_sha256_sign("key", "message");
-        let second = hmac_sha256_sign("key", "message");
-
-        assert_eq!(first, second);
-        assert_eq!(first.len(), 64);
-        assert!(first.chars().all(|character| character.is_ascii_hexdigit()));
-    }
-
-    #[test]
-    fn scrypt_rejects_zero_cost_without_panicking() {
-        assert!(scrypt_derive(b"password", b"salt", 0, 8, 1, 64).is_err());
-    }
-
-    #[test]
-    fn scrypt_rejects_non_power_of_two_cost() {
-        assert!(scrypt_derive(b"password", b"salt", 3, 8, 1, 64).is_err());
-    }
-
-    #[test]
-    fn scrypt_maps_output_length_error() {
-        let params = ScryptParams::recommended();
-        let mut empty_output = [];
-        assert!(fill_scrypt_output(b"password", b"salt", &params, &mut empty_output).is_err());
-    }
-}
+mod tests;
