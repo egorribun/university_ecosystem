@@ -2,13 +2,14 @@ import { expect, test } from "./test"
 import { promises as fs } from "node:fs"
 
 import { useMockApi } from "./utils/mockApi"
+import { gotoWithTransientRetry } from "./utils/navigation"
 
 test.describe("Schedule export", () => {
   test("downloads the rendered schedule as a PNG file", async ({ page }) => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
-    await page.goto("/schedule")
+    await gotoWithTransientRetry(page, "/schedule")
     await expect(page).toHaveURL(/\/schedule$/)
     await page.getByRole("tab", { name: /Сб|Sat/i }).click()
     await expect(page.getByText(/Математика|Mathematics/i).first()).toBeVisible()
