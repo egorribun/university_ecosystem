@@ -273,7 +273,6 @@ function RootShell({ children }: { children: React.ReactNode }) {
         >
           LHCI RENDER START
         </div>
-        <BrandBootLoader />
         {/*
           W156 SW3 polish — `className="ready"` rendered server-side via JSX
           so the opacity-1 state is in the SSR HTML from the start. Pre-W156
@@ -291,6 +290,14 @@ function RootShell({ children }: { children: React.ReactNode }) {
           main.tsx still hides the lhci-marker on LHCI builds (separate concern).
         */}
         <div id="root" className="ready">
+          {/*
+            Keep the boot loader in the same React-owned boundary as the
+            client tree.  Rendering it as a sibling of `#root` made
+            `hydrateRoot(document, ...)` reconcile a node that the client
+            never rendered, which produced `removeChild` errors in Chromium
+            and WebKit during the public-route smoke.
+          */}
+          <BrandBootLoader />
           {children}
         </div>
         <noscript>

@@ -79,13 +79,14 @@ describe("__root.tsx components", () => {
       const loader = document.querySelector("[data-brand-boot-loader]")
       const root = document.getElementById("root")
       expect(loader).toBeInTheDocument()
+      expect(document.querySelectorAll("[data-brand-boot-loader]")).toHaveLength(1)
       expect(root).toBeInTheDocument()
 
       if (!loader || !root) {
-        throw new Error("Root shell must render the brand loader before the application root")
+        throw new Error("Root shell must render the brand loader inside the application root")
       }
 
-      expect(loader.compareDocumentPosition(root) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+      expect(root.contains(loader)).toBe(true)
       expect(document.head.textContent).toContain("@keyframes brand-boot-loader-mark-exit")
       expect(document.head.textContent).not.toContain("@keyframes status-exit")
     })
