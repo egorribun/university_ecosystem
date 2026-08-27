@@ -403,9 +403,15 @@ describe("Profile behavior", () => {
       })
     )
     expect(apiState.put.mock.calls[0]?.[1]).not.toHaveProperty("email")
-    expect(authState.setUser).toHaveBeenCalledWith(updatedUser)
-    expect(navigate).toHaveBeenCalledWith({ to: "/profile", replace: true })
-    expect(screen.getByTestId("snackbar")).toHaveTextContent("profile:snackbar.profileUpdated")
+
+    // The API promise resolving and React committing the success state are
+    // separate turns.  Waiting only for the mock call races the success
+    // snackbar/edit-mode transition under a busy CI worker.
+    await waitFor(() => {
+      expect(authState.setUser).toHaveBeenCalledWith(updatedUser)
+      expect(navigate).toHaveBeenCalledWith({ to: "/profile", replace: true })
+      expect(screen.getByTestId("snackbar")).toHaveTextContent("profile:snackbar.profileUpdated")
+    })
   })
 
   it("renders a server string validation error while leaving edit mode active", async () => {

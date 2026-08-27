@@ -110,7 +110,9 @@ describe("AdminNotifications page", () => {
     await waitFor(() => expect(screen.queryByText("Timeout")).not.toBeInTheDocument())
     expect(screen.getByText("Total jobs: 1")).toBeInTheDocument()
 
-    const secondJobCheckbox = await screen.findByRole("checkbox", { name: /Select job uuid-2/i })
+    const secondJobCheckbox = await screen.findByRole("checkbox", {
+      name: /Select job 550e8400-e29b-41d4-a716-446655440002/i,
+    })
     await userEvent.click(secondJobCheckbox)
 
     const purgeButton = await screen.findByRole("button", { name: /Delete selected/i })

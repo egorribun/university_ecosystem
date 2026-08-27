@@ -320,7 +320,7 @@ const createAdminDeadLetterJobs = (): AdminDeadLetterJob[] => [
     next_retry_at: null,
   },
   {
-    id: "uuid-2",
+    id: "550e8400-e29b-41d4-a716-446655440002",
     kind: "news",
     record_id: "record-2002",
     locale: "en",
@@ -334,18 +334,19 @@ const createAdminDeadLetterJobs = (): AdminDeadLetterJob[] => [
 
 const adminDeadLetterJobs: AdminDeadLetterJob[] = createAdminDeadLetterJobs()
 
-const applyAdminQueueMutation = (jobIds: unknown) => {
-  const ids = Array.isArray(jobIds) ? new Set(jobIds.map((id) => String(id))) : new Set<string>()
-  let removed = 0
+const applyAdminQueueMutation = (jobIds: unknown): string[] => {
+  const ids = Array.isArray(jobIds)
+    ? new Set(jobIds.filter((id): id is string => typeof id === "string"))
+    : new Set<string>()
+  const affectedIds = adminDeadLetterJobs.filter((job) => ids.has(job.id)).map((job) => job.id)
   for (let index = adminDeadLetterJobs.length - 1; index >= 0; index -= 1) {
     const job = adminDeadLetterJobs[index]
     if (!job) continue
     if (ids.has(job.id)) {
       adminDeadLetterJobs.splice(index, 1)
-      removed += 1
     }
   }
-  return removed
+  return affectedIds
 }
 
 export const resetAdminDeadLetterJobs = () => {
@@ -631,8 +632,12 @@ export const handlers = [
       payload = null
     }
     const jobIds = (payload as { job_ids?: unknown } | null)?.job_ids
-    const removed = applyAdminQueueMutation(jobIds)
-    return HttpResponse.json({ retried: removed })
+    const affectedIds = applyAdminQueueMutation(jobIds)
+    return HttpResponse.json({
+      success: true,
+      affected_count: affectedIds.length,
+      job_ids: affectedIds,
+    })
   }),
   http.post("*/notifications/admin/dead-letter/purge", async ({ request }) => {
     let payload: unknown
@@ -642,8 +647,12 @@ export const handlers = [
       payload = null
     }
     const jobIds = (payload as { job_ids?: unknown } | null)?.job_ids
-    const removed = applyAdminQueueMutation(jobIds)
-    return HttpResponse.json({ deleted: removed })
+    const affectedIds = applyAdminQueueMutation(jobIds)
+    return HttpResponse.json({
+      success: true,
+      affected_count: affectedIds.length,
+      job_ids: affectedIds,
+    })
   }),
   http.post("*/auth/register", async ({ request }) => {
     const body = (await request.json()) as RegisterPayload
