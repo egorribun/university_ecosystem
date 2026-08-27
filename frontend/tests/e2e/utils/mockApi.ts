@@ -318,22 +318,59 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
     deadLetterJobs: createDeadLetterJobs(),
   }
 
-  const preserveServiceWorker = options.serviceWorker === "preserve"
+  const requestedPreserveServiceWorker = options.serviceWorker === "preserve"
+  const browserName = page.context().browser()?.browserType().name()
+  // Playwright's page/context routing does not see requests fulfilled by a
+  // service worker. Keep the real worker for Chromium, where the offline
+  // navigation contract is exercised, but provide an activated deterministic
+  // stand-in for Firefox/WebKit so API mocks remain the single request owner.
+  // Those engines still exercise offline/online UI state without a browser
+  // implementation detail turning the initial /users/me request into a hang.
+  const preserveServiceWorker =
+    requestedPreserveServiceWorker && (browserName === undefined || browserName === "chromium")
+  const emulateServiceWorker = requestedPreserveServiceWorker && !preserveServiceWorker
 
   await page.addInitScript(
-    ({ preserveServiceWorker, authenticated }) => {
+    ({ preserveServiceWorker, emulateServiceWorker, authenticated }) => {
       try {
-        if (!preserveServiceWorker) {
+        // Some specs install a richer service-worker double before this
+        // fixture (for example push-notification delivery). Keep that double
+        // intact on non-Chromium engines; replacing it would disconnect the
+        // test-controlled message bus while still leaving the browser's
+        // native worker requests unrouteable.
+        const existingServiceWorker = navigator.serviceWorker as
+          (ServiceWorkerContainer & { __e2eMockServiceWorker?: boolean }) | undefined
+        const preserveInjectedMock =
+          emulateServiceWorker && existingServiceWorker?.__e2eMockServiceWorker === true
+
+        if (!preserveServiceWorker && !preserveInjectedMock) {
           // Most API-mock specs disable Service Workers so browser-level routes
           // stay the single deterministic request owner. PWA/push specs opt in
-          // to preserving either the real worker or their hermetic SW double.
+          // to preserving the real worker on Chromium or the activated stub on
+          // engines whose service-worker fetches bypass Playwright routing.
+          const controller = emulateServiceWorker
+            ? { state: "activated", postMessage: () => {} }
+            : undefined
+          const registration = emulateServiceWorker
+            ? {
+                active: controller,
+                installing: null,
+                waiting: null,
+                scope: location.origin,
+                update: () => Promise.resolve(),
+                unregister: () => Promise.resolve(true),
+              }
+            : undefined
           Object.defineProperty(navigator, "serviceWorker", {
             get: () => ({
-              register: () => Promise.resolve({ unregister: () => Promise.resolve(true) }),
-              getRegistrations: () => Promise.resolve([]),
+              controller,
+              register: () =>
+                Promise.resolve(registration ?? { unregister: () => Promise.resolve(true) }),
+              getRegistration: () => Promise.resolve(registration),
+              getRegistrations: () => Promise.resolve(registration ? [registration] : []),
               addEventListener: () => {},
               removeEventListener: () => {},
-              ready: new Promise(() => {}),
+              ready: emulateServiceWorker ? Promise.resolve(registration) : new Promise(() => {}),
             }),
           })
         }
@@ -379,7 +416,7 @@ export async function useMockApi(page: Page, options: MockApiOptions = {}) {
         // ignore
       }
     },
-    { preserveServiceWorker, authenticated }
+    { preserveServiceWorker, emulateServiceWorker, authenticated }
   )
 
   // SSR runs before browser init scripts, so mirror the mocked auth state with

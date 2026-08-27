@@ -77,6 +77,14 @@ async function setupMockServiceWorker(page: Page) {
       startMessages: () => {},
     } as unknown as ServiceWorkerContainer
 
+    // Let the shared API fixture distinguish this intentional test double
+    // from a browser-native service-worker container on Firefox/WebKit.
+    Object.defineProperty(serviceWorkerContainer, "__e2eMockServiceWorker", {
+      configurable: false,
+      enumerable: false,
+      value: true,
+    })
+
     Object.defineProperty(navigator, "serviceWorker", {
       configurable: true,
       value: serviceWorkerContainer,
