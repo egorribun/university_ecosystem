@@ -1,5 +1,6 @@
 User-agent: *
 Disallow: /api/
+Disallow: /news
 Disallow: /admin/
 Disallow: /dashboard
 Disallow: /events

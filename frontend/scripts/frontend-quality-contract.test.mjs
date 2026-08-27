@@ -48,6 +48,11 @@ test("Stryker mutation scope is derived from the complete frontend coverage deno
       strykerConfig.concurrency <= 4,
     "Mutation concurrency must remain explicitly bounded"
   )
+  assert.equal(
+    strykerConfig.dryRunTimeoutMinutes,
+    15,
+    "Stryker's initial test run deadline must be explicit and long enough for the full suite"
+  )
 })
 
 test("the mutation command always validates the fail-closed source inventory", async () => {
@@ -75,6 +80,30 @@ test("canonical test:ci executes the frontend quality contract tests", async () 
   assert.match(command, /scripts\/server-readiness\.test\.mjs/u)
   assert.match(command, /scripts\/visual-smoke-auth\.test\.mjs/u)
   assert.match(command, /scripts\/visual-smoke-contract\.test\.mjs/u)
+  assert.match(command, /scripts\/lhci-route-policy\.test\.mjs/u)
+})
+
+test("Lighthouse configuration keeps SEO route-aware and invokes the privacy policy", async () => {
+  const rootConfig = await readFile(new URL("../.lighthouserc.js", frontendRoot), "utf8")
+  const runner = await readFile(new URL("./scripts/run-lhci.mjs", frontendRoot), "utf8")
+  const policyConfig = await readFile(
+    new URL("./scripts/lhci-route-policy-config.cjs", frontendRoot),
+    "utf8"
+  )
+
+  assert.match(rootConfig, /assertMatrix/u)
+  assert.match(rootConfig, /publicSeoUrlPattern/u)
+  assert.doesNotMatch(
+    rootConfig,
+    /"categories:seo":\s*\["error",\s*\{\s*minScore:\s*0\.9/u,
+    "Protected routes must not inherit a global SEO assertion"
+  )
+  assert.match(runner, /assertLhciRoutePolicy/u)
+  assert.match(runner, /expectedPaths/u)
+  assert.match(runner, /fetchRemoteRobots/u)
+  assert.match(runner, /redirect: "error"/u)
+  assert.match(policyConfig, /protectedRoutePrefixes/u)
+  assert.match(policyConfig, /defaultLhciPaths/u)
 })
 
 test("dependency install scripts use a reviewed fail-closed allow-list", async () => {

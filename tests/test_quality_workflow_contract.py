@@ -1374,7 +1374,7 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
         for step in job["steps"]
         if step.get("name") == "Run incremental mutmut (blocking, stats-derived budget)"
     )
-    assert job["strategy"]["matrix"]["shard"] == list(range(1, 65))
+    assert job["strategy"]["matrix"]["shard"] == list(range(1, 129))
     assert job["timeout-minutes"] == 360
     assert "scripts/mutmut_shard_budget.py" in run_step["run"]
     assert "--max-timeout-seconds 20000" in run_step["run"]
@@ -1399,7 +1399,7 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
     assert "scripts/plan_mutmut_shards.py" in job_text
     assert "--changed-files /tmp/changed_py.txt" in job_text
     assert "--changed-diff /tmp/changed_py.diff" in job_text
-    assert "--num-shards 64" in job_text
+    assert "--num-shards 128" in job_text
     assert '"${MUTANT_NAMES[@]}"' in job_text
     assert "awk -v shard" not in job_text
     assert "grep '^app/core/tenant\\.py$'" not in job_text
@@ -1523,13 +1523,14 @@ def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> Non
         assert '--manual-base-sha "$MANUAL_BASE_SHA"' in scope_script
 
     manual_mutation_job = jobs["manual-mutation-tests"]
-    assert manual_mutation_job["strategy"]["matrix"]["shard"] == list(range(1, 65))
+    assert manual_mutation_job["strategy"]["matrix"]["shard"] == list(range(1, 129))
     assert manual_mutation_job["timeout-minutes"] == 360
     manual_mutation_text = "\n".join(
         step.get("run", "")
         for step in manual_mutation_job["steps"]
         if isinstance(step, dict)
     )
+    assert "--num-shards 128" in manual_mutation_text
     assert "scripts/mutmut_shard_budget.py" in manual_mutation_text
     assert "--max-timeout-seconds 20000" in manual_mutation_text
     assert '--prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"' in (
@@ -2269,7 +2270,7 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         if step.get("name") == "Merge and gate full mutation evidence"
     )
     assert "scripts/merge_mutmut_cicd_stats.py" in export_step["run"]
-    assert "--expected-shards 64" in export_step["run"]
+    assert "--expected-shards 128" in export_step["run"]
     assert "scripts/check_mutation_score.py --min-score 100" in export_step["run"]
     assert "mutmut export-cicd-stats" not in export_step["run"]
     assert jobs["go-integration"]["strategy"]["matrix"]["service-directory"] == [
@@ -2521,7 +2522,7 @@ def test_full_mutation_gate_uses_the_fail_closed_exporter() -> None:
     export_index = mutation_text.index("scripts/merge_mutmut_cicd_stats.py")
     gate_index = mutation_text.index("scripts/check_mutation_score.py")
     assert export_index < gate_index
-    assert "--expected-shards 64" in mutation_text
+    assert "--expected-shards 128" in mutation_text
     assert "uv run mutmut export-cicd-stats" not in mutation_text
     assert "test -s mutants/mutmut-cicd-stats.json" in mutation_text
 
@@ -2542,7 +2543,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert plan_job["needs"] == "mutation-tests-full-stats"
     assert nightly_workflow["jobs"]["mutation-tests-full"]["strategy"]["matrix"][
         "shard"
-    ] == list(range(1, 65))
+    ] == list(range(1, 129))
     assert stats_job["strategy"]["matrix"]["stats_shard"] == list(range(8))
     stats_steps = stats_job["steps"]
     stats_step = next(
@@ -2593,10 +2594,10 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert "scripts/merge_mutmut_stats.py" in merge_step["run"]
     assert "--input-root mutmut-stats" in merge_step["run"]
     assert "--output-directory mutants/mutmut-full-plan" in preflight_step["run"]
-    assert "for shard in $(seq 1 64)" in preflight_step["run"]
+    assert "for shard in $(seq 1 128)" in preflight_step["run"]
     assert "scripts/mutmut_shard_budget.py" in preflight_step["run"]
     assert "scripts/plan_mutmut_shards.py" in run_script
-    assert "--num-shards 64" in run_script
+    assert "--num-shards 128" in run_script
     assert "cmp --silent" in run_script
     assert "scripts/run_mutmut_with_stats.py --max-children 8" in run_script
     assert "scripts/run_mutmut_with_stats.py --max-children 2" in run_script
@@ -2608,7 +2609,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
         step.get("run", "") for step in aggregate_job["steps"] if isinstance(step, dict)
     )
     assert "scripts/merge_mutmut_cicd_stats.py" in aggregate_text
-    assert "--expected-shards 64" in aggregate_text
+    assert "--expected-shards 128" in aggregate_text
 
 
 def test_pr_quality_gates_enforce_contract_policy_values() -> None:
@@ -2690,6 +2691,7 @@ def test_lighthouse_config_uses_supported_budget_path_and_audit() -> None:
     assert "budgetPath:" in lighthouse_config
     assert "budgetsPath:" not in lighthouse_config
     assert "budgets:" not in lighthouse_config
+    assert "assertMatrix:" in lighthouse_config
     assert '"total-blocking-time": [' in lighthouse_config
     assert (
         '"categories:performance": ["error", { minScore: 0.95 }]' in lighthouse_config
@@ -2697,8 +2699,9 @@ def test_lighthouse_config_uses_supported_budget_path_and_audit() -> None:
     assert (
         '"categories:accessibility": ["error", { minScore: 0.95 }]' in lighthouse_config
     )
-    assert '"largest-contentful-paint": [\n          "error"' in lighthouse_config
-    assert '"total-blocking-time": [\n          "error"' in lighthouse_config
+    assert re.search(r'"largest-contentful-paint":\s*\[\s*"error"', lighthouse_config)
+    assert re.search(r'"total-blocking-time":\s*\[\s*"error"', lighthouse_config)
+    assert "publicSeoUrlPattern" in lighthouse_config
     assert "INP is a field metric" in lighthouse_config
     assert "--disable-gpu" not in lighthouse_config
 
@@ -2795,6 +2798,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     mutation_condition = mutation_shards["if"]
     assert "github.event_name == 'pull_request'" in mutation_condition
     assert "workflow_dispatch" not in mutation_condition
+    assert mutation_shards["name"].endswith("/64")
     assert mutation_shards["strategy"]["fail-fast"] is False
     assert mutation_shards["strategy"]["max-parallel"] == 8
     assert mutation_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
@@ -2813,6 +2817,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
 
     mutation_replay = jobs["stryker-shard-replay"]
     assert mutation_replay["needs"] == "stryker-shards"
+    assert mutation_replay["name"].endswith("/64")
     assert mutation_replay["strategy"]["matrix"]["shard-index"] == list(range(64))
     mutation_aggregate = jobs["stryker-aggregate"]
     assert mutation_aggregate["needs"] == "stryker-shard-replay"
@@ -2838,10 +2843,12 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
 
     manual_shards = manual_workflow["jobs"]["manual-frontend-mutation-shards"]
     assert manual_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
+    assert manual_shards["name"].endswith("/64)")
     assert manual_shards["strategy"]["max-parallel"] == 8
     assert manual_shards["timeout-minutes"] == 120
     manual_replay = manual_workflow["jobs"]["manual-frontend-mutation-shard-replay"]
     assert manual_replay["needs"] == "manual-frontend-mutation-shards"
+    assert manual_replay["name"].endswith("/64)")
     manual_aggregate = manual_workflow["jobs"]["manual-frontend-mutation-aggregate"]
     assert manual_aggregate["needs"] == "manual-frontend-mutation-shard-replay"
     assert (
@@ -2850,10 +2857,12 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
 
     nightly_shards = nightly_workflow["jobs"]["frontend-mutation-shards"]
     assert nightly_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
+    assert nightly_shards["name"].endswith("/64")
     assert nightly_shards["strategy"]["max-parallel"] == 8
     assert nightly_shards["timeout-minutes"] == 120
     nightly_replay = nightly_workflow["jobs"]["frontend-mutation-shard-replay"]
     assert nightly_replay["needs"] == "frontend-mutation-shards"
+    assert nightly_replay["name"].endswith("/64")
     nightly_aggregate = nightly_workflow["jobs"]["frontend-mutation-tests-full"]
     assert nightly_aggregate["needs"] == "frontend-mutation-shard-replay"
     manual_roundtrip = manual_workflow["jobs"]["manual-frontend-mutation-roundtrip"]

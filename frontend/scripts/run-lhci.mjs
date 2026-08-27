@@ -13,6 +13,9 @@ import { spawn } from "node:child_process"
 
 import { chromium } from "playwright"
 
+import routePolicyConfig from "./lhci-route-policy-config.cjs"
+import { assertLhciRoutePolicy } from "./lhci-route-policy.mjs"
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const frontendRoot = path.resolve(__dirname, "..")
@@ -108,6 +111,43 @@ async function ensureSystemDependencies() {
   dependenciesEnsured = true
 }
 
+async function fetchRemoteRobots(previewUrl) {
+  let preview
+  try {
+    preview = new URL(previewUrl)
+  } catch {
+    throw new Error("PREVIEW_URL/LHCI_URL must be an absolute HTTP(S) URL")
+  }
+  if (preview.protocol !== "http:" && preview.protocol !== "https:") {
+    throw new Error("PREVIEW_URL/LHCI_URL must use HTTP(S)")
+  }
+
+  const robotsUrl = new URL("/robots.txt", preview)
+  let response
+  try {
+    response = await fetch(robotsUrl, {
+      redirect: "error",
+      signal: AbortSignal.timeout(10_000),
+    })
+  } catch (error) {
+    throw new Error(`Unable to fetch preview robots.txt ${robotsUrl}: ${error.message}`)
+  }
+  if (!response.ok) {
+    throw new Error(`Preview robots.txt returned HTTP ${response.status}`)
+  }
+
+  let responseUrl
+  try {
+    responseUrl = new URL(response.url)
+  } catch {
+    throw new Error("Preview robots.txt response URL is invalid")
+  }
+  if (responseUrl.origin !== preview.origin || responseUrl.pathname !== "/robots.txt") {
+    throw new Error("Preview robots.txt response crossed the tested origin boundary")
+  }
+  return response.text()
+}
+
 async function createConfig() {
   const chromePath = await ensureChromiumExecutable()
   process.env.CHROME_PATH = chromePath
@@ -122,18 +162,7 @@ async function createConfig() {
   // deferral); included in defaults so CI surface is the same as auth-bypass
   // sweep but expect those audits to fail under Lighthouse — investigate or
   // skip per Wave 120+ scope.
-  const defaultPaths = [
-    "/",
-    "/login",
-    "/dashboard",
-    "/news",
-    "/schedule",
-    "/events",
-    "/activity",
-    "/map",
-    "/messenger",
-    "/404",
-  ]
+  const defaultPaths = [...routePolicyConfig.defaultLhciPaths]
   // Wave 119 SW2 — empty string trims to "/" so callers can measure root via
   // LHCI_URLS=,schedule,404 (Windows MSYS_NO_PATHCONV bypass: leading slashes
   // in /-paths are mangled to git-bash absolute paths). Without this map,
@@ -341,112 +370,48 @@ async function createConfig() {
   return {
     ci: {
       collect,
-      // Wave 112 — thresholds per production-grade April 2026 brief.
-      // Wave 117 SW8 — flipped `categories:performance` from `warn@0.9`
-      // → `error@0.15` (ratchet floor based on Wave-117 measured medians
-      // 0.18-0.56). Wave 118 SW5 — ratcheted again to `error@0.30` after
-      // SW1-SW4 dropped CLS 86%+ on authenticated routes by addressing
-      // four content-shift culprits (footer anchor, InstallPrompt
-      // bottom-anchored variable height, EventsBackdrop %-based sizing,
-      // Dashboard hero + dash-tilt-card growing-content). Wave 119 SW3 —
-      // ratcheted Perf 0.30 → 0.40 + flipped CLS warn@0.1 → error@0.15.
-      // Wave 120 SW2 — ratcheted CLS error@0.15 → error@0.10 after fresh
-      // 3-run sweep on /, /dashboard, /events (worst CLS post-W119-SW7)
-      // showed worst median = 0.062 (/events) with variance ~0.01 across
-      // 3 runs. Plan decision tree threshold "worst ≤ 0.06" was missed
-      // by 0.002 (effectively rounding noise); paired with measured
-      // variance (0.01, NOT W119's plan-assumed 0.04 due to install-panel
-      // CLS-119-02 closure), worst-case 0.072 leaves 0.028 (28%) margin
-      // from new gate ceiling 0.10.
-      // Wave 120 SW2 3-run medians (mobile, devtools throttling):
-      //   /          0.43/CLS 0.033
-      //   /dashboard 0.44/CLS 0.033
-      //   /events    0.46/CLS 0.062
-      // Perf floor stays 0.40 (matches Wave 119 SW3 decision; min Perf
-      // here 0.43 still > 0.40 + ~0.04 variance buffer).
-      // A11y/BP/SEO already production-grade (error@0.95).
-      //
-      // Routine-e5 close-out (2026-05-04) — calibration drift discovered:
-      // gate `categories:performance error@0.40` was calibrated on dev
-      // wrapper measurements (`npm run lhci:windows`, my dev hardware
-      // running Lighthouse 13.1.0). CI Linux runner produces measurements
-      // ~0.10-0.12 lower for the same Lighthouse version + build artifact
-      // (e.g. /dashboard: dev wrapper 0.49 ↔ CI Linux 0.37). Beyond the
-      // documented W123/W124 SW4 variance band (±0.04-0.06).
-      // Verified: routine-e5 NOT the cause (0 frontend changes); routine
-      // -f4/g3 (hooks barrel + i18n keys merged in pre-routine-e5) NOT the
-      // cause either (dev wrapper measurements match W124 SW6 baseline).
-      // Root cause: CI runner is systematically slower under load.
-      // Wave 125 SSR Phase 1 (`docs/audits/archive/AUDIT_WAVE125.md`)
-      // is the structural fix — drops auth-route LCP from ~12s → < 2.5s,
-      // hoists Perf well above 0.40 in both dev + CI environments.
-      // Until then, relaxed Perf assertion to `warn@0.40`: keeps the
-      // threshold visible in CI summaries but does not block merges.
-      // Will re-ratchet to `error@0.40` (or higher) once SSR ships.
-      //
-      // Wave 160 SW2 (2026-05-17) — first 3-session × 3-run methodology
-      // applied on Linux CI post-W149 SSR + W158 canonical minified PROD.
-      // 9 URLs × 3 sessions × 3 runs = 81 LHRs (closes W134 §Honesty #1
-      // + W159 NEW #2). Cross-session medians (extremely tight variance
-      // ±0.01-0.05 across sessions — methodology validates):
-      //   /          CLS 0.001 LCP 2895ms TBT 549ms A11y 1.00
-      //   /login     CLS 0.000 LCP  324ms TBT 272ms A11y 1.00
-      //   /dashboard CLS 0.000 LCP 2857ms TBT 517ms A11y 1.00
-      //   /news      CLS 0.000 LCP  340ms TBT 446ms A11y 1.00
-      //   /schedule  CLS 0.000 LCP  376ms TBT 423ms A11y 1.00
-      //   /events    CLS 0.000 LCP  396ms TBT 454ms A11y 1.00
-      //   /activity  CLS 0.000 LCP  411ms TBT 455ms A11y 1.00
-      //   /map       CLS 0.044 LCP  403ms TBT 466ms A11y 1.00  ← worst CLS
-      //   /404       CLS 0.000 LCP  309ms TBT 425ms A11y 1.00
-      //
-      // Ratchet decisions (data-driven per plan §SW2 step 3 decision tree):
-      //
-      // (1) CLS error@0.10 → error@0.05 — worst cross-session median = 0.044
-      //     on /map; variance ~0.000 across 3 sessions (truly stable); 0.05
-      //     ceiling has 12% margin (0.006 buffer). Tightens WCAG-Good ceiling
-      //     by 50%. SAFE — confirmed all 9 URLs measure ≤ 0.044 across 81
-      //     LHRs (worst single-run value also 0.044).
-      //
-      // (2) Historical Linux CI measurements used GPU-disabled headless mode and failed
-      //     to collect screenshots → `categories.performance.score = null`
-      //     for ALL 9 URLs × 81 LHRs. Lighthouse audits `speed-index`,
-      //     `screenshot-thumbnails`, `metrics` all error with "Chrome didn't
-      //     collect any screenshots during the page load". Individual metrics
-      //     (FCP/LCP/TBT/CLS) DO measure — but composite Perf score requires
-      //     all of them including speed-index. Cannot ratchet Perf this wave.
-      //     Routine-e5 calibration drift PARTIALLY closed (acknowledged +
-      //     structurally documented in W160 SW2; full closure pending W161+
-      //     Lighthouse chrome flags investigation — restore GPU-backed capture
-      //     or switch `--headless=chrome` to restore screenshot collection).
-      //
-      // (3) LCP is now blocking at 2500ms. The older measurements above are
-      //     retained as provenance for the ratchet and are not the current gate.
-      //
-      // (4) TBT is now the blocking lab responsiveness proxy at 200ms.
+      // Release-blocking lab budgets are shared by every route. SEO is
+      // intentionally route-aware: only public/auth pages receive an SEO
+      // assertion, while the companion route policy validates robots.txt and
+      // crawl-audit provenance for protected pages. INP is a field metric and
+      // is therefore measured by the production CWV pipeline, not Lighthouse.
       assert: {
-        assertions: {
-          // INP is a field metric, not a Lighthouse navigation audit. Production
-          // p75 aggregation is a separate release-closure requirement; TBT is the
-          // blocking lab responsiveness proxy in this configuration.
-          "categories:performance": ["error", { minScore: 0.95 }],
-          "categories:accessibility": ["error", { minScore: 0.95 }],
-          "categories:best-practices": ["error", { minScore: 0.95 }],
-          "categories:seo": ["error", { minScore: 0.9 }],
-          "largest-contentful-paint": [
-            "error",
-            { maxNumericValue: 2500, aggregationMethod: "median" },
-          ],
-          "total-blocking-time": ["error", { maxNumericValue: 200, aggregationMethod: "median" }],
-          "cumulative-layout-shift": [
-            "error",
-            // W160 SW2 — ratcheted error@0.10 → error@0.05 after 3-session
-            // × 3-run CI Linux methodology measured worst cross-session
-            // median 0.044 (on /map; 8 of 9 URLs measure CLS ≤ 0.001).
-            // Variance ~0.000 across sessions; 0.05 ceiling has 12% margin
-            // (0.006 buffer). Tightens WCAG-Good ceiling by 50%.
-            { maxNumericValue: 0.05, aggregationMethod: "median" },
-          ],
-        },
+        assertMatrix: [
+          {
+            matchingUrlPattern: ".*",
+            assertions: {
+              // INP is a field metric, not a Lighthouse navigation audit. Production
+              // p75 aggregation is a separate release-closure requirement; TBT is the
+              // blocking lab responsiveness proxy in this configuration.
+              "categories:performance": ["error", { minScore: 0.95 }],
+              "categories:accessibility": ["error", { minScore: 0.95 }],
+              "categories:best-practices": ["error", { minScore: 0.95 }],
+              "largest-contentful-paint": [
+                "error",
+                { maxNumericValue: 2500, aggregationMethod: "median" },
+              ],
+              "total-blocking-time": [
+                "error",
+                { maxNumericValue: 200, aggregationMethod: "median" },
+              ],
+              "cumulative-layout-shift": [
+                "error",
+                // W160 SW2 — ratcheted error@0.10 → error@0.05 after 3-session
+                // × 3-run CI Linux methodology measured worst cross-session
+                // median 0.044 (on /map; 8 of 9 URLs measure CLS ≤ 0.001).
+                // Variance ~0.000 across sessions; 0.05 ceiling has 12% margin
+                // (0.006 buffer). Tightens WCAG-Good ceiling by 50%.
+                { maxNumericValue: 0.05, aggregationMethod: "median" },
+              ],
+            },
+          },
+          {
+            matchingUrlPattern: routePolicyConfig.publicSeoUrlPattern,
+            assertions: {
+              "categories:seo": ["error", { minScore: routePolicyConfig.publicSeoMinScore }],
+            },
+          },
+        ],
       },
     },
   }
@@ -457,6 +422,7 @@ async function run() {
   const tempConfigPath = path.join(tempDir, "lighthouserc.json")
 
   const config = await createConfig()
+  const expectedPaths = config.ci.collect.url
 
   // Build and prepare dist for LHCI mode if not using remote preview
   const useRemotePreview = Boolean(process.env.PREVIEW_URL ?? process.env.LHCI_URL ?? "")
@@ -534,6 +500,18 @@ async function run() {
     }
   }
   await runCommand("npx", ["lhci", "assert", `--config=${tempConfigPath}`], "lhci assert", lhciEnv)
+
+  // LHCI supports category assertions but cannot express the intentional
+  // SEO distinction between public and robots-protected application routes.
+  // Validate that route intent, robots directives, and crawl-audit provenance
+  // all agree before the shard is uploaded as release evidence.
+  const robotsText = useRemotePreview ? await fetchRemoteRobots(base) : undefined
+  await assertLhciRoutePolicy({
+    reportsDir: path.resolve(frontendRoot, ".lighthouseci"),
+    robotsPath: path.resolve(frontendRoot, "public", "robots.txt"),
+    robotsText,
+    expectedPaths,
+  })
 
   await rm(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 1000 })
 }

@@ -2,6 +2,10 @@ const { execSync } = require("node:child_process");
 const path = require("node:path");
 
 const frontendDir = path.join(__dirname, "frontend");
+const {
+  publicSeoMinScore,
+  publicSeoUrlPattern,
+} = require("./frontend/scripts/lhci-route-policy-config.cjs");
 const chromePath = path.join(
   frontendDir,
   "node_modules",
@@ -13,6 +17,32 @@ const buildEnv = {
   FORCE_COLOR: "0",
   CI: "1",
   VITE_LHCI: "true",
+};
+
+// Keep SEO route-aware: public content/auth routes must remain indexable,
+// while authenticated routes are intentionally blocked by robots.txt. The
+// companion `lhci-route-policy.mjs` independently verifies that privacy
+// contract against every collected LHR.
+const commonAssertions = {
+  "categories:performance": ["error", { minScore: 0.95 }],
+  "categories:accessibility": ["error", { minScore: 0.95 }],
+  "categories:best-practices": ["error", { minScore: 0.95 }],
+  "largest-contentful-paint": [
+    "error",
+    { maxNumericValue: 2500, aggregationMethod: "median" },
+  ],
+  "total-blocking-time": [
+    "error",
+    { maxNumericValue: 200, aggregationMethod: "median" },
+  ],
+  "cumulative-layout-shift": [
+    "error",
+    { maxNumericValue: 0.05, aggregationMethod: "median" },
+  ],
+};
+
+const publicSeoAssertions = {
+  "categories:seo": ["error", { minScore: publicSeoMinScore }],
 };
 
 if (!process.env.LHCI_SKIP_PREPARE) {
@@ -58,24 +88,13 @@ module.exports = {
     // Lighthouse cannot establish field p75. Production LCP/INP/CLS aggregation remains a separate
     // release-closure requirement and must not be inferred from these assertions.
     assert: {
-      assertions: {
-        "categories:performance": ["error", { minScore: 0.95 }],
-        "categories:accessibility": ["error", { minScore: 0.95 }],
-        "categories:best-practices": ["error", { minScore: 0.95 }],
-        "categories:seo": ["error", { minScore: 0.9 }],
-        "largest-contentful-paint": [
-          "error",
-          { maxNumericValue: 2500, aggregationMethod: "median" },
-        ],
-        "total-blocking-time": [
-          "error",
-          { maxNumericValue: 200, aggregationMethod: "median" },
-        ],
-        "cumulative-layout-shift": [
-          "error",
-          { maxNumericValue: 0.05, aggregationMethod: "median" },
-        ],
-      },
+      assertMatrix: [
+        { matchingUrlPattern: ".*", assertions: commonAssertions },
+        {
+          matchingUrlPattern: publicSeoUrlPattern,
+          assertions: publicSeoAssertions,
+        },
+      ],
     },
   },
 };

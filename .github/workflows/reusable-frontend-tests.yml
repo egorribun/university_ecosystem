@@ -569,8 +569,9 @@ jobs:
 
   # Preserve the required check display name and the single artifact consumed
   # by ci.yml's Performance Gate while allowing the route shards to run in
-  # parallel. Every shard has already run lhci assert; this job only verifies
-  # all shards succeeded and normalizes their numeric LHR filenames.
+  # parallel. Every shard has already run lhci assert plus the route privacy
+  # policy; this job only verifies all shards succeeded and normalizes their
+  # numeric LHR filenames.
   lighthouse:
     name: Lighthouse Audit
     if: ${{ always() && inputs.run-lighthouse }}

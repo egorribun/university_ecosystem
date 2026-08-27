@@ -143,7 +143,8 @@ jobs:
       #   3. Invokes `npx lhci collect` against staticDistDir (no preview
       #      server needed)
       #   4. Invokes `npx lhci assert` with the .lighthouserc.js gates
-      #      (Perf warn@0.40, CLS error@0.10, A11y/BP/SEO error@0.95)
+      #      (strict Perf/A11y/BP/CWV budgets; public SEO error@0.90;
+      #       protected-route robots policy is checked by the runner)
       #   5. Lighthouse 13.1.0 via package.json override (W121 SW8 — fixes
       #      LanternError that blocked /activity + /map on 12.x)
       #

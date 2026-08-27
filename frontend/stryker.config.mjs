@@ -83,5 +83,12 @@ export default {
   concurrency: Number.parseInt(process.env.STRYKER_CONCURRENCY ?? "2", 10),
   maxTestRunnerReuse: 4,
   cleanTempDir: "always",
+  // Stryker's default five-minute initial-run deadline is below the measured
+  // full Vitest per-test discovery/coverage pass on the hosted CI runners.
+  // Keep an explicit bounded deadline so a busy runner cannot classify a
+  // healthy baseline as an infrastructure timeout. Mutation thresholds remain
+  // fail-closed at 100%, and the outer shard timeout is still enforced by the
+  // canonical runner.
+  dryRunTimeoutMinutes: 15,
   timeoutFactor: 2,
 }
