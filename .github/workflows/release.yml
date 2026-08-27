@@ -54,7 +54,10 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ inputs.release-sha }}
+          # The workflow event SHA is the only trusted source revision.  The
+          # dispatch input is data used to bind promoted artifacts, never a
+          # selector for code executed by this privileged job.
+          ref: ${{ github.sha }}
 
       - name: Verify canonical image producer run and artifact inventory
         env:
@@ -67,8 +70,9 @@ jobs:
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$BUILD_RUN_ID" =~ ^[1-9][0-9]*$ ]]
           [[ "$BUILD_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
-          test "$GITHUB_WORKFLOW_SHA" = "$RELEASE_SHA"
-          test "$GITHUB_SHA" = "$RELEASE_SHA"
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$RELEASE_SHA" = "$GITHUB_SHA"
+          test "$RELEASE_SHA" = "$GITHUB_WORKFLOW_SHA"
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
           test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
@@ -228,7 +232,9 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-          ref: ${{ inputs.release-sha }}
+          # Never let a workflow_dispatch input choose the source executed by
+          # this write-capable job; bind checkout to the event SHA instead.
+          ref: ${{ github.sha }}
 
       - name: Verify publish source
         env:
@@ -236,6 +242,9 @@ jobs:
         run: |
           set -euo pipefail
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$RELEASE_SHA" = "$GITHUB_SHA"
+          test "$RELEASE_SHA" = "$GITHUB_WORKFLOW_SHA"
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
           test "$(git rev-parse origin/main)" = "$RELEASE_SHA"

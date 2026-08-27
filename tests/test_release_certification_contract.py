@@ -429,7 +429,8 @@ def test_semantic_release_waits_for_every_signed_image() -> None:
     ].index("semantic-release")
     assert 'test "$(git rev-parse origin/main)" = "$RELEASE_SHA"' in release["run"]
     checkout = _step(workflow["jobs"]["publish"], "Checkout certified source")
-    assert checkout["with"]["ref"] == "${{ inputs.release-sha }}"
+    assert checkout["with"]["ref"] == "${{ github.sha }}"
+    assert "inputs.release-sha" not in str(checkout)
     workflow_text = RELEASE_WORKFLOW.read_text(encoding="utf-8")
     assert (
         workflow_text.count(
@@ -438,6 +439,56 @@ def test_semantic_release_waits_for_every_signed_image() -> None:
         == 1
     )
     assert workflow_text.count("secrets.RELEASE_TOKEN") == 1
+
+
+def test_release_jobs_check_out_event_sha_before_trusting_dispatch_inputs() -> None:
+    """Privileged release jobs must execute only the workflow event's source.
+
+    ``release-sha`` remains an input for binding promoted artifacts, but it must
+    never select the repository revision used by a job with write permissions.
+    The checkout and fail-closed assertions therefore precede every script that
+    consumes release artifacts or invokes a release tool.
+    """
+
+    workflow = yaml.safe_load(RELEASE_WORKFLOW.read_text(encoding="utf-8"))
+    expected_guard_fragments = (
+        '[[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]',
+        'test "$GITHUB_REF" = "refs/heads/main"',
+        'test "$RELEASE_SHA" = "$GITHUB_SHA"',
+        'test "$RELEASE_SHA" = "$GITHUB_WORKFLOW_SHA"',
+        'test "$(git rev-parse HEAD)" = "$RELEASE_SHA"',
+        "git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1",
+        'test "$(git rev-parse origin/main)" = "$RELEASE_SHA"',
+    )
+
+    for job_name, verify_name in (
+        (
+            "resolve-images",
+            "Verify canonical image producer run and artifact inventory",
+        ),
+        ("publish", "Verify publish source"),
+    ):
+        job = workflow["jobs"][job_name]
+        checkout = _step(job, "Checkout certified source")
+        assert checkout["with"]["ref"] == "${{ github.sha }}"
+        assert checkout["with"]["persist-credentials"] is False
+        assert "inputs.release-sha" not in str(checkout)
+
+        verify = _step(job, verify_name)
+        script = str(verify["run"])
+        assert verify["env"]["RELEASE_SHA"] == "${{ inputs.release-sha }}"
+        assert all(fragment in script for fragment in expected_guard_fragments)
+
+        steps = job["steps"]
+        checkout_index = steps.index(checkout)
+        verify_index = steps.index(verify)
+        assert verify_index == checkout_index + 1
+        # No release-side script may run before the source trust boundary is
+        # established.  Download actions are checked separately by artifact
+        # contract tests and are intentionally after this guard.
+        assert all(
+            not step.get("run") for step in steps[checkout_index + 1 : verify_index]
+        )
 
 
 def test_policy_binds_each_check_to_a_workflow_and_repository() -> None:
