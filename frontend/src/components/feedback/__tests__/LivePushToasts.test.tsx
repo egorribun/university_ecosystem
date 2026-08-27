@@ -1,9 +1,26 @@
 import { act, render, screen, fireEvent } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-vi.mock("framer-motion", async () =>
-  (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
-)
+type CapturedMotionProps = Record<string, unknown> & { children?: unknown }
+
+const motionCapture = vi.hoisted(() => ({
+  divProps: [] as CapturedMotionProps[],
+}))
+
+vi.mock("framer-motion", async () => {
+  const base = (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
+  const motion = new Proxy(base.m, {
+    get(target, key, receiver) {
+      const component = Reflect.get(target, key, receiver)
+      if (key !== "div" || typeof component !== "function") return component
+      return (props: CapturedMotionProps) => {
+        motionCapture.divProps.push(props)
+        return component(props)
+      }
+    },
+  })
+  return { ...base, m: motion, motion }
+})
 const translationState = vi.hoisted(() => ({ emptySync: false }))
 
 vi.mock("react-i18next", () => ({
@@ -49,6 +66,7 @@ async function dispatchSwMessage(data: unknown) {
 describe("LivePushToasts", () => {
   beforeEach(() => {
     translationState.emptySync = false
+    motionCapture.divProps.length = 0
     window.localStorage.clear()
     installFakeServiceWorker()
     vi.useFakeTimers()
@@ -63,6 +81,42 @@ describe("LivePushToasts", () => {
   it("renders nothing initially (no queued toasts)", () => {
     render(<LivePushToasts />)
     expect(screen.queryByRole("heading", { level: 4 })).not.toBeInTheDocument()
+  })
+
+  it("keeps toast entrance motion compositor-safe and bounded", async () => {
+    render(<LivePushToasts />)
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: {
+        id: "t-motion",
+        title: "Motion contract",
+        body: "Only opacity and transform should animate",
+      },
+    })
+
+    const toastMotion = motionCapture.divProps.find((props) => {
+      const initial = props.initial
+      return (
+        typeof initial === "object" && initial !== null && "opacity" in initial && "y" in initial
+      )
+    })
+    expect(toastMotion).toBeDefined()
+    expect(toastMotion).toEqual(
+      expect.objectContaining({
+        initial: { opacity: 0, y: -20 },
+        animate: { opacity: 1, y: 0 },
+        exit: { opacity: 0, y: -10 },
+        transition: { duration: 0.2, ease: "easeOut" },
+      })
+    )
+    for (const phase of ["initial", "animate", "exit"] as const) {
+      expect(Object.keys(toastMotion?.[phase] as object)).toEqual(
+        expect.arrayContaining(["opacity", "y"])
+      )
+      expect(Object.keys(toastMotion?.[phase] as object)).not.toContain("filter")
+    }
+    expect((toastMotion?.transition as Record<string, unknown>).type).toBeUndefined()
   })
 
   it("subscribes to the service-worker message channel on mount", () => {

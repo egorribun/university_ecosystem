@@ -234,10 +234,14 @@ export default function LivePushToasts() {
       <AnimatePresence>
         {open && current && (
           <m.div
-            initial={{ opacity: 0, y: -20, filter: "blur(8px)" }}
-            animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-            exit={{ opacity: 0, y: -10, filter: "blur(4px)" }}
-            transition={{ type: "spring", stiffness: 300, damping: 25 }}
+            // Keep toast motion on compositor-friendly properties. Animating
+            // filter/backdrop blur can crash WebKit while the action button is
+            // becoming interactive, and spring settling is unnecessarily
+            // nondeterministic for a transient notification.
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
             className={cn(
               "pointer-events-auto relative overflow-hidden flex items-start gap-4 p-4 rounded-2xl",
               "glass-noise backdrop-blur-2xl border border-(--glass-border) shadow-premium",
