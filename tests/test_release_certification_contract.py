@@ -499,7 +499,7 @@ def test_canonical_image_pipeline_checks_trusted_source_before_privileged_tools(
     producer = yaml.safe_load(PRODUCER_WORKFLOW.read_text(encoding="utf-8"))
     certify = producer["jobs"]["certify"]
     certify_checkout = _step(certify, "Checkout certified source")
-    certify_verify = _step(certify, "Verify release SHA and quality run")
+    certify_verify = _step(certify, "Verify trusted source checkout")
     assert certify_checkout["with"]["ref"] == "${{ github.sha }}"
     assert certify_checkout["with"]["persist-credentials"] is False
     assert "inputs.release-sha" not in str(certify_checkout)
@@ -518,10 +518,12 @@ def test_canonical_image_pipeline_checks_trusted_source_before_privileged_tools(
         'test "$(git rev-parse origin/main)" = "$RELEASE_SHA"',
     ):
         assert fragment in certify_run
-    assert certify_run.index('test "$GITHUB_REF"') < certify_run.index("gh api")
-    assert certify_steps.index(_step(certify, "Setup release quality runtime")) > (
-        certify_steps.index(certify_verify)
-    )
+    assert "gh api" not in certify_run
+    setup_index = certify_steps.index(_step(certify, "Setup release quality runtime"))
+    assert setup_index > certify_steps.index(certify_verify)
+    quality_verify = _step(certify, "Verify release SHA and quality run")
+    assert certify_steps.index(quality_verify) > setup_index
+    assert '[[ "$QUALITY_RUN_ID" =~ ^[1-9][0-9]*$ ]]' in str(quality_verify["run"])
 
     aggregate = producer["jobs"]["aggregate-image-provenance"]
     aggregate_checkout = _step(aggregate, "Checkout certified source")

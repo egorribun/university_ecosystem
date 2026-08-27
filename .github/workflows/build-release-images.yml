@@ -41,6 +41,30 @@ jobs:
           # that source before any cache, dependency, or repository script runs.
           ref: ${{ github.sha }}
 
+      - name: Verify trusted source checkout
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$RELEASE_SHA" = "$GITHUB_WORKFLOW_SHA"
+          test "$RELEASE_SHA" = "$GITHUB_SHA"
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
+
+      - name: Setup release quality runtime
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install locked certification dependencies
+        run: |
+          set -euo pipefail
+          uv sync --frozen --only-group release-certification --no-install-project
+
       - name: Verify release SHA and quality run
         id: quality-run
         env:
@@ -49,14 +73,7 @@ jobs:
           QUALITY_RUN_ID: ${{ inputs.quality-run-id }}
         run: |
           set -euo pipefail
-          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
           [[ "$QUALITY_RUN_ID" =~ ^[1-9][0-9]*$ ]]
-          test "$GITHUB_REF" = "refs/heads/main"
-          test "$RELEASE_SHA" = "$GITHUB_WORKFLOW_SHA"
-          test "$RELEASE_SHA" = "$GITHUB_SHA"
-          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
-          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
           mkdir -p artifacts/quality
           gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALITY_RUN_ID" \
             > artifacts/quality/quality-run.json
@@ -77,17 +94,6 @@ jobs:
           python scripts/quality/validate_release_artifact_evidence.py \
             --pages artifacts/quality/quality-artifact-pages.json \
             --expected-name "quality-evidence-$RELEASE_SHA"
-
-      - name: Setup release quality runtime
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          enable-cache: true
-          cache-dependency-glob: uv.lock
-
-      - name: Install locked certification dependencies
-        run: |
-          set -euo pipefail
-          uv sync --frozen --only-group release-certification --no-install-project
 
       - name: Clean quality evidence destinations
         run: |
