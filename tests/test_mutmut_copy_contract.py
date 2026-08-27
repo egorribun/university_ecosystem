@@ -11,6 +11,7 @@ REQUIRED_ALSO_COPY = {
     "SECURITY.md",
     "security",
     "security/audit-allowlist.yaml",
+    ".secrets.baseline",
     ".husky",
     "start-docker.ps1",
     "alembic.ini",

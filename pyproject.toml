@@ -554,6 +554,8 @@ pytest_add_cli_args_test_selection = [
 #                                      plus the canonical AGENTS/CLAUDE/TESTING
 #                                      instruction and quality documents
 #   - test_husky_fail_closed        → .husky/pre-commit (hook policy)
+#   - test_secrets_baseline_paths   → .secrets.baseline (detect-secrets
+#                                      wrapper integration contract)
 # Copy the repository-contract paths into the isolated tree so the full nightly
 # run can measure them without a false collection failure. The mutation-score
 # parser contract imports `scripts/check_mutation_score.py`; copying its parent
@@ -575,6 +577,7 @@ also_copy = [
     # file is copied below; mutmut's copy2 path does not create parents.
     "security",
     "security/audit-allowlist.yaml",
+    ".secrets.baseline",
     "charts/university-ecosystem",
     "infrastructure",
     "infra/oss-fuzz",
