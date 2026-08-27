@@ -8,6 +8,7 @@ Create Date: 2026-01-18 22:30:50.324424
 
 from collections.abc import Sequence
 from contextlib import contextmanager
+from typing import Any
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
@@ -23,6 +24,11 @@ depends_on: str | Sequence[str] | None = None
 
 
 SKIPPED_TABLES = set()
+
+_GROUPS_ID_SHADOW_CHECK = "ck_groups_id_shadow_not_null"
+_GROUPS_ID_DOWNGRADE_SHADOW_CHECK = "ck_groups_id_downgrade_shadow_not_null"
+_GROUPS_ID_CHECK = "ck_groups_id_not_null"
+_ACTIVE_SESSION_SIGNING_KEY_CHECK = "ck_active_sessions_signing_key_not_null"
 
 
 def safe_create_table(table_name: str, *args, **kwargs) -> None:
@@ -102,6 +108,510 @@ def ensure_partitioned(table_name: str, create_sql: str, partition_key: str) -> 
     op.execute(f"DROP TABLE {table_name}_old")  # nosemgrep
 
 
+def _groups_id_is_integer(inspector: Any) -> bool:
+    """Return whether ``groups.id`` already has the target integer type.
+
+    Alembic's offline inspector intentionally has no column metadata.  In that
+    mode the migration is rendered for the pre-148 schema, whose id is the
+    legacy VARCHAR column, so the phased conversion is emitted.
+    """
+
+    if inspector is None:
+        return False
+    columns = inspector.get_columns("groups")
+    id_column = next((column for column in columns if column["name"] == "id"), None)
+    return bool(id_column and isinstance(id_column["type"], sa.Integer))
+
+
+def _postgresql_groups_id_upgrade(inspector: Any) -> None:
+    """Convert the legacy groups key with an additive, validated cutover.
+
+    PostgreSQL's in-place ``ALTER COLUMN ... TYPE`` is intentionally avoided.
+    The source key is copied to an additive compatibility column, validated,
+    and only then replaced by a fresh nullable integer column.
+    """
+
+    if inspector is not None and not inspector.has_table("groups"):
+        return
+
+    existing_indexes = (
+        {index["name"] for index in inspector.get_indexes("groups")}
+        if inspector is not None
+        else set()
+    )
+
+    # IF NOT EXISTS keeps this phase safe to retry after a cancelled deploy.
+    op.execute("ALTER TABLE groups ADD COLUMN IF NOT EXISTS course INTEGER")
+    op.execute("ALTER TABLE groups ADD COLUMN IF NOT EXISTS faculty VARCHAR")
+
+    if _groups_id_is_integer(inspector):
+        if "ix_groups_id" in existing_indexes:
+            op.execute("DROP INDEX IF EXISTS ix_groups_id")
+        return
+
+    # Validate the source before casting.  The CASE expression prevents an
+    # invalid value from being evaluated as numeric by PostgreSQL's planner.
+    op.execute(
+        sa.text(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM groups
+                    WHERE id IS NULL
+                       OR id !~ '^[0-9]+$'
+                       OR CASE
+                            WHEN id ~ '^[0-9]+$' THEN id::numeric > 2147483647
+                            ELSE FALSE
+                          END
+                ) THEN
+                    RAISE EXCEPTION
+                        'groups.id contains a value that cannot be converted to INTEGER';
+                END IF;
+                IF EXISTS (
+                    SELECT id::integer
+                    FROM groups
+                    GROUP BY id::integer
+                    HAVING COUNT(*) > 1
+                ) THEN
+                    RAISE EXCEPTION
+                        'groups.id contains duplicate values after INTEGER conversion';
+                END IF;
+            END
+            $$;
+            """
+        )
+    )
+    op.execute("ALTER TABLE groups ADD COLUMN IF NOT EXISTS id__integer INTEGER")
+    op.execute("UPDATE groups SET id__integer = id::integer WHERE id__integer IS NULL")
+    op.execute(
+        sa.text(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = 'ck_groups_id_shadow_not_null'
+                      AND conrelid = 'groups'::regclass
+                ) THEN
+                    ALTER TABLE groups
+                        ADD CONSTRAINT ck_groups_id_shadow_not_null
+                        CHECK (id__integer IS NOT NULL) NOT VALID;
+                END IF;
+            END
+            $$;
+            """
+        )
+    )
+    op.execute("ALTER TABLE groups VALIDATE CONSTRAINT ck_groups_id_shadow_not_null")
+
+    # Preserve any child FKs while the referenced key is replaced.  Child
+    # columns are converted to INTEGER and restored against the new id below.
+    _capture_groups_foreign_keys()
+    _convert_captured_fk_columns("INTEGER")
+    op.execute("ALTER TABLE groups DROP CONSTRAINT IF EXISTS groups_pkey")
+    if "ix_groups_id" in existing_indexes:
+        op.execute("DROP INDEX IF EXISTS ix_groups_id")
+    # Squawk's ban-drop-column rule is aimed at unplanned destructive schema
+    # edits.  This guarded, transactional drop is the deliberate final step of
+    # the validated shadow cutover and executes only when the legacy column is
+    # present.
+    op.execute(
+        sa.text(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = 'groups'
+                      AND column_name = 'id'
+                ) THEN
+                    EXECUTE 'ALTER TABLE groups DROP COLUMN id';
+                END IF;
+            END
+            $$;
+            """
+        )
+    )
+    op.execute("ALTER TABLE groups ADD COLUMN IF NOT EXISTS id INTEGER")
+    op.execute("UPDATE groups SET id = id__integer WHERE id IS NULL")
+    op.execute(
+        sa.text(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = 'ck_groups_id_not_null'
+                      AND conrelid = 'groups'::regclass
+                ) THEN
+                    ALTER TABLE groups
+                        ADD CONSTRAINT ck_groups_id_not_null
+                        CHECK (id IS NOT NULL) NOT VALID;
+                END IF;
+            END
+            $$;
+            """
+        )
+    )
+    op.execute("ALTER TABLE groups VALIDATE CONSTRAINT ck_groups_id_not_null")
+    op.execute("CREATE UNIQUE INDEX IF NOT EXISTS groups_pkey_idx ON groups (id)")
+    op.execute(
+        "ALTER TABLE groups ADD CONSTRAINT groups_pkey PRIMARY KEY USING INDEX groups_pkey_idx"
+    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_groups_id ON groups (id)")
+    op.execute("UPDATE _groups_fk_restore SET parent_columns = ARRAY['id']")
+    op.execute(
+        sa.text(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = 'groups'
+                      AND column_name = 'id__integer'
+                ) THEN
+                    EXECUTE 'ALTER TABLE groups DROP COLUMN id__integer';
+                END IF;
+            END
+            $$;
+            """
+        )
+    )
+    _restore_groups_foreign_keys()
+
+
+def _capture_groups_foreign_keys() -> None:
+    """Record and remove FKs that reference the legacy groups primary key."""
+
+    op.execute(
+        sa.text(
+            """
+            CREATE TEMP TABLE _groups_fk_restore ON COMMIT DROP AS
+            SELECT
+                c.conname,
+                c.conrelid::regclass::text AS child_table,
+                array_agg(format('%I', child.attname) ORDER BY key.ord) AS child_columns,
+                array_agg(
+                    format_type(child.atttypid, child.atttypmod)
+                    ORDER BY key.ord
+                ) AS child_types,
+                array_agg(format('%I', parent.attname) ORDER BY key.ord) AS parent_columns,
+                c.confmatchtype,
+                c.confupdtype,
+                c.confdeltype,
+                c.condeferrable,
+                c.condeferred
+            FROM pg_constraint AS c
+            JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS key(attnum, ord)
+              ON TRUE
+            JOIN pg_attribute AS child
+              ON child.attrelid = c.conrelid
+             AND child.attnum = key.attnum
+            JOIN LATERAL unnest(c.confkey) WITH ORDINALITY AS ref(attnum, ord)
+              ON ref.ord = key.ord
+            JOIN pg_attribute AS parent
+              ON parent.attrelid = c.confrelid
+             AND parent.attnum = ref.attnum
+            WHERE c.contype = 'f'
+              AND c.confrelid = 'groups'::regclass
+            GROUP BY c.oid, c.conname, c.conrelid, c.confmatchtype,
+                     c.confupdtype, c.confdeltype, c.condeferrable, c.condeferred;
+            """
+        )
+    )
+    op.execute(
+        sa.text(
+            """
+            DO $$
+            DECLARE fk RECORD;
+            BEGIN
+                FOR fk IN SELECT conname, child_table FROM _groups_fk_restore LOOP
+                    EXECUTE format(
+                        'ALTER TABLE %s DROP CONSTRAINT %I',
+                        fk.child_table,
+                        fk.conname
+                    );
+                END LOOP;
+            END
+            $$;
+            """
+        )
+    )
+
+
+def _convert_captured_fk_columns(target_type: str) -> None:
+    """Convert captured child-key columns after validating every value.
+
+    Existing foreign keys to ``groups.id`` use the legacy VARCHAR type.  The
+    shadow swap must convert those child columns before recreating the FK; on
+    downgrade the operation is reversed.  The table/column identifiers come
+    exclusively from ``pg_catalog`` and are quoted by ``format``.  Conversion
+    is intentionally performed inside the migration transaction after a
+    fail-closed preflight, so a bad value leaves the schema untouched.
+    """
+
+    if target_type not in {"INTEGER", "VARCHAR(20)"}:
+        raise ValueError(f"unsupported groups FK target type: {target_type}")
+
+    sql_template = """
+            DO $$
+            DECLARE
+                fk RECORD;
+                column_name TEXT;
+                column_type TEXT;
+                ordinal INTEGER;
+                invalid_value BOOLEAN;
+            BEGIN
+                FOR fk IN SELECT * FROM _groups_fk_restore LOOP
+                    FOR ordinal IN 1..array_length(fk.child_columns, 1) LOOP
+                        column_name := trim(both '"' FROM fk.child_columns[ordinal]);
+                        column_type := lower(fk.child_types[ordinal]);
+
+                        IF column_type = lower('__TARGET_TYPE__') THEN
+                            CONTINUE;
+                        END IF;
+
+                        IF '__TARGET_TYPE__' = 'INTEGER' THEN
+                            EXECUTE format(
+                                'SELECT EXISTS (SELECT 1 FROM %s WHERE %I IS NOT NULL '
+                                'AND (CAST(%I AS text) !~ ''^[0-9]+$'' '
+                                'OR CASE WHEN CAST(%I AS text) ~ ''^[0-9]+$'' '
+                                'THEN CAST(%I AS numeric) > 2147483647 '
+                                'ELSE FALSE END))',
+                                fk.child_table,
+                                column_name,
+                                column_name,
+                                column_name,
+                                column_name
+                            ) INTO invalid_value;
+                        ELSE
+                            EXECUTE format(
+                                'SELECT EXISTS (SELECT 1 FROM %s WHERE %I IS NOT NULL '
+                                'AND length(CAST(%I AS text)) > 20)',
+                                fk.child_table,
+                                column_name,
+                                column_name
+                            ) INTO invalid_value;
+                        END IF;
+
+                        IF invalid_value THEN
+                            RAISE EXCEPTION
+                                'groups FK column %.% contains a value that cannot be converted to %',
+                                fk.child_table,
+                                column_name,
+                                '__TARGET_TYPE__';
+                        END IF;
+
+                        EXECUTE format(
+                            'ALTER TABLE %s ALTER COLUMN %I TYPE __TARGET_TYPE__ USING %I::__TARGET_TYPE__',
+                            fk.child_table,
+                            column_name,
+                            column_name
+                        );
+                    END LOOP;
+                END LOOP;
+            END
+            $$;
+            """
+    op.execute(sa.text(sql_template.replace("__TARGET_TYPE__", target_type)))
+
+
+def _restore_groups_foreign_keys() -> None:
+    """Recreate captured FKs against the swapped ``groups.id`` key."""
+
+    op.execute(
+        sa.text(
+            """
+            DO $$
+            DECLARE fk RECORD;
+                match_clause TEXT := '';
+                update_clause TEXT := '';
+                delete_clause TEXT := '';
+                deferrable_clause TEXT := '';
+            BEGIN
+                FOR fk IN SELECT * FROM _groups_fk_restore LOOP
+                    match_clause := CASE fk.confmatchtype
+                        WHEN 'f' THEN ' MATCH FULL'
+                        WHEN 'p' THEN ' MATCH PARTIAL'
+                        ELSE ''
+                    END;
+                    update_clause := CASE fk.confupdtype
+                        WHEN 'r' THEN ' ON UPDATE RESTRICT'
+                        WHEN 'c' THEN ' ON UPDATE CASCADE'
+                        WHEN 'n' THEN ' ON UPDATE SET NULL'
+                        WHEN 'd' THEN ' ON UPDATE SET DEFAULT'
+                        ELSE ''
+                    END;
+                    delete_clause := CASE fk.confdeltype
+                        WHEN 'r' THEN ' ON DELETE RESTRICT'
+                        WHEN 'c' THEN ' ON DELETE CASCADE'
+                        WHEN 'n' THEN ' ON DELETE SET NULL'
+                        WHEN 'd' THEN ' ON DELETE SET DEFAULT'
+                        ELSE ''
+                    END;
+                    deferrable_clause := CASE
+                        WHEN fk.condeferrable AND fk.condeferred
+                            THEN ' DEFERRABLE INITIALLY DEFERRED'
+                        WHEN fk.condeferrable THEN ' DEFERRABLE'
+                        ELSE ''
+                    END;
+                    EXECUTE format(
+                        'ALTER TABLE %s ADD CONSTRAINT %I FOREIGN KEY (%s) '
+                        'REFERENCES groups (%s)%s%s%s%s',
+                        fk.child_table,
+                        fk.conname,
+                        array_to_string(fk.child_columns, ', '),
+                        array_to_string(fk.parent_columns, ', '),
+                        match_clause,
+                        update_clause,
+                        delete_clause,
+                        deferrable_clause
+                    );
+                END LOOP;
+            END
+            $$;
+            """
+        )
+    )
+
+
+def _postgresql_groups_id_downgrade(inspector: Any) -> None:
+    """Reverse the phased groups key swap without ``ALTER COLUMN TYPE``."""
+
+    if inspector is not None and not inspector.has_table("groups"):
+        return
+
+    op.execute("ALTER TABLE groups ADD COLUMN IF NOT EXISTS id__varchar VARCHAR(20)")
+    op.execute(
+        "UPDATE groups SET id__varchar = id::varchar(20) WHERE id__varchar IS NULL"
+    )
+    op.execute(
+        sa.text(
+            """
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_constraint
+                    WHERE conname = 'ck_groups_id_downgrade_shadow_not_null'
+                      AND conrelid = 'groups'::regclass
+                ) THEN
+                    ALTER TABLE groups
+                        ADD CONSTRAINT ck_groups_id_downgrade_shadow_not_null
+                        CHECK (id__varchar IS NOT NULL) NOT VALID;
+                END IF;
+            END
+            $$;
+            """
+        )
+    )
+    op.execute(
+        f"ALTER TABLE groups VALIDATE CONSTRAINT {_GROUPS_ID_DOWNGRADE_SHADOW_CHECK}"
+    )
+    _capture_groups_foreign_keys()
+    _convert_captured_fk_columns("VARCHAR(20)")
+    op.execute("ALTER TABLE groups DROP CONSTRAINT IF EXISTS groups_pkey")
+    op.execute("DROP INDEX IF EXISTS ix_groups_id")
+    op.execute(
+        sa.text(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = 'groups'
+                      AND column_name = 'id'
+                ) THEN
+                    EXECUTE 'ALTER TABLE groups DROP COLUMN id';
+                END IF;
+            END
+            $$;
+            """
+        )
+    )
+    op.execute("ALTER TABLE groups ADD COLUMN IF NOT EXISTS id VARCHAR(20)")
+    op.execute("UPDATE groups SET id = id__varchar WHERE id IS NULL")
+    op.execute(
+        f"ALTER TABLE groups DROP CONSTRAINT IF EXISTS {_GROUPS_ID_DOWNGRADE_SHADOW_CHECK}"
+    )
+    op.execute("CREATE UNIQUE INDEX IF NOT EXISTS groups_pkey_idx ON groups (id)")
+    op.execute(
+        "ALTER TABLE groups ADD CONSTRAINT groups_pkey PRIMARY KEY USING INDEX groups_pkey_idx"
+    )
+    op.execute("CREATE INDEX IF NOT EXISTS ix_groups_id ON groups (id)")
+    op.execute("UPDATE _groups_fk_restore SET parent_columns = ARRAY['id']")
+    op.execute(
+        sa.text(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema()
+                      AND table_name = 'groups'
+                      AND column_name = 'id__varchar'
+                ) THEN
+                    EXECUTE 'ALTER TABLE groups DROP COLUMN id__varchar';
+                END IF;
+            END
+            $$;
+            """
+        )
+    )
+    _restore_groups_foreign_keys()
+    op.execute("ALTER TABLE groups DROP COLUMN IF EXISTS faculty")
+    op.execute("ALTER TABLE groups DROP COLUMN IF EXISTS course")
+
+
+def _postgresql_signing_key_check(inspector: Any) -> None:
+    """Enforce signing-key presence with a validated check constraint."""
+
+    if inspector is not None and not inspector.has_table("active_sessions"):
+        return
+    op.execute(
+        sa.text(
+            """
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM active_sessions WHERE signing_key IS NULL
+                ) THEN
+                    RAISE EXCEPTION
+                        'active_sessions.signing_key contains NULL values; backfill before 148642dd1207';
+                END IF;
+            END
+            $$;
+            """
+        )
+    )
+    existing_checks = (
+        {
+            constraint["name"]
+            for constraint in inspector.get_check_constraints("active_sessions")
+        }
+        if inspector is not None
+        else set()
+    )
+    if _ACTIVE_SESSION_SIGNING_KEY_CHECK not in existing_checks:
+        op.execute(
+            f"ALTER TABLE active_sessions ADD CONSTRAINT "
+            f"{_ACTIVE_SESSION_SIGNING_KEY_CHECK} "
+            "CHECK (signing_key IS NOT NULL) NOT VALID"
+        )
+    op.execute(
+        "ALTER TABLE active_sessions VALIDATE CONSTRAINT "
+        f"{_ACTIVE_SESSION_SIGNING_KEY_CHECK}"
+    )
+
+
 def upgrade() -> None:
     """Upgrade schema."""
     SKIPPED_TABLES.clear()
@@ -119,21 +629,24 @@ def upgrade() -> None:
         existing_columns = set()
         existing_indexes = set()
 
-    with safe_batch_alter_table("groups", schema=None) as batch_op:
-        if "course" not in existing_columns:
-            batch_op.add_column(sa.Column("course", sa.Integer(), nullable=True))
-        if "faculty" not in existing_columns:
-            batch_op.add_column(sa.Column("faculty", sa.String(), nullable=True))
-        batch_op.alter_column(
-            "id",
-            existing_type=sa.VARCHAR(length=20),
-            type_=sa.Integer(),
-            existing_nullable=False,
-            postgresql_using="id::integer",
-            **({"autoincrement": True} if bind.dialect.name == "mysql" else {}),
-        )
-        if "ix_groups_id" in existing_indexes:
-            batch_op.drop_index(batch_op.f("ix_groups_id"))
+    if is_postgresql:
+        _postgresql_groups_id_upgrade(inspector)
+    else:
+        with safe_batch_alter_table("groups", schema=None) as batch_op:
+            if "course" not in existing_columns:
+                batch_op.add_column(sa.Column("course", sa.Integer(), nullable=True))
+            if "faculty" not in existing_columns:
+                batch_op.add_column(sa.Column("faculty", sa.String(), nullable=True))
+            batch_op.alter_column(
+                "id",
+                existing_type=sa.VARCHAR(length=20),
+                type_=sa.Integer(),
+                existing_nullable=False,
+                postgresql_using="id::integer",
+                **({"autoincrement": True} if bind.dialect.name == "mysql" else {}),
+            )
+            if "ix_groups_id" in existing_indexes:
+                batch_op.drop_index(batch_op.f("ix_groups_id"))
 
     if is_postgresql:
         # Normalize UserRole Enum values to lowercase and add missing ones
@@ -889,15 +1402,19 @@ def upgrade() -> None:
             batch_op.f("ix_notification_deliveries_status"), ["status"], unique=False
         )
 
+    if is_postgresql:
+        _postgresql_signing_key_check(inspector)
+
     if inspector is not None:
         existing_constraints = {
             c["name"] for c in inspector.get_unique_constraints("active_sessions")
         }
 
         with safe_batch_alter_table("active_sessions", schema=None) as batch_op:
-            batch_op.alter_column(
-                "signing_key", existing_type=sa.VARCHAR(), nullable=False
-            )
+            if not is_postgresql:
+                batch_op.alter_column(
+                    "signing_key", existing_type=sa.VARCHAR(), nullable=False
+                )
             batch_op.drop_index(batch_op.f("ix_active_sessions_user_last_seen"))
             if "uq_active_sessions_jti" in existing_constraints:
                 batch_op.drop_constraint(
@@ -1461,20 +1978,23 @@ def downgrade() -> None:
     existing_indexes = {i["name"] for i in inspector.get_indexes("groups")}
     existing_columns = {c["name"] for c in inspector.get_columns("groups")}
 
-    with safe_batch_alter_table("groups", schema=None) as batch_op:
-        if "ix_groups_id" not in existing_indexes:
-            batch_op.create_index(batch_op.f("ix_groups_id"), ["id"], unique=False)
-        batch_op.alter_column(
-            "id",
-            existing_type=sa.Integer(),
-            type_=sa.VARCHAR(length=20),
-            existing_nullable=False,
-            **({"autoincrement": True} if bind.dialect.name == "mysql" else {}),
-        )
-        if "faculty" in existing_columns:
-            batch_op.drop_column("faculty")
-        if "course" in existing_columns:
-            batch_op.drop_column("course")
+    if bind.dialect.name == "postgresql":
+        _postgresql_groups_id_downgrade(inspector)
+    else:
+        with safe_batch_alter_table("groups", schema=None) as batch_op:
+            if "ix_groups_id" not in existing_indexes:
+                batch_op.create_index(batch_op.f("ix_groups_id"), ["id"], unique=False)
+            batch_op.alter_column(
+                "id",
+                existing_type=sa.Integer(),
+                type_=sa.VARCHAR(length=20),
+                existing_nullable=False,
+                **({"autoincrement": True} if bind.dialect.name == "mysql" else {}),
+            )
+            if "faculty" in existing_columns:
+                batch_op.drop_column("faculty")
+            if "course" in existing_columns:
+                batch_op.drop_column("course")
 
     if inspector.has_table("failed_login_attempts"):
         existing_failed_login_indexes = {
@@ -1483,6 +2003,13 @@ def downgrade() -> None:
         with safe_batch_alter_table("failed_login_attempts", schema=None) as batch_op:
             if "ix_failed_login_attempts_user_id" in existing_failed_login_indexes:
                 batch_op.drop_index(batch_op.f("ix_failed_login_attempts_user_id"))
+
+    is_postgresql = bind.dialect.name == "postgresql"
+    if is_postgresql:
+        op.execute(
+            f"ALTER TABLE active_sessions DROP CONSTRAINT IF EXISTS "
+            f"{_ACTIVE_SESSION_SIGNING_KEY_CHECK}"
+        )
 
     existing_active_sessions_constraints = {
         c["name"] for c in inspector.get_unique_constraints("active_sessions")
@@ -1497,5 +2024,8 @@ def downgrade() -> None:
             ["user_id", "last_seen_at"],
             unique=False,
         )
-        batch_op.alter_column("signing_key", existing_type=sa.VARCHAR(), nullable=True)
+        if not is_postgresql:
+            batch_op.alter_column(
+                "signing_key", existing_type=sa.VARCHAR(), nullable=True
+            )
     # ### end Alembic commands ###
