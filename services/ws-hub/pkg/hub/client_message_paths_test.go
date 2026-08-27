@@ -772,21 +772,31 @@ func TestClientHandleJoin_RateLimitsReplayConsumerChurn(t *testing.T) {
 		return &nats.Subscription{}, nil
 	}}
 	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
 	client := &Client{
 		ID: "rate-limited-replay", UserID: "rate-limited-user", Hub: h,
 		Rooms: make(map[string]bool), Send: make(chan []byte, 32), ctx: ctx, cancel: cancel,
 	}
 	oldFetch := fetchPullMessagesFunc
 	oldUnsubscribe := unsubscribePullFunc
+	var replayDone sync.WaitGroup
+	// The limiter permits exactly two replay workers in this scenario.  Wait
+	// for both deferred unsubscribe callbacks before restoring the package-level
+	// hooks; otherwise a worker can read a restored hook concurrently with the
+	// test cleanup, which is a real -race failure rather than harmless logging.
+	replayDone.Add(2)
 	t.Cleanup(func() {
+		cancel()
+		replayDone.Wait()
 		fetchPullMessagesFunc = oldFetch
 		unsubscribePullFunc = oldUnsubscribe
 	})
 	fetchPullMessagesFunc = func(*nats.Subscription, int, ...nats.PullOpt) ([]*nats.Msg, error) {
 		return nil, nats.ErrTimeout
 	}
-	unsubscribePullFunc = func(*nats.Subscription) error { return nil }
+	unsubscribePullFunc = func(*nats.Subscription) error {
+		replayDone.Done()
+		return nil
+	}
 	beforeLimited := testutil.ToFloat64(ReplayJoinRateLimitedTotal)
 
 	for sequence := uint64(1); sequence <= 3; sequence++ {
