@@ -568,6 +568,9 @@ also_copy = [
     ".lighthouserc.js",
     ".trivyignore.yaml",
     "quality",
+    # The directory creates the destination parent before the exact allowlist
+    # file is copied below; mutmut's copy2 path does not create parents.
+    "security",
     "security/audit-allowlist.yaml",
     "charts/university-ecosystem",
     "infrastructure",

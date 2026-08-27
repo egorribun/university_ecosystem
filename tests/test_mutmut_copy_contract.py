@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 REQUIRED_ALSO_COPY = {
     "SECURITY.md",
+    "security",
     "security/audit-allowlist.yaml",
     "start-docker.ps1",
     "frontend/openapi.json",
