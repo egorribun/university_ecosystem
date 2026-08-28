@@ -13,7 +13,30 @@ import {
 
 const dictionaryChunkPath = "client/assets/vendor-password-strength-en-ABC.js"
 
-async function createBundleFixture({ mainBytes = 16, lazyBytes = 16 } = {}) {
+const routeStyleBoundaries = [
+  ["Dashboard", "dashboard", "_auth/dashboard.tsx"],
+  ["News", "news", "_auth/news.index.tsx"],
+  ["NewsDetail", "news", "_auth/news.$id.tsx"],
+  ["Events", "events", "_auth/events.index.tsx"],
+  ["EventDetail", "events", "_auth/events.$id.tsx"],
+  ["Schedule", "schedule", "_auth/schedule.tsx"],
+  ["Activity", "activity", "_auth/activity.tsx"],
+  ["Map", "map", "_auth/map.tsx"],
+  ["Messenger", "messenger", "_auth/messenger.tsx"],
+  ["Profile", "profile", "_auth/profile.tsx"],
+  ["Settings", "settings", "_auth/settings.tsx"],
+  ["Login", "auth", "_public/login.tsx"],
+  ["Register", "auth", "_public/register.tsx"],
+  ["ForgotPassword", "auth", "_public/forgot-password.tsx"],
+  ["ResetPassword", "auth", "_public/reset-password.tsx"],
+  ["AdminUsers", "admin", "_admin/admin.users.tsx"],
+  ["AdminAudit", "admin", "_admin/admin.audit.tsx"],
+  ["AdminFeatureFlags", "admin", "_admin/admin.feature-flags.tsx"],
+  ["AdminNotifications", "admin", "_admin/admin.notifications.tsx"],
+  ["StoriesAdmin", "admin", "_admin/admin.stories.tsx"],
+]
+
+async function createBundleFixture({ mainBytes = 16, lazyBytes = 16, initialCssBytes } = {}) {
   const distDir = await mkdtemp(path.join(tmpdir(), "bundle-budget-test-"))
   const assetsDir = path.join(distDir, "client", "assets")
   await mkdir(assetsDir, { recursive: true })
@@ -21,12 +44,18 @@ async function createBundleFixture({ mainBytes = 16, lazyBytes = 16 } = {}) {
     path.join(distDir, "client", "index.html"),
     [
       '<link rel="modulepreload" href="/assets/vendor-react-ABC.js">',
+      ...(initialCssBytes === undefined
+        ? []
+        : ['<link rel="stylesheet" href="/assets/index-ABC.css">']),
       '<script type="module" src="/assets/index-ABC.js"></script>',
     ].join("\n")
   )
   await writeFile(path.join(assetsDir, "index-ABC.js"), Buffer.alloc(mainBytes, 97))
   await writeFile(path.join(assetsDir, "vendor-react-ABC.js"), Buffer.alloc(32, 98))
   await writeFile(path.join(assetsDir, "Feature-ABC.js"), Buffer.alloc(lazyBytes, 99))
+  if (initialCssBytes !== undefined) {
+    await writeFile(path.join(assetsDir, "index-ABC.css"), Buffer.alloc(initialCssBytes, 100))
+  }
   return distDir
 }
 
@@ -40,6 +69,27 @@ test("locks baseline-aware initial and general lazy ratchets", () => {
   assert.equal(BUNDLE_BUDGETS.passwordDictionaryRawKb, 1250)
 })
 
+test("keeps feature token CSS inside the matching lazy route boundary", async () => {
+  const themeSource = await readFile(new URL("../src/styles/theme.css", import.meta.url), "utf8")
+
+  assert.doesNotMatch(
+    themeSource,
+    /@import "\.\/tokens\/(?:dashboard|news|events|schedule|activity|map|admin|messenger|profile|settings|auth)\.css"/u
+  )
+
+  await Promise.all(
+    routeStyleBoundaries.map(async ([pageName, tokenName, routePath]) => {
+      const [pageSource, routeSource] = await Promise.all([
+        readFile(new URL(`../src/pages/${pageName}.tsx`, import.meta.url), "utf8"),
+        readFile(new URL(`../src/routes/${routePath}`, import.meta.url), "utf8"),
+      ])
+
+      assert.match(pageSource, new RegExp(`import "@/styles/tokens/${tokenName}\\.css"`))
+      assert.match(routeSource, new RegExp(`lazy\\(\\(\\) => import\\("@/pages/${pageName}"\\)\\)`))
+    })
+  )
+})
+
 test("reports the real HTML preload graph and writes useful JSON", async () => {
   const distDir = await createBundleFixture()
   try {
@@ -50,6 +100,8 @@ test("reports the real HTML preload graph and writes useful JSON", async () => {
     assert.equal(report.summary.mainJsRawBytes, 16)
     assert.equal(report.summary.initialJsAssetCount, 2)
     assert.equal(report.summary.lazyJsAssetCount, 1)
+    assert.equal(report.summary.initialCssAssetCount, 0)
+    assert.equal(report.summary.initialCssGzipBytes, 0)
     assert.deepEqual(
       report.assets
         .filter((asset) => asset.isInitial)
@@ -61,6 +113,24 @@ test("reports the real HTML preload graph and writes useful JSON", async () => {
     const serialized = JSON.parse(JSON.stringify(report))
     assert.equal(serialized.budgets.mainJsRawKb, 500)
     assert.ok(serialized.assets.every((asset) => asset.rawBytes > 0))
+  } finally {
+    await rm(distDir, { recursive: true, force: true })
+  }
+})
+
+test("reports stylesheets in the initial delivery graph", async () => {
+  const distDir = await createBundleFixture({ initialCssBytes: 24 })
+  try {
+    const report = await analyzeBundle(distDir)
+
+    assert.equal(report.summary.initialCssAssetCount, 1)
+    assert.ok(report.summary.initialCssGzipBytes > 0)
+    assert.deepEqual(
+      report.assets
+        .filter((asset) => asset.type === "stylesheet" && asset.isInitial)
+        .map((asset) => asset.path),
+      ["client/assets/index-ABC.css"]
+    )
   } finally {
     await rm(distDir, { recursive: true, force: true })
   }
@@ -114,6 +184,25 @@ test("fails closed when the initial preload graph exceeds its compressed ratchet
   }
 
   assert.throws(() => assertBundleBudgets(report), /Initial JS preload graph exceeds gzip budget/)
+})
+
+test("fails closed when the initial stylesheet delivery graph exceeds its compressed ratchet", () => {
+  const report = {
+    assets: [],
+    summary: {
+      mainJsRawBytes: 1,
+      mainJsPath: "client/assets/index-ABC.js",
+      initialJsGzipBytes: 1,
+      initialCssGzipBytes: BUNDLE_BUDGETS.initialCssGzipKb * 1024 + 1,
+      largestGeneralLazyJsGzipBytes: 1,
+      largestGeneralLazyJsPath: "client/assets/Feature-ABC.js",
+      largestPasswordDictionaryGzipBytes: 1,
+      largestPasswordDictionaryRawBytes: 1,
+      largestPasswordDictionaryPath: dictionaryChunkPath,
+    },
+  }
+
+  assert.throws(() => assertBundleBudgets(report), /Initial CSS delivery graph exceeds gzip budget/)
 })
 
 test("keeps a bounded exception for lazy password dictionaries", () => {

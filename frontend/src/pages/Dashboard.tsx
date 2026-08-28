@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react"
 import { useTranslation } from "react-i18next"
 import { m } from "framer-motion"
+import "@/styles/tokens/dashboard.css"
 
 import { SEO } from "@/components/ui/SEO"
 

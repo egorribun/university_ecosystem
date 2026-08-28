@@ -3,6 +3,7 @@ import api from "@/api/client"
 import { useParams, useSearch, Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { m, AnimatePresence } from "framer-motion"
+import "@/styles/tokens/auth.css"
 import {
   Eye as Visibility,
   EyeOff as VisibilityOff,

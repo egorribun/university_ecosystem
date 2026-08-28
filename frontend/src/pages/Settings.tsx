@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect, useId } from "react"
 import { useSearch, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Settings as SettingsIcon } from "lucide-react"
+import "@/styles/tokens/settings.css"
 
 import { PageLayout } from "@/components/layout/PageLayout"
 import { Tabs, Tab, Snackbar, SettingsBackdrop } from "@/components/settings"

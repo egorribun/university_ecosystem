@@ -1,6 +1,7 @@
 import { useCallback, useState, useMemo, useRef } from "react"
 import { useTranslation } from "react-i18next"
 import { AnimatePresence, m } from "framer-motion"
+import "@/styles/tokens/schedule.css"
 import { PageLayout } from "@/components/layout/PageLayout"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"

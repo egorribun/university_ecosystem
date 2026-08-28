@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } f
 import { formatRelativeTime, formatForInput, add, isAfter, toDate } from "@/utils/date"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
+import "@/styles/tokens/admin.css"
 import {
   Camera as PhotoCamera,
   Trash2 as DeleteIcon,

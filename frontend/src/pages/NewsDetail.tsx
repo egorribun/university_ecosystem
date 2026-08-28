@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useParams } from "@tanstack/react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft as ArrowBackIcon, Copy as CopyIcon } from "lucide-react"
+import "@/styles/tokens/news.css"
 import {
   Alert,
   Dialog,

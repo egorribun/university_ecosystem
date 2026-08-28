@@ -13,6 +13,10 @@ const ASSET_EXTENSIONS = new Set([".js", ".css"])
 export const BUNDLE_BUDGETS = Object.freeze({
   mainJsRawKb: 500,
   initialJsGzipKb: 420,
+  // Route-scoped token layers must not be folded back into the application
+  // shell. Keep the CSS that blocks first paint below the measured core-shell
+  // ceiling; route CSS is delivered with its lazy page chunk instead.
+  initialCssGzipKb: 40,
   generalLazyJsGzipKb: 280,
   // The language dictionaries are fetched only after explicit password-field
   // interaction. Keep their raw ceiling bounded too, while allowing Vite's
@@ -57,16 +61,19 @@ function normalizeHtmlAssetReference(reference, htmlRelativeDirectory) {
 function extractInitialAssetPaths(html, htmlRelativeDirectory) {
   const initialPaths = new Set()
   for (const tag of html.match(/<(?:link|script)\b[^>]*>/gi) ?? []) {
-    const isModulePreload =
-      tag.startsWith("<link") && getAttribute(tag, "rel")?.toLowerCase() === "modulepreload"
+    const relation = tag.startsWith("<link") ? getAttribute(tag, "rel")?.toLowerCase() : undefined
+    const isModulePreload = tag.startsWith("<link") && relation === "modulepreload"
+    const isStylesheet = tag.startsWith("<link") && relation === "stylesheet"
     const isModuleScript =
       tag.startsWith("<script") && getAttribute(tag, "type")?.toLowerCase() === "module"
-    if (!isModulePreload && !isModuleScript) continue
+    if (!isModulePreload && !isModuleScript && !isStylesheet) continue
 
-    const reference = getAttribute(tag, isModulePreload ? "href" : "src")
+    const reference = getAttribute(tag, isModulePreload || isStylesheet ? "href" : "src")
     if (!reference) continue
     const normalized = normalizeHtmlAssetReference(reference, htmlRelativeDirectory)
-    if (normalized?.endsWith(".js")) initialPaths.add(normalized)
+    if (normalized && (normalized.endsWith(".js") || normalized.endsWith(".css"))) {
+      initialPaths.add(normalized)
+    }
   }
   return initialPaths
 }
@@ -121,7 +128,7 @@ export async function analyzeBundle(distDir = DEFAULT_DIST_DIR, options = {}) {
         gzipBytes: gzipSync(content, { level: 9 }).byteLength,
         brotliBytes: brotliCompressSync(content).byteLength,
         isMain: isJavaScript && /(?:^|\/)(?:index|main)-[^/]+\.js$/.test(assetPath),
-        isInitial: isJavaScript && initialPaths.has(assetPath),
+        isInitial: initialPaths.has(assetPath),
         isPasswordDictionary:
           isJavaScript && /(?:^|\/)vendor-password-strength-(?:en|ru)-[^/]+\.js$/.test(assetPath),
       }
@@ -130,14 +137,16 @@ export async function analyzeBundle(distDir = DEFAULT_DIST_DIR, options = {}) {
   assets.sort((left, right) => left.path.localeCompare(right.path))
 
   const javascriptAssets = assets.filter((asset) => asset.type === "javascript")
+  const stylesheetAssets = assets.filter((asset) => asset.type === "stylesheet")
   const mainAssets = javascriptAssets.filter((asset) => asset.isMain)
   if (mainAssets.length === 0) {
     throw new Error(`No main/index JavaScript chunk found in ${distDir}`)
   }
-  const initialAssets = javascriptAssets.filter((asset) => asset.isInitial)
-  if (initialAssets.length === 0) {
+  const initialJavaScriptAssets = javascriptAssets.filter((asset) => asset.isInitial)
+  if (initialJavaScriptAssets.length === 0) {
     throw new Error(`No initial JavaScript assets referenced by ${entryHtmlPath}`)
   }
+  const initialStylesheetAssets = stylesheetAssets.filter((asset) => asset.isInitial)
   const generalLazyAssets = javascriptAssets.filter(
     (asset) => !asset.isInitial && !asset.isPasswordDictionary
   )
@@ -158,15 +167,20 @@ export async function analyzeBundle(distDir = DEFAULT_DIST_DIR, options = {}) {
     summary: {
       assetCount: assets.length,
       javascriptAssetCount: javascriptAssets.length,
-      initialJsAssetCount: initialAssets.length,
-      lazyJsAssetCount: javascriptAssets.length - initialAssets.length,
+      stylesheetAssetCount: stylesheetAssets.length,
+      initialJsAssetCount: initialJavaScriptAssets.length,
+      lazyJsAssetCount: javascriptAssets.length - initialJavaScriptAssets.length,
+      initialCssAssetCount: initialStylesheetAssets.length,
+      lazyCssAssetCount: stylesheetAssets.length - initialStylesheetAssets.length,
       totalRawBytes: sum(assets, "rawBytes"),
       totalGzipBytes: sum(assets, "gzipBytes"),
       totalBrotliBytes: sum(assets, "brotliBytes"),
       mainJsPath: main?.path ?? null,
       mainJsRawBytes: main?.rawBytes ?? 0,
-      initialJsGzipBytes: sum(initialAssets, "gzipBytes"),
-      initialJsBrotliBytes: sum(initialAssets, "brotliBytes"),
+      initialJsGzipBytes: sum(initialJavaScriptAssets, "gzipBytes"),
+      initialJsBrotliBytes: sum(initialJavaScriptAssets, "brotliBytes"),
+      initialCssGzipBytes: sum(initialStylesheetAssets, "gzipBytes"),
+      initialCssBrotliBytes: sum(initialStylesheetAssets, "brotliBytes"),
       largestGeneralLazyJsPath: largestGeneralLazy?.path ?? null,
       largestGeneralLazyJsGzipBytes: largestGeneralLazy?.gzipBytes ?? 0,
       largestPasswordDictionaryPath: largestPasswordDictionary?.path ?? null,
@@ -190,6 +204,11 @@ export function getBundleBudgetViolations(report) {
       actualBytes: summary.initialJsGzipBytes,
       limitKb: BUNDLE_BUDGETS.initialJsGzipKb,
       message: "Initial JS preload graph exceeds gzip budget",
+    },
+    {
+      actualBytes: summary.initialCssGzipBytes,
+      limitKb: BUNDLE_BUDGETS.initialCssGzipKb,
+      message: "Initial CSS delivery graph exceeds gzip budget",
     },
     {
       actualBytes: summary.largestGeneralLazyJsGzipBytes,
@@ -236,6 +255,7 @@ async function main() {
   console.log("Bundle budgets within limits:", {
     mainJsRawKiB: formatKiB(report.summary.mainJsRawBytes),
     initialJsGzipKiB: formatKiB(report.summary.initialJsGzipBytes),
+    initialCssGzipKiB: formatKiB(report.summary.initialCssGzipBytes),
     largestGeneralLazyJsGzipKiB: formatKiB(report.summary.largestGeneralLazyJsGzipBytes),
     largestPasswordDictionaryRawKiB: formatKiB(report.summary.largestPasswordDictionaryRawBytes),
     largestPasswordDictionaryGzipKiB: formatKiB(report.summary.largestPasswordDictionaryGzipBytes),

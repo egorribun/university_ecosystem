@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react"
 import { useNavigate, useRouterState } from "@tanstack/react-router"
+import "@/styles/tokens/auth.css"
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
 import AuthBackdrop from "@/components/auth/AuthBackdrop"
 import useMediaQuery from "@/hooks/useMediaQuery"

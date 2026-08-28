@@ -5,6 +5,7 @@ import { Eye, EyeOff, Sparkles, UsersRound, ShieldCheck, Crown } from "lucide-re
 import { m } from "framer-motion"
 import { useForm, Controller } from "react-hook-form"
 import { valibotResolver } from "@hookform/resolvers/valibot"
+import "@/styles/tokens/auth.css"
 
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
 import AuthBackdrop from "@/components/auth/AuthBackdrop"

@@ -1,6 +1,7 @@
 import { useAuth } from "@/contexts/AuthContext"
 import { useEffect, useId, useState, useRef, useCallback } from "react"
 import { useNavigate, useSearch } from "@tanstack/react-router"
+import "@/styles/tokens/profile.css"
 import api from "@/api/client"
 import type { User } from "@/types/User"
 import profileBg from "@/assets/background.jpg"

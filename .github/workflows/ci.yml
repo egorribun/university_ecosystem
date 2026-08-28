@@ -2360,8 +2360,8 @@ jobs:
     # Exact shards can legitimately map to a large lifecycle test union. The
     # pull-request gate therefore uses the same six-hour wall-clock envelope
     # as the manual evidence workflow. Two bounded workers avoid SQLite
-    # contention in forked test processes while the one-hundred-twenty-eight-leg
-    # matrix keeps mutation parallel without allowing an unbounded fork storm.
+    # contention in forked test processes while the fixed one-hundred-twenty-eight
+    # shard plan bounds the maximum fan-out without allowing an unbounded fork storm.
     # The dynamic inner timeout remains fail-closed and leaves ten minutes for
     # proof, score verification, upload, and a controlled exit.
     timeout-minutes: 360
