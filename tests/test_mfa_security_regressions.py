@@ -402,6 +402,29 @@ def test_delivery_decryption_and_keyring_parsing_fail_closed() -> None:
     }
 
 
+def test_delivery_decryption_rejects_partial_envelope_before_crypto(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing envelope component must never reach the decryption primitive."""
+
+    service = _service()
+    delivery = SimpleNamespace(
+        kek_id="active",
+        wrap_nonce=b"n" * 12,
+        wrapped_dek=b"wrapped",
+        envelope_nonce=None,
+        envelope_ciphertext=b"ciphertext",
+    )
+    monkeypatch.setattr(
+        email_otp_module,
+        "AESGCM",
+        MagicMock(side_effect=AssertionError("partial envelope reached crypto")),
+    )
+
+    with pytest.raises(MfaDeliveryError, match="MFA delivery failed"):
+        service._decrypt_delivery(delivery)  # type: ignore[arg-type]
+
+
 def test_russian_email_rendering_escapes_display_name() -> None:
     subject, plain, body = EmailOtpService._render_email(
         otp="123456", display_name="<Студент>", locale="ru"
@@ -556,6 +579,26 @@ def test_trusted_device_keyring_rejects_malformed_entries(
 
     with pytest.raises(RuntimeError, match="configuration invalid"):
         trusted_device_module._configured_keyring()
+
+
+def test_trusted_device_keyring_unavailable_message_is_stable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    encoded = base64.urlsafe_b64encode(b"k" * 32).decode().rstrip("=")
+    monkeypatch.setattr(
+        trusted_device_module.settings,
+        "mfa_trusted_device_hmac_keys",
+        f"primary:{encoded}",
+    )
+    monkeypatch.setattr(
+        trusted_device_module.settings,
+        "mfa_trusted_device_active_hmac_key_id",
+        "missing",
+    )
+
+    with pytest.raises(RuntimeError) as exc_info:
+        trusted_device_module._configured_keyring()
+    assert str(exc_info.value) == "trusted-device key configuration unavailable"
 
 
 def test_trusted_device_keyring_rejects_key_ids_with_ambiguous_delimiters(
@@ -1015,6 +1058,13 @@ async def test_disable_email_factor_advances_epoch_and_clears_preferences() -> N
     assert request_user.mfa_epoch == 8
     collect.assert_awaited_once_with(db, user_id=user_id)
     db.flush.assert_awaited_once()
+    delete_statements = [
+        call.args[0]
+        for call in db.execute.await_args_list
+        if "trusted_devices" in str(call.args[0])
+    ]
+    assert len(delete_statements) == 1
+    assert "trusted_devices.user_id" in str(delete_statements[0])
 
 
 @pytest.mark.asyncio
@@ -1605,11 +1655,66 @@ def test_smtp_sender_applies_transport_security_and_authentication(
     assert next(name for name, _ in message.items() if name.lower() == "to") == "To"
     assert message["From"] == "security@example.edu"
     assert message["Message-ID"] == "<challenge@example.edu>"
+    assert message.get_payload()[1].get_content_subtype() == "html"
+    transport.assert_called_once_with(
+        settings.smtp_host,
+        settings.smtp_port,
+        **({"context": "tls"} if security == "ssl" else {}),
+        timeout=10,
+    )
     if security == "starttls":
         assert client.ehlo.call_count == 2
         client.starttls.assert_called_once_with(context="tls")
     else:
         client.starttls.assert_not_called()
+
+
+def test_smtp_sender_uses_safe_default_sender_address() -> None:
+    settings = _smtp_settings(security="none")
+    settings.mail_from = ""
+    client = MagicMock()
+    transport = MagicMock()
+    transport.return_value.__enter__.return_value = client
+
+    with (
+        patch("app.core.config.settings", settings),
+        patch.object(email_otp_module.smtplib, "SMTP", transport),
+    ):
+        email_otp_module.SmtpMfaEmailSender._send_sync(
+            to_email="student@example.edu",
+            subject="Verification",
+            plain="Code: 123456",
+            html_body="<p>Code: 123456</p>",
+            message_id="<challenge@example.edu>",
+        )
+
+    message = client.send_message.call_args.args[0]
+    assert message["From"] == "no-reply@example.com"
+
+
+def test_smtp_sender_legacy_starttls_flag_selects_canonical_security_mode() -> None:
+    settings = _smtp_settings(security="")
+    settings.smtp_starttls = True
+    client = MagicMock()
+    transport = MagicMock()
+    transport.return_value.__enter__.return_value = client
+
+    with (
+        patch("app.core.config.settings", settings),
+        patch.object(email_otp_module.smtplib, "SMTP", transport),
+        patch.object(
+            email_otp_module.ssl, "create_default_context", return_value="tls"
+        ),
+    ):
+        email_otp_module.SmtpMfaEmailSender._send_sync(
+            to_email="student@example.edu",
+            subject="Verification",
+            plain="Code: 123456",
+            html_body="<p>Code: 123456</p>",
+            message_id="<challenge@example.edu>",
+        )
+
+    client.starttls.assert_called_once_with(context="tls")
 
 
 def test_smtp_sender_redacts_transport_failure() -> None:
@@ -2217,6 +2322,11 @@ async def test_delivery_completion_fails_closed_after_cas_loss() -> None:
 
     sender.send.assert_awaited_once()
     db.flush.assert_not_awaited()
+    completion_statement = db.execute.await_args_list[2].args[0]
+    # Completion is a lease CAS: a concurrent worker must not be able to mark
+    # a row sent after its status has changed away from ``sending``.
+    assert "mfa_email_deliveries.status" in str(completion_statement)
+    assert "mfa_email_deliveries.lease_token" in str(completion_statement)
 
 
 def test_configured_email_otp_service_round_trips_encrypted_delivery() -> None:

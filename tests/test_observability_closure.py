@@ -267,9 +267,13 @@ def test_configure_otel_uses_clamped_sampler_ratio_and_exact_span_processor() ->
     meter_provider = MagicMock()
     span_exporter = MagicMock()
     batch_processor = MagicMock()
+    resource = MagicMock(name="otel-resource")
     with (
         patch.object(observability, "settings", settings),
-        patch.object(observability, "TracerProvider", return_value=tracer_provider),
+        patch.object(observability, "_create_otel_resource", return_value=resource),
+        patch.object(
+            observability, "TracerProvider", return_value=tracer_provider
+        ) as tracer_provider_factory,
         patch.object(observability, "MeterProvider", return_value=meter_provider),
         patch.object(observability, "OTLPSpanExporter", return_value=span_exporter),
         patch.object(
@@ -288,6 +292,9 @@ def test_configure_otel_uses_clamped_sampler_ratio_and_exact_span_processor() ->
 
     ratio.assert_called_once_with(1.0)
     parent.assert_called_once_with(ratio.return_value)
+    tracer_provider_factory.assert_called_once_with(
+        resource=resource, sampler=parent.return_value
+    )
     batch.assert_called_once_with(span_exporter)
     tracer_provider.add_span_processor.assert_called_once_with(batch_processor)
 

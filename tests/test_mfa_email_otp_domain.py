@@ -202,6 +202,7 @@ async def test_issue_uses_exact_otp_contract_and_stores_no_plaintext(
         "locale": "en",
         "revision": 1,
     }
+    assert event.subject == "auth.mfa.email.requested"
 
 
 @pytest.mark.asyncio

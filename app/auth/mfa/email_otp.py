@@ -132,9 +132,16 @@ class SmtpMfaEmailSender:
         message["Message-ID"] = message_id
         message.set_content(plain)
         message.add_alternative(html_body, subtype="html")
-        security = (
-            settings.smtp_security or ("starttls" if settings.smtp_starttls else "none")
-        ).lower()
+        configured_security = settings.smtp_security
+        if configured_security:
+            security = configured_security.lower()
+        elif settings.smtp_starttls:
+            # Keep the legacy boolean fallback canonical so a configured
+            # ``smtp_security`` value can remain case-insensitive without
+            # making this security-sensitive branch depend on string casing.
+            security = "starttls"
+        else:
+            security = "none"
         context = ssl.create_default_context()
         try:
             client_context: smtplib.SMTP

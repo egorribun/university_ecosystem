@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from collections import UserDict
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import jwt
@@ -81,10 +82,16 @@ def test_cwv_rejects_values_that_are_not_exact_https_origins(origin: str) -> Non
 def test_cwv_rejects_missing_origin_and_invalid_ttl() -> None:
     with pytest.raises(cwv.CwvOriginError, match="required"):
         cwv.ensure_allowed_origin(_binding(), None)
-    with pytest.raises(cwv.CwvConfigurationError, match="TTL"):
+    # The lower bound is inclusive: a one-minute envelope is the shortest
+    # supported browser ceremony and must not be rejected by validation.
+    cwv.ensure_allowed_origin(
+        _binding(envelope_ttl_seconds=60), "https://staging.example.edu"
+    )
+    with pytest.raises(cwv.CwvConfigurationError) as exc_info:
         cwv.ensure_allowed_origin(
             _binding(envelope_ttl_seconds=59), "https://staging.example.edu"
         )
+    assert str(exc_info.value) == "CWV envelope TTL must be between 60 and 600 seconds"
 
 
 @pytest.mark.parametrize(
@@ -106,6 +113,12 @@ def test_cwv_issue_envelope_validates_each_browser_binding(
         return
     with pytest.raises(cwv.CwvEnvelopeError, match=message):
         _issue(**overrides)
+
+
+@pytest.mark.parametrize("pathname", ["/register", "/forgot-password"])
+def test_cwv_auth_route_group_is_case_sensitive_and_stable(pathname: str) -> None:
+    token, _ = _issue(pathname=pathname)
+    assert cwv.verify_envelope(_binding(), token, now=NOW).route_group == "auth"
 
 
 def _claims() -> cwv.CwvEnvelopeClaims:
@@ -149,6 +162,23 @@ def test_cwv_envelope_parser_rejects_bad_grace_version_and_shape() -> None:
         cwv.verify_envelope(_binding(), f"v1.{encoded}.{signature}", now=NOW)
 
 
+def test_cwv_envelope_shape_validation_is_fail_closed_for_non_mapping_json() -> None:
+    token, _ = _issue()
+    _version, _encoded, _signature = token.split(".")
+    # ``UserDict`` implements the mapping protocol used by ``**raw`` but is
+    # intentionally not a built-in dict.  A guard using ``and`` instead of
+    # ``or`` would accept it because its key set is complete, bypassing the
+    # required JSON-object shape check.
+    claims = cwv.verify_envelope(_binding(), token, now=NOW)
+    payload = cwv._b64url_encode(b"mapping-shaped-payload")
+    signature = cwv._b64url_encode(
+        __import__("hmac").digest(cwv._derived_key(SECRET), payload.encode(), "sha256")
+    )
+    with patch.object(cwv.json, "loads", return_value=UserDict(cwv.asdict(claims))):
+        with pytest.raises(cwv.CwvEnvelopeError, match="malformed"):
+            cwv.verify_envelope(_binding(), f"v1.{payload}.{signature}", now=NOW)
+
+
 def test_cwv_renewal_rejects_changed_identity_navigation_and_nonce() -> None:
     token, _ = _issue()
     common = {
@@ -160,12 +190,35 @@ def test_cwv_renewal_rejects_changed_identity_navigation_and_nonce() -> None:
         "gateway_session_id": "gateway-session-one",
         "now": NOW,
     }
-    with pytest.raises(cwv.CwvEnvelopeError, match="session binding"):
+    with pytest.raises(cwv.CwvEnvelopeError) as session_error:
         cwv.renew_envelope(_binding(), **{**common, "collector_principal_id": "other"})
+    assert str(session_error.value) == "CWV envelope session binding is invalid"
     with pytest.raises(cwv.CwvEnvelopeError, match="navigation binding"):
         cwv.renew_envelope(_binding(), **{**common, "pathname": "/news"})
     with pytest.raises(cwv.CwvEnvelopeError, match="nonce generator"):
         cwv.renew_envelope(_binding(), **common, nonce_factory=lambda: "short")
+
+
+def test_cwv_navigation_and_device_claims_are_bound_server_side() -> None:
+    token, _ = _issue()
+    claims = cwv.verify_envelope(_binding(), token, now=NOW)
+    expected_navigation = cwv._opaque_binding_id(
+        SECRET,
+        "navigation",
+        f"{SHA}:gateway-session-one:nonce_abcdefghijklmnop",
+    )
+    assert claims.navigation_id == expected_navigation
+    observation = cwv.build_observation(
+        _binding(),
+        token=token,
+        origin="https://staging.example.edu",
+        collector_principal_id="collector-one",
+        gateway_session_id="gateway-session-one",
+        metric="LCP",
+        value=100,
+        now=NOW,
+    )
+    assert observation.device_class == "desktop"
 
 
 def test_cwv_oidc_maps_jwt_failure_and_rejects_wrong_subject(
@@ -220,6 +273,14 @@ async def test_cwv_retention_validates_and_can_own_its_session(
     context.__aexit__ = AsyncMock(return_value=False)
     monkeypatch.setattr("app.services.cwv_retention.async_session", lambda: context)
     assert await cleanup_stale_cwv_observations(now=NOW, retention_days=7) == 0
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cwv_retention_accepts_exact_one_day_boundary() -> None:
+    db = AsyncMock()
+    db.execute.return_value = SimpleNamespace(rowcount=2)
+    assert await cleanup_stale_cwv_observations(db=db, now=NOW, retention_days=1) == 2
     db.commit.assert_awaited_once()
 
 
@@ -768,12 +829,18 @@ async def test_notification_redelivery_applies_user_quiet_hours_to_payload(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("with_prior", [False, True])
+@pytest.mark.parametrize(
+    ("with_prior", "notification_type"),
+    [(False, "news"), (True, "news"), (False, None)],
+)
 async def test_notification_redelivery_records_provider_exceptions(
-    monkeypatch: pytest.MonkeyPatch, with_prior: bool
+    monkeypatch: pytest.MonkeyPatch,
+    with_prior: bool,
+    notification_type: str | None,
 ) -> None:
     user_id = uuid4()
     notification = _notification(user_id)
+    notification.type = notification_type
     subscription = _subscription(user_id)
     prior = SimpleNamespace(
         notification_id=notification.id,
@@ -803,10 +870,16 @@ async def test_notification_redelivery_records_provider_exceptions(
         "_send_push_async",
         AsyncMock(side_effect=RuntimeError("provider failed")),
     )
+    record_failed = MagicMock()
+    monkeypatch.setattr(delivery.metrics, "record_notification_failed", record_failed)
     outcome = await delivery.redeliver_notifications(
         db, notification_ids=[notification.id]
     )
     assert outcome.retryable_failures == 1
+    record_failed.assert_called_once_with(
+        notification_type=notification_type or "unknown",
+        reason="exception",
+    )
     if with_prior:
         assert prior.status == "error"
         assert prior.delivered_at is None
