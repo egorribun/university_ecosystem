@@ -7,8 +7,7 @@ import ErrorBoundary from "@/components/feedback/ErrorBoundary"
 import { LiveRegionProvider } from "./components/ui/LiveRegionProvider"
 import { AppShellProvider } from "./contexts/AppShellContext"
 import { AuthProvider } from "./contexts/AuthContext"
-import { WebSocketProvider } from "./hooks/useChatWebSocket"
-import { MessengerProvider } from "./contexts/MessengerContext"
+import { MessengerShellProvider } from "./contexts/MessengerShellProvider"
 import { LanguageProvider } from "./contexts/LanguageContext"
 import { GlobalHapticsListener } from "./components/ui/GlobalHapticsListener"
 import { RxDBProvider } from "./db/RxDBContext"
@@ -23,11 +22,9 @@ function ProvidersInner({ children }: AppProvidersProps) {
       <LiveRegionProvider>
         <AppShellProvider>
           <AuthProvider>
-            <WebSocketProvider>
-              <MessengerProvider>
-                <ErrorBoundary>{children}</ErrorBoundary>
-              </MessengerProvider>
-            </WebSocketProvider>
+            <MessengerShellProvider>
+              <ErrorBoundary>{children}</ErrorBoundary>
+            </MessengerShellProvider>
           </AuthProvider>
         </AppShellProvider>
       </LiveRegionProvider>

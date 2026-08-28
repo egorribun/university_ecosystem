@@ -7,9 +7,44 @@ import test from "node:test"
 import {
   assertCompleteLighthouseResults,
   buildSafeCommandInvocation,
+  DEFAULT_PATHS,
+  normalizePath,
   parseLhr,
   resolveNpmCliPath,
+  resolveLhciPaths,
 } from "./lhci-windows-fallback.mjs"
+import routePolicyConfig from "./lhci-route-policy-config.cjs"
+
+test("Windows fallback uses the canonical ten-route LHCI inventory", () => {
+  assert.deepEqual(DEFAULT_PATHS, routePolicyConfig.defaultLhciPaths)
+  assert.equal(DEFAULT_PATHS.length, 10)
+  assert.deepEqual(DEFAULT_PATHS, [
+    "/",
+    "/login/",
+    "/dashboard/",
+    "/news/",
+    "/schedule/",
+    "/events/",
+    "/activity/",
+    "/map/",
+    "/messenger/",
+    "/404/",
+  ])
+})
+
+test("Windows LHCI path normalization preserves explicit directory slashes", () => {
+  assert.equal(normalizePath(""), "/")
+  assert.equal(normalizePath("dashboard"), "/dashboard")
+  assert.equal(normalizePath("dashboard/"), "/dashboard/")
+  assert.equal(normalizePath("/events/"), "/events/")
+  assert.equal(normalizePath("  /messenger///  "), "/messenger/")
+})
+
+test("Windows fallback uses defaults only for an omitted or empty override", () => {
+  assert.deepEqual(resolveLhciPaths(undefined), DEFAULT_PATHS)
+  assert.deepEqual(resolveLhciPaths(""), DEFAULT_PATHS)
+  assert.deepEqual(resolveLhciPaths(",dashboard/,,events"), ["/", "/dashboard/", "/events"])
+})
 
 test("Windows npm invocation runs the JavaScript CLI without cmd.exe", () => {
   const unsafeUrl = "https://127.0.0.1:4174/login&whoami"

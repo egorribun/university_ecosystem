@@ -42,6 +42,9 @@ vi.mock("@/hooks/useChatWebSocket", () => ({
 vi.mock("@/contexts/MessengerContext", () => ({
   MessengerProvider: provider("messenger"),
 }))
+vi.mock("@/contexts/MessengerShellProvider", () => ({
+  MessengerShellProvider: provider("messenger-shell"),
+}))
 vi.mock("@/contexts/LanguageContext", () => ({
   LanguageProvider: provider("language"),
 }))
@@ -92,8 +95,7 @@ describe("AppProviders closure", () => {
       "live-region",
       "app-shell",
       "auth",
-      "websocket",
-      "messenger",
+      "messenger-shell",
     ]) {
       expect(document.querySelector(`[data-provider="${name}"]`)).toBeInTheDocument()
     }

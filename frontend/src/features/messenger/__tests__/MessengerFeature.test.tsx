@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import type { ReactNode } from "react"
 
 import MessengerFeature from "@/features/messenger/MessengerFeature"
 
@@ -31,7 +32,12 @@ vi.mock("@/hooks/features/useMessengerController", () => ({
 }))
 
 vi.mock("@/contexts/MessengerContext", () => ({
+  MessengerProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
   useMessenger: () => mockUseMessenger(),
+}))
+
+vi.mock("@/hooks/useChatWebSocket", () => ({
+  WebSocketProvider: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }))
 
 vi.mock("@/hooks/useMediaQuery", () => ({

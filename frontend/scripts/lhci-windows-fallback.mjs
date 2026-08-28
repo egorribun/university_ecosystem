@@ -37,7 +37,7 @@
  *
  * ## Usage
  *
- *   # Full default sweep (7 URLs × 3 runs):
+ *   # Full default sweep (10 URLs × 3 runs):
  *   npm run lhci:windows
  *
  *   # Subset:
@@ -55,7 +55,8 @@
  *
  * ## Environment honored
  *
- * - `LHCI_URLS`        — comma-separated URL paths; empty string maps to "/"
+ * - `LHCI_URLS`        — comma-separated URL paths; empty segments map to "/"
+ *   (omit/unset the variable to run the canonical ten-route default sweep)
  * - `LHCI_RUNS`        — runs per URL (default 3 for median; 1 for quick)
  * - `LHCI_PREVIEW_PORT`— vite preview port (default 4174)
  * - `LHCI_PREVIEW_HOST`— vite preview host (default 127.0.0.1)
@@ -66,9 +67,9 @@
  *
  * ## Notes
  *
- * - /activity + /map remain Lighthouse LanternError-blocked per Wave 116
- *   honest deferral; they are EXCLUDED from defaults here so the wrapper
- *   doesn't fail on them. To measure anyway, pass `LHCI_URLS=activity,map`.
+ * - The default sweep is sourced from `lhci-route-policy-config.cjs`, so the
+ *   Windows fallback and Linux LHCI collect the same ten route URLs. This
+ *   keeps performance evidence and route/privacy assertions on one inventory.
  * - Bundle invariant: `npm run build` defaults to non-VITE_LHCI mode. This
  *   wrapper sets `VITE_LHCI=true` BEFORE building, so dist/ is the LHCI
  *   build (174,839 bytes; auth bypass tree-shaken out of prod).
@@ -83,6 +84,8 @@ import { fileURLToPath } from "node:url"
 import { preview } from "vite"
 
 import { buildSafeCommandInvocation, resolveNpmCliPath } from "./lhci-command.mjs"
+import routePolicyConfig from "./lhci-route-policy-config.cjs"
+import { normalizeLhciPath } from "./lhci-route-policy.mjs"
 
 export { buildSafeCommandInvocation, resolveNpmCliPath }
 
@@ -131,35 +134,29 @@ const FORM_FACTOR = process.env.LHCI_FORM_FACTOR ?? "mobile"
 // override via LIGHTHOUSE_VERSION=12.8.2 to compare with W120 baselines.
 const LIGHTHOUSE_VERSION = process.env.LIGHTHOUSE_VERSION ?? "13.1.0"
 
-// Wave 121 SW8 — /activity + /map are now measurable on Lighthouse 13.1.0+
-// (LanternError cycle-detection bug fixed upstream). Wave 120 SW1's exclusion
-// removed; both routes are now in the default sweep.
-const DEFAULT_PATHS = [
-  "/",
-  "/login",
-  "/dashboard",
-  "/news",
-  "/schedule",
-  "/events",
-  "/activity",
-  "/map",
-  "/404",
-]
+// Keep the Windows fallback on the canonical route inventory used by the
+// Linux runner and post-collection route-policy gate. The config intentionally
+// stores prepared static-shell URLs with explicit trailing slashes so a
+// Lighthouse run does not spend a navigation round-trip on server redirects.
+export const DEFAULT_PATHS = Object.freeze([...routePolicyConfig.defaultLhciPaths])
 
-// Wave 119 SW2 trim-empty-to-root pattern: empty string → "/" so callers
-// can sub-batch `LHCI_URLS=,dashboard,events` for root + 2 subroutes.
-// Wave 120 SW1: also normalize leading slash. `LHCI_URLS=404` without
-// slash works for run-lhci.mjs (staticDistDir mode normalizes internally),
-// but this wrapper hits a real `vite preview` URL — needs real `/path`.
-const normalizePath = (p) => {
-  const trimmed = p.trim()
-  if (!trimmed) return "/"
-  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`
+// Delegate to the shared normalizer so route-name overrides (`dashboard`),
+// empty segments (root), and explicit directory slashes (`dashboard/`) all
+// behave identically across Windows and Linux LHCI collection.
+export const normalizePath = normalizeLhciPath
+// Match run-lhci.mjs semantics: an unset/empty environment value means "use
+// defaults"; a leading comma explicitly requests the root path in a subset.
+export function resolveLhciPaths(value) {
+  const overridePaths = value
+    ? value
+        .split(",")
+        .map(normalizePath)
+        .filter((p, i, arr) => arr.indexOf(p) === i) // dedupe
+    : undefined
+  return overridePaths?.length ? overridePaths : DEFAULT_PATHS
 }
-const overridePaths = process.env.LHCI_URLS?.split(",")
-  .map(normalizePath)
-  .filter((p, i, arr) => arr.indexOf(p) === i) // dedupe
-const URL_PATHS = overridePaths?.length ? overridePaths : DEFAULT_PATHS
+
+const URL_PATHS = resolveLhciPaths(process.env.LHCI_URLS)
 
 function urlToFilename(urlPath) {
   return urlPath === "/" ? "root" : urlPath.replace(/^\//, "").replace(/\//g, "_")

@@ -9,10 +9,26 @@ import {
   classifyLhciPath,
   assertLhciRoutePolicy,
   evaluateLhciRoutePolicy,
+  LHCI_DEFAULT_EXPECTED_PATHS,
   normalizeLhciPath,
   parseRobotsDisallows,
   robotsDisallowsPath,
 } from "./lhci-route-policy.mjs"
+
+test("default Lighthouse paths target prepared static route directories directly", () => {
+  assert.deepEqual(LHCI_DEFAULT_EXPECTED_PATHS, [
+    "/",
+    "/login/",
+    "/dashboard/",
+    "/news/",
+    "/schedule/",
+    "/events/",
+    "/activity/",
+    "/map/",
+    "/messenger/",
+    "/404/",
+  ])
+})
 
 const ROBOTS = `User-agent: *
 Disallow: /api/
@@ -58,7 +74,7 @@ test("route classification is explicit and prefix-aware", () => {
 test("LHCI_URLS segments normalize into route-policy paths", () => {
   assert.deepEqual(["404", "/404/", "", "schedule"].map(normalizeLhciPath), [
     "/404",
-    "/404",
+    "/404/",
     "/",
     "/schedule",
   ])

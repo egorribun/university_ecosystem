@@ -32,15 +32,21 @@ const protectedRoutePrefixes = Object.freeze([
 // aggregate gate uses this complete list to reject partial/failed collections.
 const defaultLhciPaths = Object.freeze([
   "/",
-  "/login",
-  "/dashboard",
-  "/news",
-  "/schedule",
-  "/events",
-  "/activity",
-  "/map",
-  "/messenger",
-  "/404",
+  // The static LHCI shell is copied into route/index.html directories.  Use
+  // the directory URL directly so the production static server does not spend
+  // a navigation round-trip redirecting `/route` to `/route/` before
+  // Lighthouse can start its trace.  Route-policy normalization deliberately
+  // treats the trailing slash as presentation-only, so this does not change
+  // the protected/public inventory contract.
+  "/login/",
+  "/dashboard/",
+  "/news/",
+  "/schedule/",
+  "/events/",
+  "/activity/",
+  "/map/",
+  "/messenger/",
+  "/404/",
 ])
 
 const escapeRegex = (value) => value.replace(/[|\\{}()[\]^$+*?.-]/gu, "\\$&")

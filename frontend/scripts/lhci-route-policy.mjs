@@ -52,7 +52,14 @@ export function normalizeLhciPath(value) {
   }
   const trimmed = value.trim()
   if (trimmed === "") return "/"
-  return normalizeRoutePath(trimmed.startsWith("/") ? trimmed : `/${trimmed}`)
+  const pathname = trimmed.startsWith("/") ? trimmed : `/${trimmed}`
+  const normalized = normalizeRoutePath(pathname)
+  // Keep an explicit trailing slash for the collection URL.  Prepared LHCI
+  // shells live in `<route>/index.html`; preserving the caller's canonical
+  // directory form avoids a production-server redirect before Lighthouse
+  // starts tracing.  Route-policy comparisons continue to normalize this
+  // presentation detail via normalizeRoutePath().
+  return normalized === "/" || !pathname.endsWith("/") ? normalized : `${normalized}/`
 }
 
 function pathMatchesPrefix(pathname, prefix) {

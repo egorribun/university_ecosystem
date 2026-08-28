@@ -352,8 +352,9 @@ function RootComponent() {
   // Wave 127 SW1 — provider hoisting. Both SSR and client paths now mount
   // the full provider chain via __root.tsx instead of via main.tsx → App.tsx
   // → AppProviders. AppShellProvider, AuthProvider, LanguageProvider,
-  // LazyMotion, MotionConfig, LiveRegionProvider, WebSocketProvider,
-  // MessengerProvider, ErrorBoundary, GlobalHapticsListener, ThemeProvider
+  // LazyMotion, MotionConfig, LiveRegionProvider, MessengerShellProvider,
+  // ErrorBoundary, GlobalHapticsListener, ThemeProvider. The full
+  // WebSocket/Messenger providers mount only inside the lazy messenger route.
   // are all available at server render time.
   //
   // Wave 128 SW3 — both branches now mount MainLayout so /dashboard SSR

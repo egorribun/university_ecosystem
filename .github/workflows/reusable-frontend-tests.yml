@@ -509,13 +509,13 @@ jobs:
       matrix:
         include:
           - shard: core
-            urls: ",login,dashboard"
+            urls: ",login/,dashboard/"
           - shard: content
-            urls: "news,schedule,events"
+            urls: "news/,schedule/,events/"
           - shard: realtime
-            urls: "activity,map,messenger"
+            urls: "activity/,map/,messenger/"
           - shard: fallback
-            urls: "404"
+            urls: "404/"
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}

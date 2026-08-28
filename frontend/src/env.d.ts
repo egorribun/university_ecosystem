@@ -35,7 +35,8 @@ interface ImportMeta {
  *
  * Set to `true` by a useEffect in `AppProviders.tsx` AFTER React commits the
  * full provider tree (LanguageProvider → LazyMotion → MotionConfig →
- * ProvidersInner → AuthContext → WebSocketProvider → MessengerProvider).
+ * ProvidersInner → AuthContext → MessengerShellProvider (the full
+ * WebSocket/Messenger providers mount only on the lazy messenger route).
  * `tests/e2e/url-state-persistence.spec.ts` uses
  * `page.waitForFunction(() => window.__APP_HYDRATED === true)` to gate
  * clicks/fills on controls that depend on onClick bindings from

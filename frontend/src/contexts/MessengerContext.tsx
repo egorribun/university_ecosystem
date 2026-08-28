@@ -1,36 +1,15 @@
-import { createContext, useContext, useMemo, useState, useEffect, type ReactNode } from "react"
+import { useMemo, useState, useEffect, type ReactNode } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useChatWebSocket } from "@/hooks/useChatWebSocket"
 import { useAuth } from "./AuthContext"
 import { chatApi, type PresenceStatus, type ChatsListResponse, type Chat } from "@/api/chat"
 
-interface MessengerContextType {
-  unreadCount: number
-  presenceMap: Record<string, PresenceStatus>
-  isConnected: boolean
-  sendTyping: (chatId: string) => void
-  sendRead: (chatId: string) => void // Wave 203 SW5 — chat-level (no message_id)
-  // Wave 204 SW5 — join/leave a ws-hub room (room == chat_id) so this client
-  // receives live chat.{room} fan-out. Driven by useMessengerController on
-  // chat-select (W204 SW6).
-  sendJoin: (chatId: string) => void
-  sendLeave: (chatId: string) => void
-  getTypingUsersForChat: (chatId: string) => { userId: string; userName: string }[]
-}
+import { MessengerContext, useMessenger, type MessengerContextType } from "./MessengerContextCore"
 
-// Wave 197 SW7 — exported so Storybook stories (ChatArea) can wrap a tsc-typed
-// MessengerContext.Provider stub without running the real provider's WebSocket /
-// query work. Additive, unused by the app graph → tree-shaken from the prod
-// bundle (the only consumer is the story, which is outside the Vite app entry).
-export const MessengerContext = createContext<MessengerContextType | undefined>(undefined)
-
-export const useMessenger = () => {
-  const context = useContext(MessengerContext)
-  if (!context) {
-    throw new Error("useMessenger must be used within MessengerProvider")
-  }
-  return context
-}
+// Keep the public context exports source-compatible for feature code and
+// Storybook while the shell imports only the dependency-free core module.
+export { MessengerContext, useMessenger }
+export type { MessengerContextType }
 
 export function MessengerProvider({ children }: { children: ReactNode }) {
   const { isAuth, user } = useAuth()

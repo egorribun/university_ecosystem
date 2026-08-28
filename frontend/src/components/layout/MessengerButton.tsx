@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next"
 import { MessageSquare } from "lucide-react"
 import { cn } from "@/utils/cn"
 import { m } from "framer-motion"
-import { useMessenger } from "@/contexts/MessengerContext"
+import { useMessenger } from "@/contexts/MessengerContextCore"
 
 export default function MessengerButton() {
   const navigate = useNavigate()

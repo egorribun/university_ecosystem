@@ -1,0 +1,38 @@
+import { createContext, useContext } from "react"
+
+/**
+ * Dependency-free context contract used by the application shell.  The full
+ * chat provider is mounted by the lazy messenger route, so authenticated
+ * pages do not pull the WebSocket and chat API graph into the critical entry.
+ */
+export interface MessengerContextType {
+  unreadCount: number
+  presenceMap: Record<string, { active: boolean; last_seen_at: string | null }>
+  isConnected: boolean
+  sendTyping: (chatId: string) => void
+  sendRead: (chatId: string) => void
+  sendJoin: (chatId: string) => void
+  sendLeave: (chatId: string) => void
+  getTypingUsersForChat: (chatId: string) => { userId: string; userName: string }[]
+}
+
+export const DEFAULT_MESSENGER_CONTEXT: MessengerContextType = Object.freeze({
+  unreadCount: 0,
+  presenceMap: Object.freeze({}),
+  isConnected: false,
+  sendTyping: () => undefined,
+  sendRead: () => undefined,
+  sendJoin: () => undefined,
+  sendLeave: () => undefined,
+  getTypingUsersForChat: () => [],
+})
+
+export const MessengerContext = createContext<MessengerContextType | undefined>(undefined)
+
+export const useMessenger = (): MessengerContextType => {
+  const context = useContext(MessengerContext)
+  if (!context) {
+    throw new Error("useMessenger must be used within MessengerProvider")
+  }
+  return context
+}
