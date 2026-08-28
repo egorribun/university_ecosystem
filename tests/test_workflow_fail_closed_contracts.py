@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 import shlex
+import tomllib
+from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -13,6 +15,10 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 CI = WORKFLOWS / "ci.yml"
+PRE_COMMIT_CONFIG = ROOT / ".pre-commit-config.yaml"
+PYPROJECT = ROOT / "pyproject.toml"
+UV_LOCK = ROOT / "uv.lock"
+LOCKED_PRE_COMMIT_VERSION = "4.6.0"
 
 EXPECTED_EXTERNAL_IMAGES = {
     "pgvector/pgvector:pg17": (
@@ -147,27 +153,176 @@ def _assert_pinned(ref: str, *, source: str) -> None:
     assert _DIGEST.search(ref), f"unpinned static image {ref!r} in {source}"
 
 
-def test_precommit_is_one_read_only_blocking_gate() -> None:
+def _configured_precommit_hook_ids() -> Counter[str]:
+    """Return default-stage hook occurrences; identical ids may have variants."""
+
+    config = yaml.safe_load(PRE_COMMIT_CONFIG.read_text(encoding="utf-8"))
+    assert isinstance(config, dict)
+    hook_ids: Counter[str] = Counter()
+    for repo in config["repos"]:
+        for hook in repo.get("hooks", []):
+            stages = hook.get("stages")
+            if stages == ["manual"]:
+                continue
+            hook_ids[hook["id"]] += 1
+    return hook_ids
+
+
+def _locked_pre_commit_version() -> str:
+    """Read the exact runner version from the authoritative project lock."""
+
+    lock = tomllib.loads(UV_LOCK.read_text(encoding="utf-8"))
+    versions = [
+        package["version"]
+        for package in lock["package"]
+        if package["name"] == "pre-commit"
+    ]
+    assert versions == [LOCKED_PRE_COMMIT_VERSION]
+    return versions[0]
+
+
+def _workflow_precommit_hook_ids(job: dict[str, Any]) -> list[str]:
+    """Extract explicit hook ids from the CI split without accepting all-files."""
+
+    hook_ids: list[str] = []
+    for step in job["steps"]:
+        if "with" in step and "extra_args" in step["with"]:
+            args = shlex.split(step["with"]["extra_args"])
+            assert args and args[0] != "--all-files"
+            hook_ids.append(args[0])
+        if "run" in step:
+            hook_ids.extend(
+                re.findall(
+                    r"(?:^|\n)\s*pre-commit run ([a-z0-9][a-z0-9-]*) --all-files",
+                    step["run"],
+                )
+            )
+    return hook_ids
+
+
+def test_precommit_split_preserves_every_nonmanual_hook_and_fails_closed() -> None:
     workflow = _workflow(CI)
     jobs = workflow["jobs"]
     assert "pre-commit-autofix" not in jobs
 
-    job = jobs["pre-commit-check"]
-    assert job["permissions"] == {"contents": "read"}
-    assert "outputs" not in job
+    fast_job = jobs["pre-commit-check"]
+    security_types_job = jobs["pre-commit-security-and-types"]
+    for job in (fast_job, security_types_job):
+        assert job["permissions"] == {"contents": "read"}
+        assert "outputs" not in job
+        assert "continue-on-error" not in job
+        assert job["timeout-minutes"] == 15
+
     checkout = next(
-        step for step in job["steps"] if "actions/checkout@" in step.get("uses", "")
+        step
+        for step in fast_job["steps"]
+        if "actions/checkout@" in step.get("uses", "")
     )
     assert checkout["with"]["persist-credentials"] is False
+    security_checkout = next(
+        step
+        for step in security_types_job["steps"]
+        if "actions/checkout@" in step.get("uses", "")
+    )
+    assert security_checkout["with"]["persist-credentials"] is False
 
-    check = _step(job, "Run pre-commit (check only)")
-    assert "continue-on-error" not in check
-    assert check["with"]["extra_args"] == "--all-files --show-diff-on-failure"
-    # The Docker-backed Semgrep hook is run by an independent blocking job
-    # so the ordinary hooks can unblock the repository-wide fan-out.
-    # This is a transport split, not a quality bypass: the sibling job runs
-    # the exact hook with its own bounded timeout and is required by ci-success.
-    assert check["env"] == {"SKIP": "semgrep-docker"}
+    assert "needs" not in security_types_job
+    assert "if" not in security_types_job
+
+    # The Docker-backed Semgrep hook remains a separate required security job.
+    # All default-stage hooks other than it must be run exactly once by the
+    # split. This prevents an accidental all-files fallback, duplicate work,
+    # or a quiet drop of detect-secrets / mypy while allowing the fast subset
+    # to unblock the rest of the CI graph.
+    configured_hook_ids = _configured_precommit_hook_ids()
+    expected_hook_ids = set(configured_hook_ids) - {"semgrep-docker"}
+    actual_hook_ids = _workflow_precommit_hook_ids(fast_job) + (
+        _workflow_precommit_hook_ids(security_types_job)
+    )
+    assert Counter(actual_hook_ids) == Counter(
+        {hook_id: 1 for hook_id in expected_hook_ids}
+    )
+
+    # `pre-commit run ruff` selects every default-stage configuration with the
+    # matching id. The config deliberately has two active Ruff variants, so
+    # one selector is required and sufficient; adding a second selector would
+    # run both variants twice.
+    assert configured_hook_ids["ruff"] == 2
+    assert actual_hook_ids.count("ruff") == 1
+
+    # The pre-commit runner is an isolated, exact-pinned dependency group.  It
+    # avoids synchronizing the complete application dev environment in each
+    # lightweight job while still exporting every locked transitive wheel with
+    # hashes.  Runtime verification makes a substituted executable fail closed
+    # before any PR-controlled hook can execute.
+    locked_pre_commit_version = _locked_pre_commit_version()
+    pyproject = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+    assert pyproject["dependency-groups"]["ci-precommit-runner"] == [
+        f"pre-commit=={locked_pre_commit_version}"
+    ]
+    lock = tomllib.loads(UV_LOCK.read_text(encoding="utf-8"))
+    project_package = next(
+        package
+        for package in lock["package"]
+        if package["name"] == "university-ecosystem"
+    )
+    assert project_package["dev-dependencies"]["ci-precommit-runner"] == [
+        {"name": "pre-commit"}
+    ]
+    assert project_package["metadata"]["requires-dev"]["ci-precommit-runner"] == [
+        {"name": "pre-commit", "specifier": f"=={locked_pre_commit_version}"}
+    ]
+    for job in (fast_job, security_types_job):
+        assert any(
+            step.get("uses", "").startswith("astral-sh/setup-uv@")
+            for step in job["steps"]
+        )
+        installer = _step(job, "Install hash-verified pre-commit runner")
+        install = installer["run"]
+        assert "uv export --frozen" in install
+        assert "--only-group ci-precommit-runner" in install
+        assert "--no-emit-project" in install
+        assert "--no-emit-workspace" in install
+        assert "--format requirements-txt" in install
+        assert '"$RUNNER_TEMP/ci-precommit.requirements.txt"' in install
+        assert "--require-hashes" in install
+        assert "--only-binary=:all:" in install
+        assert "--no-deps" in install
+        assert "--force-reinstall" in install
+        assert '-r "$requirements_file"' in install
+        assert "--no-hashes" not in install
+        assert "tomllib.load" not in install
+        assert '"pre-commit==$LOCKED_PRE_COMMIT_VERSION"' not in install
+        assert (
+            'test "$(pre-commit --version)" = '
+            f'"pre-commit {locked_pre_commit_version}"' in install
+        )
+
+    security_hook = _step(security_types_job, "Run security and type pre-commit hooks")
+    assert "detect-secrets" in security_hook["run"]
+    assert "mypy" in security_hook["run"]
+    assert "set -euo pipefail" in security_hook["run"]
+    assert 'exit "$failed"' in security_hook["run"]
+    assert "continue-on-error" not in security_hook
+
+    config = yaml.safe_load(PRE_COMMIT_CONFIG.read_text(encoding="utf-8"))
+    assert isinstance(config, dict)
+    detect_secrets = next(
+        hook
+        for repo in config["repos"]
+        for hook in repo.get("hooks", [])
+        if hook["id"] == "detect-secrets"
+    )
+    assert detect_secrets["entry"] == "python scripts/run_detect_secrets.py"
+    assert detect_secrets["args"] == ["--baseline", ".secrets.baseline"]
+
+    ci_success = jobs["ci-success"]
+    assert "pre-commit-security-and-types" in ci_success["needs"]
+    result_gate = _step(ci_success, "Check all jobs passed")["run"]
+    assert (
+        '"pre-commit-security-and-types|${{ needs.pre-commit-security-and-types.result }}"'
+        in result_gate
+    )
 
 
 def test_semgrep_security_audit_starts_independently() -> None:
@@ -184,6 +339,91 @@ def test_semgrep_security_audit_starts_independently() -> None:
     assert "security-audit" in jobs["ci-success"]["needs"]
     gate = jobs["ci-success"]["steps"][0]["run"]
     assert '"security-audit|${{ needs.security-audit.result }}"' in gate
+
+
+def test_mutation_matrix_publishes_bounded_capacity_telemetry() -> None:
+    """Keep the next allocation decision tied to fresh, observable evidence."""
+
+    jobs = _workflow(CI)["jobs"]
+    universe = jobs["mutation-tests-universe"]
+    runners = jobs["mutation-tests-incremental"]
+    stryker = jobs["stryker-shards"]
+
+    assert universe["outputs"]["mutation_descriptor_count"] == (
+        "${{ steps.mutation_matrix.outputs.descriptor_count }}"
+    )
+    matrix_step = _step(universe, "Build validated mutmut execution matrix")
+    assert "descriptor_count=" in matrix_step["run"]
+    assert '"$descriptor_count" -gt 128' in matrix_step["run"]
+    assert "Mutation matrix capacity" in matrix_step["run"]
+    assert (
+        'if [ "${{ steps.mutation_scope.outputs.has_python }}" = "true" ]; then'
+        in matrix_step["run"]
+    )
+    assert (
+        'matrix_summary="Fully validated fixed plan assignments: 128"'
+        in matrix_step["run"]
+    )
+    assert (
+        'matrix_summary="No-Python sentinel: one explicit non-mutant descriptor '
+        '(not a 128-assignment plan)"' in matrix_step["run"]
+    )
+    assert (
+        'if [ "${{ steps.mutation_scope.outputs.has_python }}" = "false" ] '
+        '&& [ "$descriptor_count" -ne 1 ]; then' in matrix_step["run"]
+    )
+    assert 'echo "- $matrix_summary"' in matrix_step["run"]
+    assert 'echo "- $descriptor_summary"' in matrix_step["run"]
+    assert "scheduler queue p50/p95" in matrix_step["run"]
+
+    assert runners["strategy"]["max-parallel"] == 9
+    assert stryker["strategy"]["max-parallel"] == 11
+    assert runners["strategy"]["matrix"] == (
+        "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
+    )
+
+
+def test_precommit_cache_cannot_cross_into_privileged_workflows() -> None:
+    """Cache only hook environments in unprivileged PR CI execution."""
+
+    workflow = _workflow(CI)
+    jobs = workflow["jobs"]
+    cache_prefixes = ("pre-commit-fast-v2-", "pre-commit-security-types-v2-")
+
+    ci_source = CI.read_text(encoding="utf-8")
+    assert "pull_request_target:" not in ci_source
+    assert "workflow_run:" not in ci_source
+
+    for job_name, prefix in zip(
+        ("pre-commit-check", "pre-commit-security-and-types"),
+        cache_prefixes,
+        strict=True,
+    ):
+        job = jobs[job_name]
+        assert job["permissions"] == {"contents": "read"}
+        # Hook definitions and local hook scripts are PR-controlled, so they
+        # must not inherit the workflow-level CI test secret.
+        assert job["env"] == {"SECRET_KEY": ""}
+        cache_step = next(
+            step
+            for step in job["steps"]
+            if step.get("with", {}).get("path") == "~/.cache/pre-commit"
+        )
+        assert cache_step["uses"].startswith("actions/cache@")
+        assert cache_step["with"]["key"].startswith(prefix)
+        assert (
+            "hashFiles('.pre-commit-config.yaml', 'uv.lock')"
+            in cache_step["with"]["key"]
+        )
+        assert "restore-keys" not in cache_step["with"]
+
+    # GitHub scopes cache reads by branch (with default-branch fallback). Do
+    # not let a future privileged workflow opt into either PR-cache namespace.
+    for workflow_path in WORKFLOWS.glob("*.*ml"):
+        if workflow_path == CI:
+            continue
+        source = workflow_path.read_text(encoding="utf-8")
+        assert not any(prefix in source for prefix in cache_prefixes), workflow_path
 
 
 def test_lighthouse_missing_artifact_fails_closed() -> None:

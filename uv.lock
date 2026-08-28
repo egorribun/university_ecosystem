@@ -4874,6 +4874,9 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
+ci-precommit-runner = [
+    { name = "pre-commit" },
+]
 dev = [
     { name = "asgi-lifespan" },
     { name = "atheris", marker = "sys_platform == 'linux'" },
@@ -4992,6 +4995,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
+ci-precommit-runner = [{ name = "pre-commit", specifier = "==4.6.0" }]
 dev = [
     { name = "asgi-lifespan", specifier = ">=2.1.0" },
     { name = "atheris", marker = "sys_platform == 'linux'", specifier = ">=2.3.0" },

@@ -1632,7 +1632,10 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
     mutation_job = workflow["jobs"]["mutation-tests-incremental"]
 
     assert universe_job["outputs"] == {
-        "mutation_matrix": "${{ steps.mutation_matrix.outputs.matrix }}"
+        "mutation_matrix": "${{ steps.mutation_matrix.outputs.matrix }}",
+        "mutation_descriptor_count": (
+            "${{ steps.mutation_matrix.outputs.descriptor_count }}"
+        ),
     }
     matrix_step = _step_named(universe_job, "Build validated mutmut execution matrix")
     assert matrix_step["id"] == "mutation_matrix"
@@ -1641,6 +1644,24 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
     assert '"include"' in matrix_step["run"]
     assert "has_python" in matrix_step["run"]
     assert "has_mutants" in matrix_step["run"]
+    assert "descriptor_count=" in matrix_step["run"]
+    assert '"$descriptor_count" -gt 128' in matrix_step["run"]
+    assert "Mutation matrix capacity" in matrix_step["run"]
+    assert (
+        'matrix_summary="Fully validated fixed plan assignments: 128"'
+        in matrix_step["run"]
+    )
+    assert (
+        'matrix_summary="No-Python sentinel: one explicit non-mutant descriptor '
+        '(not a 128-assignment plan)"' in matrix_step["run"]
+    )
+    assert (
+        'if [ "${{ steps.mutation_scope.outputs.has_python }}" = "false" ] '
+        '&& [ "$descriptor_count" -ne 1 ]; then' in matrix_step["run"]
+    )
+    assert 'echo "- $matrix_summary"' in matrix_step["run"]
+    assert 'echo "- $descriptor_summary"' in matrix_step["run"]
+    assert "scheduler queue p50/p95" in matrix_step["run"]
 
     assert mutation_job["strategy"]["matrix"] == (
         "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"

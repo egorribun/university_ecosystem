@@ -42,12 +42,22 @@ jobs:
           echo "Head Ref: ${GITHUB_HEAD_REF}"
           echo "Event: ${GITHUB_EVENT_NAME}"
 
+  # The ordinary pre-commit sequence used to serialize its two slowest hooks
+  # (detect-secrets and mypy) ahead of every test, mutation, and browser job.
+  # Keep every hook blocking, but let a quick, read-only subset open the CI
+  # fan-out while the slow security/type subset remains an independently
+  # required final dependency.  The two jobs use disjoint cache namespaces:
+  # cache contents are hook environments only, never quality evidence.
   pre-commit-check:
     name: Pre-commit & Linting (Read-only)
     runs-on: ubuntu-24.04
     timeout-minutes: 15 # CI-03 (audit Wave 10)
     permissions:
       contents: read
+    # Hook config and local hook entrypoints are supplied by the PR checkout.
+    # Do not expose the workflow-level test secret to this unprivileged job.
+    env:
+      SECRET_KEY: ""
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -70,16 +80,129 @@ jobs:
         run: |
           uv lock --check || (echo "::error::uv.lock is out of sync — run 'uv lock' locally and commit the updated lockfile" && exit 1)
 
-      - name: Run pre-commit (check only)
-        uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+      - name: Restore fast pre-commit environments
+        # Keep the cache keyed by the immutable hook configuration, exact
+        # runner closure, and interpreter location. It holds installed hook
+        # toolchains only; current repository files are always checked from
+        # this fresh checkout.
+        # GitHub scopes caches by branch; these prefixes are CI-only and must
+        # never be consumed by a privileged workflow_dispatch/workflow_run job.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-fast-v2-${{ runner.os }}-${{ env.pythonLocation }}-${{ hashFiles('.pre-commit-config.yaml', 'uv.lock') }}
+
+      - name: Install hash-verified pre-commit runner
+        # Export only the isolated runner closure: a full `uv run --frozen`
+        # would synchronize the complete application environment. Hash-verified
+        # pip installation prevents a substituted package from running hooks.
+        run: |
+          set -euo pipefail
+          requirements_file="$RUNNER_TEMP/ci-precommit.requirements.txt"
+          uv export --frozen \
+            --only-group ci-precommit-runner \
+            --no-emit-project \
+            --no-emit-workspace \
+            --format requirements-txt \
+            -o "$requirements_file"
+          python -m pip install --disable-pip-version-check \
+            --require-hashes \
+            --only-binary=:all: \
+            --no-deps \
+            --force-reinstall \
+            -r "$requirements_file"
+          test "$(pre-commit --version)" = "pre-commit 4.6.0"
+
+      - name: Run fast pre-commit hooks
         env:
           # The Docker-backed Semgrep hook runs in the blocking Semgrep job
           # inside security-audit. That caller starts independently, so a
           # Docker startup/teardown stall cannot hold the quality fan-out.
           # security-audit remains a required ci-success dependency.
           SKIP: semgrep-docker
+        run: |
+          set -euo pipefail
+          failed=0
+          pre-commit run ruff --all-files --show-diff-on-failure || failed=1
+          pre-commit run ruff-format --all-files --show-diff-on-failure || failed=1
+          pre-commit run gitleaks --all-files --show-diff-on-failure || failed=1
+          pre-commit run bandit --all-files --show-diff-on-failure || failed=1
+          pre-commit run enforce-secret-strength --all-files --show-diff-on-failure || failed=1
+          pre-commit run no-python2-except --all-files --show-diff-on-failure || failed=1
+          pre-commit run actionlint --all-files --show-diff-on-failure || failed=1
+          pre-commit run renovate-config-validator --all-files --show-diff-on-failure || failed=1
+          exit "$failed"
+
+  pre-commit-security-and-types:
+    name: Pre-commit Security & Types (Read-only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15 # CI-03 (audit Wave 10)
+    # This sibling has the same read-only trust boundary as the former single
+    # pre-commit job. Starting it independently overlaps its slow scans with
+    # the fast gate; ci-success still requires both results and accepts only
+    # success. It has no dependencies, so use the default condition: GitHub
+    # can cancel it promptly when a newer commit supersedes this attempt.
+    permissions:
+      contents: read
+    # detect-secrets and mypy execute the PR checkout's hook configuration.
+    # Keep the workflow-level test secret out of that untrusted execution.
+    env:
+      SECRET_KEY: ""
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          extra_args: --all-files --show-diff-on-failure
+          persist-credentials: false
+
+      - name: Set up Python for pre-commit security hooks
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+
+      - name: Restore security/type pre-commit environments
+        # Separate from the fast group so concurrent jobs cannot race to write
+        # a shared cache key. Key the exact runner closure too. The cache is
+        # only third-party hook environments; every scan consumes current
+        # checkout files and reports fresh results.
+        # This CI-only prefix must never be restored by privileged workflows.
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-security-types-v2-${{ runner.os }}-${{ env.pythonLocation }}-${{ hashFiles('.pre-commit-config.yaml', 'uv.lock') }}
+
+      - name: Install hash-verified pre-commit runner
+        # Match the fast sibling exactly: only the isolated runner closure is
+        # installed, and the runtime assertion rejects an unexpected executable
+        # before detect-secrets or mypy can execute.
+        run: |
+          set -euo pipefail
+          requirements_file="$RUNNER_TEMP/ci-precommit.requirements.txt"
+          uv export --frozen \
+            --only-group ci-precommit-runner \
+            --no-emit-project \
+            --no-emit-workspace \
+            --format requirements-txt \
+            -o "$requirements_file"
+          python -m pip install --disable-pip-version-check \
+            --require-hashes \
+            --only-binary=:all: \
+            --no-deps \
+            --force-reinstall \
+            -r "$requirements_file"
+          test "$(pre-commit --version)" = "pre-commit 4.6.0"
+
+      - name: Run security and type pre-commit hooks
+        env:
+          SKIP: semgrep-docker
+        run: |
+          set -euo pipefail
+          failed=0
+          pre-commit run detect-secrets --all-files --show-diff-on-failure || failed=1
+          pre-commit run mypy --all-files --show-diff-on-failure || failed=1
+          exit "$failed"
 
   compose-validate:
     name: Validate docker-compose.yml
@@ -2151,6 +2274,9 @@ jobs:
       # consumers independently validate their selected entry before installing
       # a Python/Helm toolchain or executing a mutant.
       mutation_matrix: ${{ steps.mutation_matrix.outputs.matrix }}
+      # The next allocation decision must use fresh descriptor cardinality,
+      # not a guessed runner split from a prior workflow topology.
+      mutation_descriptor_count: ${{ steps.mutation_matrix.outputs.descriptor_count }}
     env:
       OTEL_SDK_DISABLED: "true"
     needs:
@@ -2286,13 +2412,38 @@ jobs:
             matrix="$(python scripts/mutmut_shard_matrix.py matrix \
               --plan-directory mutants/mutmut-incremental-plan \
               --expected-shards 128)"
+            matrix_summary="Fully validated fixed plan assignments: 128"
           else
             # GitHub does not permit an empty dynamic matrix. A single explicit
             # no-Python sentinel validates the empty attempt envelope and exits
             # without installing a mutation toolchain.
             matrix='{"include":[{"shard":0,"has_python":"false","has_mutants":"false"}]}'
+            matrix_summary="No-Python sentinel: one explicit non-mutant descriptor (not a 128-assignment plan)"
+          fi
+          descriptor_count="$(printf '%s' "$matrix" | python -c 'import json, sys; entries = json.load(sys.stdin).get("include"); sys.exit("mutation matrix must contain a nonempty include list") if not isinstance(entries, list) or not entries else None; print(len(entries))')"
+          if ! [[ "$descriptor_count" =~ ^[1-9][0-9]*$ ]] || [ "$descriptor_count" -gt 128 ]; then
+            echo "::error::Mutation descriptor count is outside the validated 1..128 range: $descriptor_count"
+            exit 1
+          fi
+          if [ "${{ steps.mutation_scope.outputs.has_python }}" = "false" ] && [ "$descriptor_count" -ne 1 ]; then
+            echo "::error::No-Python mutation sentinel must contain exactly one descriptor: $descriptor_count"
+            exit 1
+          fi
+          if [ "${{ steps.mutation_scope.outputs.has_python }}" = "true" ]; then
+            descriptor_summary="Runnable nonempty descriptors this commit: $descriptor_count"
+          else
+            descriptor_summary="Runnable sentinel descriptors this commit: $descriptor_count"
           fi
           printf 'matrix=%s\n' "$matrix" >> "$GITHUB_OUTPUT"
+          printf 'descriptor_count=%s\n' "$descriptor_count" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Mutation matrix capacity"
+            echo "- $matrix_summary"
+            echo "- $descriptor_summary"
+            echo "- Mutmut producer max concurrency: 9"
+            echo "- Stryker producer max concurrency: 11"
+            echo "- Change allocation only after collecting this run's scheduler queue p50/p95 and per-family completion times."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create attempt-scoped mutmut universe envelope
         shell: bash
@@ -3587,6 +3738,7 @@ jobs:
     if: ${{ always() && !cancelled() }}
     needs:
       - pre-commit-check
+      - pre-commit-security-and-types
       - compose-validate
       - backend-tests
       - backend-type-check
@@ -3648,6 +3800,7 @@ jobs:
           #
           required_results=(
             "pre-commit-check|${{ needs.pre-commit-check.result }}"
+            "pre-commit-security-and-types|${{ needs.pre-commit-security-and-types.result }}"
             "compose-validate|${{ needs.compose-validate.result }}"
             "backend-tests|${{ needs.backend-tests.result }}"
             "backend-type-check|${{ needs.backend-type-check.result }}"

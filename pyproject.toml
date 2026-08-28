@@ -374,6 +374,10 @@ release-certification = [
   # the environment; secret-bearing steps execute its interpreter with no sync.
   "jsonschema==4.25.1",
 ]
+ci-precommit-runner = [
+  # CI installs this minimal, hash-verified closure without synchronizing dev.
+  "pre-commit==4.6.0",
+]
 dev = [
   "asgi-lifespan>=2.1.0",
   "fakeredis>=2.35.1",
