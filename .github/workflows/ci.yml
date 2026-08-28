@@ -696,11 +696,63 @@ jobs:
       node-version: "24"
       run-lighthouse: true
 
+  # Generate the expensive instrumenter universe once. The artifact is named
+  # for an exact immutable GitHub workflow attempt and commit; every consumer
+  # validates all bound metadata before it can select a logical shard.
+  stryker-preflight:
+    name: Frontend Mutation Preflight Universe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: pre-commit-check
+    if: ${{ github.event_name == 'pull_request' }}
+    permissions:
+      contents: read
+    env:
+      STRYKER_SHARD_COUNT: "64"
+      STRYKER_PREFLIGHT_MODE: generate
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          # Exact toolchain pin prevents a mutable major selector from
+          # producing a different instrumenter universe in another job of the
+          # same SHA/run/attempt.
+          node-version: "24.15.0"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Generate canonical immutable Stryker preflight
+        working-directory: frontend
+        run: npm run test:mutation
+
+      - name: Upload immutable Stryker preflight
+        if: ${{ success() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: frontend-mutation-preflight-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: frontend/reports/mutation/preflight-artifact/PREFLIGHT_ARTIFACT.json
+          if-no-files-found: error
+          overwrite: false
+          # A failed-jobs retry may occur any time in GitHub's supported
+          # 30-day rerun window. Keep immutable, SHA-bound preflight evidence
+          # for that entire window so successful producer work remains
+          # reusable instead of forcing a false failure after day one.
+          retention-days: 30
+
   stryker-shards:
     name: Frontend mutation shard ${{ matrix.shard-index }}/64
     runs-on: ubuntu-24.04
     timeout-minutes: 120
-    needs: pre-commit-check
+    needs: [pre-commit-check, stryker-preflight]
     if: ${{ github.event_name == 'pull_request' }}
     strategy:
       fail-fast: false
@@ -717,14 +769,17 @@ jobs:
       STRYKER_SHARD_COUNT: "64"
       STRYKER_SHARD_INDEX: ${{ matrix.shard-index }}
       STRYKER_CONCURRENCY: "2"
+      STRYKER_PREFLIGHT_ARTIFACT: required
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.15.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -732,10 +787,18 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      # A failed-jobs rerun may reuse only an exact producer cache from this
-      # workflow run and SHA.  The cache is transport, never release evidence:
-      # the current attempt must publish a fresh artifact and the aggregate
-      # independently validates every byte and shard identity.
+      - name: Download immutable same-run Stryker preflight candidates
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: frontend-mutation-preflight-${{ github.run_id }}-*-${{ github.sha }}
+          path: frontend/reports/mutation/preflight-candidates
+          merge-multiple: false
+          if-no-artifact-found: error
+
+      # A failed-jobs rerun may reuse only a verified immutable preflight
+      # candidate from this workflow run and SHA. The shard cache is transport,
+      # never release evidence; the aggregate independently validates every
+      # byte and shard identity.
       - name: Restore exact successful shard
         id: restore_stryker_shard
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -743,6 +806,16 @@ jobs:
           path: frontend/reports/mutation/shards
           key: stryker-shard-v1-${{ github.run_id }}-${{ github.sha }}-${{ matrix.shard-index }}
           fail-on-cache-miss: false
+
+      # Validate provenance, current source/config/policy/tool digests and the
+      # deterministic 64-way plan even when this logical shard is restored
+      # from the exact retry cache. Validation intentionally does not execute
+      # Stryker or remove a restored producer report.
+      - name: Validate immutable Stryker preflight before execution
+        working-directory: frontend
+        env:
+          STRYKER_PREFLIGHT_MODE: validate
+        run: npm run test:mutation
 
       - name: Run fresh Stryker shard
         if: ${{ steps.restore_stryker_shard.outputs.cache-hit != 'true' }}
@@ -775,7 +848,7 @@ jobs:
     name: Frontend Mutation Evidence (100%)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    needs: stryker-shards
+    needs: [stryker-preflight, stryker-shards]
     if: ${{ always() && !cancelled() && github.event_name == 'pull_request' }}
     permissions:
       contents: read
@@ -783,14 +856,17 @@ jobs:
       STRYKER_SHARD_COUNT: "64"
       STRYKER_AGGREGATE_ROOT: reports/mutation/external
       STRYKER_CONCURRENCY: "2"
+      STRYKER_PREFLIGHT_ARTIFACT: required
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.15.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -798,11 +874,23 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Download all frontend mutation shards from current attempt
+      - name: Download immutable same-run Stryker preflight candidates
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-*
+          pattern: frontend-mutation-preflight-${{ github.run_id }}-*-${{ github.sha }}
+          path: frontend/reports/mutation/preflight-candidates
+          merge-multiple: false
+          if-no-artifact-found: error
+
+      # A failed-jobs retry must retain successful logical shards from earlier
+      # attempts in this exact workflow run. The aggregate validates each
+      # candidate's run, revision, preflight, and producer-attempt provenance.
+      - name: Download all same-run Stryker shard candidates
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: frontend-mutation-shard-${{ github.run_id }}-*
           path: frontend/reports/mutation/external
+          merge-multiple: false
           if-no-artifact-found: error
 
       - name: Aggregate and verify fresh frontend mutation evidence
@@ -833,14 +921,18 @@ jobs:
     if: ${{ github.event_name == 'pull_request' }}
     permissions:
       contents: read
+    env:
+      STRYKER_VALIDATED_CANDIDATE_ROOT: reports/mutation/validated-candidates
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "24"
+          node-version: "24.15.0"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -848,11 +940,13 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Download validated frontend mutation evidence
+      - name: Download immutable same-run validated Stryker evidence candidates
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: frontend-mutation-validated-${{ github.run_id }}-${{ github.run_attempt }}
-          path: frontend/reports/mutation
+          pattern: frontend-mutation-validated-${{ github.run_id }}-*
+          path: frontend/reports/mutation/validated-candidates
+          merge-multiple: false
+          if-no-artifact-found: error
 
       - name: Re-verify downloaded frontend mutation evidence
         working-directory: frontend
@@ -3769,6 +3863,7 @@ jobs:
       - mutation-tests-stats
       - mutation-tests-universe
       - mutation-tests-incremental
+      - stryker-preflight
       - stryker-aggregate
       - stryker-evidence-roundtrip
       - frontend-mutation-required-context
@@ -3862,10 +3957,12 @@ jobs:
           }
 
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "success"
             assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "success"
             assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "success"
             assert_event_result "frontend-mutation-required-context" "${{ needs.frontend-mutation-required-context.result }}" "success"
           else
+            assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "skipped"
             assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "skipped"
             assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "skipped"
             assert_event_result "frontend-mutation-required-context" "${{ needs.frontend-mutation-required-context.result }}" "skipped"

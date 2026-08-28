@@ -1,5 +1,8 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
+import os from "node:os"
+import path from "node:path"
 import test from "node:test"
 
 import {
@@ -8,11 +11,24 @@ import {
   mutantSignature,
   mutationPatternsFromPolicy,
 } from "./validate-stryker-inventory.mjs"
-import { verifyEvidenceDocuments } from "./verify-stryker-evidence.mjs"
+import {
+  selectValidatedEvidenceCandidate,
+  verifyEvidenceDocuments,
+} from "./verify-stryker-evidence.mjs"
 
 const hash = (value) => createHash("sha256").update(value).digest("hex")
 const jsonText = (value) => `${JSON.stringify(value, null, 2)}\n`
 const instrumenterOptions = { plugins: null, excludedMutations: [], ignorers: [] }
+const toolchain = {
+  node: "v24.15.0",
+  platform: "linux",
+  arch: "x64",
+  tools: {
+    stryker: "9.6.1",
+    instrumenter: "9.6.1",
+    vitest: "4.1.10",
+  },
+}
 
 function reportConfig(mutate) {
   return {
@@ -42,11 +58,18 @@ async function fixture() {
   const sourcePath = `frontend/${sourceFile}`
   const source = "export const choose = (value: boolean) => (value ? 1 : 2)\n"
   const policyPath = "quality/coverage-source-policy.json"
+  const configPath = "frontend/stryker.config.mjs"
   const policy = { frontend: { include: ["src/**/*.ts"], exclude: [] } }
   const policyText = jsonText(policy)
+  const configText = "export default {}\n"
   const expectedPatterns = mutationPatternsFromPolicy(policy)
   const sourceFiles = [sourceFile]
   const sourceByFile = new Map([[sourceFile, source]])
+  const inputHashes = {
+    [configPath]: hash(configText),
+    [sourcePath]: hash(source),
+    [policyPath]: hash(policyText),
+  }
   const preflightByFile = await generateInstrumenterPreflight({
     sourceFiles,
     sourceByFile,
@@ -83,7 +106,14 @@ async function fixture() {
     preflightByFile,
   })
   const runId = "run-a"
-  const evidenceDigest = "b".repeat(64)
+  const evidenceDigest = hash(
+    JSON.stringify({
+      headSha: sha,
+      inputHashes: Object.fromEntries(
+        Object.entries(inputHashes).sort(([left], [right]) => left.localeCompare(right))
+      ),
+    })
+  )
   const preflight = {
     schemaVersion: "1.0",
     runId,
@@ -127,16 +157,26 @@ async function fixture() {
       evidenceDigest,
       repositoryDirty: false,
       dirtyPaths: [],
-      inputHashes: {
-        [sourcePath]: hash(source),
-        [policyPath]: hash(policyText),
-      },
+      inputHashes: { ...inputHashes },
     },
-    provenance: { workflowRunId: "42", workflowRunAttempt: "3" },
+    provenance: {
+      workflowRunId: "42",
+      workflowRunAttempt: "3",
+      ...toolchain,
+      tools: { ...toolchain.tools },
+    },
     sourcePolicy: {
       path: policyPath,
       sha256: hash(policyText),
       mutationPatterns: expectedPatterns,
+    },
+    config: {
+      path: configPath,
+      sha256: hash(configText),
+      coverageAnalysis: "perTest",
+      instrumenterOptions,
+      incremental: false,
+      forceFresh: true,
     },
     preflight: {
       path: "frontend/reports/mutation/preflight.json",
@@ -187,12 +227,15 @@ async function fixture() {
     expectedSha: sha,
     expectedWorkflowRunId: "42",
     expectedWorkflowRunAttempt: "3",
+    inputHashes,
+    toolchain: { ...toolchain, tools: { ...toolchain.tools } },
     marker,
     inventory,
     inventoryText,
     preflightText,
-    currentEvidenceFiles: [sourcePath, policyPath],
+    currentEvidenceFiles: [configPath, sourcePath, policyPath],
     fileBytes: new Map([
+      [configPath, Buffer.from(configText)],
       [sourcePath, Buffer.from(source)],
       [policyPath, Buffer.from(policyText)],
     ]),
@@ -235,6 +278,58 @@ function mutateReports(evidence, mutate) {
   evidence.shardEvidenceTexts.set(evidence.shardEvidencePath, jsonText(producer))
   evidence.inventory.shardEvidence[0].reportSha256 = producer.reportSha256
   resealShardEvidence(evidence)
+}
+
+function setAggregateProducerAttempt(evidence, attempt) {
+  evidence.inventory.provenance.workflowRunAttempt = attempt
+  const producer = JSON.parse(evidence.shardEvidenceTexts.get(evidence.shardEvidencePath))
+  producer.workflowRunAttempt = attempt
+  evidence.shardEvidenceTexts.set(evidence.shardEvidencePath, jsonText(producer))
+  evidence.inventory.shardEvidence[0].workflowRunAttempt = attempt
+  resealShardEvidence(evidence)
+}
+
+function candidateRelativePath(evidencePath) {
+  const prefix = "frontend/reports/mutation/"
+  assert.ok(evidencePath.startsWith(prefix), `unexpected evidence path: ${evidencePath}`)
+  return evidencePath.slice(prefix.length)
+}
+
+async function writeValidatedEvidenceCandidate(
+  candidateRoot,
+  evidence,
+  directoryAttempt = evidence.inventory.provenance.workflowRunAttempt
+) {
+  const candidateDirectory = path.join(
+    candidateRoot,
+    `frontend-mutation-validated-${evidence.expectedWorkflowRunId}-${directoryAttempt}`
+  )
+  const write = async (relativePath, contents) => {
+    const target = path.join(candidateDirectory, relativePath)
+    await mkdir(path.dirname(target), { recursive: true })
+    await writeFile(target, contents)
+  }
+  await write("VALIDATED.json", jsonText(evidence.marker))
+  await write("inventory.json", evidence.inventoryText)
+  await write("preflight.json", evidence.preflightText)
+  for (const [evidencePath, text] of evidence.reportTexts) {
+    await write(candidateRelativePath(evidencePath), text)
+  }
+  for (const [evidencePath, text] of evidence.shardEvidenceTexts) {
+    await write(candidateRelativePath(evidencePath), text)
+  }
+}
+
+function candidateSelectionOptions(evidence, candidateRoot, expectedWorkflowRunAttempt = "3") {
+  return {
+    candidateRoot,
+    expectedSha: evidence.expectedSha,
+    expectedWorkflowRunId: evidence.expectedWorkflowRunId,
+    expectedWorkflowRunAttempt,
+    expectedInputHashes: evidence.inputHashes,
+    expectedPatterns: evidence.expectedPatterns,
+    toolchain: evidence.toolchain,
+  }
 }
 
 test("independently accepts SHA-bound complete release evidence", async () => {
@@ -317,6 +412,18 @@ test("binds release evidence to the exact workflow run and attempt", async () =>
   await assert.rejects(verifyEvidenceDocuments(local), /workflow provenance/u)
 })
 
+test("permits an earlier aggregate producer only for a selected retry candidate", async () => {
+  const evidence = await fixture()
+  setAggregateProducerAttempt(evidence, "2")
+  evidence.expectedWorkflowRunAttempt = "3"
+
+  await assert.rejects(verifyEvidenceDocuments(evidence), /workflow provenance/u)
+  assert.equal(
+    (await verifyEvidenceDocuments({ ...evidence, allowEarlierProducerAttempt: true })).runId,
+    "run-a"
+  )
+})
+
 test("rejects missing or tampered shard producer evidence", async () => {
   const missing = await fixture()
   missing.inventory.shardEvidence = []
@@ -359,4 +466,121 @@ test("rejects shard producer evidence from a future workflow attempt", async () 
   resealShardEvidence(evidence)
 
   await assert.rejects(verifyEvidenceDocuments(evidence), /producer evidence is stale/u)
+})
+
+test("selects a previous-attempt validated artifact for a rerun-failed roundtrip", async (t) => {
+  const evidence = await fixture()
+  setAggregateProducerAttempt(evidence, "2")
+  const candidateRoot = await mkdtemp(path.join(os.tmpdir(), "stryker-validated-candidates-"))
+  t.after(() => rm(candidateRoot, { recursive: true, force: true }))
+  await writeValidatedEvidenceCandidate(candidateRoot, evidence)
+
+  const selected = await selectValidatedEvidenceCandidate(
+    candidateSelectionOptions(evidence, candidateRoot)
+  )
+
+  assert.equal(selected.producerAttempt, 2)
+  assert.equal(selected.inventory.provenance.workflowRunAttempt, "2")
+  assert.equal(selected.candidateDirectory.endsWith("frontend-mutation-validated-42-2"), true)
+})
+
+test("selects the newest valid validated artifact candidate deterministically", async (t) => {
+  const prior = await fixture()
+  setAggregateProducerAttempt(prior, "1")
+  const current = await fixture()
+  const candidateRoot = await mkdtemp(path.join(os.tmpdir(), "stryker-validated-candidates-"))
+  t.after(() => rm(candidateRoot, { recursive: true, force: true }))
+  await writeValidatedEvidenceCandidate(candidateRoot, prior)
+  await writeValidatedEvidenceCandidate(candidateRoot, current)
+
+  const selected = await selectValidatedEvidenceCandidate(
+    candidateSelectionOptions(current, candidateRoot)
+  )
+
+  assert.equal(selected.producerAttempt, 3)
+  assert.equal(selected.inventory.provenance.workflowRunAttempt, "3")
+})
+
+test("rejects malformed, foreign, future, and tampered validated artifact candidates", async (t) => {
+  const cases = [
+    {
+      name: "future producer attempt",
+      prepare: (evidence) => setAggregateProducerAttempt(evidence, "4"),
+      expected: /producer attempt/u,
+    },
+    {
+      name: "foreign workflow run",
+      prepare: (evidence) => {
+        evidence.inventory.provenance.workflowRunId = "43"
+        reseal(evidence)
+      },
+      expected: /workflow provenance/u,
+    },
+    {
+      name: "revision mismatch",
+      prepare: (evidence) => {
+        evidence.inventory.revision = "b".repeat(40)
+        evidence.inventory.sourceRevision.revision = "b".repeat(40)
+        evidence.marker.revision = "b".repeat(40)
+        reseal(evidence)
+      },
+      expected: /revision/u,
+    },
+    {
+      name: "source input mismatch",
+      prepare: (evidence) => {
+        evidence.inventory.sourceRevision.inputHashes["frontend/src/a.ts"] = "f".repeat(64)
+        reseal(evidence)
+      },
+      expected: /source input/u,
+    },
+    {
+      name: "configuration mismatch",
+      prepare: (evidence) => {
+        evidence.inventory.config.sha256 = "f".repeat(64)
+        reseal(evidence)
+      },
+      expected: /configuration/u,
+    },
+    {
+      name: "toolchain mismatch",
+      prepare: (evidence) => {
+        evidence.inventory.provenance.tools.instrumenter = "9.6.2"
+        reseal(evidence)
+      },
+      expected: /toolchain/u,
+    },
+  ]
+  for (const { name, prepare, expected } of cases) {
+    const evidence = await fixture()
+    prepare(evidence)
+    const candidateRoot = await mkdtemp(path.join(os.tmpdir(), "stryker-validated-candidates-"))
+    t.after(() => rm(candidateRoot, { recursive: true, force: true }))
+    await writeValidatedEvidenceCandidate(candidateRoot, evidence)
+    await assert.rejects(
+      () => selectValidatedEvidenceCandidate(candidateSelectionOptions(evidence, candidateRoot)),
+      expected,
+      name
+    )
+  }
+
+  const malformedRoot = await mkdtemp(path.join(os.tmpdir(), "stryker-validated-candidates-"))
+  t.after(() => rm(malformedRoot, { recursive: true, force: true }))
+  await writeFile(path.join(malformedRoot, "unexpected.json"), "{}\n")
+  const evidence = await fixture()
+  await assert.rejects(
+    () => selectValidatedEvidenceCandidate(candidateSelectionOptions(evidence, malformedRoot)),
+    /candidate root/u
+  )
+
+  const extraDirectoryRoot = await mkdtemp(path.join(os.tmpdir(), "stryker-validated-candidates-"))
+  t.after(() => rm(extraDirectoryRoot, { recursive: true, force: true }))
+  await writeValidatedEvidenceCandidate(extraDirectoryRoot, evidence)
+  await mkdir(path.join(extraDirectoryRoot, "frontend-mutation-validated-42-3", "unexpected"), {
+    recursive: true,
+  })
+  await assert.rejects(
+    () => selectValidatedEvidenceCandidate(candidateSelectionOptions(evidence, extraDirectoryRoot)),
+    /unexpected contents/u
+  )
 })

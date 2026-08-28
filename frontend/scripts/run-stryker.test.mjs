@@ -235,6 +235,429 @@ test("weighted shard plan is deterministic, complete, and bounded by the largest
   assert.equal(planMutationShards(weights, 10, 2).length, 2)
 })
 
+function sha256Text(value) {
+  return createHash("sha256").update(value).digest("hex")
+}
+
+function preflightArtifactText(artifact) {
+  return `${JSON.stringify(artifact, null, 2)}\n`
+}
+
+function resealPreflightArtifact(artifact, mutatePayload) {
+  const payload = structuredClone(artifact.payload)
+  mutatePayload(payload)
+  payload.preflight.digest = sha256Text(JSON.stringify(payload.preflight.files))
+  return {
+    schemaVersion: artifact.schemaVersion,
+    payload,
+    payloadSha256: sha256Text(`${JSON.stringify(payload, null, 2)}\n`),
+  }
+}
+
+test("preflight artifact binds a complete deterministic shard universe to one workflow attempt", async () => {
+  const { buildEvidenceIdentity, buildPreflightArtifact, validatePreflightArtifact } = await import(
+    runnerUrl
+  )
+  const sourceByFile = new Map([
+    ["src/a.ts", "export const a = true\n"],
+    ["src/b.ts", "export const b = false\n"],
+  ])
+  const sourceFiles = [...sourceByFile.keys()]
+  const sourceRevision = buildEvidenceIdentity({
+    headSha: "a".repeat(40),
+    dirtyPaths: [],
+    inputHashes: {
+      "frontend/package-lock.json": "1".repeat(64),
+      "frontend/stryker.config.mjs": "2".repeat(64),
+      "frontend/src/a.ts": sha256Text(sourceByFile.get("src/a.ts")),
+      "frontend/src/b.ts": sha256Text(sourceByFile.get("src/b.ts")),
+      "quality/coverage-source-policy.json": "3".repeat(64),
+    },
+  })
+  const workflow = { runId: "42", runAttempt: "3", sha: sourceRevision.headSha }
+  const toolchain = {
+    node: "v24.0.0",
+    platform: "linux",
+    arch: "x64",
+    stryker: "9.6.1",
+    instrumenter: "9.6.1",
+    vitest: "4.1.10",
+  }
+  const sourcePolicy = {
+    path: "quality/coverage-source-policy.json",
+    sha256: "3".repeat(64),
+  }
+  const config = {
+    path: "frontend/stryker.config.mjs",
+    sha256: "2".repeat(64),
+    instrumenterOptions: { plugins: null, excludedMutations: [], ignorers: [] },
+  }
+  const mutant = (replacement, file) => ({
+    fileName: file,
+    mutatorName: "BooleanLiteral",
+    replacement,
+    location,
+  })
+  const preflightByFile = new Map([
+    [
+      "src/a.ts",
+      {
+        sourceSha256: sha256Text(sourceByFile.get("src/a.ts")),
+        mutants: [mutant("false", "src/a.ts")],
+      },
+    ],
+    [
+      "src/b.ts",
+      {
+        sourceSha256: sha256Text(sourceByFile.get("src/b.ts")),
+        mutants: [mutant("true", "src/b.ts")],
+      },
+    ],
+  ])
+  const common = {
+    sourceRevision,
+    workflow,
+    toolchain,
+    sourcePolicy,
+    config,
+    shardTargetMutants: 750,
+    shardCount: 2,
+  }
+  const artifact = buildPreflightArtifact({ ...common, preflightByFile })
+  const validated = validatePreflightArtifact({
+    ...common,
+    sourceFiles,
+    sourceByFile,
+    artifactText: preflightArtifactText(artifact),
+  })
+
+  assert.equal(validated.preflightDigest, artifact.payload.preflight.digest)
+  assert.deepEqual(validated.shardPlan, artifact.payload.shardPlan)
+  assert.equal(validated.preflightByFile.get("src/a.ts").mutants.length, 1)
+
+  const aggregateValidated = validatePreflightArtifact({
+    ...common,
+    sourceFiles,
+    sourceByFile,
+    canonicalPreflightByFile: preflightByFile,
+    artifactText: preflightArtifactText(artifact),
+  })
+  assert.equal(aggregateValidated.preflightDigest, validated.preflightDigest)
+})
+
+test("preflight artifact fails closed for provenance, source, and shard-plan tampering", async () => {
+  const { buildEvidenceIdentity, buildPreflightArtifact, validatePreflightArtifact } = await import(
+    runnerUrl
+  )
+  const sourceByFile = new Map([
+    ["src/a.ts", "export const a = true\n"],
+    ["src/b.ts", "export const b = false\n"],
+  ])
+  const sourceFiles = [...sourceByFile.keys()]
+  const sourceRevision = buildEvidenceIdentity({
+    headSha: "a".repeat(40),
+    dirtyPaths: [],
+    inputHashes: {
+      "frontend/stryker.config.mjs": "2".repeat(64),
+      "quality/coverage-source-policy.json": "3".repeat(64),
+    },
+  })
+  const workflow = { runId: "42", runAttempt: "3", sha: sourceRevision.headSha }
+  const toolchain = {
+    node: "v24.0.0",
+    platform: "linux",
+    arch: "x64",
+    stryker: "9.6.1",
+    instrumenter: "9.6.1",
+    vitest: "4.1.10",
+  }
+  const sourcePolicy = {
+    path: "quality/coverage-source-policy.json",
+    sha256: "3".repeat(64),
+  }
+  const config = {
+    path: "frontend/stryker.config.mjs",
+    sha256: "2".repeat(64),
+    instrumenterOptions: { plugins: null, excludedMutations: [], ignorers: [] },
+  }
+  const preflightByFile = new Map(
+    sourceFiles.map((file) => [
+      file,
+      {
+        sourceSha256: sha256Text(sourceByFile.get(file)),
+        mutants: [
+          {
+            fileName: file,
+            mutatorName: "BooleanLiteral",
+            replacement: file === "src/a.ts" ? "false" : "true",
+            location,
+          },
+        ],
+      },
+    ])
+  )
+  const common = {
+    sourceRevision,
+    workflow,
+    toolchain,
+    sourcePolicy,
+    config,
+    shardTargetMutants: 750,
+    shardCount: 2,
+    sourceFiles,
+    sourceByFile,
+  }
+  const artifact = buildPreflightArtifact({ ...common, preflightByFile })
+  const validate = (overrides = {}) =>
+    validatePreflightArtifact({
+      ...common,
+      ...overrides,
+      artifactText: preflightArtifactText(overrides.artifact ?? artifact),
+    })
+
+  assert.throws(
+    () => validatePreflightArtifact({ ...common, artifactText: undefined }),
+    /artifact is missing/u
+  )
+  assert.throws(
+    () => validate({ workflow: { ...workflow, sha: "b".repeat(40) } }),
+    /workflow provenance/u
+  )
+  assert.throws(() => validate({ workflow: { ...workflow, runId: "43" } }), /workflow provenance/u)
+  assert.throws(
+    () => validate({ workflow: { ...workflow, runAttempt: "4" } }),
+    /workflow provenance/u
+  )
+  assert.throws(
+    () => validate({ sourcePolicy: { ...sourcePolicy, sha256: "4".repeat(64) } }),
+    /source policy/u
+  )
+  assert.throws(() => validate({ config: { ...config, sha256: "5".repeat(64) } }), /configuration/u)
+  assert.throws(
+    () => validate({ toolchain: { ...toolchain, instrumenter: "9.6.2" } }),
+    /toolchain/u
+  )
+  const changedSource = new Map(sourceByFile)
+  changedSource.set("src/a.ts", "export const a = false\n")
+  assert.throws(() => validate({ sourceByFile: changedSource }), /source snapshot/u)
+
+  const missing = resealPreflightArtifact(artifact, (payload) => {
+    delete payload.preflight.files["src/b.ts"]
+  })
+  assert.throws(() => validate({ artifact: missing }), /source denominator/u)
+
+  const overlap = resealPreflightArtifact(artifact, (payload) => {
+    payload.shardPlan[1].files = [payload.shardPlan[0].files[0]]
+  })
+  assert.throws(() => validate({ artifact: overlap }), /shard plan/u)
+
+  const changedCanonical = new Map(preflightByFile)
+  changedCanonical.set("src/a.ts", {
+    ...changedCanonical.get("src/a.ts"),
+    mutants: [
+      {
+        fileName: "src/a.ts",
+        mutatorName: "BooleanLiteral",
+        replacement: "true",
+        location,
+      },
+    ],
+  })
+  assert.throws(
+    () => validate({ canonicalPreflightByFile: changedCanonical }),
+    /canonical instrumenter universe/u
+  )
+
+  const duplicateField = preflightArtifactText(artifact).replace(
+    '  "payloadSha256":',
+    '  "payloadSha256": "tampered",\n  "payloadSha256":'
+  )
+  assert.throws(
+    () => validatePreflightArtifact({ ...common, artifactText: duplicateField }),
+    /JSON is not canonical/u
+  )
+})
+
+async function preflightCandidateFixture() {
+  const { buildEvidenceIdentity, buildPreflightArtifact, selectPreflightArtifactCandidate } =
+    await import(runnerUrl)
+  const sourceByFile = new Map([["src/a.ts", "export const a = true\n"]])
+  const sourceFiles = [...sourceByFile.keys()]
+  const sourceRevision = buildEvidenceIdentity({
+    headSha: "a".repeat(40),
+    dirtyPaths: [],
+    inputHashes: {
+      "frontend/package-lock.json": "1".repeat(64),
+      "frontend/stryker.config.mjs": "2".repeat(64),
+      "frontend/src/a.ts": sha256Text(sourceByFile.get("src/a.ts")),
+      "quality/coverage-source-policy.json": "3".repeat(64),
+    },
+  })
+  const consumerWorkflow = { runId: "42", runAttempt: "3", sha: sourceRevision.headSha }
+  const toolchain = {
+    node: "v24.15.0",
+    platform: "linux",
+    arch: "x64",
+    stryker: "9.6.1",
+    instrumenter: "9.6.1",
+    vitest: "4.1.10",
+  }
+  const sourcePolicy = {
+    path: "quality/coverage-source-policy.json",
+    sha256: "3".repeat(64),
+  }
+  const config = {
+    path: "frontend/stryker.config.mjs",
+    sha256: "2".repeat(64),
+    instrumenterOptions: { plugins: null, excludedMutations: [], ignorers: [] },
+  }
+  const preflightByFile = new Map([
+    [
+      "src/a.ts",
+      {
+        sourceSha256: sha256Text(sourceByFile.get("src/a.ts")),
+        mutants: [
+          {
+            fileName: "src/a.ts",
+            mutatorName: "BooleanLiteral",
+            replacement: "false",
+            location,
+          },
+        ],
+      },
+    ],
+  ])
+  const common = {
+    sourceRevision,
+    workflow: consumerWorkflow,
+    toolchain,
+    sourcePolicy,
+    config,
+    sourceFiles,
+    sourceByFile,
+    shardTargetMutants: 750,
+    shardCount: 1,
+  }
+  return {
+    consumerWorkflow,
+    createArtifact: (runAttempt) =>
+      buildPreflightArtifact({
+        ...common,
+        workflow: { ...consumerWorkflow, runAttempt },
+        preflightByFile,
+      }),
+    select: (candidateRoot) => selectPreflightArtifactCandidate({ ...common, candidateRoot }),
+  }
+}
+
+function preflightCandidateDirectoryName(workflow) {
+  return `frontend-mutation-preflight-${workflow.runId}-${workflow.runAttempt}-${workflow.sha}`
+}
+
+async function writePreflightCandidate(
+  candidateRoot,
+  artifact,
+  directoryWorkflow = artifact.payload.workflow
+) {
+  const candidateDirectory = path.join(
+    candidateRoot,
+    preflightCandidateDirectoryName(directoryWorkflow)
+  )
+  await mkdir(candidateDirectory, { recursive: true })
+  await writeFile(
+    path.join(candidateDirectory, "PREFLIGHT_ARTIFACT.json"),
+    preflightArtifactText(artifact)
+  )
+}
+
+test("selects a previous-attempt Stryker preflight for a rerun-failed consumer", async (t) => {
+  const { consumerWorkflow, createArtifact, select } = await preflightCandidateFixture()
+  const candidateRoot = await mkdtemp(path.join(os.tmpdir(), "stryker-preflight-candidates-"))
+  t.after(() => rm(candidateRoot, { recursive: true, force: true }))
+  await writePreflightCandidate(candidateRoot, createArtifact("2"))
+
+  const selected = await select(candidateRoot)
+
+  assert.equal(selected.producerAttempt, 2)
+  assert.equal(selected.artifact.payload.workflow.runAttempt, "2")
+  assert.deepEqual(selected.consumerWorkflow, consumerWorkflow)
+})
+
+test("selects the highest valid Stryker preflight attempt deterministically", async (t) => {
+  const { createArtifact, select } = await preflightCandidateFixture()
+  const candidateRoot = await mkdtemp(path.join(os.tmpdir(), "stryker-preflight-candidates-"))
+  t.after(() => rm(candidateRoot, { recursive: true, force: true }))
+  await writePreflightCandidate(candidateRoot, createArtifact("1"))
+  await writePreflightCandidate(candidateRoot, createArtifact("3"))
+
+  const selected = await select(candidateRoot)
+
+  assert.equal(selected.producerAttempt, 3)
+  assert.equal(selected.artifact.payload.workflow.runAttempt, "3")
+})
+
+test("rejects future and tampered Stryker preflight candidates before selection", async (t) => {
+  const { createArtifact, select } = await preflightCandidateFixture()
+  const cases = [
+    ["future attempt", createArtifact("4"), /producer attempt/u],
+    [
+      "revision tamper",
+      resealPreflightArtifact(createArtifact("2"), (payload) => {
+        payload.sourceRevision = { ...payload.sourceRevision, revision: "b".repeat(40) }
+      }),
+      /source revision/u,
+    ],
+    [
+      "configuration tamper",
+      resealPreflightArtifact(createArtifact("2"), (payload) => {
+        payload.config = { ...payload.config, sha256: "4".repeat(64) }
+      }),
+      /configuration/u,
+    ],
+    [
+      "source tamper",
+      resealPreflightArtifact(createArtifact("2"), (payload) => {
+        payload.preflight.files["src/a.ts"].sourceSha256 = "5".repeat(64)
+      }),
+      /source snapshot/u,
+    ],
+    [
+      "toolchain tamper",
+      resealPreflightArtifact(createArtifact("2"), (payload) => {
+        payload.toolchain = { ...payload.toolchain, instrumenter: "9.6.2" }
+      }),
+      /toolchain/u,
+    ],
+  ]
+  for (const [name, artifact, expectedError] of cases) {
+    const candidateRoot = await mkdtemp(path.join(os.tmpdir(), "stryker-preflight-candidates-"))
+    t.after(() => rm(candidateRoot, { recursive: true, force: true }))
+    await writePreflightCandidate(candidateRoot, artifact)
+    await assert.rejects(() => select(candidateRoot), expectedError, name)
+  }
+})
+
+test("rejects malformed candidate directories and duplicate producer attempts", async (t) => {
+  const { createArtifact, select } = await preflightCandidateFixture()
+  const malformedRoot = await mkdtemp(path.join(os.tmpdir(), "stryker-preflight-candidates-"))
+  const duplicateRoot = await mkdtemp(path.join(os.tmpdir(), "stryker-preflight-candidates-"))
+  t.after(() => rm(malformedRoot, { recursive: true, force: true }))
+  t.after(() => rm(duplicateRoot, { recursive: true, force: true }))
+  await writeFile(path.join(malformedRoot, "unexpected.json"), "{}\n")
+  await writePreflightCandidate(duplicateRoot, createArtifact("2"))
+  await writePreflightCandidate(duplicateRoot, createArtifact("2"), {
+    runId: "42",
+    runAttempt: "02",
+    sha: "a".repeat(40),
+  })
+
+  await assert.rejects(() => select(malformedRoot), /candidate root/u)
+  await assert.rejects(
+    () => select(duplicateRoot),
+    /duplicate producer attempt|candidate directory/u
+  )
+})
+
 test("merges exact shard reports and namespaces otherwise colliding mutant ids", async () => {
   const { mergeShardReports } = await import(runnerUrl)
   const baseConfig = {
@@ -371,6 +794,64 @@ test("reuses the newest valid shard producer attempt from the same workflow run"
 
   assert.equal(results.length, 1)
   assert.equal(results[0].shardEvidence.workflowRunAttempt, "2")
+})
+
+test("aggregates mixed prior and current same-run shard candidates on a failed-jobs retry", async (t) => {
+  const { loadExternalShardResults } = await import(runnerUrl)
+  const root = await mkdtemp(path.join(os.tmpdir(), "stryker-mixed-attempts-"))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const reportText = `${JSON.stringify({ schemaVersion: "1.0", config: {}, files: {} })}\n`
+  const shardPlan = [
+    { id: "shard-000", files: ["src/a.ts"], mutantCount: 3 },
+    { id: "shard-001", files: ["src/b.ts"], mutantCount: 5 },
+  ]
+  const writeCandidate = async ({ attempt, shard, artifactIndex }) => {
+    const shardRoot = path.join(
+      root,
+      `frontend-mutation-shard-42-${attempt}-${artifactIndex}`,
+      "shards",
+      shard.id
+    )
+    await mkdir(shardRoot, { recursive: true })
+    await writeFile(path.join(shardRoot, "mutation.json"), reportText)
+    await writeFile(
+      path.join(shardRoot, "SHARD_EVIDENCE.json"),
+      JSON.stringify({
+        schemaVersion: "1.0",
+        runId: `producer-${attempt}-${shard.id}`,
+        shardId: shard.id,
+        shardIndex: shardPlan.indexOf(shard),
+        shardCount: shardPlan.length,
+        revision: "a".repeat(40),
+        evidenceDigest: "b".repeat(64),
+        preflightDigest: "c".repeat(64),
+        workflowRunId: "42",
+        workflowRunAttempt: attempt,
+        files: shard.files,
+        mutantCount: shard.mutantCount,
+        reportSha256: createHash("sha256").update(reportText).digest("hex"),
+      })
+    )
+  }
+  await writeCandidate({ attempt: "1", shard: shardPlan[0], artifactIndex: "0" })
+  await writeCandidate({ attempt: "2", shard: shardPlan[1], artifactIndex: "1" })
+
+  const results = await loadExternalShardResults({
+    aggregateRoot: root,
+    shardPlan,
+    before: { revision: "a".repeat(40), evidenceDigest: "b".repeat(64) },
+    preflightDigest: "c".repeat(64),
+    workflowRunId: "42",
+    workflowRunAttempt: "2",
+  })
+
+  assert.deepEqual(
+    results.map(({ id, producerAttempt }) => [id, producerAttempt]),
+    [
+      ["shard-000", 1],
+      ["shard-001", 2],
+    ]
+  )
 })
 
 test("rejects ambiguous, foreign-run, and future external shard candidates", async (t) => {

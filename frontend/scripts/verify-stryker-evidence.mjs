@@ -2,7 +2,7 @@
 
 import { execFile } from "node:child_process"
 import { createHash } from "node:crypto"
-import { readFile } from "node:fs/promises"
+import { lstat, readdir, readFile } from "node:fs/promises"
 import path from "node:path"
 import process from "node:process"
 import { promisify } from "node:util"
@@ -18,7 +18,10 @@ import {
 
 const execFileAsync = promisify(execFile)
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url))
-const markerPath = path.join(repositoryRoot, "frontend", "reports", "mutation", "VALIDATED.json")
+const mutationEvidenceRoot = path.join(repositoryRoot, "frontend", "reports", "mutation")
+const markerPath = path.join(mutationEvidenceRoot, "VALIDATED.json")
+const evidencePathPrefix = "frontend/reports/mutation/"
+const instrumenterOptions = { plugins: null, excludedMutations: [], ignorers: [] }
 
 const sha256 = (value) => createHash("sha256").update(value).digest("hex")
 const normalizePath = (value) => value.replaceAll("\\", "/").replace(/^\.\//u, "")
@@ -59,6 +62,371 @@ function canonicalJson(value) {
     )
   }
   return value
+}
+
+function jsonText(value) {
+  return `${JSON.stringify(value, null, 2)}\n`
+}
+
+function parseCanonicalObject(text, description) {
+  const value = parseObject(text, description)
+  if (text !== jsonText(value)) {
+    throw new Error(`${description} JSON is not canonical`)
+  }
+  return value
+}
+
+function sameCanonicalValue(left, right) {
+  return JSON.stringify(canonicalJson(left)) === JSON.stringify(canonicalJson(right))
+}
+
+function validatedCandidateAttemptFromDirectory(directoryName, expectedWorkflowRunId) {
+  if (typeof expectedWorkflowRunId !== "string" || !/^[1-9]\d*$/u.test(expectedWorkflowRunId)) {
+    throw new Error("Validated artifact consumer workflow provenance is invalid")
+  }
+  const prefix = `frontend-mutation-validated-${expectedWorkflowRunId}-`
+  if (!directoryName.startsWith(prefix)) {
+    throw new Error(`Validated artifact candidate directory is not canonical: ${directoryName}`)
+  }
+  const attemptText = directoryName.slice(prefix.length)
+  const attempt = parseWorkflowRunAttempt(attemptText)
+  if (attempt === undefined || attemptText !== String(attempt)) {
+    throw new Error(`Validated artifact candidate directory is not canonical: ${directoryName}`)
+  }
+  return { attempt, attemptText }
+}
+
+async function listValidatedCandidateFiles(candidateDirectory) {
+  const files = []
+  const directories = []
+  const visit = async (directory, relativeDirectory = "") => {
+    const entries = await readdir(directory, { withFileTypes: true })
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+      const relativePath = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name
+      const candidatePath = path.join(directory, entry.name)
+      const stats = await lstat(candidatePath)
+      if (stats.isSymbolicLink()) {
+        throw new Error(`Validated artifact candidate contains a symbolic link: ${relativePath}`)
+      }
+      if (stats.isDirectory()) {
+        directories.push(relativePath)
+        await visit(candidatePath, relativePath)
+      } else if (stats.isFile()) {
+        files.push(relativePath)
+      } else {
+        throw new Error(
+          `Validated artifact candidate contains an unsupported entry: ${relativePath}`
+        )
+      }
+    }
+  }
+  await visit(candidateDirectory)
+  const aliases = new Set(
+    [...files, ...directories].map((entry) => entry.toLocaleLowerCase("en-US"))
+  )
+  if (aliases.size !== files.length + directories.length) {
+    throw new Error("Validated artifact candidate contains path aliases")
+  }
+  return { files: files.sort(), directories: directories.sort() }
+}
+
+function candidateRelativeEvidencePath(evidencePath, description) {
+  const canonical = assertCanonicalRelativePath(evidencePath)
+  if (!canonical.startsWith(evidencePathPrefix)) {
+    throw new Error(`${description} escapes the validated artifact root`)
+  }
+  const relativePath = canonical.slice(evidencePathPrefix.length)
+  if (relativePath === "" || relativePath.startsWith("/")) {
+    throw new Error(`${description} escapes the validated artifact root`)
+  }
+  return relativePath
+}
+
+function assertExactCandidateLayout({ actualFiles, actualDirectories, expectedFiles }) {
+  const normalizedExpected = [...expectedFiles].sort()
+  const expectedAliases = new Set(normalizedExpected.map((file) => file.toLocaleLowerCase("en-US")))
+  const expectedDirectories = new Set()
+  for (const file of normalizedExpected) {
+    const segments = file.split("/")
+    segments.pop()
+    while (segments.length > 0) {
+      expectedDirectories.add(segments.join("/"))
+      segments.pop()
+    }
+  }
+  if (
+    expectedAliases.size !== normalizedExpected.length ||
+    JSON.stringify(actualFiles) !== JSON.stringify(normalizedExpected) ||
+    JSON.stringify(actualDirectories) !== JSON.stringify([...expectedDirectories].sort())
+  ) {
+    throw new Error("Validated artifact candidate directory has unexpected contents")
+  }
+}
+
+async function readValidatedEvidenceCandidate({ candidateDirectory, directoryAttempt }) {
+  const { files: actualFiles, directories: actualDirectories } =
+    await listValidatedCandidateFiles(candidateDirectory)
+  const requiredFiles = ["VALIDATED.json", "inventory.json", "preflight.json"]
+  if (!requiredFiles.every((file) => actualFiles.includes(file))) {
+    throw new Error("Validated artifact candidate directory is missing required evidence")
+  }
+  const readCandidateFile = async (relativePath) =>
+    readFile(path.join(candidateDirectory, ...relativePath.split("/")), "utf8")
+  const [markerText, inventoryText, preflightText] = await Promise.all(
+    requiredFiles.map(readCandidateFile)
+  )
+  const marker = parseCanonicalObject(markerText, "Validated artifact marker")
+  const inventory = parseCanonicalObject(inventoryText, "Validated artifact inventory")
+  const preflight = parseCanonicalObject(preflightText, "Validated artifact preflight")
+  if (!Array.isArray(inventory.reports) || !Array.isArray(inventory.shardEvidence)) {
+    throw new Error("Validated artifact candidate report inventory is malformed")
+  }
+  const reportEntries = inventory.reports.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("Validated artifact candidate report inventory is malformed")
+    }
+    return {
+      evidencePath: assertCanonicalRelativePath(entry.path),
+      relativePath: candidateRelativeEvidencePath(entry.path, "Mutation report"),
+    }
+  })
+  const shardEvidenceEntries = inventory.shardEvidence.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error("Validated artifact candidate shard evidence inventory is malformed")
+    }
+    return {
+      evidencePath: assertCanonicalRelativePath(entry.path),
+      relativePath: candidateRelativeEvidencePath(entry.path, "Mutation shard producer evidence"),
+    }
+  })
+  const expectedFiles = new Set([
+    ...requiredFiles,
+    ...reportEntries.map(({ relativePath }) => relativePath),
+    ...shardEvidenceEntries.map(({ relativePath }) => relativePath),
+  ])
+  if (expectedFiles.size !== 3 + reportEntries.length + shardEvidenceEntries.length) {
+    throw new Error("Validated artifact candidate has duplicate evidence paths")
+  }
+  assertExactCandidateLayout({ actualFiles, actualDirectories, expectedFiles })
+  const reportTexts = new Map(
+    await Promise.all(
+      reportEntries.map(async ({ evidencePath, relativePath }) => [
+        evidencePath,
+        await readCandidateFile(relativePath),
+      ])
+    )
+  )
+  const shardEvidenceTexts = new Map(
+    await Promise.all(
+      shardEvidenceEntries.map(async ({ evidencePath, relativePath }) => [
+        evidencePath,
+        await readCandidateFile(relativePath),
+      ])
+    )
+  )
+  return {
+    candidateDirectory,
+    directoryAttempt,
+    markerText,
+    marker,
+    inventoryText,
+    inventory,
+    preflightText,
+    preflight,
+    reportTexts,
+    shardEvidenceTexts,
+  }
+}
+
+async function readValidatedEvidenceCandidates({ candidateRoot, expectedWorkflowRunId }) {
+  let rootStats
+  let rootEntries
+  try {
+    rootStats = await lstat(candidateRoot)
+    rootEntries = await readdir(candidateRoot, { withFileTypes: true })
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "ENOENT") {
+      throw new Error("Required validated artifact candidate root is missing")
+    }
+    throw error
+  }
+  if (!rootStats.isDirectory() || rootStats.isSymbolicLink() || rootEntries.length === 0) {
+    throw new Error("Required validated artifact candidate root is malformed")
+  }
+  return Promise.all(
+    rootEntries
+      .sort((left, right) => left.name.localeCompare(right.name))
+      .map(async (entry) => {
+        const candidateDirectory = path.join(candidateRoot, entry.name)
+        const stats = await lstat(candidateDirectory)
+        if (
+          !entry.isDirectory() ||
+          entry.isSymbolicLink() ||
+          !stats.isDirectory() ||
+          stats.isSymbolicLink()
+        ) {
+          throw new Error(
+            `Validated artifact candidate root contains an unexpected entry: ${entry.name}`
+          )
+        }
+        const directoryAttempt = validatedCandidateAttemptFromDirectory(
+          entry.name,
+          expectedWorkflowRunId
+        )
+        return readValidatedEvidenceCandidate({ candidateDirectory, directoryAttempt })
+      })
+  )
+}
+
+function assertValidatedCandidateMetadata({
+  candidate,
+  expectedSha,
+  expectedWorkflowRunId,
+  expectedWorkflowRunAttempt,
+  expectedInputHashes,
+  expectedPatterns,
+  toolchain,
+}) {
+  const consumerAttempt = parseWorkflowRunAttempt(expectedWorkflowRunAttempt)
+  if (
+    typeof expectedSha !== "string" ||
+    !/^[a-f0-9]{40,64}$/u.test(expectedSha) ||
+    typeof expectedWorkflowRunId !== "string" ||
+    !/^[1-9]\d*$/u.test(expectedWorkflowRunId) ||
+    consumerAttempt === undefined ||
+    !expectedInputHashes ||
+    typeof expectedInputHashes !== "object" ||
+    Array.isArray(expectedInputHashes) ||
+    !Array.isArray(expectedPatterns) ||
+    !toolchain ||
+    typeof toolchain !== "object"
+  ) {
+    throw new Error("Validated artifact consumer metadata is invalid")
+  }
+  const { marker, inventory, preflight, directoryAttempt } = candidate
+  const provenance = inventory.provenance
+  const producerAttempt = parseWorkflowRunAttempt(provenance?.workflowRunAttempt)
+  if (
+    !provenance ||
+    provenance.workflowRunId !== expectedWorkflowRunId ||
+    producerAttempt === undefined
+  ) {
+    throw new Error("Validated artifact workflow provenance does not match this execution")
+  }
+  if (producerAttempt > consumerAttempt) {
+    throw new Error("Validated artifact producer attempt is from the future")
+  }
+  if (
+    directoryAttempt.attempt !== producerAttempt ||
+    directoryAttempt.attemptText !== provenance.workflowRunAttempt
+  ) {
+    throw new Error("Validated artifact candidate directory attempt does not match its payload")
+  }
+  if (
+    marker?.schemaVersion !== "1.0" ||
+    marker.releaseEligible !== true ||
+    marker.inventory !== `${evidencePathPrefix}inventory.json` ||
+    marker.preflight !== `${evidencePathPrefix}preflight.json` ||
+    marker.inventorySha256 !== sha256(candidate.inventoryText) ||
+    marker.preflightSha256 !== sha256(candidate.preflightText) ||
+    marker.runId !== inventory.runId ||
+    marker.runId !== preflight.runId ||
+    marker.revision !== inventory.revision
+  ) {
+    throw new Error("Validated artifact marker is malformed")
+  }
+  if (
+    inventory.sourceRevision?.headSha !== expectedSha ||
+    inventory.sourceRevision?.revision !== expectedSha ||
+    inventory.revision !== expectedSha ||
+    inventory.sourceRevision?.repositoryDirty !== false ||
+    !Array.isArray(inventory.sourceRevision?.dirtyPaths) ||
+    inventory.sourceRevision.dirtyPaths.length !== 0
+  ) {
+    throw new Error("Validated artifact revision does not match this execution")
+  }
+  if (!sameCanonicalValue(inventory.sourceRevision.inputHashes, expectedInputHashes)) {
+    throw new Error("Validated artifact source inputs do not match this execution")
+  }
+  const canonicalInputHashes = Object.fromEntries(
+    Object.entries(expectedInputHashes).sort(([left], [right]) => left.localeCompare(right))
+  )
+  const expectedEvidenceDigest = sha256(
+    JSON.stringify({ headSha: expectedSha, inputHashes: canonicalInputHashes })
+  )
+  if (inventory.sourceRevision.evidenceDigest !== expectedEvidenceDigest) {
+    throw new Error("Validated artifact source evidence digest does not match this execution")
+  }
+  if (
+    inventory.sourcePolicy?.path !== "quality/coverage-source-policy.json" ||
+    inventory.sourcePolicy?.sha256 !== expectedInputHashes["quality/coverage-source-policy.json"] ||
+    !sameCanonicalValue(inventory.sourcePolicy?.mutationPatterns, expectedPatterns)
+  ) {
+    throw new Error("Validated artifact source policy does not match this execution")
+  }
+  if (
+    inventory.config?.path !== "frontend/stryker.config.mjs" ||
+    inventory.config?.sha256 !== expectedInputHashes["frontend/stryker.config.mjs"] ||
+    inventory.config?.coverageAnalysis !== "perTest" ||
+    !sameCanonicalValue(inventory.config?.instrumenterOptions, instrumenterOptions) ||
+    inventory.config?.incremental !== false ||
+    inventory.config?.forceFresh !== true
+  ) {
+    throw new Error("Validated artifact configuration does not match this execution")
+  }
+  if (
+    provenance.node !== toolchain.node ||
+    provenance.platform !== toolchain.platform ||
+    provenance.arch !== toolchain.arch ||
+    !sameCanonicalValue(provenance.tools, toolchain.tools)
+  ) {
+    throw new Error("Validated artifact toolchain does not match this execution")
+  }
+  if (
+    preflight.schemaVersion !== "1.0" ||
+    preflight.revision !== expectedSha ||
+    preflight.sourceEvidenceDigest !== expectedEvidenceDigest ||
+    !sameCanonicalValue(preflight.instrumenterOptions, instrumenterOptions)
+  ) {
+    throw new Error("Validated artifact preflight identity is malformed")
+  }
+  return producerAttempt
+}
+
+export async function selectValidatedEvidenceCandidate({
+  candidateRoot,
+  expectedSha,
+  expectedWorkflowRunId,
+  expectedWorkflowRunAttempt,
+  expectedInputHashes,
+  expectedPatterns,
+  toolchain,
+}) {
+  const candidates = await readValidatedEvidenceCandidates({
+    candidateRoot,
+    expectedWorkflowRunId,
+  })
+  const candidatesByAttempt = new Map()
+  for (const candidate of candidates) {
+    const producerAttempt = assertValidatedCandidateMetadata({
+      candidate,
+      expectedSha,
+      expectedWorkflowRunId,
+      expectedWorkflowRunAttempt,
+      expectedInputHashes,
+      expectedPatterns,
+      toolchain,
+    })
+    if (candidatesByAttempt.has(producerAttempt)) {
+      throw new Error(
+        `Validated artifact candidates contain a duplicate producer attempt: ${producerAttempt}`
+      )
+    }
+    candidatesByAttempt.set(producerAttempt, { ...candidate, producerAttempt })
+  }
+  return [...candidatesByAttempt.entries()].sort(
+    ([leftAttempt], [rightAttempt]) => rightAttempt - leftAttempt
+  )[0][1]
 }
 
 function serializePreflight(preflightByFile) {
@@ -252,6 +620,7 @@ export async function verifyEvidenceDocuments({
   expectedSha,
   expectedWorkflowRunId,
   expectedWorkflowRunAttempt,
+  allowEarlierProducerAttempt = false,
   marker,
   inventoryText,
   preflightText,
@@ -292,15 +661,19 @@ export async function verifyEvidenceDocuments({
   ) {
     throw new Error("Mutation evidence does not match the expected HEAD SHA")
   }
+  const consumerAttempt = parseWorkflowRunAttempt(expectedWorkflowRunAttempt)
+  const producerAttempt = parseWorkflowRunAttempt(inventory.provenance?.workflowRunAttempt)
   if (
     inventory.sourceRevision.repositoryDirty !== false ||
     inventory.sourceRevision.dirtyPaths?.length !== 0 ||
     typeof expectedWorkflowRunId !== "string" ||
     expectedWorkflowRunId === "" ||
-    typeof expectedWorkflowRunAttempt !== "string" ||
-    expectedWorkflowRunAttempt === "" ||
+    consumerAttempt === undefined ||
     inventory.provenance?.workflowRunId !== expectedWorkflowRunId ||
-    inventory.provenance?.workflowRunAttempt !== expectedWorkflowRunAttempt
+    producerAttempt === undefined ||
+    (allowEarlierProducerAttempt
+      ? producerAttempt > consumerAttempt
+      : producerAttempt !== consumerAttempt)
   ) {
     throw new Error("Mutation evidence lacks clean workflow provenance")
   }
@@ -377,7 +750,7 @@ export async function verifyEvidenceDocuments({
     reportTexts,
     shardEvidenceTexts,
     expectedWorkflowRunId,
-    expectedWorkflowRunAttempt,
+    expectedWorkflowRunAttempt: inventory.provenance.workflowRunAttempt,
   })
   if (
     inventory.sourcePolicy?.path !== "quality/coverage-source-policy.json" ||
@@ -427,40 +800,44 @@ function resolveEvidencePath(relativePath) {
   return resolved
 }
 
-async function main() {
-  const [markerText, headSha, gitStatus, listedFiles] = await Promise.all([
-    readFile(markerPath, "utf8"),
-    git(["rev-parse", "HEAD"]),
-    git(["status", "--porcelain=v1", "--untracked-files=all"]),
-    git([
-      "ls-files",
-      "-co",
-      "--exclude-standard",
-      "--",
-      "frontend",
-      "quality/coverage-source-policy.json",
-    ]),
+async function readPackageVersion(relativePath) {
+  return JSON.parse(await readFile(path.join(repositoryRoot, "frontend", relativePath), "utf8"))
+    .version
+}
+
+async function readToolchain() {
+  const [stryker, instrumenter, vitest] = await Promise.all([
+    readPackageVersion("node_modules/@stryker-mutator/core/package.json"),
+    readPackageVersion("node_modules/@stryker-mutator/instrumenter/package.json"),
+    readPackageVersion("node_modules/vitest/package.json"),
   ])
+  return {
+    node: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    tools: { stryker, instrumenter, vitest },
+  }
+}
+
+function validatedCandidateRootFromEnvironment(env = process.env) {
+  const configured = env.STRYKER_VALIDATED_CANDIDATE_ROOT
+  if (configured === undefined) return undefined
+  const expectedRoot = path.join(mutationEvidenceRoot, "validated-candidates")
+  const resolved = path.resolve(repositoryRoot, "frontend", configured)
+  if (resolved !== expectedRoot) {
+    throw new Error("STRYKER_VALIDATED_CANDIDATE_ROOT must be the dedicated candidate root")
+  }
+  return resolved
+}
+
+async function readCanonicalEvidenceDocuments() {
+  const markerText = await readFile(markerPath, "utf8")
   const marker = parseObject(markerText, "Mutation marker")
   const [inventoryText, preflightText] = await Promise.all([
     readFile(resolveEvidencePath(marker.inventory), "utf8"),
     readFile(resolveEvidencePath(marker.preflight), "utf8"),
   ])
   const inventory = parseObject(inventoryText, "Mutation inventory")
-  const currentEvidenceFiles = listedFiles
-    .split(/\r?\n/u)
-    .filter(Boolean)
-    .map(normalizePath)
-    .filter(
-      (file) =>
-        !/^frontend\/(node_modules|dist|coverage|reports|\.screenshots|\.stryker-tmp)\//u.test(file)
-    )
-    .sort()
-  const fileBytes = new Map(
-    await Promise.all(
-      currentEvidenceFiles.map(async (file) => [file, await readFile(resolveEvidencePath(file))])
-    )
-  )
   const reportTexts = new Map(
     await Promise.all(
       inventory.reports.map(async ({ path: report }) => [
@@ -479,6 +856,36 @@ async function main() {
       )
     )
   )
+  return { marker, inventoryText, preflightText, reportTexts, shardEvidenceTexts }
+}
+
+async function main() {
+  const [headSha, gitStatus, listedFiles] = await Promise.all([
+    git(["rev-parse", "HEAD"]),
+    git(["status", "--porcelain=v1", "--untracked-files=all"]),
+    git([
+      "ls-files",
+      "-co",
+      "--exclude-standard",
+      "--",
+      "frontend",
+      "quality/coverage-source-policy.json",
+    ]),
+  ])
+  const currentEvidenceFiles = listedFiles
+    .split(/\r?\n/u)
+    .filter(Boolean)
+    .map(normalizePath)
+    .filter(
+      (file) =>
+        !/^frontend\/(node_modules|dist|coverage|reports|\.screenshots|\.stryker-tmp)\//u.test(file)
+    )
+    .sort()
+  const fileBytes = new Map(
+    await Promise.all(
+      currentEvidenceFiles.map(async (file) => [file, await readFile(resolveEvidencePath(file))])
+    )
+  )
   const policy = parseObject(
     fileBytes.get("quality/coverage-source-policy.json").toString("utf8"),
     "Coverage source policy"
@@ -486,17 +893,29 @@ async function main() {
   const sourceFiles = await listPolicyFiles(policy)
   const expectedPatterns = mutationPatternsFromPolicy(policy)
   const expectedSha = process.env.GITHUB_SHA ?? headSha
+  const expectedInputHashes = Object.fromEntries(
+    currentEvidenceFiles.map((file) => [file, sha256(fileBytes.get(file))])
+  )
+  const candidateRoot = validatedCandidateRootFromEnvironment()
+  const evidenceDocuments = candidateRoot
+    ? await selectValidatedEvidenceCandidate({
+        candidateRoot,
+        expectedSha,
+        expectedWorkflowRunId: process.env.GITHUB_RUN_ID,
+        expectedWorkflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT,
+        expectedInputHashes,
+        expectedPatterns,
+        toolchain: await readToolchain(),
+      })
+    : await readCanonicalEvidenceDocuments()
   const result = await verifyEvidenceDocuments({
     expectedSha,
     expectedWorkflowRunId: process.env.GITHUB_RUN_ID,
     expectedWorkflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT,
-    marker,
-    inventoryText,
-    preflightText,
+    allowEarlierProducerAttempt: candidateRoot !== undefined,
+    ...evidenceDocuments,
     currentEvidenceFiles,
     fileBytes,
-    reportTexts,
-    shardEvidenceTexts,
     gitStatus,
     sourceFiles,
     expectedPatterns,

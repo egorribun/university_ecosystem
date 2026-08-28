@@ -3,7 +3,17 @@
 import { spawn } from "node:child_process"
 import { createHash, randomUUID } from "node:crypto"
 import { execFile } from "node:child_process"
-import { glob, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises"
+import {
+  glob,
+  lstat,
+  mkdir,
+  open,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  writeFile,
+} from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import process from "node:process"
@@ -22,6 +32,12 @@ const execFileAsync = promisify(execFile)
 const frontendRoot = fileURLToPath(new URL("..", import.meta.url))
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url))
 const outputRoot = path.join(frontendRoot, "reports", "mutation")
+const preflightArtifactOutputPath = path.join(
+  outputRoot,
+  "preflight-artifact",
+  "PREFLIGHT_ARTIFACT.json"
+)
+const preflightCandidateRoot = path.join(outputRoot, "preflight-candidates")
 const sourcePolicyPath = path.join(repositoryRoot, "quality", "coverage-source-policy.json")
 const strykerEntry = path.join(
   frontendRoot,
@@ -32,6 +48,7 @@ const strykerEntry = path.join(
   "stryker.js"
 )
 const instrumenterOptions = { plugins: null, excludedMutations: [], ignorers: [] }
+const preflightArtifactSchemaVersion = "1.0"
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex")
@@ -39,6 +56,64 @@ function sha256(value) {
 
 function normalizePath(value) {
   return value.replaceAll("\\", "/").replace(/^\.\//u, "")
+}
+
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+function assertExactObjectKeys(value, expectedKeys, description) {
+  if (!isRecord(value)) throw new Error(`${description} must be an object`)
+  const actualKeys = Object.keys(value).sort()
+  const sortedExpectedKeys = [...expectedKeys].sort()
+  if (JSON.stringify(actualKeys) !== JSON.stringify(sortedExpectedKeys)) {
+    throw new Error(`${description} has an unexpected shape`)
+  }
+}
+
+function assertSha256(value, description) {
+  if (typeof value !== "string" || !/^[a-f0-9]{64}$/u.test(value)) {
+    throw new Error(`${description} must be a SHA-256 digest`)
+  }
+}
+
+function canonicalMutationSourcePath(value) {
+  if (typeof value !== "string" || value.includes("\0")) {
+    throw new Error("Preflight artifact source denominator contains an invalid path")
+  }
+  const normalized = normalizePath(value)
+  if (
+    normalized === "" ||
+    normalized.startsWith("/") ||
+    /^[A-Za-z]:/u.test(normalized) ||
+    normalized.split("/").some((part) => part === "" || part === "." || part === "..")
+  ) {
+    throw new Error("Preflight artifact source denominator contains an invalid path")
+  }
+  return normalized
+}
+
+function canonicalSourceFiles(sourceFiles) {
+  if (!Array.isArray(sourceFiles) || sourceFiles.length === 0) {
+    throw new Error("Preflight artifact source denominator is missing")
+  }
+  const normalized = sourceFiles.map(canonicalMutationSourcePath).sort()
+  const aliases = new Set(normalized.map((file) => file.toLocaleLowerCase("en-US")))
+  if (new Set(normalized).size !== normalized.length || aliases.size !== normalized.length) {
+    throw new Error("Preflight artifact source denominator contains duplicate paths")
+  }
+  return normalized
+}
+
+function assertCanonicalStringArray(value, description) {
+  if (
+    !Array.isArray(value) ||
+    value.some((entry) => typeof entry !== "string" || entry === "") ||
+    JSON.stringify(value) !== JSON.stringify([...value].sort()) ||
+    new Set(value).size !== value.length
+  ) {
+    throw new Error(`${description} must be a sorted unique string array`)
+  }
 }
 
 export async function stageStrykerSandboxInputs(tempDir, policyPath = sourcePolicyPath) {
@@ -471,16 +546,506 @@ async function readPackageVersion(relativePath) {
   return JSON.parse(await readFile(path.join(frontendRoot, relativePath), "utf8")).version
 }
 
+async function readToolchain() {
+  const [stryker, instrumenter, vitest] = await Promise.all([
+    readPackageVersion("node_modules/@stryker-mutator/core/package.json"),
+    readPackageVersion("node_modules/@stryker-mutator/instrumenter/package.json"),
+    readPackageVersion("node_modules/vitest/package.json"),
+  ])
+  return {
+    node: process.version,
+    platform: process.platform,
+    arch: process.arch,
+    stryker,
+    instrumenter,
+    vitest,
+  }
+}
+
+function requireWorkflowProvenance(sourceRevision, env = process.env) {
+  const runId = env.GITHUB_RUN_ID
+  const runAttempt = env.GITHUB_RUN_ATTEMPT
+  const sha = env.GITHUB_SHA
+  if (
+    typeof runId !== "string" ||
+    !/^[1-9]\d*$/u.test(runId) ||
+    parseWorkflowRunAttempt(runAttempt) === undefined ||
+    typeof sha !== "string" ||
+    sha !== sourceRevision.headSha ||
+    sourceRevision.repositoryDirty !== false
+  ) {
+    throw new Error(
+      "Preflight artifact requires a clean workflow run bound to the checked-out exact Git SHA"
+    )
+  }
+  return { runId, runAttempt, sha }
+}
+
+function preflightArtifactMetadata({
+  sourceRevision,
+  workflow,
+  toolchain,
+  shardTargetMutants,
+  shardCount,
+}) {
+  const sourcePolicySha256 = sourceRevision.inputHashes["quality/coverage-source-policy.json"]
+  const configSha256 = sourceRevision.inputHashes["frontend/stryker.config.mjs"]
+  assertSha256(sourcePolicySha256, "Canonical source policy digest")
+  assertSha256(configSha256, "Canonical Stryker configuration digest")
+  return {
+    sourceRevision,
+    workflow,
+    toolchain,
+    sourcePolicy: {
+      path: "quality/coverage-source-policy.json",
+      sha256: sourcePolicySha256,
+    },
+    config: {
+      path: "frontend/stryker.config.mjs",
+      sha256: configSha256,
+      instrumenterOptions,
+    },
+    shardTargetMutants,
+    shardCount,
+  }
+}
+
+function preflightArtifactExecution(env = process.env) {
+  const mode = env.STRYKER_PREFLIGHT_MODE ?? "execute"
+  if (!["execute", "generate", "validate"].includes(mode)) {
+    throw new Error("STRYKER_PREFLIGHT_MODE must be execute, generate, or validate")
+  }
+  const rawArtifact = env.STRYKER_PREFLIGHT_ARTIFACT
+  if (rawArtifact !== undefined && rawArtifact !== "required") {
+    throw new Error("STRYKER_PREFLIGHT_ARTIFACT must be the literal value required")
+  }
+  if (mode === "generate" && rawArtifact !== undefined) {
+    throw new Error("Stryker preflight generation cannot consume a preflight artifact")
+  }
+  if (mode === "validate" && rawArtifact !== "required") {
+    throw new Error("Stryker preflight validation requires an immutable artifact")
+  }
+  return { mode, artifactRequired: rawArtifact === "required" }
+}
+
+function preflightCandidateAttemptFromDirectory(directoryName, workflow) {
+  if (
+    !isRecord(workflow) ||
+    typeof workflow.runId !== "string" ||
+    !/^[1-9]\d*$/u.test(workflow.runId) ||
+    parseWorkflowRunAttempt(workflow.runAttempt) === undefined ||
+    typeof workflow.sha !== "string" ||
+    !/^[a-f0-9]{40,64}$/u.test(workflow.sha)
+  ) {
+    throw new Error("Consumer Stryker workflow provenance is invalid")
+  }
+  const prefix = `frontend-mutation-preflight-${workflow.runId}-`
+  const suffix = `-${workflow.sha}`
+  if (!directoryName.startsWith(prefix) || !directoryName.endsWith(suffix)) {
+    throw new Error(`Preflight candidate directory is not canonical: ${directoryName}`)
+  }
+  const attemptText = directoryName.slice(prefix.length, directoryName.length - suffix.length)
+  const attempt = parseWorkflowRunAttempt(attemptText)
+  if (attempt === undefined || attemptText !== String(attempt)) {
+    throw new Error(`Preflight candidate directory is not canonical: ${directoryName}`)
+  }
+  return { attempt, attemptText }
+}
+
+async function readCanonicalPreflightCandidates({ candidateRoot, workflow }) {
+  let rootStats
+  let rootEntries
+  try {
+    rootStats = await lstat(candidateRoot)
+    rootEntries = await readdir(candidateRoot, { withFileTypes: true })
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "ENOENT") {
+      throw new Error("Required immutable Stryker preflight candidate root is missing")
+    }
+    throw error
+  }
+  if (!rootStats.isDirectory() || rootStats.isSymbolicLink() || rootEntries.length === 0) {
+    throw new Error("Required immutable Stryker preflight candidate root is malformed")
+  }
+  const candidates = []
+  for (const entry of rootEntries.sort((left, right) => left.name.localeCompare(right.name))) {
+    const candidatePath = path.join(candidateRoot, entry.name)
+    if (!entry.isDirectory() || entry.isSymbolicLink()) {
+      throw new Error(`Preflight candidate root contains an unexpected entry: ${entry.name}`)
+    }
+    const candidateStats = await lstat(candidatePath)
+    if (!candidateStats.isDirectory() || candidateStats.isSymbolicLink()) {
+      throw new Error(`Preflight candidate root contains an unexpected entry: ${entry.name}`)
+    }
+    const directoryAttempt = preflightCandidateAttemptFromDirectory(entry.name, workflow)
+    const files = await readdir(candidatePath, { withFileTypes: true })
+    if (
+      files.length !== 1 ||
+      files[0].name !== "PREFLIGHT_ARTIFACT.json" ||
+      !files[0].isFile() ||
+      files[0].isSymbolicLink()
+    ) {
+      throw new Error(`Preflight candidate directory has unexpected contents: ${entry.name}`)
+    }
+    const artifactPath = path.join(candidatePath, files[0].name)
+    const artifactStats = await lstat(artifactPath)
+    if (!artifactStats.isFile() || artifactStats.isSymbolicLink()) {
+      throw new Error(`Preflight candidate directory has unexpected contents: ${entry.name}`)
+    }
+    candidates.push({
+      artifactPath,
+      artifactText: await readFile(artifactPath, "utf8"),
+      directoryAttempt,
+    })
+  }
+  return candidates
+}
+
 function serializePreflight(preflightByFile) {
+  if (!(preflightByFile instanceof Map)) {
+    throw new Error("Instrumenter preflight must be provided as a Map")
+  }
   return Object.fromEntries(
-    [...preflightByFile.entries()].map(([file, entry]) => [
-      file,
-      {
-        sourceSha256: entry.sourceSha256,
-        mutantSignatures: entry.mutants.map((mutant) => mutantSignature(mutant, file)).sort(),
-      },
-    ])
+    [...preflightByFile.entries()]
+      .map(([file, entry]) => [canonicalMutationSourcePath(file), entry])
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([file, entry]) => {
+        if (!isRecord(entry) || !Array.isArray(entry.mutants)) {
+          throw new Error(`Instrumenter preflight is malformed for ${file}`)
+        }
+        assertSha256(entry.sourceSha256, `Instrumenter preflight source digest for ${file}`)
+        return [
+          file,
+          {
+            sourceSha256: entry.sourceSha256,
+            mutantSignatures: entry.mutants.map((mutant) => mutantSignature(mutant, file)).sort(),
+          },
+        ]
+      })
   )
+}
+
+function preflightDigest(serializedPreflight) {
+  return sha256(JSON.stringify(serializedPreflight))
+}
+
+function deserializePreflight({ serializedPreflight, sourceFiles, sourceByFile }) {
+  if (!isRecord(serializedPreflight) || !(sourceByFile instanceof Map)) {
+    throw new Error("Preflight artifact source snapshot is malformed")
+  }
+  const canonicalFiles = canonicalSourceFiles(sourceFiles)
+  const artifactFiles = Object.keys(serializedPreflight).sort()
+  if (JSON.stringify(artifactFiles) !== JSON.stringify(canonicalFiles)) {
+    throw new Error(
+      "Preflight artifact source denominator differs from the current source universe"
+    )
+  }
+  const preflightByFile = new Map()
+  for (const file of canonicalFiles) {
+    const entry = serializedPreflight[file]
+    assertExactObjectKeys(entry, ["sourceSha256", "mutantSignatures"], `Preflight artifact ${file}`)
+    assertSha256(entry.sourceSha256, `Preflight artifact source digest for ${file}`)
+    assertCanonicalStringArray(
+      entry.mutantSignatures,
+      `Preflight artifact mutant signatures for ${file}`
+    )
+    const source = sourceByFile.get(file)
+    if (typeof source !== "string" || sha256(source) !== entry.sourceSha256) {
+      throw new Error(`Preflight artifact source snapshot is stale or missing for ${file}`)
+    }
+    preflightByFile.set(file, {
+      sourceSha256: entry.sourceSha256,
+      // Producers need only a deterministic count to reconstruct their exact
+      // logical assignment. Aggregate mode independently regenerates the
+      // real mutants and compares their complete signatures below.
+      mutants: entry.mutantSignatures,
+    })
+  }
+  return preflightByFile
+}
+
+function assertCanonicalShardPlan({ shardPlan, preflightByFile, shardTargetMutants, shardCount }) {
+  if (!Number.isInteger(shardCount) || shardCount < 1) {
+    throw new Error("Preflight artifact shard count is invalid")
+  }
+  const expectedPlan = planMutationShards(preflightByFile, shardTargetMutants, shardCount)
+  if (expectedPlan.length !== shardCount) {
+    throw new Error(
+      `Preflight artifact shard plan has ${expectedPlan.length} logical shards; expected ${shardCount}`
+    )
+  }
+  if (JSON.stringify(shardPlan) !== JSON.stringify(expectedPlan)) {
+    throw new Error("Preflight artifact shard plan differs from the canonical assignment")
+  }
+  return expectedPlan
+}
+
+function assertPreflightArtifactWorkflowProvenance({
+  payloadWorkflow,
+  consumerWorkflow,
+  producerAttemptPolicy,
+}) {
+  assertExactObjectKeys(
+    payloadWorkflow,
+    ["runId", "runAttempt", "sha"],
+    "Preflight artifact workflow provenance"
+  )
+  assertExactObjectKeys(
+    consumerWorkflow,
+    ["runId", "runAttempt", "sha"],
+    "Consumer Stryker workflow provenance"
+  )
+  const producerAttempt = parseWorkflowRunAttempt(payloadWorkflow.runAttempt)
+  const consumerAttempt = parseWorkflowRunAttempt(consumerWorkflow.runAttempt)
+  if (
+    payloadWorkflow.runId !== consumerWorkflow.runId ||
+    payloadWorkflow.sha !== consumerWorkflow.sha ||
+    producerAttempt === undefined ||
+    consumerAttempt === undefined
+  ) {
+    throw new Error("Preflight artifact workflow provenance does not match this execution")
+  }
+  if (producerAttemptPolicy === "exact") {
+    if (producerAttempt !== consumerAttempt) {
+      throw new Error("Preflight artifact workflow provenance does not match this execution")
+    }
+  } else if (producerAttemptPolicy === "at-or-before") {
+    if (producerAttempt > consumerAttempt) {
+      throw new Error("Preflight artifact producer attempt is from the future")
+    }
+  } else {
+    throw new Error("Preflight artifact producer-attempt policy is invalid")
+  }
+  return producerAttempt
+}
+
+function assertExactPreflightArtifactMetadata({
+  payload,
+  sourceRevision,
+  workflow,
+  toolchain,
+  sourcePolicy,
+  config,
+  producerAttemptPolicy,
+}) {
+  assertExactObjectKeys(
+    payload,
+    [
+      "schemaVersion",
+      "workflow",
+      "sourceRevision",
+      "sourcePolicy",
+      "config",
+      "toolchain",
+      "preflight",
+      "shardPlan",
+    ],
+    "Preflight artifact payload"
+  )
+  if (payload.schemaVersion !== preflightArtifactSchemaVersion) {
+    throw new Error("Preflight artifact schema version is unsupported")
+  }
+  const producerAttempt = assertPreflightArtifactWorkflowProvenance({
+    payloadWorkflow: payload.workflow,
+    consumerWorkflow: workflow,
+    producerAttemptPolicy,
+  })
+  if (JSON.stringify(payload.sourceRevision) !== JSON.stringify(sourceRevision)) {
+    throw new Error("Preflight artifact source revision does not match this execution")
+  }
+  if (JSON.stringify(payload.sourcePolicy) !== JSON.stringify(sourcePolicy)) {
+    throw new Error("Preflight artifact source policy does not match this execution")
+  }
+  if (JSON.stringify(payload.config) !== JSON.stringify(config)) {
+    throw new Error("Preflight artifact configuration does not match this execution")
+  }
+  if (JSON.stringify(payload.toolchain) !== JSON.stringify(toolchain)) {
+    throw new Error("Preflight artifact toolchain does not match this execution")
+  }
+  return producerAttempt
+}
+
+export function buildPreflightArtifact({
+  sourceRevision,
+  workflow,
+  toolchain,
+  sourcePolicy,
+  config,
+  preflightByFile,
+  shardTargetMutants,
+  shardCount,
+}) {
+  const serializedPreflight = serializePreflight(preflightByFile)
+  const shardPlan = planMutationShards(preflightByFile, shardTargetMutants, shardCount)
+  if (shardPlan.length !== shardCount) {
+    throw new Error(
+      `Canonical Stryker preflight generated ${shardPlan.length}/${shardCount} logical shards`
+    )
+  }
+  const payload = {
+    schemaVersion: preflightArtifactSchemaVersion,
+    workflow,
+    sourceRevision,
+    sourcePolicy,
+    config,
+    toolchain,
+    preflight: {
+      digest: preflightDigest(serializedPreflight),
+      files: serializedPreflight,
+    },
+    shardPlan,
+  }
+  return {
+    schemaVersion: preflightArtifactSchemaVersion,
+    payload,
+    payloadSha256: sha256(jsonText(payload)),
+  }
+}
+
+export function validatePreflightArtifact({
+  artifactText,
+  sourceFiles,
+  sourceByFile,
+  sourceRevision,
+  workflow,
+  toolchain,
+  sourcePolicy,
+  config,
+  shardTargetMutants,
+  shardCount,
+  canonicalPreflightByFile,
+  producerAttemptPolicy = "exact",
+}) {
+  if (typeof artifactText !== "string") {
+    throw new Error("Preflight artifact is missing")
+  }
+  let artifact
+  try {
+    artifact = JSON.parse(artifactText)
+  } catch {
+    throw new Error("Preflight artifact contains invalid JSON")
+  }
+  // The producer emits this exact byte form. Requiring it detects duplicate
+  // object keys (which JSON.parse would otherwise overwrite) and makes every
+  // artifact hash reproducible across producer, shard and aggregate jobs.
+  if (artifactText !== jsonText(artifact)) {
+    throw new Error("Preflight artifact JSON is not canonical")
+  }
+  assertExactObjectKeys(
+    artifact,
+    ["schemaVersion", "payload", "payloadSha256"],
+    "Preflight artifact"
+  )
+  if (artifact.schemaVersion !== preflightArtifactSchemaVersion) {
+    throw new Error("Preflight artifact schema version is unsupported")
+  }
+  assertSha256(artifact.payloadSha256, "Preflight artifact payload digest")
+  if (artifact.payloadSha256 !== sha256(jsonText(artifact.payload))) {
+    throw new Error("Preflight artifact payload digest does not match its content")
+  }
+  const producerAttempt = assertExactPreflightArtifactMetadata({
+    payload: artifact.payload,
+    sourceRevision,
+    workflow,
+    toolchain,
+    sourcePolicy,
+    config,
+    producerAttemptPolicy,
+  })
+  assertExactObjectKeys(
+    artifact.payload.preflight,
+    ["digest", "files"],
+    "Preflight artifact preflight"
+  )
+  const serializedPreflight = artifact.payload.preflight.files
+  assertSha256(artifact.payload.preflight.digest, "Preflight artifact preflight digest")
+  if (artifact.payload.preflight.digest !== preflightDigest(serializedPreflight)) {
+    throw new Error("Preflight artifact preflight digest does not match its source universe")
+  }
+  const preflightByFile = deserializePreflight({ serializedPreflight, sourceFiles, sourceByFile })
+  const shardPlan = assertCanonicalShardPlan({
+    shardPlan: artifact.payload.shardPlan,
+    preflightByFile,
+    shardTargetMutants,
+    shardCount,
+  })
+  if (canonicalPreflightByFile !== undefined) {
+    if (!(canonicalPreflightByFile instanceof Map)) {
+      throw new Error("Canonical instrumenter universe must be provided as a Map")
+    }
+    const canonicalSerializedPreflight = serializePreflight(canonicalPreflightByFile)
+    if (JSON.stringify(canonicalSerializedPreflight) !== JSON.stringify(serializedPreflight)) {
+      throw new Error("Preflight artifact differs from the canonical instrumenter universe")
+    }
+    assertCanonicalShardPlan({
+      shardPlan,
+      preflightByFile: canonicalPreflightByFile,
+      shardTargetMutants,
+      shardCount,
+    })
+  }
+  return {
+    artifact,
+    producerAttempt,
+    preflightByFile: canonicalPreflightByFile ?? preflightByFile,
+    preflightDigest: artifact.payload.preflight.digest,
+    shardPlan,
+  }
+}
+
+export async function selectPreflightArtifactCandidate({
+  candidateRoot = preflightCandidateRoot,
+  sourceFiles,
+  sourceByFile,
+  sourceRevision,
+  workflow,
+  toolchain,
+  sourcePolicy,
+  config,
+  shardTargetMutants,
+  shardCount,
+  canonicalPreflightByFile,
+}) {
+  if (typeof candidateRoot !== "string" || candidateRoot === "") {
+    throw new Error("Stryker preflight candidate root is invalid")
+  }
+  const candidates = await readCanonicalPreflightCandidates({ candidateRoot, workflow })
+  const candidatesByAttempt = new Map()
+  for (const candidate of candidates) {
+    const validated = validatePreflightArtifact({
+      artifactText: candidate.artifactText,
+      sourceFiles,
+      sourceByFile,
+      sourceRevision,
+      workflow,
+      toolchain,
+      sourcePolicy,
+      config,
+      shardTargetMutants,
+      shardCount,
+      canonicalPreflightByFile,
+      producerAttemptPolicy: "at-or-before",
+    })
+    if (
+      candidate.directoryAttempt.attempt !== validated.producerAttempt ||
+      candidate.directoryAttempt.attemptText !== validated.artifact.payload.workflow.runAttempt
+    ) {
+      throw new Error("Preflight candidate directory attempt does not match its payload")
+    }
+    if (candidatesByAttempt.has(validated.producerAttempt)) {
+      throw new Error(
+        `Preflight candidates contain a duplicate producer attempt: ${validated.producerAttempt}`
+      )
+    }
+    candidatesByAttempt.set(validated.producerAttempt, {
+      ...validated,
+      artifactPath: candidate.artifactPath,
+      consumerWorkflow: workflow,
+    })
+  }
+  return [...candidatesByAttempt.entries()].sort(
+    ([leftAttempt], [rightAttempt]) => rightAttempt - leftAttempt
+  )[0][1]
 }
 
 function assertOwnedTemporaryDirectory(temporaryRoot, runId) {
@@ -625,18 +1190,14 @@ async function main() {
   let markerWritten = false
   let releaseError
   try {
-    await cleanupCanonicalArtifacts(outputRoot)
+    const artifactExecution = preflightArtifactExecution()
+    if (artifactExecution.mode !== "validate") {
+      await cleanupCanonicalArtifacts(outputRoot)
+    }
     const policy = JSON.parse(await readFile(sourcePolicyPath, "utf8"))
     const sourceFiles = await listPolicyFiles(policy)
     const beforeSnapshot = await captureEvidence(sourceFiles)
     const { identity: before, sourceByFile } = beforeSnapshot
-    const preflightByFile = await generateInstrumenterPreflight({
-      sourceFiles,
-      sourceByFile,
-      instrumenterOptions,
-    })
-    assertEvidenceUnchanged(before, (await captureEvidence(sourceFiles)).identity)
-
     const shardTarget = boundedEnvironmentInteger("STRYKER_SHARD_TARGET", 750, 50, 2_000)
     const shardParallelism = boundedEnvironmentInteger("STRYKER_SHARD_PARALLELISM", 2, 1, 4)
     const shardTimeoutMs = boundedEnvironmentInteger(
@@ -658,15 +1219,129 @@ async function main() {
     if (externalShardIndex !== undefined && aggregateRoot) {
       throw new Error("Stryker shard execution and aggregation modes are mutually exclusive")
     }
-    const shardPlan = planMutationShards(preflightByFile, shardTarget, externalShardCount)
+    if (
+      artifactExecution.artifactRequired &&
+      artifactExecution.mode === "execute" &&
+      externalShardIndex === undefined &&
+      !aggregateRoot
+    ) {
+      throw new Error(
+        "Immutable Stryker preflight artifacts require a shard or aggregate execution"
+      )
+    }
+    if (artifactExecution.mode === "generate") {
+      if (
+        externalShardCount === undefined ||
+        externalShardIndex !== undefined ||
+        aggregateRoot ||
+        artifactExecution.artifactRequired
+      ) {
+        throw new Error("Stryker preflight generation requires exactly a canonical shard count")
+      }
+    }
+    if (artifactExecution.mode === "validate" && aggregateRoot) {
+      throw new Error("Stryker preflight validation cannot replace aggregate verification")
+    }
+
+    const toolchain = await readToolchain()
+    const workflow =
+      artifactExecution.mode === "generate" || artifactExecution.artifactRequired
+        ? requireWorkflowProvenance(before)
+        : undefined
+    const artifactMetadata = workflow
+      ? preflightArtifactMetadata({
+          sourceRevision: before,
+          workflow,
+          toolchain,
+          shardTargetMutants: shardTarget,
+          shardCount: externalShardCount,
+        })
+      : undefined
+
+    let preflightByFile
+    let shardPlan
+    let currentPreflightDigest
+    if (artifactExecution.mode === "generate") {
+      const canonicalPreflightByFile = await generateInstrumenterPreflight({
+        sourceFiles,
+        sourceByFile,
+        instrumenterOptions,
+      })
+      assertEvidenceUnchanged(before, (await captureEvidence(sourceFiles)).identity)
+      const artifact = buildPreflightArtifact({
+        ...artifactMetadata,
+        preflightByFile: canonicalPreflightByFile,
+      })
+      const artifactText = jsonText(artifact)
+      validatePreflightArtifact({
+        ...artifactMetadata,
+        sourceFiles,
+        sourceByFile,
+        canonicalPreflightByFile,
+        artifactText,
+        producerAttemptPolicy: "exact",
+      })
+      await atomicText(preflightArtifactOutputPath, artifactText)
+      assertEvidenceUnchanged(before, (await captureEvidence(sourceFiles)).identity)
+      process.stdout.write(
+        `Prepared canonical frontend Stryker preflight (${artifact.payload.preflight.digest}) for ${artifact.payload.shardPlan.length} logical shards\n`
+      )
+      return
+    }
+    if (artifactExecution.artifactRequired) {
+      const canonicalPreflightByFile = aggregateRoot
+        ? await generateInstrumenterPreflight({
+            sourceFiles,
+            sourceByFile,
+            instrumenterOptions,
+          })
+        : undefined
+      if (canonicalPreflightByFile) {
+        assertEvidenceUnchanged(before, (await captureEvidence(sourceFiles)).identity)
+      }
+      const validatedArtifact = await selectPreflightArtifactCandidate({
+        ...artifactMetadata,
+        sourceFiles,
+        sourceByFile,
+        canonicalPreflightByFile,
+      })
+      preflightByFile = validatedArtifact.preflightByFile
+      shardPlan = validatedArtifact.shardPlan
+      currentPreflightDigest = validatedArtifact.preflightDigest
+    } else {
+      preflightByFile = await generateInstrumenterPreflight({
+        sourceFiles,
+        sourceByFile,
+        instrumenterOptions,
+      })
+      assertEvidenceUnchanged(before, (await captureEvidence(sourceFiles)).identity)
+      shardPlan = planMutationShards(preflightByFile, shardTarget, externalShardCount)
+      currentPreflightDigest = sha256(JSON.stringify(serializePreflight(preflightByFile)))
+    }
     if (shardPlan.length === 0) {
       throw new Error("Instrumenter preflight generated no viable frontend mutants")
     }
     if (externalShardIndex !== undefined && externalShardIndex >= shardPlan.length) {
       throw new Error(`STRYKER_SHARD_INDEX ${externalShardIndex} exceeds the generated shard plan`)
     }
-    const serializedPreflight = serializePreflight(preflightByFile)
-    const preflightDigest = sha256(JSON.stringify(serializedPreflight))
+    const serializedPreflight =
+      artifactExecution.artifactRequired && !aggregateRoot
+        ? undefined
+        : serializePreflight(preflightByFile)
+    if (
+      serializedPreflight !== undefined &&
+      currentPreflightDigest !== sha256(JSON.stringify(serializedPreflight))
+    ) {
+      throw new Error("Stryker preflight digest changed after canonical validation")
+    }
+    const preflightDigest = currentPreflightDigest
+    assertEvidenceUnchanged(before, (await captureEvidence(sourceFiles)).identity)
+    if (artifactExecution.mode === "validate") {
+      process.stdout.write(
+        `Validated immutable frontend Stryker preflight (${preflightDigest}) for ${shardPlan.length} logical shards\n`
+      )
+      return
+    }
 
     let shardResults
     if (aggregateRoot) {
@@ -761,6 +1436,9 @@ async function main() {
       )
       return
     }
+    if (serializedPreflight === undefined) {
+      throw new Error("Aggregate Stryker evidence requires a canonical preflight universe")
+    }
     const expectedPatterns = mutationPatternsFromPolicy(policy)
     const report = mergeShardReports({ shards: shardResults, expectedPatterns })
     const reportText = jsonText(report)
@@ -773,11 +1451,11 @@ async function main() {
       expectedPatterns,
       preflightByFile,
     })
-    const [strykerVersion, instrumenterVersion, vitestVersion] = await Promise.all([
-      readPackageVersion("node_modules/@stryker-mutator/core/package.json"),
-      readPackageVersion("node_modules/@stryker-mutator/instrumenter/package.json"),
-      readPackageVersion("node_modules/vitest/package.json"),
-    ])
+    const {
+      stryker: strykerVersion,
+      instrumenter: instrumenterVersion,
+      vitest: vitestVersion,
+    } = toolchain
     const preflight = {
       schemaVersion: "1.0",
       runId,

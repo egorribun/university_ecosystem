@@ -570,6 +570,8 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
     assert "required_results=(" in gate
     assert 'if [[ "$result" != "success" ]]' in gate
     assert '"$res" != "success" && "$res" != "skipped"' not in gate
+    assert "stryker-preflight" in job["needs"]
+    assert 'assert_event_result "stryker-preflight"' in gate
     assert 'assert_event_result "stryker-aggregate"' in gate
     assert 'assert_event_result "codecov-upload"' in gate
     assert '"sbom-generate|${{ needs.sbom-generate.result }}"' in gate
@@ -579,6 +581,71 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
         "db-migration-integrity",
     ):
         assert f'"{advisory}|${{{{ needs.{advisory}.result }}}}"' not in gate
+
+
+def test_stryker_preflight_candidates_are_retry_safe_and_fail_closed() -> None:
+    jobs = _workflow(CI)["jobs"]
+    expected_pattern = (
+        "frontend-mutation-preflight-${{ github.run_id }}-*-${{ github.sha }}"
+    )
+    expected_download = {
+        "pattern": expected_pattern,
+        "path": "frontend/reports/mutation/preflight-candidates",
+        "merge-multiple": False,
+        "if-no-artifact-found": "error",
+    }
+    producer = jobs["stryker-preflight"]
+    upload = _step(producer, "Upload immutable Stryker preflight")
+    assert upload["with"]["name"] == (
+        "frontend-mutation-preflight-${{ github.run_id }}-"
+        "${{ github.run_attempt }}-${{ github.sha }}"
+    )
+    # GitHub permits rerunning failed jobs for up to 30 days.  The immutable
+    # producer must outlive that window or a later partial retry cannot reuse
+    # already-validated preflight evidence and fails before it can make
+    # progress.
+    assert upload["with"]["retention-days"] == 30
+
+    for job_name in ("stryker-preflight", "stryker-shards", "stryker-aggregate"):
+        checkout = _step(jobs[job_name], "Checkout")
+        assert checkout["with"]["persist-credentials"] is False
+        node_setup = _step(jobs[job_name], "Setup Node.js")
+        assert node_setup["with"]["node-version"] == "24.15.0"
+
+    for job_name in ("stryker-shards", "stryker-aggregate"):
+        download = _step(
+            jobs[job_name], "Download immutable same-run Stryker preflight candidates"
+        )
+        assert download["with"] == expected_download
+        assert "name" not in download["with"]
+
+    aggregate_shards = _step(
+        jobs["stryker-aggregate"], "Download all same-run Stryker shard candidates"
+    )
+    assert aggregate_shards["with"] == {
+        "pattern": "frontend-mutation-shard-${{ github.run_id }}-*",
+        "path": "frontend/reports/mutation/external",
+        "merge-multiple": False,
+        "if-no-artifact-found": "error",
+    }
+    assert "name" not in aggregate_shards["with"]
+
+    roundtrip = jobs["stryker-evidence-roundtrip"]
+    assert _step(roundtrip, "Checkout")["with"]["persist-credentials"] is False
+    assert _step(roundtrip, "Setup Node.js")["with"]["node-version"] == "24.15.0"
+    assert roundtrip["env"] == {
+        "STRYKER_VALIDATED_CANDIDATE_ROOT": "reports/mutation/validated-candidates"
+    }
+    roundtrip_download = _step(
+        roundtrip, "Download immutable same-run validated Stryker evidence candidates"
+    )
+    assert roundtrip_download["with"] == {
+        "pattern": "frontend-mutation-validated-${{ github.run_id }}-*",
+        "path": "frontend/reports/mutation/validated-candidates",
+        "merge-multiple": False,
+        "if-no-artifact-found": "error",
+    }
+    assert "name" not in roundtrip_download["with"]
 
 
 def test_ci_success_does_not_enqueue_a_finalizer_after_run_cancellation() -> None:

@@ -3206,6 +3206,43 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
     )
     jobs = ci_workflow["jobs"]
+    mutation_preflight = jobs["stryker-preflight"]
+    assert mutation_preflight["needs"] == "pre-commit-check"
+    assert "github.event_name == 'pull_request'" in mutation_preflight["if"]
+    assert mutation_preflight["permissions"] == {"contents": "read"}
+    assert mutation_preflight["env"] == {
+        "STRYKER_SHARD_COUNT": "64",
+        "STRYKER_PREFLIGHT_MODE": "generate",
+    }
+    preflight_checkout = next(
+        step for step in mutation_preflight["steps"] if step.get("name") == "Checkout"
+    )
+    assert preflight_checkout["with"]["persist-credentials"] is False
+    preflight_run = next(
+        step["run"]
+        for step in mutation_preflight["steps"]
+        if step.get("name") == "Generate canonical immutable Stryker preflight"
+    )
+    assert preflight_run == "npm run test:mutation"
+    preflight_node_setup = next(
+        step
+        for step in mutation_preflight["steps"]
+        if step.get("name") == "Setup Node.js"
+    )
+    assert preflight_node_setup["with"]["node-version"] == "24.15.0"
+    preflight_upload = next(
+        step
+        for step in mutation_preflight["steps"]
+        if step.get("name") == "Upload immutable Stryker preflight"
+    )
+    assert preflight_upload["with"]["name"] == (
+        "frontend-mutation-preflight-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}"
+    )
+    assert preflight_upload["with"]["path"] == (
+        "frontend/reports/mutation/preflight-artifact/PREFLIGHT_ARTIFACT.json"
+    )
+    assert preflight_upload["with"]["overwrite"] is False
+
     mutation_shards = jobs["stryker-shards"]
     mutation_condition = mutation_shards["if"]
     assert "github.event_name == 'pull_request'" in mutation_condition
@@ -3215,25 +3252,94 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert mutation_shards["strategy"]["max-parallel"] == 11
     assert mutation_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
     assert mutation_shards["timeout-minutes"] == 120
+    assert mutation_shards["needs"] == ["pre-commit-check", "stryker-preflight"]
     assert mutation_shards["env"] == {
         "STRYKER_SHARD_COUNT": "64",
         "STRYKER_SHARD_INDEX": "${{ matrix.shard-index }}",
         "STRYKER_CONCURRENCY": "2",
+        "STRYKER_PREFLIGHT_ARTIFACT": "required",
     }
-    shard_run = next(
-        step["run"]
+    preflight_download = next(
+        step
+        for step in mutation_shards["steps"]
+        if step.get("name")
+        == "Download immutable same-run Stryker preflight candidates"
+    )
+    assert preflight_download["with"] == {
+        "pattern": (
+            "frontend-mutation-preflight-${{ github.run_id }}-*-${{ github.sha }}"
+        ),
+        "path": "frontend/reports/mutation/preflight-candidates",
+        "merge-multiple": False,
+        "if-no-artifact-found": "error",
+    }
+    assert "name" not in preflight_download["with"]
+    shard_checkout = next(
+        step for step in mutation_shards["steps"] if step.get("name") == "Checkout"
+    )
+    assert shard_checkout["with"]["persist-credentials"] is False
+    preflight_validation = next(
+        step
+        for step in mutation_shards["steps"]
+        if step.get("name") == "Validate immutable Stryker preflight before execution"
+    )
+    assert preflight_validation["working-directory"] == "frontend"
+    assert preflight_validation["env"] == {"STRYKER_PREFLIGHT_MODE": "validate"}
+    assert preflight_validation["run"] == "npm run test:mutation"
+    shard_node_setup = next(
+        step for step in mutation_shards["steps"] if step.get("name") == "Setup Node.js"
+    )
+    assert shard_node_setup["with"]["node-version"] == "24.15.0"
+    fresh_shard_step = next(
+        step
         for step in mutation_shards["steps"]
         if step.get("name") == "Run fresh Stryker shard"
     )
+    shard_run = fresh_shard_step["run"]
     assert shard_run == "npm run test:mutation"
+    assert (
+        mutation_shards["steps"].index(preflight_download)
+        < mutation_shards["steps"].index(preflight_validation)
+        < mutation_shards["steps"].index(fresh_shard_step)
+    )
 
     assert "stryker-shard-replay" not in jobs
     mutation_aggregate = jobs["stryker-aggregate"]
-    assert mutation_aggregate["needs"] == "stryker-shards"
+    assert mutation_aggregate["needs"] == ["stryker-preflight", "stryker-shards"]
     assert "always()" in mutation_aggregate["if"]
     assert mutation_aggregate["env"]["STRYKER_AGGREGATE_ROOT"] == (
         "reports/mutation/external"
     )
+    assert mutation_aggregate["env"]["STRYKER_PREFLIGHT_ARTIFACT"] == "required"
+    aggregate_node_setup = next(
+        step
+        for step in mutation_aggregate["steps"]
+        if step.get("name") == "Setup Node.js"
+    )
+    assert aggregate_node_setup["with"]["node-version"] == "24.15.0"
+    aggregate_preflight_download = next(
+        step
+        for step in mutation_aggregate["steps"]
+        if step.get("name")
+        == "Download immutable same-run Stryker preflight candidates"
+    )
+    assert aggregate_preflight_download["with"] == preflight_download["with"]
+    aggregate_shard_download = next(
+        step
+        for step in mutation_aggregate["steps"]
+        if step.get("name") == "Download all same-run Stryker shard candidates"
+    )
+    assert aggregate_shard_download["with"] == {
+        "pattern": "frontend-mutation-shard-${{ github.run_id }}-*",
+        "path": "frontend/reports/mutation/external",
+        "merge-multiple": False,
+        "if-no-artifact-found": "error",
+    }
+    assert "name" not in aggregate_shard_download["with"]
+    aggregate_checkout = next(
+        step for step in mutation_aggregate["steps"] if step.get("name") == "Checkout"
+    )
+    assert aggregate_checkout["with"]["persist-credentials"] is False
     aggregate_run = next(
         step["run"]
         for step in mutation_aggregate["steps"]
@@ -3248,6 +3354,32 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert "needs.stryker-aggregate.result" in result_check
     mutation_roundtrip = jobs["stryker-evidence-roundtrip"]
     assert mutation_roundtrip["needs"] == "stryker-aggregate"
+    roundtrip_checkout = next(
+        step for step in mutation_roundtrip["steps"] if step.get("name") == "Checkout"
+    )
+    assert roundtrip_checkout["with"]["persist-credentials"] is False
+    roundtrip_node_setup = next(
+        step
+        for step in mutation_roundtrip["steps"]
+        if step.get("name") == "Setup Node.js"
+    )
+    assert roundtrip_node_setup["with"]["node-version"] == "24.15.0"
+    assert mutation_roundtrip["env"] == {
+        "STRYKER_VALIDATED_CANDIDATE_ROOT": "reports/mutation/validated-candidates"
+    }
+    roundtrip_download = next(
+        step
+        for step in mutation_roundtrip["steps"]
+        if step.get("name")
+        == "Download immutable same-run validated Stryker evidence candidates"
+    )
+    assert roundtrip_download["with"] == {
+        "pattern": "frontend-mutation-validated-${{ github.run_id }}-*",
+        "path": "frontend/reports/mutation/validated-candidates",
+        "merge-multiple": False,
+        "if-no-artifact-found": "error",
+    }
+    assert "name" not in roundtrip_download["with"]
     assert "stryker-evidence-roundtrip" in jobs["ci-success"]["needs"]
     assert "needs.stryker-evidence-roundtrip.result" in result_check
 
@@ -3283,11 +3415,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert "frontend-mutation-tests-full" in nightly_failure_needs
     assert "frontend-mutation-roundtrip" in nightly_failure_needs
 
-    for roundtrip_job in (
-        mutation_roundtrip,
-        manual_roundtrip,
-        nightly_roundtrip,
-    ):
+    for roundtrip_job in (manual_roundtrip, nightly_roundtrip):
         download = next(
             step
             for step in roundtrip_job["steps"]
