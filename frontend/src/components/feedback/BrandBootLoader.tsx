@@ -29,7 +29,12 @@ export function BrandBootLoader() {
     return () => window.removeEventListener(APP_HYDRATED_EVENT, beginExit)
   }, [beginExit])
 
-  useEffect(() => {
+  // Schedule the hand-off from the layout-effect phase.  The hydration
+  // sentinel is published by a parent layout effect and React may defer
+  // passive effects while a concurrent root is still resolving route data;
+  // putting the bounded exit timer in a layout effect guarantees that an
+  // exiting loader cannot remain as a hit target indefinitely in WebKit.
+  useIsomorphicLayoutEffect(() => {
     if (phase !== "exiting") {
       return
     }
