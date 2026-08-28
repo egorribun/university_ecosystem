@@ -33,6 +33,11 @@ INTERNAL_HMAC_SECRET = (
 )
 INVALID_SHORT_SECRET = "short"  # pragma: allowlist secret
 TESTER_IDS = ",".join(f"00000000-0000-0000-0000-{index:012d}" for index in range(1, 26))
+OIDC_TEST_TOKEN = (
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9."
+    "eyJleHAiOjE4OTM0NTYwMDAsImlhdCI6MTg5MzQ1NTcwMCwic3ViIjoidGVzdCJ9."
+    "c2lnbmF0dXJl"
+)
 
 
 def _binding(**overrides: object) -> CwvRumBinding:
@@ -314,8 +319,6 @@ def test_oidc_verifier_requires_exact_github_main_staging_claims(
             "sha": SHA,
         }
     )
-    monkeypatch.setattr(jwt.PyJWKClient, "get_signing_key_from_jwt", get_key)
-    monkeypatch.setattr(jwt, "decode", decode)
     verifier = GithubActionsOidcVerifier(
         enabled=True,
         repository="acme/university",
@@ -325,12 +328,14 @@ def test_oidc_verifier_requires_exact_github_main_staging_claims(
         ),
         subject="repo:acme/university:environment:staging",
     )
+    monkeypatch.setattr(verifier._jwks, "get_signing_key_from_jwt", get_key)
+    monkeypatch.setattr(jwt, "decode", decode)
 
-    claims = verifier.verify("header.payload.signature", expected_sha=SHA)
+    claims = verifier.verify(OIDC_TEST_TOKEN, expected_sha=SHA)
 
     assert claims["environment"] == "staging"
     decode.assert_called_once_with(
-        "header.payload.signature",
+        OIDC_TEST_TOKEN,
         signing_key.key,
         algorithms=["RS256"],
         audience="university-cwv-exporter",
@@ -349,8 +354,17 @@ def test_oidc_verifier_is_disabled_until_exact_policy_is_configured() -> None:
 def test_oidc_verifier_rejects_a_token_from_any_other_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    verifier = GithubActionsOidcVerifier(
+        enabled=True,
+        repository="acme/university",
+        workflow_ref=(
+            "acme/university/.github/workflows/"
+            "cwv-field-certification.yml@refs/heads/main"
+        ),
+        subject="repo:acme/university:environment:staging",
+    )
     monkeypatch.setattr(
-        jwt.PyJWKClient,
+        verifier._jwks,
         "get_signing_key_from_jwt",
         Mock(return_value=SimpleNamespace(key=object())),
     )
@@ -372,27 +386,13 @@ def test_oidc_verifier_rejects_a_token_from_any_other_environment(
             }
         ),
     )
-    verifier = GithubActionsOidcVerifier(
-        enabled=True,
-        repository="acme/university",
-        workflow_ref=(
-            "acme/university/.github/workflows/"
-            "cwv-field-certification.yml@refs/heads/main"
-        ),
-        subject="repo:acme/university:environment:staging",
-    )
     with pytest.raises(CwvEnvelopeError, match="claims"):
-        verifier.verify("header.payload.signature", expected_sha=SHA)
+        verifier.verify(OIDC_TEST_TOKEN, expected_sha=SHA)
 
 
 def test_oidc_verifier_accepts_github_immutable_staging_subject(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        jwt.PyJWKClient,
-        "get_signing_key_from_jwt",
-        Mock(return_value=SimpleNamespace(key=object())),
-    )
     claims = {
         "sub": "repo:acme@123/university@456:environment:staging",
         "repository": "acme/university",
@@ -405,14 +405,19 @@ def test_oidc_verifier_accepts_github_immutable_staging_subject(
         ),
         "sha": SHA,
     }
-    monkeypatch.setattr(jwt, "decode", Mock(return_value=claims))
     verifier = GithubActionsOidcVerifier(
         enabled=True,
         repository="acme/university",
         workflow_ref=claims["workflow_ref"],
         subject="repo:acme@123/university@456:environment:staging",
     )
-    assert verifier.verify("header.payload.signature", expected_sha=SHA) == claims
+    monkeypatch.setattr(
+        verifier._jwks,
+        "get_signing_key_from_jwt",
+        Mock(return_value=SimpleNamespace(key=object())),
+    )
+    monkeypatch.setattr(jwt, "decode", Mock(return_value=claims))
+    assert verifier.verify(OIDC_TEST_TOKEN, expected_sha=SHA) == claims
 
 
 def test_evidence_model_is_pii_free_and_database_deduplicated() -> None:
