@@ -98,6 +98,13 @@ const AXE_SOURCE_PATH = path.resolve(
 const AXE_SOURCE = readFileSync(AXE_SOURCE_PATH, "utf-8")
 
 test.describe("@a11y local-injected axe-core regression", () => {
+  // This regression audit targets the rendered document and does not exercise
+  // the PWA lifecycle.  Blocking service workers prevents the production
+  // first-install `controllerchange` reload from racing axe evaluation (the
+  // same navigation race covered by the public-route suite) while leaving
+  // service-worker behavior enabled in product and dedicated PWA tests.
+  test.use({ serviceWorkers: "block" })
+
   // Wave 147 SW1 structural — inject axe via `page.addInitScript({content})`
   // BEFORE `page.goto()` in each test.
   //
