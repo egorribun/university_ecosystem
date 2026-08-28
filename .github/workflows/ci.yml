@@ -575,7 +575,11 @@ jobs:
     if: ${{ github.event_name == 'pull_request' }}
     strategy:
       fail-fast: false
-      max-parallel: 8
+      # Empirical runner-time from the last matrix shows a balanced 11/9
+      # allocation minimizes the mutation critical path under the observed
+      # twenty-runner account cap: Stryker has the longer per-leg tail, while
+      # mutmut retains nine slots for continuous backend evidence.
+      max-parallel: 11
       matrix:
         shard-index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
     permissions:
@@ -620,7 +624,10 @@ jobs:
     if: ${{ github.event_name == 'pull_request' }}
     strategy:
       fail-fast: false
-      max-parallel: 16
+      # Replay is a second mutation phase and must leave nine slots for any
+      # still-running mutmut legs.  Keeping the same eleven-slot reservation
+      # prevents another cross-matrix starvation wave after Stryker finishes.
+      max-parallel: 11
       matrix:
         shard-index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
     permissions:
@@ -2119,6 +2126,13 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
+      # Reserve nine hosted-runner slots for mutmut while the eleven Stryker
+      # producer legs run. GitHub schedules matrix families independently;
+      # this explicit ceiling prevents the unbounded 128-leg matrix from
+      # consuming every available slot and starving queued Stryker evidence.
+      # The combined producer-family ceiling is 20, matching the observed
+      # hosted-runner pool without changing any quality gate or shard.
+      max-parallel: 9
       # A long-lived branch can change dozens of backend modules. One hundred
       # twenty-eight legs keep each mutation loop bounded while two workers
       # avoid SQLite contention in the forked test processes. Empty legs are

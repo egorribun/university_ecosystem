@@ -32,6 +32,22 @@ if (
 }
 
 /**
+ * Producer shards must always upload their complete report, even when their
+ * assigned slice contains a surviving mutant.  The aggregate process remains
+ * the sole release gate: it merges every shard and validates the complete
+ * inventory at 100% in validate-stryker-inventory.mjs.  Keeping high/low at
+ * 100 preserves Stryker's report classification while `break: null` prevents
+ * a partial shard from terminating before its evidence is persisted.
+ */
+export function mutationThresholds(isShardProducer = process.env.STRYKER_SHARD_RUN === "1") {
+  return {
+    high: 100,
+    low: 100,
+    break: isShardProducer ? null : 100,
+  }
+}
+
+/**
  * Full authored-frontend mutation gate. The source universe is shared with
  * coverage and the post-run inventory proves that every denominator file was
  * either mutated or explicitly accounted for as generating zero mutants.
@@ -77,14 +93,11 @@ export default {
       : ["clear-text", "progress", "html", "json"],
   jsonReporter: { fileName: jsonReport },
   htmlReporter: { fileName: htmlReport },
-  thresholds: {
-    high: 100,
-    low: 100,
-    break: 100,
-  },
+  thresholds: mutationThresholds(),
   // Keep the mutation runner bounded on Windows and CI hosts where Vitest's
-  // jsdom workers can retain native handles between mutations. The threshold
-  // remains 100%; this only serializes execution and recycles workers.
+  // jsdom workers can retain native handles between mutations. The aggregate
+  // threshold remains 100%; producer shards only persist evidence and never
+  // authorize a release on their own.
   concurrency: Number.parseInt(process.env.STRYKER_CONCURRENCY ?? "2", 10),
   maxTestRunnerReuse: 4,
   cleanTempDir: "always",

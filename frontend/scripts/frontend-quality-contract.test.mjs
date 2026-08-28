@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import test from "node:test"
 
-import strykerConfig from "../stryker.config.mjs"
+import strykerConfig, { mutationThresholds } from "../stryker.config.mjs"
 
 const frontendRoot = new URL("../", import.meta.url)
 const repositoryRoot = new URL("../../", import.meta.url)
@@ -58,6 +58,11 @@ test("Stryker mutation scope is derived from the complete frontend coverage deno
     15,
     "Stryker's initial test run deadline must be explicit and long enough for the full suite"
   )
+})
+
+test("only the shard producer disables its local break threshold", () => {
+  assert.deepEqual(mutationThresholds(true), { high: 100, low: 100, break: null })
+  assert.deepEqual(mutationThresholds(false), { high: 100, low: 100, break: 100 })
 })
 
 test("the mutation command always validates the fail-closed source inventory", async () => {

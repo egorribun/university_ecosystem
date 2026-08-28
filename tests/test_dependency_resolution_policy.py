@@ -132,7 +132,7 @@ def test_renovate_validator_contract_is_pinned_and_blocking() -> None:
 
     # Verify triggers, permissions, and SHA-pinned checkout/setup actions
     assert "permissions:\n  contents: read" in workflow_renovate
-    assert "on:\n  push:\n  pull_request:" in workflow_renovate
+    assert "on:\n  push:\n    branches: [main]\n  pull_request:" in workflow_renovate
     assert (
         "uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
         in workflow_renovate

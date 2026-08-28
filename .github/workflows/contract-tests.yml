@@ -17,6 +17,7 @@ name: Contract Tests — cross-process Pact boundaries
 
 on:
   push:
+    branches: [main]
     paths:
       - "app/services/ws_hub_client.py"
       - "app/api/health.py"

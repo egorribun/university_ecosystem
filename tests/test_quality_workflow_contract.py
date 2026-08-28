@@ -61,6 +61,27 @@ SECURITY_WORKFLOW_PATH = (
 )
 CHECKOV_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "checkov.yml"
 PACT_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "contract-tests.yml"
+PR_RUN_CANCELLATION_WORKFLOWS = (
+    "benchmark.yml",
+    "cargo-deny.yml",
+    "checkov.yml",
+    "codeql.yml",
+    "db-perf-gate.yml",
+    "dependency-review.yml",
+    "generate-openapi.yml",
+    "gitleaks.yml",
+    "go-fuzz.yml",
+    "go-lint.yml",
+    "nilaway.yml",
+    "python-fuzz.yml",
+    "renovate-config-validation.yml",
+    "rust-fuzz.yml",
+    "semantic-pr.yml",
+    "sonar.yml",
+    "sqlmap.yml",
+    "trufflehog.yml",
+    "zizmor.yml",
+)
 QUALITY_HISTORY_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "quality-history.yml"
 )
@@ -208,6 +229,43 @@ def test_ci_triggers_when_draft_pull_request_becomes_ready() -> None:
         "reopened",
         "ready_for_review",
     }
+
+
+def test_pr_branch_push_does_not_duplicate_contract_workflows() -> None:
+    """Push validation is reserved for main; PRs use the pull_request event."""
+
+    renovate = yaml.safe_load(
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "renovate-config-validation.yml"
+        ).read_text(encoding="utf-8")
+    )
+    contract = yaml.safe_load(PACT_WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+    for workflow in (renovate, contract):
+        triggers = _workflow_triggers(workflow)
+        push = triggers.get("push")
+        assert isinstance(push, dict)
+        assert push.get("branches") == ["main"]
+        assert "pull_request" in triggers
+
+
+def test_pr_workflows_cancel_superseded_runs_without_cancelling_main() -> None:
+    """Stale PR runs must release scarce hosted runners for the newest SHA."""
+
+    expected_group = (
+        "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
+    )
+    expected_cancel = "${{ github.event_name == 'pull_request' }}"
+    for filename in PR_RUN_CANCELLATION_WORKFLOWS:
+        workflow = yaml.safe_load(
+            (REPOSITORY_ROOT / ".github" / "workflows" / filename).read_text(
+                encoding="utf-8"
+            )
+        )
+        concurrency = workflow.get("concurrency")
+        assert isinstance(concurrency, dict), filename
+        assert concurrency.get("group") == expected_group, filename
+        assert concurrency.get("cancel-in-progress") == expected_cancel, filename
 
 
 def test_dockerfile_lint_excludes_companion_dockerignore_files() -> None:
@@ -1418,6 +1476,9 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert stats_job["strategy"]["matrix"]["stats_shard"] == list(range(8))
     assert stats_job["timeout-minutes"] == 25
     assert "pre-commit-check" in stats_job["needs"]
+    assert mutation_job["strategy"]["fail-fast"] is False
+    assert mutation_job["strategy"]["max-parallel"] == 9
+    assert mutation_job["strategy"]["matrix"]["shard"] == list(range(1, 129))
     stats_text = "\n".join(
         step.get("run", "") for step in stats_job["steps"] if isinstance(step, dict)
     )
@@ -2800,7 +2861,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert "workflow_dispatch" not in mutation_condition
     assert mutation_shards["name"].endswith("/64")
     assert mutation_shards["strategy"]["fail-fast"] is False
-    assert mutation_shards["strategy"]["max-parallel"] == 8
+    assert mutation_shards["strategy"]["max-parallel"] == 11
     assert mutation_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
     assert mutation_shards["timeout-minutes"] == 120
     assert mutation_shards["env"] == {
@@ -2817,6 +2878,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
 
     mutation_replay = jobs["stryker-shard-replay"]
     assert mutation_replay["needs"] == "stryker-shards"
+    assert mutation_replay["strategy"]["max-parallel"] == 11
     assert mutation_replay["name"].endswith("/64")
     assert mutation_replay["strategy"]["matrix"]["shard-index"] == list(range(64))
     mutation_aggregate = jobs["stryker-aggregate"]
