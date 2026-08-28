@@ -163,10 +163,11 @@ async function createConfig() {
   // sweep but expect those audits to fail under Lighthouse — investigate or
   // skip per Wave 120+ scope.
   const defaultPaths = [...routePolicyConfig.defaultLhciPaths]
-  // Wave 119 SW2 — empty string trims to "/" so callers can measure root via
-  // LHCI_URLS=,schedule,404 (Windows MSYS_NO_PATHCONV bypass: leading slashes
-  // in /-paths are mangled to git-bash absolute paths). Without this map,
-  // .filter(Boolean) drops "" and root never gets measured.
+  // Wave 119 SW2 — empty segments normalize to "/" so callers can measure
+  // root via LHCI_URLS=,schedule,404 (Windows MSYS_NO_PATHCONV bypass: leading
+  // slashes in /-paths are mangled to git-bash absolute paths). The shared
+  // normalizer also adds a slash to route-name inputs such as `404` before
+  // Lighthouse and the route-policy inventory see them.
   // Wave 160 SW1 — distinguish truly-empty LHCI_URLS (the workflow_dispatch
   // default "" when no override is intended → use defaults) from a non-empty
   // override with leading comma (`,schedule,404` → measure / + 2 paths).
