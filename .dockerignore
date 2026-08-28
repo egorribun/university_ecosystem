@@ -40,6 +40,9 @@ venv/
 ENV/
 env/
 .quality-venv/
+**/.cache/
+**/artifacts/
+**/.root-*/
 
 # Local databases and secrets
 .secrets/

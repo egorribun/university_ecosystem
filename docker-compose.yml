@@ -376,6 +376,14 @@ services:
     security_opt:
       - no-new-privileges:true
     restart: "no"
+    # One-shot database reconciliation only invokes a few psql commands. Keep
+    # the helper bounded so a stalled client cannot reserve an unconstrained
+    # Docker process while the long-lived PostgreSQL service remains healthy.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 64M
 
   valkey:
     ports:
@@ -906,6 +914,13 @@ services:
     networks:
       - internal
       - public
+    # Tempo is a long-lived telemetry service; mirror the full-stack budget so
+    # local tracing cannot grow without a cgroup ceiling.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
     restart: unless-stopped
 
   # Tempo's distroless image has no wget/curl. Probe its readiness endpoint
@@ -922,6 +937,14 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    # The probe sleeps and performs one tiny HTTP request per interval; a
+    # 32-MiB/0.05-CPU ceiling prevents an idle sidecar from becoming an
+    # unbounded resource consumer.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: 32M
     restart: unless-stopped
 
 networks:

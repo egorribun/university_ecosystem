@@ -26,6 +26,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 768M
 
   redis:
     image: redis:7.4.2-alpine@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952
@@ -38,6 +43,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: "0.15"
+          memory: 128M
 
   nats:
     image: nats:2.12.6-alpine@sha256:1cfc36e2e5e638243d8c722f72c954cd0ec4b15ee82fadbc718ce12e2b3c1652
@@ -51,6 +61,11 @@ services:
       interval: 5s
       timeout: 5s
       retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: "0.15"
+          memory: 128M
 
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
@@ -66,3 +81,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M

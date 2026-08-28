@@ -177,6 +177,11 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: 32M
     restart: unless-stopped
 
   frontend:
@@ -451,6 +456,11 @@ services:
     security_opt:
       - no-new-privileges:true
     restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 64M
 
   redis:
     # Switched from Redis 7.4 to Valkey 8 (Linux Foundation fork) — Redis 8.x
@@ -550,6 +560,11 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 64M
     restart: unless-stopped
 
   # ── S3-compatible object storage (MinIO) ──────────────────────────────────
@@ -1422,6 +1437,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: 32M
     restart: unless-stopped
 
   loki:
@@ -1456,6 +1476,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: 32M
     restart: unless-stopped
 
   alloy:
@@ -1483,6 +1508,14 @@ services:
       - ALL
     cap_add:
       - DAC_OVERRIDE
+    # Docker discovery + Loki shipping is intentionally bounded for local
+    # observability. This leaves headroom for normal log bursts without
+    # allowing the collector to consume the host indefinitely.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
     networks:
       - internal
       - public
@@ -1497,6 +1530,11 @@ services:
       - "127.0.0.1:4040:4040"
     volumes:
       - pyroscope-data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
     networks:
       - internal
       - public
