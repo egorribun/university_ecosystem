@@ -163,6 +163,27 @@ def test_precommit_is_one_read_only_blocking_gate() -> None:
     check = _step(job, "Run pre-commit (check only)")
     assert "continue-on-error" not in check
     assert check["with"]["extra_args"] == "--all-files --show-diff-on-failure"
+    # The Docker-backed Semgrep hook is run by an independent blocking job
+    # so the ordinary hooks can unblock the repository-wide fan-out.
+    # This is a transport split, not a quality bypass: the sibling job runs
+    # the exact hook with its own bounded timeout and is required by ci-success.
+    assert check["env"] == {"SKIP": "semgrep-docker"}
+
+
+def test_semgrep_security_audit_starts_independently() -> None:
+    workflow = _workflow(CI)
+    jobs = workflow["jobs"]
+    job = jobs["security-audit"]
+
+    # The reusable security workflow contains the blocking, digest-pinned
+    # Semgrep job. Removing this caller dependency lets that same job start
+    # beside pre-commit, without introducing a duplicate scan or weakening
+    # ci-success's existing security-audit requirement.
+    assert "needs" not in job
+    assert job["uses"] == "./.github/workflows/reusable-security-audit.yml"
+    assert "security-audit" in jobs["ci-success"]["needs"]
+    gate = jobs["ci-success"]["steps"][0]["run"]
+    assert '"security-audit|${{ needs.security-audit.result }}"' in gate
 
 
 def test_lighthouse_missing_artifact_fails_closed() -> None:
@@ -285,7 +306,7 @@ def test_mutation_scope_diff_failures_cannot_look_like_empty_changes() -> None:
         in {"Detect changed Python source", "Resolve manual mutation comparison base"}
     ]
 
-    assert len(scope_scripts) == 4
+    assert len(scope_scripts) == 5
     for script in scope_scripts:
         assert "git diff --name-only" in script
         assert 'git diff --name-only "$COMPARE_BASE...HEAD" | grep' not in script

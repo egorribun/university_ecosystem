@@ -44,7 +44,7 @@ on:
   workflow_dispatch: #checkov:skip=CKV_GHA_7:manual input intentionally selects the audited URL subset
     inputs:
       urls:
-        description: "Comma-separated URL paths (empty = full default 9-URL sweep). Example: `,login,dashboard` for / + /login + /dashboard."
+        description: "Comma-separated URL paths (empty = full default 10-URL sweep). Example: `,login,dashboard` for / + /login + /dashboard."
         required: false
         type: string
         default: ""
@@ -148,7 +148,7 @@ jobs:
       #   5. Lighthouse 13.1.0 via package.json override (W121 SW8 — fixes
       #      LanternError that blocked /activity + /map on 12.x)
       #
-      # LHCI_URLS env support: empty string (default) uses the full 9-URL
+      # LHCI_URLS env support: empty string (default) uses the full 10-URL
       # default sweep. User can override via workflow_dispatch input for
       # minimal subset (e.g. `,login,dashboard` for / + /login + /dashboard).
       - name: Run Lighthouse CI

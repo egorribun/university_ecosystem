@@ -175,12 +175,19 @@ def write_shard_plan_bundle(
     output_directory: Path,
     shards: Sequence[Sequence[str]],
     estimates: Iterable[MutantEstimate],
+    *,
+    allow_empty_shards: bool = False,
 ) -> dict[str, Any]:
-    """Persist every exact shard plus a deterministic population manifest."""
+    """Persist every exact shard plus a deterministic population manifest.
+
+    Nightly full mutation plans require every shard to carry work.  Incremental
+    plans may intentionally have fewer changed mutants than their fixed matrix;
+    callers must opt in explicitly when preserving those empty assignments.
+    """
 
     if not shards:
         raise ValueError("shard plan must contain at least one shard")
-    if any(not shard for shard in shards):
+    if any(not shard for shard in shards) and not allow_empty_shards:
         raise ValueError("planned shards must not be empty")
 
     flattened = [name for shard in shards for name in shard]
@@ -236,6 +243,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--shard-id", type=int)
     parser.add_argument("--num-shards", type=int, required=True)
     parser.add_argument("--max-children", type=int, default=2)
+    parser.add_argument(
+        "--allow-empty-shards",
+        action="store_true",
+        help="preserve empty assignments for fixed-size incremental matrices",
+    )
     parser.add_argument(
         "--changed-diff",
         type=Path,
@@ -437,7 +449,12 @@ def main() -> None:
     estimates = estimate_mutant_times(mutant_names, tests_by_function, durations)
     shards = plan_mutant_shards(estimates, num_shards=args.num_shards)
     if args.output_directory is not None:
-        manifest = write_shard_plan_bundle(args.output_directory, shards, estimates)
+        manifest = write_shard_plan_bundle(
+            args.output_directory,
+            shards,
+            estimates,
+            allow_empty_shards=args.allow_empty_shards,
+        )
         print(
             f"Planned all {manifest['num_shards']} mutmut shards: "
             f"{manifest['universe_count']} exact mutants"

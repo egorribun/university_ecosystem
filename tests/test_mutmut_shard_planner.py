@@ -193,6 +193,23 @@ def test_write_shard_plan_bundle_persists_exact_audited_population(
     assert all(len(item["selection_sha256"]) == 64 for item in manifest["shards"])
 
 
+def test_write_shard_plan_bundle_can_preserve_explicit_empty_incremental_shards(
+    tmp_path: Path,
+) -> None:
+    estimates = [MutantEstimate("app.a.x_f__mutmut_1", 2.5)]
+    manifest = write_shard_plan_bundle(
+        tmp_path,
+        [["app.a.x_f__mutmut_1"], []],
+        estimates,
+        allow_empty_shards=True,
+    )
+
+    assert manifest["num_shards"] == 2
+    assert manifest["universe_count"] == 1
+    assert (tmp_path / "shard-02.txt").read_text(encoding="utf-8") == ""
+    assert manifest["shards"][1]["selected_count"] == 0
+
+
 @pytest.mark.parametrize(
     ("shards", "estimates", "message"),
     [

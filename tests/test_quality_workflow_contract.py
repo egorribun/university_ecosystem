@@ -1454,10 +1454,9 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
     )
     assert "grep -E '^app/.*\\.py$'" in job_text
     assert "matrix.shard" in job_text
-    assert "scripts/plan_mutmut_shards.py" in job_text
-    assert "--changed-files /tmp/changed_py.txt" in job_text
-    assert "--changed-diff /tmp/changed_py.diff" in job_text
-    assert "--num-shards 128" in job_text
+    assert "scripts/plan_mutmut_shards.py" not in job_text
+    assert "mutants/mutmut-incremental-plan/shard-" in job_text
+    assert 'cp "$shard_plan" /tmp/mutmut-shard.txt' in job_text
     assert '"${MUTANT_NAMES[@]}"' in job_text
     assert "awk -v shard" not in job_text
     assert "grep '^app/core/tenant\\.py$'" not in job_text
@@ -1467,6 +1466,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     jobs = workflow["jobs"]
     stats_job = jobs["mutation-tests-stats"]
+    universe_job = jobs["mutation-tests-universe"]
     mutation_job = jobs["mutation-tests-incremental"]
 
     assert "workflow_dispatch" not in _workflow_triggers(workflow)
@@ -1476,6 +1476,8 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert stats_job["strategy"]["matrix"]["stats_shard"] == list(range(8))
     assert stats_job["timeout-minutes"] == 25
     assert "pre-commit-check" in stats_job["needs"]
+    assert universe_job["timeout-minutes"] == 35
+    assert universe_job["needs"] == ["pre-commit-check", "mutation-tests-stats"]
     assert mutation_job["strategy"]["fail-fast"] is False
     assert mutation_job["strategy"]["max-parallel"] == 9
     assert mutation_job["strategy"]["matrix"]["shard"] == list(range(1, 129))
@@ -1492,6 +1494,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert "mutmut.config" not in helper_text
 
     assert "mutation-tests-stats" in mutation_job["needs"]
+    assert "mutation-tests-universe" in mutation_job["needs"]
     for job in (stats_job, mutation_job):
         mutation_scope = next(
             step
@@ -1527,22 +1530,10 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
         for step in mutation_job["steps"]
         if step.get("uses", "").startswith("actions/download-artifact")
     )
-    assert download_step["with"]["pattern"] == (
-        "mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-*"
+    assert download_step["with"]["name"] == (
+        "mutmut-universe-${{ github.run_id }}-${{ github.run_attempt }}"
     )
     assert download_step["with"]["if-no-artifact-found"] == "error"
-    require_stats = next(
-        step
-        for step in mutation_job["steps"]
-        if step.get("name") == "Require all mutmut stats shards"
-    )
-    assert require_stats["env"] == {
-        "RUN_ID": "${{ github.run_id }}",
-        "RUN_ATTEMPT": "${{ github.run_attempt }}",
-    }
-    assert "expected=8" in require_stats["run"]
-    assert "find mutmut-stats -type f -name 'mutmut-stats.json'" in require_stats["run"]
-    assert "seq 0 7" in require_stats["run"]
     stats_upload = next(
         step
         for step in stats_job["steps"]
@@ -1561,10 +1552,35 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
         "mutmut-exact-evidence-${{ github.run_id }}-${{ github.run_attempt }}-"
         "${{ matrix.shard }}"
     )
-    assert "scripts/merge_mutmut_stats.py" in mutation_text
+    assert "scripts/merge_mutmut_stats.py" not in mutation_text
     assert "mutants/mutmut-stats.json" in mutation_text
+    assert "mutants/mutmut-incremental-plan/shard-" in mutation_text
+    assert "scripts/mutmut_universe_artifact.py validate" in mutation_text
+    producer_text = "\n".join(
+        step.get("run", "") for step in universe_job["steps"] if isinstance(step, dict)
+    )
+    assert "scripts/merge_mutmut_stats.py" in producer_text
+    assert "scripts/plan_mutmut_shards.py" in producer_text
+    assert "--allow-empty-shards" in producer_text
+    assert "scripts/mutmut_universe_artifact.py create" in producer_text
+    assert 'test "$(git rev-parse HEAD)" = "$COMMIT_SHA"' in producer_text
+    assert 'test "$(git rev-parse HEAD)" = "$COMMIT_SHA"' in mutation_text
+    universe_upload = next(
+        step
+        for step in universe_job["steps"]
+        if step.get("name") == "Upload central mutmut universe"
+    )
+    assert universe_upload["with"]["name"] == (
+        "mutmut-universe-${{ github.run_id }}-${{ github.run_attempt }}"
+    )
+    assert "mutmut-universe-artifact.json" in universe_upload["with"]["path"]
+    assert universe_upload["with"]["include-hidden-files"] is True
     assert "mutation-tests-stats" in jobs["ci-success"]["needs"]
+    assert "mutation-tests-universe" in jobs["ci-success"]["needs"]
     assert "needs.mutation-tests-stats.result" in jobs["ci-success"]["steps"][0]["run"]
+    assert (
+        "needs.mutation-tests-universe.result" in jobs["ci-success"]["steps"][0]["run"]
+    )
 
 
 def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> None:
