@@ -594,7 +594,6 @@ also_copy = [
     # the isolated mutmut tree. Keep these authored assets alongside the full
     # stack so the baseline/stats pass cannot fail on a missing input path.
     "docker-compose.yml",
-    "docker-compose.override.yml",
     "docker-compose.full.yml",
     "docker-compose.infra.yml",
     "docker-compose.go.yml",
