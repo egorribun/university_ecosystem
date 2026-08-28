@@ -26,7 +26,6 @@ import { useTimeOfDay } from "@/hooks/useTimeOfDay"
 import { useSeason } from "@/hooks/useSeason"
 import { useMapEvents } from "@/hooks/useMapEvents"
 import { useMapKeyboardShortcuts } from "@/hooks/useMapKeyboardShortcuts"
-import { useIsVisible } from "@/hooks/useIntersectionObserver"
 import { MapShortcutsOverlay } from "@/components/map/MapShortcutsOverlay"
 import { MapWeatherBadge } from "@/components/map/MapWeatherBadge"
 import {
@@ -62,44 +61,8 @@ function getIsDark() {
 }
 const SERVER_SNAPSHOT = false
 
-/** Lazy-load MapLibre GL — CSS + JS only loaded when the map is visible or used. */
+/** Lazy-load MapLibre GL — CSS + JS only loaded after explicit user intent. */
 const MapLibreMapComponent = lazy(loadMapLibre)
-
-const MAP_IDLE_TIMEOUT_MS = 4000
-
-function scheduleMapIdleCallback(callback: IdleRequestCallback, timeout: number) {
-  if (
-    typeof window.requestIdleCallback === "function" &&
-    typeof window.cancelIdleCallback === "function"
-  ) {
-    return window.requestIdleCallback(callback, { timeout })
-  }
-  return window.setTimeout(
-    () =>
-      callback({
-        didTimeout: true,
-        timeRemaining: () => 0,
-      }),
-    timeout
-  )
-}
-
-function cancelMapIdleCallback(id: number) {
-  if (
-    typeof window.requestIdleCallback === "function" &&
-    typeof window.cancelIdleCallback === "function"
-  ) {
-    window.cancelIdleCallback(id)
-    return
-  }
-  window.clearTimeout(id)
-}
-
-/** Pure scheduling helpers are exposed for deterministic browser-fallback tests. */
-export const __testing = {
-  scheduleMapIdleCallback,
-  cancelMapIdleCallback,
-}
 
 /**
  * MapFeature — central orchestrator for the campus map page.
@@ -141,13 +104,6 @@ export function MapFeature() {
   /* ── MapLibre GL map ref ── */
   const mapLibreRef = useRef<MapRef | null>(null)
   const mapViewportRef = useRef<HTMLDivElement | null>(null)
-  const mapIsVisible = useIsVisible(mapViewportRef, {
-    freezeOnceVisible: true,
-    rootMargin: "240px 0px",
-  })
-  const hasIntersectionObserver =
-    typeof window !== "undefined" && typeof window.IntersectionObserver === "function"
-  const mapIsNearViewport = mapIsVisible || !hasIntersectionObserver
   const [mapReady, setMapReady] = useState(false)
   const mapPlaceholderRef = useRef<HTMLButtonElement | null>(null)
   const restoreMapFocusRef = useRef(false)
@@ -156,49 +112,6 @@ export function MapFeature() {
       preserveFocus || document.activeElement === mapPlaceholderRef.current
     setMapReady(true)
   }, [])
-
-  /*
-   * MapLibre is a large WebGL dependency. Keep the first render lightweight,
-   * then start it during an idle window once the map is near the viewport. A
-   * focused pointer/keyboard action still activates it immediately, while a
-   * hidden document waits for visibility instead of doing background work.
-   */
-  useEffect(() => {
-    if (mapReady || !mapIsNearViewport) return
-
-    let disposed = false
-    let idleId: number | null = null
-
-    const cancelScheduledLoad = () => {
-      if (idleId === null) return
-      cancelMapIdleCallback(idleId)
-      idleId = null
-    }
-
-    const scheduleLoad = () => {
-      if (disposed || idleId !== null || document.visibilityState !== "visible") return
-      idleId = scheduleMapIdleCallback(() => {
-        idleId = null
-        if (!disposed && document.visibilityState === "visible") setMapReady(true)
-      }, MAP_IDLE_TIMEOUT_MS)
-    }
-
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "hidden") {
-        cancelScheduledLoad()
-        return
-      }
-      scheduleLoad()
-    }
-    document.addEventListener("visibilitychange", onVisibilityChange)
-    scheduleLoad()
-
-    return () => {
-      disposed = true
-      document.removeEventListener("visibilitychange", onVisibilityChange)
-      cancelScheduledLoad()
-    }
-  }, [mapIsNearViewport, mapReady])
 
   useEffect(() => {
     if (!mapReady || !restoreMapFocusRef.current) return

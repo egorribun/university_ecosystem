@@ -156,9 +156,9 @@ function renderFeature() {
   )
 }
 
-/* The production map is intentionally deferred until viewport-idle or an
-   explicit interaction. Trigger the interaction here so orchestration tests
-   exercise the real child contract without waiting on a browser idle budget. */
+/* The production map is intentionally deferred until explicit interaction.
+   Trigger the interaction here so orchestration tests exercise the real child
+   contract without loading MapLibre during initial route rendering. */
 async function whenMapMounted() {
   const placeholder = document.querySelector('[data-testid="map-activation-placeholder"]')
   if (placeholder) fireEvent.pointerDown(placeholder)
