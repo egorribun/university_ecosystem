@@ -112,22 +112,23 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
   })
 
   const unreadCount = useMemo(() => getUnreadChatCount(chatsData?.items), [chatsData?.items])
+  const chatItems = Array.isArray(chatsData?.items) ? chatsData.items : null
 
   // Initial presence map from fetched chats
   useEffect(() => {
-    if (chatsData?.items) {
-      setPresenceMap((prev) => {
-        const next = { ...prev }
-        chatsData.items.forEach((chat) => {
-          Object.entries(chat.presence || {}).forEach(([id, status]) => {
-            const userId = id
-            next[userId] = status
-          })
+    if (!chatItems) return
+
+    setPresenceMap((prev) => {
+      const next = { ...prev }
+      chatItems.forEach((chat) => {
+        Object.entries(chat.presence || {}).forEach(([id, status]) => {
+          const userId = id
+          next[userId] = status
         })
-        return next
       })
-    }
-  }, [chatsData])
+      return next
+    })
+  }, [chatItems])
 
   const value = useMemo(
     () => ({

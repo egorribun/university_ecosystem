@@ -157,6 +157,24 @@ describe("MessengerContext", () => {
         expect(result.current.unreadCount).toBe(5)
       })
     })
+
+    it("fails closed when a truthy chat items payload is not an array", async () => {
+      const malformedResponse = {
+        items: {},
+        has_more: false,
+        next_cursor: null,
+      }
+      mocks.chatApi.getChats.mockResolvedValue(malformedResponse)
+
+      const { result } = renderHook(() => useMessenger(), { wrapper })
+
+      await waitFor(() => expect(mocks.chatApi.getChats).toHaveBeenCalledTimes(1))
+      await waitFor(() =>
+        expect(currentQueryClient!.getQueryData(["chats"])).toEqual(malformedResponse)
+      )
+      await waitFor(() => expect(result.current.unreadCount).toBe(0))
+      expect(result.current.presenceMap).toEqual({})
+    })
   })
 
   describe("isAuth gating", () => {
