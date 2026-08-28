@@ -1,5 +1,13 @@
 import { expect, test, type Page } from "@playwright/test"
 
+// These tests exercise the SSR boot document and hydration lifecycle, not the
+// PWA worker lifecycle.  Production reloads once when a newly installed
+// service worker emits `controllerchange`; allowing that reload here can
+// replace the document while the loader contract is being asserted (notably
+// in WebKit).  Keep the audited document stable without changing production
+// service-worker behavior or dedicated PWA coverage.
+test.use({ serviceWorkers: "block" })
+
 const MARK_RESET_TIME_MS = 5_700
 const FAILSAFE_END_TIME_MS = 12_002
 
