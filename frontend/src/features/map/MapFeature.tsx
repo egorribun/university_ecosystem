@@ -68,7 +68,10 @@ const MapLibreMapComponent = lazy(loadMapLibre)
 const MAP_IDLE_TIMEOUT_MS = 4000
 
 function scheduleMapIdleCallback(callback: IdleRequestCallback, timeout: number) {
-  if (typeof window.requestIdleCallback === "function") {
+  if (
+    typeof window.requestIdleCallback === "function" &&
+    typeof window.cancelIdleCallback === "function"
+  ) {
     return window.requestIdleCallback(callback, { timeout })
   }
   return window.setTimeout(
@@ -82,7 +85,10 @@ function scheduleMapIdleCallback(callback: IdleRequestCallback, timeout: number)
 }
 
 function cancelMapIdleCallback(id: number) {
-  if (typeof window.cancelIdleCallback === "function") {
+  if (
+    typeof window.requestIdleCallback === "function" &&
+    typeof window.cancelIdleCallback === "function"
+  ) {
     window.cancelIdleCallback(id)
     return
   }
@@ -143,7 +149,12 @@ export function MapFeature() {
     typeof window !== "undefined" && typeof window.IntersectionObserver === "function"
   const mapIsNearViewport = mapIsVisible || !hasIntersectionObserver
   const [mapReady, setMapReady] = useState(false)
-  const activateMap = useCallback(() => setMapReady(true), [])
+  const mapPlaceholderRef = useRef<HTMLButtonElement | null>(null)
+  const restoreMapFocusRef = useRef(false)
+  const activateMap = useCallback(() => {
+    restoreMapFocusRef.current = document.activeElement === mapPlaceholderRef.current
+    setMapReady(true)
+  }, [])
 
   /*
    * MapLibre is a large WebGL dependency. Keep the first render lightweight,
@@ -171,7 +182,13 @@ export function MapFeature() {
       }, MAP_IDLE_TIMEOUT_MS)
     }
 
-    const onVisibilityChange = () => scheduleLoad()
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        cancelScheduledLoad()
+        return
+      }
+      scheduleLoad()
+    }
     document.addEventListener("visibilitychange", onVisibilityChange)
     scheduleLoad()
 
@@ -181,6 +198,12 @@ export function MapFeature() {
       cancelScheduledLoad()
     }
   }, [mapIsNearViewport, mapReady])
+
+  useEffect(() => {
+    if (!mapReady || !restoreMapFocusRef.current) return
+    restoreMapFocusRef.current = false
+    mapViewportRef.current?.focus({ preventScroll: true })
+  }, [mapReady])
 
   /* ── URL-state sync (Wave 120 SW5 — Item #2) ──
      Reads ?z/lat/lng/p/b on mount → if all five present + valid, MapLibreMap
@@ -328,6 +351,9 @@ export function MapFeature() {
             <div
               ref={mapViewportRef}
               className="map-card-matte map-viewport flex-1 min-w-0 overflow-hidden relative"
+              role="region"
+              aria-label={t("campusMap.ariaLabel")}
+              tabIndex={-1}
               onPointerDown={activateMap}
             >
               <WidgetErrorBoundary
@@ -366,6 +392,7 @@ export function MapFeature() {
                   <button
                     type="button"
                     data-testid="map-activation-placeholder"
+                    ref={mapPlaceholderRef}
                     className="absolute inset-0 flex min-h-[inherit] cursor-pointer items-center justify-center p-6 text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-teal-500)]"
                     aria-label={t("campusMap.interactiveHint")}
                     onFocus={activateMap}

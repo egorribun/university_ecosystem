@@ -63,6 +63,16 @@ class ControlledIntersectionObserver {
 }
 
 const originalIntersectionObserver = window.IntersectionObserver
+const originalRequestIdleCallback = window.requestIdleCallback
+const originalCancelIdleCallback = window.cancelIdleCallback
+
+function restoreWindowCallback(name: "requestIdleCallback" | "cancelIdleCallback", value: unknown) {
+  if (value === undefined) {
+    Reflect.deleteProperty(window, name)
+    return
+  }
+  Object.defineProperty(window, name, { configurable: true, value })
+}
 
 describe("MapFeature deferred MapLibre loading", () => {
   beforeEach(() => {
@@ -73,6 +83,8 @@ describe("MapFeature deferred MapLibre loading", () => {
 
   afterEach(() => {
     window.IntersectionObserver = originalIntersectionObserver
+    restoreWindowCallback("requestIdleCallback", originalRequestIdleCallback)
+    restoreWindowCallback("cancelIdleCallback", originalCancelIdleCallback)
     vi.restoreAllMocks()
     vi.useRealTimers()
   })
@@ -111,9 +123,11 @@ describe("MapFeature deferred MapLibre loading", () => {
       </Suspense>
     )
 
-    fireEvent.focus(screen.getByRole("button", { name: "campusMap.interactiveHint" }))
+    const placeholder = screen.getByRole("button", { name: "campusMap.interactiveHint" })
+    placeholder.focus()
 
     expect(await screen.findByTestId("map-component")).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "campusMap.ariaLabel" })).toHaveFocus()
   })
 
   it("loads MapLibre from an idle callback once the viewport becomes visible", async () => {
@@ -124,9 +138,14 @@ describe("MapFeature deferred MapLibre loading", () => {
       idleCallbacks.push(callback)
       return 17
     })
+    const cancelIdle = vi.fn()
     Object.defineProperty(window, "requestIdleCallback", {
       configurable: true,
       value: requestIdle,
+    })
+    Object.defineProperty(window, "cancelIdleCallback", {
+      configurable: true,
+      value: cancelIdle,
     })
 
     render(
@@ -160,9 +179,14 @@ describe("MapFeature deferred MapLibre loading", () => {
       idleCallbacks.push(callback)
       return 23
     })
+    const cancelIdle = vi.fn()
     Object.defineProperty(window, "requestIdleCallback", {
       configurable: true,
       value: requestIdle,
+    })
+    Object.defineProperty(window, "cancelIdleCallback", {
+      configurable: true,
+      value: cancelIdle,
     })
     const visibility = vi.spyOn(document, "visibilityState", "get")
     visibility.mockReturnValue("hidden")
@@ -229,6 +253,10 @@ describe("MapFeature deferred MapLibre loading", () => {
         return 37
       }),
     })
+    Object.defineProperty(window, "cancelIdleCallback", {
+      configurable: true,
+      value: vi.fn(),
+    })
 
     const { unmount } = render(
       <Suspense fallback={null}>
@@ -260,6 +288,89 @@ describe("MapFeature deferred MapLibre loading", () => {
     vi.advanceTimersByTime(4000)
 
     expect(callback).toHaveBeenCalledTimes(1)
+  })
+
+  it("cancels a pending idle load when the document is hidden and reschedules it when visible", async () => {
+    window.IntersectionObserver =
+      ControlledIntersectionObserver as unknown as typeof IntersectionObserver
+    const idleCallbacks: IdleRequestCallback[] = []
+    const requestIdle = vi.fn((callback: IdleRequestCallback) => {
+      idleCallbacks.push(callback)
+      return idleCallbacks.length
+    })
+    const cancelIdle = vi.fn()
+    Object.defineProperty(window, "requestIdleCallback", {
+      configurable: true,
+      value: requestIdle,
+    })
+    Object.defineProperty(window, "cancelIdleCallback", {
+      configurable: true,
+      value: cancelIdle,
+    })
+    const visibility = vi.spyOn(document, "visibilityState", "get")
+    visibility.mockReturnValue("visible")
+
+    render(
+      <Suspense fallback={null}>
+        <MapFeature />
+      </Suspense>
+    )
+    act(() => {
+      ControlledIntersectionObserver.callback?.([
+        { isIntersecting: true } as IntersectionObserverEntry,
+      ])
+    })
+    expect(requestIdle).toHaveBeenCalledTimes(1)
+
+    visibility.mockReturnValue("hidden")
+    act(() => document.dispatchEvent(new Event("visibilitychange")))
+    expect(cancelIdle).toHaveBeenCalledWith(1)
+    expect(mapLoader).not.toHaveBeenCalled()
+
+    visibility.mockReturnValue("visible")
+    act(() => document.dispatchEvent(new Event("visibilitychange")))
+    expect(requestIdle).toHaveBeenCalledTimes(2)
+
+    await act(async () => {
+      idleCallbacks[1]?.({ didTimeout: false, timeRemaining: () => 50 })
+      await Promise.resolve()
+    })
+    expect(await screen.findByTestId("map-component")).toBeInTheDocument()
+  })
+
+  it("uses the timeout fallback when requestIdleCallback has no matching cancel API", () => {
+    vi.useFakeTimers()
+    const requestIdle = vi.fn()
+    Object.defineProperty(window, "requestIdleCallback", {
+      configurable: true,
+      value: requestIdle,
+    })
+    Reflect.deleteProperty(window, "cancelIdleCallback")
+    const callback = vi.fn()
+
+    mapTesting.scheduleMapIdleCallback(callback, 25)
+    expect(requestIdle).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(25)
+
+    expect(callback).toHaveBeenCalledTimes(1)
+  })
+
+  it("clears the timeout fallback when only cancelIdleCallback is available", () => {
+    vi.useFakeTimers()
+    Reflect.deleteProperty(window, "requestIdleCallback")
+    const cancelIdle = vi.fn()
+    Object.defineProperty(window, "cancelIdleCallback", {
+      configurable: true,
+      value: cancelIdle,
+    })
+    const callback = vi.fn()
+    const timeoutId = mapTesting.scheduleMapIdleCallback(callback, 25)
+
+    mapTesting.cancelMapIdleCallback(timeoutId)
+    vi.advanceTimersByTime(25)
+
+    expect(cancelIdle).not.toHaveBeenCalled()
+    expect(callback).not.toHaveBeenCalled()
   })
 
   it("cancels the timeout fallback and ignores a late idle callback", () => {
