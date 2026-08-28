@@ -27,4 +27,34 @@ describe("ClockWidget", () => {
 
     expect(time).toHaveBeenCalledTimes(2)
   })
+
+  it("passes the deliberate locale options and cleans up its timer", () => {
+    const setIntervalSpy = vi.spyOn(globalThis, "setInterval")
+    const clearIntervalSpy = vi.spyOn(globalThis, "clearInterval")
+    const { unmount } = render(<ClockWidget />)
+
+    expect(Date.prototype.toLocaleTimeString).toHaveBeenCalledWith([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+    expect(Date.prototype.toLocaleDateString).toHaveBeenCalledWith(undefined, {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+    })
+
+    expect(setIntervalSpy).toHaveBeenCalledTimes(1)
+    const timerHandle = setIntervalSpy.mock.results[0]?.value
+    unmount()
+    expect(clearIntervalSpy).toHaveBeenCalledWith(timerHandle)
+  })
+
+  it("keeps the semantic dashboard styling contract", () => {
+    render(<ClockWidget />)
+    const clock = screen.getByText("10:05").parentElement
+    expect(clock).toHaveClass("relative", "rounded-3xl", "border")
+    expect(clock?.className).toContain("before:pointer-events-none")
+    expect(screen.getByText("10:05")).toHaveClass("tabular-nums")
+    expect(screen.getByText("Friday, 1 August")).toHaveClass("uppercase", "tracking-widest")
+  })
 })

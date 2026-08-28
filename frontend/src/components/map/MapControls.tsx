@@ -29,6 +29,14 @@ interface MapControlsProps {
   mapRef: React.MutableRefObject<MapRef | null>
 }
 
+function resolveMap(mapRef: React.MutableRefObject<MapRef | null>) {
+  const mapRefValue = mapRef.current
+  if (!mapRefValue) return null
+  const map = mapRefValue.getMap()
+  if (!map) return null
+  return map
+}
+
 export function MapControls({ mapRef }: MapControlsProps) {
   const { t } = useTranslation("map")
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -39,21 +47,35 @@ export function MapControls({ mapRef }: MapControlsProps) {
   const iconSize = isSmall ? 12 : isMobile ? 14 : 16
   const targetStyle = { minWidth: MAP_INTERACTIVE_TARGET_PX, minHeight: MAP_INTERACTIVE_TARGET_PX }
 
-  const zoomIn = useCallback(() => mapRef.current?.getMap().zoomIn(), [mapRef])
-  const zoomOut = useCallback(() => mapRef.current?.getMap().zoomOut(), [mapRef])
+  const zoomIn = useCallback(() => {
+    const map = resolveMap(mapRef)
+    if (!map) return
+    map.zoomIn()
+  }, [mapRef])
+  const zoomOut = useCallback(() => {
+    const map = resolveMap(mapRef)
+    if (!map) return
+    map.zoomOut()
+  }, [mapRef])
 
   const resetNorth = useCallback(() => {
-    mapRef.current?.easeTo({ bearing: 0, duration: 400 })
+    const map = resolveMap(mapRef)
+    if (!map) return
+    map.easeTo({ bearing: 0, duration: 400 })
   }, [mapRef])
 
   const togglePitch = useCallback(() => {
     const newPitch = is3D ? 0 : 45
-    mapRef.current?.easeTo({ pitch: newPitch, duration: 400 })
+    const map = resolveMap(mapRef)
+    if (!map) return
+    map.easeTo({ pitch: newPitch, duration: 400 })
     setIs3D(!is3D)
   }, [mapRef, is3D])
 
   const recenter = useCallback(() => {
-    mapRef.current?.flyTo({
+    const map = resolveMap(mapRef)
+    if (!map) return
+    map.flyTo({
       center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
       zoom: CAMPUS_DETAIL_ZOOM,
       pitch: 45,
@@ -71,7 +93,11 @@ export function MapControls({ mapRef }: MapControlsProps) {
   }, [])
 
   const toggleFullscreen = useCallback(() => {
-    const container = mapRef.current?.getMap().getContainer()?.closest(".map-card-matte")
+    const map = resolveMap(mapRef)
+    if (!map) return
+    const mapContainer = map.getContainer()
+    if (!mapContainer) return
+    const container = mapContainer.closest(".map-card-matte")
     if (!container) return
 
     if (!document.fullscreenElement) {
