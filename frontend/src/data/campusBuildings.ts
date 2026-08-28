@@ -9,6 +9,9 @@
  * Wave 106 — expanded to ~120 rooms with real GUU room numbers (ГУ/ЛК/У/А prefixes).
  */
 
+import enMapData from "../i18n/locales/en/map.json"
+import ruMapData from "../i18n/locales/ru/map.json"
+
 /* ── Type Definitions ──────────────────────────── */
 
 export type BuildingId = "ГУК" | "ПА" | "ЛК" | "А" | "Б" | "СК" | "О2" | "О6" | "ЦИТ"
@@ -517,23 +520,13 @@ interface LocalizedMapData {
   rooms: Record<string, { name: string }>
 }
 
-const localeDataModules = import.meta.glob<{ default: LocalizedMapData }>(
-  "../i18n/locales/*/map.json",
-  { eager: true }
-)
-
-const localePattern = /locales\/([^/]+)\/map\.json$/
-
-const mapDataByLocale = Object.entries(localeDataModules).reduce(
-  (acc, [path, module]) => {
-    // Every key is produced by the exact import.meta.glob pattern above, so
-    // the locale capture is guaranteed by Vite rather than optional runtime data.
-    const locale = localePattern.exec(path)![1]!
-    acc[locale] = module.default
-    return acc
-  },
-  {} as Record<string, LocalizedMapData>
-)
+// The MVP ships exactly the two supported locales. Explicit imports keep the
+// resource graph deterministic for SSR and mutation testing while preserving
+// the same eager, synchronous behaviour as the former glob.
+const mapDataByLocale: Record<string, LocalizedMapData> = {
+  en: enMapData,
+  ru: ruMapData,
+}
 
 const FALLBACK_LOCALE = "en"
 

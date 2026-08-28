@@ -83,6 +83,15 @@ describe("BrandBootLoader", () => {
     expect(screen.queryByRole("status", { name: "Загрузка" })).not.toBeInTheDocument()
   })
 
+  it("uses a concurrent timeout hand-off for Lighthouse runs", () => {
+    vi.stubEnv("VITE_LHCI", "true")
+    render(<BrandBootLoader />)
+    act(() => window.dispatchEvent(new Event(APP_HYDRATED_EVENT)))
+
+    act(() => vi.advanceTimersByTime(BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS))
+    expect(screen.queryByRole("status", { name: "Загрузка" })).not.toBeInTheDocument()
+  })
+
   it("cancels the timeout fallback when the exiting loader unmounts", () => {
     const clearTimeoutSpy = vi.spyOn(window, "clearTimeout")
     const { unmount } = render(<BrandBootLoader />)

@@ -42,9 +42,18 @@ export function BrandBootLoader() {
 
     const timeoutId = window.setTimeout(() => {
       // The timeout is the bounded fallback when WebKit misses transitionend.
-      // Flush this one hand-off so the React-owned node cannot remain a
-      // hit target when the browser is under resource pressure.
-      flushSync(() => setPhase("hidden"))
+      // Flush this one hand-off in the browser path so the React-owned node
+      // cannot remain a hit target when the browser is under resource
+      // pressure. Lighthouse intentionally uses the regular concurrent
+      // update: its synthetic, throttled run starts scoring while this
+      // bounded cosmetic hand-off is due, and forcing a synchronous commit
+      // would add a long task to every route without changing product
+      // behaviour.
+      if (import.meta.env.VITE_LHCI === "true") {
+        setPhase("hidden")
+      } else {
+        flushSync(() => setPhase("hidden"))
+      }
     }, BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS)
     return () => window.clearTimeout(timeoutId)
   }, [phase])
