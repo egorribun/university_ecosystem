@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test"
 type GotoOptions = Parameters<Page["goto"]>[1]
 
 const TRANSIENT_NAVIGATION_ERROR =
-  /(?:NS_BINDING_ABORTED|net::ERR_ABORTED|net::ERR_CONNECTION_RESET|Frame load interrupted|WebKitErrorDomain|WebKitErrorCannotShowURL|Execution context was destroyed)/i
+  /(?:NS_BINDING_ABORTED|net::ERR_ABORTED|net::ERR_CONNECTION_RESET|Frame load interrupted|WebKitErrorDomain|WebKitErrorCannotShowURL|Execution context was destroyed|navigation .* interrupted by another navigation|interrupted by another navigation)/i
 const MAX_ATTEMPTS = 3
 
 /**
