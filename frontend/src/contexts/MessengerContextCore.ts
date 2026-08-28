@@ -27,6 +27,25 @@ export const DEFAULT_MESSENGER_CONTEXT: MessengerContextType = Object.freeze({
   getTypingUsersForChat: () => [],
 })
 
+/**
+ * Keeps optional chat-list consumers fail-closed when an interrupted or
+ * malformed response reaches the client cache. The API contract supplies a
+ * Chat[] here, but the navigation shell must never turn a missing optional
+ * badge payload into a route-wide render failure.
+ */
+export function getUnreadChatCount(items: unknown): number {
+  if (!Array.isArray(items)) return 0
+
+  return items.reduce((total, item) => {
+    if (typeof item !== "object" || item === null) return total
+
+    const unreadCount = (item as { unread_count?: unknown }).unread_count
+    return typeof unreadCount === "number" && Number.isSafeInteger(unreadCount)
+      ? total + Math.max(0, unreadCount)
+      : total
+  }, 0)
+}
+
 export const MessengerContext = createContext<MessengerContextType | undefined>(undefined)
 
 export const useMessenger = (): MessengerContextType => {

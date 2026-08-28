@@ -4,7 +4,12 @@ import { useChatWebSocket } from "@/hooks/useChatWebSocket"
 import { useAuth } from "./AuthContext"
 import { chatApi, type PresenceStatus, type ChatsListResponse, type Chat } from "@/api/chat"
 
-import { MessengerContext, useMessenger, type MessengerContextType } from "./MessengerContextCore"
+import {
+  getUnreadChatCount,
+  MessengerContext,
+  useMessenger,
+  type MessengerContextType,
+} from "./MessengerContextCore"
 
 // Keep the public context exports source-compatible for feature code and
 // Storybook while the shell imports only the dependency-free core module.
@@ -106,9 +111,7 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
     enabled: realtimeEnabled,
   })
 
-  const unreadCount = useMemo(() => {
-    return chatsData?.items.reduce((acc, chat) => acc + (chat.unread_count || 0), 0) ?? 0
-  }, [chatsData])
+  const unreadCount = useMemo(() => getUnreadChatCount(chatsData?.items), [chatsData?.items])
 
   // Initial presence map from fetched chats
   useEffect(() => {

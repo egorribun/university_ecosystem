@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useAuth } from "./AuthContext"
 import {
   DEFAULT_MESSENGER_CONTEXT,
+  getUnreadChatCount,
   MessengerContext,
   type MessengerContextType,
 } from "./MessengerContextCore"
@@ -59,10 +60,7 @@ export function MessengerShellProvider({ children }: { children: ReactNode }) {
   })
 
   const unreadCount = useMemo(
-    () =>
-      idleReady
-        ? (data?.items.reduce((total, chat) => total + Math.max(0, chat.unread_count), 0) ?? 0)
-        : 0,
+    () => (idleReady ? getUnreadChatCount(data?.items) : 0),
     [data?.items, idleReady]
   )
 

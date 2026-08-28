@@ -38,11 +38,14 @@ const renderShell = (children: ReactNode = <Probe />) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   })
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <MessengerShellProvider>{children}</MessengerShellProvider>
-    </QueryClientProvider>
-  )
+  return {
+    queryClient,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <MessengerShellProvider>{children}</MessengerShellProvider>
+      </QueryClientProvider>
+    ),
+  }
 }
 
 beforeEach(() => {
@@ -61,6 +64,8 @@ afterEach(() => {
   vi.useRealTimers()
   vi.unstubAllEnvs()
   vi.clearAllMocks()
+  Reflect.deleteProperty(window, "requestIdleCallback")
+  Reflect.deleteProperty(window, "cancelIdleCallback")
 })
 
 describe("MessengerShellProvider", () => {
@@ -90,6 +95,26 @@ describe("MessengerShellProvider", () => {
     })
     expect(mocks.getChats).toHaveBeenCalledTimes(1)
     expect(screen.getByTestId("messenger-shell-state")).toHaveAttribute("data-unread", "6")
+  })
+
+  it("fails closed to zero unread chats when the optional chat payload has no items", async () => {
+    vi.useRealTimers()
+    const requestIdleCallback = vi.fn((callback: () => void) => {
+      queueMicrotask(callback)
+      return 1
+    })
+    Object.assign(window, { requestIdleCallback, cancelIdleCallback: vi.fn() })
+    mocks.getChats.mockResolvedValueOnce({})
+    const { queryClient } = renderShell()
+
+    await waitFor(() => {
+      expect(mocks.getChats).toHaveBeenCalledTimes(1)
+      expect(queryClient.getQueryData(["chats"])).toEqual({})
+    })
+
+    await waitFor(() =>
+      expect(screen.getByTestId("messenger-shell-state")).toHaveAttribute("data-unread", "0")
+    )
   })
 
   it("does not fetch for signed-out users and cancels pending work on unmount", async () => {
@@ -135,8 +160,5 @@ describe("MessengerShellProvider", () => {
     await waitFor(() => expect(mocks.getChats).toHaveBeenCalledTimes(1))
     view.unmount()
     expect(cancelIdleCallback).toHaveBeenCalledWith(42)
-
-    Reflect.deleteProperty(window, "requestIdleCallback")
-    Reflect.deleteProperty(window, "cancelIdleCallback")
   })
 })
