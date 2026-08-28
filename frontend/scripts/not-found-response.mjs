@@ -21,7 +21,7 @@ export function shouldServeNotFoundDocument({ method, urlPath, accept } = {}) {
   if (!DOCUMENT_METHODS.has(normalizedMethod) || !acceptsHtml(accept)) return false
 
   const normalizedPath = typeof urlPath === "string" ? urlPath.split("?", 1)[0] : "/"
-  if (/^\/(?:api|ws)(?:\/|$)/iu.test(normalizedPath)) return false
+  if (/^\/(?:api|ws|graphql)(?:\/|$)/iu.test(normalizedPath)) return false
   if (normalizedPath === "/healthz") return false
 
   const extension = path.extname(normalizedPath)

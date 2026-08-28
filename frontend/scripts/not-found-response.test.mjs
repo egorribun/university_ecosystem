@@ -35,6 +35,14 @@ test("non-document requests keep their original API or asset 404 response", () =
     }),
     false
   )
+  assert.equal(
+    shouldServeNotFoundDocument({ method: "GET", urlPath: "/graphql", accept: "*/*" }),
+    false
+  )
+  assert.equal(
+    shouldServeNotFoundDocument({ method: "GET", urlPath: "/graphql/query", accept: "text/html" }),
+    false
+  )
 })
 
 test("the 404 response has safe cache and content headers", async () => {
