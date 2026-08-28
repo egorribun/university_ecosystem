@@ -84,7 +84,11 @@ def test_mutmut_isolation_copies_all_compose_contract_inputs() -> None:
     required_paths = {
         "pyproject.toml",
         "docker-compose.yml",
+        "docker-compose.override.yml",
         "docker-compose.full.yml",
+        "docker-compose.infra.yml",
+        "docker-compose.go.yml",
+        "docker-compose.ci-loadtest.yml",
         "docker-compose.observability.yml",
         "docker-compose.prod.yml",
         "docker-compose.sandbox.yml",
