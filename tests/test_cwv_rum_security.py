@@ -250,7 +250,7 @@ def test_observation_rejects_an_envelope_stolen_from_another_session() -> None:
         now=NOW,
     )
 
-    with pytest.raises(CwvEnvelopeError, match="session binding"):
+    with pytest.raises(CwvEnvelopeError) as error_info:
         build_observation(
             _binding(),
             token=token,
@@ -261,6 +261,7 @@ def test_observation_rejects_an_envelope_stolen_from_another_session() -> None:
             value=1000,
             now=NOW,
         )
+    assert str(error_info.value) == "CWV envelope session binding is invalid"
 
 
 def test_expired_envelope_can_be_rotated_without_changing_navigation() -> None:

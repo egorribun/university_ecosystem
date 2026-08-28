@@ -54,7 +54,9 @@ async def test_otel_span_generation():
         with (
             patch("app.core.observability.OTLPSpanExporter"),
             patch("app.core.observability.FastAPIInstrumentor"),
-            patch("app.core.observability.SQLAlchemyInstrumentor"),
+            patch(
+                "app.core.observability.SQLAlchemyInstrumentor"
+            ) as sqlalchemy_instrumentor,
         ):
             engine = create_async_engine("sqlite+aiosqlite:///:memory:")
             tracer_provider = _configure_otel(engine)
@@ -64,6 +66,10 @@ async def test_otel_span_generation():
 
             tracer = tracer_provider.get_tracer("test-tracer")
             assert tracer is not None
+            instrument_call = sqlalchemy_instrumentor.return_value.instrument.call_args
+            assert instrument_call is not None
+            assert instrument_call.kwargs["enable_metrics"] is False
+            assert instrument_call.kwargs["meter_provider"] is None
 
             await engine.dispose()
 
