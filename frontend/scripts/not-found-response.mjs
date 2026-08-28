@@ -21,8 +21,13 @@ export function shouldServeNotFoundDocument({ method, urlPath, accept } = {}) {
   if (!DOCUMENT_METHODS.has(normalizedMethod) || !acceptsHtml(accept)) return false
 
   const normalizedPath = typeof urlPath === "string" ? urlPath.split("?", 1)[0] : "/"
-  if (/^\/(?:api|ws|graphql)(?:\/|$)/iu.test(normalizedPath)) return false
-  if (normalizedPath === "/healthz") return false
+  if (
+    /^\/(?:api|ws|graphql|static|storage|imgproxy|metrics|health)(?:\/|$)/iu.test(normalizedPath) ||
+    normalizedPath.startsWith("/.well-known/") ||
+    normalizedPath === "/healthz"
+  ) {
+    return false
+  }
 
   const extension = path.extname(normalizedPath)
   return extension === "" || extension.toLowerCase() === ".html"
