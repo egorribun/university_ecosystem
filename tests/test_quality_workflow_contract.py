@@ -1432,7 +1432,9 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
         for step in job["steps"]
         if step.get("name") == "Run incremental mutmut (blocking, stats-derived budget)"
     )
-    assert job["strategy"]["matrix"]["shard"] == list(range(1, 129))
+    assert job["strategy"]["matrix"] == (
+        "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
+    )
     assert job["timeout-minutes"] == 360
     assert "scripts/mutmut_shard_budget.py" in run_step["run"]
     assert "--max-timeout-seconds 20000" in run_step["run"]
@@ -1480,7 +1482,9 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert universe_job["needs"] == ["pre-commit-check", "mutation-tests-stats"]
     assert mutation_job["strategy"]["fail-fast"] is False
     assert mutation_job["strategy"]["max-parallel"] == 9
-    assert mutation_job["strategy"]["matrix"]["shard"] == list(range(1, 129))
+    assert mutation_job["strategy"]["matrix"] == (
+        "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
+    )
     stats_text = "\n".join(
         step.get("run", "") for step in stats_job["steps"] if isinstance(step, dict)
     )
@@ -1609,6 +1613,71 @@ def test_mutation_stats_do_not_wait_for_an_unrelated_read_only_gate() -> None:
     ]
     assert "mutation-tests-stats" in ci_success["needs"]
     assert "needs.mutation-tests-stats.result" in ci_success["steps"][0]["run"]
+
+
+def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards() -> (
+    None
+):
+    """Do not occupy scarce runners with plan entries proven empty.
+
+    The universe producer owns the attempt-bound complete 128-shard plan.  It
+    must validate that plan before emitting a dynamic matrix, and each consumer
+    must independently reject an output that disagrees with its local source
+    scope or plan.  This preserves exact mutation proof while avoiding a full
+    Python/Helm bootstrap for every empty fixed-matrix assignment.
+    """
+
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    universe_job = workflow["jobs"]["mutation-tests-universe"]
+    mutation_job = workflow["jobs"]["mutation-tests-incremental"]
+
+    assert universe_job["outputs"] == {
+        "mutation_matrix": "${{ steps.mutation_matrix.outputs.matrix }}"
+    }
+    matrix_step = _step_named(universe_job, "Build validated mutmut execution matrix")
+    assert matrix_step["id"] == "mutation_matrix"
+    assert "scripts/mutmut_shard_matrix.py" in matrix_step["run"]
+    assert "--expected-shards 128" in matrix_step["run"]
+    assert '"include"' in matrix_step["run"]
+    assert "has_python" in matrix_step["run"]
+    assert "has_mutants" in matrix_step["run"]
+
+    assert mutation_job["strategy"]["matrix"] == (
+        "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
+    )
+    assert mutation_job["strategy"]["max-parallel"] == 9
+
+    selection_step = _step_named(
+        mutation_job, "Validate selected mutmut execution matrix entry"
+    )
+    assert selection_step["id"] == "mutation_shard"
+    selection_text = selection_step["run"]
+    assert "scripts/mutmut_shard_matrix.py" in selection_text
+    assert "--expected-shards 128" in selection_text
+    assert selection_step["env"] == {
+        "LOCAL_HAS_PYTHON": "${{ steps.mutation_scope.outputs.has_python }}",
+        "MATRIX_HAS_PYTHON": "${{ matrix.has_python }}",
+        "MATRIX_HAS_MUTANTS": "${{ matrix.has_mutants }}",
+        "MATRIX_SHARD": "${{ matrix.shard }}",
+    }
+    assert '"$MATRIX_SHARD"' in selection_text
+    assert '"$MATRIX_HAS_PYTHON"' in selection_text
+    assert '"$MATRIX_HAS_MUTANTS"' in selection_text
+    assert "disagrees with local mutation scope" in selection_text
+
+    required_nonempty = (
+        "steps.mutation_scope.outputs.has_python == 'true' && "
+        "steps.mutation_shard.outputs.has_mutants == 'true'"
+    )
+    for name in (
+        "Set up Python",
+        "Install uv",
+        "Install dependencies",
+        "Set up Helm",
+        "Resolve Helm chart dependencies",
+        "Run incremental mutmut (blocking, stats-derived budget)",
+    ):
+        assert _step_named(mutation_job, name)["if"] == required_nonempty
 
 
 def test_mutation_jobs_cache_only_lock_bound_uv_packages() -> None:
@@ -1976,14 +2045,30 @@ def test_incremental_mutation_workflows_allow_empty_shards_and_validate_failures
 
         assert run_step["id"] == run_step_id
         empty_shard_index = run_script.index('if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then')
-        empty_output_index = run_script.index(
-            'echo "has_mutants=false" >> "$GITHUB_OUTPUT"', empty_shard_index
-        )
-        assert (
-            empty_shard_index
-            < empty_output_index
-            < run_script.index("exit 0", empty_output_index)
-        )
+        if workflow_path == CI_WORKFLOW_PATH:
+            # The dynamically selected PR entry was independently proven
+            # nonempty before any toolchain install. A later empty plan is a
+            # provenance violation, not a legitimate no-op.
+            assert (
+                "Validated nonempty mutation matrix entry became empty."
+                in run_script[empty_shard_index:]
+            )
+            assert "exit 1" in run_script[empty_shard_index:]
+            selection_step = _step_named(
+                job, "Validate selected mutmut execution matrix entry"
+            )
+            assert selection_step["id"] == "mutation_shard"
+        else:
+            # The manual workflow still creates its fixed matrix directly, so
+            # each empty assignment is a valid no-op after local planning.
+            empty_output_index = run_script.index(
+                'echo "has_mutants=false" >> "$GITHUB_OUTPUT"', empty_shard_index
+            )
+            assert (
+                empty_shard_index
+                < empty_output_index
+                < run_script.index("exit 0", empty_output_index)
+            )
         assert 'echo "has_mutants=true" >> "$GITHUB_OUTPUT"' in run_script
 
         assert "trap on_mutation_step_exit EXIT" in run_script
