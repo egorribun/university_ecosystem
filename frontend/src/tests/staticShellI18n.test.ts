@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url"
 import {
   applyDocumentLanguage,
   applyMetaTranslations,
+  applyNotFoundTranslations,
   applyOfflineTranslations,
   getManifestPath,
   getManifestStrings,
@@ -115,5 +116,36 @@ describe("static shell i18n integration", () => {
         description: shortcut.description,
       }))
     ).toEqual(manifestStrings?.shortcuts)
+  })
+
+  it("populates the not-found fallback in english", () => {
+    const dom = new JSDOM(`<!doctype html><html lang="ru"><head><title></title></head><body>
+      <main>
+        <h1 data-i18n="notFound.title"></h1>
+        <p data-i18n="notFound.description"></p>
+        <a data-i18n="notFound.home"></a>
+        <a data-i18n="notFound.login"></a>
+      </main>
+    </body></html>`)
+
+    const { document } = dom.window
+    applyDocumentLanguage(document, "en")
+    applyNotFoundTranslations(document, "en")
+
+    const notFoundStrings = getStrings("en").notFound
+    expect(document.documentElement.lang).toBe("en")
+    expect(document.title).toBe(notFoundStrings?.pageTitle)
+    expect(document.querySelector('[data-i18n="notFound.title"]')?.textContent).toBe(
+      notFoundStrings?.title
+    )
+    expect(document.querySelector('[data-i18n="notFound.description"]')?.textContent).toBe(
+      notFoundStrings?.description
+    )
+    expect(document.querySelector('[data-i18n="notFound.home"]')?.textContent).toBe(
+      notFoundStrings?.home
+    )
+    expect(document.querySelector('[data-i18n="notFound.login"]')?.textContent).toBe(
+      notFoundStrings?.login
+    )
   })
 })

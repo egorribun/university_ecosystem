@@ -15,6 +15,7 @@ const distClientDir = path.join(frontendRoot, "dist", "client")
 const distLegacyDir = path.join(frontendRoot, "dist")
 const distDir = existsSync(path.join(distClientDir, "index.html")) ? distClientDir : distLegacyDir
 const entryFile = path.join(distDir, "index.html")
+const notFoundFile = path.join(distDir, "not-found.html")
 
 // Wave 112 — LHCI covers all 6 target pages for baseline measurement.
 // Auth-gated routes redirect to /login when no session — the redirect
@@ -28,6 +29,9 @@ const spaRoutes = [
   "activity",
   "map",
   "messenger",
+  // Keep the unknown-document audit on a dedicated lightweight page instead
+  // of falling back to the full React shell.
+  "404",
 ]
 
 /**
@@ -116,6 +120,11 @@ export function prepareLhciHtml(html) {
   return addLhciStaticEffectsCss(prepared)
 }
 
+/** Resolve the source document for a prepared audit route. */
+export function routeSourcePath(route, entryPath = entryFile, notFoundPath = notFoundFile) {
+  return route === "404" ? notFoundPath : entryPath
+}
+
 async function injectLhciMode(htmlPath) {
   let html = await readFile(htmlPath, "utf-8")
 
@@ -134,10 +143,11 @@ async function ensureRouteFiles(route) {
   await mkdir(directoryTarget, { recursive: true })
 
   const indexTarget = path.join(directoryTarget, "index.html")
-  await copyFile(entryFile, indexTarget)
+  const sourcePath = routeSourcePath(route)
+  await copyFile(sourcePath, indexTarget)
 
   const htmlFallback = `${path.join(distDir, ...segments)}.html`
-  await copyFile(entryFile, htmlFallback)
+  await copyFile(sourcePath, htmlFallback)
 }
 
 async function main() {

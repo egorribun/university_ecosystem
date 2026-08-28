@@ -1,7 +1,7 @@
 import assert from "node:assert/strict"
 import test from "node:test"
 
-import { prepareLhciHtml } from "./prepare-lhci-routes.mjs"
+import { prepareLhciHtml, routeSourcePath } from "./prepare-lhci-routes.mjs"
 
 test("LHCI preparation adds the mode class after post-build html attributes", () => {
   const html =
@@ -36,4 +36,12 @@ test("LHCI preparation removes the legacy marker without injecting executable HT
   assert.doesNotMatch(prepared, /LHCI_MODE_MARKER/u)
   assert.match(prepared, /<html lang="en" class="lhci-mode">/u)
   assert.doesNotMatch(prepared, /<script/iu)
+})
+
+test("the unknown-document audit uses the dedicated lightweight fallback", () => {
+  const entryPath = "dist/client/index.html"
+  const notFoundPath = "dist/client/not-found.html"
+
+  assert.equal(routeSourcePath("404", entryPath, notFoundPath), notFoundPath)
+  assert.equal(routeSourcePath("dashboard", entryPath, notFoundPath), entryPath)
 })

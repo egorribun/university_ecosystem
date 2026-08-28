@@ -28,6 +28,14 @@ const translations = {
       retry: "Повторить попытку",
       footer: "Проверьте подключение или попробуйте открыть приложение позднее.",
     },
+    notFound: {
+      pageTitle: "Страница не найдена — Экосистема ГУУ",
+      title: "Страница не найдена",
+      description:
+        "Похоже, такой страницы нет. Вернитесь в экосистему ГУУ или войдите в личный кабинет.",
+      home: "Вернуться на главную",
+      login: "Войти в систему",
+    },
     manifest: {
       name: "Экосистема ГУУ — всё необходимое в одном месте",
       short_name: "Экосистема ГУУ",
@@ -64,6 +72,14 @@ const translations = {
       ],
       retry: "Try again",
       footer: "Check your connection or open the app again later.",
+    },
+    notFound: {
+      pageTitle: "Page not found — GUU Ecosystem",
+      title: "Page not found",
+      description:
+        "This page does not exist. Return to the GUU ecosystem or sign in to your dashboard.",
+      home: "Return to dashboard",
+      login: "Sign in",
     },
     manifest: {
       name: "GUU Ecosystem — everything in one place",
@@ -199,6 +215,19 @@ export function applyOfflineTranslations(doc, language) {
   });
   setTextContent(doc, "offline.retry", offline.retry);
   setTextContent(doc, "offline.footer", offline.footer);
+}
+
+export function applyNotFoundTranslations(doc, language) {
+  if (!doc) return;
+  const bundle = getLanguageBundle(language);
+  const notFound = bundle.notFound;
+  if (!notFound) return;
+
+  doc.title = notFound.pageTitle;
+  setTextContent(doc, "notFound.title", notFound.title);
+  setTextContent(doc, "notFound.description", notFound.description);
+  setTextContent(doc, "notFound.home", notFound.home);
+  setTextContent(doc, "notFound.login", notFound.login);
 }
 
 export { storageKey, fallbackLanguage, supportedLanguages, translations };

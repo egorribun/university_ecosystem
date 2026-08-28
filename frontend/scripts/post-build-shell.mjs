@@ -32,6 +32,8 @@ import { copyFileSync, existsSync, readdirSync, readFileSync, writeFileSync } fr
 import path from "node:path"
 import process from "node:process"
 
+import { renderNotFoundPage } from "./not-found-page.mjs"
+
 const FONT_PRELOAD_PATTERN = /^(inter-cyrillic-wght-normal-|outfit-latin-wght-normal-)[^/]*\.woff2$/
 
 const CSP_NONCE_PLACEHOLDER = "__CSP_NONCE__"
@@ -134,6 +136,12 @@ const safeCopyFileSync = (src, dest) => {
   }
 }
 
+function writeNotFoundPage(outputDir) {
+  const notFoundPath = path.join(outputDir, "not-found.html")
+  safeWriteFileSync(notFoundPath, renderNotFoundPage())
+  return notFoundPath
+}
+
 function main() {
   const cwd = process.cwd()
   const shellPath = findShellHtml(cwd)
@@ -175,6 +183,8 @@ function main() {
   if (mirrorPath) {
     console.log(`Post-build: mirrored to ${mirrorPath} for static-serve compat`)
   }
+  const notFoundPath = writeNotFoundPage(path.dirname(shellPath))
+  console.log(`Post-build: generated lightweight 404 document at ${notFoundPath}`)
   if (isLHCI) {
     console.log("Post-build: VITE_LHCI=true placeholders + visibility CSS applied")
   }

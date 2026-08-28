@@ -38,7 +38,7 @@
 // observability (Sentry server-side, OTEL traces) can be layered on
 // in a future polish wave; out of W131 Phase 4 scope.
 
-import { createReadStream, statSync } from "node:fs"
+import { createReadStream, readFileSync, statSync } from "node:fs"
 import { createServer } from "node:http"
 import { Readable } from "node:stream"
 import path from "node:path"
@@ -48,6 +48,7 @@ import { pathToFileURL } from "node:url"
 // (`scripts/contentTypes.mjs`) so regression tests can import the map
 // without triggering this script's top-level createServer + listen.
 import { CONTENT_TYPES } from "./contentTypes.mjs"
+import { createNotFoundResponse, shouldServeNotFoundDocument } from "./not-found-response.mjs"
 import { pipeResponseBody } from "./server-response-stream.mjs"
 import { warmSsrRuntime } from "./server-readiness.mjs"
 import { sanitizeRequestTarget } from "./server-request-log.mjs"
@@ -69,7 +70,22 @@ const handlerEntryUrl = pathToFileURL(handlerEntryPath).href
 // and are served by vite preview's built-in static server during dev.
 // Production needs the wrapper to handle that explicitly.
 const staticRoot = path.resolve(cwd, "dist", "client")
+const notFoundDocumentPath = path.join(staticRoot, "not-found.html")
 const DEFAULT_REQUEST_HOST = `${HOST}:${PORT}`
+
+// The 404 page is intentionally read once at startup: it is a small immutable
+// document, and doing so keeps unknown navigations off the synchronous file
+// system path while still failing closed when a build omitted the artifact.
+let notFoundDocument = null
+try {
+  const candidate = readFileSync(notFoundDocumentPath, "utf8")
+  if (candidate.trim().length > 0) notFoundDocument = candidate
+} catch {
+  // A missing fallback should not prevent health probes from starting. The
+  // SSR handler's original 404 response remains the safe fallback in that
+  // case, and the build/LHCI route preparation fails when the artifact is
+  // required.
+}
 
 const handlerModule = await import(handlerEntryUrl)
 const handler = handlerModule.default ?? handlerModule
@@ -249,7 +265,19 @@ const server = createServer(async (req, res) => {
     // Skip for /healthz so the W131 SW2 fast-path response stays clean —
     // probes shouldn't be tagged as SSR-pool traffic.
     const ssrStart = performance.now()
-    const response = protectHtmlFromSharedCaching(await handler.fetch(request))
+    let response = await handler.fetch(request)
+    if (
+      response.status === 404 &&
+      notFoundDocument &&
+      shouldServeNotFoundDocument({
+        method: req.method,
+        urlPath,
+        accept: req.headers.accept,
+      })
+    ) {
+      response = createNotFoundResponse(notFoundDocument, { method: req.method })
+    }
+    response = protectHtmlFromSharedCaching(response)
     const ssrDur = performance.now() - ssrStart
     // `urlPath` is already declared at the top of this try-block (used for
     // the static-first check). Reuse it for the /healthz Server-Timing
