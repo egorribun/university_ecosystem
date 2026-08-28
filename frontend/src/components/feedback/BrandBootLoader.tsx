@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type TransitionEvent } from "react"
+import { flushSync } from "react-dom"
 
 import { APP_HYDRATED_EVENT, BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS } from "@/app/hydration"
 import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
@@ -39,7 +40,12 @@ export function BrandBootLoader() {
       return
     }
 
-    const timeoutId = window.setTimeout(() => setPhase("hidden"), BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS)
+    const timeoutId = window.setTimeout(() => {
+      // The timeout is the bounded fallback when WebKit misses transitionend.
+      // Flush this one hand-off so the React-owned node cannot remain a
+      // hit target when the browser is under resource pressure.
+      flushSync(() => setPhase("hidden"))
+    }, BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS)
     return () => window.clearTimeout(timeoutId)
   }, [phase])
 

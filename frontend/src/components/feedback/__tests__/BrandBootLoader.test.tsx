@@ -74,6 +74,26 @@ describe("BrandBootLoader", () => {
     expect(screen.queryByRole("status", { name: "Загрузка" })).not.toBeInTheDocument()
   })
 
+  it("commits the timeout fallback when the browser timer fires outside React act", () => {
+    render(<BrandBootLoader />)
+    act(() => window.dispatchEvent(new Event(APP_HYDRATED_EVENT)))
+
+    vi.advanceTimersByTime(BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS)
+
+    expect(screen.queryByRole("status", { name: "Загрузка" })).not.toBeInTheDocument()
+  })
+
+  it("cancels the timeout fallback when the exiting loader unmounts", () => {
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout")
+    const { unmount } = render(<BrandBootLoader />)
+    act(() => window.dispatchEvent(new Event(APP_HYDRATED_EVENT)))
+
+    unmount()
+    expect(clearTimeoutSpy).toHaveBeenCalled()
+
+    act(() => vi.advanceTimersByTime(BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS))
+  })
+
   it("does not miss hydration that completed before its effect subscribed", () => {
     window.__APP_HYDRATED = true
     render(<BrandBootLoader />)
