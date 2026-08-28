@@ -116,6 +116,32 @@ describe("MapFeature deferred MapLibre loading", () => {
     expect(await screen.findByTestId("map-component")).toBeInTheDocument()
   })
 
+  it("restores focus to the map region after pointer activation replaces the placeholder", async () => {
+    render(
+      <Suspense fallback={null}>
+        <MapFeature />
+      </Suspense>
+    )
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "campusMap.interactiveHint" }))
+
+    expect(await screen.findByTestId("map-component")).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "campusMap.ariaLabel" })).toHaveFocus()
+  })
+
+  it("activates the map from a direct click and restores focus", async () => {
+    render(
+      <Suspense fallback={null}>
+        <MapFeature />
+      </Suspense>
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "campusMap.interactiveHint" }))
+
+    expect(await screen.findByTestId("map-component")).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "campusMap.ariaLabel" })).toHaveFocus()
+  })
+
   it("activates from keyboard focus on the accessible placeholder", async () => {
     render(
       <Suspense fallback={null}>
@@ -325,6 +351,12 @@ describe("MapFeature deferred MapLibre loading", () => {
     visibility.mockReturnValue("hidden")
     act(() => document.dispatchEvent(new Event("visibilitychange")))
     expect(cancelIdle).toHaveBeenCalledWith(1)
+    expect(mapLoader).not.toHaveBeenCalled()
+
+    await act(async () => {
+      idleCallbacks[0]?.({ didTimeout: true, timeRemaining: () => 0 })
+      await Promise.resolve()
+    })
     expect(mapLoader).not.toHaveBeenCalled()
 
     visibility.mockReturnValue("visible")

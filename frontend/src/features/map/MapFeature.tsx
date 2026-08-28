@@ -151,8 +151,9 @@ export function MapFeature() {
   const [mapReady, setMapReady] = useState(false)
   const mapPlaceholderRef = useRef<HTMLButtonElement | null>(null)
   const restoreMapFocusRef = useRef(false)
-  const activateMap = useCallback(() => {
-    restoreMapFocusRef.current = document.activeElement === mapPlaceholderRef.current
+  const activateMap = useCallback((preserveFocus = false) => {
+    restoreMapFocusRef.current =
+      preserveFocus || document.activeElement === mapPlaceholderRef.current
     setMapReady(true)
   }, [])
 
@@ -178,7 +179,7 @@ export function MapFeature() {
       if (disposed || idleId !== null || document.visibilityState !== "visible") return
       idleId = scheduleMapIdleCallback(() => {
         idleId = null
-        if (!disposed) setMapReady(true)
+        if (!disposed && document.visibilityState === "visible") setMapReady(true)
       }, MAP_IDLE_TIMEOUT_MS)
     }
 
@@ -354,7 +355,7 @@ export function MapFeature() {
               role="region"
               aria-label={t("campusMap.ariaLabel")}
               tabIndex={-1}
-              onPointerDown={activateMap}
+              onPointerDown={() => activateMap(!mapReady)}
             >
               <WidgetErrorBoundary
                 widgetName="MapLibreGL"
@@ -395,8 +396,8 @@ export function MapFeature() {
                     ref={mapPlaceholderRef}
                     className="absolute inset-0 flex min-h-[inherit] cursor-pointer items-center justify-center p-6 text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-teal-500)]"
                     aria-label={t("campusMap.interactiveHint")}
-                    onFocus={activateMap}
-                    onClick={activateMap}
+                    onFocus={() => activateMap(true)}
+                    onClick={() => activateMap(true)}
                   >
                     <span className="map-poi-chip">{t("campusMap.interactiveHint")}</span>
                   </button>
