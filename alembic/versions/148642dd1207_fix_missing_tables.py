@@ -8,6 +8,7 @@ Create Date: 2026-01-18 22:30:50.324424
 
 from collections.abc import Sequence
 from contextlib import contextmanager
+import re
 from typing import Any
 
 import sqlalchemy as sa
@@ -29,6 +30,7 @@ _GROUPS_ID_SHADOW_CHECK = "ck_groups_id_shadow_not_null"
 _GROUPS_ID_DOWNGRADE_SHADOW_CHECK = "ck_groups_id_downgrade_shadow_not_null"
 _GROUPS_ID_CHECK = "ck_groups_id_not_null"
 _ACTIVE_SESSION_SIGNING_KEY_CHECK = "ck_active_sessions_signing_key_not_null"
+_GROUPS_ID_LOCK_ID = 824_148_642
 
 
 def safe_create_table(table_name: str, *args, **kwargs) -> None:
@@ -115,6 +117,85 @@ def ensure_partitioned(table_name: str, create_sql: str, partition_key: str) -> 
     op.execute(f"DROP TABLE {table_name}_old")  # nosemgrep
 
 
+def _normalize_constraint_definition(definition: str) -> str:
+    """Normalize PostgreSQL's rendered CHECK expression for exact comparison."""
+
+    return re.sub(r"[\s()\"]+", "", definition).upper()
+
+
+def _ensure_postgresql_not_null_check(
+    table: str,
+    constraint_name: str,
+    column: str,
+) -> None:
+    """Add or prove one exact check-backed NOT NULL contract.
+
+    A same-name constraint may have been left by an operator or a partially
+    applied deployment.  Reusing it without checking its expression would
+    allow a weaker predicate to masquerade as the migration's NOT NULL
+    contract.  PostgreSQL's catalog is authoritative; offline rendering still
+    emits the additive ``NOT VALID`` statement for review.
+    """
+
+    add_sql = (
+        f"ALTER TABLE {table} ADD CONSTRAINT {constraint_name} "
+        f"CHECK ({column} IS NOT NULL) NOT VALID"
+    )
+    if context.is_offline_mode():
+        op.execute(add_sql)
+        return
+
+    bind = op.get_bind()
+    if bind is None or getattr(bind.dialect, "name", None) != "postgresql":
+        op.execute(add_sql)
+        return
+
+    row = bind.execute(
+        sa.text(
+            """
+            SELECT c.contype, c.convalidated, pg_get_constraintdef(c.oid)
+            FROM pg_constraint AS c
+            WHERE c.conrelid = to_regclass(:table_name)
+              AND c.conname = :constraint_name
+            """
+        ),
+        {"table_name": table, "constraint_name": constraint_name},
+    ).first()
+    if row is not None:
+        actual_type, _validated, definition = row
+        if isinstance(actual_type, bytes):
+            actual_type = actual_type.decode("ascii")
+        expected = _normalize_constraint_definition(f"CHECK ({column} IS NOT NULL)")
+        if (
+            actual_type != "c"
+            or _normalize_constraint_definition(str(definition)) != expected
+        ):
+            raise RuntimeError(
+                f"Existing constraint {constraint_name!r} on {table!r} "
+                "does not match the required NOT NULL check"
+            )
+        return
+
+    op.execute(add_sql)
+
+
+def _lock_postgresql_groups_id(bind: Any) -> None:
+    """Bound the shadow cutover and serialize concurrent schema repairs."""
+
+    if (
+        bind is None
+        or context.is_offline_mode()
+        or getattr(bind.dialect, "name", None) != "postgresql"
+    ):
+        return
+    op.execute(sa.text("SET LOCAL lock_timeout = '10s'"))
+    op.execute(
+        sa.text("SELECT pg_advisory_xact_lock(:lock_id)").bindparams(
+            sa.bindparam("lock_id", value=_GROUPS_ID_LOCK_ID, literal_execute=True)
+        )
+    )
+
+
 def _groups_id_is_integer(inspector: Any) -> bool:
     """Return whether ``groups.id`` already has the target integer type.
 
@@ -180,6 +261,8 @@ def _postgresql_groups_id_upgrade(inspector: Any) -> None:
     if inspector is not None and not inspector.has_table("groups"):
         return
 
+    _lock_postgresql_groups_id(op.get_bind())
+
     existing_indexes = (
         {index["name"] for index in inspector.get_indexes("groups")}
         if inspector is not None
@@ -238,21 +321,20 @@ def _postgresql_groups_id_upgrade(inspector: Any) -> None:
             """
             DO $$
             BEGIN
-                IF NOT EXISTS (
+                IF EXISTS (
                     SELECT 1
-                    FROM pg_constraint
-                    WHERE conname = 'ck_groups_id_shadow_not_null'
-                      AND conrelid = 'groups'::regclass
+                    FROM groups
+                    WHERE id__integer IS DISTINCT FROM id::integer
                 ) THEN
-                    ALTER TABLE groups
-                        ADD CONSTRAINT ck_groups_id_shadow_not_null
-                        CHECK (id__integer IS NOT NULL) NOT VALID;
+                    RAISE EXCEPTION
+                        'groups.id__integer does not match the validated source id values';
                 END IF;
             END
             $$;
             """
         )
     )
+    _ensure_postgresql_not_null_check("groups", _GROUPS_ID_SHADOW_CHECK, "id__integer")
     op.execute("ALTER TABLE groups VALIDATE CONSTRAINT ck_groups_id_shadow_not_null")
 
     # Preserve any child FKs while the referenced key is replaced.  Child
@@ -287,26 +369,7 @@ def _postgresql_groups_id_upgrade(inspector: Any) -> None:
     )
     op.execute("ALTER TABLE groups ADD COLUMN IF NOT EXISTS id INTEGER")
     op.execute("UPDATE groups SET id = id__integer WHERE id IS NULL")
-    op.execute(
-        sa.text(
-            """
-            DO $$
-            BEGIN
-                IF NOT EXISTS (
-                    SELECT 1
-                    FROM pg_constraint
-                    WHERE conname = 'ck_groups_id_not_null'
-                      AND conrelid = 'groups'::regclass
-                ) THEN
-                    ALTER TABLE groups
-                        ADD CONSTRAINT ck_groups_id_not_null
-                        CHECK (id IS NOT NULL) NOT VALID;
-                END IF;
-            END
-            $$;
-            """
-        )
-    )
+    _ensure_postgresql_not_null_check("groups", _GROUPS_ID_CHECK, "id")
     op.execute("ALTER TABLE groups VALIDATE CONSTRAINT ck_groups_id_not_null")
     op.execute("CREATE UNIQUE INDEX IF NOT EXISTS groups_pkey_idx ON groups (id)")
     op.execute(
@@ -555,6 +618,8 @@ def _postgresql_groups_id_downgrade(inspector: Any) -> None:
     if inspector is not None and not inspector.has_table("groups"):
         return
 
+    _lock_postgresql_groups_id(op.get_bind())
+
     _reject_composite_groups_foreign_keys()
 
     op.execute("ALTER TABLE groups ADD COLUMN IF NOT EXISTS id__varchar VARCHAR(20)")
@@ -566,20 +631,21 @@ def _postgresql_groups_id_downgrade(inspector: Any) -> None:
             """
             DO $$
             BEGIN
-                IF NOT EXISTS (
+                IF EXISTS (
                     SELECT 1
-                    FROM pg_constraint
-                    WHERE conname = 'ck_groups_id_downgrade_shadow_not_null'
-                      AND conrelid = 'groups'::regclass
+                    FROM groups
+                    WHERE id__varchar IS DISTINCT FROM id::varchar(20)
                 ) THEN
-                    ALTER TABLE groups
-                        ADD CONSTRAINT ck_groups_id_downgrade_shadow_not_null
-                        CHECK (id__varchar IS NOT NULL) NOT VALID;
+                    RAISE EXCEPTION
+                        'groups.id__varchar does not match the validated source id values';
                 END IF;
             END
             $$;
             """
         )
+    )
+    _ensure_postgresql_not_null_check(
+        "groups", _GROUPS_ID_DOWNGRADE_SHADOW_CHECK, "id__varchar"
     )
     op.execute(
         f"ALTER TABLE groups VALIDATE CONSTRAINT {_GROUPS_ID_DOWNGRADE_SHADOW_CHECK}"
@@ -660,20 +726,9 @@ def _postgresql_signing_key_check(inspector: Any) -> None:
             """
         )
     )
-    existing_checks = (
-        {
-            constraint["name"]
-            for constraint in inspector.get_check_constraints("active_sessions")
-        }
-        if inspector is not None
-        else set()
+    _ensure_postgresql_not_null_check(
+        "active_sessions", _ACTIVE_SESSION_SIGNING_KEY_CHECK, "signing_key"
     )
-    if _ACTIVE_SESSION_SIGNING_KEY_CHECK not in existing_checks:
-        op.execute(
-            f"ALTER TABLE active_sessions ADD CONSTRAINT "
-            f"{_ACTIVE_SESSION_SIGNING_KEY_CHECK} "
-            "CHECK (signing_key IS NOT NULL) NOT VALID"
-        )
     op.execute(
         "ALTER TABLE active_sessions VALIDATE CONSTRAINT "
         f"{_ACTIVE_SESSION_SIGNING_KEY_CHECK}"

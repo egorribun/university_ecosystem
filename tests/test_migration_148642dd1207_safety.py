@@ -2,13 +2,26 @@
 
 from __future__ import annotations
 
+import importlib.util
 import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATION = ROOT / "alembic" / "versions" / "148642dd1207_fix_missing_tables.py"
+
+
+def _load_migration() -> Any:
+    spec = importlib.util.spec_from_file_location("migration_148642dd1207", MIGRATION)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 def _render(direction: str) -> str:
@@ -88,3 +101,75 @@ def test_fk_capture_preserves_non_id_mapping_and_rejects_composites() -> None:
     # Parent columns are captured from pg_catalog and restored verbatim; the
     # old implementation rewrote every relation to ``groups(id)``.
     assert "parent_columns = ARRAY['id']" not in source
+
+
+def test_existing_not_null_constraint_definition_is_normalized_exactly() -> None:
+    migration = _load_migration()
+
+    expected = migration._normalize_constraint_definition(
+        "CHECK ((id__integer IS NOT NULL))"
+    )
+    assert expected == "CHECKID__INTEGERISNOTNULL"
+    assert migration._normalize_constraint_definition("CHECK (id__integer > 0)") != (
+        expected
+    )
+
+
+def test_existing_not_null_constraint_mismatch_fails_closed(
+    monkeypatch,
+) -> None:
+    migration = _load_migration()
+
+    class _Dialect:
+        name = "postgresql"
+
+    class _Result:
+        def first(self):
+            return ("c", True, "CHECK ((id__integer > 0))")
+
+    class _Bind:
+        dialect = _Dialect()
+
+        def execute(self, *_args, **_kwargs):
+            return _Result()
+
+    monkeypatch.setattr(migration.context, "is_offline_mode", lambda: False)
+    monkeypatch.setattr(migration.op, "get_bind", lambda: _Bind())
+
+    with pytest.raises(RuntimeError, match="does not match"):
+        migration._ensure_postgresql_not_null_check(
+            "groups", "ck_groups_id_shadow_not_null", "id__integer"
+        )
+
+
+def test_existing_not_null_constraint_accepts_asyncpg_char_bytes(monkeypatch) -> None:
+    migration = _load_migration()
+
+    class _Dialect:
+        name = "postgresql"
+
+    class _Result:
+        def first(self):
+            return (b"c", True, "CHECK ((id__integer IS NOT NULL))")
+
+    class _Bind:
+        dialect = _Dialect()
+
+        def execute(self, *_args, **_kwargs):
+            return _Result()
+
+    monkeypatch.setattr(migration.context, "is_offline_mode", lambda: False)
+    monkeypatch.setattr(migration.op, "get_bind", lambda: _Bind())
+    migration._ensure_postgresql_not_null_check(
+        "groups", "ck_groups_id_shadow_not_null", "id__integer"
+    )
+
+
+def test_groups_shadow_cutover_is_bounded_and_rejects_stale_leftovers() -> None:
+    source = MIGRATION.read_text(encoding="utf-8")
+
+    assert "SET LOCAL lock_timeout = '10s'" in source
+    assert "pg_advisory_xact_lock" in source
+    assert "id__integer IS DISTINCT FROM id::integer" in source
+    assert "id__varchar IS DISTINCT FROM id::varchar(20)" in source
+    assert "c.contype, c.convalidated, pg_get_constraintdef(c.oid)" in source
