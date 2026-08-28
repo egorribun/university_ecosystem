@@ -51,7 +51,12 @@ export default {
   ignorePatterns: ["**/.codex_*/**", "**/target/**", "/reports/**"],
   vitest: {
     configFile: "vitest.config.ts",
-    related: false,
+    // Each shard mutates a bounded source assignment. Vitest's related mode
+    // resolves the complete dependency graph for that assignment, preserving
+    // the full mutation denominator while avoiding the full suite for every
+    // shard. A missing relation remains fail-closed: Stryker reports no
+    // coverage and the inventory gate rejects the resulting non-100% score.
+    related: true,
   },
   coverageAnalysis: "perTest",
   // Mutation and coverage must describe the same authored source universe.
@@ -83,12 +88,9 @@ export default {
   concurrency: Number.parseInt(process.env.STRYKER_CONCURRENCY ?? "2", 10),
   maxTestRunnerReuse: 4,
   cleanTempDir: "always",
-  // Stryker's default five-minute initial-run deadline is below the measured
-  // full Vitest per-test discovery/coverage pass on the hosted CI runners.
-  // Keep an explicit bounded deadline so a busy runner cannot classify a
-  // healthy baseline as an infrastructure timeout. Mutation thresholds remain
-  // fail-closed at 100%, and the outer shard timeout is still enforced by the
-  // canonical runner.
+  // Keep an explicit bounded deadline for the related-mode discovery pass.
+  // Mutation thresholds remain fail-closed at 100%; the outer shard timeout is
+  // still enforced by the canonical runner.
   dryRunTimeoutMinutes: 15,
   timeoutFactor: 2,
 }

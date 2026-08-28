@@ -42,6 +42,11 @@ test("Stryker mutation scope is derived from the complete frontend coverage deno
   assert.deepEqual(strykerConfig.mutator, { plugins: null, excludedMutations: [] })
   assert.deepEqual(strykerConfig.ignorers, [])
   assert.equal(strykerConfig.incremental, false)
+  assert.equal(
+    strykerConfig.vitest?.related,
+    true,
+    "Stryker must use Vitest related mode so each shard executes only tests that cover its assigned source"
+  )
   assert.ok(
     Number.isInteger(strykerConfig.concurrency) &&
       strykerConfig.concurrency >= 1 &&
