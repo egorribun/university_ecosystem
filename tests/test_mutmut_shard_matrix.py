@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import runpy
+import sys
 from pathlib import Path
 
 import pytest
@@ -150,3 +152,51 @@ def test_matrix_entry_rejects_unselected_or_mislabelled_assignment(
             has_python=True,
             has_mutants=False,
         )
+
+
+def test_command_line_entrypoint_emits_a_validated_matrix(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    plan = _write_plan(tmp_path, {4: ["app.d.four__mutmut_1"]})
+    script = Path(__file__).parents[1] / "scripts" / "mutmut_shard_matrix.py"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(script),
+            "matrix",
+            "--plan-directory",
+            str(plan),
+            "--expected-shards",
+            "4",
+        ],
+    )
+
+    runpy.run_path(str(script), run_name="__main__")
+
+    assert json.loads(capsys.readouterr().out) == {
+        "include": [{"shard": 4, "has_python": "true", "has_mutants": "true"}]
+    }
+
+
+def test_command_line_entrypoint_fails_closed_for_invalid_plan(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _write_plan(tmp_path, {1: ["app.a.one__mutmut_1"]})
+    (plan / "shard-01.txt").write_text("", encoding="utf-8")
+    script = Path(__file__).parents[1] / "scripts" / "mutmut_shard_matrix.py"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(script),
+            "matrix",
+            "--plan-directory",
+            str(plan),
+            "--expected-shards",
+            "4",
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="mutmut execution matrix validation failed"):
+        runpy.run_path(str(script), run_name="__main__")

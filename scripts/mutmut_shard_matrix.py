@@ -222,5 +222,5 @@ def main() -> None:
         ) from error
 
 
-if __name__ == "__main__":  # pragma: no cover - command-line entry point
+if __name__ == "__main__":
     main()
