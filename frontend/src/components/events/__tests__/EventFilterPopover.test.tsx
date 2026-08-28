@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 
@@ -96,11 +96,17 @@ describe("useEventFilterPopover", () => {
     await user.click(screen.getByText("open filters"))
 
     await user.type(screen.getByLabelText("events:filters.location"), "A")
-    expect(onLocationChange).toHaveBeenCalledWith("A")
+    // Controlled input updates are scheduled through the hook harness. Await
+    // the observable callback contract instead of asserting in the same task;
+    // this remains deterministic under Stryker's per-test instrumentation and
+    // does not mask a missing onChange (waitFor still fails when it never fires).
+    await waitFor(() => expect(onLocationChange).toHaveBeenCalledWith("A"))
 
     await user.click(screen.getByText("common:buttons.reset"))
-    expect(onDateRangeChange).toHaveBeenLastCalledWith("")
-    expect(onLocationChange).toHaveBeenLastCalledWith("")
+    await waitFor(() => {
+      expect(onDateRangeChange).toHaveBeenLastCalledWith("")
+      expect(onLocationChange).toHaveBeenLastCalledWith("")
+    })
   })
 
   it("closes the popover via the Done button", async () => {

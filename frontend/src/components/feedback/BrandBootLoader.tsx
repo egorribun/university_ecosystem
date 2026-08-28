@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type TransitionEvent } from "react"
+import { useCallback, useEffect, useLayoutEffect, useState, type TransitionEvent } from "react"
 
 import { APP_HYDRATED_EVENT, BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS } from "@/app/hydration"
 
@@ -11,6 +11,12 @@ const BODY_PATH =
 const OUTER_ACCENT_PATH = "M 260.0,528.7 L 392.6,373.0 Q 413.0,349.0 444.5,349.2 L 804.0,351.0"
 const INNER_ACCENT_PATH = "M 312.9,515.8 L 409.8,400.1 Q 427.5,379.0 455.0,379.1 L 804.0,381.0"
 
+// AppProviders publishes hydration from a layout effect.  Subscribe to the
+// same boundary in a browser layout effect so the loader cannot miss that
+// publication or defer its exit behind WebKit's passive-effect scheduler.
+// Keep SSR on useEffect to avoid the server-side layout-effect warning.
+const useHydrationEffect = typeof window === "undefined" ? useEffect : useLayoutEffect
+
 export function BrandBootLoader() {
   const [phase, setPhase] = useState<BrandBootLoaderPhase>("active")
   const [paused, setPaused] = useState(false)
@@ -19,7 +25,7 @@ export function BrandBootLoader() {
     setPhase((current) => (current === "active" ? "exiting" : current))
   }, [])
 
-  useEffect(() => {
+  useHydrationEffect(() => {
     window.addEventListener(APP_HYDRATED_EVENT, beginExit)
     if (window.__APP_HYDRATED) {
       beginExit()

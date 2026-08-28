@@ -5,6 +5,7 @@ import { sanitizeHttpUrl } from "@/utils/sanitize"
 import { CheckCircle2, Info, AlertTriangle, XCircle, X, ExternalLink } from "lucide-react"
 import { cn } from "@/utils/cn"
 import { TIMEOUTS } from "@/config/timeouts"
+import { subscribeToPushMessages } from "@/push/pushMessageBus"
 
 type SnackbarSeverity = "success" | "info" | "warning" | "error"
 
@@ -125,8 +126,6 @@ export default function LivePushToasts() {
   }, [])
 
   useEffect(() => {
-    if (!navigator.serviceWorker) return
-
     const handleMessage = (event: MessageEvent) => {
       const data = event.data as ServiceWorkerMessage
       if (data.type === "PUSH_NOTIFICATION") {
@@ -152,8 +151,7 @@ export default function LivePushToasts() {
       }
     }
 
-    navigator.serviceWorker.addEventListener("message", handleMessage)
-    return () => navigator.serviceWorker.removeEventListener("message", handleMessage)
+    return subscribeToPushMessages(handleMessage)
   }, [enqueue, t])
 
   useEffect(() => {

@@ -94,12 +94,26 @@ test("renders the SSR loader before JavaScript and keeps status through mark res
           .querySelector(".brand-boot-loader__mark-holder")
           ?.getBoundingClientRect()
         return {
-          documentScrollbarWidth: window.innerWidth - document.documentElement.clientWidth,
+          // WebKit exposes a fractional CSS viewport for some device-scale
+          // factors but rounds client/scroll widths to whole CSS pixels. A
+          // negative one-pixel delta is therefore quantization, not a
+          // scrollbar. Clamp after rounding so the assertion still catches
+          // real scrollbars while remaining cross-engine deterministic.
+          documentScrollbarWidth: Math.max(
+            0,
+            Math.round(window.innerWidth - document.documentElement.clientWidth)
+          ),
           contentBottom: content?.bottom ?? -1,
           contentTop: content?.top ?? -1,
-          documentOverflow: document.documentElement.scrollWidth > window.innerWidth,
-          loaderOverflow: element.scrollWidth > element.clientWidth,
+          // Compare against the rounded layout box rather than an integer
+          // viewport width; WebKit can report scrollWidth=455 and
+          // clientWidth=455 while innerWidth is 454 for a ~454.4px viewport.
+          documentOverflow:
+            document.documentElement.scrollWidth >
+            Math.ceil(document.documentElement.getBoundingClientRect().width),
+          loaderOverflow: element.scrollWidth > Math.ceil(element.getBoundingClientRect().width),
           markWidth: markHolder?.width ?? -1,
+          viewportWidth: window.innerWidth,
           viewportHeight: window.innerHeight,
         }
       })
@@ -113,8 +127,15 @@ test("renders the SSR loader before JavaScript and keeps status through mark res
       expect(metrics.contentBottom).toBeLessThanOrEqual(metrics.viewportHeight)
 
       if (viewport.width === 3_840) {
-        expect(metrics.markWidth).toBeGreaterThanOrEqual(475)
-        expect(metrics.markWidth).toBeLessThanOrEqual(481)
+        // WebKit may cap a requested ultra-wide viewport in CI. Validate the
+        // same 22vmin clamp against the actual CSS viewport while retaining
+        // the 475px design target whenever the engine exposes 3,840px.
+        const expectedWideMark = Math.min(
+          480,
+          Math.max(144, 0.22 * Math.min(metrics.viewportWidth, metrics.viewportHeight))
+        )
+        expect(metrics.markWidth).toBeGreaterThanOrEqual(expectedWideMark - 1)
+        expect(metrics.markWidth).toBeLessThanOrEqual(expectedWideMark + 1)
       }
     }
   } finally {

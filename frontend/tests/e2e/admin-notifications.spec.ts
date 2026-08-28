@@ -17,9 +17,14 @@ test.describe("Admin notification queue", () => {
         name: /Дополнительная навигация|Открыть меню|Additional navigation|Open menu/i,
       })
       .click()
-    // The overflow control is an ARIA `menu` widget. Use its menuitem role so
-    // every browser engine exercises the same accessible navigation contract.
-    await page.getByRole("menuitem", { name: /Очередь уведомлений|Notification queue/i }).click()
+    // Desktop overflow uses an ARIA `menuitem`, while the mobile drawer is a
+    // navigation list of links. Both are the same accessible destination; use
+    // the visible semantic contract without coupling the journey to a viewport.
+    const notificationQueue = page
+      .getByRole("menuitem", { name: /Очередь уведомлений|Notification queue/i })
+      .or(page.getByRole("link", { name: /Очередь уведомлений|Notification queue/i }))
+      .first()
+    await notificationQueue.click()
     await page.waitForURL(/\/admin\/notifications$/)
 
     await expect(

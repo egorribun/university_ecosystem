@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react"
 import OfflineIndicator from "@/components/feedback/OfflineIndicator"
+import { ensurePushMessageBridge } from "@/push/pushMessageBus"
 
 // These surfaces are global conveniences, not part of the first meaningful
 // paint. Keep them out of the root route's synchronous module graph so every
@@ -25,6 +26,7 @@ export function DeferredGlobalOverlays() {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
+    ensurePushMessageBridge()
     const timer = window.setTimeout(() => setReady(true), 0)
     return () => window.clearTimeout(timer)
   }, [])
