@@ -56,6 +56,7 @@ describe("__root.tsx components", () => {
   afterEach(() => {
     import.meta.env.SSR = originalSSR
     vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
   })
 
   describe("RootShell component", () => {
@@ -97,6 +98,23 @@ describe("__root.tsx components", () => {
 
       expect(document.documentElement.getAttribute("lang")).toBe("ru")
       expect(document.documentElement.className).not.toContain("dark")
+    })
+
+    it("keeps LHCI mode and static effect rules in the React-owned shell", () => {
+      vi.stubEnv("VITE_LHCI", "true")
+      const Shell = (Route.options as any).shellComponent
+
+      render(
+        <Shell>
+          <div>LHCI Child</div>
+        </Shell>
+      )
+
+      expect(document.documentElement).toHaveClass("lhci-mode")
+      const staticEffects = document.querySelector("style[data-lhci-static-effects]")
+      expect(staticEffects).toBeInTheDocument()
+      expect(staticEffects?.textContent).toContain(".lhci-mode .aurora-mesh::after")
+      expect(staticEffects?.textContent).toContain("animation: none !important")
     })
 
     it("keeps the loading label outside the cycling logo mark", () => {

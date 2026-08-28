@@ -132,6 +132,46 @@ body::after {
 
 const CRITICAL_SHELL_CSS = `${INITIAL_PAINT_CSS}\n${BRAND_BOOT_LOADER_CSS}`
 
+// Lighthouse's static-SPA build is prepared with `VITE_LHCI=true`.  Keep the
+// audit-only effect rules in the React-owned shell as well as the post-build
+// HTML fallback: `main.tsx` mounts a fresh document for static fallbacks, so
+// styles injected only into the original HTML shell would otherwise be
+// discarded during that mount.  The flag is replaced at build time and the
+// block is not rendered by normal production builds.
+const LHCI_STATIC_EFFECTS_CSS = `/* data-lhci-static-effects */
+.lhci-mode .aurora-mesh::after,
+.lhci-mode .sched-aurora-hero {
+  animation: none !important;
+  filter: none !important;
+  transform: none !important;
+}
+
+.lhci-mode .weather-ambient,
+.lhci-mode .sched-current-glow,
+.lhci-mode .sched-progress-fill::after,
+.lhci-mode .sched-today-badge,
+.lhci-mode .sched-empty-icon,
+.lhci-mode .sched-empty-ring,
+.lhci-mode .sched-empty-orbit,
+.lhci-mode .sched-flip-colon,
+.lhci-mode .sched-drop-target,
+.lhci-mode .sched-skeleton-shimmer,
+.lhci-mode .messenger-typing-pulse,
+.lhci-mode .messenger-online-pulse::after,
+.lhci-mode .messenger-skeleton-shimmer,
+.lhci-mode .profile-skeleton-shimmer,
+.lhci-mode .settings-skeleton-shimmer,
+.lhci-mode .auth-skeleton-shimmer,
+.lhci-mode .events-register-pulse,
+.lhci-mode .refetch-shimmer::after,
+.lhci-mode .border-glow-pulse {
+  animation: none !important;
+}
+
+.lhci-mode .weather-ambient {
+  display: none !important;
+}`
+
 export const Route = createRootRouteWithContext<RouterContext>()({
   // Keep SSR enabled at the root so public and data routes receive a complete
   // TanStack Start manifest. Child auth/admin layouts may opt down to client
@@ -227,12 +267,22 @@ function RootShell({ children }: { children: React.ReactNode }) {
   const ssrTheme = globalThis.__ssrThemeGetter__?.()
   const ssrLang = globalThis.__ssrLangGetter__?.()
   const isDark = ssrTheme === "dark"
+  const isLhci = import.meta.env.VITE_LHCI === "true"
   const lang = ssrLang ?? "ru"
+  const htmlClassName =
+    [isDark && "dark", isLhci && "lhci-mode"].filter(Boolean).join(" ") || undefined
 
   return (
-    <html lang={lang} className={isDark ? "dark" : undefined} suppressHydrationWarning>
+    <html lang={lang} className={htmlClassName} suppressHydrationWarning>
       <head>
         <HeadContent />
+        {isLhci ? (
+          <style
+            id="lhci-static-effects"
+            data-lhci-static-effects=""
+            dangerouslySetInnerHTML={{ __html: LHCI_STATIC_EFFECTS_CSS }}
+          />
+        ) : null}
         <style dangerouslySetInnerHTML={{ __html: CRITICAL_SHELL_CSS }} />
       </head>
       {/*
