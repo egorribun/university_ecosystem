@@ -1,8 +1,8 @@
-import { useEffect, useLayoutEffect } from "react"
 import type { ReactNode } from "react"
 import { LazyMotion, MotionConfig, domAnimation } from "framer-motion"
 
 import { markAppHydrated } from "@/app/hydration"
+import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
 import ErrorBoundary from "@/components/feedback/ErrorBoundary"
 import { LiveRegionProvider } from "./components/ui/LiveRegionProvider"
 import { AppShellProvider } from "./contexts/AppShellContext"
@@ -16,14 +16,6 @@ import { RxDBProvider } from "./db/RxDBContext"
 interface AppProvidersProps {
   children: ReactNode
 }
-
-// Hydration completion is a visual boundary: the SSR boot loader must start
-// its exit before the first post-hydration paint.  React 19 may defer passive
-// effects while a concurrent WebKit hydration is still settling, which can
-// leave the loader active even though the sentinel event was delivered.  Use
-// an isomorphic layout effect in the browser so the state update is flushed in
-// the same commit; retain useEffect during SSR to avoid server warnings.
-const useHydrationEffect = typeof window === "undefined" ? useEffect : useLayoutEffect
 
 function ProvidersInner({ children }: AppProvidersProps) {
   return (
@@ -70,7 +62,7 @@ export function AppProviders({ children }: AppProvidersProps) {
   // Publish the hydration sentinel after React commits the complete provider
   // tree. Playwright waits for this signal before interacting with hydrated UI;
   // markAppHydrated also completes the bootstrap loader idempotently.
-  useHydrationEffect(() => {
+  useIsomorphicLayoutEffect(() => {
     markAppHydrated()
   }, [])
 
