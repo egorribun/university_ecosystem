@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 
 import yaml
@@ -75,3 +76,18 @@ def test_docker_context_excludes_quality_caches_and_reports() -> None:
             if line.strip() and not line.lstrip().startswith("#")
         }
         assert required_patterns <= patterns, name
+
+
+def test_mutmut_isolation_copies_all_compose_contract_inputs() -> None:
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    copied_paths = set(config["tool"]["mutmut"]["also_copy"])
+    required_paths = {
+        "pyproject.toml",
+        "docker-compose.yml",
+        "docker-compose.full.yml",
+        "docker-compose.observability.yml",
+        "docker-compose.prod.yml",
+        "docker-compose.sandbox.yml",
+        "docker-compose.test.yml",
+    }
+    assert required_paths <= copied_paths

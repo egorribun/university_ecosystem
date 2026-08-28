@@ -562,6 +562,7 @@ pytest_add_cli_args_test_selection = [
 # directory prevents that test from breaking mutmut's clean-test baseline. The
 # isolated-performance tool test also reads its trusted Rust Dockerfile.
 also_copy = [
+    "pyproject.toml",
     "AGENTS.md",
     "CLAUDE.md",
     "TESTING.md",
@@ -589,7 +590,15 @@ also_copy = [
     "Dockerfile.protogen",
     "backend.Dockerfile",
     "start-docker.ps1",
+    # Docker resource-limit contract reads every supported Compose variant in
+    # the isolated mutmut tree. Keep these authored assets alongside the full
+    # stack so the baseline/stats pass cannot fail on a missing input path.
+    "docker-compose.yml",
     "docker-compose.full.yml",
+    "docker-compose.observability.yml",
+    "docker-compose.prod.yml",
+    "docker-compose.sandbox.yml",
+    "docker-compose.test.yml",
     "codecov.yml",
     "renovate.json",
     "uv.lock",
