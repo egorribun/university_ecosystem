@@ -37,6 +37,24 @@ export function normalizeRoutePath(pathname) {
   return withoutQuery.replace(/\/+$/u, "") || "/"
 }
 
+/**
+ * Normalize a user-provided LHCI_URLS segment before it reaches Lighthouse.
+ *
+ * Workflow inputs are commonly supplied as route names (`404`) rather than
+ * URL pathnames (`/404`). Lighthouse accepts the former in some collection
+ * modes but can emit a finalUrl without a leading slash; that bypasses the
+ * route-policy inventory. Canonicalize both forms at the collection boundary
+ * so every downstream policy check observes a valid pathname.
+ */
+export function normalizeLhciPath(value) {
+  if (typeof value !== "string") {
+    throw new TypeError("LHCI route value must be a string")
+  }
+  const trimmed = value.trim()
+  if (trimmed === "") return "/"
+  return normalizeRoutePath(trimmed.startsWith("/") ? trimmed : `/${trimmed}`)
+}
+
 function pathMatchesPrefix(pathname, prefix) {
   const normalizedPath = normalizeRoutePath(pathname)
   const normalizedPrefix = normalizeRoutePath(prefix)

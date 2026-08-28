@@ -14,7 +14,7 @@ import { spawn } from "node:child_process"
 import { chromium } from "playwright"
 
 import routePolicyConfig from "./lhci-route-policy-config.cjs"
-import { assertLhciRoutePolicy } from "./lhci-route-policy.mjs"
+import { assertLhciRoutePolicy, normalizeLhciPath } from "./lhci-route-policy.mjs"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -178,10 +178,7 @@ async function createConfig() {
   // from any non-empty string (process via the W119 SW2 leading-comma flow).
   const lhciUrlsEnv = process.env.LHCI_URLS
   const overridePaths = lhciUrlsEnv
-    ? lhciUrlsEnv
-        .split(",")
-        .map((p) => p.trim() || "/")
-        .filter(Boolean)
+    ? lhciUrlsEnv.split(",").map(normalizeLhciPath).filter(Boolean)
     : undefined
   const targetPaths = overridePaths?.length ? overridePaths : defaultPaths
   const collect = {

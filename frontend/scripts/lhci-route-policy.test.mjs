@@ -9,6 +9,7 @@ import {
   classifyLhciPath,
   assertLhciRoutePolicy,
   evaluateLhciRoutePolicy,
+  normalizeLhciPath,
   parseRobotsDisallows,
   robotsDisallowsPath,
 } from "./lhci-route-policy.mjs"
@@ -52,6 +53,15 @@ test("route classification is explicit and prefix-aware", () => {
   assert.equal(classifyLhciPath("/dashboard/"), "protected")
   assert.equal(classifyLhciPath("/admin/settings"), "protected")
   assert.equal(classifyLhciPath("/dashboarding"), "unknown")
+})
+
+test("LHCI_URLS segments normalize into route-policy paths", () => {
+  assert.deepEqual(["404", "/404/", "", "schedule"].map(normalizeLhciPath), [
+    "/404",
+    "/404",
+    "/",
+    "/schedule",
+  ])
 })
 
 test("the LHCI matrix URL pattern covers query strings without matching lookalike routes", () => {
