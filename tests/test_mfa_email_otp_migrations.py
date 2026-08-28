@@ -93,6 +93,161 @@ def test_preflight_classifies_totp_and_verified_email_paths() -> None:
         engine.dispose()
 
 
+def test_preflight_revokes_session_only_webauthn_legacy_state() -> None:
+    """An active legacy session must not survive just because the user was remapped."""
+
+    contract = _load("202608250002_contract_retire_webauthn.py")
+    engine, conn = _legacy_database()
+    try:
+        conn.exec_driver_sql(
+            "INSERT INTO users VALUES "
+            "('session-only','s@example.test',NULL,NULL,'totp',1)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO mfa_totp_enrollments VALUES "
+            "('t','session-only',1,'2026-08-01',NULL)"
+        )
+        conn.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN mfa_epoch INTEGER NOT NULL DEFAULT 0"
+        )
+        conn.exec_driver_sql(
+            "CREATE TABLE active_sessions (id TEXT, user_id TEXT, revoked_at DATETIME, "
+            "mfa_method TEXT, mfa_verified_at DATETIME, mfa_completed_at DATETIME, "
+            "mfa_epoch INTEGER NOT NULL DEFAULT 0)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO active_sessions "
+            "VALUES ('s1','session-only',NULL,'webauthn','2026-08-01','2026-08-01',0)"
+        )
+
+        result = contract.run_preflight(conn)
+
+        assert result == {
+            "totp": 1,
+            "email_otp": 0,
+            "recovery_path": 0,
+            "unresolved": 0,
+        }
+        assert (
+            conn.exec_driver_sql(
+                "SELECT mfa_epoch FROM users WHERE id='session-only'"
+            ).scalar_one()
+            == 1
+        )
+        session = conn.exec_driver_sql(
+            "SELECT revoked_at, mfa_method, mfa_verified_at, mfa_completed_at "
+            "FROM active_sessions WHERE id='s1'"
+        ).one()
+        assert session[0] is not None
+        assert session[1:] == (None, None, None)
+    finally:
+        conn.close()
+        engine.dispose()
+
+
+def test_preflight_blocks_unsafe_session_only_webauthn_legacy_state() -> None:
+    """A legacy session cannot be treated as a valid replacement MFA factor."""
+
+    contract = _load("202608250002_contract_retire_webauthn.py")
+    engine, conn = _legacy_database()
+    try:
+        conn.exec_driver_sql(
+            "INSERT INTO users VALUES "
+            "('unsafe-session','u@example.test',NULL,NULL,'totp',1)"
+        )
+        conn.exec_driver_sql(
+            "CREATE TABLE active_sessions (id TEXT, user_id TEXT, revoked_at DATETIME, "
+            "mfa_method TEXT, mfa_verified_at DATETIME, mfa_completed_at DATETIME)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO active_sessions "
+            "VALUES ('s1','unsafe-session',NULL,'webauthn','2026-08-01','2026-08-01')"
+        )
+
+        with pytest.raises(
+            contract.MfaMigrationSafetyError, match="unresolved_count=1"
+        ):
+            contract.run_preflight(conn)
+    finally:
+        conn.close()
+        engine.dispose()
+
+
+def test_preflight_ignores_revoked_webauthn_sessions() -> None:
+    """Only sessions that could still authenticate may trigger retirement remediation."""
+
+    contract = _load("202608250002_contract_retire_webauthn.py")
+    engine, conn = _legacy_database()
+    try:
+        conn.exec_driver_sql(
+            "INSERT INTO users VALUES "
+            "('revoked-session','r@example.test',NULL,NULL,'totp',1)"
+        )
+        conn.exec_driver_sql(
+            "CREATE TABLE active_sessions (id TEXT, user_id TEXT, revoked_at DATETIME, "
+            "mfa_method TEXT, mfa_verified_at DATETIME, mfa_completed_at DATETIME)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO active_sessions "
+            "VALUES ('s1','revoked-session','2026-08-02','webauthn',"
+            "'2026-08-01','2026-08-01')"
+        )
+
+        assert contract.run_preflight(conn) == {
+            "totp": 0,
+            "email_otp": 0,
+            "recovery_path": 0,
+            "unresolved": 0,
+        }
+    finally:
+        conn.close()
+        engine.dispose()
+
+
+def test_preflight_fails_closed_when_session_revocation_state_is_unavailable() -> None:
+    """The historical fallback must invalidate the epoch when it cannot revoke a row."""
+
+    contract = _load("202608250002_contract_retire_webauthn.py")
+    engine, conn = _legacy_database()
+    try:
+        conn.exec_driver_sql(
+            "INSERT INTO users VALUES "
+            "('no-revocation-column','n@example.test',NULL,NULL,'totp',1)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO mfa_totp_enrollments VALUES "
+            "('t','no-revocation-column',1,'2026-08-01',NULL)"
+        )
+        conn.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN mfa_epoch INTEGER NOT NULL DEFAULT 0"
+        )
+        conn.exec_driver_sql(
+            "CREATE TABLE active_sessions (id TEXT, user_id TEXT, mfa_method TEXT, "
+            "mfa_verified_at DATETIME, mfa_completed_at DATETIME, "
+            "mfa_epoch INTEGER NOT NULL DEFAULT 0)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO active_sessions "
+            "VALUES ('s1','no-revocation-column','webauthn','2026-08-01',"
+            "'2026-08-01',0)"
+        )
+
+        assert contract.run_preflight(conn)["totp"] == 1
+        assert (
+            conn.exec_driver_sql(
+                "SELECT mfa_epoch FROM users WHERE id='no-revocation-column'"
+            ).scalar_one()
+            == 1
+        )
+        assert conn.exec_driver_sql(
+            "SELECT mfa_epoch, mfa_method, mfa_verified_at, mfa_completed_at "
+            "FROM active_sessions WHERE id='s1'"
+        ).one() == (0, None, None, None)
+    finally:
+        conn.close()
+        engine.dispose()
+
+
 def test_preflight_aborts_with_non_pii_actionable_diagnostics() -> None:
     contract = _load("202608250002_contract_retire_webauthn.py")
     engine, conn = _legacy_database()

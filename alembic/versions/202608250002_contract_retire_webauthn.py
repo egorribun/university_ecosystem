@@ -63,6 +63,33 @@ def _legacy_user_ids(bind: Any) -> set[str]:
                 str(row[0])
                 for row in bind.execute(sa.select(legacy_table.c.user_id).distinct())
             )
+    if "active_sessions" in _tables(bind):
+        session_columns = _columns(bind, "active_sessions")
+        if {"user_id", "mfa_method"}.issubset(session_columns):
+            session = sa.table(
+                "active_sessions",
+                sa.column("user_id"),
+                sa.column("mfa_method"),
+                *(
+                    (sa.column("revoked_at"),)
+                    if "revoked_at" in session_columns
+                    else ()
+                ),
+            )
+            predicates = [
+                sa.func.lower(sa.func.coalesce(session.c.mfa_method, "")) == "webauthn"
+            ]
+            if "revoked_at" in session_columns:
+                predicates.append(session.c.revoked_at.is_(None))
+            # A legacy table without ``revoked_at`` cannot prove that a
+            # WebAuthn-marked session is inactive.  Include it for safe
+            # remediation rather than preserving a potentially valid bearer.
+            ids.update(
+                str(row[0])
+                for row in bind.execute(
+                    sa.select(session.c.user_id).where(*predicates).distinct()
+                )
+            )
     return ids
 
 
