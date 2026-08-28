@@ -23,6 +23,7 @@ import { WeatherParticles } from "./WeatherParticles"
 import { EventMarker } from "./EventMarker"
 import type { WeatherCondition } from "@/utils/weatherCodes"
 import type { MapEvent } from "@/hooks/useMapEvents"
+import { isLowPowerDevice } from "@/utils/deviceCapabilities"
 import {
   layoutMapMarkerOffsets,
   layoutProjectedMapMarkerOffsets,
@@ -149,6 +150,11 @@ export function MapLibreMapComponent({
   onMapMoveEnd,
 }: MapLibreMapProps) {
   const { t, i18n } = useTranslation("map")
+  // The cinematic intro is decorative work on top of MapLibre's already
+  // expensive WebGL/style bootstrap. Respect the same explicit constrained
+  // device signals used by weather particles so low-power/Save-Data clients
+  // get an immediate usable viewport instead of a long-running camera tween.
+  const lowPowerDevice = isLowPowerDevice()
   const hasAnimatedIntro = useRef(false)
   const introTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** Single active popup — only one marker popup open at a time (FIX-109-07). */
@@ -297,7 +303,8 @@ export function MapLibreMapComponent({
       // tiles loaded slowly). Otherwise, run the intro as before.
       if (!hasAnimatedIntro.current) {
         hasAnimatedIntro.current = true
-        const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        const prefersReduced =
+          lowPowerDevice || window.matchMedia("(prefers-reduced-motion: reduce)").matches
 
         if (urlInitialViewport) {
           map.jumpTo({
@@ -339,7 +346,7 @@ export function MapLibreMapComponent({
         introTimeoutRef.current = null
       }
     }
-  }, [mapRef, isDark, timePeriod, urlInitialViewport, updateCollisionProjection])
+  }, [mapRef, isDark, lowPowerDevice, timePeriod, urlInitialViewport, updateCollisionProjection])
 
   useEffect(() => {
     const map = mapRef?.current?.getMap()

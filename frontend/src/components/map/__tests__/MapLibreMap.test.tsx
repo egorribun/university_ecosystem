@@ -4,6 +4,7 @@ import { createElement, type ReactNode } from "react"
 import type { MapRef } from "react-map-gl/maplibre"
 
 const translationState = vi.hoisted(() => ({ resolvedLanguage: "en" as string | undefined }))
+const deviceState = vi.hoisted(() => ({ lowPower: false }))
 const renderedMapProps = vi.hoisted(() => ({ current: {} as Record<string, unknown> }))
 const renderedMarkerProps = vi.hoisted(() => ({
   buildings: [] as Record<string, unknown>[],
@@ -59,6 +60,9 @@ vi.mock("react-i18next", () => ({
       changeLanguage: () => Promise.resolve(),
     },
   }),
+}))
+vi.mock("@/utils/deviceCapabilities", () => ({
+  isLowPowerDevice: () => deviceState.lowPower,
 }))
 // Stub the heavy child components so this test isolates MapLibreMap's own logic
 // (rAF poll, cinematic intro, easeTo, sky-update). Their internals are covered
@@ -196,6 +200,7 @@ describe("MapLibreMap", () => {
 
   beforeEach(() => {
     originalMatchMedia = window.matchMedia
+    deviceState.lowPower = false
     renderedMapProps.current = {}
     renderedMarkerProps.buildings = []
     renderedMarkerProps.pois = []
@@ -293,6 +298,16 @@ describe("MapLibreMap", () => {
     } finally {
       mm.mockRestore()
     }
+  })
+
+  it("jumps (no animation) on an explicitly constrained device", async () => {
+    deviceState.lowPower = true
+    const map = makeMap()
+
+    render(<MapLibreMapComponent {...baseProps} mapRef={makeRef(map)} />)
+
+    await waitFor(() => expect(map.jumpTo).toHaveBeenCalled())
+    expect(map.flyTo).not.toHaveBeenCalled()
   })
 
   it("eases to the selected building when one is chosen", async () => {
