@@ -5,7 +5,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { get, set, del } from "idb-keyval"
 import { logError } from "@/app/logger"
-import { getDatabase } from "@/db"
+import { getDatabaseLazily } from "@/db/lazy"
 import { useDebounced } from "./useDebounced"
 
 const KEY_PREFIX = "schedule:notes:"
@@ -38,7 +38,7 @@ export function useLessonNotes(lessonId: string | null | undefined) {
     let isMounted = true
     async function fetchNote() {
       try {
-        const db = await getDatabase()
+        const db = await getDatabaseLazily()
         const rxNote = await db.notes.findOne(currentLessonId).exec()
         if (rxNote) {
           if (isMounted) {
@@ -84,7 +84,7 @@ export function useLessonNotes(lessonId: string | null | undefined) {
     const currentLessonId = lessonId
 
     if (debouncedNote && debouncedNote.text.trim()) {
-      getDatabase()
+      getDatabaseLazily()
         .then((db) =>
           db.notes.upsert({
             id: currentLessonId,
@@ -100,7 +100,7 @@ export function useLessonNotes(lessonId: string | null | undefined) {
         logError("[schedule:notes]", err)
       )
     } else {
-      getDatabase()
+      getDatabaseLazily()
         .then(async (db) => {
           const rxNote = await db.notes.findOne(currentLessonId).exec()
           if (rxNote) await rxNote.remove()
@@ -127,7 +127,7 @@ export function useLessonNotes(lessonId: string | null | undefined) {
     const currentLessonId = lessonId
     lastSavedRef.current = null
     setNoteState(null)
-    getDatabase()
+    getDatabaseLazily()
       .then(async (db) => {
         const rxNote = await db.notes.findOne(currentLessonId).exec()
         if (rxNote) await rxNote.remove()
@@ -162,7 +162,7 @@ export function useLessonNotesMap(lessonIds: string[]) {
     async function loadNotesMap() {
       const map = new Map<string, boolean>()
       try {
-        const db = await getDatabase()
+        const db = await getDatabaseLazily()
         const rxNotes = await db.notes.find({ selector: { id: { $in: lessonIds } } }).exec()
         rxNotes.forEach((n) => {
           if (n.text?.trim()) map.set(n.id, true)

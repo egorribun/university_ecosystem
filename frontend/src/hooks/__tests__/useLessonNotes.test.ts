@@ -38,8 +38,8 @@ vi.mock("@/app/logger", async (orig) => ({
   ...(await orig<typeof import("@/app/logger")>()),
   logError: vi.fn(),
 }))
-vi.mock("@/db", () => ({
-  getDatabase: dbState.getDatabase,
+vi.mock("@/db/lazy", () => ({
+  getDatabaseLazily: dbState.getDatabase,
   resetDatabaseForTesting: vi.fn(async () => {}),
 }))
 
