@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 
@@ -95,11 +95,13 @@ describe("useEventFilterPopover", () => {
 
     await user.click(screen.getByText("open filters"))
 
-    await user.type(screen.getByLabelText("events:filters.location"), "A")
-    // Controlled input updates are scheduled through the hook harness. Await
-    // the observable callback contract instead of asserting in the same task;
-    // this remains deterministic under Stryker's per-test instrumentation and
-    // does not mask a missing onChange (waitFor still fails when it never fires).
+    const locationInput = screen.getByLabelText("events:filters.location")
+    // This unit test verifies the controlled input contract.  Dispatching one
+    // change event keeps the assertion deterministic under Stryker's
+    // instrumented runner; realistic character-by-character typing remains
+    // covered by the browser journeys.
+    fireEvent.change(locationInput, { target: { value: "A" } })
+    expect(locationInput).toHaveValue("A")
     await waitFor(() => expect(onLocationChange).toHaveBeenCalledWith("A"))
 
     await user.click(screen.getByText("common:buttons.reset"))
