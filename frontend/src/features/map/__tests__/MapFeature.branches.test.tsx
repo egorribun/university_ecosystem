@@ -156,10 +156,12 @@ function renderFeature() {
   )
 }
 
-/* The lazy MapLibre child resolves on a microtask — wait for the mock to run
-   so `mapProps.current` is populated. Skips this when fake timers are active
-   (in those tests MapLibre props aren't read until after a manual flush). */
+/* The production map is intentionally deferred until viewport-idle or an
+   explicit interaction. Trigger the interaction here so orchestration tests
+   exercise the real child contract without waiting on a browser idle budget. */
 async function whenMapMounted() {
+  const placeholder = document.querySelector('[data-testid="map-activation-placeholder"]')
+  if (placeholder) fireEvent.pointerDown(placeholder)
   await waitFor(() => expect(mapProps.current).not.toBeNull())
 }
 

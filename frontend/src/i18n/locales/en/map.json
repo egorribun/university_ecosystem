@@ -8,6 +8,7 @@
     "ariaLabel": "Interactive isometric campus map with eight buildings of the State University of Management",
     "groundLabel": "Campus grounds and pathways",
     "loading": "Loading map...",
+    "interactiveHint": "Activate the interactive campus map",
     "loadError": "Failed to load the map. Please refresh the page."
   },
   "buildings": {
