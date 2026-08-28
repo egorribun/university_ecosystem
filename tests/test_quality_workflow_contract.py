@@ -1475,7 +1475,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
 
     assert stats_job["strategy"]["matrix"]["stats_shard"] == list(range(8))
     assert stats_job["timeout-minutes"] == 25
-    assert "pre-commit-check" in stats_job["needs"]
+    assert "needs" not in stats_job
     assert universe_job["timeout-minutes"] == 35
     assert universe_job["needs"] == ["pre-commit-check", "mutation-tests-stats"]
     assert mutation_job["strategy"]["fail-fast"] is False
@@ -1581,6 +1581,73 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert (
         "needs.mutation-tests-universe.result" in jobs["ci-success"]["steps"][0]["run"]
     )
+
+
+def test_mutation_stats_do_not_wait_for_an_unrelated_read_only_gate() -> None:
+    """Start the independent stats fan-out while the lint gate is running.
+
+    Stats uses its own read-only checkout and its result is still required by
+    both the universe producer and ``ci-success``.  It consumes no output or
+    credentials from pre-commit, so an artificial dependency only holds the
+    mutation critical path behind the repository-wide lint duration.
+    """
+
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    stats_job = workflow["jobs"]["mutation-tests-stats"]
+    universe_job = workflow["jobs"]["mutation-tests-universe"]
+    mutation_job = workflow["jobs"]["mutation-tests-incremental"]
+    ci_success = workflow["jobs"]["ci-success"]
+
+    assert "needs" not in stats_job
+    assert workflow["permissions"] == "read-all"
+    assert "secrets" not in stats_job
+    assert universe_job["needs"] == ["pre-commit-check", "mutation-tests-stats"]
+    assert mutation_job["needs"] == [
+        "pre-commit-check",
+        "mutation-tests-stats",
+        "mutation-tests-universe",
+    ]
+    assert "mutation-tests-stats" in ci_success["needs"]
+    assert "needs.mutation-tests-stats.result" in ci_success["steps"][0]["run"]
+
+
+def test_mutation_jobs_cache_only_lock_bound_uv_packages() -> None:
+    """Mutation fan-out must reuse immutable packages, never execution evidence.
+
+    A PR mutation run starts eight stats workers and up to nine exact-mutant
+    workers at once.  The package cache is keyed by the locked dependency
+    graph; the per-run mutmut universe and execution proofs remain
+    attempt-scoped artifacts and are deliberately not part of that cache.
+    """
+
+    workflows_and_jobs = (
+        (
+            CI_WORKFLOW_PATH,
+            (
+                "mutation-tests-stats",
+                "mutation-tests-universe",
+                "mutation-tests-incremental",
+            ),
+        ),
+        (
+            MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH,
+            ("manual-mutation-stats", "manual-mutation-tests"),
+        ),
+    )
+
+    expected_cache = {
+        "enable-cache": True,
+        "cache-dependency-glob": "uv.lock",
+    }
+    for workflow_path, job_names in workflows_and_jobs:
+        jobs = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))["jobs"]
+        for job_name in job_names:
+            install_uv = next(
+                step
+                for step in jobs[job_name]["steps"]
+                if step.get("name") == "Install uv"
+            )
+            assert install_uv["with"] == expected_cache
 
 
 def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> None:

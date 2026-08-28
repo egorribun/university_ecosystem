@@ -2038,7 +2038,10 @@ jobs:
     timeout-minutes: 25
     env:
       OTEL_SDK_DISABLED: "true"
-    needs: pre-commit-check
+    # Stats has an isolated read-only checkout and no dependency on a
+    # pre-commit output.  Starting it beside pre-commit removes that gate's
+    # startup delay from the mutation critical path; ci-success still requires
+    # both jobs and fails closed if either one fails.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -2089,6 +2092,12 @@ jobs:
       - name: Install uv
         if: steps.mutation_scope.outputs.has_python == 'true'
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        # Cache immutable, lock-bound packages only.  The central mutmut
+        # universe and every exact execution proof stay attempt-scoped
+        # artifacts and are independently validated below.
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies
         if: steps.mutation_scope.outputs.has_python == 'true'
@@ -2180,6 +2189,11 @@ jobs:
       - name: Install uv
         if: steps.mutation_scope.outputs.has_python == 'true'
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        # Do not cache generated mutation state: only the lock-bound uv
+        # package store is reusable across independent producer jobs.
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies
         if: steps.mutation_scope.outputs.has_python == 'true'
@@ -2413,6 +2427,11 @@ jobs:
       - name: Install uv
         if: steps.mutation_scope.outputs.has_python == 'true'
         uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        # Each of 128 consumers receives fresh attempt-scoped evidence; cache
+        # only immutable packages selected by the committed uv.lock.
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - name: Install dependencies
         if: steps.mutation_scope.outputs.has_python == 'true'
