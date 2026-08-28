@@ -27,16 +27,28 @@ class _Result:
 
 
 class _Connection:
-    def __init__(self, *, partitions=(), drop_error=False, default_error=False):
+    def __init__(
+        self,
+        *,
+        partitions=(),
+        range_bounds=(),
+        drop_error=False,
+        default_error=False,
+        partition_create_error_name=None,
+    ):
         self.dialect = SimpleNamespace(
             name="postgresql",
             identifier_preparer=_Preparer(),
         )
         self.partitions = partitions
+        self.range_bounds = range_bounds
         self.drop_error = drop_error
         self.default_error = default_error
+        self.partition_create_error_name = partition_create_error_name
         self.executed = []
+        self.operations = []
         self.commits = 0
+        self.rollbacks = 0
 
     async def __aenter__(self):
         return self
@@ -47,19 +59,32 @@ class _Connection:
     async def execute(self, statement, *args):
         sql = str(statement)
         self.executed.append((sql, args))
+        self.operations.append(("execute", sql))
         if self.default_error and "DEFAULT" in sql:
             raise OSError("default partition unavailable")
         if self.drop_error and "DROP TABLE" in sql:
             raise OSError("drop unavailable")
+        if (
+            self.partition_create_error_name
+            and f'CREATE TABLE "{self.partition_create_error_name}"' in sql
+        ):
+            raise OSError("range partition unavailable")
         if "SELECT child.relname" in sql:
             return _Result(self.partitions)
+        if "pg_get_expr(child.relpartbound" in sql:
+            return _Result(self.range_bounds)
         return _Result()
 
     async def exec_driver_sql(self, statement):
         return await self.execute(statement)
 
     async def commit(self):
+        self.operations.append(("commit", ""))
         self.commits += 1
+
+    async def rollback(self):
+        self.operations.append(("rollback", ""))
+        self.rollbacks += 1
 
 
 class _Engine:
@@ -92,6 +117,7 @@ async def test_default_partition_validation_and_ddl_failure(monkeypatch):
     connection = _Connection(default_error=True)
     await _run(monkeypatch, connection, tables=[], rust=rust)
     assert connection.commits == 0
+    assert connection.rollbacks == 2
 
     real_regex = manager._SAFE_IDENTIFIER_RE
 
@@ -139,6 +165,102 @@ async def test_future_partition_validation_and_rust_error(monkeypatch):
         rust=rust,
     )
     assert connection.commits == 2
+
+
+@pytest.mark.asyncio
+async def test_future_partition_reuses_existing_range_with_a_different_name(
+    monkeypatch,
+):
+    """A legacy monthly name must not cause an overlapping RANGE partition."""
+
+    rust = MagicMock()
+    rust.get_partition_info.return_value = _info(
+        name="notifications_y2026m08",
+        start="2026-08-01T00:00:00+00:00",
+        end="2026-09-01T00:00:00+00:00",
+    )
+    connection = _Connection(
+        range_bounds=(
+            "FOR VALUES FROM ('2026-08-01 00:00:00+00') TO ('2026-09-01 00:00:00+00')",
+        ),
+    )
+
+    await _run(
+        monkeypatch,
+        connection,
+        tables=[("notifications", "created_at")],
+        rust=rust,
+    )
+
+    assert not any("notifications_y2026m08" in sql for sql, _ in connection.executed)
+
+
+@pytest.mark.asyncio
+async def test_failed_range_ddl_rolls_back_before_the_next_partition(monkeypatch):
+    rust = MagicMock()
+    rust.get_partition_info.side_effect = lambda table, _offset: _info(
+        name=f"{table}_y2026m08",
+        start="2026-08-01T00:00:00+00:00",
+        end="2026-09-01T00:00:00+00:00",
+    )
+    connection = _Connection(
+        partition_create_error_name="notifications_y2026m08",
+    )
+
+    await _run(
+        monkeypatch,
+        connection,
+        tables=[
+            ("notifications", "created_at"),
+            ("data_access_logs", "created_at"),
+        ],
+        rust=rust,
+    )
+
+    failed_ddl = next(
+        index
+        for index, operation in enumerate(connection.operations)
+        if "notifications_y2026m08" in operation[1]
+    )
+    rollback = next(
+        index
+        for index, operation in enumerate(
+            connection.operations[failed_ddl + 1 :],
+            start=failed_ddl + 1,
+        )
+        if operation[0] == "rollback"
+    )
+    next_ddl = next(
+        index
+        for index, operation in enumerate(
+            connection.operations[rollback + 1 :],
+            start=rollback + 1,
+        )
+        if "data_access_logs_y2026m08" in operation[1]
+    )
+
+    assert failed_ddl < rollback < next_ddl
+
+
+def test_partition_bound_matching_normalises_legacy_catalog_timestamps():
+    assert manager._partition_bound_matches(
+        "FOR VALUES FROM ('2026-08-01') TO ('2026-09-01')",
+        "2026-08-01T00:00:00+00:00",
+        "2026-09-01T00:00:00+00:00",
+    )
+    assert manager._partition_bound_matches(
+        "FOR VALUES FROM ('2026-08-01 03:00:00+03:00') "
+        "TO ('2026-09-01 03:00:00+03:00')",
+        "2026-08-01T00:00:00Z",
+        "2026-09-01T00:00:00Z",
+    )
+    assert manager._normalise_partition_timestamp(object()) is None
+    assert manager._normalise_partition_timestamp("not-a-timestamp") is None
+    assert not manager._partition_bound_matches(
+        None,
+        "2026-08-01T00:00:00+00:00",
+        "2026-09-01T00:00:00+00:00",
+    )
 
 
 @pytest.mark.asyncio

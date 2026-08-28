@@ -46,7 +46,10 @@ async def test_ensure_partitions_exist_postgresql_mock(monkeypatch):
         from app.services.partition_manager import PARTITIONED_TABLES
 
         num_tables = len(PARTITIONED_TABLES)
-        mock_conn.execute.side_effect = [mock_old_partitions] * num_tables
+        # The manager now performs additional bound lookups and advisory-lock
+        # calls before each idempotent DDL operation.  Every catalog query in
+        # this focused mock may return the same harmless legacy partition.
+        mock_conn.execute.return_value = mock_old_partitions
         mock_conn.exec_driver_sql.side_effect = [mock_create_result] * (
             2 + num_tables
         ) + [mock_drop_result] * num_tables
