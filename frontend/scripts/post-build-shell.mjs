@@ -17,9 +17,9 @@
 //      the shell so the FastAPI CSP middleware can swap in a per-
 //      request nonce, preserving the strict-dynamic CSP posture from
 //      DEBT-05 (audit 2026-03-06).
-//   3. Replace the VITE_LHCI placeholder. The marker and visibility CSS are needed
-//      because the spa-shell-served HTML must allow Lighthouse to see
-//      a paint as soon as scripts evaluate.
+//   3. Replace the VITE_LHCI placeholder. The visibility CSS keeps the
+//      static shell measurable without introducing a synthetic diagnostic
+//      element into Lighthouse's largest-contentful-paint candidate set.
 //   4. Mirror the prerendered shell to `dist/client/index.html` so
 //      that static serving (e.g. `staticDistDir: dist/client` for LHCI,
 //      `npx serve dist/client -s` for local SPA-style preview) finds
@@ -99,8 +99,7 @@ function applyLhciReplacements(html, isLHCI) {
   if (isLHCI) {
     const lhciStyles =
       "html, body, #root { background: #FFFFFF !important; color: #000000 !important; " +
-      "opacity: 1 !important; visibility: visible !important; } " +
-      "#lhci-marker { display: flex !important; }"
+      "opacity: 1 !important; visibility: visible !important; }"
     return html.replace("/* LHCI_CSS_PLACEHOLDER */", lhciStyles).replace(/%VITE_LHCI%/g, "true")
   }
   return html.replace("/* LHCI_CSS_PLACEHOLDER */", "").replace(/%VITE_LHCI%/g, "false")

@@ -130,9 +130,6 @@ async function injectLhciMode(htmlPath) {
 
   html = prepareLhciHtml(html)
 
-  // Make the lhci-marker visible by changing display: none to display: flex
-  html = html.replace(/id="lhci-marker"([^>]*?)display:\s*none/, 'id="lhci-marker"$1display: flex')
-
   await writeFile(htmlPath, html, "utf-8")
 }
 

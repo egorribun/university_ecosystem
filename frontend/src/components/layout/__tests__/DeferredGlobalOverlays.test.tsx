@@ -1,8 +1,8 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { act, render, screen } from "@testing-library/react"
 import { renderToString } from "react-dom/server"
 import { useEffect, useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { DeferredGlobalOverlays } from "../DeferredGlobalOverlays"
+import { DEFERRED_OVERLAY_DELAY_MS, DeferredGlobalOverlays } from "../DeferredGlobalOverlays"
 
 function MockOfflineIndicator() {
   const [mounted, setMounted] = useState(false)
@@ -31,15 +31,33 @@ describe("DeferredGlobalOverlays", () => {
   it("keeps the server and first client render empty, then mounts every overlay", async () => {
     expect(renderToString(<DeferredGlobalOverlays />)).toBe("")
 
+    vi.useFakeTimers()
     render(<DeferredGlobalOverlays />)
     expect(screen.queryByTestId("deferred-search")).not.toBeInTheDocument()
 
-    await waitFor(() => {
-      expect(screen.getByTestId("deferred-search")).toBeInTheDocument()
-      expect(screen.getByTestId("deferred-live-push")).toBeInTheDocument()
-      expect(screen.getByTestId("deferred-offline")).toBeInTheDocument()
-      expect(screen.getByTestId("deferred-install")).toBeInTheDocument()
+    await act(async () => {
+      vi.advanceTimersByTime(DEFERRED_OVERLAY_DELAY_MS)
+      await Promise.resolve()
+      await Promise.resolve()
     })
+    expect(screen.getByTestId("deferred-search")).toBeInTheDocument()
+    expect(screen.getByTestId("deferred-live-push")).toBeInTheDocument()
+    expect(screen.getByTestId("deferred-offline")).toBeInTheDocument()
+    expect(screen.getByTestId("deferred-install")).toBeInTheDocument()
+  })
+
+  it("promotes optional overlays immediately after an explicit interaction", async () => {
+    vi.useFakeTimers()
+    render(<DeferredGlobalOverlays />)
+
+    await act(async () => {
+      window.dispatchEvent(new Event("keydown"))
+      await Promise.resolve()
+    })
+
+    expect(screen.getByTestId("deferred-search")).toBeInTheDocument()
+    expect(screen.getByTestId("deferred-live-push")).toBeInTheDocument()
+    expect(screen.getByTestId("deferred-install")).toBeInTheDocument()
   })
 
   it("mounts the offline indicator before deferred convenience overlays", () => {

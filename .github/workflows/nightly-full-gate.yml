@@ -61,7 +61,7 @@ jobs:
       - name: Upload full mutmut stats shard
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: nightly-mutmut-stats-${{ github.run_id }}-${{ matrix.stats_shard }}
+          name: nightly-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.stats_shard }}
           path: mutants/mutmut-stats.json
           if-no-files-found: error
 
@@ -93,8 +93,26 @@ jobs:
       - name: Download full mutmut stats shards
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: nightly-mutmut-stats-${{ github.run_id }}-*
+          pattern: nightly-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-*
           path: mutmut-stats
+          if-no-artifact-found: error
+
+      - name: Require all full mutmut stats shards
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          expected=8
+          actual="$(find mutmut-stats -type f -name 'mutmut-stats.json' | wc -l)"
+          if [[ "$actual" -ne "$expected" ]]; then
+            echo "::error::Expected exactly $expected full mutmut stats shards for run ${RUN_ID} attempt ${RUN_ATTEMPT}; found $actual."
+            exit 1
+          fi
+          for shard in $(seq 0 7); do
+            test -s "mutmut-stats/nightly-mutmut-stats-${RUN_ID}-${RUN_ATTEMPT}-${shard}/mutmut-stats.json"
+          done
 
       - name: Merge full mutmut stats shards
         run: |
@@ -140,7 +158,7 @@ jobs:
       - name: Upload preflighted full mutation plan
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: nightly-mutmut-plan-${{ github.run_id }}
+          name: nightly-mutmut-plan-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             mutants/mutmut-stats.json
             mutants/mutmut-stats-full.json
@@ -153,6 +171,9 @@ jobs:
     needs: mutation-tests-full-plan
     strategy:
       fail-fast: false
+      # Avoid an unbounded full-map fan-out starving pull-request quality
+      # runs on the account-wide hosted-runner pool.
+      max-parallel: 9
       # Each leg creates the same pristine universe, executes only its exact
       # duration-balanced IDs, and uploads terminal proof. The aggregate job
       # below rejects overlap, mixed universes, and incomplete coverage.
@@ -198,8 +219,9 @@ jobs:
       - name: Download preflighted full mutation plan
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: nightly-mutmut-plan-${{ github.run_id }}
+          name: nightly-mutmut-plan-${{ github.run_id }}-${{ github.run_attempt }}
           path: mutants
+          if-no-artifact-found: error
 
       - name: Plan and run exact full mutation shard
         id: run_full_mutmut
@@ -314,6 +336,10 @@ jobs:
           rm -f .mutmut-cache
           MUTMUT_FAILURE_REASON="mutmut pipeline did not complete"
           set +e
+          # The nightly plan artifact contains stats and shard IDs only; the
+          # generated source/metadata manifest is intentionally not uploaded.
+          # Keep this runner on mutmut's normal mtime path until the artifact
+          # contract includes that complete, content-addressed universe.
           timeout --kill-after=30s "${MUTMUT_TIMEOUT_SECONDS}s" \
             uv run python scripts/run_mutmut_with_stats.py --max-children 8 "${MUTANT_NAMES[@]}" \
             2>&1 | tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"
@@ -439,7 +465,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: nightly-mutmut-shard-${{ github.run_id }}-${{ matrix.shard }}
+          name: nightly-mutmut-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
           path: |
             mutants/mutmut-cicd-stats.json
             mutants/mutmut-primary-cicd-stats.json
@@ -451,7 +477,7 @@ jobs:
   mutation-tests-full-aggregate:
     name: Full mutation score (mutmut) / aggregate 128 shards
     needs: mutation-tests-full
-    if: ${{ always() }}
+    if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -475,8 +501,26 @@ jobs:
       - name: Download full mutation shard evidence
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: nightly-mutmut-shard-${{ github.run_id }}-*
+          pattern: nightly-mutmut-shard-${{ github.run_id }}-${{ github.run_attempt }}-*
           path: mutmut-shards
+          if-no-artifact-found: error
+
+      - name: Require all full mutmut execution shards
+        shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          expected=128
+          actual="$(find mutmut-shards -type f -name 'mutmut-cicd-stats.json' | wc -l)"
+          if [[ "$actual" -ne "$expected" ]]; then
+            echo "::error::Expected exactly $expected full mutmut execution shards for run ${RUN_ID} attempt ${RUN_ATTEMPT}; found $actual."
+            exit 1
+          fi
+          for shard in $(seq 1 128); do
+            test -s "mutmut-shards/nightly-mutmut-shard-${RUN_ID}-${RUN_ATTEMPT}-${shard}/mutmut-cicd-stats.json"
+          done
 
       - name: Merge and gate full mutation evidence
         run: |
@@ -491,7 +535,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: nightly-mutmut-${{ github.run_id }}
+          name: nightly-mutmut-${{ github.run_id }}-${{ github.run_attempt }}
           path: mutants/mutmut-cicd-stats.json
           if-no-files-found: error
 
@@ -523,37 +567,33 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      # A failed-jobs rerun may reuse only an exact producer cache from this
+      # workflow run and SHA. The cache is transport, never release evidence:
+      # this attempt always publishes its own artifact for the aggregate.
+      - name: Restore exact successful shard
+        id: restore_nightly_stryker_shard
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: frontend/reports/mutation/shards
+          key: stryker-shard-v1-${{ github.run_id }}-${{ github.sha }}-${{ matrix.shard-index }}
+          fail-on-cache-miss: false
+
       - name: Run fresh nightly Stryker shard
+        if: ${{ steps.restore_nightly_stryker_shard.outputs.cache-hit != 'true' }}
         working-directory: frontend
         run: npm run test:mutation
 
-      # Preserve successful producers across a failed-jobs rerun. The exact
-      # run_id+SHA cache is only transport and is fully verified downstream.
       - name: Cache successful nightly frontend mutation shard
+        if: ${{ steps.restore_nightly_stryker_shard.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: frontend/reports/mutation/shards
           key: stryker-shard-v1-${{ github.run_id }}-${{ github.sha }}-${{ matrix.shard-index }}
 
-  frontend-mutation-shard-replay:
-    name: Replay nightly frontend mutation shard ${{ matrix.shard-index }}/64
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    needs: frontend-mutation-shards
-    strategy:
-      fail-fast: false
-      max-parallel: 16
-      matrix:
-        shard-index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
-    steps:
-      - name: Restore exact successful shard
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: frontend/reports/mutation/shards
-          key: stryker-shard-v1-${{ github.run_id }}-${{ github.sha }}-${{ matrix.shard-index }}
-          fail-on-cache-miss: true
-
-      - name: Replay shard evidence into current attempt
+      # Upload directly from the producer; the aggregate consumes only
+      # current-attempt artifacts and independently verifies their lineage.
+      - name: Upload current-attempt shard evidence
+        if: ${{ always() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: nightly-frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard-index }}
@@ -566,7 +606,8 @@ jobs:
     name: Full frontend mutation score (100%)
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    needs: frontend-mutation-shard-replay
+    needs: frontend-mutation-shards
+    if: ${{ always() && !cancelled() }}
     env:
       STRYKER_SHARD_COUNT: "64"
       STRYKER_AGGREGATE_ROOT: reports/mutation/external
@@ -591,6 +632,7 @@ jobs:
         with:
           pattern: nightly-frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-*
           path: frontend/reports/mutation/external
+          if-no-artifact-found: error
 
       - name: Aggregate and verify nightly frontend mutation evidence
         working-directory: frontend
@@ -1022,7 +1064,6 @@ jobs:
       - mutation-tests-full
       - mutation-tests-full-aggregate
       - frontend-mutation-shards
-      - frontend-mutation-shard-replay
       - frontend-mutation-tests-full
       - frontend-mutation-roundtrip
       - backend-full

@@ -231,6 +231,28 @@ test("route inventory rejects partial collections and honors redirected requests
   assert.deepEqual(complete.violations, [])
 })
 
+test("run-count contract rejects partial Lighthouse evidence", () => {
+  const complete = evaluateLhciRoutePolicy(
+    [report("/login"), report("/login"), report("/404"), report("/404")],
+    {
+      robotsText: ROBOTS,
+      expectedPaths: ["/login", "/404"],
+      expectedRuns: 2,
+    }
+  )
+  assert.deepEqual(complete.violations, [])
+
+  const partial = evaluateLhciRoutePolicy([report("/login"), report("/404")], {
+    robotsText: ROBOTS,
+    expectedPaths: ["/login", "/404"],
+    expectedRuns: 2,
+  })
+  assert.match(
+    partial.violations.join("\n"),
+    /expected Lighthouse route \/login has 1 report\(s\); expected 2/u
+  )
+})
+
 test("the CLI reader rejects empty and malformed report directories", async () => {
   const robotsPath = new URL("../public/robots.txt", import.meta.url)
   const reportsDir = await mkdtemp(path.join(tmpdir(), "lhci-route-policy-test-"))

@@ -24,7 +24,7 @@
  * - **Embedded vite preview API** (NOT spawned subprocess): on Windows,
  *   detached node child processes don't stay alive without TTY stdin.
  *   `import { preview } from "vite"` keeps the server in this process.
- * - **Direct `npx lighthouse` invocation per URL × per run**: lighthouse
+ * - **Direct Lighthouse invocation per URL × per run**: Lighthouse
  *   writes the LHR JSON to `--output-path` BEFORE chrome-launcher's
  *   destroyTmp runs, so the LHR survives EPERM. `lhci collect` instead
  *   chains lighthouse + assertion-buffering, which loses the LHR if EPERM
@@ -81,6 +81,10 @@ import process from "node:process"
 import { spawn } from "node:child_process"
 import { fileURLToPath } from "node:url"
 import { preview } from "vite"
+
+import { buildSafeCommandInvocation, resolveNpmCliPath } from "./lhci-command.mjs"
+
+export { buildSafeCommandInvocation, resolveNpmCliPath }
 
 // Wave 121 SW2 — friendly OS guard. The Windows EPERM bug this wrapper works
 // around (chrome-launcher destroyTmp rmSync firing before LHR write) is
@@ -170,11 +174,8 @@ function median(values) {
 
 async function runCommand(command, args, description, options = {}) {
   return new Promise((resolve, reject) => {
-    const executable =
-      process.platform === "win32" && (command === "npm" || command === "npx")
-        ? `${command}.cmd`
-        : command
-    const child = spawn(executable, args, {
+    const { executable, args: spawnArgs } = buildSafeCommandInvocation(command, args)
+    const child = spawn(executable, spawnArgs, {
       cwd: frontendRoot,
       stdio: options.silent ? "pipe" : "inherit",
       shell: false,
@@ -237,13 +238,16 @@ async function runLighthouse(url, runIndex) {
   const urlName = urlToFilename(new URL(url).pathname)
   const outputPath = path.join(lhrDir, `lhr_${urlName}_run${runIndex}.json`)
 
-  // Direct `npx lighthouse` invocation. The CLI writes the LHR to
+  // Invoke Lighthouse through npm's JavaScript CLI. The CLI writes the LHR to
   // `--output-path` synchronously BEFORE chrome-launcher's destroyTmp
   // attempts the rmSync that triggers EPERM on Windows. Even when EPERM
   // fires, the LHR file already exists on disk, so the run is recoverable.
   const args = [
-    "-y",
-    `lighthouse@${LIGHTHOUSE_VERSION}`,
+    "exec",
+    "--yes",
+    `--package=lighthouse@${LIGHTHOUSE_VERSION}`,
+    "--",
+    "lighthouse",
     url,
     `--output=json`,
     `--output-path=${outputPath}`,
@@ -265,7 +269,7 @@ async function runLighthouse(url, runIndex) {
   }
 
   try {
-    await runCommand("npx", args, `lighthouse ${url} run ${runIndex}`, { silent: true })
+    await runCommand("npm", args, `lighthouse ${url} run ${runIndex}`, { silent: true })
   } catch (err) {
     // Windows EPERM workaround — the LHR is on disk before destroyTmp fires.
     // If the file exists despite the error, treat as recoverable.
@@ -302,17 +306,76 @@ async function runLighthouse(url, runIndex) {
  * directly — those are inspected via ad-hoc `node -e` scripts during audit
  * waves (see Wave 121 polish A4 + Wave 122 SW1/SW2 commits for examples).
  */
-async function parseLhr(lhrPath) {
+export async function parseLhr(lhrPath) {
   const raw = await readFile(lhrPath, "utf8")
   const lhr = JSON.parse(raw)
+  const categories = lhr?.categories
+  const audits = lhr?.audits
+  const requiredCategories = ["performance", "accessibility", "best-practices", "seo"]
+  if (
+    !lhr ||
+    typeof lhr !== "object" ||
+    Array.isArray(lhr) ||
+    !categories ||
+    typeof categories !== "object" ||
+    Array.isArray(categories) ||
+    !audits ||
+    typeof audits !== "object" ||
+    Array.isArray(audits) ||
+    requiredCategories.some((name) => !categories[name] || typeof categories[name] !== "object")
+  ) {
+    throw new Error(`Invalid Lighthouse result at ${lhrPath}`)
+  }
   return {
-    perf: lhr.categories?.performance?.score ?? null,
-    a11y: lhr.categories?.accessibility?.score ?? null,
-    bp: lhr.categories?.["best-practices"]?.score ?? null,
-    seo: lhr.categories?.seo?.score ?? null,
-    cls: lhr.audits?.["cumulative-layout-shift"]?.numericValue ?? null,
-    lcp: lhr.audits?.["largest-contentful-paint"]?.numericValue ?? null,
-    tbt: lhr.audits?.["total-blocking-time"]?.numericValue ?? null,
+    perf: categories.performance?.score ?? null,
+    a11y: categories.accessibility?.score ?? null,
+    bp: categories["best-practices"]?.score ?? null,
+    seo: categories.seo?.score ?? null,
+    cls: audits["cumulative-layout-shift"]?.numericValue ?? null,
+    lcp: audits["largest-contentful-paint"]?.numericValue ?? null,
+    tbt: audits["total-blocking-time"]?.numericValue ?? null,
+  }
+}
+
+/**
+ * A successful wrapper run must have one parseable LHR for every requested
+ * URL/run pair.  Partial measurements are useful diagnostics, but are not
+ * valid quality evidence and therefore fail closed.
+ */
+export function assertCompleteLighthouseResults(results, expectedRuns = RUNS) {
+  if (!(results instanceof Map) || !Number.isInteger(expectedRuns) || expectedRuns < 1) {
+    throw new TypeError("Lighthouse result validation inputs are invalid")
+  }
+
+  const missing = []
+  const metricKeys = ["perf", "a11y", "bp", "seo", "cls", "lcp", "tbt"]
+  for (const [urlPath, runs] of results) {
+    if (!Array.isArray(runs)) {
+      missing.push(`${urlPath}: invalid run collection`)
+      continue
+    }
+    if (runs.length !== expectedRuns) {
+      missing.push(`${urlPath}: expected ${expectedRuns} runs, received ${runs.length}`)
+    }
+    runs.forEach((result, index) => {
+      const validResult =
+        result &&
+        typeof result === "object" &&
+        !Array.isArray(result) &&
+        metricKeys.every(
+          (key) =>
+            Object.hasOwn(result, key) && (result[key] === null || typeof result[key] === "number")
+        )
+      if (!validResult) {
+        missing.push(`${urlPath} run ${index + 1}`)
+      }
+    })
+  }
+
+  if (missing.length > 0) {
+    throw new Error(
+      "Lighthouse fallback did not produce a valid LHR for every URL/run: " + missing.join(", ")
+    )
   }
 }
 
@@ -430,24 +493,28 @@ async function main() {
     console.log(formatRow(urlPath, perfMed, clsMed, lcpMed, tbtMed, a11yMed))
   }
 
+  assertCompleteLighthouseResults(results, RUNS)
+
   const elapsedMin = ((Date.now() - startTime) / 60000).toFixed(1)
   console.log("=".repeat(80))
   console.log(`Total elapsed: ${elapsedMin} min`)
   console.log(`LHRs saved to: ${path.relative(frontendRoot, lhrDir)}/`)
 }
 
-main()
-  .then(() => {
-    // W162 SW2 — explicit process.exit(0) ensures the wrapper terminates
-    // cleanly even when vite preview's underlying Worker thread doesn't
-    // fully release the event loop after server.close() (or after the
-    // Promise.race timeout fires). Same hang family as W126 polish #3 /
-    // W135 SW3 / W136 SW5 trace agent finding. Without this, the script
-    // hangs indefinitely after printing the summary table, requiring
-    // manual Ctrl+C to terminate — recorded as W159 §Honesty NEW #1.
-    process.exit(0)
-  })
-  .catch((err) => {
-    console.error("\n[lhci-windows-fallback] fatal:", err)
-    process.exit(1)
-  })
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  main()
+    .then(() => {
+      // W162 SW2 — explicit process.exit(0) ensures the wrapper terminates
+      // cleanly even when vite preview's underlying Worker thread doesn't
+      // fully release the event loop after server.close() (or after the
+      // Promise.race timeout fires). Same hang family as W126 polish #3 /
+      // W135 SW3 / W136 SW5 trace agent finding. Without this, the script
+      // hangs indefinitely after printing the summary table, requiring
+      // manual Ctrl+C to terminate — recorded as W159 §Honesty NEW #1.
+      process.exit(0)
+    })
+    .catch((err) => {
+      console.error("\n[lhci-windows-fallback] fatal:", err)
+      process.exit(1)
+    })
+}

@@ -138,6 +138,10 @@ def _load_stats(path: Path) -> tuple[dict[str, list[str]], dict[str, float]]:
     for test_name, duration in raw_durations.items():
         if not isinstance(test_name, str):
             raise ValueError("merged mutmut stats have a non-string duration key")
+        if isinstance(duration, bool):
+            raise ValueError(
+                f"merged mutmut stats have an invalid duration for {test_name!r}"
+            )
         try:
             numeric_duration = float(duration)
         except (TypeError, ValueError) as exc:
@@ -179,6 +183,24 @@ def _duration_total(
         exact_seconds=exact_seconds,
         fsum_seconds=fsum_seconds,
     )
+
+
+def _validated_duration_map(durations: Mapping[str, float]) -> dict[str, float]:
+    """Normalize direct callers to the same strict duration contract as JSON."""
+
+    validated: dict[str, float] = {}
+    for test_name, duration in durations.items():
+        if isinstance(duration, bool) or not isinstance(duration, (int, float)):
+            raise ValueError(
+                f"merged mutmut stats have an invalid duration for {test_name!r}"
+            )
+        numeric_duration = float(duration)
+        if not math.isfinite(numeric_duration) or numeric_duration < 0:
+            raise ValueError(
+                f"merged mutmut stats have an invalid duration for {test_name!r}"
+            )
+        validated[test_name] = numeric_duration
+    return validated
 
 
 def _conservative_ceil(total: _DurationTotal) -> int:
@@ -320,9 +342,12 @@ def calculate_shard_budget(
     if len(selected_mutants) != len(set(selected_mutants)):
         raise ValueError("selected mutant names contain duplicates")
 
-    estimates = _estimated_test_seconds(selected_mutants, tests_by_function, durations)
+    validated_durations = _validated_duration_map(durations)
+    estimates = _estimated_test_seconds(
+        selected_mutants, tests_by_function, validated_durations
+    )
     selected_test_union_seconds = _selected_test_union_seconds(
-        selected_mutants, tests_by_function, durations
+        selected_mutants, tests_by_function, validated_durations
     )
     pre_mutation_reserve = (
         METADATA_AND_STARTUP_RESERVE_SECONDS

@@ -98,6 +98,18 @@ def test_estimate_mutant_times_rejects_missing_test_durations() -> None:
         )
 
 
+@pytest.mark.parametrize("duration", [True, -0.1, float("nan"), float("inf")])
+def test_estimate_mutant_times_rejects_unsafe_test_durations(
+    duration: bool | float,
+) -> None:
+    with pytest.raises(ValueError, match="finite non-negative"):
+        estimate_mutant_times(
+            ["app.core.lifespan.x_shutdown__mutmut_1"],
+            {"app.core.lifespan.x_shutdown": ["tests/test_lifespan.py::test"]},
+            {"tests/test_lifespan.py::test": duration},
+        )
+
+
 def test_plan_mutant_shards_balances_duration_and_preserves_all_mutants() -> None:
     estimates = [
         MutantEstimate("long", 10.0),

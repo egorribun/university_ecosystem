@@ -256,6 +256,8 @@ async def test_reset_user_mfa_success(mock_db_session) -> None:
         assert res_user == user
         assert res_stats == stats
         mock_notify.assert_called_once()
+        assert isinstance(mock_notify.call_args.kwargs["body"], str)
+        assert mock_notify.call_args.kwargs["body"]
         mock_audit.assert_called_once()
         assert events == ["reset", "notification", "commit", "publish"]
 

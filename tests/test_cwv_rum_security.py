@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -17,7 +18,11 @@ from app.services.cwv import (
     CwvOriginError,
     CwvRumBinding,
     GithubActionsOidcVerifier,
+    _b64url_decode,
+    _b64url_encode,
+    _collector_binding,
     build_observation,
+    derive_route_group,
     issue_envelope,
     renew_envelope,
     verify_envelope,
@@ -83,6 +88,57 @@ def test_envelope_is_bound_to_release_navigation_and_server_derived_route() -> N
     assert claims.frontend_image_digest == DIGEST
     assert claims.deployment_run_id == 123
     assert claims.deployment_run_attempt == 2
+
+
+def test_cwv_collector_binding_and_root_route_are_stable() -> None:
+    derived_key = hmac.new(
+        SECRET.encode(), b"university-cwv-rum-envelope-v1", hashlib.sha256
+    ).digest()
+    expected_binding = hmac.new(
+        derived_key,
+        f"manual-collector:{SHA}:collector-one".encode(),
+        hashlib.sha256,
+    ).hexdigest()[:32]
+    assert _collector_binding(_binding(), "collector-one") == expected_binding
+    assert derive_route_group("/") == "core"
+    assert derive_route_group("/settings/security/profile") == (
+        "messenger_profile_settings_admin"
+    )
+    with pytest.raises(CwvEnvelopeError, match="allowlist"):
+        derive_route_group("XX/XX")
+
+
+def test_cwv_collector_binding_enforces_inclusive_identifier_bounds() -> None:
+    binding = _binding()
+
+    # Both endpoints are part of the public collector contract.  Keeping
+    # these cases explicit prevents boundary mutations from changing the
+    # accepted identifier language.
+    assert len(_collector_binding(binding, "x")) == 32
+    assert len(_collector_binding(binding, "x" * 128)) == 32
+    with pytest.raises(CwvEnvelopeError, match="collector identifier"):
+        _collector_binding(binding, "x" * 129)
+
+
+@pytest.mark.parametrize(
+    ("pathname", "expected"),
+    [
+        ("/news?filter=all?duplicate", "content"),
+        ("/news/important#section", "content"),
+        ("/events?month=8#calendar", "content"),
+    ],
+)
+def test_derive_route_group_strips_query_and_fragment_at_first_delimiter(
+    pathname: str, expected: str
+) -> None:
+    assert derive_route_group(pathname) == expected
+
+
+def test_cwv_base64url_helpers_are_padding_free_and_round_trip() -> None:
+    value = b"binary payload with \\x00 and unicode-safe bytes"
+    encoded = _b64url_encode(value)
+    assert "=" not in encoded
+    assert _b64url_decode(encoded) == value
 
 
 @pytest.mark.parametrize(
@@ -167,6 +223,50 @@ def test_envelope_rejects_expiry_and_deployment_binding_mismatch() -> None:
     with pytest.raises(CwvEnvelopeError, match="deployment binding"):
         verify_envelope(_binding(deployment_run_attempt=3), token, now=NOW)
 
+    # Each deployment identity field is independently security-critical. A
+    # regression that accidentally groups the digest and run-id checks under
+    # ``and`` would accept either single-field mismatch.
+    for binding in (
+        _binding(frontend_image_digest="sha256:" + "d" * 64),
+        _binding(deployment_run_id=124),
+    ):
+        with pytest.raises(CwvEnvelopeError, match="deployment binding"):
+            verify_envelope(binding, token, now=NOW)
+
+
+def test_observation_normalizes_timestamp_to_utc() -> None:
+    class RecordingDateTime(datetime):
+        requested_timezone: object | None = None
+
+        def astimezone(self, tz: object | None = None) -> datetime:
+            type(self).requested_timezone = tz
+            return super().astimezone(tz)  # type: ignore[arg-type]
+
+    token, _ = issue_envelope(
+        _binding(),
+        origin="https://staging.example.edu",
+        pathname="/dashboard",
+        device_class="desktop",
+        collector_principal_id="00000000-0000-0000-0000-000000000001",
+        gateway_session_id="gateway-session-not-stored",
+        now=NOW,
+    )
+    observed_now = RecordingDateTime(2026, 8, 25, 12, 0, tzinfo=UTC)
+
+    observation = build_observation(
+        _binding(),
+        token=token,
+        origin="https://staging.example.edu",
+        collector_principal_id="00000000-0000-0000-0000-000000000001",
+        gateway_session_id="gateway-session-not-stored",
+        metric="LCP",
+        value=1000,
+        now=observed_now,
+    )
+
+    assert RecordingDateTime.requested_timezone is UTC
+    assert observation.observed_at.tzinfo is UTC
+
 
 @pytest.mark.parametrize(
     ("metric", "value", "unit"),
@@ -199,7 +299,14 @@ def test_observation_uses_only_server_derived_identity_and_time(
 
     assert observation.metric == metric
     assert observation.unit == unit
+    assert observation.value == value
     assert observation.observed_at == NOW + timedelta(seconds=2)
+    assert observation.collector_id == _collector_binding(
+        _binding(), "00000000-0000-0000-0000-000000000001"
+    )
+    assert observation.route_group == "map_activity"
+    assert observation.deployment_run_id == 123
+    assert observation.deployment_run_attempt == 2
     assert (
         observation.metric_id
         == hashlib.sha256(f"nonce_abcdefghijklmnop:{metric}".encode()).hexdigest()[:32]
@@ -456,6 +563,17 @@ async def test_cwv_retention_cleanup_deletes_and_commits_expired_rows() -> None:
 
     assert deleted == 3
     db.execute.assert_awaited_once()
+    db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cwv_retention_error_and_missing_rowcount_are_fail_closed() -> None:
+    with pytest.raises(ValueError, match=r"^CWV retention must be at least one day$"):
+        await cleanup_stale_cwv_observations(db=AsyncMock(), now=NOW, retention_days=0)
+
+    db = AsyncMock()
+    db.execute.return_value = SimpleNamespace()
+    assert await cleanup_stale_cwv_observations(db=db, now=NOW, retention_days=30) == 0
     db.commit.assert_awaited_once()
 
 

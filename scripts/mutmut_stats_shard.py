@@ -15,7 +15,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+if not __package__:  # pragma: no cover - direct CI script entry point
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts.mutmut_universe import prepare_mutants_directory
 
 
 def _parse_args() -> argparse.Namespace:
@@ -59,6 +64,7 @@ def _generate_mutant_universe(mutmut_cli, *, max_children: int) -> None:
     mutmut_cli.Config.ensure_loaded()
     mutants_dir = Path("mutants")
     mutants_dir.mkdir(parents=True, exist_ok=True)
+    prepare_mutants_directory(mutmut_cli)
 
     mutmut_cli.copy_src_dir()
     mutmut_cli.copy_also_copy_files()

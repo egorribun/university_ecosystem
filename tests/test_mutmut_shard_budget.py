@@ -267,6 +267,16 @@ def test_calculate_shard_budget_rejects_missing_test_durations() -> None:
         )
 
 
+def test_calculate_shard_budget_rejects_boolean_test_durations() -> None:
+    with pytest.raises(ValueError, match="invalid duration"):
+        calculate_shard_budget(
+            ["app.module.x_invalid__mutmut_1"],
+            {"app.module.x_invalid": ["tests/test_invalid.py::test_invalid"]},
+            {"tests/test_invalid.py::test_invalid": True},
+            max_children=1,
+        )
+
+
 def test_calculate_shard_budget_rejects_invalid_worker_count() -> None:
     with pytest.raises(ValueError, match="max_children"):
         calculate_shard_budget(

@@ -79,6 +79,12 @@ def test_nightly_full_mutation_uses_audited_monotonic_test_reduction() -> None:
     assert "--control-cycle-reserve-seconds 1" in run_script
     assert "--max-timeout-seconds 20000" in run_script
     assert "scripts/run_mutmut_with_stats.py --max-children 8" in run_script
+    # The nightly plan artifact currently carries stats/IDs, not the generated
+    # source+metadata manifest required by the fail-closed reuse mode.
+    assert "--reuse-generated-universe" not in run_script
+    assert (
+        "generated source/metadata manifest is intentionally not uploaded" in run_script
+    )
     assert "full-map-survivors.txt" in run_script
     assert '.status == "survived"' in run_script
     assert "--stats mutants/mutmut-stats-full.json" in run_script

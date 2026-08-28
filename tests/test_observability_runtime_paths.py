@@ -133,10 +133,12 @@ def test_configure_otel_instrumentation_errors():
     # spawned (real OTLP exporters try to connect to localhost:4317).
     with (
         patch("app.core.observability.settings") as mock_settings,
-        patch("app.core.observability.TracerProvider", return_value=MagicMock()),
+        patch(
+            "app.core.observability.TracerProvider", return_value=MagicMock()
+        ) as tracer_provider_factory,
         patch("app.core.observability.MeterProvider", return_value=MagicMock()),
         patch("app.core.observability.LoggerProvider", return_value=MagicMock()),
-        patch("app.core.observability.OTLPSpanExporter"),
+        patch("app.core.observability.OTLPSpanExporter") as span_exporter,
         patch("app.core.observability.OTLPMetricExporter"),
         patch("app.core.observability.OTLPLogExporter"),
         patch("app.core.observability.PeriodicExportingMetricReader"),
@@ -169,6 +171,16 @@ def test_configure_otel_instrumentation_errors():
 
         res = app.core.observability._configure_otel(MagicMock())
         assert res is not None
+        span_exporter.assert_called_once_with(
+            timeout=0.75,
+            endpoint="http://localhost:4317",
+            headers={"a": "b", "c": "d"},
+        )
+        tracer_provider_factory.return_value.add_span_processor.assert_called_once()
+        assert (
+            tracer_provider_factory.return_value.add_span_processor.call_args.args[0]
+            is not None
+        )
 
 
 def test_configure_observability_instrument_app_error():

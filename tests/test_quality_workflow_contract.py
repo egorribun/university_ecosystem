@@ -1527,7 +1527,40 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
         for step in mutation_job["steps"]
         if step.get("uses", "").startswith("actions/download-artifact")
     )
-    assert download_step["with"]["pattern"] == "mutmut-stats-*"
+    assert download_step["with"]["pattern"] == (
+        "mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-*"
+    )
+    assert download_step["with"]["if-no-artifact-found"] == "error"
+    require_stats = next(
+        step
+        for step in mutation_job["steps"]
+        if step.get("name") == "Require all mutmut stats shards"
+    )
+    assert require_stats["env"] == {
+        "RUN_ID": "${{ github.run_id }}",
+        "RUN_ATTEMPT": "${{ github.run_attempt }}",
+    }
+    assert "expected=8" in require_stats["run"]
+    assert "find mutmut-stats -type f -name 'mutmut-stats.json'" in require_stats["run"]
+    assert "seq 0 7" in require_stats["run"]
+    stats_upload = next(
+        step
+        for step in stats_job["steps"]
+        if step.get("name") == "Upload mutmut stats shard"
+    )
+    assert stats_upload["with"]["name"] == (
+        "mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-"
+        "${{ matrix.stats_shard }}"
+    )
+    exact_upload = next(
+        step
+        for step in mutation_job["steps"]
+        if step.get("name") == "Upload incremental mutation evidence"
+    )
+    assert exact_upload["with"]["name"] == (
+        "mutmut-exact-evidence-${{ github.run_id }}-${{ github.run_attempt }}-"
+        "${{ matrix.shard }}"
+    )
     assert "scripts/merge_mutmut_stats.py" in mutation_text
     assert "mutants/mutmut-stats.json" in mutation_text
     assert "mutation-tests-stats" in jobs["ci-success"]["needs"]
@@ -1569,6 +1602,17 @@ def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> Non
     )
     assert {job["name"] for job in jobs.values()}.isdisjoint(REQUIRED_CI_CONTEXTS)
 
+    stats_job = jobs["manual-mutation-stats"]
+    stats_upload = next(
+        step
+        for step in stats_job["steps"]
+        if step.get("name") == "Upload manual mutmut stats shard"
+    )
+    assert stats_upload["with"]["name"] == (
+        "manual-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-"
+        "${{ matrix.stats_shard }}"
+    )
+
     for job_name in ("manual-mutation-stats", "manual-mutation-tests"):
         mutation_scope = next(
             step
@@ -1605,7 +1649,29 @@ def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> Non
         for step in manual_mutation_job["steps"]
         if step.get("name") == "Upload manual mutation evidence"
     )
+    assert manual_upload["with"]["name"] == (
+        "manual-mutation-evidence-${{ github.run_id }}-${{ github.run_attempt }}-"
+        "${{ matrix.shard }}"
+    )
     assert "mutants/mutmut-exact-evidence/" in manual_upload["with"]["path"]
+
+    stats_download = next(
+        step
+        for step in manual_mutation_job["steps"]
+        if step.get("name") == "Download manual mutmut stats shards"
+    )
+    assert stats_download["with"]["pattern"] == (
+        "manual-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-*"
+    )
+    assert stats_download["with"]["if-no-artifact-found"] == "error"
+    require_stats = next(
+        step
+        for step in manual_mutation_job["steps"]
+        if step.get("name") == "Require all manual mutmut stats shards"
+    )
+    assert "expected=8" in require_stats["run"]
+    assert "find mutmut-stats -type f -name 'mutmut-stats.json'" in require_stats["run"]
+    assert "seq 0 7" in require_stats["run"]
 
 
 def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() -> None:
@@ -1720,6 +1786,7 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
         assert (
             'timeout --kill-after=30s "${MUTMUT_TIMEOUT_SECONDS}s" '
             "uv run python scripts/run_mutmut_with_stats.py --max-children 2 "
+            "--reuse-generated-universe "
             '"${MUTANT_NAMES[@]}" 2>&1 '
             '| tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"'
         ) in run_script
@@ -2154,7 +2221,10 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
         if step.get("name") == "Upload Lighthouse shard reports"
     )
     assert shard_upload["with"]["include-hidden-files"] is True
-    assert shard_upload["with"]["name"] == "lighthouse-reports-${{ matrix.shard }}"
+    assert shard_upload["with"]["name"] == (
+        "lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}"
+    )
+    assert shard_upload["with"]["if-no-files-found"] == "error"
     assert not any(
         step.get("name") == "Install wasm-pack" for step in lighthouse_shards["steps"]
     )
@@ -2162,6 +2232,7 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
     lighthouse_aggregate = frontend["jobs"]["lighthouse"]
     assert lighthouse_aggregate["needs"] == "lighthouse-shards"
     assert "always()" in lighthouse_aggregate["if"]
+    assert "!cancelled()" in lighthouse_aggregate["if"]
     assert lighthouse_aggregate["name"] == "Lighthouse Audit"
     shard_guard = next(
         step
@@ -2175,12 +2246,25 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
         if isinstance(step, dict)
     )
     assert "lhr-${counter}.json" in merge_text
+    assert "expected_shards=(core content realtime fallback)" in merge_text
+    assert '"$counter" -ne 30' in merge_text
+    download_shards = next(
+        step
+        for step in lighthouse_aggregate["steps"]
+        if step.get("name") == "Download Lighthouse shard reports"
+    )
+    assert download_shards["with"]["pattern"] == (
+        "lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}-*"
+    )
+    assert download_shards["with"]["if-no-artifact-found"] == "error"
     merged_upload = next(
         step
         for step in lighthouse_aggregate["steps"]
         if step.get("name") == "Upload merged Lighthouse reports"
     )
-    assert merged_upload["with"]["name"] == "lighthouse-reports"
+    assert merged_upload["with"]["name"] == (
+        "lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}"
+    )
     assert merged_upload["with"]["include-hidden-files"] is True
 
     go = yaml.safe_load(GO_WORKFLOW_PATH.read_text(encoding="utf-8"))
@@ -2645,12 +2729,47 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert '--shard-id "${{ matrix.stats_shard }}"' in stats_script
     assert "--num-shards 8" in stats_script
     assert "--max-children 2" in stats_script
-    assert (
-        "nightly-mutmut-stats-${{ github.run_id }}-${{ matrix.stats_shard }}"
-        in upload_step["with"]["name"]
+    assert upload_step["with"]["name"] == (
+        "nightly-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-"
+        "${{ matrix.stats_shard }}"
     )
     assert download_step["with"]["pattern"] == (
-        "nightly-mutmut-stats-${{ github.run_id }}-*"
+        "nightly-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-*"
+    )
+    assert download_step["with"]["if-no-artifact-found"] == "error"
+    require_stats = next(
+        step
+        for step in plan_steps
+        if step.get("name") == "Require all full mutmut stats shards"
+    )
+    assert "expected=8" in require_stats["run"]
+    assert "find mutmut-stats -type f -name 'mutmut-stats.json'" in require_stats["run"]
+    assert "seq 0 7" in require_stats["run"]
+    plan_upload = next(
+        step
+        for step in plan_steps
+        if step.get("name") == "Upload preflighted full mutation plan"
+    )
+    assert plan_upload["with"]["name"] == (
+        "nightly-mutmut-plan-${{ github.run_id }}-${{ github.run_attempt }}"
+    )
+    plan_download = next(
+        step
+        for step in mutation_steps
+        if step.get("name") == "Download preflighted full mutation plan"
+    )
+    assert plan_download["with"]["name"] == (
+        "nightly-mutmut-plan-${{ github.run_id }}-${{ github.run_attempt }}"
+    )
+    assert plan_download["with"]["if-no-artifact-found"] == "error"
+    shard_upload = next(
+        step
+        for step in mutation_steps
+        if step.get("name") == "Upload full mutation shard evidence"
+    )
+    assert shard_upload["with"]["name"] == (
+        "nightly-mutmut-shard-${{ github.run_id }}-${{ github.run_attempt }}-"
+        "${{ matrix.shard }}"
     )
     assert "scripts/merge_mutmut_stats.py" in merge_step["run"]
     assert "--input-root mutmut-stats" in merge_step["run"]
@@ -2668,6 +2787,34 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert aggregate_job["needs"] == "mutation-tests-full"
     aggregate_text = "\n".join(
         step.get("run", "") for step in aggregate_job["steps"] if isinstance(step, dict)
+    )
+    aggregate_download = next(
+        step
+        for step in aggregate_job["steps"]
+        if step.get("name") == "Download full mutation shard evidence"
+    )
+    assert aggregate_download["with"]["pattern"] == (
+        "nightly-mutmut-shard-${{ github.run_id }}-${{ github.run_attempt }}-*"
+    )
+    assert aggregate_download["with"]["if-no-artifact-found"] == "error"
+    require_shards = next(
+        step
+        for step in aggregate_job["steps"]
+        if step.get("name") == "Require all full mutmut execution shards"
+    )
+    assert "expected=128" in require_shards["run"]
+    assert (
+        "find mutmut-shards -type f -name 'mutmut-cicd-stats.json'"
+        in require_shards["run"]
+    )
+    assert "seq 1 128" in require_shards["run"]
+    aggregate_upload = next(
+        step
+        for step in aggregate_job["steps"]
+        if step.get("name") == "Upload aggregate mutation evidence"
+    )
+    assert aggregate_upload["with"]["name"] == (
+        "nightly-mutmut-${{ github.run_id }}-${{ github.run_attempt }}"
     )
     assert "scripts/merge_mutmut_cicd_stats.py" in aggregate_text
     assert "--expected-shards 128" in aggregate_text
@@ -2734,6 +2881,15 @@ def test_pr_quality_gates_enforce_contract_policy_values() -> None:
 def test_performance_gate_asserts_downloaded_lighthouse_without_rebuilding() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     performance_job = ci_workflow["jobs"]["performance-gate"]
+    download_step = next(
+        step
+        for step in performance_job["steps"]
+        if step.get("name") == "Download Lighthouse results"
+    )
+    assert download_step["with"]["name"] == (
+        "lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}"
+    )
+    assert download_step["with"]["if-no-artifact-found"] == "error"
     threshold_step = next(
         step
         for step in performance_job["steps"]
@@ -2800,10 +2956,16 @@ def test_bundle_analysis_uses_portable_fail_closed_analyzer_and_real_report() ->
 
 def test_lhci_command_runner_uses_shell_free_platform_resolution() -> None:
     lhci_script = LHCI_SCRIPT_PATH.read_text(encoding="utf-8")
+    command_script = (LHCI_SCRIPT_PATH.parent / "lhci-command.mjs").read_text(
+        encoding="utf-8"
+    )
 
     assert "shell: false" in lhci_script
     assert "shell: true" not in lhci_script
-    assert '"/d", "/s", "/c", `${command}.cmd`' in lhci_script
+    assert "buildSafeCommandInvocation" in lhci_script
+    assert '"npm-cli.js"' in command_script
+    assert "args: [cliPath, ...args]" in command_script
+    assert '"exec", "--yes",' in lhci_script
 
 
 def test_lhci_system_dependency_bootstrap_is_explicitly_skippable() -> None:
@@ -2876,13 +3038,10 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     )
     assert shard_run == "npm run test:mutation"
 
-    mutation_replay = jobs["stryker-shard-replay"]
-    assert mutation_replay["needs"] == "stryker-shards"
-    assert mutation_replay["strategy"]["max-parallel"] == 11
-    assert mutation_replay["name"].endswith("/64")
-    assert mutation_replay["strategy"]["matrix"]["shard-index"] == list(range(64))
+    assert "stryker-shard-replay" not in jobs
     mutation_aggregate = jobs["stryker-aggregate"]
-    assert mutation_aggregate["needs"] == "stryker-shard-replay"
+    assert mutation_aggregate["needs"] == "stryker-shards"
+    assert "always()" in mutation_aggregate["if"]
     assert mutation_aggregate["env"]["STRYKER_AGGREGATE_ROOT"] == (
         "reports/mutation/external"
     )
@@ -2908,11 +3067,10 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert manual_shards["name"].endswith("/64)")
     assert manual_shards["strategy"]["max-parallel"] == 8
     assert manual_shards["timeout-minutes"] == 120
-    manual_replay = manual_workflow["jobs"]["manual-frontend-mutation-shard-replay"]
-    assert manual_replay["needs"] == "manual-frontend-mutation-shards"
-    assert manual_replay["name"].endswith("/64)")
+    assert "manual-frontend-mutation-shard-replay" not in manual_workflow["jobs"]
     manual_aggregate = manual_workflow["jobs"]["manual-frontend-mutation-aggregate"]
-    assert manual_aggregate["needs"] == "manual-frontend-mutation-shard-replay"
+    assert manual_aggregate["needs"] == "manual-frontend-mutation-shards"
+    assert manual_aggregate["if"] == "${{ always() && !cancelled() }}"
     assert (
         manual_aggregate["name"] == "Manual Mutation Evidence (frontend Stryker 100%)"
     )
@@ -2922,18 +3080,17 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert nightly_shards["name"].endswith("/64")
     assert nightly_shards["strategy"]["max-parallel"] == 8
     assert nightly_shards["timeout-minutes"] == 120
-    nightly_replay = nightly_workflow["jobs"]["frontend-mutation-shard-replay"]
-    assert nightly_replay["needs"] == "frontend-mutation-shards"
-    assert nightly_replay["name"].endswith("/64")
+    assert "frontend-mutation-shard-replay" not in nightly_workflow["jobs"]
     nightly_aggregate = nightly_workflow["jobs"]["frontend-mutation-tests-full"]
-    assert nightly_aggregate["needs"] == "frontend-mutation-shard-replay"
+    assert nightly_aggregate["needs"] == "frontend-mutation-shards"
+    assert nightly_aggregate["if"] == "${{ always() && !cancelled() }}"
     manual_roundtrip = manual_workflow["jobs"]["manual-frontend-mutation-roundtrip"]
     assert manual_roundtrip["needs"] == "manual-frontend-mutation-aggregate"
     nightly_roundtrip = nightly_workflow["jobs"]["frontend-mutation-roundtrip"]
     assert nightly_roundtrip["needs"] == "frontend-mutation-tests-full"
     nightly_failure_needs = nightly_workflow["jobs"]["notify-failure"]["needs"]
     assert "frontend-mutation-shards" in nightly_failure_needs
-    assert "frontend-mutation-shard-replay" in nightly_failure_needs
+    assert "frontend-mutation-shard-replay" not in nightly_failure_needs
     assert "frontend-mutation-tests-full" in nightly_failure_needs
     assert "frontend-mutation-roundtrip" in nightly_failure_needs
 
@@ -2989,7 +3146,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     manual_download = next(
         step
         for step in manual_aggregate["steps"]
-        if step.get("name") == "Download all manual frontend mutation shards"
+        if "Download all manual frontend mutation shards" in step.get("name", "")
     )
     assert manual_download["with"]["pattern"] == (
         "manual-frontend-mutation-shard-${{ github.run_id }}-"
@@ -3008,26 +3165,25 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         assert "github.sha" in shard_cache["with"]["key"]
         assert "github.run_attempt" not in shard_cache["with"]["key"]
 
-    for replay_job in (mutation_replay, manual_replay, nightly_replay):
-        assert replay_job["strategy"]["fail-fast"] is False
-        assert replay_job["strategy"]["matrix"]["shard-index"] == list(range(64))
+    for shard_job in (mutation_shards, manual_shards, nightly_shards):
         restore = next(
             step
-            for step in replay_job["steps"]
+            for step in shard_job["steps"]
             if step.get("name") == "Restore exact successful shard"
         )
         assert restore["uses"].startswith("actions/cache/restore@")
-        assert restore["with"]["fail-on-cache-miss"] is True
+        assert restore["with"]["fail-on-cache-miss"] is False
         assert "github.run_id" in restore["with"]["key"]
         assert "github.sha" in restore["with"]["key"]
         assert "github.run_attempt" not in restore["with"]["key"]
-        replay_upload = next(
+        producer_upload = next(
             step
-            for step in replay_job["steps"]
-            if "Replay shard evidence" in step.get("name", "")
+            for step in shard_job["steps"]
+            if "Upload current-attempt shard evidence" in step.get("name", "")
         )
-        assert "github.run_id" in replay_upload["with"]["name"]
-        assert "github.run_attempt" in replay_upload["with"]["name"]
+        assert producer_upload["if"] == "${{ always() }}"
+        assert "github.run_id" in producer_upload["with"]["name"]
+        assert "github.run_attempt" in producer_upload["with"]["name"]
 
     frontend_workflow = yaml.safe_load(
         (
@@ -3071,7 +3227,7 @@ def test_frontend_mutation_required_context_is_fail_closed() -> None:
         "stryker-evidence-roundtrip",
     ]
     assert context_job["if"] == (
-        "${{ always() && github.event_name == 'pull_request' }}"
+        "${{ always() && !cancelled() && github.event_name == 'pull_request' }}"
     )
     assert context_job["permissions"] == {}
     assert context_job["timeout-minutes"] == 5

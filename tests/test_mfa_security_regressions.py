@@ -558,6 +558,25 @@ def test_trusted_device_keyring_rejects_malformed_entries(
         trusted_device_module._configured_keyring()
 
 
+def test_trusted_device_keyring_rejects_key_ids_with_ambiguous_delimiters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    encoded = base64.urlsafe_b64encode(b"k" * 32).decode().rstrip("=")
+    monkeypatch.setattr(
+        trusted_device_module.settings,
+        "mfa_trusted_device_hmac_keys",
+        f"id:part:{encoded}",
+    )
+    monkeypatch.setattr(
+        trusted_device_module.settings,
+        "mfa_trusted_device_active_hmac_key_id",
+        "id:part",
+    )
+
+    with pytest.raises(RuntimeError, match="configuration"):
+        trusted_device_module._configured_keyring()
+
+
 @pytest.mark.asyncio
 async def test_trusted_device_consume_rejects_deleted_user(
     monkeypatch: pytest.MonkeyPatch,
@@ -582,6 +601,10 @@ async def test_trusted_device_consume_rejects_deleted_user(
     )
 
     assert rotated is None
+    statement = db.execute.await_args.args[0]
+    assert statement.get_execution_options()["populate_existing"] is True
+    lock = statement._for_update_arg
+    assert lock is not None and lock.nowait is False
 
 
 def _api_request(*, active_session: object | None = None) -> MagicMock:
@@ -988,6 +1011,7 @@ async def test_disable_email_factor_advances_epoch_and_clears_preferences() -> N
     assert locked_user.mfa_required is False
     assert locked_user.mfa_epoch == 8
     assert request_user.email_mfa_enabled_at is None
+    assert request_user.mfa_required is False
     assert request_user.mfa_epoch == 8
     collect.assert_awaited_once_with(db, user_id=user_id)
     db.flush.assert_awaited_once()
@@ -1204,6 +1228,9 @@ async def test_email_factor_start_commits_and_returns_delivery_contract() -> Non
     assert result.method == MFA_METHOD_EMAIL_OTP
     assert result.challenge_token == issued.challenge_token
     assert result.delivery_hint == issued.delivery_hint
+    assert result.attempt_count == 0
+    assert result.attempt_limit == 5
+    assert result.remaining_attempts == 5
     assert result.revision == 4
     db.commit.assert_awaited_once()
     db.rollback.assert_not_awaited()
@@ -1575,6 +1602,7 @@ def test_smtp_sender_applies_transport_security_and_authentication(
     client.send_message.assert_called_once()
     message = client.send_message.call_args.args[0]
     assert message["To"] == "student@example.edu"
+    assert next(name for name, _ in message.items() if name.lower() == "to") == "To"
     assert message["From"] == "security@example.edu"
     assert message["Message-ID"] == "<challenge@example.edu>"
     if security == "starttls":

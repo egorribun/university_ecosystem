@@ -700,6 +700,7 @@ async def test_notification_redelivery_skips_null_journal_and_unsupported_topic(
     user_id = uuid4()
     notification = _notification(user_id)
     subscription = _subscription(user_id)
+    subscription.endpoint = "https://push.example.test/subscription"
     null_delivery = SimpleNamespace(subscription_id=None)
     db = MagicMock(
         execute=AsyncMock(
@@ -717,6 +718,53 @@ async def test_notification_redelivery_skips_null_journal_and_unsupported_topic(
         db, notification_ids=[notification.id]
     )
     assert outcome.terminal_failures == 1
+
+
+@pytest.mark.asyncio
+async def test_notification_redelivery_applies_user_quiet_hours_to_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = uuid4()
+    notification = _notification(user_id)
+    subscription = _subscription(user_id)
+    subscription.endpoint = "https://push.example.test/subscription"
+    subscription.user = SimpleNamespace(
+        preferences=SimpleNamespace(dnd_enabled=True, dnd_start=None, dnd_end=None)
+    )
+    db = MagicMock(
+        execute=AsyncMock(
+            side_effect=[
+                _scalar_rows([notification]),
+                _scalar_rows([subscription]),
+                _scalar_rows([]),
+                MagicMock(),
+            ]
+        ),
+        flush=AsyncMock(),
+    )
+    monkeypatch.setattr(delivery, "_is_push_configured", lambda: True)
+    monkeypatch.setattr(delivery, "subscription_supports_topic", lambda *_args: True)
+    send = AsyncMock(
+        return_value=delivery.WebPushResult(
+            subscription_id=subscription.id,
+            endpoint=subscription.endpoint,
+            user_id=user_id,
+            status="sent",
+        )
+    )
+    monkeypatch.setattr(delivery.webpush_module, "_send_push_async", send)
+
+    outcome = await delivery.redeliver_notifications(
+        db, notification_ids=[notification.id]
+    )
+
+    assert outcome.sent == 1
+    payload = send.await_args.args[1]
+    assert payload["silent"] is True
+    assert payload["vibrate"] == []
+    assert payload["renotify"] is False
+    assert payload["requireInteraction"] is False
+    assert payload["data"]["dnd_suppressed"] is True
 
 
 @pytest.mark.asyncio

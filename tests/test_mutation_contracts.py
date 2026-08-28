@@ -115,6 +115,8 @@ async def test_event_notification_keeps_db_topic_title_and_translations(
     assert kwargs["title"]
     assert kwargs["title_translations"]["ru"]
     assert kwargs["title_translations"]["en"]
+    assert kwargs["body_translations"]["ru"]
+    assert kwargs["body_translations"]["en"]
     assert kwargs["topic"] == "events.published"
 
 
@@ -364,9 +366,71 @@ async def test_verify_success_update_is_bound_to_revision_and_user_devices() -> 
         now=NOW,
     )
 
+    service._resolve_recipient.assert_awaited_once_with(  # type: ignore[attr-defined]
+        db, user_id=challenge.user_id, flow=challenge.flow, for_update=True
+    )
     consumed_sql = _compiled(db.execute.await_args_list[0].args[0])
     device_sql = _compiled(db.execute.await_args_list[1].args[0])
     assert "mfa_challenges.revision =" in consumed_sql
     assert "mfa_challenges.state =" in consumed_sql
+    assert "RETURNING mfa_challenges.id" in consumed_sql
     assert "trusted_devices.user_id =" in device_sql
     assert "trusted_devices.user_id !=" not in device_sql
+
+
+@pytest.mark.asyncio
+async def test_verify_opaque_forwards_the_presented_code_unchanged() -> None:
+    service = _email_service()
+    challenge = _challenge()
+    service._load_opaque_challenge = AsyncMock(return_value=challenge)  # type: ignore[method-assign]
+    service.verify = AsyncMock(return_value=challenge)  # type: ignore[method-assign]
+
+    await service.verify_opaque(
+        MagicMock(),
+        challenge_token="opaque-token",
+        code="654321",
+        client_fingerprint=challenge.client_fingerprint,
+        client_ip="127.0.0.1",
+        login_session_identifier=challenge.session_identifier,
+    )
+
+    service.verify.assert_awaited_once()
+    assert service.verify.await_args.kwargs["code"] == "654321"
+
+
+@pytest.mark.asyncio
+async def test_resend_locks_recipient_and_cancels_only_pending_deliveries() -> None:
+    service = _email_service()
+    challenge = _challenge()
+    user = SimpleNamespace(id=challenge.user_id, email="student@example.edu")
+    challenge.recipient_digest = service._recipient_digest(
+        key_id="active", email=user.email
+    )
+    service._rate_limit = AsyncMock()  # type: ignore[method-assign]
+    service._resolve_recipient = AsyncMock(return_value=(user, user.email))  # type: ignore[method-assign]
+    service._load_bound_challenge = AsyncMock(return_value=challenge)  # type: ignore[method-assign]
+    service._digest = MagicMock(return_value="digest")  # type: ignore[method-assign]
+    first_result = MagicMock()
+    first_result.one_or_none.return_value = (challenge.id,)
+    db = MagicMock()
+    db.execute = AsyncMock(side_effect=[first_result, MagicMock()])
+    db.add_all = MagicMock()
+    db.flush = AsyncMock()
+
+    await service.resend(
+        db,
+        challenge_token="token",
+        user_id=challenge.user_id,
+        flow=challenge.flow,
+        session_identifier=challenge.session_identifier,
+        client_fingerprint=challenge.client_fingerprint,
+        client_ip="127.0.0.1",
+        locale="en",
+        now=NOW + timedelta(seconds=61),
+    )
+
+    service._resolve_recipient.assert_awaited_once_with(
+        db, user_id=challenge.user_id, flow=challenge.flow, for_update=True
+    )
+    delivery_sql = _compiled(db.execute.await_args_list[1].args[0])
+    assert "mfa_email_deliveries.status =" in delivery_sql

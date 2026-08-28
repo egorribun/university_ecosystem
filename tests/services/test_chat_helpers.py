@@ -214,6 +214,7 @@ async def test_notify_new_message_creates_push_for_other_participants() -> None:
     assert kwargs["title"] == "Alice"
     assert kwargs["body"] == "hello"
     assert kwargs["type"] == "chat.message"
+    assert kwargs["topic"] == "chat.message.created"
     assert kwargs["url"] == f"/messenger/{chat_id}"
     assert kwargs["tag"] == f"chat:{chat_id}"
     assert set(kwargs["user_ids"]) == {other_a.id, other_b.id}

@@ -38,6 +38,16 @@ test("LHCI preparation removes the legacy marker without injecting executable HT
   assert.doesNotMatch(prepared, /<script/iu)
 })
 
+test("LHCI preparation does not promote the diagnostic marker into an LCP candidate", () => {
+  const html =
+    '<html lang="ru"><head></head><body><div id="lhci-marker" style="display: none">LHCI RENDER START</div></body></html>'
+
+  const prepared = prepareLhciHtml(html)
+
+  assert.match(prepared, /id="lhci-marker"[^>]*display: none/u)
+  assert.doesNotMatch(prepared, /LHCI RENDER START[^<]*<\/div>[^]*display:\s*flex/u)
+})
+
 test("the unknown-document audit uses the dedicated lightweight fallback", () => {
   const entryPath = "dist/client/index.html"
   const notFoundPath = "dist/client/not-found.html"

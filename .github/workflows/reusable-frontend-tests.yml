@@ -562,10 +562,10 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: lighthouse-reports-${{ matrix.shard }}
+          name: lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
           path: ${{ inputs.working-directory }}/.lighthouseci
           include-hidden-files: true
-          if-no-files-found: warn
+          if-no-files-found: error
 
   # Preserve the required check display name and the single artifact consumed
   # by ci.yml's Performance Gate while allowing the route shards to run in
@@ -574,7 +574,7 @@ jobs:
   # numeric LHR filenames.
   lighthouse:
     name: Lighthouse Audit
-    if: ${{ always() && inputs.run-lighthouse }}
+    if: ${{ always() && !cancelled() && inputs.run-lighthouse }}
     needs: lighthouse-shards
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -595,9 +595,10 @@ jobs:
       - name: Download Lighthouse shard reports
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: lighthouse-reports-*
+          pattern: lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}-*
           path: ${{ inputs.working-directory }}/.lighthouseci-shards
           merge-multiple: false
+          if-no-artifact-found: error
 
       - name: Merge Lighthouse reports
         shell: bash
@@ -605,13 +606,30 @@ jobs:
           set -euo pipefail
           rm -rf .lighthouseci
           mkdir -p .lighthouseci
+          prefix="lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}"
+          expected_shards=(core content realtime fallback)
+          for shard in "${expected_shards[@]}"; do
+            shard_dir=".lighthouseci-shards/${prefix}-${shard}"
+            if [[ ! -d "$shard_dir" ]]; then
+              echo "::error::Missing Lighthouse artifact for shard $shard"
+              exit 1
+            fi
+          done
+          actual_shards="$(find .lighthouseci-shards -mindepth 1 -maxdepth 1 -type d | wc -l)"
+          if [[ "$actual_shards" -ne "${#expected_shards[@]}" ]]; then
+            echo "::error::Expected exactly ${#expected_shards[@]} Lighthouse shard artifacts, found $actual_shards"
+            exit 1
+          fi
           counter=0
           while IFS= read -r -d '' report; do
             cp "$report" ".lighthouseci/lhr-${counter}.json"
             counter=$((counter + 1))
           done < <(find .lighthouseci-shards -type f -name 'lhr-*.json' -print0 | sort -z)
-          if [ "$counter" -eq 0 ]; then
-            echo "::error::No Lighthouse LHR JSON reports were produced"
+          # Each of the core/content/realtime shards measures three routes ×
+          # three runs; fallback measures the dedicated 404 route × three runs.
+          # A complete release evidence set is therefore exactly 30 LHRs.
+          if [ "$counter" -ne 30 ]; then
+            echo "::error::Expected exactly 30 Lighthouse LHR JSON reports, found $counter"
             exit 1
           fi
           echo "Merged $counter Lighthouse LHR reports"
@@ -619,7 +637,7 @@ jobs:
       - name: Upload merged Lighthouse reports
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: lighthouse-reports
+          name: lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ inputs.working-directory }}/.lighthouseci
           include-hidden-files: true
           if-no-files-found: error

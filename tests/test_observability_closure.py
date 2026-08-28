@@ -207,6 +207,7 @@ def test_configure_otel_handles_disabled_optional_pipelines() -> None:
 
     observability._otel_configured = False
     observability._sqlalchemy_instrumented = False
+
     settings = _otel_settings(metrics=False, logs=False)
     provider = MagicMock()
     meter_provider = MagicMock()
@@ -244,6 +245,51 @@ def test_configure_otel_handles_disabled_optional_pipelines() -> None:
     skipped_sqlalchemy.return_value.instrument.assert_not_called()
     observability._otel_configured = False
     observability._sqlalchemy_instrumented = False
+
+
+def test_configure_otel_existing_provider_marks_lifecycle_configured() -> None:
+    from app.core import observability
+
+    provider = MagicMock()
+    observability._otel_configured = False
+    observability._otel_tracer_provider = provider
+    with patch.object(observability, "settings", MagicMock(enable_otel=True)):
+        assert observability._configure_otel(MagicMock()) is provider
+    assert observability._otel_configured is True
+
+
+def test_configure_otel_uses_clamped_sampler_ratio_and_exact_span_processor() -> None:
+    from app.core import observability
+
+    settings = _otel_settings(metrics=False, logs=False)
+    settings.otel_trace_sampler_ratio = 1.5
+    tracer_provider = MagicMock()
+    meter_provider = MagicMock()
+    span_exporter = MagicMock()
+    batch_processor = MagicMock()
+    with (
+        patch.object(observability, "settings", settings),
+        patch.object(observability, "TracerProvider", return_value=tracer_provider),
+        patch.object(observability, "MeterProvider", return_value=meter_provider),
+        patch.object(observability, "OTLPSpanExporter", return_value=span_exporter),
+        patch.object(
+            observability, "BatchSpanProcessor", return_value=batch_processor
+        ) as batch,
+        patch.object(observability, "TraceIdRatioBased") as ratio,
+        patch.object(observability, "ParentBased") as parent,
+        patch.object(observability, "trace"),
+        patch.object(observability, "metrics"),
+        patch.object(observability, "set_global_textmap"),
+        patch.object(observability, "SQLAlchemyInstrumentor"),
+        patch.object(observability, "RedisInstrumentor"),
+        patch.object(observability, "HTTPXClientInstrumentor"),
+    ):
+        assert observability._configure_otel(MagicMock()) is tracer_provider
+
+    ratio.assert_called_once_with(1.0)
+    parent.assert_called_once_with(ratio.return_value)
+    batch.assert_called_once_with(span_exporter)
+    tracer_provider.add_span_processor.assert_called_once_with(batch_processor)
 
 
 def test_configure_otel_optional_pipelines_without_endpoint_or_headers() -> None:
@@ -359,6 +405,23 @@ def test_configure_observability_instruments_with_owned_providers() -> None:
         tracer_provider=owned_tracer,
         meter_provider=owned_meter,
     )
+
+
+def test_configure_observability_missing_marker_uses_explicit_false_default() -> None:
+    from app.core import observability
+
+    app = FastAPI()
+    provider = MagicMock()
+    with (
+        patch.object(observability, "_configure_logging"),
+        patch.object(observability, "_configure_otel", return_value=provider),
+        patch.object(observability, "_configure_sentry"),
+        patch.object(observability.FastAPIInstrumentor, "instrument_app") as instrument,
+        patch.object(observability, "_otel_meter_provider", MagicMock()),
+    ):
+        observability.configure_observability(app, engine=MagicMock())
+
+    instrument.assert_called_once()
 
 
 def test_configure_observability_after_shutdown_does_not_reuse_dead_globals() -> None:

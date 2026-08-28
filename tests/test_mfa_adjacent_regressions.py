@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.mfa.challenge import consume_challenge, issue_challenge
@@ -223,6 +224,12 @@ async def test_trusted_device_consume_locks_user_before_device(
         user_agent="test-agent",
         ip_address="203.0.113.8",
     )
+    before = (
+        await db_session.execute(
+            select(TrustedDevice).where(TrustedDevice.user_id == test_user.id)
+        )
+    ).scalar_one()
+    before_hash = before.token_hash
     await db_session.commit()
     original_execute = db_session.execute
     locked_entities: list[object] = []
@@ -244,6 +251,8 @@ async def test_trusted_device_consume_locks_user_before_device(
     )
 
     assert locked_entities[:2] == [User, TrustedDevice]
+    await db_session.refresh(before)
+    assert before.token_hash == before_hash
 
 
 @pytest.mark.asyncio

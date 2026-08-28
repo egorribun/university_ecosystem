@@ -277,7 +277,7 @@ function finiteScore(value) {
  * Any route outside the explicit inventory is an error, preventing silently
  * ungoverned pages from entering the quality artifact.
  */
-export function evaluateLhciRoutePolicy(reports, { robotsText, expectedPaths } = {}) {
+export function evaluateLhciRoutePolicy(reports, { robotsText, expectedPaths, expectedRuns } = {}) {
   const violations = []
   const results = []
   let robotsRules = []
@@ -308,6 +308,32 @@ export function evaluateLhciRoutePolicy(reports, { robotsText, expectedPaths } =
   if (!Array.isArray(reports) || reports.length === 0) {
     violations.push("no Lighthouse LHR reports were provided")
     return { results, violations }
+  }
+
+  if (expectedRuns !== undefined) {
+    if (!Number.isInteger(expectedRuns) || expectedRuns < 1) {
+      violations.push("expected Lighthouse run count is invalid")
+    } else if (expected.length > 0) {
+      const reportCounts = new Map(expected.map((pathname) => [pathname, 0]))
+      for (const report of reports) {
+        try {
+          const parsed = parseReportUrl(report)
+          const route = parsed.requestedPath ?? parsed.pathname
+          if (reportCounts.has(route)) reportCounts.set(route, reportCounts.get(route) + 1)
+        } catch {
+          // The route-policy loop below reports malformed URLs with the
+          // detailed, redacted diagnostic. Completeness only counts valid
+          // reports and therefore deliberately does not duplicate that error.
+        }
+      }
+      for (const [pathname, count] of reportCounts) {
+        if (count !== expectedRuns) {
+          violations.push(
+            `expected Lighthouse route ${pathname} has ${count} report(s); expected ${expectedRuns}`
+          )
+        }
+      }
+    }
   }
 
   reports.forEach((report, index) => {
@@ -423,6 +449,7 @@ export async function assertLhciRoutePolicy({
   robotsPath = path.join(MODULE_ROOT, "public", "robots.txt"),
   robotsText: providedRobotsText,
   expectedPaths = LHCI_DEFAULT_EXPECTED_PATHS,
+  expectedRuns,
 } = {}) {
   let robotsText = providedRobotsText
   if (robotsText === undefined) {
@@ -434,7 +461,11 @@ export async function assertLhciRoutePolicy({
   }
 
   const reports = await readLighthouseReports(reportsDir)
-  const outcome = evaluateLhciRoutePolicy(reports, { robotsText, expectedPaths })
+  const outcome = evaluateLhciRoutePolicy(reports, {
+    robotsText,
+    expectedPaths,
+    expectedRuns,
+  })
   if (outcome.violations.length > 0) {
     throw new Error(
       `Lighthouse route policy failed with ${outcome.violations.length} violation(s):\n` +

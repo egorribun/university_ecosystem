@@ -981,6 +981,28 @@ def test_configure_observability():
             assert app.state.observability_configured is True
 
 
+def test_configure_observability_does_not_reinstrument_existing_app():
+    app = FastAPI()
+    app.state.observability_configured = False
+    app.state.otel_instrumented = True
+    tracer_provider = MagicMock()
+
+    with (
+        patch("app.core.observability.settings") as mock_settings,
+        patch("app.core.observability._configure_logging"),
+        patch("app.core.observability._configure_otel", return_value=tracer_provider),
+        patch("app.core.observability._configure_sentry"),
+        patch(
+            "app.core.observability.FastAPIInstrumentor.instrument_app"
+        ) as instrument_app,
+    ):
+        mock_settings.enable_otel = True
+        observability_core.configure_observability(app, engine=MagicMock())
+
+    instrument_app.assert_not_called()
+    assert app.state.observability_configured is True
+
+
 def test_shutdown_observability():
     from opentelemetry.sdk.metrics import MeterProvider
     from opentelemetry.sdk.trace import TracerProvider

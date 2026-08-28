@@ -13,6 +13,7 @@ import { spawn } from "node:child_process"
 
 import { chromium } from "playwright"
 
+import { buildSafeCommandInvocation } from "./lhci-command.mjs"
 import routePolicyConfig from "./lhci-route-policy-config.cjs"
 import { assertLhciRoutePolicy, normalizeLhciPath } from "./lhci-route-policy.mjs"
 
@@ -27,14 +28,7 @@ const useRemotePreview = Boolean(base)
 let dependenciesEnsured = false
 
 async function runCommand(command, args, description, extraEnv = {}) {
-  // npm and npx are .cmd shims on Windows and cannot be spawned directly with
-  // shell:false. Invoke the Windows command interpreter explicitly while
-  // keeping Node's shell option disabled; all command names and arguments are
-  // fixed by this script.
-  const isWindowsBatchCommand =
-    process.platform === "win32" && (command === "npm" || command === "npx")
-  const executable = isWindowsBatchCommand ? (process.env.ComSpec ?? "cmd.exe") : command
-  const spawnArgs = isWindowsBatchCommand ? ["/d", "/s", "/c", `${command}.cmd`, ...args] : args
+  const { executable, args: spawnArgs } = buildSafeCommandInvocation(command, args)
 
   await new Promise((resolve, reject) => {
     const child = spawn(executable, spawnArgs, {
@@ -435,12 +429,21 @@ async function run() {
     await runCommand("node", ["scripts/prepare-lhci-routes.mjs"], "prepare-lhci-routes")
   }
 
+  // Never merge reports from a previous local invocation. CI starts with a
+  // clean workspace, but explicit cleanup keeps local reruns equally
+  // fail-closed and makes the report set SHA/attempt scoped by construction.
+  await rm(path.resolve(frontendRoot, ".lighthouseci"), {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 1000,
+  })
   await writeFile(tempConfigPath, JSON.stringify(config), "utf8")
 
-  // Wave 116 SW3 — invoke @lhci/cli via npx so the script works without a
-  // global `lhci` install. `-y` auto-accepts the download prompt; after the
-  // first run npx caches the package locally. Previously the script assumed
-  // a global install and failed fast on fresh environments.
+  // Wave 116 SW3 — invoke @lhci/cli through the package manager so the script
+  // works without a global `lhci` install. POSIX uses npx's local resolution;
+  // Windows uses the shell-free npm exec form selected above. `--yes`
+  // auto-accepts the download prompt on the Windows path.
   //
   // Wave 121 polish — switched from `npx -y @lhci/cli@^0.15.1` to plain `npx
   // lhci` so the local node_modules install (with the package.json
@@ -453,10 +456,12 @@ async function run() {
   // paths like `/news` into `c:/Program Files/Git/news` when LHCI forwards
   // them to the Lighthouse CLI subprocess.
   const lhciEnv = { MSYS_NO_PATHCONV: "1" }
+  const lhciCommand = process.platform === "win32" ? "npm" : "npx"
+  const lhciPrefix = process.platform === "win32" ? ["exec", "--yes", "lhci", "--"] : ["lhci"]
   try {
     await runCommand(
-      "npx",
-      ["lhci", "collect", `--config=${tempConfigPath}`],
+      lhciCommand,
+      [...lhciPrefix, "collect", `--config=${tempConfigPath}`],
       "lhci collect",
       lhciEnv
     )
@@ -497,7 +502,12 @@ async function run() {
       throw error
     }
   }
-  await runCommand("npx", ["lhci", "assert", `--config=${tempConfigPath}`], "lhci assert", lhciEnv)
+  await runCommand(
+    lhciCommand,
+    [...lhciPrefix, "assert", `--config=${tempConfigPath}`],
+    "lhci assert",
+    lhciEnv
+  )
 
   // LHCI supports category assertions but cannot express the intentional
   // SEO distinction between public and robots-protected application routes.
@@ -509,6 +519,7 @@ async function run() {
     robotsPath: path.resolve(frontendRoot, "public", "robots.txt"),
     robotsText,
     expectedPaths,
+    expectedRuns: config.ci.collect.numberOfRuns,
   })
 
   await rm(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 1000 })

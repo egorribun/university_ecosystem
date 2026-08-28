@@ -4,6 +4,7 @@ import asyncio
 import base64
 import inspect
 import logging
+import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -100,6 +101,7 @@ async def _issue(
     *,
     now: datetime = NOW,
     display_name: str = "Student",
+    locale: str = "en",
 ) -> Any:
     user.email_verified_at = NOW - timedelta(days=1)
     user.email_mfa_enabled_at = NOW - timedelta(hours=1)
@@ -111,7 +113,7 @@ async def _issue(
         session_identifier=SESSION,
         client_fingerprint=FINGERPRINT,
         client_ip=IP,
-        locale="en",
+        locale=locale,
         display_name=display_name,
         now=now,
     )
@@ -200,6 +202,32 @@ async def test_issue_uses_exact_otp_contract_and_stores_no_plaintext(
         "locale": "en",
         "revision": 1,
     }
+
+
+@pytest.mark.asyncio
+async def test_issue_persists_requested_locale_in_delivery_and_outbox(
+    db_session: AsyncSession,
+    test_user: User,
+    otp_service: EmailOtpService,
+) -> None:
+    issued = await _issue(otp_service, db_session, test_user, locale="ru")
+    delivery = (
+        await db_session.execute(
+            select(MfaEmailDelivery).where(
+                MfaEmailDelivery.challenge_id == issued.challenge_id
+            )
+        )
+    ).scalar_one()
+    assert delivery.locale == "ru"
+    event = (
+        await db_session.execute(
+            select(StoredEvent).where(
+                StoredEvent.event_type == "auth.mfa_email.requested",
+                StoredEvent.aggregate_id_uuid == issued.challenge_id,
+            )
+        )
+    ).scalar_one()
+    assert event.payload["locale"] == "ru"
 
 
 def _runtime_limited_service() -> EmailOtpService:
@@ -323,6 +351,42 @@ async def test_email_change_invalidates_recipient_bound_otp(
 
 
 @pytest.mark.asyncio
+async def test_opaque_loader_accepts_step_up_bound_to_active_session() -> None:
+    service = EmailOtpService(
+        hmac_keys={"active": b"h" * 32},
+        active_hmac_key_id="active",
+        delivery_keks={"active": b"k" * 32},
+        active_kek_id="active",
+        rate_limiter=RecordingRateLimiter(),
+    )
+    challenge = SimpleNamespace(
+        id=uuid.uuid4(),
+        method=MFA_METHOD_EMAIL_OTP,
+        flow="step_up",
+        token_key_id="active",
+        token_digest="token-digest",
+        client_fingerprint=FINGERPRINT,
+        session_identifier=SESSION,
+    )
+    service._digest = MagicMock(return_value="token-digest")  # type: ignore[method-assign]
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = challenge
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=result)
+
+    token = email_otp_module._generate_challenge_token(challenge.id)
+    loaded = await service._load_opaque_challenge(
+        db,
+        challenge_token=token,
+        client_fingerprint=FINGERPRINT,
+        login_session_identifier=None,
+        active_session_identifier=SESSION,
+    )
+
+    assert loaded is challenge
+
+
+@pytest.mark.asyncio
 async def test_verify_is_one_time_bound_and_counts_cumulative_failures(
     db_session: AsyncSession,
     test_user: User,
@@ -348,6 +412,7 @@ async def test_verify_is_one_time_bound_and_counts_cumulative_failures(
     assert challenge is not None
     assert challenge.attempt_count == 5
     assert challenge.state == ChallengeState.LOCKED
+    assert ("verify", f"user:{test_user.id}") in otp_service._rate_limiter.calls
 
     with pytest.raises(MfaOtpRejected, match="MFA verification failed"):
         await otp_service.verify(
@@ -554,6 +619,38 @@ async def test_delivery_decrypts_only_at_send_and_crypto_shreds_terminal_success
     assert delivery.envelope_ciphertext is None
     assert delivery.wrapped_dek is None
     assert delivery.shredded_at == NOW
+
+
+@pytest.mark.asyncio
+async def test_delivery_lease_covers_the_network_send_window(
+    db_session: AsyncSession,
+    test_user: User,
+    otp_service: EmailOtpService,
+) -> None:
+    issued = await _issue(otp_service, db_session, test_user)
+    delivery = (
+        await db_session.execute(
+            select(MfaEmailDelivery).where(
+                MfaEmailDelivery.challenge_id == issued.challenge_id
+            )
+        )
+    ).scalar_one()
+    observed: list[datetime | None] = []
+
+    class InspectingSender(RecordingSender):
+        async def send(self, **kwargs: str) -> None:
+            await db_session.refresh(delivery)
+            observed.append(delivery.lease_expires_at)
+            await super().send(**kwargs)
+
+    await otp_service.deliver(
+        db_session,
+        delivery_id=delivery.id,
+        sender=InspectingSender(),
+        now=NOW,
+    )
+    assert observed[0] is not None
+    assert observed[0].replace(tzinfo=UTC) == NOW + timedelta(minutes=2)
 
 
 @pytest.mark.asyncio
@@ -920,6 +1017,62 @@ async def test_recovery_code_is_rejected_for_email_only_flows(
 
 
 @pytest.mark.asyncio
+async def test_recovery_opaque_uses_utc_for_default_consumption_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    service = EmailOtpService(
+        hmac_keys={"active": b"h" * 32},
+        active_hmac_key_id="active",
+        delivery_keks={"active": b"k" * 32},
+        active_kek_id="active",
+        rate_limiter=RecordingRateLimiter(),
+    )
+    user = SimpleNamespace(id=uuid.uuid4(), email="student@example.edu")
+    challenge = SimpleNamespace(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        flow="step_up",
+        method=MFA_METHOD_EMAIL_OTP,
+        session_identifier=SESSION,
+        client_fingerprint=FINGERPRINT,
+        token_key_id="active",
+        recipient_digest=service._recipient_digest(key_id="active", email=user.email),
+        state=ChallengeState.PENDING,
+        expires_at=NOW + timedelta(minutes=5),
+        attempt_count=0,
+        locked_at=None,
+        consumed_at=None,
+    )
+    service._load_opaque_challenge = AsyncMock(return_value=challenge)  # type: ignore[method-assign]
+    service._resolve_recipient = AsyncMock(return_value=(user, user.email))  # type: ignore[method-assign]
+    service._load_bound_challenge = AsyncMock(return_value=challenge)  # type: ignore[method-assign]
+    service._rate_limit = AsyncMock()  # type: ignore[method-assign]
+    db = MagicMock()
+    db.flush = AsyncMock()
+    clock = MagicMock(wraps=datetime)
+    clock.now.return_value = NOW
+    monkeypatch.setattr(email_otp_module, "datetime", clock)
+
+    with patch(
+        "app.auth.mfa.recovery.verify_recovery_code",
+        AsyncMock(return_value=True),
+    ):
+        consumed = await service.consume_recovery_opaque(
+            db,
+            challenge_token="opaque-token",
+            code="RECOVERY-CODE",
+            client_fingerprint=FINGERPRINT,
+            client_ip=IP,
+            login_session_identifier=None,
+            active_session_identifier=SESSION,
+        )
+
+    assert consumed is challenge
+    assert challenge.consumed_at == NOW
+    clock.now.assert_called_once_with(UTC)
+
+
+@pytest.mark.asyncio
 async def test_leased_old_revision_is_shredded_without_smtp_send(
     db_session: AsyncSession,
     test_user: User,
@@ -954,6 +1107,8 @@ async def test_leased_old_revision_is_shredded_without_smtp_send(
     assert delivery.status == "cancelled"
     assert delivery.envelope_ciphertext is None
     assert delivery.wrapped_dek is None
+    assert delivery.lease_token is None
+    assert delivery.lease_expires_at is None
     assert delivery.shredded_at is not None
     assert delivery.shredded_at.replace(tzinfo=UTC) == NOW
 
@@ -1019,6 +1174,8 @@ async def test_outbox_unknown_event_fails_closed_instead_of_marking_success() ->
         aggregate_id="unknown",
         payload={},
     )
-    with pytest.raises(RuntimeError, match="Unknown outbox event type"):
-        await OutboxWorker()._dispatch_event(event)
+    with patch("app.workers.outbox.logger.error") as log_error:
+        with pytest.raises(RuntimeError, match="Unknown outbox event type"):
+            await OutboxWorker()._dispatch_event(event)
+    assert str(event.id) in " ".join(str(value) for value in log_error.call_args.args)
     assert event.error_count is None

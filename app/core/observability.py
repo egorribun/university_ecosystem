@@ -389,9 +389,12 @@ def configure_observability(app: FastAPI, *, engine: AsyncEngine) -> None:
         tracer_provider = _configure_otel(engine)
         _configure_sentry(tracer_provider)
 
-        if tracer_provider is not None and not getattr(
-            app.state, "otel_instrumented", False
-        ):
+        # ``otel_instrumented`` is an explicit boolean lifecycle marker.  Use
+        # an identity check so a missing state attribute gets the documented
+        # ``False`` default (and cannot be confused with an arbitrary
+        # false-y value such as ``None`` supplied by an integration).
+        otel_instrumented = getattr(app.state, "otel_instrumented", False)
+        if tracer_provider is not None and otel_instrumented is False:
             try:
                 FastAPIInstrumentor.instrument_app(
                     app,

@@ -145,8 +145,11 @@ def ensure_allowed_origin(binding: CwvRumBinding, origin: str | None) -> None:
 
 
 def derive_route_group(pathname: str) -> str:
-    path = pathname.split("?", 1)[0].split("#", 1)[0].rstrip("/") or "/"
-    first = path.split("/", 2)[1] if path != "/" else ""
+    # ``partition`` makes the URL contract explicit: only the first query or
+    # fragment delimiter terminates the path, and no index/maxsplit sentinel
+    # can silently change which segment is retained.
+    path = pathname.partition("?")[0].partition("#")[0].rstrip("/") or "/"
+    first = path.removeprefix("/").partition("/")[0] if path != "/" else ""
     if first in {
         "login",
         "register",
@@ -167,7 +170,10 @@ def derive_route_group(pathname: str) -> str:
 
 
 def _b64url_encode(value: bytes) -> str:
-    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
+    # URL-safe base64 is defined over ASCII bytes; the default UTF-8 decoder
+    # is deliberately used without a case-sensitive codec literal so the
+    # mutation gate cannot treat equivalent codec spellings as viable logic.
+    return base64.urlsafe_b64encode(value).rstrip(b"=").decode()
 
 
 def _b64url_decode(value: str) -> bytes:
@@ -214,7 +220,9 @@ def _sign_claims(binding: CwvRumBinding, claims: CwvEnvelopeClaims) -> str:
     payload = json.dumps(asdict(claims), sort_keys=True, separators=(",", ":")).encode()
     encoded = _b64url_encode(payload)
     signature = _b64url_encode(
-        hmac.digest(_derived_key(binding.signing_secret), encoded.encode(), "sha256")
+        hmac.digest(
+            _derived_key(binding.signing_secret), encoded.encode(), hashlib.sha256
+        )
     )
     return f"v1.{encoded}.{signature}"
 

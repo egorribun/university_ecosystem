@@ -320,6 +320,13 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
         assert f'"{advisory}|${{{{ needs.{advisory}.result }}}}"' not in gate
 
 
+def test_ci_success_does_not_enqueue_a_finalizer_after_run_cancellation() -> None:
+    """Superseded PR runs must release the workflow concurrency group promptly."""
+
+    job = _workflow(CI)["jobs"]["ci-success"]
+    assert job["if"] == "${{ always() && !cancelled() }}"
+
+
 def test_sonar_optionality_is_explicit_and_isolated() -> None:
     path = WORKFLOWS / "sonar.yml"
     text = path.read_text(encoding="utf-8")

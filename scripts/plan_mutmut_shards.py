@@ -13,11 +13,19 @@ import hashlib
 import json
 import math
 import re
+import sys
 from collections import defaultdict
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+if not __package__:  # pragma: no cover - direct CI script entry point
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts.mutmut_universe import (
+    prepare_mutants_directory,
+    write_universe_manifest,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,7 +84,22 @@ def estimate_mutant_times(
 ) -> list[MutantEstimate]:
     """Attach mutmut's worst-case test estimate to every unique mutant."""
 
-    durations = {name: float(duration) for name, duration in duration_by_test.items()}
+    durations: dict[str, float] = {}
+    for test_name, duration in duration_by_test.items():
+        # ``bool`` is an ``int`` subclass, but accepting True/False here would
+        # silently turn malformed stats into one-second/zero-second budgets.
+        if isinstance(duration, bool) or not isinstance(duration, (int, float)):
+            raise ValueError(
+                "mutmut test durations must be finite non-negative numbers: "
+                f"{test_name!r}"
+            )
+        value = float(duration)
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(
+                "mutmut test durations must be finite non-negative numbers: "
+                f"{test_name!r}"
+            )
+        durations[test_name] = value
     estimates: list[MutantEstimate] = []
     for mutant_name in sorted(set(mutant_names)):
         mangled_name, separator, _ = mutant_name.partition("__mutmut_")
@@ -96,11 +119,17 @@ def estimate_mutant_times(
                 "mutmut stats contain missing durations for planned mutant "
                 f"{mutant_name!r}: {missing_durations}"
             )
-        estimated_seconds = sum(durations[test_name] for test_name in associated_tests)
+        estimated_seconds = math.fsum(
+            durations[test_name] for test_name in associated_tests
+        )
+        if not math.isfinite(estimated_seconds):
+            raise ValueError(
+                f"mutmut estimated duration is not finite: {mutant_name!r}"
+            )
         estimates.append(
             MutantEstimate(
                 name=mutant_name,
-                estimated_seconds=max(estimated_seconds, 0.0),
+                estimated_seconds=estimated_seconds,
             )
         )
     return estimates
@@ -252,6 +281,10 @@ def _generate_mutant_universe(mutmut_cli: Any, *, max_children: int) -> None:
     mutmut_cli.Config.ensure_loaded()
     mutants_dir = Path("mutants")
     mutants_dir.mkdir(parents=True, exist_ok=True)
+    # mutmut's mtime fast path intentionally retains newer generated files.
+    # A shard planner must start from a pristine generated source tree so stale
+    # files cannot be mistaken for the manifest it is about to publish.
+    prepare_mutants_directory(mutmut_cli)
     mutmut_cli.copy_src_dir()
     mutmut_cli.copy_also_copy_files()
     mutmut_cli.setup_source_paths()
@@ -382,6 +415,9 @@ def main() -> None:
 
     mutmut_cli = _load_mutmut_cli()
     _generate_mutant_universe(mutmut_cli, max_children=args.max_children)
+    # Persist a content-addressed source/metadata/config snapshot so the exact
+    # mutation runner can safely reuse this expensive generation phase.
+    write_universe_manifest(mutmut_cli)
     changed_line_ranges = None
     if args.changed_diff is not None:
         changed_line_ranges = parse_unified_diff_line_ranges(
