@@ -359,6 +359,11 @@ def _write_universe_candidate(root: Path, *, candidate: Path, run_attempt: str) 
     (mutants / "mutmut-incremental-plan/plan-manifest.json").write_text(
         "{}\n", encoding="utf-8"
     )
+    # A real mutmut sandbox includes empty package markers (for example
+    # ``tests/__init__.py``).  Artifact selection must preserve these regular
+    # files; zero-byte files are valid inventory members and are not unsafe.
+    (mutants / "tests").mkdir()
+    (mutants / "tests/__init__.py").touch()
     shutil.copyfile(
         selected_stats / retry_artifacts.STATS_SELECTION_NAME,
         mutants / retry_artifacts.STATS_SELECTION_NAME,

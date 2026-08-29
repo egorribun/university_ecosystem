@@ -5983,6 +5983,7 @@ def test_persistent_pytest_reset_jobs_use_explicit_narrow_opt_in() -> None:
     )
     tsan = _provenance_step(ci["jobs"]["rust-ffi-tsan"], "Run FFI tests under TSan")
     assert schemathesis["env"][marker] == "1"
+    assert schemathesis["env"]["REVOCATION_REDIS_URL"] == ("redis://localhost:6380/0")
     assert chaos["env"][marker] == "1"
     assert asan["env"][marker] == "1"
     assert tsan["env"][marker] == "1"

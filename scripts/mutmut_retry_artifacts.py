@@ -446,7 +446,14 @@ def _fresh_directory(root: Path, value: Path, label: str) -> Path:
 def _copy(
     source_root: Path, destination_root: Path, source: str, destination: str, label: str
 ) -> None:
-    input_path = _file(source_root, source, label)
+    # Inventory members may legitimately be zero-byte regular files (Python
+    # package markers such as ``tests/__init__.py`` are emitted by mutmut).
+    # Keep the strict path/link checks from ``_path`` while not conflating an
+    # empty file with a missing or unsafe artifact.  Metadata/receipt inputs
+    # continue to use ``_file`` and therefore remain non-empty by contract.
+    input_path = _path(source_root, source, label)
+    if _linked(input_path) or not input_path.is_file():
+        raise RetryArtifactError(f"{label} is missing or unsafe: {source}")
     output_path = _new_file(destination_root, destination, label)
     try:
         with (

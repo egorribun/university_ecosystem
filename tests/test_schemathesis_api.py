@@ -58,6 +58,12 @@ import schemathesis
 
 os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_schemathesis.db")
 os.environ.setdefault("ENVIRONMENT", "testing")
+# Logout revokes the generated bearer session through the isolated Redis
+# security datastore.  The application deliberately rejects its development
+# default URL (fail-closed), so the hermetic Schemathesis harness must provide
+# an explicit non-default endpoint.  ``tests/conftest.py`` redirects Redis
+# clients to fakeredis; no external service is required.
+os.environ.setdefault("REVOCATION_REDIS_URL", "redis://localhost:6380/0")
 os.environ.setdefault(
     "SECRET_KEY",
     "schemathesis-ci-placeholder-secret-key-minimum-32-chars-long",  # pragma: allowlist secret

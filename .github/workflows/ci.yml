@@ -2076,6 +2076,11 @@ jobs:
         env:
           DATABASE_URL: "sqlite+aiosqlite:///./test_schemathesis.db"
           ENVIRONMENT: testing
+          # Logout is an exercised OpenAPI operation and writes a revocation
+          # tombstone.  Keep the endpoint explicit (the app rejects its
+          # development default); pytest's fakeredis fixture makes the job
+          # hermetic without a Redis service.
+          REVOCATION_REDIS_URL: redis://localhost:6380/0
           OTEL_SDK_DISABLED: "true"
           UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
           SCHEMATHESIS_MAX_EXAMPLES: "25"
