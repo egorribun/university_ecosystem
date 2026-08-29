@@ -755,6 +755,7 @@ jobs:
             --run-id "${{ github.run_id }}" \
             --consumer-run-attempt "${{ github.run_attempt }}" \
             --commit-sha "${{ github.sha }}" \
+            --run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
             --event "${{ github.event_name }}" \
             --workflow-path ".github/workflows/ci.yml" \
             --artifact-prefix "frontend-mutation-historical-costs-" \
@@ -870,6 +871,7 @@ jobs:
             --run-id "${{ github.run_id }}" \
             --consumer-run-attempt "${{ github.run_attempt }}" \
             --commit-sha "${{ github.sha }}" \
+            --run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
             --event "${{ github.event_name }}" \
             --workflow-path ".github/workflows/ci.yml" \
             --artifact-prefix "frontend-mutation-preflight-" \
@@ -996,6 +998,7 @@ jobs:
             --run-id "${{ github.run_id }}" \
             --consumer-run-attempt "${{ github.run_attempt }}" \
             --commit-sha "${{ github.sha }}" \
+            --run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
             --event "${{ github.event_name }}" \
             --workflow-path ".github/workflows/ci.yml" \
             --artifact-prefix "frontend-mutation-preflight-" \
@@ -1122,6 +1125,7 @@ jobs:
             --run-id "${{ github.run_id }}" \
             --consumer-run-attempt "${{ github.run_attempt }}" \
             --commit-sha "${{ github.sha }}" \
+            --run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
             --event "${{ github.event_name }}" \
             --workflow-path ".github/workflows/ci.yml" \
             --artifact-prefix "frontend-mutation-validated-" \
@@ -1674,6 +1678,7 @@ jobs:
             --run-id "${{ github.run_id }}" \
             --consumer-run-attempt "${{ github.run_attempt }}" \
             --commit-sha "${{ github.sha }}" \
+            --run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
             --event "${{ github.event_name }}" \
             --workflow-path ".github/workflows/ci.yml" \
             --artifact-prefix "lighthouse-reports-attempt-" \
@@ -2553,6 +2558,10 @@ jobs:
     timeout-minutes: 25
     env:
       OTEL_SDK_DISABLED: "true"
+      # Auth-aware test collection constructs the revocation client even when
+      # the Redis transport is mocked.  Keep the fail-closed URL explicit so
+      # mutation stats cannot fail before collecting the shard mapping.
+      REVOCATION_REDIS_URL: redis://localhost:6380/0
     # Stats has an isolated read-only checkout and no dependency on a
     # pre-commit output.  Starting it beside pre-commit removes that gate's
     # startup delay from the mutation critical path; ci-success still requires
@@ -2710,6 +2719,7 @@ jobs:
       mutation_descriptor_count: ${{ steps.mutation_matrix.outputs.descriptor_count }}
     env:
       OTEL_SDK_DISABLED: "true"
+      REVOCATION_REDIS_URL: redis://localhost:6380/0
     needs:
       - pre-commit-check
       - mutation-tests-stats
@@ -2983,6 +2993,7 @@ jobs:
     timeout-minutes: 360
     env:
       OTEL_SDK_DISABLED: "true"
+      REVOCATION_REDIS_URL: redis://localhost:6380/0
     permissions:
       contents: read
       actions: read
@@ -3044,6 +3055,7 @@ jobs:
             --run-id "${{ github.run_id }}" \
             --consumer-run-attempt "${{ github.run_attempt }}" \
             --commit-sha "${{ github.sha }}" \
+            --run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
             --event "${{ github.event_name }}" \
             --workflow-path ".github/workflows/ci.yml" \
             --artifact-prefix "mutmut-universe-" \

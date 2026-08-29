@@ -14,6 +14,12 @@ on:
 permissions:
   contents: read
 
+env:
+  # Mutation collection imports authentication-aware session code.  Keep the
+  # security datastore URL explicit so fail-closed configuration validation is
+  # deterministic in this standalone workflow as well as PR CI.
+  REVOCATION_REDIS_URL: redis://localhost:6380/0
+
 concurrency:
   group: manual-mutation-evidence-${{ github.ref }}
   # Evidence is auditable only if an in-flight run is retained. Later manual

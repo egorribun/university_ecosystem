@@ -96,6 +96,11 @@ jobs:
             SECRET_KEY: ${{ secrets.SECRET_KEY || 'dummy_secret_key_for_ci_tests_at_least_32_chars' }}
             ENVIRONMENT: testing
             OTEL_SDK_DISABLED: "true"
+            # Authentication-capable unit tests exercise the revocation-aware
+            # session path.  Keep the URL explicit even when the suite mocks
+            # the Redis transport; the fail-closed client must never silently
+            # fall back to the development default.
+            REVOCATION_REDIS_URL: redis://localhost:6380/0
             PYTHON_GIL: ${{ inputs.python-gil }}  # MOD-24-03: free-threading support
         services:
             redis:

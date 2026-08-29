@@ -12,6 +12,9 @@ on:
 permissions:
   contents: read
 
+env:
+  REVOCATION_REDIS_URL: redis://localhost:6380/0
+
 concurrency:
   group: nightly-full-gate
   cancel-in-progress: false

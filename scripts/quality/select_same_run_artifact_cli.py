@@ -68,6 +68,11 @@ class SelectionArguments:
     attempt_policy: str
     allow_empty: bool
     artifact_name_layout: str = "run-id-attempt"
+    # On pull_request runs GitHub checks out the synthetic merge commit while
+    # the Actions REST run/artifact metadata is bound to the PR head commit.
+    # Keep the checkout SHA for local source and artifact-name binding, and
+    # accept the separately trusted REST identity when the event supplies it.
+    run_head_sha: str | None = None
 
 
 @dataclass(frozen=True)
@@ -184,6 +189,12 @@ def _validate_arguments(arguments: SelectionArguments) -> None:
     _require_decimal(arguments.consumer_run_attempt, "consumer_run_attempt")
     if _SHA.fullmatch(_require_text(arguments.commit_sha, "commit_sha")) is None:
         raise SameRunArtifactError("commit_sha must be a lowercase full SHA")
+    if (
+        arguments.run_head_sha is not None
+        and _SHA.fullmatch(_require_text(arguments.run_head_sha, "run_head_sha"))
+        is None
+    ):
+        raise SameRunArtifactError("run_head_sha must be a lowercase full SHA")
     _require_text(arguments.event, "event")
     workflow_path = _require_text(arguments.workflow_path, "workflow_path")
     if not workflow_path.startswith(".github/workflows/"):
@@ -275,7 +286,12 @@ def _validate_current_run(
         metadata, "id"
     ) != _require_decimal(arguments.run_id, "run_id"):
         raise SameRunArtifactError("workflow run id does not match the current run")
-    if _required(metadata, "head_sha") != arguments.commit_sha:
+    expected_run_head_sha = (
+        arguments.run_head_sha
+        if arguments.run_head_sha is not None
+        else arguments.commit_sha
+    )
+    if _required(metadata, "head_sha") != expected_run_head_sha:
         raise SameRunArtifactError("workflow run SHA does not match the current commit")
     if _required(metadata, "event") != arguments.event:
         raise SameRunArtifactError(
@@ -346,7 +362,12 @@ def _candidate_from_artifact(
         arguments.run_id, "run_id"
     ):
         raise SameRunArtifactError("artifact belongs to a foreign workflow run")
-    if workflow_run.get("head_sha") != arguments.commit_sha:
+    expected_run_head_sha = (
+        arguments.run_head_sha
+        if arguments.run_head_sha is not None
+        else arguments.commit_sha
+    )
+    if workflow_run.get("head_sha") != expected_run_head_sha:
         raise SameRunArtifactError("artifact belongs to a foreign commit")
     attempt = int(match.group(1))
     consumer_attempt = _require_decimal(
@@ -626,6 +647,7 @@ def parse_arguments(argv: Sequence[str] | None = None) -> SelectionArguments:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--consumer-run-attempt", required=True)
     parser.add_argument("--commit-sha", required=True)
+    parser.add_argument("--run-head-sha")
     parser.add_argument("--event", required=True)
     parser.add_argument("--workflow-path", required=True)
     parser.add_argument("--artifact-prefix", required=True)
@@ -645,6 +667,7 @@ def parse_arguments(argv: Sequence[str] | None = None) -> SelectionArguments:
         run_id=namespace.run_id,
         consumer_run_attempt=namespace.consumer_run_attempt,
         commit_sha=namespace.commit_sha,
+        run_head_sha=namespace.run_head_sha,
         event=namespace.event,
         workflow_path=namespace.workflow_path,
         artifact_prefix=namespace.artifact_prefix,

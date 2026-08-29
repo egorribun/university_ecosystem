@@ -1478,6 +1478,8 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert stats_job["strategy"]["matrix"]["stats_shard"] == list(range(8))
     assert stats_job["timeout-minutes"] == 25
     assert "needs" not in stats_job
+    for job in (stats_job, universe_job, mutation_job):
+        assert job["env"]["REVOCATION_REDIS_URL"] == ("redis://localhost:6380/0")
     assert universe_job["timeout-minutes"] == 35
     assert universe_job["needs"] == ["pre-commit-check", "mutation-tests-stats"]
     assert mutation_job["strategy"]["fail-fast"] is False
@@ -2312,6 +2314,12 @@ def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() ->
         if step.get("name") == "Run integration tests"
     )
     integration_job = backend_workflow["jobs"]["integration-tests"]
+    unit_job = backend_workflow["jobs"]["unit-tests"]
+    # Unit authentication paths still construct the revocation-aware session
+    # service.  An explicit non-development URL keeps failures deterministic
+    # and prevents the fail-closed client from raising a configuration error
+    # before the test's transport mocks are reached.
+    assert unit_job["env"]["REVOCATION_REDIS_URL"] == ("redis://localhost:6380/0")
     assert integration_job["env"]["RUN_INTEGRATION_TESTS"] == "1"
     assert integration_job["env"]["REVOCATION_REDIS_URL"] == (
         "redis://localhost:6380/0"

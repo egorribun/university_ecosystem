@@ -39,6 +39,7 @@ def test_historical_stryker_cost_evidence_is_same_run_bound_and_optional() -> No
         "scripts/quality/select_same_run_artifact_cli.py",
         '--artifact-prefix "frontend-mutation-historical-costs-"',
         '--artifact-suffix "${{ github.sha }}"',
+        '--run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}"',
         "--attempt-policy earlier",
         "--allow-empty",
     ):
@@ -112,6 +113,50 @@ def test_historical_stryker_cost_evidence_is_same_run_bound_and_optional() -> No
     assert aggregate_steps.index(
         _step(aggregate, "Aggregate and verify fresh frontend mutation evidence")
     ) < (aggregate_steps.index(upload))
+
+
+def test_all_stryker_selectors_bind_rest_head_sha_to_pr_head_not_merge_checkout() -> (
+    None
+):
+    jobs = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+    selectors = (
+        (
+            "stryker-preflight",
+            "Select immutable same-run historical Stryker cost candidate",
+        ),
+        ("stryker-shards", "Select immutable same-run Stryker preflight candidate"),
+        ("stryker-aggregate", "Select immutable same-run Stryker preflight candidate"),
+        (
+            "stryker-evidence-roundtrip",
+            "Select immutable same-run validated Stryker evidence candidate",
+        ),
+    )
+    for job_name, step_name in selectors:
+        selector_script = _step(jobs[job_name], step_name)["run"]
+        assert '--commit-sha "${{ github.sha }}"' in selector_script
+        assert (
+            '--run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}"'
+            in selector_script
+        )
+
+
+def test_all_ci_same_run_selectors_have_non_pr_head_sha_fallback() -> None:
+    """Selectors shared by push and PR jobs must not pass an empty head SHA."""
+
+    jobs = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+    selectors = (
+        ("performance-gate", "Select immutable same-run Lighthouse evidence candidate"),
+        (
+            "mutation-tests-incremental",
+            "Select immutable same-run mutmut universe candidate",
+        ),
+    )
+    for job_name, step_name in selectors:
+        selector_script = _step(jobs[job_name], step_name)["run"]
+        assert (
+            '--run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}"'
+            in selector_script
+        )
 
 
 def test_singleton_downloads_use_server_selected_ids() -> None:

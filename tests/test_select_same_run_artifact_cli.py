@@ -19,6 +19,7 @@ REPOSITORY = "example/university-ecosystem"
 RUN_ID = "123456789"
 CONSUMER_ATTEMPT = "3"
 COMMIT_SHA = "a" * 40
+RUN_HEAD_SHA = "b" * 40
 EVENT = "pull_request"
 WORKFLOW_PATH = ".github/workflows/ci.yml"
 PREFIX = "stryker-costs-"
@@ -205,6 +206,92 @@ def test_paginates_the_current_run_catalog_before_selecting_the_newest_attempt(
     assert network.requests[-1].path.endswith("page=2")
 
 
+def test_selector_binds_pr_run_metadata_to_head_sha_separately_from_merge_checkout(
+    tmp_path: Path,
+) -> None:
+    """PR runs may expose the merge checkout SHA and PR head SHA separately."""
+
+    github_output = tmp_path / "github-output"
+    github_output.write_text("", encoding="utf-8")
+    arguments = replace(_arguments(), run_head_sha=RUN_HEAD_SHA)
+    metadata = _run_metadata()
+    metadata["head_sha"] = RUN_HEAD_SHA
+    artifact = _artifact(artifact_id=21, producer_attempt=2)
+    artifact["workflow_run"] = {"id": int(RUN_ID), "head_sha": RUN_HEAD_SHA}
+    network = _Network(
+        [
+            _response(metadata),
+            _response({"total_count": 1, "artifacts": [artifact]}),
+        ]
+    )
+
+    result = selector.select_same_run_artifact(
+        arguments, token="test-token", github_output=github_output, request=network
+    )
+
+    assert result.artifact_id == 21
+    assert result.artifact_name == f"{PREFIX}{RUN_ID}-2-{SUFFIX}"
+
+
+def test_parse_arguments_accepts_optional_run_head_sha() -> None:
+    arguments = selector.parse_arguments(
+        [
+            "--repository",
+            REPOSITORY,
+            "--run-id",
+            RUN_ID,
+            "--consumer-run-attempt",
+            CONSUMER_ATTEMPT,
+            "--commit-sha",
+            COMMIT_SHA,
+            "--run-head-sha",
+            RUN_HEAD_SHA,
+            "--event",
+            EVENT,
+            "--workflow-path",
+            WORKFLOW_PATH,
+            "--artifact-prefix",
+            PREFIX,
+            "--artifact-suffix",
+            SUFFIX,
+            "--attempt-policy",
+            "earlier",
+        ]
+    )
+    assert arguments.run_head_sha == RUN_HEAD_SHA
+
+
+def test_non_pr_selection_falls_back_to_checkout_sha_for_rest_identity(
+    tmp_path: Path,
+) -> None:
+    arguments = replace(_arguments(), event="push", run_head_sha=None)
+    metadata = _run_metadata()
+    metadata["event"] = "push"
+    network = _Network(
+        [
+            _response(metadata),
+            _response({"total_count": 0, "artifacts": []}),
+        ]
+    )
+    output = tmp_path / "github-output"
+    output.write_text("", encoding="utf-8")
+
+    result = selector.select_same_run_artifact(
+        replace(arguments, allow_empty=True),
+        token="test-token",
+        github_output=output,
+        request=network,
+    )
+
+    assert result == selector.SelectionResult(False, None, None, None)
+
+
+@pytest.mark.parametrize("run_head_sha", ["B" * 40, "not-a-sha", ""])
+def test_selector_rejects_invalid_optional_run_head_sha(run_head_sha: str) -> None:
+    with pytest.raises(selector.SameRunArtifactError, match="run_head_sha"):
+        selector._validate_arguments(replace(_arguments(), run_head_sha=run_head_sha))
+
+
 def test_explicit_attempt_layout_selects_lighthouse_style_same_run_evidence(
     tmp_path: Path,
 ) -> None:
@@ -383,7 +470,9 @@ def test_output_rejects_symlink_loop_parent(tmp_path: Path) -> None:
     try:
         loop.symlink_to(loop, target_is_directory=True)
     except OSError as error:
-        pytest.skip(f"directory symlinks are unavailable: {error}")
+        pytest.skip(  # QUALITY-123 @egorribun — filesystem capability varies by runner
+            f"directory symlinks are unavailable: {error}"
+        )
 
     with pytest.raises(selector.SameRunArtifactError, match="parent"):
         selector._append_output(
@@ -733,7 +822,9 @@ def test_output_parent_and_file_validators_reject_missing_non_directory_and_link
     try:
         linked.symlink_to(target)
     except OSError as error:
-        pytest.skip(f"file symlinks are unavailable: {error}")
+        pytest.skip(  # QUALITY-123 @egorribun — filesystem capability varies by runner
+            f"file symlinks are unavailable: {error}"
+        )
     with pytest.raises(selector.SameRunArtifactError, match="link"):
         selector._safe_output_file(linked)
 
@@ -930,7 +1021,9 @@ def test_output_parent_rejects_ancestor_symlink_traversal(tmp_path: Path) -> Non
     try:
         linked_root.symlink_to(real_root, target_is_directory=True)
     except OSError as error:
-        pytest.skip(f"directory symlinks are unavailable: {error}")
+        pytest.skip(  # QUALITY-123 @egorribun — filesystem capability varies by runner
+            f"directory symlinks are unavailable: {error}"
+        )
     with pytest.raises(selector.SameRunArtifactError, match="traverse"):
         selector._safe_output_parent(linked_root / "child" / "github-output")
 
@@ -1142,7 +1235,9 @@ def test_output_rejects_hard_links_and_linked_parent_paths(tmp_path: Path) -> No
     try:
         os.link(original, hard_link)
     except OSError as error:
-        pytest.skip(f"hard links are unavailable: {error}")
+        pytest.skip(  # QUALITY-123 @egorribun — filesystem capability varies by runner
+            f"hard links are unavailable: {error}"
+        )
     assert hard_link.stat().st_nlink > 1
 
     with pytest.raises(selector.SameRunArtifactError, match="hard link"):
@@ -1154,7 +1249,9 @@ def test_output_rejects_hard_links_and_linked_parent_paths(tmp_path: Path) -> No
     try:
         linked_parent.symlink_to(real_parent, target_is_directory=True)
     except OSError as error:
-        pytest.skip(f"directory symlinks are unavailable: {error}")
+        pytest.skip(  # QUALITY-123 @egorribun — filesystem capability varies by runner
+            f"directory symlinks are unavailable: {error}"
+        )
     output_through_link = linked_parent / "github-output"
     output_through_link.write_text("", encoding="utf-8")
 
