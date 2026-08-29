@@ -694,6 +694,16 @@ def test_trivy_sarif_categories_preserve_main_configuration_keys() -> None:
         if step.get("uses", "").startswith("aquasecurity/trivy-action@")
     )
     assert image_scan["with"]["limit-severities-for-sarif"] is True
+    assert image_scan["env"]["TRIVY_DB_REPOSITORY"] == "ghcr.io/aquasecurity/trivy-db:2"
+
+    image_scan_steps = [
+        step
+        for step in ci_workflow["jobs"]["docker-security-scan"]["steps"]
+        if step.get("uses", "").startswith("aquasecurity/trivy-action@")
+    ]
+    assert len(image_scan_steps) == 2
+    assert image_scan_steps[1]["id"] == "trivy_scan_retry"
+    assert "steps.trivy_scan.outcome == 'failure'" in image_scan_steps[1]["if"]
 
 
 def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:

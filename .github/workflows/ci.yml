@@ -1818,6 +1818,27 @@ jobs:
         id: trivy_scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.28.0
         continue-on-error: true
+        env:
+          # Prefer the canonical GHCR database. The public mirror can be
+          # transiently unavailable from GitHub-hosted runners; changing the
+          # source does not alter severity policy or the fail-closed gate.
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
+        with:
+          image-ref: university-ecosystem/backend:${{ github.sha }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          limit-severities-for-sarif: true
+          exit-code: "1"
+          ignore-unfixed: true
+
+      - name: Retry Trivy vulnerability scanner after registry transient failure
+        id: trivy_scan_retry
+        if: always() && steps.trivy_scan.outcome == 'failure'
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.28.0
+        continue-on-error: true
+        env:
+          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db:2
         with:
           image-ref: university-ecosystem/backend:${{ github.sha }}
           format: sarif
@@ -1829,7 +1850,7 @@ jobs:
 
       - name: Upload Trivy results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
-        if: always()
+        if: always() && hashFiles('trivy-results.sarif') != ''
         continue-on-error: true
         with:
           sarif_file: trivy-results.sarif
@@ -1838,7 +1859,7 @@ jobs:
           category: ".github/workflows/ci.yml:docker-security-scan"
 
       - name: Re-assert Trivy vulnerability gate
-        if: always() && steps.trivy_scan.outcome == 'failure'
+        if: always() && steps.trivy_scan.outcome == 'failure' && steps.trivy_scan_retry.outcome == 'failure'
         run: |
           echo "::error::Trivy found a CRITICAL/HIGH backend image vulnerability or failed to complete the scan."
           exit 1
