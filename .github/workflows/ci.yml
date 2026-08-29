@@ -2689,6 +2689,34 @@ jobs:
             --workflow-sha "$WORKFLOW_SHA" \
             --event "$EVENT_NAME"
 
+      - name: Stage isolated mutmut stats artifact
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # upload-artifact preserves the relative path below the least common
+          # ancestor.  Uploading the stats file directly from ``mutants/``
+          # therefore makes the downloaded candidate contain a nested
+          # ``mutants/`` directory while the sidecar remains at its root.  The
+          # retry selector intentionally requires exactly two sibling files;
+          # stage them under one directory so transport cannot change that
+          # contract or silently broaden the candidate inventory.
+          test -f mutants/mutmut-stats.json
+          test ! -L mutants/mutmut-stats.json
+          test -f mutmut-stats-artifact.json
+          test ! -L mutmut-stats-artifact.json
+          rm -rf -- mutmut-stats-upload
+          mkdir -p -- mutmut-stats-upload
+          cp -- mutants/mutmut-stats.json mutmut-stats-upload/mutmut-stats.json
+          cp -- mutmut-stats-artifact.json mutmut-stats-upload/mutmut-stats-artifact.json
+          test -f mutmut-stats-upload/mutmut-stats.json
+          test -f mutmut-stats-upload/mutmut-stats-artifact.json
+          if find mutmut-stats-upload -mindepth 1 -maxdepth 1 ! -type f -print -quit | grep -q .; then
+            echo "::error::Mutmut stats staging contains a non-file member."
+            exit 1
+          fi
+          test "$(find mutmut-stats-upload -mindepth 1 -maxdepth 1 -type f | wc -l)" = "2"
+
       - name: Upload mutmut stats shard
         if: steps.mutation_scope.outputs.has_python == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -2697,9 +2725,10 @@ jobs:
           # suffix makes each producer immutable.  download-artifact is
           # already scoped to this workflow run.
           name: mutmut-stats-shard-${{ matrix.stats_shard }}-attempt-${{ github.run_attempt }}
-          path: |
-            mutants/mutmut-stats.json
-            mutmut-stats-artifact.json
+          # The staging directory deliberately becomes the archive root, so
+          # the selector sees exactly ``mutmut-stats.json`` and
+          # ``mutmut-stats-artifact.json`` as siblings after extraction.
+          path: mutmut-stats-upload
           # GitHub permits rerunning failed jobs for 30 days. Keep successful
           # shards available for a later same-run partial retry.
           retention-days: 30

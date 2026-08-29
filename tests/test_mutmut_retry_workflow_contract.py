@@ -31,11 +31,21 @@ def test_primary_ci_mutmut_chain_selects_only_complete_retry_safe_candidates() -
     assert (
         "python -m scripts.mutmut_retry_artifacts create-stats" in stats_sidecar["run"]
     )
+    stats_stage = _step(stats, "Stage isolated mutmut stats artifact")
+    assert "set -euo pipefail" in stats_stage["run"]
+    assert "mutmut-stats-upload/mutmut-stats.json" in stats_stage["run"]
+    assert "mutmut-stats-upload/mutmut-stats-artifact.json" in stats_stage["run"]
+    assert "test -f mutmut-stats-upload/mutmut-stats.json" in stats_stage["run"]
+    assert (
+        "test -f mutmut-stats-upload/mutmut-stats-artifact.json" in stats_stage["run"]
+    )
     stats_upload = _step(stats, "Upload mutmut stats shard")
     assert stats_upload["with"]["name"] == (
         "mutmut-stats-shard-${{ matrix.stats_shard }}-attempt-${{ github.run_attempt }}"
     )
-    assert "mutmut-stats-artifact.json" in stats_upload["with"]["path"]
+    assert stats_upload["with"]["path"] == "mutmut-stats-upload"
+    assert "mutants/mutmut-stats.json" not in stats_upload["with"]["path"]
+    assert "mutmut-stats-artifact.json" not in stats_upload["with"]["path"]
     assert stats_upload["with"]["retention-days"] == 30
 
     stats_download = _step(universe, "Download same-run mutmut stats candidates")

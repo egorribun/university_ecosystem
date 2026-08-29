@@ -1562,10 +1562,17 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
         for step in stats_job["steps"]
         if step.get("name") == "Upload mutmut stats shard"
     )
+    stats_stage = next(
+        step
+        for step in stats_job["steps"]
+        if step.get("name") == "Stage isolated mutmut stats artifact"
+    )
+    assert "mutmut-stats-upload/mutmut-stats.json" in stats_stage["run"]
+    assert "mutmut-stats-upload/mutmut-stats-artifact.json" in stats_stage["run"]
     assert stats_upload["with"]["name"] == (
         "mutmut-stats-shard-${{ matrix.stats_shard }}-attempt-${{ github.run_attempt }}"
     )
-    assert "mutmut-stats-artifact.json" in stats_upload["with"]["path"]
+    assert stats_upload["with"]["path"] == "mutmut-stats-upload"
     assert stats_upload["with"]["retention-days"] == 30
     exact_upload = next(
         step
