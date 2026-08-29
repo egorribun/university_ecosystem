@@ -489,7 +489,8 @@ def test_helm_squawk_and_trivy_are_real_blocking_gates() -> None:
     assert scan["with"]["exit-code"] == "1"
     assert scan["continue-on-error"] is True
     assert upload["continue-on-error"] is True
-    assert upload["if"] == "always()"
+    assert upload["if"].startswith("always()")
+    assert "hashFiles('trivy-results.sarif') != ''" in upload["if"]
     assert "steps.trivy_scan.outcome == 'failure'" in reassert["if"]
     assert "exit 1" in reassert["run"]
 
@@ -762,6 +763,11 @@ def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
     expected_steps = {
         ("admin-smoke-monitoring.yml", "admin-smoke", "Run admin smoke script"),
         ("ci.yml", "docker-security-scan", "Run Trivy vulnerability scanner"),
+        (
+            "ci.yml",
+            "docker-security-scan",
+            "Retry Trivy vulnerability scanner after registry transient failure",
+        ),
         (
             "ci.yml",
             "docker-security-scan",
