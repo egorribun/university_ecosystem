@@ -64,7 +64,7 @@ export default {
   // Never copy generated caches or a previous interrupted sandbox into the
   // next mutation run. Besides wasting I/O, nested Cargo caches can amplify
   // Stryker's memory use into the gigabyte range on Windows.
-  ignorePatterns: ["**/.codex_*/**", "**/target/**", "/reports/**"],
+  ignorePatterns: ["**/.codex_*/**", "**/target/**", "/reports/**", "/dist/**"],
   vitest: {
     configFile: "vitest.config.ts",
     // Each shard mutates a bounded source assignment. Vitest's related mode

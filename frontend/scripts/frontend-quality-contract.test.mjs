@@ -53,6 +53,10 @@ test("Stryker mutation scope is derived from the complete frontend coverage deno
       strykerConfig.concurrency <= 4,
     "Mutation concurrency must remain explicitly bounded"
   )
+  assert.ok(
+    strykerConfig.ignorePatterns?.includes("/dist/**"),
+    "Generated production output must not be copied into the mutation sandbox"
+  )
   assert.equal(
     strykerConfig.dryRunTimeoutMinutes,
     15,
