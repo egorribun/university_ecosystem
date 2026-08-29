@@ -350,6 +350,26 @@ def test_default_request_is_single_hop_bounded_and_handles_network_errors(
         )
 
 
+def test_default_request_uses_explicit_verified_tls_context(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = _Connection(_OpenResponse(200, {}, b"ok"))
+    tls_context = object()
+    monkeypatch.setattr(downloader.ssl, "create_default_context", lambda: tls_context)
+
+    def make_connection(*args: object, **kwargs: object) -> _Connection:
+        assert args == ("example.invalid",)
+        assert kwargs == {"port": 443, "timeout": 20, "context": tls_context}
+        return connection
+
+    monkeypatch.setattr(downloader, "HTTPSConnection", make_connection)
+
+    assert downloader._default_request(
+        downloader.Request("https://example.invalid"), 2
+    ) == downloader.HttpResponse(200, {}, b"ok")
+    assert connection.closed
+
+
 @pytest.mark.parametrize(
     "response",
     [

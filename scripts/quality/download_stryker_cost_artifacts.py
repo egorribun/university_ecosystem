@@ -19,6 +19,7 @@ import json
 import os
 import re
 import shutil
+import ssl
 import stat
 import sys
 import tempfile
@@ -191,7 +192,20 @@ def _default_request(request: Request, maximum_bytes: int) -> HttpResponse:
     target = parsed.path or "/"
     if parsed.query:
         target = f"{target}?{parsed.query}"
-    connection = HTTPSConnection(parsed.hostname, port=port or 443, timeout=20)
+    # Build an explicit system-trust context instead of relying on the
+    # constructor's implicit defaults.  This keeps certificate and hostname
+    # verification fail-closed at the transport boundary and makes the
+    # security contract visible to static analysis and reviewers.  The
+    # redirect policy is separately restricted to trusted HTTPS CDN hosts and
+    # covered by the transport tests below.
+    tls_context = ssl.create_default_context()
+    # nosemgrep: python.lang.security.audit.httpsconnection-detected.httpsconnection-detected -- explicit verified TLS context; redirect policy is host allowlisted and covered by tests
+    connection = HTTPSConnection(
+        parsed.hostname,
+        port=port or 443,
+        timeout=20,
+        context=tls_context,
+    )
     try:
         connection.request("GET", target, headers=dict(request.headers))
         response = connection.getresponse()
