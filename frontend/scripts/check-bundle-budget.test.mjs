@@ -85,7 +85,21 @@ test("keeps feature token CSS inside the matching lazy route boundary", async ()
       ])
 
       assert.match(pageSource, new RegExp(`import "@/styles/tokens/${tokenName}\\.css"`))
-      assert.match(routeSource, new RegExp(`lazy\\(\\(\\) => import\\("@/pages/${pageName}"\\)\\)`))
+
+      // Routes that explicitly opt into SSR must keep their page in the
+      // server entry graph. Requiring a lazy import for every route made the
+      // contract reject the dashboard's intentional SSR boundary and caused
+      // bundle analysis to fail before it could inspect the actual artifact.
+      // Non-SSR routes remain lazy so their feature chunks stay out of the
+      // initial delivery graph.
+      if (/^\s*ssr:\s*true\b/mu.test(routeSource)) {
+        assert.match(routeSource, new RegExp(`import ${pageName} from "@/pages/${pageName}"`))
+      } else {
+        assert.match(
+          routeSource,
+          new RegExp(`lazy\\(\\(\\) => import\\("@/pages/${pageName}"\\)\\)`)
+        )
+      }
     })
   )
 })
