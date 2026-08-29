@@ -26,8 +26,12 @@ connections:
   databaseURLKey: "database-url"
   redisBackendURLKey: "redis-backend-url"
   redisGatewayURLKey: "redis-gateway-url"
-  # Session revocation is security state and must use the dedicated durable,
-  # non-evicting datastore configured by revocationRedis below.
+  # Session revocation is security state and must use the separately bootstrapped
+  # durable, non-evicting revocation-store release. It is intentionally not an
+  # application-chart dependency: migrations are Helm pre-hooks and must only
+  # run after the store is healthy.  The URL's password comes from the separate
+  # revocation-redis-credentials/revocation-redis-password ExternalSecret,
+  # never from the general cache Redis Secret.
   redisRevocationURLKey: "redis-revocation-url"
   natsURLKey: "nats-url"
   natsAuthTokenKey: "nats-auth-token"
@@ -119,7 +123,9 @@ backup:
 
 # Schema migrations run as a blocking Helm pre-install/pre-upgrade hook before
 # application workloads are rolled out. connections.existingSecret must exist
-# before `helm install` because it contains the migration database URL.
+# before `helm install` because it contains both the migration database URL and
+# the dedicated REVOCATION_REDIS_URL used to deny legacy bearer JTIs before
+# their database rows are changed.
 migrations:
   enabled: true
   activeDeadlineSeconds: 900
@@ -465,55 +471,6 @@ redis:
       requests:
         cpu: 50m
         memory: 32Mi
-      limits:
-        cpu: 100m
-        memory: 64Mi
-
-# Dedicated security-state datastore. Revocation tombstones outlive cache
-# churn and pod restarts, and noeviction prevents revoked tokens resurrecting.
-revocationRedis:
-  enabled: true
-  networkPolicy:
-    enabled: true
-    allowExternal: false
-    allowExternalEgress: false
-  architecture: standalone
-  auth:
-    enabled: true
-    existingSecret: "redis-credentials" #checkov:skip=CKV_SECRET_6:references a Kubernetes Secret name, not a credential value
-    existingSecretPasswordKey: "redis-password" #checkov:skip=CKV_SECRET_6:references a Secret key name, not a credential value
-  master:
-    resources:
-      requests:
-        cpu: 100m
-        memory: 128Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
-    persistence:
-      enabled: true
-      size: 2Gi
-    podSecurityContext:
-      runAsNonRoot: true
-      seccompProfile:
-        type: RuntimeDefault
-    containerSecurityContext:
-      allowPrivilegeEscalation: false
-      readOnlyRootFilesystem: true
-      capabilities:
-        drop: ["ALL"]
-  commonConfiguration: |-
-    maxmemory 384mb
-    maxmemory-policy noeviction
-    save 60 1
-    appendonly yes
-    appendfsync everysec
-  metrics:
-    enabled: true
-    resources:
-      requests:
-        cpu: 25m
-        memory: 24Mi
       limits:
         cpu: 100m
         memory: 64Mi

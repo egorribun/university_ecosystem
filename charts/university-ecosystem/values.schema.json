@@ -540,7 +540,6 @@
     "postgres": {"$ref": "#/definitions/featureFlagWithConfig"},
     "postgresql": {"$ref": "#/definitions/featureFlagWithConfig"},
     "redis": {"$ref": "#/definitions/redis"},
-    "revocationRedis": {"$ref": "#/definitions/redis"},
     "nats": {
       "type": "object", "additionalProperties": false,
       "patternProperties": {

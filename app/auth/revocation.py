@@ -102,9 +102,15 @@ async def revoke_with_tombstone(
 async def get_revocation_redis_client() -> Redis[Any]:
     """Return the shared client for the isolated revocation datastore."""
     from app.core.config import settings
+    from app.core.config.cache import DEFAULT_REVOCATION_REDIS_URL
     from app.core.ratelimit import get_shared_client
 
+    if not bool(getattr(settings, "revocation_redis_access_enabled", True)):
+        role = str(getattr(settings, "app_process_role", "unknown") or "unknown")
+        raise RuntimeError(
+            f"REVOCATION_REDIS access is disabled for this process role ({role!r})"
+        )
     redis_url = str(settings.revocation_redis_url).strip()
-    if not redis_url:
+    if not redis_url or redis_url == DEFAULT_REVOCATION_REDIS_URL:
         raise RuntimeError("REVOCATION_REDIS_URL is not configured")
     return await get_shared_client(redis_url)

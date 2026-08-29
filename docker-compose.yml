@@ -64,7 +64,7 @@ services:
       METRICS_ALLOWLIST: 127.0.0.1,::1
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/0
-      REVOCATION_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
+      REVOCATION_REDIS_URL: redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
       RATE_LIMIT_STORAGE_BACKEND: redis
       RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/1
       RATE_LIMIT_HEADERS_ENABLED: "true"
@@ -121,6 +121,7 @@ services:
       - service_net
       - db_net
       - cache_net
+      - revocation_net
       - event_net
       - internal
       - public
@@ -209,7 +210,8 @@ services:
       NOTIFICATIONS_WORKER_METRICS_PORT: "9101"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/0
-      REVOCATION_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
+      APP_PROCESS_ROLE: notifications-worker
+      REVOCATION_REDIS_ACCESS_ENABLED: "false"
       RATE_LIMIT_STORAGE_BACKEND: redis
       RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/1
       NATS_URL: nats://nats:4222
@@ -227,8 +229,6 @@ services:
       SPOTIFY_SCOPES: ${SPOTIFY_SCOPES:-}
     depends_on:
       valkey:
-        condition: service_healthy
-      revocation-valkey:
         condition: service_healthy
       nats:
         condition: service_healthy
@@ -275,7 +275,8 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - set in .env file}
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/0
-      REVOCATION_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
+      APP_PROCESS_ROLE: outbox-worker
+      REVOCATION_REDIS_ACCESS_ENABLED: "false"
       NATS_URL: nats://nats:4222
       NATS_AUTH_TOKEN: ${NATS_PASSWORD:?NATS_PASSWORD is required - set in .env file}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
@@ -286,8 +287,6 @@ services:
       postgres:
         condition: service_healthy
       valkey:
-        condition: service_healthy
-      revocation-valkey:
         condition: service_healthy
       nats:
         condition: service_healthy
@@ -477,7 +476,7 @@ services:
     command:
       - valkey-server
       - --requirepass
-      - "${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}"
+      - "${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - set in .env file}"
       - --maxmemory
       - "256mb"
       - --maxmemory-policy
@@ -495,7 +494,7 @@ services:
       - --loglevel
       - warning
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}
+      REDIS_PASSWORD: ${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - set in .env file}
     volumes:
       - revocation_valkey_data:/data
     healthcheck:
@@ -504,8 +503,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - cache_net
-      - internal
+      - revocation_net
     deploy:
       resources:
         limits:
@@ -532,14 +530,20 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - set in .env file}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
+      # The irreversible WebAuthn retirement migration tombstones active JTIs
+      # before changing their database rows. Keep this on security-state Valkey.
+      REVOCATION_REDIS_URL: redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
     # SECURITY: Migration scripts and models are baked into the image.
     # No host mounts needed — eliminates risk of running uncommitted local code.
     depends_on:
       postgres:
         condition: service_healthy
+      revocation-valkey:
+        condition: service_healthy
     restart: on-failure
     networks:
       - db_net
+      - revocation_net
     deploy:
       resources:
         limits:
@@ -954,6 +958,8 @@ networks:
   db_net:
     internal: true
   cache_net:
+    internal: true
+  revocation_net:
     internal: true
   event_net:
     internal: true

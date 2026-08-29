@@ -94,6 +94,16 @@ spec:
       ports:
         - protocol: TCP
           port: 6379
+    # Dedicated durable session-revocation store.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: revocation-redis
+              app.kubernetes.io/component: master
+              university-ecosystem.io/revocation-store-for: {{ .Release.Name | quote }}
+      ports:
+        - protocol: TCP
+          port: 6379
     # File-processor gRPC.
     - to:
         - podSelector:
@@ -170,6 +180,15 @@ spec:
     - to:
         - podSelector:
             matchLabels:
+              app.kubernetes.io/name: revocation-redis
+              app.kubernetes.io/component: master
+              university-ecosystem.io/revocation-store-for: {{ .Release.Name | quote }}
+      ports:
+        - protocol: TCP
+          port: 6379
+    - to:
+        - podSelector:
+            matchLabels:
               app.kubernetes.io/name: nats
       ports:
         - protocol: TCP
@@ -239,7 +258,7 @@ spec:
 ---
 # The migration hook intentionally omits release selector labels so it can run
 # before normal chart resources exist. This policy selects it by component on
-# upgrades and permits only PostgreSQL plus DNS.
+# upgrades and permits only PostgreSQL, the dedicated revocation Redis, and DNS.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -247,6 +266,15 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "university-ecosystem.labels" . | nindent 4 }}
+  annotations:
+    # The migration Job is a pre-install/pre-upgrade hook.  This policy must
+    # be created first on a fresh release, otherwise the Job can briefly run
+    # without its egress isolation.
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-20"
+    # Keep the policy after the hook completes so the Job remains isolated for
+    # diagnostic retention; replace it only before the next hook execution.
+    helm.sh/hook-delete-policy: before-hook-creation
 spec:
   podSelector:
     matchLabels:
@@ -259,6 +287,17 @@ spec:
     - ports:
         - protocol: TCP
           port: 5432
+    # The separately bootstrapped store permits only pods carrying the
+    # <release>-revocation-redis-client label added to migration-job.yaml.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: revocation-redis
+              app.kubernetes.io/component: master
+              university-ecosystem.io/revocation-store-for: {{ .Release.Name | quote }}
+      ports:
+        - protocol: TCP
+          port: 6379
     - ports:
         - protocol: UDP
           port: 53
@@ -321,6 +360,16 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: redis
+      ports:
+        - protocol: TCP
+          port: 6379
+    # Revocation tombstones are stored separately from the volatile cache.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: revocation-redis
+              app.kubernetes.io/component: master
+              university-ecosystem.io/revocation-store-for: {{ .Release.Name | quote }}
       ports:
         - protocol: TCP
           port: 6379

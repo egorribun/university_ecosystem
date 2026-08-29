@@ -76,14 +76,15 @@ func newConnPair(t *testing.T) (server, client *websocket.Conn) {
 func newClientOn(h *Hub, serverConn *websocket.Conn, id, userID string) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
-		ID:     id,
-		UserID: userID,
-		Conn:   NewWebSocketSession(serverConn),
-		Rooms:  make(map[string]bool),
-		Send:   make(chan []byte, 8),
-		Hub:    h,
-		ctx:    ctx,
-		cancel: cancel,
+		ID:         id,
+		UserID:     userID,
+		SessionJTI: "test-" + id,
+		Conn:       NewWebSocketSession(serverConn),
+		Rooms:      make(map[string]bool),
+		Send:       make(chan []byte, 8),
+		Hub:        h,
+		ctx:        ctx,
+		cancel:     cancel,
 	}
 }
 

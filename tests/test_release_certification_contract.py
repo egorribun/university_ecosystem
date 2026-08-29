@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import subprocess
@@ -42,6 +43,15 @@ def _load_collection_module():
 def _load_artifact_collection_module():
     path = ROOT / "scripts" / "quality" / "validate_release_artifact_evidence.py"
     spec = importlib.util.spec_from_file_location("release_artifact_evidence", path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_release_image_aggregator_module():
+    path = ROOT / "scripts" / "quality" / "aggregate_release_image_evidence.py"
+    spec = importlib.util.spec_from_file_location("release_image_evidence", path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -236,6 +246,351 @@ def test_artifact_inventory_rejects_duplicate_expected_name() -> None:
 
     with pytest.raises(ValueError, match="duplicate"):
         module.validate_artifact_pages(pages, expected_name=target)
+
+
+def _release_image_artifact(
+    image_name: str, sha: str, attempt: int, artifact_id: int
+) -> dict[str, object]:
+    return {
+        "id": artifact_id,
+        "name": f"image-digest-evidence-{image_name}-{sha}-attempt-{attempt}",
+        "expired": False,
+    }
+
+
+def _release_certification_artifact(
+    sha: str, attempt: int, artifact_id: int
+) -> dict[str, object]:
+    return {
+        "id": artifact_id,
+        "name": f"quality-certification-{sha}-attempt-{attempt}",
+        "expired": False,
+    }
+
+
+def _release_artifact_pages(
+    artifacts: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    return [{"total_count": len(artifacts), "artifacts": artifacts}]
+
+
+def test_release_artifact_cohort_reuses_complete_prior_attempt_for_aggregate_retry() -> (
+    None
+):
+    """An aggregate-only retry consumes the complete successful prior cohort."""
+
+    module = _load_artifact_collection_module()
+    sha = "a" * 40
+    images = [
+        _release_image_artifact(image_name, sha, 1, index)
+        for index, image_name in enumerate(
+            ("backend", "caddy", "file-processor", "frontend", "gateway", "ws-hub"),
+            start=1,
+        )
+    ]
+    pages = _release_artifact_pages(
+        [*images, _release_certification_artifact(sha, 1, 7)]
+    )
+
+    cohort = module.select_release_artifact_cohort(
+        pages,
+        expected_repository="egorribun/university_ecosystem",
+        expected_sha=sha,
+        build_run_id=101,
+        consumer_run_attempt=2,
+    )
+
+    assert cohort["consumer_run_attempt"] == 2
+    assert {
+        item["image_name"]: item["producer_run_attempt"] for item in cohort["images"]
+    } == {
+        "backend": 1,
+        "caddy": 1,
+        "file-processor": 1,
+        "frontend": 1,
+        "gateway": 1,
+        "ws-hub": 1,
+    }
+    assert cohort["certification"]["producer_run_attempt"] == 1
+
+
+def test_release_artifact_cohort_uses_only_the_retried_image_from_new_attempt() -> None:
+    """A one-image retry retains the five valid evidence artifacts from attempt one."""
+
+    module = _load_artifact_collection_module()
+    sha = "a" * 40
+    first_attempt = [
+        _release_image_artifact(image_name, sha, 1, index)
+        for index, image_name in enumerate(
+            ("caddy", "file-processor", "frontend", "gateway", "ws-hub"),
+            start=1,
+        )
+    ]
+    pages = _release_artifact_pages(
+        [
+            *first_attempt,
+            _release_certification_artifact(sha, 1, 6),
+            _release_image_artifact("backend", sha, 2, 7),
+        ]
+    )
+
+    cohort = module.select_release_artifact_cohort(
+        pages,
+        expected_repository="egorribun/university_ecosystem",
+        expected_sha=sha,
+        build_run_id=101,
+        consumer_run_attempt=2,
+    )
+
+    assert {
+        item["image_name"]: item["producer_run_attempt"] for item in cohort["images"]
+    } == {
+        "backend": 2,
+        "caddy": 1,
+        "file-processor": 1,
+        "frontend": 1,
+        "gateway": 1,
+        "ws-hub": 1,
+    }
+    assert cohort["certification"]["producer_run_attempt"] == 1
+
+
+@pytest.mark.parametrize(
+    ("candidate", "message"),
+    [
+        (
+            _release_image_artifact("backend", "a" * 40, 3, 8),
+            "future producer attempt",
+        ),
+        (
+            _release_image_artifact("backend", "b" * 40, 1, 8),
+            "foreign source SHA",
+        ),
+        (
+            {
+                "id": 8,
+                "name": "image-digest-evidence-unknown-" + "a" * 40 + "-attempt-1",
+                "expired": False,
+            },
+            "malformed image evidence artifact candidate",
+        ),
+        (
+            _release_image_artifact("backend", "a" * 40, 1, 8),
+            "duplicate image evidence artifact candidate",
+        ),
+    ],
+)
+def test_release_artifact_cohort_rejects_untrusted_candidates(
+    candidate: dict[str, object], message: str
+) -> None:
+    module = _load_artifact_collection_module()
+    sha = "a" * 40
+    complete = [
+        _release_image_artifact(image_name, sha, 1, index)
+        for index, image_name in enumerate(
+            ("backend", "caddy", "file-processor", "frontend", "gateway", "ws-hub"),
+            start=1,
+        )
+    ]
+    pages = _release_artifact_pages(
+        [*complete, _release_certification_artifact(sha, 1, 7), candidate]
+    )
+
+    with pytest.raises(ValueError, match=message):
+        module.select_release_artifact_cohort(
+            pages,
+            expected_repository="egorribun/university_ecosystem",
+            expected_sha=sha,
+            build_run_id=101,
+            consumer_run_attempt=2,
+        )
+
+
+def test_aggregate_records_and_validates_each_selected_producer_attempt(
+    tmp_path: Path,
+) -> None:
+    """Mixed retry evidence is safe only when the manifest binds every producer."""
+
+    module = _load_release_image_aggregator_module()
+    sha = "a" * 40
+    repository = "egorribun/university_ecosystem"
+    quality_contract = ROOT / "quality" / "quality-contract.json"
+    check_policy = ROOT / "quality" / "release-required-checks.json"
+    evidence_dir = tmp_path / "image-evidence"
+    evidence_dir.mkdir()
+    attempts = {
+        "backend": 2,
+        "caddy": 1,
+        "file-processor": 1,
+        "frontend": 1,
+        "gateway": 1,
+        "ws-hub": 1,
+    }
+    images: list[dict[str, object]] = []
+    for index, (image_name, attempt) in enumerate(sorted(attempts.items()), start=1):
+        digest = f"sha256:{format(index, 'x') * 64}"
+        artifact_name = f"image-digest-evidence-{image_name}-{sha}-attempt-{attempt}"
+        producer = {
+            "repository": repository,
+            "workflow_path": ".github/workflows/build-release-images.yml",
+            "workflow_ref": (
+                f"{repository}/.github/workflows/build-release-images.yml@refs/heads/main"
+            ),
+            "workflow_sha": sha,
+            "source_ref": "refs/heads/main",
+            "event": "workflow_dispatch",
+            "run_id": 101,
+            "run_attempt": attempt,
+            "artifact_name": artifact_name,
+        }
+        payload = {
+            "schema_version": 2,
+            "image_name": image_name,
+            "source_sha": sha,
+            "subject_name": f"ghcr.io/{repository}/{image_name}",
+            "digest": digest,
+            "reference": f"ghcr.io/{repository}/{image_name}@{digest}",
+            "signature_verified": True,
+            "attestation_verified": True,
+            "producer": producer,
+            "verification": {
+                "trivy_version": "0.73.0",
+                "sbom_format": "cyclonedx-json",
+                "signature": "cosign-keyless",
+                "attestation": "github-build-provenance",
+            },
+            "build_contract": {
+                "canonical_frontend": image_name == "frontend",
+                "release_sha": sha,
+            },
+        }
+        (evidence_dir / f"{image_name}.json").write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
+        images.append(
+            {
+                "image_name": image_name,
+                "artifact_id": index,
+                "artifact_name": artifact_name,
+                "producer_run_attempt": attempt,
+            }
+        )
+
+    certification = tmp_path / "certification.json"
+    certification.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "commit_sha": sha,
+                "contract_sha256": hashlib.sha256(
+                    quality_contract.read_bytes()
+                ).hexdigest(),
+                "check_policy_sha256": hashlib.sha256(
+                    check_policy.read_bytes()
+                ).hexdigest(),
+                "check_event": "push_main",
+                "record_sha256": "c" * 64,
+                "hmac_sha256": "d" * 64,
+            }
+        ),
+        encoding="utf-8",
+    )
+    certification_artifact = f"quality-certification-{sha}-attempt-1"
+    certification_provenance = tmp_path / "certification-provenance.json"
+    certification_provenance.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "certification_sha256": hashlib.sha256(
+                    certification.read_bytes()
+                ).hexdigest(),
+                "producer": {
+                    "repository": repository,
+                    "workflow_path": ".github/workflows/build-release-images.yml",
+                    "workflow_ref": (
+                        f"{repository}/.github/workflows/"
+                        "build-release-images.yml@refs/heads/main"
+                    ),
+                    "workflow_sha": sha,
+                    "source_ref": "refs/heads/main",
+                    "event": "workflow_dispatch",
+                    "run_id": 101,
+                    "run_attempt": 1,
+                    "artifact_name": certification_artifact,
+                },
+                "quality": {
+                    "run_id": 99,
+                    "run_attempt": 1,
+                    "evidence_artifact_name": f"quality-evidence-{sha}",
+                    "contract_sha256": hashlib.sha256(
+                        quality_contract.read_bytes()
+                    ).hexdigest(),
+                    "check_policy_sha256": hashlib.sha256(
+                        check_policy.read_bytes()
+                    ).hexdigest(),
+                    "check_event": "push_main",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    cohort = tmp_path / "cohort.json"
+    cohort.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "repository": repository,
+                "source_sha": sha,
+                "build_run_id": 101,
+                "consumer_run_attempt": 2,
+                "images": images,
+                "certification": {
+                    "artifact_id": 7,
+                    "artifact_name": certification_artifact,
+                    "producer_run_attempt": 1,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    manifest = module.aggregate_image_evidence(
+        evidence_dir,
+        expected_repository=repository,
+        expected_sha=sha,
+        certification_path=certification,
+        certification_provenance_path=certification_provenance,
+        cohort_path=cohort,
+        quality_contract_path=quality_contract,
+        check_policy_path=check_policy,
+        build_run_id=101,
+        build_run_attempt=2,
+        quality_run_id=99,
+        quality_run_attempt=1,
+    )
+
+    assert {
+        image["image_name"]: image["producer"]["run_attempt"]
+        for image in manifest["images"]
+    } == attempts
+    backend = json.loads((evidence_dir / "backend.json").read_text(encoding="utf-8"))
+    backend["producer"]["artifact_name"] = "image-digest-evidence-backend-mismatch"
+    (evidence_dir / "backend.json").write_text(json.dumps(backend), encoding="utf-8")
+    with pytest.raises(ValueError, match="producer provenance"):
+        module.aggregate_image_evidence(
+            evidence_dir,
+            expected_repository=repository,
+            expected_sha=sha,
+            certification_path=certification,
+            certification_provenance_path=certification_provenance,
+            cohort_path=cohort,
+            quality_contract_path=quality_contract,
+            check_policy_path=check_policy,
+            build_run_id=101,
+            build_run_attempt=2,
+            quality_run_id=99,
+            quality_run_attempt=1,
+        )
 
 
 def test_collector_binds_check_to_exact_actions_run_and_job() -> None:
@@ -546,6 +901,114 @@ def test_canonical_image_pipeline_checks_trusted_source_before_privileged_tools(
         'test "$(git rev-parse origin/main)" = "$RELEASE_SHA"',
     ):
         assert fragment in aggregate_run
+
+
+def test_release_image_retry_selects_a_provenance_bound_artifact_cohort() -> None:
+    """Retry consumers may reuse only selected same-run producer artifacts."""
+
+    producer = yaml.safe_load(PRODUCER_WORKFLOW.read_text(encoding="utf-8"))
+    aggregate = producer["jobs"]["aggregate-image-provenance"]
+    selector = _step(aggregate, "Select retry-safe release artifact cohort")
+    selector_script = str(selector["run"])
+
+    assert selector["env"]["BUILD_RUN_ATTEMPT"] == "${{ github.run_attempt }}"
+    assert selector["env"]["BUILD_RUN_ID"] == "${{ github.run_id }}"
+    assert selector["env"]["RELEASE_SHA"] == "${{ inputs.release-sha }}"
+    assert "validate_release_artifact_evidence.py" in selector_script
+    assert "--select-release-cohort" in selector_script
+    assert '--source-sha "$RELEASE_SHA"' in selector_script
+    assert '--build-run-id "$BUILD_RUN_ID"' in selector_script
+    assert '--consumer-run-attempt "$BUILD_RUN_ATTEMPT"' in selector_script
+    assert "selected-release-artifact-cohort.json" in selector_script
+
+    image_download = _step(
+        aggregate, "Download selected verified image digest evidence"
+    )
+    assert image_download["with"]["artifact-ids"] == (
+        "${{ steps.select-artifact-cohort.outputs.image-artifact-ids }}"
+    )
+    assert "pattern" not in image_download["with"]
+    certification_download = _step(aggregate, "Download selected signed certification")
+    assert certification_download["with"]["artifact-ids"] == (
+        "${{ steps.select-artifact-cohort.outputs.certification-artifact-id }}"
+    )
+
+    aggregate_step = _step(aggregate, "Aggregate selected release image inventory")
+    aggregate_script = str(aggregate_step["run"])
+    assert (
+        "--cohort artifacts/image-evidence-provenance/selected-release-artifact-cohort.json"
+        in aggregate_script
+    )
+    assert (
+        "--certification-provenance artifacts/quality/certification-provenance.json"
+        in aggregate_script
+    )
+    assert "--quality-contract quality/quality-contract.json" in aggregate_script
+    assert "--check-policy quality/release-required-checks.json" in aggregate_script
+
+    reusable = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "reusable-build-and-sign.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    evidence = _step(reusable["jobs"]["build"], "Write verified image digest evidence")
+    assert evidence["env"]["PRODUCER_WORKFLOW_REF"] == "${{ github.workflow_ref }}"
+    assert evidence["env"]["PRODUCER_WORKFLOW_SHA"] == "${{ github.workflow_sha }}"
+    assert "artifact_name" in str(evidence["run"])
+    assert '"producer"' in str(evidence["run"])
+
+
+def test_aggregate_reverifies_the_selected_certification_before_aggregation() -> None:
+    """Artifact integrity is insufficient without rechecking the certification HMAC."""
+
+    producer = yaml.safe_load(PRODUCER_WORKFLOW.read_text(encoding="utf-8"))
+    aggregate = producer["jobs"]["aggregate-image-provenance"]
+    certification_download = _step(aggregate, "Download selected signed certification")
+    verify = _step(aggregate, "Verify selected signed certification")
+    aggregate_step = _step(aggregate, "Aggregate selected release image inventory")
+
+    assert verify["env"] == {
+        "QUALITY_CERTIFICATION_KEY": "${{ secrets.QUALITY_CERTIFICATION_KEY }}",
+        "RELEASE_SHA": "${{ inputs.release-sha }}",
+        "UV_OFFLINE": "true",
+    }
+    assert "QUALITY_CERTIFICATION_KEY is required" in verify["run"]
+    assert (
+        "uv run --frozen --no-sync --only-group release-certification python"
+        in verify["run"]
+    )
+    assert "-m scripts.quality.verify_certification" in verify["run"]
+    assert "--record artifacts/quality/certification.json" in verify["run"]
+    assert '--expected-commit-sha "$RELEASE_SHA"' in verify["run"]
+    steps = aggregate["steps"]
+    assert (
+        steps.index(certification_download)
+        < steps.index(verify)
+        < steps.index(aggregate_step)
+    )
+
+
+def test_selected_certification_verifier_rejects_tampered_record(
+    tmp_path: Path,
+) -> None:
+    certification = _load_certification_module()
+    verifier = _load_verifier_module()
+    key = b"release-certification-test-key"
+    path = tmp_path / "certification.json"
+    record = certification.build_record(
+        commit_sha="a" * 40,
+        contract_path=ROOT / "quality" / "quality-contract.json",
+        report_paths=[],
+        check_results={"CI Success": {"conclusion": "success"}},
+        known_limitations=[],
+        signing_key=key,
+        generated_at="2026-08-27T00:00:00Z",
+    )
+    record["known_limitations"] = ["tampered after signing"]
+    path.write_text(json.dumps(record), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="HMAC"):
+        verifier.verify_certification(path, expected_commit_sha="a" * 40, key=key)
 
 
 def test_policy_binds_each_check_to_a_workflow_and_repository() -> None:

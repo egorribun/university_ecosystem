@@ -30,6 +30,7 @@ Set-Location $ProjectRoot
 
 $ComposeFile = "docker-compose.full.yml"
 $EnvFile = ".env.docker"
+$WorkerEnvFile = ".env.docker.workers"
 $EnvCompose = ".env"
 $OpenSslFallbackImage = "alpine:3.20@sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc"
 
@@ -177,6 +178,10 @@ function Ensure-ApplicationSecrets {
     # SECRET_KEY. .env.docker remains canonical and .env is synchronized for
     # values interpolated directly into Compose service environments.
     $specs = @(
+        # Security-state Redis has a distinct credential from the eviction-enabled
+        # cache. Do not merge this with REDIS_PASSWORD: cache-only workers must
+        # be unable to erase revoked-JTI tombstones.
+        @{ Key = "REVOCATION_REDIS_PASSWORD"; Length = 32; Fernet = $false },
         @{ Key = "CSRF_HMAC_SECRET"; Length = 48; Fernet = $false },
         @{ Key = "INTERNAL_HMAC_SECRET"; Length = 48; Fernet = $false },
         @{ Key = "IDEMPOTENCY_HMAC_SECRET"; Length = 48; Fernet = $false },
@@ -204,6 +209,43 @@ function Ensure-ApplicationSecrets {
             }
         }
     }
+}
+
+function Assert-IndependentRedisCredentials {
+    # .env.docker is the canonical source. Do this before syncing Compose
+    # interpolation so a pre-existing manual configuration cannot silently
+    # collapse cache and security-state Redis into one credential domain.
+    $cachePassword = Get-EnvEntry -Path $EnvFile -Key "REDIS_PASSWORD"
+    $revocationPassword = Get-EnvEntry -Path $EnvFile -Key "REVOCATION_REDIS_PASSWORD"
+    if (-not [string]::IsNullOrWhiteSpace($cachePassword) -and
+        -not [string]::IsNullOrWhiteSpace($revocationPassword) -and
+        $cachePassword -ceq $revocationPassword) {
+        throw "REDIS_PASSWORD and REVOCATION_REDIS_PASSWORD must differ; refusing to start with a shared cache and revocation credential."
+    }
+}
+
+function Write-WorkerEnvironmentFile {
+    # The full stack's canonical application environment also contains the
+    # dedicated revocation-store password and URL. Background workers never
+    # authenticate sessions, so materialize a separate env_file instead of
+    # handing them a broad credential-bearing environment and relying only on
+    # network isolation. The redacted file remains ignored by Git.
+    $sourcePath = Join-Path $ProjectRoot $EnvFile
+    if (-not (Test-Path -LiteralPath $sourcePath)) {
+        throw "Cannot create ${WorkerEnvFile}: ${EnvFile} is missing."
+    }
+
+    $redactedPattern = '^\s*REVOCATION_REDIS_(?:URL|PASSWORD)='
+    $workerLines = @(
+        Get-Content -LiteralPath $sourcePath | Where-Object {
+            $_ -notmatch $redactedPattern
+        }
+    )
+    if ($workerLines.Count -eq 0) {
+        throw "Cannot create ${WorkerEnvFile}: redacted environment is empty."
+    }
+
+    Write-Utf8NoBom -Path $WorkerEnvFile -Content "$(($workerLines -join "`n").TrimEnd())`n"
 }
 
 function Ensure-JwtEnvironment {
@@ -721,6 +763,7 @@ if ($needsEnvDocker -and $needsEnvCompose) {
     $secretKey         = New-Secret -Length 64
     $minioPassword     = New-Secret -Length 32
     $redisPassword     = New-Secret -Length 32
+    $revocationRedisPassword = New-Secret -Length 32
     $elasticPassword   = New-Secret -Length 32
     $natsPassword      = New-Secret -Length 32
     $spicedbKey        = New-Secret -Length 32
@@ -754,6 +797,7 @@ WS_HUB_INTERNAL_SECRET=$wsHubSecret
 GRAFANA_ADMIN_USER=admin
 GRAFANA_ADMIN_PASSWORD=$grafanaPassword
 REDIS_PASSWORD=$redisPassword
+REVOCATION_REDIS_PASSWORD=$revocationRedisPassword
 ENABLE_METRICS_ENDPOINT=true
 METRICS_BASIC_AUTH_USERNAME=metrics_scraper
 METRICS_BASIC_AUTH_PASSWORD=$metricsPassword
@@ -794,6 +838,7 @@ WS_HUB_INTERNAL_SECRET=$wsHubSecret
 GRAFANA_ADMIN_USER=admin
 GRAFANA_ADMIN_PASSWORD=$grafanaPassword
 REDIS_PASSWORD=$redisPassword
+REVOCATION_REDIS_PASSWORD=$revocationRedisPassword
 ENABLE_METRICS_ENDPOINT=true
 METRICS_BASIC_AUTH_USERNAME=metrics_scraper
 METRICS_BASIC_AUTH_PASSWORD=$metricsPassword
@@ -839,11 +884,22 @@ Ensure-MetricsEnvironment
 # Give each application security domain an independent launcher-managed key.
 Ensure-ApplicationSecrets
 
+# Fail closed if an existing local configuration reuses the cache password for
+# the durable security-state Redis. Fresh generation uses independent CSPRNG
+# values; manual rotation requires an explicit distinct replacement.
+Assert-IndependentRedisCredentials
+
 # Keep RS256 settings coherent in both supported Compose environment files.
 Ensure-JwtEnvironment
 
 # Make bind-mounted configuration changes visible to Compose's config hash.
 Ensure-DockerConfigRevision
+
+# Materialize the worker view only after every launcher-managed mutation of
+# the canonical .env.docker file, so it cannot become stale during a restart.
+# It deliberately denies both the revocation URL and its credential even when
+# a user copied every documented value into .env.docker.
+Write-WorkerEnvironmentFile
 
 # -- Sync check: keep Compose interpolation in lockstep with .env.docker ------
 # Compose reads these values from .env while containers read .env.docker. A
@@ -863,6 +919,7 @@ if (-not $generated) {
         "WS_HUB_INTERNAL_SECRET",
         "GRAFANA_ADMIN_PASSWORD",
         "REDIS_PASSWORD",
+        "REVOCATION_REDIS_PASSWORD",
         "SECRET_KEY",
         "INTERNAL_HMAC_SECRET",
         "METRICS_BASIC_AUTH_PASSWORD",

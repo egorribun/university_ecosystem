@@ -119,6 +119,7 @@ func hubWithTicketRedisReplies(t *testing.T, getdelReply, existsReply string) *H
 }
 
 const validTicket = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff" // pragma: allowlist secret
+const validSessionJTI = "11111111-1111-4111-8111-111111111111"
 
 // ---------------------------------------------------------------------------
 // validateUpgradeTicket
@@ -182,10 +183,40 @@ func TestValidateUpgradeTicket_MalformedPayloads(t *testing.T) {
 }
 
 func TestValidateUpgradeTicket_HappyPath(t *testing.T) {
-	h := hubWithTicketRedis(t, "user-77:jti-42")
+	h := hubWithTicketRedis(t, "user-77:"+validSessionJTI)
 	userID, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
 	require.NoError(t, err)
 	assert.Equal(t, "user-77", userID)
+}
+
+func TestValidateUpgradeTicketIdentityRetainsSessionJTI(t *testing.T) {
+	h := hubWithTicketRedis(t, "user-77:"+validSessionJTI)
+	identity, err := h.validateUpgradeTicketIdentity(context.Background(), validTicket)
+	require.NoError(t, err)
+	assert.Equal(t, "user-77", identity.UserID)
+	assert.Equal(t, validSessionJTI, identity.SessionJTI)
+	assert.Empty(t, identity.TenantID)
+}
+
+func TestValidateUpgradeTicketIdentityRejectsMalformedSessionJTI(t *testing.T) {
+	h := hubWithTicketRedis(t, "user-77:not-a-uuid")
+
+	_, err := h.validateUpgradeTicketIdentity(context.Background(), validTicket)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid session JTI")
+}
+
+func TestValidateUpgradeTicketIdentityRejectsNonCanonicalSessionJTI(t *testing.T) {
+	// Redis keys and the revocation Pub/Sub payload are byte-identity based.
+	// An upper-case (although parseable) UUID would not match a canonical
+	// lower-case publisher, so ticket acceptance must reject it fail-closed.
+	h := hubWithTicketRedis(t, "user-77:AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA")
+
+	_, err := h.validateUpgradeTicketIdentity(context.Background(), validTicket)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid session JTI")
 }
 
 func TestValidateUpgradeTicket_RejectsRevokedJTI(t *testing.T) {
@@ -196,8 +227,8 @@ func TestValidateUpgradeTicket_RejectsRevokedJTI(t *testing.T) {
 	h.redisClient = redisClient
 	h.revocationRedisClient = redisClient
 
-	require.NoError(t, mr.Set(wsTicketKeyPrefix+validTicket, "user-77:jti-42"))
-	require.NoError(t, mr.Set("revoked:jti:jti-42", "1"))
+	require.NoError(t, mr.Set(wsTicketKeyPrefix+validTicket, "user-77:"+validSessionJTI))
+	require.NoError(t, mr.Set("revoked:jti:"+validSessionJTI, "1"))
 
 	_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
 	require.Error(t, err)
@@ -217,8 +248,8 @@ func TestValidateUpgradeTicket_UsesDedicatedRevocationStore(t *testing.T) {
 	h := NewHub(nil, newTestLogger(), nil, &config.Config{}, ticketClient, revocationClient)
 	t.Cleanup(h.Stop)
 
-	require.NoError(t, ticketStore.Set(wsTicketKeyPrefix+validTicket, "user-77:jti-42"))
-	require.NoError(t, revocationStore.Set("revoked:jti:jti-42", "1"))
+	require.NoError(t, ticketStore.Set(wsTicketKeyPrefix+validTicket, "user-77:"+validSessionJTI))
+	require.NoError(t, revocationStore.Set("revoked:jti:"+validSessionJTI, "1"))
 
 	_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
 	require.Error(t, err)
@@ -226,7 +257,7 @@ func TestValidateUpgradeTicket_UsesDedicatedRevocationStore(t *testing.T) {
 }
 
 func TestValidateUpgradeTicket_FailsClosedWhenRevocationLookupFails(t *testing.T) {
-	h := hubWithTicketRedisReplies(t, "user-77:jti-42", "-ERR revocation lookup failed\r\n")
+	h := hubWithTicketRedisReplies(t, "user-77:"+validSessionJTI, "-ERR revocation lookup failed\r\n")
 
 	_, _, err := h.validateUpgradeTicket(context.Background(), validTicket)
 	require.Error(t, err)
@@ -237,7 +268,7 @@ func TestValidateUpgradeTicket_RequiresDedicatedRevocationStore(t *testing.T) {
 	mr := miniredis.RunT(t)
 	ticketClient := goredis.NewClient(&goredis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { require.NoError(t, ticketClient.Close()) })
-	require.NoError(t, mr.Set(wsTicketKeyPrefix+validTicket, "user-77:jti-42"))
+	require.NoError(t, mr.Set(wsTicketKeyPrefix+validTicket, "user-77:"+validSessionJTI))
 	h := NewHub(nil, newTestLogger(), nil, &config.Config{}, ticketClient, nil)
 	t.Cleanup(h.Stop)
 
@@ -362,12 +393,12 @@ func TestValidateRS256_WithoutJWKSConfigured(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestHandleWebSocket_E2EUpgradeJoinAndDeliver(t *testing.T) {
-	h := hubWithTicketRedis(t, "user-e2e:jti-1")
+	h := hubWithTicketRedis(t, "user-e2e:"+validSessionJTI)
 	cfg := &config.Config{SendBufferSize: 8}
-	oldValidate := validateUpgradeTicketFunc
-	t.Cleanup(func() { validateUpgradeTicketFunc = oldValidate })
-	validateUpgradeTicketFunc = func(*Hub, context.Context, string) (string, string, error) {
-		return "user-e2e", "tenant-e2e", nil
+	oldValidate := validateUpgradeTicketIdentityFunc
+	t.Cleanup(func() { validateUpgradeTicketIdentityFunc = oldValidate })
+	validateUpgradeTicketIdentityFunc = func(*Hub, context.Context, string) (upgradeTicketIdentity, error) {
+		return upgradeTicketIdentity{UserID: "user-e2e", TenantID: "tenant-e2e", SessionJTI: "11111111-1111-4111-8111-111111111111"}, nil
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -410,6 +441,7 @@ func TestHandleWebSocket_E2EUpgradeJoinAndDeliver(t *testing.T) {
 	require.NotNil(t, client.Identity)
 	assert.Equal(t, "tenant-e2e", client.Identity.TenantID)
 	assert.Equal(t, "tenant-e2e", client.ctx.Value(tenantIDKey))
+	assert.NotEmpty(t, client.SessionJTI)
 
 	// Join a room through ReadPump (NATS-free message type).
 	require.NoError(t, conn.WriteJSON(map[string]string{"type": "join", "room": "room-e2e"}))
@@ -445,7 +477,7 @@ func TestHandleWebSocket_RejectsDisallowedOrigin(t *testing.T) {
 	SetAllowedOrigins([]string{"http://allowed.example"})
 	defer SetAllowedOrigins(nil)
 
-	h := hubWithTicketRedis(t, "user-origin:jti-1")
+	h := hubWithTicketRedis(t, "user-origin:"+validSessionJTI)
 	cfg := &config.Config{SendBufferSize: 8}
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.HandleWebSocket(w, r, cfg)
@@ -675,7 +707,7 @@ func TestHandleWebSocket_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("at capacity", func(t *testing.T) {
-		h := hubWithTicketRedis(t, "user-123:jti-abc")
+		h := hubWithTicketRedis(t, "user-123:"+validSessionJTI)
 		h.maxClients = 1
 		h.Clients["existing-client"] = &Client{}
 
@@ -689,7 +721,7 @@ func TestHandleWebSocket_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("upgrade failed", func(t *testing.T) {
-		h := hubWithTicketRedis(t, "user-123:jti-abc")
+		h := hubWithTicketRedis(t, "user-123:"+validSessionJTI)
 
 		rec := httptest.NewRecorder()
 		// standard GET request is not a valid WebSocket upgrade request

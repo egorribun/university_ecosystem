@@ -112,11 +112,22 @@ var (
 	})
 )
 
+var noTrackedGoroutineExit = func() {}
+
 // StartTrackedGoroutine launches run and keeps ActiveGoroutines balanced for
 // the complete lifetime of the background task.
 func StartTrackedGoroutine(run func()) {
+	startTrackedGoroutine(run, noTrackedGoroutineExit)
+}
+
+// startTrackedGoroutine runs onExit only after the ActiveGoroutines gauge has
+// been decremented. Lifecycle owners use that ordering to make Stop a true
+// join: when their completion signal fires, neither the worker nor its metric
+// accounting remains live.
+func startTrackedGoroutine(run func(), onExit func()) {
 	ActiveGoroutines.Inc()
 	go func() {
+		defer onExit()
 		defer ActiveGoroutines.Dec()
 		run()
 	}()

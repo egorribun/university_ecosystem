@@ -23,6 +23,10 @@ SHA = "a" * 40
 BUILD_RUN_ID = 101
 BUILD_RUN_ATTEMPT = 2
 QUALITY_RUN_ID = 99
+QUALITY_RUN_ATTEMPT = 1
+REPOSITORY = "egorribun/university_ecosystem"
+QUALITY_CONTRACT = ROOT / "quality" / "quality-contract.json"
+CHECK_POLICY = ROOT / "quality" / "release-required-checks.json"
 
 
 def _load_script() -> ModuleType:
@@ -44,30 +48,145 @@ def _load_verifier() -> ModuleType:
 
 
 def _aggregate(module: ModuleType, evidence_dir: Path, certification: Path) -> dict:
-    return module.aggregate_image_evidence(
-        evidence_dir,
-        expected_repository="egorribun/university_ecosystem",
-        expected_sha=SHA,
-        certification_path=certification,
-        build_run_id=BUILD_RUN_ID,
-        build_run_attempt=BUILD_RUN_ATTEMPT,
-        quality_run_id=QUALITY_RUN_ID,
-    )
-
-
-def _write_evidence(directory: Path, name: str, digest_char: str) -> None:
-    digest = f"sha256:{digest_char * 64}"
-    (directory / f"{name}.json").write_text(
+    certification.write_text(
         json.dumps(
             {
                 "schema_version": 1,
+                "commit_sha": SHA,
+                "contract_sha256": hashlib.sha256(
+                    QUALITY_CONTRACT.read_bytes()
+                ).hexdigest(),
+                "check_policy_sha256": hashlib.sha256(
+                    CHECK_POLICY.read_bytes()
+                ).hexdigest(),
+                "check_event": "push_main",
+                "record_sha256": "c" * 64,
+                "hmac_sha256": "d" * 64,
+            }
+        ),
+        encoding="utf-8",
+    )
+    certification_artifact = f"quality-certification-{SHA}-attempt-{BUILD_RUN_ATTEMPT}"
+    certification_provenance = certification.with_name("certification-provenance.json")
+    certification_provenance.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "certification_sha256": hashlib.sha256(
+                    certification.read_bytes()
+                ).hexdigest(),
+                "producer": _producer(
+                    artifact_name=certification_artifact,
+                    attempt=BUILD_RUN_ATTEMPT,
+                ),
+                "quality": {
+                    "run_id": QUALITY_RUN_ID,
+                    "run_attempt": QUALITY_RUN_ATTEMPT,
+                    "evidence_artifact_name": f"quality-evidence-{SHA}",
+                    "contract_sha256": hashlib.sha256(
+                        QUALITY_CONTRACT.read_bytes()
+                    ).hexdigest(),
+                    "check_policy_sha256": hashlib.sha256(
+                        CHECK_POLICY.read_bytes()
+                    ).hexdigest(),
+                    "check_event": "push_main",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    images = []
+    for index, path in enumerate(sorted(evidence_dir.glob("*.json")), start=1):
+        evidence = json.loads(path.read_text(encoding="utf-8"))
+        producer = evidence.get("producer")
+        if not isinstance(producer, dict):
+            continue
+        images.append(
+            {
+                "image_name": evidence.get("image_name"),
+                "artifact_id": index,
+                "artifact_name": producer.get("artifact_name"),
+                "producer_run_attempt": producer.get("run_attempt"),
+            }
+        )
+    cohort = certification.with_name("cohort.json")
+    cohort.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "repository": REPOSITORY,
+                "source_sha": SHA,
+                "build_run_id": BUILD_RUN_ID,
+                "consumer_run_attempt": BUILD_RUN_ATTEMPT,
+                "images": images,
+                "certification": {
+                    "artifact_id": 7,
+                    "artifact_name": certification_artifact,
+                    "producer_run_attempt": BUILD_RUN_ATTEMPT,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    return module.aggregate_image_evidence(
+        evidence_dir,
+        expected_repository=REPOSITORY,
+        expected_sha=SHA,
+        certification_path=certification,
+        certification_provenance_path=certification_provenance,
+        cohort_path=cohort,
+        quality_contract_path=QUALITY_CONTRACT,
+        check_policy_path=CHECK_POLICY,
+        build_run_id=BUILD_RUN_ID,
+        build_run_attempt=BUILD_RUN_ATTEMPT,
+        quality_run_id=QUALITY_RUN_ID,
+        quality_run_attempt=QUALITY_RUN_ATTEMPT,
+    )
+
+
+def _producer(*, artifact_name: str, attempt: int) -> dict[str, object]:
+    return {
+        "repository": REPOSITORY,
+        "workflow_path": ".github/workflows/build-release-images.yml",
+        "workflow_ref": (
+            f"{REPOSITORY}/.github/workflows/build-release-images.yml@refs/heads/main"
+        ),
+        "workflow_sha": SHA,
+        "source_ref": "refs/heads/main",
+        "event": "workflow_dispatch",
+        "run_id": BUILD_RUN_ID,
+        "run_attempt": attempt,
+        "artifact_name": artifact_name,
+    }
+
+
+def _write_evidence(
+    directory: Path, name: str, digest_char: str, *, attempt: int = BUILD_RUN_ATTEMPT
+) -> None:
+    digest = f"sha256:{digest_char * 64}"
+    artifact_name = f"image-digest-evidence-{name}-{SHA}-attempt-{attempt}"
+    (directory / f"{name}.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
                 "image_name": name,
                 "source_sha": SHA,
-                "subject_name": f"ghcr.io/egorribun/university_ecosystem/{name}",
+                "subject_name": f"ghcr.io/{REPOSITORY}/{name}",
                 "digest": digest,
-                "reference": f"ghcr.io/egorribun/university_ecosystem/{name}@{digest}",
+                "reference": f"ghcr.io/{REPOSITORY}/{name}@{digest}",
                 "signature_verified": True,
                 "attestation_verified": True,
+                "producer": _producer(artifact_name=artifact_name, attempt=attempt),
+                "verification": {
+                    "trivy_version": "0.73.0",
+                    "sbom_format": "cyclonedx-json",
+                    "signature": "cosign-keyless",
+                    "attestation": "github-build-provenance",
+                },
+                "build_contract": {
+                    "canonical_frontend": name == "frontend",
+                    "release_sha": SHA,
+                },
             }
         ),
         encoding="utf-8",

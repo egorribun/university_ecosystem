@@ -1534,19 +1534,22 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
         for step in mutation_job["steps"]
         if step.get("uses", "").startswith("actions/download-artifact")
     )
-    assert download_step["with"]["name"] == (
-        "mutmut-universe-${{ github.run_id }}-${{ github.run_attempt }}"
-    )
-    assert download_step["with"]["if-no-artifact-found"] == "error"
+    assert download_step["with"] == {
+        "pattern": "mutmut-universe-${{ github.run_id }}-*",
+        "path": "mutmut-universe-candidates",
+        "merge-multiple": False,
+        "if-no-artifact-found": "error",
+    }
     stats_upload = next(
         step
         for step in stats_job["steps"]
         if step.get("name") == "Upload mutmut stats shard"
     )
     assert stats_upload["with"]["name"] == (
-        "mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-"
-        "${{ matrix.stats_shard }}"
+        "mutmut-stats-shard-${{ matrix.stats_shard }}-attempt-${{ github.run_attempt }}"
     )
+    assert "mutmut-stats-artifact.json" in stats_upload["with"]["path"]
+    assert stats_upload["with"]["retention-days"] == 30
     exact_upload = next(
         step
         for step in mutation_job["steps"]
@@ -1559,16 +1562,19 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert "scripts/merge_mutmut_stats.py" not in mutation_text
     assert "mutants/mutmut-stats.json" in mutation_text
     assert "mutants/mutmut-incremental-plan/shard-" in mutation_text
-    assert "scripts/mutmut_universe_artifact.py validate" in mutation_text
+    assert "scripts/mutmut_retry_artifacts.py select-universe" in mutation_text
     producer_text = "\n".join(
         step.get("run", "") for step in universe_job["steps"] if isinstance(step, dict)
     )
     assert "scripts/merge_mutmut_stats.py" in producer_text
     assert "scripts/plan_mutmut_shards.py" in producer_text
     assert "--allow-empty-shards" in producer_text
-    assert "scripts/mutmut_universe_artifact.py create" in producer_text
-    assert 'test "$(git rev-parse HEAD)" = "$COMMIT_SHA"' in producer_text
-    assert 'test "$(git rev-parse HEAD)" = "$COMMIT_SHA"' in mutation_text
+    assert "scripts/mutmut_retry_artifacts.py select-stats" in producer_text
+    assert "scripts/mutmut_retry_artifacts.py create-universe" in producer_text
+    assert 'SOURCE_REVISION="$(git rev-parse HEAD)"' in producer_text
+    assert 'SOURCE_REVISION="$(git rev-parse HEAD)"' in mutation_text
+    assert 'test "$SOURCE_REVISION" = "$COMMIT_SHA"' in producer_text
+    assert 'test "$SOURCE_REVISION" = "$COMMIT_SHA"' in mutation_text
     universe_upload = next(
         step
         for step in universe_job["steps"]
@@ -1579,6 +1585,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     )
     assert "mutmut-universe-artifact.json" in universe_upload["with"]["path"]
     assert universe_upload["with"]["include-hidden-files"] is True
+    assert universe_upload["with"]["retention-days"] == 30
     assert "mutation-tests-stats" in jobs["ci-success"]["needs"]
     assert "mutation-tests-universe" in jobs["ci-success"]["needs"]
     assert "needs.mutation-tests-stats.result" in jobs["ci-success"]["steps"][0]["run"]
@@ -5486,8 +5493,20 @@ def test_canonical_producer_aggregates_exact_digest_inventory() -> None:
 
     aggregate = producer["jobs"]["aggregate-image-provenance"]
     assert aggregate["needs"] == ["certify", "build"]
+    select_cohort = _provenance_step(
+        aggregate, "Select retry-safe release artifact cohort"
+    )
+    download_images = _provenance_step(
+        aggregate, "Download selected verified image digest evidence"
+    )
+    download_certification = _provenance_step(
+        aggregate, "Download selected signed certification"
+    )
+    verify_certification = _provenance_step(
+        aggregate, "Verify selected signed certification"
+    )
     aggregate_inventory = _provenance_step(
-        aggregate, "Aggregate exact release image inventory"
+        aggregate, "Aggregate selected release image inventory"
     )
     install_cosign = _provenance_step(aggregate, "Install cosign")
     registry_login = _provenance_step(
@@ -5495,11 +5514,35 @@ def test_canonical_producer_aggregates_exact_digest_inventory() -> None:
     )
     reverify = _provenance_step(aggregate, "Reverify every immutable image subject")
     aggregate_steps = aggregate["steps"]
+    assert aggregate_steps.index(select_cohort) < aggregate_steps.index(download_images)
+    assert aggregate_steps.index(download_images) < aggregate_steps.index(
+        download_certification
+    )
+    assert aggregate_steps.index(download_certification) < aggregate_steps.index(
+        verify_certification
+    )
+    assert aggregate_steps.index(verify_certification) < aggregate_steps.index(
+        aggregate_inventory
+    )
     assert aggregate_steps.index(aggregate_inventory) < aggregate_steps.index(
         install_cosign
     )
     assert aggregate_steps.index(install_cosign) < aggregate_steps.index(registry_login)
     assert aggregate_steps.index(registry_login) < aggregate_steps.index(reverify)
+    select_cohort_run = str(select_cohort["run"])
+    assert "--select-release-cohort" in select_cohort_run
+    assert "--consumer-run-attempt" in select_cohort_run
+    assert "selected-release-artifact-cohort.json" in select_cohort_run
+    assert download_images["with"]["artifact-ids"] == (
+        "${{ steps.select-artifact-cohort.outputs.image-artifact-ids }}"
+    )
+    assert download_certification["with"]["artifact-ids"] == (
+        "${{ steps.select-artifact-cohort.outputs.certification-artifact-id }}"
+    )
+    assert (
+        "--cohort artifacts/image-evidence-provenance/selected-release-artifact-cohort.json"
+        in str(aggregate_inventory["run"])
+    )
     assert str(registry_login["uses"]).startswith("docker/login-action@")
     assert registry_login["with"] == {
         "registry": "ghcr.io",

@@ -21,6 +21,27 @@ def test_unknown_environment_is_rejected():
 
 @pytest.mark.parametrize(
     ("raw", "expected"),
+    (
+        (" api ", "api"),
+        ("OUTBOX-WORKER", "outbox-worker"),
+        ("notifications-worker", "notifications-worker"),
+    ),
+)
+def test_app_process_role_is_normalized_against_the_closed_allowlist(
+    raw: str, expected: str
+) -> None:
+    settings = AppGeneralSettings(_allow_missing=True, app_process_role=raw)
+
+    assert settings.app_process_role == expected
+
+
+def test_unknown_app_process_role_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="APP_PROCESS_ROLE"):
+        AppGeneralSettings(_allow_missing=True, app_process_role="api-worker-typo")
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
     [
         ("false", False),
         ("0", False),

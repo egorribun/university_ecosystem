@@ -292,3 +292,41 @@ func TestClientWritePump_SendsHeartbeatAndStopsOnPingError(t *testing.T) {
 	require.NotEmpty(t, session.writes)
 	assert.Equal(t, websocket.PingMessage, session.writes[0].messageType)
 }
+
+func TestClientWritePump_SendsHeartbeatThenHonorsCancellation(t *testing.T) {
+	h := setupTestHub()
+	ctx, cancel := context.WithCancel(context.Background())
+	session := &recordingSession{writeObserved: make(chan struct{}, 1)}
+	client := &Client{
+		ID:   "heartbeat-success-client",
+		Conn: session,
+		Hub:  h,
+		Send: make(chan []byte, 1),
+		ctx:  ctx,
+	}
+
+	originalInterval := writePumpPingInterval
+	writePumpPingInterval = time.Millisecond
+	t.Cleanup(func() { writePumpPingInterval = originalInterval })
+
+	done := make(chan struct{})
+	go func() {
+		client.WritePump()
+		close(done)
+	}()
+
+	select {
+	case <-session.writeObserved:
+	case <-time.After(time.Second):
+		t.Fatal("WritePump did not send a successful heartbeat")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("WritePump did not stop after successful heartbeat cancellation")
+	}
+
+	require.NotEmpty(t, session.writes)
+	assert.Equal(t, websocket.PingMessage, session.writes[0].messageType)
+}

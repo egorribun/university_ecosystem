@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/nats-io/nats.go"
@@ -186,6 +187,35 @@ func TestInitRevocationRedis_ValidatesConfigurationAndConnectivity(t *testing.T)
 		require.NoError(t, err)
 		require.NotNil(t, client)
 		t.Cleanup(func() { require.NoError(t, client.Close()) })
+	})
+}
+
+func TestSetupHubWithRevocationStartsListenerAndFailsClosed(t *testing.T) {
+	t.Run("starts with dedicated durable Redis", func(t *testing.T) {
+		mr := miniredis.RunT(t)
+		revocationRedis := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+		t.Cleanup(func() { require.NoError(t, revocationRedis.Close()) })
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		h, err := setupHubWithRevocation(ctx, &config.Config{}, discardLogger(), nil, nil, revocationRedis)
+		require.NoError(t, err)
+		require.NotNil(t, h)
+		t.Cleanup(h.Stop)
+	})
+
+	t.Run("refuses unavailable dedicated Redis", func(t *testing.T) {
+		revocationRedis := redis.NewClient(&redis.Options{
+			Addr:        "127.0.0.1:1",
+			DialTimeout: 10 * time.Millisecond,
+			MaxRetries:  0,
+		})
+		t.Cleanup(func() { require.NoError(t, revocationRedis.Close()) })
+
+		h, err := setupHubWithRevocation(context.Background(), &config.Config{}, discardLogger(), nil, nil, revocationRedis)
+		assert.Nil(t, h)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "start session revocation listener")
 	})
 }
 

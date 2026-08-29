@@ -3,13 +3,14 @@ from __future__ import annotations
 import os
 import typing
 from functools import cached_property
-from urllib.parse import urlsplit
+from hmac import compare_digest
+from urllib.parse import unquote, urlsplit
 
 from pydantic import ValidationInfo, field_validator, model_validator
 
 from app.core.logging import get_logger
 
-from .app_gen import AppGeneralSettings
+from .app_gen import REVOCATION_REDIS_DISABLED_PROCESS_ROLES, AppGeneralSettings
 from .base import (
     _DEVELOPMENT_ENVIRONMENTS,
     _PROJECT_ROOT,
@@ -20,7 +21,7 @@ from .base import (
 from .base import (
     _should_allow_development_defaults as _base_should_allow,
 )
-from .cache import CacheSettings
+from .cache import DEFAULT_REVOCATION_REDIS_URL, CacheSettings
 from .database import DatabaseSettings
 from .integrations import IntegrationSettings
 from .notifications import NotificationSettings
@@ -173,6 +174,24 @@ class Settings(
         at runtime due to missing counterparts.
         """
         env = str(getattr(self, "environment", "production") or "production").lower()
+        process_role = str(getattr(self, "app_process_role", "api") or "api")
+        revocation_access_enabled = bool(
+            getattr(self, "revocation_redis_access_enabled", True)
+        )
+        if process_role in REVOCATION_REDIS_DISABLED_PROCESS_ROLES:
+            if revocation_access_enabled:
+                raise ValueError(
+                    f"APP_PROCESS_ROLE={process_role!r} must disable "
+                    "REVOCATION_REDIS_ACCESS_ENABLED because this worker has no "
+                    "authentication or session-revocation responsibility"
+                )
+        elif not revocation_access_enabled:
+            raise ValueError(
+                "REVOCATION_REDIS_ACCESS_ENABLED=false is restricted to non-auth "
+                "worker roles; API, migration, and authentication-capable processes "
+                "must retain the revocation capability"
+            )
+
         if env in _DEVELOPMENT_ENVIRONMENTS:
             return self
 
@@ -187,9 +206,15 @@ class Settings(
                     cache_backend,
                 )
 
-        revocation_url = str(getattr(self, "revocation_redis_url", "") or "")
-        if not revocation_url:
-            raise ValueError("REVOCATION_REDIS_URL is required outside development")
+        if not revocation_access_enabled:
+            return self
+
+        revocation_url = str(getattr(self, "revocation_redis_url", "") or "").strip()
+        if not revocation_url or revocation_url == DEFAULT_REVOCATION_REDIS_URL:
+            raise ValueError(
+                "REVOCATION_REDIS_URL is required and must be explicitly configured outside "
+                "development for authentication-capable processes"
+            )
         cache_url = str(getattr(self, "cache_redis_url", "") or "")
         cache_endpoint = urlsplit(cache_url)
         revocation_endpoint = urlsplit(revocation_url)
@@ -202,6 +227,19 @@ class Settings(
             raise ValueError(
                 "REVOCATION_REDIS_URL must use a distinct Redis process from "
                 "CACHE_REDIS_URL so cache eviction cannot erase security state"
+            )
+        cache_password = unquote(cache_endpoint.password or "")
+        revocation_password = unquote(revocation_endpoint.password or "")
+        if (
+            cache_password
+            and revocation_password
+            and compare_digest(
+                cache_password.encode("utf-8"), revocation_password.encode("utf-8")
+            )
+        ):
+            raise ValueError(
+                "REVOCATION_REDIS_URL must not reuse CACHE_REDIS_URL credentials "
+                "outside development"
             )
 
         # Database pool coordination

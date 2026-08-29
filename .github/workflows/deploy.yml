@@ -644,6 +644,12 @@ jobs:
           kubectl auth can-i list deployments --namespace "$K8S_NAMESPACE" | grep -Fxq yes
           kubectl auth can-i watch deployments --namespace "$K8S_NAMESPACE" | grep -Fxq yes
           kubectl auth can-i patch deployments --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+          for resource in statefulsets pods endpointslices.discovery.k8s.io; do
+            for verb in get list watch; do
+              kubectl auth can-i "$verb" "$resource" --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+            done
+          done
+          kubectl auth can-i get configmaps --namespace "$K8S_NAMESPACE" | grep -Fxq yes
           helm_secret_verbs=(get list watch create update patch delete)
           for verb in "${helm_secret_verbs[@]}"; do
             kubectl auth can-i "$verb" secrets --namespace "$K8S_NAMESPACE" | grep -Fxq yes
@@ -673,12 +679,18 @@ jobs:
           git diff --exit-code -- "$chart/Chart.yaml" "$chart/Chart.lock"
           dependency_status="$(helm dependency list "$chart")"
           actual_dependencies="$(awk 'NR > 1 && NF {print $1 "|" $3 "|" $4}' <<< "$dependency_status")"
-          expected_dependencies=$'redis|oci://registry-1.docker.io/bitnamicharts|ok\nredis|oci://registry-1.docker.io/bitnamicharts|ok\nnats|oci://registry-1.docker.io/bitnamicharts|ok'
+          expected_dependencies=$'redis|oci://registry-1.docker.io/bitnamicharts|ok\nnats|oci://registry-1.docker.io/bitnamicharts|ok'
           if [[ "$actual_dependencies" != "$expected_dependencies" ]]; then
             echo "::error::Helm dependencies do not match the reviewed Chart.lock contract."
             printf '%s\n' "$dependency_status" >&2
             exit 1
           fi
+
+      - name: Verify vendored revocation-store dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/scripts/deploy-revocation-store.sh verify-vendor
 
       - name: Verify rendered Helm resource RBAC
         shell: bash
@@ -1031,6 +1043,156 @@ jobs:
             "$MFA_OVERLAP_SMOKE_SCRIPT")"
           bash "$smoke_script" verify-old
 
+      - name: Verify rendered revocation-store resource RBAC
+        shell: bash
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+        run: |
+          set -euo pipefail
+          rendered="$(mktemp "$RUNNER_TEMP/rendered-revocation-store.XXXXXX.yaml")"
+          trap 'rm -f -- "$rendered"' EXIT
+          bash .github/scripts/deploy-revocation-store.sh render > "$rendered"
+          mapfile -t rendered_resources < <(
+            kubectl create --dry-run=client --validate=false \
+              --filename "$rendered" --output name | cut -d/ -f1 | sort -u
+          )
+          if [[ "${#rendered_resources[@]}" -eq 0 ]]; then
+            echo "::error::The revocation-store chart rendered no Kubernetes resources."
+            exit 1
+          fi
+          rendered_resource_verbs=(get list watch create update patch delete)
+          for resource in "${rendered_resources[@]}"; do
+            if [[ ! "$resource" =~ ^[a-z0-9.-]+$ ]]; then
+              echo "::error::Rendered an invalid revocation-store Kubernetes resource identity."
+              exit 1
+            fi
+            for verb in "${rendered_resource_verbs[@]}"; do
+              kubectl auth can-i "$verb" "$resource" \
+                --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+            done
+          done
+
+      - name: Bootstrap durable revocation store
+        shell: bash
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+        run: |
+          set -euo pipefail
+          bash .github/scripts/deploy-revocation-store.sh lint
+          bash .github/scripts/deploy-revocation-store.sh upgrade
+
+      - name: Verify durable revocation store readiness
+        shell: bash
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+        run: |
+          set -euo pipefail
+          contract="$(bash .github/scripts/deploy-revocation-store.sh render-contract)"
+          contract_literal() {
+            local key="$1"
+            local values
+            values="$(sed -n "s/^[[:space:]]*${key}: //p" <<< "$contract")"
+            if [[ "$(wc -l <<< "$values")" -ne 1 || -z "$values" ]]; then
+              echo "::error::Rendered revocation-store contract has no unique '$key'."
+              exit 1
+            fi
+            printf '%s' "$values"
+          }
+
+          service_host="$(contract_literal master-service-host | jq --raw-output '.')"
+          statefulset_name="$(contract_literal master-statefulset-name | jq --raw-output '.')"
+          binding_label="$(contract_literal binding-label | jq --raw-output '.')"
+          binding_value="$(contract_literal binding-value | jq --raw-output '.')"
+          redis_secret_name="$(contract_literal redis-auth-secret-name | jq --raw-output '.')"
+          redis_secret_key="$(contract_literal redis-auth-secret-key | jq --raw-output '.')"
+          expected_service_host="${HELM_RELEASE_NAME}-revocation-redis-master"
+          if [[ "$service_host" != "$expected_service_host" || \
+                "$statefulset_name" != "$expected_service_host" || \
+                "$binding_label" != "university-ecosystem.io/revocation-store-for" || \
+                "$binding_value" != "$HELM_RELEASE_NAME" ]]; then
+            echo "::error::The rendered revocation-store identity is not bound to this application release."
+            exit 1
+          fi
+
+          # The revocation URL is distributed through university-connections,
+          # but its password must stay in a distinct ExternalSecret-owned
+          # Secret.  Do not permit a Helm value override to collapse that
+          # boundary into the ordinary cache credential.
+          if [[ "$redis_secret_name" != "revocation-redis-credentials" || \
+                "$redis_secret_key" != "revocation-redis-password" ]]; then
+            echo "::error::The durable revocation-store credential identity must remain isolated from cache Redis."
+            exit 1
+          fi
+
+          if ! kubectl get secret "$redis_secret_name" --namespace "$K8S_NAMESPACE" --output json \
+            | jq --exit-status --arg key "$redis_secret_key" \
+                '.data[$key] | type == "string" and length > 0' >/dev/null; then
+            echo "::error::The durable revocation-store credential Secret is missing its required key."
+            exit 1
+          fi
+          kubectl rollout status "statefulset/$statefulset_name" \
+            --namespace "$K8S_NAMESPACE" --timeout=5m
+          ready_endpoint_count="$(kubectl get endpointslice --namespace "$K8S_NAMESPACE" \
+            --selector "kubernetes.io/service-name=$service_host" --output json \
+            | jq '[.items[].endpoints[]? | select(.conditions.ready == true)] | length')"
+          if [[ ! "$ready_endpoint_count" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::The durable revocation-store service has no ready endpoint."
+            exit 1
+          fi
+          pod_json="$(kubectl get pods --namespace "$K8S_NAMESPACE" --output json \
+            --selector "app.kubernetes.io/name=revocation-redis,app.kubernetes.io/component=master,$binding_label=$binding_value")"
+          pod_count="$(jq '.items | length' <<< "$pod_json")"
+          if [[ "$pod_count" != "1" ]]; then
+            echo "::error::The durable revocation-store must resolve to exactly one master pod."
+            exit 1
+          fi
+          configuration_name="${statefulset_name}-configuration"
+          statefulset_json="$(kubectl get "statefulset/$statefulset_name" \
+            --namespace "$K8S_NAMESPACE" --output json)"
+          if ! jq --exit-status --arg configuration_name "$configuration_name" '
+            [.spec.template.spec.volumes[]?
+             | select(.configMap.name? == $configuration_name)]
+            | length == 1
+          ' <<< "$statefulset_json" >/dev/null; then
+            echo "::error::The ready revocation-store StatefulSet is not bound to its rendered configuration ConfigMap."
+            exit 1
+          fi
+          master_configuration="$(kubectl get "configmap/$configuration_name" \
+            --namespace "$K8S_NAMESPACE" --output json \
+            | jq --raw-output '.data["master.conf"] // empty')"
+          for required_directive in \
+            'maxmemory-policy noeviction' \
+            'appendonly yes' \
+            'appendfsync everysec' \
+            'rename-command ACL ""' \
+            'rename-command CONFIG ""' \
+            'rename-command FLUSHDB ""' \
+            'rename-command FLUSHALL ""' \
+            'rename-command FUNCTION ""' \
+            'rename-command MIGRATE ""' \
+            'rename-command MODULE ""' \
+            'rename-command MONITOR ""' \
+            'rename-command REPLICAOF ""' \
+            'rename-command SLAVEOF ""' \
+            'rename-command SHUTDOWN ""'; do
+            if ! grep -Fxq "$required_directive" <<< "$master_configuration"; then
+              echo "::error::The rendered revocation-store configuration is missing $required_directive."
+              exit 1
+            fi
+          done
+
       - name: Verify effective Secret contract
         shell: bash
         env:
@@ -1105,14 +1267,12 @@ jobs:
           mapfile -t connection_secret_keys < <(
             contract_literal connection-secret-keys.json | jq --raw-output 'fromjson[]'
           )
+          revocation_redis_url_key="$(contract_literal revocation-redis-url-key | jq --raw-output '.')"
+          revocation_redis_service_host="$(contract_literal revocation-redis-service-host | jq --raw-output '.')"
           redis_secret_name="$(contract_literal redis-secret-name | jq --raw-output '.')"
-          revocation_redis_secret_name="$(contract_literal revocation-redis-secret-name | jq --raw-output '.')"
           nats_config_secret_name="$(contract_literal nats-config-secret-name | jq --raw-output '.')"
           mapfile -t redis_secret_keys < <(
             contract_literal redis-secret-keys.json | jq --raw-output 'fromjson[]'
-          )
-          mapfile -t revocation_redis_secret_keys < <(
-            contract_literal revocation-redis-secret-keys.json | jq --raw-output 'fromjson[]'
           )
           mapfile -t nats_config_secret_keys < <(
             contract_literal nats-config-secret-keys.json | jq --raw-output 'fromjson[]'
@@ -1121,17 +1281,13 @@ jobs:
           jq --exit-status \
             --arg redis "docker.io/bitnami/redis@$REDIS_IMAGE_DIGEST" \
             --arg redis_metrics "docker.io/bitnami/redis-exporter@$REDIS_METRICS_IMAGE_DIGEST" \
-            --arg revocation "docker.io/bitnami/redis@$REVOCATION_REDIS_IMAGE_DIGEST" \
-            --arg revocation_metrics "docker.io/bitnami/redis-exporter@$REVOCATION_REDIS_METRICS_IMAGE_DIGEST" \
             --arg nats "docker.io/bitnami/nats@$NATS_IMAGE_DIGEST" \
             '. == {"redis": $redis, "redis.metrics": $redis_metrics,
-                   "revocationRedis": $revocation,
-                   "revocationRedis.metrics": $revocation_metrics,
                    "nats": $nats}' <<< "$dependency_images" >/dev/null
           dependency_chart_versions="$(contract_literal dependency-chart-versions.json | jq --raw-output '.')"
           jq --exit-status \
-            '. == {"redis": "20.13.4", "revocationRedis": "20.13.4",
-                   "nats": "8.5.4"}' <<< "$dependency_chart_versions" >/dev/null
+            '. == {"redis": "20.13.4", "nats": "8.5.4"}' \
+            <<< "$dependency_chart_versions" >/dev/null
           grpc_gateway_client_secret_name="$(contract_literal internal-grpc-gateway-client-secret-name | jq --raw-output '.')"
           grpc_file_processor_server_secret_name="$(contract_literal internal-grpc-file-processor-server-secret-name | jq --raw-output '.')"
           mapfile -t grpc_gateway_client_secret_keys < <(
@@ -1143,7 +1299,6 @@ jobs:
           if [[ "${#application_secret_keys[@]}" -eq 0 || \
                 "${#connection_secret_keys[@]}" -eq 0 || \
                 "${#redis_secret_keys[@]}" -eq 0 || \
-                "${#revocation_redis_secret_keys[@]}" -eq 0 || \
                 "${#nats_config_secret_keys[@]}" -eq 0 || \
                 "${#grpc_gateway_client_secret_keys[@]}" -eq 0 || \
                 "${#grpc_file_processor_server_secret_keys[@]}" -eq 0 ]]; then
@@ -1153,10 +1308,66 @@ jobs:
           require_secret_keys "$application_secret_name" "${application_secret_keys[@]}"
           require_secret_keys "$connection_secret_name" "${connection_secret_keys[@]}"
           require_secret_keys "$redis_secret_name" "${redis_secret_keys[@]}"
-          require_secret_keys "$revocation_redis_secret_name" "${revocation_redis_secret_keys[@]}"
           require_secret_keys "$nats_config_secret_name" "${nats_config_secret_keys[@]}"
           require_secret_keys "$grpc_gateway_client_secret_name" "${grpc_gateway_client_secret_keys[@]}"
           require_secret_keys "$grpc_file_processor_server_secret_name" "${grpc_file_processor_server_secret_keys[@]}"
+
+          # Separate Secret identities are necessary but not sufficient: a
+          # misconfigured ExternalSecret backend could still populate both
+          # targets with the same bytes. Compare the Kubernetes API's encoded
+          # data in memory only; never decode or print either password.
+          if [[ "${#redis_secret_keys[@]}" -ne 1 ]]; then
+            echo "::error::Cache Redis credential contract must expose exactly one password key."
+            exit 1
+          fi
+          cache_redis_password_key="${redis_secret_keys[0]}"
+          revocation_redis_secret_name="revocation-redis-credentials"
+          revocation_redis_password_key="revocation-redis-password"
+          if [[ "$redis_secret_name" == "$revocation_redis_secret_name" && \
+                "$cache_redis_password_key" == "$revocation_redis_password_key" ]]; then
+            echo "::error::Revocation Redis credential identity must be distinct from cache Redis."
+            exit 1
+          fi
+          cache_redis_password_b64="$(kubectl get secret "$redis_secret_name" \
+            --namespace "$K8S_NAMESPACE" --output json \
+            | jq --raw-output --arg key "$cache_redis_password_key" '.data[$key] // empty')"
+          revocation_redis_password_b64="$(kubectl get secret "$revocation_redis_secret_name" \
+            --namespace "$K8S_NAMESPACE" --output json \
+            | jq --raw-output --arg key "$revocation_redis_password_key" '.data[$key] // empty')"
+          if [[ -z "$cache_redis_password_b64" || \
+                -z "$revocation_redis_password_b64" || \
+                "$cache_redis_password_b64" == "$revocation_redis_password_b64" ]]; then
+            echo "::error::Revocation Redis credential must be non-empty and must differ from the cache Redis password."
+            exit 1
+          fi
+
+          # Decode only through stdin and never echo the URL: migration and
+          # runtime revocation must point at the rendered durable Redis master,
+          # not the volatile cache Redis service.
+          if ! kubectl get secret "$connection_secret_name" --namespace "$K8S_NAMESPACE" --output json \
+            | jq --raw-output --exit-status --arg key "$revocation_redis_url_key" \
+                '.data[$key] | select(type == "string" and length > 0)' \
+            | base64 --decode \
+            | python3 -c '
+          from sys import argv, stdin
+          from urllib.parse import urlsplit
+
+          expected_host = argv[1]
+          try:
+              parsed = urlsplit(stdin.read().strip())
+              valid = (
+                  parsed.scheme in {"redis", "rediss"}
+                  and parsed.hostname == expected_host
+                  and parsed.port == 6379
+                  and parsed.path == "/0"
+              )
+          except ValueError:
+              valid = False
+          raise SystemExit(0 if valid else 1)
+          ' "$revocation_redis_service_host"; then
+            echo "::error::The revocation Redis URL must target the rendered dedicated master service."
+            exit 1
+          fi
 
       - name: Capture rollback state
         id: rollback_state

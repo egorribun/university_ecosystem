@@ -107,6 +107,7 @@ def test_launcher_generates_documented_secret_lengths_and_syncs_rs256() -> None:
     for variable in (
         "minioPassword",
         "redisPassword",
+        "revocationRedisPassword",
         "elasticPassword",
         "natsPassword",
         "grafanaPassword",
@@ -138,6 +139,7 @@ def test_launcher_syncs_all_required_compose_variables_from_docker_env() -> None
         "WS_HUB_INTERNAL_SECRET",
         "GRAFANA_ADMIN_PASSWORD",
         "REDIS_PASSWORD",
+        "REVOCATION_REDIS_PASSWORD",
         "SECRET_KEY",
         "INTERNAL_HMAC_SECRET",
         "METRICS_BASIC_AUTH_PASSWORD",
@@ -149,6 +151,53 @@ def test_launcher_syncs_all_required_compose_variables_from_docker_env() -> None
     assert "Get-EnvEntry -Path $EnvFile -Key $key" in sync_block
     assert "Set-EnvEntry -Path $EnvCompose -Key $key -Value $dockerValue" in sync_block
     assert "Required variables are missing or empty" in sync_block
+
+
+def test_launcher_refuses_equal_cache_and_revocation_redis_passwords() -> None:
+    script = _read("start-docker.ps1")
+    guard = _powershell_function(
+        script, "Assert-IndependentRedisCredentials", "Ensure-JwtEnvironment"
+    )
+
+    assert 'Get-EnvEntry -Path $EnvFile -Key "REDIS_PASSWORD"' in guard
+    assert 'Get-EnvEntry -Path $EnvFile -Key "REVOCATION_REDIS_PASSWORD"' in guard
+    assert "-ceq" in guard
+    assert "REDIS_PASSWORD and REVOCATION_REDIS_PASSWORD must differ" in guard
+    error_line = next(
+        line
+        for line in guard.splitlines()
+        if "REDIS_PASSWORD and REVOCATION_REDIS_PASSWORD must differ" in line
+    )
+    assert "$cachePassword" not in error_line
+    assert "$revocationPassword" not in error_line
+
+    initialization = script[
+        script.index("# Give each application security domain") : script.index(
+            "# -- Sync check"
+        )
+    ]
+    assert initialization.index("Ensure-ApplicationSecrets") < initialization.index(
+        "Assert-IndependentRedisCredentials"
+    )
+
+
+def test_launcher_generates_a_redacted_worker_environment_file() -> None:
+    script = _read("start-docker.ps1")
+
+    assert '$WorkerEnvFile = ".env.docker.workers"' in script
+    assert "function Write-WorkerEnvironmentFile" in script
+    assert "REVOCATION_REDIS_(?:URL|PASSWORD)" in script
+    assert "Write-Utf8NoBom -Path $WorkerEnvFile" in script
+
+    invocation_start = script.index("# Fail closed if an existing local configuration")
+    invocation_end = script.index("# -- Sync check")
+    invocation = script[invocation_start:invocation_end]
+    assert (
+        invocation.index("Assert-IndependentRedisCredentials")
+        < invocation.index("Ensure-JwtEnvironment")
+        < invocation.index("Ensure-DockerConfigRevision")
+        < invocation.index("Write-WorkerEnvironmentFile")
+    )
 
 
 def test_backend_image_retries_transient_uv_registry_failures() -> None:
@@ -253,6 +302,7 @@ def test_docker_env_example_matches_full_stack_contract() -> None:
         "METRICS_BASIC_AUTH_USERNAME",
         "METRICS_BASIC_AUTH_PASSWORD",
         "REDIS_PASSWORD",
+        "REVOCATION_REDIS_PASSWORD",
         "ENVIRONMENT",
         "VAPID_SUBJECT",
         "SPOTIFY_CLIENT_ID",
@@ -1114,8 +1164,6 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "--set",
         "redis.enabled=false",
         "--set",
-        "revocationRedis.enabled=false",
-        "--set",
         "nats.enabled=false",
         "--set",
         "global.imageTag=contract-sha",
@@ -1193,6 +1241,10 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
     assert migration_env["DATABASE_URL"]["valueFrom"]["secretKeyRef"] == {
         "name": "university-connections",
         "key": "database-url",
+    }
+    assert migration_env["REVOCATION_REDIS_URL"]["valueFrom"]["secretKeyRef"] == {
+        "name": "university-connections",
+        "key": "redis-revocation-url",
     }
     assert migration_env["ENVIRONMENT"]["value"] == "development"
     assert migration_container["securityContext"]["readOnlyRootFilesystem"] is True
@@ -1309,7 +1361,6 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
     for variable, key in {
         "DATABASE_URL": "database-url",
         "CACHE_REDIS_URL": "redis-backend-url",
-        "REVOCATION_REDIS_URL": "redis-revocation-url",
         "NATS_URL": "nats-url",
         "NATS_AUTH_TOKEN": "nats-auth-token",
         "KEDA_POSTGRESQL_CONNECTION": "keda-postgresql-url",
@@ -1318,6 +1369,9 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
             "name": connections_secret,
             "key": key,
         }
+    assert outbox_env["APP_PROCESS_ROLE"]["value"] == "outbox-worker"
+    assert outbox_env["REVOCATION_REDIS_ACCESS_ENABLED"]["value"] == "false"
+    assert "REVOCATION_REDIS_URL" not in outbox_env
     assert outbox_env["ENVIRONMENT"]["value"] == "development"
     assert outbox_env["SECRET_KEY"]["valueFrom"]["secretKeyRef"] == {
         "name": "contract-secrets",
@@ -1387,8 +1441,6 @@ def test_helm_supports_an_externally_managed_application_secret() -> None:
             *_helm_skip_dep_flag(helm),
             "--set",
             "redis.enabled=false",
-            "--set",
-            "revocationRedis.enabled=false",
             "--set",
             "nats.enabled=false",
             "--set",

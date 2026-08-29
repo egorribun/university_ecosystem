@@ -1,0 +1,17 @@
+apiVersion: v2
+name: revocation-store
+description: Durable, isolated Redis store for security-session revocation state
+type: application
+version: 0.1.0
+appVersion: "7.4.3"
+maintainers:
+  - name: university-ecosystem
+    email: security@example.invalid
+
+# This store deliberately has its own Helm release.  The application migration
+# is a pre-install/pre-upgrade hook and must not wait on a Redis StatefulSet
+# that the same release has not applied yet.
+dependencies:
+  - name: redis
+    version: "20.13.4"
+    repository: oci://registry-1.docker.io/bitnamicharts

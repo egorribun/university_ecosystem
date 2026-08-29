@@ -49,7 +49,7 @@ func TestEmpirical_SingleUseTicket_ConcurrentRace(t *testing.T) {
 
 	// Seed ticket in Redis
 	ticketKey := wsTicketKeyPrefix + empiricalTicket
-	require.NoError(t, rdb.Set(ctx, ticketKey, "user-race-77:jti-999", 15*time.Second).Err())
+	require.NoError(t, rdb.Set(ctx, ticketKey, "user-race-77:"+validSessionJTI, 15*time.Second).Err())
 
 	h := setupEmpiricalHub(t, rdb)
 

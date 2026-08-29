@@ -26,6 +26,8 @@ jobs:
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    outputs:
+      quality-run-attempt: ${{ steps.quality-run.outputs.run-attempt }}
     permissions:
       actions: read
       contents: read
@@ -187,11 +189,105 @@ jobs:
             --record artifacts/quality/certification.json \
             --expected-commit-sha "$RELEASE_SHA"
 
+      - name: Write certification provenance
+        env:
+          PRODUCER_EVENT: ${{ github.event_name }}
+          PRODUCER_REPOSITORY: ${{ github.repository }}
+          PRODUCER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          PRODUCER_RUN_ID: ${{ github.run_id }}
+          PRODUCER_SOURCE_REF: ${{ github.ref }}
+          PRODUCER_WORKFLOW_REF: ${{ github.workflow_ref }}
+          PRODUCER_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          QUALITY_RUN_ATTEMPT: ${{ steps.quality-run.outputs.run-attempt }}
+          QUALITY_RUN_ID: ${{ inputs.quality-run-id }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import re
+
+          def sha256(path: pathlib.Path) -> str:
+              return hashlib.sha256(path.read_bytes()).hexdigest()
+
+          release_sha = os.environ["RELEASE_SHA"]
+          repository = os.environ["PRODUCER_REPOSITORY"]
+          workflow_ref = os.environ["PRODUCER_WORKFLOW_REF"]
+          workflow_sha = os.environ["PRODUCER_WORKFLOW_SHA"]
+          run_id = int(os.environ["PRODUCER_RUN_ID"])
+          run_attempt = int(os.environ["PRODUCER_RUN_ATTEMPT"])
+          quality_run_id = int(os.environ["QUALITY_RUN_ID"])
+          quality_run_attempt = int(os.environ["QUALITY_RUN_ATTEMPT"])
+          if not re.fullmatch(r"[0-9a-f]{40}", release_sha):
+              raise SystemExit("invalid release SHA")
+          if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+              raise SystemExit("invalid producer repository")
+          if any(value <= 0 for value in (run_id, run_attempt, quality_run_id, quality_run_attempt)):
+              raise SystemExit("invalid producer or quality run metadata")
+          expected_workflow_ref = (
+              f"{repository}/.github/workflows/build-release-images.yml@refs/heads/main"
+          )
+          if (
+              workflow_ref != expected_workflow_ref
+              or workflow_sha != release_sha
+              or os.environ["PRODUCER_EVENT"] != "workflow_dispatch"
+              or os.environ["PRODUCER_SOURCE_REF"] != "refs/heads/main"
+          ):
+              raise SystemExit("invalid certification producer workflow metadata")
+          certification_path = pathlib.Path("artifacts/quality/certification.json")
+          certification = json.loads(certification_path.read_text(encoding="utf-8"))
+          contract_path = pathlib.Path("quality/quality-contract.json")
+          policy_path = pathlib.Path("quality/release-required-checks.json")
+          contract_sha256 = sha256(contract_path)
+          policy_sha256 = sha256(policy_path)
+          if (
+              certification.get("schema_version") != 1
+              or certification.get("commit_sha") != release_sha
+              or certification.get("contract_sha256") != contract_sha256
+              or certification.get("check_policy_sha256") != policy_sha256
+              or certification.get("check_event") != "push_main"
+          ):
+              raise SystemExit("certification metadata does not bind trusted quality inputs")
+          artifact_name = f"quality-certification-{release_sha}-attempt-{run_attempt}"
+          producer = {
+              "repository": repository,
+              "workflow_path": ".github/workflows/build-release-images.yml",
+              "workflow_ref": workflow_ref,
+              "workflow_sha": workflow_sha,
+              "source_ref": "refs/heads/main",
+              "event": "workflow_dispatch",
+              "run_id": run_id,
+              "run_attempt": run_attempt,
+              "artifact_name": artifact_name,
+          }
+          payload = {
+              "schema_version": 1,
+              "certification_sha256": sha256(certification_path),
+              "producer": producer,
+              "quality": {
+                  "run_id": quality_run_id,
+                  "run_attempt": quality_run_attempt,
+                  "evidence_artifact_name": f"quality-evidence-{release_sha}",
+                  "contract_sha256": contract_sha256,
+                  "check_policy_sha256": policy_sha256,
+                  "check_event": "push_main",
+              },
+          }
+          pathlib.Path("artifacts/quality/certification-provenance.json").write_text(
+              json.dumps(payload, sort_keys=True, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+
       - name: Upload quality certification
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: quality-certification-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}
-          path: artifacts/quality/certification.json
+          path: |
+            artifacts/quality/certification.json
+            artifacts/quality/certification-provenance.json
           if-no-files-found: error
           retention-days: 90
 
@@ -268,8 +364,21 @@ jobs:
           git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
           test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
 
-      - name: Download verified image digest evidence
+      - name: Setup aggregate certification runtime
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install locked aggregate certification dependencies
+        run: |
+          set -euo pipefail
+          uv sync --frozen --only-group release-certification --no-install-project
+
+      - name: Select retry-safe release artifact cohort
+        id: select-artifact-cohort
         env:
+          BUILD_RUN_ID: ${{ github.run_id }}
           GH_TOKEN: ${{ github.token }}
           RELEASE_SHA: ${{ inputs.release-sha }}
           BUILD_RUN_ATTEMPT: ${{ github.run_attempt }}
@@ -281,29 +390,59 @@ jobs:
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/artifacts?per_page=100" \
             > artifacts/image-evidence-provenance/artifact-pages.json
-          for image in backend caddy frontend ws-hub gateway file-processor; do
-            python scripts/quality/validate_release_artifact_evidence.py \
-              --pages artifacts/image-evidence-provenance/artifact-pages.json \
-              --expected-name "image-digest-evidence-$image-$RELEASE_SHA-attempt-$BUILD_RUN_ATTEMPT"
-          done
+          python scripts/quality/validate_release_artifact_evidence.py \
+            --pages artifacts/image-evidence-provenance/artifact-pages.json \
+            --select-release-cohort \
+            --repository "$GITHUB_REPOSITORY" \
+            --source-sha "$RELEASE_SHA" \
+            --build-run-id "$BUILD_RUN_ID" \
+            --consumer-run-attempt "$BUILD_RUN_ATTEMPT" \
+            --output artifacts/image-evidence-provenance/selected-release-artifact-cohort.json
+          image_artifact_ids="$(jq -er '[.images[].artifact_id] | join(",")' artifacts/image-evidence-provenance/selected-release-artifact-cohort.json)"
+          certification_artifact_id="$(jq -er '.certification.artifact_id' artifacts/image-evidence-provenance/selected-release-artifact-cohort.json)"
+          [[ "$image_artifact_ids" =~ ^[1-9][0-9]*(,[1-9][0-9]*){5}$ ]]
+          [[ "$certification_artifact_id" =~ ^[1-9][0-9]*$ ]]
+          {
+            echo "image-artifact-ids=$image_artifact_ids"
+            echo "certification-artifact-id=$certification_artifact_id"
+          } >> "$GITHUB_OUTPUT"
 
-      - name: Download exact verified image digest evidence
+      - name: Download selected verified image digest evidence
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: image-digest-evidence-*-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}
+          artifact-ids: ${{ steps.select-artifact-cohort.outputs.image-artifact-ids }}
+          github-token: ${{ github.token }}
           path: artifacts/image-evidence
           merge-multiple: true
 
-      - name: Download signed certification
+      - name: Download selected signed certification
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: quality-certification-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}
+          artifact-ids: ${{ steps.select-artifact-cohort.outputs.certification-artifact-id }}
+          github-token: ${{ github.token }}
           path: artifacts/quality
 
-      - name: Aggregate exact release image inventory
+      - name: Verify selected signed certification
+        env:
+          QUALITY_CERTIFICATION_KEY: ${{ secrets.QUALITY_CERTIFICATION_KEY }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          UV_OFFLINE: "true"
+        run: |
+          set -euo pipefail
+          test -n "$QUALITY_CERTIFICATION_KEY" || {
+            echo "::error::QUALITY_CERTIFICATION_KEY is required";
+            exit 1;
+          }
+          uv run --frozen --no-sync --only-group release-certification python \
+            -m scripts.quality.verify_certification \
+            --record artifacts/quality/certification.json \
+            --expected-commit-sha "$RELEASE_SHA"
+
+      - name: Aggregate selected release image inventory
         env:
           RELEASE_SHA: ${{ inputs.release-sha }}
           QUALITY_RUN_ID: ${{ inputs.quality-run-id }}
+          QUALITY_RUN_ATTEMPT: ${{ needs.certify.outputs.quality-run-attempt }}
           BUILD_RUN_ID: ${{ github.run_id }}
           BUILD_RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
@@ -313,9 +452,14 @@ jobs:
             --repository "$GITHUB_REPOSITORY" \
             --source-sha "$RELEASE_SHA" \
             --certification artifacts/quality/certification.json \
+            --certification-provenance artifacts/quality/certification-provenance.json \
+            --cohort artifacts/image-evidence-provenance/selected-release-artifact-cohort.json \
+            --quality-contract quality/quality-contract.json \
+            --check-policy quality/release-required-checks.json \
             --build-run-id "$BUILD_RUN_ID" \
             --build-run-attempt "$BUILD_RUN_ATTEMPT" \
             --quality-run-id "$QUALITY_RUN_ID" \
+            --quality-run-attempt "$QUALITY_RUN_ATTEMPT" \
             --output artifacts/release-images/release-image-manifest.json
           (
             cd artifacts/release-images

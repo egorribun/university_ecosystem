@@ -110,16 +110,36 @@ type Hub struct {
 	ctx           context.Context
 	ctxCancel     context.CancelFunc
 	limiterCancel context.CancelFunc
-	lifecycleMu   sync.Mutex
-	stopOnce      sync.Once
-	jwksMu        sync.Mutex
+	// sessionRevocationCancel owns the dedicated Redis Pub/Sub consumer.
+	// It is cancelled during Stop so the tracked listener cannot outlive the Hub.
+	sessionRevocationCancel context.CancelFunc
+	// sessionRevocationWG lets Stop join every listener that was registered
+	// before it marks the Hub stopped. Cancellation alone is not enough: a
+	// caller must not observe shutdown complete while the Pub/Sub consumer can
+	// still route a revocation event.
+	sessionRevocationWG         sync.WaitGroup
+	sessionRevocationGeneration uint64
+	// sessionRevocationSubscribeTimeout bounds security-listener bootstrap.
+	// A listener that cannot establish within this interval fails closed rather
+	// than entering a degraded running state.
+	sessionRevocationSubscribeTimeout time.Duration
+	lifecycleMu                       sync.Mutex
+	stopOnce                          sync.Once
+	// stopped prevents a listener bootstrap that races with or follows Stop.
+	// Without this guard, a late subscription could outlive the Hub because
+	// stopOnce cannot cancel a callback installed after it has run.
+	stopped atomic.Bool
+	jwksMu  sync.Mutex
 	// redisClient owns ephemeral upgrade tickets and L2 authorization cache data.
 	// RZ-W14-01 (audit 2026-03-23 Wave 14): tickets replace JWT-in-Sec-WebSocket-Protocol.
 	redisClient *goredis.Client
 	// revocationRedisClient is a distinct durable/noeviction security store.
 	// Keeping it separate prevents cache pressure or restart from erasing live
 	// revoked:jti tombstones.
-	revocationRedisClient  *goredis.Client
+	revocationRedisClient *goredis.Client
+	// sessionRevocationCheck is deliberately injected for deterministic tests;
+	// production always uses the durable Redis tombstone lookup below.
+	sessionRevocationCheck func(context.Context, string) error
 	limiterCleanupInterval time.Duration
 
 	// JetStream R1 fields
@@ -395,34 +415,37 @@ func NewHub(nc *nats.Conn, logger *slog.Logger, authClient RoomAuthClient, cfg *
 		revocationRedisClient = revocationClients[0]
 	}
 
-	return &Hub{
-		Clients:                make(map[string]*Client),
-		Rooms:                  make(map[string]map[*Client]bool),
-		Register:               make(chan *Client),
-		Unregister:             make(chan *Client),
-		Broadcast:              make(chan *Message, bufSize),
-		Nats:                   nc,
-		Logger:                 logger,
-		authClient:             authClient,
-		UpgradeLimiter:         NewWSUpgradeRateLimiter(10, 60),
-		webTransportServer:     &webtransport.Server{CheckOrigin: isUpgradeOriginAllowed},
-		jwksCache:              nil, // Initialised via SetupJWKS()
-		maxClients:             maxC,
-		broadcastWorkers:       workers,
-		internalSecret:         secret,
-		clientMsgRateLimit:     rateLimit,
-		clientMsgRateBurst:     rateBurst,
-		redisClient:            rdb,
-		revocationRedisClient:  revocationRedisClient,
-		limiterCleanupInterval: 5 * time.Minute,
-		js:                     js,
-		dedupCache:             dedupCache,
-		streamChat:             streamChat,
-		streamNotif:            streamNotif,
-		durableChat:            durableChat,
-		durableNotif:           durableNotif,
-		enableJetStream:        enableJS,
+	hub := &Hub{
+		Clients:                           make(map[string]*Client),
+		Rooms:                             make(map[string]map[*Client]bool),
+		Register:                          make(chan *Client),
+		Unregister:                        make(chan *Client),
+		Broadcast:                         make(chan *Message, bufSize),
+		Nats:                              nc,
+		Logger:                            logger,
+		authClient:                        authClient,
+		UpgradeLimiter:                    NewWSUpgradeRateLimiter(10, 60),
+		webTransportServer:                &webtransport.Server{CheckOrigin: isUpgradeOriginAllowed},
+		jwksCache:                         nil, // Initialised via SetupJWKS()
+		maxClients:                        maxC,
+		broadcastWorkers:                  workers,
+		internalSecret:                    secret,
+		clientMsgRateLimit:                rateLimit,
+		clientMsgRateBurst:                rateBurst,
+		redisClient:                       rdb,
+		revocationRedisClient:             revocationRedisClient,
+		sessionRevocationSubscribeTimeout: defaultSessionRevocationSubscribeTimeout,
+		limiterCleanupInterval:            5 * time.Minute,
+		js:                                js,
+		dedupCache:                        dedupCache,
+		streamChat:                        streamChat,
+		streamNotif:                       streamNotif,
+		durableChat:                       durableChat,
+		durableNotif:                      durableNotif,
+		enableJetStream:                   enableJS,
 	}
+	hub.sessionRevocationCheck = hub.checkJTINotRevoked
+	return hub
 }
 
 // SetupJWKS initialises the JWKS cache for RS256 token verification.
@@ -1271,6 +1294,37 @@ func (h *Hub) DisconnectUser(userID string, closeCode int, reason string) {
 	}
 }
 
+// DisconnectSession closes only the active connection(s) associated with one
+// immutable session JTI. The Hub lock is released before RevokeSession takes
+// the client gate, preserving the Hub.mu -> Client.mu lock-order invariant.
+func (h *Hub) DisconnectSession(jti string, closeCode int, reason string) {
+	if h == nil || jti == "" {
+		return
+	}
+
+	h.mu.RLock()
+	var targets []*Client
+	for _, client := range h.Clients {
+		if client.SessionJTI == jti {
+			targets = append(targets, client)
+		}
+	}
+	h.mu.RUnlock()
+
+	if len(targets) == 0 {
+		return
+	}
+
+	// Do not log JTI values: they are bearer-session correlators.
+	if h.Logger != nil {
+		h.Logger.InfoContext(context.Background(), "Disconnecting revoked WebSocket sessions",
+			"count", len(targets), "code", closeCode, "reason", reason)
+	}
+	for _, client := range targets {
+		client.RevokeSession(closeCode, reason)
+	}
+}
+
 // StartLimiterCleanup launches a background goroutine that periodically
 // removes orphaned rate.Limiter entries from msgLimiters.
 func (h *Hub) StartLimiterCleanup(ctx context.Context) {
@@ -1327,6 +1381,7 @@ func (h *Hub) StartLimiterCleanup(ctx context.Context) {
 func (h *Hub) Stop() {
 	h.stopOnce.Do(func() {
 		h.lifecycleMu.Lock()
+		h.stopped.Store(true)
 		if h.ctxCancel != nil {
 			h.ctxCancel()
 		}
@@ -1334,7 +1389,15 @@ func (h *Hub) Stop() {
 			h.limiterCancel()
 			h.limiterCancel = nil
 		}
+		if h.sessionRevocationCancel != nil {
+			h.sessionRevocationCancel()
+			h.sessionRevocationCancel = nil
+		}
 		h.lifecycleMu.Unlock()
+		// A stopped Hub must not leave a Pub/Sub consumer behind. The listener's
+		// WaitGroup entry is registered while lifecycleMu is held, before Stop
+		// can set stopped and begin this join.
+		h.sessionRevocationWG.Wait()
 		for _, sub := range h.subs {
 			if err := sub.Drain(); err != nil {
 				h.Logger.WarnContext(context.Background(), "NATS subscription drain error", "err", err)

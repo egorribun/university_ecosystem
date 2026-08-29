@@ -21,7 +21,6 @@ spec:
         {{- include "university-ecosystem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: outbox-worker
         {{ printf "%s-redis-client" .Release.Name }}: "true"
-        {{ printf "%s-revocationRedis-client" .Release.Name }}: "true"
         {{ printf "%s-nats-client" .Release.Name }}: "true"
       annotations:
         university-ecosystem.io/source-sha: {{ .Values.global.imageTag | quote }}
@@ -67,11 +66,13 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.connections.existingSecret | quote }}
                   key: {{ required "connections.redisBackendURLKey must be set" .Values.connections.redisBackendURLKey | quote }}
-            - name: REVOCATION_REDIS_URL
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.connections.existingSecret | quote }}
-                  key: {{ required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey | quote }}
+            # Outbox dispatch has no authentication responsibility. Its process
+            # role disables the revocation capability, and no security-store URL
+            # or NetworkPolicy label is rendered for this workload.
+            - name: APP_PROCESS_ROLE
+              value: "outbox-worker"
+            - name: REVOCATION_REDIS_ACCESS_ENABLED
+              value: "false"
             - name: NATS_URL
               valueFrom:
                 secretKeyRef:

@@ -1,0 +1,209 @@
+# The deployment script supplies this from HELM_RELEASE_NAME.  It is kept
+# separate from this chart's release name because the store is deliberately a
+# bootstrap release, while the service DNS identity belongs to the application
+# release: <applicationReleaseName>-revocation-redis-master.
+applicationReleaseName: ""
+
+redis:
+  enabled: true
+  architecture: standalone
+  nameOverride: "revocation-redis"
+  fullnameOverride: ""
+  global:
+    imageRegistry: ""
+    imagePullSecrets: []
+    redis:
+      password: ""
+    compatibility:
+      # The fixed restricted context below is reviewed as part of the image
+      # contract. Do not let an upstream platform adapter silently remove it.
+      openshift:
+        adaptSecurityContext: disabled
+  namespaceOverride: ""
+  secretAnnotations: {}
+  commonLabels:
+    university-ecosystem.io/revocation-store-for: ""
+    # Transitional compatibility: an existing application migration policy
+    # selected the in-chart store by this label before it is replaced with the
+    # stronger binding label. The bootstrap script pins it to the app release.
+    app.kubernetes.io/instance: ""
+  networkPolicy:
+    enabled: true
+    allowExternal: false
+    allowExternalEgress: false
+    # The Redis chart otherwise permits every pod to scrape its metrics
+    # endpoint. Keep that endpoint reachable only from the monitoring
+    # namespace, matching the application chart's Prometheus boundary.
+    metrics:
+      allowExternal: false
+      ingressNSMatchLabels:
+        kubernetes.io/metadata.name: monitoring
+      ingressNSPodMatchLabels: {}
+  # This store is internal-only. External DNS would turn its durable security
+  # state into a discoverable endpoint outside the reviewed network boundary.
+  useExternalDNS:
+    enabled: false
+    suffix: ""
+    annotationKey: external-dns.alpha.kubernetes.io/
+    additionalAnnotations: {}
+  auth:
+    enabled: true
+    # This ExternalSecret-backed credential is deliberately separate from the
+    # eviction-enabled cache's redis-credentials/redis-password pair.
+    existingSecret: "revocation-redis-credentials" #checkov:skip=CKV_SECRET_6:Kubernetes Secret name only
+    existingSecretPasswordKey: "revocation-redis-password" #checkov:skip=CKV_SECRET_6:Kubernetes Secret key only
+  image:
+    registry: docker.io
+    repository: bitnami/redis
+    digest: REQUIRED_SHA256_DIGEST
+    pullPolicy: Always
+  master:
+    count: 1
+    revisionHistoryLimit: 10
+    configuration: ""
+    # The revocation protocol only needs normal data commands and Pub/Sub.  Do
+    # not expose administrative, replication, module, scripting-function, or
+    # shutdown controls that could weaken durability or exfiltrate state.
+    disableCommands:
+      - ACL
+      - CONFIG
+      - FLUSHDB
+      - FLUSHALL
+      - FUNCTION
+      - MIGRATE
+      - MODULE
+      - MONITOR
+      - REPLICAOF
+      - SLAVEOF
+      - SHUTDOWN
+    # Give Redis a bounded, explicit window to flush AOF state on termination.
+    terminationGracePeriodSeconds: 30
+    enableServiceLinks: false
+    containerPorts:
+      redis: 6379
+    customStartupProbe: {}
+    customLivenessProbe: {}
+    customReadinessProbe: {}
+    resourcesPreset: "none"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    persistence:
+      enabled: true
+      size: 2Gi
+    persistentVolumeClaimRetentionPolicy:
+      enabled: true
+      whenScaled: Retain
+      whenDeleted: Retain
+    pdb:
+      create: true
+      minAvailable: 1
+    podSecurityContext:
+      enabled: true
+      fsGroup: 1001
+      fsGroupChangePolicy: OnRootMismatch
+      sysctls: []
+      supplementalGroups: []
+      runAsUser: 1001
+      runAsGroup: 1001
+      runAsNonRoot: true
+      seccompProfile:
+        type: RuntimeDefault
+    containerSecurityContext:
+      enabled: true
+      runAsUser: 1001
+      runAsGroup: 1001
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      seccompProfile:
+        type: RuntimeDefault
+      capabilities:
+        add: []
+        drop: ["ALL"]
+      privileged: false
+      procMount: Default
+      seLinuxOptions: {}
+    kind: StatefulSet
+    schedulerName: ""
+    updateStrategy:
+      type: RollingUpdate
+    minReadySeconds: 0
+    priorityClassName: ""
+    automountServiceAccountToken: false
+    shareProcessNamespace: false
+    podAffinityPreset: ""
+    podAntiAffinityPreset: soft
+    nodeAffinityPreset:
+      type: ""
+      key: ""
+      values: []
+    affinity: {}
+    nodeSelector: {}
+    tolerations: []
+    topologySpreadConstraints: []
+    dnsPolicy: ""
+    dnsConfig: {}
+    lifecycleHooks: {}
+    extraVolumes: []
+    extraVolumeMounts: []
+  # Security tombstones must survive pod restarts and must never be evicted
+  # under memory pressure. AOF provides bounded-loss durability without the
+  # cache Redis eviction semantics.
+  commonConfiguration: |-
+    maxmemory 384mb
+    maxmemory-policy noeviction
+    save 60 1
+    appendonly yes
+    appendfsync everysec
+  metrics:
+    enabled: true
+    resourcesPreset: "none"
+    image:
+      registry: docker.io
+      repository: bitnami/redis-exporter
+      digest: REQUIRED_SHA256_DIGEST
+      pullPolicy: Always
+      pullSecrets: []
+    containerPorts:
+      http: 9121
+    command: []
+    redisTargetHost: localhost
+    extraArgs: {}
+    customStartupProbe: {}
+    customLivenessProbe: {}
+    customReadinessProbe: {}
+    containerSecurityContext:
+      enabled: true
+      runAsUser: 1001
+      runAsGroup: 1001
+      runAsNonRoot: true
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      seccompProfile:
+        type: RuntimeDefault
+      capabilities:
+        add: []
+        drop: ["ALL"]
+      privileged: false
+      procMount: Default
+      seLinuxOptions: {}
+    resources:
+      requests:
+        cpu: 25m
+        memory: 24Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
+    # Annotation-based scraping is the only reviewed discovery path. Operator
+    # CRs are intentionally not created by this isolated bootstrap release.
+    serviceMonitor:
+      enabled: false
+    podMonitor:
+      enabled: false
+    prometheusRule:
+      enabled: false

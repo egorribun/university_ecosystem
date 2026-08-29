@@ -10,7 +10,7 @@ test -s "$chart/Chart.lock" || {
 }
 dependency_status="$(helm dependency list "$chart")"
 actual_dependencies="$(awk 'NR > 1 && NF {print $1 "|" $3 "|" $4}' <<< "$dependency_status")"
-expected_dependencies=$'redis|oci://registry-1.docker.io/bitnamicharts|ok\nredis|oci://registry-1.docker.io/bitnamicharts|ok\nnats|oci://registry-1.docker.io/bitnamicharts|ok'
+expected_dependencies=$'redis|oci://registry-1.docker.io/bitnamicharts|ok\nnats|oci://registry-1.docker.io/bitnamicharts|ok'
 if [[ "$actual_dependencies" != "$expected_dependencies" ]]; then
   echo "Helm dependencies do not match the reviewed Chart.lock contract." >&2
   printf '%s\n' "$dependency_status" >&2
@@ -38,8 +38,7 @@ if [[ "$DEPLOY_ENVIRONMENT" == "staging" || "$DEPLOY_ENVIRONMENT" == "production
     DEPLOYMENT_URL CWV_EXPORT_OIDC_SUBJECT FRONTEND_HOST API_HOST
     TLS_SECRET_NAME CERT_MANAGER_ISSUER_NAME ELASTICSEARCH_URL FLAGD_HOST
     OTLP_ENDPOINT MINIO_ENDPOINT TEMPORAL_HOST REDIS_IMAGE_DIGEST
-    REDIS_METRICS_IMAGE_DIGEST REVOCATION_REDIS_IMAGE_DIGEST
-    REVOCATION_REDIS_METRICS_IMAGE_DIGEST NATS_IMAGE_DIGEST
+    REDIS_METRICS_IMAGE_DIGEST NATS_IMAGE_DIGEST
   )
   for name in "${release_required[@]}"; do
     if [[ -z "${!name:-}" ]]; then
@@ -57,10 +56,6 @@ if [[ "$DEPLOY_ENVIRONMENT" == "staging" || "$DEPLOY_ENVIRONMENT" == "production
     --set-string "redis.image.repository=bitnami/redis"
     --set-string "redis.metrics.image.registry=docker.io"
     --set-string "redis.metrics.image.repository=bitnami/redis-exporter"
-    --set-string "revocationRedis.image.registry=docker.io"
-    --set-string "revocationRedis.image.repository=bitnami/redis"
-    --set-string "revocationRedis.metrics.image.registry=docker.io"
-    --set-string "revocationRedis.metrics.image.repository=bitnami/redis-exporter"
     --set-string "nats.image.registry=docker.io"
     --set-string "nats.image.repository=bitnami/nats"
     --set-string "backend.config.elasticsearchURL=$ELASTICSEARCH_URL"
@@ -80,8 +75,6 @@ if [[ "$DEPLOY_ENVIRONMENT" == "staging" || "$DEPLOY_ENVIRONMENT" == "production
     --set-string "ingress.tls[0].hosts[1]=$API_HOST"
     --set-string "redis.image.digest=$REDIS_IMAGE_DIGEST"
     --set-string "redis.metrics.image.digest=$REDIS_METRICS_IMAGE_DIGEST"
-    --set-string "revocationRedis.image.digest=$REVOCATION_REDIS_IMAGE_DIGEST"
-    --set-string "revocationRedis.metrics.image.digest=$REVOCATION_REDIS_METRICS_IMAGE_DIGEST"
     --set-string "nats.image.digest=$NATS_IMAGE_DIGEST"
   )
 fi

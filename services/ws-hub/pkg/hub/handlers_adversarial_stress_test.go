@@ -93,7 +93,7 @@ func TestAdversarial_ValidateUpgradeTicket_ConcurrentRace(t *testing.T) {
 	h.revocationRedisClient = rdb
 
 	ticket := strings.Repeat("b2", 32)
-	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket, "racing-user:jti-999"))
+	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket, "racing-user:"+validSessionJTI))
 
 	const concurrency = 50
 	var successCount atomic.Int32
@@ -147,22 +147,22 @@ func TestAdversarial_ValidateUpgradeTicket_RevocationScenarios(t *testing.T) {
 
 	// 1. Unrevoked ticket
 	ticket1 := strings.Repeat("c3", 32)
-	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket1, "alice:jti-1"))
+	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket1, "alice:"+validSessionJTI))
 	userID, _, err := h.validateUpgradeTicket(context.Background(), ticket1)
 	require.NoError(t, err)
 	assert.Equal(t, "alice", userID)
 
 	// 2. Revoked ticket (key exists in revocation Redis)
 	ticket2 := strings.Repeat("d4", 32)
-	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket2, "bob:jti-revoked"))
-	require.NoError(t, revMr.Set(revokedJTIKeyPrefix+"jti-revoked", "1"))
+	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket2, "bob:"+validSessionJTI))
+	require.NoError(t, revMr.Set(revokedJTIKeyPrefix+validSessionJTI, "1"))
 	_, _, err = h.validateUpgradeTicket(context.Background(), ticket2)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "ticket session is revoked")
 
 	// 3. Revocation Redis network failure / close
 	ticket3 := strings.Repeat("e5", 32)
-	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket3, "carol:jti-3"))
+	require.NoError(t, mr.Set(wsTicketKeyPrefix+ticket3, "carol:"+validSessionJTI))
 	revMr.Close() // simulate crash / network partition
 	_, _, err = h.validateUpgradeTicket(context.Background(), ticket3)
 	require.Error(t, err)

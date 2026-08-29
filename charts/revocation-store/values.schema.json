@@ -1,0 +1,545 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "University Ecosystem revocation-store input contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["applicationReleaseName", "redis"],
+  "definitions": {
+    "digest": {
+      "type": "string",
+      "pattern": "^(REQUIRED_SHA256_DIGEST|sha256:[0-9a-f]{64})$"
+    },
+    "emptyObject": {"const": {}},
+    "emptyArray": {"const": []},
+    "resourcePair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpu", "memory"],
+      "properties": {
+        "cpu": {"type": "string"},
+        "memory": {"type": "string"}
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requests", "limits"],
+      "properties": {
+        "requests": {"$ref": "#/definitions/resourcePair"},
+        "limits": {"$ref": "#/definitions/resourcePair"}
+      }
+    },
+    "restrictedContainerSecurityContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled", "seLinuxOptions", "runAsUser", "runAsGroup", "runAsNonRoot",
+        "allowPrivilegeEscalation", "readOnlyRootFilesystem", "seccompProfile",
+        "capabilities", "privileged", "procMount"
+      ],
+      "properties": {
+        "enabled": {"const": true},
+        "seLinuxOptions": {"const": {}},
+        "runAsUser": {"const": 1001},
+        "runAsGroup": {"const": 1001},
+        "runAsNonRoot": {"const": true},
+        "allowPrivilegeEscalation": {"const": false},
+        "readOnlyRootFilesystem": {"const": true},
+        "seccompProfile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {"type": {"const": "RuntimeDefault"}}
+        },
+        "capabilities": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["add", "drop"],
+          "properties": {"add": {"const": []}, "drop": {"const": ["ALL"]}}
+        },
+        "privileged": {"const": false},
+        "procMount": {"const": "Default"}
+      }
+    },
+    "restrictedPodSecurityContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled", "fsGroup", "fsGroupChangePolicy", "sysctls", "supplementalGroups",
+        "runAsUser", "runAsGroup", "runAsNonRoot", "seccompProfile"
+      ],
+      "properties": {
+        "enabled": {"const": true},
+        "fsGroup": {"const": 1001},
+        "fsGroupChangePolicy": {"const": "OnRootMismatch"},
+        "sysctls": {"const": []},
+        "supplementalGroups": {"const": []},
+        "runAsUser": {"const": 1001},
+        "runAsGroup": {"const": 1001},
+        "runAsNonRoot": {"const": true},
+        "seccompProfile": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {"type": {"const": "RuntimeDefault"}}
+        }
+      }
+    },
+    "masterPersistence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "size"],
+      "properties": {
+        "enabled": {"const": true},
+        "medium": {"const": ""},
+        "sizeLimit": {"const": ""},
+        "path": {"const": "/data"},
+        "subPath": {"const": ""},
+        "subPathExpr": {"const": ""},
+        "storageClass": {"const": ""},
+        "accessModes": {"const": ["ReadWriteOnce"]},
+        "size": {"const": "2Gi"},
+        "annotations": {"const": {}},
+        "labels": {"const": {}},
+        "selector": {"const": {}},
+        "existingClaim": {"const": ""},
+        "dataSource": {"const": {}}
+      }
+    },
+    "masterRetention": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled", "whenDeleted", "whenScaled"],
+      "properties": {
+        "enabled": {"const": true},
+        "whenDeleted": {"const": "Retain"},
+        "whenScaled": {"const": "Retain"}
+      }
+    },
+    "masterPdb": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["create", "minAvailable"],
+      "properties": {
+        "create": {"const": true},
+        "maxUnavailable": {"const": ""},
+        "minAvailable": {"const": 1}
+      }
+    },
+    "masterService": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type", "portNames", "ports", "nodePorts", "externalTrafficPolicy",
+        "internalTrafficPolicy", "extraPorts", "loadBalancerIP", "loadBalancerClass",
+        "loadBalancerSourceRanges", "externalIPs", "sessionAffinity",
+        "sessionAffinityConfig", "clusterIP", "annotations"
+      ],
+      "properties": {
+        "type": {"const": "ClusterIP"},
+        "portNames": {"const": {"redis": "tcp-redis"}},
+        "ports": {"const": {"redis": 6379}},
+        "nodePorts": {"const": {"redis": ""}},
+        "externalTrafficPolicy": {"const": "Cluster"},
+        "internalTrafficPolicy": {"const": "Cluster"},
+        "extraPorts": {"const": []},
+        "loadBalancerIP": {"const": ""},
+        "loadBalancerClass": {"const": ""},
+        "loadBalancerSourceRanges": {"const": []},
+        "externalIPs": {"const": []},
+        "sessionAffinity": {"const": "None"},
+        "sessionAffinityConfig": {"const": {}},
+        "clusterIP": {"const": ""},
+        "annotations": {"const": {}}
+      }
+    },
+    "metricsService": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled", "type", "ports", "externalTrafficPolicy", "extraPorts",
+        "loadBalancerIP", "loadBalancerClass", "loadBalancerSourceRanges",
+        "clusterIP", "annotations"
+      ],
+      "properties": {
+        "enabled": {"const": true},
+        "type": {"const": "ClusterIP"},
+        "ports": {"const": {"http": 9121}},
+        "externalTrafficPolicy": {"const": "Cluster"},
+        "extraPorts": {"const": []},
+        "loadBalancerIP": {"const": ""},
+        "loadBalancerClass": {"const": ""},
+        "loadBalancerSourceRanges": {"const": []},
+        "clusterIP": {"const": ""},
+        "annotations": {"const": {}}
+      }
+    }
+  },
+  "properties": {
+    "applicationReleaseName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 36,
+      "pattern": "^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$"
+    },
+    "redis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled", "architecture", "nameOverride", "fullnameOverride", "global",
+        "namespaceOverride", "secretAnnotations", "commonLabels", "networkPolicy",
+        "useExternalDNS", "auth", "image", "master", "commonConfiguration", "metrics"
+      ],
+      "properties": {
+        "enabled": {"const": true},
+        "architecture": {"const": "standalone"},
+        "nameOverride": {"const": "revocation-redis"},
+        "clusterDomain": {"const": "cluster.local"},
+        "configmapChecksumAnnotations": {"const": true},
+        "secretChecksumAnnotations": {"const": true},
+        "useHostnames": {"const": true},
+        "kubeVersion": {"const": ""},
+        "nameResolutionThreshold": {"const": 5},
+        "nameResolutionTimeout": {"const": 5},
+        "fullnameOverride": {
+          "type": "string",
+          "minLength": 25,
+          "maxLength": 63,
+          "pattern": "^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$"
+        },
+        "global": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["imageRegistry", "imagePullSecrets", "redis", "compatibility"],
+          "properties": {
+            "imageRegistry": {"const": ""},
+            "imagePullSecrets": {"const": []},
+            "defaultStorageClass": {"const": ""},
+            "storageClass": {"const": ""},
+            "security": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["allowInsecureImages"],
+              "properties": {"allowInsecureImages": {"const": false}}
+            },
+            "redis": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["password"],
+              "properties": {"password": {"const": ""}}
+            },
+            "compatibility": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["openshift"],
+              "properties": {
+                "openshift": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["adaptSecurityContext"],
+                  "properties": {"adaptSecurityContext": {"const": "disabled"}}
+                }
+              }
+            }
+          }
+        },
+        "namespaceOverride": {"const": ""},
+        "secretAnnotations": {"const": {}},
+        "commonLabels": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "university-ecosystem.io/revocation-store-for",
+            "app.kubernetes.io/instance"
+          ],
+          "properties": {
+            "university-ecosystem.io/revocation-store-for": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 36,
+              "pattern": "^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$"
+            },
+            "app.kubernetes.io/instance": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 36,
+              "pattern": "^[a-z0-9](?:[-a-z0-9]*[a-z0-9])?$"
+            }
+          }
+        },
+        "networkPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "allowExternal", "allowExternalEgress", "metrics"],
+          "properties": {
+            "enabled": {"const": true},
+            "allowExternal": {"const": false},
+            "allowExternalEgress": {"const": false},
+            "extraIngress": {"const": []},
+            "extraEgress": {"const": []},
+            "ingressNSMatchLabels": {"const": {}},
+            "ingressNSPodMatchLabels": {"const": {}},
+            "metrics": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "allowExternal", "ingressNSMatchLabels", "ingressNSPodMatchLabels"
+              ],
+              "properties": {
+                "allowExternal": {"const": false},
+                "ingressNSMatchLabels": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["kubernetes.io/metadata.name"],
+                  "properties": {
+                    "kubernetes.io/metadata.name": {"const": "monitoring"}
+                  }
+                },
+                "ingressNSPodMatchLabels": {"const": {}}
+              }
+            }
+          }
+        },
+        "useExternalDNS": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "suffix", "annotationKey", "additionalAnnotations"],
+          "properties": {
+            "enabled": {"const": false},
+            "suffix": {"const": ""},
+            "annotationKey": {"const": "external-dns.alpha.kubernetes.io/"},
+            "additionalAnnotations": {"const": {}}
+          }
+        },
+        "auth": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "existingSecret", "existingSecretPasswordKey"],
+          "properties": {
+            "enabled": {"const": true},
+            "existingSecret": {"const": "revocation-redis-credentials"},
+            "existingSecretPasswordKey": {"const": "revocation-redis-password"},
+            "password": {"const": ""},
+            "sentinel": {"const": true},
+            "usePasswordFiles": {"const": true},
+            "usePasswordFileFromSecret": {"const": true},
+            "acl": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["enabled", "sentinel", "users", "userSecret"],
+              "properties": {
+                "enabled": {"const": false},
+                "sentinel": {"const": false},
+                "userSecret": {"const": ""},
+                "users": {"const": []}
+              }
+            }
+          }
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["registry", "repository", "digest", "pullPolicy"],
+          "properties": {
+            "registry": {"const": "docker.io"},
+            "repository": {"const": "bitnami/redis"},
+            "digest": {"$ref": "#/definitions/digest"},
+            "pullPolicy": {"const": "Always"},
+            "tag": {"type": "string"},
+            "pullSecrets": {"const": []},
+            "debug": {"const": false}
+          }
+        },
+        "master": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "count", "revisionHistoryLimit", "configuration", "disableCommands",
+            "terminationGracePeriodSeconds", "enableServiceLinks", "containerPorts",
+            "customStartupProbe", "customLivenessProbe", "customReadinessProbe",
+            "resourcesPreset", "resources", "persistence",
+            "persistentVolumeClaimRetentionPolicy", "pdb", "podSecurityContext",
+            "containerSecurityContext", "kind", "schedulerName", "updateStrategy",
+            "minReadySeconds", "priorityClassName", "automountServiceAccountToken",
+            "shareProcessNamespace", "podAffinityPreset", "podAntiAffinityPreset",
+            "nodeAffinityPreset", "affinity", "nodeSelector", "tolerations",
+            "topologySpreadConstraints", "dnsPolicy", "dnsConfig", "lifecycleHooks",
+            "extraVolumes", "extraVolumeMounts"
+          ],
+          "properties": {
+            "count": {"const": 1},
+            "revisionHistoryLimit": {"const": 10},
+            "configuration": {"const": ""},
+            "disableCommands": {
+              "const": [
+                "ACL", "CONFIG", "FLUSHDB", "FLUSHALL", "FUNCTION", "MIGRATE",
+                "MODULE", "MONITOR", "REPLICAOF", "SLAVEOF", "SHUTDOWN"
+              ]
+            },
+            "terminationGracePeriodSeconds": {"const": 30},
+            "enableServiceLinks": {"const": false},
+            "containerPorts": {"const": {"redis": 6379}},
+            "customStartupProbe": {"const": {}},
+            "customLivenessProbe": {"const": {}},
+            "customReadinessProbe": {"const": {}},
+            "livenessProbe": {
+              "const": {
+                "enabled": true, "initialDelaySeconds": 20, "periodSeconds": 5,
+                "timeoutSeconds": 5, "successThreshold": 1, "failureThreshold": 5
+              }
+            },
+            "readinessProbe": {
+              "const": {
+                "enabled": true, "initialDelaySeconds": 20, "periodSeconds": 5,
+                "timeoutSeconds": 1, "successThreshold": 1, "failureThreshold": 5
+              }
+            },
+            "startupProbe": {
+              "const": {
+                "enabled": false, "initialDelaySeconds": 20, "periodSeconds": 5,
+                "timeoutSeconds": 5, "successThreshold": 1, "failureThreshold": 5
+              }
+            },
+            "resourcesPreset": {"const": "none"},
+            "resources": {
+              "const": {
+                "requests": {"cpu": "100m", "memory": "128Mi"},
+                "limits": {"cpu": "500m", "memory": "512Mi"}
+              }
+            },
+            "persistence": {"$ref": "#/definitions/masterPersistence"},
+            "persistentVolumeClaimRetentionPolicy": {
+              "$ref": "#/definitions/masterRetention"
+            },
+            "pdb": {"$ref": "#/definitions/masterPdb"},
+            "podSecurityContext": {"$ref": "#/definitions/restrictedPodSecurityContext"},
+            "containerSecurityContext": {
+              "$ref": "#/definitions/restrictedContainerSecurityContext"
+            },
+            "kind": {"const": "StatefulSet"},
+            "schedulerName": {"const": ""},
+            "updateStrategy": {"const": {"type": "RollingUpdate"}},
+            "minReadySeconds": {"const": 0},
+            "priorityClassName": {"const": ""},
+            "automountServiceAccountToken": {"const": false},
+            "shareProcessNamespace": {"const": false},
+            "podAffinityPreset": {"const": ""},
+            "podAntiAffinityPreset": {"const": "soft"},
+            "nodeAffinityPreset": {"const": {"type": "", "key": "", "values": []}},
+            "affinity": {"const": {}},
+            "nodeSelector": {"const": {}},
+            "tolerations": {"const": []},
+            "topologySpreadConstraints": {"const": []},
+            "dnsPolicy": {"const": ""},
+            "dnsConfig": {"const": {}},
+            "lifecycleHooks": {"const": {}},
+            "extraVolumes": {"const": []},
+            "extraVolumeMounts": {"const": []},
+            "service": {"$ref": "#/definitions/masterService"}
+          },
+          "patternProperties": {
+            "^(affinity|annotations|args|automountServiceAccountToken|command|configuration|containerPorts|containerSecurityContext|count|customLivenessProbe|customReadinessProbe|customStartupProbe|disableCommands|dnsConfig|dnsPolicy|enableServiceLinks|extraEnvVars|extraEnvVarsCM|extraEnvVarsSecret|extraFlags|extraPodSpec|extraVolumeMounts|extraVolumes|hostAliases|initContainers|kind|lifecycleHooks|livenessProbe|minReadySeconds|nodeAffinityPreset|nodeSelector|pdb|persistence|persistentVolumeClaimRetentionPolicy|podAffinityPreset|podAnnotations|podAntiAffinityPreset|podLabels|podSecurityContext|preExecCmds|priorityClassName|readinessProbe|resources|resourcesPreset|revisionHistoryLimit|schedulerName|service|serviceAccount|shareProcessNamespace|sidecars|startupProbe|terminationGracePeriodSeconds|tolerations|topologySpreadConstraints|updateStrategy)$": {}
+          }
+        },
+        "commonConfiguration": {
+          "const": "maxmemory 384mb\nmaxmemory-policy noeviction\nsave 60 1\nappendonly yes\nappendfsync everysec"
+        },
+        "metrics": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled", "resourcesPreset", "image", "containerPorts", "command",
+            "redisTargetHost", "extraArgs", "customStartupProbe", "customLivenessProbe",
+            "customReadinessProbe", "containerSecurityContext", "resources",
+            "serviceMonitor", "podMonitor", "prometheusRule"
+          ],
+          "properties": {
+            "enabled": {"const": true},
+            "resourcesPreset": {"const": "none"},
+            "image": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["registry", "repository", "digest", "pullPolicy", "pullSecrets"],
+              "properties": {
+                "registry": {"const": "docker.io"},
+                "repository": {"const": "bitnami/redis-exporter"},
+                "digest": {"$ref": "#/definitions/digest"},
+                "pullPolicy": {"const": "Always"},
+                "pullSecrets": {"const": []},
+                "tag": {"const": "1.70.0-debian-12-r2"}
+              }
+            },
+            "containerPorts": {"const": {"http": 9121}},
+            "command": {"const": []},
+            "redisTargetHost": {"const": "localhost"},
+            "extraArgs": {"const": {}},
+            "customStartupProbe": {"const": {}},
+            "customLivenessProbe": {"const": {}},
+            "customReadinessProbe": {"const": {}},
+            "livenessProbe": {
+              "const": {
+                "enabled": true, "initialDelaySeconds": 10, "periodSeconds": 10,
+                "timeoutSeconds": 5, "successThreshold": 1, "failureThreshold": 5
+              }
+            },
+            "readinessProbe": {
+              "const": {
+                "enabled": true, "initialDelaySeconds": 5, "periodSeconds": 10,
+                "timeoutSeconds": 1, "successThreshold": 1, "failureThreshold": 3
+              }
+            },
+            "startupProbe": {
+              "const": {
+                "enabled": false, "initialDelaySeconds": 10, "periodSeconds": 10,
+                "timeoutSeconds": 5, "successThreshold": 1, "failureThreshold": 5
+              }
+            },
+            "containerSecurityContext": {
+              "$ref": "#/definitions/restrictedContainerSecurityContext"
+            },
+            "resources": {
+              "const": {
+                "requests": {"cpu": "25m", "memory": "24Mi"},
+                "limits": {"cpu": "100m", "memory": "64Mi"}
+              }
+            },
+            "serviceMonitor": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["enabled"],
+              "properties": {"enabled": {"const": false}},
+              "patternProperties": {
+                "^(additionalEndpoints|additionalLabels|honorLabels|interval|metricRelabelings|namespace|podTargetLabels|port|relabelings|relabellings|sampleLimit|scrapeTimeout|targetLimit)$": {}
+              }
+            },
+            "podMonitor": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["enabled"],
+              "properties": {"enabled": {"const": false}},
+              "patternProperties": {
+                "^(additionalEndpoints|additionalLabels|honorLabels|interval|metricRelabelings|namespace|podTargetLabels|port|relabelings|relabellings|sampleLimit|scrapeTimeout|targetLimit)$": {}
+              }
+            },
+            "prometheusRule": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["enabled"],
+              "properties": {"enabled": {"const": false}},
+              "patternProperties": {
+                "^(additionalLabels|namespace|rules)$": {}
+              }
+            },
+            "service": {"$ref": "#/definitions/metricsService"}
+          },
+          "patternProperties": {
+            "^(command|containerPorts|containerSecurityContext|customLivenessProbe|customReadinessProbe|customStartupProbe|enabled|extraArgs|extraEnvVars|extraVolumeMounts|extraVolumes|image|livenessProbe|podAnnotations|podLabels|podMonitor|prometheusRule|readinessProbe|redisTargetHost|resources|resourcesPreset|service|serviceMonitor|startupProbe)$": {}
+          }
+        }
+      },
+      "patternProperties": {
+        "^(clusterDomain|common|commonAnnotations|configmapChecksumAnnotations|diagnosticMode|existingConfigmap|extraDeploy|kubeVersion|kubectl|nameResolutionThreshold|nameResolutionTimeout|pdb|podSecurityPolicy|rbac|replica|secretChecksumAnnotations|sentinel|serviceAccount|serviceBindings|sysctl|tls|useHostnames|volumePermissions)$": {}
+      }
+    }
+  }
+}

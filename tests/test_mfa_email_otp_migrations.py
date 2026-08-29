@@ -10,6 +10,9 @@ from pathlib import Path
 
 import pytest
 import sqlalchemy as sa
+from redis import Redis
+from redis.backoff import NoBackoff
+from redis.retry import Retry
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -173,6 +176,39 @@ def test_preflight_blocks_unsafe_session_only_webauthn_legacy_state() -> None:
         engine.dispose()
 
 
+def test_preflight_does_not_mutate_safe_users_when_any_legacy_user_is_unresolved() -> (
+    None
+):
+    """All legacy-factor remediation must pass before any local mutation starts."""
+
+    contract = _load("202608250002_contract_retire_webauthn.py")
+    engine, conn = _legacy_database()
+    try:
+        conn.exec_driver_sql(
+            "INSERT INTO users VALUES "
+            "('a-safe','safe@example.test',NULL,NULL,'webauthn',1),"
+            "('z-unsafe','unsafe@example.test',NULL,NULL,'webauthn',1)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO mfa_totp_enrollments VALUES ('t','a-safe',1,'2026-08-01',NULL)"
+        )
+        conn.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN mfa_epoch INTEGER NOT NULL DEFAULT 0"
+        )
+
+        with pytest.raises(
+            contract.MfaMigrationSafetyError, match="unresolved_count=1"
+        ):
+            contract.run_preflight(conn)
+
+        assert conn.exec_driver_sql(
+            "SELECT mfa_default_method, mfa_epoch FROM users WHERE id='a-safe'"
+        ).one() == ("webauthn", 0)
+    finally:
+        conn.close()
+        engine.dispose()
+
+
 def test_preflight_ignores_revoked_webauthn_sessions() -> None:
     """Only sessions that could still authenticate may trigger retirement remediation."""
 
@@ -243,6 +279,487 @@ def test_preflight_fails_closed_when_session_revocation_state_is_unavailable() -
             "SELECT mfa_epoch, mfa_method, mfa_verified_at, mfa_completed_at "
             "FROM active_sessions WHERE id='s1'"
         ).one() == (0, None, None, None)
+    finally:
+        conn.close()
+        engine.dispose()
+
+
+def test_preflight_rejects_noncanonical_live_session_jti_without_redis_effects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Equivalent UUID spellings cannot form a second revocation key."""
+
+    contract = _load("202608250002_contract_retire_webauthn.py")
+    engine, conn = _legacy_database()
+    redis_called = False
+
+    def unexpected_redis_client(_url: str) -> object:
+        nonlocal redis_called
+        redis_called = True
+        return object()
+
+    monkeypatch.setenv("REVOCATION_REDIS_URL", "redis://revocation.test:6379/0")
+    monkeypatch.setattr(
+        contract,
+        "_get_migration_revocation_redis_client",
+        unexpected_redis_client,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        contract,
+        "_requires_persistent_session_revocation",
+        lambda _bind: True,
+        raising=False,
+    )
+    try:
+        conn.exec_driver_sql(
+            "INSERT INTO users VALUES "
+            "('canonical-user','canonical@example.test',NULL,NULL,'webauthn',1)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO mfa_totp_enrollments VALUES "
+            "('totp','canonical-user',1,'2026-08-01',NULL)"
+        )
+        conn.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN mfa_epoch INTEGER NOT NULL DEFAULT 0"
+        )
+        conn.exec_driver_sql(
+            "CREATE TABLE active_sessions (id TEXT, user_id TEXT, jti TEXT, "
+            "expires_at DATETIME, revoked_at DATETIME, mfa_method TEXT, "
+            "mfa_verified_at DATETIME, mfa_completed_at DATETIME)"
+        )
+        noncanonical_jti = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa".upper()
+        conn.exec_driver_sql(
+            "INSERT INTO active_sessions VALUES "
+            "('canonical-session','canonical-user',:jti,'2099-01-01T00:00:00+00:00',"
+            "NULL,'webauthn','2026-08-01','2026-08-01')",
+            {"jti": noncanonical_jti},
+        )
+
+        with pytest.raises(
+            contract.MfaMigrationSafetyError,
+            match="active session revocation data is invalid",
+        ):
+            contract.run_preflight(conn)
+
+        assert redis_called is False
+        assert conn.exec_driver_sql(
+            "SELECT mfa_default_method, mfa_epoch FROM users WHERE id='canonical-user'"
+        ).one() == ("webauthn", 0)
+    finally:
+        conn.close()
+        engine.dispose()
+
+
+def test_preflight_publishes_live_session_revocation_before_database_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A remediated bearer is tombstoned and broadcast before its DB state moves."""
+
+    contract = _load("202608250002_contract_retire_webauthn.py")
+    engine, conn = _legacy_database()
+    calls: list[tuple[object, ...]] = []
+    first_jti = "11111111-1111-4111-8111-111111111111"
+    second_jti = "22222222-2222-4222-8222-222222222222"
+
+    class RecordingRevocationRedis:
+        def ping(self) -> bool:
+            calls.append(("ping",))
+            return True
+
+        def set(self, key: str, value: str, *, ex: int) -> bool:
+            # The external invalidation must complete before either the factor
+            # remap or the local session state is mutated.
+            assert conn.exec_driver_sql(
+                "SELECT mfa_default_method, mfa_epoch FROM users WHERE id='live-user'"
+            ).one() == ("webauthn", 0)
+            assert conn.exec_driver_sql(
+                "SELECT revoked_at, mfa_method FROM active_sessions WHERE id='live-session'"
+            ).one() == (None, "webauthn")
+            calls.append(("set", key, value, ex))
+            return True
+
+        def publish(self, channel: str, message: str) -> int:
+            calls.append(("publish", channel, message))
+            return 1
+
+        def close(self) -> None:
+            calls.append(("close",))
+
+    redis = RecordingRevocationRedis()
+    monkeypatch.setenv("REVOCATION_REDIS_URL", "redis://revocation.test:6379/0")
+    monkeypatch.setattr(
+        contract,
+        "_get_migration_revocation_redis_client",
+        lambda _url: redis,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        contract,
+        "_requires_persistent_session_revocation",
+        lambda _bind: True,
+        raising=False,
+    )
+    try:
+        conn.exec_driver_sql(
+            "INSERT INTO users VALUES "
+            "('live-user','live@example.test',NULL,NULL,'webauthn',1)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO mfa_totp_enrollments VALUES "
+            "('totp','live-user',1,'2026-08-01',NULL)"
+        )
+        conn.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN mfa_epoch INTEGER NOT NULL DEFAULT 0"
+        )
+        conn.exec_driver_sql(
+            "CREATE TABLE active_sessions (id TEXT, user_id TEXT, jti TEXT, "
+            "expires_at DATETIME, revoked_at DATETIME, mfa_method TEXT, "
+            "mfa_verified_at DATETIME, mfa_completed_at DATETIME)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO active_sessions VALUES "
+            "('live-session','live-user',:first_jti,'2099-01-01T00:00:00+00:00',"
+            "NULL,'webauthn','2026-08-01','2026-08-01'),"
+            "('live-session-2','live-user',:second_jti,'2099-01-01T00:00:00+00:00',"
+            "NULL,'webauthn','2026-08-01','2026-08-01')",
+            {"first_jti": first_jti, "second_jti": second_jti},
+        )
+
+        assert contract.run_preflight(conn)["totp"] == 1
+
+        assert [call[0] for call in calls] == [
+            "ping",
+            "set",
+            "set",
+            "publish",
+            "publish",
+            "close",
+        ]
+        assert set(calls[1:3]) == {
+            ("set", f"revoked:jti:{first_jti}", "1", 86_400),
+            ("set", f"revoked:jti:{second_jti}", "1", 86_400),
+        }
+        assert set(calls[3:5]) == {
+            ("publish", "session:revocations", first_jti),
+            ("publish", "session:revocations", second_jti),
+        }
+    finally:
+        conn.close()
+        engine.dispose()
+
+
+def test_migration_revocation_client_uses_bounded_single_attempt_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Redis outage cannot indefinitely retain the migration's table locks."""
+
+    contract = _load("202608250002_contract_retire_webauthn.py")
+    captured: dict[str, object] = {}
+    marker = object()
+
+    def fake_from_url(_cls: type[Redis], url: str, **kwargs: object) -> object:
+        captured["url"] = url
+        captured.update(kwargs)
+        return marker
+
+    monkeypatch.setattr(Redis, "from_url", classmethod(fake_from_url))
+
+    assert (
+        contract._get_migration_revocation_redis_client(
+            "redis://revocation.test:6379/0"
+        )
+        is marker
+    )
+    assert captured["url"] == "redis://revocation.test:6379/0"
+    assert captured["decode_responses"] is True
+    assert captured["socket_connect_timeout"] == 1.0
+    assert captured["socket_timeout"] == 1.0
+    assert captured["retry_on_timeout"] is False
+    retry = captured["retry"]
+    assert isinstance(retry, Retry)
+    assert isinstance(retry._backoff, NoBackoff)
+    assert retry._retries == 0
+
+
+@pytest.mark.parametrize(
+    "failure_point", ["ping_unacknowledged", "set", "set_unacknowledged", "publish"]
+)
+def test_preflight_fails_closed_when_live_revocation_delivery_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    failure_point: str,
+) -> None:
+    """Redis write or publication failure cannot partially retire an MFA factor."""
+
+    contract = _load("202608250002_contract_retire_webauthn.py")
+    engine, conn = _legacy_database()
+
+    class FailingRevocationRedis:
+        def ping(self) -> bool:
+            if failure_point == "ping_unacknowledged":
+                return False
+            return True
+
+        def set(self, _key: str, _value: str, *, ex: int) -> bool:
+            if failure_point == "set":
+                raise OSError("revocation store unavailable")
+            if failure_point == "set_unacknowledged":
+                return False
+            return True
+
+        def publish(self, _channel: str, _message: str) -> int:
+            if failure_point == "set_unacknowledged":
+                pytest.fail("A non-acknowledged tombstone must not be published")
+            if failure_point == "publish":
+                raise OSError("revocation publication unavailable")
+            return 1
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setenv("REVOCATION_REDIS_URL", "redis://revocation.test:6379/0")
+    monkeypatch.setattr(
+        contract,
+        "_get_migration_revocation_redis_client",
+        lambda _url: FailingRevocationRedis(),
+        raising=False,
+    )
+    monkeypatch.setattr(
+        contract,
+        "_requires_persistent_session_revocation",
+        lambda _bind: True,
+        raising=False,
+    )
+    try:
+        conn.exec_driver_sql(
+            "INSERT INTO users VALUES "
+            "('failed-user','failed@example.test',NULL,NULL,'webauthn',1)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO mfa_totp_enrollments VALUES "
+            "('totp','failed-user',1,'2026-08-01',NULL)"
+        )
+        conn.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN mfa_epoch INTEGER NOT NULL DEFAULT 0"
+        )
+        conn.exec_driver_sql(
+            "CREATE TABLE active_sessions (id TEXT, user_id TEXT, jti TEXT, "
+            "expires_at DATETIME, revoked_at DATETIME, mfa_method TEXT, "
+            "mfa_verified_at DATETIME, mfa_completed_at DATETIME)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO active_sessions VALUES "
+            "('failed-session','failed-user','33333333-3333-4333-8333-333333333333','2099-01-01T00:00:00+00:00',"
+            "NULL,'webauthn','2026-08-01','2026-08-01')"
+        )
+
+        with pytest.raises(
+            contract.MfaMigrationSafetyError,
+            match="session revocation delivery",
+        ):
+            contract.run_preflight(conn)
+
+        assert conn.exec_driver_sql(
+            "SELECT mfa_default_method, mfa_epoch FROM users WHERE id='failed-user'"
+        ).one() == ("webauthn", 0)
+        assert conn.exec_driver_sql(
+            "SELECT revoked_at, mfa_method FROM active_sessions WHERE id='failed-session'"
+        ).one() == (None, "webauthn")
+    finally:
+        conn.close()
+        engine.dispose()
+
+
+def test_preflight_fails_closed_when_live_revocation_url_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The migration must not degrade to DB-only invalidation without Redis."""
+
+    contract = _load("202608250002_contract_retire_webauthn.py")
+    engine, conn = _legacy_database()
+    monkeypatch.delenv("REVOCATION_REDIS_URL", raising=False)
+    monkeypatch.setattr(
+        contract,
+        "_requires_persistent_session_revocation",
+        lambda _bind: True,
+    )
+    try:
+        conn.exec_driver_sql(
+            "INSERT INTO users VALUES "
+            "('no-url-user','no-url@example.test',NULL,NULL,'webauthn',1)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO mfa_totp_enrollments VALUES "
+            "('totp','no-url-user',1,'2026-08-01',NULL)"
+        )
+        conn.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN mfa_epoch INTEGER NOT NULL DEFAULT 0"
+        )
+        conn.exec_driver_sql(
+            "CREATE TABLE active_sessions (id TEXT, user_id TEXT, jti TEXT, "
+            "expires_at DATETIME, revoked_at DATETIME, mfa_method TEXT, "
+            "mfa_verified_at DATETIME, mfa_completed_at DATETIME)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO active_sessions VALUES "
+            "('no-url-session','no-url-user','44444444-4444-4444-8444-444444444444','2099-01-01T00:00:00+00:00',"
+            "NULL,'webauthn','2026-08-01','2026-08-01')"
+        )
+
+        with pytest.raises(
+            contract.MfaMigrationSafetyError,
+            match="session revocation delivery is unavailable",
+        ):
+            contract.run_preflight(conn)
+
+        assert conn.exec_driver_sql(
+            "SELECT mfa_default_method, mfa_epoch FROM users WHERE id='no-url-user'"
+        ).one() == ("webauthn", 0)
+        assert conn.exec_driver_sql(
+            "SELECT revoked_at, mfa_method FROM active_sessions WHERE id='no-url-session'"
+        ).one() == (None, "webauthn")
+    finally:
+        conn.close()
+        engine.dispose()
+
+
+def test_revocation_delivery_error_hides_the_connection_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A malformed transport configuration must not expose a credential in its cause."""
+
+    contract = _load("202608250002_contract_retire_webauthn.py")
+    private_url = "redis://:migration-private-value@revocation.test:6379/0"
+    monkeypatch.setenv("REVOCATION_REDIS_URL", private_url)
+
+    def invalid_client(url: str) -> object:
+        raise ValueError(f"unsupported Redis URL: {url}")
+
+    monkeypatch.setattr(
+        contract, "_get_migration_revocation_redis_client", invalid_client
+    )
+
+    with pytest.raises(contract.MfaMigrationSafetyError) as exc_info:
+        contract._publish_session_revocations(
+            [(str(uuid.uuid4()), datetime(2099, 1, 1, tzinfo=UTC))]
+        )
+
+    assert "migration-private-value" not in str(exc_info.value)
+    assert "revocation.test" not in str(exc_info.value)
+    assert exc_info.value.__cause__ is None
+
+
+def test_preflight_fails_closed_when_postgres_session_tombstone_fields_are_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """PostgreSQL must not silently rely on DB-only invalidation for a live bearer."""
+
+    contract = _load("202608250002_contract_retire_webauthn.py")
+    engine, conn = _legacy_database()
+    monkeypatch.setattr(
+        contract,
+        "_requires_persistent_session_revocation",
+        lambda _bind: True,
+        raising=False,
+    )
+    try:
+        conn.exec_driver_sql(
+            "INSERT INTO users VALUES "
+            "('missing-jti','missing@example.test',NULL,NULL,'webauthn',1)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO mfa_totp_enrollments VALUES "
+            "('totp','missing-jti',1,'2026-08-01',NULL)"
+        )
+        conn.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN mfa_epoch INTEGER NOT NULL DEFAULT 0"
+        )
+        conn.exec_driver_sql(
+            "CREATE TABLE active_sessions (id TEXT, user_id TEXT, revoked_at DATETIME, "
+            "mfa_method TEXT, mfa_verified_at DATETIME, mfa_completed_at DATETIME)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO active_sessions VALUES "
+            "('missing-session','missing-jti',NULL,'webauthn','2026-08-01','2026-08-01')"
+        )
+
+        with pytest.raises(
+            contract.MfaMigrationSafetyError,
+            match="session tombstone fields",
+        ):
+            contract.run_preflight(conn)
+
+        assert conn.exec_driver_sql(
+            "SELECT mfa_default_method, mfa_epoch FROM users WHERE id='missing-jti'"
+        ).one() == ("webauthn", 0)
+        assert conn.exec_driver_sql(
+            "SELECT revoked_at, mfa_method FROM active_sessions WHERE id='missing-session'"
+        ).one() == (None, "webauthn")
+    finally:
+        conn.close()
+        engine.dispose()
+
+
+def test_preflight_fails_closed_for_malformed_live_session_jti_before_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An invalid stored JTI cannot bypass ws-hub's strict revocation parser."""
+
+    contract = _load("202608250002_contract_retire_webauthn.py")
+    engine, conn = _legacy_database()
+    calls: list[str] = []
+
+    class UnexpectedRedisCall:
+        def ping(self) -> bool:
+            calls.append("ping")
+            return True
+
+    monkeypatch.setenv("REVOCATION_REDIS_URL", "redis://revocation.test:6379/0")
+    monkeypatch.setattr(
+        contract,
+        "_get_migration_revocation_redis_client",
+        lambda _url: UnexpectedRedisCall(),
+    )
+    monkeypatch.setattr(
+        contract, "_requires_persistent_session_revocation", lambda _bind: True
+    )
+    try:
+        conn.exec_driver_sql(
+            "INSERT INTO users VALUES "
+            "('invalid-jti','invalid-jti@example.test',NULL,NULL,'webauthn',1)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO mfa_totp_enrollments VALUES "
+            "('totp','invalid-jti',1,'2026-08-01',NULL)"
+        )
+        conn.exec_driver_sql(
+            "ALTER TABLE users ADD COLUMN mfa_epoch INTEGER NOT NULL DEFAULT 0"
+        )
+        conn.exec_driver_sql(
+            "CREATE TABLE active_sessions (id TEXT, user_id TEXT, jti TEXT, "
+            "expires_at DATETIME, revoked_at DATETIME, mfa_method TEXT, "
+            "mfa_verified_at DATETIME, mfa_completed_at DATETIME)"
+        )
+        conn.exec_driver_sql(
+            "INSERT INTO active_sessions VALUES "
+            "('invalid-jti-session','invalid-jti','not-a-uuid',"
+            "'2099-01-01T00:00:00+00:00',NULL,'webauthn','2026-08-01','2026-08-01')"
+        )
+
+        with pytest.raises(
+            contract.MfaMigrationSafetyError, match="session revocation data is invalid"
+        ) as exc_info:
+            contract.run_preflight(conn)
+
+        assert "not-a-uuid" not in str(exc_info.value)
+        assert calls == []
+        assert conn.exec_driver_sql(
+            "SELECT mfa_default_method, mfa_epoch FROM users WHERE id='invalid-jti'"
+        ).one() == ("webauthn", 0)
+        assert conn.exec_driver_sql(
+            "SELECT revoked_at, mfa_method FROM active_sessions "
+            "WHERE id='invalid-jti-session'"
+        ).one() == (None, "webauthn")
     finally:
         conn.close()
         engine.dispose()

@@ -254,8 +254,16 @@ jobs:
 
       - name: Write verified image digest evidence
         env:
+          CANONICAL_FRONTEND: ${{ inputs.canonical_frontend }}
           DIGEST: ${{ steps.publish.outputs.digest }}
           IMAGE_NAME: ${{ inputs.image_name }}
+          PRODUCER_EVENT: ${{ github.event_name }}
+          PRODUCER_REPOSITORY: ${{ github.repository }}
+          PRODUCER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          PRODUCER_RUN_ID: ${{ github.run_id }}
+          PRODUCER_SOURCE_REF: ${{ github.ref }}
+          PRODUCER_WORKFLOW_REF: ${{ github.workflow_ref }}
+          PRODUCER_WORKFLOW_SHA: ${{ github.workflow_sha }}
           SOURCE_SHA: ${{ inputs.source-sha }}
           SUBJECT_NAME: ${{ steps.references.outputs.subject_name }}
         run: |
@@ -263,16 +271,44 @@ jobs:
           mkdir -p artifacts/image-evidence
           python - <<'PY'
           import json, os, pathlib, re
+
           digest = os.environ["DIGEST"]
           image_name = os.environ["IMAGE_NAME"]
           source_sha = os.environ["SOURCE_SHA"]
           subject_name = os.environ["SUBJECT_NAME"]
+          repository = os.environ["PRODUCER_REPOSITORY"]
+          workflow_ref = os.environ["PRODUCER_WORKFLOW_REF"]
+          workflow_sha = os.environ["PRODUCER_WORKFLOW_SHA"]
+          run_id = int(os.environ["PRODUCER_RUN_ID"])
+          run_attempt = int(os.environ["PRODUCER_RUN_ATTEMPT"])
+          canonical_frontend = os.environ["CANONICAL_FRONTEND"] == "true"
           if re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None:
               raise SystemExit("invalid image digest")
           if re.fullmatch(r"[0-9a-f]{40}", source_sha) is None:
               raise SystemExit("invalid source SHA")
+          if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+              raise SystemExit("invalid producer repository")
+          if image_name not in {"backend", "caddy", "file-processor", "frontend", "gateway", "ws-hub"}:
+              raise SystemExit("invalid image name")
+          if run_id <= 0 or run_attempt <= 0:
+              raise SystemExit("invalid producer run metadata")
+          expected_workflow_ref = (
+              f"{repository}/.github/workflows/build-release-images.yml@refs/heads/main"
+          )
+          if (
+              workflow_ref != expected_workflow_ref
+              or workflow_sha != source_sha
+              or os.environ["PRODUCER_EVENT"] != "workflow_dispatch"
+              or os.environ["PRODUCER_SOURCE_REF"] != "refs/heads/main"
+              or canonical_frontend != (image_name == "frontend")
+              or subject_name != f"ghcr.io/{repository}/{image_name}"
+          ):
+              raise SystemExit("invalid image evidence producer metadata")
+          artifact_name = (
+              f"image-digest-evidence-{image_name}-{source_sha}-attempt-{run_attempt}"
+          )
           payload = {
-              "schema_version": 1,
+              "schema_version": 2,
               "image_name": image_name,
               "source_sha": source_sha,
               "subject_name": subject_name,
@@ -280,6 +316,27 @@ jobs:
               "reference": f"{subject_name}@{digest}",
               "signature_verified": True,
               "attestation_verified": True,
+              "producer": {
+                  "repository": repository,
+                  "workflow_path": ".github/workflows/build-release-images.yml",
+                  "workflow_ref": workflow_ref,
+                  "workflow_sha": workflow_sha,
+                  "source_ref": "refs/heads/main",
+                  "event": "workflow_dispatch",
+                  "run_id": run_id,
+                  "run_attempt": run_attempt,
+                  "artifact_name": artifact_name,
+              },
+              "verification": {
+                  "trivy_version": "0.73.0",
+                  "sbom_format": "cyclonedx-json",
+                  "signature": "cosign-keyless",
+                  "attestation": "github-build-provenance",
+              },
+              "build_contract": {
+                  "canonical_frontend": canonical_frontend,
+                  "release_sha": source_sha,
+              },
           }
           path = pathlib.Path("artifacts/image-evidence") / f"{image_name}.json"
           path.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n", encoding="utf-8")

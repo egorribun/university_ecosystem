@@ -14,6 +14,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 CHART = ROOT / "charts" / "university-ecosystem"
 STAGING_VALUES = CHART / "values-staging.yaml"
+REVOCATION_STORE_CHART = ROOT / "charts" / "revocation-store"
+REVOCATION_STORE_VALUES = REVOCATION_STORE_CHART / "values-staging.yaml"
 
 
 def _values(path: Path) -> dict[str, Any]:
@@ -47,8 +49,6 @@ def _resolved_staging_args() -> list[str]:
         "outboxWorker.image.digest": digest,
         "redis.image.digest": digest,
         "redis.metrics.image.digest": digest,
-        "revocationRedis.image.digest": digest,
-        "revocationRedis.metrics.image.digest": digest,
         "nats.image.digest": digest,
         "backend.config.elasticsearchURL": "https://elasticsearch.staging.internal",
         "backend.config.flagdHost": "flagd.staging.internal",
@@ -94,6 +94,51 @@ def _render_staging(
             "--values",
             str(STAGING_VALUES),
             *_resolved_staging_args(),
+            *extra,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    return [resource for resource in yaml.safe_load_all(result.stdout) if resource]
+
+
+def _resolved_revocation_store_args(release_name: str) -> list[str]:
+    """Return the exact immutable identity supplied by the bootstrap script."""
+
+    digest = "sha256:" + ("b" * 64)
+    overrides = {
+        "applicationReleaseName": release_name,
+        "redis.fullnameOverride": f"{release_name}-revocation-redis",
+        "redis.commonLabels.university-ecosystem\\.io/revocation-store-for": release_name,
+        "redis.commonLabels.app\\.kubernetes\\.io/instance": release_name,
+        "redis.auth.existingSecret": "revocation-redis-credentials",
+        "redis.auth.existingSecretPasswordKey": "revocation-redis-password",
+        "redis.image.digest": digest,
+        "redis.metrics.image.digest": digest,
+    }
+    args: list[str] = []
+    for key, value in overrides.items():
+        args.extend(("--set-string", f"{key}={value}"))
+    return args
+
+
+def _render_revocation_store(
+    *extra: str, release_name: str = "staging-contract"
+) -> list[dict[str, Any]]:
+    result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
+        [
+            _helm(),
+            "template",
+            f"{release_name}-revocation-store",
+            str(REVOCATION_STORE_CHART),
+            "--dependency-update=false",
+            "--namespace",
+            "university-ecosystem",
+            "--values",
+            str(REVOCATION_STORE_VALUES),
+            *_resolved_revocation_store_args(release_name),
             *extra,
         ],
         check=True,
@@ -182,20 +227,18 @@ def test_canonical_staging_values_are_secure_and_fail_closed() -> None:
     assert nats["persistence"] == {"enabled": True, "size": "10Gi"}
     assert nats["replicaCount"] == 3
 
-    for dependency in ("redis", "revocationRedis"):
-        assert values[dependency]["image"]["registry"] == "docker.io"
-        assert values[dependency]["image"]["repository"] == "bitnami/redis"
-        assert values[dependency]["image"]["pullPolicy"] == "Always"
-        assert values[dependency]["metrics"]["image"]["registry"] == "docker.io"
-        assert values[dependency]["metrics"]["image"]["repository"] == (
-            "bitnami/redis-exporter"
-        )
-        assert values[dependency]["metrics"]["image"]["pullPolicy"] == "Always"
-        assert values[dependency]["networkPolicy"] == {
-            "enabled": True,
-            "allowExternal": False,
-            "allowExternalEgress": False,
-        }
+    redis = values["redis"]
+    assert redis["image"]["registry"] == "docker.io"
+    assert redis["image"]["repository"] == "bitnami/redis"
+    assert redis["image"]["pullPolicy"] == "Always"
+    assert redis["metrics"]["image"]["registry"] == "docker.io"
+    assert redis["metrics"]["image"]["repository"] == "bitnami/redis-exporter"
+    assert redis["metrics"]["image"]["pullPolicy"] == "Always"
+    assert redis["networkPolicy"] == {
+        "enabled": True,
+        "allowExternal": False,
+        "allowExternalEgress": False,
+    }
     assert values["nats"]["networkPolicy"] == {
         "enabled": True,
         "allowExternal": False,
@@ -266,11 +309,6 @@ def test_chart_lock_pins_the_reviewed_dependency_set() -> None:
             "version": "20.13.4",
         },
         {
-            "name": "redis",
-            "repository": "oci://registry-1.docker.io/bitnamicharts",
-            "version": "20.13.4",
-        },
-        {
             "name": "nats",
             "repository": "oci://registry-1.docker.io/bitnamicharts",
             "version": "8.5.4",
@@ -326,7 +364,7 @@ def test_values_schema_closes_staging_sensitive_configuration_trees() -> None:
     )
     assert properties["ingress"]["additionalProperties"] is False
     assert resolved(properties["redis"])["additionalProperties"] is False
-    assert resolved(properties["revocationRedis"])["additionalProperties"] is False
+    assert "revocationRedis" not in properties
     assert properties["nats"]["additionalProperties"] is False
 
 
@@ -472,7 +510,6 @@ def test_release_environments_reject_all_inline_workload_env(
         "connections.existingSecret=INVALID_CONNECTION",
         "nats.existingSecret=INVALID_NATS",
         "redis.auth.existingSecret=INVALID_REDIS",
-        "revocationRedis.auth.existingSecret=INVALID_REVOCATION_REDIS",
         "ingress.tls[0].secretName=INVALID_TLS_SECRET",
     ],
 )
@@ -498,8 +535,6 @@ def test_staging_schema_rejects_invalid_kubernetes_secret_resource_names(
     [
         "redis.master.extraEnvVars[0].name=AWS_SECRET_ACCESS_KEY",
         "redis.replica.sidecars[0].image=busybox:1.36",
-        "revocationRedis.master.initContainers[0].image=busybox:1.36",
-        "revocationRedis.extraDeploy[0].kind=Secret",
         "nats.extraEnvVars[0].name=SMTP_PASSWORD",
         "nats.sidecars[0].image=busybox:1.36",
     ],
@@ -524,8 +559,6 @@ def test_release_environments_reject_arbitrary_subchart_extensions(
     [
         "redis.volumePermissions.enabled=true",
         "redis.sysctl.enabled=true",
-        "revocationRedis.volumePermissions.enabled=true",
-        "revocationRedis.sysctl.enabled=true",
         "nats.metrics.enabled=true",
     ],
 )
@@ -650,9 +683,6 @@ INLINE_SECRET_OVERRIDES = (
     "redis.auth.password=inline",
     "redis.auth.acl.users[0].password=inline",
     "redis.global.redis.password=inline",
-    "revocationRedis.auth.password=inline",
-    "revocationRedis.auth.acl.users[0].password=inline",
-    "revocationRedis.global.redis.password=inline",
     "nats.auth.token=inline",
     "nats.auth.password=inline",
     "nats.auth.usersCredentials[0].password=inline",
@@ -693,23 +723,18 @@ def test_resolved_staging_render_is_immutable_and_kyverno_compatible() -> None:
     ]
     assert contract["data"]["redis-secret-name"] == "redis-credentials"
     assert json.loads(contract["data"]["redis-secret-keys.json"]) == ["redis-password"]
-    assert contract["data"]["revocation-redis-secret-name"] == ("redis-credentials")
-    assert json.loads(contract["data"]["revocation-redis-secret-keys.json"]) == [
-        "redis-password"
-    ]
+    assert contract["data"]["revocation-redis-url-key"] == "redis-revocation-url"
+    assert contract["data"]["revocation-redis-service-host"] == (
+        "staging-contract-revocation-redis-master"
+    )
     assert json.loads(contract["data"]["dependency-images.json"]) == {
         "nats": "docker.io/bitnami/nats@sha256:" + ("a" * 64),
         "redis": "docker.io/bitnami/redis@sha256:" + ("a" * 64),
         "redis.metrics": ("docker.io/bitnami/redis-exporter@sha256:" + ("a" * 64)),
-        "revocationRedis": "docker.io/bitnami/redis@sha256:" + ("a" * 64),
-        "revocationRedis.metrics": (
-            "docker.io/bitnami/redis-exporter@sha256:" + ("a" * 64)
-        ),
     }
     assert json.loads(contract["data"]["dependency-chart-versions.json"]) == {
         "nats": "8.5.4",
         "redis": "20.13.4",
-        "revocationRedis": "20.13.4",
     }
 
     pod_specs = []
@@ -1085,6 +1110,273 @@ def test_ws_hub_network_policy_is_least_privilege() -> None:
     assert {"app.kubernetes.io/component": "ws-hub"} in backend_sources
 
 
+def test_migration_hook_can_reach_only_its_dedicated_revocation_store() -> None:
+    resources = _render_staging(release_name="university-ecosystem")
+    migration_job = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "Job"
+        and resource["metadata"]["name"] == "university-ecosystem-migrate"
+    )
+    migration_labels = migration_job["spec"]["template"]["metadata"]["labels"]
+    assert migration_labels["university-ecosystem-revocation-redis-client"] == "true"
+
+    policy = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"] == "university-ecosystem-migration-policy"
+    )
+    assert policy["metadata"]["annotations"] == {
+        "helm.sh/hook": "pre-install,pre-upgrade",
+        "helm.sh/hook-weight": "-20",
+        "helm.sh/hook-delete-policy": "before-hook-creation",
+    }
+    assert migration_job["metadata"]["annotations"] == {
+        "helm.sh/hook": "pre-install,pre-upgrade",
+        "helm.sh/hook-weight": "-10",
+        "helm.sh/hook-delete-policy": "before-hook-creation",
+    }
+    egress = policy["spec"]["egress"]
+    assert {port["port"] for rule in egress for port in rule.get("ports", [])} == {
+        53,
+        5432,
+        6379,
+    }
+    revocation_redis_rule = next(
+        rule
+        for rule in egress
+        if any(port["port"] == 6379 for port in rule.get("ports", []))
+    )
+    assert revocation_redis_rule["to"] == [
+        {
+            "podSelector": {
+                "matchLabels": {
+                    "app.kubernetes.io/name": "revocation-redis",
+                    "app.kubernetes.io/component": "master",
+                    "university-ecosystem.io/revocation-store-for": "university-ecosystem",
+                }
+            }
+        }
+    ]
+
+
+def test_app_chart_renders_only_cache_redis_and_uses_bootstrap_store_identity() -> None:
+    """The pre-hook application release must never own the revocation StatefulSet."""
+
+    release_name = "arbitrary-release"
+    resources = _render_staging(release_name=release_name)
+    statefulsets = {
+        resource["metadata"]["name"]: resource
+        for resource in resources
+        if resource.get("kind") == "StatefulSet"
+    }
+    services = {
+        resource["metadata"]["name"]: resource
+        for resource in resources
+        if resource.get("kind") == "Service"
+    }
+
+    cache_master = f"{release_name}-redis-master"
+    revocation_master = f"{release_name}-revocation-redis-master"
+    assert cache_master in statefulsets
+    assert cache_master in services
+    assert revocation_master not in statefulsets
+    assert revocation_master not in services
+    assert (
+        statefulsets[cache_master]["spec"]["template"]["metadata"]["labels"][
+            "app.kubernetes.io/name"
+        ]
+        == "redis"
+    )
+    assert all(
+        "revocation-redis" not in resource["metadata"]["name"] for resource in resources
+    )
+
+
+def test_revocation_store_bootstrap_render_is_durable_isolated_and_bound() -> None:
+    """The separate release owns one immutable, bound, persistent master."""
+
+    release_name = "arbitrary-release"
+    resources = _render_revocation_store(release_name=release_name)
+    service_name = f"{release_name}-revocation-redis-master"
+    binding = {"university-ecosystem.io/revocation-store-for": release_name}
+    statefulset = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "StatefulSet"
+        and resource["metadata"]["name"] == service_name
+    )
+    service = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "Service"
+        and resource["metadata"]["name"] == service_name
+    )
+    pdb = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "PodDisruptionBudget"
+        and resource["metadata"]["name"] == service_name
+    )
+    network_policy = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+        and resource["metadata"]["name"] == f"{release_name}-revocation-redis"
+    )
+    configuration = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "ConfigMap"
+        and resource["metadata"]["name"]
+        == f"{release_name}-revocation-redis-configuration"
+    )
+    contract = next(
+        resource
+        for resource in resources
+        if resource.get("kind") == "ConfigMap"
+        and resource["metadata"]["name"]
+        == f"{release_name}-revocation-store-deployment-contract"
+    )
+
+    for resource in (statefulset, service, pdb):
+        assert resource["metadata"]["labels"].items() >= binding.items()
+    labels = statefulset["spec"]["template"]["metadata"]["labels"]
+    assert labels.items() >= binding.items()
+    assert labels["app.kubernetes.io/name"] == "revocation-redis"
+    assert labels["app.kubernetes.io/component"] == "master"
+    assert labels["app.kubernetes.io/instance"] == release_name
+    assert statefulset["spec"]["replicas"] == 1
+    assert (
+        statefulset["spec"]["template"]["spec"]["terminationGracePeriodSeconds"] == 30
+    )
+    assert statefulset["spec"]["persistentVolumeClaimRetentionPolicy"] == {
+        "whenDeleted": "Retain",
+        "whenScaled": "Retain",
+    }
+    assert pdb["spec"]["minAvailable"] == 1
+    assert statefulset["spec"]["volumeClaimTemplates"]
+    redis_container = next(
+        container
+        for container in statefulset["spec"]["template"]["spec"]["containers"]
+        if container["name"] == "redis"
+    )
+    assert redis_container["image"].startswith("docker.io/bitnami/redis@sha256:")
+    assert redis_container["imagePullPolicy"] == "Always"
+    assert 'rename-command FLUSHDB ""' in configuration["data"]["master.conf"]
+    assert 'rename-command FLUSHALL ""' in configuration["data"]["master.conf"]
+    assert 'rename-command CONFIG ""' in configuration["data"]["master.conf"]
+    assert 'rename-command ACL ""' in configuration["data"]["master.conf"]
+    assert 'rename-command FUNCTION ""' in configuration["data"]["master.conf"]
+    assert 'rename-command MIGRATE ""' in configuration["data"]["master.conf"]
+    assert 'rename-command MODULE ""' in configuration["data"]["master.conf"]
+    assert 'rename-command MONITOR ""' in configuration["data"]["master.conf"]
+    assert 'rename-command REPLICAOF ""' in configuration["data"]["master.conf"]
+    assert 'rename-command SLAVEOF ""' in configuration["data"]["master.conf"]
+    assert 'rename-command SHUTDOWN ""' in configuration["data"]["master.conf"]
+    ingress_selectors = [
+        source["podSelector"]["matchLabels"]
+        for rule in network_policy["spec"]["ingress"]
+        for source in rule.get("from", [])
+        if "podSelector" in source
+    ]
+    assert {f"{release_name}-revocation-redis-client": "true"} in ingress_selectors
+    metrics_rule = next(
+        rule
+        for rule in network_policy["spec"]["ingress"]
+        if rule["ports"] == [{"port": 9121}]
+    )
+    assert metrics_rule["from"] == [
+        {
+            "namespaceSelector": {
+                "matchLabels": {
+                    "kubernetes.io/metadata.name": "monitoring",
+                }
+            }
+        }
+    ]
+    assert contract["data"] == {
+        "application-release-name": release_name,
+        "master-service-host": service_name,
+        "master-statefulset-name": service_name,
+        "binding-label": "university-ecosystem.io/revocation-store-for",
+        "binding-value": release_name,
+        "redis-auth-secret-name": "revocation-redis-credentials",
+        "redis-auth-secret-key": "revocation-redis-password",
+    }
+
+
+@pytest.mark.parametrize(
+    ("flag", "override"),
+    [
+        ("--set-string", "redis.auth.password=inline"),
+        ("--set-string", "redis.auth.existingSecretPasswordKey=wrong-key"),
+        ("--set", "redis.auth.usePasswordFiles=false"),
+        ("--set-string", "redis.existingConfigmap=attacker-config"),
+        ("--set-string", "redis.master.extraEnvVars[0].name=AWS_SECRET_ACCESS_KEY"),
+        ("--set-string", "redis.master.sidecars[0].image=busybox:1.36"),
+        ("--set-string", "redis.master.initContainers[0].image=busybox:1.36"),
+        ("--set-string", "redis.master.command[0]=sh"),
+        ("--set-string", "redis.master.configuration=maxmemory-policy allkeys-lru"),
+        ("--set-string", "redis.master.lifecycleHooks.postStart.exec.command[0]=sh"),
+        ("--set-string", "redis.master.customReadinessProbe.exec.command[0]=sh"),
+        ("--set-string", "redis.master.podLabels.injected=true"),
+        ("--set", "redis.master.containerSecurityContext.runAsUser=0"),
+        (
+            "--set",
+            "redis.master.containerSecurityContext.allowPrivilegeEscalation=true",
+        ),
+        ("--set-json", "redis.master.disableCommands=[]"),
+        ("--set", "redis.master.terminationGracePeriodSeconds=0"),
+        ("--set-string", "redis.master.kind=Deployment"),
+        ("--set-string", "redis.namespaceOverride=other-namespace"),
+        ("--set-string", "redis.metrics.extraEnvVars[0].name=AWS_SECRET_ACCESS_KEY"),
+        ("--set-string", "redis.metrics.command[0]=sh"),
+        ("--set", "redis.metrics.containerSecurityContext.runAsUser=0"),
+        ("--set-string", "redis.metrics.redisTargetHost=attacker.invalid"),
+        ("--set", "redis.volumePermissions.enabled=true"),
+        ("--set", "redis.sysctl.enabled=true"),
+        ("--set", "redis.diagnosticMode.enabled=true"),
+        ("--set-string", "redis.serviceAccount.name=attacker"),
+        ("--set", "redis.master.service.type=LoadBalancer"),
+        ("--set-string", "redis.image.repository=attacker/redis"),
+        ("--set", "redis.networkPolicy.allowExternal=true"),
+        ("--set-string", "redis.networkPolicy.ingressNSMatchLabels.team=attacker"),
+        ("--set", "redis.networkPolicy.metrics.allowExternal=true"),
+        (
+            "--set-string",
+            "redis.networkPolicy.metrics.ingressNSMatchLabels.team=attacker",
+        ),
+        ("--set", "redis.rbac.create=true"),
+    ],
+)
+def test_revocation_store_rejects_unreviewed_injection_surfaces(
+    flag: str, override: str
+) -> None:
+    result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
+        [
+            _helm(),
+            "template",
+            "staging-contract-revocation-store",
+            str(REVOCATION_STORE_CHART),
+            "--dependency-update=false",
+            "--values",
+            str(REVOCATION_STORE_VALUES),
+            *_resolved_revocation_store_args("staging-contract"),
+            flag,
+            override,
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert result.returncode != 0
+    assert "revocation-store" in result.stderr or "specifications" in result.stderr
+
+
 def test_dependency_network_policies_require_explicit_client_labels() -> None:
     resources = _render_staging(release_name="university-ecosystem")
     deployments = {
@@ -1095,11 +1387,11 @@ def test_dependency_network_policies_require_explicit_client_labels() -> None:
         in resource.get("metadata", {}).get("labels", {})
     }
     expected = {
-        "backend": {"redis", "revocationRedis", "nats"},
-        "gateway": {"redis", "revocationRedis"},
-        "ws-hub": {"redis", "revocationRedis", "nats"},
+        "backend": {"redis", "revocation-redis", "nats"},
+        "gateway": {"redis", "revocation-redis"},
+        "ws-hub": {"redis", "revocation-redis", "nats"},
         "file-processor": {"nats"},
-        "outbox-worker": {"redis", "revocationRedis", "nats"},
+        "outbox-worker": {"redis", "nats"},
     }
     for component, dependencies in expected.items():
         labels = deployments[component]["spec"]["template"]["metadata"]["labels"]
@@ -1113,9 +1405,69 @@ def test_dependency_network_policies_require_explicit_client_labels() -> None:
     }
     assert {
         "university-ecosystem-redis",
-        "university-ecosystem-revocationRedis",
         "university-ecosystem-nats",
     } <= policy_names
+    assert "university-ecosystem-revocation-redis" not in policy_names
+
+    revocation_selector = {
+        "app.kubernetes.io/name": "revocation-redis",
+        "app.kubernetes.io/component": "master",
+        "university-ecosystem.io/revocation-store-for": "university-ecosystem",
+    }
+    policies = {
+        resource["metadata"]["name"]: resource
+        for resource in resources
+        if resource.get("kind") == "NetworkPolicy"
+    }
+    for component in ("backend", "gateway", "ws-hub"):
+        policy = policies[f"university-ecosystem-{component}-policy"]
+        egress_selectors = [
+            destination["podSelector"]["matchLabels"]
+            for rule in policy["spec"]["egress"]
+            for destination in rule.get("to", [])
+            if "podSelector" in destination
+        ]
+        assert revocation_selector in egress_selectors
+
+    outbox = deployments["outbox-worker"]
+    outbox_labels = outbox["spec"]["template"]["metadata"]["labels"]
+    assert "university-ecosystem-revocation-redis-client" not in outbox_labels
+    outbox_env = {
+        entry["name"]: entry
+        for entry in outbox["spec"]["template"]["spec"]["containers"][0]["env"]
+    }
+    assert outbox_env["APP_PROCESS_ROLE"]["value"] == "outbox-worker"
+    assert outbox_env["REVOCATION_REDIS_ACCESS_ENABLED"]["value"] == "false"
+    assert "REVOCATION_REDIS_URL" not in outbox_env
+    outbox_policy = policies["university-ecosystem-outbox-worker-policy"]
+    outbox_egress_selectors = [
+        destination["podSelector"]["matchLabels"]
+        for rule in outbox_policy["spec"]["egress"]
+        for destination in rule.get("to", [])
+        if "podSelector" in destination
+    ]
+    assert revocation_selector not in outbox_egress_selectors
+
+
+def test_outbox_revocation_capability_cannot_be_overridden_by_chart_values() -> None:
+    """The non-auth worker role is a deployment invariant, not a user override."""
+
+    result = subprocess.run(  # noqa: S603 - fixed local Helm contract command
+        _existing_secret_command(
+            "staging",
+            "--set-string",
+            "outboxWorker.env.APP_PROCESS_ROLE=api",
+            "--set-string",
+            "outboxWorker.env.REVOCATION_REDIS_ACCESS_ENABLED=true",
+        ),
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+    assert result.returncode != 0
+    assert "outboxWorker.env" in result.stderr
 
 
 def test_ws_hub_origin_is_bound_to_frontend_ingress_host() -> None:
@@ -1139,7 +1491,6 @@ def test_ws_hub_origin_is_bound_to_frontend_ingress_host() -> None:
     [
         "redis.networkPolicy.allowExternal=true",
         "redis.networkPolicy.allowExternalEgress=true",
-        "revocationRedis.networkPolicy.allowExternal=true",
         "nats.networkPolicy.allowExternalEgress=true",
     ],
 )
@@ -1163,11 +1514,6 @@ def test_release_rejects_permissive_dependency_network_policy(override: str) -> 
         ("--set-string", "redis.image.registry=mirror.invalid"),
         ("--set-string", "redis.image.repository=attacker/redis"),
         ("--set-string", "redis.metrics.image.repository=attacker/exporter"),
-        ("--set-string", "revocationRedis.image.repository=attacker/redis"),
-        (
-            "--set-string",
-            "revocationRedis.metrics.image.repository=attacker/exporter",
-        ),
         ("--set-string", "nats.image.repository=attacker/nats"),
     ],
 )

@@ -35,7 +35,7 @@ services:
       MAX_SESSIONS_PER_USER: "50"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/0"
-      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
+      REVOCATION_REDIS_URL: "redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
       RATE_LIMIT_STORAGE_BACKEND: redis
       RATE_LIMIT_STORAGE_URI: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/1"
       MINIO_ENDPOINT: minio:9000
@@ -90,6 +90,7 @@ services:
     networks:
       - internal
       - public
+      - revocation_net
     # Wave 140 SW3-fix: override Dockerfile HEALTHCHECK (which uses /healthz Full
     # Check requiring ES/SpiceDB/Tempo all reachable) with /health/ready (Lean
     # readiness probe: just DB connectivity + not shutting down). Two reasons:
@@ -293,12 +294,15 @@ services:
       target: runtime
     command: python -m app.workers.notifications
     env_file:
-      - .env.docker
+      # start-docker.ps1 derives this from .env.docker after removing the
+      # revocation-state URL and password. Workers do not own auth state.
+      - .env.docker.workers
     environment:
       DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/0"
-      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
+      APP_PROCESS_ROLE: notifications-worker
+      REVOCATION_REDIS_ACCESS_ENABLED: "false"
       AUTO_CREATE_SCHEMA: "false"
       NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD:?NATS_PASSWORD is required - run start-docker.ps1}@nats:4222"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
@@ -308,8 +312,6 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      revocation-redis:
         condition: service_healthy
       nats:
         condition: service_healthy
@@ -343,12 +345,15 @@ services:
       target: runtime
     command: python -m app.workers.outbox
     env_file:
-      - .env.docker
+      # Use the same redacted environment as notifications-worker; do not
+      # leak a revocation credential merely through a broad env_file.
+      - .env.docker.workers
     environment:
       DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/0"
-      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
+      APP_PROCESS_ROLE: outbox-worker
+      REVOCATION_REDIS_ACCESS_ENABLED: "false"
       NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD:?NATS_PASSWORD is required - run start-docker.ps1}@nats:4222"
       AUTO_CREATE_SCHEMA: "false"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
@@ -358,8 +363,6 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      revocation-redis:
         condition: service_healthy
       nats:
         condition: service_healthy
@@ -517,9 +520,9 @@ services:
       - "--maxmemory-policy"
       - "noeviction"
       - "--requirepass"
-      - "${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}"
+      - "${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}"
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}
+      REDIS_PASSWORD: ${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}
     volumes:
       - revocation-redis-data:/data
     healthcheck:
@@ -528,7 +531,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - internal
+      - revocation_net
     deploy:
       resources:
         limits:
@@ -642,11 +645,17 @@ services:
       - .env.docker
     environment:
       DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
+      # The irreversible WebAuthn retirement migration tombstones active JTIs
+      # before it changes database state; it must use durable security Valkey.
+      REVOCATION_REDIS_URL: "redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
     depends_on:
       postgres:
         condition: service_healthy
+      revocation-redis:
+        condition: service_healthy
     networks:
       - internal
+      - revocation_net
     deploy:
       resources:
         limits:
@@ -701,7 +710,7 @@ services:
       GATEWAY_PORT: "8080"
       BACKEND_URL: http://backend:8000
       REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/3"
-      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
+      REVOCATION_REDIS_URL: "redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
       # JWT_SECRET kept for defense-in-depth: gateway falls back to HS256 if RS256
       # verify fails. Pre-W137 in-flight HS256 tokens decode via this until expiry.
       JWT_SECRET: ${SECRET_KEY:?SECRET_KEY is required - run start-docker.ps1}
@@ -729,6 +738,7 @@ services:
     networks:
       - public
       - internal
+      - revocation_net
     deploy:
       resources:
         limits:
@@ -763,7 +773,7 @@ services:
       REDIS_URL: "redis:6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}
       REDIS_DB: "0"
-      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
+      REVOCATION_REDIS_URL: "redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
       # Wave 173 polish-v3: ws-hub default ALLOWED_ORIGINS per
       # `services/ws-hub/pkg/config/config.go:103` = ["http://localhost:3000",
       # "http://localhost:5173"] (Vite dev server ports). Production-like
@@ -796,6 +806,7 @@ services:
     networks:
       - internal
       - public
+      - revocation_net
     deploy:
       resources:
         limits:
@@ -1574,6 +1585,8 @@ services:
 networks:
   public:
   internal:
+    internal: true
+  revocation_net:
     internal: true
 
 volumes:

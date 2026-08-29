@@ -79,8 +79,6 @@ def _base_args() -> list[str]:
         "--set",
         "redis.enabled=false",
         "--set",
-        "revocationRedis.enabled=false",
-        "--set",
         "nats.enabled=false",
         "--set",
         "fileProcessor.enabled=false",

@@ -31,11 +31,6 @@
 {{- if and .Values.redis.auth.existingSecret (or .Values.redis.auth.password $redisACLUsers $redisGlobalPassword) -}}
   {{- fail "Redis secret material must not be stored in Helm values when redis.auth.existingSecret is configured" -}}
 {{- end -}}
-{{- $revocationRedisACLUsers := dig "auth" "acl" "users" (list) .Values.revocationRedis -}}
-{{- $revocationRedisGlobalPassword := dig "global" "redis" "password" "" .Values.revocationRedis -}}
-{{- if and .Values.revocationRedis.auth.existingSecret (or .Values.revocationRedis.auth.password $revocationRedisACLUsers $revocationRedisGlobalPassword) -}}
-  {{- fail "Revocation Redis secret material must not be stored in Helm values when revocationRedis.auth.existingSecret is configured" -}}
-{{- end -}}
 {{- if or (eq $environment "production") (eq $environment "staging") -}}
   {{- if or (gt (len .Values.backend.env) 0) (gt (len .Values.outboxWorker.env) 0) -}}
     {{- fail "backend.env and outboxWorker.env must be empty in staging/production; use explicit chart configuration or Secret references so inline values do not enter Helm release state" -}}
@@ -51,16 +46,6 @@
     (dig "sentinel" "extraEnvVars" (list) .Values.redis)
     (dig "metrics" "extraEnvVars" (list) .Values.redis)
     (dig "volumePermissions" "extraEnvVars" (list) .Values.redis)
-    (dig "extraDeploy" (list) .Values.revocationRedis)
-    (dig "master" "extraEnvVars" (list) .Values.revocationRedis)
-    (dig "master" "sidecars" (list) .Values.revocationRedis)
-    (dig "master" "initContainers" (list) .Values.revocationRedis)
-    (dig "replica" "extraEnvVars" (list) .Values.revocationRedis)
-    (dig "replica" "sidecars" (list) .Values.revocationRedis)
-    (dig "replica" "initContainers" (list) .Values.revocationRedis)
-    (dig "sentinel" "extraEnvVars" (list) .Values.revocationRedis)
-    (dig "metrics" "extraEnvVars" (list) .Values.revocationRedis)
-    (dig "volumePermissions" "extraEnvVars" (list) .Values.revocationRedis)
     (dig "extraDeploy" (list) .Values.nats)
     (dig "extraEnvVars" (list) .Values.nats)
     (dig "sidecars" (list) .Values.nats)
@@ -74,8 +59,6 @@
   {{- if or
     (dig "volumePermissions" "enabled" false .Values.redis)
     (dig "sysctl" "enabled" false .Values.redis)
-    (dig "volumePermissions" "enabled" false .Values.revocationRedis)
-    (dig "sysctl" "enabled" false .Values.revocationRedis)
     (dig "metrics" "enabled" false .Values.nats)
   -}}
     {{- fail "unreviewed subchart helper containers are forbidden in staging/production because their images are outside the immutable image contract" -}}
@@ -148,12 +131,6 @@
       {{- $_ := set $dependencyImages "redis.metrics" .Values.redis.metrics.image -}}
     {{- end -}}
   {{- end -}}
-  {{- if .Values.revocationRedis.enabled -}}
-    {{- $_ := set $dependencyImages "revocationRedis" .Values.revocationRedis.image -}}
-    {{- if .Values.revocationRedis.metrics.enabled -}}
-      {{- $_ := set $dependencyImages "revocationRedis.metrics" .Values.revocationRedis.metrics.image -}}
-    {{- end -}}
-  {{- end -}}
   {{- if .Values.nats.enabled -}}
     {{- $_ := set $dependencyImages "nats" .Values.nats.image -}}
   {{- end -}}
@@ -168,7 +145,7 @@
   {{- if .Values.global.security.allowInsecureImages -}}
     {{- fail "global.security.allowInsecureImages=true is forbidden in staging/production" -}}
   {{- end -}}
-  {{- $expectedDependencyRepositories := dict "redis" "docker.io/bitnami/redis" "redis.metrics" "docker.io/bitnami/redis-exporter" "revocationRedis" "docker.io/bitnami/redis" "revocationRedis.metrics" "docker.io/bitnami/redis-exporter" "nats" "docker.io/bitnami/nats" -}}
+  {{- $expectedDependencyRepositories := dict "redis" "docker.io/bitnami/redis" "redis.metrics" "docker.io/bitnami/redis-exporter" "nats" "docker.io/bitnami/nats" -}}
   {{- range $component, $image := $dependencyImages -}}
     {{- $registry := default $image.registry $.Values.global.imageRegistry -}}
     {{- $repository := printf "%s/%s" $registry $image.repository -}}
@@ -216,7 +193,7 @@
   {{- if not .Values.backend.config.minioSecure -}}
     {{- fail "backend.config.minioSecure=true is required in staging/production" -}}
   {{- end -}}
-  {{- range $name, $dependency := dict "redis" .Values.redis "revocationRedis" .Values.revocationRedis "nats" .Values.nats -}}
+  {{- range $name, $dependency := dict "redis" .Values.redis "nats" .Values.nats -}}
     {{- if or (not $dependency.networkPolicy.enabled) $dependency.networkPolicy.allowExternal $dependency.networkPolicy.allowExternalEgress -}}
       {{- fail (printf "%s.networkPolicy must be enabled with allowExternal=false and allowExternalEgress=false in staging/production" $name) -}}
     {{- end -}}

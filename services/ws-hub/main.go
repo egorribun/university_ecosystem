@@ -335,7 +335,11 @@ func initRevocationRedis(ctx context.Context, cfg *config.Config, logger *slog.L
 }
 
 func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client, spiffeClients ...*spiffe.Client) (*hub.Hub, error) {
-	return setupHubWithRevocation(ctx, cfg, logger, nc, rdb, rdb, spiffeClients...)
+	// Compatibility helper used by isolated tests. Production startup calls
+	// setupHubWithRevocation with the separate durable security Redis obtained
+	// by initRevocationRedis; an L2/cache Redis must never be treated as that
+	// revocation authority.
+	return setupHubWithRevocation(ctx, cfg, logger, nc, rdb, nil, spiffeClients...)
 }
 
 func setupHubWithRevocation(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb, revocationRDB *redis.Client, spiffeClients ...*spiffe.Client) (*hub.Hub, error) {
@@ -355,6 +359,16 @@ func setupHubWithRevocation(ctx context.Context, cfg *config.Config, logger *slo
 	// RZ-W14-01: pass rdb so the Hub can validate one-time WS upgrade tickets
 	//nolint:contextcheck
 	h := hub.NewHub(nc, logger, authClient, cfg, rdb, revocationRDB)
+	// A real service bootstrap always has a dedicated revocation Redis: run()
+	// fails before reaching this point when it cannot initialise one. Keep the
+	// nil guard for isolated health/unit fixtures, whose action path is never
+	// exposed and whose Hub checker is fail-closed by default.
+	if revocationRDB != nil {
+		if err := h.StartSessionRevocationListener(ctx); err != nil {
+			h.Stop() //nolint:contextcheck // Hub.Stop cancels its own lifecycle context.
+			return nil, fmt.Errorf("start session revocation listener: %w", err)
+		}
+	}
 
 	if cfg.JWKSURL != "" {
 		if err := setupJWKSFunc(h, ctx, cfg.JWKSURL); err != nil {

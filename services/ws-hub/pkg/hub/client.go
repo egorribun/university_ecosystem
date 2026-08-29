@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,18 +28,29 @@ type ClientIdentity struct {
 
 // Client represents a connected user session (WebSocket or WebTransport).
 type Client struct {
-	ID                string
-	UserID            string
-	Identity          *ClientIdentity
-	Conn              Session
-	Rooms             map[string]bool
-	Send              chan []byte
-	Hub               *Hub
-	mu                sync.Mutex
-	replayMu          sync.Mutex
-	replays           map[string]*roomReplayState
-	replayJoinLimiter *rate.Limiter
-	closeOnce         sync.Once
+	ID     string
+	UserID string
+	// SessionJTI is immutable ticket identity retained for the connection's
+	// full lifetime. It lets a canonical session-revocation event target one
+	// browser session without disconnecting the user's other devices.
+	SessionJTI string
+	Identity   *ClientIdentity
+	Conn       Session
+	Rooms      map[string]bool
+	Send       chan []byte
+	Hub        *Hub
+	mu         sync.Mutex
+	// sessionGate serializes a revocation with an in-flight authorized action.
+	// It is never acquired while Hub.mu is held: DisconnectSession snapshots
+	// clients first, releases Hub.mu, and only then calls RevokeSession.
+	sessionGate        sync.RWMutex
+	sessionRevoked     atomic.Bool
+	writeMu            sync.Mutex
+	transportCloseOnce sync.Once
+	replayMu           sync.Mutex
+	replays            map[string]*roomReplayState
+	replayJoinLimiter  *rate.Limiter
+	closeOnce          sync.Once
 	// ctx / cancel are tied to this connection's lifetime.
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -210,7 +222,7 @@ func isNormalCloseError(err error) bool {
 }
 
 func (c *Client) cleanupReadPump() {
-	c.cancel()
+	c.cancelConnection()
 	c.cancelAllRoomReplays()
 	c.Hub.msgLimiters.Delete(c.ID)
 	if c.Hub != nil {
@@ -229,11 +241,7 @@ func (c *Client) cleanupReadPump() {
 			}
 		}
 	}
-	if c.Conn != nil {
-		if err := c.Conn.Close(); err != nil {
-			c.Hub.Logger.ErrorContext(c.ctx, "Failed to close session connection", "client_id", c.ID, "err", err)
-		}
-	}
+	c.closeTransport("Failed to close session connection")
 }
 
 func (c *Client) setupConnection() {
@@ -279,8 +287,55 @@ func (c *Client) processNextMessage(ctx context.Context) bool {
 	stripClientReplayMetadata(&msg)
 
 	msg.From = c.UserID
-	c.handleIncomingMessage(ctx, msg, data)
+	if err := c.authorizeAndHandleIncomingMessage(ctx, msg, data); err != nil {
+		if c.Hub != nil && c.Hub.Logger != nil {
+			c.Hub.Logger.WarnContext(ctx, "Rejected WebSocket action after session revocation check",
+				"client_id", c.ID,
+				"event", "session_action_revocation_rejected")
+		}
+		// The revocation check is fail-closed. A Pub/Sub gap, an unavailable
+		// security Redis, or a missing retained ticket identity must not allow
+		// an already-connected transport to dispatch another action.
+		c.RevokeSession(websocket.ClosePolicyViolation, "Session revoked")
+		return false
+	}
 	return true
+}
+
+func (c *Client) authorizeAndHandleIncomingMessage(ctx context.Context, msg Message, data []byte) error {
+	c.sessionGate.RLock()
+	defer c.sessionGate.RUnlock()
+
+	if c.sessionRevoked.Load() {
+		return errors.New("session is already revoked")
+	}
+	if c.SessionJTI == "" {
+		return errors.New("connection is missing session ticket identity")
+	}
+	if c.Hub == nil || c.Hub.sessionRevocationCheck == nil {
+		return errors.New("session revocation checker is unavailable")
+	}
+
+	checkCtx, cancel := context.WithTimeout(ctx, sessionActionRevocationTimeout)
+	defer cancel()
+	if err := c.Hub.sessionRevocationCheck(checkCtx, c.SessionJTI); err != nil {
+		return errors.New("session revocation check rejected the action")
+	}
+	if c.sessionRevoked.Load() {
+		return errors.New("session was revoked while authorizing action")
+	}
+
+	c.handleIncomingMessage(ctx, msg, data)
+	return nil
+}
+
+// RevokeSession prevents further action dispatch before closing the transport.
+// The gate makes revocation linearizable with authorizeAndHandleIncomingMessage.
+func (c *Client) RevokeSession(closeCode int, reason string) {
+	c.sessionGate.Lock()
+	c.sessionRevoked.Store(true)
+	c.sessionGate.Unlock()
+	c.Disconnect(closeCode, reason)
 }
 
 // ReadPump pumps messages from the session connection to the hub.
@@ -919,14 +974,8 @@ func (c *Client) cancelAllRoomReplays() {
 }
 
 func (c *Client) failReplayConnection() {
-	if c.cancel != nil {
-		c.cancel()
-	}
-	if c.Conn != nil {
-		if err := c.Conn.Close(); err != nil && c.Hub != nil && c.Hub.Logger != nil {
-			c.Hub.Logger.WarnContext(c.ctx, "Failed to close replay session", "client_id", c.ID, "err", err)
-		}
-	}
+	c.cancelConnection()
+	c.closeTransport("Failed to close replay session")
 	if c.Hub == nil {
 		return
 	}
@@ -1053,49 +1102,52 @@ func (c *Client) WritePump() {
 	defer func() {
 		ticker.Stop()
 		c.Hub.msgLimiters.Delete(c.ID) // TD-24-05: clean limiter on WritePump exit too
-		if c.Conn != nil {
-			if err := c.Conn.Close(); err != nil {
-				c.Hub.Logger.ErrorContext(c.ctx, "Failed to close session connection in WritePump", "err", err)
-			}
-		}
+		c.closeTransport("Failed to close session connection in WritePump")
 	}()
 
 	for {
 		select {
 		case msg, ok := <-c.Send:
+			c.writeMu.Lock()
 			if c.Conn != nil {
-				if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+				if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil && c.Hub != nil && c.Hub.Logger != nil {
 					c.Hub.Logger.ErrorContext(c.ctx, "Failed to set write deadline", "err", err)
 				}
 			}
 			if !ok {
 				if c.Conn != nil {
-					if err := c.Conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
+					if err := c.Conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil && c.Hub != nil && c.Hub.Logger != nil {
 						c.Hub.Logger.ErrorContext(c.ctx, "Failed to write close message", "err", err)
 					}
 				}
+				c.writeMu.Unlock()
 				return
 			}
 
 			if c.Conn != nil {
 				if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+					c.writeMu.Unlock()
 					return
 				}
 			}
+			c.writeMu.Unlock()
 
 		case <-c.ctx.Done():
 			// RZ-26-08: context cancelled (ReadPump exited) — stop immediately
 			return
 
 		case <-ticker.C:
+			c.writeMu.Lock()
 			if c.Conn != nil {
-				if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil {
+				if err := c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second)); err != nil && c.Hub != nil && c.Hub.Logger != nil {
 					c.Hub.Logger.ErrorContext(c.ctx, "Failed to set write deadline for ping", "err", err)
 				}
 				if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+					c.writeMu.Unlock()
 					return
 				}
 			}
+			c.writeMu.Unlock()
 		}
 	}
 }
@@ -1146,19 +1198,9 @@ func (c *Client) LeaveRoom(room string) {
 // Disconnect sends a WebSocket close control frame with the specified close code and reason,
 // then enqueues the client into Hub.Unregister for clean channel/room teardown.
 func (c *Client) Disconnect(closeCode int, reason string) {
+	c.cancelConnection()
 	c.cancelAllRoomReplays()
-	if c.Conn != nil {
-		closeMsg := websocket.FormatCloseMessage(closeCode, reason)
-		if err := c.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil && c.Hub != nil && c.Hub.Logger != nil {
-			c.Hub.Logger.DebugContext(c.ctx, "Failed to set write deadline on disconnect", "err", err)
-		}
-		if err := c.Conn.WriteMessage(websocket.CloseMessage, closeMsg); err != nil {
-			if c.Hub != nil && c.Hub.Logger != nil {
-				c.Hub.Logger.WarnContext(c.ctx, "Failed to write close control frame to client",
-					"client_id", c.ID, "user_id", c.UserID, "err", err)
-			}
-		}
-	}
+	c.closeTransportWithControlFrame(closeCode, reason)
 
 	if c.Hub != nil {
 		hCtx := c.Hub.Context()
@@ -1176,4 +1218,44 @@ func (c *Client) Disconnect(closeCode int, reason string) {
 			}
 		}
 	}
+}
+
+func (c *Client) cancelConnection() {
+	if c.cancel != nil {
+		c.cancel()
+	}
+}
+
+func (c *Client) closeTransportWithControlFrame(closeCode int, reason string) {
+	c.transportCloseOnce.Do(func() {
+		c.writeMu.Lock()
+		defer c.writeMu.Unlock()
+		if c.Conn == nil {
+			return
+		}
+		closeMsg := websocket.FormatCloseMessage(closeCode, reason)
+		if err := c.Conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil && c.Hub != nil && c.Hub.Logger != nil {
+			c.Hub.Logger.DebugContext(c.ctx, "Failed to set write deadline on disconnect", "err", err)
+		}
+		if err := c.Conn.WriteMessage(websocket.CloseMessage, closeMsg); err != nil && c.Hub != nil && c.Hub.Logger != nil {
+			c.Hub.Logger.WarnContext(c.ctx, "Failed to write close control frame to client",
+				"client_id", c.ID, "user_id", c.UserID, "err", err)
+		}
+		if err := c.Conn.Close(); err != nil && c.Hub != nil && c.Hub.Logger != nil {
+			c.Hub.Logger.ErrorContext(c.ctx, "Failed to close session connection", "client_id", c.ID, "err", err)
+		}
+	})
+}
+
+func (c *Client) closeTransport(logMessage string) {
+	c.transportCloseOnce.Do(func() {
+		c.writeMu.Lock()
+		defer c.writeMu.Unlock()
+		if c.Conn == nil {
+			return
+		}
+		if err := c.Conn.Close(); err != nil && c.Hub != nil && c.Hub.Logger != nil {
+			c.Hub.Logger.ErrorContext(c.ctx, logMessage, "client_id", c.ID, "err", err)
+		}
+	})
 }

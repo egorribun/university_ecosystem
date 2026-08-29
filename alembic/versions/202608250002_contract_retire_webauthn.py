@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import uuid
+from datetime import datetime
 from typing import Any
 
 import sqlalchemy as sa
 from alembic import op
+from redis.exceptions import RedisError
+
+from app.auth.revocation import calculate_revocation_tombstone_ttl
 
 revision = "202608250002"
 down_revision = "202608250001"
@@ -17,6 +22,13 @@ downgrade_policy = "irreversible"
 downgrade_reason = "MFA security-key retirement is irreversible"
 
 _LOCK_ID = 824_250_002
+_REVOCATION_TOMBSTONE_PREFIX = "revoked:jti:"
+_SESSION_REVOCATIONS_CHANNEL = "session:revocations"
+# ``upgrade`` owns ACCESS EXCLUSIVE locks while it retires the legacy factor.
+# A dedicated fail-closed store must therefore never wait on Redis defaults or
+# transport retries: each delivery operation gets one bounded attempt.
+_REVOCATION_REDIS_CONNECT_TIMEOUT_SECONDS = 1.0
+_REVOCATION_REDIS_SOCKET_TIMEOUT_SECONDS = 1.0
 
 # Keep the logical NOT NULL contract while avoiding a table-wide validating
 # lock during this destructive migration.  PostgreSQL validates each check in
@@ -123,7 +135,149 @@ def _coerce_user_id(bind: Any, user_id: str) -> str | uuid.UUID:
     return user_id
 
 
+def _requires_persistent_session_revocation(bind: Any) -> bool:
+    """Production bearer retirement needs live delivery, unlike SQLite fixtures."""
+    return bind.dialect.name == "postgresql"
+
+
+def _active_session_revocations(
+    bind: Any,
+    user_id: str,
+) -> list[tuple[str, datetime]]:
+    """Collect still-live bearer IDs without changing local database state."""
+    if not _requires_persistent_session_revocation(bind):
+        return []
+    if "active_sessions" not in _tables(bind):
+        return []
+
+    columns = _columns(bind, "active_sessions")
+    bound_user_id = _coerce_user_id(bind, user_id)
+    required_columns = {"user_id", "jti", "expires_at"}
+    if not required_columns.issubset(columns):
+        probe = sa.table(
+            "active_sessions",
+            sa.column("user_id"),
+            *(sa.column("revoked_at"),) if "revoked_at" in columns else (),
+        )
+        predicates = [probe.c.user_id == bound_user_id]
+        if "revoked_at" in columns:
+            predicates.append(probe.c.revoked_at.is_(None))
+        if (
+            bind.execute(
+                sa.select(sa.literal(1)).select_from(probe).where(*predicates).limit(1)
+            ).first()
+            is not None
+        ):
+            raise MfaMigrationSafetyError(
+                "Unsafe MFA retirement: active session tombstone fields are unavailable"
+            )
+        return []
+
+    session = sa.table(
+        "active_sessions",
+        sa.column("user_id"),
+        sa.column("jti"),
+        sa.column("expires_at", sa.DateTime(timezone=True)),
+        *(sa.column("revoked_at"),) if "revoked_at" in columns else (),
+    )
+    predicates = [session.c.user_id == bound_user_id]
+    if "revoked_at" in columns:
+        predicates.append(session.c.revoked_at.is_(None))
+
+    revocations: list[tuple[str, datetime]] = []
+    seen_jtis: set[str] = set()
+    for jti, expires_at in bind.execute(
+        sa.select(session.c.jti, session.c.expires_at).where(*predicates)
+    ):
+        if (
+            not isinstance(jti, str)
+            or not jti.strip()
+            or not isinstance(expires_at, datetime)
+        ):
+            raise MfaMigrationSafetyError(
+                "Unsafe MFA retirement: active session revocation data is invalid"
+            )
+        try:
+            # The revocation key and pub/sub payload must have one canonical
+            # byte representation.  Otherwise semantically equivalent UUID
+            # spellings could create different tombstones and allow a bearer
+            # whose verifier uses a different spelling to escape revocation.
+            if str(uuid.UUID(jti)) != jti:
+                raise ValueError("non-canonical UUID")
+        except ValueError as exc:
+            raise MfaMigrationSafetyError(
+                "Unsafe MFA retirement: active session revocation data is invalid"
+            ) from exc
+        if jti not in seen_jtis:
+            seen_jtis.add(jti)
+            revocations.append((jti, expires_at))
+    return revocations
+
+
+def _get_migration_revocation_redis_client(url: str) -> Any:
+    """Create the synchronous dedicated Redis client used only by this hook."""
+    from redis import Redis
+    from redis.backoff import NoBackoff
+    from redis.retry import Retry
+
+    return Redis.from_url(
+        url,
+        decode_responses=True,
+        socket_connect_timeout=_REVOCATION_REDIS_CONNECT_TIMEOUT_SECONDS,
+        socket_timeout=_REVOCATION_REDIS_SOCKET_TIMEOUT_SECONDS,
+        retry=Retry(NoBackoff(), retries=0),
+        retry_on_timeout=False,
+    )
+
+
+def _publish_session_revocations(
+    revocations: list[tuple[str, datetime]],
+) -> None:
+    """Durably deny then broadcast every retired bearer before DB mutation."""
+    if not revocations:
+        return
+
+    redis_url = os.environ.get("REVOCATION_REDIS_URL", "").strip()
+    if not redis_url:
+        raise MfaMigrationSafetyError(
+            "Unsafe MFA retirement: session revocation delivery is unavailable"
+        )
+
+    client: Any | None = None
+    try:
+        client = _get_migration_revocation_redis_client(redis_url)
+        if client.ping() is not True:
+            raise MfaMigrationSafetyError(
+                "Unsafe MFA retirement: session revocation delivery failed"
+            )
+        for jti, expires_at in revocations:
+            written = client.set(
+                f"{_REVOCATION_TOMBSTONE_PREFIX}{jti}",
+                "1",
+                ex=calculate_revocation_tombstone_ttl(expires_at),
+            )
+            if written is not True:
+                raise MfaMigrationSafetyError(
+                    "Unsafe MFA retirement: session revocation delivery failed"
+                )
+        for jti, _expires_at in revocations:
+            client.publish(_SESSION_REVOCATIONS_CHANNEL, jti)
+    except (OSError, RedisError, ValueError):
+        raise MfaMigrationSafetyError(
+            "Unsafe MFA retirement: session revocation delivery failed"
+        ) from None
+    finally:
+        if client is not None:
+            try:
+                client.close()
+            except (OSError, RedisError):
+                # Delivery already completed; a client-close failure cannot
+                # resurrect a tombstoned bearer and must not leak a secret URL.
+                pass
+
+
 def _invalidate_legacy_auth_state(bind: Any, user_id: str) -> None:
+    """Apply the local half after ``_publish_session_revocations`` succeeds."""
     bound_user_id = _coerce_user_id(bind, user_id)
     if "mfa_epoch" in _columns(bind, "users"):
         bind.execute(
@@ -159,6 +313,7 @@ def run_preflight(bind: Any) -> dict[str, int]:
     """Classify under caller-held table locks and apply only safe remaps."""
     result = {"totp": 0, "email_otp": 0, "recovery_path": 0, "unresolved": 0}
     unresolved: list[str] = []
+    remediations: list[tuple[str, str]] = []
     for user_id in sorted(_legacy_user_ids(bind)):
         bound_user_id = _coerce_user_id(bind, user_id)
         row = bind.execute(
@@ -169,6 +324,37 @@ def run_preflight(bind: Any) -> dict[str, int]:
             continue
         if _has_confirmed_totp(bind, user_id):
             result["totp"] += 1
+            remediations.append((user_id, "totp"))
+        elif row[0] is not None:
+            result["email_otp"] += 1
+            remediations.append((user_id, "email_otp"))
+        else:
+            result["unresolved"] += 1
+            unresolved.append(hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:12])
+    if unresolved:
+        raise MfaMigrationSafetyError(
+            "Unsafe MFA retirement: "
+            f"unresolved_count={len(unresolved)} refs={','.join(unresolved)}; "
+            "set email_verified_at, enroll TOTP, or provision a verified factor. "
+            "Unused recovery rows alone are not a usable login path."
+        )
+
+    revocations_by_user = {
+        user_id: _active_session_revocations(bind, user_id)
+        for user_id, _method in remediations
+    }
+    _publish_session_revocations(
+        [
+            revocation
+            for user_id, _method in remediations
+            for revocation in revocations_by_user[user_id]
+        ]
+    )
+
+    for user_id, method in remediations:
+        bound_user_id = _coerce_user_id(bind, user_id)
+        _invalidate_legacy_auth_state(bind, user_id)
+        if method == "totp":
             bind.execute(
                 sa.text(
                     "UPDATE users SET mfa_default_method='totp', mfa_required=true "
@@ -176,8 +362,7 @@ def run_preflight(bind: Any) -> dict[str, int]:
                 ),
                 {"user_id": bound_user_id},
             )
-        elif row[0] is not None:
-            result["email_otp"] += 1
+        else:
             bind.execute(
                 sa.text(
                     "UPDATE users SET mfa_default_method='email_otp', "
@@ -186,18 +371,6 @@ def run_preflight(bind: Any) -> dict[str, int]:
                 ),
                 {"user_id": bound_user_id},
             )
-        else:
-            result["unresolved"] += 1
-            unresolved.append(hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:12])
-            continue
-        _invalidate_legacy_auth_state(bind, user_id)
-    if unresolved:
-        raise MfaMigrationSafetyError(
-            "Unsafe MFA retirement: "
-            f"unresolved_count={len(unresolved)} refs={','.join(unresolved)}; "
-            "set email_verified_at, enroll TOTP, or provision a verified factor. "
-            "Unused recovery rows alone are not a usable login path."
-        )
     return result
 
 

@@ -1,0 +1,92 @@
+{
+  "schema_version": 1,
+  "slots": [
+    {
+      "logical_artifact": "coverage-evidence",
+      "producer_job": "coverage-policy-gate",
+      "metadata_path": "artifacts/coverage/provenance/aggregate.json",
+      "reports": [
+        {
+          "component": "python",
+          "format": "cobertura-xml",
+          "path": "coverage.xml"
+        },
+        {
+          "component": "python",
+          "format": "coverage-py-json",
+          "path": "artifacts/coverage/python/coverage.json"
+        },
+        {
+          "component": "frontend",
+          "format": "lcov",
+          "path": "frontend/coverage/lcov.info"
+        },
+        {
+          "component": "frontend",
+          "format": "istanbul-json",
+          "path": "frontend/coverage/coverage-final.json"
+        },
+        {
+          "component": "go-gateway",
+          "format": "go-coverprofile",
+          "path": "artifacts/coverage/go/gateway/coverage.out"
+        },
+        {
+          "component": "go-ws-hub",
+          "format": "go-coverprofile",
+          "path": "artifacts/coverage/go/ws-hub/coverage.out"
+        },
+        {
+          "component": "go-file-processor",
+          "format": "go-coverprofile",
+          "path": "artifacts/coverage/go/file-processor/coverage.out"
+        },
+        {
+          "component": "go-shared",
+          "format": "go-coverprofile",
+          "path": "artifacts/coverage/go/shared/coverage.out"
+        },
+        {
+          "component": "rust-native",
+          "format": "llvm-cov-json",
+          "path": "artifacts/coverage/rust/rust-native/llvm.json"
+        },
+        {
+          "component": "rust-native",
+          "format": "llvm-cov-branch-json",
+          "path": "artifacts/coverage/rust/rust-native/branch-llvm.json"
+        },
+        {
+          "component": "rust-pyo3-sanitizer",
+          "format": "llvm-cov-json",
+          "path": "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json"
+        },
+        {
+          "component": "rust-pyo3-sanitizer",
+          "format": "llvm-cov-branch-json",
+          "path": "artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json"
+        },
+        {
+          "component": "rust-wasm-sanitizer",
+          "format": "llvm-cov-json",
+          "path": "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json"
+        },
+        {
+          "component": "rust-wasm-sanitizer",
+          "format": "llvm-cov-branch-json",
+          "path": "artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json"
+        },
+        {
+          "component": "rust-crypto",
+          "format": "llvm-cov-json",
+          "path": "artifacts/coverage/rust/rust-crypto/llvm.json"
+        },
+        {
+          "component": "rust-crypto",
+          "format": "llvm-cov-branch-json",
+          "path": "artifacts/coverage/rust/rust-crypto/branch-llvm.json"
+        }
+      ]
+    }
+  ]
+}

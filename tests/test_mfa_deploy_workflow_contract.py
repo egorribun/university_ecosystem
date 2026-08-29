@@ -117,6 +117,10 @@ def test_ws_hub_is_only_deployed_and_rolled_back_by_helm() -> None:
     rollback = _step("Roll back a deployment that failed verification")
     assert "helm rollback" in str(rollback["run"])
     assert "helm uninstall" in str(rollback["run"])
+    # The durable revocation bootstrap release is intentionally retained when
+    # an application pre-hook/rollout fails; deleting it would erase the
+    # security boundary required by the next safe retry.
+    assert "revocation-store" not in str(rollback["run"])
     assert "kubectl set image" not in str(rollback["run"])
 
 
@@ -160,10 +164,6 @@ def test_helm_paths_pin_dependency_repositories_and_validate_chart_lock() -> Non
         "redis.image.repository=bitnami/redis",
         "redis.metrics.image.registry=docker.io",
         "redis.metrics.image.repository=bitnami/redis-exporter",
-        "revocationRedis.image.registry=docker.io",
-        "revocationRedis.image.repository=bitnami/redis",
-        "revocationRedis.metrics.image.registry=docker.io",
-        "revocationRedis.metrics.image.repository=bitnami/redis-exporter",
         "nats.image.registry=docker.io",
         "nats.image.repository=bitnami/nats",
     ):
@@ -179,6 +179,27 @@ def test_helm_paths_pin_dependency_repositories_and_validate_chart_lock() -> Non
     assert "helm dependency build --skip-refresh" in run
     assert "git diff --exit-code --" in run
     assert "helm dependency list" in run
+
+    bootstrap_script = (
+        ROOT / ".github" / "scripts" / "deploy-revocation-store.sh"
+    ).read_text(encoding="utf-8")
+    for override in (
+        "redis.image.registry=docker.io",
+        "redis.image.repository=bitnami/redis",
+        "redis.metrics.image.registry=docker.io",
+        "redis.metrics.image.repository=bitnami/redis-exporter",
+    ):
+        assert override in bootstrap_script
+    assert 'test -s "$chart/Chart.lock"' in bootstrap_script
+    assert 'helm dependency list "$chart"' in bootstrap_script
+
+    bootstrap_verify = _step("Verify vendored revocation-store dependency")
+    bootstrap_run = str(bootstrap_verify["run"])
+    assert "bash .github/scripts/deploy-revocation-store.sh verify-vendor" in (
+        bootstrap_run
+    )
+    assert "helm dependency build" not in bootstrap_run
+    assert "helm dependency update" not in bootstrap_run
 
 
 def test_namespace_bootstrap_enforces_restricted_pod_security() -> None:
@@ -211,20 +232,101 @@ def test_secret_preflight_covers_connections_redis_and_nats_config() -> None:
     for contract_key in (
         "redis-secret-name",
         "redis-secret-keys.json",
-        "revocation-redis-secret-name",
-        "revocation-redis-secret-keys.json",
         "nats-config-secret-name",
         "nats-config-secret-keys.json",
     ):
         assert contract_key in run
     assert 'require_secret_keys "$redis_secret_name"' in run
-    assert 'require_secret_keys "$revocation_redis_secret_name"' in run
     assert 'require_secret_keys "$nats_config_secret_name"' in run
     assert "dependency-images.json" in run
     assert "dependency-chart-versions.json" in run
     assert "docker.io/bitnami/redis@" in run
     assert "docker.io/bitnami/redis-exporter@" in run
     assert "docker.io/bitnami/nats@" in run
+    assert "revocation-redis-url-key" in run
+    assert "revocation-redis-service-host" in run
+    assert "base64 --decode" in run
+    assert "from urllib.parse import urlsplit" in run
+    assert (
+        "The revocation Redis URL must target the rendered dedicated master service"
+        in run
+    )
+    assert "revocation-redis-credentials" in run
+    assert "revocation-redis-password" in run
+    assert "cache_redis_password_b64" in run
+    assert "revocation_redis_password_b64" in run
+    assert "must differ from the cache Redis password" in run
+
+
+def test_revocation_store_bootstrap_precedes_the_application_pre_hook() -> None:
+    steps = _workflow()["jobs"]["deploy"]["steps"]
+    names = [step.get("name") for step in steps]
+    rbac_index = names.index("Verify rendered revocation-store resource RBAC")
+    bootstrap_index = names.index("Bootstrap durable revocation store")
+    ready_index = names.index("Verify durable revocation store readiness")
+    preflight_index = names.index("Verify effective Secret contract")
+    deploy_index = names.index("Deploy Helm release atomically")
+
+    assert rbac_index < bootstrap_index < ready_index < preflight_index < deploy_index
+    bootstrap = _step("Bootstrap durable revocation store")
+    readiness = _step("Verify durable revocation store readiness")
+    assert "bash .github/scripts/deploy-revocation-store.sh lint" in str(
+        bootstrap["run"]
+    )
+    assert "bash .github/scripts/deploy-revocation-store.sh upgrade" in str(
+        bootstrap["run"]
+    )
+    for required_fragment in (
+        "statefulset/$statefulset_name",
+        "endpointslice",
+        "configmap/$configuration_name",
+        '"master.conf"',
+        "maxmemory-policy noeviction",
+        "appendonly yes",
+        "appendfsync everysec",
+        'rename-command ACL ""',
+        'rename-command CONFIG ""',
+        'rename-command FLUSHDB ""',
+        'rename-command FLUSHALL ""',
+        'rename-command FUNCTION ""',
+        'rename-command MIGRATE ""',
+        'rename-command MODULE ""',
+        'rename-command MONITOR ""',
+        'rename-command REPLICAOF ""',
+        'rename-command SLAVEOF ""',
+        'rename-command SHUTDOWN ""',
+        "university-ecosystem.io/revocation-store-for",
+    ):
+        assert required_fragment in str(readiness["run"])
+    assert "REVOCATION_REDIS_IMAGE_DIGEST" in bootstrap["env"]
+    assert "REVOCATION_REDIS_METRICS_IMAGE_DIGEST" in bootstrap["env"]
+    # The deployment workflow must reject a rendered store that reuses the
+    # general cache credential, even if a caller tampers with a Helm value.
+    # The URL is intentionally distributed through university-connections, but
+    # the password source remains a separate ExternalSecret-owned Secret.
+    readiness_run = str(readiness["run"])
+    assert 'redis_secret_name" != "revocation-redis-credentials"' in readiness_run
+    assert 'redis_secret_key" != "revocation-redis-password"' in readiness_run
+    assert "credential identity must remain isolated from cache Redis" in readiness_run
+    assert "kubectl exec" not in str(readiness["run"])
+    assert "redis-cli" not in str(readiness["run"])
+    cluster_access = _step("Configure and verify cluster access")
+    assert "pods/exec" not in str(cluster_access["run"])
+    assert "get configmaps" in str(cluster_access["run"])
+
+
+def test_deployment_validation_binds_every_revocation_store_digest_before_use() -> None:
+    validate = _step("Validate deployment contract")
+    run = str(validate["run"])
+
+    assert validate["env"]["REVOCATION_REDIS_IMAGE_DIGEST"] == (
+        "${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}"
+    )
+    assert validate["env"]["REVOCATION_REDIS_METRICS_IMAGE_DIGEST"] == (
+        "${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}"
+    )
+    assert "REVOCATION_REDIS_IMAGE_DIGEST" in run
+    assert "REVOCATION_REDIS_METRICS_IMAGE_DIGEST" in run
 
 
 def test_external_secret_reconciliation_waits_for_fresh_ready_secret() -> None:

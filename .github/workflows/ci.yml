@@ -730,7 +730,102 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      # A timing model is only an optimization; the first attempt has no
+      # prior aggregate in this run. Later retries may consume exactly one
+      # immutable model emitted by a successful aggregate of this same run
+      # and SHA. The runner revalidates its source/config/preflight binding
+      # before it changes the canonical shard plan.
+      - name: Download verified same-run historical Stryker cost candidates
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: frontend-mutation-historical-costs-${{ github.run_id }}-*-${{ github.sha }}
+          path: frontend/reports/mutation/cost-candidates
+          merge-multiple: false
+
+      - name: Select immutable same-run historical Stryker cost candidate
+        id: select_historical_stryker_cost
+        shell: bash
+        env:
+          CANDIDATE_ROOT: frontend/reports/mutation/cost-candidates
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          echo "has_candidate=false" >> "$GITHUB_OUTPUT"
+          if [[ ! "$RUN_ID" =~ ^[1-9][0-9]*$ ]] || \
+             [[ ! "$RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || \
+             [[ ! "$COMMIT_SHA" =~ ^[a-f0-9]{40}$ ]]; then
+            echo "::error::GitHub workflow identity for historical Stryker costs is malformed."
+            exit 1
+          fi
+          if [[ -L "$CANDIDATE_ROOT" ]]; then
+            echo "::error::Historical Stryker cost candidate root must not be a symlink."
+            exit 1
+          fi
+          if [[ ! -e "$CANDIDATE_ROOT" ]]; then
+            exit 0
+          fi
+          if [[ ! -d "$CANDIDATE_ROOT" ]]; then
+            echo "::error::Historical Stryker cost candidate root is malformed."
+            exit 1
+          fi
+          shopt -s nullglob dotglob
+          candidates=("$CANDIDATE_ROOT"/*)
+          if (( ${#candidates[@]} == 0 )); then
+            exit 0
+          fi
+          prefix="frontend-mutation-historical-costs-${RUN_ID}-"
+          suffix="-${COMMIT_SHA}"
+          selected_attempt=0
+          selected_name=""
+          for candidate in "${candidates[@]}"; do
+            candidate_name="${candidate##*/}"
+            if [[ ! -d "$candidate" || -L "$candidate" ]]; then
+              echo "::error::Historical Stryker cost candidate is not an isolated directory."
+              exit 1
+            fi
+            if [[ "$candidate_name" != "$prefix"*"$suffix" ]]; then
+              echo "::error::Historical Stryker cost candidate is outside this run/SHA scope."
+              exit 1
+            fi
+            attempt="${candidate_name#"$prefix"}"
+            attempt="${attempt%"$suffix"}"
+            if [[ ! "$attempt" =~ ^[1-9][0-9]*$ ]] || \
+               [[ "$candidate_name" != "${prefix}${attempt}${suffix}" ]] || \
+               (( 10#$attempt >= 10#$RUN_ATTEMPT )); then
+              echo "::error::Historical Stryker cost candidate has an invalid producer attempt."
+              exit 1
+            fi
+            contents=("$candidate"/*)
+            if (( ${#contents[@]} != 1 )) || \
+               [[ "${contents[0]##*/}" != "HISTORICAL_COSTS.json" ]] || \
+               [[ ! -f "${contents[0]}" || -L "${contents[0]}" ]] || \
+               [[ "$(stat --format='%h' "${contents[0]}")" != "1" ]]; then
+              echo "::error::Historical Stryker cost candidate payload is malformed."
+              exit 1
+            fi
+            if (( 10#$attempt > 10#$selected_attempt )); then
+              selected_attempt="$attempt"
+              selected_name="$candidate_name"
+            fi
+          done
+          if (( selected_attempt == 0 )) || [[ -z "$selected_name" ]]; then
+            echo "::error::Historical Stryker cost candidates did not yield a prior producer attempt."
+            exit 1
+          fi
+          echo "artifact=${selected_name}/HISTORICAL_COSTS.json" >> "$GITHUB_OUTPUT"
+          echo "has_candidate=true" >> "$GITHUB_OUTPUT"
+
+      - name: Generate canonical immutable Stryker preflight with verified historical costs
+        if: ${{ steps.select_historical_stryker_cost.outputs.has_candidate == 'true' }}
+        working-directory: frontend
+        env:
+          STRYKER_HISTORICAL_COSTS_ARTIFACT: ${{ steps.select_historical_stryker_cost.outputs.artifact }}
+        run: npm run test:mutation
+
       - name: Generate canonical immutable Stryker preflight
+        if: ${{ steps.select_historical_stryker_cost.outputs.has_candidate != 'true' }}
         working-directory: frontend
         run: npm run test:mutation
 
@@ -898,6 +993,19 @@ jobs:
         run: |
           npm run test:mutation
           npm run test:mutation:verify
+
+      # The runner writes this model only after every selected shard has
+      # passed provenance validation. Upload it after the aggregate verifier
+      # succeeds, never from a shard or an unverified producer.
+      - name: Upload verified historical Stryker cost model
+        if: ${{ success() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: frontend-mutation-historical-costs-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: frontend/reports/mutation/historical-costs/HISTORICAL_COSTS.json
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 30
 
       - name: Upload validated frontend mutation evidence
         if: ${{ success() }}
@@ -2351,12 +2459,51 @@ jobs:
             --num-shards 8 \
             --max-children 2
 
+      - name: Create retry-bound mutmut stats sidecar
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        shell: bash
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW: .github/workflows/ci.yml
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          SOURCE_REVISION="$(git rev-parse HEAD)"
+          test "$SOURCE_REVISION" = "$COMMIT_SHA"
+          python scripts/mutmut_retry_artifacts.py create-stats \
+            --root . \
+            --manifest mutmut-stats-artifact.json \
+            --stats mutants/mutmut-stats.json \
+            --logical-shard "${{ matrix.stats_shard }}" \
+            --commit-sha "$COMMIT_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --workflow "$WORKFLOW" \
+            --repository "$REPOSITORY" \
+            --source-revision "$SOURCE_REVISION" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --event "$EVENT_NAME"
+
       - name: Upload mutmut stats shard
         if: steps.mutation_scope.outputs.has_python == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.stats_shard }}
-          path: mutants/mutmut-stats.json
+          # The logical shard is stable across a same-run retry; the attempt
+          # suffix makes each producer immutable.  download-artifact is
+          # already scoped to this workflow run.
+          name: mutmut-stats-shard-${{ matrix.stats_shard }}-attempt-${{ github.run_attempt }}
+          path: |
+            mutants/mutmut-stats.json
+            mutmut-stats-artifact.json
+          # GitHub permits rerunning failed jobs for 30 days. Keep successful
+          # shards available for a later same-run partial retry.
+          retention-days: 30
           if-no-files-found: error
 
   mutation-tests-universe:
@@ -2446,31 +2593,61 @@ jobs:
             sleep $((attempt * 15))
           done
 
-      - name: Download mutmut stats shards
+      - name: Download same-run mutmut stats candidates
         if: steps.mutation_scope.outputs.has_python == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-*
-          path: mutmut-stats
+          pattern: mutmut-stats-shard-*-attempt-*
+          path: mutmut-stats-candidates
+          merge-multiple: false
           if-no-artifact-found: error
 
-      - name: Require all mutmut stats shards
+      - name: Select complete retry-safe mutmut stats cohort
         if: steps.mutation_scope.outputs.has_python == 'true'
         shell: bash
         env:
+          COMMIT_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW: .github/workflows/ci.yml
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
-          expected=8
-          actual="$(find mutmut-stats -type f -name 'mutmut-stats.json' | wc -l)"
-          if [[ "$actual" -ne "$expected" ]]; then
-            echo "::error::Expected exactly $expected mutmut stats shards for run ${RUN_ID} attempt ${RUN_ATTEMPT}; found $actual."
+          SOURCE_REVISION="$(git rev-parse HEAD)"
+          test "$SOURCE_REVISION" = "$COMMIT_SHA"
+          if find mutmut-stats-candidates -mindepth 1 -maxdepth 1 ! -type d -print -quit | grep -q .; then
+            echo "::error::Mutmut stats artifact download contains a non-isolated top-level payload."
             exit 1
           fi
-          for shard in $(seq 0 7); do
-            test -s "mutmut-stats/mutmut-stats-${RUN_ID}-${RUN_ATTEMPT}-${shard}/mutmut-stats.json"
+          mapfile -d '' -t candidate_roots < <(
+            find mutmut-stats-candidates -mindepth 1 -maxdepth 1 -type d -print0 | sort -z
+          )
+          if [[ "${#candidate_roots[@]}" -eq 0 ]]; then
+            echo "::error::No same-run mutmut stats candidates were downloaded."
+            exit 1
+          fi
+          candidate_args=()
+          for candidate_root in "${candidate_roots[@]}"; do
+            candidate_args+=(--candidate-root "$candidate_root")
           done
+          selection="$(python scripts/mutmut_retry_artifacts.py select-stats \
+            --root . \
+            --output-root mutmut-stats \
+            --commit-sha "$COMMIT_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --workflow "$WORKFLOW" \
+            --repository "$REPOSITORY" \
+            --source-revision "$SOURCE_REVISION" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --event "$EVENT_NAME" \
+            "${candidate_args[@]}")"
+          test -s mutmut-stats/mutmut-stats-selection.json
+          echo "Selected retry-safe mutmut stats cohort: $selection"
 
       - name: Merge and plan central mutmut universe
         if: steps.mutation_scope.outputs.has_python == 'true'
@@ -2479,6 +2656,7 @@ jobs:
           uv run python scripts/merge_mutmut_stats.py \
             --input-root mutmut-stats \
             --output mutants/mutmut-stats.json
+          cp mutmut-stats/mutmut-stats-selection.json mutants/mutmut-stats-selection.json
           uv run python scripts/plan_mutmut_shards.py \
             --changed-files /tmp/changed_py.txt \
             --changed-diff /tmp/changed_py.diff \
@@ -2539,36 +2717,39 @@ jobs:
             echo "- Change allocation only after collecting this run's scheduler queue p50/p95 and per-family completion times."
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Create attempt-scoped mutmut universe envelope
+      - name: Create retry-scoped mutmut universe envelope
         shell: bash
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
           COMMIT_SHA: ${{ github.sha }}
           WORKFLOW: .github/workflows/ci.yml
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$COMMIT_SHA"
+          SOURCE_REVISION="$(git rev-parse HEAD)"
+          test "$SOURCE_REVISION" = "$COMMIT_SHA"
           mkdir -p mutants
+          mode=empty
           if [ "${{ steps.mutation_scope.outputs.has_python }}" = "true" ]; then
-            python scripts/mutmut_universe_artifact.py create \
-              --root . \
-              --manifest mutmut-universe-artifact.json \
-              --commit-sha "$COMMIT_SHA" \
-              --run-id "$RUN_ID" \
-              --run-attempt "$RUN_ATTEMPT" \
-              --workflow "$WORKFLOW" \
-              --include mutants
-          else
-            python scripts/mutmut_universe_artifact.py create \
-              --root . \
-              --manifest mutmut-universe-artifact.json \
-              --commit-sha "$COMMIT_SHA" \
-              --run-id "$RUN_ID" \
-              --run-attempt "$RUN_ATTEMPT" \
-              --workflow "$WORKFLOW" \
-              --mode empty
+            mode=mutmut
           fi
+          python scripts/mutmut_retry_artifacts.py create-universe \
+            --root . \
+            --manifest mutmut-universe-artifact.json \
+            --mode "$mode" \
+            --commit-sha "$COMMIT_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --workflow "$WORKFLOW" \
+            --repository "$REPOSITORY" \
+            --source-revision "$SOURCE_REVISION" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --event "$EVENT_NAME"
           test -s mutmut-universe-artifact.json
 
       - name: Upload central mutmut universe
@@ -2583,6 +2764,7 @@ jobs:
           # transport; silently dropping hidden members would make the
           # consumer's isolated-test contract depend on artifact defaults.
           include-hidden-files: true
+          retention-days: 30
           if-no-files-found: error
 
   mutation-tests-incremental:
@@ -2633,13 +2815,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Download central mutmut universe
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: mutmut-universe-${{ github.run_id }}-${{ github.run_attempt }}
-          path: .
-          if-no-artifact-found: error
-
       - name: Detect changed Python source
         id: mutation_scope
         shell: bash
@@ -2660,35 +2835,70 @@ jobs:
             echo "has_python=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Validate central mutmut universe
+      - name: Download same-run mutmut universe candidates
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: mutmut-universe-${{ github.run_id }}-*
+          path: mutmut-universe-candidates
+          merge-multiple: false
+          if-no-artifact-found: error
+
+      - name: Select retry-safe central mutmut universe
         id: universe_artifact
         shell: bash
         env:
           COMMIT_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
           WORKFLOW: .github/workflows/ci.yml
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "$COMMIT_SHA"
-          validation="$(python scripts/mutmut_universe_artifact.py validate \
-            --root . \
-            --manifest mutmut-universe-artifact.json \
-            --commit-sha "$COMMIT_SHA" \
-            --run-id "$RUN_ID" \
-            --run-attempt "$RUN_ATTEMPT" \
-            --workflow "$WORKFLOW")"
-          mode="$(printf '%s' "$validation" | python -c 'import json,sys; print(json.load(sys.stdin)["mode"])')"
+          SOURCE_REVISION="$(git rev-parse HEAD)"
+          test "$SOURCE_REVISION" = "$COMMIT_SHA"
           expected_mode=empty
           if [ "${{ steps.mutation_scope.outputs.has_python }}" = "true" ]; then
             expected_mode=mutmut
           fi
-          if [ "$mode" != "$expected_mode" ]; then
-            echo "::error::Central mutmut artifact mode '$mode' disagrees with local mutation scope '$expected_mode'."
+          if find mutmut-universe-candidates -mindepth 1 -maxdepth 1 ! -type d -print -quit | grep -q .; then
+            echo "::error::Mutmut universe artifact download contains a non-isolated top-level payload."
             exit 1
           fi
+          mapfile -d '' -t candidate_roots < <(
+            find mutmut-universe-candidates -mindepth 1 -maxdepth 1 -type d -print0 | sort -z
+          )
+          if [[ "${#candidate_roots[@]}" -eq 0 ]]; then
+            echo "::error::No same-run mutmut universe candidates were downloaded."
+            exit 1
+          fi
+          candidate_args=()
+          for candidate_root in "${candidate_roots[@]}"; do
+            candidate_args+=(--candidate-root "$candidate_root")
+          done
+          selection="$(python scripts/mutmut_retry_artifacts.py select-universe \
+            --root . \
+            --output-root . \
+            --selection-evidence mutmut-universe-selection.json \
+            --commit-sha "$COMMIT_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --workflow "$WORKFLOW" \
+            --expected-mode "$expected_mode" \
+            --repository "$REPOSITORY" \
+            --source-revision "$SOURCE_REVISION" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --event "$EVENT_NAME" \
+            "${candidate_args[@]}")"
+          mode="$(printf '%s' "$selection" | python -c 'import json,sys; print(json.load(sys.stdin)["mode"])')"
+          producer_attempt="$(printf '%s' "$selection" | python -c 'import json,sys; print(json.load(sys.stdin)["selected_producer_attempt"])')"
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
-          echo "Validated central mutmut artifact: $validation"
+          echo "selected_producer_attempt=$producer_attempt" >> "$GITHUB_OUTPUT"
+          test -s mutmut-universe-selection.json
+          echo "Selected retry-safe central mutmut universe: $selection"
 
       - name: Validate selected mutmut execution matrix entry
         id: mutation_shard

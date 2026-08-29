@@ -40,7 +40,11 @@ func setupTestHub() *Hub {
 		ClientMsgRateBurst:  10,
 	}
 	// We pass nil for nats.Conn and redis.Client to avoid external dependencies.
-	return trackTestHub(NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
+	// Action tests still need a deterministic active-session verdict, so only
+	// this fixture replaces the production durable Redis checker.
+	h := trackTestHub(NewHub(nil, logger, &mockAuthClient{allowed: true}, cfg, nil))
+	h.sessionRevocationCheck = func(context.Context, string) error { return nil }
+	return h
 }
 
 func TestMessageReplayMetadataJSON(t *testing.T) {

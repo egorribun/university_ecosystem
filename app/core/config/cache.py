@@ -13,13 +13,15 @@ from .base import (
     _validate_positive_int,
 )
 
+DEFAULT_REVOCATION_REDIS_URL = "redis://127.0.0.1:6380/0"
+
 
 class CacheSettings(BaseAppSettings):
     cache_backend: str = "redis"
     cache_enabled: bool = True
     cache_redis_url: str = "redis://127.0.0.1:6379/0"
     # Security state must use a distinct durable/noeviction Redis process.
-    revocation_redis_url: str = "redis://127.0.0.1:6380/0"
+    revocation_redis_url: str = DEFAULT_REVOCATION_REDIS_URL
     nats_url: str = "nats://127.0.0.1:4222"
     nats_auth_token: str | None = None
     cache_nats_bucket: str = "ue_cache"
