@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import html
 import secrets
 import smtplib
 import ssl
+import string
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -1233,9 +1235,26 @@ def _parse_key_ring(raw: str) -> dict[str, bytes]:
         if not entry.strip():
             continue
         try:
-            key_id, encoded = entry.split(":", 1)
-            keys[key_id.strip()] = _b64decode(encoded.strip())
-        except (ValueError, TypeError):
+            parts = entry.split(":")
+            if len(parts) != 2:
+                raise ValueError("key-ring entry must contain exactly one delimiter")
+            key_id, encoded = (part.strip() for part in parts)
+            if not key_id or key_id in keys:
+                raise ValueError("key-ring identifier is empty or duplicated")
+            if (
+                not encoded
+                or any(
+                    character not in (string.ascii_letters + string.digits + "-_")
+                    for character in encoded
+                )
+                or len(encoded) % 4 == 1
+            ):
+                raise ValueError("key-ring value is not strict base64url")
+            decoded = _b64decode(encoded)
+            if not decoded:
+                raise ValueError("key-ring value is empty")
+            keys[key_id] = decoded
+        except (ValueError, TypeError, binascii.Error):
             raise MfaSecurityUnavailable() from None
     return keys
 
