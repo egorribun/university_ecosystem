@@ -47,11 +47,13 @@ test("keeps the application entry and strips speculative module preloads", () =>
 test("strips only the hashed local application entry from the audit response", () => {
   const html = [
     '<script type="module" async src="/assets/index-abc123.js"></script>',
+    '<script type="module" src="/assets/index-def456.js"></script>',
     '<script type="module" src="https://example.test/remote.js"></script>',
   ].join("")
 
   const transformed = stripLhciEntryScript(html)
   assert.doesNotMatch(transformed, /index-abc123\.js/u)
+  assert.doesNotMatch(transformed, /index-def456\.js/u)
   assert.match(transformed, /https:\/\/example\.test\/remote\.js/u)
 })
 

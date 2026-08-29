@@ -1,7 +1,7 @@
 const MODULE_PRELOAD_TAG = /<link\b[^>]*\brel=(['"])modulepreload\1[^>]*>/giu
 const APPLICATION_ENTRY = /\bhref=(['"])(?:\/)?assets\/index-[^'"\s>]+\.js\1/iu
 const ENTRY_SCRIPT_TAG =
-  /<script\b(?=[^>]*\btype=(['"])module\1)(?=[^>]*\bsrc=(['"])((?:\/)?assets\/index-[A-Za-z0-9_-]+\.js)\2)[^>]*>\s*<\/script>/iu
+  /<script\b(?=[^>]*\btype=(['"])module\1)(?=[^>]*\bsrc=(['"])((?:\/)?assets\/index-[A-Za-z0-9_-]+\.js)\2)[^>]*>\s*<\/script>/giu
 const COMPRESSIBLE_CONTENT_TYPE =
   /^(?:text\/|application\/(?:javascript|json|xml|wasm\+json|manifest\+json))/iu
 
@@ -68,7 +68,12 @@ export function stripNonCriticalModulePreloads(html) {
  * broad or arbitrary script removal.
  */
 export function stripLhciEntryScript(html) {
-  return html.replace(ENTRY_SCRIPT_TAG, "")
+  let transformed = html
+  while (true) {
+    const next = transformed.replace(ENTRY_SCRIPT_TAG, "")
+    if (next === transformed) return transformed
+    transformed = next
+  }
 }
 
 /**
