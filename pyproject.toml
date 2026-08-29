@@ -552,7 +552,8 @@ pytest_add_cli_args_test_selection = [
 #   - test_caddy_routing           → infrastructure/Caddyfile  (routing contract)
 #   - test_ws_hub_environment      → docker-compose.full.yml   (ws-hub env contract)
 #   - test_backend_dockerfile      → backend.Dockerfile         (uv image pin)
-#   - test_helm_staging_contract   → charts/university-ecosystem (Helm values contract)
+#   - test_helm_staging_contract   → charts/university-ecosystem and
+#                                      charts/revocation-store (Helm values contracts)
 #   - test_quality_configuration   → .dockerignore and Dockerfile.test.dockerignore
 #                                      plus .gitignore (test-image and xdist contracts)
 #                                      plus the canonical AGENTS/CLAUDE/TESTING
@@ -584,6 +585,7 @@ also_copy = [
     "security/audit-allowlist.yaml",
     ".secrets.baseline",
     "charts/university-ecosystem",
+    "charts/revocation-store",
     "infrastructure",
     "infra/oss-fuzz",
     "alembic",

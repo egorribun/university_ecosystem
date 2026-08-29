@@ -430,6 +430,7 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
         ".dockerignore",
         "quality",
         "charts/university-ecosystem",
+        "charts/revocation-store",
         "scripts",
         "Dockerfile.test",
         "Dockerfile.test.dockerignore",

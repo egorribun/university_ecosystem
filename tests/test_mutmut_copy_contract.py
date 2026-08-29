@@ -15,6 +15,7 @@ REQUIRED_ALSO_COPY = {
     ".husky",
     "start-docker.ps1",
     "alembic.ini",
+    "charts/revocation-store",
     "frontend/openapi.json",
     "frontend/src/api",
     "frontend/src/api/generated",
