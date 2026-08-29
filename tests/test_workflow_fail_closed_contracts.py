@@ -484,6 +484,10 @@ def test_helm_squawk_and_trivy_are_real_blocking_gates() -> None:
 
     trivy = jobs["docker-security-scan"]
     scan = _step(trivy, "Run Trivy vulnerability scanner")
+    preserve = _step(trivy, "Preserve first Trivy scan evidence")
+    retry = _step(
+        trivy, "Retry Trivy vulnerability scanner after registry transient failure"
+    )
     upload = _step(trivy, "Upload Trivy results to GitHub Security tab")
     reassert = _step(trivy, "Re-assert Trivy vulnerability gate")
     assert scan["with"]["exit-code"] == "1"
@@ -491,7 +495,13 @@ def test_helm_squawk_and_trivy_are_real_blocking_gates() -> None:
     assert upload["continue-on-error"] is True
     assert upload["if"].startswith("always()")
     assert "hashFiles('trivy-results.sarif') != ''" in upload["if"]
-    assert "steps.trivy_scan.outcome == 'failure'" in reassert["if"]
+    assert "steps.trivy_scan.outcome == 'failure'" in preserve["if"]
+    assert "steps.trivy_scan.outcome == 'failure'" in retry["if"]
+    assert reassert["if"] == "always()"
+    assert "FIRST_OUTCOME" in reassert["env"]
+    assert "RETRY_OUTCOME" in reassert["env"]
+    assert "trivy-results-first.sarif" in reassert["run"]
+    assert "jq -e" in reassert["run"]
     assert "exit 1" in reassert["run"]
 
     heads = _step(jobs["alembic-migrations"], "Check single migration head (MOD-22-05)")

@@ -704,6 +704,20 @@ def test_trivy_sarif_categories_preserve_main_configuration_keys() -> None:
     assert len(image_scan_steps) == 2
     assert image_scan_steps[1]["id"] == "trivy_scan_retry"
     assert "steps.trivy_scan.outcome == 'failure'" in image_scan_steps[1]["if"]
+    preserve_step = next(
+        step
+        for step in ci_workflow["jobs"]["docker-security-scan"]["steps"]
+        if step.get("name") == "Preserve first Trivy scan evidence"
+    )
+    assert "hashFiles('trivy-results.sarif') != ''" in preserve_step["if"]
+    reassert_step = next(
+        step
+        for step in ci_workflow["jobs"]["docker-security-scan"]["steps"]
+        if step.get("name") == "Re-assert Trivy vulnerability gate"
+    )
+    assert reassert_step["if"] == "always()"
+    assert "trivy-results-first.sarif" in reassert_step["run"]
+    assert "jq -e" in reassert_step["run"]
 
 
 def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:

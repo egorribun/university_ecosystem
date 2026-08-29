@@ -1832,6 +1832,11 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
 
+      - name: Preserve first Trivy scan evidence
+        if: always() && steps.trivy_scan.outcome == 'failure' && hashFiles('trivy-results.sarif') != ''
+        shell: bash
+        run: cp -- trivy-results.sarif trivy-results-first.sarif
+
       - name: Retry Trivy vulnerability scanner after registry transient failure
         id: trivy_scan_retry
         if: always() && steps.trivy_scan.outcome == 'failure'
@@ -1859,10 +1864,38 @@ jobs:
           category: ".github/workflows/ci.yml:docker-security-scan"
 
       - name: Re-assert Trivy vulnerability gate
-        if: always() && steps.trivy_scan.outcome == 'failure' && steps.trivy_scan_retry.outcome == 'failure'
+        if: always()
+        env:
+          FIRST_OUTCOME: ${{ steps.trivy_scan.outcome }}
+          RETRY_OUTCOME: ${{ steps.trivy_scan_retry.outcome }}
+        shell: bash
         run: |
-          echo "::error::Trivy found a CRITICAL/HIGH backend image vulnerability or failed to complete the scan."
-          exit 1
+          set -euo pipefail
+          if [[ "$FIRST_OUTCOME" != "failure" ]]; then
+            exit 0
+          fi
+          if [[ "$RETRY_OUTCOME" != "success" ]]; then
+            echo "::error::Trivy found a CRITICAL/HIGH backend image vulnerability or failed to complete the retry scan."
+            exit 1
+          fi
+          if [[ -f trivy-results-first.sarif ]] && ! jq -e '
+            type == "object" and
+            (.version | type == "string") and
+            (.runs | type == "array" and length > 0) and
+            ([.runs[]?.results[]?] | length == 0)
+          ' trivy-results-first.sarif >/dev/null; then
+            echo "::error::The initial Trivy failure produced findings or invalid SARIF; the security gate remains failed."
+            exit 1
+          fi
+          if [[ ! -s trivy-results.sarif ]] || ! jq -e '
+            type == "object" and
+            (.version | type == "string") and
+            (.runs | type == "array" and length > 0) and
+            ([.runs[]?.results[]?] | length == 0)
+          ' trivy-results.sarif >/dev/null; then
+            echo "::error::A successful Trivy retry did not produce valid zero-finding SARIF evidence."
+            exit 1
+          fi
 
   # MOD-W15-03 (audit 2026-03-23 Wave 15): Helm lint + kubeconform validation.
   # Catches broken Helm templates and K8s manifest schema violations before deploy.
