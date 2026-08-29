@@ -51,6 +51,10 @@ function report(pathname, { seo = 1, crawl = 1, source = "/robots.txt" } = {}) {
     requestedUrl: finalUrl,
     categories: { seo: { score: seo } },
     audits: {
+      "http-status-code": {
+        score: pathname.startsWith("/404") ? 0 : 1,
+        displayValue: pathname.startsWith("/404") ? "404" : "200",
+      },
       "is-crawlable": {
         score: crawl,
         details: {
@@ -63,6 +67,7 @@ function report(pathname, { seo = 1, crawl = 1, source = "/robots.txt" } = {}) {
 
 test("route classification is explicit and prefix-aware", () => {
   assert.equal(classifyLhciPath("/"), "public")
+  assert.equal(classifyLhciPath("/404/"), "not-found")
   assert.equal(classifyLhciPath("/news/"), "protected")
   assert.equal(classifyLhciPath("/news/42"), "protected")
   assert.equal(classifyLhciPath("/reset-password/token"), "public")
@@ -136,6 +141,29 @@ test("public routes require SEO floor and crawlability", () => {
   })
   assert.equal(blocked.violations.length, 1)
   assert.match(blocked.violations[0], /must be crawlable/u)
+})
+
+test("the not-found route keeps a genuine 404 contract without public SEO scoring", () => {
+  const outcome = evaluateLhciRoutePolicy([report("/404", { crawl: 0 })], {
+    robotsText: ROBOTS,
+    expectedPaths: ["/404"],
+  })
+  assert.deepEqual(outcome.violations, [])
+  assert.equal(outcome.results[0]?.classification, "not-found")
+
+  const wrongStatusReport = report("/404", { crawl: 0 })
+  wrongStatusReport.audits["http-status-code"] = { score: 0, displayValue: "500" }
+  const wrongStatus = evaluateLhciRoutePolicy([wrongStatusReport], {
+    robotsText: ROBOTS,
+    expectedPaths: ["/404"],
+  })
+  assert.match(wrongStatus.violations.join("\n"), /must preserve HTTP 404 status/u)
+
+  const crawlable = evaluateLhciRoutePolicy([report("/404", { crawl: 1 })], {
+    robotsText: ROBOTS,
+    expectedPaths: ["/404"],
+  })
+  assert.match(crawlable.violations.join("\n"), /must not be crawlable/u)
 })
 
 test("protected routes require a robots.txt block and source attribution", () => {
@@ -249,7 +277,12 @@ test("route inventory rejects partial collections and honors redirected requests
 
 test("run-count contract rejects partial Lighthouse evidence", () => {
   const complete = evaluateLhciRoutePolicy(
-    [report("/login"), report("/login"), report("/404"), report("/404")],
+    [
+      report("/login"),
+      report("/login"),
+      report("/404", { crawl: 0 }),
+      report("/404", { crawl: 0 }),
+    ],
     {
       robotsText: ROBOTS,
       expectedPaths: ["/login", "/404"],
@@ -258,7 +291,7 @@ test("run-count contract rejects partial Lighthouse evidence", () => {
   )
   assert.deepEqual(complete.violations, [])
 
-  const partial = evaluateLhciRoutePolicy([report("/login"), report("/404")], {
+  const partial = evaluateLhciRoutePolicy([report("/login"), report("/404", { crawl: 0 })], {
     robotsText: ROBOTS,
     expectedPaths: ["/login", "/404"],
     expectedRuns: 2,

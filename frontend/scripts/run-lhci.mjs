@@ -342,6 +342,12 @@ async function createConfig() {
       chromeFlags:
         "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --headless=new",
       throttlingMethod: "devtools",
+      // Lighthouse normally aborts on non-2xx navigations.  The route matrix
+      // deliberately includes the production 404 document, whose HTTP 404
+      // status is part of the public contract.  Keep the status semantics in
+      // the server and ask Lighthouse to continue collecting the document so
+      // the same accessibility/SEO/performance gates apply to it.
+      ignoreStatusCode: true,
       emulatedFormFactor: "mobile",
       budgetPath: path.resolve(frontendRoot, "../budget.json"),
       maxWaitForFcp: 45000,

@@ -3293,6 +3293,14 @@ def test_lhci_collection_uses_lighthouse_budget_path_inside_settings() -> None:
     assert "--disable-gpu" not in lhci_script
 
 
+def test_lhci_collection_scores_the_real_404_document_without_rewriting_status() -> (
+    None
+):
+    lhci_script = LHCI_SCRIPT_PATH.read_text(encoding="utf-8")
+
+    assert "ignoreStatusCode: true" in lhci_script
+
+
 def test_bundle_analysis_uses_portable_fail_closed_analyzer_and_real_report() -> None:
     workflow = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
     analysis_job = workflow["jobs"]["bundle-analysis"]

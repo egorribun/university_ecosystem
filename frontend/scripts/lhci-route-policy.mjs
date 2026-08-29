@@ -9,6 +9,9 @@ export const LHCI_PUBLIC_SEO_MIN_SCORE = routePolicyConfig.publicSeoMinScore
 export const LHCI_PUBLIC_SEO_PATH_PREFIXES = Object.freeze([
   ...routePolicyConfig.publicSeoPathPrefixes,
 ])
+export const LHCI_NOT_FOUND_PATH_PREFIXES = Object.freeze([
+  ...routePolicyConfig.notFoundPathPrefixes,
+])
 export const LHCI_PROTECTED_ROUTE_PREFIXES = Object.freeze([
   ...routePolicyConfig.protectedRoutePrefixes,
 ])
@@ -71,6 +74,9 @@ function pathMatchesPrefix(pathname, prefix) {
 export function classifyLhciPath(pathname) {
   const normalizedPath = normalizeRoutePath(pathname)
 
+  if (LHCI_NOT_FOUND_PATH_PREFIXES.some((prefix) => pathMatchesPrefix(normalizedPath, prefix))) {
+    return "not-found"
+  }
   if (LHCI_PUBLIC_SEO_PATH_PREFIXES.some((prefix) => pathMatchesPrefix(normalizedPath, prefix))) {
     return "public"
   }
@@ -369,6 +375,19 @@ export function evaluateLhciRoutePolicy(reports, { robotsText, expectedPaths, ex
 
     if (classification === "unknown") {
       violations.push(`${label}: ungoverned Lighthouse route ${pathname}`)
+      results.push(result)
+      return
+    }
+
+    if (classification === "not-found") {
+      const statusAudit = report?.audits?.["http-status-code"]
+      const statusScore = finiteScore(statusAudit?.score)
+      if (crawlScore !== 0) {
+        violations.push(`${label}: not-found route ${pathname} must not be crawlable (score 0)`)
+      }
+      if (statusScore !== 0 || statusAudit?.displayValue !== "404") {
+        violations.push(`${label}: not-found route ${pathname} must preserve HTTP 404 status`)
+      }
       results.push(result)
       return
     }

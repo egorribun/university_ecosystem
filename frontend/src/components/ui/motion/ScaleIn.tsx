@@ -18,6 +18,11 @@ export function ScaleIn({
   className,
   ...props
 }: ScaleInProps) {
+  // Keep SSR Lighthouse documents paintable when their client entry is
+  // intentionally stripped.  Callers can still provide an explicit initial
+  // prop, which is applied after this audit-only default.
+  const isLhci = import.meta.env.VITE_LHCI === "true"
+
   const variants: Variants = {
     hidden: { opacity: 0, scale: initialScale },
     visible: {
@@ -38,7 +43,7 @@ export function ScaleIn({
 
   return (
     <m.div
-      initial="hidden"
+      initial={isLhci ? false : "hidden"}
       animate="visible"
       exit="exit"
       variants={variants}

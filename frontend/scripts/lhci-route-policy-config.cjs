@@ -6,13 +6,17 @@
 // so a global SEO score floor would turn that privacy requirement into a false
 // failure.
 const publicSeoPathPrefixes = Object.freeze([
-  "/404",
   "/login",
   "/register",
   "/forgot-password",
   "/reset-password",
   "/",
 ])
+
+// The product 404 document intentionally keeps its genuine HTTP 404 status
+// and is non-indexable. It remains in the Lighthouse matrix, but uses a
+// dedicated route-policy class instead of the public SEO contract.
+const notFoundPathPrefixes = Object.freeze(["/404"])
 
 const protectedRoutePrefixes = Object.freeze([
   "/news",
@@ -56,6 +60,7 @@ const publicSeoUrlPattern = `https?://[^/]+(?:${publicSeoAlternatives})(?:[/?#]|
 module.exports = Object.freeze({
   publicSeoMinScore: 0.9,
   publicSeoPathPrefixes,
+  notFoundPathPrefixes,
   publicSeoUrlPattern,
   protectedRoutePrefixes,
   defaultLhciPaths,

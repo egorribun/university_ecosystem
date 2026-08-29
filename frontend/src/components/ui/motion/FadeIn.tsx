@@ -20,6 +20,13 @@ export function FadeIn({
   className,
   ...props
 }: FadeInProps) {
+  // The Lighthouse build intentionally omits the client entry script while
+  // measuring the server-rendered document.  Rendering the entrance variant
+  // in that mode would leave the SSR content at opacity:0 forever.  Keep the
+  // normal composed entrance for production and let explicit caller props
+  // continue to override this audit default via the spread below.
+  const isLhci = import.meta.env.VITE_LHCI === "true"
+
   const getInitial = () => {
     switch (direction) {
       case "up":
@@ -55,7 +62,7 @@ export function FadeIn({
 
   return (
     <m.div
-      initial="hidden"
+      initial={isLhci ? false : "hidden"}
       animate="visible"
       exit="exit"
       variants={variants}
