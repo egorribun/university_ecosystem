@@ -2422,6 +2422,8 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
     ]
     assert lighthouse_shards["env"]["LHCI_URLS"] == "${{ matrix.urls }}"
     assert lighthouse_shards["env"]["SKIP_BUILD"] == "1"
+    assert lighthouse_shards["env"]["LHCI_USE_SSR_PREVIEW"] == "1"
+    assert lighthouse_shards["env"]["LHCI_SSR_PREVIEW_PORT"] == "4175"
     assert lighthouse_shards["env"]["LHCI_SKIP_SYSTEM_DEPS"] == "1"
     lighthouse_bundle = next(
         step
@@ -2706,7 +2708,7 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         if isinstance(step, dict)
     )
     assert "Prepare full chaos compose environment" in chaos_steps
-    assert "Start the full chaos compose stack" in chaos_steps
+    assert "Start the chaos dependency closure" in chaos_steps
     assert "docker-compose.ci-loadtest.yml" in chaos_steps
     assert "54321/test_ecosystem" in chaos_steps
     assert "Tear down full chaos compose stack" in chaos_steps
@@ -2715,6 +2717,81 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
     ).read_text(encoding="utf-8")
     assert "#[cfg(miri)]" in pyo3_source
     assert "failure_persistence: None" in pyo3_source
+
+
+def test_nightly_chaos_starts_only_its_declared_compose_dependency_closure() -> None:
+    """Keep the nightly chaos runner bounded to services the suite exercises.
+
+    Compose follows ``depends_on`` recursively for targeted services.  Derive
+    that graph from the same four layered manifests used by the workflow and
+    pin the roots/closure so a future test or dependency change cannot silently
+    start the 27-service production-like stack (or omit a required dependency).
+    Optional ToxiProxy/real-MinIO chaos remains disabled in this workflow, as it
+    has no corresponding service or endpoint configuration here.
+    """
+
+    nightly = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = nightly["jobs"]["load-and-chaos"]
+    start_step = _provenance_step(job, "Start the chaos dependency closure")
+    run_text = str(start_step["run"])
+    assert (
+        'docker compose "${CF[@]}" up -d --build backend gateway ws-hub outbox-worker'
+    ) in run_text
+
+    dependency_map: dict[str, set[str]] = {}
+    for relative_path in (
+        "docker-compose.yml",
+        "docker-compose.infra.yml",
+        "docker-compose.go.yml",
+        "docker-compose.ci-loadtest.yml",
+    ):
+        compose = yaml.safe_load(
+            (REPOSITORY_ROOT / relative_path)
+            .read_text(encoding="utf-8")
+            .replace("!override", "")
+        )
+        for service_name, service in compose["services"].items():
+            depends_on = service.get("depends_on") or {}
+            dependency_names = (
+                depends_on.keys() if isinstance(depends_on, dict) else depends_on
+            )
+            dependency_map.setdefault(service_name, set()).update(dependency_names)
+
+    roots = {"backend", "gateway", "ws-hub", "outbox-worker"}
+    expected_closure = {
+        "backend",
+        "gateway",
+        "ws-hub",
+        "outbox-worker",
+        "migrations",
+        "minio-init",
+        "nats",
+        "revocation-valkey",
+        "valkey",
+        "postgres",
+        "minio",
+    }
+    closure: set[str] = set()
+    pending = list(roots)
+    while pending:
+        service_name = pending.pop()
+        if service_name in closure:
+            continue
+        assert service_name in dependency_map, service_name
+        closure.add(service_name)
+        pending.extend(dependency_map[service_name])
+
+    assert closure == expected_closure
+    assert roots <= closure
+
+    run_env = next(
+        step.get("env", {})
+        for step in job["steps"]
+        if step.get("name") == "Run chaos and resilience tests"
+    )
+    assert "TOXIPROXY_URL" not in run_env
+    assert "MINIO_PROXY_ENDPOINT" not in run_env
+    assert "MINIO_DIRECT_ENDPOINT" not in run_env
 
 
 def test_go_service_dockerfiles_package_local_spiffe_replacement() -> None:
@@ -3245,6 +3322,30 @@ def test_lhci_system_dependency_bootstrap_is_explicitly_skippable() -> None:
 
     assert "LHCI_SKIP_SYSTEM_DEPS" in lhci_script
     assert "playwright install-deps chromium" in lhci_script
+
+
+def test_lhci_ci_uses_route_specific_ssr_preview_without_lowering_budgets() -> None:
+    workflow = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    lighthouse_shards = workflow["jobs"]["lighthouse-shards"]
+    assert lighthouse_shards["env"]["LHCI_USE_SSR_PREVIEW"] == "1"
+
+    mode_script = (LHCI_SCRIPT_PATH.parent / "lhci-preview-mode.mjs").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        'return { kind: "ssr", base: `http://127.0.0.1:${port}`, port }' in mode_script
+    )
+    assert 'return "node scripts/server-prod.mjs"' in mode_script
+    assert 'return "server-prod: listening"' in mode_script
+    ssr_response_script = (LHCI_SCRIPT_PATH.parent / "lhci-ssr-response.mjs").read_text(
+        encoding="utf-8"
+    )
+    assert "stripLhciEntryScript" in ssr_response_script
+    assert "pathForLhciPreview" in LHCI_SCRIPT_PATH.read_text(encoding="utf-8")
+    assert (
+        'collect.staticDistDir = path.resolve(frontendRoot, "dist", "client")'
+        in LHCI_SCRIPT_PATH.read_text(encoding="utf-8")
+    )
 
 
 def test_chaos_job_provisions_real_minio_through_toxiproxy() -> None:

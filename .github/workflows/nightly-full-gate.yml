@@ -893,13 +893,20 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.infra.yml
           -f docker-compose.go.yml -f docker-compose.ci-loadtest.yml config --quiet
 
-      - name: Start the full chaos compose stack
+      - name: Start the chaos dependency closure
         shell: bash
         run: |
           CF=(-f docker-compose.yml -f docker-compose.infra.yml -f docker-compose.go.yml -f docker-compose.ci-loadtest.yml)
           up_ok=""
           for attempt in 1 2 3; do
-            if docker compose "${CF[@]}" up -d --build; then
+            # The resilience suite exercises the HTTP backend, Go gateway/ws-hub,
+            # transactional outbox, and their declared infrastructure only.  A
+            # service-targeted `up` still follows Compose's health-gated
+            # depends_on graph, while avoiding unrelated frontend/edge,
+            # Temporal/file-processing, search, and observability containers.
+            # Keep this root set in sync with the contract test that derives the
+            # complete dependency closure from the layered Compose manifests.
+            if docker compose "${CF[@]}" up -d --build backend gateway ws-hub outbox-worker; then
               echo "compose up succeeded (attempt $attempt)"
               up_ok=1
               break
