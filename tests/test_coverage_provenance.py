@@ -83,6 +83,7 @@ def _retry_provenance(
     *,
     run_attempt: str = "2",
     run_id: str = "123456789",
+    artifact: str = "python-coverage-provenance",
 ) -> dict[str, str]:
     return {
         "repository": "example/university-ecosystem",
@@ -96,7 +97,7 @@ def _retry_provenance(
         "event": "push",
         "config_digest": "a" * 64,
         "policy_digest": "b" * 64,
-        "artifact": "python-coverage-provenance",
+        "artifact": artifact,
         "run_attempt": run_attempt,
     }
 
@@ -144,6 +145,8 @@ def _write_retry_candidate(
     metadata_path: str,
     run_attempt: str,
     run_id: str = "123456789",
+    job: str = "coverage-policy-gate",
+    artifact: str = "python-coverage-provenance",
 ) -> Path:
     _write_report(repository_root, "coverage.xml", b"coverage-evidence\n")
     output_path = repository_root / metadata_path
@@ -156,11 +159,14 @@ def _write_retry_candidate(
             repository_root,
             run_attempt=run_attempt,
             run_id=run_id,
+            artifact=artifact,
         ),
         **_identity(
             repository_root,
             run_attempt=run_attempt,
             run_id=run_id,
+            job=job,
+            artifact=artifact,
         ),
     )
     return output_path
@@ -737,6 +743,376 @@ def test_coverage_candidate_collection_rejects_consumer_source_revision_mismatch
             expected_workflow_sha=WORKFLOW_SHA,
             expected_event="push",
             consumer_retry_context=context,
+        )
+
+
+def _retry_merge_case(
+    provenance_repository: Path,
+) -> tuple[Path, Path, Path, Path, dict[Path, tuple[str, str]], dict[str, str]]:
+    logical_artifact = "coverage-python"
+    producer_job = "coverage-producer"
+    metadata_path = _write_retry_candidate(
+        provenance_repository,
+        metadata_path="artifacts/coverage/provenance/python.json",
+        run_attempt="1",
+        job=producer_job,
+        artifact=logical_artifact,
+    )
+    contract_path = provenance_repository / "quality/quality-contract.json"
+    contract_path.parent.mkdir(parents=True)
+    contract_path.write_text(
+        json.dumps(
+            {
+                "coverage_reports": [
+                    {
+                        "component": "python",
+                        "format": "cobertura-xml",
+                        "path": "coverage.xml",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    selection_root = provenance_repository / "artifacts/coverage/selection"
+    selected_metadata = selection_root / logical_artifact / "provenance/python.json"
+    selected_report = selection_root / logical_artifact / "coverage.xml"
+    selected_metadata.parent.mkdir(parents=True)
+    shutil.copyfile(metadata_path, selected_metadata)
+    shutil.copyfile(provenance_repository / "coverage.xml", selected_report)
+    receipt_path = selection_root / "selection-receipt.json"
+    receipt = {
+        "schema_version": 1,
+        "consumer": {
+            "commit_sha": _git_head(provenance_repository),
+            "repository": "example/university-ecosystem",
+            "run_id": "123456789",
+            "run_attempt": "2",
+            "workflow_ref": (
+                "example/university-ecosystem/.github/workflows/ci.yml@refs/heads/main"
+            ),
+            "workflow_sha": WORKFLOW_SHA,
+            "event": "push",
+            "job": "coverage-policy-gate",
+            "retry_context": _consumer_retry_context(provenance_repository),
+        },
+        "selections": [
+            {
+                "logical_artifact": logical_artifact,
+                "producer_job": producer_job,
+                "physical_artifact": f"{logical_artifact}-attempt-1",
+                "producer_attempt": 1,
+                "metadata": {
+                    "path": f"{logical_artifact}/provenance/python.json",
+                    "sha256": hashlib.sha256(
+                        selected_metadata.read_bytes()
+                    ).hexdigest(),
+                },
+                "reports": [
+                    {
+                        "component": "python",
+                        "format": "cobertura-xml",
+                        "path": f"{logical_artifact}/coverage.xml",
+                        "sha256": hashlib.sha256(
+                            selected_report.read_bytes()
+                        ).hexdigest(),
+                        "byte_size": selected_report.stat().st_size,
+                    }
+                ],
+            }
+        ],
+    }
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+    output_path = provenance_repository / "artifacts/coverage/provenance/aggregate.json"
+    identity = _identity(
+        provenance_repository,
+        run_attempt="2",
+        job="coverage-policy-gate",
+        artifact="quality-evidence-test",
+    )
+    return (
+        contract_path,
+        metadata_path,
+        receipt_path,
+        output_path,
+        {metadata_path: (producer_job, logical_artifact)},
+        identity,
+    )
+
+
+def _merge_receipted_retry_case(
+    provenance_repository: Path,
+    *,
+    case: tuple[Path, Path, Path, Path, dict[Path, tuple[str, str]], dict[str, str]],
+    retry_selection_receipt: Path | None,
+) -> dict[str, object]:
+    (
+        contract_path,
+        metadata_path,
+        receipt_path,
+        output_path,
+        producer_expectations,
+        identity,
+    ) = case
+    return merge_metadata(
+        repository_root=provenance_repository,
+        contract_path=contract_path,
+        metadata_paths=[metadata_path],
+        output_path=output_path,
+        tool_versions={"quality-provenance": "2.0.0"},
+        producer_expectations=producer_expectations,
+        retry_selection_receipt=retry_selection_receipt or receipt_path,
+        **identity,
+    )
+
+
+def _rewrite_retry_receipt(receipt_path: Path, mutate: object) -> None:
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert callable(mutate)
+    mutate(receipt)
+    receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+
+
+def test_merge_metadata_accepts_prior_attempt_only_with_selection_receipt(
+    provenance_repository: Path,
+) -> None:
+    (
+        contract_path,
+        metadata_path,
+        receipt_path,
+        output_path,
+        producer_expectations,
+        identity,
+    ) = _retry_merge_case(provenance_repository)
+
+    with pytest.raises(ProvenanceError, match=r"producer\.run_attempt"):
+        merge_metadata(
+            repository_root=provenance_repository,
+            contract_path=contract_path,
+            metadata_paths=[metadata_path],
+            output_path=output_path,
+            tool_versions={"quality-provenance": "2.0.0"},
+            producer_expectations=producer_expectations,
+            **identity,
+        )
+
+    aggregate = merge_metadata(
+        repository_root=provenance_repository,
+        contract_path=contract_path,
+        metadata_paths=[metadata_path],
+        output_path=output_path,
+        tool_versions={"quality-provenance": "2.0.0"},
+        producer_expectations=producer_expectations,
+        retry_selection_receipt=receipt_path,
+        **identity,
+    )
+
+    assert aggregate["reports"][0]["path"] == "coverage.xml"
+
+
+def test_merge_cli_accepts_selection_receipt(
+    provenance_repository: Path,
+) -> None:
+    (
+        contract_path,
+        metadata_path,
+        receipt_path,
+        output_path,
+        producer_expectations,
+        identity,
+    ) = _retry_merge_case(provenance_repository)
+    producer_job, logical_artifact = producer_expectations[metadata_path]
+    arguments = [
+        "merge",
+        "--repository-root",
+        str(provenance_repository),
+        "--contract",
+        str(contract_path),
+        "--metadata",
+        str(metadata_path),
+        "--output",
+        str(output_path),
+        "--tool-version",
+        "quality-provenance=2.0.0",
+        "--producer-expectation",
+        f"{metadata_path}|{producer_job}|{logical_artifact}",
+        "--retry-selection-receipt",
+        str(receipt_path),
+        "--expected-sha",
+        identity["expected_sha"],
+        "--identity-provider",
+        identity["identity_provider"],
+        "--repository",
+        identity["repository"],
+        "--workflow-ref",
+        identity["workflow_ref"],
+        "--workflow-sha",
+        identity["workflow_sha"],
+        "--run-id",
+        identity["run_id"],
+        "--run-attempt",
+        identity["run_attempt"],
+        "--event",
+        identity["event"],
+        "--job",
+        identity["job"],
+        "--artifact",
+        identity["artifact"],
+        "--collected-at",
+        identity["collected_at"],
+    ]
+
+    assert coverage_provenance.main(arguments) == 0
+    assert (
+        json.loads(output_path.read_text(encoding="utf-8"))["reports"]
+        == json.loads(metadata_path.read_text(encoding="utf-8"))["reports"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("job", "lighthouse-gate"),
+        ("run_id", "987654321"),
+        ("run_attempt", "3"),
+        ("event", "pull_request"),
+    ],
+)
+def test_merge_metadata_rejects_receipt_bound_to_another_consumer(
+    provenance_repository: Path, field: str, value: str
+) -> None:
+    case = _retry_merge_case(provenance_repository)
+    _, _, receipt_path, _, _, _ = case
+    _rewrite_retry_receipt(
+        receipt_path,
+        lambda receipt: receipt["consumer"].__setitem__(field, value),
+    )
+
+    with pytest.raises(ProvenanceError, match=rf"consumer\.{field} mismatch"):
+        _merge_receipted_retry_case(
+            provenance_repository, case=case, retry_selection_receipt=receipt_path
+        )
+
+
+def test_merge_metadata_rejects_receipt_with_foreign_source_revision(
+    provenance_repository: Path,
+) -> None:
+    case = _retry_merge_case(provenance_repository)
+    _, _, receipt_path, _, _, _ = case
+    _rewrite_retry_receipt(
+        receipt_path,
+        lambda receipt: receipt["consumer"]["retry_context"].__setitem__(
+            "source_revision", "f" * 40
+        ),
+    )
+
+    with pytest.raises(ProvenanceError, match="source_revision does not bind"):
+        _merge_receipted_retry_case(
+            provenance_repository, case=case, retry_selection_receipt=receipt_path
+        )
+
+
+@pytest.mark.parametrize(
+    ("mutate", "message"),
+    [
+        (
+            lambda receipt: receipt["selections"][0].__setitem__(
+                "physical_artifact", "coverage-python-attempt-2"
+            ),
+            "does not bind producer attempt",
+        ),
+        (
+            lambda receipt: receipt["selections"][0].__setitem__("producer_attempt", 3),
+            "does not bind producer attempt",
+        ),
+        (
+            lambda receipt: (
+                receipt["selections"][0].__setitem__(
+                    "logical_artifact", "unexpected-coverage"
+                ),
+                receipt["selections"][0].__setitem__(
+                    "physical_artifact", "unexpected-coverage-attempt-1"
+                ),
+                receipt["selections"][0]["metadata"].__setitem__(
+                    "path", "unexpected-coverage/provenance/python.json"
+                ),
+                receipt["selections"][0]["reports"][0].__setitem__(
+                    "path", "unexpected-coverage/coverage.xml"
+                ),
+            ),
+            "unknown logical artifact",
+        ),
+        (
+            lambda receipt: receipt["selections"][0]["reports"][0].__setitem__(
+                "path", "coverage-python/aux.xml"
+            ),
+            "portable relative path",
+        ),
+    ],
+)
+def test_merge_metadata_rejects_invalid_receipt_selection(
+    provenance_repository: Path, mutate: object, message: str
+) -> None:
+    case = _retry_merge_case(provenance_repository)
+    _, _, receipt_path, _, _, _ = case
+    _rewrite_retry_receipt(receipt_path, mutate)
+
+    with pytest.raises(ProvenanceError, match=message):
+        _merge_receipted_retry_case(
+            provenance_repository, case=case, retry_selection_receipt=receipt_path
+        )
+
+
+def test_merge_metadata_rejects_duplicate_receipt_selection(
+    provenance_repository: Path,
+) -> None:
+    case = _retry_merge_case(provenance_repository)
+    _, _, receipt_path, _, _, _ = case
+    _rewrite_retry_receipt(
+        receipt_path,
+        lambda receipt: receipt["selections"].append(
+            copy.deepcopy(receipt["selections"][0])
+        ),
+    )
+
+    with pytest.raises(ProvenanceError, match="duplicate logical artifact"):
+        _merge_receipted_retry_case(
+            provenance_repository, case=case, retry_selection_receipt=receipt_path
+        )
+
+
+@pytest.mark.parametrize(
+    ("target", "message"),
+    [
+        ("selected-metadata", "receipt metadata sha256 mismatch"),
+        ("selected-report", "receipt report sha256 mismatch"),
+        ("canonical-metadata", "canonical metadata sha256"),
+        ("canonical-report", "sha256 mismatch"),
+    ],
+)
+def test_merge_metadata_rejects_mutated_receipted_bytes(
+    provenance_repository: Path, target: str, message: str
+) -> None:
+    case = _retry_merge_case(provenance_repository)
+    _, metadata_path, receipt_path, _, _, _ = case
+    selection_root = receipt_path.parent / "coverage-python"
+    if target == "selected-metadata":
+        path = selection_root / "provenance/python.json"
+    elif target == "selected-report":
+        path = selection_root / "coverage.xml"
+    elif target == "canonical-metadata":
+        path = metadata_path
+    else:
+        path = provenance_repository / "coverage.xml"
+    contents = path.read_bytes()
+    if target == "canonical-metadata":
+        path.write_bytes(contents + b"\n")
+    else:
+        path.write_bytes(bytes([contents[0] ^ 1]) + contents[1:])
+
+    with pytest.raises(ProvenanceError, match=message):
+        _merge_receipted_retry_case(
+            provenance_repository, case=case, retry_selection_receipt=receipt_path
         )
 
 

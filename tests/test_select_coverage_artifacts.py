@@ -175,6 +175,7 @@ def _select(
         expected_workflow_ref=WORKFLOW_REF,
         expected_workflow_sha=WORKFLOW_SHA,
         expected_event="pull_request",
+        expected_consumer_job="coverage-policy-gate",
         consumer_retry_context=_consumer_retry_context(repository_root),
     )
 
@@ -881,6 +882,7 @@ def test_selects_complete_slots_deterministically_and_writes_receipt(
         (first_destination / "selection-receipt.json").read_text(encoding="utf-8")
     )
     assert receipt["schema_version"] == 1
+    assert receipt["consumer"]["job"] == "coverage-policy-gate"
     assert [entry["logical_artifact"] for entry in receipt["selections"]] == [
         "python-shard-0",
         "python-shard-1",

@@ -27,6 +27,7 @@ SCHEMA_VERSION = 2
 SHA_PATTERN = re.compile(r"[0-9a-f]{40}")
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 UTC_TIMESTAMP_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
+LOGICAL_ARTIFACT_PATTERN = re.compile(r"[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?")
 TOP_LEVEL_FIELDS = frozenset(
     {
         "schema_version",
@@ -70,6 +71,31 @@ RETRY_PROVENANCE_FIELDS = frozenset(
 CONSUMER_RETRY_CONTEXT_FIELDS = RETRY_PROVENANCE_FIELDS - frozenset(
     {"run_attempt", "artifact"}
 )
+RETRY_SELECTION_RECEIPT_FIELDS = frozenset({"schema_version", "consumer", "selections"})
+RETRY_SELECTION_RECEIPT_CONSUMER_FIELDS = frozenset(
+    {
+        "commit_sha",
+        "repository",
+        "run_id",
+        "run_attempt",
+        "workflow_ref",
+        "workflow_sha",
+        "event",
+        "job",
+        "retry_context",
+    }
+)
+RETRY_SELECTION_RECEIPT_SELECTION_FIELDS = frozenset(
+    {
+        "logical_artifact",
+        "producer_job",
+        "physical_artifact",
+        "producer_attempt",
+        "metadata",
+        "reports",
+    }
+)
+RETRY_SELECTION_RECEIPT_METADATA_FIELDS = frozenset({"path", "sha256"})
 
 
 class ProvenanceError(ValueError):
@@ -83,6 +109,30 @@ class MetadataSelection:
     metadata_path: Path
     manifest: dict[str, object]
     producer_attempt: int
+
+
+@dataclass(frozen=True)
+class RetryReceiptReport:
+    """One report copied into a retry selection receipt root."""
+
+    component: str
+    report_format: str
+    receipt_path: str
+    canonical_path: str
+    sha256: str
+    byte_size: int
+
+
+@dataclass(frozen=True)
+class RetryReceiptSelection:
+    """One receipt slot authorized for at-or-before provenance verification."""
+
+    logical_artifact: str
+    producer_job: str
+    producer_attempt: int
+    receipt_metadata_path: str
+    metadata_sha256: str
+    reports: tuple[RetryReceiptReport, ...]
 
 
 def _json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -379,6 +429,408 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _require_logical_artifact(value: object, field: str) -> str:
+    artifact = _require_text(value, field)
+    if LOGICAL_ARTIFACT_PATTERN.fullmatch(artifact) is None:
+        raise ProvenanceError(f"{field} must be a portable logical artifact slug")
+    return artifact
+
+
+def _portable_relative_path(value: object, field: str) -> str:
+    path = _relative_path(_require_text(value, field), field)
+    for part in path.parts:
+        if (
+            not part.isascii()
+            or ":" in part
+            or part.rstrip(". ") != part
+            or part.casefold().split(".", 1)[0]
+            in {
+                "con",
+                "prn",
+                "aux",
+                "nul",
+                *(f"com{index}" for index in range(1, 10)),
+                *(f"lpt{index}" for index in range(1, 10)),
+            }
+        ):
+            raise ProvenanceError(f"{field} must be a portable relative path")
+    return path.as_posix()
+
+
+def _receipt_path_parts(
+    value: object, logical_artifact: str, field: str
+) -> tuple[str, str]:
+    receipt_path = _portable_relative_path(value, field)
+    prefix = f"{logical_artifact}/"
+    if not receipt_path.startswith(prefix):
+        raise ProvenanceError(f"{field} must be rooted under its logical artifact")
+    return receipt_path, _portable_relative_path(
+        receipt_path.removeprefix(prefix), f"{field} canonical path"
+    )
+
+
+def _safe_receipt_member(
+    repository_root: Path,
+    receipt_root: Path,
+    relative_path: str,
+    field: str,
+) -> Path:
+    portable_path = _portable_relative_path(relative_path, field)
+    candidate = receipt_root.joinpath(*PurePosixPath(portable_path).parts)
+    _reject_linked_ancestors(repository_root, candidate, field)
+    if not candidate.is_file() or _is_link_or_junction(candidate):
+        raise ProvenanceError(f"{field} must identify a regular receipt file")
+    if candidate.stat().st_nlink != 1:
+        raise ProvenanceError(f"{field} must not be a hard link")
+    if candidate.stat().st_size <= 0:
+        raise ProvenanceError(f"{field} must be non-empty")
+    return candidate
+
+
+def _parse_retry_receipt_selection(
+    value: object, *, field: str
+) -> RetryReceiptSelection:
+    if not isinstance(value, Mapping):
+        raise ProvenanceError(f"{field} must be an object")
+    _require_exact_fields(value, RETRY_SELECTION_RECEIPT_SELECTION_FIELDS, field)
+    logical_artifact = _require_logical_artifact(
+        value["logical_artifact"], f"{field}.logical_artifact"
+    )
+    producer_job = _require_text(value["producer_job"], f"{field}.producer_job")
+    producer_attempt = value["producer_attempt"]
+    if (
+        isinstance(producer_attempt, bool)
+        or not isinstance(producer_attempt, int)
+        or producer_attempt < 1
+    ):
+        raise ProvenanceError(f"{field}.producer_attempt must be a positive integer")
+    physical_artifact = _require_text(
+        value["physical_artifact"], f"{field}.physical_artifact"
+    )
+    if physical_artifact != f"{logical_artifact}-attempt-{producer_attempt}":
+        raise ProvenanceError(
+            f"{field}.physical_artifact does not bind producer attempt"
+        )
+    metadata = value["metadata"]
+    if not isinstance(metadata, Mapping):
+        raise ProvenanceError(f"{field}.metadata must be an object")
+    _require_exact_fields(
+        metadata, RETRY_SELECTION_RECEIPT_METADATA_FIELDS, f"{field}.metadata"
+    )
+    receipt_metadata_path, _ = _receipt_path_parts(
+        metadata["path"], logical_artifact, f"{field}.metadata.path"
+    )
+    metadata_sha256 = _require_sha256(metadata["sha256"], f"{field}.metadata.sha256")
+    reports = value["reports"]
+    if not isinstance(reports, list) or not reports:
+        raise ProvenanceError(f"{field}.reports must be a non-empty array")
+    parsed_reports: list[RetryReceiptReport] = []
+    seen_identities: set[tuple[str, str, str]] = set()
+    seen_receipt_paths: set[str] = {receipt_metadata_path.casefold()}
+    for index, report in enumerate(reports):
+        report_field = f"{field}.reports[{index}]"
+        if not isinstance(report, Mapping):
+            raise ProvenanceError(f"{report_field} must be an object")
+        _require_exact_fields(report, REPORT_FIELDS, report_field)
+        component = _require_text(report["component"], f"{report_field}.component")
+        report_format = _require_text(report["format"], f"{report_field}.format")
+        receipt_path, canonical_path = _receipt_path_parts(
+            report["path"], logical_artifact, f"{report_field}.path"
+        )
+        sha256 = _require_sha256(report["sha256"], f"{report_field}.sha256")
+        byte_size = report["byte_size"]
+        if (
+            isinstance(byte_size, bool)
+            or not isinstance(byte_size, int)
+            or byte_size < 1
+        ):
+            raise ProvenanceError(f"{report_field}.byte_size must be positive")
+        identity = (component, report_format, canonical_path)
+        if identity in seen_identities or receipt_path.casefold() in seen_receipt_paths:
+            raise ProvenanceError(f"{report_field} duplicates a receipt report")
+        seen_identities.add(identity)
+        seen_receipt_paths.add(receipt_path.casefold())
+        parsed_reports.append(
+            RetryReceiptReport(
+                component=component,
+                report_format=report_format,
+                receipt_path=receipt_path,
+                canonical_path=canonical_path,
+                sha256=sha256,
+                byte_size=byte_size,
+            )
+        )
+    if [report.receipt_path for report in parsed_reports] != sorted(
+        report.receipt_path for report in parsed_reports
+    ):
+        raise ProvenanceError(f"{field}.reports must be sorted by receipt path")
+    return RetryReceiptSelection(
+        logical_artifact=logical_artifact,
+        producer_job=producer_job,
+        producer_attempt=producer_attempt,
+        receipt_metadata_path=receipt_metadata_path,
+        metadata_sha256=metadata_sha256,
+        reports=tuple(parsed_reports),
+    )
+
+
+def _validate_retry_receipt_consumer(
+    value: object,
+    *,
+    expected_sha: str,
+    expected_repository: str,
+    expected_run_id: str,
+    expected_run_attempt: str,
+    expected_workflow_ref: str,
+    expected_workflow_sha: str,
+    expected_event: str,
+    expected_job: str,
+) -> dict[str, str]:
+    if not isinstance(value, Mapping):
+        raise ProvenanceError("retry selection receipt consumer must be an object")
+    _require_exact_fields(
+        value,
+        RETRY_SELECTION_RECEIPT_CONSUMER_FIELDS,
+        "retry selection receipt consumer",
+    )
+    consumer = {
+        "commit_sha": _require_sha(
+            value["commit_sha"], "retry receipt consumer.commit_sha"
+        ),
+        "repository": _require_text(
+            value["repository"], "retry receipt consumer.repository"
+        ),
+        "run_id": _require_positive_decimal(
+            value["run_id"], "retry receipt consumer.run_id"
+        ),
+        "run_attempt": _require_positive_decimal(
+            value["run_attempt"], "retry receipt consumer.run_attempt"
+        ),
+        "workflow_ref": _require_text(
+            value["workflow_ref"], "retry receipt consumer.workflow_ref"
+        ),
+        "workflow_sha": _require_sha(
+            value["workflow_sha"], "retry receipt consumer.workflow_sha"
+        ),
+        "event": _require_text(value["event"], "retry receipt consumer.event"),
+        "job": _require_text(value["job"], "retry receipt consumer.job"),
+    }
+    expected = {
+        "commit_sha": _require_sha(expected_sha, "expected_sha"),
+        "repository": _require_text(expected_repository, "expected_repository"),
+        "run_id": _require_positive_decimal(expected_run_id, "expected_run_id"),
+        "run_attempt": _require_positive_decimal(
+            expected_run_attempt, "expected_run_attempt"
+        ),
+        "workflow_ref": _require_text(expected_workflow_ref, "expected_workflow_ref"),
+        "workflow_sha": _require_sha(expected_workflow_sha, "expected_workflow_sha"),
+        "event": _require_text(expected_event, "expected_event"),
+        "job": _require_text(expected_job, "expected_job"),
+    }
+    for name, expected_value in expected.items():
+        if consumer[name] != expected_value:
+            raise ProvenanceError(
+                f"retry selection receipt consumer.{name} mismatch: "
+                f"expected {expected_value!r}, got {consumer[name]!r}"
+            )
+    retry_context = value["retry_context"]
+    if not isinstance(retry_context, Mapping):
+        raise ProvenanceError(
+            "retry selection receipt consumer.retry_context must be an object"
+        )
+    full_context = dict(retry_context)
+    full_context["run_attempt"] = consumer["run_attempt"]
+    full_context["artifact"] = "retry-selection-receipt"
+    producer = {
+        "repository": consumer["repository"],
+        "run_id": consumer["run_id"],
+        "run_attempt": consumer["run_attempt"],
+        "workflow_ref": consumer["workflow_ref"],
+        "workflow_sha": consumer["workflow_sha"],
+        "event": consumer["event"],
+        "artifact": "retry-selection-receipt",
+    }
+    validated = _validate_retry_provenance(
+        full_context,
+        field="retry selection receipt consumer.retry_context",
+        producer=producer,
+        commit_sha=consumer["commit_sha"],
+    )
+    return {name: validated[name] for name in sorted(CONSUMER_RETRY_CONTEXT_FIELDS)}
+
+
+def _validate_retry_receipt_selection_files(
+    *,
+    repository_root: Path,
+    receipt_root: Path,
+    selection: RetryReceiptSelection,
+) -> None:
+    metadata = _safe_receipt_member(
+        repository_root,
+        receipt_root,
+        selection.receipt_metadata_path,
+        "retry selection receipt metadata",
+    )
+    if _sha256(metadata) != selection.metadata_sha256:
+        raise ProvenanceError("retry selection receipt metadata sha256 mismatch")
+    for report in selection.reports:
+        report_path = _safe_receipt_member(
+            repository_root,
+            receipt_root,
+            report.receipt_path,
+            "retry selection receipt report",
+        )
+        if report_path.stat().st_size != report.byte_size:
+            raise ProvenanceError("retry selection receipt report byte_size mismatch")
+        if _sha256(report_path) != report.sha256:
+            raise ProvenanceError("retry selection receipt report sha256 mismatch")
+
+
+def _load_retry_selection_receipt(
+    *,
+    repository_root: Path,
+    receipt_path: Path,
+    producer_expectations: Mapping[Path, tuple[str, str]],
+    expected_sha: str,
+    expected_repository: str,
+    expected_run_id: str,
+    expected_run_attempt: str,
+    expected_workflow_ref: str,
+    expected_workflow_sha: str,
+    expected_event: str,
+    expected_job: str,
+) -> tuple[dict[Path, RetryReceiptSelection], dict[str, str]]:
+    safe_receipt = _safe_metadata_input(repository_root, receipt_path)
+    if safe_receipt.stat().st_nlink != 1:
+        raise ProvenanceError("retry selection receipt must not be a hard link")
+    document = _load_json(safe_receipt)
+    if not isinstance(document, Mapping):
+        raise ProvenanceError("retry selection receipt must be a JSON object")
+    _require_exact_fields(
+        document, RETRY_SELECTION_RECEIPT_FIELDS, "retry selection receipt"
+    )
+    if document["schema_version"] != 1:
+        raise ProvenanceError("retry selection receipt schema_version must equal 1")
+    retry_context = _validate_retry_receipt_consumer(
+        document["consumer"],
+        expected_sha=expected_sha,
+        expected_repository=expected_repository,
+        expected_run_id=expected_run_id,
+        expected_run_attempt=expected_run_attempt,
+        expected_workflow_ref=expected_workflow_ref,
+        expected_workflow_sha=expected_workflow_sha,
+        expected_event=expected_event,
+        expected_job=expected_job,
+    )
+    raw_selections = document["selections"]
+    if not isinstance(raw_selections, list) or not raw_selections:
+        raise ProvenanceError(
+            "retry selection receipt selections must be a non-empty array"
+        )
+    expectation_by_artifact: dict[str, tuple[Path, str]] = {}
+    for metadata_path, (producer_job, artifact) in producer_expectations.items():
+        if artifact in expectation_by_artifact:
+            raise ProvenanceError(
+                f"retry selection receipt has ambiguous expected artifact: {artifact}"
+            )
+        expectation_by_artifact[artifact] = (metadata_path, producer_job)
+    selection_by_metadata: dict[Path, RetryReceiptSelection] = {}
+    seen_artifacts: set[str] = set()
+    receipt_root = safe_receipt.parent
+    for index, raw_selection in enumerate(raw_selections):
+        selection = _parse_retry_receipt_selection(
+            raw_selection, field=f"retry selection receipt selections[{index}]"
+        )
+        if selection.logical_artifact in seen_artifacts:
+            raise ProvenanceError(
+                "retry selection receipt contains duplicate logical artifact: "
+                f"{selection.logical_artifact}"
+            )
+        seen_artifacts.add(selection.logical_artifact)
+        expectation = expectation_by_artifact.get(selection.logical_artifact)
+        if expectation is None:
+            raise ProvenanceError(
+                "retry selection receipt contains an unknown logical artifact: "
+                f"{selection.logical_artifact}"
+            )
+        metadata_path, producer_job = expectation
+        if selection.producer_job != producer_job:
+            raise ProvenanceError(
+                "retry selection receipt producer job does not match expectation"
+            )
+        if selection.producer_attempt > int(expected_run_attempt):
+            raise ProvenanceError(
+                "retry selection receipt producer attempt is from the future"
+            )
+        _validate_retry_receipt_selection_files(
+            repository_root=repository_root,
+            receipt_root=receipt_root,
+            selection=selection,
+        )
+        selection_by_metadata[metadata_path] = selection
+    if retry_context["source_sha"] != expected_sha:
+        raise ProvenanceError(
+            "retry selection receipt retry context source_sha mismatch"
+        )
+    return selection_by_metadata, retry_context
+
+
+def _verify_receipted_metadata(
+    *,
+    repository_root: Path,
+    metadata_path: Path,
+    selection: RetryReceiptSelection,
+    document: Mapping[str, object],
+) -> None:
+    if _sha256(metadata_path) != selection.metadata_sha256:
+        raise ProvenanceError(
+            "canonical metadata sha256 does not match selection receipt"
+        )
+    producer = cast(Mapping[str, object], document["producer"])
+    if producer["run_attempt"] != str(selection.producer_attempt):
+        raise ProvenanceError(
+            "canonical metadata producer attempt does not match selection receipt"
+        )
+    actual_reports = {
+        (
+            cast(str, report["component"]),
+            cast(str, report["format"]),
+            cast(str, report["path"]),
+            cast(str, report["sha256"]),
+            cast(int, report["byte_size"]),
+        )
+        for report in cast(list[Mapping[str, object]], document["reports"])
+    }
+    expected_reports = {
+        (
+            report.component,
+            report.report_format,
+            report.canonical_path,
+            report.sha256,
+            report.byte_size,
+        )
+        for report in selection.reports
+    }
+    if actual_reports != expected_reports:
+        raise ProvenanceError(
+            "canonical metadata report inventory does not match selection receipt"
+        )
+    for report in selection.reports:
+        canonical_report = _safe_report(
+            repository_root,
+            report.canonical_path,
+            "canonical receipt report",
+        )
+        if canonical_report.stat().st_size != report.byte_size:
+            raise ProvenanceError(
+                "canonical report byte_size does not match selection receipt"
+            )
+        if _sha256(canonical_report) != report.sha256:
+            raise ProvenanceError(
+                "canonical report sha256 does not match selection receipt"
+            )
 
 
 def _validate_identity(
@@ -900,6 +1352,7 @@ def merge_metadata(
     output_path: Path,
     tool_versions: Mapping[str, str],
     producer_expectations: Mapping[Path, tuple[str, str]],
+    retry_selection_receipt: Path | None = None,
     expected_sha: str,
     identity_provider: str,
     repository: str,
@@ -944,24 +1397,72 @@ def merge_metadata(
         )
     if set(safe_metadata_paths) != set(safe_expectations):
         raise ProvenanceError("producer expectations must exactly match metadata paths")
+    receipt_selections: dict[Path, RetryReceiptSelection] = {}
+    receipt_context: dict[str, str] | None = None
+    if retry_selection_receipt is not None:
+        receipt_selections, receipt_context = _load_retry_selection_receipt(
+            repository_root=root,
+            receipt_path=retry_selection_receipt,
+            producer_expectations=safe_expectations,
+            expected_sha=sha,
+            expected_repository=repository,
+            expected_run_id=run_id,
+            expected_run_attempt=run_attempt,
+            expected_workflow_ref=workflow_ref,
+            expected_workflow_sha=workflow_sha,
+            expected_event=event,
+            expected_job=job,
+        )
     documents: list[dict[str, object]] = []
     for metadata_path in safe_metadata_paths:
         expected_job, expected_artifact = safe_expectations[metadata_path]
-        documents.extend(
-            verify_metadata(
-                repository_root=root,
-                metadata_paths=[metadata_path],
-                expected_sha=sha,
-                expected_repository=repository,
-                expected_run_id=run_id,
-                expected_run_attempt=run_attempt,
-                expected_job=expected_job,
-                expected_artifact=expected_artifact,
-                expected_workflow_ref=workflow_ref,
-                expected_workflow_sha=workflow_sha,
-                expected_event=event,
+        selection = receipt_selections.get(metadata_path)
+        if selection is None:
+            documents.extend(
+                verify_metadata(
+                    repository_root=root,
+                    metadata_paths=[metadata_path],
+                    expected_sha=sha,
+                    expected_repository=repository,
+                    expected_run_id=run_id,
+                    expected_run_attempt=run_attempt,
+                    expected_job=expected_job,
+                    expected_artifact=expected_artifact,
+                    expected_workflow_ref=workflow_ref,
+                    expected_workflow_sha=workflow_sha,
+                    expected_event=event,
+                )
             )
+            continue
+        if receipt_context is None:
+            raise ProvenanceError("retry selection receipt context is unavailable")
+        expected_retry_provenance = {
+            **receipt_context,
+            "run_attempt": str(selection.producer_attempt),
+            "artifact": expected_artifact,
+        }
+        verified = verify_metadata(
+            repository_root=root,
+            metadata_paths=[metadata_path],
+            expected_sha=sha,
+            expected_repository=repository,
+            expected_run_id=run_id,
+            expected_run_attempt=run_attempt,
+            expected_job=expected_job,
+            expected_artifact=expected_artifact,
+            expected_workflow_ref=workflow_ref,
+            expected_workflow_sha=workflow_sha,
+            expected_event=event,
+            producer_attempt_policy="at-or-before",
+            expected_retry_provenance=expected_retry_provenance,
         )
+        _verify_receipted_metadata(
+            repository_root=root,
+            metadata_path=metadata_path,
+            selection=selection,
+            document=verified[0],
+        )
+        documents.extend(verified)
     expected_reports = _contract_reports(contract)
     reports: list[dict[str, object]] = []
     actual_reports: set[tuple[str, str, str]] = set()
@@ -1177,6 +1678,7 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
         type=_parse_producer_expectation,
         required=True,
     )
+    merge_parser.add_argument("--retry-selection-receipt", type=Path)
     _add_identity_arguments(merge_parser)
     return parser.parse_args(argv)
 
@@ -1270,6 +1772,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 producer_expectations=_producer_expectation_map(
                     arguments.producer_expectation
                 ),
+                retry_selection_receipt=arguments.retry_selection_receipt,
                 **_identity_kwargs(arguments),
             )
     except ProvenanceError as error:

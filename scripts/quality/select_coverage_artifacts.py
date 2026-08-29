@@ -650,6 +650,7 @@ def _receipt(
     expected_workflow_ref: str,
     expected_workflow_sha: str,
     expected_event: str,
+    expected_consumer_job: str,
     consumer_retry_context: Mapping[str, str],
     staged: Mapping[Path, _StagedCandidate],
     selections: Sequence[MetadataSelection],
@@ -695,6 +696,7 @@ def _receipt(
             "workflow_ref": expected_workflow_ref,
             "workflow_sha": expected_workflow_sha,
             "event": expected_event,
+            "job": expected_consumer_job,
             "retry_context": _retry_context_for_receipt(consumer_retry_context),
         },
         "selections": sorted(
@@ -765,6 +767,7 @@ def select_coverage_artifacts(
     expected_workflow_ref: str,
     expected_workflow_sha: str,
     expected_event: str,
+    expected_consumer_job: str,
     consumer_retry_context: Mapping[str, str],
 ) -> CoverageSelectionResult:
     """Select complete retry evidence and atomically materialize it.
@@ -776,6 +779,7 @@ def select_coverage_artifacts(
     """
 
     trusted_root = _validation_root(repository_root)
+    consumer_job = _require_text(expected_consumer_job, "expected_consumer_job")
     validated_slots = _validate_slots(slots)
     if not candidate_roots:
         raise CoverageSelectionError("candidate roots must contain at least one root")
@@ -863,6 +867,7 @@ def select_coverage_artifacts(
             expected_workflow_ref=expected_workflow_ref,
             expected_workflow_sha=expected_workflow_sha,
             expected_event=expected_event,
+            expected_consumer_job=consumer_job,
             consumer_retry_context=consumer_retry_context,
             staged=staged_by_metadata,
             selections=selected_metadata,
