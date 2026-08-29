@@ -394,20 +394,37 @@ async def test_successful_dead_letter_mutations_are_safely_attributed(
         assert "private" not in str(call)
 
 
-def test_dead_letter_public_serialization_preserves_aware_values_and_nulls() -> None:
+def test_dead_letter_public_serialization_normalizes_naive_values_and_preserves_nulls() -> (
+    None
+):
     from app.api.notification_dead_letters import _to_public_job
 
     job = _dead_letter(error="private")
     job.id = uuid.uuid4()
-    job.claimed_at = None
-    job.next_retry_at = None
+
+    naive_enqueued_at = datetime(2026, 1, 2, 12, 0, 0)
+    naive_claimed_at = datetime(2026, 1, 2, 12, 1, 0)
+    naive_next_retry_at = datetime(2026, 1, 2, 12, 2, 0)
+    job.enqueued_at = naive_enqueued_at
+    job.claimed_at = naive_claimed_at
+    job.next_retry_at = naive_next_retry_at
 
     output = _to_public_job(job)
 
-    assert output.enqueued_at.tzinfo is UTC
-    assert output.claimed_at is None
-    assert output.next_retry_at is None
+    assert output.enqueued_at == naive_enqueued_at.replace(tzinfo=UTC)
+    assert output.claimed_at == naive_claimed_at.replace(tzinfo=UTC)
+    assert output.next_retry_at == naive_next_retry_at.replace(tzinfo=UTC)
     assert output.last_error == "Delivery failed"
+
+    job.claimed_at = None
+    job.next_retry_at = None
+
+    null_output = _to_public_job(job)
+
+    assert null_output.enqueued_at.tzinfo is UTC
+    assert null_output.claimed_at is None
+    assert null_output.next_retry_at is None
+    assert null_output.last_error == "Delivery failed"
 
 
 @pytest.mark.asyncio
