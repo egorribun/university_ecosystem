@@ -17,7 +17,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 from typing import NoReturn, cast
@@ -50,10 +51,38 @@ PRODUCER_FIELDS = frozenset(
     }
 )
 REPORT_FIELDS = frozenset({"component", "format", "path", "sha256", "byte_size"})
+ATTEMPT_POLICIES = frozenset({"exact", "at-or-before"})
+RETRY_PROVENANCE_FIELDS = frozenset(
+    {
+        "repository",
+        "run_id",
+        "run_attempt",
+        "source_sha",
+        "source_revision",
+        "workflow_ref",
+        "workflow_sha",
+        "event",
+        "config_digest",
+        "policy_digest",
+        "artifact",
+    }
+)
+CONSUMER_RETRY_CONTEXT_FIELDS = RETRY_PROVENANCE_FIELDS - frozenset(
+    {"run_attempt", "artifact"}
+)
 
 
 class ProvenanceError(ValueError):
     """Raised when coverage provenance is incomplete or inconsistent."""
+
+
+@dataclass(frozen=True)
+class MetadataSelection:
+    """One validated metadata candidate and its producing retry attempt."""
+
+    metadata_path: Path
+    manifest: dict[str, object]
+    producer_attempt: int
 
 
 def _json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -107,11 +136,123 @@ def _require_sha(value: object, field: str) -> str:
     return text
 
 
+def _require_sha256(value: object, field: str) -> str:
+    text = _require_text(value, field)
+    if SHA256_PATTERN.fullmatch(text) is None:
+        raise ProvenanceError(f"{field} must be lowercase SHA-256")
+    return text
+
+
 def _require_positive_decimal(value: object, field: str) -> str:
     text = _require_text(value, field)
     if not text.isdecimal() or int(text) < 1:
         raise ProvenanceError(f"{field} must be a positive decimal identifier")
     return text
+
+
+def _validate_attempt_policy(value: str) -> str:
+    if value not in ATTEMPT_POLICIES:
+        raise ProvenanceError("producer attempt policy is invalid")
+    return value
+
+
+def _validate_retry_provenance(
+    value: object,
+    *,
+    field: str,
+    producer: Mapping[str, object],
+    commit_sha: str,
+) -> dict[str, str]:
+    """Validate the complete identity required to reuse a prior retry artifact."""
+
+    if not isinstance(value, Mapping):
+        raise ProvenanceError(f"{field} must be an object")
+    _require_exact_fields(value, RETRY_PROVENANCE_FIELDS, field)
+    provenance = {
+        "repository": _require_text(value["repository"], f"{field}.repository"),
+        "run_id": _require_positive_decimal(value["run_id"], f"{field}.run_id"),
+        "run_attempt": _require_positive_decimal(
+            value["run_attempt"], f"{field}.run_attempt"
+        ),
+        "source_sha": _require_sha(value["source_sha"], f"{field}.source_sha"),
+        "source_revision": _require_sha(
+            value["source_revision"], f"{field}.source_revision"
+        ),
+        "workflow_ref": _require_text(value["workflow_ref"], f"{field}.workflow_ref"),
+        "workflow_sha": _require_sha(value["workflow_sha"], f"{field}.workflow_sha"),
+        "event": _require_text(value["event"], f"{field}.event"),
+        "config_digest": _require_sha256(
+            value["config_digest"], f"{field}.config_digest"
+        ),
+        "policy_digest": _require_sha256(
+            value["policy_digest"], f"{field}.policy_digest"
+        ),
+        "artifact": _require_text(value["artifact"], f"{field}.artifact"),
+    }
+    if provenance["source_sha"] != commit_sha:
+        raise ProvenanceError(f"{field}.source_sha does not bind commit_sha")
+    if provenance["source_revision"] != commit_sha:
+        raise ProvenanceError(f"{field}.source_revision does not bind commit_sha")
+    for name in (
+        "repository",
+        "run_id",
+        "run_attempt",
+        "workflow_ref",
+        "workflow_sha",
+        "event",
+        "artifact",
+    ):
+        if provenance[name] != producer[name]:
+            raise ProvenanceError(f"{field}.{name} does not bind producer")
+    return provenance
+
+
+def _validate_consumer_retry_context(
+    value: object,
+    *,
+    expected_sha: str,
+    expected_repository: str,
+    expected_run_id: str,
+    expected_workflow_ref: str | None,
+    expected_workflow_sha: str | None,
+    expected_event: str | None,
+    expected_artifact: str,
+) -> dict[str, str]:
+    """Validate immutable consumer context before candidate-specific binding."""
+
+    if not isinstance(value, Mapping):
+        raise ProvenanceError("consumer retry context must be an object")
+    _require_exact_fields(
+        value, CONSUMER_RETRY_CONTEXT_FIELDS, "consumer retry context"
+    )
+    if (
+        expected_workflow_ref is None
+        or expected_workflow_sha is None
+        or expected_event is None
+    ):
+        raise ProvenanceError(
+            "candidate selection requires workflow ref, workflow SHA, and event"
+        )
+    sha = _require_sha(expected_sha, "expected_sha")
+    producer = {
+        "repository": _require_text(expected_repository, "expected_repository"),
+        "run_id": _require_positive_decimal(expected_run_id, "expected_run_id"),
+        "run_attempt": "1",
+        "workflow_ref": _require_text(expected_workflow_ref, "expected_workflow_ref"),
+        "workflow_sha": _require_sha(expected_workflow_sha, "expected_workflow_sha"),
+        "event": _require_text(expected_event, "expected_event"),
+        "artifact": _require_text(expected_artifact, "expected_artifact"),
+    }
+    full_context = dict(value)
+    full_context["run_attempt"] = "1"
+    full_context["artifact"] = producer["artifact"]
+    validated = _validate_retry_provenance(
+        full_context,
+        field="consumer retry context",
+        producer=producer,
+        commit_sha=sha,
+    )
+    return {name: validated[name] for name in sorted(CONSUMER_RETRY_CONTEXT_FIELDS)}
 
 
 def _require_utc_timestamp(value: object, field: str) -> str:
@@ -329,6 +470,7 @@ def write_metadata(
     job: str,
     artifact: str,
     collected_at: str,
+    retry_provenance: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
     """Write one producer sidecar after validating its report bytes."""
 
@@ -385,6 +527,13 @@ def write_metadata(
         "tool_versions": _validate_tool_versions(tool_versions),
         "reports": sorted(records, key=lambda item: cast(str, item["path"])),
     }
+    if retry_provenance is not None:
+        payload["retry_provenance"] = _validate_retry_provenance(
+            retry_provenance,
+            field="retry_provenance",
+            producer=producer,
+            commit_sha=sha,
+        )
     _atomic_write_json(root, output_path, payload)
     return payload
 
@@ -392,7 +541,10 @@ def write_metadata(
 def _validate_document(document: object, *, field: str) -> dict[str, object]:
     if not isinstance(document, dict):
         raise ProvenanceError(f"{field} must be a JSON object")
-    _require_exact_fields(document, TOP_LEVEL_FIELDS, field)
+    expected_fields = TOP_LEVEL_FIELDS
+    if "retry_provenance" in document:
+        expected_fields = TOP_LEVEL_FIELDS | frozenset({"retry_provenance"})
+    _require_exact_fields(document, expected_fields, field)
     if document["schema_version"] != SCHEMA_VERSION:
         raise ProvenanceError(f"{field}.schema_version must equal {SCHEMA_VERSION}")
     _require_sha(document["commit_sha"], f"{field}.commit_sha")
@@ -410,6 +562,13 @@ def _validate_document(document: object, *, field: str) -> dict[str, object]:
     _require_sha(producer["workflow_sha"], f"{field}.producer.workflow_sha")
     _require_positive_decimal(producer["run_id"], f"{field}.producer.run_id")
     _require_positive_decimal(producer["run_attempt"], f"{field}.producer.run_attempt")
+    if "retry_provenance" in document:
+        _validate_retry_provenance(
+            document["retry_provenance"],
+            field=f"{field}.retry_provenance",
+            producer=producer,
+            commit_sha=cast(str, document["commit_sha"]),
+        )
     tools = document["tool_versions"]
     if not isinstance(tools, dict) or not all(
         isinstance(name, str) and isinstance(version, str)
@@ -464,8 +623,15 @@ def verify_metadata(
     expected_workflow_ref: str | None = None,
     expected_workflow_sha: str | None = None,
     expected_event: str | None = None,
+    producer_attempt_policy: str = "exact",
+    expected_retry_provenance: Mapping[str, str] | None = None,
 ) -> list[dict[str, object]]:
-    """Verify sidecars against current report bytes and the current run."""
+    """Verify sidecars against current report bytes and the current run.
+
+    Earlier producer attempts require the explicit ``at-or-before`` policy and
+    a complete retry provenance identity.  The default remains exact attempt
+    matching for all current callers.
+    """
 
     root = _repository_root(repository_root)
     sha = _require_sha(expected_sha, "expected_sha")
@@ -476,6 +642,7 @@ def verify_metadata(
     run_attempt = _require_positive_decimal(
         expected_run_attempt, "expected_run_attempt"
     )
+    policy = _validate_attempt_policy(producer_attempt_policy)
     job = _require_text(expected_job, "expected_job")
     artifact = _require_text(expected_artifact, "expected_artifact")
     if not metadata_paths:
@@ -490,10 +657,11 @@ def verify_metadata(
         expectations = {
             "repository": repository,
             "run_id": run_id,
-            "run_attempt": run_attempt,
             "job": job,
             "artifact": artifact,
         }
+        if policy == "exact":
+            expectations["run_attempt"] = run_attempt
         if expected_workflow_ref is not None:
             expectations["workflow_ref"] = _require_text(
                 expected_workflow_ref, "expected_workflow_ref"
@@ -510,6 +678,36 @@ def verify_metadata(
                     f"metadata[{index}].producer.{name} mismatch: "
                     f"expected {expected!r}, got {producer[name]!r}"
                 )
+        producer_attempt = _require_positive_decimal(
+            producer["run_attempt"], f"metadata[{index}].producer.run_attempt"
+        )
+        if policy == "at-or-before":
+            if int(producer_attempt) > int(run_attempt):
+                raise ProvenanceError(
+                    f"metadata[{index}].producer.run_attempt is from the future"
+                )
+            if expected_retry_provenance is None:
+                raise ProvenanceError("expected retry provenance is required")
+            if "retry_provenance" not in document:
+                raise ProvenanceError(f"metadata[{index}] retry provenance is required")
+            actual_retry_provenance = _validate_retry_provenance(
+                document["retry_provenance"],
+                field=f"metadata[{index}].retry_provenance",
+                producer=producer,
+                commit_sha=sha,
+            )
+            expected_provenance = _validate_retry_provenance(
+                expected_retry_provenance,
+                field="expected retry provenance",
+                producer=producer,
+                commit_sha=sha,
+            )
+            for name, expected in expected_provenance.items():
+                if actual_retry_provenance[name] != expected:
+                    raise ProvenanceError(
+                        f"metadata[{index}].retry_provenance.{name} mismatch: "
+                        f"expected {expected!r}, got {actual_retry_provenance[name]!r}"
+                    )
         reports = cast(list[dict[str, object]], document["reports"])
         for report_index, report in enumerate(reports):
             report_path = cast(str, report["path"])
@@ -526,6 +724,137 @@ def verify_metadata(
                 )
         documents.append(document)
     return documents
+
+
+def select_metadata(
+    *,
+    repository_root: Path,
+    metadata_paths: Sequence[Path],
+    expected_sha: str,
+    expected_repository: str,
+    expected_run_id: str,
+    expected_run_attempt: str,
+    expected_job: str,
+    expected_artifact: str,
+    expected_workflow_ref: str | None = None,
+    expected_workflow_sha: str | None = None,
+    expected_event: str | None = None,
+    producer_attempt_policy: str = "exact",
+    expected_retry_provenance: Mapping[str, str] | None = None,
+) -> list[MetadataSelection]:
+    """Return validated sidecars with their selected producer attempts."""
+
+    documents = verify_metadata(
+        repository_root=repository_root,
+        metadata_paths=metadata_paths,
+        expected_sha=expected_sha,
+        expected_repository=expected_repository,
+        expected_run_id=expected_run_id,
+        expected_run_attempt=expected_run_attempt,
+        expected_job=expected_job,
+        expected_artifact=expected_artifact,
+        expected_workflow_ref=expected_workflow_ref,
+        expected_workflow_sha=expected_workflow_sha,
+        expected_event=expected_event,
+        producer_attempt_policy=producer_attempt_policy,
+        expected_retry_provenance=expected_retry_provenance,
+    )
+    root = _repository_root(repository_root)
+    selections: list[MetadataSelection] = []
+    for path, document in zip(metadata_paths, documents, strict=True):
+        producer = cast(dict[str, object], document["producer"])
+        selections.append(
+            MetadataSelection(
+                metadata_path=_safe_metadata_input(root, path),
+                manifest=document,
+                producer_attempt=int(cast(str, producer["run_attempt"])),
+            )
+        )
+    return selections
+
+
+def select_metadata_candidates(
+    *,
+    repository_root: Path,
+    metadata_paths: Collection[Path],
+    expected_sha: str,
+    expected_repository: str,
+    expected_run_id: str,
+    expected_run_attempt: str,
+    expected_job: str,
+    expected_artifact: str,
+    expected_workflow_ref: str | None = None,
+    expected_workflow_sha: str | None = None,
+    expected_event: str | None = None,
+    consumer_retry_context: Mapping[str, str],
+) -> MetadataSelection:
+    """Choose the highest valid producer attempt from metadata candidates.
+
+    Every candidate is validated against the same immutable consumer context.
+    Invalid, foreign, future, and duplicate attempts reject the entire
+    candidate set rather than being silently ignored.
+    """
+
+    root = _repository_root(repository_root)
+    sha = _require_sha(expected_sha, "expected_sha")
+    run_attempt = _require_positive_decimal(
+        expected_run_attempt, "expected_run_attempt"
+    )
+    context = _validate_consumer_retry_context(
+        consumer_retry_context,
+        expected_sha=sha,
+        expected_repository=expected_repository,
+        expected_run_id=expected_run_id,
+        expected_workflow_ref=expected_workflow_ref,
+        expected_workflow_sha=expected_workflow_sha,
+        expected_event=expected_event,
+        expected_artifact=expected_artifact,
+    )
+    if not metadata_paths:
+        raise ProvenanceError("metadata_paths must contain at least one candidate")
+
+    seen_paths: set[Path] = set()
+    selections: dict[int, MetadataSelection] = {}
+    for index, metadata_path in enumerate(metadata_paths):
+        safe_path = _safe_metadata_input(root, metadata_path)
+        if safe_path in seen_paths:
+            raise ProvenanceError(f"duplicate metadata candidate: {safe_path}")
+        seen_paths.add(safe_path)
+        document = _validate_document(
+            _load_json(safe_path), field=f"metadata candidate[{index}]"
+        )
+        producer = cast(dict[str, object], document["producer"])
+        producer_attempt = _require_positive_decimal(
+            producer["run_attempt"],
+            f"metadata candidate[{index}].producer.run_attempt",
+        )
+        expected_retry_provenance = {
+            **context,
+            "run_attempt": producer_attempt,
+            "artifact": _require_text(expected_artifact, "expected_artifact"),
+        }
+        candidate = select_metadata(
+            repository_root=root,
+            metadata_paths=[safe_path],
+            expected_sha=sha,
+            expected_repository=expected_repository,
+            expected_run_id=expected_run_id,
+            expected_run_attempt=run_attempt,
+            expected_job=expected_job,
+            expected_artifact=expected_artifact,
+            expected_workflow_ref=expected_workflow_ref,
+            expected_workflow_sha=expected_workflow_sha,
+            expected_event=expected_event,
+            producer_attempt_policy="at-or-before",
+            expected_retry_provenance=expected_retry_provenance,
+        )[0]
+        if candidate.producer_attempt in selections:
+            raise ProvenanceError(
+                "duplicate producer attempt in metadata candidates: "
+                f"{candidate.producer_attempt}"
+            )
+        selections[candidate.producer_attempt] = candidate
+    return selections[max(selections)]
 
 
 def _contract_reports(contract_path: Path) -> set[tuple[str, str, str]]:
@@ -747,6 +1076,26 @@ def _producer_expectation_map(
     return result
 
 
+def _parse_retry_provenance(value: str) -> tuple[str, str]:
+    key, separator, item = value.partition("=")
+    if not separator or not key or not item:
+        raise argparse.ArgumentTypeError("retry provenance must use KEY=VALUE")
+    return key, item
+
+
+def _retry_provenance_map(
+    values: Sequence[tuple[str, str]], *, field: str
+) -> dict[str, str] | None:
+    if not values:
+        return None
+    result: dict[str, str] = {}
+    for key, value in values:
+        if key in result:
+            raise ProvenanceError(f"{field} contains duplicate field: {key}")
+        result[key] = value
+    return result
+
+
 def _add_identity_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--expected-sha", required=True)
     parser.add_argument("--identity-provider", required=True)
@@ -759,6 +1108,31 @@ def _add_identity_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--job", required=True)
     parser.add_argument("--artifact", required=True)
     parser.add_argument("--collected-at", required=True)
+
+
+def _add_verify_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--repository-root", type=Path, required=True)
+    parser.add_argument("--metadata", action="append", type=Path, required=True)
+    parser.add_argument("--expected-sha", required=True)
+    parser.add_argument("--expected-repository", required=True)
+    parser.add_argument("--expected-run-id", required=True)
+    parser.add_argument("--expected-run-attempt", required=True)
+    parser.add_argument("--expected-job", required=True)
+    parser.add_argument("--expected-artifact", required=True)
+    parser.add_argument("--expected-workflow-ref")
+    parser.add_argument("--expected-workflow-sha")
+    parser.add_argument("--expected-event")
+    parser.add_argument(
+        "--producer-attempt-policy",
+        choices=sorted(ATTEMPT_POLICIES),
+        default="exact",
+    )
+    parser.add_argument(
+        "--expected-retry-provenance",
+        action="append",
+        type=_parse_retry_provenance,
+        default=[],
+    )
 
 
 def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
@@ -775,20 +1149,19 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
     write_parser.add_argument(
         "--tool-version", action="append", type=_parse_tool, required=True
     )
+    write_parser.add_argument(
+        "--retry-provenance",
+        action="append",
+        type=_parse_retry_provenance,
+        default=[],
+    )
     _add_identity_arguments(write_parser)
 
     verify_parser = subparsers.add_parser("verify")
-    verify_parser.add_argument("--repository-root", type=Path, required=True)
-    verify_parser.add_argument("--metadata", action="append", type=Path, required=True)
-    verify_parser.add_argument("--expected-sha", required=True)
-    verify_parser.add_argument("--expected-repository", required=True)
-    verify_parser.add_argument("--expected-run-id", required=True)
-    verify_parser.add_argument("--expected-run-attempt", required=True)
-    verify_parser.add_argument("--expected-job", required=True)
-    verify_parser.add_argument("--expected-artifact", required=True)
-    verify_parser.add_argument("--expected-workflow-ref")
-    verify_parser.add_argument("--expected-workflow-sha")
-    verify_parser.add_argument("--expected-event")
+    _add_verify_arguments(verify_parser)
+
+    select_parser = subparsers.add_parser("select")
+    _add_verify_arguments(select_parser)
 
     merge_parser = subparsers.add_parser("merge")
     merge_parser.add_argument("--repository-root", type=Path, required=True)
@@ -833,6 +1206,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 output_path=arguments.output,
                 reports=arguments.report,
                 tool_versions=_tool_map(arguments.tool_version),
+                retry_provenance=_retry_provenance_map(
+                    arguments.retry_provenance,
+                    field="retry provenance",
+                ),
                 **_identity_kwargs(arguments),
             )
         elif arguments.command == "verify":
@@ -848,6 +1225,40 @@ def main(argv: Sequence[str] | None = None) -> int:
                 expected_workflow_ref=arguments.expected_workflow_ref,
                 expected_workflow_sha=arguments.expected_workflow_sha,
                 expected_event=arguments.expected_event,
+                producer_attempt_policy=arguments.producer_attempt_policy,
+                expected_retry_provenance=_retry_provenance_map(
+                    arguments.expected_retry_provenance,
+                    field="expected retry provenance",
+                ),
+            )
+        elif arguments.command == "select":
+            selections = select_metadata(
+                repository_root=arguments.repository_root,
+                metadata_paths=arguments.metadata,
+                expected_sha=arguments.expected_sha,
+                expected_repository=arguments.expected_repository,
+                expected_run_id=arguments.expected_run_id,
+                expected_run_attempt=arguments.expected_run_attempt,
+                expected_job=arguments.expected_job,
+                expected_artifact=arguments.expected_artifact,
+                expected_workflow_ref=arguments.expected_workflow_ref,
+                expected_workflow_sha=arguments.expected_workflow_sha,
+                expected_event=arguments.expected_event,
+                producer_attempt_policy=arguments.producer_attempt_policy,
+                expected_retry_provenance=_retry_provenance_map(
+                    arguments.expected_retry_provenance,
+                    field="expected retry provenance",
+                ),
+            )
+            print(
+                json.dumps(
+                    {
+                        "selected_producer_attempts": [
+                            selection.producer_attempt for selection in selections
+                        ]
+                    },
+                    sort_keys=True,
+                )
             )
         else:
             merge_metadata(

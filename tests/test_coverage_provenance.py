@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+import scripts.quality.coverage_provenance as coverage_provenance
 from scripts.quality.coverage_provenance import (
     ProvenanceError,
     merge_metadata,
@@ -77,6 +78,37 @@ def _identity(repository_root: Path, **overrides: str) -> dict[str, str]:
     return values
 
 
+def _retry_provenance(
+    repository_root: Path,
+    *,
+    run_attempt: str = "2",
+    run_id: str = "123456789",
+) -> dict[str, str]:
+    return {
+        "repository": "example/university-ecosystem",
+        "run_id": run_id,
+        "source_sha": _git_head(repository_root),
+        "source_revision": _git_head(repository_root),
+        "workflow_ref": (
+            "example/university-ecosystem/.github/workflows/ci.yml@refs/heads/main"
+        ),
+        "workflow_sha": WORKFLOW_SHA,
+        "event": "push",
+        "config_digest": "a" * 64,
+        "policy_digest": "b" * 64,
+        "artifact": "python-coverage-provenance",
+        "run_attempt": run_attempt,
+    }
+
+
+def _consumer_retry_context(repository_root: Path) -> dict[str, str]:
+    return {
+        name: value
+        for name, value in _retry_provenance(repository_root, run_attempt="1").items()
+        if name not in {"run_attempt", "artifact"}
+    }
+
+
 def _write_report(repository_root: Path, relative_path: str, payload: bytes) -> Path:
     report_path = repository_root / relative_path
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -102,6 +134,34 @@ def _write_one_metadata(
         reports=[(component, report_format, report_path, report_path)],
         tool_versions=tool_versions or {"coverage.py": "7.10.0", "python": "3.14.0"},
         **_identity(repository_root, **identity_overrides),
+    )
+    return output_path
+
+
+def _write_retry_candidate(
+    repository_root: Path,
+    *,
+    metadata_path: str,
+    run_attempt: str,
+    run_id: str = "123456789",
+) -> Path:
+    _write_report(repository_root, "coverage.xml", b"coverage-evidence\n")
+    output_path = repository_root / metadata_path
+    write_metadata(
+        repository_root=repository_root,
+        output_path=output_path,
+        reports=[("python", "cobertura-xml", "coverage.xml", "coverage.xml")],
+        tool_versions={"coverage.py": "7.10.0", "python": "3.14.0"},
+        retry_provenance=_retry_provenance(
+            repository_root,
+            run_attempt=run_attempt,
+            run_id=run_id,
+        ),
+        **_identity(
+            repository_root,
+            run_attempt=run_attempt,
+            run_id=run_id,
+        ),
     )
     return output_path
 
@@ -485,3 +545,263 @@ def test_metadata_write_is_atomic_and_does_not_leave_partial_file(
         )
 
     assert json.loads(output.read_text(encoding="utf-8")) == {"old": True}
+
+
+def test_coverage_retry_selection_is_explicit_and_surfaces_prior_attempt(
+    provenance_repository: Path,
+) -> None:
+    metadata_path = _write_one_metadata(provenance_repository)
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["producer"]["run_attempt"] = "1"
+    metadata["retry_provenance"] = _retry_provenance(
+        provenance_repository, run_attempt="1"
+    )
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    with pytest.raises(ProvenanceError, match=r"producer\.run_attempt"):
+        verify_metadata(
+            repository_root=provenance_repository,
+            metadata_paths=[metadata_path],
+            expected_sha=_git_head(provenance_repository),
+            expected_repository="example/university-ecosystem",
+            expected_run_id="123456789",
+            expected_run_attempt="2",
+            expected_job="coverage-policy-gate",
+            expected_artifact="python-coverage-provenance",
+            expected_workflow_ref=(
+                "example/university-ecosystem/.github/workflows/ci.yml@refs/heads/main"
+            ),
+            expected_workflow_sha=WORKFLOW_SHA,
+            expected_event="push",
+        )
+
+    selections = coverage_provenance.select_metadata(
+        repository_root=provenance_repository,
+        metadata_paths=[metadata_path],
+        expected_sha=_git_head(provenance_repository),
+        expected_repository="example/university-ecosystem",
+        expected_run_id="123456789",
+        expected_run_attempt="2",
+        expected_job="coverage-policy-gate",
+        expected_artifact="python-coverage-provenance",
+        expected_workflow_ref=(
+            "example/university-ecosystem/.github/workflows/ci.yml@refs/heads/main"
+        ),
+        expected_workflow_sha=WORKFLOW_SHA,
+        expected_event="push",
+        producer_attempt_policy="at-or-before",
+        expected_retry_provenance=_retry_provenance(
+            provenance_repository, run_attempt="1"
+        ),
+    )
+
+    assert [selection.producer_attempt for selection in selections] == [1]
+    assert selections[0].manifest["producer"]["run_attempt"] == "1"
+
+
+@pytest.mark.parametrize(
+    ("fault", "message"),
+    [
+        ("future", "future"),
+        ("noninteger", "positive decimal"),
+        ("missing", "retry provenance"),
+        ("source", "source_sha"),
+        ("revision", "source_revision"),
+        ("config", "config_digest"),
+    ],
+)
+def test_coverage_retry_selection_rejects_unbound_or_tampered_candidates(
+    provenance_repository: Path, fault: str, message: str
+) -> None:
+    metadata_path = _write_one_metadata(provenance_repository)
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["producer"]["run_attempt"] = "1"
+    metadata["retry_provenance"] = _retry_provenance(
+        provenance_repository, run_attempt="1"
+    )
+    if fault == "future":
+        metadata["producer"]["run_attempt"] = "3"
+        metadata["retry_provenance"]["run_attempt"] = "3"
+    elif fault == "noninteger":
+        metadata["producer"]["run_attempt"] = "invalid"
+        metadata["retry_provenance"]["run_attempt"] = "invalid"
+    elif fault == "missing":
+        del metadata["retry_provenance"]
+    else:
+        field = {
+            "source": "source_sha",
+            "revision": "source_revision",
+            "config": "config_digest",
+        }[fault]
+        metadata["retry_provenance"][field] = "c" * (64 if fault == "config" else 40)
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+
+    with pytest.raises(ProvenanceError, match=message):
+        coverage_provenance.select_metadata(
+            repository_root=provenance_repository,
+            metadata_paths=[metadata_path],
+            expected_sha=_git_head(provenance_repository),
+            expected_repository="example/university-ecosystem",
+            expected_run_id="123456789",
+            expected_run_attempt="2",
+            expected_job="coverage-policy-gate",
+            expected_artifact="python-coverage-provenance",
+            expected_workflow_ref=(
+                "example/university-ecosystem/.github/workflows/ci.yml@refs/heads/main"
+            ),
+            expected_workflow_sha=WORKFLOW_SHA,
+            expected_event="push",
+            producer_attempt_policy="at-or-before",
+            expected_retry_provenance=_retry_provenance(
+                provenance_repository, run_attempt="1"
+            ),
+        )
+
+
+def test_coverage_candidate_collection_selects_highest_valid_attempt_deterministically(
+    provenance_repository: Path,
+) -> None:
+    first = _write_retry_candidate(
+        provenance_repository,
+        metadata_path="candidates/attempt-1/coverage.json",
+        run_attempt="1",
+    )
+    second = _write_retry_candidate(
+        provenance_repository,
+        metadata_path="candidates/attempt-2/coverage.json",
+        run_attempt="2",
+    )
+    kwargs = {
+        "repository_root": provenance_repository,
+        "expected_sha": _git_head(provenance_repository),
+        "expected_repository": "example/university-ecosystem",
+        "expected_run_id": "123456789",
+        "expected_run_attempt": "3",
+        "expected_job": "coverage-policy-gate",
+        "expected_artifact": "python-coverage-provenance",
+        "expected_workflow_ref": (
+            "example/university-ecosystem/.github/workflows/ci.yml@refs/heads/main"
+        ),
+        "expected_workflow_sha": WORKFLOW_SHA,
+        "expected_event": "push",
+        "consumer_retry_context": _consumer_retry_context(provenance_repository),
+    }
+
+    selection = coverage_provenance.select_metadata_candidates(
+        metadata_paths=[first, second],
+        **kwargs,
+    )
+    reversed_selection = coverage_provenance.select_metadata_candidates(
+        metadata_paths=[second, first],
+        **kwargs,
+    )
+    set_selection = coverage_provenance.select_metadata_candidates(
+        metadata_paths={first, second},
+        **kwargs,
+    )
+
+    assert selection.producer_attempt == 2
+    assert selection.metadata_path == second.resolve()
+    assert reversed_selection == selection
+    assert set_selection == selection
+
+
+def test_coverage_candidate_collection_rejects_consumer_source_revision_mismatch(
+    provenance_repository: Path,
+) -> None:
+    candidate = _write_retry_candidate(
+        provenance_repository,
+        metadata_path="candidates/attempt-1/coverage.json",
+        run_attempt="1",
+    )
+    forged_revision = "f" * 40
+    metadata = json.loads(candidate.read_text(encoding="utf-8"))
+    metadata["retry_provenance"]["source_revision"] = forged_revision
+    candidate.write_text(json.dumps(metadata), encoding="utf-8")
+    context = _consumer_retry_context(provenance_repository)
+    context["source_revision"] = forged_revision
+
+    with pytest.raises(ProvenanceError, match="source_revision does not bind"):
+        coverage_provenance.select_metadata_candidates(
+            repository_root=provenance_repository,
+            metadata_paths=[candidate],
+            expected_sha=_git_head(provenance_repository),
+            expected_repository="example/university-ecosystem",
+            expected_run_id="123456789",
+            expected_run_attempt="2",
+            expected_job="coverage-policy-gate",
+            expected_artifact="python-coverage-provenance",
+            expected_workflow_ref=(
+                "example/university-ecosystem/.github/workflows/ci.yml@refs/heads/main"
+            ),
+            expected_workflow_sha=WORKFLOW_SHA,
+            expected_event="push",
+            consumer_retry_context=context,
+        )
+
+
+@pytest.mark.parametrize(
+    ("fault", "message"),
+    [
+        ("foreign", "producer.run_id"),
+        ("future", "future"),
+        ("duplicate", "duplicate producer attempt"),
+        ("malformed", "unable to read metadata"),
+    ],
+)
+def test_coverage_candidate_collection_rejects_every_invalid_candidate(
+    provenance_repository: Path, fault: str, message: str
+) -> None:
+    if fault == "foreign":
+        candidates = [
+            _write_retry_candidate(
+                provenance_repository,
+                metadata_path="candidates/foreign/coverage.json",
+                run_attempt="1",
+                run_id="987654321",
+            )
+        ]
+    elif fault == "future":
+        candidates = [
+            _write_retry_candidate(
+                provenance_repository,
+                metadata_path="candidates/future/coverage.json",
+                run_attempt="4",
+            )
+        ]
+    elif fault == "duplicate":
+        candidates = [
+            _write_retry_candidate(
+                provenance_repository,
+                metadata_path="candidates/duplicate-left/coverage.json",
+                run_attempt="2",
+            ),
+            _write_retry_candidate(
+                provenance_repository,
+                metadata_path="candidates/duplicate-right/coverage.json",
+                run_attempt="2",
+            ),
+        ]
+    else:
+        malformed = provenance_repository / "candidates/malformed/coverage.json"
+        malformed.parent.mkdir(parents=True)
+        malformed.write_text("{", encoding="utf-8")
+        candidates = [malformed]
+
+    with pytest.raises(ProvenanceError, match=message):
+        coverage_provenance.select_metadata_candidates(
+            repository_root=provenance_repository,
+            metadata_paths=candidates,
+            expected_sha=_git_head(provenance_repository),
+            expected_repository="example/university-ecosystem",
+            expected_run_id="123456789",
+            expected_run_attempt="3",
+            expected_job="coverage-policy-gate",
+            expected_artifact="python-coverage-provenance",
+            expected_workflow_ref=(
+                "example/university-ecosystem/.github/workflows/ci.yml@refs/heads/main"
+            ),
+            expected_workflow_sha=WORKFLOW_SHA,
+            expected_event="push",
+            consumer_retry_context=_consumer_retry_context(provenance_repository),
+        )
