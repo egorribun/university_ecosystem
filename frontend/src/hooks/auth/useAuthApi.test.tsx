@@ -328,6 +328,30 @@ describe("login", () => {
 // ---------------------------------------------------------------------------
 
 describe("login → prefetchDashboardData branches", () => {
+  it("skips dashboard prefetches in LHCI synthetic-auth builds", async () => {
+    vi.stubEnv("VITE_LHCI", "true")
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValue({
+      status: 200,
+      data: { user: fullUser({ group_id: "grp-1" }) },
+    })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.login("a@b.dev", "pw")
+      await result.current.submitMfaChallenge({ code: "123456", challengeToken: "ct" })
+      // Allow any already-scheduled dynamic-import continuations to settle;
+      // a LHCI guard must prevent those imports from being scheduled at all.
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(mocks.prefetchDashboardStories).not.toHaveBeenCalled()
+    expect(mocks.prefetchDashboardNews).not.toHaveBeenCalled()
+    expect(mocks.prefetchDashboardEvents).not.toHaveBeenCalled()
+    expect(mocks.prefetchEventsListQuery).not.toHaveBeenCalled()
+  })
+
   it("prefetches events list when the user has a group_id (lines 110-116)", async () => {
     const w = makeWires()
     mocks.apiPost.mockResolvedValue({
@@ -657,6 +681,20 @@ describe("refresh", () => {
     expect(mocks.recoverPushConsentFromBrowser).toHaveBeenCalled()
     expect(mocks.softSyncPushSubscription).toHaveBeenCalled()
     expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
+  })
+
+  it("does not sync push when refreshed profile has no browser consent", async () => {
+    const w = makeWires()
+    mocks.fetchCurrentUser.mockResolvedValue(fullUser())
+    mocks.hasPushConsent.mockReturnValue(false)
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.refresh()
+    })
+
+    expect(w.setUser).toHaveBeenCalled()
+    expect(mocks.softSyncPushSubscription).not.toHaveBeenCalled()
   })
 
   it("calls handleUnauthorized on a 401 from fetchCurrentUser (lines 347-350)", async () => {

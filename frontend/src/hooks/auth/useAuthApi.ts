@@ -88,6 +88,15 @@ export const useAuthApi = (
 
   const prefetchDashboardData = useCallback(
     async (profileUser: User) => {
+      // Lighthouse builds use a synthetic authenticated user so every route
+      // can be audited without a real login.  The dashboard is then loaded
+      // directly by each route, making this post-login warm-up redundant and
+      // expensive: its dynamic imports fan out into the dashboard/news/events
+      // graph on every audit navigation.  Keep the optimization explicitly
+      // scoped to the VITE_LHCI build flag; normal production and development
+      // login flows retain the eager dashboard warm-up.
+      if (import.meta.env.VITE_LHCI === "true") return
+
       try {
         const activeLanguage = i18n.resolvedLanguage ?? i18n.language ?? "ru"
         const language = activeLanguage === "en" ? "en" : "ru"
