@@ -146,6 +146,28 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: "3.17.0"
+
+      - name: Build Helm dependencies for Trivy
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if helm dependency build charts/university-ecosystem/; then
+              test -s charts/university-ecosystem/charts/redis-20.13.4.tgz
+              test -s charts/university-ecosystem/charts/nats-8.5.4.tgz
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "Helm dependency build failed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
+
       - name: Install Trivy (via apt repo)
         # GitHub-Releases downloads are unreliable on this runner;
         # the Aqua apt repository is the stable fallback.
@@ -185,6 +207,11 @@ jobs:
         with:
           scan-type: "config"
           scan-ref: "."
+          trivy-config: "security/trivy-university-config.yaml"
+          # The revocation chart is scanned separately with its required
+          # release identity; keeping it out of this aggregate scan prevents
+          # Helm's intentional empty defaults from being silently skipped.
+          skip-dirs: "charts/revocation-store"
           # Keep the OSS-Fuzz builder's documented root exception scoped to
           # that single Dockerfile; all other container user findings remain
           # blocking code-scanning alerts.
@@ -197,6 +224,63 @@ jobs:
           severity: "CRITICAL,HIGH"
           # Without this flag Trivy deliberately emits LOW/MEDIUM findings in
           # SARIF, which can block the zero-alert ruleset while the job is green.
+          limit-severities-for-sarif: true
+          skip-setup-trivy: true
+          exit-code: "1"
+
+      - name: Validate Helm charts before Trivy configuration scan
+        shell: bash
+        run: | # pragma: allowlist secret -- contains only a Kubernetes Secret name override
+          set -euo pipefail
+          trivy_application_secret_override="applicationSecrets.existingSecret=trivy-scan-application" # pragma: allowlist secret -- Secret name only; no credential material
+
+          helm template trivy-revocation charts/revocation-store \
+            --dependency-update=false \
+            --values security/trivy-revocation-values.yaml \
+            >/tmp/trivy-revocation-render.yaml
+          helm template trivy-university charts/university-ecosystem \
+            --dependency-update=false \
+            --set "$trivy_application_secret_override" \
+            >/tmp/trivy-university-render.yaml
+
+          scan_chart() {
+            local chart="$1"
+            local log_file="$2"
+            local output_file="/tmp/${chart##*/}-trivy-preflight.json"
+            shift 2
+            trivy config --misconfig-scanners helm \
+              --format json --output "$output_file" \
+              "$@" "$chart" 2>&1 | tee "$log_file"
+            if grep -Fqi "Skipping chart" "$log_file" || \
+              grep -Fqi "missing in charts/" "$log_file" || \
+              grep -Fqi "Failed to render Chart files" "$log_file"; then
+              echo "::error::Trivy skipped Helm chart $chart" >&2
+              return 1
+            fi
+            if ! jq -e '.Results | type == "array" and length > 0' \
+              "$output_file" >/dev/null; then
+              echo "::error::Trivy produced no rendered Helm results for $chart" >&2
+              return 1
+            fi
+          }
+
+          scan_chart charts/revocation-store /tmp/trivy-revocation-preflight.log \
+            --helm-values security/trivy-revocation-values.yaml
+          scan_chart charts/university-ecosystem /tmp/trivy-university-preflight.log \
+            --helm-set "$trivy_application_secret_override"
+
+      - name: Run Trivy revocation-store configuration scanner
+        id: trivy_revocation
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: "config"
+          scan-ref: "charts/revocation-store"
+          trivy-config: "security/trivy-revocation-config.yaml"
+          trivyignores: ".trivyignore.yaml"
+          format: "sarif"
+          output: "trivy-revocation-config.sarif"
+          severity: "CRITICAL,HIGH"
           limit-severities-for-sarif: true
           skip-setup-trivy: true
           exit-code: "1"
@@ -220,12 +304,21 @@ jobs:
           sarif_file: "trivy-config.sarif"
           category: "trivy-config"
 
+      - name: Upload Trivy revocation-store results
+        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: "trivy-revocation-config.sarif"
+          category: "trivy-revocation-config"
+
       - name: Re-assert Trivy filesystem and configuration gates
         if: always()
         shell: bash
         env:
           FILESYSTEM_OUTCOME: ${{ steps.trivy_fs.outcome }}
           CONFIGURATION_OUTCOME: ${{ steps.trivy_config.outcome }}
+          REVOCATION_OUTCOME: ${{ steps.trivy_revocation.outcome }}
         run: |
           set -euo pipefail
           failed=0
@@ -235,6 +328,10 @@ jobs:
           fi
           if [[ "$CONFIGURATION_OUTCOME" != "success" ]]; then
             echo "::error::Trivy configuration scan concluded '$CONFIGURATION_OUTCOME'."
+            failed=1
+          fi
+          if [[ "$REVOCATION_OUTCOME" != "success" ]]; then
+            echo "::error::Trivy revocation-store configuration scan concluded '$REVOCATION_OUTCOME'."
             failed=1
           fi
           exit "$failed"
@@ -365,10 +462,10 @@ jobs:
           set -u
           scan_status=0
           if [ -n "${SEMGREP_APP_TOKEN:-}" ]; then
-            semgrep ci --sarif --sarif-output=semgrep.sarif || scan_status=$?
+            semgrep ci --error --sarif --sarif-output=semgrep.sarif || scan_status=$?
           else
             semgrep scan --config auto --baseline-commit origin/main \
-              --sarif --sarif-output=semgrep.sarif || scan_status=$?
+              --error --sarif --sarif-output=semgrep.sarif || scan_status=$?
           fi
           if [ ! -s semgrep.sarif ]; then
             echo "::error::Semgrep completed without producing SARIF output"
@@ -387,8 +484,8 @@ jobs:
       - name: Fail if Semgrep reported findings or scan errors
         if: always()
         run: |
-          scan_status="${SEMGREP_SCAN_STATUS:-1}"
-          if [ "$scan_status" -ne 0 ]; then
-            echo "::error::Semgrep reported findings or a scan error (exit $scan_status)"
-            exit "$scan_status"
-          fi
+          scan_status="${SEMGREP_SCAN_STATUS:-2}"
+          python3 scripts/quality/validate_semgrep_sarif.py \
+            --report semgrep.sarif \
+            --policy security/semgrep-suppression-policy.json \
+            --scanner-status "$scan_status"

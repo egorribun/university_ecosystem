@@ -674,6 +674,7 @@ def test_trivy_sarif_categories_preserve_main_configuration_keys() -> None:
     assert categories_by_sarif == {
         "trivy-fs.sarif": ".github/workflows/ci.yml:docker-security",
         "trivy-config.sarif": "trivy-config",
+        "trivy-revocation-config.sarif": "trivy-revocation-config",
     }
 
     trivy_steps = [
@@ -718,6 +719,91 @@ def test_trivy_sarif_categories_preserve_main_configuration_keys() -> None:
     assert reassert_step["if"] == "always()"
     assert "trivy-results-first.sarif" in reassert_step["run"]
     assert "jq -e" in reassert_step["run"]
+
+
+def test_reusable_trivy_materializes_and_validates_each_helm_chart() -> None:
+    security_workflow = yaml.safe_load(
+        SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    steps = security_workflow["jobs"]["docker-security"]["steps"]
+
+    helm_setup = next(step for step in steps if step.get("name") == "Set up Helm")
+    assert helm_setup["uses"] == (
+        "azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310"
+    )
+    assert helm_setup["with"]["version"] == "3.17.0"
+
+    dependency_build = next(
+        step
+        for step in steps
+        if step.get("name") == "Build Helm dependencies for Trivy"
+    )
+    dependency_script = dependency_build["run"]
+    assert "helm dependency build charts/university-ecosystem/" in dependency_script
+    assert "Helm dependency build failed after 3 attempts." in dependency_script
+
+    preflight = next(
+        step
+        for step in steps
+        if step.get("name") == "Validate Helm charts before Trivy configuration scan"
+    )
+    preflight_script = preflight["run"]
+    assert "charts/revocation-store" in preflight_script
+    assert "charts/university-ecosystem" in preflight_script
+    assert "--helm-values security/trivy-revocation-values.yaml" in preflight_script
+    assert "Skipping chart" in preflight_script
+    assert "pipefail" in preflight_script
+
+    configuration = next(
+        step
+        for step in steps
+        if step.get("name") == "Run Trivy configuration scanner (IaC)"
+    )
+    assert configuration["with"]["trivy-config"] == (
+        "security/trivy-university-config.yaml"
+    )
+    assert configuration["with"]["skip-dirs"] == "charts/revocation-store"
+
+    revocation = next(
+        step
+        for step in steps
+        if step.get("name") == "Run Trivy revocation-store configuration scanner"
+    )
+    assert revocation["id"] == "trivy_revocation"
+    assert revocation["continue-on-error"] is True
+    assert revocation["with"]["scan-ref"] == "charts/revocation-store"
+    assert revocation["with"]["trivy-config"] == (
+        "security/trivy-revocation-config.yaml"
+    )
+    assert revocation["with"]["exit-code"] == "1"
+
+    assert yaml.safe_load(
+        (REPOSITORY_ROOT / "security" / "trivy-revocation-config.yaml").read_text(
+            encoding="utf-8"
+        )
+    )["misconfiguration"]["helm"]["values"] == ["security/trivy-revocation-values.yaml"]
+    scan_values = yaml.safe_load(
+        (REPOSITORY_ROOT / "security" / "trivy-revocation-values.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert scan_values["applicationReleaseName"] == "trivy-scan"
+    assert scan_values["redis"]["fullnameOverride"] == "trivy-scan-revocation-redis"
+    assert scan_values["redis"]["image"]["digest"].startswith("sha256:")
+    assert scan_values["redis"]["metrics"]["image"]["digest"].startswith("sha256:")
+    assert all(
+        not isinstance(value, str) or "password" not in value.lower()
+        for value in scan_values["redis"].values()
+        if not isinstance(value, dict)
+    )
+    university_config = yaml.safe_load(
+        (REPOSITORY_ROOT / "security" / "trivy-university-config.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert university_config["misconfiguration"]["helm"]["set"] == [
+        "applicationSecrets.existingSecret=trivy-scan-application"
+    ]
 
 
 def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
@@ -2559,6 +2645,7 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
     assert (
         "semgrep scan --config auto --baseline-commit origin/main" in semgrep_run_text
     )
+    assert "--error" in semgrep_run_text
     assert "--sarif --sarif-output=semgrep.sarif" in semgrep_run_text
     assert "SEMGREP_SCAN_STATUS" in semgrep_run_text
     assert any(
@@ -2566,6 +2653,14 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
         and step.get("if") == "always()"
         for step in semgrep_steps
     )
+    semgrep_gate = next(
+        step
+        for step in semgrep_steps
+        if step.get("name") == "Fail if Semgrep reported findings or scan errors"
+    )
+    assert "validate_semgrep_sarif.py" in semgrep_gate["run"]
+    assert "security/semgrep-suppression-policy.json" in semgrep_gate["run"]
+    assert '--scanner-status "$scan_status"' in semgrep_gate["run"]
     semgrep_upload = next(
         step
         for step in semgrep_steps

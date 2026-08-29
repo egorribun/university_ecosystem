@@ -724,9 +724,11 @@ jobs:
             done
           done
           test "${#reports[@]}" -eq 30
-          retry_values=()
-          mapfile -t retry_values < <(
-            python3 -m scripts.quality.coverage_retry_provenance_cli \
+          retry_output="$(mktemp)"
+          retry_error="$(mktemp)"
+          trap 'rm -f "$retry_output" "$retry_error"' EXIT
+          retry_status=0
+          python3 -m scripts.quality.coverage_retry_provenance_cli \
               --repository-root "$GITHUB_WORKSPACE" \
               --repository "$WORKFLOW_REPOSITORY" \
               --run-id "$RUN_ID" \
@@ -751,9 +753,21 @@ jobs:
               --policy-input scripts/quality/coverage_retry_provenance_cli.py \
               --policy-input scripts/quality/select_coverage_artifacts.py \
               --policy-input scripts/quality/select_lighthouse_artifacts.py \
-              --policy-input scripts/quality/select_lighthouse_artifacts_cli.py
-          )
-          test "${#retry_values[@]}" -eq 11
+              --policy-input scripts/quality/select_lighthouse_artifacts_cli.py \
+              >"$retry_output" 2>"$retry_error" || retry_status=$?
+          if [[ "$retry_status" -ne 0 ]]; then
+            echo "::error::Lighthouse retry provenance CLI failed with exit $retry_status." >&2
+            cat "$retry_error" >&2
+            exit "$retry_status"
+          fi
+          retry_values=()
+          mapfile -t retry_values < "$retry_output"
+          if [[ "${#retry_values[@]}" -ne 11 ]]; then
+            echo "::error::Lighthouse retry CLI returned ${#retry_values[@]} values; expected 11." >&2
+            cat "$retry_error" >&2
+            nl -ba "$retry_output" >&2
+            exit 1
+          fi
           retry_args=()
           for value in "${retry_values[@]}"; do
             retry_args+=(--retry-provenance "$value")

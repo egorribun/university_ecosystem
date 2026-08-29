@@ -995,9 +995,14 @@ def test_reusable_trivy_scans_upload_evidence_then_fail_closed() -> None:
     ]
     filesystem = _step(job, "Run Trivy vulnerability scanner (filesystem)")
     configuration = _step(job, "Run Trivy configuration scanner (IaC)")
+    revocation = _step(job, "Run Trivy revocation-store configuration scanner")
     reassert = _step(job, "Re-assert Trivy filesystem and configuration gates")
 
-    for scan, scan_id in ((filesystem, "trivy_fs"), (configuration, "trivy_config")):
+    for scan, scan_id in (
+        (filesystem, "trivy_fs"),
+        (configuration, "trivy_config"),
+        (revocation, "trivy_revocation"),
+    ):
         assert scan["id"] == scan_id
         assert scan["continue-on-error"] is True
         assert scan["with"]["exit-code"] == "1"
@@ -1005,6 +1010,7 @@ def test_reusable_trivy_scans_upload_evidence_then_fail_closed() -> None:
     assert reassert["env"] == {
         "FILESYSTEM_OUTCOME": "${{ steps.trivy_fs.outcome }}",
         "CONFIGURATION_OUTCOME": "${{ steps.trivy_config.outcome }}",
+        "REVOCATION_OUTCOME": "${{ steps.trivy_revocation.outcome }}",
     }
     assert 'exit "$failed"' in reassert["run"]
 

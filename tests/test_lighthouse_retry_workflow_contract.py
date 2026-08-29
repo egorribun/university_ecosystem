@@ -116,6 +116,16 @@ def test_lighthouse_producer_publishes_fixed_retry_artifact_contract() -> None:
         in provenance_run
     )
     assert "python3 -m scripts.quality.coverage_retry_provenance_cli" in provenance_run
+    assert 'retry_output="$(mktemp)"' in provenance_run
+    assert 'retry_error="$(mktemp)"' in provenance_run
+    assert 'trap \'rm -f "$retry_output" "$retry_error"\' EXIT' in provenance_run
+    assert (
+        "python3 -m scripts.quality.coverage_retry_provenance_cli \\" in provenance_run
+    )
+    assert ' >"$retry_output" 2>"$retry_error"' in provenance_run
+    assert 'cat "$retry_error" >&2' in provenance_run
+    assert 'mapfile -t retry_values < "$retry_output"' in provenance_run
+    assert "retry CLI returned" in provenance_run
     assert (
         "--config-input .github/workflows/reusable-frontend-tests.yml" in provenance_run
     )

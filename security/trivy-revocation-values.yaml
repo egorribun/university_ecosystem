@@ -1,0 +1,19 @@
+# Non-secret, schema-valid identity overrides used only by the CI Trivy Helm
+# preflight.  The deployed release receives these values from the bootstrap
+# workflow and deliberately keeps the chart defaults empty so an accidental
+# standalone install cannot bind to an application release.
+applicationReleaseName: trivy-scan
+
+redis:
+  image:
+    # The chart's validation requires a digest-shaped value even for this
+    # render-only scan.  No image is pulled by `trivy config`; deployment values
+    # still come from the release's reviewed digest variables.
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  metrics:
+    image:
+      digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+  fullnameOverride: trivy-scan-revocation-redis
+  commonLabels:
+    "university-ecosystem.io/revocation-store-for": trivy-scan
+    "app.kubernetes.io/instance": trivy-scan

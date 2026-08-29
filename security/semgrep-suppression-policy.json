@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "rule_id": "python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected",
+      "path": "scripts/quality/collect_release_check_evidence.py",
+      "start_line": 166,
+      "end_line": 166,
+      "owner": "security@university.example",
+      "expires": "2026-12-31",
+      "reason": "The URL is constructed from the fixed api.github.com origin and a fullmatched Actions endpoint; tests cover rejection of every other endpoint and HTTPS is required."
+    },
+    {
+      "rule_id": "python.lang.security.audit.httpsconnection-detected.httpsconnection-detected",
+      "path": "scripts/quality/download_stryker_cost_artifacts.py",
+      "start_line": 211,
+      "end_line": 216,
+      "owner": "security@university.example",
+      "expires": "2026-12-31",
+      "reason": "The host, port, redirect policy, and bounded request target are validated before an explicit system-trust TLS context is passed to HTTPSConnection; transport tests cover the boundary."
+    },
+    {
+      "rule_id": "python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected",
+      "path": "scripts/quality/select_same_run_artifact_cli.py",
+      "start_line": 169,
+      "end_line": 173,
+      "owner": "security@university.example",
+      "expires": "2026-12-31",
+      "reason": "The URL uses the fixed api.github.com origin and a strict current-run path allowlist; the request uses an explicit verified TLS context and bounded response reader."
+    }
+  ]
+}

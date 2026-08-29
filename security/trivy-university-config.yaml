@@ -1,0 +1,7 @@
+# Render-only Helm inputs for the aggregate Trivy configuration scan.  The
+# existing Secret name avoids inline credentials while leaving Redis/NATS
+# dependencies enabled so their vendored templates are scanned too.
+misconfiguration:
+  helm:
+    set:
+      - applicationSecrets.existingSecret=trivy-scan-application # pragma: allowlist secret -- Secret name only; no credential material
