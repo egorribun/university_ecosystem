@@ -292,8 +292,16 @@ function RootShell({ children }: { children: React.ReactNode }) {
   // shell for the first browser render; the client consumes this marker and
   // replaces the stub with the authoritative /users/me response. No PII or
   // token is serialized.
-  const ssrAuthMarker =
+  const shellAuthMarker =
     ssrAuth?.isAuth && ssrAuth.user ? `authenticated:${ssrAuth.user.role}` : undefined
+  // `hydrateRoot(document, ...)` reconciles the document shell as well as the
+  // application subtree. Reuse the server marker when the client evaluates
+  // RootShell during hydration so the shell attribute itself is stable.
+  const existingAuthMarker =
+    typeof document !== "undefined"
+      ? (document.getElementById("root")?.getAttribute("data-ssr-auth") ?? undefined)
+      : undefined
+  const ssrAuthMarker = shellAuthMarker ?? existingAuthMarker
   const htmlClassName =
     [isDark && "dark", isLhci && "lhci-mode"].filter(Boolean).join(" ") || undefined
 
