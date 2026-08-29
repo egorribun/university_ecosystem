@@ -147,6 +147,9 @@ COPY --from=wasm-builder --chown=node:node /wasm/wasm-sanitizer/pkg ./wasm-sanit
 # doesn't need them.
 COPY --chown=node:node frontend/scripts/server-prod.mjs ./scripts/server-prod.mjs
 COPY --chown=node:node frontend/scripts/contentTypes.mjs ./scripts/contentTypes.mjs
+COPY --chown=node:node frontend/scripts/not-found-response.mjs ./scripts/not-found-response.mjs
+COPY --chown=node:node frontend/scripts/lhci-ssr-response.mjs ./scripts/lhci-ssr-response.mjs
+COPY --chown=node:node frontend/scripts/lhci-preview-mode.mjs ./scripts/lhci-preview-mode.mjs
 COPY --chown=node:node frontend/scripts/server-response-stream.mjs ./scripts/server-response-stream.mjs
 COPY --chown=node:node frontend/scripts/server-readiness.mjs ./scripts/server-readiness.mjs
 COPY --chown=node:node frontend/scripts/server-request-log.mjs ./scripts/server-request-log.mjs

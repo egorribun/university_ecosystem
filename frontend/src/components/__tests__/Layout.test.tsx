@@ -18,6 +18,10 @@ describe("Layout", () => {
     state.online = true
   })
 
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
   it("renders online content without an offline warning", () => {
     const { container } = render(
       <Layout className="custom-layout">
@@ -35,5 +39,17 @@ describe("Layout", () => {
     render(<Layout>Offline page</Layout>)
 
     expect(screen.getByText("offlineIndicator.offline")).toBeInTheDocument()
+  })
+
+  it("keeps the server-rendered shell visible in the Lighthouse preview", () => {
+    vi.stubEnv("VITE_LHCI", "true")
+
+    render(
+      <Layout>
+        <span>Audit content</span>
+      </Layout>
+    )
+
+    expect(screen.getByText("Audit content")).toBeInTheDocument()
   })
 })

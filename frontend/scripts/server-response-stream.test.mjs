@@ -92,6 +92,9 @@ test("the production frontend image copies every server runtime module", async (
   for (const runtimeModule of [
     "frontend/scripts/server-prod.mjs",
     "frontend/scripts/contentTypes.mjs",
+    "frontend/scripts/not-found-response.mjs",
+    "frontend/scripts/lhci-ssr-response.mjs",
+    "frontend/scripts/lhci-preview-mode.mjs",
     "frontend/scripts/server-response-stream.mjs",
     "frontend/scripts/server-readiness.mjs",
     "frontend/scripts/server-request-log.mjs",

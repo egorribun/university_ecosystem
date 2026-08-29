@@ -16,6 +16,12 @@ import { chromium } from "playwright"
 import { buildSafeCommandInvocation } from "./lhci-command.mjs"
 import routePolicyConfig from "./lhci-route-policy-config.cjs"
 import { assertLhciRoutePolicy, normalizeLhciPath } from "./lhci-route-policy.mjs"
+import {
+  pathForLhciPreview,
+  previewReadyPattern,
+  previewServerCommand,
+  resolveLhciPreviewMode,
+} from "./lhci-preview-mode.mjs"
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -23,8 +29,10 @@ const frontendRoot = path.resolve(__dirname, "..")
 
 process.env.VITE_LHCI = "true"
 
-const base = process.env.PREVIEW_URL ?? process.env.LHCI_URL ?? ""
-const useRemotePreview = Boolean(base)
+const previewMode = resolveLhciPreviewMode(process.env)
+const base = previewMode.base
+const useRemotePreview = previewMode.kind === "remote"
+const useSsrPreview = previewMode.kind === "ssr"
 let dependenciesEnsured = false
 
 async function runCommand(command, args, description, extraEnv = {}) {
@@ -176,9 +184,13 @@ async function createConfig() {
     ? lhciUrlsEnv.split(",").map(normalizeLhciPath).filter(Boolean)
     : undefined
   const targetPaths = overridePaths?.length ? overridePaths : defaultPaths
+  const previewPaths = targetPaths.map((pathname) => pathForLhciPreview(pathname, previewMode))
   const collect = {
     numberOfRuns: 3,
-    url: useRemotePreview ? targetPaths.map((p) => `${base}${p === "/" ? "" : p}`) : targetPaths,
+    url:
+      useRemotePreview || useSsrPreview
+        ? previewPaths.map((p) => `${base}${p === "/" ? "" : p}`)
+        : targetPaths,
     chromePath,
     settings: {
       // W162 SW1 (Tier 1 Path d) — W160 §Honesty NEW #1 CLOSED via "platform
@@ -337,7 +349,7 @@ async function createConfig() {
     },
   }
 
-  if (!useRemotePreview) {
+  if (!useRemotePreview && !useSsrPreview) {
     // W139 SW5 fix — post-W125 SSR migration, dist/ is split into dist/client/
     // (browser bundle + index.html) + dist/server/ (SSR handler). Lighthouse
     // staticDistDir MUST point at dist/client/ for index.html-driven routes.
@@ -354,8 +366,8 @@ async function createConfig() {
     collect.staticDistDir = path.resolve(frontendRoot, "dist", "client")
     collect.isSinglePageApplication = true
   } else {
-    collect.startServerCommand = "node scripts/lhci-preview.mjs"
-    collect.startServerReadyPattern = "LHCI_READY"
+    collect.startServerCommand = previewServerCommand(previewMode)
+    collect.startServerReadyPattern = previewReadyPattern(previewMode)
     collect.startServerReadyTimeout = 120000
   }
 
@@ -416,9 +428,14 @@ async function run() {
   const config = await createConfig()
   const expectedPaths = config.ci.collect.url
 
-  // Build and prepare dist for LHCI mode if not using remote preview
-  const useRemotePreview = Boolean(process.env.PREVIEW_URL ?? process.env.LHCI_URL ?? "")
-  if (!useRemotePreview) {
+  // Build and prepare dist for LHCI mode if using the static fallback. The
+  // managed SSR preview serves route-specific HTML directly from the same
+  // immutable build, so copying a route-agnostic SPA shell would reintroduce
+  // the createRoot() cold-start penalty this mode is designed to measure.
+  const runPreviewMode = resolveLhciPreviewMode(process.env)
+  const useRemotePreview = runPreviewMode.kind === "remote"
+  const useSsrPreview = runPreviewMode.kind === "ssr"
+  if (!useRemotePreview && !useSsrPreview) {
     if (!process.env.SKIP_BUILD) {
       console.log("Building for LHCI...")
       await runCommand("npm", ["run", "build"], "npm run build")

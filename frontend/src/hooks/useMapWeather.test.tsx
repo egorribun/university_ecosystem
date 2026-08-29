@@ -74,7 +74,32 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
   localStorage.clear()
+})
+
+describe("useMapWeather — Lighthouse preview", () => {
+  it("uses deterministic local data without cache or network side effects", async () => {
+    vi.stubEnv("VITE_LHCI", "true")
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem")
+
+    const client = newClient()
+    const { result } = renderHook(() => useMapWeather(), { wrapper: wrapper(client) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toMatchObject({
+      temperature: 20,
+      weatherCode: 2,
+      condition: "cloudy",
+      hourlyForecast: [
+        { hour: 12, temperature: 20, condition: "cloudy" },
+        { hour: 13, temperature: 21, condition: "clear" },
+      ],
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+    expect(setItemSpy).not.toHaveBeenCalled()
+    setItemSpy.mockRestore()
+  })
 })
 
 describe("useMapWeather — cache hit", () => {

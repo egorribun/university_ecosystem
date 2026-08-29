@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { useNotifications } from "@/hooks/useNotifications"
 import NotificationsBell from "../feedback/NotificationsBell"
@@ -122,6 +123,17 @@ describe("NotificationsBell", () => {
   beforeEach(() => {
     useNotificationsMock.mockReset()
     motionState.reducedMotion = false
+  })
+
+  it("does not access the DOM while rendering on the server", () => {
+    useNotificationsMock.mockReturnValue(baseState())
+    const serverDocument = globalThis.document
+    vi.stubGlobal("document", undefined)
+    try {
+      expect(() => renderToString(<NotificationsBell />)).not.toThrow()
+    } finally {
+      vi.stubGlobal("document", serverDocument)
+    }
   })
 
   it("exposes dialog state and closes with Escape while restoring trigger focus", async () => {

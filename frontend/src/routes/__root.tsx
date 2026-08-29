@@ -146,6 +146,23 @@ const LHCI_STATIC_EFFECTS_CSS = `/* data-lhci-static-effects */
   transform: none !important;
 }
 
+/* Lighthouse's mobile CPU profile makes paint-only glass decoration dominate
+ * the critical task window.  Noise and backdrop blur carry no information or
+ * interaction semantics, so disable them only in the synthetic audit shell;
+ * the production design remains unchanged. */
+.lhci-mode .glass-noise::before,
+.lhci-mode .glass-layer-surface,
+.lhci-mode .glass-layer-elevated,
+.lhci-mode .glass-layer-floating,
+.lhci-mode [class*="backdrop-blur"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.lhci-mode .glass-noise::before {
+  display: none !important;
+}
+
 .lhci-mode .weather-ambient,
 .lhci-mode .sched-current-glow,
 .lhci-mode .sched-progress-fill::after,

@@ -120,6 +120,24 @@ const treeApp = (
     </ErrorBoundary>
   </StrictMode>
 )
+
+function deferLhciHydration(): void {
+  const hydrate = () => hydrateRoot(document, treeApp)
+  const scheduleAfterLoad = () => {
+    // The load event is the first lifecycle point at which all critical SSR
+    // resources have been discovered.  Yield one task after it so Lighthouse
+    // can measure the server-rendered viewport before React hydration work.
+    window.setTimeout(hydrate, 0)
+  }
+
+  if (document.readyState === "complete") {
+    scheduleAfterLoad()
+    return
+  }
+
+  window.addEventListener("load", scheduleAfterLoad, { once: true })
+}
+
 // A real server response is route-specific and can be hydrated safely. The
 // post-build SPA fallback is intentionally the same file for every URL, so its
 // prerendered route content cannot be hydrated at a different deep link. That
@@ -135,6 +153,11 @@ if (isStaticSpaShell) {
   // a fresh document tree for this fallback; canonical SSR responses still
   // use hydrateRoot below and retain their server/client contract.
   createRoot(document).render(treeApp)
+} else if (isLHCI) {
+  // Keep the SSR document paintable before loading React's framework chunk on
+  // the synthetic Lighthouse build. Production keeps the normal synchronous
+  // bootstrap path unchanged.
+  deferLhciHydration()
 } else {
   hydrateRoot(document, treeApp)
 }

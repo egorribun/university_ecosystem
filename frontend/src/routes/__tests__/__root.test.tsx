@@ -115,6 +115,8 @@ describe("__root.tsx components", () => {
       expect(staticEffects).toBeInTheDocument()
       expect(staticEffects?.textContent).toContain(".lhci-mode .aurora-mesh::after")
       expect(staticEffects?.textContent).toContain("animation: none !important")
+      expect(staticEffects?.textContent).toContain(".lhci-mode .glass-noise::before")
+      expect(staticEffects?.textContent).toContain("backdrop-filter: none !important")
     })
 
     it("keeps the loading label outside the cycling logo mark", () => {

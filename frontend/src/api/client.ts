@@ -192,6 +192,11 @@ export const ensureCsrfCookie = (): Promise<void> => {
   // Node runtime gets the Cookie header via W133 SW1 globalThis.__ssrCookieGetter__
   // (the SSR caller already has the cookie chain from the incoming request).
   if (typeof document === "undefined") return Promise.resolve()
+  // LHCI builds use a deterministic, side-effect-free Axios adapter and do
+  // not have a backend service behind the preview server.  Do not bypass that
+  // contract with a real browser `fetch` which can wait for the network
+  // timeout on every audited route; production builds never set this flag.
+  if (import.meta.env.VITE_LHCI === "true") return Promise.resolve()
   // Test env skip — vitest sets `import.meta.env.MODE === "test"` and tests
   // mount AuthContext.Provider with real auth (mocked). Hitting the CSRF
   // endpoint in tests would trip MSW unhandled-request warnings + risk

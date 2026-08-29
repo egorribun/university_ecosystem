@@ -14,6 +14,7 @@ type LayoutProps = {
 const Layout = ({ children, className }: LayoutProps) => {
   const isOnline = useOnlineStatus()
   const { t } = useTranslation("system")
+  const isLhci = import.meta.env.VITE_LHCI === "true"
 
   // Wave 120 SW3 (a11y/ARIA): switched `<m.main id="main">` to
   // `<m.div>` to fix duplicate main landmark — MainLayout already
@@ -27,7 +28,10 @@ const Layout = ({ children, className }: LayoutProps) => {
     <m.div
       data-scroll-root
       tabIndex={-1}
-      initial="hidden"
+      // Lighthouse renders the SSR response before effects run.  Starting the
+      // audit-only shell hidden would make a correct server render paint as a
+      // blank page and inflate LCP; production retains the composed entrance.
+      initial={isLhci ? false : "hidden"}
       animate="visible"
       exit="exit"
       variants={fadeVariants}

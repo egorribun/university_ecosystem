@@ -534,6 +534,11 @@ jobs:
       # starts. run-lhci still prepares route fallbacks and performs the
       # complete collect/assert gate.
       SKIP_BUILD: "1"
+      # Serve route-specific SSR HTML from the immutable build. Measuring the
+      # route-agnostic static SPA fallback would clear it through createRoot()
+      # on every deep link and turn route chunk loading into synthetic LCP.
+      LHCI_USE_SSR_PREVIEW: "1"
+      LHCI_SSR_PREVIEW_PORT: "4175"
       # ubuntu-24.04 already contains the browser runtime libraries. The
       # Playwright apt bootstrap is intentionally opt-in here: every matrix
       # shard has its own runner, and a slow apt mirror can consume the full

@@ -463,4 +463,16 @@ describe("Dashboard closure behavior", () => {
     expect(screen.queryByTestId("weather-ambient")).not.toBeInTheDocument()
     unmount()
   })
+
+  it("keeps the first viewport paint-ready during Lighthouse SSR audits", async () => {
+    vi.stubEnv("VITE_LHCI", "true")
+    vi.resetModules()
+
+    const { default: LhciDashboard } = await import("../Dashboard")
+    const { unmount } = render(<LhciDashboard />)
+
+    expect(screen.getAllByTestId("motion-card").at(0)).toHaveAttribute("data-cascade", "idle")
+    expect(window.sessionStorage.getItem("dash-cascade-done")).toBeNull()
+    unmount()
+  })
 })

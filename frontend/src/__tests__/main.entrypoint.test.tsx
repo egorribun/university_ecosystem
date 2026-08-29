@@ -252,6 +252,7 @@ describe("browser entrypoint", () => {
     setServiceWorkerSupport(true)
 
     await importMain()
+    await vi.waitFor(() => expect(mocks.hydrateRoot).toHaveBeenCalledOnce())
 
     expect(document.getElementById("lhci-marker")).toHaveStyle({ display: "none" })
     expect(mocks.registerServiceWorker).not.toHaveBeenCalled()
@@ -261,6 +262,7 @@ describe("browser entrypoint", () => {
     vi.stubEnv("VITE_LHCI", "true")
 
     await importMain()
+    await vi.waitFor(() => expect(mocks.hydrateRoot).toHaveBeenCalledOnce())
 
     expect(mocks.initGlobalErrorHandlers).toHaveBeenCalledOnce()
     expect(mocks.ensureTrustedTypesPolicies).toHaveBeenCalledOnce()
@@ -274,6 +276,20 @@ describe("browser entrypoint", () => {
     document.getElementById("lhci-marker")?.remove()
 
     await importMain()
+
+    await vi.waitFor(() => expect(mocks.hydrateRoot).toHaveBeenCalledOnce())
+  })
+
+  it("waits for the document load event before hydrating an LHCI SSR shell", async () => {
+    vi.useFakeTimers()
+    vi.stubEnv("VITE_LHCI", "true")
+    setReadyState("loading")
+
+    await importMain()
+    expect(mocks.hydrateRoot).not.toHaveBeenCalled()
+
+    window.dispatchEvent(new Event("load"))
+    await vi.runAllTimersAsync()
 
     expect(mocks.hydrateRoot).toHaveBeenCalledOnce()
   })

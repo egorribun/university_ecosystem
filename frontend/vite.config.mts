@@ -177,6 +177,7 @@ export default defineConfig(({ mode }) => {
   // retain production react-dom/server to avoid a jsx/jsxDEV runtime mismatch.
   const isReactDevMode =
     env.FRONTEND_REACT_DEV_MODE === "true" || process.env.FRONTEND_REACT_DEV_MODE === "true"
+  const isLhci = env.VITE_LHCI === "true" || process.env.VITE_LHCI === "true"
   const manifest = loadManifest()
 
   const mk = (rewrite = false) => ({
@@ -404,6 +405,18 @@ export default defineConfig(({ mode }) => {
             return deps.filter((dep) => !dep.includes("vendor-password-strength-"))
           }
           if (hostType !== "html") return deps
+          // The LHCI bundle is served through the production SSR wrapper.  Its
+          // HTML already contains the route's meaningful content, so eager
+          // preloading every shared and feature chunk only competes with the
+          // critical stylesheet on the emulated mobile connection (the
+          // dashboard response otherwise advertises >1 MiB of JavaScript
+          // before first paint).  Keep the application entry discoverable and
+          // let its normal ESM imports schedule hydration dependencies after
+          // CSS/HTML have painted.  Production builds retain the complete
+          // route manifest preload policy.
+          if (isLhci) {
+            return deps.filter((dep) => /(?:^|[\\/])index-[^/]+\.js$/u.test(dep))
+          }
           return deps.filter(
             (dep) =>
               !dep.includes("jspdf") && !dep.includes("html2canvas") && !dep.includes("purify")

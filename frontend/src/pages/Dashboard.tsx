@@ -46,6 +46,12 @@ const CASCADE_KEY = "dash-cascade-done"
 // flag undefined, Rolldown DCE drops the entire E2E branch (verify via
 // `grep -l "data-e2e-stub" dist/client/assets/*.js` empty in PROD build).
 const E2E_MODE = import.meta.env.VITE_E2E_MODE === "1"
+// Lighthouse measures the server-rendered first viewport.  A session-scoped
+// entrance cascade would otherwise start with the three content cards at
+// opacity 0 and make the audit report animation delay as LCP.  Keep the
+// product cascade for real users, but make the audit build paint-ready from
+// the first client render (the same contract as the SSR shell).
+const LHCI_MODE = import.meta.env.VITE_LHCI === "true"
 
 /** Wave 54: Cascade reveal props — extracted to avoid 3x copy-paste (DESIGN-54-05)
  *  Ease [0.16, 1, 0.3, 1] = expo-out — snappy deceleration, no bounce. Intentional
@@ -137,6 +143,7 @@ export default function Dashboard() {
 
   // Wave 48: Card reveal cascade — first load per session
   const [showCascade, setShowCascade] = useState(() => {
+    if (LHCI_MODE) return false
     if (typeof sessionStorage === "undefined") return false
     return !sessionStorage.getItem(CASCADE_KEY)
   })

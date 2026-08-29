@@ -156,211 +156,216 @@ export default function NotificationsBell() {
         ) : null}
       </button>
 
-      {createPortal(
-        <AnimatePresence>
-          {isOpen && (
-            <m.div
-              id="notifications-center"
-              role="dialog"
-              aria-modal="false"
-              aria-labelledby="notifications-center-title"
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              variants={listVariants}
-              className={cn(
-                "fixed z-popover origin-top-right",
-                // Mobile styles: we handle translation in framer motion to avoid conflict
-                "max-sm:left-1/2",
-                // Desktop styles
-                "sm:w-96",
-                // Glass styles applied directly to motion component for immediate effect
-                "bg-glass backdrop-blur-xl border border-glass-border rounded-2xl shadow-glass overflow-hidden ring-1 ring-black/(--opacity-faint)"
-              )}
-              style={{
-                top: coords.top,
-                right: coords.right ?? undefined,
-                width: isMobile ? "calc(100vw - 2rem)" : undefined,
-              }}
-              ref={dropdownRef}
-            >
-              {/* Header */}
-              <div className="p-4 border-b border-glass-border flex items-center justify-between bg-(--bg-surface)/(--opacity-soft)">
-                <div className="flex items-center gap-2">
-                  <h3
-                    id="notifications-center-title"
-                    className="font-semibold text-text-primary tracking-tight"
-                  >
-                    {t("system:notificationsBell.title")}
-                  </h3>
-                  {unreadCount > 0 && (
-                    <span className="bg-brand-subtle-bg text-brand text-xs px-2 py-0.5 rounded-full font-medium border border-brand/(--opacity-dim)">
-                      {unreadCount} {t("notifications:new", "New")}
-                    </span>
+      {typeof document !== "undefined"
+        ? createPortal(
+            <AnimatePresence>
+              {isOpen && (
+                <m.div
+                  id="notifications-center"
+                  role="dialog"
+                  aria-modal="false"
+                  aria-labelledby="notifications-center-title"
+                  initial="hidden"
+                  animate="visible"
+                  exit="exit"
+                  variants={listVariants}
+                  className={cn(
+                    "fixed z-popover origin-top-right",
+                    // Mobile styles: we handle translation in framer motion to avoid conflict
+                    "max-sm:left-1/2",
+                    // Desktop styles
+                    "sm:w-96",
+                    // Glass styles applied directly to motion component for immediate effect
+                    "bg-glass backdrop-blur-xl border border-glass-border rounded-2xl shadow-glass overflow-hidden ring-1 ring-black/(--opacity-faint)"
                   )}
-                </div>
-
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={() => markAll()}
-                    disabled={actionsDisabled}
-                    className="min-h-11 min-w-11 p-2 text-(--text-secondary) hover:text-text-primary hover:bg-(--text-secondary)/(--opacity-faint) rounded-lg transition-colors focus-ring-premium disabled:opacity-soft disabled:hover:bg-transparent"
-                    aria-label={t("system:notificationsBell.markAll")}
-                    title={t("system:notificationsBell.markAll")}
-                  >
-                    <CheckCheck className="w-4 h-4" aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      clearAll(undefined, {
-                        onSuccess: () => setIsOpen(false),
-                      })
-                    }
-                    disabled={actionsDisabled}
-                    className="min-h-11 min-w-11 p-2 text-(--text-secondary) hover:text-error-text hover:bg-error-bg/(--opacity-subtle) rounded-lg transition-colors focus-ring-premium disabled:opacity-soft disabled:hover:bg-transparent"
-                    aria-label={t("system:notificationsBell.clear")}
-                    title={t("system:notificationsBell.clear")}
-                  >
-                    <Trash2 className="w-4 h-4" aria-hidden="true" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Content */}
-              <div className="max-h-(--h-hero-lg) sm:max-h-(--h-hero-md) overflow-y-auto custom-scrollbar">
-                {isError && !isRefetching ? (
-                  <div className="p-8 text-center flex flex-col items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-error-bg/(--opacity-dim) flex items-center justify-center text-error-text mb-2">
-                      <Info className="w-6 h-6" />
-                    </div>
-                    <p className="text-sm text-error-text/(--opacity-hover)">
-                      {t("system:notificationsBell.error")}
-                    </p>
-                    <button
-                      onClick={() => refetch()}
-                      className="text-xs bg-(--border-subtle) hover:bg-(--border-strong) text-text-primary px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      {t("system:errorBoundary.retry")}
-                    </button>
-                  </div>
-                ) : isLoading && !hasNotifications ? (
-                  <div className="p-12 flex justify-center">
-                    <Loader2 className="w-8 h-8 text-brand animate-spin" />
-                  </div>
-                ) : data.length === 0 ? (
-                  <div className="p-12 text-center text-(--text-secondary) flex flex-col items-center gap-3">
-                    <div className="w-16 h-16 rounded-2xl bg-(--text-secondary)/(--opacity-faint) flex items-center justify-center mb-2">
-                      <Bell className="w-8 h-8 opacity-dim" />
-                    </div>
-                    <p className="text-sm opacity-medium font-medium">
-                      {t("system:notificationsBell.empty")}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col">
-                    {data.map((n) => (
-                      <m.div
-                        key={n.id}
-                        variants={itemVariants}
-                        className={cn(
-                          "relative group border-b border-glass-border last:border-0 p-4 transition-all hover:bg-(--text-secondary)/(--opacity-faint)",
-                          !n.read ? "bg-brand/(--opacity-faint)" : ""
-                        )}
+                  style={{
+                    top: coords.top,
+                    right: coords.right ?? undefined,
+                    width: isMobile ? "calc(100vw - 2rem)" : undefined,
+                  }}
+                  ref={dropdownRef}
+                >
+                  {/* Header */}
+                  <div className="p-4 border-b border-glass-border flex items-center justify-between bg-(--bg-surface)/(--opacity-soft)">
+                    <div className="flex items-center gap-2">
+                      <h3
+                        id="notifications-center-title"
+                        className="font-semibold text-text-primary tracking-tight"
                       >
-                        <a
-                          href={n.link || "#"}
-                          onClick={(e) => {
-                            if (!n.link) e.preventDefault()
-                            if (!n.read) markRead(n.id)
-                          }}
-                          className={cn("flex gap-3", n.link ? "cursor-pointer" : "cursor-default")}
+                        {t("system:notificationsBell.title")}
+                      </h3>
+                      {unreadCount > 0 && (
+                        <span className="bg-brand-subtle-bg text-brand text-xs px-2 py-0.5 rounded-full font-medium border border-brand/(--opacity-dim)">
+                          {unreadCount} {t("notifications:new", "New")}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => markAll()}
+                        disabled={actionsDisabled}
+                        className="min-h-11 min-w-11 p-2 text-(--text-secondary) hover:text-text-primary hover:bg-(--text-secondary)/(--opacity-faint) rounded-lg transition-colors focus-ring-premium disabled:opacity-soft disabled:hover:bg-transparent"
+                        aria-label={t("system:notificationsBell.markAll")}
+                        title={t("system:notificationsBell.markAll")}
+                      >
+                        <CheckCheck className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          clearAll(undefined, {
+                            onSuccess: () => setIsOpen(false),
+                          })
+                        }
+                        disabled={actionsDisabled}
+                        className="min-h-11 min-w-11 p-2 text-(--text-secondary) hover:text-error-text hover:bg-error-bg/(--opacity-subtle) rounded-lg transition-colors focus-ring-premium disabled:opacity-soft disabled:hover:bg-transparent"
+                        aria-label={t("system:notificationsBell.clear")}
+                        title={t("system:notificationsBell.clear")}
+                      >
+                        <Trash2 className="w-4 h-4" aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Content */}
+                  <div className="max-h-(--h-hero-lg) sm:max-h-(--h-hero-md) overflow-y-auto custom-scrollbar">
+                    {isError && !isRefetching ? (
+                      <div className="p-8 text-center flex flex-col items-center gap-3">
+                        <div className="w-12 h-12 rounded-full bg-error-bg/(--opacity-dim) flex items-center justify-center text-error-text mb-2">
+                          <Info className="w-6 h-6" />
+                        </div>
+                        <p className="text-sm text-error-text/(--opacity-hover)">
+                          {t("system:notificationsBell.error")}
+                        </p>
+                        <button
+                          onClick={() => refetch()}
+                          className="text-xs bg-(--border-subtle) hover:bg-(--border-strong) text-text-primary px-3 py-1.5 rounded-lg transition-colors"
                         >
-                          <div
+                          {t("system:errorBoundary.retry")}
+                        </button>
+                      </div>
+                    ) : isLoading && !hasNotifications ? (
+                      <div className="p-12 flex justify-center">
+                        <Loader2 className="w-8 h-8 text-brand animate-spin" />
+                      </div>
+                    ) : data.length === 0 ? (
+                      <div className="p-12 text-center text-(--text-secondary) flex flex-col items-center gap-3">
+                        <div className="w-16 h-16 rounded-2xl bg-(--text-secondary)/(--opacity-faint) flex items-center justify-center mb-2">
+                          <Bell className="w-8 h-8 opacity-dim" />
+                        </div>
+                        <p className="text-sm opacity-medium font-medium">
+                          {t("system:notificationsBell.empty")}
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col">
+                        {data.map((n) => (
+                          <m.div
+                            key={n.id}
+                            variants={itemVariants}
                             className={cn(
-                              "w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-opacity",
-                              !n.read
-                                ? "bg-brand/(--opacity-subtle) text-brand dark:text-brand"
-                                : "bg-(--border-subtle) text-(--text-secondary)"
+                              "relative group border-b border-glass-border last:border-0 p-4 transition-all hover:bg-(--text-secondary)/(--opacity-faint)",
+                              !n.read ? "bg-brand/(--opacity-faint)" : ""
                             )}
                           >
-                            {n.type === "chat.message" ? (
-                              <MessageCircle className="w-4 h-4" />
-                            ) : n.type === "schedule.reminder" ? (
-                              <Calendar className="w-4 h-4" />
-                            ) : (
-                              <Bell className="w-4 h-4" />
-                            )}
-                          </div>
-
-                          <div className="flex-1 space-y-1">
-                            <p
+                            <a
+                              href={n.link || "#"}
+                              onClick={(e) => {
+                                if (!n.link) e.preventDefault()
+                                if (!n.read) markRead(n.id)
+                              }}
                               className={cn(
-                                "text-sm font-medium leading-tight",
-                                !n.read ? "text-text-primary" : "text-(--text-secondary)"
+                                "flex gap-3",
+                                n.link ? "cursor-pointer" : "cursor-default"
                               )}
                             >
-                              {n.title}
-                            </p>
-                            <p className="text-xs text-(--text-secondary) leading-relaxed text-pretty">
-                              {n.body}
-                            </p>
-                            {/* Timestamp if available could go here */}
+                              <div
+                                className={cn(
+                                  "w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-opacity",
+                                  !n.read
+                                    ? "bg-brand/(--opacity-subtle) text-brand dark:text-brand"
+                                    : "bg-(--border-subtle) text-(--text-secondary)"
+                                )}
+                              >
+                                {n.type === "chat.message" ? (
+                                  <MessageCircle className="w-4 h-4" />
+                                ) : n.type === "schedule.reminder" ? (
+                                  <Calendar className="w-4 h-4" />
+                                ) : (
+                                  <Bell className="w-4 h-4" />
+                                )}
+                              </div>
+
+                              <div className="flex-1 space-y-1">
+                                <p
+                                  className={cn(
+                                    "text-sm font-medium leading-tight",
+                                    !n.read ? "text-text-primary" : "text-(--text-secondary)"
+                                  )}
+                                >
+                                  {n.title}
+                                </p>
+                                <p className="text-xs text-(--text-secondary) leading-relaxed text-pretty">
+                                  {n.body}
+                                </p>
+                                {/* Timestamp if available could go here */}
+                              </div>
+                            </a>
+
+                            {/* Mark read button (appears on hover) */}
+                            {!n.read && (
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  markRead(n.id)
+                                }}
+                                className="absolute top-2 right-2 min-h-11 min-w-11 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-1.5 rounded-lg text-(--text-secondary) hover:text-text-primary hover:bg-(--border-strong) bg-(--bg-surface)/(--opacity-medium) backdrop-blur-sm"
+                                title={t("system:notificationsBell.markRead")}
+                              >
+                                <CheckCheck className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </m.div>
+                        ))}
+
+                        {hasMore && (
+                          <div className="p-3 border-t border-glass-border bg-(--text-secondary)/(--opacity-faint)">
+                            {isFetchMoreError && (
+                              <p className="text-xs text-error-text text-center mb-2">
+                                {t("system:notificationsBell.loadMoreError")}
+                              </p>
+                            )}
+                            <button
+                              onClick={() => fetchMore(nextCursor)}
+                              disabled={!nextCursor || isFetchingMore}
+                              className="w-full py-2 flex items-center justify-center gap-2 text-xs font-medium text-(--text-secondary) hover:text-text-primary bg-(--text-secondary)/(--opacity-faint) hover:bg-(--border-strong) rounded-lg transition-all disabled:opacity-medium"
+                            >
+                              {isFetchingMore ? (
+                                <>
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  {t("system:notificationsBell.loadingMore")}
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronDown className="w-3 h-3" />
+                                  {t("system:notificationsBell.loadMore")}
+                                </>
+                              )}
+                            </button>
                           </div>
-                        </a>
-
-                        {/* Mark read button (appears on hover) */}
-                        {!n.read && (
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              markRead(n.id)
-                            }}
-                            className="absolute top-2 right-2 min-h-11 min-w-11 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity p-1.5 rounded-lg text-(--text-secondary) hover:text-text-primary hover:bg-(--border-strong) bg-(--bg-surface)/(--opacity-medium) backdrop-blur-sm"
-                            title={t("system:notificationsBell.markRead")}
-                          >
-                            <CheckCheck className="w-3.5 h-3.5" />
-                          </button>
                         )}
-                      </m.div>
-                    ))}
-
-                    {hasMore && (
-                      <div className="p-3 border-t border-glass-border bg-(--text-secondary)/(--opacity-faint)">
-                        {isFetchMoreError && (
-                          <p className="text-xs text-error-text text-center mb-2">
-                            {t("system:notificationsBell.loadMoreError")}
-                          </p>
-                        )}
-                        <button
-                          onClick={() => fetchMore(nextCursor)}
-                          disabled={!nextCursor || isFetchingMore}
-                          className="w-full py-2 flex items-center justify-center gap-2 text-xs font-medium text-(--text-secondary) hover:text-text-primary bg-(--text-secondary)/(--opacity-faint) hover:bg-(--border-strong) rounded-lg transition-all disabled:opacity-medium"
-                        >
-                          {isFetchingMore ? (
-                            <>
-                              <Loader2 className="w-3 h-3 animate-spin" />
-                              {t("system:notificationsBell.loadingMore")}
-                            </>
-                          ) : (
-                            <>
-                              <ChevronDown className="w-3 h-3" />
-                              {t("system:notificationsBell.loadMore")}
-                            </>
-                          )}
-                        </button>
                       </div>
                     )}
                   </div>
-                )}
-              </div>
-            </m.div>
-          )}
-        </AnimatePresence>,
-        document.body
-      )}
+                </m.div>
+              )}
+            </AnimatePresence>,
+            document.body
+          )
+        : null}
     </>
   )
 }

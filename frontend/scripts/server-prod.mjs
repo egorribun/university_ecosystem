@@ -41,6 +41,7 @@
 import { createReadStream, readFileSync, statSync } from "node:fs"
 import { createServer } from "node:http"
 import { Readable } from "node:stream"
+import { createGzip } from "node:zlib"
 import path from "node:path"
 import process from "node:process"
 import { pathToFileURL } from "node:url"
@@ -52,8 +53,25 @@ import { createNotFoundResponse, shouldServeNotFoundDocument } from "./not-found
 import { pipeResponseBody } from "./server-response-stream.mjs"
 import { warmSsrRuntime } from "./server-readiness.mjs"
 import { sanitizeRequestTarget } from "./server-request-log.mjs"
+import {
+  acceptsGzip,
+  gzipResponse,
+  isLhciSsrResponseMode,
+  prepareLhciSsrResponse,
+  shouldCompressContentType,
+} from "./lhci-ssr-response.mjs"
+import { resolveLhciPreviewMode } from "./lhci-preview-mode.mjs"
 
-const PORT = Number(process.env.PORT ?? 3000)
+// The bounded Lighthouse SSR preview owns its port explicitly.  Prefer that
+// value over a runner-wide `PORT` so an unrelated environment variable cannot
+// make the readiness probe wait on a different listener.  Production keeps
+// the conventional PORT precedence because the preview flag is fail-closed.
+const lhciPreviewMode = resolveLhciPreviewMode()
+const PORT = Number(
+  (isLhciSsrResponseMode() && lhciPreviewMode.kind === "ssr" ? lhciPreviewMode.port : undefined) ??
+    process.env.PORT ??
+    3000
+)
 const HOST = process.env.HOST ?? "0.0.0.0"
 
 // `dist/server/server.js` is emitted by `npm run build` in CWD. The
@@ -126,9 +144,17 @@ function serveStatic(req, res, urlPath) {
   if (!stat.isFile()) return false
   const ext = path.extname(filePath).toLowerCase()
   const contentType = CONTENT_TYPES[ext] ?? "application/octet-stream"
+  const compress =
+    acceptsGzip(req.headers["accept-encoding"]) && shouldCompressContentType(contentType)
   res.statusCode = 200
   res.setHeader("content-type", contentType)
-  res.setHeader("content-length", stat.size)
+  if (compress) {
+    res.removeHeader("content-length")
+    res.setHeader("content-encoding", "gzip")
+    res.setHeader("vary", "Accept-Encoding")
+  } else {
+    res.setHeader("content-length", stat.size)
+  }
   // Long-cache hashed assets (everything in /assets/<name>-<hash>.ext is
   // immutable per Vite's hashing convention). Other static files in the
   // root (sw.js, manifest, fallbacks, etc.) get short cache + revalidation.
@@ -151,7 +177,8 @@ function serveStatic(req, res, urlPath) {
     console.error("server-prod: read error for static file", filePath, err)
     if (!res.writableEnded) res.end()
   })
-  stream.pipe(res)
+  if (compress) stream.pipe(createGzip()).pipe(res)
+  else stream.pipe(res)
   return true
 }
 
@@ -277,6 +304,17 @@ const server = createServer(async (req, res) => {
     ) {
       response = createNotFoundResponse(notFoundDocument, { method: req.method })
     }
+    // The Lighthouse preview is the only runtime allowed to rewrite SSR
+    // markup. It measures the route-specific server-rendered shell without
+    // executing the full client graph in the emulated mobile trace; normal
+    // production responses pass through byte-for-byte and remain streaming.
+    response = await prepareLhciSsrResponse(response, {
+      enabled: isLhciSsrResponseMode(),
+    })
+    response = await gzipResponse(response, {
+      acceptEncoding: req.headers["accept-encoding"],
+      enabled: isLhciSsrResponseMode(),
+    })
     response = protectHtmlFromSharedCaching(response)
     const ssrDur = performance.now() - ssrStart
     // `urlPath` is already declared at the top of this try-block (used for

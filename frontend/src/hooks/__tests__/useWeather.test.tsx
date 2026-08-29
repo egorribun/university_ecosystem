@@ -1,5 +1,5 @@
 import { renderHook, act, waitFor } from "@testing-library/react"
-import { vi, describe, it, expect, beforeEach } from "vitest"
+import { vi, describe, it, expect, beforeEach, afterEach } from "vitest"
 import { useWeather } from "../useWeather"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import React from "react"
@@ -49,6 +49,21 @@ describe("useWeather", () => {
         },
       },
     })
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it("uses a deterministic local snapshot in Lighthouse mode", async () => {
+    vi.stubEnv("VITE_LHCI", "true")
+
+    const { result } = renderHook(() => useWeather(), { wrapper })
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false))
+
+    expect(result.current.data).toMatchObject({ temperatureC: 20, conditionCode: 2 })
+    expect(mockFetchWeatherSnapshot).not.toHaveBeenCalled()
   })
 
   it("handles loading and successful data fetching with defaults", async () => {

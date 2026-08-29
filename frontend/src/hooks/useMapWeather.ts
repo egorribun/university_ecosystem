@@ -74,7 +74,29 @@ const API_URL = [
   `&timezone=Europe/Moscow`,
 ].join("")
 
+/**
+ * Lighthouse runs without the campus API dependencies. Keep the map route's
+ * weather card deterministic in that isolated preview so performance checks
+ * measure our UI rather than an external Open-Meteo request.
+ */
+const LHCI_MAP_WEATHER_DATA: MapWeatherData = {
+  temperature: 20,
+  weatherCode: 2,
+  isDay: true,
+  condition: wmoToCondition(2),
+  feelsLike: 19,
+  windSpeed: 2.5,
+  humidity: 50,
+  uvIndex: 2,
+  hourlyForecast: [
+    { hour: 12, temperature: 20, condition: wmoToCondition(2) },
+    { hour: 13, temperature: 21, condition: wmoToCondition(1) },
+  ],
+}
+
 async function fetchWeather(): Promise<MapWeatherData> {
+  if (import.meta.env.VITE_LHCI === "true") return LHCI_MAP_WEATHER_DATA
+
   const cached = readCache()
   if (cached) return cached
 

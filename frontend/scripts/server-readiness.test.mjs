@@ -63,6 +63,20 @@ test("server startup warms SSR before binding the readiness port", async () => {
   assert.ok(listen > warmup, "the health port must not bind before SSR warmup completes")
 })
 
+test("the Lighthouse SSR preview gives its explicit port precedence", async () => {
+  const source = await readFile(new URL("./server-prod.mjs", import.meta.url), "utf8")
+  const portDeclaration = source.slice(
+    source.indexOf("const PORT ="),
+    source.indexOf("const HOST =")
+  )
+
+  assert.match(
+    portDeclaration,
+    /isLhciSsrResponseMode\(\)\s*&&\s*lhciPreviewMode\.kind\s*===\s*"ssr"\s*\?\s*lhciPreviewMode\.port/u
+  )
+  assert.match(portDeclaration, /process\.env\.PORT/u)
+})
+
 test("a failed readiness warmup terminates instead of leaving a non-listening process alive", async () => {
   const source = await readFile(new URL("./server-prod.mjs", import.meta.url), "utf8")
   const catchBlock = source.slice(

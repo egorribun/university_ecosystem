@@ -59,6 +59,16 @@ describe("useProfileSync runtime defensive paths", () => {
       null
     )
 
+    // The synthetic audit identity must be available during the very first
+    // client render.  Waiting for the effect would leave SSR markup hydrated
+    // with an anonymous user and postpone the first meaningful paint until
+    // React commits the follow-up state update.
+    expect(result.current.user?.id).toBe("lhci-mock-user")
+    expect(result.current.loading).toBe(false)
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(result.current.user?.id).toBe("lhci-mock-user")
     await waitFor(() => expect(result.current.user?.id).toBe("lhci-mock-user"))
     expect(result.current.loading).toBe(false)
     expect(getSpy).not.toHaveBeenCalled()
