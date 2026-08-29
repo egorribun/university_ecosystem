@@ -28,7 +28,9 @@ def test_primary_ci_mutmut_chain_selects_only_complete_retry_safe_candidates() -
     incremental = jobs["mutation-tests-incremental"]
 
     stats_sidecar = _step(stats, "Create retry-bound mutmut stats sidecar")
-    assert "scripts/mutmut_retry_artifacts.py create-stats" in stats_sidecar["run"]
+    assert (
+        "python -m scripts.mutmut_retry_artifacts create-stats" in stats_sidecar["run"]
+    )
     stats_upload = _step(stats, "Upload mutmut stats shard")
     assert stats_upload["with"]["name"] == (
         "mutmut-stats-shard-${{ matrix.stats_shard }}-attempt-${{ github.run_attempt }}"
@@ -44,13 +46,19 @@ def test_primary_ci_mutmut_chain_selects_only_complete_retry_safe_candidates() -
     }
     assert "if-no-artifact-found" not in stats_download["with"]
     stats_selection = _step(universe, "Select complete retry-safe mutmut stats cohort")
-    assert "scripts/mutmut_retry_artifacts.py select-stats" in stats_selection["run"]
+    assert (
+        "python -m scripts.mutmut_retry_artifacts select-stats"
+        in stats_selection["run"]
+    )
     assert "--candidate-root" in stats_selection["run"]
     assert "mutmut-stats-selection.json" in stats_selection["run"]
     assert "! -type d" in stats_selection["run"]
     assert "select_coverage_artifacts" not in stats_selection["run"]
     universe_create = _step(universe, "Create retry-scoped mutmut universe envelope")
-    assert "scripts/mutmut_retry_artifacts.py create-universe" in universe_create["run"]
+    assert (
+        "python -m scripts.mutmut_retry_artifacts create-universe"
+        in universe_create["run"]
+    )
     universe_upload = _step(universe, "Upload central mutmut universe")
     assert universe_upload["with"]["retention-days"] == 30
 
@@ -85,7 +93,8 @@ def test_primary_ci_mutmut_chain_selects_only_complete_retry_safe_candidates() -
     assert "pattern" not in universe_download["with"]
     universe_selection = _step(incremental, "Select retry-safe central mutmut universe")
     assert (
-        "scripts/mutmut_retry_artifacts.py select-universe" in universe_selection["run"]
+        "python -m scripts.mutmut_retry_artifacts select-universe"
+        in universe_selection["run"]
     )
     assert "--candidate-root" in universe_selection["run"]
     assert "! -type d" in universe_selection["run"]

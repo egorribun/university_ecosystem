@@ -1579,15 +1579,15 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert "scripts/merge_mutmut_stats.py" not in mutation_text
     assert "mutants/mutmut-stats.json" in mutation_text
     assert "mutants/mutmut-incremental-plan/shard-" in mutation_text
-    assert "scripts/mutmut_retry_artifacts.py select-universe" in mutation_text
+    assert "python -m scripts.mutmut_retry_artifacts select-universe" in mutation_text
     producer_text = "\n".join(
         step.get("run", "") for step in universe_job["steps"] if isinstance(step, dict)
     )
     assert "scripts/merge_mutmut_stats.py" in producer_text
     assert "scripts/plan_mutmut_shards.py" in producer_text
     assert "--allow-empty-shards" in producer_text
-    assert "scripts/mutmut_retry_artifacts.py select-stats" in producer_text
-    assert "scripts/mutmut_retry_artifacts.py create-universe" in producer_text
+    assert "python -m scripts.mutmut_retry_artifacts select-stats" in producer_text
+    assert "python -m scripts.mutmut_retry_artifacts create-universe" in producer_text
     assert 'SOURCE_REVISION="$(git rev-parse HEAD)"' in producer_text
     assert 'SOURCE_REVISION="$(git rev-parse HEAD)"' in mutation_text
     assert 'test "$SOURCE_REVISION" = "$COMMIT_SHA"' in producer_text

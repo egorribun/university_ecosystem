@@ -2674,7 +2674,7 @@ jobs:
           set -euo pipefail
           SOURCE_REVISION="$(git rev-parse HEAD)"
           test "$SOURCE_REVISION" = "$COMMIT_SHA"
-          python scripts/mutmut_retry_artifacts.py create-stats \
+          python -m scripts.mutmut_retry_artifacts create-stats \
             --root . \
             --manifest mutmut-stats-artifact.json \
             --stats mutants/mutmut-stats.json \
@@ -2832,7 +2832,7 @@ jobs:
           for candidate_root in "${candidate_roots[@]}"; do
             candidate_args+=(--candidate-root "$candidate_root")
           done
-          selection="$(python scripts/mutmut_retry_artifacts.py select-stats \
+          selection="$(python -m scripts.mutmut_retry_artifacts select-stats \
             --root . \
             --output-root mutmut-stats \
             --commit-sha "$COMMIT_SHA" \
@@ -2936,7 +2936,7 @@ jobs:
           if [ "${{ steps.mutation_scope.outputs.has_python }}" = "true" ]; then
             mode=mutmut
           fi
-          python scripts/mutmut_retry_artifacts.py create-universe \
+          python -m scripts.mutmut_retry_artifacts create-universe \
             --root . \
             --manifest mutmut-universe-artifact.json \
             --mode "$mode" \
@@ -3118,7 +3118,7 @@ jobs:
           for candidate_root in "${candidate_roots[@]}"; do
             candidate_args+=(--candidate-root "$candidate_root")
           done
-          selection="$(python scripts/mutmut_retry_artifacts.py select-universe \
+          selection="$(python -m scripts.mutmut_retry_artifacts select-universe \
             --root . \
             --output-root . \
             --selection-evidence mutmut-universe-selection.json \
