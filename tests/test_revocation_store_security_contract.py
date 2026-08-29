@@ -17,9 +17,7 @@ CHART = ROOT / "charts" / "revocation-store"
 VALUES = CHART / "values-staging.yaml"
 VENDORED_REDIS_ARCHIVE = CHART / "charts" / "redis-20.13.4.tgz"
 VENDORED_REDIS_CHECKSUM = CHART / "redis-20.13.4.tgz.sha256"
-VENDORED_REDIS_SHA256 = (
-    "4c83fd15af8cd755ef8984b8b089413b10dbed16da1a87859ea1a2b086e11e14"
-)
+VENDORED_REDIS_SHA256 = "4c83fd15af8cd755ef8984b8b089413b10dbed16da1a87859ea1a2b086e11e14"  # pragma: allowlist secret
 DEPLOY_SCRIPT = ROOT / ".github" / "scripts" / "deploy-revocation-store.sh"
 DISABLED_REDIS_COMMANDS = [
     "ACL",
@@ -127,8 +125,8 @@ def _resolved_args(release_name: str) -> list[str]:
         "redis.fullnameOverride": f"{release_name}-revocation-redis",
         "redis.commonLabels.university-ecosystem\\.io/revocation-store-for": release_name,
         "redis.commonLabels.app\\.kubernetes\\.io/instance": release_name,
-        "redis.auth.existingSecret": "revocation-redis-credentials",
-        "redis.auth.existingSecretPasswordKey": "revocation-redis-password",
+        "redis.auth.existingSecret": "revocation-redis-credentials",  # pragma: allowlist secret
+        "redis.auth.existingSecretPasswordKey": "revocation-redis-password",  # pragma: allowlist secret
         "redis.image.digest": digest,
         "redis.metrics.image.digest": digest,
     }
@@ -179,11 +177,14 @@ def test_revocation_store_values_and_schema_lock_durability_and_metrics_ingress(
     schema = json.loads((CHART / "values.schema.json").read_text(encoding="utf-8"))
 
     assert values["redis"]["master"]["disableCommands"] == DISABLED_REDIS_COMMANDS
-    assert values["redis"]["auth"] == {
-        "enabled": True,
-        "existingSecret": "revocation-redis-credentials",
-        "existingSecretPasswordKey": "revocation-redis-password",
-    }
+    assert (
+        values["redis"]["auth"]
+        == {
+            "enabled": True,
+            "existingSecret": "revocation-redis-credentials",  # pragma: allowlist secret
+            "existingSecretPasswordKey": "revocation-redis-password",  # pragma: allowlist secret
+        }
+    )
     assert values["redis"]["master"]["terminationGracePeriodSeconds"] == 30
     assert values["redis"]["networkPolicy"]["metrics"] == {
         "allowExternal": False,

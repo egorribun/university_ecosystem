@@ -113,8 +113,8 @@ def _resolved_revocation_store_args(release_name: str) -> list[str]:
         "redis.fullnameOverride": f"{release_name}-revocation-redis",
         "redis.commonLabels.university-ecosystem\\.io/revocation-store-for": release_name,
         "redis.commonLabels.app\\.kubernetes\\.io/instance": release_name,
-        "redis.auth.existingSecret": "revocation-redis-credentials",
-        "redis.auth.existingSecretPasswordKey": "revocation-redis-password",
+        "redis.auth.existingSecret": "revocation-redis-credentials",  # pragma: allowlist secret
+        "redis.auth.existingSecretPasswordKey": "revocation-redis-password",  # pragma: allowlist secret
         "redis.image.digest": digest,
         "redis.metrics.image.digest": digest,
     }

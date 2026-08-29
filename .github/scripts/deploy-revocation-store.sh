@@ -76,8 +76,8 @@ store_fullname="${HELM_RELEASE_NAME}-revocation-redis"
 # at redis-credentials would let every cache client authenticate to revocation
 # Redis. ExternalSecrets/Vault own the values, while this fixed target name and
 # key make the trust boundary auditable without copying a plaintext secret.
-redis_secret_name="revocation-redis-credentials"
-redis_secret_key="revocation-redis-password"
+redis_secret_name="revocation-redis-credentials" # pragma: allowlist secret — identifier only; value is an ExternalSecret name
+redis_secret_key="revocation-redis-password" # pragma: allowlist secret — identifier only; value is an ExternalSecret key
 if [[ -n "${REVOCATION_REDIS_SECRET_NAME:-}" || -n "${REVOCATION_REDIS_SECRET_KEY:-}" ]]; then
   echo "REVOCATION_REDIS_SECRET_NAME and REVOCATION_REDIS_SECRET_KEY are immutable deployment-contract fields." >&2
   exit 1

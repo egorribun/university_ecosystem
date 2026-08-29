@@ -170,7 +170,9 @@ def test_retry_provenance_rejects_a_root_with_a_linked_ancestor(
     try:
         linked_parent.symlink_to(outside.parent, target_is_directory=True)
     except OSError as error:
-        pytest.skip(f"directory symlinks are unavailable: {error}")
+        pytest.skip(  # QUALITY-123 @egorribun — filesystem capability varies by runner
+            f"directory symlinks are unavailable: {error}"
+        )
 
     with pytest.raises(retry_artifacts.RetryArtifactError):
         retry_artifacts.build_retry_provenance(

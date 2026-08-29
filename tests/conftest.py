@@ -334,12 +334,12 @@ os.environ["IMGPROXY_KEY"] = ""
 os.environ["IMGPROXY_SALT"] = ""
 os.environ.setdefault(
     "MFA_EMAIL_OTP_HMAC_KEYS",
-    f"pytest-hmac:{base64.b64encode(b'h' * 32).decode('ascii')}",
+    f"pytest-hmac:{base64.urlsafe_b64encode(b'h' * 32).decode('ascii').rstrip('=')}",
 )
 os.environ.setdefault("MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID", "pytest-hmac")
 os.environ.setdefault(
     "MFA_EMAIL_DELIVERY_KEKS",
-    f"pytest-kek:{base64.b64encode(b'k' * 32).decode('ascii')}",
+    f"pytest-kek:{base64.urlsafe_b64encode(b'k' * 32).decode('ascii').rstrip('=')}",
 )
 os.environ.setdefault("MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID", "pytest-kek")
 

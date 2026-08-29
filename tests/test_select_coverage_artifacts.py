@@ -382,7 +382,9 @@ def test_candidate_inventory_rejects_regular_file_hardlinks(
     try:
         os.link(outside, report)
     except OSError as error:
-        pytest.skip(f"hardlink creation is unavailable: {error}")
+        pytest.skip(  # QUALITY-123 @egorribun — filesystem capability varies by runner
+            f"hardlink creation is unavailable: {error}"
+        )
 
     with pytest.raises(CoverageSelectionError, match=r"hard link|link count|nlink"):
         _select(

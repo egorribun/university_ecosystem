@@ -45,7 +45,7 @@ from __future__ import annotations
 
 import json
 import os
-from base64 import b64encode
+from base64 import urlsafe_b64encode
 from uuid import uuid4
 
 import hypothesis
@@ -64,12 +64,12 @@ os.environ.setdefault(
 )
 os.environ.setdefault(
     "MFA_EMAIL_OTP_HMAC_KEYS",
-    f"schemathesis-hmac:{b64encode(b'h' * 32).decode('ascii')}",
+    f"schemathesis-hmac:{urlsafe_b64encode(b'h' * 32).decode('ascii').rstrip('=')}",
 )
 os.environ.setdefault("MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID", "schemathesis-hmac")
 os.environ.setdefault(
     "MFA_EMAIL_DELIVERY_KEKS",
-    f"schemathesis-kek:{b64encode(b'k' * 32).decode('ascii')}",
+    f"schemathesis-kek:{urlsafe_b64encode(b'k' * 32).decode('ascii').rstrip('=')}",
 )
 os.environ.setdefault("MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID", "schemathesis-kek")
 

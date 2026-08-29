@@ -305,8 +305,14 @@ def test_revocation_store_bootstrap_precedes_the_application_pre_hook() -> None:
     # The URL is intentionally distributed through university-connections, but
     # the password source remains a separate ExternalSecret-owned Secret.
     readiness_run = str(readiness["run"])
-    assert 'redis_secret_name" != "revocation-redis-credentials"' in readiness_run
-    assert 'redis_secret_key" != "revocation-redis-password"' in readiness_run
+    assert (
+        'redis_secret_name" != "revocation-redis-credentials"'  # pragma: allowlist secret
+        in readiness_run  # pragma: allowlist secret
+    )  # pragma: allowlist secret
+    assert (
+        'redis_secret_key" != "revocation-redis-password"'  # pragma: allowlist secret
+        in readiness_run  # pragma: allowlist secret
+    )  # pragma: allowlist secret
     assert "credential identity must remain isolated from cache Redis" in readiness_run
     assert "kubectl exec" not in str(readiness["run"])
     assert "redis-cli" not in str(readiness["run"])

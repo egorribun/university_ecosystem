@@ -50,8 +50,8 @@ redis:
     enabled: true
     # This ExternalSecret-backed credential is deliberately separate from the
     # eviction-enabled cache's redis-credentials/redis-password pair.
-    existingSecret: "revocation-redis-credentials" #checkov:skip=CKV_SECRET_6:Kubernetes Secret name only
-    existingSecretPasswordKey: "revocation-redis-password" #checkov:skip=CKV_SECRET_6:Kubernetes Secret key only
+    existingSecret: "revocation-redis-credentials" # pragma: allowlist secret; checkov:skip=CKV_SECRET_6:Kubernetes Secret name only
+    existingSecretPasswordKey: "revocation-redis-password" # pragma: allowlist secret; checkov:skip=CKV_SECRET_6:Kubernetes Secret key only
   image:
     registry: docker.io
     repository: bitnami/redis

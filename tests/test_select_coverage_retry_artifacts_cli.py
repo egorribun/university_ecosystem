@@ -514,7 +514,9 @@ def _directory_symlink(link: Path, target: Path) -> None:
     try:
         link.symlink_to(target, target_is_directory=True)
     except OSError as error:
-        pytest.skip(f"directory symlinks are unavailable: {error}")
+        pytest.skip(  # QUALITY-123 @egorribun — filesystem capability varies by runner
+            f"directory symlinks are unavailable: {error}"
+        )
 
 
 def test_repository_path_rejects_a_resolved_link_escape(

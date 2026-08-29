@@ -223,9 +223,13 @@ def test_helm_declares_isolated_durable_revocation_dependency() -> None:
     ]
     revocation = store_values["redis"]
     assert revocation["nameOverride"] == "revocation-redis"
-    assert revocation["auth"]["existingSecret"] == "revocation-redis-credentials"
     assert (
-        revocation["auth"]["existingSecretPasswordKey"] == "revocation-redis-password"
+        revocation["auth"]["existingSecret"]
+        == "revocation-redis-credentials"  # pragma: allowlist secret
+    )  # pragma: allowlist secret
+    assert (
+        revocation["auth"]["existingSecretPasswordKey"]
+        == "revocation-redis-password"  # pragma: allowlist secret
     )
     assert (
         revocation["auth"]["existingSecret"]
@@ -268,8 +272,14 @@ def test_bootstrap_script_uses_a_separate_atomic_release_before_the_app_hook() -
     assert (
         '"redis.metrics.image.digest=$REVOCATION_REDIS_METRICS_IMAGE_DIGEST"' in script
     )
-    assert 'redis_secret_name="revocation-redis-credentials"' in script
-    assert 'redis_secret_key="revocation-redis-password"' in script
+    assert (
+        'redis_secret_name="revocation-redis-credentials"'  # pragma: allowlist secret
+        in script
+    )  # pragma: allowlist secret
+    assert (
+        'redis_secret_key="revocation-redis-password"'  # pragma: allowlist secret
+        in script
+    )  # pragma: allowlist secret
     assert 'helm upgrade --install "$store_release"' in script
     for required_flag in ("--atomic", "--wait", "--history-max 10"):
         assert required_flag in script
