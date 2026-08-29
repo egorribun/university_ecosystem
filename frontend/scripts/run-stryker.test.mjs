@@ -1,6 +1,6 @@
 import assert from "node:assert/strict"
 import { createHash } from "node:crypto"
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
+import { link, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import test from "node:test"
@@ -34,13 +34,17 @@ test("canonical cleanup removes only stale mutation evidence", async (t) => {
   const { cleanupCanonicalArtifacts } = await import(runnerUrl)
   const root = await mkdtemp(path.join(os.tmpdir(), "stryker-cleanup-"))
   t.after(() => rm(root, { recursive: true, force: true }))
-  await mkdir(path.join(root, "runs", "old"), { recursive: true })
+  await Promise.all([
+    mkdir(path.join(root, "runs", "old"), { recursive: true }),
+    mkdir(path.join(root, "historical-costs"), { recursive: true }),
+  ])
   await Promise.all([
     writeFile(path.join(root, "mutation.json"), "stale"),
     writeFile(path.join(root, "mutation.html"), "stale"),
     writeFile(path.join(root, "inventory.json"), "stale"),
     writeFile(path.join(root, "VALIDATED.json"), "stale"),
     writeFile(path.join(root, "runs", "old", "report.json"), "stale"),
+    writeFile(path.join(root, "historical-costs", "HISTORICAL_COSTS.json"), "stale"),
     writeFile(path.join(root, "keep.txt"), "keep"),
   ])
 
@@ -48,6 +52,10 @@ test("canonical cleanup removes only stale mutation evidence", async (t) => {
   assert.equal(await readFile(path.join(root, "keep.txt"), "utf8"), "keep")
   await assert.rejects(() => readFile(path.join(root, "mutation.json")), /ENOENT/u)
   await assert.rejects(() => readFile(path.join(root, "runs", "old", "report.json")), /ENOENT/u)
+  await assert.rejects(
+    () => readFile(path.join(root, "historical-costs", "HISTORICAL_COSTS.json")),
+    /ENOENT/u
+  )
 })
 
 test("stages the canonical coverage policy beside every Stryker sandbox", async (t) => {
@@ -235,6 +243,320 @@ test("weighted shard plan is deterministic, complete, and bounded by the largest
   assert.equal(planMutationShards(weights, 10, 2).length, 2)
 })
 
+test("historical file costs rebalance a deterministic complete shard plan", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const preflight = new Map([
+    ["src/a.ts", { mutants: Array(10) }],
+    ["src/b.ts", { mutants: Array(9) }],
+    ["src/c.ts", { mutants: Array(8) }],
+    ["src/d.ts", { mutants: Array(7) }],
+    ["src/e.ts", { mutants: Array(6) }],
+    ["src/zero.ts", { mutants: [] }],
+  ])
+  const historicalCosts = new Map([
+    ["src/a.ts", 1],
+    ["src/b.ts", 1],
+    ["src/c.ts", 100],
+    ["src/d.ts", 100],
+    ["src/e.ts", 100],
+  ])
+
+  const countOnly = planMutationShards(preflight, 10, 3)
+  const costAware = planMutationShards(preflight, 10, 3, historicalCosts)
+
+  const maxEstimatedCost = (plan) =>
+    Math.max(
+      ...plan.map(({ files }) =>
+        files.reduce((total, file) => total + historicalCosts.get(file), 0)
+      )
+    )
+  assert.equal(maxEstimatedCost(countOnly), 200)
+  assert.equal(maxEstimatedCost(costAware), 101)
+  assert.deepEqual(
+    costAware.map(({ files }) => files),
+    [["src/a.ts", "src/c.ts"], ["src/b.ts", "src/d.ts"], ["src/e.ts"]]
+  )
+  assert.deepEqual(costAware.flatMap(({ files }) => files).sort(), [
+    "src/a.ts",
+    "src/b.ts",
+    "src/c.ts",
+    "src/d.ts",
+    "src/e.ts",
+  ])
+})
+
+test("historical Stryker costs are bound to the exact source SHA, config, and viable preflight", async () => {
+  const { buildEvidenceIdentity, buildHistoricalCostArtifact, parseHistoricalCostArtifact } =
+    await import(runnerUrl)
+  const sourceByFile = new Map([
+    ["src/a.ts", "export const a = true\n"],
+    ["src/b.ts", "export const b = false\n"],
+  ])
+  const sourceRevision = buildEvidenceIdentity({
+    headSha: "a".repeat(40),
+    dirtyPaths: [],
+    inputHashes: {
+      "frontend/stryker.config.mjs": "1".repeat(64),
+      "frontend/src/a.ts": sha256Text(sourceByFile.get("src/a.ts")),
+      "frontend/src/b.ts": sha256Text(sourceByFile.get("src/b.ts")),
+    },
+  })
+  const config = {
+    path: "frontend/stryker.config.mjs",
+    sha256: "1".repeat(64),
+    instrumenterOptions: { plugins: null, excludedMutations: [], ignorers: [] },
+  }
+  const preflightByFile = new Map(
+    [...sourceByFile.entries()].map(([file, source]) => [
+      file,
+      {
+        sourceSha256: sha256Text(source),
+        mutants: [
+          { fileName: file, mutatorName: "BooleanLiteral", replacement: "false", location },
+        ],
+      },
+    ])
+  )
+  const artifact = buildHistoricalCostArtifact({
+    sourceRevision,
+    config,
+    preflightByFile,
+    costs: new Map([
+      ["src/a.ts", 1250],
+      ["src/b.ts", 750],
+    ]),
+  })
+
+  const parsed = parseHistoricalCostArtifact({
+    artifactText: `${JSON.stringify(artifact, null, 2)}\n`,
+    sourceRevision,
+    config,
+    preflightByFile,
+  })
+
+  assert.deepEqual(
+    [...parsed],
+    [
+      ["src/a.ts", 1250],
+      ["src/b.ts", 750],
+    ]
+  )
+})
+
+test("historical Stryker cost candidates fail closed for stale data and unsafe paths", async (t) => {
+  const { buildEvidenceIdentity, buildHistoricalCostArtifact, loadHistoricalCostArtifact } =
+    await import(runnerUrl)
+  const sourceByFile = new Map([["src/a.ts", "export const a = true\n"]])
+  const sourceRevision = buildEvidenceIdentity({
+    headSha: "a".repeat(40),
+    dirtyPaths: [],
+    inputHashes: {
+      "frontend/stryker.config.mjs": "1".repeat(64),
+      "frontend/src/a.ts": sha256Text(sourceByFile.get("src/a.ts")),
+    },
+  })
+  const config = {
+    path: "frontend/stryker.config.mjs",
+    sha256: "1".repeat(64),
+    instrumenterOptions: { plugins: null, excludedMutations: [], ignorers: [] },
+  }
+  const preflightByFile = new Map([
+    [
+      "src/a.ts",
+      {
+        sourceSha256: sha256Text(sourceByFile.get("src/a.ts")),
+        mutants: [
+          { fileName: "src/a.ts", mutatorName: "BooleanLiteral", replacement: "false", location },
+        ],
+      },
+    ],
+  ])
+  const artifact = buildHistoricalCostArtifact({
+    sourceRevision,
+    config,
+    preflightByFile,
+    costs: new Map([["src/a.ts", 1250]]),
+  })
+  const root = await mkdtemp(path.join(os.tmpdir(), "stryker-cost-candidates-"))
+  t.after(() => rm(root, { recursive: true, force: true }))
+  const writeCandidate = async (name, value) => {
+    const candidate = path.join(root, name)
+    await mkdir(candidate, { recursive: true })
+    await writeFile(
+      path.join(candidate, "HISTORICAL_COSTS.json"),
+      `${JSON.stringify(value, null, 2)}\n`
+    )
+  }
+  const load = (name) =>
+    loadHistoricalCostArtifact({
+      sourceRevision,
+      config,
+      preflightByFile,
+      candidateRoot: root,
+      env: { STRYKER_HISTORICAL_COSTS_ARTIFACT: `${name}/HISTORICAL_COSTS.json` },
+    })
+  await writeCandidate("valid", artifact)
+
+  assert.deepEqual([...(await load("valid")).costs], [["src/a.ts", 1250]])
+  const hardlinkedCandidate = path.join(root, "hardlinked")
+  await mkdir(hardlinkedCandidate, { recursive: true })
+  await link(
+    path.join(root, "valid", "HISTORICAL_COSTS.json"),
+    path.join(hardlinkedCandidate, "HISTORICAL_COSTS.json")
+  )
+  await assert.rejects(() => load("hardlinked"), /must not be a hard link/u)
+  await assert.rejects(
+    () =>
+      loadHistoricalCostArtifact({
+        sourceRevision,
+        config,
+        preflightByFile,
+        candidateRoot: root,
+        env: { STRYKER_HISTORICAL_COSTS_ARTIFACT: "../HISTORICAL_COSTS.json" },
+      }),
+    /canonical cost-candidate path/u
+  )
+  for (const unsafePath of [
+    "COM1/HISTORICAL_COSTS.json",
+    "attempt:1/HISTORICAL_COSTS.json",
+    "attempt./HISTORICAL_COSTS.json",
+  ]) {
+    await assert.rejects(
+      () =>
+        loadHistoricalCostArtifact({
+          sourceRevision,
+          config,
+          preflightByFile,
+          candidateRoot: root,
+          env: { STRYKER_HISTORICAL_COSTS_ARTIFACT: unsafePath },
+        }),
+      /canonical cost-candidate path/u
+    )
+  }
+
+  const staleConfiguration = structuredClone(artifact)
+  staleConfiguration.payload.config.sha256 = "2".repeat(64)
+  staleConfiguration.payloadSha256 = sha256Text(
+    `${JSON.stringify(staleConfiguration.payload, null, 2)}\n`
+  )
+  await writeCandidate("stale-configuration", staleConfiguration)
+  await assert.rejects(() => load("stale-configuration"), /configuration does not match/u)
+
+  const incomplete = structuredClone(artifact)
+  incomplete.payload.costs = []
+  incomplete.payloadSha256 = sha256Text(`${JSON.stringify(incomplete.payload, null, 2)}\n`)
+  await writeCandidate("incomplete", incomplete)
+  await assert.rejects(() => load("incomplete"), /complete viable source inventory/u)
+})
+
+test("historical shard timings produce a complete exact file-cost artifact", async () => {
+  const {
+    buildEvidenceIdentity,
+    buildHistoricalCostArtifactFromShardTimings,
+    parseHistoricalCostArtifact,
+  } = await import(runnerUrl)
+  const sourceByFile = new Map([
+    ["src/a.ts", "export const a = true\n"],
+    ["src/b.ts", "export const b = false\n"],
+    ["src/c.ts", "export const c = true\n"],
+  ])
+  const sourceRevision = buildEvidenceIdentity({
+    headSha: "a".repeat(40),
+    dirtyPaths: [],
+    inputHashes: {
+      "frontend/stryker.config.mjs": "1".repeat(64),
+      ...Object.fromEntries(
+        [...sourceByFile.entries()].map(([file, source]) => [
+          `frontend/${file}`,
+          sha256Text(source),
+        ])
+      ),
+    },
+  })
+  const config = {
+    path: "frontend/stryker.config.mjs",
+    sha256: "1".repeat(64),
+    instrumenterOptions: { plugins: null, excludedMutations: [], ignorers: [] },
+  }
+  const mutant = (file, replacement) => ({
+    fileName: file,
+    mutatorName: "BooleanLiteral",
+    replacement,
+    location,
+  })
+  const preflightByFile = new Map([
+    [
+      "src/a.ts",
+      {
+        sourceSha256: sha256Text(sourceByFile.get("src/a.ts")),
+        mutants: [mutant("src/a.ts", "false"), mutant("src/a.ts", "true")],
+      },
+    ],
+    [
+      "src/b.ts",
+      {
+        sourceSha256: sha256Text(sourceByFile.get("src/b.ts")),
+        mutants: [mutant("src/b.ts", "true")],
+      },
+    ],
+    [
+      "src/c.ts",
+      {
+        sourceSha256: sha256Text(sourceByFile.get("src/c.ts")),
+        mutants: [mutant("src/c.ts", "false")],
+      },
+    ],
+  ])
+  const artifact = buildHistoricalCostArtifactFromShardTimings({
+    sourceRevision,
+    config,
+    preflightByFile,
+    shardResults: [
+      { files: ["src/a.ts", "src/b.ts"], mutantCount: 3, durationMs: 3000 },
+      { files: ["src/c.ts"], mutantCount: 1, durationMs: 500 },
+    ],
+  })
+
+  assert.deepEqual(
+    [
+      ...parseHistoricalCostArtifact({
+        artifactText: `${JSON.stringify(artifact, null, 2)}\n`,
+        sourceRevision,
+        config,
+        preflightByFile,
+      }),
+    ],
+    [
+      ["src/a.ts", 2000],
+      ["src/b.ts", 1000],
+      ["src/c.ts", 500],
+    ]
+  )
+  assert.throws(
+    () =>
+      buildHistoricalCostArtifactFromShardTimings({
+        sourceRevision,
+        config,
+        preflightByFile,
+        shardResults: [{ files: ["src/a.ts"], mutantCount: 2, durationMs: 0 }],
+      }),
+    /timing is malformed/u
+  )
+  assert.throws(
+    () =>
+      buildHistoricalCostArtifactFromShardTimings({
+        sourceRevision,
+        config,
+        preflightByFile,
+        shardResults: [
+          { files: ["src/a.ts"], mutantCount: 2, durationMs: 10 },
+          { files: ["src/a.ts"], mutantCount: 2, durationMs: 10 },
+        ],
+      }),
+    /do not match the viable source inventory/u
+  )
+})
+
 function sha256Text(value) {
   return createHash("sha256").update(value).digest("hex")
 }
@@ -255,9 +577,12 @@ function resealPreflightArtifact(artifact, mutatePayload) {
 }
 
 test("preflight artifact binds a complete deterministic shard universe to one workflow attempt", async () => {
-  const { buildEvidenceIdentity, buildPreflightArtifact, validatePreflightArtifact } = await import(
-    runnerUrl
-  )
+  const {
+    buildEvidenceIdentity,
+    buildHistoricalCostArtifact,
+    buildPreflightArtifact,
+    validatePreflightArtifact,
+  } = await import(runnerUrl)
   const sourceByFile = new Map([
     ["src/a.ts", "export const a = true\n"],
     ["src/b.ts", "export const b = false\n"],
@@ -323,7 +648,20 @@ test("preflight artifact binds a complete deterministic shard universe to one wo
     shardTargetMutants: 750,
     shardCount: 2,
   }
-  const artifact = buildPreflightArtifact({ ...common, preflightByFile })
+  const historicalCostArtifact = buildHistoricalCostArtifact({
+    sourceRevision,
+    config,
+    preflightByFile,
+    costs: new Map([
+      ["src/a.ts", 2000],
+      ["src/b.ts", 1000],
+    ]),
+  })
+  const artifact = buildPreflightArtifact({
+    ...common,
+    preflightByFile,
+    historicalCostModel: historicalCostArtifact.payload,
+  })
   const validated = validatePreflightArtifact({
     ...common,
     sourceFiles,
@@ -334,6 +672,7 @@ test("preflight artifact binds a complete deterministic shard universe to one wo
   assert.equal(validated.preflightDigest, artifact.payload.preflight.digest)
   assert.deepEqual(validated.shardPlan, artifact.payload.shardPlan)
   assert.equal(validated.preflightByFile.get("src/a.ts").mutants.length, 1)
+  assert.deepEqual(validated.artifact.payload.historicalCostModel, historicalCostArtifact.payload)
 
   const aggregateValidated = validatePreflightArtifact({
     ...common,

@@ -38,6 +38,12 @@ const preflightArtifactOutputPath = path.join(
   "PREFLIGHT_ARTIFACT.json"
 )
 const preflightCandidateRoot = path.join(outputRoot, "preflight-candidates")
+const historicalCostCandidateRoot = path.join(outputRoot, "cost-candidates")
+const historicalCostArtifactOutputPath = path.join(
+  outputRoot,
+  "historical-costs",
+  "HISTORICAL_COSTS.json"
+)
 const sourcePolicyPath = path.join(repositoryRoot, "quality", "coverage-source-policy.json")
 const strykerEntry = path.join(
   frontendRoot,
@@ -49,6 +55,9 @@ const strykerEntry = path.join(
 )
 const instrumenterOptions = { plugins: null, excludedMutations: [], ignorers: [] }
 const preflightArtifactSchemaVersion = "1.0"
+const historicalCostArtifactSchemaVersion = "1.0"
+const maximumHistoricalCostMs = 14_400_000
+const windowsDeviceNamePattern = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9]|clock\$)(?:\..*)?$/iu
 
 function sha256(value) {
   return createHash("sha256").update(value).digest("hex")
@@ -91,6 +100,19 @@ function canonicalMutationSourcePath(value) {
     throw new Error("Preflight artifact source denominator contains an invalid path")
   }
   return normalized
+}
+
+function assertPortableArtifactRelativePath(value) {
+  for (const component of value.split("/")) {
+    if (
+      !/^[\x21-\x7e]+$/u.test(component) ||
+      /[:<>"|?*]/u.test(component) ||
+      /[. ]$/u.test(component) ||
+      windowsDeviceNamePattern.test(component)
+    ) {
+      throw new Error("Artifact path is not portable")
+    }
+  }
 }
 
 function canonicalSourceFiles(sourceFiles) {
@@ -141,15 +163,57 @@ export function assertRunnerArguments(args) {
   }
 }
 
-export function planMutationShards(preflightByFile, targetMutants = 750, requestedShardCount) {
+function validatedHistoricalCosts(preflightByFile, historicalCosts) {
+  if (historicalCosts === undefined) return undefined
+  if (!(historicalCosts instanceof Map)) {
+    throw new Error("Historical Stryker costs must be provided as a Map")
+  }
+  const activeFiles = [...preflightByFile.entries()]
+    .filter(([, entry]) => entry?.mutants?.length > 0)
+    .map(([file]) => file)
+    .sort()
+  const activeFileSet = new Set(activeFiles)
+  if (historicalCosts.size !== activeFiles.length) {
+    throw new Error("Historical Stryker costs do not cover the complete viable source inventory")
+  }
+  for (const file of activeFiles) {
+    const cost = historicalCosts.get(file)
+    if (!Number.isFinite(cost) || cost <= 0) {
+      throw new Error(`Historical Stryker cost is invalid for ${file}`)
+    }
+  }
+  for (const [file, cost] of historicalCosts) {
+    if (!activeFileSet.has(file) || !Number.isFinite(cost) || cost <= 0) {
+      throw new Error("Historical Stryker costs do not match the viable source inventory")
+    }
+  }
+  return historicalCosts
+}
+
+export function planMutationShards(
+  preflightByFile,
+  targetMutants = 750,
+  requestedShardCount,
+  historicalCosts
+) {
   if (!(preflightByFile instanceof Map) || !Number.isInteger(targetMutants) || targetMutants < 1) {
     throw new Error("Mutation shard planning inputs are invalid")
   }
+  const validatedCosts = validatedHistoricalCosts(preflightByFile, historicalCosts)
   const weightedFiles = [...preflightByFile.entries()]
-    .map(([file, entry]) => ({ file, mutantCount: entry?.mutants?.length }))
+    .map(([file, entry]) => ({
+      file,
+      mutantCount: entry?.mutants?.length,
+      estimatedCost: validatedCosts?.get(file),
+    }))
     .filter(({ mutantCount }) => mutantCount > 0)
     .sort(
-      (left, right) => right.mutantCount - left.mutantCount || left.file.localeCompare(right.file)
+      (left, right) =>
+        (validatedCosts
+          ? right.estimatedCost - left.estimatedCost
+          : right.mutantCount - left.mutantCount) ||
+        right.mutantCount - left.mutantCount ||
+        left.file.localeCompare(right.file)
     )
   if (weightedFiles.length === 0) return []
   const totalMutants = weightedFiles.reduce((sum, entry) => sum + entry.mutantCount, 0)
@@ -167,16 +231,24 @@ export function planMutationShards(preflightByFile, targetMutants = 750, request
     id: `shard-${String(index).padStart(3, "0")}`,
     files: [],
     mutantCount: 0,
+    estimatedCost: 0,
   }))
   for (const entry of weightedFiles) {
-    const target = shards.reduce((lightest, shard) =>
-      shard.mutantCount < lightest.mutantCount ? shard : lightest
-    )
+    const target = shards.reduce((lightest, shard) => {
+      const useCost = validatedCosts !== undefined
+      const candidateWeight = useCost ? shard.estimatedCost : shard.mutantCount
+      const lightestWeight = useCost ? lightest.estimatedCost : lightest.mutantCount
+      return candidateWeight < lightestWeight ||
+        (candidateWeight === lightestWeight && shard.id < lightest.id)
+        ? shard
+        : lightest
+    })
     target.files.push(entry.file)
     target.mutantCount += entry.mutantCount
+    target.estimatedCost += validatedCosts ? entry.estimatedCost : entry.mutantCount
   }
   for (const shard of shards) shard.files.sort()
-  return shards
+  return shards.map(({ id, files, mutantCount }) => ({ id, files, mutantCount }))
 }
 
 function assertShardReportConfig(report, files, id) {
@@ -295,6 +367,7 @@ export async function cleanupCanonicalArtifacts(root = outputRoot) {
   )
   await rm(path.join(root, "runs"), { recursive: true, force: true })
   await rm(path.join(root, "shards"), { recursive: true, force: true })
+  await rm(path.join(root, "historical-costs"), { recursive: true, force: true })
 }
 
 export async function acquireRunLock(lockPath, runId) {
@@ -729,6 +802,279 @@ function preflightDigest(serializedPreflight) {
   return sha256(JSON.stringify(serializedPreflight))
 }
 
+function historicalCostModelCosts({ model, sourceRevision, config, serializedPreflight }) {
+  assertExactObjectKeys(
+    model,
+    ["schemaVersion", "sourceRevision", "config", "preflightDigest", "costs"],
+    "Historical Stryker cost model"
+  )
+  if (model.schemaVersion !== historicalCostArtifactSchemaVersion) {
+    throw new Error("Historical Stryker cost model schema version is unsupported")
+  }
+  if (JSON.stringify(model.sourceRevision) !== JSON.stringify(sourceRevision)) {
+    throw new Error("Historical Stryker cost model source revision does not match this execution")
+  }
+  if (JSON.stringify(model.config) !== JSON.stringify(config)) {
+    throw new Error("Historical Stryker cost model configuration does not match this execution")
+  }
+  assertSha256(model.preflightDigest, "Historical Stryker cost model preflight digest")
+  if (model.preflightDigest !== preflightDigest(serializedPreflight)) {
+    throw new Error("Historical Stryker cost model preflight digest does not match this execution")
+  }
+  if (!Array.isArray(model.costs)) {
+    throw new Error("Historical Stryker cost model costs must be an array")
+  }
+  const expectedByFile = new Map(
+    Object.entries(serializedPreflight)
+      .filter(([, entry]) => entry.mutantSignatures.length > 0)
+      .map(([file, entry]) => [file, entry])
+  )
+  const costs = new Map()
+  let previousFile
+  for (const entry of model.costs) {
+    assertExactObjectKeys(
+      entry,
+      ["file", "sourceSha256", "mutantCount", "estimatedDurationMs"],
+      "Historical Stryker file cost"
+    )
+    const file = canonicalMutationSourcePath(entry.file)
+    if (
+      file !== entry.file ||
+      (previousFile !== undefined && previousFile.localeCompare(file) >= 0)
+    ) {
+      throw new Error("Historical Stryker cost model paths must be canonical, sorted, and unique")
+    }
+    previousFile = file
+    const expected = expectedByFile.get(file)
+    if (!expected) {
+      throw new Error(`Historical Stryker cost model has an unknown or zero-mutant source: ${file}`)
+    }
+    if (
+      entry.sourceSha256 !== expected.sourceSha256 ||
+      entry.mutantCount !== expected.mutantSignatures.length
+    ) {
+      throw new Error(`Historical Stryker cost model source snapshot is stale for ${file}`)
+    }
+    if (
+      !Number.isFinite(entry.estimatedDurationMs) ||
+      entry.estimatedDurationMs <= 0 ||
+      entry.estimatedDurationMs > maximumHistoricalCostMs
+    ) {
+      throw new Error(`Historical Stryker cost is invalid for ${file}`)
+    }
+    costs.set(file, entry.estimatedDurationMs)
+  }
+  if (costs.size !== expectedByFile.size) {
+    throw new Error(
+      "Historical Stryker cost model does not cover the complete viable source inventory"
+    )
+  }
+  return costs
+}
+
+export function buildHistoricalCostArtifact({ sourceRevision, config, preflightByFile, costs }) {
+  if (!(preflightByFile instanceof Map)) {
+    throw new Error("Historical Stryker cost artifact requires an instrumenter preflight Map")
+  }
+  const validatedCosts = validatedHistoricalCosts(preflightByFile, costs)
+  if (!validatedCosts) {
+    throw new Error("Historical Stryker cost artifact requires complete file costs")
+  }
+  const serializedPreflight = serializePreflight(preflightByFile)
+  const payload = {
+    schemaVersion: historicalCostArtifactSchemaVersion,
+    sourceRevision,
+    config,
+    preflightDigest: preflightDigest(serializedPreflight),
+    costs: [...validatedCosts.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([file, estimatedDurationMs]) => ({
+        file,
+        sourceSha256: serializedPreflight[file].sourceSha256,
+        mutantCount: serializedPreflight[file].mutantSignatures.length,
+        estimatedDurationMs,
+      })),
+  }
+  historicalCostModelCosts({
+    model: payload,
+    sourceRevision,
+    config,
+    serializedPreflight,
+  })
+  return {
+    schemaVersion: historicalCostArtifactSchemaVersion,
+    payload,
+    payloadSha256: sha256(jsonText(payload)),
+  }
+}
+
+export function buildHistoricalCostArtifactFromShardTimings({
+  sourceRevision,
+  config,
+  preflightByFile,
+  shardResults,
+}) {
+  if (
+    !(preflightByFile instanceof Map) ||
+    !Array.isArray(shardResults) ||
+    shardResults.length === 0
+  ) {
+    throw new Error("Historical Stryker cost artifact requires complete shard timing results")
+  }
+  const costs = new Map()
+  for (const shard of shardResults) {
+    const files = shard?.files
+    const durationMs = shard?.durationMs ?? shard?.shardEvidence?.durationMs
+    if (
+      !Array.isArray(files) ||
+      JSON.stringify(files) !== JSON.stringify([...new Set(files)].sort()) ||
+      !Number.isSafeInteger(shard?.mutantCount) ||
+      shard.mutantCount < 1 ||
+      !Number.isFinite(durationMs) ||
+      durationMs <= 0 ||
+      durationMs > maximumHistoricalCostMs
+    ) {
+      throw new Error("Historical Stryker shard timing is malformed")
+    }
+    let assignedMutants = 0
+    for (const rawFile of files) {
+      const file = canonicalMutationSourcePath(rawFile)
+      const preflight = preflightByFile.get(file)
+      if (
+        file !== rawFile ||
+        costs.has(file) ||
+        !Array.isArray(preflight?.mutants) ||
+        preflight.mutants.length === 0
+      ) {
+        throw new Error("Historical Stryker shard timings do not match the viable source inventory")
+      }
+      assignedMutants += preflight.mutants.length
+      costs.set(file, (durationMs * preflight.mutants.length) / shard.mutantCount)
+    }
+    if (assignedMutants !== shard.mutantCount) {
+      throw new Error("Historical Stryker shard timing mutant count is stale")
+    }
+  }
+  return buildHistoricalCostArtifact({ sourceRevision, config, preflightByFile, costs })
+}
+
+export function parseHistoricalCostArtifact({
+  artifactText,
+  sourceRevision,
+  config,
+  preflightByFile,
+}) {
+  if (typeof artifactText !== "string") {
+    throw new Error("Historical Stryker cost artifact is missing")
+  }
+  let artifact
+  try {
+    artifact = JSON.parse(artifactText)
+  } catch {
+    throw new Error("Historical Stryker cost artifact contains invalid JSON")
+  }
+  if (artifactText !== jsonText(artifact)) {
+    throw new Error("Historical Stryker cost artifact JSON is not canonical")
+  }
+  assertExactObjectKeys(
+    artifact,
+    ["schemaVersion", "payload", "payloadSha256"],
+    "Historical Stryker cost artifact"
+  )
+  if (artifact.schemaVersion !== historicalCostArtifactSchemaVersion) {
+    throw new Error("Historical Stryker cost artifact schema version is unsupported")
+  }
+  assertSha256(artifact.payloadSha256, "Historical Stryker cost artifact payload digest")
+  if (artifact.payloadSha256 !== sha256(jsonText(artifact.payload))) {
+    throw new Error("Historical Stryker cost artifact payload digest does not match its content")
+  }
+  if (!(preflightByFile instanceof Map)) {
+    throw new Error("Historical Stryker cost artifact requires an instrumenter preflight Map")
+  }
+  return historicalCostModelCosts({
+    model: artifact.payload,
+    sourceRevision,
+    config,
+    serializedPreflight: serializePreflight(preflightByFile),
+  })
+}
+
+function historicalCostArtifactRelativePath(env) {
+  const raw = env.STRYKER_HISTORICAL_COSTS_ARTIFACT
+  if (raw === undefined) return undefined
+  let relativePath
+  try {
+    relativePath = canonicalMutationSourcePath(raw)
+    assertPortableArtifactRelativePath(relativePath)
+  } catch {
+    throw new Error("STRYKER_HISTORICAL_COSTS_ARTIFACT must be a canonical cost-candidate path")
+  }
+  if (raw !== relativePath || path.posix.basename(relativePath) !== "HISTORICAL_COSTS.json") {
+    throw new Error("STRYKER_HISTORICAL_COSTS_ARTIFACT must be a canonical cost-candidate path")
+  }
+  return relativePath
+}
+
+async function readRegularHistoricalCostArtifact({ candidateRoot, relativePath }) {
+  const root = path.resolve(candidateRoot)
+  let rootStats
+  try {
+    rootStats = await lstat(root)
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "ENOENT") {
+      throw new Error("Historical Stryker cost candidate root is missing")
+    }
+    throw error
+  }
+  if (!rootStats.isDirectory() || rootStats.isSymbolicLink()) {
+    throw new Error("Historical Stryker cost candidate root is malformed")
+  }
+  let currentPath = root
+  const components = relativePath.split("/")
+  for (const [index, component] of components.entries()) {
+    currentPath = path.join(currentPath, component)
+    let stats
+    try {
+      stats = await lstat(currentPath)
+    } catch (error) {
+      if (error && typeof error === "object" && error.code === "ENOENT") {
+        throw new Error("Historical Stryker cost artifact is missing")
+      }
+      throw error
+    }
+    const finalComponent = index === components.length - 1
+    if (stats.isSymbolicLink() || (finalComponent ? !stats.isFile() : !stats.isDirectory())) {
+      throw new Error("Historical Stryker cost artifact path is malformed")
+    }
+    if (finalComponent && stats.nlink !== 1) {
+      throw new Error("Historical Stryker cost artifact must not be a hard link")
+    }
+  }
+  return readFile(currentPath, "utf8")
+}
+
+export async function loadHistoricalCostArtifact({
+  sourceRevision,
+  config,
+  preflightByFile,
+  env = process.env,
+  candidateRoot = historicalCostCandidateRoot,
+}) {
+  const relativePath = historicalCostArtifactRelativePath(env)
+  if (relativePath === undefined) return undefined
+  if (typeof candidateRoot !== "string" || candidateRoot === "") {
+    throw new Error("Historical Stryker cost candidate root is invalid")
+  }
+  const artifactText = await readRegularHistoricalCostArtifact({ candidateRoot, relativePath })
+  const costs = parseHistoricalCostArtifact({
+    artifactText,
+    sourceRevision,
+    config,
+    preflightByFile,
+  })
+  return { model: JSON.parse(artifactText).payload, costs }
+}
+
 function deserializePreflight({ serializedPreflight, sourceFiles, sourceByFile }) {
   if (!isRecord(serializedPreflight) || !(sourceByFile instanceof Map)) {
     throw new Error("Preflight artifact source snapshot is malformed")
@@ -764,11 +1110,22 @@ function deserializePreflight({ serializedPreflight, sourceFiles, sourceByFile }
   return preflightByFile
 }
 
-function assertCanonicalShardPlan({ shardPlan, preflightByFile, shardTargetMutants, shardCount }) {
+function assertCanonicalShardPlan({
+  shardPlan,
+  preflightByFile,
+  shardTargetMutants,
+  shardCount,
+  historicalCosts,
+}) {
   if (!Number.isInteger(shardCount) || shardCount < 1) {
     throw new Error("Preflight artifact shard count is invalid")
   }
-  const expectedPlan = planMutationShards(preflightByFile, shardTargetMutants, shardCount)
+  const expectedPlan = planMutationShards(
+    preflightByFile,
+    shardTargetMutants,
+    shardCount,
+    historicalCosts
+  )
   if (expectedPlan.length !== shardCount) {
     throw new Error(
       `Preflight artifact shard plan has ${expectedPlan.length} logical shards; expected ${shardCount}`
@@ -828,20 +1185,20 @@ function assertExactPreflightArtifactMetadata({
   config,
   producerAttemptPolicy,
 }) {
-  assertExactObjectKeys(
-    payload,
-    [
-      "schemaVersion",
-      "workflow",
-      "sourceRevision",
-      "sourcePolicy",
-      "config",
-      "toolchain",
-      "preflight",
-      "shardPlan",
-    ],
-    "Preflight artifact payload"
-  )
+  const expectedPayloadFields = [
+    "schemaVersion",
+    "workflow",
+    "sourceRevision",
+    "sourcePolicy",
+    "config",
+    "toolchain",
+    "preflight",
+    "shardPlan",
+  ]
+  if (Object.hasOwn(payload, "historicalCostModel")) {
+    expectedPayloadFields.push("historicalCostModel")
+  }
+  assertExactObjectKeys(payload, expectedPayloadFields, "Preflight artifact payload")
   if (payload.schemaVersion !== preflightArtifactSchemaVersion) {
     throw new Error("Preflight artifact schema version is unsupported")
   }
@@ -874,9 +1231,24 @@ export function buildPreflightArtifact({
   preflightByFile,
   shardTargetMutants,
   shardCount,
+  historicalCostModel,
 }) {
   const serializedPreflight = serializePreflight(preflightByFile)
-  const shardPlan = planMutationShards(preflightByFile, shardTargetMutants, shardCount)
+  const historicalCosts =
+    historicalCostModel === undefined
+      ? undefined
+      : historicalCostModelCosts({
+          model: historicalCostModel,
+          sourceRevision,
+          config,
+          serializedPreflight,
+        })
+  const shardPlan = planMutationShards(
+    preflightByFile,
+    shardTargetMutants,
+    shardCount,
+    historicalCosts
+  )
   if (shardPlan.length !== shardCount) {
     throw new Error(
       `Canonical Stryker preflight generated ${shardPlan.length}/${shardCount} logical shards`
@@ -894,6 +1266,7 @@ export function buildPreflightArtifact({
       files: serializedPreflight,
     },
     shardPlan,
+    ...(historicalCostModel === undefined ? {} : { historicalCostModel }),
   }
   return {
     schemaVersion: preflightArtifactSchemaVersion,
@@ -963,11 +1336,21 @@ export function validatePreflightArtifact({
     throw new Error("Preflight artifact preflight digest does not match its source universe")
   }
   const preflightByFile = deserializePreflight({ serializedPreflight, sourceFiles, sourceByFile })
+  const historicalCosts =
+    artifact.payload.historicalCostModel === undefined
+      ? undefined
+      : historicalCostModelCosts({
+          model: artifact.payload.historicalCostModel,
+          sourceRevision,
+          config,
+          serializedPreflight,
+        })
   const shardPlan = assertCanonicalShardPlan({
     shardPlan: artifact.payload.shardPlan,
     preflightByFile,
     shardTargetMutants,
     shardCount,
+    historicalCosts,
   })
   if (canonicalPreflightByFile !== undefined) {
     if (!(canonicalPreflightByFile instanceof Map)) {
@@ -982,6 +1365,7 @@ export function validatePreflightArtifact({
       preflightByFile: canonicalPreflightByFile,
       shardTargetMutants,
       shardCount,
+      historicalCosts,
     })
   }
   return {
@@ -1244,6 +1628,12 @@ async function main() {
     }
 
     const toolchain = await readToolchain()
+    const historicalCostConfig = {
+      path: "frontend/stryker.config.mjs",
+      sha256: before.inputHashes["frontend/stryker.config.mjs"],
+      instrumenterOptions,
+    }
+    assertSha256(historicalCostConfig.sha256, "Canonical Stryker configuration digest")
     const workflow =
       artifactExecution.mode === "generate" || artifactExecution.artifactRequired
         ? requireWorkflowProvenance(before)
@@ -1268,9 +1658,15 @@ async function main() {
         instrumenterOptions,
       })
       assertEvidenceUnchanged(before, (await captureEvidence(sourceFiles)).identity)
+      const historicalCostArtifact = await loadHistoricalCostArtifact({
+        sourceRevision: before,
+        config: historicalCostConfig,
+        preflightByFile: canonicalPreflightByFile,
+      })
       const artifact = buildPreflightArtifact({
         ...artifactMetadata,
         preflightByFile: canonicalPreflightByFile,
+        historicalCostModel: historicalCostArtifact?.model,
       })
       const artifactText = jsonText(artifact)
       validatePreflightArtifact({
@@ -1315,7 +1711,17 @@ async function main() {
         instrumenterOptions,
       })
       assertEvidenceUnchanged(before, (await captureEvidence(sourceFiles)).identity)
-      shardPlan = planMutationShards(preflightByFile, shardTarget, externalShardCount)
+      const historicalCostArtifact = await loadHistoricalCostArtifact({
+        sourceRevision: before,
+        config: historicalCostConfig,
+        preflightByFile,
+      })
+      shardPlan = planMutationShards(
+        preflightByFile,
+        shardTarget,
+        externalShardCount,
+        historicalCostArtifact?.costs
+      )
       currentPreflightDigest = sha256(JSON.stringify(serializePreflight(preflightByFile)))
     }
     if (shardPlan.length === 0) {
@@ -1383,6 +1789,7 @@ async function main() {
         // Vitest's canonical config imports `../quality/coverage-source-policy.json`,
         // so place an exact, fail-closed copy beside (never inside) the sandbox.
         await stageStrykerSandboxInputs(shardTemp)
+        const executionStartedAt = Date.now()
         await runNode(
           [strykerEntry, "run"],
           `Stryker ${shard.id}`,
@@ -1396,6 +1803,7 @@ async function main() {
           },
           shardTimeoutMs
         )
+        const durationMs = Math.max(1, Date.now() - executionStartedAt)
         const reportText = await readFile(reportPath, "utf8")
         const shardEvidence = {
           schemaVersion: "1.0",
@@ -1410,6 +1818,7 @@ async function main() {
           workflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT ?? null,
           files: shard.files,
           mutantCount: shard.mutantCount,
+          durationMs,
           reportSha256: sha256(reportText),
           generatedAt: new Date().toISOString(),
         }
@@ -1424,6 +1833,7 @@ async function main() {
           shardEvidencePath,
           shardEvidenceText,
           shardEvidence,
+          durationMs,
         }
       })
     }
@@ -1435,6 +1845,18 @@ async function main() {
         `Completed ${shard.id}/${shardPlan.length} with ${shard.mutantCount} assigned mutants\n`
       )
       return
+    }
+    const shardTimingValues = shardResults.map(
+      (shard) => shard.durationMs ?? shard.shardEvidence?.durationMs
+    )
+    if (shardTimingValues.every((durationMs) => durationMs !== undefined)) {
+      const historicalCostArtifact = buildHistoricalCostArtifactFromShardTimings({
+        sourceRevision: before,
+        config: historicalCostConfig,
+        preflightByFile,
+        shardResults,
+      })
+      await atomicText(historicalCostArtifactOutputPath, jsonText(historicalCostArtifact))
     }
     if (serializedPreflight === undefined) {
       throw new Error("Aggregate Stryker evidence requires a canonical preflight universe")
