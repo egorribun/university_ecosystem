@@ -1116,6 +1116,28 @@ def test_merge_metadata_rejects_mutated_receipted_bytes(
         )
 
 
+@pytest.mark.parametrize("target", ["canonical-metadata", "canonical-report"])
+def test_merge_metadata_rejects_hardlinked_canonical_receipt_members(
+    provenance_repository: Path, target: str
+) -> None:
+    case = _retry_merge_case(provenance_repository)
+    _, metadata_path, receipt_path, _, _, _ = case
+    linked_path = (
+        metadata_path
+        if target == "canonical-metadata"
+        else provenance_repository / "coverage.xml"
+    )
+    source_path = linked_path.with_name(f"hardlink-source-{linked_path.name}")
+    shutil.copyfile(linked_path, source_path)
+    linked_path.unlink()
+    os.link(source_path, linked_path)
+
+    with pytest.raises(ProvenanceError, match="must not be a hard link"):
+        _merge_receipted_retry_case(
+            provenance_repository, case=case, retry_selection_receipt=receipt_path
+        )
+
+
 @pytest.mark.parametrize(
     ("fault", "message"),
     [

@@ -389,6 +389,8 @@ def _safe_report(root: Path, relative: str, field: str) -> Path:
         raise ProvenanceError(f"{field} does not identify a report file: {relative}")
     if _is_link_or_junction(path):
         raise ProvenanceError(f"{field} must not be a symlink or junction: {relative}")
+    if path.stat().st_nlink != 1:
+        raise ProvenanceError(f"{field} must not be a hard link: {relative}")
     if path.stat().st_size <= 0:
         raise ProvenanceError(f"{field} must be a non-empty report: {relative}")
     return path
@@ -409,6 +411,8 @@ def _safe_metadata_input(root: Path, path: Path) -> Path:
         raise ProvenanceError(
             f"metadata path must not be a symlink or junction: {candidate}"
         )
+    if candidate.stat().st_nlink != 1:
+        raise ProvenanceError(f"metadata path must not be a hard link: {candidate}")
     return candidate
 
 
