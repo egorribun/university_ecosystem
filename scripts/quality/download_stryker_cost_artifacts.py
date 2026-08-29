@@ -45,6 +45,7 @@ _SHA = re.compile(r"[0-9a-f]{40}$")
 _DIGEST = re.compile(r"sha256:([0-9a-f]{64})$")
 _PREFIX = re.compile(r"[a-z0-9][a-z0-9._-]*-$")
 _REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+_WINDOWS_DRIVE = re.compile(r"^[A-Za-z]:")
 _TRUSTED_CDN_SUFFIXES = (
     ".actions.githubusercontent.com",
     ".blob.core.windows.net",
@@ -149,7 +150,14 @@ def _validate_arguments(arguments: DownloadArguments) -> None:
 
 
 def _safe_relative_directory(path: Path) -> tuple[str, ...]:
-    if not str(path) or path.is_absolute() or path.drive:
+    path_text = str(path)
+    if (
+        not path_text
+        or path.is_absolute()
+        or path.root
+        or path.drive
+        or _WINDOWS_DRIVE.match(path_text) is not None
+    ):
         raise ArtifactDownloadError(
             "output_root must be a non-empty relative directory"
         )

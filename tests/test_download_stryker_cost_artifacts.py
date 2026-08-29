@@ -256,7 +256,9 @@ def test_arguments_fail_closed_for_untrusted_identity_or_path(
         downloader._validate_arguments(invalid)
 
 
-@pytest.mark.parametrize("path", [Path(), Path(".."), Path("C:/unsafe")])
+@pytest.mark.parametrize(
+    "path", [Path(), Path(".."), Path("/unsafe"), Path("C:/unsafe")]
+)
 def test_safe_relative_directory_rejects_absolute_or_escaping_paths(path: Path) -> None:
     with pytest.raises(downloader.ArtifactDownloadError):
         downloader._safe_relative_directory(path)
