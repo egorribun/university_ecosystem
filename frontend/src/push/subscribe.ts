@@ -468,6 +468,16 @@ export async function resolveServiceWorkerRegistration(
   registration?: ServiceWorkerRegistration
 ): Promise<ServiceWorkerRegistration | null> {
   if (registration) return registration
+  // Lighthouse uses a synthetic authenticated build and deliberately skips
+  // the normal service-worker bootstrap in `main.tsx`.  Push preferences are
+  // mounted by a deferred overlay, however, and their subscription probe can
+  // otherwise fall through to `registerServiceWorker()` after the readiness
+  // timeout.  Registering a worker in an audit profile triggers a
+  // controllerchange reload, so Lighthouse measures a second document and
+  // spends the navigation budget on a reload instead of the requested route.
+  // Keep the audit profile side-effect free; this literal is tree-shaken from
+  // normal production/development bundles, which retain the full push flow.
+  if (import.meta.env.VITE_LHCI === "true") return null
   if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
     return null
   }
