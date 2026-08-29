@@ -47,6 +47,21 @@ type sessionRevocationSubscriber struct {
 	closeErr    error
 }
 
+// These narrow lifecycle seams keep the listener's failure paths deterministic
+// in unit tests while retaining the concrete production implementations.
+var closeSessionRevocationSubscriberFunc = func(subscriber *sessionRevocationSubscriber) error {
+	return subscriber.close()
+}
+
+var registerSessionRevocationBootstrapFunc = func(
+	h *Hub,
+	lifecycleCtx context.Context,
+	cancel context.CancelFunc,
+	closeSubscriber func(context.Context),
+) (uint64, context.CancelFunc, error) {
+	return h.registerSessionRevocationBootstrap(lifecycleCtx, cancel, closeSubscriber)
+}
+
 func newSessionRevocationSubscriber(source *goredis.Client) *sessionRevocationSubscriber {
 	options := *source.Options()
 	// The listener has one responsibility: receive the canonical revocation
@@ -197,11 +212,11 @@ func (h *Hub) StartSessionRevocationListener(ctx context.Context) error {
 	listenerCtx, cancel := context.WithCancel(ctx)
 	subscriber := newSessionRevocationSubscriber(h.revocationRedisClient)
 	closeSubscriber := func(logCtx context.Context) {
-		if closeErr := subscriber.close(); closeErr != nil && h.Logger != nil {
+		if closeErr := closeSessionRevocationSubscriberFunc(subscriber); closeErr != nil && h.Logger != nil {
 			h.Logger.WarnContext(logCtx, "Failed to close session revocation subscriber", "err", closeErr)
 		}
 	}
-	generation, previousCancel, err := h.registerSessionRevocationBootstrap(listenerCtx, cancel, closeSubscriber)
+	generation, previousCancel, err := registerSessionRevocationBootstrapFunc(h, listenerCtx, cancel, closeSubscriber)
 	if err != nil {
 		cancel()
 		return err

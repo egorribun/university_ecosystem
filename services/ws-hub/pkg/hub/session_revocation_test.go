@@ -721,3 +721,101 @@ func TestConcurrentRevocationAndActionSerializeTransportClose(t *testing.T) {
 	assert.Equal(t, 1, session.closeCount(), "concurrent paths must close the transport once")
 	assert.True(t, client.sessionRevoked.Load())
 }
+
+func TestNewSessionRevocationSubscriberPreservesCustomDialer(t *testing.T) {
+	dialed := false
+	source := goredis.NewClient(&goredis.Options{
+		Addr: "127.0.0.1:1",
+		Dialer: func(context.Context, string, string) (net.Conn, error) {
+			dialed = true
+			return nil, errors.New("synthetic dial failure")
+		},
+	})
+	t.Cleanup(func() { require.NoError(t, source.Close()) })
+	subscriber := newSessionRevocationSubscriber(source)
+	t.Cleanup(func() { require.NoError(t, subscriber.close()) })
+
+	_, err := subscriber.client.Options().Dialer(context.Background(), "tcp", "ignored")
+	assert.ErrorContains(t, err, "synthetic dial failure")
+	assert.True(t, dialed, "the source custom dialer must be retained for the isolated subscriber")
+}
+
+func TestNewSessionRevocationSubscriberBuildsDefaultDialerWhenUnset(t *testing.T) {
+	source := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:1"})
+	t.Cleanup(func() { require.NoError(t, source.Close()) })
+	source.Options().Dialer = nil
+	subscriber := newSessionRevocationSubscriber(source)
+	t.Cleanup(func() { require.NoError(t, subscriber.close()) })
+
+	assert.NotNil(t, subscriber.client.Options().Dialer)
+}
+
+func TestSessionRevocationStartupTimeoutDefaultsForNonPositiveValues(t *testing.T) {
+	assert.Equal(t, defaultSessionRevocationSubscribeTimeout, sessionRevocationStartupTimeout(0))
+	assert.Equal(t, defaultSessionRevocationSubscribeTimeout, sessionRevocationStartupTimeout(-time.Second))
+	assert.Equal(t, time.Second, sessionRevocationStartupTimeout(time.Second))
+}
+
+func TestRegisterSessionRevocationBootstrapRejectsStoppedHub(t *testing.T) {
+	h := setupTestHub()
+	h.stopped.Store(true)
+	t.Cleanup(h.Stop)
+
+	generation, previousCancel, err := h.registerSessionRevocationBootstrap(
+		context.Background(),
+		func() {},
+		func(context.Context) {},
+	)
+	assert.ErrorContains(t, err, "after hub shutdown")
+	assert.Zero(t, generation)
+	assert.Nil(t, previousCancel)
+}
+
+func TestSessionRevocationBootstrapErrorReportsCancellation(t *testing.T) {
+	h := setupTestHub()
+	t.Cleanup(h.Stop)
+
+	err := h.sessionRevocationBootstrapError(1, nil, context.Background())
+	assert.ErrorContains(t, err, "startup was cancelled")
+}
+
+func TestSessionRevocationListenerSubscriberCloseErrorIsContained(t *testing.T) {
+	oldClose := closeSessionRevocationSubscriberFunc
+	t.Cleanup(func() { closeSessionRevocationSubscriberFunc = oldClose })
+	closeSessionRevocationSubscriberFunc = func(subscriber *sessionRevocationSubscriber) error {
+		return errors.Join(subscriber.close(), errors.New("synthetic subscriber close failure"))
+	}
+
+	redisClient := goredis.NewClient(&goredis.Options{
+		Addr:        "127.0.0.1:1",
+		DialTimeout: 10 * time.Millisecond,
+		MaxRetries:  0,
+	})
+	t.Cleanup(func() { require.NoError(t, redisClient.Close()) })
+	h := NewHub(nil, newTestLogger(), nil, nil, nil, redisClient)
+	t.Cleanup(h.Stop)
+
+	assert.Error(t, h.StartSessionRevocationListener(context.Background()))
+}
+
+func TestStartSessionRevocationListenerContainsBootstrapRegistrationError(t *testing.T) {
+	oldRegister := registerSessionRevocationBootstrapFunc
+	t.Cleanup(func() { registerSessionRevocationBootstrapFunc = oldRegister })
+	registerSessionRevocationBootstrapFunc = func(
+		_ *Hub,
+		_ context.Context,
+		_ context.CancelFunc,
+		closeSubscriber func(context.Context),
+	) (uint64, context.CancelFunc, error) {
+		closeSubscriber(context.Background())
+		return 0, nil, errors.New("synthetic registration failure")
+	}
+
+	redisClient := goredis.NewClient(&goredis.Options{Addr: "127.0.0.1:1"})
+	t.Cleanup(func() { require.NoError(t, redisClient.Close()) })
+	h := NewHub(nil, newTestLogger(), nil, nil, nil, redisClient)
+	t.Cleanup(h.Stop)
+
+	err := h.StartSessionRevocationListener(context.Background())
+	assert.ErrorContains(t, err, "synthetic registration failure")
+}
