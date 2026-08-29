@@ -698,6 +698,12 @@ export const useProfileSync = (
       // Full user hydrates from /users/me cache or client-side useEffect.
       return resolveSsrInitialUserState(ssrAuthHint)
     }
+    // RootShell carries a non-sensitive role marker from the SSR request.
+    // Prefer the same role-only stub during hydration so an authenticated
+    // server tree is not reconciled against a cold anonymous skeleton. The
+    // normal /users/me fetch below replaces it with the full profile.
+    const ssrUser = resolveSsrInitialUserState(ssrAuthHint)
+    if (ssrUser !== null) return ssrUser
     const signingKey = sessionSigningKeyRef.current
     if (!signingKey) return null
     const candidate = readCachedEnvelope()

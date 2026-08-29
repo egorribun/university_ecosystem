@@ -282,10 +282,18 @@ function RootShell({ children }: { children: React.ReactNode }) {
   // `<Scripts />` injects the bundle entry script tags + modulepreload
   // links produced by Vite + tanstackStart.
   const ssrTheme = globalThis.__ssrThemeGetter__?.()
+  const ssrAuth = globalThis.__ssrAuthGetter__?.()
   const ssrLang = globalThis.__ssrLangGetter__?.()
   const isDark = ssrTheme === "dark"
   const isLhci = import.meta.env.VITE_LHCI === "true"
   const lang = ssrLang ?? "ru"
+  // The server-rendered tree uses a role-only auth stub so authenticated
+  // routes can paint immediately. Preserve that same fact in the document
+  // shell for the first browser render; the client consumes this marker and
+  // replaces the stub with the authoritative /users/me response. No PII or
+  // token is serialized.
+  const ssrAuthMarker =
+    ssrAuth?.isAuth && ssrAuth.user ? `authenticated:${ssrAuth.user.role}` : undefined
   const htmlClassName =
     [isDark && "dark", isLhci && "lhci-mode"].filter(Boolean).join(" ") || undefined
 
@@ -353,7 +361,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
           fallback below preserves visibility independently.
           main.tsx still hides the lhci-marker on LHCI builds (separate concern).
         */}
-        <div id="root" className="ready">
+        <div id="root" className="ready" data-ssr-auth={ssrAuthMarker}>
           {children}
         </div>
         <noscript>
