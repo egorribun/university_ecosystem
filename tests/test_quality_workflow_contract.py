@@ -2572,6 +2572,15 @@ def test_frontend_coverage_is_merged_after_all_vitest_shards() -> None:
         if step.get("uses", "").startswith("actions/checkout@")
     )
     assert aggregate_checkout["with"]["fetch-depth"] == 0
+    failed_shard_guard = next(
+        step
+        for step in aggregate_steps
+        if step.get("name") == "Fail if a test shard failed"
+    )
+    assert failed_shard_guard["working-directory"] == "${{ github.workspace }}"
+    assert aggregate_steps.index(failed_shard_guard) < aggregate_steps.index(
+        aggregate_checkout
+    )
     merge_step = next(
         step
         for step in aggregate_steps

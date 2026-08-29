@@ -158,6 +158,11 @@ jobs:
     steps:
       - name: Fail if a test shard failed
         if: ${{ needs.unit-tests-shard.result != 'success' }}
+        # This guard intentionally runs before checkout so a failed shard
+        # exits quickly.  The repository-relative default working directory
+        # does not exist until checkout, therefore pin the guard to the
+        # runner workspace explicitly.
+        working-directory: ${{ github.workspace }}
         run: |
           echo "::error::At least one frontend Vitest shard did not pass."
           exit 1
