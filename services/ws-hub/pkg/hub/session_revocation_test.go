@@ -355,7 +355,7 @@ func newStalledSubscribeServer(t *testing.T) *stalledSubscribeServer {
 		if acceptErr != nil {
 			return
 		}
-		defer connection.Close()
+		defer func() { _ = connection.Close() }() //nolint:errcheck // test connection cleanup
 
 		reader := bufio.NewReader(connection)
 		for {
@@ -485,8 +485,8 @@ func TestSessionRevocationStartupTimeoutFailsClosed(t *testing.T) {
 		if acceptErr != nil {
 			return
 		}
-		defer connection.Close()
-		<-release // Withhold every setup response until the caller times out.
+		defer func() { _ = connection.Close() }() //nolint:errcheck // test connection cleanup
+		<-release                                 // Withhold every setup response until the caller times out.
 	}()
 	t.Cleanup(func() {
 		close(release)
@@ -531,7 +531,7 @@ func TestStopOwnsSessionRevocationBootstrapBeforePubSubExists(t *testing.T) {
 		if acceptErr != nil {
 			return
 		}
-		defer connection.Close()
+		defer func() { _ = connection.Close() }() //nolint:errcheck // test connection cleanup
 		close(accepted)
 		<-release // Do not answer HELLO, so no PubSub handle can be returned.
 	}()

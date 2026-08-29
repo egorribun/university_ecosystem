@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -71,8 +72,7 @@ func newSessionRevocationSubscriber(source *goredis.Client) *sessionRevocationSu
 			return nil, err
 		}
 		if !subscriber.trackConnection(connection) {
-			_ = connection.Close()
-			return nil, net.ErrClosed
+			return nil, errors.Join(net.ErrClosed, connection.Close())
 		}
 		return connection, nil
 	}
@@ -103,12 +103,85 @@ func (s *sessionRevocationSubscriber) close() error {
 
 		// Close raw connections before the client pools. A connection still in
 		// go-redis initConn has not reached the Pub/Sub pool's active map yet.
+		var closeErr error
 		for _, connection := range connections {
-			_ = connection.Close()
+			closeErr = errors.Join(closeErr, connection.Close())
 		}
-		s.closeErr = s.client.Close()
+		s.closeErr = errors.Join(closeErr, s.client.Close())
 	})
 	return s.closeErr
+}
+
+func (h *Hub) validateSessionRevocationStart() error {
+	switch {
+	case h == nil:
+		return fmt.Errorf("cannot start session revocation listener on nil hub")
+	case h.revocationRedisClient == nil:
+		return fmt.Errorf("revocation Redis is required for session listener")
+	case h.stopped.Load():
+		return fmt.Errorf("cannot start session revocation listener after hub shutdown")
+	default:
+		return nil
+	}
+}
+
+func sessionRevocationStartupTimeout(timeout time.Duration) time.Duration {
+	if timeout <= 0 {
+		return defaultSessionRevocationSubscribeTimeout
+	}
+	return timeout
+}
+
+func cancelSessionRevocationBootstrap(previousCancel context.CancelFunc) {
+	if previousCancel != nil {
+		previousCancel()
+	}
+}
+
+func (h *Hub) registerSessionRevocationBootstrap(
+	lifecycleCtx context.Context,
+	cancel context.CancelFunc,
+	closeSubscriber func(context.Context),
+) (uint64, context.CancelFunc, error) {
+	h.lifecycleMu.Lock()
+	defer h.lifecycleMu.Unlock()
+	if h.stopped.Load() {
+		return 0, nil, fmt.Errorf("cannot start session revocation listener after hub shutdown")
+	}
+	h.sessionRevocationGeneration++
+	generation := h.sessionRevocationGeneration
+	previousCancel := h.sessionRevocationCancel
+	// Add while lifecycleMu is held before even attempting the network
+	// subscription. Stop sets stopped under the same mutex, so it can cancel and
+	// join a listener that is stalled before Redis sends its acknowledgement.
+	h.sessionRevocationWG.Add(1)
+	h.sessionRevocationCancel = func() { //nolint:contextcheck // context.CancelFunc has a fixed func() signature; cleanup owns its lifecycle context.
+		cancel()
+		closeSubscriber(lifecycleCtx)
+	}
+	return generation, previousCancel, nil
+}
+
+func (h *Hub) sessionRevocationBootstrapError(
+	generation uint64,
+	startupErr error,
+	listenerCtx context.Context,
+) error {
+	h.lifecycleMu.Lock()
+	defer h.lifecycleMu.Unlock()
+	if !h.stopped.Load() &&
+		h.sessionRevocationGeneration == generation &&
+		startupErr == nil &&
+		listenerCtx.Err() == nil {
+		return nil
+	}
+	if h.stopped.Load() {
+		return fmt.Errorf("cannot start session revocation listener after hub shutdown")
+	}
+	if startupErr != nil {
+		return fmt.Errorf("subscribe to session revocations: %w", startupErr)
+	}
+	return fmt.Errorf("session revocation listener startup was cancelled")
 }
 
 // StartSessionRevocationListener consumes canonical session revocation events
@@ -117,14 +190,8 @@ func (s *sessionRevocationSubscriber) close() error {
 // the live-disconnect path. Per-action tombstone checks remain mandatory: Redis
 // Pub/Sub is at-most-once and a missed notification must never authorize work.
 func (h *Hub) StartSessionRevocationListener(ctx context.Context) error {
-	if h == nil {
-		return fmt.Errorf("cannot start session revocation listener on nil hub")
-	}
-	if h.revocationRedisClient == nil {
-		return fmt.Errorf("revocation Redis is required for session listener")
-	}
-	if h.stopped.Load() {
-		return fmt.Errorf("cannot start session revocation listener after hub shutdown")
+	if err := h.validateSessionRevocationStart(); err != nil {
+		return err
 	}
 
 	listenerCtx, cancel := context.WithCancel(ctx)
@@ -134,39 +201,21 @@ func (h *Hub) StartSessionRevocationListener(ctx context.Context) error {
 			h.Logger.WarnContext(logCtx, "Failed to close session revocation subscriber", "err", closeErr)
 		}
 	}
-	h.lifecycleMu.Lock()
-	if h.stopped.Load() {
-		h.lifecycleMu.Unlock()
+	generation, previousCancel, err := h.registerSessionRevocationBootstrap(listenerCtx, cancel, closeSubscriber)
+	if err != nil {
 		cancel()
-		return fmt.Errorf("cannot start session revocation listener after hub shutdown")
+		return err
 	}
-	h.sessionRevocationGeneration++
-	generation := h.sessionRevocationGeneration
-	previousCancel := h.sessionRevocationCancel
-	// Add while lifecycleMu is held before even attempting the network
-	// subscription. Stop sets stopped under the same mutex, so it can cancel and
-	// join a listener that is stalled before Redis sends its acknowledgement.
-	h.sessionRevocationWG.Add(1)
-	h.sessionRevocationCancel = func() {
-		cancel()
-		closeSubscriber(context.Background())
-	}
-	h.lifecycleMu.Unlock()
-	if previousCancel != nil {
-		previousCancel()
-	}
+	cancelSessionRevocationBootstrap(previousCancel)
 
-	startupTimeout := h.sessionRevocationSubscribeTimeout
-	if startupTimeout <= 0 {
-		startupTimeout = defaultSessionRevocationSubscribeTimeout
-	}
+	startupTimeout := sessionRevocationStartupTimeout(h.sessionRevocationSubscribeTimeout)
 	// Client.Subscribe can block in go-redis connection initialization before
 	// returning a PubSub handle. context.AfterFunc closes the captured raw socket
 	// on timeout/cancellation, making the bound enforceable even when the source
 	// client deliberately has ReadTimeout disabled for idle Pub/Sub.
 	startupCtx, startupCancel := context.WithTimeout(listenerCtx, startupTimeout)
-	stopStartupAbort := context.AfterFunc(startupCtx, func() {
-		closeSubscriber(context.Background())
+	stopStartupAbort := context.AfterFunc(startupCtx, func() { //nolint:contextcheck // context.AfterFunc requires a fixed func() callback; startupCtx is the authoritative lifecycle context.
+		closeSubscriber(startupCtx)
 	})
 	pubsub := subscriber.client.Subscribe(startupCtx, sessionRevocationsChannel)
 	startupErr := startupCtx.Err()
@@ -193,26 +242,19 @@ func (h *Hub) StartSessionRevocationListener(ctx context.Context) error {
 		h.sessionRevocationWG.Done()
 	}
 
-	h.lifecycleMu.Lock()
-	if h.stopped.Load() || h.sessionRevocationGeneration != generation || startupErr != nil || listenerCtx.Err() != nil {
-		h.lifecycleMu.Unlock()
+	if startupFailure := h.sessionRevocationBootstrapError(generation, startupErr, listenerCtx); startupFailure != nil {
 		finish()
-		if h.stopped.Load() {
-			return fmt.Errorf("cannot start session revocation listener after hub shutdown")
-		}
-		if startupErr != nil {
-			return fmt.Errorf("subscribe to session revocations: %w", startupErr)
-		}
-		return fmt.Errorf("session revocation listener startup was cancelled")
+		return startupFailure
 	}
+	h.lifecycleMu.Lock()
 	// Replace the provisional bootstrap stop function with a concrete Pub/Sub
 	// close. PubSub.Receive only observes a context deadline captured when it
 	// starts; closing the socket is therefore required to wake an already-blocked
 	// read.
-	h.sessionRevocationCancel = func() {
+	h.sessionRevocationCancel = func() { //nolint:contextcheck // context.CancelFunc has a fixed func() signature; cleanup owns its lifecycle context.
 		cancel()
-		closeSubscriber(context.Background())
-		closePubSub(context.Background())
+		closeSubscriber(listenerCtx)
+		closePubSub(listenerCtx)
 	}
 	h.lifecycleMu.Unlock()
 
@@ -251,7 +293,7 @@ func (h *Hub) consumeSessionRevocationMessages(ctx context.Context, messages <-c
 				}
 				continue
 			}
-			h.DisconnectSession(message.Payload, 4401, "Session revoked")
+			h.disconnectSessionContext(ctx, message.Payload, 4401, "Session revoked")
 		}
 	}
 }

@@ -1298,6 +1298,13 @@ func (h *Hub) DisconnectUser(userID string, closeCode int, reason string) {
 // immutable session JTI. The Hub lock is released before RevokeSession takes
 // the client gate, preserving the Hub.mu -> Client.mu lock-order invariant.
 func (h *Hub) DisconnectSession(jti string, closeCode int, reason string) {
+	h.disconnectSessionContext(context.Background(), jti, closeCode, reason)
+}
+
+// disconnectSessionContext is the context-aware implementation used by
+// lifecycle consumers. The exported compatibility wrapper above keeps the
+// existing no-context API for callers that do not have a request context.
+func (h *Hub) disconnectSessionContext(ctx context.Context, jti string, closeCode int, reason string) {
 	if h == nil || jti == "" {
 		return
 	}
@@ -1317,7 +1324,7 @@ func (h *Hub) DisconnectSession(jti string, closeCode int, reason string) {
 
 	// Do not log JTI values: they are bearer-session correlators.
 	if h.Logger != nil {
-		h.Logger.InfoContext(context.Background(), "Disconnecting revoked WebSocket sessions",
+		h.Logger.InfoContext(ctx, "Disconnecting revoked WebSocket sessions",
 			"count", len(targets), "code", closeCode, "reason", reason)
 	}
 	for _, client := range targets {
