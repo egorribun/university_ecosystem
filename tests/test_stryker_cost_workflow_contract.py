@@ -27,46 +27,39 @@ def test_historical_stryker_cost_evidence_is_same_run_bound_and_optional() -> No
     assert jobs["stryker-shards"]["strategy"]["max-parallel"] == 11
     assert "STRYKER_HISTORICAL_COSTS_ARTIFACT" not in preflight["env"]
 
-    download = _step(
-        preflight,
-        "Download verified same-run historical Stryker cost candidates",
-    )
-    assert download["uses"].startswith("actions/download-artifact@")
-    assert download["with"] == {
-        "pattern": "frontend-mutation-historical-costs-${{ github.run_id }}-*-${{ github.sha }}",
-        "path": "frontend/reports/mutation/cost-candidates",
-        "merge-multiple": False,
-    }
-    assert "name" not in download["with"]
-
     selector = _step(
         preflight, "Select immutable same-run historical Stryker cost candidate"
     )
     assert selector["id"] == "select_historical_stryker_cost"
     assert selector["shell"] == "bash"
-    assert selector["env"] == {
-        "CANDIDATE_ROOT": "frontend/reports/mutation/cost-candidates",
-        "RUN_ID": "${{ github.run_id }}",
-        "RUN_ATTEMPT": "${{ github.run_attempt }}",
-        "COMMIT_SHA": "${{ github.sha }}",
-    }
+    assert selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
     selector_script = selector["run"]
     for invariant in (
         "set -euo pipefail",
-        "has_candidate=false",
-        '[[ ! -e "$CANDIDATE_ROOT" ]]',
-        '[[ ! "$RUN_ID" =~ ^[1-9][0-9]*$ ]]',
-        '[[ ! "$RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]',
-        '[[ ! "$COMMIT_SHA" =~ ^[a-f0-9]{40}$ ]]',
-        '[[ ! -d "$candidate" || -L "$candidate" ]]',
-        '[[ ! "$attempt" =~ ^[1-9][0-9]*$ ]]',
-        "10#$attempt >= 10#$RUN_ATTEMPT",
-        "artifact=${selected_name}/HISTORICAL_COSTS.json",
+        "scripts/quality/select_same_run_artifact_cli.py",
+        '--artifact-prefix "frontend-mutation-historical-costs-"',
+        '--artifact-suffix "${{ github.sha }}"',
+        "--attempt-policy earlier",
+        "--allow-empty",
     ):
         assert invariant in selector_script
-    assert selector_script.index('[[ -L "$CANDIDATE_ROOT" ]]') < selector_script.index(
-        '[[ ! -e "$CANDIDATE_ROOT" ]]'
+
+    download = _step(preflight, "Download selected historical Stryker cost candidate")
+    assert download["uses"].startswith("actions/download-artifact@")
+    assert download["if"] == (
+        "${{ steps.select_historical_stryker_cost.outputs.has_candidate == 'true' }}"
     )
+    assert download["with"] == {
+        "artifact-ids": "${{ steps.select_historical_stryker_cost.outputs.artifact_id }}",
+        "repository": "${{ github.repository }}",
+        "run-id": "${{ github.run_id }}",
+        "github-token": "${{ github.token }}",
+        "path": (
+            "frontend/reports/mutation/cost-candidates/"
+            "${{ steps.select_historical_stryker_cost.outputs.artifact_name }}"
+        ),
+    }
+    assert "pattern" not in download["with"]
 
     historical_generation = _step(
         preflight,
@@ -78,7 +71,8 @@ def test_historical_stryker_cost_evidence_is_same_run_bound_and_optional() -> No
     assert historical_generation["working-directory"] == "frontend"
     assert historical_generation["env"] == {
         "STRYKER_HISTORICAL_COSTS_ARTIFACT": (
-            "${{ steps.select_historical_stryker_cost.outputs.artifact }}"
+            "${{ steps.select_historical_stryker_cost.outputs.artifact_name }}"
+            "/HISTORICAL_COSTS.json"
         )
     }
     assert historical_generation["run"] == "npm run test:mutation"
@@ -118,3 +112,39 @@ def test_historical_stryker_cost_evidence_is_same_run_bound_and_optional() -> No
     assert aggregate_steps.index(
         _step(aggregate, "Aggregate and verify fresh frontend mutation evidence")
     ) < (aggregate_steps.index(upload))
+
+
+def test_singleton_downloads_use_server_selected_ids() -> None:
+    """Singleton retry artifacts must not be fetched by a client-side glob."""
+
+    jobs = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+    for job_name, download_name, selector_id in (
+        (
+            "stryker-shards",
+            "Download selected Stryker preflight candidate",
+            "select_stryker_preflight",
+        ),
+        (
+            "stryker-aggregate",
+            "Download selected Stryker preflight candidate",
+            "select_stryker_preflight",
+        ),
+        (
+            "stryker-evidence-roundtrip",
+            "Download selected immutable Stryker evidence candidate",
+            "select_stryker_validated",
+        ),
+    ):
+        job = jobs[job_name]
+        download = _step(job, download_name)
+        values = download["with"]
+        assert values["artifact-ids"] == (
+            f"${{{{ steps.{selector_id}.outputs.artifact_id }}}}"
+        )
+        assert values["repository"] == "${{ github.repository }}"
+        assert values["run-id"] == "${{ github.run_id }}"
+        assert values["github-token"] == "${{ github.token }}"
+        assert (
+            "${{ steps." + selector_id + ".outputs.artifact_name }}" in values["path"]
+        )
+        assert "pattern" not in values

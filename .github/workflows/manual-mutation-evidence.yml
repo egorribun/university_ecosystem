@@ -169,7 +169,6 @@ jobs:
         with:
           pattern: manual-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-*
           path: mutmut-stats
-          if-no-artifact-found: error
 
       - name: Require all manual mutmut stats shards
         if: steps.mutation_scope.outputs.has_python == 'true'
@@ -466,7 +465,6 @@ jobs:
         with:
           pattern: manual-frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-*
           path: frontend/reports/mutation/external
-          if-no-artifact-found: error
 
       - name: Aggregate and verify manual frontend mutation evidence
         working-directory: frontend

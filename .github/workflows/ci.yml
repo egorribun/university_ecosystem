@@ -707,6 +707,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request' }}
     permissions:
       contents: read
+      actions: read
     env:
       STRYKER_SHARD_COUNT: "64"
       STRYKER_PREFLIGHT_MODE: generate
@@ -715,6 +716,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Set up Python for artifact provenance selection
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -733,95 +739,59 @@ jobs:
       # A timing model is only an optimization; the first attempt has no
       # prior aggregate in this run. Later retries may consume exactly one
       # immutable model emitted by a successful aggregate of this same run
-      # and SHA. The runner revalidates its source/config/preflight binding
-      # before it changes the canonical shard plan.
-      - name: Download verified same-run historical Stryker cost candidates
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: frontend-mutation-historical-costs-${{ github.run_id }}-*-${{ github.sha }}
-          path: frontend/reports/mutation/cost-candidates
-          merge-multiple: false
-
+      # and SHA. The REST selector validates the server-issued artifact ID
+      # before the pinned action downloads it, so a single match still lands
+      # in an explicitly named directory (download-artifact v8 otherwise
+      # extracts a singleton directly into `path`).
       - name: Select immutable same-run historical Stryker cost candidate
         id: select_historical_stryker_cost
         shell: bash
         env:
-          CANDIDATE_ROOT: frontend/reports/mutation/cost-candidates
-          RUN_ID: ${{ github.run_id }}
-          RUN_ATTEMPT: ${{ github.run_attempt }}
-          COMMIT_SHA: ${{ github.sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          echo "has_candidate=false" >> "$GITHUB_OUTPUT"
-          if [[ ! "$RUN_ID" =~ ^[1-9][0-9]*$ ]] || \
-             [[ ! "$RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]] || \
-             [[ ! "$COMMIT_SHA" =~ ^[a-f0-9]{40}$ ]]; then
-            echo "::error::GitHub workflow identity for historical Stryker costs is malformed."
-            exit 1
-          fi
-          if [[ -L "$CANDIDATE_ROOT" ]]; then
-            echo "::error::Historical Stryker cost candidate root must not be a symlink."
-            exit 1
-          fi
-          if [[ ! -e "$CANDIDATE_ROOT" ]]; then
-            exit 0
-          fi
-          if [[ ! -d "$CANDIDATE_ROOT" ]]; then
-            echo "::error::Historical Stryker cost candidate root is malformed."
-            exit 1
-          fi
-          shopt -s nullglob dotglob
-          candidates=("$CANDIDATE_ROOT"/*)
-          if (( ${#candidates[@]} == 0 )); then
-            exit 0
-          fi
-          prefix="frontend-mutation-historical-costs-${RUN_ID}-"
-          suffix="-${COMMIT_SHA}"
-          selected_attempt=0
-          selected_name=""
-          for candidate in "${candidates[@]}"; do
-            candidate_name="${candidate##*/}"
-            if [[ ! -d "$candidate" || -L "$candidate" ]]; then
-              echo "::error::Historical Stryker cost candidate is not an isolated directory."
-              exit 1
-            fi
-            if [[ "$candidate_name" != "$prefix"*"$suffix" ]]; then
-              echo "::error::Historical Stryker cost candidate is outside this run/SHA scope."
-              exit 1
-            fi
-            attempt="${candidate_name#"$prefix"}"
-            attempt="${attempt%"$suffix"}"
-            if [[ ! "$attempt" =~ ^[1-9][0-9]*$ ]] || \
-               [[ "$candidate_name" != "${prefix}${attempt}${suffix}" ]] || \
-               (( 10#$attempt >= 10#$RUN_ATTEMPT )); then
-              echo "::error::Historical Stryker cost candidate has an invalid producer attempt."
-              exit 1
-            fi
-            contents=("$candidate"/*)
-            if (( ${#contents[@]} != 1 )) || \
-               [[ "${contents[0]##*/}" != "HISTORICAL_COSTS.json" ]] || \
-               [[ ! -f "${contents[0]}" || -L "${contents[0]}" ]] || \
-               [[ "$(stat --format='%h' "${contents[0]}")" != "1" ]]; then
-              echo "::error::Historical Stryker cost candidate payload is malformed."
-              exit 1
-            fi
-            if (( 10#$attempt > 10#$selected_attempt )); then
-              selected_attempt="$attempt"
-              selected_name="$candidate_name"
-            fi
-          done
-          if (( selected_attempt == 0 )) || [[ -z "$selected_name" ]]; then
-            echo "::error::Historical Stryker cost candidates did not yield a prior producer attempt."
-            exit 1
-          fi
-          echo "artifact=${selected_name}/HISTORICAL_COSTS.json" >> "$GITHUB_OUTPUT"
-          echo "has_candidate=true" >> "$GITHUB_OUTPUT"
+          python3 scripts/quality/select_same_run_artifact_cli.py \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --consumer-run-attempt "${{ github.run_attempt }}" \
+            --commit-sha "${{ github.sha }}" \
+            --event "${{ github.event_name }}" \
+            --workflow-path ".github/workflows/ci.yml" \
+            --artifact-prefix "frontend-mutation-historical-costs-" \
+            --artifact-suffix "${{ github.sha }}" \
+            --attempt-policy earlier \
+            --allow-empty
+
+      - name: Download selected historical Stryker cost candidate
+        if: ${{ steps.select_historical_stryker_cost.outputs.has_candidate == 'true' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.select_historical_stryker_cost.outputs.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: frontend/reports/mutation/cost-candidates/${{ steps.select_historical_stryker_cost.outputs.artifact_name }}
+
+      - name: Verify selected historical Stryker cost payload
+        if: ${{ steps.select_historical_stryker_cost.outputs.has_candidate == 'true' }}
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ steps.select_historical_stryker_cost.outputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          root="frontend/reports/mutation/cost-candidates/$ARTIFACT_NAME"
+          test -d "$root" && test ! -L "$root"
+          test "$(find "$root" -mindepth 1 -maxdepth 1 -type f -name 'HISTORICAL_COSTS.json' | wc -l)" -eq 1
+          test "$(find "$root" -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 1
+          test -s "$root/HISTORICAL_COSTS.json"
+          test ! -L "$root/HISTORICAL_COSTS.json"
+          test "$(stat --format='%h' "$root/HISTORICAL_COSTS.json")" = "1"
 
       - name: Generate canonical immutable Stryker preflight with verified historical costs
         if: ${{ steps.select_historical_stryker_cost.outputs.has_candidate == 'true' }}
         working-directory: frontend
         env:
-          STRYKER_HISTORICAL_COSTS_ARTIFACT: ${{ steps.select_historical_stryker_cost.outputs.artifact }}
+          STRYKER_HISTORICAL_COSTS_ARTIFACT: ${{ steps.select_historical_stryker_cost.outputs.artifact_name }}/HISTORICAL_COSTS.json
         run: npm run test:mutation
 
       - name: Generate canonical immutable Stryker preflight
@@ -860,6 +830,7 @@ jobs:
         shard-index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
     permissions:
       contents: read
+      actions: read
     env:
       STRYKER_SHARD_COUNT: "64"
       STRYKER_SHARD_INDEX: ${{ matrix.shard-index }}
@@ -870,6 +841,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Set up Python for artifact provenance selection
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -882,13 +858,46 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Download immutable same-run Stryker preflight candidates
+      - name: Select immutable same-run Stryker preflight candidate
+        id: select_stryker_preflight
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/select_same_run_artifact_cli.py \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --consumer-run-attempt "${{ github.run_attempt }}" \
+            --commit-sha "${{ github.sha }}" \
+            --event "${{ github.event_name }}" \
+            --workflow-path ".github/workflows/ci.yml" \
+            --artifact-prefix "frontend-mutation-preflight-" \
+            --artifact-suffix "${{ github.sha }}" \
+            --attempt-policy current-or-earlier
+
+      - name: Download selected Stryker preflight candidate
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: frontend-mutation-preflight-${{ github.run_id }}-*-${{ github.sha }}
-          path: frontend/reports/mutation/preflight-candidates
-          merge-multiple: false
-          if-no-artifact-found: error
+          artifact-ids: ${{ steps.select_stryker_preflight.outputs.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: frontend/reports/mutation/preflight-candidates/${{ steps.select_stryker_preflight.outputs.artifact_name }}
+
+      - name: Verify selected Stryker preflight payload
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ steps.select_stryker_preflight.outputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          root="frontend/reports/mutation/preflight-candidates/$ARTIFACT_NAME"
+          test -d "$root" && test ! -L "$root"
+          test "$(find "$root" -mindepth 1 -maxdepth 1 -type f -name 'PREFLIGHT_ARTIFACT.json' | wc -l)" -eq 1
+          test "$(find "$root" -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 1
+          test -s "$root/PREFLIGHT_ARTIFACT.json"
+          test ! -L "$root/PREFLIGHT_ARTIFACT.json"
+          test "$(stat --format='%h' "$root/PREFLIGHT_ARTIFACT.json")" = "1"
 
       # A failed-jobs rerun may reuse only a verified immutable preflight
       # candidate from this workflow run and SHA. The shard cache is transport,
@@ -947,6 +956,7 @@ jobs:
     if: ${{ always() && !cancelled() && github.event_name == 'pull_request' }}
     permissions:
       contents: read
+      actions: read
     env:
       STRYKER_SHARD_COUNT: "64"
       STRYKER_AGGREGATE_ROOT: reports/mutation/external
@@ -957,6 +967,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Set up Python for artifact provenance selection
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -969,13 +984,46 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Download immutable same-run Stryker preflight candidates
+      - name: Select immutable same-run Stryker preflight candidate
+        id: select_stryker_preflight
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/select_same_run_artifact_cli.py \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --consumer-run-attempt "${{ github.run_attempt }}" \
+            --commit-sha "${{ github.sha }}" \
+            --event "${{ github.event_name }}" \
+            --workflow-path ".github/workflows/ci.yml" \
+            --artifact-prefix "frontend-mutation-preflight-" \
+            --artifact-suffix "${{ github.sha }}" \
+            --attempt-policy current-or-earlier
+
+      - name: Download selected Stryker preflight candidate
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: frontend-mutation-preflight-${{ github.run_id }}-*-${{ github.sha }}
-          path: frontend/reports/mutation/preflight-candidates
-          merge-multiple: false
-          if-no-artifact-found: error
+          artifact-ids: ${{ steps.select_stryker_preflight.outputs.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: frontend/reports/mutation/preflight-candidates/${{ steps.select_stryker_preflight.outputs.artifact_name }}
+
+      - name: Verify selected Stryker preflight payload
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ steps.select_stryker_preflight.outputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          root="frontend/reports/mutation/preflight-candidates/$ARTIFACT_NAME"
+          test -d "$root" && test ! -L "$root"
+          test "$(find "$root" -mindepth 1 -maxdepth 1 -type f -name 'PREFLIGHT_ARTIFACT.json' | wc -l)" -eq 1
+          test "$(find "$root" -mindepth 1 -maxdepth 1 -type f | wc -l)" -eq 1
+          test -s "$root/PREFLIGHT_ARTIFACT.json"
+          test ! -L "$root/PREFLIGHT_ARTIFACT.json"
+          test "$(stat --format='%h' "$root/PREFLIGHT_ARTIFACT.json")" = "1"
 
       # A failed-jobs retry must retain successful logical shards from earlier
       # attempts in this exact workflow run. The aggregate validates each
@@ -986,7 +1034,15 @@ jobs:
           pattern: frontend-mutation-shard-${{ github.run_id }}-*
           path: frontend/reports/mutation/external
           merge-multiple: false
-          if-no-artifact-found: error
+
+      - name: Require same-run Stryker shard candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="frontend/reports/mutation/external"
+          test -d "$root" && test ! -L "$root"
+          test "$(find "$root" -mindepth 1 -maxdepth 1 -type d | wc -l)" -ge 1
+          test "$(find "$root" -mindepth 1 -maxdepth 1 -type l | wc -l)" -eq 0
 
       - name: Aggregate and verify fresh frontend mutation evidence
         working-directory: frontend
@@ -1029,6 +1085,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request' }}
     permissions:
       contents: read
+      actions: read
     env:
       STRYKER_VALIDATED_CANDIDATE_ROOT: reports/mutation/validated-candidates
     steps:
@@ -1048,13 +1105,50 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Download immutable same-run validated Stryker evidence candidates
+      - name: Set up Python for artifact provenance selection
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Select immutable same-run validated Stryker evidence candidate
+        id: select_stryker_validated
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/select_same_run_artifact_cli.py \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --consumer-run-attempt "${{ github.run_attempt }}" \
+            --commit-sha "${{ github.sha }}" \
+            --event "${{ github.event_name }}" \
+            --workflow-path ".github/workflows/ci.yml" \
+            --artifact-prefix "frontend-mutation-validated-" \
+            --artifact-suffix "" \
+            --attempt-policy current-or-earlier
+
+      - name: Download selected immutable Stryker evidence candidate
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: frontend-mutation-validated-${{ github.run_id }}-*
-          path: frontend/reports/mutation/validated-candidates
-          merge-multiple: false
-          if-no-artifact-found: error
+          artifact-ids: ${{ steps.select_stryker_validated.outputs.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: frontend/reports/mutation/validated-candidates/${{ steps.select_stryker_validated.outputs.artifact_name }}
+
+      - name: Verify selected immutable Stryker evidence payload
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ steps.select_stryker_validated.outputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          root="frontend/reports/mutation/validated-candidates/$ARTIFACT_NAME"
+          test -d "$root" && test ! -L "$root"
+          for required in VALIDATED.json mutation.json inventory.json preflight.json; do
+            test -f "$root/$required" && test ! -L "$root/$required"
+            test "$(stat --format='%h' "$root/$required")" = "1"
+          done
 
       - name: Re-verify downloaded frontend mutation evidence
         working-directory: frontend
@@ -1539,6 +1633,9 @@ jobs:
     name: Performance Gate
     runs-on: ubuntu-24.04
     timeout-minutes: 20 # CI-03 (audit Wave 10)
+    permissions:
+      contents: read
+      actions: read
     needs:
       - frontend-tests
     defaults:
@@ -1546,6 +1643,13 @@ jobs:
         working-directory: frontend
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python for artifact provenance selection
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -1557,34 +1661,121 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Download Lighthouse results
-        id: download_lighthouse_results
-        # RZ-NEW-007 (audit 2026-03-19): SHA-pinned to prevent supply chain attack via
-        # mutable @v8 tag. All other CI actions already use SHA pinning — this was the
-        # only exception. Equivalent to actions/download-artifact@v4.
+      - name: Select immutable same-run Lighthouse evidence candidate
+        id: select_lighthouse_results
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/select_same_run_artifact_cli.py \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --consumer-run-attempt "${{ github.run_attempt }}" \
+            --commit-sha "${{ github.sha }}" \
+            --event "${{ github.event_name }}" \
+            --workflow-path ".github/workflows/ci.yml" \
+            --artifact-prefix "lighthouse-reports-attempt-" \
+            --artifact-suffix "" \
+            --artifact-name-layout attempt \
+            --attempt-policy current-or-earlier
+
+      - name: Download selected Lighthouse results
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}
-          path: frontend/.lighthouseci
-          if-no-artifact-found: error
-        continue-on-error: true
+          artifact-ids: ${{ steps.select_lighthouse_results.outputs.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: artifacts/lighthouse/candidates/${{ steps.select_lighthouse_results.outputs.artifact_name }}
 
-      - name: Require Lighthouse results artifact
-        if: steps.download_lighthouse_results.outcome != 'success'
+      - name: Verify selected Lighthouse results payload
+        working-directory: ${{ github.workspace }}
         env:
-          DOWNLOAD_OUTCOME: ${{ steps.download_lighthouse_results.outcome }}
+          ARTIFACT_NAME: ${{ steps.select_lighthouse_results.outputs.artifact_name }}
         shell: bash
         run: |
-          echo "::error::Lighthouse results artifact not found. Check the 'Frontend Tests' job for upload issues."
-          {
-            echo "## Lighthouse performance gate";
-            echo "- Artifact download outcome: ${DOWNLOAD_OUTCOME}";
-            echo "- Gate failed closed because threshold evidence is unavailable.";
-          } >> "$GITHUB_STEP_SUMMARY"
-          exit 1
+          set -euo pipefail
+          root="artifacts/lighthouse/candidates/$ARTIFACT_NAME"
+          test -d "$root" && test ! -L "$root"
+          test -f "$root/provenance/lighthouse-reports.json" && test ! -L "$root/provenance/lighthouse-reports.json"
+          test "$(find "$root/lhr" -type f -name 'lhr-*.json' | wc -l)" -eq 30
+          test "$(find "$root/lhr" -type l -print -quit | wc -l)" -eq 0
+
+      - name: Select and materialize verified Lighthouse evidence
+        id: materialize_lighthouse_results
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ steps.select_lighthouse_results.outputs.artifact_name }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/select_lighthouse_artifacts_cli.py \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --candidate-root "artifacts/lighthouse/candidates/$ARTIFACT_NAME" \
+            --destination-root "artifacts/lighthouse/selection" \
+            --repository "${{ github.repository }}" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --event "$EVENT_NAME" \
+            --consumer-job "performance-gate" \
+            --config-input .github/workflows/reusable-frontend-tests.yml \
+            --config-input .lighthouserc.js \
+            --config-input frontend/package.json \
+            --config-input frontend/package-lock.json \
+            --config-input frontend/scripts/run-lhci.mjs \
+            --config-input frontend/scripts/lhci-route-policy.mjs \
+            --config-input frontend/scripts/lhci-route-policy-config.cjs \
+            --policy-input budget.json \
+            --policy-input frontend/public/robots.txt \
+            --policy-input quality/quality-contract.json \
+            --policy-input .github/workflows/ci.yml \
+            --policy-input scripts/quality/coverage_provenance.py \
+            --policy-input scripts/quality/coverage_retry_context.py \
+            --policy-input scripts/quality/coverage_retry_provenance_cli.py \
+            --policy-input scripts/quality/select_coverage_artifacts.py \
+            --policy-input scripts/quality/select_lighthouse_artifacts.py \
+            --policy-input scripts/quality/select_lighthouse_artifacts_cli.py > artifacts/lighthouse/selection-summary.json
+          test -s artifacts/lighthouse/selection-summary.json
+
+      - name: Materialize assertion reports from verified selection
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_root="artifacts/lighthouse/selection/lighthouse-reports"
+          destination="frontend/.lighthouseci"
+          test -d "$source_root" && test ! -L "$source_root"
+          if [[ -e "$destination" ]]; then
+            test -d "$destination" && test ! -L "$destination"
+            if find "$destination" -mindepth 1 -maxdepth 1 -print -quit | grep -q .; then
+              echo "::error::Lighthouse assertion directory is not empty before materialization."
+              exit 1
+            fi
+          else
+            mkdir -p "$destination"
+          fi
+          mapfile -d '' reports < <(find "$source_root/lhr" -mindepth 2 -maxdepth 2 -type f -name 'lhr-*.json' -print0 | sort -z)
+          test "${#reports[@]}" -eq 30
+          for index in "${!reports[@]}"; do
+            source="${reports[$index]}"
+            test ! -L "$source"
+            test "$(stat --format='%h' "$source")" = "1"
+            target="$destination/lhr-$(printf '%02d' "$index").json"
+            cp -- "$source" "$target"
+            test -f "$target" && test ! -L "$target"
+          done
+          test "$(find "$destination" -mindepth 1 -maxdepth 1 -type f -name 'lhr-*.json' | wc -l)" -eq 30
 
       - name: Enforce Lighthouse thresholds
-        if: steps.download_lighthouse_results.outcome == 'success'
         env:
           # The artifact is already collected by the frontend shards. The
           # repository-level LHCI config otherwise performs its build-time
@@ -1596,7 +1787,6 @@ jobs:
             --config=../.lighthouserc.js
 
       - name: Enforce Lighthouse route privacy policy
-        if: steps.download_lighthouse_results.outcome == 'success'
         run: node scripts/lhci-route-policy.mjs
 
   # MOD-W15-02 (audit 2026-03-23 Wave 15): Trivy Docker image scanning.
@@ -2600,7 +2790,6 @@ jobs:
           pattern: mutmut-stats-shard-*-attempt-*
           path: mutmut-stats-candidates
           merge-multiple: false
-          if-no-artifact-found: error
 
       - name: Select complete retry-safe mutmut stats cohort
         if: steps.mutation_scope.outputs.has_python == 'true'
@@ -2794,6 +2983,9 @@ jobs:
     timeout-minutes: 360
     env:
       OTEL_SDK_DISABLED: "true"
+    permissions:
+      contents: read
+      actions: read
     needs:
       - pre-commit-check
       - mutation-tests-stats
@@ -2815,6 +3007,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Python for artifact provenance selection
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
       - name: Detect changed Python source
         id: mutation_scope
         shell: bash
@@ -2835,13 +3032,44 @@ jobs:
             echo "has_python=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Download same-run mutmut universe candidates
+      - name: Select immutable same-run mutmut universe candidate
+        id: select_mutmut_universe
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/select_same_run_artifact_cli.py \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --consumer-run-attempt "${{ github.run_attempt }}" \
+            --commit-sha "${{ github.sha }}" \
+            --event "${{ github.event_name }}" \
+            --workflow-path ".github/workflows/ci.yml" \
+            --artifact-prefix "mutmut-universe-" \
+            --artifact-suffix "" \
+            --attempt-policy current-or-earlier
+
+      - name: Download selected same-run mutmut universe candidate
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: mutmut-universe-${{ github.run_id }}-*
-          path: mutmut-universe-candidates
-          merge-multiple: false
-          if-no-artifact-found: error
+          artifact-ids: ${{ steps.select_mutmut_universe.outputs.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: mutmut-universe-candidates/${{ steps.select_mutmut_universe.outputs.artifact_name }}
+
+      - name: Verify selected mutmut universe payload
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ steps.select_mutmut_universe.outputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          root="mutmut-universe-candidates/$ARTIFACT_NAME"
+          test -d "$root" && test ! -L "$root"
+          test -f "$root/mutmut-universe-artifact.json" && test ! -L "$root/mutmut-universe-artifact.json"
+          test -d "$root/mutants" && test ! -L "$root/mutants"
+          test "$(stat --format='%h' "$root/mutmut-universe-artifact.json")" = "1"
 
       - name: Select retry-safe central mutmut universe
         id: universe_artifact

@@ -95,7 +95,6 @@ jobs:
         with:
           pattern: nightly-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-*
           path: mutmut-stats
-          if-no-artifact-found: error
 
       - name: Require all full mutmut stats shards
         shell: bash
@@ -221,7 +220,6 @@ jobs:
         with:
           name: nightly-mutmut-plan-${{ github.run_id }}-${{ github.run_attempt }}
           path: mutants
-          if-no-artifact-found: error
 
       - name: Plan and run exact full mutation shard
         id: run_full_mutmut
@@ -503,7 +501,6 @@ jobs:
         with:
           pattern: nightly-mutmut-shard-${{ github.run_id }}-${{ github.run_attempt }}-*
           path: mutmut-shards
-          if-no-artifact-found: error
 
       - name: Require all full mutmut execution shards
         shell: bash
@@ -632,7 +629,6 @@ jobs:
         with:
           pattern: nightly-frontend-mutation-shard-${{ github.run_id }}-${{ github.run_attempt }}-*
           path: frontend/reports/mutation/external
-          if-no-artifact-found: error
 
       - name: Aggregate and verify nightly frontend mutation evidence
         working-directory: frontend

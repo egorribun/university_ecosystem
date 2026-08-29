@@ -428,15 +428,43 @@ def test_precommit_cache_cannot_cross_into_privileged_workflows() -> None:
 
 def test_lighthouse_missing_artifact_fails_closed() -> None:
     job = _workflow(CI)["jobs"]["performance-gate"]
-    download = _step(job, "Download Lighthouse results")
-    require = _step(job, "Require Lighthouse results artifact")
+    selector = _step(job, "Select immutable same-run Lighthouse evidence candidate")
+    download = _step(job, "Download selected Lighthouse results")
     enforce = _step(job, "Enforce Lighthouse thresholds")
 
-    assert download["continue-on-error"] is True
-    assert "outcome != 'success'" in require["if"]
-    assert "::error::" in require["run"]
-    assert "exit 1" in require["run"]
-    assert "outcome == 'success'" in enforce["if"]
+    assert selector["id"] == "select_lighthouse_results"
+    assert selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
+    selector_script = selector["run"]
+    for invariant in (
+        "set -euo pipefail",
+        "scripts/quality/select_same_run_artifact_cli.py",
+        '--artifact-prefix "lighthouse-reports-attempt-"',
+        '--artifact-suffix ""',
+        "--artifact-name-layout attempt",
+        "--attempt-policy current-or-earlier",
+    ):
+        assert invariant in selector_script
+    assert "if" not in download
+    assert download["with"] == {
+        "artifact-ids": "${{ steps.select_lighthouse_results.outputs.artifact_id }}",
+        "repository": "${{ github.repository }}",
+        "run-id": "${{ github.run_id }}",
+        "github-token": "${{ github.token }}",
+        "path": (
+            "artifacts/lighthouse/candidates/"
+            "${{ steps.select_lighthouse_results.outputs.artifact_name }}"
+        ),
+    }
+    assert "continue-on-error" not in download
+    assert "pattern" not in download["with"]
+    lighthouse_runs = "\n".join(
+        step.get("run", "") for step in job["steps"] if isinstance(step, dict)
+    )
+    assert "scripts/quality/select_lighthouse_artifacts_cli.py" in lighthouse_runs
+    assert "--candidate-root" in lighthouse_runs
+    assert "--destination-root" in lighthouse_runs
+    enforce_if = enforce.get("if", "")
+    assert enforce_if in ("", "always()") or "success()" in enforce_if
 
 
 def test_helm_squawk_and_trivy_are_real_blocking_gates() -> None:
@@ -585,15 +613,6 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
 
 def test_stryker_preflight_candidates_are_retry_safe_and_fail_closed() -> None:
     jobs = _workflow(CI)["jobs"]
-    expected_pattern = (
-        "frontend-mutation-preflight-${{ github.run_id }}-*-${{ github.sha }}"
-    )
-    expected_download = {
-        "pattern": expected_pattern,
-        "path": "frontend/reports/mutation/preflight-candidates",
-        "merge-multiple": False,
-        "if-no-artifact-found": "error",
-    }
     producer = jobs["stryker-preflight"]
     upload = _step(producer, "Upload immutable Stryker preflight")
     assert upload["with"]["name"] == (
@@ -612,12 +631,29 @@ def test_stryker_preflight_candidates_are_retry_safe_and_fail_closed() -> None:
         node_setup = _step(jobs[job_name], "Setup Node.js")
         assert node_setup["with"]["node-version"] == "24.15.0"
 
+    producer_selector = _step(
+        producer, "Select immutable same-run historical Stryker cost candidate"
+    )
+    assert producer_selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
     for job_name in ("stryker-shards", "stryker-aggregate"):
-        download = _step(
-            jobs[job_name], "Download immutable same-run Stryker preflight candidates"
-        )
-        assert download["with"] == expected_download
-        assert "name" not in download["with"]
+        job = jobs[job_name]
+        selector = _step(job, "Select immutable same-run Stryker preflight candidate")
+        assert selector["id"] == "select_stryker_preflight"
+        assert selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
+        assert "scripts/quality/select_same_run_artifact_cli.py" in selector["run"]
+        assert '--artifact-prefix "frontend-mutation-preflight-"' in selector["run"]
+        download = _step(job, "Download selected Stryker preflight candidate")
+        assert download["with"] == {
+            "artifact-ids": "${{ steps.select_stryker_preflight.outputs.artifact_id }}",
+            "repository": "${{ github.repository }}",
+            "run-id": "${{ github.run_id }}",
+            "github-token": "${{ github.token }}",
+            "path": (
+                "frontend/reports/mutation/preflight-candidates/"
+                "${{ steps.select_stryker_preflight.outputs.artifact_name }}"
+            ),
+        }
+        assert "pattern" not in download["with"]
 
     aggregate_shards = _step(
         jobs["stryker-aggregate"], "Download all same-run Stryker shard candidates"
@@ -626,7 +662,6 @@ def test_stryker_preflight_candidates_are_retry_safe_and_fail_closed() -> None:
         "pattern": "frontend-mutation-shard-${{ github.run_id }}-*",
         "path": "frontend/reports/mutation/external",
         "merge-multiple": False,
-        "if-no-artifact-found": "error",
     }
     assert "name" not in aggregate_shards["with"]
 
@@ -636,16 +671,73 @@ def test_stryker_preflight_candidates_are_retry_safe_and_fail_closed() -> None:
     assert roundtrip["env"] == {
         "STRYKER_VALIDATED_CANDIDATE_ROOT": "reports/mutation/validated-candidates"
     }
+    roundtrip_selector = _step(
+        roundtrip, "Select immutable same-run validated Stryker evidence candidate"
+    )
+    assert roundtrip_selector["id"] == "select_stryker_validated"
+    assert roundtrip_selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
+    assert (
+        "scripts/quality/select_same_run_artifact_cli.py" in roundtrip_selector["run"]
+    )
     roundtrip_download = _step(
-        roundtrip, "Download immutable same-run validated Stryker evidence candidates"
+        roundtrip, "Download selected immutable Stryker evidence candidate"
     )
     assert roundtrip_download["with"] == {
-        "pattern": "frontend-mutation-validated-${{ github.run_id }}-*",
-        "path": "frontend/reports/mutation/validated-candidates",
-        "merge-multiple": False,
-        "if-no-artifact-found": "error",
+        "artifact-ids": "${{ steps.select_stryker_validated.outputs.artifact_id }}",
+        "repository": "${{ github.repository }}",
+        "run-id": "${{ github.run_id }}",
+        "github-token": "${{ github.token }}",
+        "path": (
+            "frontend/reports/mutation/validated-candidates/"
+            "${{ steps.select_stryker_validated.outputs.artifact_name }}"
+        ),
     }
-    assert "name" not in roundtrip_download["with"]
+    assert "pattern" not in roundtrip_download["with"]
+
+
+def test_download_artifact_uses_only_supported_fail_closed_inputs() -> None:
+    """The v8 action has no ``if-no-artifact-found`` input.
+
+    Missing-artifact handling belongs to an explicit selector or shell guard;
+    passing an unknown action input merely emits a warning and silently weakens
+    the transport contract.  Keep this invariant repository-wide so a new
+    workflow cannot reintroduce the typo.
+    """
+
+    for workflow_path in sorted(WORKFLOWS.glob("*.*ml")):
+        workflow = _workflow(workflow_path)
+        for job_name, job in workflow.get("jobs", {}).items():
+            for step in job.get("steps", []):
+                uses = step.get("uses", "")
+                if not isinstance(uses, str) or not uses.startswith(
+                    "actions/download-artifact@"
+                ):
+                    continue
+                with_values = step.get("with", {})
+                assert "if-no-artifact-found" not in with_values, (
+                    f"{workflow_path.name}:{job_name}:{step.get('name', '<unnamed>')}"
+                )
+
+
+def test_critical_pattern_downloads_have_explicit_payload_guards() -> None:
+    """Multi-artifact cohorts remain globs but verify transport before use."""
+
+    workflow = _workflow(CI)
+    for job_name, download_name in (
+        ("mutation-tests-universe", "Download same-run mutmut stats candidates"),
+        ("stryker-aggregate", "Download all same-run Stryker shard candidates"),
+    ):
+        job = workflow["jobs"][job_name]
+        download = _step(job, download_name)
+        assert "pattern" in download["with"]
+        start = job["steps"].index(download) + 1
+        following_runs = "\n".join(
+            step.get("run", "")
+            for step in job["steps"][start:]
+            if isinstance(step, dict)
+        )
+        assert "find " in following_runs or "test -d" in following_runs
+        assert "-type d" in following_runs or "expected=" in following_runs
 
 
 def test_ci_success_does_not_enqueue_a_finalizer_after_run_cancellation() -> None:
@@ -669,7 +761,6 @@ def test_sonar_optionality_is_explicit_and_isolated() -> None:
 def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
     expected_steps = {
         ("admin-smoke-monitoring.yml", "admin-smoke", "Run admin smoke script"),
-        ("ci.yml", "performance-gate", "Download Lighthouse results"),
         ("ci.yml", "docker-security-scan", "Run Trivy vulnerability scanner"),
         (
             "ci.yml",

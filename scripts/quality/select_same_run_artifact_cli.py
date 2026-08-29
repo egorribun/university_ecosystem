@@ -11,12 +11,14 @@ import argparse
 import json
 import os
 import re
+import ssl
 import stat
 import sys
 import tempfile
+import urllib.error
+import urllib.request
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from http.client import HTTPException, HTTPSConnection
 from pathlib import Path
 from typing import TypeIs, cast
 
@@ -24,6 +26,13 @@ _ARTIFACT_PAGE_SIZE = 100
 _MAX_ARTIFACTS = 10_000
 _MAX_CATALOG_SNAPSHOT_ATTEMPTS = 3
 _MAX_METADATA_BYTES = 2 * 1024 * 1024
+_MAX_OUTPUT_BYTES = 1024 * 1024
+_MAX_TEXT_LENGTH = 512
+_MAX_TOKEN_LENGTH = 4096
+_MAX_DECIMAL_DIGITS = 20
+_MAX_REQUESTS_PER_SELECTION = 1 + _MAX_CATALOG_SNAPSHOT_ATTEMPTS * (
+    (_MAX_ARTIFACTS // _ARTIFACT_PAGE_SIZE) + 1
+)
 _DECIMAL = re.compile(r"[1-9][0-9]*$")
 _SHA = re.compile(r"[0-9a-f]{40}$")
 _REPOSITORY = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -98,7 +107,9 @@ def _is_int(value: object) -> TypeIs[int]:
 def _require_text(value: object, field: str) -> str:
     if not isinstance(value, str) or not value or value.strip() != value:
         raise SameRunArtifactError(f"{field} must be a non-empty string")
-    if any(character in value for character in "\x00\r\n"):
+    if len(value) > _MAX_TEXT_LENGTH:
+        raise SameRunArtifactError(f"{field} exceeds the maximum length")
+    if any(ord(character) < 0x20 or ord(character) == 0x7F for character in value):
         raise SameRunArtifactError(f"{field} contains a forbidden control character")
     return value
 
@@ -107,7 +118,18 @@ def _require_decimal(value: object, field: str) -> int:
     text = _require_text(value, field)
     if _DECIMAL.fullmatch(text) is None:
         raise SameRunArtifactError(f"{field} must be a positive decimal")
+    if len(text) > _MAX_DECIMAL_DIGITS:
+        raise SameRunArtifactError(f"{field} exceeds the maximum length")
     return int(text)
+
+
+def _require_token(value: object) -> str:
+    token = _require_text(value, "GH_TOKEN")
+    if len(token) > _MAX_TOKEN_LENGTH or any(
+        ord(character) < 0x21 or ord(character) > 0x7E for character in token
+    ):
+        raise SameRunArtifactError("GH_TOKEN contains unsafe HTTP header characters")
+    return token
 
 
 def _read_limited(stream: object, maximum_bytes: int) -> bytes:
@@ -126,22 +148,33 @@ def _default_request(request: Request, maximum_bytes: int) -> HttpResponse:
     """Perform one bounded request to the fixed GitHub REST API origin."""
 
     if _API_TARGET.fullmatch(request.path) is None:
-        raise SameRunArtifactError("GitHub REST path is not an allowed current-run endpoint")
-    connection = HTTPSConnection("api.github.com", port=443, timeout=20)
+        raise SameRunArtifactError(
+            "GitHub REST path is not an allowed current-run endpoint"
+        )
+    url = f"https://api.github.com{request.path}"
     try:
-        connection.request("GET", request.path, headers=dict(request.headers))
-        response = connection.getresponse()
-        status = response.status
-        if not _is_int(status):
-            raise SameRunArtifactError("GitHub REST response has an invalid status")
-        headers = dict(response.getheaders())
-        return HttpResponse(status, headers, _read_limited(response, maximum_bytes))
+        http_request = urllib.request.Request(  # noqa: S310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected -- URL is restricted to a fixed HTTPS api.github.com origin and a strict path allowlist
+            url,
+            method="GET",
+            headers=dict(request.headers),
+        )
+        context = ssl.create_default_context()
+        # The URL has a fixed HTTPS origin and the path was fullmatched above;
+        # the narrowly scoped suppressions document this audited false positive.
+        with urllib.request.urlopen(  # noqa: S310  # nosec B310  # nosemgrep: python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected
+            http_request,
+            context=context,
+            timeout=20,
+        ) as response:
+            status = response.status
+            if not _is_int(status):
+                raise SameRunArtifactError("GitHub REST response has an invalid status")
+            headers = dict(response.headers.items())
+            return HttpResponse(status, headers, _read_limited(response, maximum_bytes))
     except SameRunArtifactError:
         raise
-    except (OSError, HTTPException) as error:
+    except (OSError, urllib.error.URLError, ValueError, UnicodeError) as error:
         raise SameRunArtifactError("GitHub REST request failed") from error
-    finally:
-        connection.close()
 
 
 def _validate_arguments(arguments: SelectionArguments) -> None:
@@ -155,11 +188,18 @@ def _validate_arguments(arguments: SelectionArguments) -> None:
     workflow_path = _require_text(arguments.workflow_path, "workflow_path")
     if not workflow_path.startswith(".github/workflows/"):
         raise SameRunArtifactError("workflow_path must identify a repository workflow")
-    if _PREFIX.fullmatch(_require_text(arguments.artifact_prefix, "artifact_prefix")) is None:
+    if (
+        _PREFIX.fullmatch(_require_text(arguments.artifact_prefix, "artifact_prefix"))
+        is None
+    ):
         raise SameRunArtifactError("artifact_prefix must be a safe portable prefix")
     suffix = arguments.artifact_suffix
-    if not isinstance(suffix, str) or any(character in suffix for character in "\x00\r\n"):
-        raise SameRunArtifactError("artifact_suffix contains a forbidden control character")
+    if not isinstance(suffix, str) or any(
+        character in suffix for character in "\x00\r\n"
+    ):
+        raise SameRunArtifactError(
+            "artifact_suffix contains a forbidden control character"
+        )
     if suffix and _SUFFIX.fullmatch(suffix) is None:
         raise SameRunArtifactError("artifact_suffix must be a safe portable suffix")
     if arguments.artifact_name_layout not in {"run-id-attempt", "attempt"}:
@@ -197,6 +237,8 @@ def _request_json(
         ),
         _MAX_METADATA_BYTES,
     )
+    if not isinstance(response.body, bytes):
+        raise SameRunArtifactError("GitHub API returned malformed JSON")
     if response.status != 200:
         raise SameRunArtifactError("GitHub API returned an unexpected status")
     try:
@@ -207,7 +249,12 @@ def _request_json(
         )
     except SameRunArtifactError:
         raise
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+    except (
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        ValueError,
+        RecursionError,
+    ) as error:
         raise SameRunArtifactError("GitHub API returned malformed JSON") from error
     if not isinstance(value, Mapping):
         raise SameRunArtifactError("GitHub API JSON must be an object")
@@ -224,26 +271,34 @@ def _required(mapping: Mapping[str, object], field: str) -> object:
 def _validate_current_run(
     metadata: Mapping[str, object], arguments: SelectionArguments
 ) -> None:
-    if (
-        not _is_int(_required(metadata, "id"))
-        or _required(metadata, "id") != _require_decimal(arguments.run_id, "run_id")
-    ):
+    if not _is_int(_required(metadata, "id")) or _required(
+        metadata, "id"
+    ) != _require_decimal(arguments.run_id, "run_id"):
         raise SameRunArtifactError("workflow run id does not match the current run")
     if _required(metadata, "head_sha") != arguments.commit_sha:
         raise SameRunArtifactError("workflow run SHA does not match the current commit")
     if _required(metadata, "event") != arguments.event:
-        raise SameRunArtifactError("workflow run event does not match the current event")
+        raise SameRunArtifactError(
+            "workflow run event does not match the current event"
+        )
     if _required(metadata, "path") != arguments.workflow_path:
-        raise SameRunArtifactError("workflow run path does not match the trusted workflow")
-    if (
-        not _is_int(_required(metadata, "run_attempt"))
-        or _required(metadata, "run_attempt")
-        != _require_decimal(arguments.consumer_run_attempt, "consumer_run_attempt")
-    ):
-        raise SameRunArtifactError("workflow run attempt does not match the current attempt")
+        raise SameRunArtifactError(
+            "workflow run path does not match the trusted workflow"
+        )
+    if not _is_int(_required(metadata, "run_attempt")) or _required(
+        metadata, "run_attempt"
+    ) != _require_decimal(arguments.consumer_run_attempt, "consumer_run_attempt"):
+        raise SameRunArtifactError(
+            "workflow run attempt does not match the current attempt"
+        )
     repository = _required(metadata, "repository")
-    if not isinstance(repository, Mapping) or repository.get("full_name") != arguments.repository:
-        raise SameRunArtifactError("workflow run repository does not match the current repository")
+    if (
+        not isinstance(repository, Mapping)
+        or repository.get("full_name") != arguments.repository
+    ):
+        raise SameRunArtifactError(
+            "workflow run repository does not match the current repository"
+        )
 
 
 def _candidate_from_artifact(
@@ -253,9 +308,7 @@ def _candidate_from_artifact(
     if not name.startswith(arguments.artifact_prefix):
         return None
     suffix = (
-        rf"-{re.escape(arguments.artifact_suffix)}"
-        if arguments.artifact_suffix
-        else ""
+        rf"-{re.escape(arguments.artifact_suffix)}" if arguments.artifact_suffix else ""
     )
     if arguments.artifact_name_layout == "run-id-attempt":
         pattern = re.compile(
@@ -272,22 +325,25 @@ def _candidate_from_artifact(
     artifact_id = _required(artifact, "id")
     if not _is_int(artifact_id) or artifact_id <= 0:
         raise SameRunArtifactError("artifact id is invalid")
-    if not _is_int(_required(artifact, "size_in_bytes")) or _required(
-        artifact, "size_in_bytes"
-    ) <= 0:
+    size_in_bytes = _required(artifact, "size_in_bytes")
+    if not _is_int(size_in_bytes) or size_in_bytes <= 0:
         raise SameRunArtifactError("artifact size is invalid")
     expired = _required(artifact, "expired")
     if not isinstance(expired, bool) or expired:
         raise SameRunArtifactError("artifact is expired or malformed")
-    if _DIGEST.fullmatch(_require_text(_required(artifact, "digest"), "artifact.digest")) is None:
+    if (
+        _DIGEST.fullmatch(
+            _require_text(_required(artifact, "digest"), "artifact.digest")
+        )
+        is None
+    ):
         raise SameRunArtifactError("artifact digest is invalid")
     workflow_run = _required(artifact, "workflow_run")
     if not isinstance(workflow_run, Mapping):
         raise SameRunArtifactError("artifact workflow_run is malformed")
     workflow_run_id = workflow_run.get("id")
-    if (
-        not _is_int(workflow_run_id)
-        or workflow_run_id != _require_decimal(arguments.run_id, "run_id")
+    if not _is_int(workflow_run_id) or workflow_run_id != _require_decimal(
+        arguments.run_id, "run_id"
     ):
         raise SameRunArtifactError("artifact belongs to a foreign workflow run")
     if workflow_run.get("head_sha") != arguments.commit_sha:
@@ -374,7 +430,24 @@ def _list_artifacts(
             return _list_artifact_snapshot(arguments, token, request)
         except _CatalogChanged:
             continue
-    raise SameRunArtifactError("artifact catalog did not converge to a complete snapshot")
+    raise SameRunArtifactError(
+        "artifact catalog did not converge to a complete snapshot"
+    )
+
+
+def _bounded_request_transport(request: RequestTransport) -> RequestTransport:
+    """Bound total REST calls, including all catalog convergence retries."""
+
+    remaining = _MAX_REQUESTS_PER_SELECTION
+
+    def bounded(request_item: Request, maximum_bytes: int) -> HttpResponse:
+        nonlocal remaining
+        if remaining < 1:
+            raise SameRunArtifactError("GitHub API request budget exceeded")
+        remaining -= 1
+        return request(request_item, maximum_bytes)
+
+    return bounded
 
 
 def _is_link_or_junction(path: Path) -> bool:
@@ -394,7 +467,7 @@ def _safe_output_parent(path: Path) -> Path:
         raise SameRunArtifactError("GITHUB_OUTPUT parent must not be a link")
     try:
         resolved_parent = lexical_parent.resolve(strict=True)
-    except OSError as error:
+    except (OSError, RuntimeError) as error:
         raise SameRunArtifactError(
             "GITHUB_OUTPUT parent must be an available regular directory"
         ) from error
@@ -411,7 +484,9 @@ def _safe_output_file(path: Path) -> os.stat_result:
     try:
         metadata = path.lstat()
     except OSError as error:
-        raise SameRunArtifactError("GITHUB_OUTPUT must be an existing regular file") from error
+        raise SameRunArtifactError(
+            "GITHUB_OUTPUT must be an existing regular file"
+        ) from error
     if not stat.S_ISREG(metadata.st_mode):
         raise SameRunArtifactError("GITHUB_OUTPUT must be a regular file")
     if metadata.st_nlink != 1:
@@ -437,11 +512,22 @@ def _same_file_identity(before: os.stat_result, after: os.stat_result) -> bool:
 
 def _append_output(path: Path, result: SelectionResult) -> None:
     parent = _safe_output_parent(path)
+    try:
+        parent_before = parent.lstat()
+    except OSError as error:
+        raise SameRunArtifactError(
+            "GITHUB_OUTPUT parent cannot be inspected"
+        ) from error
+    if not stat.S_ISDIR(parent_before.st_mode):
+        raise SameRunArtifactError("GITHUB_OUTPUT parent must be a regular directory")
     before = _safe_output_file(path)
     try:
-        previous = path.read_bytes()
+        with path.open("rb") as stream:
+            previous = stream.read(_MAX_OUTPUT_BYTES + 1)
     except OSError as error:
         raise SameRunArtifactError("GITHUB_OUTPUT cannot be read") from error
+    if len(previous) > _MAX_OUTPUT_BYTES:
+        raise SameRunArtifactError("GITHUB_OUTPUT exceeds its maximum size")
     after = _safe_output_file(path)
     if not _same_file_identity(before, after):
         raise SameRunArtifactError("GITHUB_OUTPUT changed while it was read")
@@ -452,13 +538,15 @@ def _append_output(path: Path, result: SelectionResult) -> None:
         f"artifact_id={result.artifact_id if result.artifact_id is not None else ''}\n"
         f"artifact_name={result.artifact_name or ''}\n"
         f"producer_attempt={result.producer_attempt if result.producer_attempt is not None else ''}\n"
-    ).encode("utf-8")
+    ).encode()
     try:
         descriptor, temporary_name = tempfile.mkstemp(
             prefix=".same-run-output-", dir=parent
         )
     except OSError as error:
-        raise SameRunArtifactError("GITHUB_OUTPUT cannot be prepared atomically") from error
+        raise SameRunArtifactError(
+            "GITHUB_OUTPUT cannot be prepared atomically"
+        ) from error
     temporary = Path(temporary_name)
     try:
         with os.fdopen(descriptor, "wb") as stream:
@@ -467,15 +555,42 @@ def _append_output(path: Path, result: SelectionResult) -> None:
             os.fsync(stream.fileno())
         if not _same_file_identity(after, _safe_output_file(path)):
             raise SameRunArtifactError("GITHUB_OUTPUT changed before replacement")
+        # Re-check the directory immediately before replacement.  On runners
+        # that provide dirfd-aware replacement this also prevents a parent
+        # symlink swap from redirecting the atomic write.
+        current_parent = _safe_output_parent(path)
+        if current_parent != parent:
+            raise SameRunArtifactError(
+                "GITHUB_OUTPUT parent changed before replacement"
+            )
+        try:
+            parent_after = parent.lstat()
+        except OSError as error:
+            raise SameRunArtifactError(
+                "GITHUB_OUTPUT parent changed before replacement"
+            ) from error
+        if (parent_before.st_dev, parent_before.st_ino) != (
+            parent_after.st_dev,
+            parent_after.st_ino,
+        ):
+            raise SameRunArtifactError(
+                "GITHUB_OUTPUT parent changed before replacement"
+            )
         os.replace(temporary, path)
-    except OSError as error:
-        raise SameRunArtifactError("GITHUB_OUTPUT cannot be written atomically") from error
+    except SameRunArtifactError:
+        raise
+    except (OSError, ValueError, RuntimeError) as error:
+        raise SameRunArtifactError(
+            "GITHUB_OUTPUT cannot be written atomically"
+        ) from error
     finally:
         if temporary.exists():
             try:
                 temporary.unlink()
             except OSError as error:
-                raise SameRunArtifactError("GITHUB_OUTPUT temporary cleanup failed") from error
+                raise SameRunArtifactError(
+                    "GITHUB_OUTPUT temporary cleanup failed"
+                ) from error
 
 
 def select_same_run_artifact(
@@ -488,10 +603,13 @@ def select_same_run_artifact(
     """Validate current-run metadata, select one artifact, and emit outputs."""
 
     _validate_arguments(arguments)
-    _require_text(token, "GH_TOKEN")
+    _require_token(token)
+    bounded_request = _bounded_request_transport(request)
     run_path = f"/repos/{arguments.repository}/actions/runs/{arguments.run_id}"
-    _validate_current_run(_request_json(run_path, token, request), arguments)
-    candidate = _select_candidate(_list_artifacts(arguments, token, request), arguments)
+    _validate_current_run(_request_json(run_path, token, bounded_request), arguments)
+    candidate = _select_candidate(
+        _list_artifacts(arguments, token, bounded_request), arguments
+    )
     if candidate is None:
         if not arguments.allow_empty:
             raise SameRunArtifactError("no valid same-run artifact candidate exists")
@@ -542,10 +660,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         arguments = parse_arguments(argv)
-        github_output = Path(_require_text(os.environ.get("GITHUB_OUTPUT", ""), "GITHUB_OUTPUT"))
+        github_output = Path(
+            _require_text(os.environ.get("GITHUB_OUTPUT", ""), "GITHUB_OUTPUT")
+        )
         select_same_run_artifact(
             arguments,
-            token=_require_text(os.environ.get("GH_TOKEN", ""), "GH_TOKEN"),
+            token=_require_token(os.environ.get("GH_TOKEN", "")),
             github_output=github_output,
             request=_default_request,
         )

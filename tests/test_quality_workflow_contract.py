@@ -1529,17 +1529,32 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
         assert "for attempt in 1 2 3; do" in helm_step["run"]
         assert "sleep $((attempt * 15))" in helm_step["run"]
         assert "Helm dependency build failed after 3 attempts." in helm_step["run"]
+    universe_selector = next(
+        step
+        for step in mutation_job["steps"]
+        if step.get("name") == "Select immutable same-run mutmut universe candidate"
+    )
+    assert universe_selector["id"] == "select_mutmut_universe"
+    assert universe_selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
+    assert "scripts/quality/select_same_run_artifact_cli.py" in universe_selector["run"]
+    assert '--artifact-prefix "mutmut-universe-"' in universe_selector["run"]
     download_step = next(
         step
         for step in mutation_job["steps"]
-        if step.get("uses", "").startswith("actions/download-artifact")
+        if step.get("name") == "Download selected same-run mutmut universe candidate"
     )
     assert download_step["with"] == {
-        "pattern": "mutmut-universe-${{ github.run_id }}-*",
-        "path": "mutmut-universe-candidates",
-        "merge-multiple": False,
-        "if-no-artifact-found": "error",
+        "artifact-ids": "${{ steps.select_mutmut_universe.outputs.artifact_id }}",
+        "repository": "${{ github.repository }}",
+        "run-id": "${{ github.run_id }}",
+        "github-token": "${{ github.token }}",
+        "path": (
+            "mutmut-universe-candidates/"
+            "${{ steps.select_mutmut_universe.outputs.artifact_name }}"
+        ),
     }
+    assert "pattern" not in download_step["with"]
+    assert "if-no-artifact-found" not in download_step["with"]
     stats_upload = next(
         step
         for step in stats_job["steps"]
@@ -1843,7 +1858,7 @@ def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> Non
     assert stats_download["with"]["pattern"] == (
         "manual-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-*"
     )
-    assert stats_download["with"]["if-no-artifact-found"] == "error"
+    assert "if-no-artifact-found" not in stats_download["with"]
     require_stats = next(
         step
         for step in manual_mutation_job["steps"]
@@ -2441,9 +2456,9 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
         for step in lighthouse_aggregate["steps"]
         if isinstance(step, dict)
     )
-    assert "lhr-${counter}.json" in merge_text
+    assert 'printf -v report_name "lhr-%02d.json" "$index"' in merge_text
     assert "expected_shards=(core content realtime fallback)" in merge_text
-    assert '"$counter" -ne 30' in merge_text
+    assert '"$total" -ne 30' in merge_text
     download_shards = next(
         step
         for step in lighthouse_aggregate["steps"]
@@ -2452,14 +2467,14 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
     assert download_shards["with"]["pattern"] == (
         "lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}-*"
     )
-    assert download_shards["with"]["if-no-artifact-found"] == "error"
+    assert "if-no-artifact-found" not in download_shards["with"]
     merged_upload = next(
         step
         for step in lighthouse_aggregate["steps"]
-        if step.get("name") == "Upload merged Lighthouse reports"
+        if step.get("name") == "Upload Lighthouse retry evidence"
     )
     assert merged_upload["with"]["name"] == (
-        "lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}"
+        "lighthouse-reports-attempt-${{ github.run_attempt }}"
     )
     assert merged_upload["with"]["include-hidden-files"] is True
 
@@ -2932,7 +2947,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert download_step["with"]["pattern"] == (
         "nightly-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-*"
     )
-    assert download_step["with"]["if-no-artifact-found"] == "error"
+    assert "if-no-artifact-found" not in download_step["with"]
     require_stats = next(
         step
         for step in plan_steps
@@ -2957,7 +2972,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert plan_download["with"]["name"] == (
         "nightly-mutmut-plan-${{ github.run_id }}-${{ github.run_attempt }}"
     )
-    assert plan_download["with"]["if-no-artifact-found"] == "error"
+    assert "if-no-artifact-found" not in plan_download["with"]
     shard_upload = next(
         step
         for step in mutation_steps
@@ -2992,7 +3007,7 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert aggregate_download["with"]["pattern"] == (
         "nightly-mutmut-shard-${{ github.run_id }}-${{ github.run_attempt }}-*"
     )
-    assert aggregate_download["with"]["if-no-artifact-found"] == "error"
+    assert "if-no-artifact-found" not in aggregate_download["with"]
     require_shards = next(
         step
         for step in aggregate_job["steps"]
@@ -3077,15 +3092,52 @@ def test_pr_quality_gates_enforce_contract_policy_values() -> None:
 def test_performance_gate_asserts_downloaded_lighthouse_without_rebuilding() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     performance_job = ci_workflow["jobs"]["performance-gate"]
+    selector_step = next(
+        step
+        for step in performance_job["steps"]
+        if step.get("name") == "Select immutable same-run Lighthouse evidence candidate"
+    )
+    assert selector_step["id"] == "select_lighthouse_results"
+    assert selector_step["env"] == {"GH_TOKEN": "${{ github.token }}"}
+    selector_run = selector_step["run"]
+    for invariant in (
+        "set -euo pipefail",
+        "scripts/quality/select_same_run_artifact_cli.py",
+        '--artifact-prefix "lighthouse-reports-attempt-"',
+        '--artifact-suffix ""',
+        "--artifact-name-layout attempt",
+        "--attempt-policy current-or-earlier",
+    ):
+        assert invariant in selector_run
     download_step = next(
         step
         for step in performance_job["steps"]
-        if step.get("name") == "Download Lighthouse results"
+        if step.get("name") == "Download selected Lighthouse results"
     )
-    assert download_step["with"]["name"] == (
-        "lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}"
+    assert download_step["with"] == {
+        "artifact-ids": "${{ steps.select_lighthouse_results.outputs.artifact_id }}",
+        "repository": "${{ github.repository }}",
+        "run-id": "${{ github.run_id }}",
+        "github-token": "${{ github.token }}",
+        "path": (
+            "artifacts/lighthouse/candidates/"
+            "${{ steps.select_lighthouse_results.outputs.artifact_name }}"
+        ),
+    }
+    assert "pattern" not in download_step["with"]
+    assert "continue-on-error" not in download_step
+    lighthouse_selection = "\n".join(
+        step.get("run", "")
+        for step in performance_job["steps"]
+        if isinstance(step, dict)
     )
-    assert download_step["with"]["if-no-artifact-found"] == "error"
+    assert "scripts/quality/select_lighthouse_artifacts_cli.py" in lighthouse_selection
+    assert "--candidate-root" in lighthouse_selection
+    assert "--destination-root" in lighthouse_selection
+    assert (
+        "--config-input .github/workflows/reusable-frontend-tests.yml"
+        in lighthouse_selection
+    )
     threshold_step = next(
         step
         for step in performance_job["steps"]
@@ -3216,7 +3268,10 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     mutation_preflight = jobs["stryker-preflight"]
     assert mutation_preflight["needs"] == "pre-commit-check"
     assert "github.event_name == 'pull_request'" in mutation_preflight["if"]
-    assert mutation_preflight["permissions"] == {"contents": "read"}
+    assert mutation_preflight["permissions"] == {
+        "contents": "read",
+        "actions": "read",
+    }
     assert mutation_preflight["env"] == {
         "STRYKER_SHARD_COUNT": "64",
         "STRYKER_PREFLIGHT_MODE": "generate",
@@ -3266,21 +3321,35 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         "STRYKER_CONCURRENCY": "2",
         "STRYKER_PREFLIGHT_ARTIFACT": "required",
     }
+    preflight_selector = next(
+        step
+        for step in mutation_shards["steps"]
+        if step.get("name") == "Select immutable same-run Stryker preflight candidate"
+    )
+    assert preflight_selector["id"] == "select_stryker_preflight"
+    assert preflight_selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
+    assert (
+        "scripts/quality/select_same_run_artifact_cli.py" in preflight_selector["run"]
+    )
+    assert (
+        '--artifact-prefix "frontend-mutation-preflight-"' in preflight_selector["run"]
+    )
     preflight_download = next(
         step
         for step in mutation_shards["steps"]
-        if step.get("name")
-        == "Download immutable same-run Stryker preflight candidates"
+        if step.get("name") == "Download selected Stryker preflight candidate"
     )
     assert preflight_download["with"] == {
-        "pattern": (
-            "frontend-mutation-preflight-${{ github.run_id }}-*-${{ github.sha }}"
+        "artifact-ids": "${{ steps.select_stryker_preflight.outputs.artifact_id }}",
+        "repository": "${{ github.repository }}",
+        "run-id": "${{ github.run_id }}",
+        "github-token": "${{ github.token }}",
+        "path": (
+            "frontend/reports/mutation/preflight-candidates/"
+            "${{ steps.select_stryker_preflight.outputs.artifact_name }}"
         ),
-        "path": "frontend/reports/mutation/preflight-candidates",
-        "merge-multiple": False,
-        "if-no-artifact-found": "error",
     }
-    assert "name" not in preflight_download["with"]
+    assert "pattern" not in preflight_download["with"]
     shard_checkout = next(
         step for step in mutation_shards["steps"] if step.get("name") == "Checkout"
     )
@@ -3324,11 +3393,16 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         if step.get("name") == "Setup Node.js"
     )
     assert aggregate_node_setup["with"]["node-version"] == "24.15.0"
+    aggregate_selector = next(
+        step
+        for step in mutation_aggregate["steps"]
+        if step.get("name") == "Select immutable same-run Stryker preflight candidate"
+    )
+    assert aggregate_selector["id"] == "select_stryker_preflight"
     aggregate_preflight_download = next(
         step
         for step in mutation_aggregate["steps"]
-        if step.get("name")
-        == "Download immutable same-run Stryker preflight candidates"
+        if step.get("name") == "Download selected Stryker preflight candidate"
     )
     assert aggregate_preflight_download["with"] == preflight_download["with"]
     aggregate_shard_download = next(
@@ -3340,7 +3414,6 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         "pattern": "frontend-mutation-shard-${{ github.run_id }}-*",
         "path": "frontend/reports/mutation/external",
         "merge-multiple": False,
-        "if-no-artifact-found": "error",
     }
     assert "name" not in aggregate_shard_download["with"]
     aggregate_checkout = next(
@@ -3374,19 +3447,33 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert mutation_roundtrip["env"] == {
         "STRYKER_VALIDATED_CANDIDATE_ROOT": "reports/mutation/validated-candidates"
     }
-    roundtrip_download = next(
+    roundtrip_selector = next(
         step
         for step in mutation_roundtrip["steps"]
         if step.get("name")
-        == "Download immutable same-run validated Stryker evidence candidates"
+        == "Select immutable same-run validated Stryker evidence candidate"
+    )
+    assert roundtrip_selector["id"] == "select_stryker_validated"
+    assert roundtrip_selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
+    assert (
+        "scripts/quality/select_same_run_artifact_cli.py" in roundtrip_selector["run"]
+    )
+    roundtrip_download = next(
+        step
+        for step in mutation_roundtrip["steps"]
+        if step.get("name") == "Download selected immutable Stryker evidence candidate"
     )
     assert roundtrip_download["with"] == {
-        "pattern": "frontend-mutation-validated-${{ github.run_id }}-*",
-        "path": "frontend/reports/mutation/validated-candidates",
-        "merge-multiple": False,
-        "if-no-artifact-found": "error",
+        "artifact-ids": "${{ steps.select_stryker_validated.outputs.artifact_id }}",
+        "repository": "${{ github.repository }}",
+        "run-id": "${{ github.run_id }}",
+        "github-token": "${{ github.token }}",
+        "path": (
+            "frontend/reports/mutation/validated-candidates/"
+            "${{ steps.select_stryker_validated.outputs.artifact_name }}"
+        ),
     }
-    assert "name" not in roundtrip_download["with"]
+    assert "pattern" not in roundtrip_download["with"]
     assert "stryker-evidence-roundtrip" in jobs["ci-success"]["needs"]
     assert "needs.stryker-evidence-roundtrip.result" in result_check
 

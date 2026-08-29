@@ -41,8 +41,8 @@ def test_primary_ci_mutmut_chain_selects_only_complete_retry_safe_candidates() -
         "pattern": "mutmut-stats-shard-*-attempt-*",
         "path": "mutmut-stats-candidates",
         "merge-multiple": False,
-        "if-no-artifact-found": "error",
     }
+    assert "if-no-artifact-found" not in stats_download["with"]
     stats_selection = _step(universe, "Select complete retry-safe mutmut stats cohort")
     assert "scripts/mutmut_retry_artifacts.py select-stats" in stats_selection["run"]
     assert "--candidate-root" in stats_selection["run"]
@@ -55,15 +55,34 @@ def test_primary_ci_mutmut_chain_selects_only_complete_retry_safe_candidates() -
     assert universe_upload["with"]["retention-days"] == 30
 
     scope = _step(incremental, "Detect changed Python source")
+    universe_selector = _step(
+        incremental, "Select immutable same-run mutmut universe candidate"
+    )
+    assert universe_selector["id"] == "select_mutmut_universe"
+    assert universe_selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
+    selector_script = universe_selector["run"]
+    for invariant in (
+        "set -euo pipefail",
+        "scripts/quality/select_same_run_artifact_cli.py",
+        '--artifact-prefix "mutmut-universe-"',
+        '--artifact-suffix ""',
+        "--attempt-policy current-or-earlier",
+    ):
+        assert invariant in selector_script
     universe_download = _step(
-        incremental, "Download same-run mutmut universe candidates"
+        incremental, "Download selected same-run mutmut universe candidate"
     )
     assert universe_download["with"] == {
-        "pattern": "mutmut-universe-${{ github.run_id }}-*",
-        "path": "mutmut-universe-candidates",
-        "merge-multiple": False,
-        "if-no-artifact-found": "error",
+        "artifact-ids": "${{ steps.select_mutmut_universe.outputs.artifact_id }}",
+        "repository": "${{ github.repository }}",
+        "run-id": "${{ github.run_id }}",
+        "github-token": "${{ github.token }}",
+        "path": (
+            "mutmut-universe-candidates/"
+            "${{ steps.select_mutmut_universe.outputs.artifact_name }}"
+        ),
     }
+    assert "pattern" not in universe_download["with"]
     universe_selection = _step(incremental, "Select retry-safe central mutmut universe")
     assert (
         "scripts/mutmut_retry_artifacts.py select-universe" in universe_selection["run"]
@@ -72,6 +91,9 @@ def test_primary_ci_mutmut_chain_selects_only_complete_retry_safe_candidates() -
     assert "! -type d" in universe_selection["run"]
     assert "selected_producer_attempt" in universe_selection["run"]
     assert incremental["steps"].index(scope) < incremental["steps"].index(
+        universe_selector
+    )
+    assert incremental["steps"].index(universe_selector) < incremental["steps"].index(
         universe_download
     )
     assert incremental["steps"].index(universe_download) < incremental["steps"].index(
