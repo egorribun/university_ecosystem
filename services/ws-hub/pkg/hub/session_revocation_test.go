@@ -807,7 +807,9 @@ func TestStartSessionRevocationListenerContainsBootstrapRegistrationError(t *tes
 		_ context.CancelFunc,
 		closeSubscriber func(context.Context),
 	) (uint64, context.CancelFunc, error) {
-		closeSubscriber(context.Background())
+		callbackContext, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		closeSubscriber(callbackContext)
 		return 0, nil, errors.New("synthetic registration failure")
 	}
 
