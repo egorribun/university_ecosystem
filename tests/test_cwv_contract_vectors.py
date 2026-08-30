@@ -323,7 +323,7 @@ def test_envelope_rejects_each_opaque_claim_independently(field: str) -> None:
         verify_envelope(_binding(), token, now=NOW)
 
 
-@pytest.mark.parametrize("token", ["not-a-cwv-token", "v1.only-two-parts"])
+@pytest.mark.parametrize("token", ["not-a-cwv-token", "v1-two-parts"])
 def test_envelope_malformed_tokens_use_the_stable_error_message(token: str) -> None:
     with pytest.raises(CwvEnvelopeError, match=r"^CWV envelope is malformed$"):
         verify_envelope(_binding(), token, now=NOW)
