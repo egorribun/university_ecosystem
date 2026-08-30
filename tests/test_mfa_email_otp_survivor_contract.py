@@ -472,6 +472,8 @@ async def test_resend_without_explicit_clock_uses_utc_and_rotates_expiry(
     clock.now.assert_called_once_with(UTC)
     assert issued.expires_at == rotated_at + timedelta(seconds=600)
     assert issued.resend_available_at == rotated_at + timedelta(seconds=60)
+    cancelled_statement = db.execute.await_args_list[1].args[0]
+    assert "mfa_email_deliveries.challenge_id =" in str(cancelled_statement.whereclause)
 
 
 @pytest.mark.asyncio

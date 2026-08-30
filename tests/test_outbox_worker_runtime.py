@@ -92,11 +92,19 @@ async def test_dispatch_event_unknown_type(worker: OutboxWorker):
     se = make_stored_event(event_type="NoSuchEvent")
     original_error_count = se.error_count
 
-    with patch("app.core.events._EVENT_REGISTRY", {}):
+    with (
+        patch("app.core.events._EVENT_REGISTRY", {}),
+        patch("app.workers.outbox.logger.error") as logger_error,
+    ):
         with pytest.raises(RuntimeError, match="Unknown outbox event type"):
             await worker._dispatch_event(se)
 
     assert se.error_count == original_error_count
+    logger_error.assert_called_once_with(
+        "OutboxWorker: unknown event_type %r in stored event %s — failing closed",
+        "NoSuchEvent",
+        se.id,
+    )
 
 
 @pytest.mark.asyncio

@@ -267,6 +267,118 @@ async def test_redelivery_payload_preserves_canonical_topic_metadata(
 
 
 @pytest.mark.asyncio
+async def test_redelivery_accumulates_retryable_failures_across_all_jobs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = uuid4()
+    subscription = SimpleNamespace(
+        id=uuid4(),
+        user_id=user_id,
+        user=None,
+        endpoint="https://push.example.test/subscription",
+        topics=None,
+    )
+    notifications = [
+        SimpleNamespace(
+            id=uuid4(),
+            user_id=user_id,
+            title=f"Notification {index}",
+            body="Body",
+            url="/news/1",
+            type="news",
+            created_at=datetime(2026, 8, 28, 12, 0, tzinfo=UTC),
+        )
+        for index in range(2)
+    ]
+    results = [
+        delivery.WebPushResult(
+            subscription_id=subscription.id,
+            endpoint=subscription.endpoint,
+            user_id=user_id,
+            status="error",
+            status_code=503,
+            error="provider rejected",
+        )
+        for _ in notifications
+    ]
+    monkeypatch.setattr(delivery, "_is_push_configured", lambda: True)
+    monkeypatch.setattr(delivery, "subscription_supports_topic", lambda *_args: True)
+    monkeypatch.setattr(
+        delivery.webpush_module, "_send_push_async", AsyncMock(side_effect=results)
+    )
+    monkeypatch.setattr(delivery.webpush_module, "process_push_results", AsyncMock())
+    monkeypatch.setattr(delivery.metrics, "record_notification_failed", Mock())
+    db = MagicMock(
+        execute=AsyncMock(
+            side_effect=[
+                _rows(notifications),
+                _rows([subscription]),
+                _rows([]),
+                MagicMock(),
+            ]
+        ),
+        flush=AsyncMock(),
+    )
+
+    outcome = await delivery.redeliver_notifications(
+        db, notification_ids=[item.id for item in notifications]
+    )
+
+    assert outcome.retryable_failures == 2
+
+
+@pytest.mark.asyncio
+async def test_redelivery_accumulates_already_delivered_pairs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = uuid4()
+    subscription = SimpleNamespace(
+        id=uuid4(),
+        user_id=user_id,
+        user=None,
+        endpoint="https://push.example.test/subscription",
+        topics=None,
+    )
+    notifications = [
+        SimpleNamespace(
+            id=uuid4(),
+            user_id=user_id,
+            title=f"Notification {index}",
+            body="Body",
+            url="/news/1",
+            type="news",
+            created_at=datetime(2026, 8, 28, 12, 0, tzinfo=UTC),
+        )
+        for index in range(2)
+    ]
+    prior = [
+        SimpleNamespace(
+            notification_id=item.id,
+            subscription_id=subscription.id,
+            status="sent",
+        )
+        for item in notifications
+    ]
+    monkeypatch.setattr(delivery, "_is_push_configured", lambda: True)
+    db = MagicMock(
+        execute=AsyncMock(
+            side_effect=[
+                _rows(notifications),
+                _rows([subscription]),
+                _rows(prior),
+            ]
+        ),
+        flush=AsyncMock(),
+    )
+
+    outcome = await delivery.redeliver_notifications(
+        db, notification_ids=[item.id for item in notifications]
+    )
+
+    assert outcome.already_delivered == 2
+
+
+@pytest.mark.asyncio
 async def test_redelivery_requires_one_provider_result_per_send_job(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

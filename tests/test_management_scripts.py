@@ -274,6 +274,10 @@ async def test_reset_user_mfa_success(mock_db_session) -> None:
             "notifications.mfa.reset.title",
             "notifications.mfa.reset.body",
         ]
+        assert [call.kwargs["locale"] for call in translate_mock.call_args_list] == [
+            "ru",
+            "ru",
+        ]
         mock_audit.assert_called_once()
         assert events == ["reset", "notification", "commit", "publish"]
 

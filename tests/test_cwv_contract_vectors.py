@@ -341,7 +341,7 @@ def test_envelope_verification_uses_canonical_lowercase_sha256_name() -> None:
     with patch.object(cwv.hmac, "digest", side_effect=record_digest):
         _verify_envelope(_binding(), token, now=NOW, expiration_grace_seconds=0)
 
-    assert digest_names == ["sha256"]
+    assert digest_names == ["sha256", "sha256"]
 
 
 def test_envelope_grace_period_has_exact_inclusive_limit_and_message() -> None:
