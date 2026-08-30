@@ -124,6 +124,21 @@ def test_public_mfa_method_contract_excludes_security_keys() -> None:
     assert MFA_METHOD_RECOVERY_CODE == "recovery_code"
 
 
+def test_key_ring_rejects_duplicate_key_ids() -> None:
+    """Duplicate rotation identifiers must fail closed before service startup."""
+
+    with pytest.raises(MfaSecurityUnavailable):
+        email_otp_module._parse_key_ring("active:YWJj,active:ZGVm")
+
+
+def test_key_ring_rejects_an_empty_decoded_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Defensive empty-decoder handling remains covered even if decoding changes."""
+
+    monkeypatch.setattr(email_otp_module, "_b64decode", lambda _value: b"")
+    with pytest.raises(MfaSecurityUnavailable):
+        email_otp_module._parse_key_ring("active:YWJj")
+
+
 @pytest.mark.asyncio
 async def test_rate_limit_exceeded_is_not_downgraded_to_dependency_outage(
     db_session: AsyncSession, test_user: User

@@ -1729,7 +1729,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          python3 scripts/quality/select_lighthouse_artifacts_cli.py \
+          python3 -m scripts.quality.select_lighthouse_artifacts_cli \
             --repository-root "$GITHUB_WORKSPACE" \
             --candidate-root "artifacts/lighthouse/candidates/$ARTIFACT_NAME" \
             --destination-root "artifacts/lighthouse/selection" \

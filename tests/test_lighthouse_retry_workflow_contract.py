@@ -10,10 +10,17 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "reusable-frontend-tests.yml"
 )
+CI_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml"
 
 
 def _workflow() -> dict[str, object]:
     payload = yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert isinstance(payload, dict)
+    return payload
+
+
+def _ci_workflow() -> dict[str, object]:
+    payload = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     assert isinstance(payload, dict)
     return payload
 
@@ -25,6 +32,25 @@ def _step(job: dict[str, object], name: str) -> dict[str, object]:
         if isinstance(step, dict) and step.get("name") == name:
             return step
     raise AssertionError(f"missing workflow step: {name}")
+
+
+def test_performance_gate_runs_lighthouse_selector_as_a_module_from_repo_root() -> None:
+    """The selector imports the top-level ``scripts`` package."""
+
+    workflow = _ci_workflow()
+    jobs = workflow["jobs"]
+    assert isinstance(jobs, dict)
+    performance_gate = jobs["performance-gate"]
+    assert isinstance(performance_gate, dict)
+    assert performance_gate["defaults"] == {"run": {"working-directory": "frontend"}}
+
+    materialize = _step(
+        performance_gate, "Select and materialize verified Lighthouse evidence"
+    )
+    run = str(materialize["run"])
+    assert materialize["working-directory"] == "${{ github.workspace }}"
+    assert "python3 -m scripts.quality.select_lighthouse_artifacts_cli" in run
+    assert "python3 scripts/quality/select_lighthouse_artifacts_cli" not in run
 
 
 def test_lighthouse_producer_publishes_fixed_retry_artifact_contract() -> None:
