@@ -4124,7 +4124,7 @@ jobs:
           rustc_version="$(read_tool rustc)"
           rustc_nightly_version="$(read_tool rustc-nightly)"
           llvm_cov_version="$(read_tool cargo-llvm-cov)"
-          python scripts/quality/normalize_coverage_reports.py \
+          uv run python scripts/quality/normalize_coverage_reports.py \
             --repository-root "$GITHUB_WORKSPACE" \
             --commit-sha "$EXPECTED_SHA" \
             --generated-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
@@ -4172,7 +4172,7 @@ jobs:
           WORKFLOW_EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
-          python scripts/quality/validate_quality_contract.py \
+          uv run python scripts/quality/validate_quality_contract.py \
             --schema quality/coverage-manifest.schema.json \
             --artifact-root "$GITHUB_WORKSPACE" \
             --mutation-registry quality/mutation-exclusions.json \

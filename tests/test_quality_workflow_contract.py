@@ -5507,6 +5507,17 @@ def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None
     normalize = _provenance_step(job, "Normalize coverage evidence")
     normalize_run = str(normalize["run"])
 
+    # The coverage gate installs the locked development environment with uv.
+    # Running the normalizer through the runner's system Python bypasses that
+    # environment (and its jsonschema dependency), making the gate fail before
+    # it can validate the manifest. Keep the interpreter provenance-bound.
+    assert (
+        "uv run python scripts/quality/normalize_coverage_reports.py" in normalize_run
+    )
+    assert "python scripts/quality/normalize_coverage_reports.py" not in {
+        line.strip() for line in normalize_run.splitlines()
+    }
+
     for required in (
         '--repository-root "$GITHUB_WORKSPACE"',
         '--commit-sha "$EXPECTED_SHA"',
@@ -5540,6 +5551,10 @@ def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None
         job, "Validate quality policy, mutation registry, and Tier0 manifest"
     )
     validator_run = str(validator["run"])
+    assert "uv run python scripts/quality/validate_quality_contract.py" in validator_run
+    assert "python scripts/quality/validate_quality_contract.py" not in {
+        line.strip() for line in validator_run.splitlines()
+    }
     for required in (
         "--schema quality/coverage-manifest.schema.json",
         '--artifact-root "$GITHUB_WORKSPACE"',
