@@ -139,8 +139,8 @@ def test_configure_otel_instrumentation_errors():
         patch("app.core.observability.MeterProvider", return_value=MagicMock()),
         patch("app.core.observability.LoggerProvider", return_value=MagicMock()),
         patch("app.core.observability.OTLPSpanExporter") as span_exporter,
-        patch("app.core.observability.OTLPMetricExporter"),
-        patch("app.core.observability.OTLPLogExporter"),
+        patch("app.core.observability.OTLPMetricExporter") as metric_exporter,
+        patch("app.core.observability.OTLPLogExporter") as log_exporter,
         patch("app.core.observability.PeriodicExportingMetricReader"),
         patch("app.core.observability.BatchSpanProcessor"),
         patch("app.core.observability.BatchLogRecordProcessor"),
@@ -180,6 +180,16 @@ def test_configure_otel_instrumentation_errors():
         assert (
             tracer_provider_factory.return_value.add_span_processor.call_args.args[0]
             is not None
+        )
+        metric_exporter.assert_called_once_with(
+            timeout=0.75,
+            endpoint="http://localhost:4317",
+            headers={"a": "b", "c": "d"},
+        )
+        log_exporter.assert_called_once_with(
+            timeout=0.75,
+            endpoint="http://localhost:4317",
+            headers={"a": "b", "c": "d"},
         )
 
 

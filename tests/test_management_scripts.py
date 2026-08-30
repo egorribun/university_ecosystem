@@ -244,6 +244,11 @@ async def test_reset_user_mfa_success(mock_db_session) -> None:
             "app.management.reset_mfa.create_notifications_for_users",
             new=AsyncMock(side_effect=notify),
         ) as mock_notify,
+        patch("app.management.reset_mfa.resolve_locale", return_value="ru"),
+        patch(
+            "app.management.reset_mfa.translate",
+            side_effect=lambda key, *, locale: f"{key}:{locale}",
+        ) as translate_mock,
         patch(
             "app.management.reset_mfa.mfa.publish_mfa_session_revocations",
             new=AsyncMock(side_effect=publish),
@@ -256,8 +261,19 @@ async def test_reset_user_mfa_success(mock_db_session) -> None:
         assert res_user == user
         assert res_stats == stats
         mock_notify.assert_called_once()
-        assert isinstance(mock_notify.call_args.kwargs["body"], str)
-        assert mock_notify.call_args.kwargs["body"]
+        # The notification is part of the same transaction as the MFA reset;
+        # keep both its session binding and security topic explicit so a
+        # mutation cannot silently publish through an unrelated session/type.
+        assert mock_notify.call_args.args[0] is mock_db_session
+        assert mock_notify.call_args.kwargs["type"] == "security"
+        assert (
+            mock_notify.call_args.kwargs["title"] == "notifications.mfa.reset.title:ru"
+        )
+        assert mock_notify.call_args.kwargs["body"] == "notifications.mfa.reset.body:ru"
+        assert [call.args[0] for call in translate_mock.call_args_list] == [
+            "notifications.mfa.reset.title",
+            "notifications.mfa.reset.body",
+        ]
         mock_audit.assert_called_once()
         assert events == ["reset", "notification", "commit", "publish"]
 

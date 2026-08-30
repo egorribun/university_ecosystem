@@ -21,7 +21,7 @@ from app.api import cwv as cwv_api
 from app.auth.constants import MFA_METHOD_EMAIL_OTP
 from app.auth.mfa.email_otp import EmailOtpService
 from app.models import ChallengeState
-from app.services import cwv
+from app.services import cwv, notification_queue
 from app.services.notifications import core as notifications_core
 from app.services.notifications import delivery, news_events
 from app.services.webpush import WebPushResult
@@ -49,6 +49,20 @@ def _email_service() -> EmailOtpService:
         active_kek_id="active",
         rate_limiter=AsyncMock(),
     )
+
+
+def test_dead_letter_digest_uses_the_canonical_ascii_codec() -> None:
+    """Queue correlation digests use the documented lowercase ASCII codec."""
+
+    assert "ascii" in notification_queue._dead_letter_batch_digest.__code__.co_consts
+    job_ids = [
+        uuid.UUID("bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb"),
+        uuid.UUID("aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa"),
+    ]
+    expected = notification_queue.sha256(
+        b"aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa\nbbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb"
+    ).hexdigest()
+    assert notification_queue._dead_letter_batch_digest(job_ids) == expected
 
 
 def test_cwv_public_errors_keep_stable_details() -> None:
@@ -126,6 +140,45 @@ async def test_event_notification_keeps_db_topic_title_and_translations(
     assert kwargs["body_translations"]["ru"]
     assert kwargs["body_translations"]["en"]
     assert kwargs["topic"] == "events.published"
+
+
+@pytest.mark.asyncio
+async def test_news_notification_forwards_rendered_body_to_delivery(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db = AsyncMock()
+    create = AsyncMock(return_value=1)
+    user_ids = [uuid.uuid4()]
+    monkeypatch.setattr(
+        news_events, "_fetch_active_user_ids", AsyncMock(return_value=user_ids)
+    )
+    monkeypatch.setattr(news_events, "create_notifications_for_users", create)
+    monkeypatch.setattr(
+        news_events, "render_notification_template", lambda *a, **k: None
+    )
+    news = SimpleNamespace(
+        id=uuid.uuid4(),
+        title="Заголовок",
+        title_en="Headline",
+        content="Содержимое новости",
+        content_en="News body",
+    )
+
+    assert await news_events.notify_about_news(db, news, locale="ru") == 1
+
+    assert create.await_args is not None
+    assert create.await_args.args[0] is db
+    assert create.await_args.kwargs["title"] == "Новая новость: Заголовок"
+    assert create.await_args.kwargs["body"] == "Содержимое новости"
+    assert create.await_args.kwargs["title_translations"] == {
+        "ru": "Новая новость: Заголовок",
+        "en": "New article: Headline",
+    }
+    assert create.await_args.kwargs["body_translations"] == {
+        "ru": "Содержимое новости",
+        "en": "News body",
+    }
+    assert create.await_args.kwargs["topic"] == "news.published"
 
 
 @pytest.mark.asyncio

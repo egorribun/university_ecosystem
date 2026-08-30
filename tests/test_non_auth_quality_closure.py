@@ -636,12 +636,14 @@ async def test_mfa_delivery_event_requires_id_and_commits(
         )
     db = MagicMock(commit=AsyncMock())
     service = MagicMock(deliver=AsyncMock())
+    sender = SimpleNamespace()
+    sender_factory = MagicMock(return_value=sender)
     monkeypatch.setattr(event_handlers, "async_session", lambda: _session_context(db))
     monkeypatch.setattr(
         "app.auth.mfa.email_otp.build_configured_email_delivery_service",
         lambda: service,
     )
-    monkeypatch.setattr("app.auth.mfa.email_otp.SmtpMfaEmailSender", MagicMock())
+    monkeypatch.setattr("app.auth.mfa.email_otp.SmtpMfaEmailSender", sender_factory)
     delivery_id = uuid4()
     await event_handlers.handle_mfa_email_delivery_requested(
         MfaEmailDeliveryRequested(delivery_id=delivery_id)
@@ -650,6 +652,8 @@ async def test_mfa_delivery_event_requires_id_and_commits(
     delivery_call = service.deliver.await_args
     assert delivery_call.args[0] is db
     assert delivery_call.kwargs["delivery_id"] == delivery_id
+    assert delivery_call.kwargs["sender"] is sender
+    sender_factory.assert_called_once_with()
     db.commit.assert_awaited_once()
 
 
@@ -874,6 +878,8 @@ async def test_notification_redelivery_records_provider_exceptions(
         "_send_push_async",
         AsyncMock(side_effect=RuntimeError("provider failed")),
     )
+    build_row = MagicMock(side_effect=delivery._build_delivery_row)
+    monkeypatch.setattr(delivery, "_build_delivery_row", build_row)
     record_failed = MagicMock()
     monkeypatch.setattr(delivery.metrics, "record_notification_failed", record_failed)
     outcome = await delivery.redeliver_notifications(
@@ -889,6 +895,10 @@ async def test_notification_redelivery_records_provider_exceptions(
         assert prior.delivered_at is None
         assert prior.status_code is None
         assert prior.detail == "exception:provider failed"
+    else:
+        assert build_row.call_args is not None
+        assert build_row.call_args.kwargs["status"] == "error"
+        assert build_row.call_args.kwargs["detail"] == "exception:provider failed"
 
 
 @pytest.mark.asyncio

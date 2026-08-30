@@ -108,9 +108,15 @@ def test_lighthouse_producer_publishes_fixed_retry_artifact_contract() -> None:
     assert provenance_env["WORKFLOW_EVENT"] == "${{ github.event_name }}"
     assert "coverage_provenance.py write" in provenance_run
     assert 'cd "$GITHUB_WORKSPACE"' in provenance_run
+    assert 'workspace_root="$(pwd -P)"' in provenance_run
     assert (
-        'provenance_output="$GITHUB_WORKSPACE/artifacts/lighthouse/producer/provenance/lighthouse-reports.json"'
-        in provenance_run
+        'github_workspace_root="$(realpath -- "$GITHUB_WORKSPACE")"' in provenance_run
+    )
+    assert 'provenance_dir="$producer_root/provenance"' in provenance_run
+    assert 'mkdir -p -- "$provenance_dir"' in provenance_run
+    assert 'test ! -L "$provenance_dir"' in provenance_run
+    assert (
+        'provenance_output="$provenance_dir/lighthouse-reports.json"' in provenance_run
     )
     assert '--output "$provenance_output"' in provenance_run
     assert (
@@ -154,9 +160,14 @@ def test_lighthouse_producer_publishes_fixed_retry_artifact_contract() -> None:
     assert "Lighthouse evidence provenance writer failed with exit" in provenance_run
     assert 'cat "$write_error" >&2' in provenance_run
     assert 'cat "$write_output" >&2' in provenance_run
-    assert 'if [[ ! -s "$provenance_output" ]]; then' in provenance_run
-    assert "pwd >&2" in provenance_run
-    assert 'ls -la "$provenance_output" >&2' in provenance_run
+    assert (
+        'if [[ ! -f "$provenance_output" || -L "$provenance_output" || ! -s "$provenance_output" ]]; then'
+        in provenance_run
+    )
+    assert "pwd -P" in provenance_run
+    assert "stat --printf=" in provenance_run
+    assert "writer stderr:" in provenance_run
+    assert "writer stdout:" in provenance_run
     assert 'test -s "$provenance_output"' in provenance_run
 
     upload = _step(lighthouse, "Upload Lighthouse retry evidence")

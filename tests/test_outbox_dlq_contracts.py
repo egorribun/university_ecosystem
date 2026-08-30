@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -59,3 +59,29 @@ async def test_invalid_mfa_dlq_payload_logs_stable_event_id_field() -> None:
         "OutboxWorker: terminal MFA event has invalid delivery id",
         extra={"event_id": str(event.id)},
     )
+
+
+@pytest.mark.asyncio
+async def test_terminal_mfa_dlq_clears_the_delivery_lease() -> None:
+    delivery_id = uuid4()
+    event = SimpleNamespace(
+        id=uuid4(),
+        event_type="auth.mfa_email.requested",
+        aggregate_type="MfaChallenge",
+        aggregate_id=str(uuid4()),
+        payload={"delivery_id": str(delivery_id)},
+        error_count=5,
+        processed_at=None,
+    )
+    db = MagicMock()
+    db.execute = AsyncMock()
+
+    await outbox.OutboxWorker(max_retries=5)._move_to_dlq(
+        db, event, "MfaDeliveryError: delivery failed"
+    )
+
+    statement = db.execute.await_args.args[0]
+    params = statement.compile().params
+    assert params["status"] == "cancelled"
+    assert params["lease_token"] is None
+    assert params["lease_expires_at"] is None

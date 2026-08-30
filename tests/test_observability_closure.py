@@ -275,7 +275,9 @@ def test_configure_otel_uses_clamped_sampler_ratio_and_exact_span_processor() ->
         patch.object(
             observability, "TracerProvider", return_value=tracer_provider
         ) as tracer_provider_factory,
-        patch.object(observability, "MeterProvider", return_value=meter_provider),
+        patch.object(
+            observability, "MeterProvider", return_value=meter_provider
+        ) as meter_provider_factory,
         patch.object(observability, "OTLPSpanExporter", return_value=span_exporter),
         patch.object(
             observability, "BatchSpanProcessor", return_value=batch_processor
@@ -296,6 +298,10 @@ def test_configure_otel_uses_clamped_sampler_ratio_and_exact_span_processor() ->
     tracer_provider_factory.assert_called_once_with(
         resource=resource, sampler=parent.return_value
     )
+    # Meter and trace providers must share the same resource identity.  This
+    # binds metrics to the configured service name/environment instead of
+    # silently falling back to the SDK's default resource.
+    meter_provider_factory.assert_called_once_with(resource=resource, metric_readers=[])
     batch.assert_called_once_with(span_exporter)
     tracer_provider.add_span_processor.assert_called_once_with(batch_processor)
     redis_instrumentor.return_value.instrument.assert_called_once_with(
@@ -606,6 +612,29 @@ def test_configure_otel_partial_failure_shuts_down_created_providers() -> None:
     assert observability._otel_configured is False
     assert observability._otel_shutdown is True
     observability._shutdown_otel_provider(None)
+
+
+def test_configure_otel_partial_failure_marks_uncreated_meter_as_none() -> None:
+    """Cleanup must not treat an uninitialised meter as an owned provider."""
+    from app.core import observability
+
+    settings = _otel_settings(metrics=False, logs=False)
+    shutdown = MagicMock()
+    with (
+        patch.object(observability, "settings", settings),
+        patch.object(
+            observability,
+            "TracerProvider",
+            side_effect=RuntimeError("tracer setup failed"),
+        ),
+        patch.object(observability, "OTLPSpanExporter"),
+        patch.object(observability, "_shutdown_otel_providers_bounded", shutdown),
+        pytest.raises(RuntimeError, match=r"^tracer setup failed$"),
+    ):
+        observability._configure_otel(MagicMock())
+
+    shutdown.assert_called_once()
+    assert tuple(shutdown.call_args.args[0]) == (None, None, None)
 
 
 def test_configure_otel_partial_failure_removes_logging_handler() -> None:

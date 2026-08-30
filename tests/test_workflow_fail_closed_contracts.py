@@ -303,6 +303,23 @@ def test_precommit_split_preserves_every_nonmanual_hook_and_fails_closed() -> No
     assert "mypy" in security_hook["run"]
     assert "set -euo pipefail" in security_hook["run"]
     assert 'exit "$failed"' in security_hook["run"]
+    # The two hooks are read-only with respect to the checkout (detect-secrets
+    # only canonicalizes its baseline, while mypy writes an isolated cache),
+    # so run them concurrently.  Keep explicit PID/wait handling so a failure
+    # from either hook remains blocking instead of being lost in a background
+    # shell process.
+    assert (
+        "pre-commit run detect-secrets --all-files --show-diff-on-failure &\n"
+        in (security_hook["run"])
+    )
+    assert (
+        "pre-commit run mypy --all-files --show-diff-on-failure &\n"
+        in (security_hook["run"])
+    )
+    assert "detect_secrets_pid=$!" in security_hook["run"]
+    assert "mypy_pid=$!" in security_hook["run"]
+    assert 'wait "$detect_secrets_pid" || failed=1' in security_hook["run"]
+    assert 'wait "$mypy_pid" || failed=1' in security_hook["run"]
     assert "continue-on-error" not in security_hook
 
     config = yaml.safe_load(PRE_COMMIT_CONFIG.read_text(encoding="utf-8"))

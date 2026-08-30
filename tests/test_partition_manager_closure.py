@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from datetime import UTC, datetime
 from types import SimpleNamespace
+from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -193,6 +195,13 @@ async def test_future_partition_reuses_existing_range_with_a_different_name(
     )
 
     assert not any("notifications_y2026m08" in sql for sql, _ in connection.executed)
+    range_queries = [
+        (sql, args)
+        for sql, args in connection.executed
+        if "pg_get_expr(child.relpartbound" in sql
+    ]
+    assert range_queries
+    assert range_queries[0][1] == ({"table_name": "notifications"},)
 
 
 @pytest.mark.asyncio
@@ -260,6 +269,67 @@ def test_partition_bound_matching_normalises_legacy_catalog_timestamps():
         None,
         "2026-08-01T00:00:00+00:00",
         "2026-09-01T00:00:00+00:00",
+    )
+
+
+def test_normalise_partition_timestamp_rewrites_zulu_suffix_before_parsing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class TrackingDateTime(datetime):
+        inputs: ClassVar[list[str]] = []
+
+        @classmethod
+        def fromisoformat(cls, value: str) -> datetime:
+            cls.inputs.append(value)
+            return datetime.fromisoformat(value)
+
+    monkeypatch.setattr(manager, "datetime", TrackingDateTime)
+
+    parsed = manager._normalise_partition_timestamp("2026-08-01T00:00:00Z")
+
+    assert parsed == datetime(2026, 8, 1, tzinfo=UTC)
+    assert TrackingDateTime.inputs == ["2026-08-01T00:00:00+00:00"]
+
+
+@pytest.mark.parametrize(
+    ("bound", "start_date_iso", "end_date_iso"),
+    (
+        (
+            "FOR VALUES FROM ('2026-08-01') TO ('2026-09-01')",
+            "2026-08-01T00:00:00+00:00",
+            None,
+        ),
+        (
+            "FOR VALUES FROM ('2026-08-01') TO ('not-a-timestamp')",
+            "2026-08-01T00:00:00+00:00",
+            "2026-09-01T00:00:00+00:00",
+        ),
+        (
+            "FOR VALUES FROM ('2026-08-01') TO ('2026-09-01')",
+            None,
+            "2026-09-01T00:00:00+00:00",
+        ),
+        (
+            "FOR VALUES FROM ('not-a-timestamp') TO ('2026-09-01')",
+            "not-a-timestamp",
+            "2026-09-01T00:00:00+00:00",
+        ),
+        (
+            "FOR VALUES FROM ('2026-08-01') TO ('2026-09-01')",
+            "2026-08-02T00:00:00+00:00",
+            "2026-09-02T00:00:00+00:00",
+        ),
+    ),
+)
+def test_partition_bound_matching_requires_four_valid_timestamps(
+    bound, start_date_iso, end_date_iso
+):
+    """Malformed catalog or requested bounds must never be considered equal."""
+
+    assert not manager._partition_bound_matches(
+        bound,
+        start_date_iso,
+        end_date_iso,
     )
 
 

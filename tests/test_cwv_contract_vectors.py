@@ -8,6 +8,7 @@ import hmac
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import ClassVar
 from unittest.mock import Mock, patch
 
 import jwt
@@ -184,6 +185,20 @@ def test_route_group_rejects_unknown_paths_with_exact_error() -> None:
         derive_route_group("/unknown")
 
 
+@pytest.mark.parametrize("pathname", ["//news", "//login", "//settings"])
+def test_route_group_preserves_empty_leading_segment_as_core(pathname: str) -> None:
+    """Duplicate leading slashes must not reclassify the route group.
+
+    The route parser intentionally removes only one leading slash before
+    selecting the first segment.  Keeping the empty segment produced by a
+    malformed double-slash path preserves the fail-closed legacy contract:
+    these paths remain in the root/core bucket instead of being interpreted as
+    an authenticated, content, or settings route.
+    """
+
+    assert derive_route_group(pathname) == "core"
+
+
 @pytest.mark.parametrize(
     "value",
     [
@@ -308,6 +323,27 @@ def test_envelope_rejects_each_opaque_claim_independently(field: str) -> None:
         verify_envelope(_binding(), token, now=NOW)
 
 
+@pytest.mark.parametrize("token", ["not-a-cwv-token", "v1.only-two-parts"])
+def test_envelope_malformed_tokens_use_the_stable_error_message(token: str) -> None:
+    with pytest.raises(CwvEnvelopeError, match=r"^CWV envelope is malformed$"):
+        verify_envelope(_binding(), token, now=NOW)
+
+
+def test_envelope_verification_uses_canonical_lowercase_sha256_name() -> None:
+    token = _issued()
+    original_digest = cwv.hmac.digest
+    digest_names: list[object] = []
+
+    def record_digest(key: bytes, msg: bytes, digest: object) -> bytes:
+        digest_names.append(digest)
+        return original_digest(key, msg, digest)
+
+    with patch.object(cwv.hmac, "digest", side_effect=record_digest):
+        _verify_envelope(_binding(), token, now=NOW, expiration_grace_seconds=0)
+
+    assert digest_names == ["sha256"]
+
+
 def test_envelope_grace_period_has_exact_inclusive_limit_and_message() -> None:
     token = _issued()
     _verify_envelope(_binding(), token, now=NOW, expiration_grace_seconds=86_400)
@@ -374,6 +410,34 @@ def test_issue_and_renew_reject_invalid_device_nonce_and_navigation_exactly() ->
             now=NOW + timedelta(seconds=1),
             nonce_factory=lambda: "short",
         )
+
+
+def test_renew_envelope_uses_utc_for_an_implicit_clock() -> None:
+    token = _issued(pathname="/news")
+
+    class TrackingDateTime(datetime):
+        seen_timezones: ClassVar[list[object]] = []
+
+        @classmethod
+        def now(cls, tz: object = None) -> datetime:
+            cls.seen_timezones.append(tz)
+            return NOW + timedelta(seconds=1)
+
+    with patch.object(cwv, "datetime", TrackingDateTime):
+        renewed, expiry = renew_envelope(
+            _binding(),
+            token=token,
+            origin="https://staging.example.edu",
+            pathname="/news",
+            device_class="desktop",
+            collector_principal_id=COLLECTOR,
+            gateway_session_id=GATEWAY_SESSION,
+            nonce_factory=lambda: "renewed_nonce_abcdef",
+        )
+
+    assert renewed
+    assert expiry == NOW + timedelta(seconds=301)
+    assert TrackingDateTime.seen_timezones == [UTC]
 
 
 @pytest.mark.parametrize(

@@ -199,8 +199,16 @@ jobs:
         run: |
           set -euo pipefail
           failed=0
-          pre-commit run detect-secrets --all-files --show-diff-on-failure || failed=1
-          pre-commit run mypy --all-files --show-diff-on-failure || failed=1
+          # detect-secrets and mypy have disjoint outputs: the former only
+          # canonicalizes .secrets.baseline under its lock, while the latter
+          # writes the isolated .mypy_cache. Run both in parallel to remove
+          # their serial ~4-minute tail without dropping either blocking gate.
+          pre-commit run detect-secrets --all-files --show-diff-on-failure &
+          detect_secrets_pid=$!
+          pre-commit run mypy --all-files --show-diff-on-failure &
+          mypy_pid=$!
+          wait "$detect_secrets_pid" || failed=1
+          wait "$mypy_pid" || failed=1
           exit "$failed"
 
   compose-validate:

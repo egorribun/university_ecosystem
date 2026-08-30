@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -405,6 +406,25 @@ def test_delivery_decryption_and_keyring_parsing_fail_closed() -> None:
     }
 
 
+def test_trusted_device_keyring_uses_stable_error_for_malformed_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(trusted_device_module.settings, "environment", "staging")
+    monkeypatch.setattr(
+        trusted_device_module.settings, "mfa_trusted_device_hmac_keys", "malformed"
+    )
+    monkeypatch.setattr(
+        trusted_device_module.settings,
+        "mfa_trusted_device_active_hmac_key_id",
+        "primary",
+    )
+
+    with pytest.raises(
+        RuntimeError, match=r"^trusted-device key configuration invalid$"
+    ):
+        trusted_device_module._configured_keyring()
+
+
 def test_delivery_decryption_rejects_partial_envelope_before_crypto(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -562,13 +582,26 @@ async def test_publish_revocations_keeps_database_authoritative_on_backend_failu
 async def test_trusted_device_creation_requires_complete_binding(
     ip: str | None, user_agent: str | None
 ) -> None:
-    with pytest.raises(ValueError, match="binding is required"):
+    with pytest.raises(ValueError) as exc_info:
         await trusted_device_module.create_trusted_device_token(
             AsyncMock(),
             user=SimpleNamespace(id=uuid.uuid4()),  # type: ignore[arg-type]
             ip_address=ip,
             user_agent=user_agent,
         )
+    assert str(exc_info.value) == "trusted-device binding is required"
+
+
+def test_trusted_device_binding_digest_caps_user_agent_at_512_characters() -> None:
+    key = b"trusted-device-binding-key-material!"
+    prefix = "u" * 512
+
+    # The first character after the contract boundary must not influence the
+    # binding.  This protects against accidental truncation changes that would
+    # make equivalent browser identities produce different bindings.
+    assert trusted_device_module._binding_digest(key, "203.0.113.2", prefix + "A") == (
+        trusted_device_module._binding_digest(key, "203.0.113.2", prefix + "B")
+    )
 
 
 def test_trusted_device_keyring_rejects_malformed_entries(
@@ -653,6 +686,75 @@ async def test_trusted_device_consume_rejects_deleted_user(
     assert lock is not None and lock.nowait is False
 
 
+@pytest.mark.asyncio
+async def test_trusted_device_consume_locks_device_with_waiting_semantics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The device row lock must wait, preventing concurrent token use races."""
+
+    key = b"trusted-device-test-key-material-32!"
+    monkeypatch.setattr(
+        trusted_device_module,
+        "_configured_keyring",
+        lambda: ({"active": key}, "active"),
+    )
+    user = SimpleNamespace(id=uuid.uuid4(), mfa_epoch=0)
+    locked_user = MagicMock(id=user.id, mfa_epoch=0)
+    user_result = MagicMock()
+    user_result.scalar_one_or_none.return_value = locked_user
+    device_result = MagicMock()
+    device_result.scalars.return_value.first.return_value = None
+    db = MagicMock(execute=AsyncMock(side_effect=[user_result, device_result]))
+
+    assert (
+        await trusted_device_module._consume_trusted_device_token(
+            db,
+            user=user,  # type: ignore[arg-type]
+            token="presented-token",
+            request_ip="203.0.113.2",
+            request_ua="browser",
+            rotate=False,
+        )
+        is None
+    )
+
+    device_statement = db.execute.await_args_list[1].args[0]
+    lock = device_statement._for_update_arg
+    assert lock is not None and lock.nowait is False
+
+
+@pytest.mark.asyncio
+async def test_trusted_device_creation_persists_usage_time_and_binding_hashes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    key = b"trusted-device-test-key-material-32!"
+    monkeypatch.setattr(
+        trusted_device_module,
+        "_configured_keyring",
+        lambda: ({"active": key}, "active"),
+    )
+    fixed_now = datetime(2026, 8, 25, 12, 0, tzinfo=UTC)
+    monkeypatch.setattr(trusted_device_module, "_utcnow", lambda: fixed_now)
+    db = MagicMock(flush=AsyncMock())
+    user = SimpleNamespace(id=uuid.uuid4(), mfa_epoch=4)
+    ip_address = "203.0.113.22"
+    user_agent = "UniversityBrowser/1.0"
+
+    token, expires_at = await trusted_device_module.create_trusted_device_token(
+        db,
+        user=user,  # type: ignore[arg-type]
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+
+    device = db.add.call_args.args[0]
+    assert token
+    assert expires_at > fixed_now
+    assert device.last_used_at == fixed_now
+    assert device.ip_hash == trusted_device_module._sha256_hex(ip_address)
+    assert device.ua_hash == trusted_device_module._sha256_hex(user_agent)
+
+
 def _api_request(*, active_session: object | None = None) -> MagicMock:
     request = MagicMock()
     request.state.active_session = active_session
@@ -706,6 +808,8 @@ async def test_login_boundaries_rollback_security_failures(
             )
 
     assert exc_info.value.status_code == expected_status
+    if expected_status == 400:
+        assert exc_info.value.detail == "MFA request rejected"
     db.rollback.assert_awaited_once()
 
 
@@ -906,6 +1010,9 @@ async def test_resend_maps_domain_errors_without_leaking_account_state(
         )
 
     assert exc_info.value.status_code == expected_status
+    assert exc_info.value.detail == (
+        "MFA service unavailable" if expected_status == 503 else "MFA request rejected"
+    )
     db.rollback.assert_awaited_once()
 
 
@@ -921,6 +1028,7 @@ async def test_email_factor_start_requires_an_active_session() -> None:
         )
 
     assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "MFA request rejected"
 
 
 @pytest.mark.asyncio
@@ -978,6 +1086,9 @@ async def test_email_factor_start_maps_security_domain_errors(
         )
 
     assert exc_info.value.status_code == expected_status
+    assert exc_info.value.detail == (
+        "MFA service unavailable" if expected_status == 503 else "MFA request rejected"
+    )
     db.rollback.assert_awaited_once()
 
 
@@ -1684,6 +1795,9 @@ def test_smtp_sender_applies_transport_security_and_authentication(
     assert next(name for name, _ in message.items() if name.lower() == "to") == "To"
     assert message["From"] == "security@example.edu"
     assert message["Message-ID"] == "<challenge@example.edu>"
+    raw_headers = dict(message.raw_items())
+    assert raw_headers["Message-ID"] == "<challenge@example.edu>"
+    assert "message-id" not in raw_headers
     assert message.get_payload()[1].get_content_subtype() == "html"
     transport.assert_called_once_with(
         settings.smtp_host,
@@ -1965,6 +2079,53 @@ def test_trusted_device_keyring_decodes_configured_active_key(
     assert keys == {"primary": key}
 
 
+def test_trusted_device_keyring_preserves_multiple_comma_delimited_generations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Key rotation keeps every configured generation addressable."""
+
+    primary = b"trusted-device-primary-key-material!"
+    previous = b"trusted-device-previous-key-material"
+    primary_encoded = base64.urlsafe_b64encode(primary).decode().rstrip("=")
+    previous_encoded = base64.urlsafe_b64encode(previous).decode().rstrip("=")
+    monkeypatch.setattr(
+        trusted_device_module.settings,
+        "mfa_trusted_device_hmac_keys",
+        f"primary:{primary_encoded}, previous:{previous_encoded}",
+    )
+    monkeypatch.setattr(
+        trusted_device_module.settings,
+        "mfa_trusted_device_active_hmac_key_id",
+        "primary",
+    )
+
+    keys, active = trusted_device_module._configured_keyring()
+
+    assert active == "primary"
+    assert keys == {"primary": primary, "previous": previous}
+
+
+def test_trusted_device_testing_keyring_uses_stable_fallback_generation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    secret = "x" * 32
+    monkeypatch.setattr(trusted_device_module.settings, "environment", "testing")
+    monkeypatch.setattr(trusted_device_module.settings, "secret_key", secret)
+    monkeypatch.setattr(
+        trusted_device_module.settings, "mfa_trusted_device_hmac_keys", ""
+    )
+    monkeypatch.setattr(
+        trusted_device_module.settings,
+        "mfa_trusted_device_active_hmac_key_id",
+        "",
+    )
+
+    keys, active = trusted_device_module._configured_keyring()
+
+    assert active == "test-primary"
+    assert keys == {"test-primary": hashlib.sha256(secret.encode()).digest()}
+
+
 @pytest.mark.asyncio
 async def test_opaque_token_routes_to_its_embedded_user() -> None:
     service = _service()
@@ -2220,7 +2381,11 @@ async def test_resend_rejects_stale_or_recipient_mismatched_challenge(
 
 @pytest.mark.parametrize(
     "malformed_envelope",
-    [["student@example.edu", "123456"], {"email": 7, "otp": "123456"}],
+    [
+        ["student@example.edu", "123456"],
+        {"email": 7, "otp": "123456"},
+        {"email": "student@example.edu", "otp": 7, "display_name": "Student"},
+    ],
 )
 def test_delivery_envelope_rejects_invalid_json_shape(
     malformed_envelope: object,
@@ -2242,6 +2407,29 @@ def test_delivery_envelope_rejects_invalid_json_shape(
         pytest.raises(MfaDeliveryError),
     ):
         service._decrypt_delivery(delivery)
+
+
+def test_delivery_decryption_rejects_a_missing_wrap_nonce_before_crypto() -> None:
+    service = _service()
+    challenge = _email_challenge()
+    delivery = service._build_delivery(
+        challenge=challenge,  # type: ignore[arg-type]
+        revision=challenge.revision,
+        email="student@example.edu",
+        otp="123456",
+        locale="en",
+        display_name="Student",
+        now=datetime.now(UTC),
+    )
+    delivery.wrap_nonce = None
+
+    with (
+        patch.object(email_otp_module, "AESGCM") as aesgcm,
+        pytest.raises(MfaDeliveryError),
+    ):
+        service._decrypt_delivery(delivery)
+
+    aesgcm.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -2315,6 +2503,50 @@ async def test_delivery_cancellation_fails_closed_after_cas_loss() -> None:
         await service.deliver(db, delivery_id=delivery.id, sender=sender, now=now)
 
     sender.send.assert_not_awaited()
+    cancellation_statement = db.execute.await_args_list[2].args[0]
+    compiled = cancellation_statement.compile()
+    assert compiled.params["status"] == "cancelled"
+    assert compiled.params["lease_token"] is None
+    assert compiled.params["lease_expires_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_delivery_cancels_when_challenge_expires_at_validation_boundary() -> None:
+    """An OTP expiring at the validation instant is already unusable."""
+
+    service = _service()
+    challenge = _email_challenge()
+    challenge.expires_at = datetime.now(UTC)
+    now = challenge.expires_at
+    delivery = service._build_delivery(
+        challenge=challenge,  # type: ignore[arg-type]
+        revision=challenge.revision,
+        email="student@example.edu",
+        otp="123456",
+        locale="en",
+        display_name="Student",
+        now=now,
+    )
+    delivery.lease_token = "worker-lease"
+    claim = SimpleNamespace(one_or_none=MagicMock(return_value=(delivery.id,)))
+    challenge_result = SimpleNamespace(
+        scalar_one_or_none=MagicMock(return_value=challenge)
+    )
+    cancellation = SimpleNamespace(rowcount=1)
+    db = AsyncMock()
+    db.execute.side_effect = [claim, challenge_result, cancellation]
+    db.get.return_value = delivery
+    sender = AsyncMock()
+
+    with patch.object(
+        email_otp_module.secrets, "token_urlsafe", return_value="worker-lease"
+    ):
+        await service.deliver(db, delivery_id=delivery.id, sender=sender, now=now)
+
+    sender.send.assert_not_awaited()
+    assert db.commit.await_count == 2
+    cancellation_statement = db.execute.await_args_list[2].args[0]
+    assert cancellation_statement.compile().params["status"] == "cancelled"
 
 
 @pytest.mark.asyncio

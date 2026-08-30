@@ -710,6 +710,14 @@ jobs:
         run: |
           set -euo pipefail
           cd "$GITHUB_WORKSPACE"
+          workspace_root="$(pwd -P)"
+          github_workspace_root="$(realpath -- "$GITHUB_WORKSPACE")"
+          if [[ "$workspace_root" != "$github_workspace_root" ]]; then
+            echo "::error::Lighthouse provenance workspace is not the canonical checkout root" >&2
+            printf 'pwd -P=%s\nGITHUB_WORKSPACE=%s\nrealpath(GITHUB_WORKSPACE)=%s\n' \
+              "$workspace_root" "$GITHUB_WORKSPACE" "$github_workspace_root" >&2
+            exit 1
+          fi
           producer_root=artifacts/lighthouse/producer
           test -d "$producer_root"
           python_version="$(python3 --version | awk '{print $2}')"
@@ -725,7 +733,11 @@ jobs:
             done
           done
           test "${#reports[@]}" -eq 30
-          provenance_output="$GITHUB_WORKSPACE/artifacts/lighthouse/producer/provenance/lighthouse-reports.json"
+          provenance_dir="$producer_root/provenance"
+          mkdir -p -- "$provenance_dir"
+          test -d "$provenance_dir"
+          test ! -L "$provenance_dir"
+          provenance_output="$provenance_dir/lighthouse-reports.json"
           retry_output="$(mktemp)"
           retry_error="$(mktemp)"
           write_output="$(mktemp)"
@@ -803,15 +815,18 @@ jobs:
             cat "$write_output" >&2
             exit "$write_status"
           fi
-          if [[ ! -s "$provenance_output" ]]; then
-            echo "::error::Lighthouse evidence provenance writer produced no non-empty sidecar at the expected workspace path." >&2
-            printf 'working directory: ' >&2
-            pwd >&2
+          if [[ ! -f "$provenance_output" || -L "$provenance_output" || ! -s "$provenance_output" ]]; then
+            echo "::error::Lighthouse evidence provenance writer produced no regular, non-empty sidecar at the expected workspace path." >&2
+            printf 'working directory: %s\n' "$(pwd -P)" >&2
             printf 'provenance directory listing:\n' >&2
-            ls -la "$GITHUB_WORKSPACE/artifacts/lighthouse/producer/provenance" >&2 || true
-            printf 'provenance output listing:\n' >&2
-            ls -la "$provenance_output" >&2 || true
+            ls -la "$provenance_dir" >&2 || true
+            printf 'provenance output path: %s\n' "$provenance_output" >&2
+            if [[ -e "$provenance_output" || -L "$provenance_output" ]]; then
+              stat --printf='mode=%a size=%s inode=%i links=%h type=%F\n' "$provenance_output" >&2 || true
+            fi
+            printf 'writer stderr:\n' >&2
             cat "$write_error" >&2
+            printf 'writer stdout:\n' >&2
             cat "$write_output" >&2
             exit 1
           fi

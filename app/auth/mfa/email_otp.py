@@ -144,6 +144,12 @@ class SmtpMfaEmailSender:
             security = "starttls"
         else:
             security = "none"
+        if security not in {"none", "starttls", "ssl"}:
+            # Do not silently downgrade a malformed setting to unauthenticated
+            # SMTP.  Configuration normally validates this value, but this
+            # boundary also runs in workers and must fail closed when settings
+            # are injected or loaded from an unexpected source.
+            raise OSError("SMTP unavailable")
         context = ssl.create_default_context()
         try:
             client_context: smtplib.SMTP

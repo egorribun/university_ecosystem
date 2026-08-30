@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -233,15 +235,21 @@ async def test_trusted_device_consume_locks_user_before_device(
         )
     ).scalar_one()
     before_hash = before.token_hash
+    assert before.ip_address == "203.0.113.8"
+    assert before.user_agent == "test-agent"
+    assert before.expires_at is not None
+    assert before.last_used_at is not None
     await db_session.commit()
     original_execute = db_session.execute
     locked_entities: list[object] = []
+    lock_nowait: list[bool | None] = []
 
     async def traced_execute(statement, *args, **kwargs):
         if getattr(statement, "_for_update_arg", None) is not None:
             descriptions = getattr(statement, "column_descriptions", [])
             if descriptions:
                 locked_entities.append(descriptions[0].get("entity"))
+                lock_nowait.append(statement._for_update_arg.nowait)
         return await original_execute(statement, *args, **kwargs)
 
     monkeypatch.setattr(db_session, "execute", traced_execute)
@@ -254,6 +262,7 @@ async def test_trusted_device_consume_locks_user_before_device(
     )
 
     assert locked_entities[:2] == [User, TrustedDevice]
+    assert lock_nowait[:2] == [False, False]
     await db_session.refresh(before)
     assert before.token_hash == before_hash
 
@@ -399,4 +408,46 @@ def test_step_up_contract_reuses_active_session() -> None:
     assert (
         "create_access_token"
         not in LoginSessionManager.complete_step_up.__code__.co_names
+    )
+
+
+@pytest.mark.asyncio
+async def test_complete_step_up_builds_a_session_response_without_access_token() -> (
+    None
+):
+    from app.services.auth.login_session_manager import LoginSessionManager
+
+    manager = LoginSessionManager(Mock(), Mock(), Mock(), Mock())
+    user = SimpleNamespace(id=uuid.uuid4(), mfa_epoch=7)
+    session = SimpleNamespace(id=uuid.uuid4(), mfa_epoch=0)
+    db_session = object()
+    expected_response = object()
+    manager.build_token_response = AsyncMock(  # type: ignore[method-assign]
+        return_value=expected_response
+    )
+    record_success = AsyncMock()
+
+    with patch("app.auth.mfa.record_mfa_success", record_success):
+        result = await manager.complete_step_up(
+            user=user,
+            session=session,
+            request=Mock(),
+            db_session=db_session,
+            method="totp",
+        )
+
+    assert result is expected_response
+    assert session.mfa_epoch == 7
+    record_success.assert_awaited_once_with(
+        db_session,
+        user=user,
+        session=session,
+        method="totp",
+    )
+    manager.build_token_response.assert_awaited_once_with(  # type: ignore[attr-defined]
+        user,
+        "",
+        session,
+        db_session,
+        include_token=False,
     )

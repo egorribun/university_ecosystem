@@ -200,7 +200,7 @@ def test_envelope_rejects_untrusted_origin_unknown_route_and_tampering() -> None
         gateway_session_id="gateway-session-not-stored",
         now=NOW,
     )
-    with pytest.raises(CwvEnvelopeError, match="signature"):
+    with pytest.raises(CwvEnvelopeError, match=r"^CWV envelope signature is invalid$"):
         verify_envelope(
             _binding(), token[:-1] + ("A" if token[-1] != "A" else "B"), now=NOW
         )
@@ -619,17 +619,25 @@ async def test_cwv_retention_uses_explicit_utc_clock_when_now_is_omitted(
 ) -> None:
     """The implicit retention clock is always requested with UTC explicitly."""
 
+    astimezone_args: list[object] = []
+
+    class TrackingDateTime(datetime):
+        def astimezone(self, tz: object = None) -> datetime:
+            astimezone_args.append(tz)
+            return super().astimezone(tz)  # type: ignore[arg-type]
+
     class UtcClock:
         @classmethod
         def now(cls, tz: object = None) -> datetime:
             assert tz is UTC
-            return NOW
+            return TrackingDateTime.fromtimestamp(NOW.timestamp(), tz=UTC)
 
     monkeypatch.setattr(cwv_retention, "datetime", UtcClock)
     db = AsyncMock()
     db.execute.return_value = SimpleNamespace(rowcount=0)
 
     assert await cleanup_stale_cwv_observations(db=db, retention_days=30) == 0
+    assert astimezone_args == [UTC]
 
 
 @pytest.mark.asyncio

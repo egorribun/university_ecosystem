@@ -77,6 +77,59 @@ def _challenge(
     )
 
 
+def test_email_delivery_generates_fixed_size_aead_nonces(
+    service: EmailOtpService,
+) -> None:
+    """Both AES-GCM nonces are 96-bit values, never caller-sized defaults."""
+
+    challenge = SimpleNamespace(id=uuid.uuid4())
+
+    with patch.object(
+        email_otp_module.secrets,
+        "token_bytes",
+        side_effect=lambda size: b"n" * size,
+    ) as token_bytes:
+        delivery_row = service._build_delivery(
+            challenge=challenge,  # type: ignore[arg-type]
+            revision=1,
+            email="student@example.edu",
+            otp="123456",
+            locale="en",
+            display_name="Student",
+            now=NOW,
+        )
+
+    assert [call.args for call in token_bytes.call_args_list] == [(12,), (12,)]
+    assert len(delivery_row.envelope_nonce) == 12
+    assert len(delivery_row.wrap_nonce) == 12
+
+
+@pytest.mark.parametrize("kek_length", [16, 24, 32])
+def test_email_otp_constructor_accepts_only_aes_gcm_key_lengths(
+    kek_length: int,
+) -> None:
+    """Delivery KEKs use exactly the AES-GCM key sizes supported by the cipher."""
+
+    EmailOtpService(
+        hmac_keys={"active": b"h" * 32},
+        active_hmac_key_id="active",
+        delivery_keks={"active": b"k" * kek_length},
+        active_kek_id="active",
+        rate_limiter=_Limiter(),
+    )
+
+
+def test_email_otp_constructor_rejects_non_aes_gcm_key_length() -> None:
+    with pytest.raises(MfaSecurityUnavailable, match=r"^MFA service unavailable$"):
+        EmailOtpService(
+            hmac_keys={"active": b"h" * 32},
+            active_hmac_key_id="active",
+            delivery_keks={"active": b"k" * 25},
+            active_kek_id="active",
+            rate_limiter=_Limiter(),
+        )
+
+
 def test_mask_email_is_stable_for_tld_local_and_nested_domains() -> None:
     assert email_otp_module.mask_email("user@example.edu") == "u***@e***.edu"
     assert email_otp_module.mask_email("u@localhost") == "u***@l***"
@@ -235,6 +288,44 @@ def test_configured_builder_preserves_injected_limiter_and_worker_is_inert(
 
 
 @pytest.mark.asyncio
+async def test_issue_binds_recipient_lookup_to_user_and_persists_outbox(
+    service: EmailOtpService,
+) -> None:
+    """Issuance must keep the user identity in the row-lock lookup contract."""
+
+    user_id = uuid.UUID("55555555-5555-7555-8555-555555555555")
+    user = SimpleNamespace(id=user_id, email="student@example.edu")
+    db = MagicMock()
+    db.flush = AsyncMock()
+    service._rate_limit = AsyncMock()  # type: ignore[method-assign]
+    service._resolve_recipient = AsyncMock(  # type: ignore[method-assign]
+        return_value=(user, user.email)
+    )
+
+    issued = await service.issue(
+        db,
+        user_id=user_id,
+        flow="login",
+        session_identifier=SESSION,
+        client_fingerprint=FINGERPRINT,
+        client_ip=IP,
+        locale="en",
+        now=NOW,
+    )
+
+    assert issued.challenge_id is not None
+    service._resolve_recipient.assert_awaited_once_with(  # type: ignore[attr-defined]
+        db, user_id=user_id, flow="login", for_update=True
+    )
+    db.add_all.assert_called_once()
+    added = db.add_all.call_args.args[0]
+    assert len(added) == 3
+    assert added[0].user_id == user_id
+    assert added[1].challenge_id == issued.challenge_id
+    assert isinstance(added[2], StoredEvent)
+
+
+@pytest.mark.asyncio
 async def test_opaque_loader_selects_active_session_for_each_non_login_flow(
     service: EmailOtpService,
 ) -> None:
@@ -319,6 +410,151 @@ async def test_resend_opaque_preserves_the_bound_session_identifier(
         service.resend.await_args.kwargs["session_identifier"]
         == challenge.session_identifier
     )
+
+
+@pytest.mark.asyncio
+async def test_resend_rate_limits_with_the_resend_action_before_loading_state(
+    service: EmailOtpService,
+) -> None:
+    service._rate_limit = AsyncMock()  # type: ignore[method-assign]
+    service._resolve_recipient = AsyncMock(side_effect=MfaOtpRejected())  # type: ignore[method-assign]
+
+    with pytest.raises(MfaOtpRejected):
+        await service.resend(
+            MagicMock(),
+            challenge_token="opaque-token",
+            user_id=_challenge().user_id,
+            flow="login",
+            session_identifier=SESSION,
+            client_fingerprint=FINGERPRINT,
+            client_ip=IP,
+            locale="en",
+            now=NOW,
+        )
+
+    service._rate_limit.assert_awaited_once_with(  # type: ignore[attr-defined]
+        action="resend", user_id=_challenge().user_id, client_ip=IP
+    )
+
+
+@pytest.mark.asyncio
+async def test_resend_without_explicit_clock_uses_utc_and_rotates_expiry(
+    service: EmailOtpService,
+) -> None:
+    challenge = _challenge()
+    user = SimpleNamespace(id=challenge.user_id, email="student@example.edu")
+    challenge.recipient_digest = service._recipient_digest(
+        key_id="active", email=user.email
+    )
+    challenge.resend_available_at = NOW - timedelta(seconds=1)
+    service._resolve_recipient = AsyncMock(return_value=(user, user.email))  # type: ignore[method-assign]
+    service._load_bound_challenge = AsyncMock(return_value=challenge)  # type: ignore[method-assign]
+    won = SimpleNamespace(one_or_none=Mock(return_value=(challenge.id,)))
+    db = MagicMock()
+    db.execute = AsyncMock(side_effect=[won, MagicMock()])
+    db.flush = AsyncMock()
+    clock = MagicMock(wraps=datetime)
+    rotated_at = NOW + timedelta(seconds=60)
+    clock.now.return_value = rotated_at
+
+    with patch.object(email_otp_module, "datetime", clock):
+        issued = await service.resend(
+            db,
+            challenge_token="opaque-token",
+            user_id=user.id,
+            flow="login",
+            session_identifier=SESSION,
+            client_fingerprint=FINGERPRINT,
+            client_ip=IP,
+            locale="en",
+        )
+
+    clock.now.assert_called_once_with(UTC)
+    assert issued.expires_at == rotated_at + timedelta(seconds=600)
+    assert issued.resend_available_at == rotated_at + timedelta(seconds=60)
+
+
+@pytest.mark.asyncio
+async def test_verify_rejects_an_exhausted_challenge_before_digest_or_mutation(
+    service: EmailOtpService,
+) -> None:
+    challenge = _challenge()
+    user = SimpleNamespace(id=challenge.user_id, email="student@example.edu")
+    challenge.recipient_digest = service._recipient_digest(
+        key_id="active", email=user.email
+    )
+    challenge.otp_digest = service._digest(
+        key_id="active",
+        purpose="email-otp",
+        challenge=challenge,  # type: ignore[arg-type]
+        secret_value="123456",
+    )
+    challenge.otp_key_id = "active"
+    challenge.attempt_count = 5
+    service._rate_limit = AsyncMock()  # type: ignore[method-assign]
+    service._resolve_recipient = AsyncMock(return_value=(user, user.email))  # type: ignore[method-assign]
+    service._load_bound_challenge = AsyncMock(return_value=challenge)  # type: ignore[method-assign]
+    db = MagicMock()
+
+    with pytest.raises(MfaOtpRejected, match=r"^MFA verification failed$"):
+        await service.verify(
+            db,
+            challenge_token="opaque-token",
+            code="123456",
+            user_id=user.id,
+            flow="login",
+            session_identifier=SESSION,
+            client_fingerprint=FINGERPRINT,
+            client_ip=IP,
+            now=NOW,
+        )
+
+    db.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_verify_consumes_challenge_with_checked_at_persisted(
+    service: EmailOtpService,
+) -> None:
+    """Successful OTP verification persists the exact consumption timestamp."""
+
+    from sqlalchemy.dialects import postgresql
+
+    challenge = _challenge()
+    user = SimpleNamespace(id=challenge.user_id, email="student@example.edu")
+    challenge.recipient_digest = service._recipient_digest(
+        key_id="active", email=user.email
+    )
+    challenge.otp_digest = service._digest(
+        key_id="active",
+        purpose="email-otp",
+        challenge=challenge,  # type: ignore[arg-type]
+        secret_value="123456",
+    )
+    service._rate_limit = AsyncMock()  # type: ignore[method-assign]
+    service._resolve_recipient = AsyncMock(return_value=(user, user.email))  # type: ignore[method-assign]
+    service._load_bound_challenge = AsyncMock(return_value=challenge)  # type: ignore[method-assign]
+    consumed = MagicMock()
+    consumed.one_or_none.return_value = SimpleNamespace(id=challenge.id)
+    db = MagicMock(execute=AsyncMock(return_value=consumed), flush=AsyncMock())
+    db.refresh = AsyncMock()
+
+    await service.verify(
+        db,
+        challenge_token="opaque-token",
+        code="123456",
+        user_id=user.id,
+        flow="login",
+        session_identifier=SESSION,
+        client_fingerprint=FINGERPRINT,
+        client_ip=IP,
+        now=NOW,
+    )
+
+    statement = db.execute.await_args.args[0]
+    compiled = statement.compile(dialect=postgresql.dialect())
+    assert "consumed_at" in str(statement)
+    assert NOW in compiled.params.values()
 
 
 @pytest.mark.asyncio
@@ -469,6 +705,9 @@ def test_smtp_missing_either_host_or_port_fails_closed_and_preserves_headers() -
         )
     message = client.send_message.call_args.args[0]
     assert message["Subject"] == "Verification"
+    raw_headers = dict(message.raw_items())
+    assert raw_headers["Subject"] == "Verification"
+    assert "SUBJECT" not in raw_headers
     assert message["From"] == "security@example.edu"
     assert message["To"] == "student@example.edu"
     assert message["Message-ID"] == "<challenge@example.edu>"
@@ -479,6 +718,62 @@ def test_smtp_missing_either_host_or_port_fails_closed_and_preserves_headers() -
     # ``text/HTML`` regression as well.
     assert html_part["Content-Type"].split(";", 1)[0] == "text/html"
     client.login.assert_called_once_with("mailer", "")
+
+
+def test_smtp_none_security_fallback_is_explicitly_unauthenticated() -> None:
+    smtp_settings = SimpleNamespace(
+        smtp_host="smtp.example.edu",
+        smtp_port=587,
+        smtp_security="",
+        smtp_starttls=False,
+        smtp_user="",
+        smtp_password="",
+        mail_from="security@example.edu",
+    )
+    client = MagicMock()
+    transport = MagicMock()
+    transport.return_value.__enter__.return_value = client
+    with (
+        patch("app.core.config.settings", smtp_settings),
+        patch.object(email_otp_module.smtplib, "SMTP", transport),
+    ):
+        email_otp_module.SmtpMfaEmailSender._send_sync(
+            to_email="student@example.edu",
+            subject="Verification",
+            plain="Code: 123456",
+            html_body="<p>Code: 123456</p>",
+            message_id="<challenge@example.edu>",
+        )
+
+    client.starttls.assert_not_called()
+    transport.assert_called_once_with("smtp.example.edu", 587, timeout=10)
+
+
+def test_smtp_rejects_an_unknown_transport_mode_before_network_io() -> None:
+    """A malformed transport setting must never silently downgrade to plaintext."""
+
+    smtp_settings = SimpleNamespace(
+        smtp_host="smtp.example.edu",
+        smtp_port=587,
+        smtp_security="unsupported",
+        smtp_starttls=False,
+        smtp_user="",
+        smtp_password="",
+        mail_from="security@example.edu",
+    )
+    with (
+        patch("app.core.config.settings", smtp_settings),
+        patch.object(email_otp_module.smtplib, "SMTP") as smtp,
+        pytest.raises(OSError, match=r"^SMTP unavailable$"),
+    ):
+        email_otp_module.SmtpMfaEmailSender._send_sync(
+            to_email="student@example.edu",
+            subject="Verification",
+            plain="Code: 123456",
+            html_body="<p>Code: 123456</p>",
+            message_id="<challenge@example.edu>",
+        )
+    smtp.assert_not_called()
 
 
 def test_decrypt_delivery_defaults_missing_display_name_to_empty_string(
@@ -553,10 +848,16 @@ async def test_delivery_completion_requires_exactly_one_row_and_forwards_rendere
     with (
         patch.object(
             email_otp_module.secrets, "token_urlsafe", return_value="lease-token"
-        ),
+        ) as token_urlsafe,
         pytest.raises(MfaDeliveryError, match=r"^MFA delivery failed$"),
     ):
         await service.deliver(db, delivery_id=delivery_id, sender=sender, now=NOW)
+    token_urlsafe.assert_called_once_with(32)
+    assert db.get.await_args is not None
+    assert db.get.await_args.kwargs["populate_existing"] is True
+    challenge_query = db.execute.await_args_list[1].args[0]
+    challenge_lock = challenge_query._for_update_arg
+    assert challenge_lock is not None and challenge_lock.nowait is False
     sender.send.assert_awaited_once_with(
         to_email="student@example.edu",
         subject="Expected subject",
@@ -567,6 +868,113 @@ async def test_delivery_completion_requires_exactly_one_row_and_forwards_rendere
     completion = db.execute.await_args_list[-1].args[0]
     assert "mfa_email_deliveries.status" in str(completion)
     assert "mfa_email_deliveries.lease_token" in str(completion)
+    where_clause = str(completion.whereclause)
+    assert "mfa_email_deliveries.id =" in where_clause
+    assert "mfa_email_deliveries.id !=" not in where_clause
+    assert "mfa_email_deliveries.lease_token =" in where_clause
+
+
+@pytest.mark.asyncio
+async def test_delivery_failure_emits_the_canonical_retryable_event(
+    service: EmailOtpService,
+) -> None:
+    delivery_id = uuid.UUID("88888888-8888-7888-8888-888888888888")
+    challenge_id = uuid.UUID("99999999-9999-7999-8999-999999999999")
+    delivery = SimpleNamespace(
+        id=delivery_id,
+        challenge_id=challenge_id,
+        lease_token="lease-token",
+        revision=1,
+        locale="en",
+        message_id="<mfa-failure@example.edu>",
+    )
+    challenge = SimpleNamespace(
+        id=challenge_id,
+        method=MFA_METHOD_EMAIL_OTP,
+        state=ChallengeState.PENDING,
+        revision=1,
+        expires_at=NOW + timedelta(minutes=5),
+    )
+    claimed = SimpleNamespace(one_or_none=Mock(return_value=(delivery_id,)))
+    challenge_result = SimpleNamespace(scalar_one_or_none=Mock(return_value=challenge))
+    db = MagicMock()
+    db.execute = AsyncMock(side_effect=[claimed, challenge_result, MagicMock()])
+    db.get = AsyncMock(return_value=delivery)
+    db.commit = AsyncMock()
+    sender = AsyncMock()
+    sender.send.side_effect = OSError("smtp unavailable")
+    service._decrypt_delivery = MagicMock(  # type: ignore[method-assign]
+        return_value={
+            "email": "student@example.edu",
+            "otp": "123456",
+            "display_name": "Student",
+        }
+    )
+
+    with (
+        patch.object(
+            email_otp_module.secrets, "token_urlsafe", return_value="lease-token"
+        ),
+        patch.object(email_otp_module.logger, "error") as logger_error,
+        pytest.raises(MfaDeliveryError),
+    ):
+        await service.deliver(db, delivery_id=delivery_id, sender=sender, now=NOW)
+
+    logger_error.assert_called_once_with(
+        "mfa_email_delivery_failed", extra={"delivery_id": str(delivery_id)}
+    )
+    retry_statement = db.execute.await_args_list[-1].args[0]
+    retry_sql = str(retry_statement)
+    assert "status=:status" in retry_sql
+    assert "lease_token=:lease_token" in retry_sql
+    assert "lease_expires_at=:lease_expires_at" in retry_sql
+    retry_where = str(retry_statement.whereclause)
+    assert "mfa_email_deliveries.id =" in retry_where
+    assert "mfa_email_deliveries.id !=" not in retry_where
+    assert "mfa_email_deliveries.lease_token =" in retry_where
+
+
+@pytest.mark.asyncio
+async def test_delivery_decrypt_failure_logs_delivery_id_for_retry_diagnostics(
+    service: EmailOtpService,
+) -> None:
+    delivery_id = uuid.UUID("aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa")
+    challenge_id = uuid.UUID("bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb")
+    delivery = SimpleNamespace(
+        id=delivery_id,
+        challenge_id=challenge_id,
+        lease_token="lease-token",
+        revision=1,
+        locale="en",
+        message_id="<mfa-decrypt-failure@example.edu>",
+    )
+    challenge = SimpleNamespace(
+        id=challenge_id,
+        method=MFA_METHOD_EMAIL_OTP,
+        state=ChallengeState.PENDING,
+        revision=1,
+        expires_at=NOW + timedelta(minutes=5),
+    )
+    claimed = SimpleNamespace(one_or_none=Mock(return_value=(delivery_id,)))
+    challenge_result = SimpleNamespace(scalar_one_or_none=Mock(return_value=challenge))
+    db = MagicMock()
+    db.execute = AsyncMock(side_effect=[claimed, challenge_result, MagicMock()])
+    db.commit = AsyncMock()
+    db.get = AsyncMock(return_value=delivery)
+    service._decrypt_delivery = MagicMock(side_effect=MfaDeliveryError())  # type: ignore[method-assign]
+
+    with (
+        patch.object(
+            email_otp_module.secrets, "token_urlsafe", return_value="lease-token"
+        ),
+        patch.object(email_otp_module.logger, "error") as logger_error,
+        pytest.raises(MfaDeliveryError),
+    ):
+        await service.deliver(db, delivery_id=delivery_id, sender=AsyncMock(), now=NOW)
+
+    logger_error.assert_called_once_with(
+        "mfa_email_delivery_failed", extra={"delivery_id": str(delivery_id)}
+    )
 
 
 def test_rejected_error_is_enumeration_safe_and_exact() -> None:
