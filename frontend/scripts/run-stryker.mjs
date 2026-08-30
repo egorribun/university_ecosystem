@@ -190,6 +190,187 @@ function validatedHistoricalCosts(preflightByFile, historicalCosts) {
   return historicalCosts
 }
 
+const mutationRangePattern = /^(.*?):(\d+)(?::(\d+))?-(\d+)(?::(\d+))?$/u
+
+export function parseMutationPattern(pattern) {
+  if (typeof pattern !== "string" || pattern === "" || pattern.startsWith("!")) {
+    throw new Error("Stryker mutation pattern is invalid")
+  }
+  const match = mutationRangePattern.exec(pattern)
+  if (!match) {
+    return { pattern, sourcePath: canonicalMutationSourcePath(pattern), range: undefined }
+  }
+  const [, rawSourcePath, rawStartLine, rawStartColumn, rawEndLine, rawEndColumn] = match
+  const sourcePath = canonicalMutationSourcePath(rawSourcePath)
+  const start = {
+    line: Number(rawStartLine) - 1,
+    column: rawStartColumn === undefined ? 0 : Number(rawStartColumn),
+  }
+  const end = {
+    line: Number(rawEndLine) - 1,
+    column: rawEndColumn === undefined ? Number.MAX_SAFE_INTEGER : Number(rawEndColumn),
+  }
+  if (
+    !Number.isSafeInteger(start.line) ||
+    !Number.isSafeInteger(end.line) ||
+    !Number.isSafeInteger(start.column) ||
+    !Number.isSafeInteger(end.column) ||
+    start.line < 0 ||
+    end.line < start.line ||
+    start.column < 0 ||
+    end.column < 0 ||
+    (start.line === end.line && end.column < start.column)
+  ) {
+    throw new Error("Stryker mutation pattern range is invalid")
+  }
+  const canonical = `${sourcePath}:${start.line + 1}${
+    rawStartColumn === undefined ? "" : `:${start.column}`
+  }-${end.line + 1}${rawEndColumn === undefined ? "" : `:${end.column}`}`
+  if (pattern !== canonical) {
+    throw new Error("Stryker mutation pattern is not canonical")
+  }
+  return { pattern, sourcePath, range: { start, end } }
+}
+
+function parseMutantMetadata(mutant, sourcePath) {
+  let metadata = mutant
+  if (typeof mutant === "string") {
+    try {
+      metadata = JSON.parse(mutant)
+    } catch {
+      return undefined
+    }
+  }
+  if (!isRecord(metadata)) return undefined
+  // Stryker's runtime report uses `location`, while serialized preflight
+  // signatures store the same points as top-level `start`/`end` fields.
+  const location = isRecord(metadata.location)
+    ? metadata.location
+    : { start: metadata.start, end: metadata.end }
+  if (!isRecord(location)) return undefined
+  // Runtime mutant records omit fileName; the caller's source path is the
+  // authoritative key in that case. Serialized signatures must still match it.
+  const rawSourcePath = metadata.fileName ?? metadata.sourcePath ?? sourcePath
+  let normalizedSourcePath
+  try {
+    normalizedSourcePath = canonicalMutationSourcePath(rawSourcePath)
+  } catch {
+    return undefined
+  }
+  if (normalizedSourcePath !== sourcePath) return undefined
+  const { start, end } = location
+  if (
+    !isRecord(start) ||
+    !isRecord(end) ||
+    !Number.isInteger(start.line) ||
+    !Number.isInteger(start.column) ||
+    !Number.isInteger(end.line) ||
+    !Number.isInteger(end.column) ||
+    start.line < 0 ||
+    start.column < 0 ||
+    end.line < start.line ||
+    (end.line === start.line && end.column < start.column)
+  ) {
+    return undefined
+  }
+  return {
+    sourcePath: normalizedSourcePath,
+    mutatorName: metadata.mutatorName,
+    replacement: metadata.replacement,
+    start: { line: start.line, column: start.column },
+    end: { line: end.line, column: end.column },
+  }
+}
+
+function mutantLocation(mutant, sourcePath) {
+  const metadata = parseMutantMetadata(mutant, sourcePath)
+  if (metadata === undefined) return undefined
+  return { start: metadata.start, end: metadata.end }
+}
+
+export function mutationSignature(mutant, sourcePath) {
+  if (typeof mutant !== "string") return mutantSignature(mutant, sourcePath)
+  const metadata = parseMutantMetadata(mutant, sourcePath)
+  if (
+    metadata === undefined ||
+    typeof metadata.mutatorName !== "string" ||
+    typeof metadata.replacement !== "string"
+  ) {
+    throw new Error("Stryker mutant signature metadata is invalid")
+  }
+  return JSON.stringify({
+    sourcePath: metadata.sourcePath,
+    mutatorName: metadata.mutatorName,
+    replacement: metadata.replacement,
+    start: metadata.start,
+    end: metadata.end,
+  })
+}
+
+function compareLocation(left, right) {
+  return left.line - right.line || left.column - right.column
+}
+
+export function mutationPatternCoversMutant(pattern, mutant, sourcePath) {
+  const parsed = parseMutationPattern(pattern)
+  if (parsed.sourcePath !== sourcePath) return false
+  if (parsed.range === undefined) return true
+  const location = mutantLocation(mutant, sourcePath)
+  return (
+    location !== undefined &&
+    compareLocation(location.start, parsed.range.start) >= 0 &&
+    compareLocation(location.end, parsed.range.end) <= 0
+  )
+}
+
+function splitMutationUnits({ file, mutants, budget, estimatedCost }) {
+  if (mutants.length <= budget) {
+    return [{ pattern: file, mutantCount: mutants.length, estimatedCost }]
+  }
+  const located = mutants
+    .map((mutant, index) => ({ mutant, index, location: mutantLocation(mutant, file) }))
+    .sort(
+      (left, right) =>
+        (left.location && right.location
+          ? compareLocation(left.location.start, right.location.start) ||
+            compareLocation(left.location.end, right.location.end)
+          : 0) || left.index - right.index
+    )
+  if (located.some(({ location }) => location === undefined)) {
+    // Artifact consumers from older runs may carry only signatures that do
+    // not include locations. Keeping that source whole is safer than guessing
+    // a range and silently dropping a mutation from the canonical denominator.
+    return [{ pattern: file, mutantCount: mutants.length, estimatedCost }]
+  }
+
+  const groups = []
+  let current = []
+  let currentEnd
+  const emit = () => {
+    if (current.length === 0) return
+    const first = current[0].location
+    const last = currentEnd
+    groups.push({
+      pattern: `${file}:${first.start.line + 1}-${last.end.line + 1}`,
+      mutantCount: current.length,
+      estimatedCost: estimatedCost * (current.length / mutants.length),
+    })
+    current = []
+    currentEnd = undefined
+  }
+  for (const entry of located) {
+    const startsAfterCurrent =
+      currentEnd !== undefined && entry.location.start.line > currentEnd.end.line
+    if (current.length >= budget && startsAfterCurrent) emit()
+    current.push(entry)
+    if (currentEnd === undefined || compareLocation(entry.location.end, currentEnd.end) > 0) {
+      currentEnd = entry.location
+    }
+  }
+  emit()
+  return groups
+}
+
 export function planMutationShards(
   preflightByFile,
   targetMutants = 750,
@@ -200,7 +381,7 @@ export function planMutationShards(
     throw new Error("Mutation shard planning inputs are invalid")
   }
   const validatedCosts = validatedHistoricalCosts(preflightByFile, historicalCosts)
-  const weightedFiles = [...preflightByFile.entries()]
+  const sourceEntries = [...preflightByFile.entries()]
     .map(([file, entry]) => ({
       file,
       mutantCount: entry?.mutants?.length,
@@ -215,25 +396,43 @@ export function planMutationShards(
         right.mutantCount - left.mutantCount ||
         left.file.localeCompare(right.file)
     )
-  if (weightedFiles.length === 0) return []
-  const totalMutants = weightedFiles.reduce((sum, entry) => sum + entry.mutantCount, 0)
+  if (sourceEntries.length === 0) return []
+  const totalMutants = sourceEntries.reduce((sum, entry) => sum + entry.mutantCount, 0)
   if (
     requestedShardCount !== undefined &&
     (!Number.isInteger(requestedShardCount) || requestedShardCount < 1)
   ) {
     throw new Error("Requested mutation shard count is invalid")
   }
-  const shardCount = Math.min(
-    weightedFiles.length,
-    requestedShardCount ?? Math.ceil(totalMutants / targetMutants)
-  )
+  const requestedOrTargetShardCount = requestedShardCount ?? Math.ceil(totalMutants / targetMutants)
+  const unitBudget = requestedShardCount
+    ? Math.max(1, Math.ceil(totalMutants / requestedShardCount))
+    : targetMutants
+  const weightedUnits = sourceEntries.flatMap(({ file, mutantCount, estimatedCost }) => {
+    const mutants = preflightByFile.get(file)?.mutants ?? []
+    return splitMutationUnits({
+      file,
+      mutants,
+      budget: unitBudget,
+      estimatedCost: estimatedCost ?? mutantCount,
+    })
+  })
+  const shardCount = Math.min(weightedUnits.length, requestedOrTargetShardCount)
   const shards = Array.from({ length: shardCount }, (_, index) => ({
     id: `shard-${String(index).padStart(3, "0")}`,
     files: [],
     mutantCount: 0,
     estimatedCost: 0,
   }))
-  for (const entry of weightedFiles) {
+  weightedUnits.sort(
+    (left, right) =>
+      (validatedCosts
+        ? right.estimatedCost - left.estimatedCost
+        : right.mutantCount - left.mutantCount) ||
+      right.mutantCount - left.mutantCount ||
+      left.pattern.localeCompare(right.pattern)
+  )
+  for (const entry of weightedUnits) {
     const target = shards.reduce((lightest, shard) => {
       const useCost = validatedCosts !== undefined
       const candidateWeight = useCost ? shard.estimatedCost : shard.mutantCount
@@ -243,7 +442,7 @@ export function planMutationShards(
         ? shard
         : lightest
     })
-    target.files.push(entry.file)
+    target.files.push(entry.pattern)
     target.mutantCount += entry.mutantCount
     target.estimatedCost += validatedCosts ? entry.estimatedCost : entry.mutantCount
   }
@@ -267,32 +466,121 @@ function assertShardReportConfig(report, files, id) {
   }
 }
 
-export function mergeShardReports({ shards, expectedPatterns }) {
+function expectedMutantsForPattern(pattern, preflightByFile) {
+  const parsed = parseMutationPattern(pattern)
+  const entry = preflightByFile?.get(parsed.sourcePath)
+  if (!entry || !Array.isArray(entry.mutants)) {
+    throw new Error(`Stryker preflight is missing an assignment for ${parsed.sourcePath}`)
+  }
+  return entry.mutants.filter((mutant) =>
+    mutationPatternCoversMutant(pattern, mutant, parsed.sourcePath)
+  )
+}
+
+export function mergeShardReports({ shards, expectedPatterns, preflightByFile, sourceByFile }) {
   if (!Array.isArray(shards) || shards.length === 0 || !Array.isArray(expectedPatterns)) {
     throw new Error("Stryker shard aggregation inputs are invalid")
   }
   const mergedFiles = {}
-  const assignedFiles = new Set()
+  const assignedMutantSignatures = new Set()
   for (const { id, files, report } of shards) {
     assertShardReportConfig(report, files, id)
-    for (const file of files) {
-      if (assignedFiles.has(file))
-        throw new Error(`Source file assigned to multiple shards: ${file}`)
-      assignedFiles.add(file)
+    if (!Array.isArray(files) || files.length === 0) {
+      throw new Error(`Stryker ${id} has no mutation assignment`)
+    }
+    const parsedAssignments = files.map((pattern) => parseMutationPattern(pattern))
+    const assignedPatterns = new Set()
+    const expectedByPattern = new Map()
+    for (const assignment of parsedAssignments) {
+      if (assignedPatterns.has(assignment.pattern)) {
+        throw new Error(`Stryker ${id} contains a duplicate mutation assignment`)
+      }
+      assignedPatterns.add(assignment.pattern)
+      if (preflightByFile) {
+        const expected = expectedMutantsForPattern(assignment.pattern, preflightByFile)
+        if (expected.length === 0) {
+          throw new Error(`Stryker ${id} assigned an empty mutation range`)
+        }
+        const expectedSignatures = new Set(
+          expected.map((mutant) => mutationSignature(mutant, assignment.sourcePath))
+        )
+        for (const signature of expectedSignatures) {
+          if (assignedMutantSignatures.has(signature)) {
+            throw new Error(`Stryker mutation assigned to multiple shards: ${signature}`)
+          }
+        }
+        expectedByPattern.set(assignment.pattern, expectedSignatures)
+      }
     }
     for (const [file, fileReport] of Object.entries(report.files)) {
-      if (!files.includes(normalizePath(file))) {
+      const normalizedFile = normalizePath(file)
+      const matchingAssignments = parsedAssignments.filter(
+        (assignment) =>
+          assignment.sourcePath === normalizedFile &&
+          (preflightByFile
+            ? expectedByPattern.get(assignment.pattern)?.size > 0
+            : mutationPatternCoversMutant(
+                assignment.pattern,
+                fileReport?.mutants?.[0],
+                normalizedFile
+              ))
+      )
+      if (matchingAssignments.length === 0) {
         throw new Error(`Stryker ${id} reported an unassigned source file: ${file}`)
-      }
-      if (Object.hasOwn(mergedFiles, file)) {
-        throw new Error(`Stryker shard reports overlap at ${file}`)
       }
       if (!Array.isArray(fileReport?.mutants)) {
         throw new Error(`Stryker ${id} mutant list is malformed for ${file}`)
       }
-      mergedFiles[file] = {
+      if (sourceByFile) {
+        const source = sourceByFile.get(normalizedFile)
+        if (typeof source !== "string" || fileReport.source !== source) {
+          throw new Error(`Stryker ${id} source snapshot is stale for ${normalizedFile}`)
+        }
+      }
+      const normalizedReport = mergedFiles[normalizedFile] ?? {
         ...fileReport,
-        mutants: fileReport.mutants.map((mutant) => ({ ...mutant, id: `${id}:${mutant.id}` })),
+        mutants: [],
+      }
+      if (normalizedReport.source !== fileReport.source) {
+        throw new Error(`Stryker shard reports disagree on source snapshot at ${normalizedFile}`)
+      }
+      for (const mutant of fileReport.mutants) {
+        const matchingMutantAssignments = parsedAssignments.filter((assignment) =>
+          mutationPatternCoversMutant(assignment.pattern, mutant, normalizedFile)
+        )
+        if (matchingMutantAssignments.length !== 1) {
+          throw new Error(
+            `Stryker ${id} mutant does not belong to its assigned mutation range: ${normalizedFile}`
+          )
+        }
+        const signature = mutationSignature(mutant, normalizedFile)
+        if (assignedMutantSignatures.has(signature)) {
+          throw new Error(`Stryker shard reports duplicate mutant ${signature}`)
+        }
+        const expected = expectedByPattern.get(matchingMutantAssignments[0].pattern)
+        if (expected && !expected.has(signature)) {
+          throw new Error(`Stryker ${id} reported a mutant outside the preflight assignment`)
+        }
+        assignedMutantSignatures.add(signature)
+        normalizedReport.mutants.push({ ...mutant, id: `${id}:${mutant.id}` })
+      }
+      mergedFiles[normalizedFile] = normalizedReport
+    }
+    if (preflightByFile) {
+      for (const [pattern, expected] of expectedByPattern) {
+        const actual = []
+        const parsed = parseMutationPattern(pattern)
+        for (const [rawFile, fileReport] of Object.entries(report.files)) {
+          if (normalizePath(rawFile) !== parsed.sourcePath) continue
+          for (const mutant of fileReport.mutants ?? []) {
+            if (mutationPatternCoversMutant(pattern, mutant, parsed.sourcePath)) {
+              actual.push(mutantSignature(mutant, parsed.sourcePath))
+            }
+          }
+        }
+        if (actual.length !== expected.size || new Set(actual).size !== expected.size) {
+          throw new Error(`Stryker ${id} report is incomplete for ${pattern}`)
+        }
       }
     }
   }
@@ -922,6 +1210,7 @@ export function buildHistoricalCostArtifactFromShardTimings({
     throw new Error("Historical Stryker cost artifact requires complete shard timing results")
   }
   const costs = new Map()
+  const assignedMutantSignatures = new Set()
   for (const shard of shardResults) {
     const files = shard?.files
     const durationMs = shard?.durationMs ?? shard?.shardEvidence?.durationMs
@@ -936,24 +1225,36 @@ export function buildHistoricalCostArtifactFromShardTimings({
     ) {
       throw new Error("Historical Stryker shard timing is malformed")
     }
+    const assignments = files.map((pattern) => parseMutationPattern(pattern))
     let assignedMutants = 0
-    for (const rawFile of files) {
-      const file = canonicalMutationSourcePath(rawFile)
-      const preflight = preflightByFile.get(file)
-      if (
-        file !== rawFile ||
-        costs.has(file) ||
-        !Array.isArray(preflight?.mutants) ||
-        preflight.mutants.length === 0
-      ) {
+    for (const assignment of assignments) {
+      const expected = expectedMutantsForPattern(assignment.pattern, preflightByFile)
+      if (expected.length === 0) {
         throw new Error("Historical Stryker shard timings do not match the viable source inventory")
       }
-      assignedMutants += preflight.mutants.length
-      costs.set(file, (durationMs * preflight.mutants.length) / shard.mutantCount)
+      const signatures = expected.map((mutant) => mutationSignature(mutant, assignment.sourcePath))
+      if (signatures.some((signature) => assignedMutantSignatures.has(signature))) {
+        throw new Error(
+          "Historical Stryker shard timings do not match the viable source inventory: mutant assigned more than once"
+        )
+      }
+      signatures.forEach((signature) => assignedMutantSignatures.add(signature))
+      assignedMutants += expected.length
+      costs.set(
+        assignment.sourcePath,
+        (costs.get(assignment.sourcePath) ?? 0) + (durationMs * expected.length) / shard.mutantCount
+      )
     }
     if (assignedMutants !== shard.mutantCount) {
       throw new Error("Historical Stryker shard timing mutant count is stale")
     }
+  }
+  const expectedMutantCount = [...preflightByFile.values()].reduce(
+    (sum, entry) => sum + (Array.isArray(entry?.mutants) ? entry.mutants.length : 0),
+    0
+  )
+  if (assignedMutantSignatures.size !== expectedMutantCount) {
+    throw new Error("Historical Stryker shard timings do not cover the viable source inventory")
   }
   return buildHistoricalCostArtifact({ sourceRevision, config, preflightByFile, costs })
 }
@@ -1862,7 +2163,12 @@ async function main() {
       throw new Error("Aggregate Stryker evidence requires a canonical preflight universe")
     }
     const expectedPatterns = mutationPatternsFromPolicy(policy)
-    const report = mergeShardReports({ shards: shardResults, expectedPatterns })
+    const report = mergeShardReports({
+      shards: shardResults,
+      expectedPatterns,
+      preflightByFile,
+      sourceByFile,
+    })
     const reportText = jsonText(report)
     const reportPath = path.join(outputRoot, "mutation.json")
     await atomicText(reportPath, reportText)

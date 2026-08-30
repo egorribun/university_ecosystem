@@ -726,7 +726,9 @@ jobs:
           test "${#reports[@]}" -eq 30
           retry_output="$(mktemp)"
           retry_error="$(mktemp)"
-          trap 'rm -f "$retry_output" "$retry_error"' EXIT
+          write_output="$(mktemp)"
+          write_error="$(mktemp)"
+          trap 'rm -f "$retry_output" "$retry_error" "$write_output" "$write_error"' EXIT
           retry_status=0
           python3 -m scripts.quality.coverage_retry_provenance_cli \
               --repository-root "$GITHUB_WORKSPACE" \
@@ -772,6 +774,7 @@ jobs:
           for value in "${retry_values[@]}"; do
             retry_args+=(--retry-provenance "$value")
           done
+          write_status=0
           python3 scripts/quality/coverage_provenance.py write \
             --repository-root "$GITHUB_WORKSPACE" \
             --output artifacts/lighthouse/producer/provenance/lighthouse-reports.json \
@@ -790,7 +793,15 @@ jobs:
             --tool-version quality-provenance=2.0.0 \
             --tool-version lighthouse-lhr-inventory=30 \
             "${reports[@]}" \
-            "${retry_args[@]}"
+            "${retry_args[@]}" \
+            >"$write_output" 2>"$write_error" || write_status=$?
+          if [[ "$write_status" -ne 0 ]]; then
+            echo "::error::Lighthouse evidence provenance writer failed with exit $write_status." >&2
+            cat "$write_error" >&2
+            cat "$write_output" >&2
+            exit "$write_status"
+          fi
+          test -s artifacts/lighthouse/producer/provenance/lighthouse-reports.json
 
       - name: Upload Lighthouse retry evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -285,6 +285,148 @@ test("historical file costs rebalance a deterministic complete shard plan", asyn
   ])
 })
 
+test("splits a heavy source into disjoint mutation ranges when the requested fan-out needs it", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const mutants = Array.from({ length: 8 }, (_, index) => ({
+    fileName: "src/heavy.ts",
+    mutatorName: "BooleanLiteral",
+    replacement: index % 2 === 0 ? "true" : "false",
+    location: {
+      start: { line: index * 2, column: 0 },
+      end: { line: index * 2, column: 4 },
+    },
+  }))
+  const preflight = new Map([
+    ["src/heavy.ts", { mutants }],
+    ["src/light.ts", { mutants: [mutants[0]] }],
+  ])
+
+  const plan = planMutationShards(preflight, 750, 4)
+  const assignments = plan.flatMap(({ files }) => files)
+
+  assert.equal(plan.length, 4)
+  assert.equal(assignments.filter((pattern) => pattern === "src/heavy.ts").length, 0)
+  assert.ok(assignments.some((pattern) => pattern.startsWith("src/heavy.ts:")))
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    9
+  )
+  assert.equal(new Set(assignments).size, assignments.length)
+  assert.ok(plan.every(({ mutantCount }) => mutantCount <= 3))
+})
+
+test("reconstructs locations and canonical signatures from serialized preflight entries", async () => {
+  const { mutationPatternCoversMutant, mutationSignature, planMutationShards } = await import(
+    runnerUrl
+  )
+  const signatures = Array.from({ length: 4 }, (_, index) =>
+    JSON.stringify({
+      sourcePath: "src/serialized.ts",
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      start: { line: index * 2, column: 0 },
+      end: { line: index * 2, column: 4 },
+    })
+  )
+  const preflight = new Map([["src/serialized.ts", { mutants: signatures }]])
+
+  assert.equal(mutationSignature(signatures[0], "src/serialized.ts"), signatures[0])
+  assert.equal(
+    mutationPatternCoversMutant("src/serialized.ts:3-3", signatures[1], "src/serialized.ts"),
+    true
+  )
+  const plan = planMutationShards(preflight, 1, 4)
+  assert.equal(plan.length, 4)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    signatures.length
+  )
+  assert.ok(plan.every(({ files }) => files.every((pattern) => pattern.includes(":"))))
+})
+
+test("merges split mutation-range reports without duplicate or misplaced mutants", async () => {
+  const { mergeShardReports, planMutationShards } = await import(runnerUrl)
+  const source = "\n".repeat(20)
+  const mutants = Array.from({ length: 6 }, (_, index) => ({
+    mutatorName: "BooleanLiteral",
+    replacement: index % 2 === 0 ? "true" : "false",
+    location: {
+      start: { line: index * 2, column: 0 },
+      end: { line: index * 2, column: 4 },
+    },
+    id: `mutant-${index}`,
+    status: "Killed",
+  }))
+  const preflight = new Map([["src/heavy.ts", { sourceSha256: "a".repeat(64), mutants }]])
+  const plan = planMutationShards(preflight, 750, 2)
+  const shardReports = plan.map((shard) => {
+    const ranges = shard.files
+    const selected = mutants.filter((mutant) => {
+      const line = mutant.location.start.line + 1
+      return ranges.some((pattern) => {
+        const match = /:(\d+)-(\d+)$/u.exec(pattern)
+        return match === null || (line >= Number(match[1]) && line <= Number(match[2]))
+      })
+    })
+    return {
+      ...shard,
+      report: {
+        schemaVersion: "1.0",
+        config: {
+          mutate: shard.files,
+          coverageAnalysis: "perTest",
+          incremental: false,
+          mutator: { plugins: null, excludedMutations: [] },
+          ignorers: [],
+        },
+        files: {
+          "src/heavy.ts": {
+            source,
+            // Stryker runtime reports intentionally omit fileName; the
+            // report map key is the authoritative source path.
+            mutants: selected,
+          },
+        },
+      },
+    }
+  })
+
+  const merged = mergeShardReports({
+    shards: shardReports,
+    expectedPatterns,
+    preflightByFile: preflight,
+    sourceByFile: new Map([["src/heavy.ts", source]]),
+  })
+  assert.equal(merged.files["src/heavy.ts"].mutants.length, mutants.length)
+  assert.equal(
+    new Set(merged.files["src/heavy.ts"].mutants.map(({ id }) => id)).size,
+    mutants.length
+  )
+
+  const forged = shardReports.map((shard) => ({
+    ...shard,
+    report: {
+      ...shard.report,
+      files: {
+        "src/heavy.ts": {
+          ...shard.report.files["src/heavy.ts"],
+          mutants: mutants.slice(0, 1),
+        },
+      },
+    },
+  }))
+  assert.throws(
+    () =>
+      mergeShardReports({
+        shards: forged,
+        expectedPatterns,
+        preflightByFile: preflight,
+        sourceByFile: new Map([["src/heavy.ts", source]]),
+      }),
+    /does not belong to its assigned mutation range|duplicate|incomplete/u
+  )
+})
+
 test("historical Stryker costs are bound to the exact source SHA, config, and viable preflight", async () => {
   const { buildEvidenceIdentity, buildHistoricalCostArtifact, parseHistoricalCostArtifact } =
     await import(runnerUrl)
@@ -554,6 +696,57 @@ test("historical shard timings produce a complete exact file-cost artifact", asy
         ],
       }),
     /do not match the viable source inventory/u
+  )
+})
+
+test("historical shard timings aggregate disjoint ranges of one source", async () => {
+  const {
+    buildEvidenceIdentity,
+    buildHistoricalCostArtifactFromShardTimings,
+    parseHistoricalCostArtifact,
+  } = await import(runnerUrl)
+  const sourceByFile = new Map([["src/heavy.ts", "\n".repeat(12)]])
+  const sourceRevision = buildEvidenceIdentity({
+    headSha: "a".repeat(40),
+    dirtyPaths: [],
+    inputHashes: { "frontend/stryker.config.mjs": "1".repeat(64) },
+  })
+  const config = {
+    path: "frontend/stryker.config.mjs",
+    sha256: "1".repeat(64),
+    instrumenterOptions: { plugins: null, excludedMutations: [], ignorers: [] },
+  }
+  const mutants = Array.from({ length: 4 }, (_, index) => ({
+    fileName: "src/heavy.ts",
+    mutatorName: "BooleanLiteral",
+    replacement: index % 2 === 0 ? "true" : "false",
+    location: {
+      start: { line: index * 2, column: 0 },
+      end: { line: index * 2, column: 4 },
+    },
+  }))
+  const preflightByFile = new Map([
+    ["src/heavy.ts", { sourceSha256: sha256Text(sourceByFile.get("src/heavy.ts")), mutants }],
+  ])
+  const artifact = buildHistoricalCostArtifactFromShardTimings({
+    sourceRevision,
+    config,
+    preflightByFile,
+    shardResults: [
+      { files: ["src/heavy.ts:1-3"], mutantCount: 2, durationMs: 200 },
+      { files: ["src/heavy.ts:5-7"], mutantCount: 2, durationMs: 100 },
+    ],
+  })
+  assert.deepEqual(
+    [
+      ...parseHistoricalCostArtifact({
+        artifactText: `${JSON.stringify(artifact, null, 2)}\n`,
+        sourceRevision,
+        config,
+        preflightByFile,
+      }),
+    ],
+    [["src/heavy.ts", 300]]
   )
 })
 

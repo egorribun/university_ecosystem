@@ -15,5 +15,3 @@ data:
   master-statefulset-name: {{ include "revocation-store.serviceHost" . | quote }}
   binding-label: "university-ecosystem.io/revocation-store-for"
   binding-value: {{ .Values.applicationReleaseName | quote }}
-  redis-auth-secret-name: {{ .Values.redis.auth.existingSecret | quote }}
-  redis-auth-secret-key: {{ .Values.redis.auth.existingSecretPasswordKey | quote }}

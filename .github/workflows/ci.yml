@@ -825,7 +825,11 @@ jobs:
       # Empirical runner-time from the last matrix shows a balanced 11/9
       # allocation minimizes the mutation critical path under the observed
       # twenty-runner account cap: Stryker has the longer per-leg tail, while
-      # mutmut retains nine slots for continuous backend evidence.
+      # mutmut retains nine slots for continuous backend evidence.  The prior
+      # run's concurrency=2 tail hit the 120-minute job limit; use the
+      # runner's existing fail-closed maximum (four bounded Vitest workers)
+      # as the next measured canary.  This changes neither the canonical
+      # mutant denominator nor any release threshold.
       max-parallel: 11
       matrix:
         shard-index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
@@ -835,7 +839,7 @@ jobs:
     env:
       STRYKER_SHARD_COUNT: "64"
       STRYKER_SHARD_INDEX: ${{ matrix.shard-index }}
-      STRYKER_CONCURRENCY: "2"
+      STRYKER_CONCURRENCY: "4"
       STRYKER_PREFLIGHT_ARTIFACT: required
     steps:
       - name: Checkout
@@ -962,7 +966,7 @@ jobs:
     env:
       STRYKER_SHARD_COUNT: "64"
       STRYKER_AGGREGATE_ROOT: reports/mutation/external
-      STRYKER_CONCURRENCY: "2"
+      STRYKER_CONCURRENCY: "4"
       STRYKER_PREFLIGHT_ARTIFACT: required
     steps:
       - name: Checkout

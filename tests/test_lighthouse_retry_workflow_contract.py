@@ -118,7 +118,12 @@ def test_lighthouse_producer_publishes_fixed_retry_artifact_contract() -> None:
     assert "python3 -m scripts.quality.coverage_retry_provenance_cli" in provenance_run
     assert 'retry_output="$(mktemp)"' in provenance_run
     assert 'retry_error="$(mktemp)"' in provenance_run
-    assert 'trap \'rm -f "$retry_output" "$retry_error"\' EXIT' in provenance_run
+    assert 'write_output="$(mktemp)"' in provenance_run
+    assert 'write_error="$(mktemp)"' in provenance_run
+    assert (
+        'trap \'rm -f "$retry_output" "$retry_error" "$write_output" "$write_error"\' EXIT'
+        in provenance_run
+    )
     assert (
         "python3 -m scripts.quality.coverage_retry_provenance_cli \\" in provenance_run
     )
@@ -142,6 +147,15 @@ def test_lighthouse_producer_publishes_fixed_retry_artifact_contract() -> None:
     assert "lighthouse-reports" in provenance_run
     assert '--job "$GITHUB_JOB"' in provenance_run
     assert '--artifact "$LOGICAL_ARTIFACT_NAME"' in provenance_run
+    assert "write_status=0" in provenance_run
+    assert ' >"$write_output" 2>"$write_error" || write_status=$?' in provenance_run
+    assert "Lighthouse evidence provenance writer failed with exit" in provenance_run
+    assert 'cat "$write_error" >&2' in provenance_run
+    assert 'cat "$write_output" >&2' in provenance_run
+    assert (
+        "test -s artifacts/lighthouse/producer/provenance/lighthouse-reports.json"
+        in provenance_run
+    )
 
     upload = _step(lighthouse, "Upload Lighthouse retry evidence")
     upload_with = upload["with"]

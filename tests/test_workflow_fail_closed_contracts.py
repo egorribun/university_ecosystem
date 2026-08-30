@@ -807,12 +807,22 @@ def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
         (
             "reusable-security-audit.yml",
             "docker-security",
+            "Run Trivy revocation-store configuration scanner",
+        ),
+        (
+            "reusable-security-audit.yml",
+            "docker-security",
             "Upload Trivy filesystem scan results",
         ),
         (
             "reusable-security-audit.yml",
             "docker-security",
             "Upload Trivy config scan results",
+        ),
+        (
+            "reusable-security-audit.yml",
+            "docker-security",
+            "Upload Trivy revocation-store results",
         ),
         ("sonar.yml", "sonarcloud", "SonarScan"),
         ("visual-audit.yml", "visual-audit", "Run visual audit script"),

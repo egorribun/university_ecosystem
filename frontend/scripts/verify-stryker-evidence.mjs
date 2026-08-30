@@ -12,9 +12,13 @@ import {
   buildMutationInventory,
   generateInstrumenterPreflight,
   listPolicyFiles,
-  mutantSignature,
   mutationPatternsFromPolicy,
 } from "./validate-stryker-inventory.mjs"
+import {
+  mutationPatternCoversMutant,
+  mutationSignature,
+  parseMutationPattern,
+} from "./run-stryker.mjs"
 
 const execFileAsync = promisify(execFile)
 const repositoryRoot = fileURLToPath(new URL("../..", import.meta.url))
@@ -435,7 +439,7 @@ function serializePreflight(preflightByFile) {
       file,
       {
         sourceSha256: entry.sourceSha256,
-        mutantSignatures: entry.mutants.map((mutant) => mutantSignature(mutant, file)).sort(),
+        mutantSignatures: entry.mutants.map((mutant) => mutationSignature(mutant, file)).sort(),
       },
     ])
   )
@@ -534,7 +538,12 @@ function reconstructMergedReport({ inventory, reportTexts, preflightByFile, expe
   }
 
   const reconstructedFiles = {}
-  const assignedFiles = new Set()
+  const assignedMutantSignatures = new Set()
+  const expectedMutantSignatures = new Set(
+    [...preflightByFile.entries()].flatMap(([file, entry]) =>
+      entry.mutants.map((mutant) => mutationSignature(mutant, file))
+    )
+  )
   const shardIds = new Set()
   for (const evidence of shardReports) {
     if (typeof evidence.shardId !== "string" || !/^shard-\d{3}$/u.test(evidence.shardId)) {
@@ -557,33 +566,90 @@ function reconstructMergedReport({ inventory, reportTexts, preflightByFile, expe
     ) {
       throw new Error(`Mutation shard configuration is malformed: ${evidence.shardId}`)
     }
+    const assignments = files.map((pattern) => parseMutationPattern(pattern))
+    if (new Set(files).size !== files.length) {
+      throw new Error(
+        `Mutation shard configuration contains duplicate assignments: ${evidence.shardId}`
+      )
+    }
     if (evidence.assignedFiles !== files.length) {
       throw new Error(`Mutation shard file count mismatch: ${evidence.shardId}`)
     }
-    let assignedMutants = 0
-    for (const file of files) {
-      if (assignedFiles.has(file)) throw new Error(`Mutation source assigned twice: ${file}`)
-      assignedFiles.add(file)
-      const preflight = preflightByFile.get(file)
-      if (!preflight || preflight.mutants.length === 0) {
-        throw new Error(`Mutation shard assigned a zero-mutant or unknown source: ${file}`)
+    const expectedByPattern = new Map()
+    for (const assignment of assignments) {
+      const preflight = preflightByFile.get(assignment.sourcePath)
+      if (!preflight || !Array.isArray(preflight.mutants)) {
+        throw new Error(`Mutation shard assigned an unknown source: ${assignment.sourcePath}`)
       }
-      assignedMutants += preflight.mutants.length
-      const fileReport = report.files?.[file]
+      const expected = preflight.mutants
+        .filter((mutant) =>
+          mutationPatternCoversMutant(assignment.pattern, mutant, assignment.sourcePath)
+        )
+        .map((mutant) => mutationSignature(mutant, assignment.sourcePath))
+      if (expected.length === 0) {
+        throw new Error(`Mutation shard assigned an empty mutation range: ${assignment.pattern}`)
+      }
+      if (expected.some((signature) => assignedMutantSignatures.has(signature))) {
+        throw new Error(`Mutation source assigned twice: ${assignment.pattern}`)
+      }
+      expectedByPattern.set(assignment.pattern, new Set(expected))
+    }
+
+    let assignedMutants = 0
+    for (const [rawFile, fileReport] of Object.entries(report.files ?? {})) {
+      const file = normalizePath(rawFile)
+      const matchingAssignments = assignments.filter((assignment) => assignment.sourcePath === file)
+      if (matchingAssignments.length === 0) {
+        throw new Error(`Mutation shard reported an unassigned source: ${rawFile}`)
+      }
       if (!fileReport || !Array.isArray(fileReport.mutants)) {
         throw new Error(`Mutation shard omitted assigned source: ${file}`)
       }
-      reconstructedFiles[file] = {
+      const reconstructedFile = reconstructedFiles[file] ?? {
         ...fileReport,
-        mutants: fileReport.mutants.map((mutant) => ({
+        mutants: [],
+      }
+      if (reconstructedFile.source !== fileReport.source) {
+        throw new Error(`Mutation shard source snapshots disagree: ${file}`)
+      }
+      for (const mutant of fileReport.mutants) {
+        const matchingMutants = matchingAssignments.filter((assignment) =>
+          mutationPatternCoversMutant(assignment.pattern, mutant, file)
+        )
+        if (matchingMutants.length !== 1) {
+          throw new Error(`Mutation shard mutant is outside its assigned range: ${file}`)
+        }
+        const signature = mutationSignature(mutant, file)
+        const expected = expectedByPattern.get(matchingMutants[0].pattern)
+        if (!expected?.has(signature)) {
+          throw new Error(`Mutation shard mutant differs from preflight: ${file}`)
+        }
+        if (assignedMutantSignatures.has(signature)) {
+          throw new Error(`Mutation source assigned twice: ${file}`)
+        }
+        assignedMutantSignatures.add(signature)
+        reconstructedFile.mutants.push({
           ...mutant,
           id: `${evidence.shardId}:${mutant.id}`,
-        })),
+        })
+        assignedMutants += 1
       }
+      reconstructedFiles[file] = reconstructedFile
     }
-    for (const reportedFile of Object.keys(report.files ?? {})) {
-      if (!files.includes(reportedFile)) {
-        throw new Error(`Mutation shard reported an unassigned source: ${reportedFile}`)
+    for (const [pattern, expected] of expectedByPattern) {
+      const assignment = assignments.find(({ pattern: value }) => value === pattern)
+      const file = assignment.sourcePath
+      const actual =
+        Object.entries(report.files ?? {}).find(([rawFile]) => normalizePath(rawFile) === file)?.[1]
+          ?.mutants ?? []
+      const actualSignatures = actual
+        .filter((mutant) => mutationPatternCoversMutant(pattern, mutant, file))
+        .map((mutant) => mutationSignature(mutant, file))
+      if (
+        actualSignatures.length !== expected.size ||
+        new Set(actualSignatures).size !== expected.size
+      ) {
+        throw new Error(`Mutation shard report is incomplete; signatures differ for ${pattern}`)
       }
     }
     if (evidence.assignedMutants !== assignedMutants) {
@@ -591,11 +657,10 @@ function reconstructMergedReport({ inventory, reportTexts, preflightByFile, expe
     }
   }
 
-  const expectedAssignedFiles = [...preflightByFile.entries()]
-    .filter(([, entry]) => entry.mutants.length > 0)
-    .map(([file]) => file)
-    .sort()
-  if (JSON.stringify([...assignedFiles].sort()) !== JSON.stringify(expectedAssignedFiles)) {
+  if (
+    assignedMutantSignatures.size !== expectedMutantSignatures.size ||
+    [...expectedMutantSignatures].some((signature) => !assignedMutantSignatures.has(signature))
+  ) {
     throw new Error("Mutation shard assignments do not cover the complete instrumenter preflight")
   }
 

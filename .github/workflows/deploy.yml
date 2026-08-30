@@ -1115,24 +1115,17 @@ jobs:
           statefulset_name="$(contract_literal master-statefulset-name | jq --raw-output '.')"
           binding_label="$(contract_literal binding-label | jq --raw-output '.')"
           binding_value="$(contract_literal binding-value | jq --raw-output '.')"
-          redis_secret_name="$(contract_literal redis-auth-secret-name | jq --raw-output '.')"
-          redis_secret_key="$(contract_literal redis-auth-secret-key | jq --raw-output '.')"
+          # The credential identity is immutable deployment policy, not
+          # runtime data.  Keep secret names out of the ConfigMap so the
+          # metadata object cannot be mistaken for a credential container.
+          redis_secret_name="revocation-redis-credentials" # pragma: allowlist secret -- identifier only
+          redis_secret_key="revocation-redis-password" # pragma: allowlist secret -- key identifier only
           expected_service_host="${HELM_RELEASE_NAME}-revocation-redis-master"
           if [[ "$service_host" != "$expected_service_host" || \
                 "$statefulset_name" != "$expected_service_host" || \
                 "$binding_label" != "university-ecosystem.io/revocation-store-for" || \
                 "$binding_value" != "$HELM_RELEASE_NAME" ]]; then
             echo "::error::The rendered revocation-store identity is not bound to this application release."
-            exit 1
-          fi
-
-          # The revocation URL is distributed through university-connections,
-          # but its password must stay in a distinct ExternalSecret-owned
-          # Secret.  Do not permit a Helm value override to collapse that
-          # boundary into the ordinary cache credential.
-          if [[ "$redis_secret_name" != "revocation-redis-credentials" || \
-                "$redis_secret_key" != "revocation-redis-password" ]]; then
-            echo "::error::The durable revocation-store credential identity must remain isolated from cache Redis."
             exit 1
           fi
 

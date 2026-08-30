@@ -1302,8 +1302,6 @@ def test_revocation_store_bootstrap_render_is_durable_isolated_and_bound() -> No
         "master-statefulset-name": service_name,
         "binding-label": "university-ecosystem.io/revocation-store-for",
         "binding-value": release_name,
-        "redis-auth-secret-name": "revocation-redis-credentials",
-        "redis-auth-secret-key": "revocation-redis-password",
     }
 
 

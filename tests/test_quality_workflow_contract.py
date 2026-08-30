@@ -3570,7 +3570,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert mutation_shards["env"] == {
         "STRYKER_SHARD_COUNT": "64",
         "STRYKER_SHARD_INDEX": "${{ matrix.shard-index }}",
-        "STRYKER_CONCURRENCY": "2",
+        "STRYKER_CONCURRENCY": "4",
         "STRYKER_PREFLIGHT_ARTIFACT": "required",
     }
     preflight_selector = next(

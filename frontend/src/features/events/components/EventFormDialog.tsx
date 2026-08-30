@@ -29,7 +29,6 @@ export const EventFormDialog = ({ open, onClose, onSuccess, language }: EventFor
           await telemetryContext.run(() => createEvent(draft))
           onClose()
           telemetryContext.run(onSuccess)
-          window.scrollTo({ top: 0, behavior: "smooth" })
         } catch (err) {
           logError("[EventFormDialog] createEvent failed:", err)
         }

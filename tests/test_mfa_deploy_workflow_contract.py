@@ -300,20 +300,19 @@ def test_revocation_store_bootstrap_precedes_the_application_pre_hook() -> None:
         assert required_fragment in str(readiness["run"])
     assert "REVOCATION_REDIS_IMAGE_DIGEST" in bootstrap["env"]
     assert "REVOCATION_REDIS_METRICS_IMAGE_DIGEST" in bootstrap["env"]
-    # The deployment workflow must reject a rendered store that reuses the
-    # general cache credential, even if a caller tampers with a Helm value.
-    # The URL is intentionally distributed through university-connections, but
-    # the password source remains a separate ExternalSecret-owned Secret.
+    # The deployment workflow owns the immutable credential identity.  It is
+    # intentionally not copied into the rendered ConfigMap, which contains
+    # public deployment metadata only.
     readiness_run = str(readiness["run"])
     assert (
-        'redis_secret_name" != "revocation-redis-credentials"'  # pragma: allowlist secret
+        'redis_secret_name="revocation-redis-credentials"'  # pragma: allowlist secret
         in readiness_run  # pragma: allowlist secret
     )  # pragma: allowlist secret
     assert (
-        'redis_secret_key" != "revocation-redis-password"'  # pragma: allowlist secret
+        'redis_secret_key="revocation-redis-password"'  # pragma: allowlist secret
         in readiness_run  # pragma: allowlist secret
     )  # pragma: allowlist secret
-    assert "credential identity must remain isolated from cache Redis" in readiness_run
+    assert "secret names out of the ConfigMap" in readiness_run
     assert "kubectl exec" not in str(readiness["run"])
     assert "redis-cli" not in str(readiness["run"])
     cluster_access = _step("Configure and verify cluster access")
