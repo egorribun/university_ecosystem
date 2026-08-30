@@ -612,7 +612,10 @@ def test_go_coverage_retry_is_bounded_and_remains_fail_closed() -> None:
     retry_command = "go test -v -race -count=1 -coverprofile=coverage.out ./..."
     assert coverage_step.count(retry_command) == 1
     assert "bounded retry exhausted" in coverage_step
-    assert 'if is_below_threshold "$COVERAGE"; then' in coverage_step
+    # The comparison is captured explicitly so tool errors cannot be treated
+    # as the valid "not below" result.
+    assert 'is_below_threshold "$COVERAGE"' in coverage_step
+    assert 'case "$comparison_status" in' in coverage_step
     assert "exit 1" in coverage_step
     # The retry replaces the profile and independently rechecks the same
     # threshold; no exclusion, `continue-on-error`, or unconditional success
@@ -621,6 +624,35 @@ def test_go_coverage_retry_is_bounded_and_remains_fail_closed() -> None:
     assert "continue-on-error" not in coverage_step
     assert "exit 0" not in coverage_step
     assert "COVERAGE_THRESHOLD=" not in coverage_step
+
+
+def test_go_coverage_threshold_comparison_errors_fail_closed() -> None:
+    """Malformed coverage arithmetic must fail, never look like a pass."""
+
+    job = _workflow(WORKFLOWS / "reusable-go-tests.yml")["jobs"]["test"]
+    coverage_step = _step(job, "Check coverage threshold")["run"]
+
+    for invariant in (
+        "validate_percentage()",
+        "command -v bc >/dev/null 2>&1",
+        'if ! [[ "$value" =~',
+        'validate_percentage "$THRESHOLD" "threshold"',
+        'comparison_result="$(',
+        "printf '%s < %s\\n'",
+        "comparison_status=$?",
+        "retry_comparison_status=$?",
+        'case "$comparison_status" in',
+        'case "$retry_comparison_status" in',
+        'echo "::error::Coverage threshold comparison failed."',
+    ):
+        assert invariant in coverage_step
+
+    # A valid false result (status 1) means "not below"; all other non-zero
+    # statuses are comparison/tool errors and must terminate the gate.
+    assert "1)\n    ;;" in coverage_step
+    assert "2)" in coverage_step
+    assert 'echo "::error::Coverage threshold comparison failed."' in coverage_step
+    assert "exit 1" in coverage_step
 
 
 def test_mutation_scope_diff_failures_cannot_look_like_empty_changes() -> None:

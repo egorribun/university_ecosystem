@@ -113,8 +113,46 @@ jobs:
               | awk '$1 != "total:" && $NF != "100.0%" { print }'
           }
 
+          validate_percentage() {
+            local value="$1"
+            local label="$2"
+            if ! [[ "$value" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+              echo "::error::Invalid ${label} percentage: ${value:-<empty>}."
+              return 2
+            fi
+          }
+
+          # Return status 0 when coverage is below the threshold, status 1
+          # when it is at/above the threshold, and status 2 for any comparison
+          # or tool error. The caller must distinguish these states explicitly;
+          # a failed `bc` invocation must never look like a valid false result.
           is_below_threshold() {
-            (( $(echo "$1 < $THRESHOLD" | bc -l) ))
+            local coverage="$1"
+            validate_percentage "$coverage" "coverage" || return $?
+            validate_percentage "$THRESHOLD" "threshold" || return $?
+            if ! command -v bc >/dev/null 2>&1; then
+              echo "::error::Coverage threshold comparison failed."
+              echo "::error::bc is unavailable."
+              return 2
+            fi
+
+            local comparison_result
+            if ! comparison_result="$(
+              printf '%s < %s\n' "$coverage" "$THRESHOLD" | bc -l 2>/dev/null
+            )"; then
+              echo "::error::Coverage threshold comparison failed."
+              echo "::error::bc exited non-zero."
+              return 2
+            fi
+            case "$comparison_result" in
+              0) return 1 ;;
+              1) return 0 ;;
+              *)
+                echo "::error::Coverage threshold comparison failed."
+                echo "::error::Unexpected bc result: $comparison_result"
+                return 2
+                ;;
+            esac
           }
 
           filter_coverage
@@ -130,31 +168,63 @@ jobs:
           # is written. Retry exactly once in that narrow case. The retry replaces
           # the profile and must independently satisfy the same threshold; no
           # coverage is merged, ignored, or converted into a pass.
-          if is_below_threshold "$COVERAGE"; then
-            echo "::warning::Coverage ${COVERAGE}% is below ${THRESHOLD}%; printing diagnostics and retrying once."
-            print_uncovered
-            rm -f -- coverage.out coverage.filtered.out
-            set +e
-            go test -v -race -count=1 -coverprofile=coverage.out ./...
-            test_status=$?
-            set -e
-            if [ "$test_status" -ne 0 ]; then
-              echo "::error::Go test retry failed with exit code ${test_status}."
-              exit "$test_status"
-            fi
-            filter_coverage
-            COVERAGE="$(read_coverage)"
-            if [ -z "$COVERAGE" ]; then
-              echo "::error::Go coverage retry profile did not contain a total row."
-              exit 1
-            fi
-            echo "Go test coverage after one bounded retry (excluding generated/mocks): ${COVERAGE}%"
-            if is_below_threshold "$COVERAGE"; then
+          set +e
+          is_below_threshold "$COVERAGE"
+          comparison_status=$?
+          set -e
+          case "$comparison_status" in
+            0)
+              echo "::warning::Coverage ${COVERAGE}% is below ${THRESHOLD}%; printing diagnostics and retrying once."
               print_uncovered
-              echo "::error::Coverage ${COVERAGE}% remains below ${THRESHOLD}%; bounded retry exhausted."
+              rm -f -- coverage.out coverage.filtered.out
+              set +e
+              go test -v -race -count=1 -coverprofile=coverage.out ./...
+              test_status=$?
+              set -e
+              if [ "$test_status" -ne 0 ]; then
+                echo "::error::Go test retry failed with exit code ${test_status}."
+                exit "$test_status"
+              fi
+              filter_coverage
+              COVERAGE="$(read_coverage)"
+              if [ -z "$COVERAGE" ]; then
+                echo "::error::Go coverage retry profile did not contain a total row."
+                exit 1
+              fi
+              echo "Go test coverage after one bounded retry (excluding generated/mocks): ${COVERAGE}%"
+              set +e
+              is_below_threshold "$COVERAGE"
+              retry_comparison_status=$?
+              set -e
+              case "$retry_comparison_status" in
+                0)
+                  print_uncovered
+                  echo "::error::Coverage ${COVERAGE}% remains below ${THRESHOLD}%; bounded retry exhausted."
+                  exit 1
+                  ;;
+                1)
+                  ;;
+                2)
+                  echo "::error::Coverage threshold comparison failed."
+                  exit 1
+                  ;;
+                *)
+                  echo "::error::Coverage threshold comparison returned an invalid status."
+                  exit 1
+                  ;;
+              esac
+              ;;
+            1)
+              ;;
+            2)
+              echo "::error::Coverage threshold comparison failed."
               exit 1
-            fi
-          fi
+              ;;
+            *)
+              echo "::error::Coverage threshold comparison returned an invalid status."
+              exit 1
+              ;;
+          esac
 
       - name: Install go-mutesting
         run: |
