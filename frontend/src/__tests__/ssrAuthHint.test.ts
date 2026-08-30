@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import { readSsrAuthHint } from "../hooks/auth/ssrAuthHint"
 import type { SsrAuthState } from "../ssrAuth"
 
@@ -23,6 +23,18 @@ describe("readSsrAuthHint", () => {
 
   it("returns undefined when getter is not installed", () => {
     expect(readSsrAuthHint()).toBeUndefined()
+  })
+
+  it("fails closed when the document is unavailable during SSR", () => {
+    const originalDocument = globalThis.document
+    // The helper is also called from server-side initialization where no DOM
+    // exists. Exercise that branch directly without creating a fake document.
+    vi.stubGlobal("document", undefined)
+    try {
+      expect(readSsrAuthHint()).toBeUndefined()
+    } finally {
+      vi.stubGlobal("document", originalDocument)
+    }
   })
 
   it("reads the role-only marker emitted on the SSR root shell", () => {

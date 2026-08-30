@@ -100,6 +100,37 @@ describe("__root.tsx components", () => {
       expect(document.documentElement.className).not.toContain("dark")
     })
 
+    it("serializes only the authenticated role marker from the SSR auth hint", () => {
+      vi.stubGlobal("__ssrAuthGetter__", () => ({
+        isAuth: true,
+        user: { role: "teacher" },
+        loading: false,
+      }))
+      const Shell = (Route.options as any).shellComponent
+
+      render(
+        <Shell>
+          <div>Authenticated Child</div>
+        </Shell>
+      )
+
+      expect(document.getElementById("root")).toHaveAttribute(
+        "data-ssr-auth",
+        "authenticated:teacher"
+      )
+    })
+
+    it("does not require a DOM when the shell is evaluated during SSR", () => {
+      const originalDocument = globalThis.document
+      vi.stubGlobal("document", undefined)
+      try {
+        const Shell = (Route.options as any).shellComponent
+        expect(Shell({ children: null })).toBeDefined()
+      } finally {
+        vi.stubGlobal("document", originalDocument)
+      }
+    })
+
     it("keeps LHCI mode and static effect rules in the React-owned shell", () => {
       vi.stubEnv("VITE_LHCI", "true")
       const Shell = (Route.options as any).shellComponent

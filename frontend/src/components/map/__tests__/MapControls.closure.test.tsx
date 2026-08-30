@@ -138,4 +138,17 @@ describe("MapControls closure", () => {
 
     expect(map.getContainer).toHaveBeenCalledOnce()
   })
+
+  it("does nothing when the live map has no container", async () => {
+    const user = userEvent.setup()
+    const map = { getContainer: vi.fn(() => null) }
+    const ref = {
+      current: { getMap: vi.fn(() => map) },
+    } as unknown as MutableRefObject<MapRef | null>
+    render(<MapControls mapRef={ref} />)
+
+    await user.click(screen.getByRole("button", { name: "controls.fullscreen" }))
+
+    expect(map.getContainer).toHaveBeenCalledOnce()
+  })
 })

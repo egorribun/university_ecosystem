@@ -83,4 +83,160 @@ describe("DeferredGlobalOverlays", () => {
     expect(screen.queryByTestId("deferred-search")).not.toBeInTheDocument()
     clearTimeout.mockRestore()
   })
+
+  it("uses requestIdleCallback when the browser provides it", async () => {
+    vi.useFakeTimers()
+    let idleCallback: (() => void) | undefined
+    const requestIdleCallback = vi.fn((callback: () => void) => {
+      idleCallback = callback
+      return 17
+    })
+    const cancelIdleCallback = vi.fn()
+    Object.defineProperty(window, "requestIdleCallback", {
+      configurable: true,
+      value: requestIdleCallback,
+    })
+    Object.defineProperty(window, "cancelIdleCallback", {
+      configurable: true,
+      value: cancelIdleCallback,
+    })
+
+    try {
+      render(<DeferredGlobalOverlays />)
+
+      await act(async () => {
+        vi.advanceTimersByTime(DEFERRED_OVERLAY_DELAY_MS)
+        await Promise.resolve()
+      })
+
+      expect(requestIdleCallback).toHaveBeenCalledWith(expect.any(Function), { timeout: 2_000 })
+      expect(screen.queryByTestId("deferred-search")).not.toBeInTheDocument()
+
+      await act(async () => {
+        idleCallback?.()
+        await Promise.resolve()
+      })
+      expect(screen.getByTestId("deferred-search")).toBeInTheDocument()
+      expect(cancelIdleCallback).not.toHaveBeenCalled()
+    } finally {
+      delete (window as Window & { requestIdleCallback?: unknown }).requestIdleCallback
+      delete (window as Window & { cancelIdleCallback?: unknown }).cancelIdleCallback
+    }
+  })
+
+  it("cancels a pending idle callback when interaction promotes the overlays", async () => {
+    vi.useFakeTimers()
+    let idleCallback: (() => void) | undefined
+    const requestIdleCallback = vi.fn((callback: () => void) => {
+      idleCallback = callback
+      return 23
+    })
+    const cancelIdleCallback = vi.fn()
+    Object.defineProperty(window, "requestIdleCallback", {
+      configurable: true,
+      value: requestIdleCallback,
+    })
+    Object.defineProperty(window, "cancelIdleCallback", {
+      configurable: true,
+      value: cancelIdleCallback,
+    })
+
+    try {
+      const { unmount } = render(<DeferredGlobalOverlays />)
+      await act(async () => {
+        vi.advanceTimersByTime(DEFERRED_OVERLAY_DELAY_MS)
+        await Promise.resolve()
+      })
+
+      await act(async () => {
+        window.dispatchEvent(new Event("pointerdown"))
+        await Promise.resolve()
+      })
+
+      expect(cancelIdleCallback).toHaveBeenCalledWith(23)
+      expect(screen.getByTestId("deferred-search")).toBeInTheDocument()
+      // A cancelled callback must be harmless if a browser races delivery
+      // with cancellation; the mounted guard keeps this idempotent.
+      await act(async () => {
+        idleCallback?.()
+        await Promise.resolve()
+      })
+      expect(screen.getByTestId("deferred-search")).toBeInTheDocument()
+      unmount()
+      await act(async () => {
+        idleCallback?.()
+        await Promise.resolve()
+      })
+    } finally {
+      delete (window as Window & { requestIdleCallback?: unknown }).requestIdleCallback
+      delete (window as Window & { cancelIdleCallback?: unknown }).cancelIdleCallback
+    }
+  })
+
+  it("does not promote after an unmounted timer callback races cleanup", () => {
+    vi.useFakeTimers()
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout")
+    const { unmount } = render(<DeferredGlobalOverlays />)
+    const timerCall = setTimeoutSpy.mock.calls.find(
+      ([, delay]) => delay === DEFERRED_OVERLAY_DELAY_MS
+    )
+    const timerCallback = timerCall?.[0] as (() => void) | undefined
+
+    unmount()
+    timerCallback?.()
+
+    expect(screen.queryByTestId("deferred-search")).not.toBeInTheDocument()
+    setTimeoutSpy.mockRestore()
+  })
+
+  it("ignores a late interaction callback after unmount", () => {
+    const addEventListenerSpy = vi.spyOn(window, "addEventListener")
+    const { unmount } = render(<DeferredGlobalOverlays />)
+    const keydownCall = addEventListenerSpy.mock.calls.find(
+      ([eventName]) => eventName === "keydown"
+    )
+    const promoteOnInteraction = keydownCall?.[1] as EventListener | undefined
+
+    unmount()
+    promoteOnInteraction?.(new Event("keydown"))
+
+    expect(screen.queryByTestId("deferred-search")).not.toBeInTheDocument()
+    addEventListenerSpy.mockRestore()
+  })
+
+  it("cancels a pending idle callback during unmount cleanup", async () => {
+    vi.useFakeTimers()
+    let idleCallback: (() => void) | undefined
+    const requestIdleCallback = vi.fn((callback: () => void) => {
+      idleCallback = callback
+      return 31
+    })
+    const cancelIdleCallback = vi.fn()
+    Object.defineProperty(window, "requestIdleCallback", {
+      configurable: true,
+      value: requestIdleCallback,
+    })
+    Object.defineProperty(window, "cancelIdleCallback", {
+      configurable: true,
+      value: cancelIdleCallback,
+    })
+
+    try {
+      const { unmount } = render(<DeferredGlobalOverlays />)
+      await act(async () => {
+        vi.advanceTimersByTime(DEFERRED_OVERLAY_DELAY_MS)
+        await Promise.resolve()
+      })
+
+      unmount()
+      expect(cancelIdleCallback).toHaveBeenCalledWith(31)
+      await act(async () => {
+        idleCallback?.()
+        await Promise.resolve()
+      })
+    } finally {
+      delete (window as Window & { requestIdleCallback?: unknown }).requestIdleCallback
+      delete (window as Window & { cancelIdleCallback?: unknown }).cancelIdleCallback
+    }
+  })
 })

@@ -7,6 +7,27 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+// SessionWriter defines the interface for writing messages to a client session.
+// It lives next to the concrete websocket adapter so Go coverage inventories
+// do not treat a declarations-only source file as an unmeasurable production
+// unit.
+type SessionWriter interface {
+	WriteMessage(messageType int, data []byte) error
+	Close() error
+	RemoteAddr() net.Addr
+	TransportType() string
+}
+
+// Session extends SessionWriter with reading, deadline, and handler capabilities.
+type Session interface {
+	SessionWriter
+	ReadMessage() (messageType int, data []byte, err error)
+	SetReadLimit(limit int64)
+	SetReadDeadline(t time.Time) error
+	SetWriteDeadline(t time.Time) error
+	SetPongHandler(h func(appData string) error)
+}
+
 // WebSocketSession wraps gorilla *websocket.Conn to implement Session.
 type WebSocketSession struct {
 	conn *websocket.Conn

@@ -422,6 +422,30 @@ describe("login → prefetchDashboardData branches", () => {
     await waitFor(() => expect(mocks.prefetchDashboardStories).toHaveBeenCalled())
     expect(mocks.logWarning).not.toHaveBeenCalled()
   })
+
+  it("reports dashboard prefetch failures in development", async () => {
+    // The prefetch is deliberately best-effort, but diagnostics remain
+    // visible to developers when a dynamically imported dashboard surface
+    // fails synchronously.
+    vi.stubEnv("DEV", true)
+    const failure = new Error("prefetch unavailable")
+    mocks.prefetchDashboardStories.mockImplementationOnce(() => {
+      throw failure
+    })
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.login("a@b.dev", "pw")
+    })
+
+    await waitFor(() => expect(mocks.prefetchDashboardStories).toHaveBeenCalled())
+    expect(mocks.logWarning).toHaveBeenCalledWith(
+      "Failed to prefetch dashboard data",
+      expect.objectContaining({ error: failure })
+    )
+  })
 })
 
 // ---------------------------------------------------------------------------

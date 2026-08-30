@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { screen } from "@testing-library/react"
 
 import { ScaleIn } from "@/components/ui/motion/ScaleIn"
@@ -29,5 +29,22 @@ describe("ScaleIn", () => {
       authProvider: false,
     })
     expect(container.querySelector(".sc")).not.toBeNull()
+  })
+
+  it("renders the paintable initial state in Lighthouse mode", async () => {
+    vi.stubEnv("VITE_LHCI", "true")
+    try {
+      await renderWithRouter({
+        ui: () => (
+          <ScaleIn>
+            <span>lhci scaled content</span>
+          </ScaleIn>
+        ),
+        authProvider: false,
+      })
+      expect(screen.getByText("lhci scaled content")).toBeInTheDocument()
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })

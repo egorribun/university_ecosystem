@@ -351,6 +351,8 @@ describe("EventsFeature — client-side category + date filters", () => {
   it("uses the Monday offset for a Sunday week start", () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-08-09T12:00:00.000Z"))
+    // Keep the calendar branch deterministic across CI runner time zones.
+    const dayOfWeekSpy = vi.spyOn(Date.prototype, "getDay").mockReturnValue(0)
     search.params = { dr: "week" }
     listQuery.events = [evt({ id: "sunday-week" })]
 
@@ -358,6 +360,7 @@ describe("EventsFeature — client-side category + date filters", () => {
       render(<EventsFeature />)
       expect(screen.getByTestId("list-count")).toHaveTextContent("0")
     } finally {
+      dayOfWeekSpy.mockRestore()
       vi.useRealTimers()
     }
   })
