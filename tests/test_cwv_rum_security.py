@@ -12,6 +12,7 @@ from sqlalchemy import UniqueConstraint
 
 from app.core.config import Settings
 from app.models.cwv import CwvObservation
+from app.services import cwv_retention
 from app.services.cwv import (
     CwvConfigurationError,
     CwvEnvelopeError,
@@ -575,6 +576,40 @@ async def test_cwv_retention_error_and_missing_rowcount_are_fail_closed() -> Non
     db.execute.return_value = SimpleNamespace()
     assert await cleanup_stale_cwv_observations(db=db, now=NOW, retention_days=30) == 0
     db.commit.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_cwv_retention_uses_explicit_utc_clock_when_now_is_omitted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The implicit retention clock is always requested with UTC explicitly."""
+
+    class UtcClock:
+        @classmethod
+        def now(cls, tz: object = None) -> datetime:
+            assert tz is UTC
+            return NOW
+
+    monkeypatch.setattr(cwv_retention, "datetime", UtcClock)
+    db = AsyncMock()
+    db.execute.return_value = SimpleNamespace(rowcount=0)
+
+    assert await cleanup_stale_cwv_observations(db=db, retention_days=30) == 0
+
+
+@pytest.mark.asyncio
+async def test_cwv_retention_keeps_rows_exactly_at_the_cutoff() -> None:
+    """Retention deletes only rows strictly older than the cutoff instant."""
+
+    from sqlalchemy.dialects import postgresql
+
+    db = AsyncMock()
+    db.execute.return_value = SimpleNamespace(rowcount=0)
+    await cleanup_stale_cwv_observations(db=db, now=NOW, retention_days=30)
+
+    statement = db.execute.await_args.args[0]
+    sql = str(statement.compile(dialect=postgresql.dialect()))
+    assert "cwv_observations.created_at < " in sql
 
 
 def test_staging_settings_redact_secret_and_reject_partial_oidc_policy() -> None:

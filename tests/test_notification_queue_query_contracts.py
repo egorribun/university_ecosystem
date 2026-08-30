@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.dialects import postgresql
 
-from app.services.notification_queue import list_dead_lettered_jobs
+from app import models
+from app.services import notification_queue
 
 
 @pytest.mark.asyncio
@@ -25,7 +26,14 @@ async def test_dead_letter_listing_keeps_named_snapshot_ctes_and_true_filter() -
     db = AsyncMock()
 
     db.execute.return_value = result
-    jobs, total = await list_dead_lettered_jobs(db, limit=20, offset=100)
+    with patch.object(
+        notification_queue,
+        "aliased",
+        wraps=notification_queue.aliased,
+    ) as make_alias:
+        jobs, total = await notification_queue.list_dead_lettered_jobs(
+            db, limit=20, offset=100
+        )
 
     assert jobs == []
     assert total == 0
@@ -34,3 +42,5 @@ async def test_dead_letter_listing_keeps_named_snapshot_ctes_and_true_filter() -
     assert "notification_dead_letter_page" in sql
     assert "notification_dead_letter_total" in sql
     assert sql.lower().count("notification_queue_jobs.dead_lettered is true") == 2
+    make_alias.assert_called_once()
+    assert make_alias.call_args.args[0] is models.NotificationQueueJob

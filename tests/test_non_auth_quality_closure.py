@@ -312,6 +312,7 @@ def test_cwv_api_binding_principal_and_error_mapping(
     user_id = UUID(settings.cwv_manual_tester_user_ids.get_secret_value())
     monkeypatch.setattr(cwv_api, "settings", settings)
     assert cwv_api._binding().allowed_origins == ("https://staging.example.edu",)
+    assert cwv_api._binding().frontend_image_digest == DIGEST
     assert cwv_api._manual_tester_principal(SimpleNamespace(id=user_id)) == str(user_id)
     with pytest.raises(HTTPException) as denied:
         cwv_api._manual_tester_principal(SimpleNamespace(id=uuid4()))
@@ -646,6 +647,9 @@ async def test_mfa_delivery_event_requires_id_and_commits(
         MfaEmailDeliveryRequested(delivery_id=delivery_id)
     )
     service.deliver.assert_awaited_once()
+    delivery_call = service.deliver.await_args
+    assert delivery_call.args[0] is db
+    assert delivery_call.kwargs["delivery_id"] == delivery_id
     db.commit.assert_awaited_once()
 
 

@@ -149,7 +149,29 @@ async def test_issue_uses_exact_otp_contract_and_stores_no_plaintext(
     test_user: User,
     otp_service: EmailOtpService,
     limiter: RecordingRateLimiter,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    original_digest = otp_service._digest
+    pending_digests: list[str | None] = []
+
+    def record_digest(
+        *,
+        key_id: str,
+        purpose: str,
+        challenge: MfaChallenge,
+        secret_value: str,
+        revision: int | None = None,
+    ) -> str:
+        pending_digests.append(challenge.token_digest)
+        return original_digest(
+            key_id=key_id,
+            purpose=purpose,
+            challenge=challenge,
+            secret_value=secret_value,
+            revision=revision,
+        )
+
+    monkeypatch.setattr(otp_service, "_digest", record_digest)
     issued = await _issue(otp_service, db_session, test_user)
 
     assert issued.otp.isdecimal() and len(issued.otp) == 6
@@ -167,6 +189,12 @@ async def test_issue_uses_exact_otp_contract_and_stores_no_plaintext(
     assert challenge.method == "email_otp"
     assert challenge.session_identifier == SESSION
     assert challenge.client_fingerprint == FINGERPRINT
+    # A newly issued challenge is always usable and starts with a clean
+    # attempt budget.  These are persisted invariants rather than ORM defaults.
+    assert challenge.state == ChallengeState.PENDING
+    assert challenge.attempt_count == 0
+    assert len(pending_digests) == 2
+    assert pending_digests[0] == email_otp_module._PENDING_DIGEST
     assert challenge.otp_key_id == "hmac-2026-08"
     assert challenge.token_key_id == "hmac-2026-08"
     assert len(challenge.recipient_digest) == 64
@@ -611,15 +639,49 @@ async def test_delivery_decrypts_only_at_send_and_crypto_shreds_terminal_success
     await otp_service.deliver(
         db_session, delivery_id=delivery.id, sender=sender, now=NOW
     )
+    await db_session.refresh(delivery)
 
     assert sender.messages[0]["to_email"] == test_user.email
     assert issued.otp in sender.messages[0]["plain"]
     assert "<img" not in sender.messages[0]["html"]
     assert "&lt;img" in sender.messages[0]["html"]
     assert delivery.status == "sent"
+    assert delivery.lease_token is None
+    assert delivery.lease_expires_at is None
     assert delivery.envelope_ciphertext is None
     assert delivery.wrapped_dek is None
-    assert delivery.shredded_at == NOW
+    assert delivery.shredded_at is not None
+
+
+@pytest.mark.asyncio
+async def test_delivery_default_clock_validates_a_fresh_challenge(
+    db_session: AsyncSession,
+    test_user: User,
+    otp_service: EmailOtpService,
+) -> None:
+    """The worker's implicit clock must remain a real UTC timestamp.
+
+    This intentionally uses a freshly captured issue timestamp so the
+    challenge is valid when ``deliver`` resolves its own default clock. It
+    protects the validation-time fallback independently from deterministic
+    tests that pass an explicit test clock.
+    """
+
+    issue_now = datetime.now(UTC)
+    issued = await _issue(otp_service, db_session, test_user, now=issue_now)
+    delivery = (
+        await db_session.execute(
+            select(MfaEmailDelivery).where(
+                MfaEmailDelivery.challenge_id == issued.challenge_id
+            )
+        )
+    ).scalar_one()
+    sender = RecordingSender()
+
+    await otp_service.deliver(db_session, delivery_id=delivery.id, sender=sender)
+
+    assert len(sender.messages) == 1
+    assert delivery.status == "sent"
 
 
 @pytest.mark.asyncio
@@ -719,6 +781,8 @@ async def test_delivery_failure_preserves_retry_envelope_without_pii_logs(
     assert delivery.envelope_ciphertext is not None
     assert delivery.wrapped_dek is not None
     assert delivery.status == "pending"
+    assert delivery.lease_token is None
+    assert delivery.lease_expires_at is None
     assert issued.otp not in caplog.text
     assert test_user.email not in caplog.text
 

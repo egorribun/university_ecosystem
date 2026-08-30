@@ -375,9 +375,14 @@ def test_mutation_matrix_publishes_bounded_capacity_telemetry() -> None:
     assert 'echo "- $matrix_summary"' in matrix_step["run"]
     assert 'echo "- $descriptor_summary"' in matrix_step["run"]
     assert "scheduler queue p50/p95" in matrix_step["run"]
+    assert 'echo "- Mutmut producer max concurrency: 11"' in matrix_step["run"]
+    assert 'echo "- Stryker producer max concurrency: 9"' in matrix_step["run"]
 
-    assert runners["strategy"]["max-parallel"] == 9
-    assert stryker["strategy"]["max-parallel"] == 11
+    assert runners["strategy"]["max-parallel"] == 11
+    assert stryker["strategy"]["max-parallel"] == 9
+    assert (
+        runners["strategy"]["max-parallel"] + stryker["strategy"]["max-parallel"] == 20
+    )
     assert runners["strategy"]["matrix"] == (
         "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
     )

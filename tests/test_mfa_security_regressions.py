@@ -921,6 +921,31 @@ async def test_email_factor_start_requires_an_active_session() -> None:
 
 
 @pytest.mark.asyncio
+async def test_email_factor_start_handles_missing_active_session_attribute() -> None:
+    """A request state without the optional session field is unauthenticated.
+
+    ``getattr(..., None)`` is intentional at this boundary: middleware may
+    provide a state object without installing ``active_session`` at all.  The
+    endpoint must return the same safe 400 contract instead of leaking an
+    ``AttributeError``.
+    """
+
+    request = _api_request()
+    request.state = SimpleNamespace()
+    with pytest.raises(HTTPException) as exc_info:
+        await mfa_api._issue_email_challenge_for_session(
+            flow="email_verification",
+            request=request,
+            db=AsyncMock(),
+            login_service=MagicMock(),
+            user=SimpleNamespace(id=uuid.uuid4()),  # type: ignore[arg-type]
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "MFA request rejected"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("error", "expected_status"),
     [(MfaSecurityUnavailable(), 503), (MfaOtpRejected(), 400)],
@@ -1278,6 +1303,7 @@ async def test_email_factor_start_commits_and_returns_delivery_contract() -> Non
     assert result.method == MFA_METHOD_EMAIL_OTP
     assert result.challenge_token == issued.challenge_token
     assert result.delivery_hint == issued.delivery_hint
+    assert result.resend_available_at == issued.resend_available_at
     assert result.attempt_count == 0
     assert result.attempt_limit == 5
     assert result.remaining_attempts == 5

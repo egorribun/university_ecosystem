@@ -93,6 +93,16 @@ def test_key_ring_rejects_ambiguous_entries_with_multiple_delimiters() -> None:
         email_otp_module._parse_key_ring(f"active:{encoded}:extra")
 
 
+def test_key_ring_rejects_zero_length_decoded_keys_with_generic_error() -> None:
+    """An empty decoded key is unavailable and never exposes parser details."""
+
+    with (
+        patch.object(email_otp_module, "_b64decode", return_value=b""),
+        pytest.raises(MfaSecurityUnavailable, match=r"^MFA service unavailable$"),
+    ):
+        email_otp_module._parse_key_ring("active:AA==")
+
+
 def test_issue_validation_has_explicit_inclusive_session_boundary_and_messages() -> (
     None
 ):
@@ -255,6 +265,63 @@ async def test_opaque_loader_selects_active_session_for_each_non_login_flow(
 
 
 @pytest.mark.asyncio
+async def test_verify_forwards_client_ip_to_rate_limiter(
+    service: EmailOtpService,
+) -> None:
+    """The abuse-control identity must include the caller IP on every verify."""
+
+    user_id = uuid.UUID("88888888-8888-7888-8888-888888888888")
+    service._rate_limit = AsyncMock()  # type: ignore[method-assign]
+    service._resolve_recipient = AsyncMock(  # type: ignore[method-assign]
+        side_effect=MfaOtpRejected()
+    )
+
+    with pytest.raises(MfaOtpRejected):
+        await service.verify(
+            MagicMock(),
+            challenge_token="opaque-token",
+            code="123456",
+            user_id=user_id,
+            flow="login",
+            session_identifier=SESSION,
+            client_fingerprint=FINGERPRINT,
+            client_ip=IP,
+            now=NOW,
+        )
+
+    service._rate_limit.assert_awaited_once_with(  # type: ignore[attr-defined]
+        action="verify", user_id=user_id, client_ip=IP
+    )
+
+
+@pytest.mark.asyncio
+async def test_resend_opaque_preserves_the_bound_session_identifier(
+    service: EmailOtpService,
+) -> None:
+    challenge = _challenge(flow="step_up")
+    service._load_opaque_challenge = AsyncMock(return_value=challenge)  # type: ignore[method-assign]
+    expected = MagicMock()
+    service.resend = AsyncMock(return_value=expected)  # type: ignore[method-assign]
+
+    result = await service.resend_opaque(
+        MagicMock(),
+        challenge_token="opaque-token",
+        client_fingerprint=FINGERPRINT,
+        client_ip=IP,
+        locale="en",
+        login_session_identifier=None,
+        active_session_identifier=SESSION,
+        now=NOW,
+    )
+
+    assert result is expected
+    assert (
+        service.resend.await_args.kwargs["session_identifier"]
+        == challenge.session_identifier
+    )
+
+
+@pytest.mark.asyncio
 async def test_verify_opaque_forwards_explicit_now_to_bound_verifier(
     service: EmailOtpService,
 ) -> None:
@@ -405,7 +472,40 @@ def test_smtp_missing_either_host_or_port_fails_closed_and_preserves_headers() -
     assert message["From"] == "security@example.edu"
     assert message["To"] == "student@example.edu"
     assert message["Message-ID"] == "<challenge@example.edu>"
+    html_part = message.get_body(preferencelist=("html",))
+    assert html_part is not None
+    # Keep the MIME subtype canonical.  ``EmailMessage.get_content_type``
+    # lowercases it, so inspect the wire header to catch an accidental
+    # ``text/HTML`` regression as well.
+    assert html_part["Content-Type"].split(";", 1)[0] == "text/html"
     client.login.assert_called_once_with("mailer", "")
+
+
+def test_decrypt_delivery_defaults_missing_display_name_to_empty_string(
+    service: EmailOtpService,
+) -> None:
+    challenge = _challenge()
+    delivery = service._build_delivery(
+        challenge=challenge,  # type: ignore[arg-type]
+        revision=challenge.revision,
+        email="student@example.edu",
+        otp="123456",
+        locale="en",
+        display_name="Student",
+        now=NOW,
+    )
+    with patch.object(
+        email_otp_module.orjson,
+        "loads",
+        return_value={"email": "student@example.edu", "otp": "123456"},
+    ):
+        envelope = service._decrypt_delivery(delivery)
+
+    assert envelope == {
+        "email": "student@example.edu",
+        "otp": "123456",
+        "display_name": "",
+    }
 
 
 @pytest.mark.asyncio

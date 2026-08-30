@@ -218,6 +218,7 @@ async def test_notify_about_news_uses_localized_fallback_and_active_users(
     assert kwargs["topic"] == "news.published"
     assert kwargs["user_ids"] == active_ids
     assert kwargs["url"] == f"/news/{news.id}"
+    assert kwargs["body"] == "Краткое содержание"
     assert kwargs["payload_data"]["category"] == "news"
 
 

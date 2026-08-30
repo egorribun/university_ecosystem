@@ -226,6 +226,7 @@ def test_configure_otel_handles_disabled_optional_pipelines() -> None:
         result = observability._configure_otel(MagicMock())
     assert result is provider
     assert observability._otel_configured is True
+    assert observability._sqlalchemy_instrumented is True
     sqlalchemy.return_value.instrument.assert_called_once()
     observability._otel_configured = False
     observability._sqlalchemy_instrumented = True

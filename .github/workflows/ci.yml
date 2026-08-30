@@ -822,15 +822,15 @@ jobs:
     if: ${{ github.event_name == 'pull_request' }}
     strategy:
       fail-fast: false
-      # Empirical runner-time from the last matrix shows a balanced 11/9
-      # allocation minimizes the mutation critical path under the observed
-      # twenty-runner account cap: Stryker has the longer per-leg tail, while
-      # mutmut retains nine slots for continuous backend evidence.  The prior
-      # run's concurrency=2 tail hit the 120-minute job limit; use the
-      # runner's existing fail-closed maximum (four bounded Vitest workers)
-      # as the next measured canary.  This changes neither the canonical
-      # mutant denominator nor any release threshold.
-      max-parallel: 11
+      # A c4 timing sample from exact run 33303107020 (6 completed Stryker
+      # legs averaging 27.6m; 10 completed mutmut legs averaging 18.5m)
+      # estimates total work at roughly 1,764 versus 2,368 runner-minutes
+      # for the 64 versus 128 legs. Under the observed twenty-runner cap, a
+      # 9/11 split balances those independent workloads (rather than leg
+      # counts) and leaves the mutation critical path bounded by the slower
+      # family. Re-measure after toolchain changes; no denominator, mutant
+      # scope, quality gate, or four-worker Vitest bound is changed.
+      max-parallel: 9
       matrix:
         shard-index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
     permissions:
@@ -3003,8 +3003,8 @@ jobs:
             echo "## Mutation matrix capacity"
             echo "- $matrix_summary"
             echo "- $descriptor_summary"
-            echo "- Mutmut producer max concurrency: 9"
-            echo "- Stryker producer max concurrency: 11"
+            echo "- Mutmut producer max concurrency: 11"
+            echo "- Stryker producer max concurrency: 9"
             echo "- Change allocation only after collecting this run's scheduler queue p50/p95 and per-family completion times."
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -3063,13 +3063,13 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
-      # Reserve nine hosted-runner slots for mutmut while the eleven Stryker
+      # Reserve eleven hosted-runner slots for mutmut while the nine Stryker
       # producer legs run. GitHub schedules matrix families independently;
       # this explicit ceiling prevents the unbounded 128-leg matrix from
       # consuming every available slot and starving queued Stryker evidence.
       # The combined producer-family ceiling is 20, matching the observed
       # hosted-runner pool without changing any quality gate or shard.
-      max-parallel: 9
+      max-parallel: 11
       # The producer validates all 128 fixed assignments, then dynamically
       # emits only exact nonempty entries. This preserves the full plan as
       # evidence while preventing empty shards from consuming the scarce

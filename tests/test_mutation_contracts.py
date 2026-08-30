@@ -69,6 +69,14 @@ def test_cwv_exporter_bearer_error_is_stable() -> None:
             cwv_api._bearer(value)
         assert caught.value.status_code == 401
         assert caught.value.detail == "Exporter authentication required"
+    # The documented maximum is inclusive: an otherwise valid header with
+    # exactly 8192 bytes is accepted, while the next byte is rejected.
+    boundary_token = "x" * (8192 - len("Bearer "))
+    assert cwv_api._bearer(f"Bearer {boundary_token}") == boundary_token
+    with pytest.raises(HTTPException) as caught:
+        cwv_api._bearer(f"Bearer {boundary_token}x")
+    assert caught.value.status_code == 401
+    assert caught.value.detail == "Exporter authentication required"
     assert cwv_api._bearer("bearer token") == "token"
     assert cwv_api._bearer("Bearer token extra") == "token extra"
 

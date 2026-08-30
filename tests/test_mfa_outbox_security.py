@@ -86,6 +86,7 @@ async def test_terminal_mfa_delivery_failure_is_crypto_shredded_in_dlq_transacti
         select(FailedOutboxEvent).where(FailedOutboxEvent.original_event_id == event.id)
     )
     assert failed is not None
+    assert failed.retry_count == 5
 
 
 @pytest.mark.asyncio

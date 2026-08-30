@@ -24,7 +24,7 @@ def test_historical_stryker_cost_evidence_is_same_run_bound_and_optional() -> No
     preflight = jobs["stryker-preflight"]
     aggregate = jobs["stryker-aggregate"]
 
-    assert jobs["stryker-shards"]["strategy"]["max-parallel"] == 11
+    assert jobs["stryker-shards"]["strategy"]["max-parallel"] == 9
     assert "STRYKER_HISTORICAL_COSTS_ARTIFACT" not in preflight["env"]
 
     selector = _step(

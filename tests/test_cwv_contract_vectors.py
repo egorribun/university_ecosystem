@@ -142,6 +142,12 @@ def test_session_binding_has_inclusive_identifier_bounds_and_stable_domain() -> 
     assert _session_binding(binding, "collector-one", "gateway-one") == expected
 
 
+def test_allowed_origin_normalizes_hostnames_to_lowercase() -> None:
+    """Origin canonicalization is case-insensitive only for the host name."""
+
+    assert _origin("https://STAGING.Example.EDU/") == "https://staging.example.edu"
+
+
 @pytest.mark.parametrize(
     ("pathname", "expected"),
     [
@@ -413,6 +419,7 @@ def test_observation_metric_limits_are_inclusive_and_identity_is_server_derived(
     )
     claims = verify_envelope(_binding(), token, now=NOW)
     assert observation.navigation_id == claims.navigation_id
+    assert observation.session_id == claims.session_id
     assert observation.envelope_nonce == claims.nonce
     assert observation.value == float(value)
 

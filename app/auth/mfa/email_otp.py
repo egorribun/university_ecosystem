@@ -1252,7 +1252,12 @@ def _parse_key_ring(raw: str) -> dict[str, bytes]:
                 raise ValueError("key-ring value is not strict base64url")
             decoded = _b64decode(encoded)
             if not decoded:
-                raise ValueError("key-ring value is empty")
+                # The parser intentionally exposes one generic security error
+                # to callers.  There is no useful internal detail to retain
+                # for an empty value, so raise a message-free sentinel and
+                # avoid creating misleading diagnostics that are discarded by
+                # the outer exception boundary.
+                raise ValueError
             keys[key_id] = decoded
         except (ValueError, TypeError, binascii.Error):
             raise MfaSecurityUnavailable() from None

@@ -709,6 +709,7 @@ jobs:
           WORKFLOW_EVENT: ${{ github.event_name }}
         run: |
           set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
           producer_root=artifacts/lighthouse/producer
           test -d "$producer_root"
           python_version="$(python3 --version | awk '{print $2}')"
@@ -724,6 +725,7 @@ jobs:
             done
           done
           test "${#reports[@]}" -eq 30
+          provenance_output="$GITHUB_WORKSPACE/artifacts/lighthouse/producer/provenance/lighthouse-reports.json"
           retry_output="$(mktemp)"
           retry_error="$(mktemp)"
           write_output="$(mktemp)"
@@ -777,7 +779,7 @@ jobs:
           write_status=0
           python3 scripts/quality/coverage_provenance.py write \
             --repository-root "$GITHUB_WORKSPACE" \
-            --output artifacts/lighthouse/producer/provenance/lighthouse-reports.json \
+            --output "$provenance_output" \
             --expected-sha "$EXPECTED_SHA" \
             --identity-provider github-actions \
             --repository "$WORKFLOW_REPOSITORY" \
@@ -801,7 +803,19 @@ jobs:
             cat "$write_output" >&2
             exit "$write_status"
           fi
-          test -s artifacts/lighthouse/producer/provenance/lighthouse-reports.json
+          if [[ ! -s "$provenance_output" ]]; then
+            echo "::error::Lighthouse evidence provenance writer produced no non-empty sidecar at the expected workspace path." >&2
+            printf 'working directory: ' >&2
+            pwd >&2
+            printf 'provenance directory listing:\n' >&2
+            ls -la "$GITHUB_WORKSPACE/artifacts/lighthouse/producer/provenance" >&2 || true
+            printf 'provenance output listing:\n' >&2
+            ls -la "$provenance_output" >&2 || true
+            cat "$write_error" >&2
+            cat "$write_output" >&2
+            exit 1
+          fi
+          test -s "$provenance_output"
 
       - name: Upload Lighthouse retry evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

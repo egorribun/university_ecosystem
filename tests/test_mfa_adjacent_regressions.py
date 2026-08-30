@@ -142,6 +142,9 @@ async def test_trusted_device_rotation_invalidates_the_presented_token(
         request_ua="test",
     )
     assert rotated and rotated != token
+    # ``token_urlsafe(48)`` is 64 characters without padding; this bound is
+    # part of the cookie/storage contract and catches accidental entropy drift.
+    assert len(rotated) == 64
     assert not await verify_trusted_device_token(
         db_session,
         user=test_user,

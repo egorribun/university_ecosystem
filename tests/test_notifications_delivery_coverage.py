@@ -613,6 +613,7 @@ async def test_outbox_redelivery_is_idempotent_by_notification_and_subscription(
     assert [(row.status, row.subscription_id) for row in rows] == [
         ("sent", subscription.id)
     ]
+    assert rows[0].status_code == 201
 
 
 @pytest.mark.asyncio
@@ -676,6 +677,10 @@ async def test_outbox_redelivery_retries_only_failed_recipients(
     assert second.already_delivered == 1
     assert calls.count(first_sub.id) == 1
     assert calls.count(second_sub.id) == 2
+    second_rows = await _delivery_rows_for_user(db_session, second_user.id)
+    assert len(second_rows) == 1
+    assert second_rows[0].delivered_at is not None
+    assert second_rows[0].status_code == 201
 
 
 @pytest.mark.asyncio
