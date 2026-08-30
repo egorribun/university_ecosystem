@@ -115,6 +115,10 @@ def test_lighthouse_producer_publishes_fixed_retry_artifact_contract() -> None:
     assert 'provenance_dir="$producer_root/provenance"' in provenance_run
     assert 'mkdir -p -- "$provenance_dir"' in provenance_run
     assert 'test ! -L "$provenance_dir"' in provenance_run
+    # The argv array contains one ``--report`` flag plus one value for each
+    # of the 30 reports.  Guard the pair count explicitly so a future change
+    # cannot reintroduce a silent ``set -e`` exit before provenance is written.
+    assert 'test "${#reports[@]}" -eq 60' in provenance_run
     assert (
         'provenance_output="$provenance_dir/lighthouse-reports.json"' in provenance_run
     )

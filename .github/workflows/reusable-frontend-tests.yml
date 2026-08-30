@@ -732,7 +732,11 @@ jobs:
               reports+=(--report "lighthouse-$shard|lighthouse-lhr-json|$source|lhr/$shard/$report_name")
             done
           done
-          test "${#reports[@]}" -eq 30
+          # Each report is passed as a ``--report``/value pair.  Validate the
+          # number of complete pairs rather than the raw argv length; checking
+          # the latter against 30 would make this step exit silently at 60
+          # elements before the provenance writer runs.
+          test "${#reports[@]}" -eq 60
           provenance_dir="$producer_root/provenance"
           mkdir -p -- "$provenance_dir"
           test -d "$provenance_dir"
