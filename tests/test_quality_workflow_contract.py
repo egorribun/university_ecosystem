@@ -1578,6 +1578,7 @@ def test_mutation_jobs_never_persist_the_workflow_token() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
 
     for job_name in (
+        "mutation-scope",
         "mutation-tests-stats",
         "mutation-tests-universe",
         "mutation-tests-incremental",
@@ -1609,9 +1610,11 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert workflow["concurrency"]["group"] == "ci-matrix-${{ github.ref }}"
     assert jobs["ci-success"]["name"] == "CI Success"
 
-    assert stats_job["strategy"]["matrix"]["stats_shard"] == list(range(8))
+    assert stats_job["strategy"]["matrix"] == (
+        "${{ fromJSON(needs.mutation-scope.outputs.stats_matrix) }}"
+    )
     assert stats_job["timeout-minutes"] == 25
-    assert "needs" not in stats_job
+    assert stats_job["needs"] == "mutation-scope"
     for job in (stats_job, universe_job, mutation_job):
         assert job["env"]["REVOCATION_REDIS_URL"] == ("redis://localhost:6380/0")
     assert universe_job["timeout-minutes"] == 35
@@ -1753,12 +1756,12 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
 
 
 def test_mutation_stats_do_not_wait_for_an_unrelated_read_only_gate() -> None:
-    """Start the independent stats fan-out while the lint gate is running.
+    """Start stats after only the lightweight scope resolver.
 
     Stats uses its own read-only checkout and its result is still required by
     both the universe producer and ``ci-success``.  It consumes no output or
-    credentials from pre-commit, so an artificial dependency only holds the
-    mutation critical path behind the repository-wide lint duration.
+    credentials from pre-commit; the dedicated scope job only determines
+    whether eight real legs or one explicit sentinel should be expanded.
     """
 
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
@@ -1767,7 +1770,7 @@ def test_mutation_stats_do_not_wait_for_an_unrelated_read_only_gate() -> None:
     mutation_job = workflow["jobs"]["mutation-tests-incremental"]
     ci_success = workflow["jobs"]["ci-success"]
 
-    assert "needs" not in stats_job
+    assert stats_job["needs"] == "mutation-scope"
     assert workflow["permissions"] == "read-all"
     assert "secrets" not in stats_job
     assert universe_job["needs"] == ["pre-commit-check", "mutation-tests-stats"]
@@ -1778,6 +1781,46 @@ def test_mutation_stats_do_not_wait_for_an_unrelated_read_only_gate() -> None:
     ]
     assert "mutation-tests-stats" in ci_success["needs"]
     assert "needs.mutation-tests-stats.result" in ci_success["steps"][0]["run"]
+
+
+def test_mutation_stats_scope_is_resolved_before_matrix_fanout() -> None:
+    """Avoid booting eight stats runners for a frontend-only change.
+
+    The scope resolver must be a direct dependency of the dynamic stats
+    matrix.  A false Python scope still emits one explicit sentinel entry so
+    the required job concludes successfully and the downstream universe can
+    publish its empty, fail-closed envelope.
+    """
+
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+    scope = jobs["mutation-scope"]
+    stats = jobs["mutation-tests-stats"]
+
+    assert scope["outputs"] == {
+        "has_python": "${{ steps.scope.outputs.has_python }}",
+        "stats_matrix": "${{ steps.scope.outputs.stats_matrix }}",
+    }
+    assert scope["timeout-minutes"] == 5
+    assert stats["needs"] == "mutation-scope"
+    assert stats["strategy"]["matrix"] == (
+        "${{ fromJSON(needs.mutation-scope.outputs.stats_matrix) }}"
+    )
+    assert stats["strategy"]["fail-fast"] is False
+    scope_step = _step_named(scope, "Resolve changed Python scope")
+    scope_text = scope_step["run"]
+    assert scope_step["id"] == "scope"
+    assert "scripts/resolve_mutation_base.py" in scope_text
+    assert 'git diff --name-only "$COMPARE_BASE...HEAD"' in scope_text
+    assert "grep -E '^app/.*\\.py$'" in scope_text
+    assert "stats_matrix" in scope_text
+
+    stats_scope = _step_named(stats, "Detect changed Python source")
+    assert stats_scope["env"]["MATRIX_HAS_PYTHON"] == "${{ matrix.has_python }}"
+    assert "Mutation matrix Python scope disagrees" in stats_scope["run"]
+    ci_success = jobs["ci-success"]
+    assert "mutation-scope" in ci_success["needs"]
+    assert "needs.mutation-scope.result" in ci_success["steps"][0]["run"]
 
 
 def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards() -> (
@@ -1869,8 +1912,8 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
 def test_mutation_jobs_cache_only_lock_bound_uv_packages() -> None:
     """Mutation fan-out must reuse immutable packages, never execution evidence.
 
-    A PR mutation run starts eight stats workers and up to nine exact-mutant
-    workers at once.  The package cache is keyed by the locked dependency
+    A PR mutation run starts up to eight stats workers and up to nine
+    exact-mutant workers at once.  The package cache is keyed by the locked dependency
     graph; the per-run mutmut universe and execution proofs remain
     attempt-scoped artifacts and are deliberately not part of that cache.
     """

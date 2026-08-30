@@ -604,10 +604,14 @@ def test_mutation_scope_diff_failures_cannot_look_like_empty_changes() -> None:
         for job in workflow["jobs"].values()
         for step in job.get("steps", [])
         if step.get("name")
-        in {"Detect changed Python source", "Resolve manual mutation comparison base"}
+        in {
+            "Detect changed Python source",
+            "Resolve changed Python scope",
+            "Resolve manual mutation comparison base",
+        }
     ]
 
-    assert len(scope_scripts) == 5
+    assert len(scope_scripts) == 6
     for script in scope_scripts:
         assert "git diff --name-only" in script
         assert 'git diff --name-only "$COMPARE_BASE...HEAD" | grep' not in script

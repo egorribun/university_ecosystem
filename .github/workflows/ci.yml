@@ -2611,17 +2611,93 @@ jobs:
           export CHROMEDRIVER_ARGS="--headless=new --no-sandbox --disable-gpu"
           wasm-pack test --headless --chrome frontend/rust-crypto
 
-  mutation-tests-stats:
-    name: Incremental Mutation Stats (mutmut) / shard ${{ matrix.stats_shard }}/8
+  # Resolve the Python mutation scope before expanding the stats matrix.  The
+  # previous step-level guard ran eight matrix jobs (checkout + scheduler
+  # slots) even when no app/*.py file changed, then skipped their expensive
+  # steps.  Keep one explicit, non-mutating sentinel for that case so the
+  # required job still concludes success and downstream producers retain their
+  # fail-closed empty-envelope contract.
+  mutation-scope:
+    name: Resolve mutation scope
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      has_python: ${{ steps.scope.outputs.has_python }}
+      stats_matrix: ${{ steps.scope.outputs.stats_matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve changed Python scope
+        id: scope
+        shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          COMPARE_BASE="$(python scripts/resolve_mutation_base.py \
+            --event-name "$EVENT_NAME" \
+            --pr-base-sha "$PR_BASE_SHA")"
+          git diff --name-only "$COMPARE_BASE...HEAD" > /tmp/changed_paths.txt
+          if grep -E '^app/.*\.py$' /tmp/changed_paths.txt >/dev/null; then
+            has_python=true
+            stats_total=8
+          else
+            has_python=false
+            stats_total=1
+          fi
+          case "$has_python" in
+            true|false) ;;
+            *)
+              echo "::error::Mutation scope resolver produced an invalid boolean."
+              exit 1
+              ;;
+          esac
+          stats_matrix="$(python - "$has_python" "$stats_total" <<'PY'
+          import json
+          import sys
+
+          has_python, raw_total = sys.argv[1:]
+          total = int(raw_total)
+          entries = [
+              {
+                  "stats_shard": index,
+                  "stats_total": total,
+                  "has_python": has_python,
+              }
+              for index in range(total)
+          ]
+          print(json.dumps({"include": entries}, separators=(",", ":")))
+          PY
+          )"
+          test -n "$stats_matrix"
+          {
+            echo "has_python=$has_python"
+            echo "stats_matrix=$stats_matrix"
+          } >> "$GITHUB_OUTPUT"
+          {
+            echo "## Mutation scope"
+            echo "- Changed Python source: $has_python"
+            echo "- Stats matrix entries: $stats_total"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  mutation-tests-stats:
+    name: Incremental Mutation Stats (mutmut) / shard ${{ matrix.stats_shard }}/${{ matrix.stats_total }}
+    runs-on: ubuntu-24.04
+    needs: mutation-scope
     strategy:
       fail-fast: false
       # mutmut 3.7.0 collects the complete pytest-to-mutant mapping before it
       # applies positional mutant filters.  Collect disjoint test populations
       # once per leg and merge them before the mutation legs start. Eight
       # legs keep the heaviest test populations below the 25-minute job cap.
-      matrix:
-        stats_shard: [0, 1, 2, 3, 4, 5, 6, 7]
+      matrix: ${{ fromJSON(needs.mutation-scope.outputs.stats_matrix) }}
     timeout-minutes: 25
     env:
       OTEL_SDK_DISABLED: "true"
@@ -2629,10 +2705,11 @@ jobs:
       # the Redis transport is mocked.  Keep the fail-closed URL explicit so
       # mutation stats cannot fail before collecting the shard mapping.
       REVOCATION_REDIS_URL: redis://localhost:6380/0
-    # Stats has an isolated read-only checkout and no dependency on a
-    # pre-commit output.  Starting it beside pre-commit removes that gate's
-    # startup delay from the mutation critical path; ci-success still requires
-    # both jobs and fails closed if either one fails.
+    # Stats has an isolated read-only checkout and depends only on the
+    # lightweight mutation-scope resolver, not on a pre-commit output. Starting
+    # it beside pre-commit removes that gate's startup delay from the mutation
+    # critical path; ci-success still requires both jobs and fails closed if
+    # either one fails.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -2654,6 +2731,7 @@ jobs:
         env:
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           EVENT_NAME: ${{ github.event_name }}
+          MATRIX_HAS_PYTHON: ${{ matrix.has_python }}
         run: |
           set -euo pipefail
           COMPARE_BASE="$(python scripts/resolve_mutation_base.py \
@@ -2673,10 +2751,15 @@ jobs:
           changed_paths="$(git diff --name-only "$COMPARE_BASE...HEAD")"
           changed="$(printf '%s\n' "$changed_paths" | grep -E '^app/.*\.py$' || true)"
           if [ -n "$changed" ]; then
-            echo "has_python=true" >> "$GITHUB_OUTPUT"
+            has_python=true
           else
-            echo "has_python=false" >> "$GITHUB_OUTPUT"
+            has_python=false
           fi
+          if [ "$has_python" != "$MATRIX_HAS_PYTHON" ]; then
+            echo "::error::Mutation matrix Python scope disagrees with local mutation scope."
+            exit 1
+          fi
+          echo "has_python=$has_python" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python
         if: steps.mutation_scope.outputs.has_python == 'true'
@@ -4415,6 +4498,7 @@ jobs:
       - mutation-tests-stats
       - mutation-tests-universe
       - mutation-tests-incremental
+      - mutation-scope
       - stryker-preflight
       - stryker-aggregate
       - stryker-evidence-roundtrip
@@ -4474,6 +4558,7 @@ jobs:
             "rust-ffi-asan|${{ needs.rust-ffi-asan.result }}"
             "rust-ffi-tsan|${{ needs.rust-ffi-tsan.result }}"
             "rust-tests|${{ needs.rust-tests.result }}"
+            "mutation-scope|${{ needs.mutation-scope.result }}"
             "mutation-tests-stats|${{ needs.mutation-tests-stats.result }}"
             "mutation-tests-universe|${{ needs.mutation-tests-universe.result }}"
             "mutation-tests-incremental|${{ needs.mutation-tests-incremental.result }}"
