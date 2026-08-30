@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from types import SimpleNamespace
+from typing import ClassVar
 from unittest.mock import AsyncMock, Mock
 
 import jwt
@@ -407,6 +408,40 @@ def test_expired_envelope_can_be_rotated_without_changing_navigation() -> None:
     assert rotated_claims.nonce != original_claims.nonce
 
 
+def test_renew_envelope_normalizes_the_clock_to_utc() -> None:
+    class TrackingDateTime(datetime):
+        seen_timezones: ClassVar[list[tzinfo | None]] = []
+
+        def astimezone(self, tz: tzinfo | None = None) -> datetime:
+            self.__class__.seen_timezones.append(tz)
+            return super().astimezone(tz)
+
+    token, _ = issue_envelope(
+        _binding(),
+        origin="https://staging.example.edu",
+        pathname="/news/important",
+        device_class="desktop",
+        collector_principal_id="00000000-0000-0000-0000-000000000001",
+        gateway_session_id="gateway-session-not-stored",
+        now=NOW,
+        nonce_factory=lambda: "original_nonce_abcdef",
+    )
+    renew_now = TrackingDateTime(2026, 8, 25, 12, 1, tzinfo=UTC)
+    renew_envelope(
+        _binding(),
+        token=token,
+        origin="https://staging.example.edu",
+        pathname="/news/important",
+        device_class="desktop",
+        collector_principal_id="00000000-0000-0000-0000-000000000001",
+        gateway_session_id="gateway-session-not-stored",
+        now=renew_now,
+        nonce_factory=lambda: "renewed_nonce_abcdef",
+    )
+
+    assert TrackingDateTime.seen_timezones == [UTC]
+
+
 def test_oidc_verifier_requires_exact_github_main_staging_claims(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -610,6 +645,8 @@ async def test_cwv_retention_keeps_rows_exactly_at_the_cutoff() -> None:
     statement = db.execute.await_args.args[0]
     sql = str(statement.compile(dialect=postgresql.dialect()))
     assert "cwv_observations.created_at < " in sql
+    params = statement.compile(dialect=postgresql.dialect()).params
+    assert any(value == NOW - timedelta(days=30) for value in params.values())
 
 
 def test_staging_settings_redact_secret_and_reject_partial_oidc_policy() -> None:

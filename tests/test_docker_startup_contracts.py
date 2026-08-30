@@ -462,6 +462,117 @@ def test_start_script_removes_obsolete_containers_and_waits_for_the_full_stack()
     assert "-Timeout $requestTimeout" in script
 
 
+def test_launcher_exposes_an_explicit_bounded_core_mode() -> None:
+    """The local launcher must offer an opt-in, resource-conscious core stack."""
+
+    script = _read("start-docker.ps1")
+    core_start = script.index("$CoreBootstrapServices =")
+    core_end = script.index("$CoreOptionalComposeServices =", core_start)
+    core_block = script[core_start:core_end]
+
+    assert '[Alias("Lean")]' in script
+    assert "[switch]$Core" in script
+    assert '"docker-compose.full.yml"' in script
+
+    required_core_services = {
+        "postgres",
+        "redis",
+        "revocation-redis",
+        "minio",
+        "nats",
+        "flagd",
+        "flagd-healthprobe",
+        "postgres-databases-init",
+        "minio-init",
+        "migrations",
+        "spicedb-migrate",
+        "spicedb",
+        "backend",
+        "frontend",
+        "notifications-worker",
+        "outbox-worker",
+        "gateway",
+        "ws-hub",
+        "imgproxy",
+        "caddy",
+    }
+    for service in required_core_services:
+        assert f'"{service}"' in core_block, service
+
+    excluded_services = {
+        "elasticsearch",
+        "redis-exporter",
+        "temporal",
+        "temporal-admin-tools",
+        "temporal-namespace-init",
+        "grafana",
+        "prometheus",
+        "tempo",
+        "tempo-healthprobe",
+        "loki",
+        "loki-healthprobe",
+        "alloy",
+        "pyroscope",
+        "file-processor",
+    }
+    for service in excluded_services:
+        assert f'"{service}"' not in core_block, service
+
+    # Full mode remains the default and must retain its historical all-service
+    # invocation; only the explicit core opt-in is allowed to scope the command.
+    assert "if ($Core)" in script
+    assert "up -d --no-deps --remove-orphans" in script
+    assert "up -d --remove-orphans" in script
+
+
+def test_core_mode_filters_optional_health_probes_and_prometheus_validation() -> None:
+    script = _read("start-docker.ps1")
+
+    excluded_start = script.index("$CoreExcludedHealthServices =")
+    excluded_end = script.index("# -- Helpers", excluded_start)
+    excluded_block = script[excluded_start:excluded_end]
+    for service in (
+        "elasticsearch",
+        "redisexporter",
+        "temporal",
+        "grafana",
+        "prometheus",
+        "tempo",
+        "tempo-healthprobe",
+        "loki",
+        "loki-healthprobe",
+        "alloy",
+        "pyroscope",
+        "fileprocessor",
+    ):
+        assert f'"{service}"' in excluded_block, service
+
+    services_start = script.index("$services = [ordered]@{")
+    services_end = script.index("do {", services_start)
+    services_block = script[services_start:services_end]
+    assert "$services.Remove($name)" in services_block
+
+    prometheus_start = script.rfind(
+        "if (-not $Core)",
+        0,
+        script.index('Write-Status "Validating Prometheus scrape targets..."'),
+    )
+    prometheus_block = script[
+        prometheus_start : script.index("# -- Done", prometheus_start)
+    ]
+    assert "if (-not $Core)" in prometheus_block
+    assert "Skipping Prometheus target validation in core mode" in prometheus_block
+
+
+def test_core_mode_is_documented_for_local_resource_constrained_runs() -> None:
+    for relative_path in ("docs/DEPLOY.md", "docs/DEPLOY.en.md"):
+        document = _read(relative_path)
+        assert "start-docker.ps1 -Core" in document
+        assert "observability" in document.lower()
+        assert "temporal" in document.lower()
+        assert "file-processor" in document.lower()
+
+
 def test_published_ports_have_a_non_internal_network() -> None:
     """Docker cannot publish host ports from an internal-only bridge network."""
     for relative_path in ("docker-compose.yml", "docker-compose.full.yml"):

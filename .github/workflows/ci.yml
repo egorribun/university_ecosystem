@@ -21,12 +21,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # RZ-14-06 (audit 2026-03-18): Use the configured repo secret; jobs that need
-  # SECRET_KEY add an early "Generate CI secret" step that falls back to
-  # `openssl rand -hex 32` so no static string ever appears in workflow logs.
-  # Set CI_TEST_SECRET_KEY in repo Settings → Secrets and variables → Actions.
-  # nosemgrep: yaml.github-actions.security.gha-workflow-env-secret.gha-workflow-env-secret
-  SECRET_KEY: ${{ secrets.CI_TEST_SECRET_KEY }}
+  # RZ-14-06 (audit 2026-03-18): keep the workflow-wide environment free of
+  # credentials. Jobs that need a signing key generate an ephemeral value in
+  # their own process; no PR-controlled checkout can inherit a repository
+  # secret through this global scope.
+  SECRET_KEY: ""
   ENVIRONMENT: testing
 
 jobs:
@@ -212,8 +211,8 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Generate CI secret key if not configured (RZ-14-06)
-        # RZ-14-06: Avoid hardcoded fallback strings visible in fork logs.
-        # When CI_TEST_SECRET_KEY is not set (fork PRs), generate ephemeral 32-byte key.
+        # RZ-14-06: the workflow-wide key is intentionally empty for every
+        # event; generate an ephemeral 32-byte value only in this job.
         if: env.SECRET_KEY == ''
         run: echo "SECRET_KEY=$(openssl rand -hex 32)" >> "$GITHUB_ENV"
       - name: Enforce Rate Limit Shim Deadline (TD-003)
@@ -540,9 +539,6 @@ jobs:
       shard-id: ${{ matrix.shard }}
       num-shards: 4
       python-gil: ${{ matrix.free-threading && '0' || '1' }}  # MOD-24-03
-    secrets:
-      SECRET_KEY: ${{ secrets.CI_TEST_SECRET_KEY }}
-
   backend-type-check:
     name: Backend Type Check
     runs-on: ubuntu-24.04
@@ -2318,7 +2314,7 @@ jobs:
           ENVIRONMENT: testing
           DATABASE_URL: "sqlite+aiosqlite:///./test_asan.db"
           UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
-          SECRET_KEY: ${{ secrets.CI_TEST_SECRET_KEY || 'test-secret-key-1234567890abcdef' }}
+          SECRET_KEY: test-secret-key-1234567890abcdef  # pragma: allowlist secret
         run: bash scripts/run_asan_tests.sh
 
       - name: Upload ASan report on failure
@@ -2378,7 +2374,7 @@ jobs:
           ENVIRONMENT: testing
           DATABASE_URL: "sqlite+aiosqlite:///./test_tsan.db"
           UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
-          SECRET_KEY: ${{ secrets.CI_TEST_SECRET_KEY || 'test-secret-key-1234567890abcdef' }}
+          SECRET_KEY: test-secret-key-1234567890abcdef  # pragma: allowlist secret
         run: bash scripts/run_tsan_tests.sh
 
   rust-tests:
@@ -2633,6 +2629,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          # These jobs execute PR-controlled mutation tooling. Never persist
+          # the read-only workflow token into the checkout that tooling can
+          # inspect or exfiltrate.
+          persist-credentials: false
 
       # Resolve mutation scope before installing the heavyweight Python/Helm
       # toolchain.  Frontend-only and workflow-only changes must not spend a
@@ -2819,6 +2819,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       # A single producer performs the expensive source/metadata generation
       # and duration-balanced planning.  Resolve the scope before installing
@@ -3109,6 +3110,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Python for artifact provenance selection
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0

@@ -211,6 +211,9 @@ async def test_resolve_recipient_enforces_flow_specific_email_state(
 
     assert resolved_user is user
     assert email == expected_email
+    statement = db.execute.await_args.args[0]
+    lock = statement._for_update_arg
+    assert lock is not None and lock.nowait is False
 
 
 @pytest.mark.parametrize(

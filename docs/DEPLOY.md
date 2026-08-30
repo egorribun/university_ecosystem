@@ -32,6 +32,29 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Для продакшена есть override (`docker-compose.prod.yml`) с обязательными секретами. <!-- pragma: allowlist secret --> Создайте Compose-секреты `secret_key`, `database_url` и `nats_auth_token`, а путь к файлу пароля PostgreSQL передайте через `POSTGRES_PASSWORD_SOURCE_FILE`. Значение `database_url` должно указывать на `postgresql+asyncpg://...@pgbouncer:5432/university`. Затем запускайте `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d`, явно задав `FRONTEND_ORIGIN` и `FRONTEND_ORIGINS`; Go overlay обязателен, потому что Caddy направляет API и WebSocket-трафик через gateway/ws-hub.
 - Helm chart читает подключения из заранее созданного Secret `university-connections` (полный список ключей приведён в `charts/university-ecosystem/values.yaml`). <!-- pragma: allowlist secret --> В production обязательно задайте `applicationSecrets.existingSecret`; этот Secret должен содержать JWT/RSA-ключи, отдельные HMAC/интеграционные секреты, MinIO credentials и Temporal API key, перечисленные там же. Production-render отклоняет plaintext MinIO, Temporal, gRPC и OTLP. Так секреты не попадают в Helm release state, а небезопасная конфигурация не доходит до кластера.
 
+## Локальный Docker: режимы ресурсов
+
+Обычный `.\start-docker.ps1` (и `-Build`/`-Rebuild`) остаётся полным production-like
+стендом и запускает весь `docker-compose.full.yml`. Для ноутбука или ограниченного
+Docker Desktop используйте явный opt-in режим:
+
+```powershell
+.\start-docker.ps1 -Core        # или -Lean
+.\start-docker.ps1 -Core -Build
+```
+
+Core-режим использует тот же проверенный Compose-файл, но запускает только
+приложение и необходимые зависимости: PostgreSQL, Valkey, NATS, MinIO,
+SpiceDB, flagd, backend, frontend, gateway, ws-hub, workers, imgproxy и Caddy.
+Обработка файлов и зависящие от Temporal сценарии вложений намеренно недоступны:
+`file-processor` исключён из core-топологии. Он останавливает уже работающие контейнеры поиска, Temporal и observability
+(`redis-exporter`, Elasticsearch, Grafana, Prometheus, Tempo, Loki, Alloy,
+Pyroscope и их probe-контейнеры) без удаления образов или именованных томов,
+поэтому возврат к полному режиму безопасен. Health-check и Prometheus target
+проверки для намеренно не запущенных сервисов не выполняются. Core-режим
+предназначен только для локального resource-constrained запуска и не изменяет
+production Compose/Helm defaults или CI quality gates.
+
 ### Ротация MFA-ключей через External Secrets Operator
 
 Production-деплой ожидает установленный External Secrets Operator и переменную

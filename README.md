@@ -150,14 +150,14 @@ sequenceDiagram
     actor Client as 📱 Frontend Client
     participant Gateway as 🚀 Go Gateway
     participant Backend as 🐍 FastAPI Backend
-    participant Argon2 as 🔐 Argon2id / WebAuthn
+    participant Argon2 as 🔐 Argon2id / TOTP / Email OTP
     participant SpiceDB as 🛡️ SpiceDB (ReBAC)
     participant Redis as ⚡ Valkey / Redis Cache
 
-    Client->>Gateway: POST /api/v1/auth/login (Credentials / Passkey)
+    Client->>Gateway: POST /api/v1/auth/login (Credentials / MFA challenge)
     Gateway->>Gateway: Check Redis Circuit Breaker Rate Limit
     Gateway->>Backend: Forward Auth Request
-    Backend->>Argon2: Verify Password Hash (Argon2id) / WebAuthn Challenge
+    Backend->>Argon2: Verify Password Hash (Argon2id) / TOTP or Email OTP
     Argon2-->>Backend: Authentication Success
     Backend->>SpiceDB: Read User Permissions & Relationships
     SpiceDB-->>Backend: Grant Granted Scopes
@@ -196,7 +196,7 @@ sequenceDiagram
 | **Backend API** | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0, GraphQL | Core business logic, REST & GraphQL APIs | **100%** |
 | **Microservices** | Go 1.26, NATS, gRPC, Temporal Go SDK | High-concurrency WebSockets & media orchestration | **100%** |
 | **Native Performance**| Rust, PyO3, Rayon, Maturin | Microsecond-speed schedule conflict solver & HMAC | **100%** |
-| **Auth & Security** | Argon2id, SpiceDB, WebAuthn/Passkeys, Kyverno, CSRF nonces | Zero-trust ReBAC, hardware MFA & policy enforcement | Verified |
+| **Auth & Security** | Argon2id, SpiceDB, TOTP/email OTP, recovery codes, Kyverno, CSRF nonces | Zero-trust ReBAC, step-up MFA & policy enforcement | Verified |
 | **Data & Cache** | PostgreSQL 17, pgvector, cache Valkey (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Relational/vector data, probabilistic L1/L2 caching, and isolated durable auth revocation | Verified |
 | **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Complete 360° tracing, metrics, profiling & logging | Verified |
 
@@ -227,7 +227,7 @@ for every runtime and Prometheus target:
 
 ## 🛡️ Security & Quality Pillars
 
-- **Hardware/Passkey Auth**: Native **WebAuthn/FIDO2** support alongside **Argon2id** password hashing.
+- **Multi-factor Auth**: **TOTP**, email OTP and one-time recovery codes alongside **Argon2id** password hashing.
 - **Strict Input Validation**: Client-side **Valibot** schemas and gRPC path traversal guards (RZ-27-04).
 - **Malware & SSRF Protection**: In-memory **ClamAV** scanning and strict URL validation blocking internal IP ranges.
 - **Zero-Trust Network Policies**: Kubernetes **Kyverno** admission policies and pod security profiles (`RuntimeDefault`).

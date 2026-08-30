@@ -33,6 +33,29 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
 - Docker Compose has a production override (`docker-compose.prod.yml`) that marks secrets as mandatory. Create the Compose secrets `secret_key`, `database_url`, and `nats_auth_token`, and provide the PostgreSQL password file through `POSTGRES_PASSWORD_SOURCE_FILE`. The `database_url` secret must point to `postgresql+asyncpg://...@pgbouncer:5432/university`. Then run `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d` with `FRONTEND_ORIGIN` and `FRONTEND_ORIGINS` set explicitly; the Go overlay is required because Caddy routes API and WebSocket traffic through gateway/ws-hub.
 - The Helm chart reads connections from the pre-created `university-connections` Secret (all required keys are documented in `charts/university-ecosystem/values.yaml`). In production, set `applicationSecrets.existingSecret`; it must contain the listed JWT/RSA keys, independent HMAC/integration secrets, MinIO credentials, and Temporal API key. Production rendering rejects plaintext MinIO, Temporal, gRPC, and OTLP so unsafe configuration never reaches the cluster or Helm release state.
 
+## Local Docker resource modes
+
+The ordinary `./start-docker.ps1` (and `-Build`/`-Rebuild`) remains the full
+production-like stand and starts every service from `docker-compose.full.yml`.
+For a laptop or a resource-constrained Docker Desktop, opt in explicitly:
+
+```powershell
+.\start-docker.ps1 -Core        # or -Lean
+.\start-docker.ps1 -Core -Build
+```
+
+Core mode uses the same reviewed Compose file but scopes startup to the
+application and required dependencies: PostgreSQL, Valkey, NATS, MinIO,
+SpiceDB, flagd, backend, frontend, gateway, ws-hub, workers, imgproxy, and
+Caddy. File processing and Temporal-backed attachment workflows are intentionally
+unavailable because `file-processor` is omitted. It stops already-running search, Temporal, and observability containers
+(`redis-exporter`, Elasticsearch, Grafana, Prometheus, Tempo, Loki, Alloy,
+Pyroscope, and their probe sidecars) without deleting images or named volumes,
+so switching back to the full mode is lossless. Health checks and Prometheus
+target validation for intentionally omitted services are skipped. Core mode is
+for local resource-constrained runs only; it does not change production
+Compose/Helm defaults or CI quality gates.
+
 ### MFA key rotation with External Secrets Operator
 
 Production deployment requires External Secrets Operator and the GitHub

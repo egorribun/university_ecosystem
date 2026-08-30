@@ -652,6 +652,9 @@ async def test_outbox_redelivery_retries_only_failed_recipients(
         notification_ids=[first_notification.id, second_notification.id],
     )
     await db_session.flush()
+    initial_second_rows = await _delivery_rows_for_user(db_session, second_user.id)
+    assert len(initial_second_rows) == 1
+    assert initial_second_rows[0].detail == "provider unavailable"
 
     async def _successful_retry(
         sub: PushSubscription, _payload: dict[str, object]

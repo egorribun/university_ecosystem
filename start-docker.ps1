@@ -6,14 +6,23 @@
     Builds and starts all Docker containers for the full site.
     Generates secure secrets if .env / .env.docker don't exist.
     Reconciles the MinIO bucket and auxiliary databases on every start.
+    Use -Core (or its -Lean alias) for an explicit local resource-constrained
+    topology that omits search, Temporal, and observability containers while
+    preserving their images and named volumes.
 
 .EXAMPLE
     .\start-docker.ps1            # Start (no rebuild)
     .\start-docker.ps1 -Build     # Build (cached) then start
     .\start-docker.ps1 -Rebuild   # Build (no-cache) then start
+    .\start-docker.ps1 -Core      # Start only the application/core dependencies
     .\start-docker.ps1 -Down      # Stop all containers
     .\start-docker.ps1 -Logs                  # Follow all logs
     .\start-docker.ps1 -Logs -LogService backend  # Follow one service
+
+    The full production-like local stack remains the default.  -Core (also
+    available as -Lean) is an explicit local-development opt-in: it stops any
+    already-running search, Temporal, and observability services without
+    deleting their volumes, then starts only the core application topology.
 #>
 
 param(
@@ -21,6 +30,8 @@ param(
     [switch]$Rebuild,
     [switch]$Down,
     [switch]$Logs,
+    [Alias("Lean")]
+    [switch]$Core,
     [string]$LogService = ""
 )
 
@@ -29,6 +40,71 @@ $ProjectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $ProjectRoot
 
 $ComposeFile = "docker-compose.full.yml"
+# Keep the full compose model as the single source of truth.  Core mode scopes
+# `up`/`build` to this audited allowlist rather than maintaining a second compose
+# file that could silently drift in images, networks, or security settings.
+$CoreBootstrapServices = [string[]]@(
+    "postgres",
+    "redis",
+    "revocation-redis",
+    "minio",
+    "nats",
+    "flagd"
+)
+$CoreInitServices = [string[]]@(
+    "postgres-databases-init",
+    "minio-init",
+    "migrations",
+    "spicedb-migrate"
+)
+$CoreRuntimeServices = [string[]]@(
+    "flagd-healthprobe",
+    "spicedb",
+    "backend",
+    "frontend",
+    "notifications-worker",
+    "outbox-worker",
+    "gateway",
+    "ws-hub",
+    "imgproxy",
+    "caddy"
+)
+$CoreComposeServices = [string[]]@(
+    $CoreBootstrapServices + $CoreInitServices + $CoreRuntimeServices
+)
+# These names are intentionally separate from the health-map aliases below:
+# Compose service names are used to stop already-running optional containers,
+# while health-map keys are human-readable and may use a compact alias.
+$CoreOptionalComposeServices = [string[]]@(
+    "redis-exporter",
+    "elasticsearch",
+    "file-processor",
+    "temporal-admin-tools",
+    "temporal",
+    "temporal-namespace-init",
+    "grafana",
+    "prometheus",
+    "tempo",
+    "tempo-healthprobe",
+    "loki",
+    "loki-healthprobe",
+    "alloy",
+    "pyroscope"
+)
+$CoreExcludedHealthServices = [string[]]@(
+    "redisexporter",
+    "elasticsearch",
+    "fileprocessor",
+    "temporal",
+    "grafana",
+    "prometheus",
+    "tempo",
+    "tempo-healthprobe",
+    "loki",
+    "loki-healthprobe",
+    "alloy",
+    "pyroscope"
+)
 $EnvFile = ".env.docker"
 $WorkerEnvFile = ".env.docker.workers"
 $EnvCompose = ".env"
@@ -40,6 +116,24 @@ function Write-Status  { param([string]$Msg) Write-Host "[*] $Msg" -ForegroundCo
 function Write-Ok      { param([string]$Msg) Write-Host "[+] $Msg" -ForegroundColor Green }
 function Write-Err     { param([string]$Msg) Write-Host "[-] $Msg" -ForegroundColor Red }
 function Write-Warn    { param([string]$Msg) Write-Host "[!] $Msg" -ForegroundColor Yellow }
+
+function Assert-CoreServiceAllowlist {
+    # Core mode is a resource-control boundary, so fail closed if a future
+    # edit accidentally adds an optional service or duplicates an entry.  This
+    # keeps the mode auditable while the full stack remains unchanged.
+    $forbidden = @($CoreOptionalComposeServices)
+    $overlap = @($CoreComposeServices | Where-Object { $_ -in $forbidden })
+    if ($overlap.Count -gt 0) {
+        throw "Core service allowlist includes forbidden optional services: $($overlap -join ', ')"
+    }
+
+    $unique = @($CoreComposeServices | Sort-Object -Unique)
+    if ($unique.Count -ne $CoreComposeServices.Count) {
+        throw "Core service allowlist contains duplicate service names; refusing to start."
+    }
+}
+
+Assert-CoreServiceAllowlist
 
 function New-Secret {
     param([int]$Length = 32)
@@ -737,7 +831,14 @@ if ($Down) {
 if ($Logs) {
     $envArgs = if (Test-Path $EnvFile) { @("--env-file", $EnvFile) } else { @() }
     if ($LogService) {
+        if ($Core -and $LogService -notin $CoreComposeServices) {
+            Write-Err "Core mode only exposes logs for core services. Unknown or optional service: $LogService"
+            exit 2
+        }
         docker compose -f $ComposeFile @envArgs logs -f $LogService
+    } elseif ($Core) {
+        Write-Status "Following core service logs (optional services are excluded)..."
+        docker compose -f $ComposeFile @envArgs logs -f @CoreComposeServices
     } else {
         docker compose -f $ComposeFile @envArgs logs -f
     }
@@ -992,38 +1093,114 @@ if ((Test-Path $EnvFile) -and (Test-Path $EnvCompose)) {
     }
 }
 
+# -- Core resource guard ------------------------------------------------------
+
+if ($Core) {
+    # Stop optional containers before any build work so Docker Desktop can
+    # reclaim their CPU and memory during a potentially expensive image build.
+    # `stop` preserves their named volumes and makes switching back to the
+    # default full mode lossless; no image, network, or data is deleted here.
+    Write-Status "Stopping optional search, Temporal, and observability containers (volumes preserved)..."
+    docker compose -f $ComposeFile --env-file $EnvFile stop @CoreOptionalComposeServices
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Failed to stop optional containers; refusing to start core mode."
+        exit 1
+    }
+}
+
 # -- Build --------------------------------------------------------------------
 
 if ($Rebuild) {
-    Write-Status "Rebuilding ALL images (no cache)..."
-    docker compose -f $ComposeFile --env-file $EnvFile build --no-cache
+    if ($Core) {
+        Write-Status "Rebuilding core images (no cache; optional services are skipped)..."
+        docker compose -f $ComposeFile --env-file $EnvFile build --no-cache @CoreComposeServices
+    } else {
+        Write-Status "Rebuilding ALL images (no cache)..."
+        docker compose -f $ComposeFile --env-file $EnvFile build --no-cache
+    }
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Build failed. Check output above."
         exit 1
     }
-    Write-Ok "All images rebuilt"
+    Write-Ok $(if ($Core) { "Core images rebuilt" } else { "All images rebuilt" })
 } elseif ($Build) {
-    Write-Status "Building images (cached)..."
-    docker compose -f $ComposeFile --env-file $EnvFile build
+    if ($Core) {
+        Write-Status "Building core images (cached; optional services are skipped)..."
+        docker compose -f $ComposeFile --env-file $EnvFile build @CoreComposeServices
+    } else {
+        Write-Status "Building images (cached)..."
+        docker compose -f $ComposeFile --env-file $EnvFile build
+    }
     if ($LASTEXITCODE -ne 0) {
         Write-Err "Build failed. Check output above."
         exit 1
     }
-    Write-Ok "Images built"
+    Write-Ok $(if ($Core) { "Core images built" } else { "Images built" })
 }
 
 # -- Start services -----------------------------------------------------------
 
-Write-Status "Starting containers..."
-# Compose recreates only services whose image or effective configuration
-# changed. This keeps repeat starts fast while --remove-orphans retires services
-# removed from the supported topology.
-docker compose -f $ComposeFile --env-file $EnvFile up -d --remove-orphans
-if ($LASTEXITCODE -ne 0) {
-    Write-Err "Failed to start containers."
-    docker compose -f $ComposeFile --env-file $EnvFile ps --all
-    docker compose -f $ComposeFile --env-file $EnvFile logs --tail=50 migrations postgres-databases-init minio-init spicedb-migrate temporal-admin-tools temporal-namespace-init flagd flagd-healthprobe backend outbox-worker 2>$null
-    exit 1
+if ($Core) {
+    # Keep dependency ordering for the core topology. The gateway depends on a
+    # Tempo health sidecar in the full model, so it is intentionally started in
+    # a final `--no-deps` step after core dependencies are up; no optional
+    # service can be pulled in implicitly.
+    Write-Status "Starting core infrastructure..."
+    docker compose -f $ComposeFile --env-file $EnvFile up -d --remove-orphans $CoreBootstrapServices
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Failed to start core infrastructure."
+        docker compose -f $ComposeFile --env-file $EnvFile ps --all
+        exit 1
+    }
+
+    Write-Status "Starting core database initialization..."
+    docker compose -f $ComposeFile --env-file $EnvFile up -d --remove-orphans $CoreInitServices
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Failed to start core database initialization."
+        docker compose -f $ComposeFile --env-file $EnvFile ps --all
+        docker compose -f $ComposeFile --env-file $EnvFile logs --tail=50 postgres postgres-databases-init minio-init migrations spicedb-migrate 2>$null
+        exit 1
+    }
+
+    Write-Status "Starting core application services..."
+    $coreApplicationServices = @(
+        "flagd-healthprobe",
+        "spicedb",
+        "backend",
+        "frontend",
+        "notifications-worker",
+        "outbox-worker",
+        "ws-hub",
+        "imgproxy"
+    )
+    docker compose -f $ComposeFile --env-file $EnvFile up -d --remove-orphans $coreApplicationServices
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Failed to start core application services."
+        docker compose -f $ComposeFile --env-file $EnvFile ps --all
+        docker compose -f $ComposeFile --env-file $EnvFile logs --tail=50 backend outbox-worker ws-hub 2>$null
+        exit 1
+    }
+
+    Write-Status "Starting gateway and Caddy without optional observability dependencies..."
+    docker compose -f $ComposeFile --env-file $EnvFile up -d --no-deps --remove-orphans gateway caddy
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Failed to start the core edge services."
+        docker compose -f $ComposeFile --env-file $EnvFile ps --all
+        docker compose -f $ComposeFile --env-file $EnvFile logs --tail=50 gateway caddy 2>$null
+        exit 1
+    }
+} else {
+    Write-Status "Starting containers..."
+    # Compose recreates only services whose image or effective configuration
+    # changed. This keeps repeat starts fast while --remove-orphans retires services
+    # removed from the supported topology.
+    docker compose -f $ComposeFile --env-file $EnvFile up -d --remove-orphans
+    if ($LASTEXITCODE -ne 0) {
+        Write-Err "Failed to start containers."
+        docker compose -f $ComposeFile --env-file $EnvFile ps --all
+        docker compose -f $ComposeFile --env-file $EnvFile logs --tail=50 migrations postgres-databases-init minio-init spicedb-migrate temporal-admin-tools temporal-namespace-init flagd flagd-healthprobe backend outbox-worker 2>$null
+        exit 1
+    }
 }
 
 # -- Health check loop --------------------------------------------------------
@@ -1060,6 +1237,17 @@ $services = [ordered]@{
     tempo         = @{ type = "docker"; service = "tempo-healthprobe"; ready = $false }
     alloy         = @{ type = "docker"; service = "alloy"; ready = $false }
     pyroscope     = @{ type = "http"; service = "pyroscope"; url = "http://localhost:4040/ready"; ready = $false }
+}
+
+if ($Core) {
+    # The full map is intentionally kept explicit for the default release-like
+    # path and for review visibility. Core mode removes only the audited
+    # optional probes, so an absent service can never keep the readiness loop
+    # spinning forever.
+    foreach ($name in $CoreExcludedHealthServices) {
+        [void]$services.Remove($name)
+    }
+    Write-Status "Core mode readiness excludes search, Temporal, and observability probes."
 }
 
 do {
@@ -1120,17 +1308,24 @@ if (-not $allReady) {
     exit 1
 }
 
-Write-Status "Validating Prometheus scrape targets..."
-if (-not (Wait-PrometheusTargets)) {
-    Write-Err "Prometheus has missing or unhealthy scrape targets."
-    exit 1
+if (-not $Core) {
+    Write-Status "Validating Prometheus scrape targets..."
+    if (-not (Wait-PrometheusTargets)) {
+        Write-Err "Prometheus has missing or unhealthy scrape targets."
+        exit 1
+    }
+    Write-Ok "Prometheus scrape targets are healthy"
+} else {
+    Write-Status "Skipping Prometheus target validation in core mode (Prometheus is not started)."
 }
-Write-Ok "Prometheus scrape targets are healthy"
 
 # -- Done ---------------------------------------------------------------------
 
 Write-Host ""
 Write-Ok "University Ecosystem is running!"
+if ($Core) {
+    Write-Host "  Mode: CORE (search, Temporal, and observability containers are stopped; volumes are preserved)" -ForegroundColor Yellow
+}
 Write-Host ""
 Write-Host "  >> Site (use this):  http://localhost/" -ForegroundColor Green
 Write-Host "     Caddy reverse proxy routes /api/* -> gateway:8080 -> backend:8000," -ForegroundColor DarkGray
@@ -1164,3 +1359,5 @@ Write-Host "  Logs:      .\start-docker.ps1 -Logs"
 Write-Host "  Logs svc:  .\start-docker.ps1 -Logs -LogService backend"
 Write-Host "  Build:     .\start-docker.ps1 -Build"
 Write-Host "  Rebuild:   .\start-docker.ps1 -Rebuild   (no cache)"
+Write-Host "  Core:      .\start-docker.ps1 -Core     (resource-conscious app stack)"
+Write-Host "  Lean:      .\start-docker.ps1 -Lean     (alias for -Core)"

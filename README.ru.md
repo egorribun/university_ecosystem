@@ -150,14 +150,14 @@ sequenceDiagram
     actor Client as 📱 Клиент (Frontend)
     participant Gateway as 🚀 Go Gateway
     participant Backend as 🐍 FastAPI Backend
-    participant Argon2 as 🔐 Argon2id / WebAuthn
+    participant Argon2 as 🔐 Argon2id / TOTP / Email OTP
     participant SpiceDB as 🛡️ SpiceDB (ReBAC)
     participant Redis as ⚡ Valkey / Redis Cache
 
-    Client->>Gateway: POST /api/v1/auth/login (Пароль / Passkey)
+    Client->>Gateway: POST /api/v1/auth/login (Пароль / MFA-челлендж)
     Gateway->>Gateway: Проверка Redis Circuit Breaker Rate Limit
     Gateway->>Backend: Проксирование запроса авторизации
-    Backend->>Argon2: Валидация хеша пароля (Argon2id) / Челлендж WebAuthn
+    Backend->>Argon2: Валидация хеша пароля (Argon2id) / TOTP или Email OTP
     Argon2-->>Backend: Успешная аутентификация
     Backend->>SpiceDB: Запрос прав и отношений пользователя
     SpiceDB-->>Backend: Ответ с ролями и разрешениями
@@ -196,7 +196,7 @@ sequenceDiagram
 | **Backend API** | FastAPI, Python 3.14, Dishka DI, SQLAlchemy 2.0, GraphQL | Основная бизнес-логика, REST и GraphQL API | **100%** |
 | **Микросервисы** | Go 1.26, NATS, gRPC, Temporal Go SDK | Высоконагруженный чат и обработка медиа | **100%** |
 | **Производительность**| Rust, PyO3, Rayon, Maturin | Нативное вычисление расписания и HMAC | **100%** |
-| **Авторизация** | Argon2id, SpiceDB, WebAuthn/Passkeys, Kyverno, CSRF nonces | Zero-Trust ReBAC, аппаратная MFA и политики | Подтверждено |
+| **Авторизация и безопасность** | Argon2id, SpiceDB, TOTP/email OTP, recovery-коды, Kyverno, CSRF nonces | Zero-Trust ReBAC, step-up MFA и политики | Подтверждено |
 | **Данные и Кэш** | PostgreSQL 17, pgvector, кэш Valkey (`volatile-lru`), revocation Valkey (AOF, `noeviction`) | Реляционные/векторные данные, вероятностный L1/L2 кэш и изолированный отзыв сессий | Подтверждено |
 | **Observability** | OTEL, Tempo, Prometheus, Pyroscope 1.19, Loki + Alloy/Fluent Bit | Полный 360° мониторинг, трассы и логи | Подтверждено |
 
@@ -225,7 +225,7 @@ Copy-Item .env.example .env
 
 ## 🛡️ Безопасность и Стандарты Качества
 
-- **Аппаратная аутентификация**: Поддержка **WebAuthn/FIDO2** (Passkeys) и хеширование паролей **Argon2id**.
+- **Многофакторная аутентификация**: **TOTP**, email OTP и одноразовые recovery-коды вместе с хешированием паролей **Argon2id**.
 - **Строгая валидация**: Схемы **Valibot** на фронтенде и защита от Path Traversal в gRPC.
 - **Антивирусная защита**: Сканирование файлов в **ClamAV** перед сохранением в MinIO S3.
 - **Политики K8s**: Инспекция подов через **Kyverno** и профили `RuntimeDefault`.

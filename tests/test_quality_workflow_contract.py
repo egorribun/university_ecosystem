@@ -1574,6 +1574,30 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
     assert "grep '^app/core/tenant\\.py$'" not in job_text
 
 
+def test_mutation_jobs_never_persist_the_workflow_token() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+    for job_name in (
+        "mutation-tests-stats",
+        "mutation-tests-universe",
+        "mutation-tests-incremental",
+    ):
+        checkout = next(
+            step
+            for step in workflow["jobs"][job_name]["steps"]
+            if str(step.get("uses", "")).startswith("actions/checkout@")
+        )
+        assert checkout["with"]["persist-credentials"] is False
+
+
+def test_pr_code_execution_never_receives_repository_ci_secret() -> None:
+    workflow_text = CI_WORKFLOW_PATH.read_text(encoding="utf-8")
+    workflow = yaml.safe_load(workflow_text)
+
+    assert workflow["env"]["SECRET_KEY"] == ""
+    assert "secrets.CI_TEST_SECRET_KEY" not in workflow_text
+
+
 def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     jobs = workflow["jobs"]

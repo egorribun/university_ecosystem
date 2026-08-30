@@ -284,6 +284,7 @@ async def test_notify_about_event_uses_default_payload_and_active_users(
     assert kwargs["type"] == "events.new"
     assert kwargs["topic"] == "events.published"
     assert kwargs["user_ids"] == active_ids
+    assert kwargs["body"].startswith("Описание события\n")
     assert kwargs["payload_data"]["location"] == "Корпус А"
     assert kwargs["payload_data"]["speaker"] == "Иван Петров"
     assert kwargs["payload_data"]["eventType"] == "Лекция"

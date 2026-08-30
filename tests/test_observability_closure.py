@@ -286,7 +286,7 @@ def test_configure_otel_uses_clamped_sampler_ratio_and_exact_span_processor() ->
         patch.object(observability, "metrics"),
         patch.object(observability, "set_global_textmap"),
         patch.object(observability, "SQLAlchemyInstrumentor"),
-        patch.object(observability, "RedisInstrumentor"),
+        patch.object(observability, "RedisInstrumentor") as redis_instrumentor,
         patch.object(observability, "HTTPXClientInstrumentor"),
     ):
         assert observability._configure_otel(MagicMock()) is tracer_provider
@@ -298,6 +298,9 @@ def test_configure_otel_uses_clamped_sampler_ratio_and_exact_span_processor() ->
     )
     batch.assert_called_once_with(span_exporter)
     tracer_provider.add_span_processor.assert_called_once_with(batch_processor)
+    redis_instrumentor.return_value.instrument.assert_called_once_with(
+        tracer_provider=tracer_provider
+    )
 
 
 def test_configure_otel_optional_pipelines_without_endpoint_or_headers() -> None:
@@ -618,6 +621,7 @@ def test_configure_otel_partial_failure_removes_logging_handler() -> None:
     observability._otel_tracer_provider = None
     observability._otel_meter_provider = None
     root_logger = MagicMock()
+    root_logger.removeHandler.side_effect = RuntimeError("cleanup failed")
 
     with (
         patch.object(observability, "settings", settings),
