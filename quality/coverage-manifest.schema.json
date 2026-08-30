@@ -9,6 +9,7 @@
     "generated_at",
     "manifest_path",
     "source_roots",
+    "coverage_scope",
     "tool_versions",
     "provenance",
     "generation",
@@ -27,6 +28,7 @@
     },
     "manifest_path": {"$ref": "#/$defs/repositoryPath"},
     "source_roots": {"$ref": "#/$defs/sourceRoots"},
+    "coverage_scope": {"$ref": "#/$defs/coverageScope"},
     "tool_versions": {
       "type": "object",
       "minProperties": 1,
@@ -104,6 +106,34 @@
         "infrastructure": {"$ref": "#/$defs/pathArray"},
         "workflows": {"$ref": "#/$defs/pathArray"},
         "scripts": {"$ref": "#/$defs/pathArray"}
+      }
+    },
+    "coverageScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "python",
+        "frontend",
+        "go-gateway",
+        "go-ws-hub",
+        "go-file-processor",
+        "go-shared",
+        "rust-native",
+        "rust-pyo3-sanitizer",
+        "rust-wasm-sanitizer",
+        "rust-crypto"
+      ],
+      "properties": {
+        "python": {"$ref": "#/$defs/pathArray"},
+        "frontend": {"$ref": "#/$defs/pathArray"},
+        "go-gateway": {"$ref": "#/$defs/pathArray"},
+        "go-ws-hub": {"$ref": "#/$defs/pathArray"},
+        "go-file-processor": {"$ref": "#/$defs/pathArray"},
+        "go-shared": {"$ref": "#/$defs/pathArray"},
+        "rust-native": {"$ref": "#/$defs/pathArray"},
+        "rust-pyo3-sanitizer": {"$ref": "#/$defs/pathArray"},
+        "rust-wasm-sanitizer": {"$ref": "#/$defs/pathArray"},
+        "rust-crypto": {"$ref": "#/$defs/pathArray"}
       }
     },
     "pathArray": {

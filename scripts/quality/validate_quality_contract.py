@@ -9,7 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal, localcontext
 from pathlib import Path, PurePosixPath, PureWindowsPath
@@ -33,6 +33,18 @@ COMPONENTS = (
     "infrastructure",
     "workflows",
     "scripts",
+)
+COVERAGE_COMPONENTS = (
+    "python",
+    "frontend",
+    "go-gateway",
+    "go-ws-hub",
+    "go-file-processor",
+    "go-shared",
+    "rust-native",
+    "rust-pyo3-sanitizer",
+    "rust-wasm-sanitizer",
+    "rust-crypto",
 )
 COMPONENT_FLOORS = (
     ("lines", 100),
@@ -61,6 +73,7 @@ TOP_LEVEL_KEYS = frozenset(
         "components",
         "tier0",
         "source_roots",
+        "coverage_scope",
         "coverage_reports",
         "manifest_path",
         "exclusions",
@@ -574,6 +587,57 @@ def _validate_source_roots(value: object, errors: list[str]) -> None:
             seen.add(path)
 
 
+def _validate_coverage_scope(
+    value: object,
+    source_roots_value: object,
+    errors: list[str],
+) -> None:
+    """Validate the toolchain-measured subset of each source root.
+
+    ``source_roots`` is the identity boundary for report paths.  A coverage
+    producer may intentionally measure a narrower, independently verified
+    subset: the Python producer uses ``--cov=app`` while Alembic revisions are
+    exercised by the dedicated PostgreSQL migration gate.  Keeping this scope
+    explicit prevents a filesystem walk from silently turning an unmeasured
+    structural source into a false coverage obligation.
+    """
+    scope = _require_object(value, "coverage_scope", errors)
+    if scope is None:
+        return
+    _validate_exact_keys(
+        scope, "coverage_scope", frozenset(COVERAGE_COMPONENTS), errors
+    )
+
+    source_roots = source_roots_value if isinstance(source_roots_value, dict) else {}
+    for component in COVERAGE_COMPONENTS:
+        if component not in scope:
+            continue
+        roots = scope[component]
+        if not isinstance(roots, list) or not roots:
+            errors.append(f"coverage_scope.{component} must be a non-empty array")
+            continue
+        seen: set[str] = set()
+        configured_source_roots = source_roots.get(component, ())
+        if not isinstance(configured_source_roots, list):
+            configured_source_roots = ()
+        for index, root in enumerate(roots):
+            field = f"coverage_scope.{component}[{index}]"
+            path = _validate_repository_path(root, field, errors)
+            if path is None:
+                continue
+            if "\\" in path or PurePosixPath(path).as_posix() != path:
+                errors.append(f"{field} must use canonical POSIX separators")
+            if path in seen:
+                errors.append(f"{field} duplicates an earlier coverage root")
+            seen.add(path)
+            if not any(
+                path == source_root or path.startswith(f"{source_root}/")
+                for source_root in configured_source_roots
+                if isinstance(source_root, str)
+            ):
+                errors.append(f"{field} must be contained by source_roots.{component}")
+
+
 def _validate_coverage_reports(value: object, errors: list[str]) -> None:
     if not isinstance(value, list):
         errors.append("coverage_reports must be a list")
@@ -661,6 +725,12 @@ def validate_contract(contract: dict[str, object], *, today: date) -> list[str]:
         _validate_tier0(contract["tier0"], errors)
     if "source_roots" in contract:
         _validate_source_roots(contract["source_roots"], errors)
+    if "coverage_scope" in contract:
+        _validate_coverage_scope(
+            contract["coverage_scope"],
+            contract.get("source_roots"),
+            errors,
+        )
     if "coverage_reports" in contract:
         _validate_coverage_reports(contract["coverage_reports"], errors)
     if "manifest_path" in contract:
@@ -953,44 +1023,200 @@ def _source_suffixes(component: str) -> frozenset[str]:
     return frozenset()
 
 
-def _is_production_source(path: str, component: str) -> bool:
+def _expand_source_policy_braces(pattern: str) -> tuple[str, ...]:
+    """Expand the small brace-pattern dialect used by the Vitest policy."""
+    match = re.search(r"\{([^{}]+)\}", pattern)
+    if match is None:
+        return (pattern,)
+    return tuple(
+        expanded
+        for alternative in match.group(1).split(",")
+        for expanded in _expand_source_policy_braces(
+            pattern[: match.start()] + alternative + pattern[match.end() :]
+        )
+    )
+
+
+def _source_policy_glob_matches(path: str, pattern: str) -> bool:
+    """Match a POSIX repository path with ``**`` also matching zero folders."""
+    candidates = {pattern}
+    pending = [pattern]
+    while pending:
+        candidate = pending.pop()
+        start = 0
+        while (index := candidate.find("/**/", start)) >= 0:
+            shortened = candidate[:index] + "/" + candidate[index + 4 :]
+            if shortened not in candidates:
+                candidates.add(shortened)
+                pending.append(shortened)
+            start = index + 1
+    return any(fnmatch.fnmatchcase(path, candidate) for candidate in candidates)
+
+
+def _path_is_under_root(path: str, root: str) -> bool:
+    normalized_path = path.replace("\\", "/")
+    normalized_root = root.replace("\\", "/").rstrip("/")
+    return normalized_path == normalized_root or normalized_path.startswith(
+        f"{normalized_root}/"
+    )
+
+
+def _tier0_source_requires_coverage(
+    component: str,
+    path: str,
+    coverage_scope: Mapping[str, object],
+) -> bool:
+    """Whether the active producer is expected to emit coverage for a file.
+
+    Applicability is deliberately contract-driven.  ``source_roots`` remains
+    the report identity boundary, while ``coverage_scope`` is the exact set of
+    roots instrumented by the producer (Python uses ``--cov=app``).  No
+    component-specific filename exception is allowed here: a future toolchain
+    change must update the contract and its producer together.
+    """
+    roots = coverage_scope.get(component)
+    return isinstance(roots, list) and any(
+        isinstance(root, str) and _path_is_under_root(path, root) for root in roots
+    )
+
+
+def _load_frontend_source_policy(
+    repository_root: Path,
+) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+    """Load the canonical frontend production-source policy.
+
+    A malformed or absent policy is represented as ``None``.  The caller then
+    falls back to conservative filename filters; any resulting manifest drift
+    is still rejected by the Tier0 inventory comparison.
+    """
+    path = repository_root / "quality" / "coverage-source-policy.json"
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        frontend = document["frontend"]
+        include = frontend["include"]
+        exclude = frontend["exclude"]
+        if (
+            not isinstance(include, list)
+            or not isinstance(exclude, list)
+            or not include
+            or not exclude
+            or not all(isinstance(value, str) and value for value in include)
+            or not all(isinstance(value, str) and value for value in exclude)
+        ):
+            return None
+    except (OSError, UnicodeDecodeError, TypeError, KeyError, ValueError):
+        return None
+    return (
+        tuple(
+            expanded
+            for value in include
+            for expanded in _expand_source_policy_braces(f"frontend/{value}")
+        ),
+        tuple(
+            expanded
+            for value in exclude
+            for expanded in _expand_source_policy_braces(f"frontend/{value}")
+        ),
+    )
+
+
+def _is_production_source(
+    path: str,
+    component: str,
+    frontend_policy: tuple[tuple[str, ...], tuple[str, ...]] | None = None,
+) -> bool:
     pure = PurePosixPath(path)
     if pure.suffix not in _source_suffixes(component):
         return False
     lowered = pure.name.lower()
     if component.startswith("go-") and lowered.endswith("_test.go"):
         return False
-    if component == "frontend" and (
-        ".test." in lowered or ".spec." in lowered or "__tests__" in pure.parts
-    ):
-        return False
-    if component.startswith("rust-") and "tests" in pure.parts:
-        return False
+    if component == "frontend":
+        if frontend_policy is not None:
+            include, exclude = frontend_policy
+            return any(
+                _source_policy_glob_matches(path, pattern) for pattern in include
+            ) and not any(
+                _source_policy_glob_matches(path, pattern) for pattern in exclude
+            )
+        if (
+            ".test." in lowered
+            or ".spec." in lowered
+            or ".stories." in lowered
+            or "__tests__" in pure.parts
+            or "test" in pure.parts
+            or ("api" in pure.parts and "generated" in pure.parts)
+            or lowered in {"setuptests.ts", "routetree.gen.ts"}
+            or lowered.endswith(".d.ts")
+        ):
+            return False
+    if component.startswith("rust-"):
+        lowered_parts = {part.casefold() for part in pure.parts}
+        if lowered_parts.intersection({"tests", "benches", "fuzz", "target"}):
+            return False
+        if lowered in {"tests.rs", "test.rs"}:
+            return False
     return True
+
+
+def _tracked_source_paths(
+    repository_root: Path,
+    roots: Sequence[str],
+) -> tuple[str, ...]:
+    """Read source paths from Git's index, never from mutable build output."""
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        raise ValueError("unable to inventory tracked sources: git is unavailable")
+    try:
+        result = subprocess.run(  # noqa: S603
+            [git_executable, "ls-files", "-z", "--", *roots],
+            cwd=repository_root,
+            check=True,
+            capture_output=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise ValueError(
+            f"unable to inventory tracked sources with git ls-files: {error}"
+        ) from error
+    try:
+        return tuple(
+            sorted(path.decode("utf-8") for path in result.stdout.split(b"\0") if path)
+        )
+    except UnicodeDecodeError as error:
+        raise ValueError(
+            "unable to inventory tracked sources: Git path is not UTF-8"
+        ) from error
 
 
 def _expected_tier0_inventory(
     repository_root: Path,
     source_roots: dict[str, object],
     rules: list[str],
+    coverage_scope: dict[str, object],
 ) -> set[tuple[str, str]]:
+    """Return Tier0 files that the active coverage producers can measure.
+
+    ``source_roots`` remains the report identity boundary, while
+    ``coverage_scope`` is the explicit producer scope.  In particular, the
+    Python report is produced with ``--cov=app``; Alembic revisions remain
+    structurally validated by the migration job and are not fabricated as
+    Python coverage evidence.
+    """
     inventory: set[tuple[str, str]] = set()
+    frontend_policy = _load_frontend_source_policy(repository_root)
+    scope = coverage_scope
     for component in COMPONENTS:
-        roots = cast(list[object], source_roots[component])
-        for root_value in roots:
-            if not isinstance(root_value, str):
+        if component not in COVERAGE_COMPONENTS or component not in scope:
+            continue
+        roots = cast(list[object], scope[component])
+        root_values = [root for root in roots if isinstance(root, str)]
+        for relative in _tracked_source_paths(repository_root, root_values):
+            if not _is_production_source(relative, component, frontend_policy):
                 continue
-            root = repository_root.joinpath(*PurePosixPath(root_value).parts)
-            if not root.is_dir() or _is_link_or_junction(root):
+            if not _tier0_source_requires_coverage(component, relative, scope):
                 continue
-            for source in root.rglob("*"):
-                if not source.is_file() or _is_link_or_junction(source):
-                    continue
-                relative = source.relative_to(repository_root).as_posix()
-                if not _is_production_source(relative, component):
-                    continue
-                if any(_tier0_rule_matches(relative, rule) for rule in rules):
-                    inventory.add((component, relative))
+            if any(_tier0_rule_matches(relative, rule) for rule in rules):
+                inventory.add((component, relative))
     return inventory
 
 
@@ -1156,11 +1382,31 @@ def _validate_tier0_manifest(
         )
     files = cast(list[object], tier0["files"])
     source_roots = cast(dict[str, object], manifest["source_roots"])
-    expected_inventory = _expected_tier0_inventory(
-        repository_root,
-        source_roots,
-        rules,
+    manifest_scope_value = manifest.get("coverage_scope")
+    contract_scope_value = contract.get("coverage_scope")
+    if manifest_scope_value != contract_scope_value:
+        errors.append("coverage_scope does not match the quality contract")
+    # Schema validation already requires an object.  Keep a fail-closed empty
+    # scope for malformed direct callers so no unscoped source can silently
+    # become an expected Tier0 obligation.
+    coverage_scope = (
+        cast(dict[str, object], manifest_scope_value)
+        if isinstance(manifest_scope_value, dict)
+        else {}
     )
+    try:
+        expected_inventory = _expected_tier0_inventory(
+            repository_root,
+            source_roots,
+            rules,
+            coverage_scope,
+        )
+    except ValueError as error:
+        # A missing/failed Git inventory is not equivalent to an empty source
+        # tree.  Continue collecting schema/metric diagnostics, but fail
+        # closed with an explicit evidence error.
+        errors.append(str(error))
+        expected_inventory = set()
     actual_inventory: set[tuple[str, str]] = set()
     measured_by_metric: dict[str, list[dict[str, object]]] = {
         metric: [] for metric in METRICS
@@ -1189,6 +1435,8 @@ def _validate_tier0_manifest(
             if isinstance(root, str)
         ):
             errors.append(f"tier0 file {path} is outside source_roots.{component}")
+        if not _tier0_source_requires_coverage(component, path, coverage_scope):
+            errors.append(f"tier0 file {path} is outside coverage_scope.{component}")
         if not any(_tier0_rule_matches(path, rule) for rule in rules):
             errors.append(f"tier0 file {path} does not match a declared Tier0 rule")
         floors = _contract_component_floors(contract, component)
@@ -1209,8 +1457,10 @@ def _validate_tier0_manifest(
 
     for missing in sorted(expected_inventory - actual_inventory):
         errors.append(f"Tier0 source inventory is missing evidence for {missing[1]}")
-    for extra in sorted(actual_inventory - expected_inventory):
-        errors.append(f"tier0.files contains unexpected source {extra[1]}")
+    for component, extra_path in sorted(actual_inventory - expected_inventory):
+        if not _tier0_source_requires_coverage(component, extra_path, coverage_scope):
+            continue
+        errors.append(f"tier0.files contains unexpected source {extra_path}")
 
     summaries = cast(dict[str, object], tier0["metric_summary"])
     aggregate = cast(dict[str, object], tier0["coverage"])
@@ -1385,6 +1635,8 @@ def validate_manifest_evidence(
 
     if manifest["source_roots"] != contract["source_roots"]:
         errors.append("source_roots do not match the quality contract")
+    if manifest["coverage_scope"] != contract["coverage_scope"]:
+        errors.append("coverage_scope does not match the quality contract")
     validation = cast(dict[str, object], manifest["validation"])
     if validation["valid"] is not True:
         errors.append("validation.valid must be true")

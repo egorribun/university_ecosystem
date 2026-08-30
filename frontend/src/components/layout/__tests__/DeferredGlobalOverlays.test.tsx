@@ -119,8 +119,8 @@ describe("DeferredGlobalOverlays", () => {
       expect(screen.getByTestId("deferred-search")).toBeInTheDocument()
       expect(cancelIdleCallback).not.toHaveBeenCalled()
     } finally {
-      delete (window as Window & { requestIdleCallback?: unknown }).requestIdleCallback
-      delete (window as Window & { cancelIdleCallback?: unknown }).cancelIdleCallback
+      Reflect.deleteProperty(window, "requestIdleCallback")
+      Reflect.deleteProperty(window, "cancelIdleCallback")
     }
   })
 
@@ -168,8 +168,8 @@ describe("DeferredGlobalOverlays", () => {
         await Promise.resolve()
       })
     } finally {
-      delete (window as Window & { requestIdleCallback?: unknown }).requestIdleCallback
-      delete (window as Window & { cancelIdleCallback?: unknown }).cancelIdleCallback
+      Reflect.deleteProperty(window, "requestIdleCallback")
+      Reflect.deleteProperty(window, "cancelIdleCallback")
     }
   })
 
@@ -193,7 +193,7 @@ describe("DeferredGlobalOverlays", () => {
     const addEventListenerSpy = vi.spyOn(window, "addEventListener")
     const { unmount } = render(<DeferredGlobalOverlays />)
     const keydownCall = addEventListenerSpy.mock.calls.find(
-      ([eventName]) => eventName === "keydown"
+      ([eventName]) => String(eventName) === "keydown"
     )
     const promoteOnInteraction = keydownCall?.[1] as EventListener | undefined
 
@@ -235,8 +235,8 @@ describe("DeferredGlobalOverlays", () => {
         await Promise.resolve()
       })
     } finally {
-      delete (window as Window & { requestIdleCallback?: unknown }).requestIdleCallback
-      delete (window as Window & { cancelIdleCallback?: unknown }).cancelIdleCallback
+      Reflect.deleteProperty(window, "requestIdleCallback")
+      Reflect.deleteProperty(window, "cancelIdleCallback")
     }
   })
 })

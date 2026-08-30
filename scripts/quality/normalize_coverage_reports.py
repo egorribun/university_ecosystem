@@ -93,6 +93,22 @@ COVERAGE_CONTROL_PATHS = (
 )
 FRONTEND_COVERAGE_INCLUDE: tuple[str, ...] = ()
 FRONTEND_COVERAGE_EXCLUDE: tuple[str, ...] = ()
+COVERAGE_SCOPE_ROOTS = {
+    "python": ("app",),
+    "frontend": ("frontend/src",),
+    "go-gateway": ("services/gateway",),
+    "go-ws-hub": ("services/ws-hub",),
+    "go-file-processor": ("services/file-processor",),
+    "go-shared": (
+        "services/cmd/uni-cli",
+        "services/pkg/spiffe",
+        "services/pkg/spicedb",
+    ),
+    "rust-native": ("native/rust_ext",),
+    "rust-pyo3-sanitizer": ("crates/pyo3-sanitizer",),
+    "rust-wasm-sanitizer": ("frontend/wasm-sanitizer",),
+    "rust-crypto": ("frontend/rust-crypto",),
+}
 TIER0_AGGREGATE_DERIVATION = "sum of applicable Tier0 file metrics"
 SOURCE_ROOTS = {
     "python": ("app", "alembic/versions"),
@@ -252,13 +268,19 @@ class _PreparedInvocation:
     provenance: dict[str, str]
     tool_versions: dict[str, str]
     contract: dict[str, object]
+    # Full source roots are the canonical report identity boundary.  Coverage
+    # scope is kept separately for Tier0 applicability so structural reports
+    # (for example supplied Alembic records) remain accepted without being
+    # mistaken for pytest-cov evidence.
     source_inventory: dict[str, frozenset[str]]
+    coverage_inventory: dict[str, frozenset[str]]
 
 
 @dataclass(frozen=True)
 class _ContractConfiguration:
     floors: dict[str, dict[str, int]]
     source_roots: dict[str, tuple[str, ...]]
+    coverage_scope: dict[str, tuple[str, ...]]
     expected_reports: frozenset[tuple[str, str, str]]
     manifest_path: str
     contract: dict[str, object]
@@ -563,6 +585,17 @@ def _canonical_source_identity(component: str, raw_path: str) -> str:
         ):
             if source_parts[0].casefold() not in OTHER_ROOTS:
                 source_parts = ("app", *source_parts)
+            else:
+                # Cobertura emitted by coverage.py with ``source = ["app"]``
+                # strips the leading ``app/`` segment.  A module such as
+                # ``app/services/foo.py`` therefore appears as
+                # ``services/foo.py`` and is otherwise indistinguishable from
+                # a repository-root path.  Resolve this ambiguity only when
+                # the corresponding authored module exists below ``app``;
+                # unknown root-level paths remain rejected below.
+                app_alias = REPOSITORY_ROOT.joinpath("app", *source_parts)
+                if app_alias.is_file() and not _is_link_or_junction(app_alias):
+                    source_parts = ("app", *source_parts)
     elif component == "go-gateway":
         if len(source_parts) >= 3 and source_parts[:3] == (
             "github.com",
@@ -599,6 +632,14 @@ def _canonical_source_identity(component: str, raw_path: str) -> str:
             "spiffe",
         ):
             source_parts = ("services", "pkg", "spiffe", *source_parts[5:])
+        elif len(source_parts) >= 5 and source_parts[:5] == (
+            "github.com",
+            "university-ecosystem",
+            "services",
+            "pkg",
+            "spicedb",
+        ):
+            source_parts = ("services", "pkg", "spicedb", *source_parts[5:])
 
     _reject_source_symlink_parts(source_parts)
     if not _source_path_is_within_component_root(component, source_parts):
@@ -1215,6 +1256,27 @@ def _coverage_py_branch_set(value: object, field: str) -> set[tuple[int, int]]:
     return result
 
 
+def _coverage_py_source_has_branch_exclusion(source: str) -> bool:
+    """Whether a source module opts out of branch arcs via coverage pragmas.
+
+    coverage.py keeps summary branch counters for ``# pragma: no branch``
+    clauses but omits those arcs from ``executed_branches`` and
+    ``missing_branches``.  The omission is valid only when the checked-out
+    source explicitly carries that pragma; an absent or unreadable source
+    cannot be used to justify a summary/detail mismatch.
+    """
+    path = REPOSITORY_ROOT.joinpath(*PurePosixPath(source).parts)
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+    return any(
+        marker in line
+        for line in text.splitlines()
+        for marker in ("pragma: no branch", "pragma: no cover")
+    )
+
+
 def _parse_python_coverage_json(
     raw: bytes,
     component: str,
@@ -1303,17 +1365,42 @@ def _parse_python_coverage_json(
             raise _InputError(
                 f"coverage.py JSON files[{raw_source}] branch inventories overlap"
             )
-        if branch_metric["covered"] != len(executed_branches) or branch_metric[
-            "total"
-        ] != len(executed_branches | missing_branches):
+        _coverage_py_line_set(
+            record.get("excluded_lines", []),
+            f"files[{raw_source}].excluded_lines",
+        )
+        detailed_branches = executed_branches | missing_branches
+        detailed_covered = len(executed_branches)
+        detailed_total = len(detailed_branches)
+        summary_covered = cast(int, branch_metric["covered"])
+        summary_total = cast(int, branch_metric["total"])
+        # coverage.py intentionally omits arcs whose source line is excluded
+        # (for example ``if TYPE_CHECKING`` blocks) from the detailed arc
+        # arrays, while retaining those arcs in the file summary counters.
+        # Require all omitted arcs to be covered and require the checked-out
+        # source itself to explain the omission with a coverage pragma.  A
+        # report-declared ``excluded_lines`` list alone is not trustworthy:
+        # accepting it would let a forged artifact inflate branch totals by
+        # naming arbitrary lines.
+        omitted_total = summary_total - detailed_total
+        omitted_covered = summary_covered - detailed_covered
+        if (
+            detailed_covered > summary_covered
+            or detailed_total > summary_total
+            or omitted_total != omitted_covered
+            or (omitted_total and not _coverage_py_source_has_branch_exclusion(source))
+        ):
             raise _InputError(
                 f"coverage.py JSON files[{raw_source}] branch summary disagrees with "
                 "executed_branches/missing_branches"
             )
         aggregate_statements_covered += len(executed_lines)
         aggregate_statements_total += len(executed_lines | missing_lines)
-        aggregate_branches_covered += len(executed_branches)
-        aggregate_branches_total += len(executed_branches | missing_branches)
+        # Use coverage.py's summary counters for aggregates.  They include
+        # covered arcs omitted from detailed arrays because their source lines
+        # are excluded, whereas the arrays alone do not.
+        aggregate_branches_covered += summary_covered
+        aggregate_branches_total += summary_total
         file_metrics[source] = {
             "lines": _unmeasured_metric(
                 "unsupported", reason_code="coverage_json_line_counter_not_used"
@@ -1796,9 +1883,25 @@ def _parse_rust_crypto_source_function_pair(
             try:
                 identities.append(_canonical_source_identity(component, filename))
             except _InputError as error:
-                if ignore_outside_files and (
-                    "outside the repository" in str(error)
-                    or "configured roots" in str(error)
+                error_text = str(error)
+                # cargo llvm-cov includes dependency monomorphizations in the
+                # detailed function list.  Their filenames point into the
+                # runner's Cargo registry rather than the checked-out source
+                # tree; they are not source functions and must not poison an
+                # otherwise valid in-repository report.  Keep configured-root
+                # violations strict unless the caller explicitly opted into
+                # outside-file handling.
+                if (
+                    "outside the repository" in error_text
+                    or (ignore_outside_files and "configured roots" in error_text)
+                    or (
+                        # A POSIX cargo registry path is parsed as a root-relative
+                        # path on Windows, where ``Path`` cannot represent it as
+                        # an absolute path.  Its leading slash still proves that
+                        # it is external to this checkout.
+                        filename.replace("\\", "/").startswith("/")
+                        and "must not be root-relative on Windows" in error_text
+                    )
                 ):
                     continue
                 raise
@@ -2747,8 +2850,36 @@ def _tracked_source_is_coverable(component: str, relative_path: str) -> bool:
             and not lowered_name.startswith("mock_")
         )
     if component.startswith("rust-"):
-        return pure.suffix.casefold() == ".rs" and "tests" not in pure.parts
+        # cargo llvm-cov's production library target does not instrument
+        # standalone fuzz/benchmark targets, generated build output, or
+        # test-only modules.  Those targets have their own dedicated quality
+        # gates; including them in the coverage inventory would demand
+        # evidence no supported report can produce.
+        lowered_parts = {part.casefold() for part in pure.parts}
+        return (
+            pure.suffix.casefold() == ".rs"
+            and not lowered_parts.intersection({"tests", "benches", "fuzz", "target"})
+            and lowered_name not in {"tests.rs", "test.rs"}
+        )
     return False
+
+
+def _tier0_source_requires_coverage(component: str, relative_path: str) -> bool:
+    """Return whether the active coverage toolchain can measure a Tier-0 file.
+
+    The Python CI producer invokes pytest-cov with ``--cov=app``.  Alembic
+    revisions remain part of the canonical Python source roots (so a supplied
+    migration report is still normalized and validated), but they are
+    exercised by the dedicated PostgreSQL migration gate rather than that
+    coverage producer.  Treating their absence from the aggregate as a
+    missing coverage artifact would create a false Tier-0 failure; it would
+    not improve the actual migration safety evidence.
+    """
+    normalized = relative_path.replace("\\", "/")
+    roots = COVERAGE_SCOPE_ROOTS.get(component, ())
+    return any(
+        normalized == root or normalized.startswith(f"{root}/") for root in roots
+    )
 
 
 def _glob_matches_path(path: str, pattern: str) -> bool:
@@ -2782,12 +2913,15 @@ def _matches_frontend_coverage_policy(relative_path: str) -> bool:
     return included and not excluded
 
 
-def _tracked_source_inventory() -> dict[str, frozenset[str]]:
+def _tracked_source_inventory(
+    roots_by_component: Mapping[str, Sequence[str]] | None = None,
+) -> dict[str, frozenset[str]]:
     inventory: dict[str, frozenset[str]] = {}
+    roots_config = SOURCE_ROOTS if roots_by_component is None else roots_by_component
     for component in COVERAGE_COMPONENTS:
         tracked = _decode_git_paths(
             _git_output(
-                ["ls-files", "-z", "--", *SOURCE_ROOTS[component]],
+                ["ls-files", "-z", "--", *roots_config[component]],
                 f"inventory tracked sources for {component}",
             ),
             f"inventory tracked sources for {component}",
@@ -3031,12 +3165,26 @@ def _load_contract(path: Path, generated_at: datetime) -> _ContractConfiguration
                 f"malformed contract: source_roots.{component} must be a string array"
             )
         source_roots[component] = tuple(roots)
+    raw_coverage_scope = contract["coverage_scope"]
+    if not isinstance(raw_coverage_scope, dict):
+        raise _InputError("malformed contract: coverage_scope must be an object")
+    coverage_scope: dict[str, tuple[str, ...]] = {}
+    for component in COVERAGE_COMPONENTS:
+        roots = raw_coverage_scope[component]
+        if not isinstance(roots, list) or not all(
+            isinstance(root, str) for root in roots
+        ):
+            raise _InputError(
+                f"malformed contract: coverage_scope.{component} must be a string array"
+            )
+        coverage_scope[component] = tuple(roots)
     manifest_path = contract["manifest_path"]
     if not isinstance(manifest_path, str):
         raise _InputError("malformed contract: manifest_path must be a string")
     return _ContractConfiguration(
         floors=floors,
         source_roots=source_roots,
+        coverage_scope=coverage_scope,
         expected_reports=expected_reports,
         manifest_path=manifest_path,
         contract=contract,
@@ -3528,49 +3676,44 @@ def _tier0_source_suffixes(component: str) -> frozenset[str]:
     return frozenset()
 
 
-def _expected_tier0_sources(rules: Sequence[str]) -> set[tuple[str, str]]:
+def _expected_tier0_sources(
+    rules: Sequence[str],
+    source_inventory: Mapping[str, Sequence[str]] | None = None,
+) -> set[tuple[str, str]]:
+    """Return Tier0 sources from the canonical tracked-source inventory.
+
+    Coverage reports are produced for the clean Git ``HEAD`` snapshot.  Walks
+    of the mutable filesystem would accidentally include ignored compiler
+    output (notably Rust ``target/`` files), so Tier0 expectations must be
+    derived from the same ``git ls-files`` inventory used by structural report
+    validation.
+    """
     expected: set[tuple[str, str]] = set()
-    for component, roots in SOURCE_ROOTS.items():
-        suffixes = _tier0_source_suffixes(component)
-        if not suffixes:
-            continue
-        for root_value in roots:
-            root = REPOSITORY_ROOT / root_value
-            if not root.is_dir() or _is_link_or_junction(root):
-                continue
-            for source in root.rglob("*"):
-                if not source.is_file() or _is_link_or_junction(source):
-                    continue
-                relative = source.relative_to(REPOSITORY_ROOT).as_posix()
-                pure = PurePosixPath(relative)
-                if pure.suffix not in suffixes:
-                    continue
-                lowered = pure.name.lower()
-                if component.startswith("go-") and lowered.endswith("_test.go"):
-                    continue
-                if component == "frontend" and (
-                    ".test." in lowered
-                    or ".spec." in lowered
-                    or "__tests__" in pure.parts
-                ):
-                    continue
-                if component.startswith("rust-") and "tests" in pure.parts:
-                    continue
-                if any(_tier0_rule_matches(relative, rule) for rule in rules):
-                    expected.add((component, relative))
+    inventory = (
+        _tracked_source_inventory() if source_inventory is None else source_inventory
+    )
+    for component, sources in inventory.items():
+        for relative in sources:
+            if _tier0_source_requires_coverage(component, relative) and any(
+                _tier0_rule_matches(relative, rule) for rule in rules
+            ):
+                expected.add((component, relative))
     return expected
 
 
 def _aggregate_tier0(
     reports_by_component: defaultdict[str, list[_ParsedReport]],
     floors: dict[str, dict[str, int]],
+    source_inventory: Mapping[str, Sequence[str]] | None = None,
 ) -> dict[str, object]:
     rules, rules_error = _load_tier0_rules()
     file_records: list[tuple[str, str, dict[str, dict[str, object]]]] = []
     for component in COMPONENTS:
         for report in reports_by_component[component]:
             for path, metrics in report.file_metrics.items():
-                if any(_tier0_rule_matches(path, rule) for rule in rules):
+                if _tier0_source_requires_coverage(component, path) and any(
+                    _tier0_rule_matches(path, rule) for rule in rules
+                ):
                     file_records.append((path, component, metrics))
 
     deduplicated: dict[tuple[str, str], dict[str, dict[str, object]]] = {}
@@ -3582,10 +3725,12 @@ def _aggregate_tier0(
     if rules_error:
         errors.append(rules_error)
     actual_inventory = {(component, path) for path, component in deduplicated}
-    expected_inventory = _expected_tier0_sources(rules)
+    expected_inventory = _expected_tier0_sources(rules, source_inventory)
     for _, path in sorted(expected_inventory - actual_inventory):
         errors.append(f"Tier0 source inventory is missing evidence for {path}")
-    for _, path in sorted(actual_inventory - expected_inventory):
+    for component, path in sorted(actual_inventory - expected_inventory):
+        if not _tier0_source_requires_coverage(component, path):
+            continue
         errors.append(f"Tier0 evidence contains unexpected source {path}")
 
     measured_by_metric: dict[str, list[dict[str, object]]] = {
@@ -3719,13 +3864,16 @@ def _prepare_invocation(arguments: argparse.Namespace) -> _PreparedInvocation:
             )
 
     configuration = _load_contract(contract_path, generated_at)
-    global FRONTEND_COVERAGE_EXCLUDE, FRONTEND_COVERAGE_INCLUDE, SOURCE_ROOTS
+    global COVERAGE_SCOPE_ROOTS, FRONTEND_COVERAGE_EXCLUDE
+    global FRONTEND_COVERAGE_INCLUDE, SOURCE_ROOTS
     SOURCE_ROOTS = configuration.source_roots
+    COVERAGE_SCOPE_ROOTS = configuration.coverage_scope
     FRONTEND_COVERAGE_INCLUDE, FRONTEND_COVERAGE_EXCLUDE = (
         _load_frontend_coverage_policy()
     )
     _validate_clean_source_snapshot(contract_path)
-    source_inventory = _tracked_source_inventory()
+    source_inventory = _tracked_source_inventory(SOURCE_ROOTS)
+    coverage_inventory = _tracked_source_inventory(COVERAGE_SCOPE_ROOTS)
     if _lexical_manifest_path(output_path) != configuration.manifest_path:
         raise _InputError(
             f"output must equal contract manifest_path {configuration.manifest_path}"
@@ -3752,6 +3900,7 @@ def _prepare_invocation(arguments: argparse.Namespace) -> _PreparedInvocation:
         tool_versions=_parse_tool_versions(arguments.tool_version),
         contract=configuration.contract,
         source_inventory=source_inventory,
+        coverage_inventory=coverage_inventory,
     )
 
 
@@ -3971,7 +4120,11 @@ def _build_manifest(
             invocation.expected_reports - supplied_declaration_set
         )
     ]
-    tier0 = _aggregate_tier0(reports_by_component, floors)
+    tier0 = _aggregate_tier0(
+        reports_by_component,
+        floors,
+        invocation.coverage_inventory,
+    )
     tier0_errors = tier0["errors"]
     if isinstance(tier0_errors, list):
         validation_errors.extend(str(error) for error in tier0_errors)
@@ -3983,6 +4136,10 @@ def _build_manifest(
         "manifest_path": invocation.manifest_path,
         "source_roots": {
             component: list(SOURCE_ROOTS[component]) for component in COMPONENTS
+        },
+        "coverage_scope": {
+            component: list(COVERAGE_SCOPE_ROOTS[component])
+            for component in COVERAGE_COMPONENTS
         },
         "tool_versions": invocation.tool_versions,
         "provenance": invocation.provenance,

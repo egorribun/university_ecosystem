@@ -159,6 +159,21 @@ def test_normalizer_v2_rejects_sha_mismatch_before_writing(evidence_repo: Path) 
     assert not (evidence_repo / "artifacts/coverage/quality-manifest.json").exists()
 
 
+def test_normalizer_v2_rejects_coverage_scope_outside_source_roots(
+    evidence_repo: Path,
+) -> None:
+    contract_path = evidence_repo / "quality/quality-contract.json"
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    contract["coverage_scope"]["python"] = ["services/gateway"]
+    contract_path.write_text(json.dumps(contract), encoding="utf-8")
+
+    result = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert result.returncode == 2
+    assert "coverage_scope.python[0]" in result.stderr
+    assert not (evidence_repo / "artifacts/coverage/quality-manifest.json").exists()
+
+
 @pytest.mark.parametrize(
     "fault",
     [
@@ -343,7 +358,12 @@ def test_normalizer_v2_preserves_alembic_source_identity_and_inventory(
             encoding="utf-8"
         )
     )
-    assert any(item["path"] == alembic_path for item in manifest["tier0"]["files"])
+    # Alembic revisions remain canonical report identities but are outside the
+    # pytest-cov producer scope (``--cov=app``).  They are validated by the
+    # dedicated PostgreSQL migration gate rather than fabricated as Tier0
+    # Python coverage evidence.
+    assert manifest["coverage_scope"]["python"] == ["app"]
+    assert not any(item["path"] == alembic_path for item in manifest["tier0"]["files"])
 
 
 @pytest.mark.parametrize("mutation", ["modified", "deleted", "untracked"])
@@ -443,6 +463,40 @@ def test_normalizer_v2_frontend_inventory_matches_vitest_production_scope(
     result = _run(evidence_repo, _full_arguments(evidence_repo))
 
     assert result.returncode == 0, result.stderr
+
+
+def test_normalizer_v2_tier0_inventory_uses_tracked_sources_only(
+    evidence_repo: Path,
+) -> None:
+    """Ignored Rust build output must not become a Tier0 source obligation."""
+    ownership = evidence_repo / "quality/ownership-mapping.json"
+    ownership.write_text(
+        json.dumps({"tier0_rules": ["native/rust_ext/**"]}), encoding="utf-8"
+    )
+    _commit_all(evidence_repo, "cover Rust production sources as Tier0")
+
+    exclude = evidence_repo / ".git" / "info" / "exclude"
+    exclude.write_text(
+        exclude.read_text(encoding="utf-8") + "\nnative/rust_ext/target/\n",
+        encoding="utf-8",
+    )
+    generated = evidence_repo / "native/rust_ext/target/release/generated.rs"
+    generated.parent.mkdir(parents=True, exist_ok=True)
+    generated.write_text("pub fn generated() {}\n", encoding="utf-8")
+
+    result = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert result.returncode == 0, result.stderr
+    manifest = json.loads(
+        (evidence_repo / "artifacts/coverage/quality-manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    tier0_paths = {
+        item["path"] for item in manifest["tier0"]["files"] if isinstance(item, dict)
+    }
+    assert "native/rust_ext/src/lib.rs" in tier0_paths
+    assert not any(path.startswith("native/rust_ext/target/") for path in tier0_paths)
 
 
 def test_normalizer_v2_reads_frontend_inventory_from_shared_source_policy(
@@ -592,7 +646,8 @@ def test_normalizer_v2_zero_unit_tier0_derivation_validates_end_to_end(
     migration.write_text("revision = '20260825'\n", encoding="utf-8")
     ownership = evidence_repo / "quality/ownership-mapping.json"
     ownership.write_text(
-        json.dumps({"tier0_rules": ["alembic/versions/**"]}), encoding="utf-8"
+        json.dumps({"tier0_rules": ["**/spicedb/**", "alembic/versions/**"]}),
+        encoding="utf-8",
     )
     _commit_all(evidence_repo, "add zero-unit Tier0 source")
 
@@ -638,7 +693,7 @@ def test_normalizer_v2_zero_unit_tier0_derivation_validates_end_to_end(
             encoding="utf-8"
         )
     )
-    functions = manifest["tier0"]["coverage"]["functions"]
-    assert functions["status"] == "derived"
-    assert functions["derivation"] == "sum of applicable Tier0 file metrics"
+    tier0_paths = {item["path"] for item in manifest["tier0"]["files"]}
+    assert "services/pkg/spicedb/client.go" in tier0_paths
+    assert migration_path not in tier0_paths
     assert manifest["validation"] == {"valid": True, "errors": []}

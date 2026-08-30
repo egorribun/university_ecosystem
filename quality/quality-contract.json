@@ -27,6 +27,22 @@
     "workflows": [".github/workflows"],
     "scripts": ["scripts"]
   },
+  "coverage_scope": {
+    "python": ["app"],
+    "frontend": ["frontend/src"],
+    "go-gateway": ["services/gateway"],
+    "go-ws-hub": ["services/ws-hub"],
+    "go-file-processor": ["services/file-processor"],
+    "go-shared": [
+      "services/cmd/uni-cli",
+      "services/pkg/spiffe",
+      "services/pkg/spicedb"
+    ],
+    "rust-native": ["native/rust_ext"],
+    "rust-pyo3-sanitizer": ["crates/pyo3-sanitizer"],
+    "rust-wasm-sanitizer": ["frontend/wasm-sanitizer"],
+    "rust-crypto": ["frontend/rust-crypto"]
+  },
   "components": {
     "python": {"coverage": {"lines": 100, "statements": 100, "branches": 100, "functions": 0}},
     "frontend": {"coverage": {"lines": 100, "statements": 100, "branches": 100, "functions": 100}},

@@ -78,6 +78,29 @@ def _valid_manifest_fixture(
     tier0_source = tmp_path / "services" / "pkg" / "spicedb" / "client.go"
     tier0_source.parent.mkdir(parents=True, exist_ok=True)
     tier0_source.write_text("package spicedb\n", encoding="utf-8")
+    # Tier0 inventory is intentionally Git-backed.  Keep the fixture source
+    # in the index so the manifest exercises the same tracked HEAD contract as
+    # the production validator (coverage artifacts remain untracked evidence).
+    assert GIT_EXECUTABLE is not None
+    subprocess.run(  # noqa: S603
+        [GIT_EXECUTABLE, "add", "services/pkg/spicedb/client.go"],
+        cwd=tmp_path,
+        check=True,
+    )
+    subprocess.run(  # noqa: S603
+        [
+            GIT_EXECUTABLE,
+            "-c",
+            "user.email=test@example.invalid",
+            "-c",
+            "user.name=Quality Test",
+            "commit",
+            "-qm",
+            "track Tier0 source",
+        ],
+        cwd=tmp_path,
+        check=True,
+    )
     reports: list[dict[str, object]] = []
     for index, declaration in enumerate(contract["coverage_reports"]):
         path = tmp_path / declaration["path"]
@@ -120,6 +143,7 @@ def _valid_manifest_fixture(
         "generated_at": "2026-08-25T12:00:00Z",
         "manifest_path": contract["manifest_path"],
         "source_roots": contract["source_roots"],
+        "coverage_scope": contract["coverage_scope"],
         "tool_versions": {
             "coverage.py": "7.10.0",
             "cargo-llvm-cov": "0.6.19",
@@ -230,6 +254,37 @@ def test_v2_manifest_accepts_go_tier0_na_only_for_zero_floor(
     assert (
         _validate(validator, manifest, contract, manifest_path, git_evidence_root) == []
     )
+
+
+def test_v2_manifest_rejects_coverage_scope_drift(
+    git_evidence_root: Path,
+) -> None:
+    validator = _load_validator()
+    contract, manifest, manifest_path = _valid_manifest_fixture(git_evidence_root)
+    manifest["coverage_scope"] = copy.deepcopy(contract["coverage_scope"])
+    manifest["coverage_scope"]["python"] = ["app/subtree"]
+
+    errors = _validate(validator, manifest, contract, manifest_path, git_evidence_root)
+
+    assert any("coverage_scope" in error for error in errors)
+
+
+def test_v2_manifest_rejects_tier0_source_outside_coverage_scope(
+    git_evidence_root: Path,
+) -> None:
+    validator = _load_validator()
+    contract, manifest, manifest_path = _valid_manifest_fixture(git_evidence_root)
+    migration_path = git_evidence_root / "alembic/versions/20260825_example.py"
+    migration_path.parent.mkdir(parents=True, exist_ok=True)
+    migration_path.write_text("revision = '20260825'\n", encoding="utf-8")
+    forged = copy.deepcopy(manifest["tier0"]["files"][0])
+    forged["path"] = "alembic/versions/20260825_example.py"
+    forged["component"] = "python"
+    manifest["tier0"]["files"] = [forged]
+
+    errors = _validate(validator, manifest, contract, manifest_path, git_evidence_root)
+
+    assert any("outside coverage_scope.python" in error for error in errors)
 
 
 @pytest.mark.parametrize("commit_sha", ["a1b2c3d", "A" * 40, "0" * 39, "g" * 40])
@@ -532,6 +587,8 @@ def test_schema_v2_models_provenance_integrity_and_rust_branch_format() -> None:
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
     assert schema["properties"]["schema_version"]["const"] == 2
+    assert "coverage_scope" in schema["required"]
+    assert schema["properties"]["coverage_scope"]["$ref"] == "#/$defs/coverageScope"
     assert {"manifest_path", "tool_versions", "provenance", "generation"}.issubset(
         schema["required"]
     )

@@ -213,6 +213,32 @@ def test_rejects_every_supported_component_floor_below_100(tmp_path: Path) -> No
         assert f"{field} must be at least 100" in result.stderr
 
 
+def test_rejects_coverage_scope_outside_declared_source_roots(tmp_path: Path) -> None:
+    contract = _load_contract()
+    coverage_scope = contract["coverage_scope"]
+    assert isinstance(coverage_scope, dict)
+    coverage_scope["python"] = ["services/gateway"]
+
+    result = _run_contract(tmp_path, contract)
+
+    assert result.returncode == 1
+    assert (
+        "coverage_scope.python[0] must be contained by source_roots.python"
+        in result.stderr
+    )
+
+
+def test_rejects_missing_coverage_scope_without_traceback(tmp_path: Path) -> None:
+    contract = _load_contract()
+    del contract["coverage_scope"]
+
+    result = _run_contract(tmp_path, contract)
+
+    assert result.returncode == 1
+    assert "contract is missing required key: coverage_scope" in result.stderr
+    assert "Traceback" not in result.stderr
+
+
 @pytest.mark.parametrize(
     "metric",
     ("lines", "statements", "branches", "functions", "tier0"),

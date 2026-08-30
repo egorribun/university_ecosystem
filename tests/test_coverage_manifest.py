@@ -1099,6 +1099,14 @@ def test_rust_crypto_function_floor_ignores_wasm_bindgen_generated_wrappers(
                                 "filenames": [source_path],
                                 "regions": [[17, 1, 17, 2, 0, 0, 0, 0]],
                             },
+                            {
+                                "name": "proptest::sugar::external_dependency",
+                                "count": 1,
+                                "filenames": [
+                                    "/home/runner/.cargo/registry/src/proptest-1.11.0/src/sugar.rs"
+                                ],
+                                "regions": [[3, 1, 3, 2, 1, 0, 0, 0]],
+                            },
                         ],
                     }
                 ]
@@ -1234,6 +1242,10 @@ def test_canonical_source_identity_rejects_every_root_directory_itself(
             "services/pkg/spiffe/spiffe.go",
         ),
         (
+            "github.com/university-ecosystem/services/pkg/spicedb/client.go",
+            "services/pkg/spicedb/client.go",
+        ),
+        (
             "university-ecosystem/services/pkg/spicedb/client.go",
             "services/pkg/spicedb/client.go",
         ),
@@ -1246,6 +1258,113 @@ def test_go_shared_normalizes_every_module_prefix(
     normalizer = _normalizer_module()
 
     assert normalizer._canonical_source_identity("go-shared", raw_path) == expected
+
+
+def test_python_source_identity_maps_coverage_source_app_aliases() -> None:
+    normalizer = _normalizer_module()
+    normalizer._configure_repository_root(str(REPOSITORY_ROOT))
+
+    assert (
+        normalizer._canonical_source_identity("python", "scripts/backfill_uuids.py")
+        == "app/scripts/backfill_uuids.py"
+    )
+    assert (
+        normalizer._canonical_source_identity("python", "core/nats_broker.py")
+        == "app/core/nats_broker.py"
+    )
+    with pytest.raises(normalizer._InputError, match="configured roots"):
+        normalizer._canonical_source_identity("python", "scripts/not-a-module.py")
+
+
+def test_python_coverage_json_accepts_omitted_excluded_branch_arcs() -> None:
+    normalizer = _normalizer_module()
+    normalizer._configure_repository_root(str(REPOSITORY_ROOT))
+    report = json.dumps(
+        {
+            "meta": {"version": "7.0.0"},
+            "files": {
+                "app/api/validation.py": {
+                    "executed_lines": [1],
+                    "missing_lines": [],
+                    "excluded_lines": [18, 19],
+                    "executed_branches": [[1, 2]],
+                    "missing_branches": [],
+                    "summary": {
+                        "covered_lines": 1,
+                        "num_statements": 1,
+                        "covered_branches": 2,
+                        "num_branches": 2,
+                    },
+                }
+            },
+            "totals": {
+                "covered_lines": 1,
+                "num_statements": 1,
+                "covered_branches": 2,
+                "num_branches": 2,
+            },
+        }
+    ).encode()
+
+    metrics, _ = normalizer._parse_python_coverage_json(report, "python")
+
+    assert metrics["branches"] == {
+        "covered": 2,
+        "total": 2,
+        "percent": 100.0,
+        "status": "native",
+    }
+
+
+def test_python_coverage_json_rejects_forged_excluded_branch_arcs() -> None:
+    normalizer = _normalizer_module()
+    normalizer._configure_repository_root(str(REPOSITORY_ROOT))
+    report = json.dumps(
+        {
+            "meta": {"version": "7.0.0"},
+            "files": {
+                "app/main.py": {
+                    "executed_lines": [1],
+                    "missing_lines": [],
+                    # A non-empty report field cannot authorize omitted arcs;
+                    # the checked-out source must contain a coverage pragma.
+                    "excluded_lines": [1],
+                    "executed_branches": [[1, 2]],
+                    "missing_branches": [],
+                    "summary": {
+                        "covered_lines": 1,
+                        "num_statements": 1,
+                        "covered_branches": 2,
+                        "num_branches": 2,
+                    },
+                }
+            },
+            "totals": {
+                "covered_lines": 1,
+                "num_statements": 1,
+                "covered_branches": 2,
+                "num_branches": 2,
+            },
+        }
+    ).encode()
+
+    with pytest.raises(normalizer._InputError, match="branch summary disagrees"):
+        normalizer._parse_python_coverage_json(report, "python")
+
+
+def test_rust_coverage_inventory_excludes_non_production_targets() -> None:
+    normalizer = _normalizer_module()
+
+    assert normalizer._tracked_source_is_coverable(
+        "rust-native", "native/rust_ext/src/lib.rs"
+    )
+    for relative_path in (
+        "native/rust_ext/src/tests.rs",
+        "native/rust_ext/benches/bench.rs",
+        "native/rust_ext/fuzz/fuzz_target.rs",
+        "native/rust_ext/target/debug/generated.rs",
+    ):
+        assert not normalizer._tracked_source_is_coverable("rust-native", relative_path)
 
 
 def test_xml_root_only_source_path_is_a_structural_evidence_error(

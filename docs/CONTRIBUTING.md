@@ -42,6 +42,12 @@ Welcome to the **University Ecosystem Platform** contribution guide. Please foll
   - CI enforces the per-component thresholds from the
     [quality contract](../quality/quality-contract.json); do not duplicate or
     lower them in feature changes.
+  - In the v2 coverage manifest, `source_roots` is the canonical report
+    identity boundary while `coverage_scope` names the roots actually measured
+    by each producer. Python coverage intentionally scopes to `app`; Alembic
+    revisions remain reportable under `source_roots` and are verified by the
+    PostgreSQL migration gate rather than treated as implicit coverage
+    exclusions.
   - Run the canonical commands in the [testing guide](../TESTING.md) before
     opening a PR.
 - **Exception Handling Conventions**:

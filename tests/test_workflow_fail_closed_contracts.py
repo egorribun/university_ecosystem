@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import shlex
 import tomllib
@@ -534,6 +535,39 @@ def test_helm_squawk_and_trivy_are_real_blocking_gates() -> None:
     assert "set -euo pipefail" in heads["run"]
     assert "uv run alembic heads" in heads["run"]
     assert "|| true" not in heads["run"]
+
+
+def test_python_coverage_scope_and_migration_gate_are_explicit() -> None:
+    """Keep migration safety evidence separate from pytest-cov inventory.
+
+    ``source_roots.python`` intentionally includes Alembic revisions so report
+    identities stay canonical.  The backend producer measures only ``app``;
+    the PostgreSQL migration job therefore remains the structural/round-trip
+    gate for revisions instead of relying on a hidden normalizer exception.
+    """
+    contract = json.loads(
+        (ROOT / "quality" / "quality-contract.json").read_text(encoding="utf-8")
+    )
+    assert contract["source_roots"]["python"] == ["app", "alembic/versions"]
+    assert contract["coverage_scope"]["python"] == ["app"]
+
+    workflow = _workflow(CI)
+    migration_job = workflow["jobs"]["alembic-migrations"]
+    migration_runs = "\n".join(
+        step.get("run", "") for step in migration_job["steps"] if isinstance(step, dict)
+    )
+    assert "uv run alembic" in migration_runs
+    assert "upgrade head" in migration_runs
+    assert "downgrade" in migration_runs
+
+    reusable = _workflow(WORKFLOWS / "reusable-backend-tests.yml")
+    pytest_runs = "\n".join(
+        step.get("run", "")
+        for step in reusable["jobs"]["unit-tests"]["steps"]
+        if isinstance(step, dict)
+    )
+    assert "--cov=app" in pytest_runs
+    assert "--cov=alembic/versions" not in pytest_runs
 
 
 def test_spectral_upload_is_optional_but_enforcement_is_not() -> None:
