@@ -392,14 +392,18 @@ def test_mutation_matrix_publishes_bounded_capacity_telemetry() -> None:
     assert 'echo "- $matrix_summary"' in matrix_step["run"]
     assert 'echo "- $descriptor_summary"' in matrix_step["run"]
     assert "scheduler queue p50/p95" in matrix_step["run"]
-    assert 'echo "- Mutmut producer max concurrency: 11"' in matrix_step["run"]
-    assert 'echo "- Stryker producer max concurrency: 9"' in matrix_step["run"]
+    assert 'echo "- Mutmut producer max concurrency: 20"' in matrix_step["run"]
+    assert 'echo "- Stryker producer max concurrency: 20"' in matrix_step["run"]
+    assert "global hosted-runner cap: 20" in matrix_step["run"]
 
-    assert runners["strategy"]["max-parallel"] == 11
-    assert stryker["strategy"]["max-parallel"] == 9
-    assert (
-        runners["strategy"]["max-parallel"] + stryker["strategy"]["max-parallel"] == 20
-    )
+    # Each matrix family may request the complete observed hosted-runner cap.
+    # GitHub's scheduler owns aggregate capacity, so do not encode an exact
+    # cross-family split or reservation here.
+    for family in (runners, stryker):
+        max_parallel = family["strategy"]["max-parallel"]
+        assert isinstance(max_parallel, int)
+        assert 1 <= max_parallel <= 20
+        assert max_parallel == 20
     assert runners["strategy"]["matrix"] == (
         "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
     )
@@ -591,6 +595,32 @@ def test_incremental_go_mutation_never_converts_tool_failure_to_success() -> Non
     assert "treating this known tool panic as advisory" not in mutation
     assert 'pipeline_status=("${PIPESTATUS[@]}")' in mutation
     assert "Unable to persist go-mutesting output" in mutation
+
+
+def test_go_coverage_retry_is_bounded_and_remains_fail_closed() -> None:
+    """A transient profile miss may be retried once without weakening the gate."""
+
+    job = _workflow(WORKFLOWS / "reusable-go-tests.yml")["jobs"]["test"]
+    coverage_step = _step(job, "Check coverage threshold")["run"]
+
+    assert "set -euo pipefail" in coverage_step
+    assert 'THRESHOLD="$COVERAGE_THRESHOLD"' in coverage_step
+    assert 'grep -vE "\\.pb\\.go|_mock\\.go|mock_|/gen/go"' in coverage_step
+    assert "go tool cover -func=coverage.out" in coverage_step
+    assert "Coverage rows below 100%" in coverage_step
+    assert "printing diagnostics and retrying once" in coverage_step
+    retry_command = "go test -v -race -count=1 -coverprofile=coverage.out ./..."
+    assert coverage_step.count(retry_command) == 1
+    assert "bounded retry exhausted" in coverage_step
+    assert 'if is_below_threshold "$COVERAGE"; then' in coverage_step
+    assert "exit 1" in coverage_step
+    # The retry replaces the profile and independently rechecks the same
+    # threshold; no exclusion, `continue-on-error`, or unconditional success
+    # path may be introduced.
+    assert "coverage.out coverage.filtered.out" in coverage_step
+    assert "continue-on-error" not in coverage_step
+    assert "exit 0" not in coverage_step
+    assert "COVERAGE_THRESHOLD=" not in coverage_step
 
 
 def test_mutation_scope_diff_failures_cannot_look_like_empty_changes() -> None:

@@ -1620,7 +1620,8 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert universe_job["timeout-minutes"] == 35
     assert universe_job["needs"] == ["pre-commit-check", "mutation-tests-stats"]
     assert mutation_job["strategy"]["fail-fast"] is False
-    assert mutation_job["strategy"]["max-parallel"] == 11
+    assert 1 <= mutation_job["strategy"]["max-parallel"] <= 20
+    assert mutation_job["strategy"]["max-parallel"] == 20
     assert mutation_job["strategy"]["matrix"] == (
         "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
     )
@@ -1874,7 +1875,8 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
     assert mutation_job["strategy"]["matrix"] == (
         "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
     )
-    assert mutation_job["strategy"]["max-parallel"] == 11
+    assert 1 <= mutation_job["strategy"]["max-parallel"] <= 20
+    assert mutation_job["strategy"]["max-parallel"] == 20
 
     selection_step = _step_named(
         mutation_job, "Validate selected mutmut execution matrix entry"
@@ -1912,10 +1914,12 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
 def test_mutation_jobs_cache_only_lock_bound_uv_packages() -> None:
     """Mutation fan-out must reuse immutable packages, never execution evidence.
 
-    A PR mutation run starts up to eight stats workers and up to nine
-    exact-mutant workers at once.  The package cache is keyed by the locked dependency
-    graph; the per-run mutmut universe and execution proofs remain
-    attempt-scoped artifacts and are deliberately not part of that cache.
+    A PR mutation run starts up to eight stats workers and permits up to twenty
+    exact-mutant workers per execution family; GitHub's global hosted-runner cap
+    owns aggregate admission when families overlap.  The package cache is keyed
+    by the locked dependency graph; the per-run mutmut universe and execution
+    proofs remain attempt-scoped artifacts and are deliberately not part of that
+    cache.
     """
 
     workflows_and_jobs = (
@@ -3630,7 +3634,8 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert "workflow_dispatch" not in mutation_condition
     assert mutation_shards["name"].endswith("/64")
     assert mutation_shards["strategy"]["fail-fast"] is False
-    assert mutation_shards["strategy"]["max-parallel"] == 9
+    assert 1 <= mutation_shards["strategy"]["max-parallel"] <= 20
+    assert mutation_shards["strategy"]["max-parallel"] == 20
     assert mutation_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
     assert mutation_shards["timeout-minutes"] == 120
     assert mutation_shards["needs"] == ["pre-commit-check", "stryker-preflight"]
