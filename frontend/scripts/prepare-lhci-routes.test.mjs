@@ -11,6 +11,8 @@ test("LHCI preparation adds the mode class after post-build html attributes", ()
 
   assert.match(prepared, /<html data-render-mode="static-spa" lang="ru" class="lhci-mode">/u)
   assert.match(prepared, /\.lhci-mode \.aurora-mesh::after/u)
+  assert.match(prepared, /\.lhci-mode \.skeleton\s*\{/u)
+  assert.match(prepared, /\.lhci-mode \.skeleton::after/u)
   assert.match(prepared, /animation:\s*none\s*!important/u)
 })
 

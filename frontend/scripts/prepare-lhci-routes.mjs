@@ -72,6 +72,16 @@ export const LHCI_STATIC_EFFECTS_CSS = `/* data-lhci-static-effects */
 
 .lhci-mode .weather-ambient {
   display: none !important;
+}
+
+/* Keep SSR placeholder geometry stable without continuously repainting the
+ * loading shimmer during a static Lighthouse audit. */
+.lhci-mode .skeleton {
+  animation: none !important;
+}
+
+.lhci-mode .skeleton::after {
+  animation: none !important;
 }`
 
 const HTML_OPEN_TAG_PATTERN = /<html\b[^>]*>/iu

@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import test from "node:test"
 
-import strykerConfig, { mutationThresholds } from "../stryker.config.mjs"
+import strykerConfig, { mutationRunnerReuse, mutationThresholds } from "../stryker.config.mjs"
 
 const frontendRoot = new URL("../", import.meta.url)
 const repositoryRoot = new URL("../../", import.meta.url)
@@ -61,6 +61,24 @@ test("Stryker mutation scope is derived from the complete frontend coverage deno
     strykerConfig.dryRunTimeoutMinutes,
     15,
     "Stryker's initial test run deadline must be explicit and long enough for the full suite"
+  )
+})
+
+test("Stryker reuses workers indefinitely on CI while retaining the Windows leak guard", () => {
+  assert.equal(
+    mutationRunnerReuse({}, "linux"),
+    0,
+    "Linux CI should avoid restarting Vitest workers between every few mutants"
+  )
+  assert.equal(
+    mutationRunnerReuse({}, "win32"),
+    4,
+    "Windows keeps the bounded reuse default for native-handle stability"
+  )
+  assert.equal(mutationRunnerReuse({ STRYKER_MAX_TEST_RUNNER_REUSE: "8" }, "linux"), 8)
+  assert.throws(
+    () => mutationRunnerReuse({ STRYKER_MAX_TEST_RUNNER_REUSE: "-1" }, "linux"),
+    /non-negative integer/u
   )
 })
 

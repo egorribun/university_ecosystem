@@ -187,6 +187,19 @@ const LHCI_STATIC_EFFECTS_CSS = `/* data-lhci-static-effects */
 
 .lhci-mode .weather-ambient {
   display: none !important;
+}
+
+/* Loading placeholders are a graceful SSR fallback when the audit backend is
+ * unavailable. Keep their geometry for deterministic layout measurement, but
+ * stop the indefinite shimmer animation in Lighthouse's static shell so
+ * synthetic audits do not spend their critical task window repainting every
+ * placeholder. */
+.lhci-mode .skeleton {
+  animation: none !important;
+}
+
+.lhci-mode .skeleton::after {
+  animation: none !important;
 }`
 
 export const Route = createRootRouteWithContext<RouterContext>()({

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -54,7 +55,12 @@ def _email_service() -> EmailOtpService:
 def test_dead_letter_digest_uses_the_canonical_ascii_codec() -> None:
     """Queue correlation digests use the documented lowercase ASCII codec."""
 
-    assert "ascii" in notification_queue._dead_letter_batch_digest.__code__.co_consts
+    # mutmut replaces the implementation with a trampoline wrapper, so the
+    # wrapper's code object does not retain the implementation constants. Read
+    # the checked-out module source instead; the mutant changes this literal to
+    # ``ASCII`` and must therefore fail the canonical spelling contract.
+    source = Path(notification_queue.__file__).read_text(encoding="utf-8")
+    assert '.encode("ascii")' in source
     job_ids = [
         uuid.UUID("bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb"),
         uuid.UUID("aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa"),

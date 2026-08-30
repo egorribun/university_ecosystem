@@ -48,6 +48,27 @@ export function mutationThresholds(isShardProducer = process.env.STRYKER_SHARD_R
 }
 
 /**
+ * Keep mutation workers alive on CI so every few mutants does not trigger a
+ * fresh Vitest process and its dependency-graph startup cost. Stryker's
+ * documented default is zero (unlimited reuse); Windows retains the bounded
+ * value that protects against native-handle leaks observed in local runs.
+ * An explicit environment override is available for controlled diagnostics.
+ */
+export function mutationRunnerReuse(env = process.env, platform = process.platform) {
+  const raw = env?.STRYKER_MAX_TEST_RUNNER_REUSE ?? (platform === "win32" ? "4" : "0")
+  if (typeof raw !== "string" || !/^\d+$/u.test(raw)) {
+    throw new Error("STRYKER_MAX_TEST_RUNNER_REUSE must be a non-negative integer")
+  }
+  const value = Number(raw)
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error("STRYKER_MAX_TEST_RUNNER_REUSE must be a non-negative integer")
+  }
+  return value
+}
+
+const maxTestRunnerReuse = mutationRunnerReuse()
+
+/**
  * Full authored-frontend mutation gate. The source universe is shared with
  * coverage and the post-run inventory proves that every denominator file was
  * either mutated or explicitly accounted for as generating zero mutants.
@@ -94,12 +115,13 @@ export default {
   jsonReporter: { fileName: jsonReport },
   htmlReporter: { fileName: htmlReport },
   thresholds: mutationThresholds(),
-  // Keep the mutation runner bounded on Windows and CI hosts where Vitest's
-  // jsdom workers can retain native handles between mutations. The aggregate
-  // threshold remains 100%; producer shards only persist evidence and never
-  // authorize a release on their own.
+  // Linux CI keeps workers alive to avoid restarting Vitest after every few
+  // mutants. Windows uses the bounded default from mutationRunnerReuse because
+  // native handles can persist between mutations. The aggregate threshold
+  // remains 100%; producer shards only persist evidence and never authorize a
+  // release on their own.
   concurrency: Number.parseInt(process.env.STRYKER_CONCURRENCY ?? "2", 10),
-  maxTestRunnerReuse: 4,
+  maxTestRunnerReuse,
   cleanTempDir: "always",
   // Keep an explicit bounded deadline for the related-mode discovery pass.
   // Mutation thresholds remain fail-closed at 100%; the outer shard timeout is

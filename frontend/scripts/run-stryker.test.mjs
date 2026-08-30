@@ -315,6 +315,41 @@ test("splits a heavy source into disjoint mutation ranges when the requested fan
   assert.ok(plan.every(({ mutantCount }) => mutantCount <= 3))
 })
 
+test("fine-grains large first-attempt universes to distribute expensive source regions", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index * 2, column: 0 },
+        end: { line: index * 2, column: 4 },
+      },
+    }))
+  const preflight = new Map([
+    ["src/heavy.ts", { mutants: makeMutants("src/heavy.ts", 4_000) }],
+    ...Array.from({ length: 8 }, (_, index) => {
+      const file = `src/light-${index}.ts`
+      return [file, { mutants: makeMutants(file, 1_000) }]
+    }),
+  ])
+
+  const plan = planMutationShards(preflight, 750, 64)
+  const assignments = plan.flatMap(({ files }) => files)
+
+  assert.equal(plan.length, 64)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    12_000
+  )
+  assert.ok(
+    assignments.filter((pattern) => pattern.startsWith("src/heavy.ts:")).length > 1,
+    "large source regions must be split before logical shard packing"
+  )
+  assert.ok(assignments.every((pattern) => !pattern.endsWith(".ts")))
+})
+
 test("reconstructs locations and canonical signatures from serialized preflight entries", async () => {
   const { mutationPatternCoversMutant, mutationSignature, planMutationShards } = await import(
     runnerUrl

@@ -8,8 +8,12 @@ export const EventCardSkeleton: FC = () => {
         {/* Media Skeleton */}
         <div className="mb-4">
           <Skeleton
-            height="clamp(17.5rem, 50vw, 23.75rem)"
-            className="w-full aspect-video max-h-50 rounded-lg"
+            // Keep the fallback geometry identical to EventCardView's
+            // responsive hero (h-48 / sm:h-52). The previous fluid height
+            // was substantially taller than the rendered card and made the
+            // loading grid reserve avoidable space on narrow and desktop
+            // viewports.
+            className="w-full h-48 sm:h-52 rounded-lg"
           />
         </div>
 

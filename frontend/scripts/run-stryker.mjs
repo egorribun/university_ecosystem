@@ -371,6 +371,17 @@ function splitMutationUnits({ file, mutants, budget, estimatedCost }) {
   return groups
 }
 
+// A first Stryker attempt has no historical cost model.  A one-file assignment
+// can therefore hide a disproportionate number of static mutants (which must
+// execute the complete test suite) behind an otherwise balanced mutant count.
+// Keep the public logical shard count stable, but create fine-grained source
+// ranges before packing those shards so expensive regions are spread across
+// multiple runners.  The threshold avoids changing the compact deterministic
+// plans used by small local/test inventories; every consumer reconstructs the
+// same plan from the exact preflight universe.
+const largeMutationUniverseThreshold = 10_000
+const firstAttemptUnitSplitFactor = 16
+
 export function planMutationShards(
   preflightByFile,
   targetMutants = 750,
@@ -405,9 +416,13 @@ export function planMutationShards(
     throw new Error("Requested mutation shard count is invalid")
   }
   const requestedOrTargetShardCount = requestedShardCount ?? Math.ceil(totalMutants / targetMutants)
-  const unitBudget = requestedShardCount
+  const requestedUnitBudget = requestedShardCount
     ? Math.max(1, Math.ceil(totalMutants / requestedShardCount))
     : targetMutants
+  const unitBudget =
+    requestedShardCount !== undefined && totalMutants >= largeMutationUniverseThreshold
+      ? Math.max(1, Math.ceil(requestedUnitBudget / firstAttemptUnitSplitFactor))
+      : requestedUnitBudget
   const weightedUnits = sourceEntries.flatMap(({ file, mutantCount, estimatedCost }) => {
     const mutants = preflightByFile.get(file)?.mutants ?? []
     return splitMutationUnits({
