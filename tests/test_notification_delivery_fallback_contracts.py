@@ -19,6 +19,36 @@ def _rows(values: list[object]) -> MagicMock:
 
 
 @pytest.mark.asyncio
+async def test_deliver_and_process_uses_shared_default_deliverer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The shared boundary must resolve and invoke the default fan-out lazily."""
+
+    expected = delivery.WebPushResult(
+        subscription_id=uuid4(),
+        endpoint="https://push.example.test/subscription",
+        user_id=uuid4(),
+        status="sent",
+        status_code=201,
+    )
+    deliverer = AsyncMock(return_value=[expected])
+    process = AsyncMock()
+    monkeypatch.setattr(
+        "app.services.push_service.deliver_push_to_subscriptions", deliverer
+    )
+    monkeypatch.setattr(delivery.webpush_module, "process_push_results", process)
+
+    payload = {"title": "Test"}
+    outcome = await delivery.deliver_and_process_push_results(
+        [], payload, topic=None, concurrency=7
+    )
+
+    assert outcome == [expected]
+    deliverer.assert_awaited_once_with([], payload, topic=None, concurrency=7)
+    process.assert_awaited_once_with([expected])
+
+
+@pytest.mark.asyncio
 async def test_redelivery_uses_safe_url_and_unknown_metric_type_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

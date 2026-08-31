@@ -5705,6 +5705,16 @@ def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None
     normalize = _provenance_step(job, "Normalize coverage evidence")
     normalize_run = str(normalize["run"])
 
+    assert normalize["env"]["SOURCE_HEAD_SHA"] == (
+        "${{ github.event.pull_request.head.sha || github.sha }}"
+    )
+    assert normalize["env"]["BASE_SHA"] == (
+        "${{ github.event.pull_request.base.sha || github.sha }}"
+    )
+    assert normalize["env"]["BASE_REF"] == (
+        "${{ github.event.pull_request.base.ref || github.ref_name }}"
+    )
+
     # The coverage gate installs the locked development environment with uv.
     # Running the normalizer through the runner's system Python bypasses that
     # environment (and its jsonschema dependency), making the gate fail before

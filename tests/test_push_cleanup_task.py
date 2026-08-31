@@ -138,6 +138,48 @@ async def test_broadcast_processes_results_for_each_batch() -> None:
 
 
 @pytest.mark.asyncio
+async def test_broadcast_stops_on_malformed_pagination_cursor() -> None:
+    """Malformed subscription IDs cannot create an unbounded broadcast loop."""
+
+    from app.routers import notifications
+    from app.schemas.notifications import NotifyBody
+
+    subscription = SimpleNamespace(
+        id=object(),
+        user_id=uuid.uuid4(),
+        endpoint="https://push.example.test/sub",
+        topics=["system"],
+        user=None,
+    )
+    result = WebPushResult(
+        subscription_id=uuid.uuid4(),
+        endpoint=subscription.endpoint,
+        user_id=subscription.user_id,
+        status="sent",
+    )
+    first = MagicMock()
+    first.scalars.return_value.all.return_value = [subscription]
+    db = AsyncMock()
+    db.execute.return_value = first
+    deliver = AsyncMock(return_value=[result])
+    with (
+        patch.object(notifications, "enforce_rate_limit", new=AsyncMock()),
+        patch.object(notifications, "deliver_push_to_subscriptions", new=deliver),
+        patch.object(webpush_module, "process_push_results", new=AsyncMock()),
+    ):
+        response = await notifications.broadcast(
+            NotifyBody(title="Test", body="Body", topic="system"),
+            _request(),
+            db,
+            _admin(),
+        )
+
+    assert response.sent == 1
+    deliver.assert_awaited_once()
+    db.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_process_push_results_deduplicates_status_updates() -> None:
     """Repeated provider results are collapsed before cleanup writes."""
 
@@ -182,3 +224,69 @@ def test_coalesce_push_results_normalizes_unhashable_status() -> None:
     assert len(results) == 1
     assert results[0].subscription_id == subscription_id
     assert results[0].status == "error"
+
+
+def test_coalesce_push_results_ignores_non_result_values() -> None:
+    """Provider adapters cannot make arbitrary values enter the result ledger."""
+
+    subscription_id = uuid.uuid4()
+    result = WebPushResult(
+        subscription_id=subscription_id,
+        endpoint="https://push.example.test/sub",
+        user_id=None,
+        status="sent",
+    )
+
+    assert webpush_module.coalesce_push_results([object(), result]) == [result]
+
+
+def test_coalesce_push_results_normalizes_string_subscription_id() -> None:
+    """Deserialized UUID strings are normalized before deduplication."""
+
+    subscription_id = uuid.uuid4()
+    malformed = WebPushResult(
+        subscription_id=str(subscription_id),  # type: ignore[arg-type]
+        endpoint="https://push.example.test/sub",
+        user_id=None,
+        status="sent",
+    )
+
+    results = webpush_module.coalesce_push_results([malformed])
+
+    assert results[0].subscription_id == subscription_id
+    assert isinstance(results[0].subscription_id, uuid.UUID)
+
+
+def test_coalesce_push_results_discards_invalid_subscription_id() -> None:
+    """An invalid adapter UUID is ignored rather than entering cleanup writes."""
+
+    malformed = WebPushResult(
+        subscription_id="not-a-uuid",  # type: ignore[arg-type]
+        endpoint="https://push.example.test/sub",
+        user_id=None,
+        status="sent",
+    )
+
+    assert webpush_module.coalesce_push_results([malformed]) == []
+
+
+def test_coalesce_push_results_keeps_highest_priority_duplicate() -> None:
+    """Terminal ``gone``/successful results replace a transient duplicate."""
+
+    subscription_id = uuid.uuid4()
+    transient = WebPushResult(
+        subscription_id=subscription_id,
+        endpoint="https://push.example.test/sub",
+        user_id=None,
+        status="error",
+    )
+    sent = WebPushResult(
+        subscription_id=subscription_id,
+        endpoint="https://push.example.test/sub",
+        user_id=None,
+        status="sent",
+    )
+
+    results = webpush_module.coalesce_push_results([transient, sent])
+
+    assert results == [sent]

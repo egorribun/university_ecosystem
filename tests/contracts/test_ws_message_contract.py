@@ -64,25 +64,43 @@ def _python_ws_output_types(path: Path) -> frozenset[str]:
     """
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     types: set[str] = set()
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Dict):
-            continue
-        for key, value in zip(node.keys, node.values, strict=False):
-            if (
-                isinstance(key, ast.Constant)
-                and key.value == "type"
-                and isinstance(value, ast.Constant)
-                and isinstance(value.value, str)
-            ):
-                # mutmut replaces a string literal with an ``XX...XX``
-                # sentinel while collecting baseline stats.  The sentinel is
-                # not a product protocol value and must not make the initial
-                # stats run fail before the mutant can be exercised by the
-                # actual tests.  Keep all other values (including uppercase or
-                # otherwise unknown protocol tokens) visible to this contract.
-                if re.fullmatch(r"XX[a-z_]+XX", value.value):
-                    continue
-                types.add(value.value)
+
+    class _OutputTypeVisitor(ast.NodeVisitor):
+        """Inspect source bodies while ignoring mutmut mutant variants.
+
+        During mutmut's stats pass the generated module contains the original
+        function and one sibling function per mutation.  The latter may hold
+        deliberately invalid string values (for example ``NEW_MESSAGE``), so
+        scanning those bodies would make the baseline fail before the mutant is
+        run.  Production modules do not use the ``__mutmut_`` naming convention;
+        their unknown protocol values remain visible below.
+        """
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            if "__mutmut_" in node.name and not node.name.endswith("__mutmut_orig"):
+                return
+            self.generic_visit(node)
+
+        visit_AsyncFunctionDef = visit_FunctionDef
+
+        def visit_Dict(self, node: ast.Dict) -> None:
+            for key, value in zip(node.keys, node.values, strict=False):
+                if (
+                    isinstance(key, ast.Constant)
+                    and key.value == "type"
+                    and isinstance(value, ast.Constant)
+                    and isinstance(value.value, str)
+                ):
+                    # mutmut replaces a string literal with an ``XX...XX``
+                    # sentinel while collecting baseline stats.  The sentinel
+                    # is not a product protocol value and must not make the
+                    # initial stats run fail before the mutant is exercised by
+                    # the actual tests.  Keep all other values visible.
+                    if not re.fullmatch(r"XX[a-z_]+XX", value.value):
+                        types.add(value.value)
+            self.generic_visit(node)
+
+    _OutputTypeVisitor().visit(tree)
     return frozenset(types)
 
 
@@ -259,6 +277,20 @@ def test_backend_contract_ignores_mutmut_string_sentinel_only(tmp_path: Path):
     )
 
     assert _python_ws_output_types(source) == frozenset({"NEW_MESSAGE"})
+
+
+def test_backend_contract_ignores_generated_mutmut_variant_bodies(tmp_path: Path):
+    """Stats trees include mutant siblings that must not become protocol output."""
+    source = tmp_path / "mutated_ws.py"
+    source.write_text(
+        "def x_emit__mutmut_orig():\n"
+        "    return {'type': 'new_message'}\n"
+        "def x_emit__mutmut_1():\n"
+        "    return {'type': 'NEW_MESSAGE'}\n",
+        encoding="utf-8",
+    )
+
+    assert _python_ws_output_types(source) == frozenset({"new_message"})
 
 
 def test_ws_hub_inbound_allowlist_has_no_server_receipt_commands():
