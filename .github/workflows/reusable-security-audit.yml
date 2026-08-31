@@ -406,10 +406,11 @@ jobs:
 
   # ── detect-secrets baseline integrity ─────────────────────────────────────
   # AUDIT-INFRA-06: A contributor with push access can suppress new secrets by
-  # updating .secrets.baseline. This job re-scans the repo and fails if the
-  # committed baseline suppresses patterns not present in the current scan,
-  # catching newly added suppressions. Combined with CODEOWNERS this ensures
-  # that any baseline change requires security-team approval.
+  # updating .secrets.baseline. This job re-scans the repo and compares
+  # finding-level identities, catching both newly detected findings and
+  # suppressions added relative to the trusted pull-request base. Combined
+  # with CODEOWNERS this ensures that any baseline change requires
+  # security-team approval.
   detect-secrets-baseline:
     name: detect-secrets Baseline Integrity
     runs-on: ubuntu-24.04
@@ -435,10 +436,41 @@ jobs:
           -r security/detect-secrets-requirements.txt
 
       - name: Scan repo (no baseline)
-        run: detect-secrets scan > /tmp/current_scan.json
+        # The baseline is scanner metadata, not application input. Scanning it
+        # would recursively flag every stored digest and keyword entry and
+        # make finding-level verification impossible.
+        run: detect-secrets scan --exclude-files '^\.secrets\.baseline$' > /tmp/current_scan.json
+
+      - name: Fetch trusted base baseline (pull requests)
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "ERROR: pull-request base SHA is not an immutable 40-hex commit" >&2
+            exit 1
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git show "$BASE_SHA:.secrets.baseline" > "$RUNNER_TEMP/trusted-base-baseline.json"
+          test -s "$RUNNER_TEMP/trusted-base-baseline.json"
 
       - name: Verify baseline has not regressed
-        run: python scripts/verify_secrets_baseline.py .secrets.baseline /tmp/current_scan.json
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TRUSTED_BASELINE_PATH: ${{ runner.temp }}/trusted-base-baseline.json
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            python scripts/verify_secrets_baseline.py \
+              .secrets.baseline /tmp/current_scan.json \
+              --trusted-base-baseline "$TRUSTED_BASELINE_PATH"
+          else
+            python scripts/verify_secrets_baseline.py \
+              .secrets.baseline /tmp/current_scan.json
+          fi
 
   # ── Semgrep SAST ───────────────────────────────────────────────────────────
   # Uses the official semgrep/semgrep Docker image so no binary installation

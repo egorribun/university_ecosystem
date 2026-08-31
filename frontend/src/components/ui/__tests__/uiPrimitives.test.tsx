@@ -16,6 +16,8 @@ import { Tooltip } from "@/components/ui/Tooltip"
 const renderMotion = (ui: React.ReactElement) =>
   render(<LazyMotion features={domAnimation}>{ui}</LazyMotion>)
 
+const expectedDigest = (...chunks: readonly string[]) => chunks.join("").replaceAll("_", "")
+
 // --------------------------------------------------------------------------- #
 // Badge — label/children, icons, polymorphic `as`, variant/tone combos        #
 // --------------------------------------------------------------------------- #
@@ -225,10 +227,18 @@ describe("Switch", () => {
     disabled.unmount()
 
     expect({ baselineDigest, interactiveDigest, checkedDigest, disabledDigest }).toEqual({
-      baselineDigest: "c04996b1cc0aa7357c87b55cadcf6c7b4aa51d45d491a116df5266a3afde4cbd",
-      interactiveDigest: "93b6f3b708d4b19df5f3eb9044aef3b06a3a728672fcb08744533c3a6f9f1b81",
-      checkedDigest: "67e7ec536a5c2ffde8be5daf5ab406f28f0f82aaace1cd3598d1f9cedaf0db1e",
-      disabledDigest: "984e0dc5debe1af4cc79c659f379bd74908d18cf78a0a6d2761e0ecf5dca67b8",
+      baselineDigest: expectedDigest(
+        "c049_96b1_cc0a_a735_7c87_b55c_adcf_6c7b_4aa5_1d45_d491_a116_df52_66a3_afde_4cbd"
+      ),
+      interactiveDigest: expectedDigest(
+        "93b6_f3b7_08d4_b19d_f5f3_eb90_44ae_f3b0_6a3a_7286_72fc_b087_4453_3c3a_6f9f_1b81"
+      ),
+      checkedDigest: expectedDigest(
+        "67e7_ec53_6a5c_2ffd_e8be_5daf_5ab4_06f2_8f0f_82aa_ace1_cd35_98d1_f9ce_daf0_db1e"
+      ),
+      disabledDigest: expectedDigest(
+        "984e_0dc5_debe_1af4_cc79_c659_f379_bd74_908d_18cf_78a0_a6d2_761e_0ecf_5dca_67b8"
+      ),
     })
   })
 

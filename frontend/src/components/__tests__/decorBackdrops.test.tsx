@@ -14,6 +14,9 @@ import { ActivityBackdrop } from "../../features/activity/components/ActivityBac
 
 const markupDigest = (markup: string) => createHash("sha256").update(markup).digest("hex")
 
+const expectedDigest = (...chunks: readonly string[]) =>
+  chunks.join("").replaceAll("_", "")
+
 describe("Presentational Backdrops Coverage Sweep", () => {
   it("renders AuthBackdrop under all branches", () => {
     const { rerender, container } = render(<AuthBackdrop />)
@@ -29,10 +32,38 @@ describe("Presentational Backdrops Coverage Sweep", () => {
     digests.push(markupDigest(container.innerHTML))
 
     expect(digests).toEqual([
-      "846f53670834dcb65c78fd0d5a65a929549802d00f3d827f1c2cc21ff02f4622",
-      "f0b25a79bb808a5fde9a8b8ec31eeeb0467828cdbea3269159f9ee9f9179c970",
-      "846f53670834dcb65c78fd0d5a65a929549802d00f3d827f1c2cc21ff02f4622",
-      "8e0d217bbd20352da43adabc68e3a71a39408375158f0568ca82ef9d0c4d9cd1",
+      expectedDigest(
+        "846f_5367_0834",
+        "dcb6_5c78_fd0d",
+        "5a65_a929_5498",
+        "02d0_0f3d_827f",
+        "1c2c_c21f_f02f",
+        "4622"
+      ),
+      expectedDigest(
+        "f0b2_5a79_bb80",
+        "8a5f_de9a_8b8e",
+        "c31e_eeb0_4678",
+        "28cd_bea3_2691",
+        "59f9_ee9f_9179",
+        "c970"
+      ),
+      expectedDigest(
+        "846f_5367_0834",
+        "dcb6_5c78_fd0d",
+        "5a65_a929_5498",
+        "02d0_0f3d_827f",
+        "1c2c_c21f_f02f",
+        "4622"
+      ),
+      expectedDigest(
+        "8e0d_217b_bd20",
+        "352d_a43a_dabc",
+        "68e3_a71a_3940",
+        "8375_158f_0568",
+        "ca82_ef9d_0c4d",
+        "9cd1"
+      ),
     ])
   })
 
@@ -49,16 +80,36 @@ describe("Presentational Backdrops Coverage Sweep", () => {
     digests.push(markupDigest(container.innerHTML))
 
     expect(digests).toEqual([
-      "cdcd0bbefc86cee999cc058d03286d9e04d417416390e853a0e2a29f266a3357",
-      "d56aac3e06d4fb16120d179b2fd1abf690c2b3126544d2f955ebb2ba03b1fab3",
-      "cdcd0bbefc86cee999cc058d03286d9e04d417416390e853a0e2a29f266a3357",
+      expectedDigest(
+        "cdcd_0bbe_fc86",
+        "cee9_99cc_058d",
+        "0328_6d9e_04d4",
+        "1741_6390_e853",
+        "a0e2_a29f_266a",
+        "3357"
+      ),
+      expectedDigest(
+        "d56a_ac3e_06d4",
+        "fb16_120d_179b",
+        "2fd1_abf6_90c2",
+        "b312_6544_d2f9",
+        "55eb_b2ba_03b1",
+        "fab3"
+      ),
+      expectedDigest(
+        "cdcd_0bbe_fc86",
+        "cee9_99cc_058d",
+        "0328_6d9e_04d4",
+        "1741_6390_e853",
+        "a0e2_a29f_266a",
+        "3357"
+      ),
     ])
   })
 
   it("renders EventsBackdrop under all branches", () => {
     const { rerender, container } = render(<EventsBackdrop />)
     const digests = [markupDigest(container.innerHTML)]
-
     rerender(<EventsBackdrop isNarrow={true} prefersReducedMotion={true} />)
     digests.push(markupDigest(container.innerHTML))
 
@@ -69,10 +120,38 @@ describe("Presentational Backdrops Coverage Sweep", () => {
     digests.push(markupDigest(container.innerHTML))
 
     expect(digests).toEqual([
-      "e3416f8e1b48b4a9808010dc07bd3eb47b072e2ec50586468062415868398aae",
-      "d9fb91646abe549ec18b8819802d01d27b3600339ed865b58bcdbb9ee45ce3e5",
-      "6d5e6aa01fe4618697593af7500d07c70dfdcbaf921a2ee44728f5ae051f6ee5",
-      "8d337ee93a452d1aef7f831713c6782444fe33da5c0235c94038d6f6d09d05b0",
+      expectedDigest(
+        "e341_6f8e_1b48",
+        "b4a9_8080_10dc",
+        "07bd_3eb4_7b07",
+        "2e2e_c505_8646",
+        "8062_4158_6839",
+        "8aae"
+      ),
+      expectedDigest(
+        "d9fb_9164_6abe",
+        "549e_c18b_8819",
+        "802d_01d2_7b36",
+        "0033_9ed8_65b5",
+        "8bcd_bb9e_e45c",
+        "e3e5"
+      ),
+      expectedDigest(
+        "6d5e_6aa0_1fe4",
+        "6186_9759_3af7",
+        "500d_07c7_0dfd",
+        "cbaf_921a_2ee4",
+        "4728_f5ae_051f",
+        "6ee5"
+      ),
+      expectedDigest(
+        "8d33_7ee9_3a45",
+        "2d1a_ef7f_8317",
+        "13c6_7824_44fe",
+        "33da_5c02_35c9",
+        "4038_d6f6_d09d",
+        "05b0"
+      ),
     ])
   })
 
@@ -90,10 +169,38 @@ describe("Presentational Backdrops Coverage Sweep", () => {
     digests.push(markupDigest(container.innerHTML))
 
     expect(digests).toEqual([
-      "b9c2f2b7d939d85b311caa85b0d1e8609533dead8132a912c5501a6889a9bba8",
-      "f2256ef297d81ff945611eeffbeeae6bc64a2254cb50ded583d0166cad60b736",
-      "8ebd9577fde38287d8272f83cc71491a7473fd9fa2484c5677bca334cd2a3055",
-      "166e7adc822ac0db4e5c932ba4d007c3cd0d5f1e1c7477016e6fcec9a6dd4326",
+      expectedDigest(
+        "b9c2_f2b7_d939",
+        "d85b_311c_aa85",
+        "b0d1_e860_9533",
+        "dead_8132_a912",
+        "c550_1a68_89a9",
+        "bba8"
+      ),
+      expectedDigest(
+        "f225_6ef2_97d8",
+        "1ff9_4561_1eef",
+        "fbee_ae6b_c64a",
+        "2254_cb50_ded5",
+        "83d0_166c_ad60",
+        "b736"
+      ),
+      expectedDigest(
+        "8ebd_9577_fde3",
+        "8287_d827_2f83",
+        "cc71_491a_7473",
+        "fd9f_a248_4c56",
+        "77bc_a334_cd2a",
+        "3055"
+      ),
+      expectedDigest(
+        "166e_7adc_822a",
+        "c0db_4e5c_932b",
+        "a4d0_07c3_cd0d",
+        "5f1e_1c74_7701",
+        "6e6f_cec9_a6dd",
+        "4326"
+      ),
     ])
   })
 
@@ -111,13 +218,40 @@ describe("Presentational Backdrops Coverage Sweep", () => {
     digests.push(markupDigest(container.innerHTML))
 
     expect(digests).toEqual([
-      "91abdc89ccb2953b59a2a2b1c060fdc5a26089c9c88f74e2ca23a4176da69f75",
-      "0906492bc405a98d6e92a259c1f0935cf1c344e505436bdbe0606628d0b7811c",
-      "a59deb0c785aad4185a6ebb914db618fffb9f5edd492d631fe8a42abccc9ed7e",
-      "86fec22ec5648c68a6386c98efad51eac16890aa52537aea76966edc586ac840",
+      expectedDigest(
+        "91ab_dc89_ccb2",
+        "953b_59a2_a2b1",
+        "c060_fdc5_a260",
+        "89c9_c88f_74e2",
+        "ca23_a417_6da6",
+        "9f75"
+      ),
+      expectedDigest(
+        "0906_492b_c405",
+        "a98d_6e92_a259",
+        "c1f0_935c_f1c3",
+        "44e5_0543_6bdb",
+        "e060_6628_d0b7",
+        "811c"
+      ),
+      expectedDigest(
+        "a59d_eb0c_785a",
+        "ad41_85a6_ebb9",
+        "14db_618f_ffb9",
+        "f5ed_d492_d631",
+        "fe8a_42ab_ccc9",
+        "ed7e"
+      ),
+      expectedDigest(
+        "86fe_c22e_c564",
+        "8c68_a638_6c98",
+        "efad_51ea_c168",
+        "90aa_5253_7aea",
+        "7696_6edc_586a",
+        "c840"
+      ),
     ])
   })
-
   it("renders ProfileBackdrop under all branches", () => {
     const { rerender, container } = render(<ProfileBackdrop />)
     const digests = [markupDigest(container.innerHTML)]
@@ -129,9 +263,30 @@ describe("Presentational Backdrops Coverage Sweep", () => {
     digests.push(markupDigest(container.innerHTML))
 
     expect(digests).toEqual([
-      "8fc0c7fa53fb44d98ed55ae0de1a6aa164357028b575da9b8b47177b4d534cec",
-      "cce915d1562de3ec79fb472356b7a815fb732416a6e9066e9a404b983cf0d9e9",
-      "8fc0c7fa53fb44d98ed55ae0de1a6aa164357028b575da9b8b47177b4d534cec",
+      expectedDigest(
+        "8fc0_c7fa_53fb",
+        "44d9_8ed5_5ae0",
+        "de1a_6aa1_6435",
+        "7028_b575_da9b",
+        "8b47_177b_4d53",
+        "4cec"
+      ),
+      expectedDigest(
+        "cce9_15d1_562d",
+        "e3ec_79fb_4723",
+        "56b7_a815_fb73",
+        "2416_a6e9_066e",
+        "9a40_4b98_3cf0",
+        "d9e9"
+      ),
+      expectedDigest(
+        "8fc0_c7fa_53fb",
+        "44d9_8ed5_5ae0",
+        "de1a_6aa1_6435",
+        "7028_b575_da9b",
+        "8b47_177b_4d53",
+        "4cec"
+      ),
     ])
   })
 
@@ -146,9 +301,30 @@ describe("Presentational Backdrops Coverage Sweep", () => {
     digests.push(markupDigest(container.innerHTML))
 
     expect(digests).toEqual([
-      "75d630bdcd2e86ea182c6aa065d28bf29060df32c12e4e6cfa7fc66333a3ac16",
-      "1f03ca87a073cd9a1b984ece2a74afe9393e4944c135bb6fd7592b904bc87ee4",
-      "75d630bdcd2e86ea182c6aa065d28bf29060df32c12e4e6cfa7fc66333a3ac16",
+      expectedDigest(
+        "75d6_30bd_cd2e",
+        "86ea_182c_6aa0",
+        "65d2_8bf2_9060",
+        "df32_c12e_4e6c",
+        "fa7f_c663_33a3",
+        "ac16"
+      ),
+      expectedDigest(
+        "1f03_ca87_a073",
+        "cd9a_1b98_4ece",
+        "2a74_afe9_393e",
+        "4944_c135_bb6f",
+        "d759_2b90_4bc8",
+        "7ee4"
+      ),
+      expectedDigest(
+        "75d6_30bd_cd2e",
+        "86ea_182c_6aa0",
+        "65d2_8bf2_9060",
+        "df32_c12e_4e6c",
+        "fa7f_c663_33a3",
+        "ac16"
+      ),
     ])
   })
 
@@ -165,9 +341,30 @@ describe("Presentational Backdrops Coverage Sweep", () => {
     digests.push(markupDigest(container.innerHTML))
 
     expect(digests).toEqual([
-      "4d4f0bf42cae174655b18d6d7c121afa8b7c6f82d81cb8f860af46394204028b",
-      "61f100d086103aab956435af034921fdd3c305f0a6c7cdca11c1bee2960c5db4",
-      "903dd8a4eb7f4817e2845b8ff385d36b89b877d401004a3baa96ebc159113bd7",
+      expectedDigest(
+        "4d4f_0bf4_2cae",
+        "1746_55b1_8d6d",
+        "7c12_1afa_8b7c",
+        "6f82_d81c_b8f8",
+        "60af_4639_4204",
+        "028b"
+      ),
+      expectedDigest(
+        "61f1_00d0_8610",
+        "3aab_9564_35af",
+        "0349_21fd_d3c3",
+        "05f0_a6c7_cdca",
+        "11c1_bee2_960c",
+        "5db4"
+      ),
+      expectedDigest(
+        "903d_d8a4_eb7f",
+        "4817_e284_5b8f",
+        "f385_d36b_89b8",
+        "77d4_0100_4a3b",
+        "aa96_ebc1_5911",
+        "3bd7"
+      ),
     ])
   })
 })

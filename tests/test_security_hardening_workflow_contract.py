@@ -105,3 +105,35 @@ def test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_lock
             rf"(?m)^{re.escape(requirement)}\s+--hash=sha256:{digest}\s*$",
             requirements,
         )
+
+
+def test_detect_secrets_verification_is_finding_level_and_base_bound() -> None:
+    """PR checks compare against an immutable target-branch baseline."""
+
+    job = _workflow(SECURITY_AUDIT)["jobs"]["detect-secrets-baseline"]
+    fetch = _step(job, "Fetch trusted base baseline (pull requests)")
+    assert fetch["if"] == "${{ github.event_name == 'pull_request' }}"
+    assert fetch["env"] == {
+        "BASE_SHA": "${{ github.event.pull_request.base.sha }}"
+    }
+    fetch_run = fetch["run"]
+    assert "^[0-9a-f]{40}$" in fetch_run
+    assert 'git fetch --no-tags --depth=1 origin "$BASE_SHA"' in fetch_run
+    assert 'git show "$BASE_SHA:.secrets.baseline"' in fetch_run
+    assert '"$RUNNER_TEMP/trusted-base-baseline.json"' in fetch_run
+
+    scan = _step(job, "Scan repo (no baseline)")["run"]
+    assert "--exclude-files" in scan
+    assert "^\\.secrets\\.baseline$" in scan
+
+    verify = _step(job, "Verify baseline has not regressed")
+    assert verify["env"] == {
+        "EVENT_NAME": "${{ github.event_name }}",
+        "TRUSTED_BASELINE_PATH": "${{ runner.temp }}/trusted-base-baseline.json",
+    }
+    verify_run = verify["run"]
+    assert "--trusted-base-baseline \"$TRUSTED_BASELINE_PATH\"" in verify_run
+    assert "current_scan.json" in verify_run
+
+    scan = _step(job, "Scan repo (no baseline)")["run"]
+    assert "detect-secrets scan --exclude-files '^\\.secrets\\.baseline$'" in scan
