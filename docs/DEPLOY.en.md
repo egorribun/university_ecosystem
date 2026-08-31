@@ -27,7 +27,7 @@ _[Russian version](DEPLOY.md) · [English version](DEPLOY.en.md)_
   LCP/INP/CLS, and publishes a SHA-bound artifact with a build-provenance
   attestation. A manually uploaded report is not valid release evidence.
 - Backend and frontend must run over HTTPS, otherwise the browser blocks `/media` and `/static`.
-- To limit requests, configure the backend with `RATE_LIMIT_STORAGE_BACKEND` and `RATE_LIMIT_STORAGE_URI`. The value `redis` + a Redis URL (for example, `redis://${REDIS_USER}:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0`, populated from a protected secret store) enables a shared storage for the middleware and sensitive endpoints; never write secret values to shell history. Use `memory` or `memory://` for a simple single-process mode without external Redis.
+- To limit requests, configure the backend with `RATE_LIMIT_STORAGE_BACKEND` and `RATE_LIMIT_STORAGE_URI`. The `redis` backend and a URI supplied from a protected store through environment variables enable shared storage for middleware and sensitive endpoints; keep credentials out of URLs and shell history. Use `memory` or `memory://` for a simple single-process mode without external Redis.
 - Session revocation must use one shared, dedicated store across services: the backend, gateway, and ws-hub use only `REVOCATION_REDIS_URL`. The supported Compose and Helm topology provisions a separate Redis/Valkey process with AOF, persistent storage, and `maxmemory-policy noeviction`; neither the cache (`CACHE_REDIS_URL`) nor the rate-limit Redis (`REDIS_URL`, DB 3) is authoritative security state. Reusing a cache/rate-limit process is unsupported because evicting `revoked:jti:*` could make a revoked JWT valid again.
 - Control the object-storage health probe with `HEALTH_STORAGE_PROBE_ENABLED` (run a write/delete check when set to `true`) and `HEALTH_STORAGE_PROBE_MIN_INTERVAL_SECONDS` (cache probe results between intervals). When disabled, the probe uses cheap bucket/list calls when available, which is friendlier to external providers.
 - Docker Compose has a production override (`docker-compose.prod.yml`) that marks secrets as mandatory. Create the Compose secrets `secret_key`, `database_url`, and `nats_auth_token`, and provide the PostgreSQL password file through `POSTGRES_PASSWORD_SOURCE_FILE`. The `database_url` secret must point to `postgresql+asyncpg://...@pgbouncer:5432/university`. Then run `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d` with `FRONTEND_ORIGIN` and `FRONTEND_ORIGINS` set explicitly; the Go overlay is required because Caddy routes API and WebSocket traffic through gateway/ws-hub.
@@ -127,7 +127,8 @@ reconciliation proof, and an explicit rollout applies the new values.
 
   ```bash
   cd .
-  export DATABASE_URL="${DATABASE_URL:?set DATABASE_URL via your secret manager}"
+  # DATABASE_URL must already be supplied by the secret-manager integration.
+  test -n "${DATABASE_URL:?DATABASE_URL is required}"
   alembic upgrade head
   ```
 
@@ -232,7 +233,7 @@ print(Fernet.generate_key().decode())
 PY
 ```
 
-- To rotate keys, provide `SPOTIFY_TOKEN_SECRET` from a protected secret store as a comma-separated list: set the new key first and keep the old one second. Do not place key material in commands or documentation. After deploying, run the script below to re-encrypt stored values and drop the dependency on the old key, then remove the old key from the store and restart services.
+- To rotate keys, provide the Fernet key list from a protected store through the environment: set the new key first and keep the old one second. Do not place key material in commands or documentation. After deploying, run the script below to re-encrypt stored values and drop the dependency on the old key, then remove the old key from the store and restart services.
 
 ```bash
 python - <<'PY'
