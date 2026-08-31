@@ -231,9 +231,10 @@ jobs:
           SERVICE_DIRECTORY: ${{ inputs.service-directory }}
         run: |
           set -euo pipefail
-          # shellcheck disable=SC1003
-          # Sanitize path: replace / and \ with -
-          SANITIZED=$(echo "$SERVICE_DIRECTORY" | tr '/\\' '-')
+          # Sanitize path without invoking a shell-escaped single-quote
+          # expression that older ShellCheck releases flag as SC1003.
+          SANITIZED="${SERVICE_DIRECTORY//\//-}"
+          SANITIZED="${SANITIZED//\\/-}"
           echo "name=go-coverage-$SANITIZED" >> "$GITHUB_OUTPUT"
 
       - name: Write Go coverage provenance
@@ -318,7 +319,8 @@ jobs:
           SERVICE_DIRECTORY: ${{ inputs.service-directory }}
         run: |
           set -euo pipefail
-          SANITIZED=$(echo "$SERVICE_DIRECTORY" | tr '/\\' '-')
+          SANITIZED="${SERVICE_DIRECTORY//\//-}"
+          SANITIZED="${SANITIZED//\\/-}"
           echo "name=$SANITIZED" >> "$GITHUB_OUTPUT"
 
       - name: Initialize mutation diagnostic evidence
