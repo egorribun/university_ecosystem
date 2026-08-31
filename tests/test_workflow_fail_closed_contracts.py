@@ -844,7 +844,10 @@ def test_stryker_preflight_candidates_are_retry_safe_and_fail_closed() -> None:
     assert _step(roundtrip, "Checkout")["with"]["persist-credentials"] is False
     assert _step(roundtrip, "Setup Node.js")["with"]["node-version"] == "24.15.0"
     assert roundtrip["env"] == {
-        "STRYKER_VALIDATED_CANDIDATE_ROOT": "reports/mutation/validated-candidates"
+        "STRYKER_VALIDATED_CANDIDATE_ROOT": "reports/mutation/validated-candidates",
+        "STRYKER_SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "STRYKER_BASE_SHA": "${{ github.event.pull_request.base.sha || github.sha }}",
+        "STRYKER_BASE_REF": "${{ github.event.pull_request.base.ref || github.ref_name }}",
     }
     roundtrip_selector = _step(
         roundtrip, "Select immutable same-run validated Stryker evidence candidate"

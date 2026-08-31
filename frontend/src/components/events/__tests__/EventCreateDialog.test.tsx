@@ -251,11 +251,34 @@ describe("EventCreateDialog", () => {
   })
 
   it("ignores a file-input change when no file was selected", () => {
-    render(<EventCreateDialog {...baseProps} />)
-    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    // Keep the invalid-file mutation deterministic: Stryker's `if (file)` ->
+    // `if (true)` must reach the upload path without jsdom throwing because it
+    // does not provide URL.createObjectURL. The production contract remains
+    // unchanged: an empty selection must never create a preview or upload.
+    const urlCtor = URL as unknown as {
+      createObjectURL?: (obj: unknown) => string
+      revokeObjectURL?: (url: string) => void
+    }
+    const previousCreate = urlCtor.createObjectURL
+    const previousRevoke = urlCtor.revokeObjectURL
+    const createObjectURL = vi
+      .fn<(object: unknown) => string>()
+      .mockReturnValue("blob:unexpected-empty-selection")
+    const revokeObjectURL = vi.fn()
+    urlCtor.createObjectURL = createObjectURL
+    urlCtor.revokeObjectURL = revokeObjectURL
 
-    fireEvent.change(fileInput, { target: { files: [] } })
+    try {
+      render(<EventCreateDialog {...baseProps} />)
+      const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
 
-    expect(uploadEventImage).not.toHaveBeenCalled()
+      fireEvent.change(fileInput, { target: { files: [] } })
+
+      expect(createObjectURL).not.toHaveBeenCalled()
+      expect(uploadEventImage).not.toHaveBeenCalled()
+    } finally {
+      urlCtor.createObjectURL = previousCreate
+      urlCtor.revokeObjectURL = previousRevoke
+    }
   })
 })

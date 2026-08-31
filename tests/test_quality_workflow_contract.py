@@ -3648,6 +3648,9 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert mutation_preflight["env"] == {
         "STRYKER_SHARD_COUNT": "64",
         "STRYKER_PREFLIGHT_MODE": "generate",
+        "STRYKER_SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "STRYKER_BASE_SHA": "${{ github.event.pull_request.base.sha || github.sha }}",
+        "STRYKER_BASE_REF": "${{ github.event.pull_request.base.ref || github.ref_name }}",
     }
     preflight_checkout = next(
         step for step in mutation_preflight["steps"] if step.get("name") == "Checkout"
@@ -3696,6 +3699,9 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         "STRYKER_SHARD_INDEX": "${{ matrix.shard-index }}",
         "STRYKER_CONCURRENCY": "4",
         "STRYKER_PREFLIGHT_ARTIFACT": "required",
+        "STRYKER_SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "STRYKER_BASE_SHA": "${{ github.event.pull_request.base.sha || github.sha }}",
+        "STRYKER_BASE_REF": "${{ github.event.pull_request.base.ref || github.ref_name }}",
     }
     preflight_selector = next(
         step
@@ -3824,7 +3830,10 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     )
     assert roundtrip_node_setup["with"]["node-version"] == "24.15.0"
     assert mutation_roundtrip["env"] == {
-        "STRYKER_VALIDATED_CANDIDATE_ROOT": "reports/mutation/validated-candidates"
+        "STRYKER_VALIDATED_CANDIDATE_ROOT": "reports/mutation/validated-candidates",
+        "STRYKER_SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "STRYKER_BASE_SHA": "${{ github.event.pull_request.base.sha || github.sha }}",
+        "STRYKER_BASE_REF": "${{ github.event.pull_request.base.ref || github.ref_name }}",
     }
     roundtrip_selector = next(
         step
