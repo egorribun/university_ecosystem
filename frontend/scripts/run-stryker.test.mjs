@@ -87,6 +87,17 @@ test("workflow provenance maps PR source and base identities without trusting th
     baseSha: testedSha,
     baseRef: null,
   })
+  assert.deepEqual(
+    buildWorkflowEvidenceIdentity(testedSha, {
+      GITHUB_BASE_REF: "",
+      GITHUB_REF_NAME: "release",
+    }),
+    {
+      sourceHeadSha: testedSha,
+      baseSha: testedSha,
+      baseRef: "release",
+    }
+  )
   assert.throws(
     () =>
       buildWorkflowEvidenceIdentity(testedSha, {

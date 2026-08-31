@@ -724,7 +724,7 @@ export function buildWorkflowEvidenceIdentity(testedCommitSha, env = process.env
     ),
     baseSha: normalizeEvidenceCommitSha(env.STRYKER_BASE_SHA, testedSha, "Evidence base commit"),
     baseRef: normalizeEvidenceBaseRef(
-      env.STRYKER_BASE_REF ?? env.GITHUB_BASE_REF ?? env.GITHUB_REF_NAME
+      env.STRYKER_BASE_REF || env.GITHUB_BASE_REF || env.GITHUB_REF_NAME
     ),
   }
 }
