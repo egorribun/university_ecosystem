@@ -1232,6 +1232,10 @@ export const useMessengerController = () => {
 
     // Wave 211 G4 (SW10) — group info panel + member management
     currentUserId: user?.id,
+    // Chat destruction is an admin-only capability. Keep the role decision in
+    // the authenticated controller and pass a narrow capability to the view;
+    // the backend remains the authoritative authorization boundary.
+    canManageChat: user?.role === "admin",
     showGroupInfo,
     setShowGroupInfo,
     handleRenameGroup,

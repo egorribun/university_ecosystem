@@ -14,7 +14,7 @@ import type { ReactNode } from "react"
  *  - unreadCount falls back to 0 when no chats data.
  *  - presenceMap starts empty.
  *  - isConnected reflects WS connection state from useChatWebSocket.
- *  - getTypingUsersForChat / sendTyping / sendRead delegate to
+ *  - getTypingUsersForChat / sendTyping delegate to
  *    useChatWebSocket and return their values.
  *
  * Mocking strategy:
@@ -65,7 +65,6 @@ beforeEach(() => {
   mocks.useChatWebSocket.mockReturnValue({
     isConnected: true,
     sendTyping: vi.fn(),
-    sendRead: vi.fn(),
     sendJoin: vi.fn(),
     sendLeave: vi.fn(),
     getTypingUsersForChat: vi.fn().mockReturnValue([]),
@@ -106,7 +105,6 @@ describe("MessengerContext", () => {
         presenceMap: expect.any(Object),
         isConnected: expect.any(Boolean),
         sendTyping: expect.any(Function),
-        sendRead: expect.any(Function),
         sendJoin: expect.any(Function),
         sendLeave: expect.any(Function),
         getTypingUsersForChat: expect.any(Function),
@@ -214,7 +212,6 @@ describe("MessengerContext", () => {
         presenceMap: {},
         isConnected: true,
         sendTyping: expect.any(Function),
-        sendRead: expect.any(Function),
         sendJoin: expect.any(Function),
         sendLeave: expect.any(Function),
         getTypingUsersForChat: expect.any(Function),
@@ -240,7 +237,6 @@ describe("MessengerContext", () => {
       mocks.useChatWebSocket.mockReturnValue({
         isConnected: false,
         sendTyping: vi.fn(),
-        sendRead: vi.fn(),
         sendJoin: vi.fn(),
         sendLeave: vi.fn(),
         getTypingUsersForChat: vi.fn(() => []),
@@ -255,7 +251,6 @@ describe("MessengerContext", () => {
       mocks.useChatWebSocket.mockReturnValue({
         isConnected: true,
         sendTyping: sendTypingSpy,
-        sendRead: vi.fn(),
         sendJoin: vi.fn(),
         sendLeave: vi.fn(),
         getTypingUsersForChat: vi.fn(() => []),
@@ -271,7 +266,6 @@ describe("MessengerContext", () => {
       mocks.useChatWebSocket.mockReturnValue({
         isConnected: true,
         sendTyping: vi.fn(),
-        sendRead: vi.fn(),
         sendJoin: vi.fn(),
         sendLeave: vi.fn(),
         getTypingUsersForChat: vi.fn(() => typing),
@@ -281,25 +275,21 @@ describe("MessengerContext", () => {
       expect(result.current.getTypingUsersForChat("chat-1")).toEqual(typing)
     })
 
-    it("delegates read and room lifecycle actions", () => {
-      const sendRead = vi.fn()
+    it("delegates room lifecycle actions", () => {
       const sendJoin = vi.fn()
       const sendLeave = vi.fn()
       mocks.useChatWebSocket.mockReturnValue({
         isConnected: true,
         sendTyping: vi.fn(),
-        sendRead,
         sendJoin,
         sendLeave,
         getTypingUsersForChat: vi.fn(() => []),
       })
 
       const { result } = renderHook(() => useMessenger(), { wrapper })
-      result.current.sendRead("chat-1")
       result.current.sendJoin("chat-1")
       result.current.sendLeave("chat-1")
 
-      expect(sendRead).toHaveBeenCalledWith("chat-1")
       expect(sendJoin).toHaveBeenCalledWith("chat-1")
       expect(sendLeave).toHaveBeenCalledWith("chat-1")
     })

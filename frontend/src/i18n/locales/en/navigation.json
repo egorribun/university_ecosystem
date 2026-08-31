@@ -35,7 +35,8 @@
     "mobileMenu": "Mobile menu",
     "mobileMenuDescription": "Navigation, profile and account actions",
     "overflowMenu": "More navigation",
-    "close": "Close"
+    "close": "Close",
+    "messenger": "Open messenger"
   },
   "footer": {
     "navigationTitle": "Explore",
@@ -46,5 +47,6 @@
     "opensNewTab": "opens in a new tab",
     "copyright": "© {{year}} GUU Ecosystem",
     "careNote": "Created with care for students and staff."
-  }
+  },
+  "safariGuide": "How to enable notifications in Safari"
 }

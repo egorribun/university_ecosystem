@@ -42,7 +42,6 @@ describe("getUnreadChatCount", () => {
     // action is intentionally a no-op rather than a throw in that window.
     expect(() => {
       DEFAULT_MESSENGER_CONTEXT.sendTyping("chat-1")
-      DEFAULT_MESSENGER_CONTEXT.sendRead("chat-1")
       DEFAULT_MESSENGER_CONTEXT.sendJoin("chat-1")
       DEFAULT_MESSENGER_CONTEXT.sendLeave("chat-1")
     }).not.toThrow()

@@ -10,7 +10,6 @@ export interface MessengerContextType {
   presenceMap: Record<string, { active: boolean; last_seen_at: string | null }>
   isConnected: boolean
   sendTyping: (chatId: string) => void
-  sendRead: (chatId: string) => void
   sendJoin: (chatId: string) => void
   sendLeave: (chatId: string) => void
   getTypingUsersForChat: (chatId: string) => { userId: string; userName: string }[]
@@ -21,7 +20,6 @@ export const DEFAULT_MESSENGER_CONTEXT: MessengerContextType = Object.freeze({
   presenceMap: Object.freeze({}),
   isConnected: false,
   sendTyping: () => undefined,
-  sendRead: () => undefined,
   sendJoin: () => undefined,
   sendLeave: () => undefined,
   getTypingUsersForChat: () => [],

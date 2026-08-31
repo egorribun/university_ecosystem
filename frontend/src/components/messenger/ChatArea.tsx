@@ -77,6 +77,8 @@ interface ChatAreaProps {
   handleViewProfile: () => void
   handleClearChat: () => void
   handleDeleteChat: () => void
+  /** Capability resolved from the authenticated user's canonical role. */
+  canManageChat?: boolean
   getOtherParticipant: ReturnType<typeof useMessengerController>["getOtherParticipant"]
   presenceMap: ReturnType<typeof useMessengerController>["presenceMap"]
   /**
@@ -138,6 +140,7 @@ export const ChatArea = memo(function ChatArea({
   handleViewProfile,
   handleClearChat,
   handleDeleteChat,
+  canManageChat = false,
   getOtherParticipant,
   presenceMap,
   editingMessageId,
@@ -163,6 +166,33 @@ export const ChatArea = memo(function ChatArea({
   const { getTypingUsersForChat, sendTyping } = useMessenger()
   const typingUsers = selectedChatId ? getTypingUsersForChat(selectedChatId) : []
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+  const chatMenuItems = [
+    {
+      id: "view-profile",
+      icon: User,
+      label: t("messenger:viewProfile"),
+      color: "text-primary-main",
+      action: handleViewProfile,
+    },
+    ...(canManageChat
+      ? [
+          {
+            id: "clear-chat",
+            icon: MessageCircleOff,
+            label: t("messenger:clearChat"),
+            color: "text-warning-text",
+            action: handleClearChat,
+          },
+          {
+            id: "delete-chat",
+            icon: Trash2,
+            label: t("messenger:deleteChat"),
+            color: "text-error-text",
+            action: handleDeleteChat,
+          },
+        ]
+      : []),
+  ]
 
   // Wave 183 SW3 — cancel rAF on unmount/re-fire to prevent focus attempts
   // on a detached DOM node (memory leak + console error potential when the
@@ -325,29 +355,7 @@ export const ChatArea = memo(function ChatArea({
                           }
                           className="card-glass z-navbar absolute right-0 top-full mt-2 min-w-sidebar overflow-hidden rounded-md py-2"
                         >
-                          {[
-                            {
-                              id: "view-profile",
-                              icon: User,
-                              label: t("messenger:viewProfile"),
-                              color: "text-primary-main",
-                              action: handleViewProfile,
-                            },
-                            {
-                              id: "clear-chat",
-                              icon: MessageCircleOff,
-                              label: t("messenger:clearChat"),
-                              color: "text-warning-text",
-                              action: handleClearChat,
-                            },
-                            {
-                              id: "delete-chat",
-                              icon: Trash2,
-                              label: t("messenger:deleteChat"),
-                              color: "text-error-text",
-                              action: handleDeleteChat,
-                            },
-                          ].map((item) => (
+                          {chatMenuItems.map((item) => (
                             <button
                               id={`chat-action-${item.id}`}
                               key={item.id}

@@ -90,6 +90,8 @@
   "parityOdd": "odd",
   "timeline": {
     "lessonCount_one": "{{count}} lesson",
+    "lessonCount_few": "{{count}} lessons",
+    "lessonCount_many": "{{count}} lessons",
     "lessonCount_other": "{{count}} lessons"
   },
   "viewAll": "See all",

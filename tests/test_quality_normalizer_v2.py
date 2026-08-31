@@ -120,8 +120,12 @@ def test_normalizer_v2_emits_current_complete_schema_valid_evidence(
     Draft202012Validator(json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))).validate(
         manifest
     )
-    assert manifest["schema_version"] == 2
+    assert manifest["schema_version"] == 3
     assert manifest["commit_sha"] == _head(evidence_repo)
+    assert manifest["tested_commit_sha"] == _head(evidence_repo)
+    assert manifest["source_head_sha"] == _head(evidence_repo)
+    assert manifest["base_sha"] == _head(evidence_repo)
+    assert manifest["base_ref"] == "local"
     assert manifest["validation"] == {"valid": True, "errors": []}
     assert manifest["tier0"]["status"] == "ready"
     assert manifest["tier0"]["files"][0]["metrics"]["statements"]["percent"] == 100

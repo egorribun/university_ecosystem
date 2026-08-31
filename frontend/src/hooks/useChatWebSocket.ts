@@ -250,7 +250,6 @@ function messageHistoryCursor(message: Message): string {
 // Prevents a runaway component from flooding the server with typing events
 const OUTGOING_RATE_LIMITS: Readonly<Record<string, number>> = {
   typing: 500, // at most one "typing" event per 500 ms
-  read: 200, // at most one "read" receipt per 200 ms per chat
 } as const
 
 export function appendLiveMessageToCache(
@@ -411,11 +410,14 @@ export type WebSocketMessageType =
   | "read"
   | "new_message"
   | "online"
+  | "online_list"
   | "presence"
   | "error"
+  | "rate_limit_exceeded"
   | "message_edited"
   | "message_deleted"
   | "reaction_changed"
+  | "replay_checkpoint"
 
 export interface WebSocketMessage {
   type: WebSocketMessageType
@@ -1130,21 +1132,6 @@ export function useChatWebSocket({
     })
   }, [])
 
-  const sendRead = useCallback((chatId: string) => {
-    if (wsRef.current?.readyState !== WebSocket.OPEN) return
-    const key = `read:${chatId}`
-    const now = Date.now()
-    if (now - (lastSentRef.current.get(key) ?? 0) < OUTGOING_RATE_LIMITS.read!) return
-    lastSentRef.current.set(key, now)
-    try {
-      // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send.
-      // Wave 203 SW5 — chat-level read frame (no message_id).
-      wsRef.current.send(JSON.stringify({ type: "read", chat_id: chatId }))
-    } catch {
-      /* WS closed between readyState check and send — safe to ignore */
-    }
-  }, [])
-
   // W204 SW4 — join/leave a ws-hub room (room == chat_id). A client must JOIN
   // to RECEIVE chat.{room} fan-out: ws-hub's collectRecipients returns nil for
   // an empty Rooms[room]. ws-hub authorizes the join via
@@ -1188,7 +1175,6 @@ export function useChatWebSocket({
   return {
     isConnected,
     sendTyping,
-    sendRead,
     sendJoin,
     sendLeave,
     getTypingUsersForChat,

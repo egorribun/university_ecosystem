@@ -71,7 +71,6 @@ vi.mock("@/contexts/MessengerContext", () => ({
     presenceMap: mocks.presenceMap,
     isConnected: true,
     sendTyping: vi.fn(),
-    sendRead: vi.fn(),
     sendJoin: vi.fn(),
     sendLeave: vi.fn(),
     getTypingUsersForChat: () => [],

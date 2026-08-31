@@ -779,7 +779,7 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
     assert result.returncode == 1
     assert all(line.startswith("ERROR:") for line in result.stderr.splitlines())
     manifest = json.loads(output.read_text(encoding="utf-8"))
-    assert manifest["schema_version"] == 2
+    assert manifest["schema_version"] == 3
     assert len(manifest["commit_sha"]) == 40
     assert manifest["generated_at"] == GENERATED_AT
     assert manifest["manifest_path"] == "artifacts/coverage/quality-manifest.json"
@@ -903,10 +903,10 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
     assert python_report["size_bytes"] == (FIXTURES / "python-valid.xml").stat().st_size
     assert manifest["generation"] == {
         "command": "scripts/quality/normalize_coverage_reports.py",
-        "normalizer_version": "2.0.0",
+        "normalizer_version": "3.0.0",
     }
     assert manifest["provenance"]["mode"] == "local"
-    assert manifest["tool_versions"]["quality-normalizer"] == "2.0.0"
+    assert manifest["tool_versions"]["quality-normalizer"] == "3.0.0"
     assert manifest["components"]["python"]["status"] == "failed"
     assert manifest["components"]["infrastructure"]["status"] == "not_applicable"
     assert manifest["validation"]["valid"] is False
@@ -2419,7 +2419,7 @@ def test_coverage_manifest_schema_is_closed_and_versioned() -> None:
     schema = json.loads(QUALITY_MANIFEST_SCHEMA_PATH.read_text(encoding="utf-8"))
 
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
-    assert schema["properties"]["schema_version"]["const"] == 2
+    assert schema["properties"]["schema_version"]["const"] == 3
     assert {
         "manifest_path",
         "tool_versions",

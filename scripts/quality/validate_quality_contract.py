@@ -75,12 +75,14 @@ TOP_LEVEL_KEYS = frozenset(
         "source_roots",
         "coverage_scope",
         "coverage_reports",
+        "coverage_manifest",
         "manifest_path",
         "exclusions",
         "quarantines",
     }
 )
 POLICY_KEYS = frozenset({"patch_coverage", "viable_mutant_score", "required_pr_matrix"})
+COVERAGE_MANIFEST_FIELDS = frozenset({"schema_version", "normalizer_version"})
 EXCLUSION_FIELDS = frozenset(
     {
         "id",
@@ -100,7 +102,7 @@ WILDCARD_CHARACTERS = "*?[]"
 MAX_JSON_NESTING_DEPTH = 1_024
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 METRICS = ("lines", "statements", "branches", "functions")
-NORMALIZER_VERSION = "2.0.0"
+NORMALIZER_VERSION = "3.0.0"
 REPORT_FORMATS = frozenset(
     {
         "cobertura-xml",
@@ -701,7 +703,7 @@ def _validate_coverage_reports(value: object, errors: list[str]) -> None:
 
 
 def validate_contract(contract: dict[str, object], *, today: date) -> list[str]:
-    """Return every policy violation found in a version 2 quality contract."""
+    """Return policy violations in the v2 contract and v3 manifest declaration."""
     errors: list[str] = []
     _validate_exact_keys(contract, "contract", TOP_LEVEL_KEYS, errors)
 
@@ -733,6 +735,30 @@ def validate_contract(contract: dict[str, object], *, today: date) -> list[str]:
         )
     if "coverage_reports" in contract:
         _validate_coverage_reports(contract["coverage_reports"], errors)
+    if "coverage_manifest" in contract:
+        manifest_declaration = _require_object(
+            contract["coverage_manifest"], "coverage_manifest", errors
+        )
+        if manifest_declaration is not None:
+            _validate_exact_keys(
+                manifest_declaration,
+                "coverage_manifest",
+                COVERAGE_MANIFEST_FIELDS,
+                errors,
+            )
+            schema_version = manifest_declaration.get("schema_version")
+            if (
+                not isinstance(schema_version, int)
+                or isinstance(schema_version, bool)
+                or schema_version != 3
+            ):
+                errors.append("coverage_manifest.schema_version must equal 3")
+            normalizer_version = manifest_declaration.get("normalizer_version")
+            if (
+                not isinstance(normalizer_version, str)
+                or re.fullmatch(r"3\.[0-9]+\.[0-9]+", normalizer_version) is None
+            ):
+                errors.append("coverage_manifest.normalizer_version must match 3.x.y")
     if "manifest_path" in contract:
         manifest_path = _validate_repository_path(
             contract["manifest_path"], "manifest_path", errors
@@ -817,7 +843,7 @@ def _reject_json_constant(value: str) -> NoReturn:
 
 def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = _QualityArgumentParser(
-        description="Validate a version 2 quality contract and its current evidence."
+        description="Validate the v2 quality contract and its current v3 evidence."
     )
     parser.add_argument("--contract", type=Path, metavar="PATH")
     parser.add_argument(
@@ -849,6 +875,10 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
         help="validate the equivalent-mutant exclusion register",
     )
     parser.add_argument("--expected-commit-sha", metavar="SHA")
+    parser.add_argument("--expected-source-head-sha", metavar="SHA")
+    parser.add_argument("--expected-tested-commit-sha", metavar="SHA")
+    parser.add_argument("--expected-base-sha", metavar="SHA")
+    parser.add_argument("--expected-base-ref", metavar="REF")
     parser.add_argument("--expected-workflow-run-id", metavar="ID")
     parser.add_argument("--expected-workflow-run-attempt", metavar="ATTEMPT")
     parser.add_argument("--expected-workflow-event", metavar="EVENT")
@@ -1549,6 +1579,90 @@ def _validate_provenance(
     return errors
 
 
+def _validate_manifest_identity(
+    manifest: Mapping[str, object],
+    *,
+    current_head: str,
+    expected_source_head_sha: str | None,
+    expected_tested_commit_sha: str | None,
+    expected_base_sha: str | None,
+    expected_base_ref: str | None,
+) -> list[str]:
+    """Validate the v3 source/test/base identity carried by a manifest.
+
+    ``commit_sha`` remains a deliberately boring compatibility alias for the
+    commit that was actually tested.  It is never treated as the PR source
+    head: on ``pull_request`` runs that value is supplied separately by
+    ``source_head_sha`` and the checkout is represented by
+    ``tested_commit_sha``.
+    """
+
+    errors: list[str] = []
+    fields = ("source_head_sha", "tested_commit_sha", "base_sha")
+    values: dict[str, str] = {}
+    for field in fields:
+        value = manifest.get(field)
+        if not isinstance(value, str) or SHA_PATTERN.fullmatch(value) is None:
+            errors.append(f"{field} must be a lowercase 40-character Git SHA")
+        else:
+            values[field] = value
+    base_ref = manifest.get("base_ref")
+    if not isinstance(base_ref, str) or not base_ref.strip():
+        errors.append("base_ref must be a non-empty workflow ref")
+    elif any(character in base_ref for character in "\x00\r\n"):
+        errors.append("base_ref contains forbidden control characters")
+
+    commit_sha = manifest.get("commit_sha")
+    tested_sha = values.get("tested_commit_sha")
+    if (
+        isinstance(commit_sha, str)
+        and tested_sha is not None
+        and commit_sha != tested_sha
+    ):
+        errors.append("commit_sha must equal tested_commit_sha")
+    if tested_sha is not None and tested_sha != current_head:
+        errors.append(
+            f"tested_commit_sha must equal current repository HEAD {current_head}, "
+            f"got {tested_sha}"
+        )
+
+    expected_values = {
+        "source_head_sha": expected_source_head_sha,
+        "tested_commit_sha": expected_tested_commit_sha,
+        "base_sha": expected_base_sha,
+        "base_ref": expected_base_ref,
+    }
+    for field, expected in expected_values.items():
+        if expected is not None and manifest.get(field) != expected:
+            errors.append(
+                f"{field} mismatch: expected {expected!r}, got {manifest.get(field)!r}"
+            )
+
+    provenance = manifest.get("provenance")
+    event = (
+        provenance.get("workflow_event") if isinstance(provenance, Mapping) else None
+    )
+    mode = provenance.get("mode") if isinstance(provenance, Mapping) else None
+    if mode == "local":
+        if values.get("source_head_sha") != current_head:
+            errors.append("local source_head_sha must equal current repository HEAD")
+        if values.get("base_sha") != current_head:
+            errors.append("local base_sha must equal current repository HEAD")
+        if base_ref != "local":
+            errors.append("local base_ref must equal 'local'")
+    elif mode == "github-actions":
+        if event == "pull_request":
+            if base_ref in {None, "local"}:
+                errors.append("pull_request base_ref must identify the target branch")
+        elif tested_sha is not None and values.get("source_head_sha") != tested_sha:
+            errors.append(
+                "non-pull_request source_head_sha must equal tested_commit_sha"
+            )
+        if base_ref == "local":
+            errors.append("github-actions base_ref must not be 'local'")
+    return errors
+
+
 def _validate_tool_versions(manifest: dict[str, object]) -> list[str]:
     reports = cast(list[object], manifest["reports"])
     required_tools = {"quality-normalizer"}
@@ -1590,9 +1704,13 @@ def validate_manifest_evidence(
     repository_root: Path,
     schema_path: Path,
     expected_commit_sha: str | None = None,
+    expected_source_head_sha: str | None = None,
+    expected_tested_commit_sha: str | None = None,
+    expected_base_sha: str | None = None,
+    expected_base_ref: str | None = None,
     expected_provenance: dict[str, str] | None = None,
 ) -> list[str]:
-    """Validate a v2 manifest against current files, Git state, and provenance."""
+    """Validate a v3 manifest against current files, Git state, and provenance."""
     schema_errors = _schema_errors(manifest, schema_path)
     if schema_errors:
         return schema_errors
@@ -1601,6 +1719,7 @@ def validate_manifest_evidence(
     commit_sha = cast(str, manifest["commit_sha"])
     if SHA_PATTERN.fullmatch(commit_sha) is None:
         errors.append("commit_sha must be a lowercase 40-character Git SHA")
+    current_head: str | None = None
     try:
         current_head = _git_head(repository_root)
     except ValueError as error:
@@ -1653,6 +1772,19 @@ def validate_manifest_evidence(
         errors.append(f"generation.normalizer_version must equal {NORMALIZER_VERSION}")
     provenance = cast(dict[str, object], manifest["provenance"])
     errors.extend(_validate_provenance(provenance, expected_provenance))
+    if current_head is not None:
+        errors.extend(
+            _validate_manifest_identity(
+                manifest,
+                current_head=current_head,
+                expected_source_head_sha=expected_source_head_sha,
+                expected_tested_commit_sha=(
+                    expected_tested_commit_sha or expected_commit_sha
+                ),
+                expected_base_sha=expected_base_sha,
+                expected_base_ref=expected_base_ref,
+            )
+        )
     errors.extend(_validate_tool_versions(manifest))
     errors.extend(_validate_reports(manifest, contract, repository_root))
     errors.extend(_validate_components_manifest(manifest, contract))
@@ -1775,6 +1907,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             repository_root=artifact_root,
             schema_path=schema_path,
             expected_commit_sha=arguments.expected_commit_sha,
+            expected_source_head_sha=arguments.expected_source_head_sha,
+            expected_tested_commit_sha=arguments.expected_tested_commit_sha,
+            expected_base_sha=arguments.expected_base_sha,
+            expected_base_ref=arguments.expected_base_ref,
             expected_provenance=expected_provenance or None,
         )
         if manifest_errors:

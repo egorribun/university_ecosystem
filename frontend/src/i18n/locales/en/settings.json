@@ -41,6 +41,13 @@
   },
   "notifications": {
     "title": "Notifications",
+    "subtitle": "Control browser notifications and quiet hours.",
+    "push": {
+      "title": "Push notifications",
+      "subtitle": "Receive timely updates about your university activity."
+    },
+    "loading": "Loading notification settings…",
+    "notSupported": "Push notifications are not supported in this browser.",
     "unsupported": "Web push notifications aren't supported in your browser.",
     "blocked": {
       "description": "Notifications are blocked in the browser. Open the site settings and allow notifications for \"GUU Ecosystem\".",
@@ -127,6 +134,7 @@
     "loading": "Loading sessions…",
     "empty": "No other sessions are active.",
     "loadFailed": "Couldn't load sessions",
+    "error": "Couldn't load sessions",
     "revoke": "Revoke",
     "revokeAll": "Sign out of other sessions",
     "revokeAllHint": "This keeps you signed in here but signs out every other active session.",
@@ -160,6 +168,7 @@
       "title": "Email",
       "subtitle": "We'll use this address for notifications and security alerts.",
       "label": "New email",
+      "newLabel": "New email",
       "passwordLabel": "Current password",
       "updateButton": "Update email",
       "helper": "We'll email you a confirmation link to finish the update.",

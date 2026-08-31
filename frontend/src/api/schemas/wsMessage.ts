@@ -18,16 +18,29 @@ import * as v from "valibot"
 
 // ── Leaf field schemas ────────────────────────────────────────────────────────
 
+/** Canonical backend message-content limit (Unicode code points). */
+export const CHAT_MESSAGE_MAX_LENGTH = 32_768
+
 const UuidString = v.pipe(v.string(), v.uuid())
 const NonEmptyString = v.pipe(v.string(), v.minLength(1), v.maxLength(4096))
 const IsoTimestampString = v.pipe(NonEmptyString, v.isoTimestamp())
+// JavaScript's String#length counts UTF-16 code units, while the backend and
+// database contract count Unicode code points.  Use an explicit code-point
+// check so astral characters do not consume two message slots in the browser.
+const MessageContent = v.pipe(
+  v.string(),
+  v.check(
+    (value) => [...value].length <= CHAT_MESSAGE_MAX_LENGTH,
+    `Message content must be at most ${CHAT_MESSAGE_MAX_LENGTH} Unicode code points`
+  )
+)
 
 // Mirrors the backend Message schema — only the fields the FE actually uses.
 const MessageSchema = v.object({
   id: UuidString,
   chat_id: UuidString,
   sender_id: UuidString,
-  content: v.pipe(v.string(), v.maxLength(32_768)),
+  content: MessageContent,
   created_at: IsoTimestampString,
   read_status: v.boolean(),
   // Wave 203 SW5 — read-receipt timestamp. optional+nullable so a cached
@@ -64,7 +77,7 @@ const MessageSchema = v.object({
         id: UuidString,
         sender_id: UuidString,
         sender_name: v.nullable(v.string()),
-        content: v.pipe(v.string(), v.maxLength(32_768)),
+        content: MessageContent,
         deleted_at: v.nullable(v.string()),
       })
     )
@@ -121,6 +134,13 @@ const OnlineSchema = v.object({
   status: v.boolean(),
 })
 
+// Legacy backend admin presence response.  Keep it in the current catalog so
+// parseWsMessage does not drop a valid frame emitted by MessageDispatcher.
+const OnlineListSchema = v.object({
+  type: v.literal("online_list"),
+  users: v.array(UuidString),
+})
+
 const PresenceSchema = v.object({
   type: v.literal("presence"),
   user_id: UuidString,
@@ -136,7 +156,7 @@ const MessageEditedSchema = v.object({
   type: v.literal("message_edited"),
   chat_id: UuidString,
   message_id: UuidString,
-  content: v.pipe(v.string(), v.maxLength(32_768)),
+  content: MessageContent,
   edited_at: NonEmptyString,
 })
 
@@ -179,6 +199,7 @@ export const WsServerMessageSchema = v.variant("type", [
   TypingSchema,
   ReadSchema,
   OnlineSchema,
+  OnlineListSchema,
   PresenceSchema,
   MessageEditedSchema,
   MessageDeletedSchema,

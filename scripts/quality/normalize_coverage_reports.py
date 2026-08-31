@@ -13,7 +13,7 @@ import sys
 import tempfile
 import unicodedata
 from collections import defaultdict
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, localcontext
@@ -266,6 +266,10 @@ class _PreparedInvocation:
     expected_reports: frozenset[tuple[str, str, str]]
     manifest_path: str
     provenance: dict[str, str]
+    source_head_sha: str
+    tested_commit_sha: str
+    base_sha: str
+    base_ref: str
     tool_versions: dict[str, str]
     contract: dict[str, object]
     # Full source roots are the canonical report identity boundary.  Coverage
@@ -3029,6 +3033,21 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--contract", metavar="PATH")
     parser.add_argument("--commit-sha", required=True, metavar="SHA")
+    parser.add_argument(
+        "--source-head-sha",
+        metavar="SHA",
+        help="PR source head SHA (defaults to the tested checkout for local runs)",
+    )
+    parser.add_argument(
+        "--base-sha",
+        metavar="SHA",
+        help="base commit SHA used for the comparison",
+    )
+    parser.add_argument(
+        "--base-ref",
+        metavar="REF",
+        help="base branch/ref used for the comparison",
+    )
     parser.add_argument("--generated-at", required=True, metavar="TIMESTAMP")
     parser.add_argument("--output", required=True, metavar="PATH")
     parser.add_argument(
@@ -3678,7 +3697,7 @@ def _tier0_source_suffixes(component: str) -> frozenset[str]:
 
 def _expected_tier0_sources(
     rules: Sequence[str],
-    source_inventory: Mapping[str, Sequence[str]] | None = None,
+    source_inventory: Mapping[str, Collection[str]] | None = None,
 ) -> set[tuple[str, str]]:
     """Return Tier0 sources from the canonical tracked-source inventory.
 
@@ -3704,7 +3723,7 @@ def _expected_tier0_sources(
 def _aggregate_tier0(
     reports_by_component: defaultdict[str, list[_ParsedReport]],
     floors: dict[str, dict[str, int]],
-    source_inventory: Mapping[str, Sequence[str]] | None = None,
+    source_inventory: Mapping[str, Collection[str]] | None = None,
 ) -> dict[str, object]:
     rules, rules_error = _load_tier0_rules()
     file_records: list[tuple[str, str, dict[str, dict[str, object]]]] = []
@@ -3838,6 +3857,71 @@ def _build_provenance(arguments: argparse.Namespace) -> dict[str, str]:
     }
 
 
+def _build_manifest_identity(
+    arguments: argparse.Namespace,
+    *,
+    current_head: str,
+) -> tuple[str, str, str, str]:
+    """Resolve and validate the explicit v3 source/test/base identity."""
+
+    tested_commit_sha = arguments.commit_sha
+    if arguments.provenance_mode == "github-actions":
+        missing = [
+            name
+            for name, value in (
+                ("source-head-sha", arguments.source_head_sha),
+                ("base-sha", arguments.base_sha),
+                ("base-ref", arguments.base_ref),
+            )
+            if not value
+        ]
+        if missing:
+            raise _InputError(
+                "github-actions provenance requires: " + ", ".join(missing)
+            )
+    source_head_sha = arguments.source_head_sha or tested_commit_sha
+    base_sha = arguments.base_sha or tested_commit_sha
+    base_ref = arguments.base_ref or "local"
+    for identity_field, value in (
+        ("source-head-sha", source_head_sha),
+        ("tested-commit-sha", tested_commit_sha),
+        ("base-sha", base_sha),
+    ):
+        if SHA_PATTERN.fullmatch(value) is None:
+            raise _InputError(
+                f"{identity_field} must be a lowercase 40-character Git SHA"
+            )
+    if not isinstance(base_ref, str) or not base_ref.strip():
+        raise _InputError("base-ref must be a non-empty workflow ref")
+    if any(character in base_ref for character in "\x00\r\n"):
+        raise _InputError("base-ref contains forbidden control characters")
+    if tested_commit_sha != current_head:
+        raise _InputError(
+            f"tested-commit-sha must equal current repository HEAD {current_head}, "
+            f"got {tested_commit_sha}"
+        )
+    if arguments.provenance_mode == "local":
+        if (
+            source_head_sha != current_head
+            or base_sha != current_head
+            or base_ref != "local"
+        ):
+            raise _InputError(
+                "local provenance requires source-head-sha and base-sha to equal "
+                "the tested HEAD and base-ref=local"
+            )
+    elif arguments.workflow_event == "pull_request" and base_ref == "local":
+        raise _InputError("pull_request provenance requires an explicit base-ref")
+    elif (
+        arguments.workflow_event != "pull_request"
+        and source_head_sha != tested_commit_sha
+    ):
+        raise _InputError(
+            "non-pull_request provenance requires source-head-sha=tested-commit-sha"
+        )
+    return source_head_sha, tested_commit_sha, base_sha, base_ref
+
+
 def _prepare_invocation(arguments: argparse.Namespace) -> _PreparedInvocation:
     _configure_repository_root(arguments.repository_root)
     if SHA_PATTERN.fullmatch(arguments.commit_sha) is None:
@@ -3848,6 +3932,10 @@ def _prepare_invocation(arguments: argparse.Namespace) -> _PreparedInvocation:
             f"commit-sha must equal current repository HEAD {current_head}, "
             f"got {arguments.commit_sha}"
         )
+    source_head_sha, tested_commit_sha, base_sha, base_ref = _build_manifest_identity(
+        arguments,
+        current_head=current_head,
+    )
     generated_at = _parse_generated_at(arguments.generated_at)
     contract_path = (
         _resolve_path(arguments.contract)
@@ -3897,6 +3985,10 @@ def _prepare_invocation(arguments: argparse.Namespace) -> _PreparedInvocation:
         expected_reports=configuration.expected_reports,
         manifest_path=configuration.manifest_path,
         provenance=_build_provenance(arguments),
+        source_head_sha=source_head_sha,
+        tested_commit_sha=tested_commit_sha,
+        base_sha=base_sha,
+        base_ref=base_ref,
         tool_versions=_parse_tool_versions(arguments.tool_version),
         contract=configuration.contract,
         source_inventory=source_inventory,
@@ -4130,8 +4222,15 @@ def _build_manifest(
         validation_errors.extend(str(error) for error in tier0_errors)
         validation_errors = sorted(set(validation_errors))
     manifest: dict[str, object] = {
-        "schema_version": 2,
-        "commit_sha": arguments.commit_sha,
+        "schema_version": 3,
+        # ``commit_sha`` is retained as a compatibility alias for consumers
+        # that have not yet renamed their selector flag.  v3 validation binds
+        # it to the tested checkout and never treats it as the PR source head.
+        "commit_sha": invocation.tested_commit_sha,
+        "source_head_sha": invocation.source_head_sha,
+        "tested_commit_sha": invocation.tested_commit_sha,
+        "base_sha": invocation.base_sha,
+        "base_ref": invocation.base_ref,
         "generated_at": arguments.generated_at,
         "manifest_path": invocation.manifest_path,
         "source_roots": {
@@ -4164,6 +4263,10 @@ def _build_manifest(
             repository_root=REPOSITORY_ROOT,
             schema_path=(REPOSITORY_ROOT / "quality" / "coverage-manifest.schema.json"),
             expected_commit_sha=arguments.commit_sha,
+            expected_source_head_sha=invocation.source_head_sha,
+            expected_tested_commit_sha=invocation.tested_commit_sha,
+            expected_base_sha=invocation.base_sha,
+            expected_base_ref=invocation.base_ref,
             expected_provenance=invocation.provenance,
         )
         if evidence_errors:

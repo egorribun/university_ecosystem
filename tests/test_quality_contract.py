@@ -132,6 +132,18 @@ def test_repository_quality_contract_is_accepted_from_another_directory(
     assert result.stdout == "Quality contract is valid.\n"
 
 
+def test_quality_contract_declares_v3_manifest_semantics(tmp_path: Path) -> None:
+    contract = _load_contract()
+    declaration = contract["coverage_manifest"]
+    assert isinstance(declaration, dict)
+    assert declaration == {"schema_version": 3, "normalizer_version": "3.0.0"}
+
+    declaration["schema_version"] = 2
+    result = _run_contract(tmp_path, contract)
+    assert result.returncode != 0
+    assert "coverage_manifest.schema_version must equal 3" in result.stderr
+
+
 def test_mutation_registry_is_validated_by_default(tmp_path: Path) -> None:
     registry_path = tmp_path / "mutation-exclusions.json"
     registry_path.write_text(

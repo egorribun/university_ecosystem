@@ -696,37 +696,12 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
     sendTypingSpy.mockRestore()
   })
 
-  it("sends read receipts only while open and protects the TOCTOU send", async () => {
+  it("does not expose a read sender because REST owns receipts", async () => {
     const { socket, result, unmount } = await mountAndOpen({ enabled: true })
 
-    act(() => {
-      result.current.sendRead(CHAT_ID)
-      result.current.sendRead(CHAT_ID)
-    })
-    expect(socket.sentMessages).toEqual([
-      '{"type":"read","chat_id":"33333333-3333-4333-8333-333333333333"}',
-    ])
-
-    socket.send = () => {
-      throw new Error("socket closed between readyState check and send")
-    }
-    expect(() => {
-      act(() => result.current.sendRead("55555555-5555-4555-8555-555555555555"))
-    }).not.toThrow()
+    expect(result.current).not.toHaveProperty("sendRead")
+    expect(socket.sentMessages).not.toContain(expect.stringContaining('"type":"read"'))
     unmount()
-  })
-
-  it("ignores read receipts before the socket opens", () => {
-    const rendered = renderHook(() => useChatWebSocket({ enabled: false }), {
-      wrapper: ({ children }) => (
-        <QueryClientProvider client={new QueryClient()}>
-          <WebSocketProvider>{children}</WebSocketProvider>
-        </QueryClientProvider>
-      ),
-    })
-
-    expect(() => act(() => rendered.result.current.sendRead(CHAT_ID))).not.toThrow()
-    rendered.unmount()
   })
 
   it("queues a room join before open, rejoins on open, and leaves safely", async () => {

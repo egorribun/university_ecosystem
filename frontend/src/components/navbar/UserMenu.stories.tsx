@@ -42,7 +42,6 @@ const themed = (dark: boolean): Decorator => {
           presenceMap: {},
           isConnected: true,
           sendTyping: () => {},
-          sendRead: () => {},
           sendJoin: () => {},
           sendLeave: () => {},
           getTypingUsersForChat: () => [],

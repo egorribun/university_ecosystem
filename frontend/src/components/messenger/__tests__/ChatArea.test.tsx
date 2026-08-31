@@ -9,6 +9,7 @@ import type { Chat } from "@/api/chat"
 import type { User } from "@/types/User"
 
 type ChatAreaProps = ComponentProps<typeof ChatArea>
+type ChatAreaCapabilityProps = ChatAreaProps & { canManageChat?: boolean }
 
 /**
  * Wave 189 SW4 (B2) — ChatArea unit tests for the 19-prop render surface.
@@ -184,7 +185,7 @@ const baseMessages: Message[] = [
 // ReturnType<...> derivation). `as ChatAreaProps` final cast covers the
 // `messages: Message[]` field where the source's optimisticMessages type
 // uses a structurally-identical UiMessage shape.
-const baseProps: ChatAreaProps = {
+const baseProps: ChatAreaCapabilityProps = {
   isMobile: false,
   selectedChatId: null,
   activeChat: null,
@@ -410,10 +411,34 @@ describe("ChatArea — chat menu interactions", () => {
     expect(setShowChatMenu).toHaveBeenCalledWith(true)
   })
 
-  it("renders 3 menu items when showChatMenu=true (View Profile + Clear + Delete)", () => {
+  it("hides destructive chat actions for a non-admin participant", () => {
     const chat = makeChat()
     const { container } = render(
-      <ChatArea {...baseProps} selectedChatId={chat.id} activeChat={chat} showChatMenu />,
+      <ChatArea
+        {...baseProps}
+        canManageChat={false}
+        selectedChatId={chat.id}
+        activeChat={chat}
+        showChatMenu
+      />,
+      { wrapper }
+    )
+
+    expect(container.querySelector("#chat-action-view-profile")).toBeTruthy()
+    expect(container.querySelector("#chat-action-clear-chat")).toBeFalsy()
+    expect(container.querySelector("#chat-action-delete-chat")).toBeFalsy()
+  })
+
+  it("renders destructive chat actions for an admin", () => {
+    const chat = makeChat()
+    const { container } = render(
+      <ChatArea
+        {...baseProps}
+        canManageChat
+        selectedChatId={chat.id}
+        activeChat={chat}
+        showChatMenu
+      />,
       { wrapper }
     )
 
@@ -428,6 +453,7 @@ describe("ChatArea — chat menu interactions", () => {
     const { container } = render(
       <ChatArea
         {...baseProps}
+        canManageChat
         selectedChatId={chat.id}
         activeChat={chat}
         showChatMenu
@@ -449,6 +475,7 @@ describe("ChatArea — chat menu interactions", () => {
     const { container } = render(
       <ChatArea
         {...baseProps}
+        canManageChat
         selectedChatId={chat.id}
         activeChat={chat}
         showChatMenu

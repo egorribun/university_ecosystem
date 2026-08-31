@@ -147,7 +147,7 @@ export function ReactionPill({
         aria-label={t("messenger:reactions.tally", { emoji, count })}
         {...referenceProps}
         className={cn(
-          "inline-flex min-h-[28px] items-center gap-1 rounded-full border px-2 py-0.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-1 focus-visible:ring-offset-(--bg-surface)",
+          "-m-2 inline-flex min-h-[44px] min-w-[44px] items-center gap-1 rounded-full border px-2 py-0.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-1 focus-visible:ring-offset-(--bg-surface)",
           reactedByMe
             ? "border-(--color-violet-500)/(--opacity-medium) bg-(--color-violet-500)/(--opacity-soft) text-(--text-primary)"
             : "border-(--color-violet-500)/(--opacity-faint) bg-(--bg-surface-raised)/(--opacity-medium) text-(--text-secondary) hover:bg-(--bg-surface-hover)/(--opacity-medium)"

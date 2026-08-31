@@ -21,7 +21,6 @@ const themed = (dark: boolean, unreadCount = 0): Decorator => {
           presenceMap: {},
           isConnected: true,
           sendTyping: () => {},
-          sendRead: () => {},
           sendJoin: () => {},
           sendLeave: () => {},
           getTypingUsersForChat: () => [],

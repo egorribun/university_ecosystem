@@ -75,7 +75,6 @@ vi.mock("@/contexts/MessengerContext", () => ({
     presenceMap: {},
     isConnected: true,
     sendTyping: vi.fn(),
-    sendRead: vi.fn(),
     // Wave 204 SW6 — the controller's room-lifecycle effect calls sendJoin/
     // sendLeave on chat-select; the mock must provide them or the effect throws.
     sendJoin: vi.fn(),
@@ -169,6 +168,17 @@ afterEach(() => {
 // ---------- Tests ----------
 
 describe("useMessengerController", () => {
+  describe("chat management capability", () => {
+    it("exposes destructive chat actions only for an admin", () => {
+      const { result: participant } = renderHook(() => useMessengerController(), { wrapper })
+      expect(participant.current.canManageChat).toBe(false)
+
+      mocks.testUser.role = "admin"
+      const { result: admin } = renderHook(() => useMessengerController(), { wrapper })
+      expect(admin.current.canManageChat).toBe(true)
+    })
+  })
+
   describe("cursor history hydration", () => {
     beforeEach(() => {
       mocks.chatApi.getChat.mockResolvedValue({

@@ -138,8 +138,12 @@ def _valid_manifest_fixture(
         "functions": _unsupported("go_coverprofile_has_no_function_counter"),
     }
     manifest: dict[str, object] = {
-        "schema_version": 2,
+        "schema_version": 3,
         "commit_sha": _head(tmp_path),
+        "source_head_sha": _head(tmp_path),
+        "tested_commit_sha": _head(tmp_path),
+        "base_sha": _head(tmp_path),
+        "base_ref": "local",
         "generated_at": "2026-08-25T12:00:00Z",
         "manifest_path": contract["manifest_path"],
         "source_roots": contract["source_roots"],
@@ -150,7 +154,7 @@ def _valid_manifest_fixture(
             "go": "1.26.0",
             "node": "24.7.0",
             "python": "3.14.0",
-            "quality-normalizer": "2.0.0",
+            "quality-normalizer": "3.0.0",
             "rustc": "1.90.0",
             "rustc-nightly": "1.92.0-nightly",
             "vitest": "4.0.0",
@@ -166,7 +170,7 @@ def _valid_manifest_fixture(
         },
         "generation": {
             "command": "scripts/quality/normalize_coverage_reports.py",
-            "normalizer_version": "2.0.0",
+            "normalizer_version": "3.0.0",
         },
         "reports": reports,
         "components": components,
@@ -586,7 +590,7 @@ def test_contract_v2_removes_manifest_self_hash_and_declares_all_native_evidence
 def test_schema_v2_models_provenance_integrity_and_rust_branch_format() -> None:
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
 
-    assert schema["properties"]["schema_version"]["const"] == 2
+    assert schema["properties"]["schema_version"]["const"] == 3
     assert "coverage_scope" in schema["required"]
     assert schema["properties"]["coverage_scope"]["$ref"] == "#/$defs/coverageScope"
     assert {"manifest_path", "tool_versions", "provenance", "generation"}.issubset(

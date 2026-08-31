@@ -111,6 +111,7 @@ function MessengerFeatureContent() {
     handleRemoveMember,
     isRenamingGroup,
     isAddingMember,
+    canManageChat,
     handleClearChat,
     handleDeleteChat,
 
@@ -207,6 +208,7 @@ function MessengerFeatureContent() {
       handleViewProfile={handleViewProfile}
       handleClearChat={handleClearChat}
       handleDeleteChat={handleDeleteChat}
+      canManageChat={canManageChat}
       getOtherParticipant={getOtherParticipant}
       presenceMap={presenceMap}
       editingMessageId={editingMessageId}

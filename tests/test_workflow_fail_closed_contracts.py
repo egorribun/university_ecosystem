@@ -393,18 +393,19 @@ def test_mutation_matrix_publishes_bounded_capacity_telemetry() -> None:
     assert 'echo "- $matrix_summary"' in matrix_step["run"]
     assert 'echo "- $descriptor_summary"' in matrix_step["run"]
     assert "scheduler queue p50/p95" in matrix_step["run"]
-    assert 'echo "- Mutmut producer max concurrency: 20"' in matrix_step["run"]
-    assert 'echo "- Stryker producer max concurrency: 20"' in matrix_step["run"]
+    assert 'echo "- Mutmut producer max concurrency: 8"' in matrix_step["run"]
+    assert 'echo "- Stryker producer max concurrency: 8"' in matrix_step["run"]
     assert "global hosted-runner cap: 20" in matrix_step["run"]
 
-    # Each matrix family may request the complete observed hosted-runner cap.
-    # GitHub's scheduler owns aggregate capacity, so do not encode an exact
-    # cross-family split or reservation here.
+    # The two producer lanes are intentionally bounded to eight each so the
+    # repository-wide 20-runner cap retains four slots for diagnostics and
+    # aggregation. Keep this reservation explicit until three comparable
+    # green runs provide evidence for a different split.
     for family in (runners, stryker):
         max_parallel = family["strategy"]["max-parallel"]
         assert isinstance(max_parallel, int)
         assert 1 <= max_parallel <= 20
-        assert max_parallel == 20
+        assert max_parallel == 8
     assert runners["strategy"]["matrix"] == (
         "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
     )
@@ -617,9 +618,9 @@ def test_scheduled_workflows_reject_missing_required_inputs() -> None:
     assert "exit 1" in missing["run"]
 
 
-def test_incremental_go_mutation_never_converts_tool_failure_to_success() -> None:
-    job = _workflow(WORKFLOWS / "reusable-go-tests.yml")["jobs"]["test"]
-    mutation = _step(job, "Run incremental mutation tests")["run"]
+def test_go_mutation_diagnostic_never_converts_tool_failure_to_success() -> None:
+    job = _workflow(WORKFLOWS / "reusable-go-tests.yml")["jobs"]["mutation-diagnostic"]
+    mutation = _step(job, "Run bounded Go mutation diagnostic")["run"]
 
     assert "set -euo pipefail" in mutation
     assert 'git fetch origin "$BASE_REF_NAME" --depth=1 || true' not in mutation
@@ -630,8 +631,8 @@ def test_incremental_go_mutation_never_converts_tool_failure_to_success() -> Non
     assert 'git diff --name-only "$BASE_REF"...HEAD' not in mutation
     assert 'if [ ! -f "$target" ] || [ -L "$target" ]; then' in mutation
     assert "Mutation target is not a regular checked-out source file" in mutation
-    assert "Unable to resolve mutation-test base revision" in mutation
-    assert "no mutation-test source files were resolved" in mutation
+    assert "Unable to resolve mutation diagnostic base revision" in mutation
+    assert "No changed Go source files found" in mutation
     assert 'local isolated_root="$MUTATION_ROOT/$safe_target/repository"' in mutation
     assert 'local workdir="$isolated_root/$SERVICE_DIRECTORY"' in mutation
     assert 'cp -a "$GITHUB_WORKSPACE/$SERVICE_DIRECTORY/." "$workdir/"' in mutation
@@ -986,7 +987,8 @@ def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
 
     assert observed_steps == expected_steps
     assert observed_jobs == {
-        ("reusable-e2e-tests.yml", "e2e", "${{ inputs.advisory }}")
+        ("reusable-e2e-tests.yml", "e2e", "${{ inputs.advisory }}"),
+        ("reusable-go-tests.yml", "mutation-diagnostic", "True"),
     }
 
 

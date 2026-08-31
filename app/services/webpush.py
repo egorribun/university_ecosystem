@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
@@ -745,9 +745,80 @@ async def _send_push_async(
             )
 
 
+def coalesce_push_results(results: Sequence[object]) -> list[WebPushResult]:
+    """Return one deterministic result per subscription.
+
+    A retry, overlapping broadcast, or a provider adapter can report the same
+    subscription more than once.  Cleanup is idempotent at the database level,
+    but collapsing here keeps response aggregates and metrics truthful and
+    prevents a later ``sent`` result from reviving a terminal ``gone`` result.
+    ``gone`` wins over ``sent``, which wins over transient ``error``.
+    """
+
+    priority = {"error": 0, "sent": 1, "gone": 2}
+    selected: dict[uuid.UUID, WebPushResult] = {}
+    order: list[uuid.UUID] = []
+    for result in results:
+        if not isinstance(result, WebPushResult):
+            continue
+        # Keep the runtime boundary defensive: provider adapters and tests may
+        # deserialize UUIDs as strings even though the typed dataclass carries
+        # ``uuid.UUID``.  Widen before validation so strict mypy does not mark
+        # the defensive branch unreachable while production callers retain the
+        # strongly typed contract.
+        raw_subscription_id: object = result.subscription_id
+        subscription_id = raw_subscription_id
+        if not isinstance(subscription_id, uuid.UUID):
+            try:
+                subscription_id = uuid.UUID(str(subscription_id))
+            except (AttributeError, TypeError, ValueError):
+                continue
+        # Runtime data may come from third-party adapters, so avoid trusting an
+        # invalid status even though the dataclass annotation is Literal-based.
+        raw_status = result.status
+        status = (
+            raw_status
+            if isinstance(raw_status, str) and raw_status in priority
+            else "error"
+        )
+        if status != raw_status:
+            result = WebPushResult(
+                subscription_id=subscription_id,
+                endpoint=result.endpoint,
+                user_id=result.user_id,
+                status="error",
+                status_code=result.status_code,
+                error=result.error or "invalid push result status",
+            )
+        elif result.subscription_id != subscription_id:
+            result = WebPushResult(
+                subscription_id=subscription_id,
+                endpoint=result.endpoint,
+                user_id=result.user_id,
+                status=result.status,
+                status_code=result.status_code,
+                error=result.error,
+            )
+        previous = selected.get(subscription_id)
+        if previous is None:
+            order.append(subscription_id)
+            selected[subscription_id] = result
+            continue
+        previous_raw_status = previous.status
+        previous_status = (
+            previous_raw_status
+            if isinstance(previous_raw_status, str) and previous_raw_status in priority
+            else "error"
+        )
+        if priority[status] > priority[previous_status]:
+            selected[subscription_id] = result
+    return [selected[subscription_id] for subscription_id in order]
+
+
 async def process_push_results(results: list[WebPushResult]) -> None:
-    gone_ids = [r.subscription_id for r in results if r.status == "gone"]
-    sent_ids = [r.subscription_id for r in results if r.status == "sent"]
+    canonical_results = coalesce_push_results(results)
+    gone_ids = [r.subscription_id for r in canonical_results if r.status == "gone"]
+    sent_ids = [r.subscription_id for r in canonical_results if r.status == "sent"]
 
     if not gone_ids and not sent_ids:
         return

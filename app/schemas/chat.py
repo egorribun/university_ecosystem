@@ -6,6 +6,7 @@ from uuid import UUID
 
 from pydantic import ConfigDict, Field
 
+from app.core.config.storage import CHAT_MAX_MESSAGE_LENGTH
 from app.schemas.base import SecureBaseModel
 
 
@@ -29,7 +30,7 @@ class PresenceStatus(SecureBaseModel):
 
 class MessageBase(SecureBaseModel):
     # TD-W5-02: Enforce maximum length so the DB column and HTTP body are both bounded.
-    content: str = Field(..., min_length=1, max_length=2000)
+    content: str = Field(..., min_length=1, max_length=CHAT_MAX_MESSAGE_LENGTH)
 
 
 class MessageCreate(MessageBase):
@@ -126,7 +127,7 @@ class MessageResponse(MessageBase):
     # min_length floor is dropped. Input validation stays strict: MessageCreate
     # keeps min_length=1, and the POST/PATCH routes parse content via
     # Form(..., min_length=1).
-    content: str = Field(..., max_length=2000)
+    content: str = Field(..., max_length=CHAT_MAX_MESSAGE_LENGTH)
     id: UUID
     chat_id: UUID
     sender_id: UUID

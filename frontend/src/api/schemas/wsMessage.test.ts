@@ -7,6 +7,50 @@ const USER_ID = "22222222-2222-2222-2222-222222222222"
 const MSG_ID = "33333333-3333-3333-3333-333333333333"
 const SENDER_ID = "44444444-4444-4444-4444-444444444444"
 const READ_AT = "2026-05-30T14:32:00+00:00"
+const MESSAGE_LIMIT = 32_768
+
+function messageWithContent(content: string) {
+  return {
+    id: MSG_ID,
+    chat_id: CHAT_ID,
+    sender_id: SENDER_ID,
+    content,
+    created_at: "2026-05-30T14:30:00+00:00",
+    read_status: false,
+  }
+}
+
+describe("parseWsMessage — canonical message content boundary", () => {
+  it.each([MESSAGE_LIMIT - 1, MESSAGE_LIMIT])(
+    "accepts a new_message with %s Unicode code points",
+    (size) => {
+      const content = "😀".repeat(size)
+      const frame = parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          chat_id: CHAT_ID,
+          message: messageWithContent(content),
+        })
+      )
+
+      expect(frame).not.toBeNull()
+    }
+  )
+
+  it("rejects content above the canonical limit without truncating it", () => {
+    const content = "x".repeat(MESSAGE_LIMIT + 1)
+
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          chat_id: CHAT_ID,
+          message: messageWithContent(content),
+        })
+      )
+    ).toBeNull()
+  })
+})
 
 describe("parseWsMessage — read frame (Wave 203 SW5 chat-level)", () => {
   it("accepts a chat-level read frame with read_at", () => {

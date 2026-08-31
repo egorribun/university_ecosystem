@@ -74,7 +74,9 @@
     "minutes_one": "{{count}} минута",
     "minutes_few": "{{count}} минуты",
     "minutes_many": "{{count}} минут",
-    "minutes_other": "{{count}} минуты"
+    "minutes_other": "{{count}} минуты",
+    "hoursShort": "ч",
+    "minutesShort": "мин"
   },
   "timeLeft": {
     "current": "Текущее занятие закончится через {{duration}}",
@@ -96,9 +98,13 @@
     "addLesson": "Добавить занятие на {{day}}",
     "currentProgress": "Прогресс текущего занятия"
   },
+  "actions": {
+    "addLesson": "Добавить занятие на {{day}}"
+  },
   "table": {
     "rowNumber": "№",
-    "noLessons": "Занятия не запланированы"
+    "noLessons": "Занятия не запланированы",
+    "emptyCell": "Нет занятия"
   },
   "mobile": {
     "noLessons": "В этот день занятий нет"
@@ -123,7 +129,9 @@
     "day": "День",
     "list": "Список",
     "export": "Экспорт",
-    "settings": "Настройки"
+    "settings": "Настройки",
+    "today": "Сегодня",
+    "weekNavLabel": "Навигация по неделям"
   },
   "empty": {
     "selectGroup": "Выберите группу для просмотра расписания",
@@ -193,7 +201,8 @@
   },
   "parity": {
     "odd": "Нечётная неделя",
-    "even": "Чётная неделя"
+    "even": "Чётная неделя",
+    "label": "Чётность недели"
   },
   "export": {
     "ics": "iCalendar (.ics)",

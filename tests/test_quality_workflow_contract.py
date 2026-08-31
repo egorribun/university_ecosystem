@@ -1614,14 +1614,23 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
         "${{ fromJSON(needs.mutation-scope.outputs.stats_matrix) }}"
     )
     assert stats_job["timeout-minutes"] == 25
-    assert stats_job["needs"] == "mutation-scope"
+    assert stats_job["needs"] == [
+        "mutation-scope",
+        "pre-commit-security-and-types",
+        "backend-tests",
+        "backend-type-check",
+    ]
     for job in (stats_job, universe_job, mutation_job):
         assert job["env"]["REVOCATION_REDIS_URL"] == ("redis://localhost:6380/0")
     assert universe_job["timeout-minutes"] == 35
-    assert universe_job["needs"] == ["pre-commit-check", "mutation-tests-stats"]
+    assert universe_job["needs"] == [
+        "pre-commit-check",
+        "pre-commit-security-and-types",
+        "mutation-tests-stats",
+    ]
     assert mutation_job["strategy"]["fail-fast"] is False
     assert 1 <= mutation_job["strategy"]["max-parallel"] <= 20
-    assert mutation_job["strategy"]["max-parallel"] == 20
+    assert mutation_job["strategy"]["max-parallel"] == 8
     assert mutation_job["strategy"]["matrix"] == (
         "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
     )
@@ -1771,17 +1780,47 @@ def test_mutation_stats_do_not_wait_for_an_unrelated_read_only_gate() -> None:
     mutation_job = workflow["jobs"]["mutation-tests-incremental"]
     ci_success = workflow["jobs"]["ci-success"]
 
-    assert stats_job["needs"] == "mutation-scope"
+    assert stats_job["needs"] == [
+        "mutation-scope",
+        "pre-commit-security-and-types",
+        "backend-tests",
+        "backend-type-check",
+    ]
     assert workflow["permissions"] == "read-all"
     assert "secrets" not in stats_job
-    assert universe_job["needs"] == ["pre-commit-check", "mutation-tests-stats"]
+    assert universe_job["needs"] == [
+        "pre-commit-check",
+        "pre-commit-security-and-types",
+        "mutation-tests-stats",
+    ]
     assert mutation_job["needs"] == [
         "pre-commit-check",
+        "pre-commit-security-and-types",
         "mutation-tests-stats",
         "mutation-tests-universe",
     ]
     assert "mutation-tests-stats" in ci_success["needs"]
     assert "needs.mutation-tests-stats.result" in ci_success["steps"][0]["run"]
+
+
+def test_mutation_lanes_are_readiness_gated_and_leave_reserved_capacity() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+
+    assert "needs" not in jobs["frontend-tests"]
+    assert jobs["stryker-preflight"]["needs"] == [
+        "pre-commit-check",
+        "frontend-tests",
+    ]
+    assert jobs["stryker-shards"]["strategy"]["max-parallel"] == 8
+    assert jobs["mutation-tests-stats"]["strategy"]["max-parallel"] == 8
+    assert jobs["mutation-tests-stats"]["needs"] == [
+        "mutation-scope",
+        "pre-commit-security-and-types",
+        "backend-tests",
+        "backend-type-check",
+    ]
+    assert jobs["mutation-tests-incremental"]["strategy"]["max-parallel"] == 8
 
 
 def test_mutation_stats_scope_is_resolved_before_matrix_fanout() -> None:
@@ -1803,7 +1842,12 @@ def test_mutation_stats_scope_is_resolved_before_matrix_fanout() -> None:
         "stats_matrix": "${{ steps.scope.outputs.stats_matrix }}",
     }
     assert scope["timeout-minutes"] == 5
-    assert stats["needs"] == "mutation-scope"
+    assert stats["needs"] == [
+        "mutation-scope",
+        "pre-commit-security-and-types",
+        "backend-tests",
+        "backend-type-check",
+    ]
     assert stats["strategy"]["matrix"] == (
         "${{ fromJSON(needs.mutation-scope.outputs.stats_matrix) }}"
     )
@@ -1876,7 +1920,7 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
         "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
     )
     assert 1 <= mutation_job["strategy"]["max-parallel"] <= 20
-    assert mutation_job["strategy"]["max-parallel"] == 20
+    assert mutation_job["strategy"]["max-parallel"] == 8
 
     selection_step = _step_named(
         mutation_job, "Validate selected mutmut execution matrix entry"
@@ -3595,7 +3639,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     )
     jobs = ci_workflow["jobs"]
     mutation_preflight = jobs["stryker-preflight"]
-    assert "needs" not in mutation_preflight
+    assert mutation_preflight["needs"] == ["pre-commit-check", "frontend-tests"]
     assert "github.event_name == 'pull_request'" in mutation_preflight["if"]
     assert mutation_preflight["permissions"] == {
         "contents": "read",
@@ -3641,7 +3685,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert mutation_shards["name"].endswith("/64")
     assert mutation_shards["strategy"]["fail-fast"] is False
     assert 1 <= mutation_shards["strategy"]["max-parallel"] <= 20
-    assert mutation_shards["strategy"]["max-parallel"] == 20
+    assert mutation_shards["strategy"]["max-parallel"] == 8
     assert mutation_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
     assert mutation_shards["timeout-minutes"] == 120
     assert mutation_shards["needs"] == "stryker-preflight"
@@ -5671,6 +5715,9 @@ def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None
     for required in (
         '--repository-root "$GITHUB_WORKSPACE"',
         '--commit-sha "$EXPECTED_SHA"',
+        '--source-head-sha "$SOURCE_HEAD_SHA"',
+        '--base-sha "$BASE_SHA"',
+        '--base-ref "$BASE_REF"',
         "--provenance-mode github-actions",
         '--workflow-run-id "$RUN_ID"',
         '--workflow-run-attempt "$RUN_ATTEMPT"',
@@ -5709,6 +5756,10 @@ def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None
         "--schema quality/coverage-manifest.schema.json",
         '--artifact-root "$GITHUB_WORKSPACE"',
         '--expected-commit-sha "$EXPECTED_SHA"',
+        '--expected-source-head-sha "$SOURCE_HEAD_SHA"',
+        '--expected-tested-commit-sha "$EXPECTED_SHA"',
+        '--expected-base-sha "$BASE_SHA"',
+        '--expected-base-ref "$BASE_REF"',
         '--expected-workflow-run-id "$RUN_ID"',
         '--expected-workflow-run-attempt "$RUN_ATTEMPT"',
         '--expected-workflow-event "$WORKFLOW_EVENT"',

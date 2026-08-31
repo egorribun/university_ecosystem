@@ -11,12 +11,12 @@ import type { ReactNode } from "react"
  * SW14 (Docker chain authed visual smoke with real ws-hub).
  *
  * In-scope (testable without full WebSocket mocking):
- *  - Hook returns expected shape ({isConnected, sendTyping, sendRead,
+ *  - Hook returns expected shape ({isConnected, sendTyping,
  *    getTypingUsersForChat}).
  *  - Throws helpful error when used outside WebSocketProvider.
  *  - WebSocketStore class (subscribe/getSnapshot/setConnected) — primitive
  *    that backs useSyncExternalStore wiring.
- *  - sendTyping/sendRead are no-ops when WS is not open (TOCTOU race
+ *  - sendTyping is a no-op when WS is not open (TOCTOU race
  *    guard — W183 SW3 safety).
  *  - getTypingUsersForChat returns empty array when no typing state.
  *
@@ -1822,9 +1822,14 @@ describe("useChatWebSocket", () => {
       expect(result.current).toMatchObject({
         isConnected: expect.any(Boolean),
         sendTyping: expect.any(Function),
-        sendRead: expect.any(Function),
         getTypingUsersForChat: expect.any(Function),
       })
+    })
+
+    it("does not expose a WebSocket read sender because REST owns receipts", () => {
+      const { result } = renderHook(() => useChatWebSocket({ enabled: false }), { wrapper })
+
+      expect(result.current).not.toHaveProperty("sendRead")
     })
 
     it("isConnected defaults to false before WS opens", () => {
@@ -1866,17 +1871,6 @@ describe("useChatWebSocket", () => {
       expect(() => {
         act(() => {
           result.current.sendTyping("chat-1")
-        })
-      }).not.toThrow()
-    })
-
-    it("sendRead is a no-op when wsRef is null (not connected)", () => {
-      const { result } = renderHook(() => useChatWebSocket({ enabled: false }), { wrapper })
-
-      expect(() => {
-        act(() => {
-          // Wave 203 SW5 — sendRead is now chat-level (no message_id arg).
-          result.current.sendRead("chat-1")
         })
       }).not.toThrow()
     })

@@ -61,6 +61,10 @@
   "tier0": {
     "coverage": {"lines": 100, "statements": 100, "branches": 100, "functions": 100}
   },
+  "coverage_manifest": {
+    "schema_version": 3,
+    "normalizer_version": "3.0.0"
+  },
   "coverage_reports": [
     {"component": "python", "format": "cobertura-xml", "path": "coverage.xml"},
     {"component": "python", "format": "coverage-py-json", "path": "artifacts/coverage/python/coverage.json"},

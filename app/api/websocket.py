@@ -38,6 +38,7 @@ from app.api.ws.presence import (
 )
 from app.api.ws.serializers import serialize_message
 from app.core import metrics
+from app.core.config.storage import CHAT_MAX_MESSAGE_LENGTH
 from app.core.logging import get_logger
 from app.models.chat import Message
 
@@ -87,14 +88,14 @@ async def websocket_chat(websocket: WebSocket) -> None:
     - Fallback: HttpOnly access_token_v2 cookie (cookie-capable browsers)
 
     Message types (from client):\n    - {"type": "ping"} - Keep-alive ping
-    - {"type": "read", "chat_id": "...", "message_id": "..."} - Mark message as read
+    - {"type": "read", "chat_id": "..."} - Legacy chat-level receipt (REST is canonical)
 
     Message types (to client):
     - {"type": "pong"} - Response to ping
     - {"type": "new_message", "chat_id": "...", "message": {...}} - New message received
     - {"type": "typing", "chat_id": "...", "user_id": ...} - Someone is typing
-    - {"type": "read", "chat_id": "...", "message_id": "...", "user_id": ...}
-      - Message read
+    - {"type": "read", "chat_id": "...", "user_id": ..., "read_at": "..."}
+      - Chat-level read receipt
     - {"type": "presence", "user_id": ..., "active": true/false, "last_seen": "..."}
       - Participant presence updates
     - {"type": "error", "message": "..."} - Error message
@@ -142,7 +143,7 @@ async def websocket_chat(websocket: WebSocket) -> None:
         while True:
             try:
                 text_data = await websocket.receive_text()
-                if len(text_data) > 32768:
+                if len(text_data) > CHAT_MAX_MESSAGE_LENGTH:
                     logger.warning(
                         "WS payload too large from user %s", user.id
                     )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure

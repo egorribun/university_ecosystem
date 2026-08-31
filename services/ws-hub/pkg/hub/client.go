@@ -990,6 +990,9 @@ func (c *Client) handleLeave(msg Message) {
 	c.LeaveRoom(msg.Room)
 }
 
+// allowedMessageTypes is the client-to-hub command catalog. Read receipts are
+// deliberately absent: POST /api/v1/chats/{chat_id}/read is the canonical
+// receipt path, while ws-hub only transports room joins, leaves and messages.
 var allowedMessageTypes = map[string]bool{
 	"join":    true,
 	"leave":   true,

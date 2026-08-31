@@ -8,6 +8,51 @@
   "ariaCurrentLessonProgress": "Прогресс текущего занятия",
   "active": "Активен",
   "inactive": "Неактивен",
+  "loading": "Загрузка…",
+  "prev": "Назад",
+  "today": "Сегодня",
+  "next": "Далее",
+  "sync": {
+    "offline": "Нет сети · последняя синхронизация {{time}}",
+    "online": "Всё синхронизировано"
+  },
+  "time": {
+    "minuteShort": "мин"
+  },
+  "search": {
+    "title": "Поиск",
+    "placeholder": "Поиск…",
+    "inputLabel": "Поиск по приложению",
+    "clear": "Очистить поиск",
+    "recent": "Недавние запросы",
+    "noResults": "Совпадений не найдено",
+    "hint": "Используйте стрелки для навигации",
+    "navigate": "Навигация",
+    "select": "Выбрать"
+  },
+  "ai": {
+    "summaryBadge": "Сводка ИИ",
+    "showLess": "Свернуть",
+    "readMore": "Читать далее"
+  },
+  "theme": {
+    "switchToLight": "Включить светлую тему",
+    "switchToDark": "Включить тёмную тему"
+  },
+  "strength": {
+    "very_weak": "Очень слабый",
+    "weak": "Слабый",
+    "medium": "Средний",
+    "strong": "Сильный",
+    "very_strong": "Очень сильный"
+  },
+  "notifications": {
+    "relevance": {
+      "high": "Высокая важность",
+      "medium": "Средняя важность",
+      "low": "Низкая важность"
+    }
+  },
   "errorBoundary": {
     "title": "Что-то пошло не так",
     "description": "Произошла непредвиденная ошибка. Мы уже работаем над её исправлением.",
@@ -36,7 +81,9 @@
     "changePhoto": "Изменить фото",
     "loadMore": "Загрузить ещё",
     "backToTop": "Наверх",
-    "close": "Закрыть"
+    "close": "Закрыть",
+    "saving": "Сохранение…",
+    "submit": "Отправить"
   },
   "statuses": {
     "loading": "Загрузка…",

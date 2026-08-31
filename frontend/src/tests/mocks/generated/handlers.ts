@@ -5412,7 +5412,7 @@ export function getGetChatsApiV1ChatsGet200Response() {
               }));
             })(),
             chat_id: faker.string.uuid(),
-            content: faker.string.alpha({ length: { min: 0, max: 2000 } }),
+            content: faker.string.alpha({ length: { min: 0, max: 32768 } }),
             created_at: faker.date.anytime().toISOString(),
             deleted_at: faker.helpers.arrayElement([
               faker.date.anytime().toISOString(),
@@ -5607,7 +5607,7 @@ export function getCreateChatApiV1ChatsPost200Response() {
           }));
         })(),
         chat_id: faker.string.uuid(),
-        content: faker.string.alpha({ length: { min: 0, max: 2000 } }),
+        content: faker.string.alpha({ length: { min: 0, max: 32768 } }),
         created_at: faker.date.anytime().toISOString(),
         deleted_at: faker.helpers.arrayElement([
           faker.date.anytime().toISOString(),
@@ -5789,7 +5789,7 @@ export function getCreateGroupApiV1ChatsGroupsPost200Response() {
           }));
         })(),
         chat_id: faker.string.uuid(),
-        content: faker.string.alpha({ length: { min: 0, max: 2000 } }),
+        content: faker.string.alpha({ length: { min: 0, max: 32768 } }),
         created_at: faker.date.anytime().toISOString(),
         deleted_at: faker.helpers.arrayElement([
           faker.date.anytime().toISOString(),
@@ -6013,7 +6013,7 @@ export function getGetChatApiV1ChatsChatIdGet200Response() {
           }));
         })(),
         chat_id: faker.string.uuid(),
-        content: faker.string.alpha({ length: { min: 0, max: 2000 } }),
+        content: faker.string.alpha({ length: { min: 0, max: 32768 } }),
         created_at: faker.date.anytime().toISOString(),
         deleted_at: faker.helpers.arrayElement([
           faker.date.anytime().toISOString(),
@@ -6278,7 +6278,7 @@ export function getGetMessagesApiV1ChatsChatIdMessagesGet200Response() {
           }));
         })(),
         chat_id: faker.string.uuid(),
-        content: faker.string.alpha({ length: { min: 0, max: 2000 } }),
+        content: faker.string.alpha({ length: { min: 0, max: 32768 } }),
         created_at: faker.date.anytime().toISOString(),
         deleted_at: faker.helpers.arrayElement([
           faker.date.anytime().toISOString(),
@@ -6410,7 +6410,7 @@ export function getSendMessageApiV1ChatsChatIdMessagesPost200Response() {
       }));
     })(),
     chat_id: faker.string.uuid(),
-    content: faker.string.alpha({ length: { min: 0, max: 2000 } }),
+    content: faker.string.alpha({ length: { min: 0, max: 32768 } }),
     created_at: faker.date.anytime().toISOString(),
     deleted_at: faker.helpers.arrayElement([
       faker.date.anytime().toISOString(),
@@ -6902,7 +6902,7 @@ export function getForwardMessagesApiV1ChatsDestChatIdForwardPost200Response() {
         }));
       })(),
       chat_id: faker.string.uuid(),
-      content: faker.string.alpha({ length: { min: 0, max: 2000 } }),
+      content: faker.string.alpha({ length: { min: 0, max: 32768 } }),
       created_at: faker.date.anytime().toISOString(),
       deleted_at: faker.helpers.arrayElement([
         faker.date.anytime().toISOString(),

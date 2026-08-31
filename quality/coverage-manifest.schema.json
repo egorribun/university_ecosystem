@@ -1,11 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "University Ecosystem coverage evidence manifest v2",
+  "title": "University Ecosystem coverage evidence manifest v3",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
     "commit_sha",
+    "source_head_sha",
+    "tested_commit_sha",
+    "base_sha",
+    "base_ref",
     "generated_at",
     "manifest_path",
     "source_roots",
@@ -20,8 +24,16 @@
     "validation"
   ],
   "properties": {
-    "schema_version": {"const": 2},
+    "schema_version": {"const": 3},
     "commit_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "source_head_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "tested_commit_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "base_sha": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "base_ref": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\r\\n\\x00]+$"
+    },
     "generated_at": {
       "type": "string",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$"
@@ -170,7 +182,7 @@
       "required": ["command", "normalizer_version"],
       "properties": {
         "command": {"const": "scripts/quality/normalize_coverage_reports.py"},
-        "normalizer_version": {"type": "string", "pattern": "^2\\.[0-9]+\\.[0-9]+$"}
+        "normalizer_version": {"type": "string", "pattern": "^3\\.[0-9]+\\.[0-9]+$"}
       }
     },
     "report": {

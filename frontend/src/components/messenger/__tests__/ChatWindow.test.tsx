@@ -825,6 +825,54 @@ describe("ChatWindow — W205 SW6 edit/delete affordance + tombstone + inline ed
   })
 })
 
+describe("ChatWindow — messenger controls meet the 44px hit-area contract", () => {
+  it("keeps every message action and reaction control at least 44x44", () => {
+    const own = makeMessage({
+      id: "hitbox-own",
+      text: "hello",
+      isMe: true,
+      reactions: [{ emoji: "👍", count: 1, reactedByMe: false }],
+    })
+    render(
+      <ChatWindow
+        messages={[own]}
+        onStartReply={() => {}}
+        onForward={() => {}}
+        onEditMessage={() => {}}
+        onDeleteMessage={() => {}}
+        onToggleReaction={() => {}}
+      />,
+      { wrapper }
+    )
+
+    const actionLabels = [
+      "messenger:reply",
+      "messenger:forward",
+      "messenger:editMessage",
+      "messenger:deleteMessage",
+      "messenger:reactions.add",
+    ]
+    for (const label of actionLabels) {
+      expect(screen.getByRole("button", { name: label })).toHaveClass(
+        "min-h-[44px]",
+        "min-w-[44px]"
+      )
+    }
+
+    expect(
+      screen.getByRole("button", {
+        name: 'messenger:reactions.tally|{"emoji":"👍","count":1}',
+      })
+    ).toHaveClass("min-h-[44px]", "min-w-[44px]")
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:reactions.add" }))
+    const pickerButton = screen.getByRole("button", {
+      name: 'messenger:reactions.react|{"emoji":"👍"}',
+    })
+    expect(pickerButton).toHaveClass("min-h-[44px]", "min-w-[44px]")
+  })
+})
+
 describe("ChatWindow — W206 reactions (pills + +react picker)", () => {
   const withReactions = (
     reactions: Message["reactions"],

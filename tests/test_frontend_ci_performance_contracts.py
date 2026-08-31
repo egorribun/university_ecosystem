@@ -87,6 +87,23 @@ def test_frontend_wasm_is_built_once_and_reused_by_all_consumers() -> None:
     assert _step(jobs["build"], "Build app")["env"] == {"SKIP_WASM_BUILD": "1"}
 
 
+def test_frontend_wasm_target_is_installed_once_before_parallel_builds() -> None:
+    workflow = _load(FRONTEND_WORKFLOW_PATH)
+    producer = workflow["jobs"]["wasm-build"]  # type: ignore[index]
+    build_run = _step(producer, "Build immutable WASM modules")["run"]
+
+    target_install = "rustup target add wasm32-unknown-unknown"
+    target_verify = (
+        'rustup target list --installed | grep -Fxq "wasm32-unknown-unknown"'
+    )
+    first_parallel_build = "wasm-pack build rust-crypto --target web --release &"
+
+    assert build_run.count(target_install) == 1
+    assert build_run.count(target_verify) == 1
+    assert build_run.index(target_install) < build_run.index(first_parallel_build)
+    assert build_run.index(target_verify) < build_run.index(first_parallel_build)
+
+
 def test_frontend_typecheck_runs_once_in_a_required_static_gate() -> None:
     jobs = _load(FRONTEND_WORKFLOW_PATH)["jobs"]  # type: ignore[index]
     typecheck_steps = [

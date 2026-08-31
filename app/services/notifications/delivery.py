@@ -85,6 +85,54 @@ def _is_push_configured() -> bool:
 send_web_push = webpush_module.send_web_push
 
 
+async def _process_canonical_push_results(
+    results: Sequence[WebPushResult],
+) -> list[WebPushResult]:
+    """Coalesce provider results and await their durable side effects."""
+
+    canonical_results = webpush_module.coalesce_push_results(list(results))
+    await webpush_module.process_push_results(canonical_results)
+    return canonical_results
+
+
+async def deliver_and_process_push_results(
+    subscriptions: Sequence[PushSubscription],
+    payload: Mapping[str, Any],
+    *,
+    topic: str | None,
+    concurrency: int = 50,
+    deliverer: Callable[..., Awaitable[list[WebPushResult]]] | None = None,
+) -> list[WebPushResult]:
+    """Deliver a push batch and apply the canonical result side effects.
+
+    Every producer (including the admin test and broadcast endpoints) must use
+    this boundary so terminal (404/410) subscriptions are removed and
+    successful subscriptions receive a ``last_seen_at`` update.  ``deliverer``
+    is injectable for tests and for callers that already have a specialised
+    sender; the default is the shared subscription fan-out implementation.
+
+    Result processing is deliberately awaited before returning.  This keeps
+    admin responses honest (a success is not reported before cleanup has
+    committed) and means a processing failure propagates to the caller instead
+    of being mistaken for a delivered notification.
+    """
+
+    if deliverer is None:
+        # Import lazily to keep the notification package import graph acyclic:
+        # ``push_service`` imports ``WebPushResult`` from ``webpush``.
+        from app.services.push_service import deliver_push_to_subscriptions
+
+        deliverer = deliver_push_to_subscriptions
+
+    results = await deliverer(
+        subscriptions,
+        dict(payload),
+        topic=topic,
+        concurrency=concurrency,
+    )
+    return await _process_canonical_push_results(results)
+
+
 def only_active_users(stmt: Select[Any]) -> Select[Any]:
     """Limit a user selection to accounts that are currently active."""
 
@@ -303,7 +351,7 @@ async def redeliver_notifications(
         await db.execute(insert(NotificationDelivery).values(delivery_rows))
     await db.flush()
     if push_results:
-        await webpush_module.process_push_results(push_results)
+        await _process_canonical_push_results(push_results)
 
     return NotificationRedeliveryOutcome(
         sent=sent,
@@ -575,7 +623,7 @@ async def create_notifications_for_users(
             results = await asyncio.gather(*tasks, return_exceptions=True)
 
             valid_results = [r for r in results if isinstance(r, WebPushResult)]
-            await webpush_module.process_push_results(valid_results)
+            await _process_canonical_push_results(valid_results)
 
             for (sub, notification_id), result in zip(send_jobs, results, strict=False):
                 attempt_ts = dt.datetime.now(UTC)

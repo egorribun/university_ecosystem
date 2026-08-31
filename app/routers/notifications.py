@@ -40,6 +40,7 @@ from app.schemas.notifications import (
     PushTopicsResponse,
     SendTestResponse,
 )
+from app.services.notifications.delivery import deliver_and_process_push_results
 from app.services.push_service import deliver_push_to_subscriptions
 from app.services.push_topics import (
     get_allowed_topics,
@@ -670,8 +671,14 @@ async def send_test(
             if value is not None:
                 message[field] = value
 
-    results = await deliver_push_to_subscriptions(
-        subscriptions, message, topic=normalized_topic, concurrency=20
+    results = await deliver_and_process_push_results(
+        subscriptions,
+        message,
+        topic=normalized_topic,
+        concurrency=20,
+        # Keep the router-level dependency injectable for focused tests and
+        # preserve the shared push fan-out implementation.
+        deliverer=deliver_push_to_subscriptions,
     )
     summary = _aggregate_results(
         results,
@@ -888,34 +895,43 @@ async def broadcast(
     # BROADCAST_BATCH_SIZE × ~2 KB regardless of total subscription count.
     _BROADCAST_BATCH_SIZE = 500
     results: list[WebPushResult] = []
-    offset = 0
+    last_subscription_id: uuid.UUID | None = None
 
     while True:
-        batch = (
-            (
-                await db.execute(
-                    select(PushSubscription)
-                    .options(
-                        selectinload(PushSubscription.user).selectinload(
-                            User.push_topic_preferences
-                        )
-                    )
-                    .order_by(PushSubscription.id)
-                    .limit(_BROADCAST_BATCH_SIZE)
-                    .offset(offset)
+        statement = (
+            select(PushSubscription)
+            .options(
+                selectinload(PushSubscription.user).selectinload(
+                    User.push_topic_preferences
                 )
             )
-            .scalars()
-            .all()
+            .order_by(PushSubscription.id)
         )
+        if last_subscription_id is not None:
+            # Keyset pagination remains correct when the previous batch's
+            # result processing removed stale subscriptions in a separate
+            # transaction; offset pagination would skip rows after deletes.
+            statement = statement.where(PushSubscription.id > last_subscription_id)
+        statement = statement.limit(_BROADCAST_BATCH_SIZE)
+        batch = (await db.execute(statement)).scalars().all()
         if not batch:
             break
 
-        batch_results = await deliver_push_to_subscriptions(
-            batch, payload, topic=topic, concurrency=50
+        batch_results = await deliver_and_process_push_results(
+            batch,
+            payload,
+            topic=topic,
+            concurrency=50,
+            deliverer=deliver_push_to_subscriptions,
         )
         results.extend(batch_results)
-        offset += _BROADCAST_BATCH_SIZE
+        last_raw_id = getattr(batch[-1], "id", None)
+        try:
+            last_subscription_id = uuid.UUID(str(last_raw_id))
+        except (AttributeError, TypeError, ValueError):
+            # A malformed fixture/provider object must not create a runaway
+            # loop.  The normal ORM path always supplies a UUID primary key.
+            break
         # Yield to the event loop between batches so other requests are not starved.
         await asyncio.sleep(0)
     summary = _aggregate_results(

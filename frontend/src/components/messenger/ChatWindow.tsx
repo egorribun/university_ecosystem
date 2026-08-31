@@ -681,14 +681,14 @@ export const ChatWindow = memo(function ChatWindow({
                           <button
                             type="button"
                             onClick={onCancelEdit}
-                            className="inline-flex min-h-[40px] items-center rounded-full px-4 text-sm font-semibold text-(--text-secondary) transition-colors hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                            className="-my-0.5 inline-flex min-h-[44px] min-w-[44px] items-center rounded-full px-4 text-sm font-semibold text-(--text-secondary) transition-colors hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
                           >
                             {t("common:buttons.cancel")}
                           </button>
                           <button
                             type="button"
                             onClick={() => onSaveEdit?.(message.id)}
-                            className="messenger-send-btn inline-flex min-h-[40px] items-center rounded-full px-5 text-sm font-semibold text-[var(--text-inverse)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                            className="messenger-send-btn -my-0.5 inline-flex min-h-[44px] min-w-[44px] items-center rounded-full px-5 text-sm font-semibold text-[var(--text-inverse)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
                           >
                             {t("common:buttons.save")}
                           </button>
@@ -838,27 +838,25 @@ export const ChatWindow = memo(function ChatWindow({
                           {/* Wave 205 SW6 — own-message edit/delete affordance. Always
                           rendered + reachable (touch + keyboard + mouse), subtle by
                           default (opacity-medium → full on hover/focus). Icons sit on
-                          the violet sent bubble so they use text-inverse. p-1.5 around
-                          a size-4 icon = 28px hit area (WCAG 2.5.8 AA ≥24px; below the
-                          codebase 44px convention — accepted for dense in-bubble
-                          secondary controls; a context-menu / long-press affordance is
-                          future polish). A right-context-menu / hover-reveal UX is
-                          out of W205 scope. */}
+                          the violet sent bubble so they use text-inverse. The icon
+                          remains size-4 while the button exposes the shared 44px hit
+                          area contract. A right-context-menu / hover-reveal UX is out
+                          of W205 scope. */}
                           {onStartReply || onForward || message.isMe ? (
                             <div className="flex items-center gap-0.5">
                               {/* Wave 207 — reply affordance on ALL bubbles (not just
                               own). On the violet sent bubble it uses text-inverse +
                               inverse focus ring (matching edit/delete); on the neutral
                               received bubble it uses text-secondary + violet focus
-                              ring. Same 28px hit area as edit/delete (accepted dense
-                              in-bubble secondary control, per the W205 note below). */}
+                              ring. The button keeps the same glyph and styling while
+                              exposing the shared 44px hit area contract. */}
                               {onStartReply ? (
                                 <button
                                   type="button"
                                   onClick={() => onStartReply(message.id)}
                                   aria-label={t("messenger:reply")}
                                   className={cn(
-                                    "flex items-center justify-center rounded-md p-1.5 opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2",
+                                    "-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1.5 opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2",
                                     message.isMe
                                       ? "text-[var(--text-inverse)] focus-visible:ring-[var(--text-inverse)]"
                                       : "text-(--text-secondary) focus-visible:ring-(--color-violet-500)"
@@ -869,7 +867,7 @@ export const ChatWindow = memo(function ChatWindow({
                               ) : null}
                               {/* Wave 211 — forward affordance on ALL bubbles (like
                               reply). Opens the ForwardModal destination picker. Same
-                              28px hit area + theme-aware styling as reply (text-inverse
+                              44px hit area + theme-aware styling as reply (text-inverse
                               + inverse ring on the violet sent bubble; text-secondary +
                               violet ring on the neutral received bubble). */}
                               {onForward ? (
@@ -878,7 +876,7 @@ export const ChatWindow = memo(function ChatWindow({
                                   onClick={() => onForward(message.id)}
                                   aria-label={t("messenger:forward")}
                                   className={cn(
-                                    "flex items-center justify-center rounded-md p-1.5 opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2",
+                                    "-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1.5 opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2",
                                     message.isMe
                                       ? "text-[var(--text-inverse)] focus-visible:ring-[var(--text-inverse)]"
                                       : "text-(--text-secondary) focus-visible:ring-(--color-violet-500)"
@@ -893,7 +891,7 @@ export const ChatWindow = memo(function ChatWindow({
                                     type="button"
                                     onClick={() => onEditMessage?.(message.id, message.text)}
                                     aria-label={t("messenger:editMessage")}
-                                    className="flex items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
+                                    className="-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
                                   >
                                     <Pencil className="size-4" strokeWidth={2} aria-hidden="true" />
                                   </button>
@@ -901,7 +899,7 @@ export const ChatWindow = memo(function ChatWindow({
                                     type="button"
                                     onClick={() => onDeleteMessage?.(message.id)}
                                     aria-label={t("messenger:deleteMessage")}
-                                    className="flex items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
+                                    className="-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
                                   >
                                     <Trash2 className="size-4" strokeWidth={2} aria-hidden="true" />
                                   </button>
@@ -1019,7 +1017,7 @@ export const ChatWindow = memo(function ChatWindow({
                             }
                             aria-label={t("messenger:reactions.add")}
                             aria-expanded={reactionPickerForId === message.id}
-                            className="inline-flex min-h-[28px] min-w-[28px] items-center justify-center rounded-full text-(--text-secondary) opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-1 focus-visible:ring-offset-(--bg-surface)"
+                            className="-m-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-(--text-secondary) opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-1 focus-visible:ring-offset-(--bg-surface)"
                           >
                             <SmilePlus className="size-4" strokeWidth={2} aria-hidden="true" />
                           </button>
@@ -1045,7 +1043,7 @@ export const ChatWindow = memo(function ChatWindow({
                               setReactionPickerForId(null)
                             }}
                             aria-label={t("messenger:reactions.react", { emoji })}
-                            className="inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-full text-xl transition-transform hover:scale-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+                            className="-m-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-xl transition-transform hover:scale-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                           >
                             <span aria-hidden="true">{emoji}</span>
                           </button>

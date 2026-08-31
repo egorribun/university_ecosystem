@@ -29,6 +29,7 @@ from app.api.deps import (
     get_locale,
     get_read_chat_query_service,
 )
+from app.core.config.storage import CHAT_MAX_MESSAGE_LENGTH
 from app.core.ratelimit import sensitive_route_limit
 from app.models import User
 from app.schemas.chat import (
@@ -156,7 +157,7 @@ async def send_message(
     current_user: Annotated[User, Depends(get_current_user)],
     dispatcher: Annotated[ChatMessageDispatcher, Depends(get_chat_message_dispatcher)],
     locale: Annotated[str, Depends(get_locale)],
-    content: str = Form(""),
+    content: str = Form("", max_length=CHAT_MAX_MESSAGE_LENGTH),
     files: list[UploadFile] = File(default=[]),
     reply_to_message_id: uuid.UUID | None = Form(
         None,
@@ -238,7 +239,7 @@ async def edit_message(
         ChatMaintenanceService, Depends(get_chat_maintenance_service)
     ],
     locale: Annotated[str, Depends(get_locale)],
-    content: str = Form(..., min_length=1, max_length=32768),
+    content: str = Form(..., min_length=1, max_length=CHAT_MAX_MESSAGE_LENGTH),
 ) -> dict[str, str]:
     """Edit a message's content (author-only).  W174 auto-cookie covers PATCH CSRF."""
     await maintenance.edit_message(

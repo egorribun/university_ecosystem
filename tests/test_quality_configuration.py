@@ -172,6 +172,20 @@ def _read_text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
+def test_deploy_docs_do_not_embed_credential_like_examples() -> None:
+    """Deployment docs must keep credential material outside shell history."""
+
+    credential_url = re.compile(
+        r"(?i)(?:redis|postgresql(?:\+asyncpg)?|mysql)://[^\s:$]+:[^\s@]+@"
+    )
+    for relative_path in ("docs/DEPLOY.md", "docs/DEPLOY.en.md"):
+        document = _read_text(relative_path)
+        assert credential_url.search(document) is None
+        assert (
+            re.search(r"[A-Z][A-Z0-9_]*_SECRET=\"new_key,old_key\"", document) is None
+        )
+
+
 def _dockerignore_patterns(relative_path: str) -> tuple[str, ...]:
     return tuple(
         line.strip()

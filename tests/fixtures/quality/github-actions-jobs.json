@@ -1,0 +1,44 @@
+{
+  "jobs": [
+    {
+      "id": 101,
+      "name": "pre-commit-check",
+      "status": "completed",
+      "conclusion": "failure",
+      "queued_at": "2026-08-31T10:00:00Z",
+      "started_at": "2026-08-31T10:00:30Z",
+      "completed_at": "2026-08-31T10:01:30Z",
+      "core_failure": true,
+      "steps": [
+        {"name": "Checkout", "started_at": "2026-08-31T10:00:30Z", "completed_at": "2026-08-31T10:00:40Z"},
+        {"name": "Install dependencies", "started_at": "2026-08-31T10:00:40Z", "completed_at": "2026-08-31T10:01:00Z"},
+        {"name": "Run tests", "started_at": "2026-08-31T10:01:00Z", "completed_at": "2026-08-31T10:01:30Z"}
+      ]
+    },
+    {
+      "id": 102,
+      "name": "frontend-tests",
+      "status": "completed",
+      "conclusion": "success",
+      "queued_at": "2026-08-31T10:00:10Z",
+      "started_at": "2026-08-31T10:01:40Z",
+      "completed_at": "2026-08-31T10:03:40Z",
+      "needs": ["pre-commit-check"],
+      "steps": [
+        {"name": "Checkout", "started_at": "2026-08-31T10:01:40Z", "completed_at": "2026-08-31T10:01:50Z"},
+        {"name": "Install dependencies", "started_at": "2026-08-31T10:01:50Z", "completed_at": "2026-08-31T10:02:20Z"},
+        {"name": "Download artifact", "started_at": "2026-08-31T10:03:20Z", "completed_at": "2026-08-31T10:03:40Z"}
+      ]
+    },
+    {
+      "id": 103,
+      "name": "stryker-preflight",
+      "status": "completed",
+      "conclusion": "skipped",
+      "queued_at": "2026-08-31T10:00:20Z",
+      "started_at": null,
+      "completed_at": null,
+      "needs": ["frontend-tests"]
+    }
+  ]
+}

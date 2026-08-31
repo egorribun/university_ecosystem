@@ -56,6 +56,8 @@ jobs:
       - name: Build immutable WASM modules
         run: |
           set -euo pipefail
+          rustup target add wasm32-unknown-unknown
+          rustup target list --installed | grep -Fxq "wasm32-unknown-unknown"
           crypto_status=0
           sanitizer_status=0
           wasm-pack build rust-crypto --target web --release &

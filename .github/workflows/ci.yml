@@ -706,7 +706,10 @@ jobs:
     name: Frontend Mutation Preflight Universe
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    if: ${{ github.event_name == 'pull_request' }}
+    needs:
+      - pre-commit-check
+      - frontend-tests
+    if: ${{ github.event_name == 'pull_request' && needs.frontend-tests.result == 'success' && needs.pre-commit-check.result == 'success' }}
     permissions:
       contents: read
       actions: read
@@ -827,12 +830,11 @@ jobs:
       # A c4 timing sample from exact run 33303107020 (6 completed Stryker
       # legs averaging 27.6m; 10 completed mutmut legs averaging 18.5m)
       # estimates total work at roughly 1,764 versus 2,368 runner-minutes
-      # for the 64 versus 128 legs. Each producer family may request the full
-      # observed twenty-runner cap; GitHub's hosted-runner scheduler owns the
-      # aggregate ceiling when the families overlap. This removes a brittle
-      # asymmetric reservation while preserving the denominator, mutant
-      # scope, quality gate, and four-worker Vitest bound.
-      max-parallel: 20
+      # for the 64 versus 128 legs. Keep the initial 8-runner Stryker lane
+      # alongside the 8-runner mutmut lane and reserve four slots for required
+      # diagnostics/aggregation. Rebalance only after three comparable green
+      # runs with queue, timeout and billed-minute evidence.
+      max-parallel: 8
       matrix:
         shard-index: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63]
     permissions:
@@ -2517,6 +2519,9 @@ jobs:
         shell: bash
         env:
           EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref || github.ref_name }}
           WORKFLOW_REPOSITORY: ${{ github.repository }}
           WORKFLOW_REF: ${{ github.workflow_ref }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
@@ -2689,9 +2694,16 @@ jobs:
   mutation-tests-stats:
     name: Incremental Mutation Stats (mutmut) / shard ${{ matrix.stats_shard }}/${{ matrix.stats_total }}
     runs-on: ubuntu-24.04
-    needs: mutation-scope
+    needs:
+      - mutation-scope
+      - pre-commit-security-and-types
+      - backend-tests
+      - backend-type-check
     strategy:
       fail-fast: false
+      # Reserve four of the repository's 20 hosted-runner slots for required
+      # non-mutation diagnostics and aggregation.
+      max-parallel: 8
       # mutmut 3.7.0 collects the complete pytest-to-mutant mapping before it
       # applies positional mutant filters.  Collect disjoint test populations
       # once per leg and merge them before the mutation legs start. Eight
@@ -2904,6 +2916,7 @@ jobs:
       REVOCATION_REDIS_URL: redis://localhost:6380/0
     needs:
       - pre-commit-check
+      - pre-commit-security-and-types
       - mutation-tests-stats
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -3094,8 +3107,8 @@ jobs:
             echo "## Mutation matrix capacity"
             echo "- $matrix_summary"
             echo "- $descriptor_summary"
-            echo "- Mutmut producer max concurrency: 20"
-            echo "- Stryker producer max concurrency: 20"
+            echo "- Mutmut producer max concurrency: 8"
+            echo "- Stryker producer max concurrency: 8"
             echo "- GitHub global hosted-runner cap: 20 (aggregate ceiling across both producer families)."
             echo "- Review scheduler queue p50/p95 and per-family completion times before changing the cap policy."
           } >> "$GITHUB_STEP_SUMMARY"
@@ -3155,13 +3168,14 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
-      # Permit mutmut to request the full observed twenty-runner cap, just as
-      # the independent Stryker producer family does. GitHub schedules matrix
-      # families independently and its global hosted-runner pool is the sole
-      # aggregate ceiling when both families are runnable; no fixed split is
-      # reserved for either family. Shard assignments, quality gates, and the
-      # bounded inner mutmut worker count remain unchanged.
-      max-parallel: 20
+      # Keep an explicit 8-runner mutmut lane beside the 8-runner Stryker lane;
+      # four hosted-runner slots remain available for required diagnostics and
+      # aggregation under the repository's 20-slot cap. Shard assignments,
+      # quality gates, and the bounded inner mutmut worker count remain
+      # unchanged.
+      # Keep the initial 8+8 mutation lane budget below the 20-runner cap and
+      # preserve four slots for required diagnostics and aggregation.
+      max-parallel: 8
       # The producer validates all 128 fixed assignments, then dynamically
       # emits only exact nonempty entries. This preserves the full plan as
       # evidence while preventing empty shards from consuming the scarce
@@ -3183,6 +3197,7 @@ jobs:
       actions: read
     needs:
       - pre-commit-check
+      - pre-commit-security-and-types
       - mutation-tests-stats
       - mutation-tests-universe
     steps:
@@ -4127,6 +4142,9 @@ jobs:
           uv run python scripts/quality/normalize_coverage_reports.py \
             --repository-root "$GITHUB_WORKSPACE" \
             --commit-sha "$EXPECTED_SHA" \
+            --source-head-sha "$SOURCE_HEAD_SHA" \
+            --base-sha "$BASE_SHA" \
+            --base-ref "$BASE_REF" \
             --generated-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
             --output artifacts/coverage/quality-manifest.json \
             --provenance-mode github-actions \
@@ -4165,6 +4183,9 @@ jobs:
         shell: bash
         env:
           EXPECTED_SHA: ${{ github.sha }}
+          SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref || github.ref_name }}
           WORKFLOW_REPOSITORY: ${{ github.repository }}
           WORKFLOW_REF: ${{ github.workflow_ref }}
           RUN_ID: ${{ github.run_id }}
@@ -4178,6 +4199,10 @@ jobs:
             --mutation-registry quality/mutation-exclusions.json \
             --manifest artifacts/coverage/quality-manifest.json \
             --expected-commit-sha "$EXPECTED_SHA" \
+            --expected-source-head-sha "$SOURCE_HEAD_SHA" \
+            --expected-tested-commit-sha "$EXPECTED_SHA" \
+            --expected-base-sha "$BASE_SHA" \
+            --expected-base-ref "$BASE_REF" \
             --expected-workflow-run-id "$RUN_ID" \
             --expected-workflow-run-attempt "$RUN_ATTEMPT" \
             --expected-workflow-event "$WORKFLOW_EVENT" \

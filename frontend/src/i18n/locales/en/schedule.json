@@ -74,7 +74,9 @@
     "minutes_one": "{{count}} minute",
     "minutes_few": "{{count}} minutes",
     "minutes_many": "{{count}} minutes",
-    "minutes_other": "{{count}} minutes"
+    "minutes_other": "{{count}} minutes",
+    "hoursShort": "h",
+    "minutesShort": "min"
   },
   "timeLeft": {
     "current": "Current lesson ends in {{duration}}",
@@ -96,9 +98,13 @@
     "addLesson": "Add lesson for {{day}}",
     "currentProgress": "Progress of the current lesson"
   },
+  "actions": {
+    "addLesson": "Add lesson for {{day}}"
+  },
   "table": {
     "rowNumber": "№",
-    "noLessons": "No lessons scheduled"
+    "noLessons": "No lessons scheduled",
+    "emptyCell": "No lesson"
   },
   "mobile": {
     "noLessons": "No lessons for this day"
@@ -123,7 +129,9 @@
     "day": "Day",
     "list": "List",
     "export": "Export",
-    "settings": "Settings"
+    "settings": "Settings",
+    "today": "Today",
+    "weekNavLabel": "Week navigation"
   },
   "empty": {
     "selectGroup": "Select a group to view schedule",
@@ -193,7 +201,8 @@
   },
   "parity": {
     "odd": "Odd week",
-    "even": "Even week"
+    "even": "Even week",
+    "label": "Week parity"
   },
   "export": {
     "ics": "iCalendar (.ics)",

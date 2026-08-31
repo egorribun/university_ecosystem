@@ -493,6 +493,7 @@
         "properties": {
           "content": {
             "default": "",
+            "maxLength": 32768,
             "title": "Content",
             "type": "string"
           },
@@ -1884,7 +1885,7 @@
             "type": "string"
           },
           "content": {
-            "maxLength": 2000,
+            "maxLength": 32768,
             "title": "Content",
             "type": "string"
           },

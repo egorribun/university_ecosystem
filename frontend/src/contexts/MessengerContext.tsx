@@ -29,81 +29,80 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
     isAuth &&
     (import.meta.env.VITE_LHCI !== "true" || import.meta.env.VITE_LHCI_ENABLE_MESSENGER === "true")
 
-  const { isConnected, sendTyping, sendRead, sendJoin, sendLeave, getTypingUsersForChat } =
-    useChatWebSocket({
-      enabled: realtimeEnabled,
-      // Wave 204 SW5 — for the hook's self-echo guard (drops the sender's own
-      // new_message/read echo that the room fan-out sends back).
-      currentUserId: user?.id,
-      onPresenceUpdate: (userId, active, lastSeen) => {
-        // Validate WebSocket payload before mutating React Query cache.
-        // Guards against malformed or tampered presence messages from the WS server.
-        const isValid =
-          typeof userId === "string" &&
-          userId.length > 0 &&
-          userId.length < 40 &&
-          typeof active === "boolean" &&
-          (lastSeen === null || (typeof lastSeen === "string" && lastSeen.length < 50))
-        if (!isValid) return
+  const { isConnected, sendTyping, sendJoin, sendLeave, getTypingUsersForChat } = useChatWebSocket({
+    enabled: realtimeEnabled,
+    // Wave 204 SW5 — for the hook's self-echo guard (drops the sender's own
+    // new_message/read echo that the room fan-out sends back).
+    currentUserId: user?.id,
+    onPresenceUpdate: (userId, active, lastSeen) => {
+      // Validate WebSocket payload before mutating React Query cache.
+      // Guards against malformed or tampered presence messages from the WS server.
+      const isValid =
+        typeof userId === "string" &&
+        userId.length > 0 &&
+        userId.length < 40 &&
+        typeof active === "boolean" &&
+        (lastSeen === null || (typeof lastSeen === "string" && lastSeen.length < 50))
+      if (!isValid) return
 
-        setPresenceMap((prev) => ({
-          ...prev,
-          [userId]: { active, last_seen_at: lastSeen },
-        }))
+      setPresenceMap((prev) => ({
+        ...prev,
+        [userId]: { active, last_seen_at: lastSeen },
+      }))
 
-        // Also update the chats list cache to keep presence in sync
-        queryClient.setQueryData<ChatsListResponse | undefined>(["chats"], (old) => {
-          if (!old) return old
-          const items = old.items.map((chat) => {
-            const participates = chat.participants.some((p) => p.id === userId)
-            if (!participates) return chat
+      // Also update the chats list cache to keep presence in sync
+      queryClient.setQueryData<ChatsListResponse | undefined>(["chats"], (old) => {
+        if (!old) return old
+        const items = old.items.map((chat) => {
+          const participates = chat.participants.some((p) => p.id === userId)
+          if (!participates) return chat
 
-            const nextPresence = { ...(chat.presence || {}) }
-            nextPresence[userId] = { active, last_seen_at: lastSeen }
-            return { ...chat, presence: nextPresence }
-          })
-
-          return { ...old, items }
+          const nextPresence = { ...(chat.presence || {}) }
+          nextPresence[userId] = { active, last_seen_at: lastSeen }
+          return { ...chat, presence: nextPresence }
         })
-      },
-      onRead: (chatId, userId, readAt) => {
-        if (!readAt) return
 
-        // Update single chat detail cache
-        queryClient.setQueryData<Chat | undefined>(["chats", chatId], (old) => {
-          if (!old) return old
-          const exists = old.read_receipts
-            ? old.read_receipts.some((r) => r.user_id === userId)
+        return { ...old, items }
+      })
+    },
+    onRead: (chatId, userId, readAt) => {
+      if (!readAt) return
+
+      // Update single chat detail cache
+      queryClient.setQueryData<Chat | undefined>(["chats", chatId], (old) => {
+        if (!old) return old
+        const exists = old.read_receipts
+          ? old.read_receipts.some((r) => r.user_id === userId)
+          : false
+        const newReceipts =
+          exists && old.read_receipts
+            ? old.read_receipts.map((r) =>
+                r.user_id === userId ? { ...r, last_read_at: readAt } : r
+              )
+            : [...(old.read_receipts || []), { user_id: userId, last_read_at: readAt }]
+        return { ...old, read_receipts: newReceipts }
+      })
+
+      // Update chats list cache
+      queryClient.setQueryData<ChatsListResponse | undefined>(["chats"], (old) => {
+        if (!old) return old
+        const items = old.items.map((chat) => {
+          if (chat.id !== chatId) return chat
+          const exists = chat.read_receipts
+            ? chat.read_receipts.some((r) => r.user_id === userId)
             : false
           const newReceipts =
-            exists && old.read_receipts
-              ? old.read_receipts.map((r) =>
+            exists && chat.read_receipts
+              ? chat.read_receipts.map((r) =>
                   r.user_id === userId ? { ...r, last_read_at: readAt } : r
                 )
-              : [...(old.read_receipts || []), { user_id: userId, last_read_at: readAt }]
-          return { ...old, read_receipts: newReceipts }
+              : [...(chat.read_receipts || []), { user_id: userId, last_read_at: readAt }]
+          return { ...chat, read_receipts: newReceipts }
         })
-
-        // Update chats list cache
-        queryClient.setQueryData<ChatsListResponse | undefined>(["chats"], (old) => {
-          if (!old) return old
-          const items = old.items.map((chat) => {
-            if (chat.id !== chatId) return chat
-            const exists = chat.read_receipts
-              ? chat.read_receipts.some((r) => r.user_id === userId)
-              : false
-            const newReceipts =
-              exists && chat.read_receipts
-                ? chat.read_receipts.map((r) =>
-                    r.user_id === userId ? { ...r, last_read_at: readAt } : r
-                  )
-                : [...(chat.read_receipts || []), { user_id: userId, last_read_at: readAt }]
-            return { ...chat, read_receipts: newReceipts }
-          })
-          return { ...old, items }
-        })
-      },
-    })
+        return { ...old, items }
+      })
+    },
+  })
 
   const { data: chatsData } = useQuery({
     queryKey: ["chats"],
@@ -136,21 +135,11 @@ export function MessengerProvider({ children }: { children: ReactNode }) {
       presenceMap,
       isConnected,
       sendTyping,
-      sendRead,
       sendJoin,
       sendLeave,
       getTypingUsersForChat,
     }),
-    [
-      unreadCount,
-      presenceMap,
-      isConnected,
-      sendTyping,
-      sendRead,
-      sendJoin,
-      sendLeave,
-      getTypingUsersForChat,
-    ]
+    [unreadCount, presenceMap, isConnected, sendTyping, sendJoin, sendLeave, getTypingUsersForChat]
   )
 
   return <MessengerContext.Provider value={value}>{children}</MessengerContext.Provider>

@@ -27,7 +27,7 @@ _[Русская версия](DEPLOY.md) · [English version](DEPLOY.en.md)_
   SHA-bound artifact с build-provenance attestation. Ручная загрузка отчёта не
   является допустимым источником release evidence.
 - Backend и фронтенд должны работать по HTTPS, иначе браузер заблокирует загрузку `/media` и `/static`.
-- Для лимитирования запросов настройте backend с помощью `RATE_LIMIT_STORAGE_BACKEND` и `RATE_LIMIT_STORAGE_URI`. Значение `redis` + Redis URL (например, `redis://user:pass@host:6379/0`) включает общий сторедж для middleware и чувствительных эндпоинтов. Установите `memory` или `memory://` для простого однопроцессного режима без внешнего Redis.
+- Для лимитирования запросов настройте backend с помощью `RATE_LIMIT_STORAGE_BACKEND` и `RATE_LIMIT_STORAGE_URI`. Значение `redis` + Redis URL (например, `redis://${REDIS_USER}:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0`, где значения подставляются из защищённого хранилища) включает общий сторедж для middleware и чувствительных эндпоинтов; не записывайте секреты в историю shell. Установите `memory` или `memory://` для простого однопроцессного режима без внешнего Redis.
 - Хранилище отзыва сессий обязано быть единым и выделенным для всех сервисов: backend, gateway и ws-hub используют только `REVOCATION_REDIS_URL`. В штатных Compose/Helm-конфигурациях это отдельный Redis/Valkey с AOF, персистентным томом и `maxmemory-policy noeviction`; кэш (`CACHE_REDIS_URL`) и rate-limit Redis (`REDIS_URL`, DB 3) не являются источниками security-state. Совместное использование cache/rate-limit процесса запрещено: вытеснение `revoked:jti:*` может повторно сделать отозванный JWT действительным.
 - Для продакшена есть override (`docker-compose.prod.yml`) с обязательными секретами. <!-- pragma: allowlist secret --> Создайте Compose-секреты `secret_key`, `database_url` и `nats_auth_token`, а путь к файлу пароля PostgreSQL передайте через `POSTGRES_PASSWORD_SOURCE_FILE`. Значение `database_url` должно указывать на `postgresql+asyncpg://...@pgbouncer:5432/university`. Затем запускайте `docker compose --profile prod -f docker-compose.yml -f docker-compose.go.yml -f docker-compose.prod.yml up -d`, явно задав `FRONTEND_ORIGIN` и `FRONTEND_ORIGINS`; Go overlay обязателен, потому что Caddy направляет API и WebSocket-трафик через gateway/ws-hub.
 - Helm chart читает подключения из заранее созданного Secret `university-connections` (полный список ключей приведён в `charts/university-ecosystem/values.yaml`). <!-- pragma: allowlist secret --> В production обязательно задайте `applicationSecrets.existingSecret`; этот Secret должен содержать JWT/RSA-ключи, отдельные HMAC/интеграционные секреты, MinIO credentials и Temporal API key, перечисленные там же. Production-render отклоняет plaintext MinIO, Temporal, gRPC и OTLP. Так секреты не попадают в Helm release state, а небезопасная конфигурация не доходит до кластера.
@@ -129,7 +129,7 @@ Workflow проверяет эти права до мутаций и прину�
 
   ```bash
   cd .
-  export DATABASE_URL=postgresql+asyncpg://user:password@host:5432/university
+  export DATABASE_URL="${DATABASE_URL:?set DATABASE_URL via your secret manager}"
   alembic upgrade head
   ```
 
@@ -235,7 +235,7 @@ print(Fernet.generate_key().decode())
 PY
 ```
 
-- Для ротации используйте несколько ключей, перечисленных через запятую: новый ключ укажите первым, старый оставьте вторым (`SPOTIFY_TOKEN_SECRET="new_key,old_key"`). После деплоя выполните скрипт ниже, чтобы перешифровать уже сохранённые значения и убрать зависимость от старого ключа, затем удалите его из переменной и перезапустите сервисы.
+- Для ротации передайте `SPOTIFY_TOKEN_SECRET` из защищённого хранилища как список ключей через запятую: новый ключ укажите первым, старый оставьте вторым. Не вставляйте материал ключей в команды или документацию. После деплоя выполните скрипт ниже, чтобы перешифровать уже сохранённые значения и убрать зависимость от старого ключа, затем удалите старый ключ из хранилища и перезапустите сервисы.
 
 ```bash
 python - <<'PY'
@@ -275,7 +275,7 @@ PY
 ### Подпись аудит-логов
 
 - `AUDIT_LOG_SECRET` используется для подписи записей журнала аудита (HMAC-SHA256) и должен отличаться от `SECRET_KEY`.
-- Для ротации укажите несколько ключей через запятую: новый первым, старый вторым (`AUDIT_LOG_SECRET="new_key,old_key"`). После деплоя переподпишите существующие записи, затем удалите старый ключ и перезапустите сервисы.
+- Для ротации передайте `AUDIT_LOG_SECRET` из защищённого хранилища как список ключей через запятую: новый первым, старый вторым. После деплоя переподпишите существующие записи, затем удалите старый ключ из хранилища и перезапустите сервисы.
 
 ```bash
 python - <<'PY'

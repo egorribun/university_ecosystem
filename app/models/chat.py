@@ -17,6 +17,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.config.storage import CHAT_MAX_MESSAGE_LENGTH
 from app.core.database import Base
 from app.core.events import EventEmitterMixin
 from app.models.mixins import UUID7PrimaryKeyMixin
@@ -125,7 +126,9 @@ class Message(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     )
     # DEBT-01 (RZ-W13): 32 KB cap matches frontend WS validation; prevents
     # storage-amplification via oversized message payloads.
-    content: Mapped[str] = mapped_column(String(32768), nullable=False)
+    content: Mapped[str] = mapped_column(
+        String(CHAT_MAX_MESSAGE_LENGTH), nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now
     )
