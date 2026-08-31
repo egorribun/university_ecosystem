@@ -54,6 +54,9 @@ function serializePreflight(preflightByFile) {
 
 async function fixture() {
   const sha = "a".repeat(40)
+  const sourceHeadSha = "b".repeat(40)
+  const baseSha = "c".repeat(40)
+  const baseRef = "main"
   const sourceFile = "src/a.ts"
   const sourcePath = `frontend/${sourceFile}`
   const source = "export const choose = (value: boolean) => (value ? 1 : 2)\n"
@@ -108,10 +111,13 @@ async function fixture() {
   const runId = "run-a"
   const evidenceDigest = hash(
     JSON.stringify({
+      baseRef,
+      baseSha,
       headSha: sha,
       inputHashes: Object.fromEntries(
         Object.entries(inputHashes).sort(([left], [right]) => left.localeCompare(right))
       ),
+      sourceHeadSha,
     })
   )
   const preflight = {
@@ -137,6 +143,9 @@ async function fixture() {
     shardIndex: 0,
     shardCount: 1,
     revision: sha,
+    sourceHeadSha,
+    baseSha,
+    baseRef,
     evidenceDigest,
     preflightDigest: hash(JSON.stringify(preflight.files)),
     workflowRunId: "42",
@@ -153,6 +162,9 @@ async function fixture() {
     releaseEligible: true,
     sourceRevision: {
       headSha: sha,
+      sourceHeadSha,
+      baseSha,
+      baseRef,
       revision: sha,
       evidenceDigest,
       repositoryDirty: false,
@@ -204,6 +216,9 @@ async function fixture() {
         sha256: hash(shardEvidenceTexts.get(shardEvidencePath)),
         schemaVersion: "1.0",
         revision: sha,
+        sourceHeadSha,
+        baseSha,
+        baseRef,
         evidenceDigest,
         workflowRunId: "42",
         workflowRunAttempt: "3",
@@ -225,6 +240,9 @@ async function fixture() {
   }
   return {
     expectedSha: sha,
+    expectedSourceHeadSha: sourceHeadSha,
+    expectedBaseSha: baseSha,
+    expectedBaseRef: baseRef,
     expectedWorkflowRunId: "42",
     expectedWorkflowRunAttempt: "3",
     inputHashes,
@@ -324,6 +342,9 @@ function candidateSelectionOptions(evidence, candidateRoot, expectedWorkflowRunA
   return {
     candidateRoot,
     expectedSha: evidence.expectedSha,
+    expectedSourceHeadSha: evidence.expectedSourceHeadSha,
+    expectedBaseSha: evidence.expectedBaseSha,
+    expectedBaseRef: evidence.expectedBaseRef,
     expectedWorkflowRunId: evidence.expectedWorkflowRunId,
     expectedWorkflowRunAttempt,
     expectedInputHashes: evidence.inputHashes,
@@ -522,6 +543,22 @@ test("rejects malformed, foreign, future, and tampered validated artifact candid
         evidence.inventory.revision = "b".repeat(40)
         evidence.inventory.sourceRevision.revision = "b".repeat(40)
         evidence.marker.revision = "b".repeat(40)
+        reseal(evidence)
+      },
+      expected: /revision/u,
+    },
+    {
+      name: "source head identity mismatch",
+      prepare: (evidence) => {
+        evidence.inventory.sourceRevision.sourceHeadSha = "d".repeat(40)
+        reseal(evidence)
+      },
+      expected: /revision/u,
+    },
+    {
+      name: "base identity mismatch",
+      prepare: (evidence) => {
+        evidence.inventory.sourceRevision.baseSha = "e".repeat(40)
         reseal(evidence)
       },
       expected: /revision/u,

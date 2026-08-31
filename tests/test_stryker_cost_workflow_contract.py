@@ -142,6 +142,23 @@ def test_all_stryker_selectors_bind_rest_head_sha_to_pr_head_not_merge_checkout(
         )
 
 
+def test_all_stryker_jobs_persist_distinct_pr_source_and_base_identities() -> None:
+    jobs = yaml.safe_load(CI_WORKFLOW.read_text(encoding="utf-8"))["jobs"]
+    expected = {
+        "STRYKER_SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "STRYKER_BASE_SHA": "${{ github.event.pull_request.base.sha || github.sha }}",
+        "STRYKER_BASE_REF": "${{ github.event.pull_request.base.ref || github.ref_name }}",
+    }
+    for job_name in (
+        "stryker-preflight",
+        "stryker-shards",
+        "stryker-aggregate",
+        "stryker-evidence-roundtrip",
+    ):
+        for key, value in expected.items():
+            assert jobs[job_name]["env"].get(key) == value
+
+
 def test_all_ci_same_run_selectors_have_non_pr_head_sha_fallback() -> None:
     """Selectors shared by push and PR jobs must not pass an empty head SHA."""
 

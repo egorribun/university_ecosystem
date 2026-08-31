@@ -698,10 +698,53 @@ export function mergeShardReports({ shards, expectedPatterns, preflightByFile, s
   }
 }
 
-export function buildEvidenceIdentity({ headSha, dirtyPaths, inputHashes }) {
-  if (typeof headSha !== "string" || !/^[a-f0-9]{40,64}$/u.test(headSha)) {
-    throw new Error("Evidence HEAD must be a full Git SHA")
+function normalizeEvidenceCommitSha(value, fallback, description) {
+  const resolved = value ?? fallback
+  if (typeof resolved !== "string" || !/^[a-f0-9]{40,64}$/u.test(resolved)) {
+    throw new Error(`${description} must be a full Git SHA`)
   }
+  return resolved
+}
+
+function normalizeEvidenceBaseRef(value) {
+  if (value === undefined || value === null) return null
+  if (typeof value !== "string" || value === "" || /[\0\r\n]/u.test(value)) {
+    throw new Error("Evidence base ref must be a non-empty branch or tag name")
+  }
+  return value
+}
+
+export function buildWorkflowEvidenceIdentity(testedCommitSha, env = process.env) {
+  const testedSha = normalizeEvidenceCommitSha(testedCommitSha, undefined, "Evidence tested commit")
+  return {
+    sourceHeadSha: normalizeEvidenceCommitSha(
+      env.STRYKER_SOURCE_HEAD_SHA,
+      testedSha,
+      "Evidence source head"
+    ),
+    baseSha: normalizeEvidenceCommitSha(env.STRYKER_BASE_SHA, testedSha, "Evidence base commit"),
+    baseRef: normalizeEvidenceBaseRef(
+      env.STRYKER_BASE_REF ?? env.GITHUB_BASE_REF ?? env.GITHUB_REF_NAME
+    ),
+  }
+}
+
+export function buildEvidenceIdentity({
+  headSha,
+  sourceHeadSha,
+  baseSha,
+  baseRef,
+  dirtyPaths,
+  inputHashes,
+}) {
+  const testedCommitSha = normalizeEvidenceCommitSha(headSha, undefined, "Evidence tested commit")
+  const sourceCommitSha = normalizeEvidenceCommitSha(
+    sourceHeadSha,
+    testedCommitSha,
+    "Evidence source head"
+  )
+  const baseCommitSha = normalizeEvidenceCommitSha(baseSha, testedCommitSha, "Evidence base commit")
+  const normalizedBaseRef = normalizeEvidenceBaseRef(baseRef)
   if (!Array.isArray(dirtyPaths) || dirtyPaths.some((entry) => typeof entry !== "string")) {
     throw new Error("Evidence dirty paths must be an array of strings")
   }
@@ -709,21 +752,37 @@ export function buildEvidenceIdentity({ headSha, dirtyPaths, inputHashes }) {
     throw new Error("Evidence input hashes must be an object")
   }
   const normalizedHashes = sortedObject(inputHashes)
-  const evidenceDigest = sha256(JSON.stringify({ headSha, inputHashes: normalizedHashes }))
+  const evidenceDigest = sha256(
+    JSON.stringify({
+      baseRef: normalizedBaseRef,
+      baseSha: baseCommitSha,
+      headSha: testedCommitSha,
+      inputHashes: normalizedHashes,
+      sourceHeadSha: sourceCommitSha,
+    })
+  )
   const repositoryDirty = dirtyPaths.length > 0
   return {
-    headSha,
+    headSha: testedCommitSha,
+    sourceHeadSha: sourceCommitSha,
+    baseSha: baseCommitSha,
+    baseRef: normalizedBaseRef,
     evidenceDigest,
     repositoryDirty,
     dirtyPaths: [...dirtyPaths].sort(),
     inputHashes: normalizedHashes,
-    revision: repositoryDirty ? `${headSha}-dirty.${evidenceDigest.slice(0, 12)}` : headSha,
+    revision: repositoryDirty
+      ? `${testedCommitSha}-dirty.${evidenceDigest.slice(0, 12)}`
+      : testedCommitSha,
   }
 }
 
 export function assertEvidenceUnchanged(expected, actual) {
   if (
     expected.headSha !== actual.headSha ||
+    expected.sourceHeadSha !== actual.sourceHeadSha ||
+    expected.baseSha !== actual.baseSha ||
+    expected.baseRef !== actual.baseRef ||
     expected.evidenceDigest !== actual.evidenceDigest ||
     expected.repositoryDirty !== actual.repositoryDirty ||
     JSON.stringify(expected.dirtyPaths) !== JSON.stringify(actual.dirtyPaths)
@@ -862,6 +921,9 @@ export function indexShardProducerEvidence(shardResults, root = repositoryRoot) 
       shard.shardEvidence.shardId !== shard.id ||
       shard.shardEvidence.schemaVersion !== "1.0" ||
       typeof shard.shardEvidence.revision !== "string" ||
+      typeof shard.shardEvidence.sourceHeadSha !== "string" ||
+      typeof shard.shardEvidence.baseSha !== "string" ||
+      (shard.shardEvidence.baseRef !== null && typeof shard.shardEvidence.baseRef !== "string") ||
       !/^[a-f0-9]{64}$/u.test(shard.shardEvidence.evidenceDigest) ||
       typeof shard.shardEvidence.workflowRunId !== "string" ||
       shard.shardEvidence.workflowRunId === "" ||
@@ -881,6 +943,9 @@ export function indexShardProducerEvidence(shardResults, root = repositoryRoot) 
       sha256: sha256(shard.shardEvidenceText),
       schemaVersion: shard.shardEvidence.schemaVersion,
       revision: shard.shardEvidence.revision,
+      sourceHeadSha: shard.shardEvidence.sourceHeadSha,
+      baseSha: shard.shardEvidence.baseSha,
+      baseRef: shard.shardEvidence.baseRef,
       evidenceDigest: shard.shardEvidence.evidenceDigest,
       workflowRunId: shard.shardEvidence.workflowRunId,
       workflowRunAttempt: shard.shardEvidence.workflowRunAttempt,
@@ -989,8 +1054,10 @@ async function captureEvidence(sourceFiles) {
   const hashes = Object.fromEntries(
     evidenceFiles.map((file) => [file, sha256(bytesByFile.get(file))])
   )
+  const workflowIdentity = buildWorkflowEvidenceIdentity(headSha)
   const identity = buildEvidenceIdentity({
     headSha,
+    ...workflowIdentity,
     dirtyPaths: status === "" ? [] : status.split(/\r?\n/u),
     inputHashes: hashes,
   })
@@ -1028,19 +1095,31 @@ function requireWorkflowProvenance(sourceRevision, env = process.env) {
   const runId = env.GITHUB_RUN_ID
   const runAttempt = env.GITHUB_RUN_ATTEMPT
   const sha = env.GITHUB_SHA
+  const workflowIdentity =
+    typeof sha === "string" ? buildWorkflowEvidenceIdentity(sha, env) : undefined
   if (
     typeof runId !== "string" ||
     !/^[1-9]\d*$/u.test(runId) ||
     parseWorkflowRunAttempt(runAttempt) === undefined ||
     typeof sha !== "string" ||
     sha !== sourceRevision.headSha ||
+    workflowIdentity?.sourceHeadSha !== sourceRevision.sourceHeadSha ||
+    workflowIdentity?.baseSha !== sourceRevision.baseSha ||
+    workflowIdentity?.baseRef !== sourceRevision.baseRef ||
     sourceRevision.repositoryDirty !== false
   ) {
     throw new Error(
       "Preflight artifact requires a clean workflow run bound to the checked-out exact Git SHA"
     )
   }
-  return { runId, runAttempt, sha }
+  return {
+    runId,
+    runAttempt,
+    sha,
+    sourceHeadSha: workflowIdentity.sourceHeadSha,
+    baseSha: workflowIdentity.baseSha,
+    baseRef: workflowIdentity.baseRef,
+  }
 }
 
 function preflightArtifactMetadata({
@@ -1546,12 +1625,12 @@ function assertPreflightArtifactWorkflowProvenance({
 }) {
   assertExactObjectKeys(
     payloadWorkflow,
-    ["runId", "runAttempt", "sha"],
+    ["runId", "runAttempt", "sha", "sourceHeadSha", "baseSha", "baseRef"],
     "Preflight artifact workflow provenance"
   )
   assertExactObjectKeys(
     consumerWorkflow,
-    ["runId", "runAttempt", "sha"],
+    ["runId", "runAttempt", "sha", "sourceHeadSha", "baseSha", "baseRef"],
     "Consumer Stryker workflow provenance"
   )
   const producerAttempt = parseWorkflowRunAttempt(payloadWorkflow.runAttempt)
@@ -1559,6 +1638,9 @@ function assertPreflightArtifactWorkflowProvenance({
   if (
     payloadWorkflow.runId !== consumerWorkflow.runId ||
     payloadWorkflow.sha !== consumerWorkflow.sha ||
+    payloadWorkflow.sourceHeadSha !== consumerWorkflow.sourceHeadSha ||
+    payloadWorkflow.baseSha !== consumerWorkflow.baseSha ||
+    payloadWorkflow.baseRef !== consumerWorkflow.baseRef ||
     producerAttempt === undefined ||
     consumerAttempt === undefined
   ) {
@@ -1911,6 +1993,9 @@ export async function loadExternalShardResults({
         evidence.shardIndex !== shardPlan.findIndex((shard) => shard.id === evidence.shardId) ||
         evidence.shardCount !== shardPlan.length ||
         evidence.revision !== before.revision ||
+        evidence.sourceHeadSha !== before.sourceHeadSha ||
+        evidence.baseSha !== before.baseSha ||
+        evidence.baseRef !== before.baseRef ||
         evidence.evidenceDigest !== before.evidenceDigest ||
         evidence.preflightDigest !== preflightDigest ||
         evidence.workflowRunId !== workflowRunId ||
@@ -2221,6 +2306,9 @@ async function main() {
           shardIndex: shardPlan.findIndex((entry) => entry.id === shard.id),
           shardCount: shardPlan.length,
           revision: before.revision,
+          sourceHeadSha: before.sourceHeadSha,
+          baseSha: before.baseSha,
+          baseRef: before.baseRef,
           evidenceDigest: before.evidenceDigest,
           preflightDigest,
           workflowRunId: process.env.GITHUB_RUN_ID ?? null,

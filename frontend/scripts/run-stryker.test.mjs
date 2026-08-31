@@ -30,6 +30,72 @@ test("evidence identity makes dirty worktrees explicit and detects TOCTOU drift"
   assert.throws(() => assertEvidenceUnchanged(clean, dirty), /changed while Stryker was running/u)
 })
 
+test("evidence identity keeps source, tested, and base commit identities distinct", async () => {
+  const { buildEvidenceIdentity, assertEvidenceUnchanged } = await import(runnerUrl)
+  const common = {
+    headSha: "a".repeat(40),
+    sourceHeadSha: "b".repeat(40),
+    baseSha: "c".repeat(40),
+    baseRef: "main",
+    dirtyPaths: [],
+    inputHashes: { "frontend/src/a.ts": "1".repeat(64) },
+  }
+
+  const identity = buildEvidenceIdentity(common)
+  assert.equal(identity.headSha, common.headSha)
+  assert.equal(identity.sourceHeadSha, common.sourceHeadSha)
+  assert.equal(identity.baseSha, common.baseSha)
+  assert.equal(identity.baseRef, common.baseRef)
+  assert.notEqual(
+    identity.evidenceDigest,
+    buildEvidenceIdentity({ ...common, sourceHeadSha: "d".repeat(40) }).evidenceDigest
+  )
+  assert.notEqual(
+    identity.evidenceDigest,
+    buildEvidenceIdentity({ ...common, baseSha: "e".repeat(40) }).evidenceDigest
+  )
+  assert.throws(
+    () =>
+      assertEvidenceUnchanged(identity, {
+        ...identity,
+        sourceHeadSha: "d".repeat(40),
+      }),
+    /changed while Stryker was running/u
+  )
+})
+
+test("workflow provenance maps PR source and base identities without trusting the merge SHA", async () => {
+  const { buildWorkflowEvidenceIdentity } = await import(runnerUrl)
+  const testedSha = "a".repeat(40)
+  const sourceSha = "b".repeat(40)
+  const baseSha = "c".repeat(40)
+
+  assert.deepEqual(
+    buildWorkflowEvidenceIdentity(testedSha, {
+      STRYKER_SOURCE_HEAD_SHA: sourceSha,
+      STRYKER_BASE_SHA: baseSha,
+      STRYKER_BASE_REF: "main",
+    }),
+    {
+      sourceHeadSha: sourceSha,
+      baseSha,
+      baseRef: "main",
+    }
+  )
+  assert.deepEqual(buildWorkflowEvidenceIdentity(testedSha, {}), {
+    sourceHeadSha: testedSha,
+    baseSha: testedSha,
+    baseRef: null,
+  })
+  assert.throws(
+    () =>
+      buildWorkflowEvidenceIdentity(testedSha, {
+        STRYKER_SOURCE_HEAD_SHA: "not-a-sha",
+      }),
+    /source head/u
+  )
+})
+
 test("canonical cleanup removes only stale mutation evidence", async (t) => {
   const { cleanupCanonicalArtifacts } = await import(runnerUrl)
   const root = await mkdtemp(path.join(os.tmpdir(), "stryker-cleanup-"))
@@ -164,6 +230,9 @@ test("indexes every shard producer evidence document by content hash", async () 
     schemaVersion: "1.0",
     shardId: "shard-000",
     revision: "a".repeat(40),
+    sourceHeadSha: "b".repeat(40),
+    baseSha: "c".repeat(40),
+    baseRef: "main",
     evidenceDigest: "b".repeat(64),
     workflowRunId: "42",
     workflowRunAttempt: "2",
@@ -189,6 +258,9 @@ test("indexes every shard producer evidence document by content hash", async () 
       sha256: createHash("sha256").update(evidenceText).digest("hex"),
       schemaVersion: "1.0",
       revision: "a".repeat(40),
+      sourceHeadSha: "b".repeat(40),
+      baseSha: "c".repeat(40),
+      baseRef: "main",
       evidenceDigest: "b".repeat(64),
       workflowRunId: "42",
       workflowRunAttempt: "2",
@@ -981,7 +1053,14 @@ test("preflight artifact binds a complete deterministic shard universe to one wo
       "quality/coverage-source-policy.json": "3".repeat(64),
     },
   })
-  const workflow = { runId: "42", runAttempt: "3", sha: sourceRevision.headSha }
+  const workflow = {
+    runId: "42",
+    runAttempt: "3",
+    sha: sourceRevision.headSha,
+    sourceHeadSha: sourceRevision.sourceHeadSha,
+    baseSha: sourceRevision.baseSha,
+    baseRef: sourceRevision.baseRef,
+  }
   const toolchain = {
     node: "v24.0.0",
     platform: "linux",
@@ -1083,7 +1162,14 @@ test("preflight artifact fails closed for provenance, source, and shard-plan tam
       "quality/coverage-source-policy.json": "3".repeat(64),
     },
   })
-  const workflow = { runId: "42", runAttempt: "3", sha: sourceRevision.headSha }
+  const workflow = {
+    runId: "42",
+    runAttempt: "3",
+    sha: sourceRevision.headSha,
+    sourceHeadSha: sourceRevision.sourceHeadSha,
+    baseSha: sourceRevision.baseSha,
+    baseRef: sourceRevision.baseRef,
+  }
   const toolchain = {
     node: "v24.0.0",
     platform: "linux",
@@ -1214,7 +1300,14 @@ async function preflightCandidateFixture() {
       "quality/coverage-source-policy.json": "3".repeat(64),
     },
   })
-  const consumerWorkflow = { runId: "42", runAttempt: "3", sha: sourceRevision.headSha }
+  const consumerWorkflow = {
+    runId: "42",
+    runAttempt: "3",
+    sha: sourceRevision.headSha,
+    sourceHeadSha: sourceRevision.sourceHeadSha,
+    baseSha: sourceRevision.baseSha,
+    baseRef: sourceRevision.baseRef,
+  }
   const toolchain = {
     node: "v24.15.0",
     platform: "linux",
@@ -1440,6 +1533,9 @@ test("loads a complete external shard set only when source, plan, and report has
     shardIndex: 0,
     shardCount: 1,
     revision: "a".repeat(40),
+    sourceHeadSha: "b".repeat(40),
+    baseSha: "c".repeat(40),
+    baseRef: "main",
     evidenceDigest: "b".repeat(64),
     preflightDigest: "c".repeat(64),
     workflowRunId: "42",
@@ -1453,7 +1549,13 @@ test("loads a complete external shard set only when source, plan, and report has
   const results = await loadExternalShardResults({
     aggregateRoot: root,
     shardPlan,
-    before: { revision: evidence.revision, evidenceDigest: evidence.evidenceDigest },
+    before: {
+      revision: evidence.revision,
+      sourceHeadSha: evidence.sourceHeadSha,
+      baseSha: evidence.baseSha,
+      baseRef: evidence.baseRef,
+      evidenceDigest: evidence.evidenceDigest,
+    },
     preflightDigest: evidence.preflightDigest,
     workflowRunId: evidence.workflowRunId,
     workflowRunAttempt: evidence.workflowRunAttempt,
@@ -1466,7 +1568,13 @@ test("loads a complete external shard set only when source, plan, and report has
       loadExternalShardResults({
         aggregateRoot: root,
         shardPlan,
-        before: { revision: evidence.revision, evidenceDigest: evidence.evidenceDigest },
+        before: {
+          revision: evidence.revision,
+          sourceHeadSha: evidence.sourceHeadSha,
+          baseSha: evidence.baseSha,
+          baseRef: evidence.baseRef,
+          evidenceDigest: evidence.evidenceDigest,
+        },
         preflightDigest: evidence.preflightDigest,
         workflowRunId: evidence.workflowRunId,
         workflowRunAttempt: evidence.workflowRunAttempt,
@@ -1487,6 +1595,9 @@ test("reuses the newest valid shard producer attempt from the same workflow run"
     shardIndex: 0,
     shardCount: 1,
     revision: "a".repeat(40),
+    sourceHeadSha: "b".repeat(40),
+    baseSha: "c".repeat(40),
+    baseRef: "main",
     evidenceDigest: "b".repeat(64),
     preflightDigest: "c".repeat(64),
     workflowRunId: "42",
@@ -1507,7 +1618,13 @@ test("reuses the newest valid shard producer attempt from the same workflow run"
   const results = await loadExternalShardResults({
     aggregateRoot: root,
     shardPlan: [{ id: "shard-000", files: ["src/a.ts"], mutantCount: 3 }],
-    before: { revision: baseEvidence.revision, evidenceDigest: baseEvidence.evidenceDigest },
+    before: {
+      revision: baseEvidence.revision,
+      sourceHeadSha: baseEvidence.sourceHeadSha,
+      baseSha: baseEvidence.baseSha,
+      baseRef: baseEvidence.baseRef,
+      evidenceDigest: baseEvidence.evidenceDigest,
+    },
     preflightDigest: baseEvidence.preflightDigest,
     workflowRunId: "42",
     workflowRunAttempt: "3",
@@ -1544,6 +1661,9 @@ test("aggregates mixed prior and current same-run shard candidates on a failed-j
         shardIndex: shardPlan.indexOf(shard),
         shardCount: shardPlan.length,
         revision: "a".repeat(40),
+        sourceHeadSha: "b".repeat(40),
+        baseSha: "c".repeat(40),
+        baseRef: "main",
         evidenceDigest: "b".repeat(64),
         preflightDigest: "c".repeat(64),
         workflowRunId: "42",
@@ -1560,7 +1680,13 @@ test("aggregates mixed prior and current same-run shard candidates on a failed-j
   const results = await loadExternalShardResults({
     aggregateRoot: root,
     shardPlan,
-    before: { revision: "a".repeat(40), evidenceDigest: "b".repeat(64) },
+    before: {
+      revision: "a".repeat(40),
+      sourceHeadSha: "b".repeat(40),
+      baseSha: "c".repeat(40),
+      baseRef: "main",
+      evidenceDigest: "b".repeat(64),
+    },
     preflightDigest: "c".repeat(64),
     workflowRunId: "42",
     workflowRunAttempt: "2",
@@ -1587,6 +1713,9 @@ test("rejects ambiguous, foreign-run, and future external shard candidates", asy
     shardIndex: 0,
     shardCount: 1,
     revision: "a".repeat(40),
+    sourceHeadSha: "b".repeat(40),
+    baseSha: "c".repeat(40),
+    baseRef: "main",
     evidenceDigest: "b".repeat(64),
     preflightDigest: "c".repeat(64),
     workflowRunId: "42",
@@ -1608,7 +1737,13 @@ test("rejects ambiguous, foreign-run, and future external shard candidates", asy
     loadExternalShardResults({
       aggregateRoot: root,
       shardPlan: [{ id: "shard-000", files: ["src/a.ts"], mutantCount: 3 }],
-      before: { revision: evidence.revision, evidenceDigest: evidence.evidenceDigest },
+      before: {
+        revision: evidence.revision,
+        sourceHeadSha: evidence.sourceHeadSha,
+        baseSha: evidence.baseSha,
+        baseRef: evidence.baseRef,
+        evidenceDigest: evidence.evidenceDigest,
+      },
       preflightDigest: evidence.preflightDigest,
       workflowRunId: "42",
       workflowRunAttempt: "3",

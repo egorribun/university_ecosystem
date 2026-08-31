@@ -15,6 +15,7 @@ import {
   mutationPatternsFromPolicy,
 } from "./validate-stryker-inventory.mjs"
 import {
+  buildWorkflowEvidenceIdentity,
   mutationPatternCoversMutant,
   mutationSignature,
   parseMutationPattern,
@@ -82,6 +83,53 @@ function parseCanonicalObject(text, description) {
 
 function sameCanonicalValue(left, right) {
   return JSON.stringify(canonicalJson(left)) === JSON.stringify(canonicalJson(right))
+}
+
+function expectedEvidenceIdentity({
+  expectedSha,
+  expectedSourceHeadSha,
+  expectedBaseSha,
+  expectedBaseRef,
+}) {
+  if (typeof expectedSha !== "string" || !/^[a-f0-9]{40,64}$/u.test(expectedSha)) {
+    throw new Error("Mutation evidence expected tested commit SHA is invalid")
+  }
+  const sourceHeadSha = expectedSourceHeadSha ?? expectedSha
+  const baseSha = expectedBaseSha ?? expectedSha
+  if (typeof sourceHeadSha !== "string" || !/^[a-f0-9]{40,64}$/u.test(sourceHeadSha)) {
+    throw new Error("Mutation evidence expected source head SHA is invalid")
+  }
+  if (typeof baseSha !== "string" || !/^[a-f0-9]{40,64}$/u.test(baseSha)) {
+    throw new Error("Mutation evidence expected base SHA is invalid")
+  }
+  if (
+    expectedBaseRef !== undefined &&
+    expectedBaseRef !== null &&
+    (typeof expectedBaseRef !== "string" || expectedBaseRef === "")
+  ) {
+    throw new Error("Mutation evidence expected base ref is invalid")
+  }
+  return {
+    headSha: expectedSha,
+    sourceHeadSha,
+    baseSha,
+    baseRef: expectedBaseRef ?? null,
+  }
+}
+
+function evidenceDigest({ identity, inputHashes }) {
+  const canonicalInputHashes = Object.fromEntries(
+    Object.entries(inputHashes).sort(([left], [right]) => left.localeCompare(right))
+  )
+  return sha256(
+    JSON.stringify({
+      baseRef: identity.baseRef,
+      baseSha: identity.baseSha,
+      headSha: identity.headSha,
+      inputHashes: canonicalInputHashes,
+      sourceHeadSha: identity.sourceHeadSha,
+    })
+  )
 }
 
 function validatedCandidateAttemptFromDirectory(directoryName, expectedWorkflowRunId) {
@@ -285,16 +333,23 @@ async function readValidatedEvidenceCandidates({ candidateRoot, expectedWorkflow
 function assertValidatedCandidateMetadata({
   candidate,
   expectedSha,
+  expectedSourceHeadSha,
+  expectedBaseSha,
+  expectedBaseRef,
   expectedWorkflowRunId,
   expectedWorkflowRunAttempt,
   expectedInputHashes,
   expectedPatterns,
   toolchain,
 }) {
+  const expectedIdentity = expectedEvidenceIdentity({
+    expectedSha,
+    expectedSourceHeadSha,
+    expectedBaseSha,
+    expectedBaseRef,
+  })
   const consumerAttempt = parseWorkflowRunAttempt(expectedWorkflowRunAttempt)
   if (
-    typeof expectedSha !== "string" ||
-    !/^[a-f0-9]{40,64}$/u.test(expectedSha) ||
     typeof expectedWorkflowRunId !== "string" ||
     !/^[1-9]\d*$/u.test(expectedWorkflowRunId) ||
     consumerAttempt === undefined ||
@@ -341,6 +396,9 @@ function assertValidatedCandidateMetadata({
   }
   if (
     inventory.sourceRevision?.headSha !== expectedSha ||
+    inventory.sourceRevision?.sourceHeadSha !== expectedIdentity.sourceHeadSha ||
+    inventory.sourceRevision?.baseSha !== expectedIdentity.baseSha ||
+    inventory.sourceRevision?.baseRef !== expectedIdentity.baseRef ||
     inventory.sourceRevision?.revision !== expectedSha ||
     inventory.revision !== expectedSha ||
     inventory.sourceRevision?.repositoryDirty !== false ||
@@ -352,12 +410,10 @@ function assertValidatedCandidateMetadata({
   if (!sameCanonicalValue(inventory.sourceRevision.inputHashes, expectedInputHashes)) {
     throw new Error("Validated artifact source inputs do not match this execution")
   }
-  const canonicalInputHashes = Object.fromEntries(
-    Object.entries(expectedInputHashes).sort(([left], [right]) => left.localeCompare(right))
-  )
-  const expectedEvidenceDigest = sha256(
-    JSON.stringify({ headSha: expectedSha, inputHashes: canonicalInputHashes })
-  )
+  const expectedEvidenceDigest = evidenceDigest({
+    identity: expectedIdentity,
+    inputHashes: expectedInputHashes,
+  })
   if (inventory.sourceRevision.evidenceDigest !== expectedEvidenceDigest) {
     throw new Error("Validated artifact source evidence digest does not match this execution")
   }
@@ -400,6 +456,9 @@ function assertValidatedCandidateMetadata({
 export async function selectValidatedEvidenceCandidate({
   candidateRoot,
   expectedSha,
+  expectedSourceHeadSha,
+  expectedBaseSha,
+  expectedBaseRef,
   expectedWorkflowRunId,
   expectedWorkflowRunAttempt,
   expectedInputHashes,
@@ -415,6 +474,9 @@ export async function selectValidatedEvidenceCandidate({
     const producerAttempt = assertValidatedCandidateMetadata({
       candidate,
       expectedSha,
+      expectedSourceHeadSha,
+      expectedBaseSha,
+      expectedBaseRef,
       expectedWorkflowRunId,
       expectedWorkflowRunAttempt,
       expectedInputHashes,
@@ -505,6 +567,9 @@ function verifyShardProducerEvidence({
       evidence.shardIndex !== index ||
       evidence.shardCount !== shardReports.length ||
       evidence.revision !== inventory.revision ||
+      evidence.sourceHeadSha !== inventory.sourceRevision.sourceHeadSha ||
+      evidence.baseSha !== inventory.sourceRevision.baseSha ||
+      evidence.baseRef !== inventory.sourceRevision.baseRef ||
       evidence.evidenceDigest !== inventory.sourceRevision.evidenceDigest ||
       evidence.preflightDigest !== preflightDigest ||
       evidence.workflowRunId !== expectedWorkflowRunId ||
@@ -520,6 +585,9 @@ function verifyShardProducerEvidence({
     }
     if (
       producer.entry.revision !== evidence.revision ||
+      producer.entry.sourceHeadSha !== evidence.sourceHeadSha ||
+      producer.entry.baseSha !== evidence.baseSha ||
+      producer.entry.baseRef !== evidence.baseRef ||
       producer.entry.evidenceDigest !== evidence.evidenceDigest ||
       producer.entry.workflowRunId !== evidence.workflowRunId ||
       producer.entry.workflowRunAttempt !== evidence.workflowRunAttempt ||
@@ -683,6 +751,9 @@ function reconstructMergedReport({ inventory, reportTexts, preflightByFile, expe
 
 export async function verifyEvidenceDocuments({
   expectedSha,
+  expectedSourceHeadSha,
+  expectedBaseSha,
+  expectedBaseRef,
   expectedWorkflowRunId,
   expectedWorkflowRunAttempt,
   allowEarlierProducerAttempt = false,
@@ -697,6 +768,12 @@ export async function verifyEvidenceDocuments({
   sourceFiles,
   expectedPatterns,
 }) {
+  const expectedIdentity = expectedEvidenceIdentity({
+    expectedSha,
+    expectedSourceHeadSha,
+    expectedBaseSha,
+    expectedBaseRef,
+  })
   if (marker?.schemaVersion !== "1.0" || marker.releaseEligible !== true) {
     throw new Error("Canonical mutation marker must be release eligible with schema 1.0")
   }
@@ -721,6 +798,9 @@ export async function verifyEvidenceDocuments({
   }
   if (
     inventory.sourceRevision?.headSha !== expectedSha ||
+    inventory.sourceRevision?.sourceHeadSha !== expectedIdentity.sourceHeadSha ||
+    inventory.sourceRevision?.baseSha !== expectedIdentity.baseSha ||
+    inventory.sourceRevision?.baseRef !== expectedIdentity.baseRef ||
     inventory.sourceRevision?.revision !== expectedSha ||
     inventory.revision !== expectedSha
   ) {
@@ -753,6 +833,15 @@ export async function verifyEvidenceDocuments({
   const inputHashes = inventory.sourceRevision.inputHashes
   if (!inputHashes || typeof inputHashes !== "object" || Array.isArray(inputHashes)) {
     throw new Error("Mutation source hash inventory is missing")
+  }
+  if (
+    inventory.sourceRevision.evidenceDigest !==
+    evidenceDigest({
+      identity: expectedIdentity,
+      inputHashes,
+    })
+  ) {
+    throw new Error("Mutation evidence source digest does not match the expected commit identities")
   }
   const expectedFiles = Object.keys(inputHashes).map(assertCanonicalRelativePath).sort()
   const actualFiles = currentEvidenceFiles.map(assertCanonicalRelativePath).sort()
@@ -958,6 +1047,7 @@ async function main() {
   const sourceFiles = await listPolicyFiles(policy)
   const expectedPatterns = mutationPatternsFromPolicy(policy)
   const expectedSha = process.env.GITHUB_SHA ?? headSha
+  const workflowIdentity = buildWorkflowEvidenceIdentity(expectedSha, process.env)
   const expectedInputHashes = Object.fromEntries(
     currentEvidenceFiles.map((file) => [file, sha256(fileBytes.get(file))])
   )
@@ -966,6 +1056,9 @@ async function main() {
     ? await selectValidatedEvidenceCandidate({
         candidateRoot,
         expectedSha,
+        expectedSourceHeadSha: workflowIdentity.sourceHeadSha,
+        expectedBaseSha: workflowIdentity.baseSha,
+        expectedBaseRef: workflowIdentity.baseRef,
         expectedWorkflowRunId: process.env.GITHUB_RUN_ID,
         expectedWorkflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT,
         expectedInputHashes,
@@ -975,6 +1068,9 @@ async function main() {
     : await readCanonicalEvidenceDocuments()
   const result = await verifyEvidenceDocuments({
     expectedSha,
+    expectedSourceHeadSha: workflowIdentity.sourceHeadSha,
+    expectedBaseSha: workflowIdentity.baseSha,
+    expectedBaseRef: workflowIdentity.baseRef,
     expectedWorkflowRunId: process.env.GITHUB_RUN_ID,
     expectedWorkflowRunAttempt: process.env.GITHUB_RUN_ATTEMPT,
     allowEarlierProducerAttempt: candidateRoot !== undefined,

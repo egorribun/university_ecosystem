@@ -748,6 +748,9 @@ jobs:
     env:
       STRYKER_SHARD_COUNT: "64"
       STRYKER_PREFLIGHT_MODE: generate
+      STRYKER_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      STRYKER_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+      STRYKER_BASE_REF: ${{ github.event.pull_request.base.ref || github.ref_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -877,6 +880,9 @@ jobs:
       STRYKER_SHARD_INDEX: ${{ matrix.shard-index }}
       STRYKER_CONCURRENCY: "4"
       STRYKER_PREFLIGHT_ARTIFACT: required
+      STRYKER_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      STRYKER_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+      STRYKER_BASE_REF: ${{ github.event.pull_request.base.ref || github.ref_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1008,6 +1014,9 @@ jobs:
       STRYKER_AGGREGATE_ROOT: reports/mutation/external
       STRYKER_CONCURRENCY: "4"
       STRYKER_PREFLIGHT_ARTIFACT: required
+      STRYKER_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      STRYKER_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+      STRYKER_BASE_REF: ${{ github.event.pull_request.base.ref || github.ref_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1135,6 +1144,9 @@ jobs:
       actions: read
     env:
       STRYKER_VALIDATED_CANDIDATE_ROOT: reports/mutation/validated-candidates
+      STRYKER_SOURCE_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      STRYKER_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+      STRYKER_BASE_REF: ${{ github.event.pull_request.base.ref || github.ref_name }}
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
