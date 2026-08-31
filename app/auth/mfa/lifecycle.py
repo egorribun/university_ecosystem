@@ -270,9 +270,7 @@ async def disable_email_mfa(
 ) -> list[MfaSessionRevocation]:
     """Disable verified-email MFA and revoke state derived from the old epoch."""
     locked_user = (
-        await db.execute(
-            select(User).where(User.id == user.id).with_for_update(nowait=False)
-        )
+        await db.execute(select(User).where(User.id == user.id).with_for_update())
     ).scalar_one()
     locked_user.email_mfa_enabled_at = None
     await refresh_user_mfa_preferences(db, user=locked_user)

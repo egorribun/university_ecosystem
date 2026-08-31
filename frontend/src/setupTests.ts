@@ -16,7 +16,7 @@ import {
   resetTestNews,
 } from "./tests/mocks/handlers"
 import i18n from "./i18n/config"
-import { resetEtagCache } from "./api/client"
+import { etagCache, responseCache } from "./api/interceptors/etagCache"
 import { validateRequestBody, validateResponseBody } from "./tests/contractValidator"
 
 declare module "vitest" {
@@ -180,7 +180,8 @@ afterEach(async () => {
   resetTestNews()
   resetTestMfa()
   resetAdminDeadLetterJobs()
-  resetEtagCache()
+  etagCache.clear()
+  responseCache.clear()
   await i18n.changeLanguage("en")
   if (typeof document !== "undefined") {
     document.documentElement.lang = "en"

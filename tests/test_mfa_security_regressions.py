@@ -1158,14 +1158,21 @@ async def test_refresh_preferences_selects_verified_email_without_totp() -> None
 
 
 @pytest.mark.asyncio
-async def test_disable_email_factor_advances_epoch_and_clears_preferences() -> None:
+@pytest.mark.parametrize(
+    ("starting_epoch", "expected_epoch"),
+    [(7, 8), (None, 1)],
+)
+async def test_disable_email_factor_advances_epoch_and_clears_preferences(
+    starting_epoch: int | None,
+    expected_epoch: int,
+) -> None:
     user_id = uuid.uuid4()
     locked_user = SimpleNamespace(
         id=user_id,
         email_mfa_enabled_at=datetime.now(UTC),
         mfa_default_method=MFA_METHOD_EMAIL_OTP,
         mfa_required=True,
-        mfa_epoch=7,
+        mfa_epoch=starting_epoch,
     )
     request_user = SimpleNamespace(**vars(locked_user))
     locked_result = MagicMock()
@@ -1191,10 +1198,15 @@ async def test_disable_email_factor_advances_epoch_and_clears_preferences() -> N
     assert locked_user.email_mfa_enabled_at is None
     assert locked_user.mfa_default_method is None
     assert locked_user.mfa_required is False
-    assert locked_user.mfa_epoch == 8
+    assert locked_user.mfa_epoch == expected_epoch
     assert request_user.email_mfa_enabled_at is None
     assert request_user.mfa_required is False
-    assert request_user.mfa_epoch == 8
+    assert request_user.mfa_epoch == expected_epoch
+    lock_statement = db.execute.await_args_list[0].args[0]
+    assert "users.id" in str(lock_statement.whereclause)
+    assert user_id in lock_statement.compile().params.values()
+    assert lock_statement._for_update_arg is not None
+    assert lock_statement._for_update_arg.nowait is False
     collect.assert_awaited_once_with(db, user_id=user_id)
     db.flush.assert_awaited_once()
     delete_statements = [
@@ -2091,7 +2103,7 @@ def test_trusted_device_keyring_preserves_multiple_comma_delimited_generations(
     monkeypatch.setattr(
         trusted_device_module.settings,
         "mfa_trusted_device_hmac_keys",
-        f"primary:{primary_encoded}, previous:{previous_encoded}",
+        f"primary:{primary_encoded},previous:{previous_encoded}",
     )
     monkeypatch.setattr(
         trusted_device_module.settings,
@@ -2147,7 +2159,7 @@ async def test_wrong_otp_rejects_without_flush_when_attempt_update_loses_race() 
     service = _service()
     now = datetime.now(UTC)
     recipient = "student@example.edu"
-    challenge = _email_challenge(otp_key_id="active", otp_digest=None)
+    challenge = _email_challenge(otp_key_id="active", otp_digest=None, attempt_count=4)
     challenge.recipient_digest = service._recipient_digest(
         key_id="active", email=recipient
     )
@@ -2181,6 +2193,10 @@ async def test_wrong_otp_rejects_without_flush_when_attempt_update_loses_race() 
             now=now,
         )
 
+    attempt_update = db.execute.await_args.args[0]
+    update_params = attempt_update.compile().params
+    assert update_params["state"] is ChallengeState.LOCKED
+    assert update_params["locked_at"] == now
     db.flush.assert_not_awaited()
 
 

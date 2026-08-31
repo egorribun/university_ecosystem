@@ -28,8 +28,63 @@ on:
         type: boolean
         default: false
 jobs:
+  # Compile the immutable WASM packages once per workflow attempt. Unit,
+  # static-analysis, and production-build jobs consume this same-run artifact
+  # instead of competing for runner CPU while rebuilding identical Rust code.
+  wasm-build:
+    name: Build WASM modules
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
+        with:
+          tool: wasm-pack@0.13.1
+
+      - name: Build immutable WASM modules
+        run: |
+          set -euo pipefail
+          crypto_status=0
+          sanitizer_status=0
+          wasm-pack build rust-crypto --target web --release &
+          crypto_pid=$!
+          wasm-pack build wasm-sanitizer --target web --release &
+          sanitizer_pid=$!
+          wait "$crypto_pid" || crypto_status=$?
+          wait "$sanitizer_pid" || sanitizer_status=$?
+          if (( crypto_status != 0 || sanitizer_status != 0 )); then
+            echo "::error::WASM build failed (rust-crypto=$crypto_status, wasm-sanitizer=$sanitizer_status)"
+            exit 1
+          fi
+          node scripts/verify-wasm-artifacts.mjs
+
+      - name: Upload immutable WASM modules
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: frontend-wasm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: |
+            ${{ inputs.working-directory }}/rust-crypto/pkg
+            ${{ inputs.working-directory }}/wasm-sanitizer/pkg
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 1
+          compression-level: 0
+
   unit-tests-shard:
     name: Unit Tests (shard ${{ matrix.shard }}/4)
+    needs: wasm-build
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -44,6 +99,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Download immutable WASM modules
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: frontend-wasm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: ${{ inputs.working-directory }}
+
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -53,22 +114,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Install wasm-pack
-        # W142 polish-v3 — taiki-e/install-action wasm-pack broken (drager/
-        # wasm-pack 404; rustwasm/wasm-pack canonical since v0.14.0). Same
-        # fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
-        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
-        with:
-          tool: wasm-pack@0.13.1
-
-      - name: Build WASM modules
-        run: |
-          wasm-pack build rust-crypto --target web
-          wasm-pack build wasm-sanitizer --target web
-
-      - name: Run type check
-        run: npm run typecheck
 
       - name: Clean frontend shard coverage outputs
         run: rm -rf -- coverage
@@ -328,6 +373,7 @@ jobs:
 
   lint:
     name: Lint & Format
+    needs: wasm-build
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
@@ -337,6 +383,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Download immutable WASM modules
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: frontend-wasm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: ${{ inputs.working-directory }}
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -348,25 +400,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install wasm-pack
-        # W142 polish-v3 — taiki-e/install-action wasm-pack broken (drager/
-        # wasm-pack 404; rustwasm/wasm-pack canonical since v0.14.0). Same
-        # fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
-        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
-        with:
-          tool: wasm-pack@0.13.1
-
-      - name: Build WASM modules
-        run: |
-          wasm-pack build rust-crypto --target web
-          wasm-pack build wasm-sanitizer --target web
-
-      - name: Run ESLint
-        run: npm run lint
-
-      - name: Check formatting
-        run: npm run format:check
-
       # MOD-43-01 (audit 2026-03-29 Wave 43): Token sync drift gate.
       # Ensures CSS → TS token mirror stays in sync. Fails if sync produces a diff.
       - name: Verify token sync (CSS ↔ TS)
@@ -377,19 +410,50 @@ jobs:
             exit 1
           }
 
-      # Wave 112 — i18n EN↔RU parity gate (was manual via npm run i18n:check,
-      # now enforced in CI so missing translations fail the build).
-      - name: Verify i18n EN↔RU parity
-        run: npm run i18n:check
+      # These read-only gates are independent. Run them on the same bounded
+      # runner in parallel so the workflow does not spend one full process
+      # duration per gate while still collecting every exit status and log.
+      - name: Run frontend static gates in parallel
+        shell: bash
+        env:
+          STATIC_GATE_LOG_DIR: ${{ runner.temp }}/frontend-static-gates
+        run: |
+          set -euo pipefail
+          rm -rf -- "$STATIC_GATE_LOG_DIR"
+          mkdir -p "$STATIC_GATE_LOG_DIR"
 
-      - name: Run ts-prune (dead code check)
-        run: npm run lint:deadcode
+          run_gate() {
+            local gate="$1"
+            shift
+            local status=0
+            "$@" >"$STATIC_GATE_LOG_DIR/$gate.log" 2>&1 || status=$?
+            printf '%s\n' "$status" >"$STATIC_GATE_LOG_DIR/$gate.status"
+          }
 
-      - name: Run depcheck (dependency check)
-        run: npm run lint:depcheck
+          run_gate typecheck npm run typecheck &
+          run_gate eslint npm run lint &
+          run_gate formatting npm run format:check &
+          run_gate i18n npm run i18n:check &
+          run_gate deadcode npm run lint:deadcode &
+          run_gate depcheck npm run lint:depcheck &
+          wait
+
+          failed=0
+          for gate in typecheck eslint formatting i18n deadcode depcheck; do
+            echo "::group::$gate"
+            cat "$STATIC_GATE_LOG_DIR/$gate.log"
+            echo "::endgroup::"
+            status="$(cat "$STATIC_GATE_LOG_DIR/$gate.status")"
+            if [[ "$status" -ne 0 ]]; then
+              echo "::error title=Frontend static gate failed::$gate exited with $status"
+              failed=1
+            fi
+          done
+          exit "$failed"
 
   build:
     name: Production Build
+    needs: wasm-build
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:
@@ -407,6 +471,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Download immutable WASM modules
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: frontend-wasm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: ${{ inputs.working-directory }}
+
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -417,24 +487,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # P0-01 (audit 2026-03-06): Replaced unsafe shell-piped installer with taiki-e/install-action.
-      # The action verifies SHA256 checksums from official GitHub releases, preventing
-      # supply chain attacks via DNS hijacking or CDN compromise (OWASP CI/CD C-PPE-1).
-      - name: Install wasm-pack
-        # W142 polish-v3 — taiki-e/install-action wasm-pack broken (drager/
-        # wasm-pack 404; rustwasm/wasm-pack canonical since v0.14.0). Same
-        # fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
-        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
-        with:
-          tool: wasm-pack@0.13.1
-
-      - name: Build rust-crypto
-        run: |
-          cd rust-crypto
-          wasm-pack build --target web
-
       - name: Build app
         run: npm run build
+        env:
+          SKIP_WASM_BUILD: "1"
 
       - name: Upload production bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

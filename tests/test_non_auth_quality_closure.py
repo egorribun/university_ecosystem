@@ -309,14 +309,21 @@ def test_cwv_api_binding_principal_and_error_mapping(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     settings = _api_settings()
-    user_id = UUID(settings.cwv_manual_tester_user_ids.get_secret_value())
+    first_user_id = uuid4()
+    user_id = uuid4()
+    settings.cwv_manual_tester_user_ids = SecretStr(f"{first_user_id},{user_id}")
     monkeypatch.setattr(cwv_api, "settings", settings)
-    assert cwv_api._binding().allowed_origins == ("https://staging.example.edu",)
-    assert cwv_api._binding().frontend_image_digest == DIGEST
+    binding = cwv_api._binding()
+    assert binding.allowed_origins == ("https://staging.example.edu",)
+    assert binding.frontend_image_digest == DIGEST
+    assert binding.deployment_run_id == 123
+    assert binding.deployment_run_attempt == 2
+    assert binding.deployment_url == "https://staging.example.edu"
     assert cwv_api._manual_tester_principal(SimpleNamespace(id=user_id)) == str(user_id)
     with pytest.raises(HTTPException) as denied:
         cwv_api._manual_tester_principal(SimpleNamespace(id=uuid4()))
     assert denied.value.status_code == 403
+    assert denied.value.detail == "CWV request rejected"
     for exc, expected in [
         (cwv.CwvConfigurationError(), 503),
         (cwv.CwvOriginError(), 403),
@@ -786,6 +793,11 @@ async def test_notification_redelivery_skips_null_journal_and_unsupported_topic(
     outcome = await delivery.redeliver_notifications(
         db, notification_ids=[notification.id]
     )
+    journal_query = db.execute.await_args_list[2].args[0]
+    assert "notification_deliveries.notification_id IN" in str(
+        journal_query.whereclause
+    )
+    assert [notification.id] in journal_query.compile().params.values()
     assert outcome.terminal_failures == 1
 
 

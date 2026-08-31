@@ -90,15 +90,9 @@ const SKY_PRESETS: Record<TimePeriod, { sky: string; horizon: string; fog: strin
   night: { sky: "#0f172a", horizon: "#1e293b", fog: "#1e293b" }, // deep navy
 }
 
-const SKY_DARK: { sky: string; horizon: string; fog: string } = {
-  sky: "#0f172a",
-  horizon: "#1e293b",
-  fog: "#1e293b",
-}
-
 function getSkyConfig(isDark: boolean, period?: TimePeriod) {
   // Dark mode always uses deep navy regardless of period
-  const preset = isDark ? SKY_DARK : SKY_PRESETS[period ?? "afternoon"]
+  const preset = isDark ? SKY_PRESETS.night : SKY_PRESETS[period ?? "afternoon"]
   return {
     "sky-color": preset.sky,
     "sky-horizon-blend": 0.3,
@@ -142,7 +136,7 @@ export function MapLibreMapComponent({
   onSelectBuilding,
   onDeselectBuilding,
   mapRef,
-  isDark,
+  isDark = false,
   timePeriod,
   weatherCondition,
   mapEvents,
@@ -198,8 +192,10 @@ export function MapLibreMapComponent({
   /** Event counts per building — used for indicator badges on markers. */
   const eventCountByBuilding = useMemo(() => {
     const counts: Record<string, number> = {}
-    for (const evt of mapEvents ?? []) {
-      counts[evt.buildingId] = (counts[evt.buildingId] ?? 0) + 1
+    if (mapEvents) {
+      for (const evt of mapEvents) {
+        counts[evt.buildingId] = (counts[evt.buildingId] ?? 0) + 1
+      }
     }
     return counts
   }, [mapEvents])
@@ -294,7 +290,7 @@ export function MapLibreMapComponent({
       updateCollisionProjection(map)
 
       // Sky/fog atmosphere
-      map.setSky(getSkyConfig(!!isDark, timePeriod))
+      map.setSky(getSkyConfig(isDark, timePeriod))
 
       // Cinematic intro — only once per component lifetime.
       // Wave 120 SW5: if URL provided a saved viewport, jumpTo it instead
@@ -392,7 +388,7 @@ export function MapLibreMapComponent({
   useEffect(() => {
     const map = mapRef?.current?.getMap()
     if (!map || !map.loaded()) return
-    map.setSky(getSkyConfig(!!isDark, timePeriod))
+    map.setSky(getSkyConfig(isDark, timePeriod))
   }, [isDark, timePeriod, mapRef])
 
   return (
@@ -491,7 +487,7 @@ export function MapLibreMapComponent({
       </Map>
 
       {/* Weather particle overlay — above map, below markers */}
-      {weatherCondition && <WeatherParticles condition={weatherCondition} isDark={!!isDark} />}
+      {weatherCondition && <WeatherParticles condition={weatherCondition} isDark={isDark} />}
 
       {/* Premium map controls — mobile: centered bottom strip, desktop: right column.
           Controls stay at bottom:12px — mobile bottom sheet (fixed z-50) overlays them naturally. */}

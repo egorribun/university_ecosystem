@@ -205,7 +205,6 @@ export const ChatWindow = memo(function ChatWindow({
     overscan: 5,
   })
 
-  const prevMessagesLengthRef = useRef(0)
   const didInitialScrollRef = useRef(false)
 
   // Wave 202 SW6 — animate ONLY newly-appended messages, not every virtualized
@@ -214,10 +213,10 @@ export const ChatWindow = memo(function ChatWindow({
   // from which rows count as "new"; rows below it render `initial={false}`
   // (instant, no entrance). Init to Infinity so the first populated render (e.g.
   // loaded history) never stampede-animates; the auto-scroll effect bumps it to
-  // the new length on each growth — which runs AFTER the new-message render, so
-  // at render time it still equals the previous length = exactly the just-
-  // appended tail. State (not a ref) → safe to read in render under React
-  // Compiler; the only ref (prevMessagesLengthRef) is touched solely in effects.
+  // the new length after each non-empty length change — which runs AFTER the
+  // new-message render, so at render time it still equals the previous length =
+  // exactly the just-appended tail. State (not a ref) is safe to read in render
+  // under React Compiler; the lifecycle refs are touched solely in effects.
   const [animateFromIndex, setAnimateFromIndex] = useState(Number.POSITIVE_INFINITY)
 
   // Wave 208 SW4 — scroll-to-bottom FAB visibility. State (not a ref) → safe to
@@ -234,19 +233,19 @@ export const ChatWindow = memo(function ChatWindow({
   // item when older history is prepended.
   useEffect(() => {
     const nextLength = messages.length
-    const previousLength = prevMessagesLengthRef.current
     if (nextLength === 0) {
       didInitialScrollRef.current = false
-    } else if (!isSearchActive && !didInitialScrollRef.current) {
-      virtualizer.scrollToIndex(nextLength - 1, { align: "end", behavior: "auto" })
-      didInitialScrollRef.current = true
-      setAnimateFromIndex(nextLength)
-    } else if (!isSearchActive && nextLength > previousLength) {
-      // The preceding render still sees the old boundary and animates only the
-      // appended tail. Advancing it here prevents replay on recycled rows.
+    } else {
+      if (!isSearchActive && !didInitialScrollRef.current) {
+        virtualizer.scrollToIndex(nextLength - 1, { align: "end", behavior: "auto" })
+        didInitialScrollRef.current = true
+      }
+      // The preceding render sees the prior boundary, so only an appended tail
+      // animates. Always re-base after any non-empty length change: this prevents
+      // messages incorporated during search from replaying when search closes,
+      // and lets a later append animate correctly after history contracts.
       setAnimateFromIndex(nextLength)
     }
-    prevMessagesLengthRef.current = nextLength
   }, [messages.length, isSearchActive, virtualizer])
 
   // Wave 208 SW4 — toggle the scroll-to-bottom FAB based on scroll position.
@@ -279,8 +278,8 @@ export const ChatWindow = memo(function ChatWindow({
   useEffect(() => {
     if (!reactionPickerForId) return
     const onMouseDown = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null
-      if (target?.closest("[data-reaction-ui]")) return
+      const target = event.target
+      if (target instanceof Element && target.closest("[data-reaction-ui]")) return
       setReactionPickerForId(null)
     }
     const onKeyDown = (event: KeyboardEvent) => {
@@ -364,6 +363,7 @@ export const ChatWindow = memo(function ChatWindow({
   if (isLoading) {
     return (
       <div
+        ref={containerRef}
         role="status"
         aria-live="polite"
         aria-label={t("messenger:loading.messages")}

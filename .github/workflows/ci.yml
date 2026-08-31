@@ -692,7 +692,6 @@ jobs:
 
   frontend-tests:
     name: Frontend Tests
-    needs: pre-commit-check
     permissions:
       contents: read
     uses: ./.github/workflows/reusable-frontend-tests.yml
@@ -707,7 +706,6 @@ jobs:
     name: Frontend Mutation Preflight Universe
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    needs: pre-commit-check
     if: ${{ github.event_name == 'pull_request' }}
     permissions:
       contents: read
@@ -822,7 +820,7 @@ jobs:
     name: Frontend mutation shard ${{ matrix.shard-index }}/64
     runs-on: ubuntu-24.04
     timeout-minutes: 120
-    needs: [pre-commit-check, stryker-preflight]
+    needs: stryker-preflight
     if: ${{ github.event_name == 'pull_request' }}
     strategy:
       fail-fast: false
@@ -2162,6 +2160,7 @@ jobs:
     name: Schemathesis - API Schema Conformance
     if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     needs: schemathesis-api-tests-shard
     steps:
       - name: Require every Schemathesis shard to pass
@@ -4445,6 +4444,7 @@ jobs:
   backend-tests-unit-dummy:
     name: "Backend Tests (Python 3.14) / Unit Tests (All-Python 3.14)"
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     needs: backend-tests
     steps:
       - run: echo "Satisfying branch protection for Unit Tests"
@@ -4452,6 +4452,7 @@ jobs:
   backend-tests-integration-dummy:
     name: "Backend Tests (Python 3.14) / Integration Tests (All-Python 3.14)"
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     needs: backend-tests
     steps:
       - run: echo "Satisfying branch protection for Integration Tests"

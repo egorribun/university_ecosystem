@@ -5,7 +5,7 @@ import sys
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import ClassVar
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -95,6 +95,18 @@ class _Engine:
 
     def connect(self):
         return self.connection
+
+
+@pytest.mark.asyncio
+async def test_partition_ddl_lock_binds_the_exact_parent_table_name() -> None:
+    connection = MagicMock()
+    connection.execute = AsyncMock()
+
+    await manager._lock_partition_ddl(connection, "notifications")
+
+    statement, parameters = connection.execute.await_args.args
+    assert str(statement) == "SELECT pg_advisory_xact_lock(hashtext(:table_name))"
+    assert parameters == {"table_name": "notifications"}
 
 
 def _info(name="notifications_y2026m04", start="2026-04-01", end="2026-05-01"):

@@ -65,6 +65,7 @@ jobs:
     # controlled while later jobs hold registry/OIDC/deployment privileges.
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     services:
       postgres:
         image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
@@ -191,6 +192,7 @@ jobs:
   prepare:
     name: Prepare release metadata
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     needs: [validate]
     if: ${{ always() && needs.validate.result == 'success' }}
     outputs:
@@ -312,6 +314,7 @@ jobs:
   deploy:
     name: Deploy to ${{ inputs.environment }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 120
     needs:
       [
         prepare,
@@ -1713,6 +1716,7 @@ jobs:
   rollback:
     name: Database rollback capability test
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     needs: [deploy]
     if: ${{ inputs.environment == 'staging' }}
     services:
@@ -1777,6 +1781,7 @@ jobs:
   notify:
     name: Notify deployment status
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     needs: [prepare, resolve-images, deploy, rollback]
     if: always()
     steps:

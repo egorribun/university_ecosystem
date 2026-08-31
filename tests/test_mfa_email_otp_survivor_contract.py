@@ -102,6 +102,7 @@ def test_email_delivery_generates_fixed_size_aead_nonces(
     assert [call.args for call in token_bytes.call_args_list] == [(12,), (12,)]
     assert len(delivery_row.envelope_nonce) == 12
     assert len(delivery_row.wrap_nonce) == 12
+    assert delivery_row.created_at == NOW
 
 
 @pytest.mark.parametrize("kek_length", [16, 24, 32])
@@ -154,6 +155,18 @@ def test_key_ring_rejects_zero_length_decoded_keys_with_generic_error() -> None:
         pytest.raises(MfaSecurityUnavailable, match=r"^MFA service unavailable$"),
     ):
         email_otp_module._parse_key_ring("active:AA==")
+
+
+def test_key_ring_rejects_duplicate_identifiers_with_generic_error() -> None:
+    """Parser details never cross the generic MFA security boundary."""
+
+    with pytest.raises(
+        MfaSecurityUnavailable, match=r"^MFA service unavailable$"
+    ) as exc_info:
+        email_otp_module._parse_key_ring("active:YWJj,active:ZGVm")
+
+    assert isinstance(exc_info.value.__context__, ValueError)
+    assert exc_info.value.__context__.args == ()
 
 
 def test_issue_validation_has_explicit_inclusive_session_boundary_and_messages() -> (
@@ -321,6 +334,9 @@ async def test_issue_binds_recipient_lookup_to_user_and_persists_outbox(
     added = db.add_all.call_args.args[0]
     assert len(added) == 3
     assert added[0].user_id == user_id
+    assert added[0].attempt_count == 0
+    assert added[0].state is ChallengeState.PENDING
+    assert added[0].trust_device_requested is False
     assert added[1].challenge_id == issued.challenge_id
     assert isinstance(added[2], StoredEvent)
 
@@ -359,7 +375,7 @@ async def test_opaque_loader_selects_active_session_for_each_non_login_flow(
 async def test_verify_forwards_client_ip_to_rate_limiter(
     service: EmailOtpService,
 ) -> None:
-    """The abuse-control identity must include the caller IP on every verify."""
+    """Verify uses a UTC clock and binds abuse control to the caller IP."""
 
     user_id = uuid.UUID("88888888-8888-7888-8888-888888888888")
     service._rate_limit = AsyncMock()  # type: ignore[method-assign]
@@ -367,7 +383,12 @@ async def test_verify_forwards_client_ip_to_rate_limiter(
         side_effect=MfaOtpRejected()
     )
 
-    with pytest.raises(MfaOtpRejected):
+    clock = MagicMock(wraps=datetime)
+    clock.now.return_value = NOW
+    with (
+        patch.object(email_otp_module, "datetime", clock),
+        pytest.raises(MfaOtpRejected),
+    ):
         await service.verify(
             MagicMock(),
             challenge_token="opaque-token",
@@ -377,9 +398,9 @@ async def test_verify_forwards_client_ip_to_rate_limiter(
             session_identifier=SESSION,
             client_fingerprint=FINGERPRINT,
             client_ip=IP,
-            now=NOW,
         )
 
+    clock.now.assert_called_once_with(UTC)
     service._rate_limit.assert_awaited_once_with(  # type: ignore[attr-defined]
         action="verify", user_id=user_id, client_ip=IP
     )
@@ -441,6 +462,8 @@ async def test_resend_rate_limits_with_the_resend_action_before_loading_state(
 async def test_resend_without_explicit_clock_uses_utc_and_rotates_expiry(
     service: EmailOtpService,
 ) -> None:
+    from sqlalchemy.dialects import postgresql
+
     challenge = _challenge()
     user = SimpleNamespace(id=challenge.user_id, email="student@example.edu")
     challenge.recipient_digest = service._recipient_digest(
@@ -472,6 +495,10 @@ async def test_resend_without_explicit_clock_uses_utc_and_rotates_expiry(
     clock.now.assert_called_once_with(UTC)
     assert issued.expires_at == rotated_at + timedelta(seconds=600)
     assert issued.resend_available_at == rotated_at + timedelta(seconds=60)
+    rotation_statement = db.execute.await_args_list[0].args[0]
+    compiled_rotation = rotation_statement.compile(dialect=postgresql.dialect())
+    assert compiled_rotation.params["token_digest"] == challenge.token_digest
+    assert compiled_rotation.params["token_key_id"] == "active"
     cancelled_statement = db.execute.await_args_list[1].args[0]
     assert "mfa_email_deliveries.challenge_id =" in str(cancelled_statement.whereclause)
 
@@ -556,6 +583,8 @@ async def test_verify_consumes_challenge_with_checked_at_persisted(
     statement = db.execute.await_args.args[0]
     compiled = statement.compile(dialect=postgresql.dialect())
     assert "consumed_at" in str(statement)
+    assert "mfa_challenges.attempt_count <" in str(statement.whereclause)
+    assert "mfa_challenges.attempt_count <=" not in str(statement.whereclause)
     assert NOW in compiled.params.values()
 
 
@@ -809,6 +838,8 @@ def test_decrypt_delivery_defaults_missing_display_name_to_empty_string(
 async def test_delivery_completion_requires_exactly_one_row_and_forwards_rendered_subject(
     service: EmailOtpService,
 ) -> None:
+    from sqlalchemy.dialects import postgresql
+
     delivery_id = uuid.UUID("66666666-6666-7666-8666-666666666666")
     challenge_id = uuid.UUID("77777777-7777-7777-8777-777777777777")
     delivery = SimpleNamespace(
@@ -855,9 +886,14 @@ async def test_delivery_completion_requires_exactly_one_row_and_forwards_rendere
     ):
         await service.deliver(db, delivery_id=delivery_id, sender=sender, now=NOW)
     token_urlsafe.assert_called_once_with(32)
+    claim_statement = db.execute.await_args_list[0].args[0]
+    compiled_claim = claim_statement.compile(dialect=postgresql.dialect())
+    assert "lease_expires_at <=" in str(compiled_claim)
+    assert compiled_claim.params["attempt_count_1"] == 1
     assert db.get.await_args is not None
     assert db.get.await_args.kwargs["populate_existing"] is True
     challenge_query = db.execute.await_args_list[1].args[0]
+    assert challenge_query.get_execution_options()["populate_existing"] is True
     challenge_lock = challenge_query._for_update_arg
     assert challenge_lock is not None and challenge_lock.nowait is False
     sender.send.assert_awaited_once_with(
@@ -874,6 +910,27 @@ async def test_delivery_completion_requires_exactly_one_row_and_forwards_rendere
     assert "mfa_email_deliveries.id =" in where_clause
     assert "mfa_email_deliveries.id !=" not in where_clause
     assert "mfa_email_deliveries.lease_token =" in where_clause
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["sent", "sending"])
+async def test_delivery_claim_loss_is_idempotent_for_sent_or_active_work(
+    service: EmailOtpService,
+    status: str,
+) -> None:
+    delivery_id = uuid.uuid4()
+    claim = SimpleNamespace(one_or_none=Mock(return_value=None))
+    db = MagicMock(
+        execute=AsyncMock(return_value=claim),
+        scalar=AsyncMock(return_value=status),
+        commit=AsyncMock(),
+    )
+    sender = AsyncMock()
+
+    await service.deliver(db, delivery_id=delivery_id, sender=sender, now=NOW)
+
+    sender.send.assert_not_awaited()
+    db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -926,6 +983,7 @@ async def test_delivery_failure_emits_the_canonical_retryable_event(
         "mfa_email_delivery_failed", extra={"delivery_id": str(delivery_id)}
     )
     retry_statement = db.execute.await_args_list[-1].args[0]
+    assert retry_statement.compile().params["status"] == "pending"
     retry_sql = str(retry_statement)
     assert "status=:status" in retry_sql
     assert "lease_token=:lease_token" in retry_sql
@@ -977,6 +1035,11 @@ async def test_delivery_decrypt_failure_logs_delivery_id_for_retry_diagnostics(
     logger_error.assert_called_once_with(
         "mfa_email_delivery_failed", extra={"delivery_id": str(delivery_id)}
     )
+    retry_statement = db.execute.await_args_list[-1].args[0]
+    retry_values = retry_statement.compile().params
+    assert retry_values["status"] == "pending"
+    assert retry_values["lease_token"] is None
+    assert retry_values["lease_expires_at"] is None
 
 
 def test_rejected_error_is_enumeration_safe_and_exact() -> None:

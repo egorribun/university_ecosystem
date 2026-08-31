@@ -1246,7 +1246,9 @@ def _parse_key_ring(raw: str) -> dict[str, bytes]:
                 raise ValueError("key-ring entry must contain exactly one delimiter")
             key_id, encoded = (part.strip() for part in parts)
             if not key_id or key_id in keys:
-                raise ValueError("key-ring identifier is empty or duplicated")
+                # The outer boundary deliberately discards parser diagnostics,
+                # so retaining a mutable internal message adds no information.
+                raise ValueError
             if (
                 not encoded
                 or any(

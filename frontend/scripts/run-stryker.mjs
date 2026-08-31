@@ -319,7 +319,7 @@ export function mutationPatternCoversMutant(pattern, mutant, sourcePath) {
   return (
     location !== undefined &&
     compareLocation(location.start, parsed.range.start) >= 0 &&
-    compareLocation(location.end, parsed.range.end) <= 0
+    compareLocation(location.start, parsed.range.end) <= 0
   )
 }
 
@@ -345,30 +345,63 @@ function splitMutationUnits({ file, mutants, budget, estimatedCost }) {
 
   const groups = []
   let current = []
-  let currentEnd
   const emit = () => {
     if (current.length === 0) return
     const first = current[0].location
-    const last = currentEnd
+    const last = current.at(-1).location
     groups.push({
-      pattern: `${file}:${first.start.line + 1}-${last.end.line + 1}`,
+      pattern: `${file}:${first.start.line + 1}-${last.start.line + 1}`,
       mutantCount: current.length,
       estimatedCost: estimatedCost * (current.length / mutants.length),
     })
     current = []
-    currentEnd = undefined
   }
   for (const entry of located) {
     const startsAfterCurrent =
-      currentEnd !== undefined && entry.location.start.line > currentEnd.end.line
+      current.length > 0 && entry.location.start.line > current.at(-1).location.start.line
     if (current.length >= budget && startsAfterCurrent) emit()
     current.push(entry)
-    if (currentEnd === undefined || compareLocation(entry.location.end, currentEnd.end) > 0) {
-      currentEnd = entry.location
-    }
   }
   emit()
   return groups
+}
+
+export function normalizeStrykerRuntimeReport(report) {
+  if (!isRecord(report) || !isRecord(report.files)) {
+    throw new Error("Stryker runtime report is malformed")
+  }
+  const files = Object.fromEntries(
+    Object.entries(report.files).map(([file, fileReport]) => {
+      if (!isRecord(fileReport) || !Array.isArray(fileReport.mutants)) {
+        throw new Error(`Stryker runtime mutant list is malformed for ${file}`)
+      }
+      const mutants = fileReport.mutants.map((mutant) => {
+        if (!isRecord(mutant) || !isRecord(mutant.location)) {
+          throw new Error(`Stryker runtime mutant location is malformed for ${file}`)
+        }
+        const normalizePoint = (point) => {
+          if (
+            !isRecord(point) ||
+            !Number.isInteger(point.line) ||
+            !Number.isInteger(point.column) ||
+            point.line < 1 ||
+            point.column < 1
+          ) {
+            throw new Error(`Stryker runtime mutant location is malformed for ${file}`)
+          }
+          return { line: point.line - 1, column: point.column - 1 }
+        }
+        const start = normalizePoint(mutant.location.start)
+        const end = normalizePoint(mutant.location.end)
+        if (compareLocation(end, start) < 0) {
+          throw new Error(`Stryker runtime mutant location is malformed for ${file}`)
+        }
+        return { ...mutant, location: { ...mutant.location, start, end } }
+      })
+      return [file, { ...fileReport, mutants }]
+    })
+  )
+  return { ...report, files }
 }
 
 // A first Stryker attempt has no historical cost model.  A one-file assignment
@@ -381,6 +414,35 @@ function splitMutationUnits({ file, mutants, budget, estimatedCost }) {
 // same plan from the exact preflight universe.
 const largeMutationUniverseThreshold = 10_000
 const firstAttemptUnitSplitFactor = 16
+
+function assignLocalityAwareMutationUnits(weightedUnits, shards) {
+  const orderedUnits = [...weightedUnits].sort((left, right) =>
+    left.pattern.localeCompare(right.pattern)
+  )
+  let cursor = 0
+  let remainingMutants = orderedUnits.reduce((sum, entry) => sum + entry.mutantCount, 0)
+
+  for (let shardIndex = 0; shardIndex < shards.length; shardIndex += 1) {
+    const target = shards[shardIndex]
+    const remainingShards = shards.length - shardIndex
+    const targetMutants = remainingMutants / remainingShards
+    const lastAssignableCursor = orderedUnits.length - (remainingShards - 1)
+
+    while (cursor < lastAssignableCursor) {
+      const entry = orderedUnits[cursor]
+      if (target.files.length > 0) {
+        const currentDistance = Math.abs(targetMutants - target.mutantCount)
+        const nextDistance = Math.abs(targetMutants - target.mutantCount - entry.mutantCount)
+        if (nextDistance > currentDistance) break
+      }
+      target.files.push(entry.pattern)
+      target.mutantCount += entry.mutantCount
+      target.estimatedCost += entry.mutantCount
+      cursor += 1
+    }
+    remainingMutants -= target.mutantCount
+  }
+}
 
 export function planMutationShards(
   preflightByFile,
@@ -439,6 +501,14 @@ export function planMutationShards(
     mutantCount: 0,
     estimatedCost: 0,
   }))
+  if (validatedCosts === undefined && totalMutants >= largeMutationUniverseThreshold) {
+    // Related-mode test discovery is the dominant first-attempt cost for
+    // static mutants. Keeping adjacent source ranges together avoids turning
+    // every logical shard into a union of unrelated feature test graphs while
+    // the fine-grained units above still keep mutant counts tightly bounded.
+    assignLocalityAwareMutationUnits(weightedUnits, shards)
+    return shards.map(({ id, files, mutantCount }) => ({ id, files, mutantCount }))
+  }
   weightedUnits.sort(
     (left, right) =>
       (validatedCosts
@@ -1846,7 +1916,7 @@ export async function loadExternalShardResults({
         ...expected,
         reportPath,
         reportText,
-        report: JSON.parse(reportText),
+        report: normalizeStrykerRuntimeReport(JSON.parse(reportText)),
         shardEvidencePath: evidencePath,
         shardEvidenceText: evidenceText,
         shardEvidence: evidence,
@@ -2121,6 +2191,13 @@ async function main() {
         )
         const durationMs = Math.max(1, Date.now() - executionStartedAt)
         const reportText = await readFile(reportPath, "utf8")
+        const report = normalizeStrykerRuntimeReport(JSON.parse(reportText))
+        mergeShardReports({
+          shards: [{ ...shard, report }],
+          expectedPatterns: shard.files,
+          preflightByFile,
+          sourceByFile,
+        })
         const shardEvidence = {
           schemaVersion: "1.0",
           runId,
@@ -2145,7 +2222,7 @@ async function main() {
           ...shard,
           reportPath,
           reportText,
-          report: JSON.parse(reportText),
+          report,
           shardEvidencePath,
           shardEvidenceText,
           shardEvidence,

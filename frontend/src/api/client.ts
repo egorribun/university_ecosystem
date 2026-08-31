@@ -361,6 +361,7 @@ api.interceptors.response.use(
   },
   async (error) => {
     const config = error?.config as ApiRequestConfig | undefined
+    const responseStatus = error?.response?.status
     _cleanupIdempotencyKey(config)
     // @ts-expect-error - axios config bridge
     releaseClientQueueSlot(config)
@@ -369,12 +370,12 @@ api.interceptors.response.use(
       updateTraceContext(error.response.headers as AxiosHeaders)
     }
 
-    if (config?.etagCacheKey && error?.response?.status >= 400 && error.response.status !== 304) {
+    if (config?.etagCacheKey && responseStatus >= 400) {
       etagCache.delete(config.etagCacheKey)
     }
 
-    if (error?.response?.status === 429 && config && !config.skipRateLimitQueue) {
-      const delay = getRetryDelay(error.response?.headers)
+    if (responseStatus === 429 && config && !config.skipRateLimitQueue) {
+      const delay = getRetryDelay(error.response.headers)
       scheduleRateLimitWindow(delay)
 
       const retryCount = config.__rateLimitRetryCount ?? 0
@@ -386,7 +387,7 @@ api.interceptors.response.use(
       }
     }
 
-    if (error?.response?.status === 401) {
+    if (responseStatus === 401) {
       const headers = (config?.headers ?? {}) as Record<string, unknown>
       if (headers[SKIP_UNAUTHORIZED_HEADER]) {
         delete headers[SKIP_UNAUTHORIZED_HEADER]

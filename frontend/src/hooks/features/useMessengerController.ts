@@ -129,12 +129,12 @@ export const useMessengerController = () => {
   // `string | undefined` natively. Matches NewsDetail.tsx + EventDetail.tsx +
   // ResetPassword.tsx codebase convention (4 callsites; all use strict:false).
   const { chatId } = useParams({ strict: false })
+  const selectedChatId = chatId ?? null
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { presenceMap, sendJoin, sendLeave, isConnected } = useMessenger()
 
   // UI State
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null)
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false)
   const [showSearchInChat, setShowSearchInChat] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
@@ -213,11 +213,6 @@ export const useMessengerController = () => {
     setIsLoadingOlderMessages(false)
     setOlderMessagesError(false)
     return () => olderHistoryAbortRef.current?.abort()
-  }, [chatId])
-
-  // Sync selection with URL
-  useEffect(() => {
-    setSelectedChatId(chatId || null)
   }, [chatId])
 
   // --- Queries ---
@@ -822,27 +817,24 @@ export const useMessengerController = () => {
   // hub updates on `new_message`) grows with a message NOT sent by me, and the
   // tab is visible, re-fire markAsRead → REST mark_read → SW4 broadcast → the
   // sender's bubble flips to "Seen · HH:MM" live. No cross-subtree wiring — it
-  // piggybacks on the cache the WS hub already mutates. The dual refs
-  // distinguish "switched chats" (reset, don't fire — the open-effect handles
+  // piggybacks on the cache the WS hub already mutates. The previous snapshot
+  // distinguishes "switched chats" (reset, don't fire — the open-effect handles
   // it) from "new message in the same chat" (fire). No infinite loop:
   // markAsRead invalidates ["chats"], not ["messages"], so it can't re-trigger.
-  const lastReadChatRef = useRef<string | null>(null)
-  const lastMessagesLenRef = useRef(0)
+  const messageSnapshotRef = useRef<{ chatId: string | null; length: number } | null>(null)
   useEffect(() => {
-    if (!selectedChatId) {
-      lastReadChatRef.current = null
-      lastMessagesLenRef.current = 0
+    const previous = messageSnapshotRef.current
+    messageSnapshotRef.current = { chatId: selectedChatId, length: messages.length }
+    if (
+      !selectedChatId ||
+      previous === null ||
+      previous.chatId !== selectedChatId ||
+      messages.length <= previous.length
+    )
       return
-    }
-    const chatChanged = lastReadChatRef.current !== selectedChatId
-    const grew = !chatChanged && messages.length > lastMessagesLenRef.current
-    lastReadChatRef.current = selectedChatId
-    lastMessagesLenRef.current = messages.length
-    if (chatChanged || !grew) return
-    const newest = messages[messages.length - 1]
-    if (newest && newest.sender_id !== user?.id && document.visibilityState === "visible") {
-      markAsRead(selectedChatId)
-    }
+    const newest = messages.at(-1)
+    if (!newest || newest.sender_id === user?.id || document.visibilityState !== "visible") return
+    markAsRead(selectedChatId)
   }, [messages, selectedChatId, markAsRead, user?.id])
 
   // Wave 203 SW7 — refocusing the tab with a chat open marks it read too. The
@@ -921,13 +913,21 @@ export const useMessengerController = () => {
       }),
     }
 
-    startTransition(() => addOptimisticMessage(optimisticMsg))
-    sendMessageMutation.mutate({
-      chatId: selectedChatId,
-      content: text,
-      files,
-      replyToMessageId: replyingTo?.id,
-      optimisticBlobUrls,
+    startTransition(async () => {
+      addOptimisticMessage(optimisticMsg)
+      try {
+        await sendMessageMutation.mutateAsync({
+          chatId: selectedChatId,
+          content: text,
+          files,
+          replyToMessageId: replyingTo?.id,
+          optimisticBlobUrls,
+        })
+      } catch {
+        // React Query's onError owns cleanup. Consuming the rejection keeps the
+        // transition action from surfacing an already-handled send failure.
+        return
+      }
     })
     // Wave 207 — clear the reply context once the send is dispatched (the chip
     // disappears; the optimistic bubble already carries its own replyTo copy).

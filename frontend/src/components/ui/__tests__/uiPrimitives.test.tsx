@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto"
+
 import { LazyMotion, domAnimation } from "framer-motion"
 import { createRef } from "react"
 import { describe, expect, it, vi } from "vitest"
@@ -204,6 +206,32 @@ describe("Checkbox", () => {
 // --------------------------------------------------------------------------- #
 
 describe("Switch", () => {
+  it("keeps its accessible visual DOM stable across interaction states", () => {
+    const digest = (markup: string) => createHash("sha256").update(markup).digest("hex")
+    const baseline = renderMotion(<Switch checked={false} aria-label="baseline" />)
+    const baselineDigest = digest(baseline.container.innerHTML)
+    const baselineInput = screen.getByRole("switch", { name: "baseline" })
+    fireEvent.focus(baselineInput)
+    fireEvent.mouseEnter(baselineInput.parentElement!)
+    const interactiveDigest = digest(baseline.container.innerHTML)
+    baseline.unmount()
+
+    const checked = renderMotion(<Switch checked aria-label="checked" />)
+    const checkedDigest = digest(checked.container.innerHTML)
+    checked.unmount()
+
+    const disabled = renderMotion(<Switch checked={false} disabled aria-label="disabled" />)
+    const disabledDigest = digest(disabled.container.innerHTML)
+    disabled.unmount()
+
+    expect({ baselineDigest, interactiveDigest, checkedDigest, disabledDigest }).toEqual({
+      baselineDigest: "c04996b1cc0aa7357c87b55cadcf6c7b4aa51d45d491a116df5266a3afde4cbd",
+      interactiveDigest: "93b6f3b708d4b19df5f3eb9044aef3b06a3a728672fcb08744533c3a6f9f1b81",
+      checkedDigest: "67e7ec536a5c2ffde8be5daf5ab406f28f0f82aaace1cd3598d1f9cedaf0db1e",
+      disabledDigest: "984e0dc5debe1af4cc79c659f379bd74908d18cf78a0a6d2761e0ecf5dca67b8",
+    })
+  })
+
   it("fires onCheckedChange and tracks focus/blur", () => {
     const onChange = vi.fn()
     renderMotion(<Switch checked={false} onCheckedChange={onChange} />)

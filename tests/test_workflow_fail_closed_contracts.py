@@ -623,9 +623,27 @@ def test_incremental_go_mutation_never_converts_tool_failure_to_success() -> Non
 
     assert "set -euo pipefail" in mutation
     assert 'git fetch origin "$BASE_REF_NAME" --depth=1 || true' not in mutation
-    assert 'CHANGED_PATHS="$(git diff --name-only "$BASE_REF"...HEAD)"' in mutation
+    assert (
+        'CHANGED_PATHS="$(git diff --diff-filter=ACMRT --name-only '
+        '"$BASE_REF"...HEAD)"' in mutation
+    )
+    assert 'git diff --name-only "$BASE_REF"...HEAD' not in mutation
+    assert 'if [ ! -f "$target" ] || [ -L "$target" ]; then' in mutation
+    assert "Mutation target is not a regular checked-out source file" in mutation
     assert "Unable to resolve mutation-test base revision" in mutation
     assert "no mutation-test source files were resolved" in mutation
+    assert 'local isolated_root="$MUTATION_ROOT/$safe_target/repository"' in mutation
+    assert 'local workdir="$isolated_root/$SERVICE_DIRECTORY"' in mutation
+    assert 'cp -a "$GITHUB_WORKSPACE/$SERVICE_DIRECTORY/." "$workdir/"' in mutation
+    assert "for dependency in services/pkg/spiffe gen/go; do" in mutation
+    assert 'local dependency_source="$GITHUB_WORKSPACE/$dependency"' in mutation
+    assert 'local dependency_destination="$isolated_root/$dependency"' in mutation
+    assert (
+        'if [ ! -d "$dependency_source" ] || [ -L "$dependency_source" ]; then'
+        in mutation
+    )
+    assert 'cp -a "$dependency_source/." "$dependency_destination/"' in mutation
+    assert 'cd "$workdir"' in mutation
     assert "treating this known tool panic as advisory" not in mutation
     assert 'pipeline_status=("${PIPESTATUS[@]}")' in mutation
     assert "Unable to persist go-mutesting output" in mutation

@@ -117,6 +117,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  vi.useRealTimers()
   Object.defineProperty(window.navigator, "onLine", { configurable: true, value: true })
 })
 
@@ -376,6 +377,211 @@ describe("useChatWebSocket", () => {
 
     act(() => staleClose?.({ code: 1006 } as CloseEvent))
     expect(result.current.isConnected).toBe(true)
+    vi.unstubAllGlobals()
+  })
+
+  it.each([1000, 4001, 4003])(
+    "marks the active socket disconnected without scheduling a retry for terminal code %s",
+    async (code) => {
+      TestWebSocket.instances = []
+      vi.stubGlobal("WebSocket", TestWebSocket)
+      const rendered = renderHook(() => useChatWebSocket({ enabled: true }), { wrapper })
+      await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+      const socket = TestWebSocket.instances[0]!
+      act(() => socket.onopen?.())
+      expect(rendered.result.current.isConnected).toBe(true)
+
+      const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout")
+      setTimeoutSpy.mockClear()
+      act(() => socket.close(code))
+
+      expect(rendered.result.current.isConnected).toBe(false)
+      expect(setTimeoutSpy).not.toHaveBeenCalled()
+      rendered.unmount()
+      vi.unstubAllGlobals()
+    }
+  )
+
+  it("reports the exact terminal reconnect context at the bounded retry limit", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    vi.spyOn(Math, "random").mockReturnValue(0)
+    const rendered = renderHook(() => useChatWebSocket({ enabled: true }), { wrapper })
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    vi.useFakeTimers()
+
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const socket = TestWebSocket.instances.at(-1)!
+      act(() => socket.close(1006))
+      await act(async () => vi.advanceTimersByTimeAsync(0))
+      expect(TestWebSocket.instances).toHaveLength(attempt + 2)
+    }
+
+    mocks.logError.mockClear()
+    act(() => TestWebSocket.instances.at(-1)!.close(1006))
+
+    expect(mocks.logError).toHaveBeenCalledWith(
+      "[ws] Max reconnect attempts reached; giving up. Manual reconnect required.",
+      { attempts: 10, lastCode: 1006 }
+    )
+    expect(vi.getTimerCount()).toBe(0)
+    rendered.unmount()
+    vi.unstubAllGlobals()
+  })
+
+  it("reports the exact transport error received from the active socket", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const rendered = renderHook(() => useChatWebSocket({ enabled: true }), { wrapper })
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    const transportError = new Event("error")
+
+    act(() => TestWebSocket.instances[0]!.onerror?.(transportError))
+
+    expect(mocks.logError).toHaveBeenCalledWith("[WebSocket] Error:", transportError)
+    rendered.unmount()
+    vi.unstubAllGlobals()
+  })
+
+  it("reports the exact WebSocket constructor failure after ticket exchange", async () => {
+    const connectionError = new Error("constructor rejected")
+    vi.stubGlobal(
+      "WebSocket",
+      class FailingWebSocket {
+        constructor() {
+          throw connectionError
+        }
+      }
+    )
+
+    const rendered = renderHook(() => useChatWebSocket({ enabled: true }), { wrapper })
+
+    await waitFor(() =>
+      expect(mocks.logError).toHaveBeenCalledWith("[WebSocket] Failed to connect:", connectionError)
+    )
+    rendered.unmount()
+    vi.unstubAllGlobals()
+  })
+
+  it("logs one exact security event and drops an invalid websocket frame", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    mocks.parseWsMessage.mockReturnValueOnce(null)
+    const rendered = renderHook(() => useChatWebSocket({ enabled: true }), { wrapper })
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    const rawFrame = "invalid-frame"
+    mocks.logError.mockClear()
+
+    act(() => TestWebSocket.instances[0]!.onmessage?.({ data: rawFrame } as MessageEvent<string>))
+
+    expect(mocks.parseWsMessage).toHaveBeenLastCalledWith(rawFrame)
+    expect(mocks.logError).toHaveBeenCalledOnce()
+    expect(mocks.logError).toHaveBeenCalledWith("[ws] Invalid frame dropped", {
+      size: rawFrame.length,
+    })
+    rendered.unmount()
+    vi.unstubAllGlobals()
+  })
+
+  it("drops stale chat sequences while accepting newer and unsequenced frames", async () => {
+    TestWebSocket.instances = []
+    vi.stubGlobal("WebSocket", TestWebSocket)
+    const chatId = "sequence-chat"
+    const frames = new Map<string, object>([
+      [
+        "seed",
+        {
+          type: "typing",
+          chat_id: chatId,
+          user_id: "seed-user",
+          user_name: "Seed",
+          stream_seq: 5,
+          resume_token: "token-5",
+        },
+      ],
+      [
+        "equal",
+        {
+          type: "typing",
+          chat_id: chatId,
+          user_id: "equal-user",
+          user_name: "Equal",
+          stream_seq: 5,
+          resume_token: "equal-token",
+        },
+      ],
+      [
+        "stale",
+        {
+          type: "typing",
+          chat_id: chatId,
+          user_id: "stale-user",
+          user_name: "Stale",
+          stream_seq: 4,
+          resume_token: "stale-token",
+        },
+      ],
+      [
+        "fresh",
+        {
+          type: "typing",
+          chat_id: chatId,
+          user_id: "fresh-user",
+          user_name: "Fresh",
+          stream_seq: 6,
+          resume_token: "token-6",
+        },
+      ],
+      [
+        "unsequenced",
+        {
+          type: "typing",
+          chat_id: chatId,
+          user_id: "unsequenced-user",
+          user_name: "Unsequenced",
+        },
+      ],
+      [
+        "chatless",
+        {
+          type: "presence",
+          user_id: "presence-user",
+          active: true,
+          last_seen: "2026-08-31T00:00:00Z",
+          stream_seq: 0,
+        },
+      ],
+    ])
+    mocks.parseWsMessage.mockImplementation((raw: string) => frames.get(raw) ?? null)
+    const onTyping = vi.fn()
+    const onPresenceUpdate = vi.fn()
+    const rendered = renderHook(
+      () =>
+        useChatWebSocket({
+          enabled: true,
+          currentUserId: "sequence-owner",
+          onTyping,
+          onPresenceUpdate,
+        }),
+      { wrapper }
+    )
+    await waitFor(() => expect(TestWebSocket.instances).toHaveLength(1))
+    const socket = TestWebSocket.instances[0]!
+
+    act(() => {
+      for (const raw of frames.keys()) {
+        socket.onmessage?.({ data: raw } as MessageEvent<string>)
+      }
+    })
+
+    expect(onTyping.mock.calls).toEqual([
+      [chatId, "seed-user", "Seed"],
+      [chatId, "fresh-user", "Fresh"],
+      [chatId, "unsequenced-user", "Unsequenced"],
+    ])
+    expect(onPresenceUpdate).toHaveBeenCalledOnce()
+    expect(onPresenceUpdate).toHaveBeenCalledWith("presence-user", true, "2026-08-31T00:00:00Z")
+    rendered.unmount()
     vi.unstubAllGlobals()
   })
 

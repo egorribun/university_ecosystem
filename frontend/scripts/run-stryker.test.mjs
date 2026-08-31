@@ -315,6 +315,106 @@ test("splits a heavy source into disjoint mutation ranges when the requested fan
   assert.ok(plan.every(({ mutantCount }) => mutantCount <= 3))
 })
 
+test("splits nested mutants by their Stryker selection start without duplicating an enclosing block", async () => {
+  const { mutationPatternCoversMutant, planMutationShards } = await import(runnerUrl)
+  const file = "src/nested.ts"
+  const mutants = [
+    {
+      fileName: file,
+      mutatorName: "BlockStatement",
+      replacement: "{}",
+      location: {
+        start: { line: 0, column: 0 },
+        end: { line: 199, column: 1 },
+      },
+    },
+    ...Array.from({ length: 9 }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: 10 + index * 10, column: 2 },
+        end: { line: 10 + index * 10, column: 7 },
+      },
+    })),
+  ]
+
+  const plan = planMutationShards(new Map([[file, { mutants }]]), 750, 4)
+  const assignments = plan.flatMap(({ files }) => files)
+
+  assert.equal(plan.length, 4)
+  assert.equal(
+    assignments.reduce(
+      (total, pattern) =>
+        total +
+        mutants.filter((mutant) => mutationPatternCoversMutant(pattern, mutant, file)).length,
+      0
+    ),
+    mutants.length
+  )
+  assert.ok(
+    mutants.every(
+      (mutant) =>
+        assignments.filter((pattern) => mutationPatternCoversMutant(pattern, mutant, file))
+          .length === 1
+    )
+  )
+})
+
+test("normalizes one-based Stryker runtime locations into the instrumenter preflight space", async () => {
+  const { normalizeStrykerRuntimeReport } = await import(runnerUrl)
+  const report = {
+    schemaVersion: "1.0",
+    config: {},
+    files: {
+      "src/a.ts": {
+        source: "export const value = true\n",
+        mutants: [
+          {
+            id: "0",
+            mutatorName: "BooleanLiteral",
+            replacement: "false",
+            status: "Killed",
+            location: {
+              start: { line: 1, column: 22 },
+              end: { line: 1, column: 26 },
+            },
+          },
+        ],
+      },
+    },
+  }
+
+  const normalized = normalizeStrykerRuntimeReport(report)
+
+  assert.deepEqual(normalized.files["src/a.ts"].mutants[0].location, {
+    start: { line: 0, column: 21 },
+    end: { line: 0, column: 25 },
+  })
+  assert.deepEqual(report.files["src/a.ts"].mutants[0].location, {
+    start: { line: 1, column: 22 },
+    end: { line: 1, column: 26 },
+  })
+  assert.throws(
+    () =>
+      normalizeStrykerRuntimeReport({
+        ...report,
+        files: {
+          "src/a.ts": {
+            ...report.files["src/a.ts"],
+            mutants: [
+              {
+                ...report.files["src/a.ts"].mutants[0],
+                location: { start: { line: 0, column: 1 }, end: { line: 1, column: 2 } },
+              },
+            ],
+          },
+        },
+      }),
+    /runtime mutant location/u
+  )
+})
+
 test("fine-grains large first-attempt universes to distribute expensive source regions", async () => {
   const { planMutationShards } = await import(runnerUrl)
   const makeMutants = (file, count) =>
@@ -348,6 +448,40 @@ test("fine-grains large first-attempt universes to distribute expensive source r
     "large source regions must be split before logical shard packing"
   )
   assert.ok(assignments.every((pattern) => !pattern.endsWith(".ts")))
+})
+
+test("keeps related source domains local in a large first-attempt shard plan", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index * 2, column: 0 },
+        end: { line: index * 2, column: 4 },
+      },
+    }))
+  const preflight = new Map(
+    ["api", "content", "messenger", "settings"].flatMap((domain) =>
+      Array.from({ length: 4 }, (_, index) => {
+        const file = `src/${domain}/source-${index}.ts`
+        return [file, { mutants: makeMutants(file, 750) }]
+      })
+    )
+  )
+
+  const plan = planMutationShards(preflight, 750, 8)
+
+  assert.equal(plan.length, 8)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    12_000
+  )
+  for (const shard of plan) {
+    const domains = new Set(shard.files.map((pattern) => pattern.split("/")[1]))
+    assert.equal(domains.size, 1, `mixed unrelated related-test domains in ${shard.id}`)
+  }
 })
 
 test("reconstructs locations and canonical signatures from serialized preflight entries", async () => {

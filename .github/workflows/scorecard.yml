@@ -11,10 +11,17 @@ on:
 
 permissions: read-all
 
+concurrency:
+  # Only a newer main push supersedes an older push. Scheduled and manual
+  # security evidence runs retain unique groups and are never cancelled.
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 jobs:
   analysis:
     name: Scorecard analysis
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       # Required for publishing SARIF results to the Security tab
       security-events: write

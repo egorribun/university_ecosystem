@@ -100,6 +100,7 @@ const makeMessage = (overrides: Partial<Message> & Pick<Message, "id" | "text">)
 afterEach(() => {
   vi.useRealTimers()
   motionState.reduced = false
+  vi.restoreAllMocks()
 })
 
 describe("ChatWindow — reply / forward affordances (all bubbles)", () => {
@@ -358,6 +359,50 @@ describe("ChatWindow — jump-to-bottom FAB (W208 SW4)", () => {
     expect(screen.queryByRole("button", { name: "messenger:aria.jumpToLatest" })).toBeFalsy()
   })
 
+  it("keeps the FAB hidden at the exact threshold and shows it one pixel above", () => {
+    const { container } = render(
+      <ChatWindow messages={[makeMessage({ id: "j-boundary", text: "msg" })]} />,
+      { wrapper }
+    )
+    const log = container.querySelector('[role="log"]') as HTMLDivElement
+    Object.defineProperty(log, "scrollHeight", { value: 1000, configurable: true })
+    Object.defineProperty(log, "clientHeight", { value: 300, configurable: true })
+    Object.defineProperty(log, "scrollTop", { value: 460, configurable: true })
+
+    fireEvent.scroll(log)
+    expect(screen.queryByRole("button", { name: "messenger:aria.jumpToLatest" })).toBeFalsy()
+
+    Object.defineProperty(log, "scrollTop", { value: 459, configurable: true })
+    fireEvent.scroll(log)
+    expect(screen.getByRole("button", { name: "messenger:aria.jumpToLatest" })).toBeTruthy()
+  })
+
+  it("does not attach scroll work to loading, error, or empty-state containers", () => {
+    const originalAddEventListener = HTMLElement.prototype.addEventListener
+    const sourceScrollTargets: HTMLElement[] = []
+    vi.spyOn(HTMLElement.prototype, "addEventListener").mockImplementation(function (
+      this: HTMLElement,
+      type: string,
+      listener: EventListenerOrEventListenerObject,
+      options?: boolean | AddEventListenerOptions
+    ) {
+      if (type === "scroll" && this.classList.contains("messenger-chat-area")) {
+        sourceScrollTargets.push(this)
+      }
+      originalAddEventListener.call(this, type, listener, options)
+    })
+    const message = makeMessage({ id: "guarded-listener", text: "msg" })
+
+    const loading = render(<ChatWindow messages={[message]} isLoading />, { wrapper })
+    loading.unmount()
+    const error = render(<ChatWindow messages={[message]} isError />, { wrapper })
+    error.unmount()
+    const empty = render(<ChatWindow messages={[]} />, { wrapper })
+    empty.unmount()
+
+    expect(sourceScrollTargets).toEqual([])
+  })
+
   it("clicking the FAB does not throw (scrollToIndex mocked)", () => {
     const { container } = render(
       <ChatWindow messages={[makeMessage({ id: "j2", text: "msg" })]} />,
@@ -376,6 +421,47 @@ describe("ChatWindow — jump-to-bottom FAB (W208 SW4)", () => {
 })
 
 describe("ChatWindow — reactions picker outside-click / Escape close (W206)", () => {
+  it("attaches listeners only while open and removes the exact handlers", () => {
+    const addSpy = vi.spyOn(document, "addEventListener")
+    const removeSpy = vi.spyOn(document, "removeEventListener")
+    const { unmount } = render(
+      <ChatWindow
+        messages={[makeMessage({ id: "rx-listeners", text: "react", reactions: [] })]}
+        onToggleReaction={() => {}}
+      />,
+      { wrapper }
+    )
+
+    expect(addSpy.mock.calls.some(([type]) => type === "mousedown" || type === "keydown")).toBe(
+      false
+    )
+    fireEvent.click(screen.getByRole("button", { name: "messenger:reactions.add" }))
+
+    const mouseDownAdd = addSpy.mock.calls.find(([type]) => type === "mousedown")
+    const keyDownAdd = addSpy.mock.calls.find(([type]) => type === "keydown")
+    expect(mouseDownAdd).toBeDefined()
+    expect(keyDownAdd).toBeDefined()
+
+    unmount()
+    expect(removeSpy).toHaveBeenCalledWith("mousedown", mouseDownAdd?.[1])
+    expect(removeSpy).toHaveBeenCalledWith("keydown", keyDownAdd?.[1])
+  })
+
+  it("closes safely when the outside event target is not an Element", () => {
+    render(
+      <ChatWindow
+        messages={[makeMessage({ id: "rx-document", text: "react", reactions: [] })]}
+        onToggleReaction={() => {}}
+      />,
+      { wrapper }
+    )
+    const pickerEmoji = 'messenger:reactions.react|{"emoji":"👍"}'
+    fireEvent.click(screen.getByRole("button", { name: "messenger:reactions.add" }))
+
+    expect(() => fireEvent.mouseDown(document)).not.toThrow()
+    expect(screen.queryByRole("button", { name: pickerEmoji })).toBeFalsy()
+  })
+
   it("closes the open picker on an outside mousedown", () => {
     render(
       <ChatWindow

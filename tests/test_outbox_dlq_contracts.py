@@ -32,6 +32,7 @@ async def test_dlq_records_utc_failure_time_for_non_mfa_events() -> None:
     )
 
     failed = db.add.call_args.args[0]
+    assert failed.payload == {"version": "1.0.0"}
     assert failed.failed_at.tzinfo is UTC
     assert event.processed_at.tzinfo is UTC
 
@@ -85,3 +86,7 @@ async def test_terminal_mfa_dlq_clears_the_delivery_lease() -> None:
     assert params["status"] == "cancelled"
     assert params["lease_token"] is None
     assert params["lease_expires_at"] is None
+    status_sets = {
+        tuple(value) for value in params.values() if isinstance(value, (list, tuple))
+    }
+    assert ("pending", "sending") in status_sets

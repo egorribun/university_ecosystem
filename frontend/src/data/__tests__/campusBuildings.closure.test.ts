@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto"
+
 import { describe, expect, it } from "vitest"
 import { CAMPUS_STRUCTURE_ACADEMIC } from "@/data/campusBuildingsStructureAcademic"
 import { CAMPUS_STRUCTURE_ADMINISTRATIVE } from "@/data/campusBuildingsStructureAdministrative"
@@ -42,6 +44,14 @@ const toStructuralShape = (building: {
 })
 
 describe("campus building data helpers", () => {
+  it("keeps the canonical residential campus dataset byte-for-byte stable", () => {
+    const digest = createHash("sha256")
+      .update(JSON.stringify(CAMPUS_STRUCTURE_RESIDENTIAL))
+      .digest("hex")
+
+    expect(digest).toBe("0aa818e041c539eae2020bfa21fe30fc2a861abd8bb56c69049ef25dcd2d2da9")
+  })
+
   it("keeps the localized result identical to the decomposed structural data", () => {
     const structuralData = [
       ...CAMPUS_STRUCTURE_ACADEMIC,

@@ -191,6 +191,7 @@ def test_configure_otel_instrumentation_errors():
             endpoint="http://localhost:4317",
             headers={"a": "b", "c": "d"},
         )
+        assert app.core.observability._sqlalchemy_instrumented is True
 
 
 def test_configure_observability_instrument_app_error():

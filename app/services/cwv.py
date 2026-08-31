@@ -181,9 +181,7 @@ def _b64url_decode(value: str) -> bytes:
 
 
 def _derived_key(secret: str) -> bytes:
-    return hmac.digest(
-        secret.encode("utf-8"), b"university-cwv-rum-envelope-v1", "sha256"
-    )
+    return hmac.digest(secret.encode(), b"university-cwv-rum-envelope-v1", "sha256")
 
 
 def _opaque_binding_id(secret: str, domain: str, value: str) -> str:

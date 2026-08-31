@@ -2014,6 +2014,7 @@ def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> Non
 
     manual_mutation_job = jobs["manual-mutation-tests"]
     assert manual_mutation_job["strategy"]["matrix"]["shard"] == list(range(1, 129))
+    assert manual_mutation_job["strategy"]["max-parallel"] == 20
     assert manual_mutation_job["timeout-minutes"] == 360
     manual_mutation_text = "\n".join(
         step.get("run", "")
@@ -2885,6 +2886,7 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         "contents": "read",
         "issues": "write",
     }
+    assert jobs["notify-failure"]["timeout-minutes"] == 5
     assert jobs["kyverno-test"]["timeout-minutes"] == 15
     assert jobs["miri"]["env"]["PROPTEST_DISABLE_FAILURE_PERSISTENCE"] == "1"
     assert jobs["miri"]["env"]["MIRIFLAGS"] == (
@@ -3191,6 +3193,10 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert nightly_workflow["jobs"]["mutation-tests-full"]["strategy"]["matrix"][
         "shard"
     ] == list(range(1, 129))
+    assert (
+        nightly_workflow["jobs"]["mutation-tests-full"]["strategy"]["max-parallel"]
+        == 20
+    )
     assert stats_job["strategy"]["matrix"]["stats_shard"] == list(range(8))
     stats_steps = stats_job["steps"]
     stats_step = next(
@@ -3589,7 +3595,7 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     )
     jobs = ci_workflow["jobs"]
     mutation_preflight = jobs["stryker-preflight"]
-    assert mutation_preflight["needs"] == "pre-commit-check"
+    assert "needs" not in mutation_preflight
     assert "github.event_name == 'pull_request'" in mutation_preflight["if"]
     assert mutation_preflight["permissions"] == {
         "contents": "read",
@@ -3638,7 +3644,9 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert mutation_shards["strategy"]["max-parallel"] == 20
     assert mutation_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
     assert mutation_shards["timeout-minutes"] == 120
-    assert mutation_shards["needs"] == ["pre-commit-check", "stryker-preflight"]
+    assert mutation_shards["needs"] == "stryker-preflight"
+    assert "pre-commit-check" in jobs["ci-success"]["needs"]
+    assert "stryker-preflight" in jobs["ci-success"]["needs"]
     assert mutation_shards["env"] == {
         "STRYKER_SHARD_COUNT": "64",
         "STRYKER_SHARD_INDEX": "${{ matrix.shard-index }}",
@@ -3801,47 +3809,139 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert "stryker-evidence-roundtrip" in jobs["ci-success"]["needs"]
     assert "needs.stryker-evidence-roundtrip.result" in result_check
 
-    manual_shards = manual_workflow["jobs"]["manual-frontend-mutation-shards"]
+    manual_jobs = manual_workflow["jobs"]
+    manual_preflight = manual_jobs["manual-frontend-mutation-preflight"]
+    assert "needs" not in manual_preflight
+    assert manual_preflight["timeout-minutes"] == 30
+    assert manual_preflight["env"] == {
+        "STRYKER_SHARD_COUNT": "64",
+        "STRYKER_PREFLIGHT_MODE": "generate",
+    }
+    assert manual_preflight["permissions"] == {"contents": "read"}
+    manual_preflight_upload = next(
+        step
+        for step in manual_preflight["steps"]
+        if step.get("name") == "Upload immutable Stryker preflight"
+    )
+    assert manual_preflight_upload["with"] == {
+        "name": (
+            "frontend-mutation-preflight-${{ github.run_id }}-"
+            "${{ github.run_attempt }}-${{ github.sha }}"
+        ),
+        "path": (
+            "frontend/reports/mutation/preflight-artifact/PREFLIGHT_ARTIFACT.json"
+        ),
+        "if-no-files-found": "error",
+        "overwrite": False,
+        "retention-days": 30,
+    }
+
+    manual_shards = manual_jobs["manual-frontend-mutation-shards"]
     assert manual_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
     assert manual_shards["name"].endswith("/64)")
-    assert manual_shards["strategy"]["max-parallel"] == 8
+    assert manual_shards["strategy"]["max-parallel"] == 20
     assert manual_shards["timeout-minutes"] == 120
-    assert "manual-frontend-mutation-shard-replay" not in manual_workflow["jobs"]
-    manual_aggregate = manual_workflow["jobs"]["manual-frontend-mutation-aggregate"]
-    assert manual_aggregate["needs"] == "manual-frontend-mutation-shards"
+    assert manual_shards["needs"] == "manual-frontend-mutation-preflight"
+    assert manual_shards["env"] == {
+        "STRYKER_SHARD_COUNT": "64",
+        "STRYKER_SHARD_INDEX": "${{ matrix.shard-index }}",
+        "STRYKER_CONCURRENCY": "4",
+        "STRYKER_PREFLIGHT_ARTIFACT": "required",
+    }
+    assert manual_shards["permissions"] == {"contents": "read", "actions": "read"}
+    assert "manual-frontend-mutation-shard-replay" not in manual_jobs
+    manual_aggregate = manual_jobs["manual-frontend-mutation-aggregate"]
+    assert manual_aggregate["needs"] == [
+        "manual-frontend-mutation-preflight",
+        "manual-frontend-mutation-shards",
+    ]
     assert manual_aggregate["if"] == "${{ always() && !cancelled() }}"
+    assert manual_aggregate["env"] == {
+        "STRYKER_SHARD_COUNT": "64",
+        "STRYKER_AGGREGATE_ROOT": "reports/mutation/external",
+        "STRYKER_CONCURRENCY": "4",
+        "STRYKER_PREFLIGHT_ARTIFACT": "required",
+    }
     assert (
         manual_aggregate["name"] == "Manual Mutation Evidence (frontend Stryker 100%)"
     )
 
-    nightly_shards = nightly_workflow["jobs"]["frontend-mutation-shards"]
+    nightly_jobs = nightly_workflow["jobs"]
+    nightly_preflight = nightly_jobs["frontend-mutation-preflight"]
+    assert "needs" not in nightly_preflight
+    assert nightly_preflight["timeout-minutes"] == 30
+    assert nightly_preflight["env"] == {
+        "STRYKER_SHARD_COUNT": "64",
+        "STRYKER_PREFLIGHT_MODE": "generate",
+    }
+    assert nightly_preflight["permissions"] == {"contents": "read"}
+    nightly_preflight_upload = next(
+        step
+        for step in nightly_preflight["steps"]
+        if step.get("name") == "Upload immutable Stryker preflight"
+    )
+    assert nightly_preflight_upload["with"] == manual_preflight_upload["with"]
+
+    nightly_shards = nightly_jobs["frontend-mutation-shards"]
     assert nightly_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
     assert nightly_shards["name"].endswith("/64")
-    assert nightly_shards["strategy"]["max-parallel"] == 8
+    assert nightly_shards["strategy"]["max-parallel"] == 20
     assert nightly_shards["timeout-minutes"] == 120
-    assert "frontend-mutation-shard-replay" not in nightly_workflow["jobs"]
-    nightly_aggregate = nightly_workflow["jobs"]["frontend-mutation-tests-full"]
-    assert nightly_aggregate["needs"] == "frontend-mutation-shards"
+    assert nightly_shards["needs"] == "frontend-mutation-preflight"
+    assert nightly_shards["env"] == manual_shards["env"]
+    assert nightly_shards["permissions"] == {"contents": "read", "actions": "read"}
+    assert "frontend-mutation-shard-replay" not in nightly_jobs
+    nightly_aggregate = nightly_jobs["frontend-mutation-tests-full"]
+    assert nightly_aggregate["needs"] == [
+        "frontend-mutation-preflight",
+        "frontend-mutation-shards",
+    ]
     assert nightly_aggregate["if"] == "${{ always() && !cancelled() }}"
-    manual_roundtrip = manual_workflow["jobs"]["manual-frontend-mutation-roundtrip"]
+    assert nightly_aggregate["env"] == manual_aggregate["env"]
+    manual_roundtrip = manual_jobs["manual-frontend-mutation-roundtrip"]
     assert manual_roundtrip["needs"] == "manual-frontend-mutation-aggregate"
-    nightly_roundtrip = nightly_workflow["jobs"]["frontend-mutation-roundtrip"]
+    nightly_roundtrip = nightly_jobs["frontend-mutation-roundtrip"]
     assert nightly_roundtrip["needs"] == "frontend-mutation-tests-full"
-    nightly_failure_needs = nightly_workflow["jobs"]["notify-failure"]["needs"]
+    nightly_failure_needs = nightly_jobs["notify-failure"]["needs"]
+    assert "frontend-mutation-preflight" in nightly_failure_needs
     assert "frontend-mutation-shards" in nightly_failure_needs
     assert "frontend-mutation-shard-replay" not in nightly_failure_needs
     assert "frontend-mutation-tests-full" in nightly_failure_needs
     assert "frontend-mutation-roundtrip" in nightly_failure_needs
 
     for roundtrip_job in (manual_roundtrip, nightly_roundtrip):
+        selector = next(
+            step
+            for step in roundtrip_job["steps"]
+            if step.get("name")
+            == "Select immutable same-run validated Stryker evidence candidate"
+        )
+        assert '--artifact-prefix "frontend-mutation-validated-"' in selector["run"]
+        assert "--attempt-policy current-or-earlier" in selector["run"]
         download = next(
             step
             for step in roundtrip_job["steps"]
             if "Download validated" in step.get("name", "")
         )
-        assert "github.run_id" in download["with"]["name"]
-        assert "github.run_attempt" in download["with"]["name"]
-        assert download["with"]["path"] == "frontend/reports/mutation"
+        assert download["with"] == {
+            "artifact-ids": "${{ steps.select_stryker_validated.outputs.artifact_id }}",
+            "repository": "${{ github.repository }}",
+            "run-id": "${{ github.run_id }}",
+            "github-token": "${{ github.token }}",
+            "path": (
+                "frontend/reports/mutation/validated-candidates/"
+                "${{ steps.select_stryker_validated.outputs.artifact_name }}"
+            ),
+        }
+        assert roundtrip_job["permissions"] == {
+            "contents": "read",
+            "actions": "read",
+        }
+        assert roundtrip_job["env"] == {
+            "STRYKER_VALIDATED_CANDIDATE_ROOT": (
+                "reports/mutation/validated-candidates"
+            )
+        }
         verification = next(
             step["run"]
             for step in roundtrip_job["steps"]
@@ -3883,10 +3983,55 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         for step in manual_aggregate["steps"]
         if "Download all manual frontend mutation shards" in step.get("name", "")
     )
-    assert manual_download["with"]["pattern"] == (
-        "manual-frontend-mutation-shard-${{ github.run_id }}-"
-        "${{ github.run_attempt }}-*"
+    assert manual_download["with"] == {
+        "pattern": "manual-frontend-mutation-shard-${{ github.run_id }}-*",
+        "path": "frontend/reports/mutation/external",
+        "merge-multiple": False,
+    }
+    nightly_download = next(
+        step
+        for step in nightly_aggregate["steps"]
+        if "Download all nightly frontend mutation shards" in step.get("name", "")
     )
+    assert nightly_download["with"] == {
+        "pattern": "nightly-frontend-mutation-shard-${{ github.run_id }}-*",
+        "path": "frontend/reports/mutation/external",
+        "merge-multiple": False,
+    }
+
+    for workflow_path, shard_job, aggregate_job in (
+        (
+            ".github/workflows/manual-mutation-evidence.yml",
+            manual_shards,
+            manual_aggregate,
+        ),
+        (".github/workflows/nightly-full-gate.yml", nightly_shards, nightly_aggregate),
+    ):
+        for job in (shard_job, aggregate_job):
+            selector = next(
+                step
+                for step in job["steps"]
+                if step.get("name")
+                == "Select immutable same-run Stryker preflight candidate"
+            )
+            assert f'--workflow-path "{workflow_path}"' in selector["run"]
+            assert '--artifact-prefix "frontend-mutation-preflight-"' in selector["run"]
+            assert "--attempt-policy current-or-earlier" in selector["run"]
+            validation = next(
+                step
+                for step in job["steps"]
+                if step.get("name") == "Verify selected Stryker preflight payload"
+            )
+            assert "set -euo pipefail" in validation["run"]
+
+        immutable_validation = next(
+            step
+            for step in shard_job["steps"]
+            if step.get("name")
+            == "Validate immutable Stryker preflight before execution"
+        )
+        assert immutable_validation["env"] == {"STRYKER_PREFLIGHT_MODE": "validate"}
+        assert immutable_validation["run"] == "npm run test:mutation"
 
     for shard_job in (mutation_shards, manual_shards, nightly_shards):
         shard_cache = next(

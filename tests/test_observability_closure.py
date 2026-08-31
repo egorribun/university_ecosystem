@@ -318,6 +318,8 @@ def test_configure_otel_optional_pipelines_without_endpoint_or_headers() -> None
     provider = MagicMock()
     meter_provider = MagicMock()
     logger_provider = MagicMock()
+    log_processor = MagicMock()
+    engine = MagicMock()
     with (
         patch.object(observability, "settings", settings),
         patch.object(observability, "TracerProvider", return_value=provider),
@@ -327,20 +329,36 @@ def test_configure_otel_optional_pipelines_without_endpoint_or_headers() -> None
         patch.object(observability, "OTLPLogExporter") as log_exporter,
         patch.object(observability, "PeriodicExportingMetricReader"),
         patch.object(observability, "LoggerProvider", return_value=logger_provider),
-        patch.object(observability, "BatchLogRecordProcessor"),
+        patch.object(
+            observability,
+            "BatchLogRecordProcessor",
+            return_value=log_processor,
+        ) as batch_log_processor,
         patch.object(observability, "LoggingHandler", return_value=MagicMock()),
         patch.object(observability.logging, "getLogger", return_value=MagicMock()),
         patch.object(observability, "trace"),
         patch.object(observability, "metrics"),
         patch.object(observability, "set_global_textmap"),
         patch.object(observability, "set_logger_provider"),
-        patch.object(observability, "SQLAlchemyInstrumentor"),
+        patch.object(
+            observability, "SQLAlchemyInstrumentor"
+        ) as sqlalchemy_instrumentor,
         patch.object(observability, "RedisInstrumentor"),
         patch.object(observability, "HTTPXClientInstrumentor"),
     ):
-        observability._configure_otel(MagicMock())
+        observability._configure_otel(engine)
     metric_exporter.assert_called_once_with(timeout=0.75)
     log_exporter.assert_called_once_with(timeout=0.75)
+    batch_log_processor.assert_called_once_with(log_exporter.return_value)
+    logger_provider.add_log_record_processor.assert_called_once_with(log_processor)
+    sqlalchemy_instrumentor.return_value.instrument.assert_called_once_with(
+        engine=engine.sync_engine,
+        tracer_provider=provider,
+        enable_metrics=True,
+        meter_provider=meter_provider,
+        enable_commenter=True,
+        commenter_options={"opentelemetry_values": True},
+    )
     observability._otel_configured = False
     observability._sqlalchemy_instrumented = False
 
@@ -620,6 +638,7 @@ def test_configure_otel_partial_failure_marks_uncreated_meter_as_none() -> None:
 
     settings = _otel_settings(metrics=False, logs=False)
     shutdown = MagicMock()
+    root_logger = MagicMock()
     with (
         patch.object(observability, "settings", settings),
         patch.object(
@@ -628,6 +647,7 @@ def test_configure_otel_partial_failure_marks_uncreated_meter_as_none() -> None:
             side_effect=RuntimeError("tracer setup failed"),
         ),
         patch.object(observability, "OTLPSpanExporter"),
+        patch.object(observability.logging, "getLogger", return_value=root_logger),
         patch.object(observability, "_shutdown_otel_providers_bounded", shutdown),
         pytest.raises(RuntimeError, match=r"^tracer setup failed$"),
     ):
@@ -635,6 +655,7 @@ def test_configure_otel_partial_failure_marks_uncreated_meter_as_none() -> None:
 
     shutdown.assert_called_once()
     assert tuple(shutdown.call_args.args[0]) == (None, None, None)
+    root_logger.removeHandler.assert_not_called()
 
 
 def test_configure_otel_partial_failure_removes_logging_handler() -> None:

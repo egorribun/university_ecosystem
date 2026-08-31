@@ -95,6 +95,15 @@ def test_base64url_encoding_and_decoding_matches_rfc4648_without_padding(
     assert _b64url_decode(encoded) == raw
 
 
+def test_base64url_decoder_adds_only_the_required_rfc4648_padding() -> None:
+    decoder = Mock(return_value=b"decoded")
+
+    with patch.object(cwv.base64, "urlsafe_b64decode", decoder):
+        assert _b64url_decode("YWJ") == b"decoded"
+
+    decoder.assert_called_once_with("YWJ=")
+
+
 def test_derived_and_opaque_bindings_use_canonical_sha256_and_utf8_contract() -> None:
     expected_key = hmac.new(
         SECRET.encode("utf-8"),
@@ -259,8 +268,13 @@ def test_binding_accepts_inclusive_security_boundaries(
             {"signing_secret": "s" * 31},
             "CWV signing secret must contain at least 32 bytes",
         ),
+        (
+            {"frontend_image_digest": "latest"},
+            "CWV frontend image digest is invalid",
+        ),
         ({"deployment_run_id": 0}, "CWV deployment run binding is invalid"),
         ({"deployment_run_attempt": 0}, "CWV deployment run binding is invalid"),
+        ({"allowed_origins": ()}, "CWV allowed origin list is empty"),
         (
             {"envelope_ttl_seconds": 601},
             "CWV envelope TTL must be between 60 and 600 seconds",
@@ -323,6 +337,30 @@ def test_envelope_rejects_each_opaque_claim_independently(field: str) -> None:
         verify_envelope(_binding(), token, now=NOW)
 
 
+def test_envelope_rejects_invalid_lifetime_and_deployment_with_exact_messages() -> None:
+    claims = verify_envelope(_binding(), _issued(), now=NOW)
+    invalid_lifetime = replace(claims, expires_at=claims.expires_at + 1)
+    with pytest.raises(
+        CwvEnvelopeError,
+        match=r"^CWV envelope lifetime is invalid$",
+    ):
+        verify_envelope(
+            _binding(),
+            _sign_claims(_binding(), invalid_lifetime),
+            now=NOW,
+        )
+
+    with pytest.raises(
+        CwvEnvelopeError,
+        match=r"^CWV envelope deployment binding is invalid$",
+    ):
+        verify_envelope(
+            _binding(deployment_run_attempt=3),
+            _issued(),
+            now=NOW,
+        )
+
+
 @pytest.mark.parametrize("token", ["not-a-cwv-token", "v1-two-parts"])
 def test_envelope_malformed_tokens_use_the_stable_error_message(token: str) -> None:
     with pytest.raises(CwvEnvelopeError, match=r"^CWV envelope is malformed$"):
@@ -352,6 +390,22 @@ def test_envelope_grace_period_has_exact_inclusive_limit_and_message() -> None:
         match=r"^CWV envelope grace period is invalid$",
     ):
         _verify_envelope(_binding(), token, now=NOW, expiration_grace_seconds=86_401)
+
+
+def test_envelope_verification_uses_utc_for_an_implicit_clock() -> None:
+    class TrackingDateTime(datetime):
+        seen_timezones: ClassVar[list[object]] = []
+
+        @classmethod
+        def now(cls, tz: object = None) -> datetime:
+            cls.seen_timezones.append(tz)
+            return NOW
+
+    with patch.object(cwv, "datetime", TrackingDateTime):
+        claims = verify_envelope(_binding(), _issued())
+
+    assert claims.issued_at == int(NOW.timestamp())
+    assert TrackingDateTime.seen_timezones == [UTC]
 
 
 def test_issue_and_renew_reject_invalid_device_nonce_and_navigation_exactly() -> None:
@@ -533,14 +587,16 @@ def test_oidc_verifier_has_distinct_exact_identity_claim_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     verifier = _oidc_verifier()
+    signing_key_lookup = Mock(return_value=SimpleNamespace(key=object()))
     monkeypatch.setattr(
         verifier._jwks,
         "get_signing_key_from_jwt",
-        Mock(return_value=SimpleNamespace(key=object())),
+        signing_key_lookup,
     )
     valid_claims = _oidc_claims()
     monkeypatch.setattr(jwt, "decode", Mock(return_value=valid_claims))
     assert verifier.verify("token", expected_sha=SHA) == valid_claims
+    signing_key_lookup.assert_called_once_with("token")
 
     malformed = Mock(side_effect=jwt.PyJWTError("bad token"))
     monkeypatch.setattr(jwt, "decode", malformed)

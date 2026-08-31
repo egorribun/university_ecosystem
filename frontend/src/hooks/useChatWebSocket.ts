@@ -736,10 +736,13 @@ export function useChatWebSocket({
             }
 
             const sequencedChatId = "chat_id" in validated ? validated.chat_id : undefined
+            // An event without a stream sequence cannot be older than a durable
+            // checkpoint. Normalizing that absence to an explicit upper sentinel
+            // keeps the comparison total and avoids a redundant undefined guard.
+            const incomingSequence = validated.stream_seq ?? Number.POSITIVE_INFINITY
             if (
-              validated.stream_seq !== undefined &&
               sequencedChatId !== undefined &&
-              validated.stream_seq <=
+              incomingSequence <=
                 (peekReplayCheckpoint(currentUserIdRef.current, sequencedChatId)?.sequence ?? 0)
             ) {
               return

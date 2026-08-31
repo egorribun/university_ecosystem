@@ -261,8 +261,10 @@ jobs:
 
           echo "Comparing against $BASE_REF to find modified Go files..."
 
-          # Find modified Go files within the service directory (excluding tests and generated files)
-          CHANGED_PATHS="$(git diff --name-only "$BASE_REF"...HEAD)"
+          # Find extant changed Go files within the service directory. Deleted
+          # paths have no checked-out source to mutate and must not be passed to
+          # go-mutesting; all other source-affecting statuses remain in scope.
+          CHANGED_PATHS="$(git diff --diff-filter=ACMRT --name-only "$BASE_REF"...HEAD)"
           CHANGED_FILES="$(
             printf '%s\n' "$CHANGED_PATHS" \
               | grep -E "^${SERVICE_DIRECTORY}/.*\.go$" \
@@ -288,6 +290,13 @@ jobs:
             exit 1
           fi
 
+          for target in "${TARGETS[@]}"; do
+            if [ ! -f "$target" ] || [ -L "$target" ]; then
+              echo "::error::Mutation target is not a regular checked-out source file: $target"
+              exit 1
+            fi
+          done
+
            echo "Running mutation tests on: ${TARGETS[*]}"
            # The maintained CLI reports surviving mutants in report.json but
            # returns non-zero only for an execution/tool failure. Treat that
@@ -309,11 +318,27 @@ jobs:
            run_mutation() {
              local target="$1"
              local safe_target="${target//[^A-Za-z0-9_.-]/_}"
-             local workdir="$MUTATION_ROOT/$safe_target"
+             # Preserve the repository-relative layout in every isolated
+             # workspace. All service go.mod files use the same two local
+             # replace modules (../../gen/go and ../pkg/spiffe); copying only
+             # the service directory makes those modules disappear and turns
+             # a valid mutant into a package-loading failure.
+             local isolated_root="$MUTATION_ROOT/$safe_target/repository"
+             local workdir="$isolated_root/$SERVICE_DIRECTORY"
              local log_file="$MUTATION_ROOT/$safe_target.log"
 
              mkdir -p "$workdir"
              cp -a "$GITHUB_WORKSPACE/$SERVICE_DIRECTORY/." "$workdir/"
+             for dependency in services/pkg/spiffe gen/go; do
+               local dependency_source="$GITHUB_WORKSPACE/$dependency"
+               local dependency_destination="$isolated_root/$dependency"
+               if [ ! -d "$dependency_source" ] || [ -L "$dependency_source" ]; then
+                 echo "::error::Local Go replacement is not a regular checked-out directory: $dependency"
+                 return 1
+               fi
+               mkdir -p "$dependency_destination"
+               cp -a "$dependency_source/." "$dependency_destination/"
+             done
              cd "$workdir"
              echo "Mutating source file $target in an isolated workspace..."
              rm -f report.json

@@ -111,13 +111,12 @@ const wrapper = ({ children }: { children: ReactNode }) => {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }
 
-// Import after mocks are registered (vi.mock factories are hoisted to
-// top of file, but the actual module evaluation happens here)
-import { useMessengerController } from "../useMessengerController"
+let useMessengerController: typeof import("../useMessengerController").useMessengerController
 
 // ---------- Setup ----------
 
-beforeEach(() => {
+beforeEach(async () => {
+  ;({ useMessengerController } = await import("../useMessengerController"))
   vi.clearAllMocks()
   mocks.paramsRef.current = {}
 
@@ -863,7 +862,7 @@ describe("useMessengerController", () => {
   })
 
   describe("chat selection from URL params", () => {
-    it("selectedChatId mirrors useParams.chatId on mount", async () => {
+    it("selectedChatId mirrors useParams.chatId synchronously on mount", () => {
       mocks.paramsRef.current = { chatId: "chat-from-url" }
       mocks.chatApi.getChat.mockResolvedValue({
         id: "chat-from-url",
@@ -873,9 +872,7 @@ describe("useMessengerController", () => {
 
       const { result } = renderHook(() => useMessengerController(), { wrapper })
 
-      await waitFor(() => {
-        expect(result.current.selectedChatId).toBe("chat-from-url")
-      })
+      expect(result.current.selectedChatId).toBe("chat-from-url")
     })
 
     it("selectedChatId is null when useParams.chatId is undefined", () => {

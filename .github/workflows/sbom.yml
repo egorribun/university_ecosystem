@@ -20,6 +20,12 @@ on:
 permissions:
   contents: read  # required for checkout
 
+concurrency:
+  # A newer main push supersedes an older inventory. Operator-dispatched
+  # evidence runs stay unique and are never cancelled.
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 env:
   # Canonical inventory for the RustSec gate. Fuzz lockfiles are included
   # deliberately: they execute untrusted generated inputs in CI and must not

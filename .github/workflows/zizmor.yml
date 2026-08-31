@@ -17,6 +17,7 @@ jobs:
   zizmor:
     name: Zizmor Actions Scan
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       security-events: write
       contents: read
@@ -29,4 +30,3 @@ jobs:
         with:
           # Enable code scanning integration
           advanced-security: true
-

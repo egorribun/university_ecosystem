@@ -94,6 +94,15 @@ def test_unique_notification_ids_logs_the_stable_warning_text() -> None:
     warning.assert_called_once_with("Ignoring invalid notification id in outbox event")
 
 
+def test_redelivery_error_exposes_the_exact_retryable_failure_count() -> None:
+    outcome = delivery.NotificationRedeliveryOutcome(retryable_failures=2)
+
+    error = delivery.NotificationRedeliveryError(outcome)
+
+    assert error.outcome is outcome
+    assert str(error) == "Web Push redelivery has 2 retryable failure(s)"
+
+
 @pytest.mark.asyncio
 async def test_redelivery_records_exception_metric_with_notification_type(
     monkeypatch: pytest.MonkeyPatch,
@@ -267,6 +276,72 @@ async def test_redelivery_payload_preserves_canonical_topic_metadata(
 
 
 @pytest.mark.asyncio
+async def test_redelivery_continues_after_an_unsupported_subscription(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = uuid4()
+    unsupported = SimpleNamespace(
+        id=uuid4(),
+        user_id=user_id,
+        user=None,
+        endpoint="https://push.example.test/unsupported",
+        topics=[],
+    )
+    supported = SimpleNamespace(
+        id=uuid4(),
+        user_id=user_id,
+        user=None,
+        endpoint="https://push.example.test/supported",
+        topics=["news.published"],
+    )
+    notification = SimpleNamespace(
+        id=uuid4(),
+        user_id=user_id,
+        title="A notification",
+        body="Body",
+        url="/news/1",
+        type="news",
+        created_at=datetime(2026, 8, 28, 12, 0, tzinfo=UTC),
+    )
+    provider_result = delivery.WebPushResult(
+        subscription_id=supported.id,
+        endpoint=supported.endpoint,
+        user_id=user_id,
+        status="sent",
+        status_code=201,
+    )
+    send = AsyncMock(return_value=provider_result)
+    monkeypatch.setattr(delivery, "_is_push_configured", lambda: True)
+    monkeypatch.setattr(
+        delivery,
+        "subscription_supports_topic",
+        MagicMock(side_effect=[False, True]),
+    )
+    monkeypatch.setattr(delivery.webpush_module, "_send_push_async", send)
+    monkeypatch.setattr(delivery.webpush_module, "process_push_results", AsyncMock())
+    db = MagicMock(
+        execute=AsyncMock(
+            side_effect=[
+                _rows([notification]),
+                _rows([unsupported, supported]),
+                _rows([]),
+                MagicMock(),
+            ]
+        ),
+        flush=AsyncMock(),
+    )
+
+    outcome = await delivery.redeliver_notifications(
+        db, notification_ids=[notification.id]
+    )
+
+    assert outcome.terminal_failures == 1
+    assert outcome.sent == 1
+    send.assert_awaited_once()
+    assert send.await_args.args[0] is supported
+
+
+@pytest.mark.asyncio
 async def test_redelivery_accumulates_retryable_failures_across_all_jobs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -376,6 +451,10 @@ async def test_redelivery_accumulates_already_delivered_pairs(
     )
 
     assert outcome.already_delivered == 2
+    prior_delivery_query = db.execute.await_args_list[2].args[0]
+    compiled_prior_query = prior_delivery_query.compile()
+    assert "notification_deliveries.channel =" in str(compiled_prior_query)
+    assert "webpush" in compiled_prior_query.params.values()
 
 
 @pytest.mark.asyncio
