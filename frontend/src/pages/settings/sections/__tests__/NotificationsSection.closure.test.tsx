@@ -37,7 +37,11 @@ const createProps = () => ({
 })
 
 const openNotificationAccordion = () => {
-  const button = screen.getByRole("button", { name: /notifications\.push\.title/ })
+  // The shared test setup initializes the real i18n instance to English, so
+  // target the translated accessible accordion name rather than its key.
+  const button = screen.getByRole("button", {
+    name: /^Push notifications Receive timely updates about your university activity\.$/,
+  })
   if (button.getAttribute("aria-expanded") !== "true") {
     fireEvent.click(button)
   }
@@ -76,11 +80,13 @@ describe("NotificationsSection — push and quiet-hours branches", () => {
   it("renders initialization, unsupported, and denied permission states", async () => {
     pushState.value.pushInitializing = true
     const { rerender } = await renderSection()
-    expect(screen.getByText("notifications.loading")).toBeInTheDocument()
+    expect(screen.getByText("Loading notification settings…")).toBeInTheDocument()
 
     pushState.value = { ...pushState.value, pushInitializing: false, pushSupported: false }
     rerender(<NotificationsSection {...createProps()} />)
-    expect(screen.getByText("notifications.notSupported")).toBeInTheDocument()
+    expect(
+      screen.getByText("Push notifications are not supported in this browser.")
+    ).toBeInTheDocument()
 
     pushState.value = {
       ...pushState.value,
