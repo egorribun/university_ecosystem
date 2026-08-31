@@ -165,6 +165,10 @@ describe("ScheduleTimeline — branches", () => {
     // The tooltip heading appears, but teacher/room paragraphs are omitted
     // because both are empty strings (conditional-render false branch).
     expect(screen.getAllByText("Evening Lab").length).toBeGreaterThan(1)
+    expect(screen.queryByText("Teacher")).not.toBeInTheDocument()
+    expect(screen.queryByText("Room")).not.toBeInTheDocument()
+    const tooltip = screen.getAllByText("Evening Lab")[1]?.parentElement
+    expect(tooltip?.querySelectorAll("p")).toHaveLength(2)
     fireEvent.mouseLeave(block)
   })
 

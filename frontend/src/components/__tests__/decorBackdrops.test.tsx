@@ -14,8 +14,7 @@ import { ActivityBackdrop } from "../../features/activity/components/ActivityBac
 
 const markupDigest = (markup: string) => createHash("sha256").update(markup).digest("hex")
 
-const expectedDigest = (...chunks: readonly string[]) =>
-  chunks.join("").replaceAll("_", "")
+const expectedDigest = (...chunks: readonly string[]) => chunks.join("").replaceAll("_", "")
 
 describe("Presentational Backdrops Coverage Sweep", () => {
   it("renders AuthBackdrop under all branches", () => {
