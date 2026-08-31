@@ -574,6 +574,12 @@ also_copy = [
     "SECURITY.md",
     ".github",
     ".husky",
+    # The stop-quality-gate contract lives below tests/contracts and imports
+    # this hook from the isolated mutmut checkout.  Copy the parent directory
+    # before the exact module so mutmut's file copier always has a destination
+    # for both the hook and its shared helpers.
+    ".agents/hooks",
+    ".agents/hooks/stop_quality_gate.py",
     ".gitignore",
     ".dockerignore",
     ".lighthouserc.js",

@@ -370,6 +370,30 @@ def test_normalizer_v2_preserves_alembic_source_identity_and_inventory(
     assert not any(item["path"] == alembic_path for item in manifest["tier0"]["files"])
 
 
+def test_normalizer_v2_does_not_require_alembic_outside_python_coverage_scope(
+    evidence_repo: Path,
+) -> None:
+    """Python coverage completeness follows coverage_scope, not source_roots."""
+    alembic_path = "alembic/versions/20260825_unmeasured.py"
+    source = evidence_repo / alembic_path
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_text("revision = '20260825_unmeasured'\n", encoding="utf-8")
+    _commit_all(evidence_repo, "add migration outside pytest coverage scope")
+
+    # The canonical pytest-cov producer runs with ``--cov=app`` and therefore
+    # intentionally omits Alembic revisions.  A new migration must not create
+    # a false missing-source failure in the aggregate coverage manifest.
+    result = _run(evidence_repo, _full_arguments(evidence_repo))
+
+    assert result.returncode == 0, result.stderr
+    manifest = json.loads(
+        (evidence_repo / "artifacts/coverage/quality-manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert manifest["validation"] == {"valid": True, "errors": []}
+
+
 @pytest.mark.parametrize("mutation", ["modified", "deleted", "untracked"])
 def test_normalizer_v2_rejects_dirty_authored_source_snapshot(
     evidence_repo: Path,

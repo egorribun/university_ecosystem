@@ -686,6 +686,12 @@ def _counter_from_xml_attributes(
 
     covered = _parse_nonnegative_decimal(covered_value, f"{metric_name} covered")
     total = _parse_nonnegative_decimal(total_value, f"{metric_name} total")
+    if total == 0:
+        if covered != 0:
+            raise _InputError(
+                f"{metric_name} covered counter must be zero when total is zero"
+            )
+        return _vacuous_metric(f"coverage XML contains no {metric_name} units")
     return _measured_metric("native", covered, total)
 
 
@@ -1148,7 +1154,11 @@ def _parse_frontend_lcov(
         measured_pairs = [pair for pair in pairs if pair is not None]
         covered = sum(pair[0] for pair in measured_pairs)
         total = sum(pair[1] for pair in measured_pairs)
-        metrics[metric_name] = _measured_metric("native", covered, total)
+        metrics[metric_name] = (
+            _vacuous_metric(f"LCOV report contains no {metric_name} units")
+            if total == 0
+            else _measured_metric("native", covered, total)
+        )
 
     return {metric: metrics[metric] for metric in METRICS}
 
@@ -1209,6 +1219,13 @@ def _coverage_py_summary_metric(
     total = _parse_nonnegative_integer(
         summary.get(total_key), f"coverage.py JSON {field}.{total_key}"
     )
+    if total == 0:
+        if covered != 0:
+            raise _InputError(
+                f"coverage.py JSON {field}.{covered_key} must be zero when "
+                "the total is zero"
+            )
+        return _vacuous_metric(f"coverage.py JSON contains no {total_key} units")
     return _measured_metric("native", covered, total)
 
 
@@ -1471,7 +1488,10 @@ def _parse_istanbul_branch_map(value: object) -> list[int]:
 
 def _metric_from_counters(
     counters: Sequence[int],
+    metric_name: str = "coverage",
 ) -> dict[str, object]:
+    if not counters:
+        return _vacuous_metric(f"Istanbul JSON contains no {metric_name} units")
     return _measured_metric(
         "native",
         sum(counter > 0 for counter in counters),
@@ -1588,9 +1608,9 @@ def _parse_frontend_istanbul_json(
                 "unsupported",
                 reason_code="istanbul_json_line_counter_not_used",
             ),
-            "statements": _metric_from_counters(statement_counters),
-            "branches": _metric_from_counters(branch_counters),
-            "functions": _metric_from_counters(function_counters),
+            "statements": _metric_from_counters(statement_counters, "statement"),
+            "branches": _metric_from_counters(branch_counters, "branch"),
+            "functions": _metric_from_counters(function_counters, "function"),
         }
 
     if not file_metrics:
@@ -1601,9 +1621,9 @@ def _parse_frontend_istanbul_json(
                 "unsupported",
                 reason_code="istanbul_json_line_counter_not_used",
             ),
-            "statements": _metric_from_counters(total_statements),
-            "branches": _metric_from_counters(total_branches),
-            "functions": _metric_from_counters(total_functions),
+            "statements": _metric_from_counters(total_statements, "statement"),
+            "branches": _metric_from_counters(total_branches, "branch"),
+            "functions": _metric_from_counters(total_functions, "function"),
         },
         file_metrics,
     )
@@ -2223,6 +2243,34 @@ def _is_mutmut_generated_function(
     return "_mutmut_" in node.name
 
 
+def _is_non_executable_python_function(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> bool:
+    """Identify protocol stubs that have no runtime function body.
+
+    ``typing.Protocol`` method declarations conventionally use an ellipsis
+    body.  coverage.py does not expose an executable function entry for those
+    declarations, so counting them in the AST-derived Tier-0 function
+    denominator would manufacture a false survivor.
+    """
+    body = list(node.body)
+    if body and isinstance(body[0], ast.Expr):
+        value = body[0].value
+        if isinstance(value, ast.Constant) and isinstance(value.value, str):
+            body.pop(0)
+    while body and isinstance(body[0], (ast.Global, ast.Nonlocal)):
+        body.pop(0)
+    return (
+        len(body) == 1
+        and isinstance(body[0], ast.Expr)
+        and isinstance(
+            body[0].value,
+            ast.Constant,
+        )
+        and body[0].value.value is Ellipsis
+    )
+
+
 def _derive_python_function_metric(
     source: str,
     line_hits: dict[int, bool],
@@ -2235,6 +2283,7 @@ def _derive_python_function_metric(
         for node in ast.walk(tree)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         and not _is_mutmut_generated_function(node)
+        and not _is_non_executable_python_function(node)
     ]
     if not functions:
         return _vacuous_metric("AST source contains no function definitions")
@@ -2254,15 +2303,20 @@ def _derive_python_function_metric(
 
 
 def _python_has_branch_constructs(tree: ast.Module) -> bool:
+    """Return whether coverage.py can report executable branch arcs here.
+
+    coverage.py's branch tracer records statement-control-flow constructs and
+    comprehensions with filters.  Conditional expressions and boolean
+    short-circuit operators remain single statement arcs in its JSON/XML
+    reports, so treating their AST nodes as branch obligations would create a
+    toolchain mismatch rather than measure an additional native metric.
+    """
     branch_nodes = (
         ast.If,
         ast.For,
         ast.AsyncFor,
         ast.While,
-        ast.IfExp,
-        ast.Try,
         ast.Match,
-        ast.BoolOp,
     )
 
     def _walk_runtime_nodes(node: ast.AST) -> Iterator[ast.AST]:
@@ -2390,10 +2444,14 @@ def _parse_tier0_python_files(
                 "unsupported", reason_code="coverage_xml_has_no_method_breakdown"
             )
         branches = (
-            _measured_metric(
-                "native",
-                sum(covered for covered, _ in branch_pairs),
-                sum(total for _, total in branch_pairs),
+            (
+                _vacuous_metric("Cobertura source contains no branch units")
+                if sum(total for _, total in branch_pairs) == 0
+                else _measured_metric(
+                    "native",
+                    sum(covered for covered, _ in branch_pairs),
+                    sum(total for _, total in branch_pairs),
+                )
             )
             if branch_pairs
             else _derive_python_branch_metric(source)
@@ -4146,15 +4204,22 @@ def _build_manifest(
         ):
             continue
         reported_sources = set(component_reports[0].file_metrics)
-        tracked_sources = set(invocation.source_inventory[component])
+        # ``source_roots`` defines the canonical identity boundary for report
+        # entries, while ``coverage_scope`` contains only the files the
+        # producer is expected to measure.  Those sets intentionally differ
+        # for Python: Alembic revisions are reportable source identities but
+        # pytest-cov is scoped to ``app``.  Require complete evidence for the
+        # producer scope and reject paths outside the canonical roots.
+        required_sources = set(invocation.coverage_inventory[component])
+        reportable_sources = set(invocation.source_inventory[component])
         inventory_errors = [
             *(
                 f"{component} coverage is missing tracked source {source}"
-                for source in sorted(tracked_sources - reported_sources)
+                for source in sorted(required_sources - reported_sources)
             ),
             *(
                 f"{component} coverage contains non-inventory source {source}"
-                for source in sorted(reported_sources - tracked_sources)
+                for source in sorted(reported_sources - reportable_sources)
             ),
         ]
         evidence_errors_by_component[component].extend(inventory_errors)

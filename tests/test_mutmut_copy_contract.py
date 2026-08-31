@@ -11,6 +11,8 @@ REQUIRED_ALSO_COPY = {
     "SECURITY.md",
     "security",
     "security/audit-allowlist.yaml",
+    ".agents/hooks",
+    ".agents/hooks/stop_quality_gate.py",
     ".secrets.baseline",
     ".husky",
     "start-docker.ps1",
@@ -35,3 +37,18 @@ def test_mutmut_also_copy_covers_contract_inputs() -> None:
 
     missing = sorted(path for path in REQUIRED_ALSO_COPY if not (ROOT / path).exists())
     assert not missing, f"also_copy contract inputs are missing: {missing}"
+
+
+def test_mutmut_also_copy_creates_file_parents_before_exact_files() -> None:
+    """The mutmut copier requires a configured directory before ``copy2``."""
+
+    with (ROOT / "pyproject.toml").open("rb") as project_file:
+        project = tomllib.load(project_file)
+
+    configured = list(project["tool"]["mutmut"]["also_copy"])
+    for file_path in (
+        "security/audit-allowlist.yaml",
+        ".agents/hooks/stop_quality_gate.py",
+    ):
+        parent = str(Path(file_path).parent).replace("\\", "/")
+        assert configured.index(parent) < configured.index(file_path), file_path

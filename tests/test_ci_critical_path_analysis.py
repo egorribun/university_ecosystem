@@ -141,3 +141,50 @@ def test_parser_uses_created_at_when_live_jobs_omit_queued_at() -> None:
     )
 
     assert parsed[0].queue_wait_seconds == 45.0
+
+
+def test_parser_accepts_github_cancelled_empty_job_timestamp_sentinel() -> None:
+    """GitHub can invert timestamps by one second while cancelling an empty job."""
+    parsed = parse_jobs(
+        {
+            "jobs": [
+                {
+                    "id": 1,
+                    "name": "cancelled-empty-job",
+                    "status": "completed",
+                    "conclusion": "cancelled",
+                    "created_at": "2026-08-31T10:00:00Z",
+                    "started_at": "2026-08-31T10:00:01Z",
+                    "completed_at": "2026-08-31T10:00:00Z",
+                    "steps": [],
+                }
+            ]
+        }
+    )
+
+    assert parsed[0].duration_seconds == 0.0
+
+
+def test_parser_rejects_inverted_cancelled_job_with_steps() -> None:
+    with pytest.raises(AnalysisError, match="ends before"):
+        parse_jobs(
+            {
+                "jobs": [
+                    {
+                        "id": 1,
+                        "name": "cancelled-with-work",
+                        "status": "completed",
+                        "conclusion": "cancelled",
+                        "started_at": "2026-08-31T10:00:01Z",
+                        "completed_at": "2026-08-31T10:00:00Z",
+                        "steps": [
+                            {
+                                "name": "work",
+                                "started_at": "2026-08-31T10:00:01Z",
+                                "completed_at": "2026-08-31T10:00:01Z",
+                            }
+                        ],
+                    }
+                ]
+            }
+        )

@@ -87,6 +87,25 @@ func TestWaitForWebTransportStartup_AllTerminalBranches(t *testing.T) {
 		assert.ErrorIs(t, err, want)
 		assert.True(t, requested)
 	})
+	t.Run("server error waits for readiness", func(t *testing.T) {
+		ready := make(chan struct{})
+		errCh := make(chan error)
+		want := errors.New("webtransport failed before readiness")
+		go func() {
+			errCh <- want
+			close(ready)
+		}()
+
+		err, requested := waitForWebTransportStartup(
+			make(chan os.Signal),
+			ready,
+			make(chan struct{}),
+			errCh,
+			logger,
+		)
+		assert.ErrorIs(t, err, want)
+		assert.True(t, requested)
+	})
 	t.Run("signal", func(t *testing.T) {
 		ready := make(chan struct{})
 		done := make(chan struct{})
@@ -96,6 +115,24 @@ func TestWaitForWebTransportStartup_AllTerminalBranches(t *testing.T) {
 			close(done)
 		}()
 		err, requested := waitForWebTransportStartup(quit, ready, done, make(chan error), logger)
+		assert.NoError(t, err)
+		assert.True(t, requested)
+	})
+	t.Run("signal waits for readiness", func(t *testing.T) {
+		ready := make(chan struct{})
+		quit := make(chan os.Signal)
+		go func() {
+			quit <- os.Interrupt
+			close(ready)
+		}()
+
+		err, requested := waitForWebTransportStartup(
+			quit,
+			ready,
+			make(chan struct{}),
+			make(chan error),
+			logger,
+		)
 		assert.NoError(t, err)
 		assert.True(t, requested)
 	})

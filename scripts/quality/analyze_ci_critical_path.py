@@ -218,11 +218,12 @@ def parse_jobs(payload: object) -> tuple[JobTiming, ...]:
         )
         if started is not None and completed is not None and completed < started:
             # GitHub occasionally emits a one-second inverted pair for a
-            # skipped job that never received a runner (there are no steps and
-            # therefore no elapsed work to measure).  Treat that API sentinel
-            # as a zero-duration guarded skip, but keep malformed timestamps a
-            # hard error for every job that could have executed.
-            if conclusion == "skipped" and not record.get("steps"):
+            # skipped or cancelled job that never received a runner (there
+            # are no steps and therefore no elapsed work to measure). Treat
+            # that API sentinel as a zero-duration guarded terminal job, but
+            # keep malformed timestamps a hard error for every job that
+            # could have executed.
+            if conclusion in {"skipped", "cancelled"} and not record.get("steps"):
                 completed = started
             else:
                 raise AnalysisError(f"job {name!r} ends before it starts")

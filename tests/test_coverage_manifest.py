@@ -1316,6 +1316,115 @@ def test_python_coverage_json_accepts_omitted_excluded_branch_arcs() -> None:
     }
 
 
+def test_python_coverage_json_represents_zero_unit_metrics_as_vacuous() -> None:
+    normalizer = _normalizer_module()
+
+    metric = normalizer._coverage_py_summary_metric(
+        {"covered_lines": 0, "num_statements": 0},
+        covered_key="covered_lines",
+        total_key="num_statements",
+        field="fixture.summary",
+    )
+
+    assert metric == {
+        "covered": 0,
+        "total": 0,
+        "percent": 100.0,
+        "status": "derived",
+        "derivation": "coverage.py JSON contains no num_statements units",
+    }
+    assert normalizer._metric_from_counters([], "statement") == {
+        "covered": 0,
+        "total": 0,
+        "percent": 100.0,
+        "status": "derived",
+        "derivation": "Istanbul JSON contains no statement units",
+    }
+
+
+def test_python_function_derivation_ignores_ellipsis_protocol_stubs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    normalizer = _normalizer_module()
+    source_path = tmp_path / "app" / "protocol_fixture.py"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text(
+        "from typing import Protocol\n"
+        "\n"
+        "class Sender(Protocol):\n"
+        "    def send(self) -> None: ...\n"
+        "\n"
+        "def concrete() -> None:\n"
+        "    return None\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(normalizer, "REPOSITORY_ROOT", tmp_path)
+
+    metric = normalizer._derive_python_function_metric(
+        "app/protocol_fixture.py",
+        {7: True},
+    )
+
+    assert metric is not None
+    assert metric["covered"] == metric["total"] == 1
+    assert metric["percent"] == 100.0
+
+
+def test_python_branch_derivation_matches_coverage_py_try_semantics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    normalizer = _normalizer_module()
+    source_path = tmp_path / "app" / "try_fixture.py"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text(
+        "def load() -> int:\n"
+        "    try:\n"
+        "        return 1\n"
+        "    except ValueError:\n"
+        "        return 2\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(normalizer, "REPOSITORY_ROOT", tmp_path)
+
+    metric = normalizer._derive_python_branch_metric("app/try_fixture.py")
+
+    assert metric == {
+        "covered": 0,
+        "total": 0,
+        "percent": 100.0,
+        "status": "derived",
+        "derivation": "AST source contains no branch construct",
+    }
+
+
+def test_python_branch_derivation_matches_coverage_py_expression_semantics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    normalizer = _normalizer_module()
+    source_path = tmp_path / "app" / "expression_fixture.py"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text(
+        "def choose(value: int) -> int:\n"
+        "    fallback = value if value else 1\n"
+        "    return fallback and value\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(normalizer, "REPOSITORY_ROOT", tmp_path)
+
+    metric = normalizer._derive_python_branch_metric("app/expression_fixture.py")
+
+    assert metric == {
+        "covered": 0,
+        "total": 0,
+        "percent": 100.0,
+        "status": "derived",
+        "derivation": "AST source contains no branch construct",
+    }
+
+
 def test_python_coverage_json_rejects_forged_excluded_branch_arcs() -> None:
     normalizer = _normalizer_module()
     normalizer._configure_repository_root(str(REPOSITORY_ROOT))
