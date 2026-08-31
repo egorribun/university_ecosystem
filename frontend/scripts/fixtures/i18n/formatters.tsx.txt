@@ -1,0 +1,6 @@
+export const Formatted = ({ value }) => (
+  <span>
+    {new Intl.DateTimeFormat().format(value)}
+    {new Intl.NumberFormat().format(value)}
+  </span>
+)

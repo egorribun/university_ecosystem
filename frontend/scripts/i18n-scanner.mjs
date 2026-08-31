@@ -18,9 +18,77 @@ import { parse as babelParse } from "@babel/parser"
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
 const FRONTEND_ROOT = path.resolve(SCRIPT_DIR, "..")
+const REPOSITORY_ROOT = path.resolve(FRONTEND_ROOT, "..")
 const DEFAULT_SOURCE_ROOT = path.join(FRONTEND_ROOT, "src")
 const DEFAULT_LOCALE_ROOT = path.join(FRONTEND_ROOT, "src", "i18n", "locales")
 const DEFAULT_REGISTRY_FILE = path.join(FRONTEND_ROOT, "src", "i18n", "registry.ts")
+const DEFAULT_BACKEND_DICTIONARY_FILE = path.join(
+  REPOSITORY_ROOT,
+  "app",
+  "core",
+  "localization",
+  "dictionary.py"
+)
+const DEFAULT_BACKEND_TEMPLATE_FILES = [
+  path.join(REPOSITORY_ROOT, "app", "utils", "email.py"),
+  path.join(REPOSITORY_ROOT, "app", "services", "notification_templates.py"),
+]
+const DEFAULT_BACKEND_ROOT = path.join(REPOSITORY_ROOT, "app")
+const DEFAULT_BACKEND_DYNAMIC_REGISTRY = {
+  "stats.period.${query.period_key}": ["stats.period.30d", "stats.period.90d", "stats.period.180d"],
+  "password.class.${class_name}": [
+    "password.class.uppercase",
+    "password.class.lowercase",
+    "password.class.digit",
+    "password.class.symbol",
+  ],
+  parity_key: ["schedule.ics.description.parity_odd", "schedule.ics.description.parity_even"],
+  detail_key: [
+    "errors.files.unsupported_type",
+    "errors.files.content_type_mismatch",
+    "errors.files.too_large",
+    "errors.not_found",
+    "errors.already_exists",
+    "errors.forbidden",
+    "errors.csrf.mismatch",
+    "errors.config.payload_too_large",
+    "errors.config.invalid_content_length",
+    "errors.rate_limit.generic",
+    "errors.schedule.conflict",
+  ],
+  message_key: [
+    "errors.forbidden",
+    "errors.unauthorized",
+    "errors.not_found",
+    "errors.already_exists",
+    "errors.common.bad_request",
+    "errors.rate_limit.generic",
+    "errors.auth.mfa_step_up_required",
+    "errors.users.create_failed",
+    "errors.sessions.signing_key_missing",
+    "errors.spotify.rate_limited",
+    "errors.push.not_configured",
+  ],
+  title_key: [
+    "titles.bad_request",
+    "titles.unauthorized",
+    "titles.forbidden",
+    "titles.not_found",
+    "titles.conflict",
+    "titles.method_not_allowed",
+    "titles.validation_error",
+    "titles.rate_limit_exceeded",
+    "titles.internal_server_error",
+    "titles.http_error",
+  ],
+  translation_key: [
+    "schedule.lesson.type.lecture",
+    "schedule.lesson.type.practice",
+    "schedule.lesson.type.lab",
+    "schedule.lesson.type.seminar",
+    "schedule.lesson.type.consultation",
+  ],
+}
 
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"])
 const SKIPPED_DIRECTORIES = new Set([
@@ -30,6 +98,8 @@ const SKIPPED_DIRECTORIES = new Set([
   "dist",
   "generated",
   "node_modules",
+  ".storybook",
+  "__pycache__",
   "test",
   "tests",
   "__tests__",
@@ -37,6 +107,17 @@ const SKIPPED_DIRECTORIES = new Set([
   ".storybook",
 ])
 const SKIPPED_FILE_PATTERNS = [/(?:^|[._-])(test|spec|stories?)(?:[._-]|$)/iu, /^setupTests\./iu]
+const SCOPE_EXCLUDED_DIRECTORIES = new Set([
+  "test",
+  "tests",
+  "__tests__",
+  "generated",
+  "vendor",
+  "coverage",
+  "dist",
+  "node_modules",
+  ".storybook",
+])
 const USER_FACING_ATTRIBUTES = new Set([
   "alt",
   "aria-label",
@@ -50,6 +131,7 @@ const USER_FACING_ATTRIBUTES = new Set([
 const NON_USER_FACING_TAGS = new Set(["script", "style", "code", "pre"])
 const PLURAL_SUFFIX = /_(zero|one|two|few|many|other)$/u
 const PLACEHOLDER = /\{\{\s*-?\s*([\w.-]+)(?:\s*,\s*([^}]+?))?\s*\}\}/gu
+const PYTHON_PLACEHOLDER = /(?<!\{)\{([A-Za-z_]\w*(?:\.[\w]+)*)(?:![rsa])?(?::([^{}]*))?\}(?!\})/gu
 
 /** @typedef {{ code: string, message: string, filePath?: string, line?: number, column?: number, key?: string }} I18nError */
 
@@ -148,6 +230,22 @@ function placeholderSpecs(value) {
   const specs = new Map()
   const text = typeof value === "string" ? value : ""
   for (const match of text.matchAll(PLACEHOLDER)) {
+    specs.set(match[1], match[2]?.trim().toLowerCase() ?? "")
+  }
+  return [...specs.entries()].sort(([left], [right]) => left.localeCompare(right))
+}
+
+function pythonPlaceholderNames(value) {
+  const names = []
+  const text = typeof value === "string" ? value : ""
+  for (const match of text.matchAll(PYTHON_PLACEHOLDER)) names.push(match[1])
+  return unique(names).sort()
+}
+
+function pythonPlaceholderSpecs(value) {
+  const specs = new Map()
+  const text = typeof value === "string" ? value : ""
+  for (const match of text.matchAll(PYTHON_PLACEHOLDER)) {
     specs.set(match[1], match[2]?.trim().toLowerCase() ?? "")
   }
   return [...specs.entries()].sort(([left], [right]) => left.localeCompare(right))
@@ -386,6 +484,129 @@ function registryLookup(pattern, dynamicRegistry) {
       return values
   }
   return undefined
+}
+
+/**
+ * Validate the dynamic-key contract before resolving any source reference.
+ *
+ * A registry is intentionally a finite map from an expression pattern to
+ * concrete catalogue keys.  Wildcards and empty/non-string entries would turn
+ * the registry into an allow-all escape hatch, so they are rejected even when
+ * a particular expression is not referenced by the current source tree.
+ */
+function validateDynamicRegistry(dynamicRegistry = {}) {
+  const errors = []
+  if (!isObject(dynamicRegistry)) {
+    errors.push(
+      error(
+        "DYNAMIC_REGISTRY_INVALID",
+        "Dynamic translation registry must be an object of finite string arrays",
+        "registry"
+      )
+    )
+    return { ok: false, errors }
+  }
+
+  for (const [pattern, values] of Object.entries(dynamicRegistry)) {
+    if (!pattern.trim()) {
+      errors.push(
+        error("DYNAMIC_REGISTRY_INVALID", "Dynamic registry patterns must not be empty", "registry")
+      )
+    }
+    if (pattern.includes("*")) {
+      errors.push(
+        error(
+          "DYNAMIC_REGISTRY_WILDCARD",
+          `Dynamic registry pattern ${pattern} must describe one finite expression`,
+          "registry",
+          pattern
+        )
+      )
+    }
+    if (!Array.isArray(values)) {
+      errors.push(
+        error(
+          "DYNAMIC_REGISTRY_VALUE_INVALID",
+          `Dynamic registry entry ${pattern} must be an array`,
+          "registry",
+          pattern
+        )
+      )
+      continue
+    }
+    if (values.length === 0) {
+      errors.push(
+        error(
+          "DYNAMIC_REGISTRY_EMPTY",
+          `Dynamic registry entry ${pattern} must contain at least one concrete key`,
+          "registry",
+          pattern
+        )
+      )
+    }
+    for (const value of values) {
+      if (typeof value !== "string" || !value.trim()) {
+        errors.push(
+          error(
+            "DYNAMIC_REGISTRY_VALUE_INVALID",
+            `Dynamic registry entry ${pattern} contains a non-string key`,
+            "registry",
+            pattern
+          )
+        )
+        continue
+      }
+      if (value.includes("*")) {
+        errors.push(
+          error(
+            "DYNAMIC_REGISTRY_WILDCARD",
+            `Dynamic registry key ${value} must be concrete; wildcards are forbidden`,
+            "registry",
+            pattern
+          )
+        )
+      }
+    }
+  }
+  return { ok: errors.length === 0, errors }
+}
+
+function normalizeScopePath(filePath) {
+  return String(filePath).replaceAll("\\", "/").replace(/^\.\//u, "")
+}
+
+function isScopeExcluded(filePath) {
+  const normalized = normalizeScopePath(filePath)
+  const basename = normalized.slice(normalized.lastIndexOf("/") + 1)
+  const segments = normalized.split("/")
+  return (
+    segments.some((segment) => SCOPE_EXCLUDED_DIRECTORIES.has(segment)) ||
+    SKIPPED_FILE_PATTERNS.some((pattern) => pattern.test(basename))
+  )
+}
+
+/**
+ * Keep the product-string scan explicit about its scope.  Tests, generated
+ * clients and vendored sources are intentionally excluded from product
+ * findings, but are returned as a separate machine-readable list so a caller
+ * cannot mistake that exclusion for an unscanned path.
+ */
+function scanScopeContract(filePaths = []) {
+  const included = []
+  const excluded = []
+  for (const filePath of filePaths) {
+    const normalized = normalizeScopePath(filePath)
+    if (isScopeExcluded(normalized)) excluded.push(normalized)
+    else included.push(normalized)
+  }
+  return {
+    ok: true,
+    errors: [],
+    included,
+    excluded,
+    excludedDirectories: [...SCOPE_EXCLUDED_DIRECTORIES].sort(),
+    excludedFilePatterns: SKIPPED_FILE_PATTERNS.map((pattern) => pattern.toString()),
+  }
 }
 
 function callHasObjectProperty(call, propertyName) {
@@ -674,6 +895,501 @@ function scanLocaleCatalogs(catalogues = {}) {
   return { errors, locales, info }
 }
 
+function pythonStringParts(value) {
+  const parts = []
+  const stringPattern =
+    /(?<prefix>[rubfRUBF]*)(?<quote>"""|'''|"|')(?<body>(?:\\.|(?!\k<quote>)[\s\S])*?)\k<quote>/gu
+  for (const match of value.matchAll(stringPattern)) {
+    const body = match.groups?.body ?? ""
+    parts.push(
+      body
+        .replaceAll("\\\\", "\\")
+        .replaceAll("\\n", "\n")
+        .replaceAll("\\r", "\r")
+        .replaceAll("\\t", "\t")
+        .replaceAll('\\"', '"')
+        .replaceAll("\\'", "'")
+    )
+  }
+  return parts
+}
+
+function balancedPythonExpression(source, start, open = "{", close = "}") {
+  let depth = 0
+  let quote = ""
+  let triple = false
+  for (let index = start; index < source.length; index += 1) {
+    const character = source[index]
+    const next = source.slice(index, index + 3)
+    if (quote) {
+      if (character === "\\") {
+        index += 1
+        continue
+      }
+      if (triple ? next === quote.repeat(3) : character === quote) {
+        if (triple) index += 2
+        quote = ""
+        triple = false
+      }
+      continue
+    }
+    if (character === '"' || character === "'") {
+      if (next === character.repeat(3)) {
+        quote = character
+        triple = true
+        index += 2
+      } else {
+        quote = character
+      }
+      continue
+    }
+    if (character === open) depth += 1
+    if (character === close) {
+      depth -= 1
+      if (depth === 0) return source.slice(start, index + 1)
+    }
+  }
+  return source.slice(start)
+}
+
+function pythonLocaleValues(block) {
+  const values = {}
+  const localePattern = /(?<quote>["'])(?<locale>[A-Za-z][A-Za-z0-9_-]*)\k<quote>\s*:/gu
+  for (const match of block.matchAll(localePattern)) {
+    const valueStart = (match.index ?? 0) + match[0].length
+    let depth = 0
+    let quote = ""
+    let triple = false
+    let end = block.length
+    for (let index = valueStart; index < block.length; index += 1) {
+      const character = block[index]
+      const next = block.slice(index, index + 3)
+      if (quote) {
+        if (character === "\\") {
+          index += 1
+          continue
+        }
+        if (triple ? next === quote.repeat(3) : character === quote) {
+          if (triple) index += 2
+          quote = ""
+          triple = false
+        }
+        continue
+      }
+      if (character === '"' || character === "'") {
+        if (next === character.repeat(3)) {
+          quote = character
+          triple = true
+          index += 2
+        } else {
+          quote = character
+        }
+        continue
+      }
+      if ("([{".includes(character)) depth += 1
+      else if (")]}".includes(character)) depth = Math.max(depth - 1, 0)
+      else if ((character === "," || character === "\n") && depth === 0) {
+        end = index
+        break
+      }
+    }
+    values[match.groups.locale] = pythonStringParts(block.slice(valueStart, end)).join("")
+  }
+  return values
+}
+
+/**
+ * Parse the deliberately data-only Python translation dictionary without
+ * importing application code.  The parser accepts ordinary Python quoted
+ * strings, adjacent strings in parentheses, and both one-line and multiline
+ * locale entries.  It never evaluates arbitrary Python expressions.
+ */
+function parsePythonTranslationCatalog(source) {
+  const catalog = {}
+  const keyPattern = /^ {4}(?<quote>["'])(?<key>(?:\\.|(?!\k<quote>)[\s\S])*?)\k<quote>\s*:\s*/gmu
+  for (const match of source.matchAll(keyPattern)) {
+    const valueStart = (match.index ?? 0) + match[0].length
+    const braceStart = source.indexOf("{", valueStart)
+    if (braceStart === -1) continue
+    const block = balancedPythonExpression(source, braceStart)
+    const key = (match.groups?.key ?? "")
+      .replaceAll("\\\\", "\\")
+      .replaceAll('\\"', '"')
+      .replaceAll("\\'", "'")
+    catalog[key] = pythonLocaleValues(block)
+  }
+  return catalog
+}
+
+function scanBackendCatalog(catalog = {}, locales = ["en", "ru"]) {
+  const errors = []
+  for (const [key, values] of Object.entries(catalog)) {
+    if (!isObject(values)) {
+      errors.push(
+        error(
+          "BACKEND_CATALOG_ENTRY_INVALID",
+          `Backend translation ${key} must be a locale map`,
+          "backend",
+          key
+        )
+      )
+      continue
+    }
+    for (const locale of Object.keys(values)) {
+      if (!locales.includes(locale)) {
+        errors.push(
+          error(
+            "BACKEND_LOCALE_ORPHAN",
+            `Backend translation ${key} contains unsupported locale ${locale}`,
+            "backend",
+            key
+          )
+        )
+      }
+    }
+    for (const locale of locales) {
+      if (typeof values[locale] !== "string" || !values[locale].trim()) {
+        errors.push(
+          error(
+            "BACKEND_LOCALE_MISSING",
+            `Backend translation ${key} is missing a non-empty ${locale} value`,
+            "backend",
+            key
+          )
+        )
+      }
+    }
+    const present = locales
+      .map((locale) => values[locale])
+      .filter((value) => typeof value === "string")
+    if (present.length >= 2) {
+      const expected = pythonPlaceholderNames(present[0])
+      for (const value of present.slice(1)) {
+        if (JSON.stringify(expected) !== JSON.stringify(pythonPlaceholderNames(value))) {
+          errors.push(
+            error(
+              "PLACEHOLDER_MISMATCH",
+              `Backend translation ${key} uses different interpolation variables between locales`,
+              "backend",
+              key
+            )
+          )
+          break
+        }
+        if (
+          JSON.stringify(pythonPlaceholderSpecs(present[0])) !==
+          JSON.stringify(pythonPlaceholderSpecs(value))
+        ) {
+          errors.push(
+            error(
+              "FORMAT_SPEC_MISMATCH",
+              `Backend translation ${key} uses different date/number interpolation formats`,
+              "backend",
+              key
+            )
+          )
+          break
+        }
+      }
+    }
+  }
+  return { ok: errors.length === 0, errors, locales, catalog }
+}
+
+function pythonCallFirstArgument(source, start) {
+  let index = start
+  while (/\s/u.test(source[index] ?? "")) index += 1
+  const argumentStart = index
+  let depth = 0
+  let quote = ""
+  let triple = false
+  for (; index < source.length; index += 1) {
+    const character = source[index]
+    if (quote) {
+      if (character === "\\") {
+        index += 1
+        continue
+      }
+      if (triple ? source.slice(index, index + 3) === quote.repeat(3) : character === quote) {
+        if (triple) index += 2
+        quote = ""
+        triple = false
+      }
+      continue
+    }
+    if (character === '"' || character === "'") {
+      if (source.slice(index, index + 3) === character.repeat(3)) {
+        quote = character
+        triple = true
+        index += 2
+      } else {
+        quote = character
+      }
+      continue
+    }
+    if ("([{".includes(character)) depth += 1
+    else if (")]}".includes(character)) {
+      if (depth === 0) break
+      depth -= 1
+    } else if (character === "," && depth === 0) break
+  }
+  const end = index
+  const raw = source.slice(argumentStart, end).trim()
+  if (!raw) return { kind: "dynamic", pattern: "<dynamic>", end }
+
+  // A simple quoted token is static only when the complete first argument is
+  // that token.  Expressions such as `"a" if cond else "b"` and
+  // `"prefix." + suffix` must stay dynamic and go through the finite registry.
+  const prefixMatch = raw.match(/^(?<prefix>[fFrRuUbB]*)(?<quote>"""|'''|"|')/u)
+  if (prefixMatch) {
+    const prefix = prefixMatch.groups?.prefix ?? ""
+    const delimiter = prefixMatch.groups?.quote ?? '"'
+    const bodyStart = prefix.length + delimiter.length
+    let tokenEnd = bodyStart
+    let escaped = false
+    while (tokenEnd < raw.length) {
+      const character = raw[tokenEnd]
+      if (escaped) {
+        escaped = false
+        tokenEnd += 1
+        continue
+      }
+      if (character === "\\") {
+        escaped = true
+        tokenEnd += 1
+        continue
+      }
+      if (raw.slice(tokenEnd, tokenEnd + delimiter.length) === delimiter) {
+        tokenEnd += delimiter.length
+        break
+      }
+      tokenEnd += 1
+    }
+    if (tokenEnd === raw.length) {
+      const body = raw.slice(bodyStart, raw.length - delimiter.length)
+      if (prefix.toLowerCase().includes("f")) {
+        return {
+          kind: "dynamic",
+          pattern: body.replace(
+            /\{([^{}]+)\}/gu,
+            (_match, expression) => `\${${expression.trim()}}`
+          ),
+          end,
+        }
+      }
+      return { kind: "static", key: pythonStringParts(raw).join(""), end }
+    }
+  }
+
+  return { kind: "dynamic", pattern: raw, end }
+}
+
+function scanBackendSource(source, options = {}) {
+  const filePath = options.filePath ?? "backend.py"
+  const catalog = options.catalog ?? {}
+  const dynamicRegistry = options.dynamicRegistry ?? {}
+  const errors = []
+  const references = []
+  const dynamicReferences = []
+  const callPattern = /\btranslate\s*\(/gu
+  for (const match of source.matchAll(callPattern)) {
+    const callIndex = match.index ?? 0
+    const lineStart = source.lastIndexOf("\n", callIndex - 1) + 1
+    const linePrefix = source.slice(lineStart, callIndex)
+    if (linePrefix.trimStart().startsWith("#") || /^\s*def\s+$/u.test(linePrefix)) continue
+    const argument = pythonCallFirstArgument(source, callIndex + match[0].length)
+    if (argument.kind === "dynamic") {
+      dynamicReferences.push({ pattern: argument.pattern, filePath, registered: false })
+      const registered = registryLookup(argument.pattern, dynamicRegistry)
+      if (!registered) {
+        errors.push(
+          error(
+            "DYNAMIC_KEY_UNREGISTERED",
+            `Dynamic translation key ${argument.pattern} must have a finite registry entry`,
+            filePath,
+            argument.pattern
+          )
+        )
+        continue
+      }
+      dynamicReferences[dynamicReferences.length - 1].registered = true
+      for (const concreteKey of registered) {
+        if (typeof concreteKey !== "string" || concreteKey.includes("*")) {
+          errors.push(
+            error(
+              "DYNAMIC_KEY_WILDCARD",
+              `Dynamic translation registry entry ${String(concreteKey)} must be concrete`,
+              filePath,
+              argument.pattern
+            )
+          )
+          continue
+        }
+        if (!catalog[concreteKey]) {
+          errors.push(
+            error(
+              "TRANSLATION_KEY_MISSING",
+              `Backend translation key ${concreteKey} is missing from the catalogue`,
+              filePath,
+              concreteKey
+            )
+          )
+          continue
+        }
+        references.push({ key: concreteKey, dynamic: true, filePath })
+      }
+      continue
+    }
+    const key = argument.key.trim()
+    references.push({ key, dynamic: false, filePath })
+    const values = catalog[key]
+    if (!values) {
+      errors.push(
+        error(
+          "TRANSLATION_KEY_MISSING",
+          `Backend translation key ${key} is missing from the catalogue`,
+          filePath,
+          key
+        )
+      )
+      continue
+    }
+    const requiredLocales = ["en", "ru"]
+    for (const locale of requiredLocales) {
+      if (typeof values[locale] !== "string" || !values[locale].trim()) {
+        errors.push(
+          error(
+            "BACKEND_LOCALE_MISSING",
+            `Backend translation ${key} is missing a non-empty ${locale} value`,
+            filePath,
+            key
+          )
+        )
+      }
+    }
+    const locales = requiredLocales
+      .map((locale) => values[locale])
+      .filter((value) => typeof value === "string")
+    if (
+      locales.length >= 2 &&
+      JSON.stringify(pythonPlaceholderNames(locales[0])) !==
+        JSON.stringify(pythonPlaceholderNames(locales[1]))
+    ) {
+      errors.push(
+        error(
+          "PLACEHOLDER_MISMATCH",
+          `Backend translation ${key} uses different interpolation variables between locales`,
+          filePath,
+          key
+        )
+      )
+    } else if (
+      locales.length >= 2 &&
+      JSON.stringify(pythonPlaceholderSpecs(locales[0])) !==
+        JSON.stringify(pythonPlaceholderSpecs(locales[1]))
+    ) {
+      errors.push(
+        error(
+          "FORMAT_SPEC_MISMATCH",
+          `Backend translation ${key} uses different date/number interpolation formats`,
+          filePath,
+          key
+        )
+      )
+    }
+  }
+  const rawAssignment =
+    /^(?<indent>\s*)(?<name>subject|heading|greeting|body|action|title|message|description|label|text)\s*=\s*(?<quote>["'])(?<value>(?:\\.|(?!\k<quote>)[^\n])*?)\k<quote>\s*$/gmu
+  for (const match of source.matchAll(rawAssignment)) {
+    const value = match.groups?.value ?? ""
+    if (/\p{L}/u.test(value) && !isTechnicalLiteral(value, filePath)) {
+      errors.push(
+        error(
+          "RAW_USER_FACING_LITERAL",
+          `Raw backend user-facing ${match.groups?.name ?? "text"} must use a translation key`,
+          filePath
+        )
+      )
+    }
+  }
+  return { ok: errors.length === 0, errors, references, dynamicReferences }
+}
+
+async function loadBackendTranslationCatalog(dictionaryFile = DEFAULT_BACKEND_DICTIONARY_FILE) {
+  if (!existsSync(dictionaryFile)) return {}
+  return parsePythonTranslationCatalog(await readFile(dictionaryFile, "utf8"))
+}
+
+async function listBackendTranslationFiles(backendRoot = DEFAULT_BACKEND_ROOT) {
+  const candidates = await listFiles(
+    backendRoot,
+    (filePath) => path.extname(filePath).toLowerCase() === ".py"
+  )
+  const files = []
+  for (const filePath of candidates) {
+    const source = await readFile(filePath, "utf8")
+    if (/\btranslate\s*\(/u.test(source)) files.push(filePath)
+  }
+  return files.sort((left, right) => left.localeCompare(right))
+}
+
+async function scanBackendRepository(options = {}) {
+  const dictionaryFile = options.backendDictionaryFile ?? DEFAULT_BACKEND_DICTIONARY_FILE
+  const catalog = options.backendCatalog ?? (await loadBackendTranslationCatalog(dictionaryFile))
+  const catalogReport = scanBackendCatalog(catalog)
+  const dynamicRegistry = options.backendDynamicRegistry ?? DEFAULT_BACKEND_DYNAMIC_REGISTRY
+  const registryReport = validateDynamicRegistry(dynamicRegistry)
+  const configuredFiles = options.backendTemplateFiles
+    ? options.backendTemplateFiles
+    : await listBackendTranslationFiles(options.backendRoot ?? DEFAULT_BACKEND_ROOT)
+  const files = configuredFiles.length > 0 ? configuredFiles : DEFAULT_BACKEND_TEMPLATE_FILES
+  const reports = []
+  for (const configuredPath of files) {
+    const filePath = path.isAbsolute(configuredPath)
+      ? configuredPath
+      : path.resolve(REPOSITORY_ROOT, configuredPath)
+    if (!existsSync(filePath)) {
+      reports.push({
+        ok: false,
+        errors: [
+          error(
+            "BACKEND_TEMPLATE_MISSING",
+            `Backend localization template ${configuredPath} does not exist`,
+            String(configuredPath)
+          ),
+        ],
+        references: [],
+        dynamicReferences: [],
+      })
+      continue
+    }
+    const relativePath = path.relative(REPOSITORY_ROOT, filePath).replaceAll(path.sep, "/")
+    reports.push(
+      scanBackendSource(await readFile(filePath, "utf8"), {
+        filePath: relativePath,
+        catalog,
+        dynamicRegistry,
+      })
+    )
+  }
+  const errors = [
+    ...catalogReport.errors,
+    ...registryReport.errors,
+    ...reports.flatMap((report) => report.errors),
+  ]
+  return {
+    ok: errors.length === 0,
+    errors,
+    references: reports.flatMap((report) => report.references),
+    dynamicReferences: reports.flatMap((report) => report.dynamicReferences),
+    files,
+    catalog,
+    catalogReport,
+    registryReport,
+    dynamicRegistry,
+  }
+}
+
 function scanLanguagePersistence(source, filePath = "src/contexts/LanguageContext.tsx") {
   const errors = []
   const hasWindowGuard = /typeof\s+window\s*(?:===|!==)\s*["']undefined["']/u.test(source)
@@ -739,6 +1455,36 @@ async function listFiles(directory, predicate) {
   return files
 }
 
+// The product scan intentionally skips tests/generated/vendor sources, but the
+// machine-readable scope report must prove that those paths were considered.
+// Walk the source tree once more without applying product exclusions so the
+// report can list them explicitly.  Keep only build/dependency directories out
+// of this inventory; their names and exclusion rules remain visible in the
+// returned contract.
+const SCOPE_TRAVERSAL_IGNORED_DIRECTORIES = new Set([
+  ".git",
+  ".next",
+  "coverage",
+  "dist",
+  "node_modules",
+])
+
+async function listScopeCandidates(directory, predicate) {
+  const entries = await readdir(directory, { withFileTypes: true })
+  const files = []
+  for (const entry of entries) {
+    const fullPath = path.join(directory, entry.name)
+    if (entry.isDirectory()) {
+      if (!SCOPE_TRAVERSAL_IGNORED_DIRECTORIES.has(entry.name)) {
+        files.push(...(await listScopeCandidates(fullPath, predicate)))
+      }
+      continue
+    }
+    if (predicate(fullPath, entry.name)) files.push(fullPath)
+  }
+  return files
+}
+
 async function loadLocaleCatalogs(localeRoot = DEFAULT_LOCALE_ROOT, locales = ["en", "ru"]) {
   const catalogues = {}
   for (const locale of locales) {
@@ -788,9 +1534,12 @@ async function scanRepository(options = {}) {
   const catalogInfo = localeReport.info
   const dynamicRegistry =
     options.dynamicRegistry ?? loadDynamicRegistry(options.registryFile ?? DEFAULT_REGISTRY_FILE)
-  const files = await listFiles(sourceRoot, (filePath, basename) => {
+  const scopeCandidates = await listScopeCandidates(sourceRoot, (filePath) => {
     const extension = path.extname(filePath).toLowerCase()
-    if (!SOURCE_EXTENSIONS.has(extension)) return false
+    return SOURCE_EXTENSIONS.has(extension)
+  })
+  const files = scopeCandidates.filter((filePath) => {
+    const basename = path.basename(filePath)
     return !SKIPPED_FILE_PATTERNS.some((pattern) => pattern.test(basename))
   })
   const reports = []
@@ -807,9 +1556,41 @@ async function scanRepository(options = {}) {
     const languageReport = scanLanguagePersistence(await readFile(languageFile, "utf8"), relative)
     reports.push(languageReport)
   }
-  const errors = [...localeReport.errors, ...reports.flatMap((report) => report.errors)]
-  const references = reports.flatMap((report) => report.references ?? [])
-  const dynamicReferences = reports.flatMap((report) => report.dynamicReferences ?? [])
+  const registryReport = validateDynamicRegistry(dynamicRegistry)
+  const scope = scanScopeContract(
+    scopeCandidates.map((filePath) =>
+      path.relative(FRONTEND_ROOT, filePath).replaceAll(path.sep, "/")
+    )
+  )
+  const backendReport =
+    options.includeBackend === false
+      ? {
+          ok: true,
+          errors: [],
+          references: [],
+          dynamicReferences: [],
+          files: [],
+          catalog: {},
+          catalogReport: { ok: true, errors: [], locales: ["en", "ru"], catalog: {} },
+          registryReport: { ok: true, errors: [] },
+          dynamicRegistry: {},
+        }
+      : await scanBackendRepository(options)
+  const errors = [
+    ...localeReport.errors,
+    ...registryReport.errors,
+    ...scope.errors,
+    ...reports.flatMap((report) => report.errors),
+    ...backendReport.errors,
+  ]
+  const references = [
+    ...reports.flatMap((report) => report.references ?? []),
+    ...backendReport.references,
+  ]
+  const dynamicReferences = [
+    ...reports.flatMap((report) => report.dynamicReferences ?? []),
+    ...backendReport.dynamicReferences,
+  ]
   return {
     ok: errors.length === 0,
     errors,
@@ -818,6 +1599,9 @@ async function scanRepository(options = {}) {
     files,
     catalogs: catalogues,
     localeReport,
+    registryReport,
+    scope,
+    backend: backendReport,
     dynamicRegistry,
   }
 }
@@ -833,14 +1617,53 @@ function formatErrors(errors) {
     .join("\n")
 }
 
+function machineReadableReport(report) {
+  return {
+    ok: report.ok,
+    errors: report.errors,
+    references: report.references,
+    dynamicReferences: report.dynamicReferences,
+    files: report.files,
+    scope: report.scope,
+    locale: {
+      locales: report.localeReport?.locales ?? [],
+      errors: report.localeReport?.errors ?? [],
+    },
+    registry: {
+      errors: report.registryReport?.errors ?? [],
+      entries: Object.keys(report.dynamicRegistry ?? {}).length,
+    },
+    backend: {
+      ok: report.backend?.ok ?? true,
+      errors: report.backend?.errors ?? [],
+      references: report.backend?.references ?? [],
+      dynamicReferences: report.backend?.dynamicReferences ?? [],
+      files: report.backend?.files ?? [],
+      catalogEntries: Object.keys(report.backend?.catalog ?? {}).length,
+      registry: {
+        errors: report.backend?.registryReport?.errors ?? [],
+        entries: Object.keys(report.backend?.dynamicRegistry ?? {}).length,
+      },
+    },
+  }
+}
+
 export {
   flattenLocale,
   loadDynamicRegistry,
+  loadBackendTranslationCatalog,
   loadLocaleCatalogs,
+  parsePythonTranslationCatalog,
+  scanBackendCatalog,
+  scanBackendRepository,
+  scanBackendSource,
   scanLanguagePersistence,
   scanLocaleCatalogs,
   scanRepository,
+  scanScopeContract,
   scanSource,
+  machineReadableReport,
+  validateDynamicRegistry,
 }
 
 if (
@@ -848,7 +1671,10 @@ if (
   process.argv[1]?.endsWith("i18n-scanner.mjs")
 ) {
   const report = await scanRepository()
-  if (!report.ok) {
+  if (process.argv.includes("--json")) {
+    console.log(JSON.stringify(machineReadableReport(report), null, 2))
+    if (!report.ok) process.exitCode = 1
+  } else if (!report.ok) {
     console.error(formatErrors(report.errors))
     process.exitCode = 1
   } else {

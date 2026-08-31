@@ -69,6 +69,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Не найдено",
         "en": "Not found",
     },
+    "errors.unauthorized": {
+        "ru": "Требуется авторизация",
+        "en": "Authentication required",
+    },
     "titles.bad_request": {
         "ru": "Некорректный запрос",
         "en": "Bad Request",
@@ -164,6 +168,18 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
     "notifications.news.title": {
         "ru": "Новая новость",
         "en": "New article",
+    },
+    "notifications.news.comment.from_author": {
+        "ru": "Комментарий от {author}",
+        "en": "Comment from {author}",
+    },
+    "notifications.news.comment.title_with_news": {
+        "ru": "Комментарий к новости: {news}",
+        "en": "Comment on article: {news}",
+    },
+    "notifications.news.comment.title": {
+        "ru": "Новый комментарий к новости",
+        "en": "New article comment",
     },
     "notifications.events.no_details": {
         "ru": "Подробнее в карточке события.",
@@ -447,6 +463,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
         "ru": "Слишком много тестовых уведомлений",
         "en": "Too many test notifications",
     },
+    "errors.rate_limit.push_broadcast": {
+        "ru": "Слишком много широковещательных уведомлений",
+        "en": "Too many broadcast notifications",
+    },
     "errors.common.bad_request": {
         "ru": "Некорректный запрос: {status_details}",
         "en": "Bad request: {status_details}",
@@ -454,6 +474,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
     "errors.schedule.not_found": {
         "ru": "Запись расписания не найдена",
         "en": "Schedule entry not found",
+    },
+    "errors.schedule.conflict": {
+        "ru": "Запись расписания конфликтует с существующим событием",
+        "en": "Schedule entry conflicts with an existing event",
     },
     "errors.schedule.group_not_found": {
         "ru": "Группа не найдена",
@@ -684,6 +708,10 @@ TRANSLATIONS: Mapping[str, Mapping[str, str]] = {
     "validation.events.times_required": {
         "ru": "Укажите время начала и окончания мероприятия одновременно",
         "en": "Provide both start and end times for the event",
+    },
+    "validation.stories.expires_after_publish": {
+        "ru": "Дата окончания публикации должна быть позже даты публикации",
+        "en": "The expiration date must be later than the publish date",
     },
     "errors.events.attendance_registration_failed": {
         "ru": "Не удалось зарегистрироваться на мероприятие",

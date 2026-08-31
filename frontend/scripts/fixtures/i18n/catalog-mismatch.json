@@ -1,0 +1,19 @@
+{
+  "en": {
+    "common": {
+      "message": "Hello {{name}}",
+      "items_one": "{{count}} item",
+      "items_other": "{{count}} items",
+      "published": "Published {{value, date}}",
+      "score": "Score {{value, number}}"
+    }
+  },
+  "ru": {
+    "common": {
+      "message": "Привет {{other}}",
+      "items_one": "{{count}} элемент",
+      "published": "Опубликовано {{value, number}}",
+      "score": "Оценка {{value, number}}"
+    }
+  }
+}

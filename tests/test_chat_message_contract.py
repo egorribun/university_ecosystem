@@ -8,6 +8,7 @@ MSG-CONTRACT-01; the generated OpenAPI check is run after the production change.
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -74,3 +75,18 @@ def test_message_response_accepts_legacy_rows_through_current_limit() -> None:
 def test_message_response_rejects_only_above_canonical_limit() -> None:
     with pytest.raises(ValidationError):
         _response("x" * (EXPECTED_LIMIT + 1))
+
+
+def test_frontend_message_limit_is_generated_from_backend_contract() -> None:
+    """The browser schema must consume the backend-owned generated value."""
+    generated = (
+        Path(__file__).parents[1]
+        / "frontend"
+        / "src"
+        / "api"
+        / "schemas"
+        / "messageLimits.ts"
+    )
+    assert generated.exists(), "run scripts/generate_message_contract.py"
+    source = generated.read_text(encoding="utf-8")
+    assert f"CHAT_MESSAGE_MAX_LENGTH = {EXPECTED_LIMIT}" in source

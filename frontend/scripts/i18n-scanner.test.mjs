@@ -1,7 +1,23 @@
 import assert from "node:assert/strict"
+import { readFile } from "node:fs/promises"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
 import test from "node:test"
 
-import { scanSource, scanLocaleCatalogs, scanLanguagePersistence } from "./i18n-scanner.mjs"
+import {
+  scanBackendCatalog,
+  scanBackendSource,
+  scanBackendRepository,
+  scanLanguagePersistence,
+  scanLocaleCatalogs,
+  scanScopeContract,
+  scanSource,
+  machineReadableReport,
+  scanRepository,
+  validateDynamicRegistry,
+} from "./i18n-scanner.mjs"
+
+const FIXTURE_ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "i18n")
 
 const catalogs = {
   en: {
@@ -74,6 +90,17 @@ test("locale scanner keeps date and number interpolation formats consistent", ()
   assert.ok(report.errors.some((error) => error.code === "FORMAT_SPEC_MISMATCH"))
 })
 
+test("catalog fixture exercises interpolation, plural, date, and number failures", async () => {
+  const fixture = JSON.parse(
+    await readFile(path.join(FIXTURE_ROOT, "catalog-mismatch.json"), "utf8")
+  )
+  const report = scanLocaleCatalogs(fixture)
+
+  assert.ok(report.errors.some((entry) => entry.code === "PLACEHOLDER_MISMATCH"))
+  assert.ok(report.errors.some((entry) => entry.code === "PLURAL_VARIANTS_MISMATCH"))
+  assert.ok(report.errors.some((entry) => entry.code === "FORMAT_SPEC_MISMATCH"))
+})
+
 test("plural translation calls provide a count option", () => {
   const report = scanSource('export const View = ({t}) => <span>{t("common:count")}</span>', {
     filePath: "src/View.tsx",
@@ -90,6 +117,12 @@ test("date and number constructors must receive an explicit locale", () => {
   assert.equal(report.errors.filter((error) => error.code === "FORMATTER_LOCALE_MISSING").length, 2)
 })
 
+test("formatter fixture keeps locale-less date and number constructors red", async () => {
+  const source = await readFile(path.join(FIXTURE_ROOT, "formatters.tsx.txt"), "utf8")
+  const report = scanSource(source, { filePath: "fixture/formatters.tsx", catalogs })
+  assert.equal(report.errors.filter((entry) => entry.code === "FORMATTER_LOCALE_MISSING").length, 2)
+})
+
 test("language persistence is browser-only and hydration-safe", () => {
   const valid = scanLanguagePersistence(`
     const [language] = useState(() => resolveInitialLanguage());
@@ -103,4 +136,184 @@ test("language persistence is browser-only and hydration-safe", () => {
   `)
   assert.ok(invalid.errors.some((error) => error.code === "HYDRATION_UNSAFE_LANGUAGE_READ"))
   assert.ok(invalid.errors.some((error) => error.code === "LANGUAGE_STORAGE_DURING_RENDER"))
+})
+
+test("contract fixtures keep the scanner fail-closed for static keys and raw literals", async () => {
+  const missingStatic = await readFile(path.join(FIXTURE_ROOT, "missing-static.tsx.txt"), "utf8")
+  const rawLiteral = await readFile(path.join(FIXTURE_ROOT, "raw-literal.tsx.txt"), "utf8")
+
+  const missingReport = scanSource(missingStatic, {
+    filePath: "fixture/missing-static.tsx",
+    catalogs,
+  })
+  assert.ok(missingReport.errors.some((entry) => entry.code === "TRANSLATION_KEY_MISSING"))
+
+  const rawReport = scanSource(rawLiteral, { filePath: "fixture/raw-literal.tsx", catalogs })
+  assert.ok(rawReport.errors.some((entry) => entry.code === "RAW_USER_FACING_LITERAL"))
+})
+
+test("dynamic registry rejects wildcard and empty entries instead of becoming an allow-all", () => {
+  const report = validateDynamicRegistry({
+    "events:${kind}": ["events:*"],
+    "*": ["events:created"],
+    empty: [],
+    malformed: ["events:created", 42],
+  })
+
+  assert.ok(report.errors.some((entry) => entry.code === "DYNAMIC_REGISTRY_WILDCARD"))
+  assert.ok(report.errors.some((entry) => entry.code === "DYNAMIC_REGISTRY_EMPTY"))
+  assert.ok(report.errors.some((entry) => entry.code === "DYNAMIC_REGISTRY_VALUE_INVALID"))
+})
+
+test("scope contract explicitly excludes tests, generated sources, and vendors", () => {
+  const report = scanScopeContract([
+    "src/App.tsx",
+    "src/components/Button.tsx",
+    "src/components/Button.test.tsx",
+    "src/generated/client.ts",
+    "src/vendor/widget.ts",
+    "tests/fixtures/intentional-raw.tsx",
+  ])
+
+  assert.equal(report.errors.length, 0)
+  assert.deepEqual(report.excluded.sort(), [
+    "src/components/Button.test.tsx",
+    "src/generated/client.ts",
+    "src/vendor/widget.ts",
+    "tests/fixtures/intentional-raw.tsx",
+  ])
+  assert.deepEqual(report.included, ["src/App.tsx", "src/components/Button.tsx"])
+})
+
+test("backend email and notification template keys resolve in both locales", () => {
+  const backendCatalog = {
+    "email.reset.subject": { en: "Password reset", ru: "Сброс пароля" },
+    "notifications.events.title_with_name": {
+      en: "New event: {title}",
+      ru: "Новое мероприятие: {title}",
+    },
+  }
+  const report = scanBackendSource(
+    `
+from app.core.localization import translate
+
+subject = translate("email.reset.subject", locale=locale)
+title = translate("notifications.events.title_with_name", locale=locale, title=name)
+`,
+    { filePath: "app/services/notification_templates.py", catalog: backendCatalog }
+  )
+
+  assert.equal(report.errors.length, 0)
+  assert.equal(report.references.length, 2)
+})
+
+test("backend repository scan rejects a missing key outside template modules", () => {
+  const report = scanBackendSource(
+    'detail = translate("errors.backendOnlyMissing", locale=locale)',
+    {
+      filePath: "app/services/account_service.py",
+      catalog: { "errors.not_found": { en: "Not found", ru: "Не найдено" } },
+    }
+  )
+
+  assert.ok(report.errors.some((entry) => entry.code === "TRANSLATION_KEY_MISSING"))
+})
+
+test("backend Python-format placeholders must match between RU and EN", () => {
+  const report = scanBackendSource('translate("email.reset.greeting", locale=locale, name=name)', {
+    filePath: "app/utils/email.py",
+    catalog: {
+      "email.reset.greeting": { en: "Hello{name}!", ru: "Здравствуйте{other}!" },
+    },
+  })
+
+  assert.ok(report.errors.some((entry) => entry.code === "PLACEHOLDER_MISMATCH"))
+})
+
+test("backend Python date and number format specs must match", () => {
+  const report = scanBackendCatalog({
+    "report.generated": { en: "Generated {value:.2f}", ru: "Создано {value:d}" },
+  })
+
+  assert.ok(report.errors.some((entry) => entry.code === "FORMAT_SPEC_MISMATCH"))
+})
+
+test("backend source checks format specs and does not truncate computed string expressions", () => {
+  const sourceReport = scanBackendSource('translate("report.generated", locale=locale)', {
+    filePath: "app/services/report_service.py",
+    catalog: {
+      "report.generated": { en: "Generated {value:.2f}", ru: "Создано {value:d}" },
+    },
+  })
+  assert.ok(sourceReport.errors.some((entry) => entry.code === "FORMAT_SPEC_MISMATCH"))
+
+  const dynamicReport = scanBackendSource('translate("report.one" if enabled else "report.two")', {
+    filePath: "app/services/report_service.py",
+    catalog: {
+      "report.one": { en: "One", ru: "Один" },
+      "report.two": { en: "Two", ru: "Два" },
+    },
+    dynamicRegistry: {
+      '"report.one" if enabled else "report.two"': ["report.one", "report.two"],
+    },
+  })
+  assert.equal(dynamicReport.errors.length, 0)
+  assert.equal(dynamicReport.dynamicReferences[0]?.registered, true)
+})
+
+test("backend catalog rejects unsupported locale entries", () => {
+  const report = scanBackendCatalog({
+    "report.title": { en: "Report", ru: "Отчёт", de: "Bericht" },
+  })
+
+  assert.ok(report.errors.some((entry) => entry.code === "BACKEND_LOCALE_ORPHAN"))
+})
+
+test("backend raw user-facing assignments are rejected", () => {
+  const report = scanBackendSource('title = "Save changes"', {
+    filePath: "app/services/account_service.py",
+    catalog: {},
+  })
+
+  assert.ok(report.errors.some((entry) => entry.code === "RAW_USER_FACING_LITERAL"))
+})
+
+test("backend dynamic translation keys require a finite backend registry", () => {
+  const report = scanBackendSource(
+    'return translate(f"notifications.{topic}.title", locale=locale)',
+    {
+      filePath: "app/services/notification_templates.py",
+      catalog: { "notifications.news.title": { en: "News", ru: "Новости" } },
+    }
+  )
+
+  assert.ok(report.errors.some((entry) => entry.code === "DYNAMIC_KEY_UNREGISTERED"))
+})
+
+test("repository backend scope has terminal RU/EN evidence", async () => {
+  const report = await scanBackendRepository()
+  assert.equal(report.ok, true)
+  const basenames = report.files.map((filePath) => path.basename(filePath))
+  assert.ok(basenames.includes("email.py"))
+  assert.ok(basenames.includes("notification_templates.py"))
+  assert.ok(report.files.length >= 20)
+  assert.ok(report.references.length > 0)
+  assert.equal(report.catalogReport.errors.length, 0)
+})
+
+test("repository report retains a stable machine-readable contract", async () => {
+  const report = await scanRepository({ includeBackend: false })
+  const machine = machineReadableReport(report)
+  assert.equal(machine.ok, true)
+  assert.ok(Array.isArray(machine.errors))
+  assert.ok(Array.isArray(machine.references))
+  assert.equal(machine.backend.references.length, 0)
+  assert.ok(machine.registry.entries > 0)
+  assert.ok(
+    machine.scope.excluded.some((filePath) =>
+      /(?:^|\/)(?:test|tests|__tests__)(?:\/|$)/u.test(filePath)
+    ),
+    "scope report must enumerate excluded test sources"
+  )
+  assert.doesNotThrow(() => JSON.stringify(machine))
 })
