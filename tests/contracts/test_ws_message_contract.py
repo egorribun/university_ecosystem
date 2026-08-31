@@ -74,6 +74,14 @@ def _python_ws_output_types(path: Path) -> frozenset[str]:
                 and isinstance(value, ast.Constant)
                 and isinstance(value.value, str)
             ):
+                # mutmut replaces a string literal with an ``XX...XX``
+                # sentinel while collecting baseline stats.  The sentinel is
+                # not a product protocol value and must not make the initial
+                # stats run fail before the mutant can be exercised by the
+                # actual tests.  Keep all other values (including uppercase or
+                # otherwise unknown protocol tokens) visible to this contract.
+                if re.fullmatch(r"XX[a-z_]+XX", value.value):
+                    continue
                 types.add(value.value)
     return frozenset(types)
 
@@ -240,6 +248,17 @@ def test_backend_ws_producers_use_frontend_catalog(relative_path: str):
         f"{relative_path} emits unknown WS message type(s): {unknown}. "
         "Add the frame to frontend/src/api/schemas/wsMessage.ts first."
     )
+
+
+def test_backend_contract_ignores_mutmut_string_sentinel_only(tmp_path: Path):
+    """Mutation placeholders do not hide real unknown protocol tokens."""
+    source = tmp_path / "mutated_ws.py"
+    source.write_text(
+        "frames = [{'type': 'XXnew_messageXX'},{'type': 'NEW_MESSAGE'},]\n",
+        encoding="utf-8",
+    )
+
+    assert _python_ws_output_types(source) == frozenset({"NEW_MESSAGE"})
 
 
 def test_ws_hub_inbound_allowlist_has_no_server_receipt_commands():
