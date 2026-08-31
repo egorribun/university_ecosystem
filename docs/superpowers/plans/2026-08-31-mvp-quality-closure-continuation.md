@@ -280,27 +280,25 @@ Stryker shards, отменённые ровно на 120-minute job timeout: `0:
 
 ## 3. Критический путь и порядок зависимостей
 
-```mermaid
-flowchart TD
-    A["Checkpoint e0989e29c и terminal CI inventory"] --> B["WASM race + detect-secrets"]
-    A --> C["Provenance: source head != tested merge SHA"]
-    B --> D["Qualification: frontend/backend/Go/Rust/API core"]
-    C --> D
-    D --> E["Stryker range completeness и shard evidence"]
-    D --> F["mutmut worker isolation и exact artifact ledger"]
-    D --> G["Go mutation governance и bounded diagnostic"]
-    E --> H["Закрыть 40 800 frontend mutants"]
-    F --> I["Закрыть 5 341 Python mutants"]
-    G --> J["Contracted Go evidence сохранено"]
-    H --> K["100% quality manifest exact SHA/run/attempt"]
-    I --> K
-    J --> K
-    K --> L["Recertification этапов 1-8; gap-only fixes"]
-    L --> M["Docker immutable smoke и resource profile"]
-    M --> N["Kubernetes staging, TLS, observability, CWV"]
-    N --> O["Main-only exact-six image producer"]
-    O --> P["Release audit и production decision"]
-```
+    flowchart TD
+        A["Checkpoint e0989e29c и terminal CI inventory"] --> B["WASM race + detect-secrets"]
+        A --> C["Provenance: source head != tested merge SHA"]
+        B --> D["Qualification: frontend/backend/Go/Rust/API core"]
+        C --> D
+        D --> E["Stryker range completeness и shard evidence"]
+        D --> F["mutmut worker isolation и exact artifact ledger"]
+        D --> G["Go mutation governance и bounded diagnostic"]
+        E --> H["Закрыть 40 800 frontend mutants"]
+        F --> I["Закрыть 5 341 Python mutants"]
+        G --> J["Contracted Go evidence сохранено"]
+        H --> K["100% quality manifest exact SHA/run/attempt"]
+        I --> K
+        J --> K
+        K --> L["Recertification этапов 1-8; gap-only fixes"]
+        L --> M["Docker immutable smoke и resource profile"]
+        M --> N["Kubernetes staging, TLS, observability, CWV"]
+        N --> O["Main-only exact-six image producer"]
+        O --> P["Release audit и production decision"]
 
 Принцип выполнения:
 
