@@ -16,32 +16,84 @@ The authoritative schema is the TypeScript Valibot definition in:
 
 from __future__ import annotations
 
+import ast
 import re
 import uuid
+from pathlib import Path
 
 import pytest
 
 # ---------------------------------------------------------------------------
-# Expected WS server→client message types (from frontend Valibot schema)
+# Current WS protocol sources
 # ---------------------------------------------------------------------------
 
-# These must match the discriminated union in wsMessage.ts exactly.
-# If a type is added/removed in Python, this set must be updated too.
-WS_SERVER_MESSAGE_TYPES: frozenset[str] = frozenset(
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+FRONTEND_WS_SCHEMA = REPOSITORY_ROOT / "frontend/src/api/schemas/wsMessage.ts"
+FRONTEND_WS_HOOK = REPOSITORY_ROOT / "frontend/src/hooks/useChatWebSocket.ts"
+WS_HUB_CLIENT_SOURCE = REPOSITORY_ROOT / "services/ws-hub/pkg/hub/client.go"
+
+
+def _frontend_server_message_types() -> frozenset[str]:
+    """Read the discriminated-union catalog from the Valibot source.
+
+    Keeping this derived from the runtime schema prevents the contract test from
+    becoming a second, stale registry whenever a frame is added or removed.
+    """
+    source = FRONTEND_WS_SCHEMA.read_text(encoding="utf-8")
+    return frozenset(re.findall(r"v\.literal\([\"']([a-z_]+)[\"']\)", source))
+
+
+def _ws_hub_client_message_types() -> frozenset[str]:
+    """Read ws-hub's client-to-hub command allowlist from Go source."""
+    source = WS_HUB_CLIENT_SOURCE.read_text(encoding="utf-8")
+    match = re.search(
+        r"var allowedMessageTypes = map\[string\]bool\{(?P<body>.*?)\n\}",
+        source,
+        flags=re.DOTALL,
+    )
+    assert match is not None, "ws-hub client command allowlist is missing"
+    return frozenset(re.findall(r'"([a-z_]+)"\s*:\s*true', match.group("body")))
+
+
+def _python_ws_output_types(path: Path) -> frozenset[str]:
+    """Extract literal ``type`` values from Python dict expressions.
+
+    AST inspection intentionally ignores docstrings/comments, where inbound
+    examples such as ``{"type": "ping"}`` are documentation rather than frames
+    emitted by the backend.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    types: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict):
+            continue
+        for key, value in zip(node.keys, node.values, strict=False):
+            if (
+                isinstance(key, ast.Constant)
+                and key.value == "type"
+                and isinstance(value, ast.Constant)
+                and isinstance(value.value, str)
+            ):
+                types.add(value.value)
+    return frozenset(types)
+
+
+# This is the current frontend output catalog, not a hand-maintained copy.
+WS_SERVER_MESSAGE_TYPES = _frontend_server_message_types()
+WS_HUB_CLIENT_MESSAGE_TYPES = _ws_hub_client_message_types()
+
+# Product events required by the messenger roadmap.  The complete catalog above
+# is generated from the frontend schema; this subset makes the contract fail if
+# one of the recently-added event families is accidentally removed.
+REQUIRED_MESSENGER_EVENTS = frozenset(
     {
-        "pong",
-        "error",
-        "rate_limit_exceeded",
         "new_message",
-        "typing",
-        "read",
-        "online",
-        "online_list",
-        "presence",
         "message_edited",
         "message_deleted",
         "reaction_changed",
         "replay_checkpoint",
+        "read",
+        "typing",
     }
 )
 
@@ -155,47 +207,55 @@ def test_error_message_format():
 
 
 # ---------------------------------------------------------------------------
-# Tests: Backend sends only known types
+# Tests: backend output and ws-hub input directions
 # ---------------------------------------------------------------------------
 
 
-def test_backend_dispatcher_uses_known_types():
-    """Verify dispatcher.py only sends message types known to frontend schema.
+def test_frontend_catalog_contains_all_messenger_event_families():
+    """The generated/current frontend union covers every messenger event."""
+    assert REQUIRED_MESSENGER_EVENTS <= WS_SERVER_MESSAGE_TYPES
 
-    Reads the Python source and extracts all ``"type": "..."`` string literals
-    to detect any new message types that haven't been registered in the
-    frontend Valibot schema.
-    """
-    import inspect
 
-    from app.api.ws import dispatcher
+BACKEND_WS_PRODUCERS = (
+    "app/api/websocket.py",
+    "app/api/ws/dispatcher.py",
+    "app/api/ws/connection_manager.py",
+    "app/services/chat/command_service.py",
+    "app/services/chat/notification_service.py",
+)
 
-    source = inspect.getsource(dispatcher)
-    # Extract all "type": "..." patterns
-    type_literals = set(re.findall(r'"type":\s*"([a-z_]+)"', source))
+
+@pytest.mark.parametrize("relative_path", BACKEND_WS_PRODUCERS)
+def test_backend_ws_producers_use_frontend_catalog(relative_path: str):
+    """Every backend WS producer emits only schema-registered frame types."""
+    source_path = REPOSITORY_ROOT / relative_path
+    # Parse dictionaries instead of grepping source text: endpoint docstrings
+    # legitimately mention inbound commands (for example ``{"type": "ping"}`)
+    # that are not server-to-client frames and therefore are not in the output
+    # Valibot union.
+    type_literals = _python_ws_output_types(source_path)
 
     unknown = type_literals - WS_SERVER_MESSAGE_TYPES
     assert not unknown, (
-        f"Dispatcher sends unknown WS message type(s): {unknown}. "
-        f"Add them to frontend/src/api/schemas/wsMessage.ts Valibot schema "
-        f"and to WS_SERVER_MESSAGE_TYPES in this test."
+        f"{relative_path} emits unknown WS message type(s): {unknown}. "
+        "Add the frame to frontend/src/api/schemas/wsMessage.ts first."
     )
 
 
-def test_backend_connection_manager_uses_known_types():
-    """Verify connection_manager.py only sends known message types."""
-    import inspect
+def test_ws_hub_inbound_allowlist_has_no_server_receipt_commands():
+    """ws-hub accepts transport commands only; REST owns read receipts."""
+    assert WS_HUB_CLIENT_MESSAGE_TYPES == frozenset({"join", "leave", "message"})
+    assert "read" not in WS_HUB_CLIENT_MESSAGE_TYPES
+    assert "typing" not in WS_HUB_CLIENT_MESSAGE_TYPES
 
-    from app.api.ws import connection_manager
 
-    source = inspect.getsource(connection_manager)
-    type_literals = set(re.findall(r'"type":\s*"([a-z_]+)"', source))
-
-    unknown = type_literals - WS_SERVER_MESSAGE_TYPES
-    assert not unknown, (
-        f"ConnectionManager sends unknown WS message type(s): {unknown}. "
-        f"Add them to frontend/src/api/schemas/wsMessage.ts Valibot schema "
-        f"and to WS_SERVER_MESSAGE_TYPES in this test."
+def test_transport_direction_is_explicitly_split():
+    """REST owns receipts/typing and ws-hub owns the control heartbeat."""
+    assert "read" in WS_SERVER_MESSAGE_TYPES
+    hook_source = FRONTEND_WS_HOOK.read_text(encoding="utf-8")
+    assert not re.search(r"sendRead|type\s*:\s*['\"]read['\"]", hook_source)
+    assert not re.search(
+        r"JSON\.stringify\(\{\s*type\s*:\s*['\"]ping['\"]", hook_source
     )
 
 

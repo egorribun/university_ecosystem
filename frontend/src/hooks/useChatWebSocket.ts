@@ -24,7 +24,6 @@ import { getDatabaseLazily } from "@/db/lazy"
 // Reconnection configuration
 const RECONNECT_BASE_DELAY_MS = 1000 // 1 second
 const RECONNECT_MAX_DELAY_MS = 30000 // 30 seconds
-const PING_INTERVAL_MS = 30000 // Heartbeat every 30 seconds
 // Wave 183 SW3 — Cap reconnection attempts to prevent runaway retry loops
 // when backend is unreachable for extended periods. Before the cap, each
 // failed attempt logged ~2 console errors (WS handshake fail + onerror
@@ -404,7 +403,6 @@ export function applyReactionChangedFrame(
 
 // WebSocket message types
 export type WebSocketMessageType =
-  | "ping"
   | "pong"
   | "typing"
   | "read"
@@ -515,7 +513,6 @@ export function useChatWebSocket({
 
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const reconnectAttemptRef = useRef(0)
   const connectionGenerationRef = useRef(0)
   const ticketRequestRef = useRef<{
@@ -596,10 +593,6 @@ export function useChatWebSocket({
   }, [currentUserId])
 
   const cleanup = useCallback(() => {
-    if (pingIntervalRef.current) {
-      clearInterval(pingIntervalRef.current)
-      pingIntervalRef.current = null
-    }
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current)
       reconnectTimeoutRef.current = null
@@ -715,12 +708,10 @@ export function useChatWebSocket({
             }
           }
 
-          if (pingIntervalRef.current) clearInterval(pingIntervalRef.current)
-          pingIntervalRef.current = setInterval(() => {
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: "ping" }))
-            }
-          }, PING_INTERVAL_MS)
+          // ws-hub owns the transport heartbeat and sends WebSocket control
+          // ping frames. Browsers answer those automatically; an application
+          // JSON `{"type":"ping"}` is not a valid client command and would
+          // only be rejected at the hub's protocol boundary.
         }
 
         ws.onmessage = (event) => {

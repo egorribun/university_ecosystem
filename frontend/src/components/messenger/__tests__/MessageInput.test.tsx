@@ -76,6 +76,55 @@ describe("MessageInput", () => {
       expect(sendButton.className).toContain("min-h-[44px]")
       expect(sendButton.className).toContain("min-w-[44px]")
     })
+
+    it("textarea exposes a UTF-16 envelope for the code-point boundary", () => {
+      render(<MessageInput onSend={() => {}} />)
+      const textarea = screen.getByRole("textbox", {
+        name: "messenger:typeMessage",
+      })
+
+      expect(textarea).toHaveAttribute("maxLength", "65536")
+    })
+
+    it("counts Unicode code points when guarding composer input", () => {
+      render(<MessageInput onSend={() => {}} />)
+      const textarea = screen.getByRole("textbox", {
+        name: "messenger:typeMessage",
+      }) as HTMLTextAreaElement
+      const limit = "😀".repeat(32_768)
+
+      fireEvent.change(textarea, { target: { value: limit } })
+      expect(textarea.value).toBe(limit)
+
+      fireEvent.change(textarea, { target: { value: `${limit}😀` } })
+      expect(textarea.value).toBe(limit)
+    })
+
+    it("reply cancel control has a 44x44 hit area", () => {
+      render(
+        <MessageInput
+          onSend={() => {}}
+          replyingTo={{ senderName: "Alice", isMe: false, text: "quoted" }}
+          onCancelReply={() => {}}
+        />
+      )
+
+      const cancelButton = screen.getByRole("button", { name: "common:buttons.cancel" })
+      expect(cancelButton.className).toContain("min-h-[44px]")
+      expect(cancelButton.className).toContain("min-w-[44px]")
+    })
+
+    it("attachment menu actions have a 44x44 hit area", () => {
+      render(<MessageInput onSend={() => {}} />)
+      fireEvent.click(screen.getByRole("button", { name: "messenger:aria.attachments" }))
+
+      for (const type of ["photo", "document", "file"]) {
+        const action = document.querySelector(`#chat-attach-type-${type}`)
+        expect(action).toBeTruthy()
+        expect(action?.className).toContain("min-h-[44px]")
+        expect(action?.className).toContain("min-w-[44px]")
+      }
+    })
   })
 
   describe("send behaviour", () => {
@@ -203,6 +252,9 @@ describe("MessageInput", () => {
       const removeButton = screen.getByRole("button", {
         name: "messenger:aria.removeAttachment",
       })
+
+      expect(removeButton.className).toContain("min-h-[44px]")
+      expect(removeButton.className).toContain("min-w-[44px]")
 
       revokeObjectURLSpy.mockClear()
 

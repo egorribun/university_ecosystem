@@ -436,12 +436,13 @@ jobs:
           run_gate eslint npm run lint &
           run_gate formatting npm run format:check &
           run_gate i18n npm run i18n:check &
+          run_gate message_contract python ../scripts/generate_message_contract.py --check &
           run_gate deadcode npm run lint:deadcode &
           run_gate depcheck npm run lint:depcheck &
           wait
 
           failed=0
-          for gate in typecheck eslint formatting i18n deadcode depcheck; do
+          for gate in typecheck eslint formatting i18n message_contract deadcode depcheck; do
             echo "::group::$gate"
             cat "$STATIC_GATE_LOG_DIR/$gate.log"
             echo "::endgroup::"

@@ -38,7 +38,10 @@ from app.api.ws.presence import (
 )
 from app.api.ws.serializers import serialize_message
 from app.core import metrics
-from app.core.config.storage import CHAT_MAX_MESSAGE_LENGTH
+from app.core.config.storage import (
+    CHAT_MAX_MESSAGE_LENGTH,
+    CHAT_MAX_WEBSOCKET_FRAME_BYTES,
+)
 from app.core.logging import get_logger
 from app.models.chat import Message
 
@@ -88,7 +91,8 @@ async def websocket_chat(websocket: WebSocket) -> None:
     - Fallback: HttpOnly access_token_v2 cookie (cookie-capable browsers)
 
     Message types (from client):\n    - {"type": "ping"} - Keep-alive ping
-    - {"type": "read", "chat_id": "..."} - Legacy chat-level receipt (REST is canonical)
+    - {"type": "read", "chat_id": "..."} - Legacy direct-backend receipt (REST is canonical for ws-hub clients)
+    - {"type": "get_online"} - Admin-only legacy presence query
 
     Message types (to client):
     - {"type": "pong"} - Response to ping
@@ -96,6 +100,16 @@ async def websocket_chat(websocket: WebSocket) -> None:
     - {"type": "typing", "chat_id": "...", "user_id": ...} - Someone is typing
     - {"type": "read", "chat_id": "...", "user_id": ..., "read_at": "..."}
       - Chat-level read receipt
+    - {"type": "message_edited", "chat_id": "...", "message_id": "...", "content": "...", "edited_at": "..."}
+      - REST edit broadcast
+    - {"type": "message_deleted", "chat_id": "...", "message_id": "...", "deleted_at": "..."}
+      - REST delete broadcast
+    - {"type": "reaction_changed", "chat_id": "...", "message_id": "...", "user_id": "...", "emoji": "...", "action": "added|removed"}
+      - REST reaction broadcast
+    - {"type": "replay_checkpoint", "chat_id": "..."}
+      - ws-hub replay poison-event checkpoint
+    - {"type": "online_list", "users": ["..."]} - Admin presence response
+    - {"type": "rate_limit_exceeded"} - ws-hub control frame
     - {"type": "presence", "user_id": ..., "active": true/false, "last_seen": "..."}
       - Participant presence updates
     - {"type": "error", "message": "..."} - Error message
@@ -143,7 +157,10 @@ async def websocket_chat(websocket: WebSocket) -> None:
         while True:
             try:
                 text_data = await websocket.receive_text()
-                if len(text_data) > CHAT_MAX_MESSAGE_LENGTH:
+                if (
+                    len(text_data) > CHAT_MAX_MESSAGE_LENGTH
+                    or len(text_data.encode("utf-8")) > CHAT_MAX_WEBSOCKET_FRAME_BYTES
+                ):
                     logger.warning(
                         "WS payload too large from user %s", user.id
                     )  # nosemgrep: python.lang.security.audit.logging.logger-credential-leak.python-logger-credential-disclosure

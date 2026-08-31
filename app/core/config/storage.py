@@ -11,6 +11,10 @@ from .base import _PROJECT_ROOT, BaseAppSettings, _coerce_int_list, _coerce_str_
 # generated API contract.  Keep this in the backend-owned config module so a
 # boundary change has one source of truth instead of drifting per layer.
 CHAT_MAX_MESSAGE_LENGTH = 32_768
+# Transport guard shared by the Python fallback endpoint and ws-hub.  This is
+# intentionally independent from the content limit: JSON framing and UTF-8
+# encoding can make a valid message body larger on the wire.
+CHAT_MAX_WEBSOCKET_FRAME_BYTES = 60 * 1024
 
 
 class StorageSettings(BaseAppSettings):

@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import FastAPI, HTTPException, Response
 from sqlalchemy.exc import IntegrityError, NoSuchTableError, SQLAlchemyError
+from starlette.websockets import WebSocketDisconnect
 
 import app.api.notifications as notifications_api
 import app.api.spotify as spotify_api
@@ -1243,6 +1244,43 @@ async def test_websocket_chat_payload_too_large():
         mock_manager.check_rate_limit.return_value = True
         await websocket_api.websocket_chat(websocket)
         websocket.close.assert_called_with(code=1009, reason="Payload too large")
+
+
+@pytest.mark.asyncio
+async def test_websocket_chat_rejects_utf8_oversized_frame_before_json_dispatch():
+    """A frame can fit the code-point cap while exceeding the transport byte cap."""
+    websocket = AsyncMock()
+    # 16k astral code points are valid text, but encode to ~64 KiB before the
+    # small JSON envelope overhead.  The route must reject this before parsing
+    # or dispatching it, matching ws-hub's 60 KiB ingress guard.
+    large_utf8_content = "😀" * 16_000
+    frame = json.dumps(
+        {"type": "message", "content": large_utf8_content}, ensure_ascii=False
+    )
+    assert len(frame) <= 32_768
+    assert len(frame.encode("utf-8")) > 60 * 1024
+    websocket.receive_text = AsyncMock(
+        side_effect=[frame, WebSocketDisconnect(code=1000)]
+    )
+    websocket.close = AsyncMock()
+
+    mock_user = MagicMock()
+    mock_user.id = uuid.uuid4()
+
+    with (
+        patch(
+            "app.api.ws.authenticator.authenticator.authenticate_upgrade",
+            AsyncMock(return_value=(mock_user, "jti", "subprotocol")),
+        ),
+        patch("app.api.websocket.manager") as mock_manager,
+    ):
+        mock_manager.connect = AsyncMock(return_value=True)
+        mock_manager.broadcast_presence = AsyncMock()
+        mock_manager.disconnect = AsyncMock()
+        mock_manager.check_rate_limit.return_value = True
+        await websocket_api.websocket_chat(websocket)
+
+    websocket.close.assert_called_with(code=1009, reason="Payload too large")
 
 
 @pytest.mark.asyncio

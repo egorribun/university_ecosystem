@@ -321,7 +321,7 @@ export const ChatArea = memo(function ChatArea({
                     whileHover={prefersReducedMotion ? undefined : { scale: 1.05 }}
                     whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
                     onClick={() => setShowSearchInChat(true)}
-                    className="rounded-full p-2.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                    className="min-h-[44px] min-w-[44px] rounded-full p-2.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                   >
                     <Search className="h-5 w-5 text-text-secondary" strokeWidth={2} />
                   </m.button>
@@ -333,7 +333,7 @@ export const ChatArea = memo(function ChatArea({
                       whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
                       onClick={() => setShowChatMenu(!showChatMenu)}
                       className={cn(
-                        "rounded-full p-2.5 transition-colors",
+                        "min-h-[44px] min-w-[44px] rounded-full p-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)",
                         showChatMenu
                           ? "bg-(--bg-surface-hover)"
                           : "hover:bg-(--bg-surface-hover)/(--opacity-medium)"
@@ -361,7 +361,7 @@ export const ChatArea = memo(function ChatArea({
                               key={item.id}
                               type="button"
                               onClick={item.action}
-                              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-text-primary transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--color-violet-500)"
+                              className="flex min-h-[44px] min-w-[44px] w-full items-center gap-3 px-4 py-2.5 text-left text-text-primary transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--color-violet-500)"
                             >
                               <item.icon className={`h-5 w-5 ${item.color}`} aria-hidden="true" />
                               <span className="text-sm font-medium">{item.label}</span>

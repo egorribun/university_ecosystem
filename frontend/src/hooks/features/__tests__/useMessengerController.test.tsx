@@ -170,12 +170,29 @@ afterEach(() => {
 describe("useMessengerController", () => {
   describe("chat management capability", () => {
     it("exposes destructive chat actions only for an admin", () => {
+      const initialRole = mocks.testUser.role
       const { result: participant } = renderHook(() => useMessengerController(), { wrapper })
       expect(participant.current.canManageChat).toBe(false)
 
       mocks.testUser.role = "admin"
       const { result: admin } = renderHook(() => useMessengerController(), { wrapper })
       expect(admin.current.canManageChat).toBe(true)
+      mocks.testUser.role = initialRole
+    })
+
+    it("recomputes the capability after a role transition without remounting", () => {
+      mocks.testUser.role = "student"
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+
+      expect(result.current.canManageChat).toBe(false)
+
+      mocks.testUser.role = "admin"
+      rerender()
+      expect(result.current.canManageChat).toBe(true)
+
+      mocks.testUser.role = "teacher"
+      rerender()
+      expect(result.current.canManageChat).toBe(false)
     })
   })
 

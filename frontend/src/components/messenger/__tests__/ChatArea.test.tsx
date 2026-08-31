@@ -279,6 +279,21 @@ describe("ChatArea — normal header rendering (chat selected)", () => {
     expect(screen.queryByText("messenger:online")).toBeFalsy()
   })
 
+  it("gives header search and menu controls a 44x44 hit area", () => {
+    const chat = makeChat()
+    const { container } = render(
+      <ChatArea {...baseProps} selectedChatId={chat.id} activeChat={chat} />,
+      { wrapper }
+    )
+
+    for (const id of ["chat-search-toggle", "chat-menu-toggle"]) {
+      const control = container.querySelector(`#${id}`)
+      expect(control).toBeTruthy()
+      expect(control?.className).toContain("min-h-[44px]")
+      expect(control?.className).toContain("min-w-[44px]")
+    }
+  })
+
   it("renders online status + presence indicator when presenceMap.active=true", () => {
     const chat = makeChat()
     const { container } = render(
@@ -445,6 +460,31 @@ describe("ChatArea — chat menu interactions", () => {
     expect(container.querySelector("#chat-action-view-profile")).toBeTruthy()
     expect(container.querySelector("#chat-action-clear-chat")).toBeTruthy()
     expect(container.querySelector("#chat-action-delete-chat")).toBeTruthy()
+  })
+
+  it("gives every chat menu action a 44x44 hit area", () => {
+    const chat = makeChat()
+    const { container } = render(
+      <ChatArea
+        {...baseProps}
+        canManageChat
+        selectedChatId={chat.id}
+        activeChat={chat}
+        showChatMenu
+      />,
+      { wrapper }
+    )
+
+    for (const id of [
+      "chat-action-view-profile",
+      "chat-action-clear-chat",
+      "chat-action-delete-chat",
+    ]) {
+      const action = container.querySelector(`#${id}`)
+      expect(action).toBeTruthy()
+      expect(action?.className).toContain("min-h-[44px]")
+      expect(action?.className).toContain("min-w-[44px]")
+    }
   })
 
   it("clicking menu items fires the correct callback (Clear Chat case)", () => {

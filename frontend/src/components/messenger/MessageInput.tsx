@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type KeyboardEvent } from "react"
 import { m, AnimatePresence } from "framer-motion"
 import useMediaQuery from "@/hooks/useMediaQuery"
+import { CHAT_MESSAGE_MAX_LENGTH } from "@/api/schemas/messageLimits"
 import { useTranslation } from "react-i18next"
 import { X, FileText, Image as ImageIcon, File, Paperclip, Send } from "lucide-react"
 import { cn } from "@/utils/cn"
@@ -123,6 +124,14 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
     }
   }
 
+  const handleTextChange = (value: string) => {
+    // String#length counts UTF-16 code units.  Spread keeps the composer in
+    // lockstep with the backend/Pydantic and WS schema code-point contract.
+    if ([...value].length > CHAT_MESSAGE_MAX_LENGTH) return
+    setText(value)
+    onTyping?.()
+  }
+
   const handleAttachmentClick = (type: "photo" | "file" | "document") => {
     setShowAttachMenu(false)
     const input = fileInputRef.current!
@@ -229,18 +238,12 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
                   <FileText size={32} />
                 </div>
               )}
-              {/* Wave 183 SW4 — bumped touch target 24×24px → 32×32px visual
-                  with 44×44px hit area via `::after { inset: -6px }` (matches
-                  W111 CQ-111-04 pattern for visually-small interactive
-                  controls). WCAG 2.5.8 Target Size (Enhanced) requires ≥44px
-                  for AAA OR ≥24px for AA + sufficient spacing — 32px visual
-                  with 44px effective hit area satisfies both. The before
-                  bumped also moves the X icon slightly inward (size 12 →
-                  14) for better visual proportion. */}
+              {/* MSG-A11Y-01 — keep the compact visual glyph while exposing a
+                  concrete 44×44px DOM hit area via min-width/min-height. */}
               <button
                 type="button"
                 onClick={() => removeFile(id)}
-                className="absolute -top-1.5 -right-1.5 size-8 md:size-9 bg-(--error-text) text-[var(--text-inverse)] rounded-full flex items-center justify-center shadow-lg hover:bg-(--error-text)/(--opacity-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface) after:absolute after:inset-[-6px] after:content-['']"
+                className="absolute -top-1.5 -right-1.5 size-8 min-h-[44px] min-w-[44px] md:size-9 bg-(--error-text) text-[var(--text-inverse)] rounded-full flex items-center justify-center shadow-lg hover:bg-(--error-text)/(--opacity-hover) transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
                 aria-label={t("messenger:aria.removeAttachment")}
               >
                 <X size={14} strokeWidth={3} aria-hidden="true" />
@@ -269,7 +272,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
             type="button"
             onClick={onCancelReply}
             aria-label={t("common:buttons.cancel")}
-            className="flex min-h-[36px] min-w-[36px] shrink-0 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+            className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
           >
             <X size={18} strokeWidth={2.5} aria-hidden="true" />
           </button>
@@ -311,7 +314,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
                     id={`chat-attach-type-${item.id}`}
                     key={item.id}
                     onClick={() => handleAttachmentClick(item.id)}
-                    className="w-full px-4 py-3 flex items-center gap-3 hover:bg-(--bg-surface-hover) transition-colors text-left group"
+                    className="min-h-[44px] min-w-[44px] w-full px-4 py-3 flex items-center gap-3 hover:bg-(--bg-surface-hover) transition-colors text-left group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--color-violet-500)"
                   >
                     <div
                       className={cn(
@@ -335,16 +338,20 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
             placeholder text disappears on focus + many SR engines treat it
             as supplementary not primary label). Matches W116 SW3 pattern
             for all textareas in messenger. */}
+        {/* HTML maxLength counts UTF-16 code units, while the product contract
+            counts Unicode code points. Use the maximum possible code-unit
+            envelope so a valid all-emoji message is not truncated;
+            handleTextChange remains the authoritative code-point guard. */}
         <textarea
           id="chat-message-input"
           value={text}
           onChange={(e) => {
-            setText(e.target.value)
-            onTyping?.()
+            handleTextChange(e.target.value)
           }}
           onKeyDown={handleKeyDown}
           placeholder={t("messenger:typeMessage")}
           aria-label={t("messenger:typeMessage")}
+          maxLength={CHAT_MESSAGE_MAX_LENGTH * 2}
           className="flex-1 bg-transparent border-none focus:ring-0 outline-none resize-none max-h-48 py-2 md:py-2.5 px-1 text-base text-text-primary placeholder:text-(--text-secondary) placeholder:opacity-medium"
           rows={1}
         />

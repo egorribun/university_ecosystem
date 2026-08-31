@@ -755,7 +755,7 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
     unmount()
   })
 
-  it("swallows join/leave races and emits the heartbeat", async () => {
+  it("swallows join/leave races without emitting an invalid application heartbeat", async () => {
     const queryClient = new QueryClient()
     const rendered = renderHook(() => useChatWebSocket({ enabled: true }), {
       wrapper: ({ children }) => (
@@ -777,7 +777,10 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
     socket.send = (data: string) => socket.sentMessages.push(data)
     act(() => socket.open())
     act(() => vi.advanceTimersByTime(30_000))
-    expect(socket.sentMessages).toContain('{"type":"ping"}')
+    // ws-hub owns the heartbeat with WebSocket control frames.  The browser
+    // must not send an application JSON ping, which is rejected by the hub's
+    // client-command allowlist.
+    expect(socket.sentMessages).not.toContain('{"type":"ping"}')
     const sentCount = socket.sentMessages.length
     socket.readyState = MockWebSocket.CLOSING
     act(() => vi.advanceTimersByTime(30_000))

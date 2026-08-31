@@ -312,6 +312,11 @@ describe("parseWsMessage — Wave 204 SW3 ws-hub envelope unwrap + control frame
     expect(frame?.type).toBe("error")
   })
 
+  it("preserves the backend direct-route error message field", () => {
+    const frame = parseWsMessage(JSON.stringify({ type: "error", message: "Access denied" }))
+    expect(frame).toEqual({ type: "error", message: "Access denied" })
+  })
+
   it("accepts a flat rate_limit_exceeded control frame", () => {
     const frame = parseWsMessage(JSON.stringify({ type: "rate_limit_exceeded" }))
     expect(frame).not.toBeNull()

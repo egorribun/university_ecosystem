@@ -15,11 +15,11 @@
  * or calling callbacks.
  */
 import * as v from "valibot"
+import { CHAT_MESSAGE_MAX_LENGTH } from "./messageLimits"
+
+export { CHAT_MESSAGE_MAX_LENGTH } from "./messageLimits"
 
 // ── Leaf field schemas ────────────────────────────────────────────────────────
-
-/** Canonical backend message-content limit (Unicode code points). */
-export const CHAT_MESSAGE_MAX_LENGTH = 32_768
 
 const UuidString = v.pipe(v.string(), v.uuid())
 const NonEmptyString = v.pipe(v.string(), v.minLength(1), v.maxLength(4096))
@@ -92,6 +92,9 @@ const PongSchema = v.object({ type: v.literal("pong") })
 
 const ErrorSchema = v.object({
   type: v.literal("error"),
+  // Backend direct-route errors use `message`; ws-hub control errors use
+  // `detail`. Preserve both payload spellings for backward-compatible clients.
+  message: v.optional(v.pipe(v.string(), v.maxLength(1024))),
   // Wave 204 SW3 — ws-hub control frames carry a `code` (e.g. "message_too_large")
   // alongside detail (services/ws-hub client.go:158-162). Optional so plain
   // backend error frames without a code still validate.

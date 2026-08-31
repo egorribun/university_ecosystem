@@ -122,10 +122,11 @@ def test_frontend_typecheck_runs_once_in_a_required_static_gate() -> None:
         "run_gate eslint npm run lint &",
         "run_gate formatting npm run format:check &",
         "run_gate i18n npm run i18n:check &",
+        "run_gate message_contract python ../scripts/generate_message_contract.py --check &",
         "run_gate deadcode npm run lint:deadcode &",
         "run_gate depcheck npm run lint:depcheck &",
     ):
         assert run.count(invocation) == 1
-    assert run.count("run_gate ") == 6
+    assert run.count("run_gate ") == 7
     assert "wait" in run
     assert 'exit "$failed"' in run
