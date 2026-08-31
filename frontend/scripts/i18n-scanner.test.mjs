@@ -8,6 +8,7 @@ import {
   scanBackendCatalog,
   scanBackendSource,
   scanBackendRepository,
+  parsePythonTranslationCatalog,
   scanLanguagePersistence,
   scanLocaleCatalogs,
   scanScopeContract,
@@ -267,6 +268,30 @@ test("backend catalog rejects unsupported locale entries", () => {
   })
 
   assert.ok(report.errors.some((entry) => entry.code === "BACKEND_LOCALE_ORPHAN"))
+})
+
+test("backend catalog parser decodes Python escapes exactly once for keys and values", () => {
+  const source = String.raw`TRANSLATIONS = {
+    "literal\\nkey": {
+        "en": "literal\\nvalue",
+        "ru": "literal\\nvalue",
+    },
+    "decoded": {
+        "en": "line\nvalue and \"quotes\"",
+        "ru": "line\nvalue and \"quotes\"",
+    },
+}`
+
+  assert.deepEqual(parsePythonTranslationCatalog(source), {
+    "literal\\nkey": {
+      en: "literal\\nvalue",
+      ru: "literal\\nvalue",
+    },
+    decoded: {
+      en: 'line\nvalue and "quotes"',
+      ru: 'line\nvalue and "quotes"',
+    },
+  })
 })
 
 test("backend raw user-facing assignments are rejected", () => {

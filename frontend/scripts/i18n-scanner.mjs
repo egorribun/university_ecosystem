@@ -132,6 +132,15 @@ const NON_USER_FACING_TAGS = new Set(["script", "style", "code", "pre"])
 const PLURAL_SUFFIX = /_(zero|one|two|few|many|other)$/u
 const PLACEHOLDER = /\{\{\s*-?\s*([\w.-]+)(?:\s*,\s*([^}]+?))?\s*\}\}/gu
 const PYTHON_PLACEHOLDER = /(?<!\{)\{([A-Za-z_]\w*(?:\.[\w]+)*)(?:![rsa])?(?::([^{}]*))?\}(?!\})/gu
+const PYTHON_ESCAPE = /\\([\\nrt"'])/gu
+const PYTHON_ESCAPE_MAP = Object.freeze({
+  "\\": "\\",
+  n: "\n",
+  r: "\r",
+  t: "\t",
+  '"': '"',
+  "'": "'",
+})
 
 /** @typedef {{ code: string, message: string, filePath?: string, line?: number, column?: number, key?: string }} I18nError */
 
@@ -895,21 +904,17 @@ function scanLocaleCatalogs(catalogues = {}) {
   return { errors, locales, info }
 }
 
+function decodePythonEscapes(value) {
+  return value.replace(PYTHON_ESCAPE, (_match, escaped) => PYTHON_ESCAPE_MAP[escaped])
+}
+
 function pythonStringParts(value) {
   const parts = []
   const stringPattern =
     /(?<prefix>[rubfRUBF]*)(?<quote>"""|'''|"|')(?<body>(?:\\.|(?!\k<quote>)[\s\S])*?)\k<quote>/gu
   for (const match of value.matchAll(stringPattern)) {
     const body = match.groups?.body ?? ""
-    parts.push(
-      body
-        .replaceAll("\\\\", "\\")
-        .replaceAll("\\n", "\n")
-        .replaceAll("\\r", "\r")
-        .replaceAll("\\t", "\t")
-        .replaceAll('\\"', '"')
-        .replaceAll("\\'", "'")
-    )
+    parts.push(decodePythonEscapes(body))
   }
   return parts
 }
@@ -1012,10 +1017,7 @@ function parsePythonTranslationCatalog(source) {
     const braceStart = source.indexOf("{", valueStart)
     if (braceStart === -1) continue
     const block = balancedPythonExpression(source, braceStart)
-    const key = (match.groups?.key ?? "")
-      .replaceAll("\\\\", "\\")
-      .replaceAll('\\"', '"')
-      .replaceAll("\\'", "'")
+    const key = decodePythonEscapes(match.groups?.key ?? "")
     catalog[key] = pythonLocaleValues(block)
   }
   return catalog
