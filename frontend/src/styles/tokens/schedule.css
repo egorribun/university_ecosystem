@@ -130,13 +130,11 @@
     --sched-empty-bg: color-mix(in srgb, var(--color-slate-200) 20%, transparent);
     --sched-empty-border: color-mix(in srgb, var(--color-slate-300) 20%, transparent);
 
-    /* ── On-accent text — theme-aware (Wave 116 polish): white on bg-brand
-         in LIGHT (blue-600 → 4.56:1) but dark-mode bg-brand is sky-400
-         (#38bdf8) and white there produces 2.14:1 (fails WCAG AA). Use the
-         global --text-inverse which flips to slate-950 in dark → 9.9:1 on
-         sky-400. Supersedes the original FIX-67-03 "intentional white"
-         note: the intent was contrast on colored bg, which this preserves. */
-    --sched-on-accent: var(--text-inverse);
+    /* ── On-accent text — theme-aware (Wave 116 polish): white on the
+         light-mode blue-600 brand surface provides 5.17:1 contrast. The dark
+         theme overrides this with slate-950 because its brand surface is
+         sky-400, where white would only reach 2.14:1. */
+    --sched-on-accent: white;
 
     /* ── Heat map tokens (FIX-72-03: tokenized for reuse, was inline in class rules) ── */
     --sched-heat-light-bg: color-mix(in srgb, var(--color-emerald-400) 5%, transparent);
