@@ -164,6 +164,18 @@ def test_reusable_go_mutation_diagnostic_defaults_to_off() -> None:
         "default": False,
     }
 
+    ci = yaml.safe_load(
+        (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    )
+    assert isinstance(ci, dict)
+    ci_jobs = ci.get("jobs")
+    assert isinstance(ci_jobs, dict)
+    go_tests = ci_jobs["go-tests"]
+    assert isinstance(go_tests, dict)
+    # The required PR matrix must not opt back into the expensive advisory
+    # lane; only the schedule/manual workflow above may set this input true.
+    assert "run-mutation-diagnostic" not in go_tests.get("with", {})
+
 
 def test_quality_gate_uses_only_contract_owned_go_coverage_job() -> None:
     workflow = _load_workflow()
