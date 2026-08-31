@@ -60,7 +60,7 @@ export function NavbarOverflowMenu({
   const hasActive = items.some((it) => isActive(it.to))
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="navbar-desktop-overflow relative">
       <m.button
         ref={triggerRef}
         type="button"

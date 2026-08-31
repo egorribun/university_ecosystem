@@ -51,6 +51,7 @@ describe("NavbarOverflowMenu", () => {
     await renderMenu()
     const trigger = screen.getByRole("button")
     expect(trigger).toHaveAccessibleName("More navigation")
+    expect(document.querySelector(".navbar-desktop-overflow")).toBeInTheDocument()
     expect(trigger).toHaveAttribute("aria-haspopup", "menu")
     expect(trigger).toHaveAttribute("aria-controls", "navbar-overflow-menu")
     expect(trigger).toHaveClass("size-11")

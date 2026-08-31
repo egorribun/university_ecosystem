@@ -57,6 +57,7 @@ describe("DesktopNav", () => {
     })
     expect(screen.getByText("News")).toBeInTheDocument()
     expect(screen.getByText("Events")).toBeInTheDocument()
+    expect(document.querySelector(".navbar-desktop-nav")).toBeInTheDocument()
     // active entry carries data-active.
     const newsLink = document.getElementById("navbar-link-news")
     expect(newsLink).toHaveAttribute("data-active")
@@ -127,6 +128,7 @@ describe("NavbarLogo", () => {
     const link = document.getElementById("navbar-logo-link")
     expect(link).toHaveAttribute("href", "/dashboard")
     expect(screen.getByText("navigation:brandName")).toBeInTheDocument()
+    expect(document.querySelector(".navbar-brand-name")).toBeInTheDocument()
     const logoSurface = screen.getByRole("img").parentElement
     expect(logoSurface).not.toHaveClass("hover:scale-105", "active:scale-95")
   })
@@ -248,14 +250,15 @@ describe("UserMenu", () => {
     await renderWithRouter({
       ui: () => <UserMenu user={testUser} isAuth loading={false} go={go} t={(key) => key} />,
     })
-    const profileButtons = screen.getAllByRole("button", {
-      name: "navigation:aria.openProfile",
+    const avatarButton = screen.getByRole("button", { name: "navigation:aria.openProfile" })
+    const profileNameButton = screen.getByRole("button", {
+      name: `navigation:aria.openProfile: ${testUser.full_name}`,
     })
-    expect(profileButtons).toHaveLength(2)
-    expect(profileButtons[0]).toHaveClass("size-11")
-    await userEvent.click(profileButtons[0]!)
+    expect(document.querySelector(".navbar-user-name")).toBeInTheDocument()
+    expect(avatarButton).toHaveClass("size-11")
+    await userEvent.click(avatarButton)
     expect(go).toHaveBeenCalledWith("/profile")
-    await userEvent.click(profileButtons[1]!)
+    await userEvent.click(profileNameButton)
     expect(go).toHaveBeenLastCalledWith("/profile")
     await userEvent.click(screen.getByAltText("navigation:aria.profileAvatarNamed"))
     expect(go).toHaveBeenLastCalledWith("/profile")

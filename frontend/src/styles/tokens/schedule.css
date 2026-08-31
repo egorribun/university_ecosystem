@@ -130,10 +130,9 @@
     --sched-empty-bg: color-mix(in srgb, var(--color-slate-200) 20%, transparent);
     --sched-empty-border: color-mix(in srgb, var(--color-slate-300) 20%, transparent);
 
-    /* ── On-accent text — theme-aware (Wave 116 polish): white on the
-         light-mode blue-600 brand surface provides 5.17:1 contrast. The dark
-         theme overrides this with slate-950 because its brand surface is
-         sky-400, where white would only reach 2.14:1. */
+    /* ── On-accent text — the solid blue-600 brand surface is shared by
+         light and dark themes. White provides 5.17:1 contrast for badges,
+         controls, and the current-day marker in both modes. */
     --sched-on-accent: white;
 
     /* ── Heat map tokens (FIX-72-03: tokenized for reuse, was inline in class rules) ── */
@@ -211,10 +210,11 @@
     --sched-empty-bg: color-mix(in srgb, var(--color-slate-700) 15%, transparent);
     --sched-empty-border: color-mix(in srgb, var(--color-slate-600) 15%, transparent);
 
-    /* Wave 116 polish — theme-aware (see light-mode block above at :root scope).
-       Dark-mode bg-brand is sky-400 (#38bdf8), so white (2.14:1) fails WCAG AA.
-       --text-inverse in dark mode resolves to slate-950 → 9.9:1 on sky-400. */
-    --sched-on-accent: var(--text-inverse);
+    /* Keep the foreground explicit: dark mode's brand surface is still the
+       blue-600 token in the rendered schedule shell (WCAG AA 5.17:1). Using
+       --text-inverse here would resolve to slate-950 and regress Lighthouse
+       color-contrast on the today badge. */
+    --sched-on-accent: white;
 
     /* FIX-72-03: dark heat map tokens — increased opacity for visibility */
     --sched-heat-light-bg: color-mix(in srgb, var(--color-emerald-400) 8%, transparent);

@@ -89,7 +89,7 @@ export const NavbarLogo = ({
       {/* Brand text — instant hide/show, pill morph handles the visual transition */}
       <div
         className={cn(
-          "overflow-hidden",
+          "navbar-brand-name overflow-hidden",
           isCompact || isPhone ? "max-w-0 opacity-0" : "max-w-40 opacity-100"
         )}
       >

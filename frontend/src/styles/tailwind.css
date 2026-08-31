@@ -582,6 +582,21 @@
   transform: none;
 }
 
+/*
+ * The SSR navbar intentionally renders the desktop branch before the client
+ * knows the viewport. At phone widths, hide only those desktop-only pieces so
+ * the unhydrated shell cannot overlap its 44px touch targets. Hydration then
+ * replaces them with the mobile actions/drawer branch.
+ */
+@media (max-width: 767px) {
+  .vt-navbar .navbar-desktop-nav,
+  .vt-navbar .navbar-brand-name,
+  .vt-navbar .navbar-user-name,
+  .vt-navbar .navbar-desktop-overflow {
+    display: none;
+  }
+}
+
 /* Wave 51: Mobile drawer nav link */
 .mobile-nav-link {
   display: flex;

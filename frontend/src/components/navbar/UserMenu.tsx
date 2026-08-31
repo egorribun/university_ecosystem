@@ -43,6 +43,7 @@ export const UserMenu = ({
     ? t("navigation:aria.profileAvatarNamed")
     : t("navigation:aria.profileAvatar")
   const profileTitle = t("navigation:aria.openProfile")
+  const profileNameLabel = user?.full_name ? `${profileTitle}: ${user.full_name}` : profileTitle
 
   const dur = prefersReducedMotion ? "duration-0" : "duration-500"
   const ease = "ease-[var(--ease-premium)]"
@@ -113,14 +114,14 @@ export const UserMenu = ({
         {/* User name — instant hide/show, no visible fade */}
         <div
           className={cn(
-            "overflow-hidden",
+            "navbar-user-name overflow-hidden",
             isCompact ? "max-w-0 opacity-0" : "max-w-48 opacity-100"
           )}
         >
           <button
             type="button"
             onClick={() => go("/profile")}
-            aria-label={profileTitle}
+            aria-label={profileNameLabel}
             title={profileTitle}
             className="m-0 min-h-11 cursor-pointer whitespace-nowrap border-none bg-transparent p-0 font-bold tracking-tight text-base text-text-primary transition-colors hover:text-brand"
           >
