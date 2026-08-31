@@ -4042,7 +4042,15 @@ jobs:
           test -s coverage.xml
           test -s artifacts/coverage/python/coverage.json
           python_version="$(uv run python -c 'import platform; print(platform.python_version())')"
-          coverage_version="$(uv run coverage --version | awk 'NR == 1 {print $2}')"
+          # ``coverage --version`` is human-readable ("Coverage.py, version
+          # X.Y...") and its token positions are not a stable provenance
+          # interface.  Read the package's canonical version instead so the
+          # manifest always receives a schema-valid semantic version.
+          coverage_version="$(uv run python -c 'import coverage; print(coverage.__version__)')"
+          if [[ ! "$coverage_version" =~ ^[0-9]+(\.[0-9]+){1,3}([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::coverage.__version__ is not a semantic version: $coverage_version"
+            exit 1
+          fi
           python scripts/quality/coverage_provenance.py write \
             --repository-root "$GITHUB_WORKSPACE" \
             --output artifacts/coverage/provenance/python.json \

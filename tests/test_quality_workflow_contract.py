@@ -5751,6 +5751,15 @@ def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None
     assert "ignore-outside" not in normalize_run
     assert normalize_run.count("--tool-version ") >= 7
 
+    combine = _provenance_step(job, "Combine Python shard coverage")
+    combine_run = str(combine["run"])
+    assert (
+        "coverage_version=\"$(uv run python -c 'import coverage; print(coverage.__version__)')\""
+        in combine_run
+    )
+    assert "coverage --version | awk" not in combine_run
+    assert '[[ ! "$coverage_version" =~' in combine_run
+
     merge = _provenance_step(job, "Merge canonical coverage provenance")
     merge_run = str(merge["run"])
     assert "coverage_provenance.py merge" in merge_run
