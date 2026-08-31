@@ -148,11 +148,7 @@ def test_path_separators_are_compared_canonically(tmp_path: Path) -> None:
         {"results": []},
         {"results": {"src/a.py": {}}},
         {"results": {"src/a.py": [{"type": _FINDING_TYPE}]}},
-        {
-            "results": {
-                "src/a.py": [{"type": _FINDING_TYPE, _HASHED_FIELD: "digest-a"}]
-            }
-        },
+        {"results": {"src/a.py": [{"type": _FINDING_TYPE, _HASHED_FIELD: "digest-a"}]}},
         {
             "results": {
                 "../outside.txt": [

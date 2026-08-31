@@ -113,9 +113,7 @@ def test_detect_secrets_verification_is_finding_level_and_base_bound() -> None:
     job = _workflow(SECURITY_AUDIT)["jobs"]["detect-secrets-baseline"]
     fetch = _step(job, "Fetch trusted base baseline (pull requests)")
     assert fetch["if"] == "${{ github.event_name == 'pull_request' }}"
-    assert fetch["env"] == {
-        "BASE_SHA": "${{ github.event.pull_request.base.sha }}"
-    }
+    assert fetch["env"] == {"BASE_SHA": "${{ github.event.pull_request.base.sha }}"}
     fetch_run = fetch["run"]
     assert "^[0-9a-f]{40}$" in fetch_run
     assert 'git fetch --no-tags --depth=1 origin "$BASE_SHA"' in fetch_run
@@ -132,7 +130,7 @@ def test_detect_secrets_verification_is_finding_level_and_base_bound() -> None:
         "TRUSTED_BASELINE_PATH": "${{ runner.temp }}/trusted-base-baseline.json",
     }
     verify_run = verify["run"]
-    assert "--trusted-base-baseline \"$TRUSTED_BASELINE_PATH\"" in verify_run
+    assert '--trusted-base-baseline "$TRUSTED_BASELINE_PATH"' in verify_run
     assert "current_scan.json" in verify_run
 
     scan = _step(job, "Scan repo (no baseline)")["run"]
