@@ -121,3 +121,23 @@ def test_parser_flattens_slurped_github_api_pages() -> None:
     parsed = parse_jobs(payload)
 
     assert [job.job_id for job in parsed] == [1, 2]
+
+
+def test_parser_uses_created_at_when_live_jobs_omit_queued_at() -> None:
+    parsed = parse_jobs(
+        {
+            "jobs": [
+                {
+                    "id": 1,
+                    "name": "live-job",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "created_at": "2026-08-31T10:00:00Z",
+                    "started_at": "2026-08-31T10:00:45Z",
+                    "completed_at": "2026-08-31T10:01:00Z",
+                }
+            ]
+        }
+    )
+
+    assert parsed[0].queue_wait_seconds == 45.0

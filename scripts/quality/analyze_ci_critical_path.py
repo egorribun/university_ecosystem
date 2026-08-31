@@ -200,7 +200,18 @@ def parse_jobs(payload: object) -> tuple[JobTiming, ...]:
             if conclusion_value is None
             else _text(conclusion_value, f"job {name!r}.conclusion")
         )
-        queued = _parse_timestamp(record.get("queued_at"), f"job {name!r}.queued_at")
+        # GitHub's Jobs API does not currently populate ``queued_at`` for live
+        # jobs.  ``created_at`` is the authoritative queued/created timestamp
+        # in that payload shape; prefer an explicit queued_at when available,
+        # but fall back only when it is absent or explicitly null.  A malformed
+        # value in either field remains a hard error rather than silently
+        # reporting zero queue wait.
+        queued_field = "queued_at"
+        queued_value = record.get("queued_at")
+        if queued_value is None and "created_at" in record:
+            queued_field = "created_at"
+            queued_value = record.get("created_at")
+        queued = _parse_timestamp(queued_value, f"job {name!r}.{queued_field}")
         started = _parse_timestamp(record.get("started_at"), f"job {name!r}.started_at")
         completed = _parse_timestamp(
             record.get("completed_at"), f"job {name!r}.completed_at"
