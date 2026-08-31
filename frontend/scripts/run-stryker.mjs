@@ -345,22 +345,38 @@ function splitMutationUnits({ file, mutants, budget, estimatedCost }) {
 
   const groups = []
   let current = []
+  let currentEnd
   const emit = () => {
     if (current.length === 0) return
     const first = current[0].location
-    const last = current.at(-1).location
+    // Stryker's mutation-range matcher requires the complete AST node to be
+    // contained in the range (not merely its start position).  A mutation can
+    // therefore extend past the start of a later mutation, for example an
+    // enclosing JSX block.  Keep the range endpoint at the furthest mutation
+    // end so those spans are not silently omitted by the runner.
+    const end = currentEnd
+    if (!end) throw new Error(`Stryker mutation range has no endpoint for ${file}`)
     groups.push({
-      pattern: `${file}:${first.start.line + 1}-${last.start.line + 1}`,
+      // Include columns as well as lines.  This makes adjacent ranges
+      // disjoint even when a source file contains several mutations on one
+      // line, while preserving Stryker's zero-based column semantics.
+      pattern: `${file}:${first.start.line + 1}:${first.start.column}-${end.line + 1}:${end.column}`,
       mutantCount: current.length,
       estimatedCost: estimatedCost * (current.length / mutants.length),
     })
     current = []
+    currentEnd = undefined
   }
   for (const entry of located) {
     const startsAfterCurrent =
-      current.length > 0 && entry.location.start.line > current.at(-1).location.start.line
+      current.length > 0 &&
+      currentEnd !== undefined &&
+      compareLocation(entry.location.start, currentEnd) > 0
     if (current.length >= budget && startsAfterCurrent) emit()
     current.push(entry)
+    if (currentEnd === undefined || compareLocation(entry.location.end, currentEnd) > 0) {
+      currentEnd = entry.location.end
+    }
   }
   emit()
   return groups

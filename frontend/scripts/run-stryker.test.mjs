@@ -315,8 +315,10 @@ test("splits a heavy source into disjoint mutation ranges when the requested fan
   assert.ok(plan.every(({ mutantCount }) => mutantCount <= 3))
 })
 
-test("splits nested mutants by their Stryker selection start without duplicating an enclosing block", async () => {
-  const { mutationPatternCoversMutant, planMutationShards } = await import(runnerUrl)
+test("keeps enclosing mutants inside complete disjoint mutation ranges", async () => {
+  const { mutationPatternCoversMutant, parseMutationPattern, planMutationShards } = await import(
+    runnerUrl
+  )
   const file = "src/nested.ts"
   const mutants = [
     {
@@ -325,16 +327,25 @@ test("splits nested mutants by their Stryker selection start without duplicating
       replacement: "{}",
       location: {
         start: { line: 0, column: 0 },
-        end: { line: 199, column: 1 },
+        end: { line: 9, column: 1 },
       },
     },
-    ...Array.from({ length: 9 }, (_, index) => ({
+    ...Array.from({ length: 8 }, (_, index) => ({
       fileName: file,
       mutatorName: "BooleanLiteral",
       replacement: index % 2 === 0 ? "true" : "false",
       location: {
-        start: { line: 10 + index * 10, column: 2 },
-        end: { line: 10 + index * 10, column: 7 },
+        start: { line: index + 1, column: 2 },
+        end: { line: index + 1, column: 7 },
+      },
+    })),
+    ...Array.from({ length: 6 }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: 20 + index * 2, column: 2 },
+        end: { line: 20 + index * 2, column: 7 },
       },
     })),
   ]
@@ -342,7 +353,10 @@ test("splits nested mutants by their Stryker selection start without duplicating
   const plan = planMutationShards(new Map([[file, { mutants }]]), 750, 4)
   const assignments = plan.flatMap(({ files }) => files)
 
-  assert.equal(plan.length, 4)
+  // The enclosing block forces the first group to exceed the nominal unit
+  // budget; splitting it would make Stryker drop the block mutant.
+  assert.equal(plan.length, 3)
+  assert.ok(assignments.every((pattern) => pattern.includes(":")))
   assert.equal(
     assignments.reduce(
       (total, pattern) =>
@@ -352,13 +366,21 @@ test("splits nested mutants by their Stryker selection start without duplicating
     ),
     mutants.length
   )
+  const compare = (left, right) => left.line - right.line || left.column - right.column
+  const fullyContained = (pattern, mutant) => {
+    const range = parseMutationPattern(pattern).range
+    assert.ok(range)
+    return (
+      compare(range.start, mutant.location.start) <= 0 &&
+      compare(range.end, mutant.location.end) >= 0
+    )
+  }
   assert.ok(
     mutants.every(
-      (mutant) =>
-        assignments.filter((pattern) => mutationPatternCoversMutant(pattern, mutant, file))
-          .length === 1
+      (mutant) => assignments.filter((pattern) => fullyContained(pattern, mutant)).length === 1
     )
   )
+  assert.ok(assignments.some((pattern) => pattern.endsWith("-10:1")))
 })
 
 test("normalizes one-based Stryker runtime locations into the instrumenter preflight space", async () => {
@@ -514,7 +536,9 @@ test("reconstructs locations and canonical signatures from serialized preflight 
 })
 
 test("merges split mutation-range reports without duplicate or misplaced mutants", async () => {
-  const { mergeShardReports, planMutationShards } = await import(runnerUrl)
+  const { mergeShardReports, mutationPatternCoversMutant, planMutationShards } = await import(
+    runnerUrl
+  )
   const source = "\n".repeat(20)
   const mutants = Array.from({ length: 6 }, (_, index) => ({
     mutatorName: "BooleanLiteral",
@@ -530,13 +554,9 @@ test("merges split mutation-range reports without duplicate or misplaced mutants
   const plan = planMutationShards(preflight, 750, 2)
   const shardReports = plan.map((shard) => {
     const ranges = shard.files
-    const selected = mutants.filter((mutant) => {
-      const line = mutant.location.start.line + 1
-      return ranges.some((pattern) => {
-        const match = /:(\d+)-(\d+)$/u.exec(pattern)
-        return match === null || (line >= Number(match[1]) && line <= Number(match[2]))
-      })
-    })
+    const selected = mutants.filter((mutant) =>
+      ranges.some((pattern) => mutationPatternCoversMutant(pattern, mutant, "src/heavy.ts"))
+    )
     return {
       ...shard,
       report: {
