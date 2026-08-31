@@ -95,21 +95,41 @@ class JobTiming:
 
 
 def _decode_jobs_payload(payload: object) -> list[Mapping[str, object]]:
-    """Accept one API page, a list of pages, or a fixture object with jobs."""
-    candidates: object = payload
-    if isinstance(payload, Mapping) and "jobs" in payload:
-        candidates = payload["jobs"]
-    if not isinstance(candidates, list):
+    """Accept one API page, slurped API pages, or a fixture with ``jobs``.
+
+    ``gh api --paginate --slurp`` emits a JSON array whose elements are the
+    page objects returned by GitHub (each page has a ``jobs`` array).  The
+    original implementation only flattened arrays, so a live paginated fetch
+    treated each page envelope as a job and failed closed.  Keep the decoder
+    strict while normalising both the single-page and slurped forms.
+    """
+
+    page_candidates: object
+    if isinstance(payload, Mapping):
+        page_candidates = [payload]
+    elif isinstance(payload, list):
+        page_candidates = payload
+    else:
         raise AnalysisError(
             "jobs payload must be an array or an object containing jobs"
         )
 
     flattened: list[object] = []
-    for item in candidates:
-        if isinstance(item, list):
-            flattened.extend(item)
+    for index, page in enumerate(page_candidates):
+        if isinstance(page, Mapping) and "jobs" in page:
+            jobs = page["jobs"]
+            if not isinstance(jobs, list):
+                raise AnalysisError(f"jobs page {index} must contain an array")
+            flattened.extend(jobs)
+        elif isinstance(page, list):
+            flattened.extend(page)
+        elif isinstance(page, Mapping):
+            # A plain list of job records is also a supported fixture shape;
+            # preserve it without accepting arbitrary page envelopes.
+            flattened.append(page)
         else:
-            flattened.append(item)
+            raise AnalysisError(f"jobs page {index} must be an object or array")
+
     records: list[Mapping[str, object]] = []
     for index, item in enumerate(flattened):
         if not isinstance(item, Mapping):
@@ -186,7 +206,15 @@ def parse_jobs(payload: object) -> tuple[JobTiming, ...]:
             record.get("completed_at"), f"job {name!r}.completed_at"
         )
         if started is not None and completed is not None and completed < started:
-            raise AnalysisError(f"job {name!r} ends before it starts")
+            # GitHub occasionally emits a one-second inverted pair for a
+            # skipped job that never received a runner (there are no steps and
+            # therefore no elapsed work to measure).  Treat that API sentinel
+            # as a zero-duration guarded skip, but keep malformed timestamps a
+            # hard error for every job that could have executed.
+            if conclusion == "skipped" and not record.get("steps"):
+                completed = started
+            else:
+                raise AnalysisError(f"job {name!r} ends before it starts")
         jobs.append(
             JobTiming(
                 job_id=job_id,
@@ -449,7 +477,7 @@ def _fetch_jobs(repository: str, run_id: int) -> object:
     # ``repository`` is validated by the caller and the endpoint is passed as
     # one argv element, so no shell interpretation is possible.
     completed = subprocess.run(  # noqa: S603
-        ["gh", "api", "--paginate", endpoint],  # noqa: S607
+        ["gh", "api", "--paginate", "--slurp", endpoint],  # noqa: S607
         check=False,
         capture_output=True,
         text=True,
@@ -458,16 +486,15 @@ def _fetch_jobs(repository: str, run_id: int) -> object:
     if completed.returncode:
         message = completed.stderr.strip() or "gh api failed"
         raise AnalysisError(message)
-    pages: list[object] = []
-    for line in completed.stdout.splitlines():
-        if line.strip():
-            try:
-                pages.append(json.loads(line))
-            except json.JSONDecodeError as error:
-                raise AnalysisError("gh api returned invalid JSON") from error
-    if not pages:
+    if not completed.stdout.strip():
         raise AnalysisError("gh api returned no jobs payload")
-    return pages
+    try:
+        # ``--slurp`` emits one JSON array containing all page envelopes.  Do
+        # not wrap that array in another list: the decoder below deliberately
+        # distinguishes a page envelope from a list of page envelopes.
+        return json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise AnalysisError("gh api returned invalid JSON") from error
 
 
 def main(argv: Sequence[str] | None = None) -> int:

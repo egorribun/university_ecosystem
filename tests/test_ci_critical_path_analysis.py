@@ -110,3 +110,14 @@ def test_parser_rejects_naive_timestamps_and_negative_duration() -> None:
                 ]
             }
         )
+
+
+def test_parser_flattens_slurped_github_api_pages() -> None:
+    payload = [
+        {"total_count": 2, "jobs": [{"id": 1, "name": "a"}]},
+        {"total_count": 2, "jobs": [{"id": 2, "name": "b"}]},
+    ]
+
+    parsed = parse_jobs(payload)
+
+    assert [job.job_id for job in parsed] == [1, 2]
