@@ -29,6 +29,11 @@ on:
         description: "Repository-relative path used after artifact download"
         required: true
         type: string
+      run-mutation-diagnostic:
+        description: "Run the bounded advisory mutation diagnostic (scheduled/manual only)"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   test:
@@ -289,7 +294,10 @@ jobs:
     name: Go mutation diagnostic (${{ inputs.service-directory }})
     # Mutation is an advisory, bounded diagnostic.  It never participates in
     # the contract-owned coverage/quality result produced by the test job.
-    if: ${{ github.event_name == 'pull_request' }}
+    # Keep it out of the required PR lane: diagnostics can consume a full
+    # runner for every changed file.  Scheduled/manual invocations opt in
+    # explicitly and still receive the complete, content-addressed report.
+    if: ${{ inputs.run-mutation-diagnostic && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}
     continue-on-error: true
     runs-on: ubuntu-24.04
     timeout-minutes: 70

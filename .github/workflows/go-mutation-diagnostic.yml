@@ -1,0 +1,60 @@
+name: Go Mutation Diagnostic
+
+# The Go mutation run is an intentionally advisory, bounded diagnostic.  It is
+# scheduled/manual-only so the required PR lane keeps its runners available for
+# coverage, race, integration, and security evidence.  The reusable workflow
+# still fails closed inside each diagnostic job and uploads the complete report
+# for every changed source file.
+on:
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: go-mutation-diagnostic-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  diagnostic:
+    name: Go diagnostic (${{ matrix.service-directory }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service-directory: services/gateway
+            coverage-threshold: 100
+            coverage-component: go-gateway
+            coverage-canonical-path: artifacts/coverage/go/gateway/coverage.out
+          - service-directory: services/file-processor
+            coverage-threshold: 100
+            coverage-component: go-file-processor
+            coverage-canonical-path: artifacts/coverage/go/file-processor/coverage.out
+          - service-directory: services/ws-hub
+            coverage-threshold: 100
+            coverage-component: go-ws-hub
+            coverage-canonical-path: artifacts/coverage/go/ws-hub/coverage.out
+          - service-directory: services/cmd/uni-cli
+            coverage-threshold: 100
+            coverage-component: go-shared-fragment
+            coverage-canonical-path: artifacts/coverage/go/shared-inputs/uni-cli/coverage.out
+          - service-directory: services/pkg/spiffe
+            coverage-threshold: 100
+            coverage-component: go-shared-fragment
+            coverage-canonical-path: artifacts/coverage/go/shared-inputs/spiffe/coverage.out
+          - service-directory: services/pkg/spicedb
+            coverage-threshold: 100
+            coverage-component: go-shared-fragment
+            coverage-canonical-path: artifacts/coverage/go/shared-inputs/spicedb/coverage.out
+    uses: ./.github/workflows/reusable-go-tests.yml
+    permissions:
+      contents: read
+    with:
+      service-directory: ${{ matrix.service-directory }}
+      go-version: "1.26.6"
+      coverage-threshold: ${{ matrix.coverage-threshold }}
+      coverage-component: ${{ matrix.coverage-component }}
+      coverage-canonical-path: ${{ matrix.coverage-canonical-path }}
+      run-mutation-diagnostic: true

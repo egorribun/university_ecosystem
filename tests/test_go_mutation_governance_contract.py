@@ -6,6 +6,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW_PATH = ROOT / ".github" / "workflows" / "reusable-go-tests.yml"
+DIAGNOSTIC_WORKFLOW_PATH = ROOT / ".github" / "workflows" / "go-mutation-diagnostic.yml"
 
 
 def _load_workflow() -> dict[str, object]:
@@ -42,7 +43,10 @@ def test_go_coverage_producer_is_independent_of_advisory_mutation() -> None:
     coverage_upload = _step(producer, "Upload coverage artifacts")
     assert coverage_upload["if"] == "${{ success() }}"
 
-    assert diagnostic["if"] == "${{ github.event_name == 'pull_request' }}"
+    assert (
+        diagnostic["if"]
+        == "${{ inputs.run-mutation-diagnostic && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') }}"
+    )
     assert diagnostic["continue-on-error"] is True
     assert 1 <= diagnostic["timeout-minutes"] <= 70
 
@@ -110,6 +114,55 @@ def test_go_coverage_producer_is_independent_of_advisory_mutation() -> None:
     assert "mutation-diagnostic-summary.json" in diagnostic_upload["with"]["path"]
     assert "target.txt" in diagnostic_upload["with"]["path"]
     assert "source.sha256" in diagnostic_upload["with"]["path"]
+
+
+def test_go_mutation_diagnostic_is_explicitly_scheduled_or_manual() -> None:
+    workflow = yaml.safe_load(DIAGNOSTIC_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert isinstance(workflow, dict)
+    triggers = workflow.get("on")
+    if triggers is None:
+        # PyYAML 1.1 parses the YAML 1.2 key ``on`` as boolean ``True``.
+        triggers = workflow.get(True)
+    assert isinstance(triggers, dict)
+    assert set(triggers) == {"schedule", "workflow_dispatch"}
+    assert triggers["schedule"] == [{"cron": "30 4 * * *"}]
+    assert triggers["workflow_dispatch"] == {}
+
+    jobs = workflow.get("jobs")
+    assert isinstance(jobs, dict)
+    diagnostic = jobs["diagnostic"]
+    assert isinstance(diagnostic, dict)
+    assert diagnostic["uses"] == "./.github/workflows/reusable-go-tests.yml"
+    assert diagnostic["strategy"]["fail-fast"] is False
+    matrix = diagnostic["strategy"]["matrix"]
+    assert isinstance(matrix, dict)
+    entries = matrix["include"]
+    assert isinstance(entries, list)
+    assert {entry["service-directory"] for entry in entries} == {
+        "services/gateway",
+        "services/file-processor",
+        "services/ws-hub",
+        "services/cmd/uni-cli",
+        "services/pkg/spiffe",
+        "services/pkg/spicedb",
+    }
+    assert diagnostic["with"]["run-mutation-diagnostic"] is True
+
+
+def test_reusable_go_mutation_diagnostic_defaults_to_off() -> None:
+    workflow = _load_workflow()
+    triggers = workflow.get("on")
+    if triggers is None:
+        # PyYAML 1.1 parses the YAML 1.2 key ``on`` as boolean ``True``.
+        triggers = workflow.get(True)
+    assert isinstance(triggers, dict)
+    inputs = triggers["workflow_call"]["inputs"]
+    assert inputs["run-mutation-diagnostic"] == {
+        "description": "Run the bounded advisory mutation diagnostic (scheduled/manual only)",
+        "required": False,
+        "type": "boolean",
+        "default": False,
+    }
 
 
 def test_quality_gate_uses_only_contract_owned_go_coverage_job() -> None:
