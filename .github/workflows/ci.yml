@@ -963,7 +963,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: [stryker-preflight, stryker-shards]
-    if: ${{ always() && !cancelled() && github.event_name == 'pull_request' }}
+    # The preflight is intentionally gated on frontend readiness.  If that
+    # prerequisite is skipped, no producer can emit a same-run artifact and
+    # this consumer must remain skipped as well.  Once preflight started,
+    # keep the aggregate fail-closed for failed/cancelled shard producers.
+    if: ${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.stryker-preflight.result != 'skipped' }}
     permissions:
       contents: read
       actions: read
@@ -1173,7 +1177,10 @@ jobs:
     needs:
       - stryker-aggregate
       - stryker-evidence-roundtrip
-    if: ${{ always() && !cancelled() && github.event_name == 'pull_request' }}
+    # Do not turn an intentionally skipped mutation lane (for example when
+    # frontend-tests failed before preflight) into a second synthetic failure.
+    # Any aggregate that actually started remains fail-closed below.
+    if: ${{ always() && !cancelled() && github.event_name == 'pull_request' && needs.stryker-aggregate.result != 'skipped' }}
     permissions: {}
     steps:
       - name: Require validated frontend mutation evidence
@@ -4550,6 +4557,8 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           EVENT_REF: ${{ github.ref }}
+          PRE_COMMIT_RESULT: ${{ needs.pre-commit-check.result }}
+          FRONTEND_TESTS_RESULT: ${{ needs.frontend-tests.result }}
         run: |
           set -euo pipefail
           # The full load-and-chaos stack runs in nightly-full-gate.yml. It is
@@ -4621,10 +4630,22 @@ jobs:
           }
 
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
-            assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "success"
-            assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "success"
-            assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "success"
-            assert_event_result "frontend-mutation-required-context" "${{ needs.frontend-mutation-required-context.result }}" "success"
+            # The frontend mutation lane is intentionally skipped when either
+            # readiness prerequisite fails.  The prerequisite is already a
+            # required result above; avoid reporting those expected skips as
+            # synthetic mutation failures while keeping every started lane
+            # fail-closed.
+            if [[ "$PRE_COMMIT_RESULT" == "success" && "$FRONTEND_TESTS_RESULT" == "success" ]]; then
+              assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "success"
+              assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "success"
+              assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "success"
+              assert_event_result "frontend-mutation-required-context" "${{ needs.frontend-mutation-required-context.result }}" "success"
+            else
+              assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "skipped"
+              assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "skipped"
+              assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "skipped"
+              assert_event_result "frontend-mutation-required-context" "${{ needs.frontend-mutation-required-context.result }}" "skipped"
+            fi
           else
             assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "skipped"
             assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "skipped"

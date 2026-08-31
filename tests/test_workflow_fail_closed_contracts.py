@@ -745,14 +745,37 @@ def test_k6_job_does_not_fake_connectivity_to_an_absent_target() -> None:
 
 def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
     job = _workflow(CI)["jobs"]["ci-success"]
-    gate = _step(job, "Check all jobs passed")["run"]
+    check_step = _step(job, "Check all jobs passed")
+    gate = check_step["run"]
 
+    assert check_step["env"] == {
+        "EVENT_NAME": "${{ github.event_name }}",
+        "EVENT_REF": "${{ github.ref }}",
+        "PRE_COMMIT_RESULT": "${{ needs.pre-commit-check.result }}",
+        "FRONTEND_TESTS_RESULT": "${{ needs.frontend-tests.result }}",
+    }
     assert "required_results=(" in gate
     assert 'if [[ "$result" != "success" ]]' in gate
     assert '"$res" != "success" && "$res" != "skipped"' not in gate
     assert "stryker-preflight" in job["needs"]
-    assert 'assert_event_result "stryker-preflight"' in gate
-    assert 'assert_event_result "stryker-aggregate"' in gate
+    assert (
+        'if [[ "$PRE_COMMIT_RESULT" == "success" && '
+        '"$FRONTEND_TESTS_RESULT" == "success" ]]; then' in gate
+    )
+    for mutation_job in (
+        "stryker-preflight",
+        "stryker-aggregate",
+        "stryker-evidence-roundtrip",
+        "frontend-mutation-required-context",
+    ):
+        assert (
+            f'assert_event_result "{mutation_job}" '
+            f'"${{{{ needs.{mutation_job}.result }}}}" "success"' in gate
+        )
+        assert (
+            f'assert_event_result "{mutation_job}" '
+            f'"${{{{ needs.{mutation_job}.result }}}}" "skipped"' in gate
+        )
     assert 'assert_event_result "codecov-upload"' in gate
     assert '"sbom-generate|${{ needs.sbom-generate.result }}"' in gate
     for advisory in (

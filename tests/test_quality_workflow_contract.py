@@ -3758,7 +3758,10 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     assert "stryker-shard-replay" not in jobs
     mutation_aggregate = jobs["stryker-aggregate"]
     assert mutation_aggregate["needs"] == ["stryker-preflight", "stryker-shards"]
-    assert "always()" in mutation_aggregate["if"]
+    assert mutation_aggregate["if"] == (
+        "${{ always() && !cancelled() && github.event_name == 'pull_request' "
+        "&& needs.stryker-preflight.result != 'skipped' }}"
+    )
     assert mutation_aggregate["env"]["STRYKER_AGGREGATE_ROOT"] == (
         "reports/mutation/external"
     )
@@ -4151,7 +4154,8 @@ def test_frontend_mutation_required_context_is_fail_closed() -> None:
         "stryker-evidence-roundtrip",
     ]
     assert context_job["if"] == (
-        "${{ always() && !cancelled() && github.event_name == 'pull_request' }}"
+        "${{ always() && !cancelled() && github.event_name == 'pull_request' "
+        "&& needs.stryker-aggregate.result != 'skipped' }}"
     )
     assert context_job["permissions"] == {}
     assert context_job["timeout-minutes"] == 5
