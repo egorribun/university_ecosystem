@@ -36,6 +36,9 @@ const mocks = vi.hoisted(() => ({
   },
   navigate: vi.fn(),
   paramsRef: { current: {} as { chatId?: string } },
+  isConnectedRef: { current: true },
+  sendJoin: vi.fn(),
+  sendLeave: vi.fn(),
   presenceMap: {} as Record<string, { active?: boolean }>,
   testUser: {
     id: "current-user-id",
@@ -69,10 +72,10 @@ vi.mock("@/contexts/AuthContext", () => ({
 vi.mock("@/contexts/MessengerContext", () => ({
   useMessenger: () => ({
     presenceMap: mocks.presenceMap,
-    isConnected: true,
+    isConnected: mocks.isConnectedRef.current,
     sendTyping: vi.fn(),
-    sendJoin: vi.fn(),
-    sendLeave: vi.fn(),
+    sendJoin: mocks.sendJoin,
+    sendLeave: mocks.sendLeave,
     getTypingUsersForChat: () => [],
     unreadCount: 0,
   }),
@@ -154,7 +157,10 @@ beforeEach(async () => {
   ;({ useMessengerController } = await import("../useMessengerController"))
   vi.clearAllMocks()
   mocks.paramsRef.current = {}
+  mocks.isConnectedRef.current = true
   mocks.presenceMap = {}
+  mocks.sendJoin.mockReset()
+  mocks.sendLeave.mockReset()
   mocks.authUserRef.current = mocks.testUser
 
   mocks.createObjectURL.mockClear().mockReturnValue("blob:mock-url")
@@ -211,6 +217,87 @@ afterEach(() => {
 // ---------- Tests ----------
 
 describe("useMessengerController — branch top-up", () => {
+  describe("active chat query and room lifecycle", () => {
+    it("hydrates a direct-link chat when it is not present in the chat list", async () => {
+      mocks.paramsRef.current = { chatId: "direct-chat" }
+      mocks.chatApi.getChats.mockResolvedValue({ items: [], has_more: false, next_cursor: null })
+      mocks.chatApi.getChat.mockResolvedValue({
+        id: "direct-chat",
+        participants: [{ id: "current-user-id" }, { id: "peer" }],
+        unread_count: 0,
+      })
+
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("direct-chat"))
+      expect(mocks.chatApi.getChat).toHaveBeenCalledWith("direct-chat", expect.any(AbortSignal))
+    })
+
+    it("prefers the listed chat over a concurrently resolving fallback", async () => {
+      mocks.paramsRef.current = { chatId: "listed-chat" }
+      mocks.chatApi.getChats.mockResolvedValue({
+        items: [
+          {
+            id: "listed-chat",
+            participants: [{ id: "current-user-id" }, { id: "peer" }],
+            name: "listed result",
+            unread_count: 0,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      mocks.chatApi.getChat.mockResolvedValue({
+        id: "listed-chat",
+        participants: [{ id: "current-user-id" }, { id: "peer" }],
+        name: "fallback result",
+        unread_count: 0,
+      })
+
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+
+      await waitFor(() => expect(result.current.activeChat?.name).toBe("listed result"))
+      expect(result.current.activeChat?.name).toBe("listed result")
+    })
+
+    it("joins the selected chat while connected and leaves each room exactly once", async () => {
+      seedChat("chat-1")
+      const { result, rerender, unmount } = renderHook(() => useMessengerController(), { wrapper })
+
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+      await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledWith("chat-1"))
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(1)
+      expect(mocks.sendLeave).not.toHaveBeenCalled()
+
+      mocks.paramsRef.current = { chatId: "chat-2" }
+      rerender()
+
+      await waitFor(() => expect(mocks.sendLeave).toHaveBeenCalledWith("chat-1"))
+      await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledWith("chat-2"))
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(2)
+      expect(mocks.sendLeave).toHaveBeenCalledTimes(1)
+
+      unmount()
+      expect(mocks.sendLeave).toHaveBeenCalledWith("chat-2")
+      expect(mocks.sendLeave).toHaveBeenCalledTimes(2)
+    })
+
+    it("waits for a reconnect before joining an open chat", async () => {
+      mocks.isConnectedRef.current = false
+      seedChat("offline-chat")
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+
+      await waitFor(() => expect(result.current.selectedChatId).toBe("offline-chat"))
+      expect(mocks.sendJoin).not.toHaveBeenCalled()
+
+      mocks.isConnectedRef.current = true
+      rerender()
+
+      await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledWith("offline-chat"))
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe("createChat / createGroup mutations (386-403)", () => {
     it("handleCreateChat navigates to the new chat + closes the modal on success", async () => {
       const { result } = renderHook(() => useMessengerController(), { wrapper })
@@ -719,6 +806,106 @@ describe("useMessengerController — branch top-up", () => {
       expect(m?.attachments).toEqual([
         { id: "att-1", url: "/f.png", type: "image", name: "f.png", size: 123 },
       ])
+    })
+  })
+
+  describe("message transform contract", () => {
+    it("preserves sender, read/edit, attachment, reaction, reply, and forward metadata", async () => {
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      mocks.chatApi.getChats.mockResolvedValue({
+        items: [
+          {
+            id: "chat-1",
+            participants: [{ id: "current-user-id" }, { id: "peer" }],
+            unread_count: 0,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      mocks.chatApi.getMessages.mockResolvedValue({
+        items: [
+          {
+            id: "rich-message",
+            chat_id: "chat-1",
+            sender_id: "current-user-id",
+            content: "rich body",
+            created_at: "2025-01-01T10:00:00.000Z",
+            read_status: true,
+            read_at: "2025-01-01T10:01:00.000Z",
+            edited_at: "2025-01-01T10:02:00.000Z",
+            attachments: [
+              { id: "file-1", url: "/doc.pdf", file_type: "file", filename: "doc.pdf", size: 42 },
+            ],
+            reactions: [{ emoji: "👍", count: 3, reacted_by_me: true }],
+            reply_to: {
+              id: "quoted-message",
+              sender_id: "peer",
+              sender_name: "Peer Name",
+              content: "quoted body",
+              deleted_at: "2025-01-01T09:59:00.000Z",
+            },
+            forwarded_from_name: "Forwarded Peer",
+          },
+          {
+            id: "plain-message",
+            chat_id: "chat-1",
+            sender_id: "peer",
+            content: "plain body",
+            created_at: "2025-01-01T10:03:00.000Z",
+            read_status: false,
+            deleted_at: "2025-01-01T10:04:00.000Z",
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.messages).toHaveLength(2))
+
+      expect(result.current.messages[0]).toMatchObject({
+        id: "rich-message",
+        senderId: "current-user-id",
+        senderName: "Test User",
+        senderAvatar: "/avatar.png",
+        text: "rich body",
+        status: "read",
+        readAt: "2025-01-01T10:01:00.000Z",
+        readAtLabel: expect.any(String),
+        isLastRead: true,
+        editedAt: "2025-01-01T10:02:00.000Z",
+        editedAtLabel: expect.any(String),
+        deletedAt: null,
+        attachments: [{ id: "file-1", url: "/doc.pdf", type: "file", name: "doc.pdf", size: 42 }],
+        reactions: [{ emoji: "👍", count: 3, reactedByMe: true }],
+        replyTo: {
+          id: "quoted-message",
+          senderName: "Peer Name",
+          isMe: false,
+          text: "quoted body",
+          deletedAt: "2025-01-01T09:59:00.000Z",
+        },
+        forwardedFromName: "Forwarded Peer",
+      })
+      expect(result.current.messages[1]).toMatchObject({
+        id: "plain-message",
+        senderId: "peer",
+        senderName: "User",
+        senderAvatar: "",
+        text: "plain body",
+        status: "sent",
+        readAt: null,
+        isLastRead: false,
+        editedAt: null,
+        deletedAt: "2025-01-01T10:04:00.000Z",
+        replyTo: null,
+        forwardedFromName: null,
+      })
+      expect(result.current.messages[1]?.readAtLabel).toBeUndefined()
+      expect(result.current.messages[1]?.editedAtLabel).toBeUndefined()
+      expect(result.current.messages[1]?.attachments).toBeUndefined()
+      expect(result.current.messages[1]?.reactions).toBeUndefined()
     })
   })
 
