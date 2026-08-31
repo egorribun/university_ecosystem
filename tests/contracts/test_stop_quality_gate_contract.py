@@ -5,11 +5,10 @@ from __future__ import annotations
 import importlib
 import sys
 import threading
-import time
 from pathlib import Path
 from typing import Any
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 HOOKS_DIR = REPOSITORY_ROOT / ".agents" / "hooks"
 if str(HOOKS_DIR) not in sys.path:
     sys.path.insert(0, str(HOOKS_DIR))
@@ -49,6 +48,8 @@ def test_go_vet_uses_bounded_parallelism_and_preserves_module_contract(
         )
 
     lock = threading.Lock()
+    first_started = threading.Event()
+    second_started = threading.Event()
     active = 0
     max_active = 0
     calls: list[tuple[tuple[str, ...], Path, int]] = []
@@ -58,12 +59,21 @@ def test_go_vet_uses_bounded_parallelism_and_preserves_module_contract(
     ) -> tuple[int, str, str]:
         nonlocal active, max_active
         with lock:
+            call_index = len(calls)
             active += 1
             max_active = max(max_active, active)
             calls.append((tuple(command), cwd, timeout))
-        # Let the second worker start so the test verifies bounded parallelism,
-        # rather than merely observing sequential execution.
-        time.sleep(0.05)
+
+        # Synchronize the first two calls without an unbounded sleep.  If the
+        # implementation regresses to one worker, the bounded wait releases
+        # and the max_active assertion below fails instead of hanging tests.
+        if call_index == 0:
+            first_started.set()
+            second_started.wait(timeout=2)
+        elif call_index == 1:
+            second_started.set()
+            first_started.wait(timeout=2)
+
         with lock:
             active -= 1
         return 0, "", ""
