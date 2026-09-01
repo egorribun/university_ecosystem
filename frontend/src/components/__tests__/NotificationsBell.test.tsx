@@ -7,13 +7,18 @@ import NotificationsBell from "../feedback/NotificationsBell"
 
 const useNotificationsMock = vi.fn()
 const motionState = vi.hoisted(() => ({ reducedMotion: false }))
+const translationState = vi.hoisted(() => ({ namespaces: [] as unknown[] }))
+const mediaQueryState = vi.hoisted(() => ({ queries: [] as string[] }))
 
 vi.mock("@/hooks/useNotifications", () => ({
   useNotifications: () => useNotificationsMock(),
 }))
 
 vi.mock("@/hooks/useMediaQuery", () => ({
-  default: () => motionState.reducedMotion,
+  default: (query: string) => {
+    mediaQueryState.queries.push(query)
+    return motionState.reducedMotion
+  },
 }))
 
 const translations: Record<string, string> = {
@@ -33,9 +38,12 @@ const translations: Record<string, string> = {
 }
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => translations[key] ?? key,
-  }),
+  useTranslation: (namespaces: unknown) => {
+    translationState.namespaces.push(namespaces)
+    return {
+      t: (key: string) => translations[key] ?? key,
+    }
+  },
 }))
 
 // Mock framer-motion to avoid animation issues in tests
@@ -134,6 +142,17 @@ describe("NotificationsBell", () => {
   beforeEach(() => {
     useNotificationsMock.mockReset()
     motionState.reducedMotion = false
+    translationState.namespaces.length = 0
+    mediaQueryState.queries.length = 0
+  })
+
+  it("starts closed and loads notification strings from the system namespace", () => {
+    useNotificationsMock.mockReturnValue(baseState())
+    render(<NotificationsBell />)
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(translationState.namespaces).toContainEqual(["system"])
+    expect(mediaQueryState.queries).toContain("(prefers-reduced-motion: reduce)")
   })
 
   it("does not access the DOM while rendering on the server", () => {
@@ -345,6 +364,36 @@ describe("NotificationsBell", () => {
     render(<NotificationsBell />)
     await user.click(screen.getByRole("button", { name: "Open notifications" }))
 
+    const chatLink = screen.getByText("Unread chat").closest("a")!
+    const scheduleLink = screen.getByText("Unread reminder").closest("a")!
+    const readLink = screen.getByText("Read update").closest("a")!
+    expect(chatLink).toHaveAttribute("href", "#")
+    expect(chatLink).toHaveClass("flex", "gap-3", "cursor-default")
+    expect(scheduleLink).toHaveAttribute("href", "/schedule")
+    expect(scheduleLink).toHaveClass("cursor-pointer")
+    expect(readLink).toHaveAttribute("href", "#")
+    expect(readLink).toHaveClass("cursor-default")
+
+    const chatRow = chatLink.parentElement!
+    const scheduleRow = scheduleLink.parentElement!
+    const readRow = readLink.parentElement!
+    expect(chatRow).toHaveClass("relative", "group", "bg-brand/(--opacity-faint)")
+    expect(readRow).not.toHaveClass("bg-brand/(--opacity-faint)")
+    expect(screen.getByText("Unread chat")).toHaveClass("text-text-primary")
+    expect(screen.getByText("Read update")).toHaveClass("text-(--text-secondary)")
+    expect(chatRow.querySelector("svg")?.outerHTML).not.toBe(
+      scheduleRow.querySelector("svg")?.outerHTML
+    )
+    expect(scheduleRow.querySelector("svg")?.outerHTML).not.toBe(
+      readRow.querySelector("svg")?.outerHTML
+    )
+    const itemVariants = JSON.parse(chatRow.getAttribute("data-motion-variants") ?? "null") as {
+      hidden: { opacity: number; x: number }
+      visible: { opacity: number; x: number }
+    }
+    expect(itemVariants.hidden).toMatchObject({ opacity: 0, x: -10 })
+    expect(itemVariants.visible).toMatchObject({ opacity: 1, x: 0 })
+
     await user.click(screen.getByText("Unread chat"))
     expect(markRead).toHaveBeenCalledWith("chat-1")
 
@@ -356,7 +405,21 @@ describe("NotificationsBell", () => {
 
     const markButtons = screen.getAllByTitle("Mark as read")
     expect(markButtons).toHaveLength(2)
-    await user.click(markButtons[0]!)
+    expect(markButtons[0]).toHaveClass(
+      "absolute",
+      "top-2",
+      "right-2",
+      "min-h-11",
+      "min-w-11",
+      "opacity-0",
+      "group-hover:opacity-100",
+      "focus:opacity-100"
+    )
+    markRead.mockClear()
+    const markReadClick = new MouseEvent("click", { bubbles: true, cancelable: true })
+    fireEvent(markButtons[0]!, markReadClick)
+    expect(markReadClick.defaultPrevented).toBe(true)
+    expect(markRead).toHaveBeenCalledTimes(1)
     expect(markRead).toHaveBeenCalledWith("chat-1")
   })
 
@@ -384,6 +447,32 @@ describe("NotificationsBell", () => {
       ""
     )
     expect(document.querySelector(".animate-ping")).toBeInTheDocument()
+  })
+
+  it("reflects open state in the trigger styling and bell rotation", async () => {
+    useNotificationsMock.mockReturnValue(baseState())
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+    const trigger = screen.getByRole("button", { name: "Open notifications" })
+    const bell = trigger.querySelector("svg")
+
+    expect(trigger).toHaveClass("relative", "nav-action-btn", "group", "text-text-primary")
+    expect(trigger).toHaveClass("hover:text-(--primary-main)")
+    expect(bell).toHaveClass("nav-action-icon", "bell-wiggle")
+    expect(bell).not.toHaveClass("rotate-[-10deg]")
+
+    await user.click(trigger)
+    expect(trigger).toHaveClass(
+      "bg-(--primary-main)/(--opacity-subtle)",
+      "!border-(--primary-main)/(--opacity-soft)",
+      "shadow-sm",
+      "text-(--primary-main)"
+    )
+    expect(bell).toHaveClass("rotate-[-10deg]")
+
+    await user.click(trigger)
+    expect(trigger).toHaveClass("text-text-primary", "hover:text-(--primary-main)")
+    expect(bell).not.toHaveClass("rotate-[-10deg]")
   })
 
   it("uses the trigger geometry and desktop breakpoint at exactly 640px", async () => {
@@ -504,6 +593,27 @@ describe("NotificationsBell", () => {
     expect(document.querySelector(".animate-spin")).not.toBeInTheDocument()
   })
 
+  it("renders the compact empty state when there are no notifications", async () => {
+    useNotificationsMock.mockReturnValue(baseState())
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+    await user.click(screen.getByRole("button", { name: "Open notifications" }))
+
+    expect(screen.getByText("Nothing yet")).toBeInTheDocument()
+    const emptyMessage = screen.getByText("Nothing yet")
+    expect(emptyMessage).toHaveClass("text-sm", "opacity-medium", "font-medium")
+    expect(emptyMessage.parentElement).toHaveClass(
+      "p-12",
+      "text-center",
+      "text-(--text-secondary)",
+      "flex",
+      "flex-col",
+      "items-center",
+      "gap-3"
+    )
+    expect(screen.queryByTitle("Mark as read")).not.toBeInTheDocument()
+  })
+
   it("exposes exact motion state and reduced-motion variants for the dropdown", async () => {
     motionState.reducedMotion = true
     useNotificationsMock.mockReturnValue(baseState())
@@ -516,15 +626,48 @@ describe("NotificationsBell", () => {
     expect(dropdown).toHaveAttribute("data-motion-animate", "visible")
     expect(dropdown).toHaveAttribute("data-motion-exit", "exit")
     const variants = JSON.parse(dropdown.getAttribute("data-motion-variants") ?? "null") as {
-      hidden: { opacity: number; y: number; scale: number }
-      visible: { opacity: number; y: number; scale: number; transition: { duration: number } }
-      exit: { opacity: number; y: number; scale: number; transition: { duration: number } }
+      hidden: { opacity: number; y: number; scale: number; x: number | string }
+      visible: {
+        opacity: number
+        y: number
+        scale: number
+        x: number | string
+        transition: { duration: number; ease: string; staggerChildren: number }
+      }
+      exit: {
+        opacity: number
+        y: number
+        scale: number
+        x: number | string
+        transition: { duration: number; ease: string }
+      }
     }
     expect(variants.hidden).toMatchObject({ opacity: 0, y: -10, scale: 0.95 })
     expect(variants.visible).toMatchObject({ opacity: 1, y: 0, scale: 1 })
+    expect(variants.hidden.x).toBe(0)
+    expect(variants.visible.x).toBe(0)
     expect(variants.visible.transition.duration).toBe(0)
+    expect(variants.visible.transition).toMatchObject({ ease: "easeOut", staggerChildren: 0.05 })
     expect(variants.exit).toMatchObject({ opacity: 0, y: -10, scale: 0.95 })
+    expect(variants.exit.x).toBe(0)
     expect(variants.exit.transition.duration).toBe(0)
+    expect(variants.exit.transition.ease).toBe("easeIn")
+  })
+
+  it("uses the documented motion durations when reduced motion is not requested", async () => {
+    motionState.reducedMotion = false
+    useNotificationsMock.mockReturnValue(baseState())
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+    await user.click(screen.getByRole("button", { name: "Open notifications" }))
+
+    const dropdown = screen.getByRole("dialog", { name: "Notifications" })
+    const variants = JSON.parse(dropdown.getAttribute("data-motion-variants") ?? "null") as {
+      visible: { transition: { duration: number } }
+      exit: { transition: { duration: number } }
+    }
+    expect(variants.visible.transition.duration).toBe(0.2)
+    expect(variants.exit.transition.duration).toBe(0.15)
   })
 
   describe("dropdown positioning", () => {
@@ -577,6 +720,14 @@ describe("NotificationsBell", () => {
       // Mobile branch sets right to null → undefined → empty string
       expect(dropdown.style.right).toBe("")
       expect(dropdown.style.width).toBe("calc(100vw - 2rem)")
+      const variants = JSON.parse(dropdown.getAttribute("data-motion-variants") ?? "null") as {
+        hidden: { x: number | string }
+        visible: { x: number | string }
+        exit: { x: number | string }
+      }
+      expect(variants.hidden.x).toBe("-50%")
+      expect(variants.visible.x).toBe("-50%")
+      expect(variants.exit.x).toBe("-50%")
     })
 
     it("recomputes position when the window resizes", async () => {
