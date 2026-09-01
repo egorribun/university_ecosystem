@@ -334,11 +334,47 @@ async def test_issue_binds_recipient_lookup_to_user_and_persists_outbox(
     added = db.add_all.call_args.args[0]
     assert len(added) == 3
     assert added[0].user_id == user_id
+    assert added[0].session_id is None
     assert added[0].attempt_count == 0
     assert added[0].state is ChallengeState.PENDING
     assert added[0].trust_device_requested is False
     assert added[1].challenge_id == issued.challenge_id
     assert isinstance(added[2], StoredEvent)
+
+
+@pytest.mark.asyncio
+async def test_issue_without_explicit_clock_uses_utc_for_expiry_contract(
+    service: EmailOtpService,
+) -> None:
+    """Implicit issue timestamps must remain timezone-aware UTC values."""
+
+    user_id = uuid.UUID("55555555-5555-7555-8555-555555555555")
+    user = SimpleNamespace(id=user_id, email="student@example.edu")
+    db = MagicMock()
+    db.flush = AsyncMock()
+    service._rate_limit = AsyncMock()  # type: ignore[method-assign]
+    service._resolve_recipient = AsyncMock(  # type: ignore[method-assign]
+        return_value=(user, user.email)
+    )
+    clock = MagicMock(wraps=datetime)
+    clock.now.return_value = NOW
+
+    with patch.object(email_otp_module, "datetime", clock):
+        issued = await service.issue(
+            db,
+            user_id=user_id,
+            flow="login",
+            session_identifier=SESSION,
+            client_fingerprint=FINGERPRINT,
+            client_ip=IP,
+            locale="en",
+        )
+
+    clock.now.assert_called_once_with(UTC)
+    assert issued.expires_at == NOW + timedelta(seconds=600)
+    assert issued.resend_available_at == NOW + timedelta(seconds=60)
+    added = db.add_all.call_args.args[0]
+    assert added[0].created_at == NOW
 
 
 @pytest.mark.asyncio
@@ -427,6 +463,7 @@ async def test_resend_opaque_preserves_the_bound_session_identifier(
     )
 
     assert result is expected
+    assert service.resend.await_args.kwargs["challenge_token"] == "opaque-token"
     assert (
         service.resend.await_args.kwargs["session_identifier"]
         == challenge.session_identifier
@@ -499,6 +536,10 @@ async def test_resend_without_explicit_clock_uses_utc_and_rotates_expiry(
     compiled_rotation = rotation_statement.compile(dialect=postgresql.dialect())
     assert compiled_rotation.params["token_digest"] == challenge.token_digest
     assert compiled_rotation.params["token_key_id"] == "active"
+    assert compiled_rotation.params["resend_available_at"] == rotated_at + timedelta(
+        seconds=60
+    )
+    assert "mfa_challenges.id =" in str(rotation_statement.whereclause)
     cancelled_statement = db.execute.await_args_list[1].args[0]
     assert "mfa_email_deliveries.challenge_id =" in str(cancelled_statement.whereclause)
 
@@ -742,6 +783,8 @@ def test_smtp_missing_either_host_or_port_fails_closed_and_preserves_headers() -
     assert message["From"] == "security@example.edu"
     assert message["To"] == "student@example.edu"
     assert message["Message-ID"] == "<challenge@example.edu>"
+    assert "from" not in raw_headers
+    assert "FROM" not in raw_headers
     html_part = message.get_body(preferencelist=("html",))
     assert html_part is not None
     # Keep the MIME subtype canonical.  ``EmailMessage.get_content_type``
@@ -889,6 +932,13 @@ async def test_delivery_completion_requires_exactly_one_row_and_forwards_rendere
     claim_statement = db.execute.await_args_list[0].args[0]
     compiled_claim = claim_statement.compile(dialect=postgresql.dialect())
     assert "lease_expires_at <=" in str(compiled_claim)
+    lease_predicate = next(
+        clause
+        for clause in claim_statement.whereclause.clauses
+        if "lease_expires_at" in str(clause)
+    )
+    assert "mfa_email_deliveries.status =" in str(lease_predicate)
+    assert " AND " in str(lease_predicate)
     assert compiled_claim.params["attempt_count_1"] == 1
     assert db.get.await_args is not None
     assert db.get.await_args.kwargs["populate_existing"] is True
@@ -1044,3 +1094,23 @@ async def test_delivery_decrypt_failure_logs_delivery_id_for_retry_diagnostics(
 
 def test_rejected_error_is_enumeration_safe_and_exact() -> None:
     assert str(MfaOtpRejected()) == "MFA verification failed"
+
+
+@pytest.mark.asyncio
+async def test_recovery_code_verification_uses_waiting_row_lock() -> None:
+    """Concurrent recovery-code checks must wait instead of failing with NOWAIT."""
+
+    from app.auth.mfa.recovery import verify_recovery_code
+
+    result = MagicMock()
+    result.scalars.return_value.all.return_value = []
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=result)
+    user = SimpleNamespace(id=uuid.uuid4())
+
+    assert await verify_recovery_code(db, user=user, code="unused") is False  # type: ignore[arg-type]
+
+    statement = db.execute.await_args.args[0]
+    lock = statement._for_update_arg
+    assert lock is not None
+    assert lock.nowait is False

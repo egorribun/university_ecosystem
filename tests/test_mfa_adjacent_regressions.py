@@ -3,13 +3,14 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import app.auth.mfa.trusted_device as trusted_device_module
 from app.auth.mfa.challenge import consume_challenge, issue_challenge
 from app.auth.mfa.email_otp import MfaSecurityUnavailable
 from app.auth.mfa.lifecycle import (
@@ -171,6 +172,114 @@ async def test_trusted_device_keyring_outage_fails_closed_as_503_boundary(
             request_ip="203.0.113.8",
             request_ua="test",
         )
+
+
+@pytest.mark.asyncio
+async def test_trusted_device_missing_key_id_never_uses_a_literal_fallback_key() -> (
+    None
+):
+    """A malformed stored key id must be rejected, even if XXXX is configured."""
+
+    key = b"k" * 32
+    user = SimpleNamespace(id=uuid.uuid4(), mfa_epoch=3)
+    device = SimpleNamespace(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        token_hash="ignored-by-query-double",
+        token_key_id=None,
+        binding_digest=trusted_device_module._binding_digest(
+            key, "203.0.113.8", "test-agent"
+        ),
+        mfa_epoch=3,
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+    )
+    locked_result = MagicMock()
+    locked_result.scalar_one_or_none.return_value = user
+    device_result = MagicMock()
+    device_result.scalars.return_value.first.return_value = device
+    db = MagicMock()
+    db.execute = AsyncMock(side_effect=[locked_result, device_result])
+    db.delete = AsyncMock()
+    db.flush = AsyncMock()
+
+    with (
+        patch.object(
+            trusted_device_module,
+            "_configured_keyring",
+            return_value=({"XXXX": key}, "XXXX"),
+        ),
+        patch.object(trusted_device_module, "_utcnow", return_value=datetime.now(UTC)),
+    ):
+        result = await trusted_device_module._consume_trusted_device_token(
+            db,
+            user=user,
+            token="presented-token",
+            request_ip="203.0.113.8",
+            request_ua="test-agent",
+            rotate=False,
+        )
+
+    assert result is None
+    db.delete.assert_awaited_once_with(device)
+    db.flush.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_trusted_device_binding_mismatch_log_keeps_user_identity() -> None:
+    """Binding diagnostics retain only the non-sensitive user identifier."""
+
+    key = b"k" * 32
+    user = SimpleNamespace(id=uuid.uuid4(), mfa_epoch=3)
+    device = SimpleNamespace(
+        id=uuid.uuid4(),
+        user_id=user.id,
+        token_hash="ignored-by-query-double",
+        token_key_id="active",
+        binding_digest=trusted_device_module._binding_digest(
+            key, "203.0.113.9", "test-agent"
+        ),
+        mfa_epoch=3,
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+    )
+    locked_result = MagicMock()
+    locked_result.scalar_one_or_none.return_value = user
+    device_result = MagicMock()
+    device_result.scalars.return_value.first.return_value = device
+    db = MagicMock()
+    db.execute = AsyncMock(side_effect=[locked_result, device_result])
+    db.delete = AsyncMock()
+    db.flush = AsyncMock()
+
+    with (
+        patch.object(
+            trusted_device_module,
+            "_configured_keyring",
+            return_value=({"active": key}, "active"),
+        ),
+        patch.object(
+            trusted_device_module,
+            "_utcnow",
+            return_value=datetime.now(UTC),
+        ),
+        patch.object(trusted_device_module.logger, "warning") as warning,
+    ):
+        result = await trusted_device_module._consume_trusted_device_token(
+            db,
+            user=user,
+            token="presented-token",
+            request_ip="203.0.113.8",
+            request_ua="test-agent",
+            rotate=False,
+        )
+
+    assert result is None
+    warning.assert_called_once_with(
+        "trusted_device_binding_mismatch user_id=%s device_id=%s",
+        user.id,
+        device.id,
+    )
+    db.delete.assert_awaited_once_with(device)
+    db.flush.assert_awaited_once()
 
 
 @pytest.mark.asyncio

@@ -113,6 +113,7 @@ async def test_redelivery_uses_safe_url_and_unknown_metric_type_fallback(
     assert build_row.call_args is not None
     assert build_row.call_args.kwargs["delivered"] is True
     assert build_row.call_args.kwargs["detail"] is None
+    assert build_row.call_args.kwargs["attempted_at"].tzinfo is UTC
 
 
 def test_unique_notification_ids_logs_the_stable_warning_text() -> None:
@@ -134,7 +135,7 @@ def test_redelivery_error_exposes_the_exact_retryable_failure_count() -> None:
 
 
 @pytest.mark.asyncio
-async def test_redelivery_records_exception_metric_with_notification_type(
+async def test_redelivery_records_exception_metric_with_unknown_type_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Provider exceptions retain their type label and exception reason."""
@@ -153,7 +154,7 @@ async def test_redelivery_records_exception_metric_with_notification_type(
         title="A notification",
         body="Body",
         url="/news/1",
-        type="news",
+        type=None,
         created_at=datetime(2026, 8, 28, 12, 0, tzinfo=UTC),
     )
     failed = Mock()
@@ -184,7 +185,7 @@ async def test_redelivery_records_exception_metric_with_notification_type(
     )
 
     assert outcome.retryable_failures == 1
-    failed.assert_called_once_with(notification_type="news", reason="exception")
+    failed.assert_called_once_with(notification_type="unknown", reason="exception")
 
 
 @pytest.mark.asyncio
@@ -302,7 +303,82 @@ async def test_redelivery_payload_preserves_canonical_topic_metadata(
     )
 
     assert outcome.sent == 1
-    assert send.await_args.args[1]["topic"] == "news.published"
+    payload = send.await_args.args[1]
+    assert payload["topic"] == "news.published"
+    assert payload["data"] == {
+        "notificationId": str(notification.id),
+        "topic": "news.published",
+        "type": "news",
+        "url": "/news/1",
+    }
+
+
+@pytest.mark.asyncio
+async def test_redelivery_continues_after_an_already_delivered_subscription(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A sent pair must not stop delivery to later subscriptions of the user."""
+
+    user_id = uuid4()
+    first = SimpleNamespace(
+        id=uuid4(),
+        user_id=user_id,
+        user=None,
+        endpoint="https://push.example.test/first",
+        topics=None,
+    )
+    second = SimpleNamespace(
+        id=uuid4(),
+        user_id=user_id,
+        user=None,
+        endpoint="https://push.example.test/second",
+        topics=None,
+    )
+    notification = SimpleNamespace(
+        id=uuid4(),
+        user_id=user_id,
+        title="A notification",
+        body="Body",
+        url="/news/1",
+        type="news",
+        created_at=datetime(2026, 8, 28, 12, 0, tzinfo=UTC),
+    )
+    prior = SimpleNamespace(
+        notification_id=notification.id,
+        subscription_id=first.id,
+        status="sent",
+    )
+    provider_result = delivery.WebPushResult(
+        subscription_id=second.id,
+        endpoint=second.endpoint,
+        user_id=user_id,
+        status="sent",
+        status_code=201,
+    )
+    send = AsyncMock(return_value=provider_result)
+    monkeypatch.setattr(delivery, "_is_push_configured", lambda: True)
+    monkeypatch.setattr(delivery, "subscription_supports_topic", lambda *_args: True)
+    monkeypatch.setattr(delivery.webpush_module, "_send_push_async", send)
+    monkeypatch.setattr(delivery.webpush_module, "process_push_results", AsyncMock())
+    db = MagicMock(
+        execute=AsyncMock(
+            side_effect=[
+                _rows([notification]),
+                _rows([first, second]),
+                _rows([prior]),
+                MagicMock(),
+            ]
+        ),
+        flush=AsyncMock(),
+    )
+
+    outcome = await delivery.redeliver_notifications(
+        db, notification_ids=[notification.id]
+    )
+
+    assert outcome.sent == 1
+    assert outcome.already_delivered == 1
+    send.assert_awaited_once_with(second, send.await_args.args[1])
 
 
 @pytest.mark.asyncio

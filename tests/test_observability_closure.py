@@ -289,7 +289,7 @@ def test_configure_otel_uses_clamped_sampler_ratio_and_exact_span_processor() ->
         patch.object(observability, "set_global_textmap"),
         patch.object(observability, "SQLAlchemyInstrumentor"),
         patch.object(observability, "RedisInstrumentor") as redis_instrumentor,
-        patch.object(observability, "HTTPXClientInstrumentor"),
+        patch.object(observability, "HTTPXClientInstrumentor") as httpx_instrumentor,
     ):
         assert observability._configure_otel(MagicMock()) is tracer_provider
 
@@ -307,6 +307,26 @@ def test_configure_otel_uses_clamped_sampler_ratio_and_exact_span_processor() ->
     redis_instrumentor.return_value.instrument.assert_called_once_with(
         tracer_provider=tracer_provider
     )
+    httpx_instrumentor.return_value.instrument.assert_called_once_with(
+        tracer_provider=tracer_provider
+    )
+
+
+def test_shutdown_otel_provider_passes_the_real_provider_to_any_cast() -> None:
+    from app.core import observability
+
+    provider = MagicMock()
+    seen_annotations: list[object] = []
+
+    def record_cast(annotation: object, value: object) -> object:
+        seen_annotations.append(annotation)
+        return value
+
+    with patch.object(observability, "cast", side_effect=record_cast):
+        observability._shutdown_otel_provider(provider)
+
+    assert seen_annotations == [observability.Any]
+    provider.shutdown.assert_called_once_with(timeout_millis=1200)
 
 
 def test_configure_otel_optional_pipelines_without_endpoint_or_headers() -> None:

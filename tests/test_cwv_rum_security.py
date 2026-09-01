@@ -5,12 +5,13 @@ import hmac
 from datetime import UTC, datetime, timedelta, tzinfo
 from types import SimpleNamespace
 from typing import ClassVar
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 
 import jwt
 import pytest
 from sqlalchemy import UniqueConstraint
 
+import app.services.cwv as cwv_module
 from app.core.config import Settings
 from app.models.cwv import CwvObservation
 from app.services import cwv_retention
@@ -267,6 +268,37 @@ def test_observation_normalizes_timestamp_to_utc() -> None:
     )
 
     assert RecordingDateTime.requested_timezone is UTC
+    assert observation.observed_at.tzinfo is UTC
+
+
+def test_observation_default_clock_is_timezone_aware_utc() -> None:
+    """The server-derived timestamp must use UTC when callers omit ``now``."""
+
+    token, _ = issue_envelope(
+        _binding(),
+        origin="https://staging.example.edu",
+        pathname="/dashboard",
+        device_class="desktop",
+        collector_principal_id="00000000-0000-0000-0000-000000000001",
+        gateway_session_id="gateway-session-not-stored",
+        now=NOW,
+    )
+    clock = MagicMock(wraps=datetime)
+    clock.now.return_value = NOW
+
+    with patch.object(cwv_module, "datetime", clock):
+        observation = build_observation(
+            _binding(),
+            token=token,
+            origin="https://staging.example.edu",
+            collector_principal_id="00000000-0000-0000-0000-000000000001",
+            gateway_session_id="gateway-session-not-stored",
+            metric="LCP",
+            value=1000,
+        )
+
+    assert clock.now.call_args_list == [call(UTC), call(UTC)]
+    assert observation.observed_at == NOW
     assert observation.observed_at.tzinfo is UTC
 
 

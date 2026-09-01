@@ -1257,7 +1257,11 @@ def _parse_key_ring(raw: str) -> dict[str, bytes]:
                 )
                 or len(encoded) % 4 == 1
             ):
-                raise ValueError("key-ring value is not strict base64url")
+                # The outer boundary intentionally collapses parser failures
+                # into the generic MFA-unavailable response.  Keep this
+                # internal sentinel message-free so diagnostics cannot drift
+                # while the caller remains enumeration-safe.
+                raise ValueError
             decoded = _b64decode(encoded)
             if not decoded:
                 # The parser intentionally exposes one generic security error

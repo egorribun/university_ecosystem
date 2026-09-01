@@ -1103,6 +1103,8 @@ def test_coordinator_builds_email_service_lazily_once(
     assert coordinator.get_email_otp_service() is expected
     assert coordinator.get_email_otp_service() is expected
     builder.assert_called_once()
+    limiter = builder.call_args.kwargs["rate_limiter"]
+    assert isinstance(limiter, email_otp_module.RuntimeMfaRateLimiter)
 
 
 @pytest.mark.asyncio
@@ -1166,6 +1168,8 @@ async def test_disable_email_factor_advances_epoch_and_clears_preferences(
     starting_epoch: int | None,
     expected_epoch: int,
 ) -> None:
+    from sqlalchemy.dialects import postgresql
+
     user_id = uuid.uuid4()
     locked_user = SimpleNamespace(
         id=user_id,
@@ -1204,6 +1208,9 @@ async def test_disable_email_factor_advances_epoch_and_clears_preferences(
     assert request_user.mfa_epoch == expected_epoch
     lock_statement = db.execute.await_args_list[0].args[0]
     assert "users.id" in str(lock_statement.whereclause)
+    assert "users.id =" in str(lock_statement.whereclause)
+    assert "users.id !=" not in str(lock_statement.whereclause)
+    assert "SELECT users." in str(lock_statement.compile(dialect=postgresql.dialect()))
     assert user_id in lock_statement.compile().params.values()
     assert lock_statement._for_update_arg is not None
     assert lock_statement._for_update_arg.nowait is False
@@ -1412,19 +1419,24 @@ async def test_email_factor_start_commits_and_returns_delivery_contract() -> Non
     db = AsyncMock()
     session = SimpleNamespace(id=uuid.uuid4())
     user = SimpleNamespace(id=uuid.uuid4())
+    request = _api_request(active_session=session)
 
     with (
         patch.object(mfa_api, "extract_request_fingerprint", return_value="f" * 64),
         patch("app.core.ratelimit.resolve_client_ip", return_value="203.0.113.5"),
-        patch("app.core.localization.resolve_locale", return_value="en"),
+        patch(
+            "app.core.localization.resolve_locale", return_value="en"
+        ) as resolve_locale,
     ):
         result = await mfa_api._issue_email_challenge_for_session(
             flow="email_verification",
-            request=_api_request(active_session=session),
+            request=request,
             db=db,
             login_service=login_service,
             user=user,  # type: ignore[arg-type]
         )
+
+    resolve_locale.assert_called_once_with(request=request, user=user)
 
     assert result.method == MFA_METHOD_EMAIL_OTP
     assert result.challenge_token == issued.challenge_token

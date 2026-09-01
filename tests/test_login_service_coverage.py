@@ -517,3 +517,30 @@ async def test_publish_completed_step_up_forwards_request_context(login_service)
     )
 
     publish.assert_awaited_once_with(user=user, session=session, request=request)
+
+
+async def test_complete_step_up_forwards_all_bound_context(login_service):
+    """Step-up completion must not drop the session or request binding."""
+
+    user = MagicMock()
+    session = MagicMock()
+    request = MagicMock()
+    expected = object()
+    complete = AsyncMock(return_value=expected)
+    login_service.session_manager.complete_step_up = complete
+
+    result = await login_service.complete_step_up(
+        user=user,
+        session=session,
+        request=request,
+        method="email_otp",
+    )
+
+    assert result is expected
+    complete.assert_awaited_once_with(
+        user=user,
+        session=session,
+        request=request,
+        db_session=login_service.db,
+        method="email_otp",
+    )
