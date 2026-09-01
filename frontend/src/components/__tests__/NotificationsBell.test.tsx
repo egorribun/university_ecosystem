@@ -19,6 +19,7 @@ vi.mock("@/hooks/useMediaQuery", () => ({
 const translations: Record<string, string> = {
   "system:notificationsBell.open": "Open notifications",
   "system:notificationsBell.title": "Notifications",
+  "system:notificationsBell.new": "New",
   "system:notificationsBell.markAll": "Mark all as read",
   "system:notificationsBell.clear": "Clear",
   "system:notificationsBell.loading": "Loading…",
@@ -48,6 +49,10 @@ vi.mock("framer-motion", () => {
     }: React.ComponentProps<"div"> & { [key: string]: unknown }) => {
       // Filter out framer-motion specific props
       const filteredProps = { ...props }
+      const motionVariants = filteredProps.variants
+      const motionInitial = filteredProps.initial
+      const motionAnimate = filteredProps.animate
+      const motionExit = filteredProps.exit
       const motionProps = [
         "initial",
         "animate",
@@ -64,6 +69,12 @@ vi.mock("framer-motion", () => {
         "layoutId",
       ]
       motionProps.forEach((prop) => delete filteredProps[prop])
+      if (motionVariants !== undefined) {
+        filteredProps["data-motion-variants"] = JSON.stringify(motionVariants)
+      }
+      if (motionInitial !== undefined) filteredProps["data-motion-initial"] = String(motionInitial)
+      if (motionAnimate !== undefined) filteredProps["data-motion-animate"] = String(motionAnimate)
+      if (motionExit !== undefined) filteredProps["data-motion-exit"] = String(motionExit)
 
       const Element = Tag as React.ElementType
       return (
@@ -347,6 +358,173 @@ describe("NotificationsBell", () => {
     expect(markButtons).toHaveLength(2)
     await user.click(markButtons[0]!)
     expect(markRead).toHaveBeenCalledWith("chat-1")
+  })
+
+  it("uses the localized new-notifications label for the unread badge", async () => {
+    const state = baseState()
+    state.unreadCount = 2
+    state.data = [
+      {
+        id: "unread-1",
+        title: "Unread update",
+        body: "A new update",
+        created_at: "2024-01-01T00:00:00Z",
+        read: false,
+      },
+    ]
+    useNotificationsMock.mockReturnValue(state)
+
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+    await user.click(screen.getByRole("button", { name: "Open notifications" }))
+
+    expect(screen.getByText("2 New")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Open notifications" })).toHaveAttribute(
+      "data-unread",
+      ""
+    )
+    expect(document.querySelector(".animate-ping")).toBeInTheDocument()
+  })
+
+  it("uses the trigger geometry and desktop breakpoint at exactly 640px", async () => {
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: 640,
+    })
+    const state = baseState()
+    useNotificationsMock.mockReturnValue(state)
+
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+    const trigger = screen.getByRole("button", { name: "Open notifications" })
+    vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({
+      top: 10,
+      left: 20,
+      right: 100,
+      bottom: 42,
+      width: 80,
+      height: 32,
+      x: 20,
+      y: 10,
+      toJSON: () => ({}),
+    })
+
+    await user.click(trigger)
+    const dropdown = screen.getByRole("dialog", { name: "Notifications" })
+    expect(dropdown).toHaveStyle({ top: "54px", right: "540px" })
+    expect(dropdown).not.toHaveStyle({ width: "calc(100vw - 2rem)" })
+
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: 1024,
+    })
+  })
+
+  it("installs and removes the Escape listener only while open", async () => {
+    useNotificationsMock.mockReturnValue(baseState())
+    const addEventListener = vi.spyOn(document, "addEventListener")
+    const removeEventListener = vi.spyOn(document, "removeEventListener")
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+
+    expect(addEventListener.mock.calls.filter(([type]) => type === "keydown")).toHaveLength(0)
+
+    await user.click(screen.getByRole("button", { name: "Open notifications" }))
+    const keydownRegistration = addEventListener.mock.calls.find(([type]) => type === "keydown")
+    expect(keydownRegistration).toBeDefined()
+
+    await user.keyboard("{Escape}")
+    expect(removeEventListener).toHaveBeenCalledWith("keydown", keydownRegistration?.[1])
+  })
+
+  it("removes the exact resize handler when the dropdown closes", async () => {
+    useNotificationsMock.mockReturnValue(baseState())
+    const addEventListener = vi.spyOn(window, "addEventListener")
+    const removeEventListener = vi.spyOn(window, "removeEventListener")
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+    const trigger = screen.getByRole("button", { name: "Open notifications" })
+
+    await user.click(trigger)
+    const resizeRegistration = addEventListener.mock.calls.find(
+      ([type]) => String(type) === "resize"
+    )
+    expect(resizeRegistration).toBeDefined()
+
+    await user.click(trigger)
+    expect(removeEventListener).toHaveBeenCalledWith("resize", resizeRegistration?.[1])
+  })
+
+  it("keeps bulk actions disabled for each in-flight mutation with notifications present", async () => {
+    const state = baseState()
+    state.data = [
+      {
+        id: "uuid-1",
+        title: "Welcome",
+        body: "Hello",
+        created_at: "2024-01-01T00:00:00Z",
+        read: true,
+      },
+    ]
+    useNotificationsMock.mockReturnValue(state)
+    const user = userEvent.setup()
+    const rendered = render(<NotificationsBell />)
+    await user.click(screen.getByRole("button", { name: "Open notifications" }))
+
+    for (const field of ["isRefetching", "isMarkingAll", "isClearing"] as const) {
+      state[field] = true
+      rendered.rerender(<NotificationsBell />)
+      expect(screen.getByTitle("Mark all as read")).toBeDisabled()
+      expect(screen.getByTitle("Clear")).toBeDisabled()
+      state[field] = false
+      rendered.rerender(<NotificationsBell />)
+    }
+  })
+
+  it("renders existing notifications instead of a spinner during background loading", async () => {
+    const state = baseState()
+    state.isLoading = true
+    state.data = [
+      {
+        id: "uuid-1",
+        title: "Welcome",
+        body: "Hello",
+        created_at: "2024-01-01T00:00:00Z",
+        read: true,
+      },
+    ]
+    useNotificationsMock.mockReturnValue(state)
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+    await user.click(screen.getByRole("button", { name: "Open notifications" }))
+
+    expect(screen.getByText("Welcome")).toBeInTheDocument()
+    expect(document.querySelector(".animate-spin")).not.toBeInTheDocument()
+  })
+
+  it("exposes exact motion state and reduced-motion variants for the dropdown", async () => {
+    motionState.reducedMotion = true
+    useNotificationsMock.mockReturnValue(baseState())
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+    await user.click(screen.getByRole("button", { name: "Open notifications" }))
+
+    const dropdown = screen.getByRole("dialog", { name: "Notifications" })
+    expect(dropdown).toHaveAttribute("data-motion-initial", "hidden")
+    expect(dropdown).toHaveAttribute("data-motion-animate", "visible")
+    expect(dropdown).toHaveAttribute("data-motion-exit", "exit")
+    const variants = JSON.parse(dropdown.getAttribute("data-motion-variants") ?? "null") as {
+      hidden: { opacity: number; y: number; scale: number }
+      visible: { opacity: number; y: number; scale: number; transition: { duration: number } }
+      exit: { opacity: number; y: number; scale: number; transition: { duration: number } }
+    }
+    expect(variants.hidden).toMatchObject({ opacity: 0, y: -10, scale: 0.95 })
+    expect(variants.visible).toMatchObject({ opacity: 1, y: 0, scale: 1 })
+    expect(variants.visible.transition.duration).toBe(0)
+    expect(variants.exit).toMatchObject({ opacity: 0, y: -10, scale: 0.95 })
+    expect(variants.exit.transition.duration).toBe(0)
   })
 
   describe("dropdown positioning", () => {

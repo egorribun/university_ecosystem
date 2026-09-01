@@ -196,7 +196,7 @@ export default function NotificationsBell() {
                       </h3>
                       {unreadCount > 0 && (
                         <span className="bg-brand-subtle-bg text-brand text-xs px-2 py-0.5 rounded-full font-medium border border-brand/(--opacity-dim)">
-                          {unreadCount} {t("notifications:new", "New")}
+                          {unreadCount} {t("system:notificationsBell.new")}
                         </span>
                       )}
                     </div>
