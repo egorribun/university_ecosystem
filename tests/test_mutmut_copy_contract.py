@@ -21,6 +21,8 @@ REQUIRED_ALSO_COPY = {
     "frontend/openapi.json",
     "frontend/src/api",
     "frontend/src/api/generated",
+    "frontend/src/hooks",
+    "frontend/src/hooks/useChatWebSocket.ts",
     "frontend/src/tests/mocks",
     "frontend/src/tests/mocks/generated",
 }
@@ -49,6 +51,7 @@ def test_mutmut_also_copy_creates_file_parents_before_exact_files() -> None:
     for file_path in (
         "security/audit-allowlist.yaml",
         ".agents/hooks/stop_quality_gate.py",
+        "frontend/src/hooks/useChatWebSocket.ts",
     ):
         parent = str(Path(file_path).parent).replace("\\", "/")
         assert configured.index(parent) < configured.index(file_path), file_path

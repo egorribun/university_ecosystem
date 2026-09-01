@@ -641,6 +641,11 @@ also_copy = [
     # so the test cannot silently disappear from mutation inventory.
     "frontend/src/api",
     "frontend/src/api/generated",
+    # The WebSocket contract reads the frontend transport hook from the
+    # isolated mutmut checkout; copy its parent before the exact module so
+    # mutmut's file copier has a destination for the nested path.
+    "frontend/src/hooks",
+    "frontend/src/hooks/useChatWebSocket.ts",
     "frontend/src/tests/mocks",
     "frontend/src/tests/mocks/generated",
     "frontend/tests/e2e/utils",
