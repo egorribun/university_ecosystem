@@ -1,8 +1,9 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import type { ReactNode } from "react"
 import { afterEach, describe, it, expect, vi } from "vitest"
 
-type MotionProps = Record<string, unknown> & { children?: unknown }
+type MotionProps = Record<string, unknown> & { children?: ReactNode }
 type FocusTrapOptions = { active: boolean; onDeactivate?: () => void }
 
 const testState = vi.hoisted(() => ({
@@ -16,9 +17,11 @@ const testState = vi.hoisted(() => ({
 
 vi.mock("framer-motion", async () => {
   const base = (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
+  const baseMotionDiv = base.m.div
+  if (!baseMotionDiv) throw new Error("framer-motion mock must expose m.div")
   const captureMotionDiv = (props: MotionProps) => {
     testState.motionCalls.push(props)
-    return base.m.div(props)
+    return baseMotionDiv(props)
   }
 
   return {
