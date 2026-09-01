@@ -98,8 +98,10 @@ class MfaEmailSender(Protocol):
 
 
 class _RowcountResult(Protocol):
-    @property
-    def rowcount(self) -> int: ...
+    # SQLAlchemy's update result exposes rowcount as a data attribute.  Keep
+    # this structural contract non-executable so coverage measures only
+    # runtime delivery logic, while mypy still rejects incompatible results.
+    rowcount: int
 
 
 class _DeliveryOnlyRateLimiter:
