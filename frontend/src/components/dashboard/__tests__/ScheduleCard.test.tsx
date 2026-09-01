@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import type { ElementType, ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -15,11 +15,15 @@ const translationState = vi.hoisted(() => ({
   displayOverride: undefined as string[] | undefined,
   rawOverride: undefined as string[] | undefined,
 }))
+const translationCalls = vi.hoisted(() => ({
+  entries: [] as Array<{ key: string; options?: Record<string, unknown> }>,
+}))
 const preloadRoute = vi.hoisted(() => vi.fn())
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, options?: { returnObjects?: boolean }) => {
+    t: (key: string, options?: Record<string, unknown>) => {
+      translationCalls.entries.push({ key, options })
       if (
         options?.returnObjects &&
         translationState.useArrays &&
@@ -111,6 +115,7 @@ describe("ScheduleCard", () => {
     translationState.useArrays = true
     translationState.displayOverride = undefined
     translationState.rawOverride = undefined
+    translationCalls.entries = []
     preloadRoute.mockReset()
     preloadRoute.mockResolvedValue(undefined)
   })
@@ -199,7 +204,160 @@ describe("ScheduleCard", () => {
 
     expect(screen.getAllByText("Operating Systems").length).toBeGreaterThan(0)
     expect(screen.getByText("dashboard:next")).toBeInTheDocument()
-    expect(screen.getByText("Networks")).toBeInTheDocument()
+    expect(screen.getAllByText("Networks").length).toBeGreaterThan(0)
+  })
+
+  it("does not promote malformed times to current or next lessons", () => {
+    const time = new Date(2026, 6, 31, 10, 30)
+    scheduleState.current = {
+      data: [
+        lessonFor(time, {
+          id: "bad-time",
+          subject: "Malformed time",
+          start_time: "bad",
+          end_time: "11:00",
+        }),
+        lessonFor(time, {
+          id: "valid-next",
+          subject: "Valid next lesson",
+          start_time: "12:00",
+          end_time: "13:00",
+        }),
+      ],
+      isLoading: false,
+      isFetching: false,
+    }
+
+    render(<ScheduleCard time={time} userRole="student" userGroupId="group-1" />)
+
+    expect(screen.getAllByText("Malformed time").length).toBeGreaterThan(0)
+    expect(screen.queryByText("dashboard:now")).not.toBeInTheDocument()
+    const nextBadge = screen.getByText("dashboard:next")
+    expect(within(nextBadge.parentElement!).getByText("Valid next lesson")).toBeInTheDocument()
+    expect(within(nextBadge.parentElement!).queryByText("Malformed time")).not.toBeInTheDocument()
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument()
+  })
+
+  it("normalizes uppercase backend weekdays and filters parity", () => {
+    const time = new Date(2026, 6, 27, 10, 30)
+    scheduleState.current = {
+      data: [
+        lessonFor(time, { id: "upper", subject: "Uppercase weekday", weekday: "MONDAY" }),
+        lessonFor(time, { id: "odd", subject: "Odd parity", parity: "odd" }),
+        lessonFor(time, { id: "even", subject: "Even parity", parity: "even" }),
+      ],
+      isLoading: false,
+      isFetching: false,
+    }
+
+    render(<ScheduleCard time={time} userRole="student" userGroupId="group-1" />)
+
+    expect(screen.getAllByText("Uppercase weekday").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("Odd parity").length).toBeGreaterThan(0)
+    expect(screen.queryByText("Even parity")).not.toBeInTheDocument()
+  })
+
+  it("accepts every English backend weekday name", () => {
+    dayNames.forEach((weekday, index) => {
+      const time = new Date(2026, 6, 26 + index, 10, 30)
+      scheduleState.current = {
+        data: [lessonFor(time, { id: weekday, subject: `Lesson ${weekday}`, weekday })],
+        isLoading: false,
+        isFetching: false,
+      }
+
+      const { unmount } = render(
+        <ScheduleCard time={time} userRole="student" userGroupId="group-1" />
+      )
+      expect(screen.getAllByText(`Lesson ${weekday}`).length).toBeGreaterThan(0)
+      unmount()
+    })
+  })
+
+  it("sorts matching lessons and preserves metadata interpolation", () => {
+    const time = new Date(2026, 6, 31, 8, 30)
+    scheduleState.current = {
+      data: [
+        lessonFor(time, {
+          id: "late",
+          subject: "Later subject",
+          start_time: "11:00",
+          end_time: "12:00",
+          teacher: "Prof. Later",
+          room: "B-202",
+        }),
+        lessonFor(time, {
+          id: "early",
+          subject: "Earlier subject",
+          start_time: "09:00",
+          end_time: "10:00",
+          teacher: "Dr. Early",
+          room: "A-101",
+        }),
+      ],
+      isLoading: false,
+      isFetching: false,
+    }
+
+    const { container } = render(
+      <ScheduleCard time={time} userRole="student" userGroupId="group-1" />
+    )
+    const listItems = Array.from(container.querySelectorAll("ul > li"))
+    expect(listItems).toHaveLength(2)
+    expect(listItems[0]).toHaveTextContent("Earlier subject")
+    expect(listItems[1]).toHaveTextContent("Later subject")
+
+    const metadataCalls = translationCalls.entries.filter(
+      (entry) => entry.key === "dashboard:lessonMeta"
+    )
+    expect(metadataCalls).toEqual(
+      expect.arrayContaining([
+        { key: "dashboard:lessonMeta", options: { teacher: "Dr. Early", room: "A-101" } },
+        { key: "dashboard:lessonMeta", options: { teacher: "Prof. Later", room: "B-202" } },
+      ])
+    )
+  })
+
+  it("keeps dashboard shell classes and refetch state stable", () => {
+    const time = new Date(2026, 6, 31, 10, 30)
+    scheduleState.current = {
+      data: [lessonFor(time)],
+      isLoading: false,
+      isFetching: false,
+    }
+
+    render(
+      <ScheduleCard
+        time={time}
+        userRole="student"
+        userGroupId="group-1"
+        className="custom-card"
+        style={{ color: "red" }}
+        data-fade="true"
+      />
+    )
+
+    const card = screen.getByRole("article")
+    expect(card).toHaveClass(
+      "glass-noise",
+      "refetch-shimmer",
+      "dash-border-shimmer",
+      "dash-panel-schedule",
+      "custom-card"
+    )
+    expect(card).toHaveAttribute("aria-busy", "false")
+    expect(card).toHaveAttribute("data-refetching", "false")
+    expect(card).toHaveAttribute("data-fade", "true")
+    expect(card).toHaveStyle({ color: "rgb(255, 0, 0)" })
+    expect(screen.getByRole("heading")).toHaveClass("font-extrabold")
+    expect(screen.getByRole("link", { name: "dashboard:aria.openFullSchedule" })).toHaveClass(
+      "btn-dash",
+      "whitespace-nowrap",
+      "px-5",
+      "transition-transform",
+      "duration-base",
+      "hover:-translate-y-0.5"
+    )
   })
 
   it("uses the English fallback weekday arrays and shows an empty day", () => {

@@ -17,6 +17,20 @@ interface ScheduleCardProps {
   "data-pop"?: string
 }
 
+/**
+ * Return a lesson's validated half-open interval.
+ *
+ * Dashboard payloads come from a remote API, so malformed or inverted times
+ * must never be treated as a current/next lesson (or used for progress math).
+ * Keep this guard local to the card because the card derives its own schedule
+ * view instead of using the full schedule page's time hook.
+ */
+const getLessonBounds = (lesson: DashboardLesson): { start: number; end: number } | null => {
+  const start = parseMinutes(lesson.start_time)
+  const end = parseMinutes(lesson.end_time)
+  return start !== null && end !== null && end > start ? { start, end } : null
+}
+
 export const ScheduleCard = memo(function ScheduleCard({
   userRole,
   userGroupId,
@@ -100,27 +114,35 @@ export const ScheduleCard = memo(function ScheduleCard({
   const currentLesson = useMemo(() => {
     return (
       todayLessons.find((l) => {
-        const s = parseMinutes(l.start_time) ?? -1
-        const e = parseMinutes(l.end_time) ?? -1
-        return minutesNow >= s && minutesNow < e
+        const bounds = getLessonBounds(l)
+        return bounds !== null && minutesNow >= bounds.start && minutesNow < bounds.end
       }) || null
     )
   }, [todayLessons, minutesNow])
 
   const nextLesson = useMemo(() => {
     if (currentLesson) {
-      const endM = parseMinutes(currentLesson.end_time)!
-      return todayLessons.find((l) => (parseMinutes(l.start_time) ?? 0) > endM) || null
+      const currentBounds = getLessonBounds(currentLesson)!
+      return (
+        todayLessons.find((l) => {
+          const bounds = getLessonBounds(l)
+          return bounds !== null && bounds.start > currentBounds.end
+        }) || null
+      )
     }
-    return todayLessons.find((l) => (parseMinutes(l.start_time) ?? 0) > minutesNow) || null
+    return (
+      todayLessons.find((l) => {
+        const bounds = getLessonBounds(l)
+        return bounds !== null && bounds.start > minutesNow
+      }) || null
+    )
   }, [todayLessons, currentLesson, minutesNow])
 
   const currentProgress = useMemo(() => {
     if (!currentLesson) return 0
-    const s = parseMinutes(currentLesson.start_time)!
-    const e = parseMinutes(currentLesson.end_time)!
-    const span = Math.max(1, e - s)
-    const passed = Math.min(Math.max(0, minutesNow - s), span)
+    const bounds = getLessonBounds(currentLesson)!
+    const span = bounds.end - bounds.start
+    const passed = Math.min(Math.max(0, minutesNow - bounds.start), span)
     return Math.round((passed / span) * 100)
   }, [currentLesson, minutesNow])
 

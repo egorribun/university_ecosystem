@@ -1,9 +1,16 @@
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react"
 import { afterEach, describe, it, expect, vi, beforeEach } from "vitest"
 
+const translationCalls = vi.hoisted(() => ({
+  entries: [] as Array<{ key: string; options?: Record<string, unknown> }>,
+}))
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string) => key,
+    t: (key: string, options?: Record<string, unknown>) => {
+      translationCalls.entries.push({ key, options })
+      return key
+    },
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
 }))
@@ -57,6 +64,7 @@ const baseProps = {
 describe("ScheduleTimeline — branches", () => {
   beforeEach(() => {
     vi.useRealTimers()
+    translationCalls.entries = []
   })
 
   afterEach(() => vi.useRealTimers())
@@ -78,6 +86,31 @@ describe("ScheduleTimeline — branches", () => {
       proto.scrollTo = original
     } else {
       delete proto.scrollTo
+    }
+  })
+
+  it("clears the deferred auto-scroll when the timeline unmounts", () => {
+    vi.useFakeTimers()
+    const scrollSpy = vi.fn()
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollTo")
+    Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+      configurable: true,
+      value: scrollSpy,
+    })
+
+    try {
+      const { unmount } = render(<ScheduleTimeline {...baseProps} />)
+      unmount()
+      act(() => {
+        vi.advanceTimersByTime(100)
+      })
+      expect(scrollSpy).not.toHaveBeenCalled()
+    } finally {
+      if (descriptor) {
+        Object.defineProperty(HTMLElement.prototype, "scrollTo", descriptor)
+      } else {
+        delete (HTMLElement.prototype as unknown as { scrollTo?: unknown }).scrollTo
+      }
     }
   })
 
@@ -110,6 +143,27 @@ describe("ScheduleTimeline — branches", () => {
     const broken = lesson({ id: "broken", subject: "Broken", start_time: "", end_time: "" })
     render(<ScheduleTimeline {...baseProps} lessons={[broken, MID]} />)
     expect(screen.queryByRole("img", { name: /Broken/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("img", { name: /Midday Seminar/ })).toBeInTheDocument()
+  })
+
+  it("skips a lesson when either endpoint is unparseable", () => {
+    const invalidStart = lesson({
+      id: "invalid-start",
+      subject: "Invalid start",
+      start_time: "bad",
+      end_time: "10:00",
+    })
+    const invalidEnd = lesson({
+      id: "invalid-end",
+      subject: "Invalid end",
+      start_time: "10:00",
+      end_time: "bad",
+    })
+
+    render(<ScheduleTimeline {...baseProps} lessons={[invalidStart, invalidEnd, MID]} />)
+
+    expect(screen.queryByRole("img", { name: /Invalid start/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("img", { name: /Invalid end/ })).not.toBeInTheDocument()
     expect(screen.getByRole("img", { name: /Midday Seminar/ })).toBeInTheDocument()
   })
 
@@ -203,6 +257,50 @@ describe("ScheduleTimeline — branches", () => {
     expect(full).toHaveStyle({ left: "0%", width: "100%" })
   })
 
+  it("keeps lesson geometry and structural styles stable", () => {
+    const { container } = render(<ScheduleTimeline {...baseProps} />)
+    const block = screen.getByRole("img", { name: /Midday Seminar/ })
+    expect(block).toHaveClass(
+      "absolute",
+      "cursor-pointer",
+      "rounded-lg",
+      "border",
+      "transition-all",
+      "hover:z-10",
+      "hover:shadow-premium",
+      "hover:-translate-y-0.5"
+    )
+    expect(block).toHaveAttribute("tabindex", "0")
+    expect(block).toHaveAttribute("role", "img")
+    expect(block).toHaveStyle({
+      left: "41.66666666666667%",
+      width: "12.499999999999993%",
+      top: "14px",
+      height: "44px",
+      minWidth: "40px",
+    })
+
+    const inner = Array.from(container.querySelectorAll("div")).find((element) =>
+      element.getAttribute("style")?.includes("height: 5.5rem")
+    )
+    expect(inner).toHaveClass("relative")
+    expect(inner).toHaveStyle({ height: "88px", minWidth: "100%" })
+
+    const track = Array.from(container.querySelectorAll("div")).find((element) =>
+      element.getAttribute("style")?.includes("height: 3rem")
+    )
+    expect(track).toHaveClass(
+      "absolute",
+      "left-0",
+      "right-0",
+      "rounded-xl",
+      "bg-(--bg-matte-list)",
+      "border",
+      "border-(--border-matte)"
+    )
+    expect(track).toHaveStyle({ top: "12px", height: "48px" })
+  })
+
   it("excludes lessons exactly at the 08:00 and 20:00 boundaries", () => {
     render(
       <ScheduleTimeline
@@ -245,6 +343,22 @@ describe("ScheduleTimeline — branches", () => {
 
     const afterEnd = render(<ScheduleTimeline {...baseProps} minutesNow={1201} />)
     expect(afterEnd.container.querySelector(".animate-ping")).not.toBeInTheDocument()
+  })
+
+  it("clamps and exposes the proportional now-line position", () => {
+    const middle = render(<ScheduleTimeline {...baseProps} minutesNow={840} />)
+    const middleIndicator = middle.container.querySelector(".animate-ping")?.parentElement
+    expect(middleIndicator).toHaveStyle({
+      left: "50%",
+      top: "6px",
+      transform: "translateX(-50%)",
+    })
+    middle.unmount()
+
+    const end = render(<ScheduleTimeline {...baseProps} minutesNow={1200} />)
+    const endIndicator = end.container.querySelector(".animate-ping")?.parentElement
+    expect(endIndicator).toHaveStyle({ left: "100%" })
+    end.unmount()
   })
 
   it("uses the proportional hour-marker positions", () => {
@@ -313,6 +427,18 @@ describe("ScheduleTimeline — branches", () => {
     expect(regular).not.toHaveClass("z-[1]", "z-[2]")
   })
 
+  it("renders the current-time indicator geometry and pulse layers", () => {
+    const { container } = render(<ScheduleTimeline {...baseProps} minutesNow={720} />)
+    const indicator = container.querySelector(".animate-ping")?.parentElement
+    expect(indicator).toHaveClass("absolute", "z-[5]", "flex", "flex-col", "items-center")
+    expect(indicator).toHaveStyle({ left: "33.33333333333333%", top: "6px" })
+
+    const line = indicator?.querySelector(".w-0\\.5")
+    expect(line).toHaveClass("w-0.5", "bg-brand", "opacity-heavy")
+    expect(line).toHaveStyle({ height: "48px" })
+    expect(indicator?.querySelectorAll(".rounded-full")).toHaveLength(2)
+  })
+
   it("aligns the tooltip at the left, center, and right edges", () => {
     render(<ScheduleTimeline {...baseProps} />)
 
@@ -332,5 +458,52 @@ describe("ScheduleTimeline — branches", () => {
     fireEvent.mouseEnter(rightBlock)
     const rightTooltip = screen.getAllByText("Evening Lab")[1]?.parentElement
     expect(rightTooltip).toHaveStyle({ left: "auto", right: "0px", transform: "none" })
+  })
+
+  it("keeps strict tooltip threshold semantics at 15% and 80%", () => {
+    const leftBoundary = lesson({
+      id: "left-boundary",
+      subject: "Left boundary",
+      start_time: "09:48", // exactly 15% of the 08:00–20:00 range
+      end_time: "10:30",
+    })
+    const rightBoundary = lesson({
+      id: "right-boundary",
+      subject: "Right boundary",
+      start_time: "17:36", // exactly 80% of the 08:00–20:00 range
+      end_time: "18:00",
+    })
+
+    render(<ScheduleTimeline {...baseProps} lessons={[leftBoundary, rightBoundary]} />)
+
+    fireEvent.focus(screen.getByRole("img", { name: /Left boundary/ }))
+    const leftTooltip = screen.getAllByText("Left boundary")[1]?.parentElement
+    expect(leftTooltip).toHaveStyle({ left: "50%", right: "auto", transform: "translateX(-50%)" })
+    const leftArrow = leftTooltip?.querySelector(".rotate-45")
+    expect(leftArrow).toHaveStyle({
+      left: "50%",
+      right: "auto",
+      bottom: "-4px",
+      transform: "translateX(-50%)",
+    })
+    fireEvent.blur(screen.getByRole("img", { name: /Left boundary/ }))
+    expect(screen.getAllByText("Left boundary")).toHaveLength(1)
+
+    fireEvent.focus(screen.getByRole("img", { name: /Right boundary/ }))
+    const rightTooltip = screen.getAllByText("Right boundary")[1]?.parentElement
+    expect(rightTooltip).toHaveStyle({ left: "50%", right: "auto", transform: "translateX(-50%)" })
+    const rightArrow = rightTooltip?.querySelector(".rotate-45")
+    expect(rightArrow).toHaveStyle({ left: "50%", right: "auto", transform: "translateX(-50%)" })
+  })
+
+  it("passes the lesson count to i18n and hides the count for an empty timeline", () => {
+    render(<ScheduleTimeline {...baseProps} lessons={[MID]} />)
+    const countCall = translationCalls.entries.find(
+      (entry) => entry.key === "dashboard:timeline.lessonCount"
+    )
+    expect(countCall?.options).toEqual({ count: 1 })
+
+    const { container } = render(<ScheduleTimeline {...baseProps} lessons={[]} />)
+    expect(container.querySelector(".tabular-nums")).not.toBeInTheDocument()
   })
 })
