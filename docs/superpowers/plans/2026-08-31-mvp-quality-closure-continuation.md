@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** продолжить работу от контрольной точки `e0989e29cfca88ee9a650eb264d6fa7674031c9a` на ветке `egorribun`, сохранить уже реализованные основные вертикали MVP, закрыть подтверждённые инфраструктурные и mutation-дефекты текущего PR, получить полный current-SHA набор quality/mutation/security evidence и довести тот же immutable build через Docker и production-like staging до доказуемо готового к релизу состояния.
+**Goal:** продолжить работу на ветке `egorribun` от исторической контрольной точки `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, сохранить уже реализованные основные вертикали MVP, закрыть подтверждённые инфраструктурные и mutation-дефекты текущего PR, получить полный current-SHA набор quality/mutation/security evidence и довести тот же immutable build через Docker и production-like staging до доказуемо готового к релизу состояния. Исторические SHA/run из baseline ниже не являются текущей сертификацией; authoritative overlay находится в §32.
 
 **Architecture:** репозиторий рассматривается как единая fail-closed система качества. Каждая технологическая область формирует нативные отчёты, а SHA-bound агрегатор принимает только полные, свежие и хешированные артефакты одного workflow run/attempt, отдельно фиксируя source head SHA и tested merge SHA. Уже реализованные продуктовые вертикали проходят evidence-first gap-аудит и меняются только при воспроизведённом дефекте; CI закрывается root-cause группами через RED → GREEN → REFACTOR и оптимизируется по измеренному критическому пути при лимите 20 одновременно исполняемых jobs без ослабления coverage, mutation, security или browser matrix.
 
 **Tech Stack:** Python 3.14, FastAPI, SQLAlchemy 2 async, Dishka, PostgreSQL, Redis/Valkey, NATS, transactional outbox, pytest/coverage.py/mutmut; React 19, TypeScript 7, TanStack Router/Query, Zustand, Valibot, Vite 8/Rolldown, Vitest/Stryker, Playwright, Storybook, Lighthouse; Go 1.26 modules, race detector, golangci-lint; Rust, cargo-llvm-cov, WASM, PyO3; Docker Compose, Caddy, Helm/Kubernetes, Kyverno, ExternalSecrets, Prometheus/Grafana/Tempo/Loki; GitHub Actions, CodeQL, Semgrep, Bandit, detect-secrets, gitleaks, Trivy, SBOM и provenance.
 
-**Audit refresh:** `2026-08-31T13:37:11+03:00`; live PR `#1257`, source head `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, active matrix run `33349026009`. Snapshot динамический: перед исполнением и перед любым утверждением о закрытии его необходимо обновить через paginated GitHub Jobs API.
+**Historical audit refresh:** `2026-08-31T13:37:11+03:00`; live PR `#1257`, source head `e0989e29cfca88ee9a650eb264d6fa7674031c9a`, matrix run `33349026009`. Это superseded baseline, сохранённый для причинного и regression-аудита. Текущий identity/status snapshot находится в §32 и должен обновляться через paginated GitHub Jobs API перед каждым утверждением о закрытии.
 
 **Spec:** [`AGENTS.md`](../../../AGENTS.md), [`app/AGENTS.md`](../../../app/AGENTS.md), [`frontend/AGENTS.md`](../../../frontend/AGENTS.md), [`services/AGENTS.md`](../../../services/AGENTS.md), [`quality/quality-contract.json`](../../../quality/quality-contract.json), [`University_Ecosystem_MVP.md`](University_Ecosystem_MVP.md), [`2026-08-25-quality-closure-foundation.md`](2026-08-25-quality-closure-foundation.md), [`prompt.md`](prompt.md), PR [#1257](https://github.com/egorribun/university_ecosystem/pull/1257).
 
@@ -49,7 +49,7 @@
 
 ## 1. Зафиксированный baseline продолжения
 
-### 1.1 Репозиторий
+### 1.1 Репозиторий (historical baseline; superseded 2026-09-01)
 
 | Поле | Значение на момент подготовки плана |
 |---|---|
@@ -71,7 +71,7 @@
 
 Перед этим каждый файл повторно просмотреть; не предполагать, что весь каталог состоит только из этих четырёх документов.
 
-### 1.2 Live PR и workflow snapshot
+### 1.2 Live PR и workflow snapshot (historical run `33349026009`; see §32)
 
 Основной fresh run для checkpoint SHA: [GitHub Actions run 33349026009](https://github.com/egorribun/university_ecosystem/actions/runs/33349026009).
 
@@ -93,7 +93,7 @@ Snapshot `2026-08-31T13:37:11+03:00` получен через все стран
 | Frontend/WASM/aggregate jobs | 5 | WASM producer race и четыре каскадных aggregate/evidence failures |
 | detect-secrets | 1 | четыре конкретные findings; mypy в том же job прошёл |
 
-### 1.3 Current root-cause ledger
+### 1.3 Root-cause ledger (historical snapshot for run `33349026009`)
 
 | ID | Состояние | Доказанная причина | Следующий доказуемый gate |
 |---|---|---|---|
@@ -121,7 +121,7 @@ Snapshot `2026-08-31T13:37:11+03:00` получен через все стран
   headroom. Это не снимает требования duration-aware bin-packing и не
   разрешает обрезать incomplete mutation evidence.
 
-### 1.4 Fresh successes на current source SHA
+### 1.4 Fresh successes на historical source SHA `e0989e29...`
 
 Отдельные workflow runs, завершившиеся success: Cargo Deny, Checkov, CodeQL Advanced, Continuous Performance Benchmarking, Pact boundaries, OpenAPI/Spectral contracts, DB Performance, Dependency Review, Generate OpenAPI, Gitleaks, Go Fuzz, Go Lint & SBOM, Nilaway, Python Fuzz, Renovate validation, Rust Fuzz, semantic title, SonarCloud, SQLMap, TruffleHog, unauthenticated light/dark smoke и Zizmor.
 
@@ -142,7 +142,7 @@ Snapshot `2026-08-31T13:37:11+03:00` получен через все стран
 
 Fresh E2E всех пяти browser projects означает, что исторические sessions accordion, MFA recovery field, offline indicator, ambiguous selector и News/Events navigation failures на этом SHA не воспроизводятся. Это сильное доказательство regression closure, но не заменяет заблокированные unit/build/Lighthouse/coverage gates.
 
-### 1.5 Skipped и cancelled jobs
+### 1.5 Skipped и cancelled jobs (historical run `33349026009`)
 
 | Класс | Jobs | Решение |
 |---|---|---|
@@ -153,7 +153,7 @@ Fresh E2E всех пяти browser projects означает, что истор
 
 Каждая запись проверяется повторно в terminal snapshot: таблица не разрешает blanket-утверждение, что «все skipped нормальны».
 
-### 1.6 Что уже находится в checkpoint
+### 1.6 Что уже находилось в historical checkpoint `e0989e29...`
 
 Следующие изменения присутствуют в `e0989e29c`, но требуют fresh full-matrix подтверждения:
 
@@ -170,6 +170,10 @@ Fresh E2E всех пяти browser projects означает, что истор
 Эти результаты имеют класс evidence ниже, чем fresh full CI, и не должны использоваться как финальная сертификация.
 
 ### 1.7 Исторический handoff: статус каждой группы
+
+Таблица ниже описывает состояние на старом checkpoint/run и сохраняется для
+causal lineage. Для текущей оценки после `db6824789`, `785160201`, `07cdbd0c1`
+и `c3ee034ed` использовать authoritative overlay в §32.
 
 | Исторический пункт из `prompt.md` | Текущее чтение репозитория | Что ещё требуется |
 |---|---|---|
@@ -203,24 +207,24 @@ Fresh E2E всех пяти browser projects означает, что истор
 | 3. App shell/mobile navigation | `IMPLEMENTED-IN-CODE` | shell components/tests; fresh Firefox/WebKit/mobile-WebKit journeys green | frontend unit/a11y/visual/performance recertification |
 | 4. Scroll/filters/campus map | `IMPLEMENTED-IN-CODE` | router restoration, URL state и lazy MapLibre реализованы; browser matrix green | explicit touch/pinch/memory/long-task evidence |
 | 5. Dashboard/Stories/News/Events | `IMPLEMENTED-IN-CODE` | CRUD/content implementation и широкий unit/E2E corpus | final unit/build/Lighthouse, role/state/visual matrix |
-| 6. Messenger/ws-hub | `OPEN-DEFECT` | Go integration/lint/fuzz и local `go test ./...` green | закрыть message-length P1, admin-action visibility, 44px targets и stale WS contract; повторить race/coverage/mutation evidence |
-| 7. Profile/Settings/Activity/i18n | `OPEN-QUALITY` | profile/activity/settings implementation; local typecheck и `i18n:check` 18/18 green | добавить repository-wide static/dynamic/raw-key scanner; final frontend matrix |
-| 8. Notifications/Web Push | `OPEN-DEFECT` | canonical topics, delivery/retry, SSRF/same-origin defenses | admin test/broadcast должны вызывать result cleanup/update path и иметь regression tests |
+| 6. Messenger/ws-hub | `IMPLEMENTED-IN-CODE / EVIDENCE-BLOCKED` | message-length, admin capability, 44px hit targets и REST-owned read contract исправлены; Go integration/lint/fuzz и local `go test ./...` green | повторить race/coverage/mutation и full browser evidence на final SHA |
+| 7. Profile/Settings/Activity/i18n | `IMPLEMENTED-IN-CODE / EVIDENCE-BLOCKED` | profile/activity/settings implementation; AST static/dynamic/raw-key scanner и `i18n:check` green (2096 static, 68 dynamic, parity 18/18) | final frontend matrix и SHA-bound manifest |
+| 8. Notifications/Web Push | `IMPLEMENTED-IN-CODE / EVIDENCE-BLOCKED` | canonical topics, delivery/retry, SSRF/same-origin defenses; admin test/broadcast use canonical result processing with endpoint-bound stale-result protection | final backend/notification matrix, idempotency and delivery evidence |
 | 9. Full quality closure | `OPEN-QUALITY` | contracts, migrations, security workflows, cross-browser E2E частично fresh-green | WASM, secrets, mutation, ws-hub evidence, final normalizer/manifest и zero-warning closure |
 | 10. Docker/staging/release | `EXTERNAL-ONLY` + `EVIDENCE-BLOCKED` | release/exact-six validators и существующие `-Core`/`-Lean` launch modes | immutable images, Docker smoke, main, registry attestations, staging/TLS/observability/CWV/devices/chaos/rollback/production |
 
 ### 1.9 Подтверждённые продуктовые gaps
 
-1. `P1 / MSG-CONTRACT-01` — message length расходится между send/config (`10 000`), DB/edit/frontend WS (`32 768`) и Pydantic create/response (`2 000`). Сообщение, принятое одним слоем, может сломать response validation. Нужен один канонический предел, OpenAPI/WS/backend/frontend generation и boundary tests для `limit-1 / limit / limit+1`.
-2. `P2 / MSG-AUTHZ-01` — `ChatArea` показывает Clear/Delete Chat обычным участникам, хотя backend разрешает команды только admin. UI обязан вычислять capability из роли; backend 403 остаётся обязательной защитой; существующий тест, закрепляющий неверное поведение, заменить RED contract test.
-3. `P2 / MSG-A11Y-01` — controls 28/36px в `ChatWindow` нарушают обязательные 44×44 touch targets. Исправить hit area без layout/virtualizer regression и проверить keyboard/mobile screenshots.
-4. `P2 / PUSH-CLEANUP-01` — admin `/push/test` и `/push/broadcast` вызывают delivery, но не `process_push_results()`: 404/410 subscriptions не удаляются, success не обновляет `last_seen_at`. Унифицировать orchestration и проверить idempotency/partial failure.
-5. `P2 / I18N-GATE-01` — текущий `i18n:check` доказывает RU/EN parity, но не сканирует repository-wide static/dynamic/raw keys. Добавить scanner с fixtures для interpolation/plural/date/number и dynamic-key allow contract.
-6. `P3 / WS-CONTRACT-01` — Python WS contract test не знает актуальные edited/deleted/reaction/checkpoint types и проверяет устаревший `read`; экспорт `sendRead` не принимается ws-hub allowlist. Удалить dead surface либо синхронизировать contract, generation и tests после определения единственного owning receipt path.
+1. `P1 / MSG-CONTRACT-01` — **CODE-FIXED**: один предел `32 768` используется backend/frontend/OpenAPI/WS guards; boundary contracts покрывают limit-1/limit/limit+1. Требуется только final-SHA evidence.
+2. `P2 / MSG-AUTHZ-01` — **CODE-FIXED**: `ChatArea` вычисляет `canManageChat`, а backend 403 остаётся защитой; regression tests проверяют student/staff/admin.
+3. `P2 / MSG-A11Y-01` — **CODE-FIXED**: messenger controls и attachment actions имеют минимум 44×44 hit area с keyboard/focus contracts; нужен final browser/a11y recertification.
+4. `P2 / PUSH-CLEANUP-01` — **CODE-FIXED**: `/push/test` и `/push/broadcast` используют `deliver_and_process_push_results`; 404/410 и success обновляются только при совпадении subscription id + endpoint, включая stale gone/sent regression tests (785160201, c3ee034ed).
+5. `P2 / I18N-GATE-01` — **CODE-FIXED**: AST static/dynamic/raw-key scanner, typed registry и RU/EN parity gate включены в `npm run i18n:check`; final matrix остаётся обязательной.
+6. `P3 / WS-CONTRACT-01` — **CODE-FIXED**: REST является owning read-receipt path, актуальные edited/deleted/reaction/checkpoint types и ws-hub allowlist покрыты contract tests; final generated-contract rerun обязателен.
 
-Эти gaps имеют конкретные пути и воспроизведение; они являются единственными основаниями для product changes, найденными в текущем bounded аудите. Остальные checklist-пункты этапов 1–8 используются как recertification, а не как разрешение на перепись.
+Эти gaps были единственными основаниями для product changes в bounded аудите и теперь имеют focused code/test closure. Они не являются текущими OPEN-DEFECT, но остаются `EVIDENCE-BLOCKED` до свежего required CI; остальные checklist-пункты этапов 1–8 используются как recertification, а не как разрешение на перепись.
 
-### 1.10 Focused evidence аудита
+### 1.10 Focused evidence аудита (historical checkpoint)
 
 - `uv run pytest -q tests/contracts/test_ws_message_contract.py tests/test_mfa_openapi_artifacts_contract.py tests/test_mfa_webauthn_tombstone.py` → `26 passed`;
 - `frontend: npm run typecheck` → success;
@@ -231,7 +235,7 @@ Fresh E2E всех пяти browser projects означает, что истор
 
 Focused evidence имеет класс C и не повышается до release evidence из-за успешного exit code одного subset.
 
-### 1.11 Evidence index и граница полноты
+### 1.11 Evidence index и граница полноты (historical run `33349026009`)
 
 Подтверждённые current-run anchors:
 
@@ -262,7 +266,7 @@ Stryker shards, отменённые ровно на 120-minute job timeout: `0:
 
 Ожидаемые guards, которые должны остаться документированными: Dependabot auto-merge actor guard, Chromatic quota/config guard, `publish-performance-history` main-only, Go SBOM publish main-only, backend integration только на shard 0, WebSocket 10k advisory main-only и Trusted Codecov OIDC main-only. Upstream-blocked frontend/coverage jobs из §1.5 не входят в эту категорию.
 
-**Граница абсолютной полноты:** план хранит все подтверждённые root causes, product gaps, status decisions, dependencies, acceptance criteria, evidence anchors и external boundaries. Он намеренно не дублирует полный многотысячестрочный log и изменяющийся список всех 128 mutmut job IDs. Их каноническая форма — terminal machine-readable artifact из Task 1. Пока run `33349026009` не terminal, утверждение «абсолютно вся финальная CI-информация собрана» запрещено; после terminal state artifact и итоговые totals должны быть добавлены в audit без изменения причинной структуры плана.
+**Граница абсолютной полноты:** план хранит все подтверждённые root causes, product gaps, status decisions, dependencies, acceptance criteria, evidence anchors и external boundaries. Он намеренно не дублирует полный многотысячестрочный log и изменяющийся список всех 128 mutmut job IDs. Их каноническая форма — terminal machine-readable artifact из Task 1. Historical run `33349026009` superseded текущим run; для current-SHA run `33543238962` до terminal state запрещено утверждать, что «абсолютно вся финальная CI-информация собрана». После terminal state current artifact и итоговые totals должны быть добавлены в audit без изменения причинной структуры плана.
 
 ---
 
@@ -287,7 +291,7 @@ Stryker shards, отменённые ровно на 120-minute job timeout: `0:
 ## 3. Критический путь и порядок зависимостей
 
     flowchart TD
-        A["Checkpoint e0989e29c и terminal CI inventory"] --> B["WASM race + detect-secrets"]
+        A["Historical checkpoint e0989e29c и terminal CI inventory"] --> B["WASM race + detect-secrets"]
         A --> C["Provenance: source head != tested merge SHA"]
         B --> D["Qualification: frontend/backend/Go/Rust/API core"]
         C --> D
@@ -503,7 +507,12 @@ Stryker shards, отменённые ровно на 120-minute job timeout: `0:
 
 ---
 
-## 7. Task 1 — terminal inventory и artifact ledger run 33349026009
+## 7. Task 1 — terminal inventory и artifact ledger run 33349026009 (historical)
+
+> Run `33349026009` и его 292-job inventory относятся к superseded SHA
+> `e0989e29...`. Для продолжения выполнить тот же paginated inventory для
+> current run `33543238962` после его terminal state; текущий pending snapshot
+> зафиксирован в §32.3.
 
 **Relevant files:**
 
@@ -523,10 +532,10 @@ Stryker shards, отменённые ровно на 120-minute job timeout: `0:
 - [ ] Для cancelled job определить: stale-run concurrency, manual cancellation, fail-fast или infrastructure cancellation.
 - [ ] Для timeout отделить command timeout от workflow timeout и runner eviction.
 - [ ] Сгруппировать aggregate failures под одну root cause, чтобы не считать их отдельными дефектами.
-- [ ] Сохранить machine-readable triage в `artifacts/quality/ci-triage/run-33349026009.json`; не коммитить runtime artifact.
+- [ ] Сохранить machine-readable triage в `artifacts/quality/ci-triage/run-33543238962.json` после terminal state; не коммитить runtime artifact.
 - [ ] Отдельно скачать Stryker preflight/shard artifacts и mutmut selected-results artifacts, не принимая partial reports как release evidence.
 - [ ] Для каждого mutation family построить таблицу `expected / observed / missing / duplicate / survivor / timeout / error / no-coverage / killed`.
-- [ ] Проверить source head `e0989e29...`, tested merge `3e4d8f89...`, run ID и attempt во всех metadata; неправильное название merge SHA как head — defect, даже если hash сам по себе верен.
+- [ ] Проверить current source head `c3ee034ed...`, tested merge SHA, run ID и attempt во всех metadata; старые `e0989e29...`/`3e4d8f89...` — historical fixtures, неправильное название merge SHA как head — defect, даже если hash сам по себе верен.
 - [ ] Составить ordered fix queue: security/data-loss → core build → unit/contracts → browser → mutation → performance.
 
 **Предлагаемый новый анализатор:**
@@ -537,7 +546,7 @@ Stryker shards, отменённые ровно на 120-minute job timeout: `0:
 
 Интерфейс:
 
-    uv run python scripts/quality/analyze_ci_critical_path.py --repository egorribun/university_ecosystem --run-id 33349026009 --concurrency-cap 20 --output artifacts/quality/ci-critical-path.json
+    uv run python scripts/quality/analyze_ci_critical_path.py --repository egorribun/university_ecosystem --run-id 33543238962 --concurrency-cap 20 --output artifacts/quality/ci-critical-path.json
 
 Отчёт должен содержать:
 
@@ -556,7 +565,7 @@ Stryker shards, отменённые ровно на 120-minute job timeout: `0:
 
 ---
 
-## 8. Task 2 — устранить WASM rustup race
+## 8. Task 2 — устранить WASM rustup race (`CODE-FIXED`; fresh evidence pending)
 
 **Files:**
 
@@ -607,7 +616,7 @@ Stryker shards, отменённые ровно на 120-minute job timeout: `0:
 
 ---
 
-## 9. Task 3 — закрыть detect-secrets findings без слепого suppression
+## 9. Task 3 — закрыть detect-secrets findings без слепого suppression (`CODE-FIXED`; fresh evidence pending)
 
 **Files:**
 
@@ -689,7 +698,7 @@ Stryker shards, отменённые ровно на 120-minute job timeout: `0:
 
 ### 10.2 Migration `148642dd1207`
 
-**Статус:** `FRESH-GREEN` на current tested merge: Alembic, PostgreSQL migration gate, rollback integrity, Squawk (0 issues) и schema drift прошли. Checklist сохраняется для final-SHA rerun.
+**Статус:** `FRESH-GREEN` на historical tested merge; current exact-SHA migration/Squawk evidence pending in run `33543238962`. Checklist сохраняется для final-SHA rerun.
 
 **Files:**
 
@@ -721,7 +730,7 @@ Stryker shards, отменённые ровно на 120-minute job timeout: `0:
 
 ### 10.3 Dead-letter UUID schema
 
-**Статус:** `CODE-COMPLETE / FRESH-BACKEND-GREEN`. Сохранить отдельные duplicate-valid, invalid-format и empty/mixed cases; final-SHA rerun обязателен.
+**Статус:** `CODE-COMPLETE / FRESH-BACKEND-GREEN` на historical run; current backend shard rerun pending. Сохранить отдельные duplicate-valid, invalid-format и empty/mixed cases; final-SHA rerun обязателен.
 
 **Files:**
 
@@ -738,7 +747,7 @@ Stryker shards, отменённые ровно на 120-minute job timeout: `0:
 
 ### 10.4 mutmut isolated copy
 
-**Статус:** `CODE-COMPLETE`. Current `also_copy` уже включает `security`, exact audit allowlist, `quality`, generated inputs, `alembic` и `alembic.ini`; universe v2 проверяет inventory/hash/symlink/traversal. Не повторять старое исправление, а сохранить contract при mutation-runner changes.
+**Статус:** `CODE-COMPLETE`. Current `also_copy` уже включает `security`, exact audit allowlist, `quality`, generated inputs, `alembic` и `alembic.ini`; universe v2 проверяет inventory/hash/symlink/traversal. Не повторять старое исправление, а сохранить contract при mutation-runner changes; current exact mutation artifacts pending.
 
 **Files:**
 
@@ -776,7 +785,7 @@ Stryker shards, отменённые ровно на 120-minute job timeout: `0:
 
 ### 10.6 E2E regressions
 
-**Статус:** `FRESH-GREEN` для Chromium 4/4, Firefox, WebKit и mobile-WebKit на current tested merge. Checklist остаётся final-SHA regression contract.
+**Статус:** `FRESH-GREEN` для Chromium 4/4, Firefox, WebKit и mobile-WebKit на historical tested merge. Current Matrix browser jobs pending; checklist остаётся final-SHA regression contract.
 
 **Files:**
 
@@ -804,7 +813,7 @@ Stryker shards, отменённые ровно на 120-minute job timeout: `0:
 
 ### 10.7 Dark smoke
 
-**Статус:** `FRESH-GREEN` для light и dark unauthenticated workflows на current source SHA.
+**Статус:** `FRESH-GREEN` для light и dark unauthenticated workflows на historical source SHA; current run `33543238031` ещё in progress.
 
 - [ ] Считать current success промежуточным.
 - [ ] Повторить light/dark unauthenticated routes на final SHA.
@@ -1312,7 +1321,7 @@ Stryker shards, отменённые ровно на 120-minute job timeout: `0:
 
 ## 17. Task 11 — Messenger и ws-hub
 
-**Статус аудита:** `OPEN-DEFECT`. Вертикаль в основном реализована, fresh Go integration/lint/fuzz и local `go test ./...` green, но bounded audit нашёл один P1 contract defect, два P2 UI defects и stale WS contract. `go test -race` локально не считается выполненным без доступного CGO/GCC; CI evidence должен быть сохранён отдельно от Go mutation diagnostic.
+**Статус аудита:** `IMPLEMENTED-IN-CODE / EVIDENCE-BLOCKED`. Message-length, admin capability, 44px targets и REST-owned WS receipt contracts закрыты focused tests; fresh Go integration/lint/fuzz и local `go test ./...` green. `go test -race` локально не считается выполненным без доступного CGO/GCC; current CI evidence должен быть сохранён отдельно от Go mutation diagnostic.
 
 **Frontend files:**
 
@@ -1392,7 +1401,7 @@ Stryker shards, отменённые ровно на 120-minute job timeout: `0:
 
 ## 18. Task 12 — Profile, Settings, Activity и i18n
 
-**Статус аудита:** profile/settings/activity — `IMPLEMENTED-IN-CODE / EVIDENCE-BLOCKED`; i18n — `OPEN-QUALITY`. Local typecheck и текущая RU/EN parity suite (18/18) green, но обязательный static/dynamic/raw-key scanner отсутствует.
+**Статус аудита:** profile/settings/activity/i18n — `IMPLEMENTED-IN-CODE / EVIDENCE-BLOCKED`. Local typecheck и AST static/dynamic/raw-key scanner/RU/EN parity (2096/68 references, 18/18 parity) green; current full frontend matrix и SHA-bound manifest pending.
 
 **Files:**
 
@@ -1454,7 +1463,7 @@ Stryker shards, отменённые ровно на 120-minute job timeout: `0:
 
 ## 19. Task 13 — единая notification system
 
-**Статус аудита:** `OPEN-DEFECT`. Канонические topics, Web Push delivery/retry и security defenses реализованы; admin test/broadcast paths не применяют canonical post-delivery result cleanup, поэтому stale subscriptions и `last_seen_at` обрабатываются несогласованно.
+**Статус аудита:** `IMPLEMENTED-IN-CODE / EVIDENCE-BLOCKED`. Канонические topics, Web Push delivery/retry и security defenses реализованы; admin test/broadcast paths используют canonical post-delivery result cleanup, а endpoint-bound stale-result regression tests покрывают 404/410 и late success. Current full backend/notification evidence pending.
 
 **Canonical topics:**
 
@@ -1618,7 +1627,7 @@ For:
 
 ### 20.6 Security/supply chain
 
-**Current evidence:** отдельные CodeQL, Zizmor, Checkov, Gitleaks, TruffleHog, dependency/container/SBOM workflows зелёные. Baseline Integrity green не закрывает отдельный красный detect-secrets scan с четырьмя findings.
+**Current evidence:** отдельные CodeQL, Zizmor, Checkov, Gitleaks, TruffleHog, dependency/container/SBOM workflows были зелёными на historical/current associated runs; detect-secrets findings устранены в code/docs и baseline reviewed. Current full security aggregate и final-SHA reports остаются pending до terminal Matrix.
 
 - [ ] Full pre-commit.
 - [ ] detect-secrets.
@@ -1667,7 +1676,7 @@ For:
 **Must contain:**
 
 - schema v3 fields `source_head_sha`, `tested_commit_sha`, `base_sha` и `base_ref` с однозначной семантикой;
-- для PR: `source_head_sha=e0989e29...`, `tested_commit_sha=3e4d8f89...`; merge SHA запрещено называть source/head;
+- для PR: `source_head_sha=<event.pull_request.head.sha>`, `tested_commit_sha=<tested merge SHA>`; merge SHA запрещено называть source/head. Значения `e0989e29...` и `3e4d8f89...` из historical baseline не являются шаблоном current manifest;
 - для push/main: source и tested commit могут совпадать, но оба поля остаются явными;
 - workflow run ID/attempt;
 - source roots;
@@ -2160,7 +2169,7 @@ For:
 
 - [ ] Все исходные master-plan этапы 0–10 отображены в задачах 6–22.
 - [ ] Все пункты historical `prompt.md` отображены в Task 4.
-- [ ] Все fresh failures run 33349026009 отображены в Tasks 2–5 и CI inventory; aggregates не посчитаны как отдельные roots.
+- [ ] Все fresh failures latest terminal run отображены в Tasks 2–5 и CI inventory; historical run `33349026009` и pending current run `33543238962` не смешиваются, aggregates не посчитаны как отдельные roots.
 - [ ] Все найденные product gaps отображены в Tasks 11–13 с RED/GREEN acceptance.
 - [ ] CI speed/reliability под 20-job cap имеет отдельный измеримый workstream.
 - [ ] Docker resource optimization не нарушает security topology.
@@ -2181,7 +2190,7 @@ For:
 рабочего дерева; ни один локальный targeted-run не считается заменой полного
 current-SHA CI или внешнего release evidence.
 
-### 31.1 Identity и сохранность рабочей области
+### 31.1 Identity и сохранность рабочей области (historical ledger; superseded by §32)
 
 - Рабочая ветка: `egorribun`.
 - Локальный и remote checkpoint до следующего push: `e0989e29cfca88ee9a650eb264d6fa7674031c9a`.
@@ -2192,7 +2201,7 @@ current-SHA CI или внешнего release evidence.
 - В `docs/superpowers/` обнаружены только четыре ожидаемых плана; staging
   разрешён только по явным путям, перечисленным в разделе 1.1.
 
-### 31.2 Подтверждённые изменения и локальные evidence
+### 31.2 Подтверждённые изменения и локальные evidence (historical pre-commit ledger)
 
 Ниже перечислены изменения, для которых уже получен focused evidence; итоговый
 commit и fresh CI ещё не созданы:
@@ -2249,7 +2258,7 @@ commit и fresh CI ещё не созданы:
 `REVOCATION_REDIS_URL`; `go test -race` на Windows требует доступного CGO/GCC.
 Это не является evidence зелёного full gate и должно быть перепроверено на CI.
 
-### 31.3 CI critical-path и Docker observations
+### 31.3 CI critical-path и Docker observations (historical fixture/run)
 
 - Добавлен детерминированный `scripts/quality/analyze_ci_critical_path.py` с
   fixture и пятью regression tests; fixture run `33349026009` обработан с
@@ -2284,19 +2293,169 @@ commit и fresh CI ещё не созданы:
 
 ### 31.5 Security review disposition
 
-Независимый read-only review после Go governance follow-up обнаружил один
-введённый этим follow-up P2 и три ранее существовавших P2. Введённый риск
-исправлен до staging; остальные не маскируются как зелёные и остаются
-воспроизводимым backlog до отдельной security-вертикали:
+Независимый read-only review после Go governance follow-up зафиксировал пять
+P2 hardening items. Кодовое исправление всех пяти уже находится в ancestors:
+`2d7072e074cd07f82bc839038a46adbd6abd4e61` добавляет checksum-verified
+actionlint/Hadolint/ShellCheck bootstrap и `persist-credentials: false`,
+`de702c7b7327a842a3269827fd59a16f58008a3a` добавляет finding-level и trusted
+base проверку `.secrets.baseline`, а guard для `CONFIG_SHA256` присутствует в
+Go workflow. Поэтому эти записи больше не являются открытыми code defects:
+их current status — `CODE-COMPLETE / FRESH-EVIDENCE-PENDING` до полного
+current-SHA security aggregate.
 
 | ID | Severity/owner | Reproduction and disposition |
 |---|---|---|
-| `SEC-GO-DIAG-01` | P2 / CI security owner | `CONFIG_SHA256` мог следовать PR-controlled symlink. Исправлено guard-ом `git ls-files --error-unmatch` + `-f && ! -L` до чтения; workflow contract и actionlint повторно зелёные. |
-| `SEC-CI-DL-01` | P2 / CI security owner | `ci.yml` actionlint job скачивает installer script с mutable `raw.githubusercontent.com/.../main`. Зафиксировать release asset+checksum или trusted action перед release hardening; текущий PR не подменяет этот backlog на недоказанный suppression. |
-| `SEC-CI-DL-02` | P2 / CI security owner | Hadolint/ShellCheck binary downloads используют URL без checksum. Добавить checksum-verified downloads или digest-pinned actions в отдельном RED/GREEN change с runner smoke. |
-| `SEC-AUDIT-DL-01` | P2 / security owner | Security-audit checkouts не везде задают `persist-credentials: false`, а detect-secrets installer не hash-pinned. Исправлять совместно с verifier воспроизводимости, не меняя required gate semantics. |
-| `SEC-BASELINE-01` | P2 / security owner | `scripts/verify_secrets_baseline.py` сравнивает только result paths; differing finding hashes в том же файле воспроизводимо возвращают `rc=0`. Без historical baseline нельзя безопасно различить допустимое обновление и добавленный secret; нужен отдельный workflow/base-baseline design. |
+| `SEC-GO-DIAG-01` | P2 / CI security owner — `CODE-COMPLETE / FRESH-EVIDENCE-PENDING` | `CONFIG_SHA256` больше не следует PR-controlled symlink: guard `git ls-files --error-unmatch` + `-f && ! -L` выполняется до чтения; workflow contract и actionlint tests pass. Требуется current-SHA workflow evidence. |
+| `SEC-CI-DL-01` | P2 / CI security owner — `CODE-COMPLETE / FRESH-EVIDENCE-PENDING` | `ci.yml` actionlint bootstrap использует pinned release asset, HTTPS/TLS flags и strict SHA-256 verification; regression contract запрещает mutable `raw.githubusercontent.com/.../main`. Требуется current runner execution. |
+| `SEC-CI-DL-02` | P2 / CI security owner — `CODE-COMPLETE / FRESH-EVIDENCE-PENDING` | Hadolint/ShellCheck binary downloads version- and checksum-pinned, verified before chmod/execute; regression contract проверяет ordering. Требуется current runner execution. |
+| `SEC-AUDIT-DL-01` | P2 / security owner — `CODE-COMPLETE / FRESH-EVIDENCE-PENDING` | Security-audit checkouts задают `persist-credentials: false`; detect-secrets installation uses hash-locked binary-only requirements. Contract tests pass; требуется current reusable-security-audit run. |
+| `SEC-BASELINE-01` | P2 / security owner — `CODE-COMPLETE / FRESH-EVIDENCE-PENDING` | `verify_secrets_baseline.py` сравнивает finding-level identity и immutable trusted-base baseline; malformed/missing/changed-hash cases fail closed. Contract suite pass; требуется current PR security aggregate. |
 
-Эти P2 не являются P0/P1 или high/critical findings и не добавляют
-exclusions/quarantines. До выполнения отдельной hardening-вертикали они должны
-оставаться явно перечисленными в audit и не могут быть названы закрытыми.
+Эти P2 не являются P0/P1 или high/critical findings, не добавляют
+exclusions/quarantines и не требуют отдельной code-hardening вертикали. Они
+должны оставаться явно перечисленными в audit до получения свежего evidence;
+`CODE-COMPLETE` не следует трактовать как current security aggregate green.
+
+---
+
+## 32. Current execution overlay (2026-09-01; authoritative)
+
+Этот overlay является текущим источником истины для продолжения работ после
+исторического baseline (§§1–31). Он не удаляет старые run/commit IDs: значения
+`e0989e29cfca88ee9a650eb264d6fa7674031c9a`, `33349026009` и
+`3e4d8f89e56ad2fd12e6529433aa4175f7048687` в предыдущих разделах относятся
+только к superseded snapshot и не могут использоваться как current-SHA или
+release evidence.
+
+Snapshot в этом overlay снят до отдельного audit-only commit с его собственным
+SHA. Поэтому поля HEAD/run в §§32.1–32.3 описывают source snapshot
+`c3ee034ed`; после публикации документа следующая required matrix обязана быть
+привязана к post-audit SHA, а не ретроспективно переиспользовать run
+`33543238962`. Это намеренное разделение source evidence и документа аудита.
+
+### 32.1 Identity, сохранность и commit ledger
+
+| Поле | Наблюдаемое значение |
+|---|---|
+| Branch | `egorribun` |
+| Local/remote HEAD | `c3ee034ed8ededa46572aaeed825fec3750b4378` (совпадают) |
+| PR | `#1257`, `egorribun` → `main`, open/non-draft |
+| Base SHA | `4bb85c67e30d224c276e07fa4a0bff0249787571` |
+| Merge state | `BLOCKED` до fresh required checks |
+| Worktree | clean; пользовательские stash/untracked files не изменены |
+| `docs/superpowers/` | ровно четыре ожидаемых plan-файла tracked; массовый `git add` не выполнялся |
+
+Последовательность изменений после старого checkpoint:
+
+1. `db68247890e4b75ccbca3f44eadbc8d06e7b0fe1` — добавлена locked `pip-audit`
+   dependency для backend CI, fail-closed исторический-duration step,
+   repository-wide RU/EN i18n scanner и fallback cleanup, messenger attachment
+   keyboard contract, а также восемь Schemathesis shards с тем же aggregate и
+   без уменьшения example universe.
+2. `78516020110c869d3a12a97ef59e6f45e510733c` — admin push test/broadcast
+   orchestration закреплена через canonical delivery/result-processing path;
+   cleanup/update привязаны одновременно к subscription id и observed endpoint.
+3. `07cdbd0c1fcb9fb07077258b85f0ccd9decb76f1` — `ChatArea` unit suite
+   изолирована от нерелевантных barrel/WASM/browser dependencies, сохраняя
+   production behavior и делая shard setup детерминированным.
+4. `c3ee034ed8ededa46572aaeed825fec3750b4378` — regression test для late
+   stale-success push result; повторное использование row id другим endpoint не
+   меняет и не удаляет актуальную subscription.
+
+### 32.2 Local evidence (class C; не заменяет full current-SHA CI)
+
+- `python verify_harness.py --repo-only`: `29/29`;
+- frontend typecheck, lint, format/build и focused changed-component suites:
+  `279` тестов passed; `npm run i18n:check`: `2 096` static + `68` dynamic
+  references, RU/EN parity `18/18`;
+- workflow/quality regression suites: `225` passed; последующий финальный
+  workflow contract subset после fan-out изменения: `184` passed;
+- backend Ruff/format, frontend typecheck/lint/Prettier и pre-commit hooks
+  (включая detect-secrets, gitleaks, Semgrep и workflow lint) завершились
+  успешно; `.secrets.baseline` после проверки повторно staged;
+- `git diff --check` и `uv lock --check` успешны.
+
+Эти результаты подтверждают код и локальные contracts только. Full coverage,
+mutation, Go race, browser/Lighthouse, complete report provenance, Docker и
+staging по-прежнему требуют свежего workflow evidence.
+
+### 32.3 Fresh CI snapshot (получен 2026-09-01T21:29:13+03:00)
+
+Основной exact-SHA matrix run:
+[33543238962](https://github.com/egorribun/university_ecosystem/actions/runs/33543238962),
+head `c3ee034ed8ededa46572aaeed825fec3750b4378`, created
+`2026-09-01T18:22:25Z`, API status `queued`.
+
+На момент снимка paginated Jobs API материализовал `92` jobs:
+
+| Состояние | Количество |
+|---|---:|
+| success | 22 |
+| skipped | 10 |
+| in progress | 14 |
+| queued | 46 |
+| terminal failure/cancel/timeout | 0 |
+
+Связанные workflow runs того же head SHA: `25` total — `17` success,
+`2` skipped (Chromatic и Dependabot auto-merge guards), `5` in progress и
+`1` queued (основной Matrix). Ни один из этих snapshots не является финальным
+green claim, пока Matrix и required artifacts не достигли terminal state.
+
+Current run IDs, которые должны войти в итоговый artifact ledger:
+
+- Matrix `33543238962`;
+- CodeQL `33543238046`;
+- Continuous Performance `33543238244`;
+- Contract Tests `33543238074` и Contract Validation `33543238260`;
+- Go Fuzz `33543238410`, Go Lint/SBOM `33543238093`;
+- Python Fuzz `33543238242`, Rust Fuzz `33543238054`;
+- Unauthenticated Routes Smoke (light/dark) `33543238031`;
+- completed security/contract runs: Zizmor `33543238406`, Checkov `33543238067`,
+  Gitleaks `33543238219`, TruffleHog `33543238225`, Dependency Review
+  `33543238379`, Cargo Deny `33543238161`, Nilaway `33543238132`, SQLMap
+  `33543238168`, OpenAPI `33543238354`, SonarCloud `33543238352` и другие
+  записи из paginated run list.
+
+Единственный текущий skip внутри Matrix — advisory WebSocket 10k job
+`99974434068`; его guard остаётся non-required. Внешние Chromatic и Dependabot
+auto-merge skips классифицируются по собственным `if:` guards и не считаются
+product failure. Pending/queued jobs нельзя считать skipped или успешными.
+
+### 32.4 Current root-cause and product status
+
+| Область | Current status | Следующее доказательство |
+|---|---|---|
+| WASM `rustup target add` race | `CODE-FIXED / FRESH-EVIDENCE-PENDING`; serial target setup уже в workflow | current Linux WASM producer + artifact integrity |
+| detect-secrets examples | `CODE-FIXED / FRESH-EVIDENCE-PENDING`; docs/fixture переписаны, baseline reviewed | current detect-secrets and secret-quality aggregate |
+| MSG-CONTRACT/AUTHZ/A11Y | `CODE-FIXED / FRESH-EVIDENCE-PENDING`; 32 768 limit, capability UI и 44px hit areas покрыты contracts | complete frontend, a11y и browser matrix |
+| WS-CONTRACT | `CODE-FIXED / FRESH-EVIDENCE-PENDING`; REST owns read receipt, generated types/allowlist aligned | final API/WS contract and Go race evidence |
+| PUSH-CLEANUP-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING`; admin test/broadcast canonical processing + endpoint binding + stale gone/sent tests | backend full shard, idempotency/concurrency and notification aggregate |
+| I18N-GATE-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING`; AST static/dynamic/raw scanner and parity gate green locally | final frontend matrix and SHA-bound manifest |
+| Profile save | `IMPLEMENTED-IN-CODE / EVIDENCE-BLOCKED`; no new RED после focused audit | all Vitest shards after WASM/build readiness |
+| Stryker/mutmut | `EVIDENCE-BLOCKED`; inventory/governance changes exist, no final survivor/timeout/no-coverage totals yet | complete exact-universe artifacts and 100% viable score |
+| CI scheduling/Schemathesis | `CODE-CHANGED / EVIDENCE-BLOCKED`; API fan-out 4→8 with same total examples, mutation lanes capped | terminal matrix plus three comparable green runs |
+| Provenance/manifest | `CODE-FIXED / EVIDENCE-BLOCKED`; current SHA/run artifacts not yet complete | current-SHA manifest with hashes and provenance |
+| Go mutation diagnostic | `GOVERNANCE-CODE-COMPLETE / EVIDENCE-BLOCKED`; contracted Go gates stay required | bounded diagnostic and race/security evidence |
+
+### 32.5 Definition-of-Done interpretation at this snapshot
+
+The Definition-of-Done checkboxes in §28 remain intentionally unchecked for
+any item whose required evidence is only historical, local, queued or
+in-progress. Code-fixed rows above may be marked complete only for the code
+subtask; they do not satisfy the corresponding `FRESH-GREEN` or release gate.
+No `complete`, `green`, `100%` or `готово к релизу` claim is allowed until:
+
+1. run `33543238962` and every required same-SHA workflow are terminal with
+   complete non-empty reports, valid hashes and no unexplained failures;
+2. full applicable coverage/mutation/security/API/browser/performance evidence
+   is aggregated under current SHA;
+3. Docker immutable smoke and all external-only staging/release evidence in
+   §29 are obtained or explicitly recorded as blocking `EXTERNAL-ONLY`.
+
+The external boundary is unchanged: merge to `main`, resulting-main rerun,
+canonical exact-six image producer, registry attestations, immutable-digest
+Docker smoke, Kubernetes/TLS/ExternalSecrets/observability, field CWV,
+real-device Safari/iOS/Android, chaos/rollback and production release remain
+outside local repository authority. The five P2 hardening records in §31.5 are
+code-complete but remain `FRESH-EVIDENCE-PENDING`; they must not be promoted to
+security-aggregate green until current workflow reports are complete.
