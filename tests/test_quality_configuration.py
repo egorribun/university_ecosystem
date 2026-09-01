@@ -670,6 +670,29 @@ def test_stryker_does_not_copy_generated_caches_or_sandboxes() -> None:
         assert fragment in config
 
 
+def test_stryker_speed_optimisations_preserve_the_complete_viable_gate() -> None:
+    """Keep the related-test speed path fail-closed and mutation-complete.
+
+    Stryker's Vitest related mode and runner reuse are the safe performance
+    levers for this repository: they reduce redundant test discovery and
+    process startup without changing the source denominator.  This contract
+    deliberately rejects static-mutant suppression, incremental evidence, or
+    a non-per-test coverage mode, all of which could make a fast run look
+    green while omitting viable mutations from the release gate.
+    """
+
+    config = _read_text("frontend/stryker.config.mjs")
+
+    assert "related: true" in config
+    assert 'coverageAnalysis: "perTest"' in config
+    assert "incremental: false" in config
+    assert "excludedMutations: []" in config
+    assert "ignorers: []" in config
+    assert "ignoreStatic" not in config
+    assert "STRYKER_MAX_TEST_RUNNER_REUSE" in config
+    assert 'cleanTempDir: "always"' in config
+
+
 def test_coverage_commands_and_sonar_paths_match_quality_contract() -> None:
     makefile = _read_text("Makefile")
     required_fragments = (

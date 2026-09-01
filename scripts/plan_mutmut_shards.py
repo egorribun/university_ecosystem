@@ -24,6 +24,7 @@ if not __package__:  # pragma: no cover - direct CI script entry point
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts.mutmut_universe import (
     prepare_mutants_directory,
+    prepare_reused_generation,
     write_universe_manifest,
 )
 
@@ -244,6 +245,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--num-shards", type=int, required=True)
     parser.add_argument("--max-children", type=int, default=2)
     parser.add_argument(
+        "--reuse-generated-universe",
+        action="store_true",
+        help="validate and reuse the extracted generation artifact",
+    )
+    parser.add_argument(
         "--allow-empty-shards",
         action="store_true",
         help="preserve empty assignments for fixed-size incremental matrices",
@@ -426,7 +432,10 @@ def main() -> None:
         raise ValueError("Changed-file manifest is empty")
 
     mutmut_cli = _load_mutmut_cli()
-    _generate_mutant_universe(mutmut_cli, max_children=args.max_children)
+    if args.reuse_generated_universe:
+        prepare_reused_generation(mutmut_cli)
+    else:
+        _generate_mutant_universe(mutmut_cli, max_children=args.max_children)
     # Persist a content-addressed source/metadata/config snapshot so the exact
     # mutation runner can safely reuse this expensive generation phase.
     write_universe_manifest(mutmut_cli)

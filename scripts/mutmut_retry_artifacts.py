@@ -36,6 +36,7 @@ from scripts.quality.coverage_provenance import (
 
 STATS_ARTIFACT = "mutmut-stats"
 UNIVERSE_ARTIFACT = "mutmut-universe"
+GENERATION_ARTIFACT = "mutmut-generation"
 STATS_SIDECAR_NAME = "mutmut-stats-artifact.json"
 STATS_SELECTION_NAME = "mutmut-stats-selection.json"
 UNIVERSE_SELECTION_NAME = "mutmut-universe-selection.json"
@@ -70,6 +71,7 @@ _CONSUMER_FIELDS = _RETRY_FIELDS - {"run_attempt", "artifact"}
 _DEFAULT_CONFIG_INPUTS = (
     "pyproject.toml",
     "uv.lock",
+    "scripts/mutmut_universe.py",
     "scripts/mutmut_stats_shard.py",
     "scripts/merge_mutmut_stats.py",
     "scripts/plan_mutmut_shards.py",
@@ -647,18 +649,19 @@ def create_universe_artifact(
     workflow: str,
     retry_provenance: Mapping[str, str],
 ) -> dict[str, Any]:
-    """Bind a central universe to a valid fixed-slot stats receipt."""
+    """Bind a generation or final mutation universe to validated receipts."""
 
-    if mode not in {"mutmut", "empty"}:
+    if mode not in {"mutmut", "generation", "empty"}:
         raise RetryArtifactError(f"unsupported universe artifact mode: {mode!r}")
     repository_root = _root(root, "universe artifact root")
+    artifact = GENERATION_ARTIFACT if mode == "generation" else UNIVERSE_ARTIFACT
     context = _context(
         retry_provenance,
         commit_sha=commit_sha,
         run_id=run_id,
         run_attempt=run_attempt,
         workflow=workflow,
-        artifact=UNIVERSE_ARTIFACT,
+        artifact=artifact,
         label="universe retry provenance",
     )
     includes: Sequence[Path | str] = ()
@@ -676,6 +679,9 @@ def create_universe_artifact(
             "mutants/mutmut-incremental-plan/plan-manifest.json",
             f"mutants/{STATS_SELECTION_NAME}",
         )
+    elif mode == "generation":
+        includes = ("mutants",)
+        required = ("mutants/mutmut-generation.json",)
     try:
         return create_artifact_manifest(
             root=repository_root,
@@ -727,13 +733,16 @@ def select_universe_candidate(
     """Materialize and revalidate the highest complete compatible universe."""
 
     destination = _root(output_root, "universe selection output")
+    artifact = (
+        GENERATION_ARTIFACT if expected_mode == "generation" else UNIVERSE_ARTIFACT
+    )
     context = _context(
         consumer_retry_context,
         commit_sha=commit_sha,
         run_id=run_id,
         run_attempt=run_attempt,
         workflow=workflow,
-        artifact=UNIVERSE_ARTIFACT,
+        artifact=artifact,
         label="universe consumer retry context",
     )
     try:
@@ -743,7 +752,7 @@ def select_universe_candidate(
             run_id=run_id,
             run_attempt=run_attempt,
             workflow=workflow,
-            expected_artifact=UNIVERSE_ARTIFACT,
+            expected_artifact=artifact,
             consumer_retry_context=_consumer_context(context),
             expected_mode=expected_mode,
         )
@@ -775,7 +784,7 @@ def select_universe_candidate(
         raise RetryArtifactError(str(error)) from error
     payload = {
         "schema_version": _EVIDENCE_VERSION,
-        "artifact": UNIVERSE_ARTIFACT,
+        "artifact": artifact,
         "consumer": context,
         "producer_attempt": selection.producer_attempt,
         "manifest_sha256": _sha(destination / "mutmut-universe-artifact.json"),
@@ -834,7 +843,9 @@ def _arguments() -> argparse.Namespace:
             )
             child.add_argument("--output-root", type=Path, required=True)
         elif name == "create-universe":
-            child.add_argument("--mode", choices=("mutmut", "empty"), required=True)
+            child.add_argument(
+                "--mode", choices=("mutmut", "generation", "empty"), required=True
+            )
             child.add_argument(
                 "--manifest", type=Path, default=Path("mutmut-universe-artifact.json")
             )
@@ -847,7 +858,9 @@ def _arguments() -> argparse.Namespace:
                 "--selection-evidence", type=Path, default=Path(UNIVERSE_SELECTION_NAME)
             )
             child.add_argument(
-                "--expected-mode", choices=("mutmut", "empty"), required=True
+                "--expected-mode",
+                choices=("mutmut", "generation", "empty"),
+                required=True,
             )
     return parser.parse_args()
 
@@ -922,9 +935,21 @@ def main() -> int:
                 run_id=args.run_id,
                 run_attempt=args.run_attempt,
                 workflow=args.workflow,
-                retry_provenance=_from_arguments(args, UNIVERSE_ARTIFACT),
+                retry_provenance=_from_arguments(
+                    args,
+                    GENERATION_ARTIFACT
+                    if args.mode == "generation"
+                    else UNIVERSE_ARTIFACT,
+                ),
             )
-            result = {"artifact": UNIVERSE_ARTIFACT, "mode": payload["mode"]}
+            result = {
+                "artifact": (
+                    GENERATION_ARTIFACT
+                    if args.mode == "generation"
+                    else UNIVERSE_ARTIFACT
+                ),
+                "mode": payload["mode"],
+            }
         else:
             selection = select_universe_candidate(
                 candidate_roots=args.candidate_root,
@@ -935,10 +960,19 @@ def main() -> int:
                 run_attempt=args.run_attempt,
                 workflow=args.workflow,
                 expected_mode=args.expected_mode,
-                consumer_retry_context=_from_arguments(args, UNIVERSE_ARTIFACT),
+                consumer_retry_context=_from_arguments(
+                    args,
+                    GENERATION_ARTIFACT
+                    if args.expected_mode == "generation"
+                    else UNIVERSE_ARTIFACT,
+                ),
             )
             result = {
-                "artifact": UNIVERSE_ARTIFACT,
+                "artifact": (
+                    GENERATION_ARTIFACT
+                    if args.expected_mode == "generation"
+                    else UNIVERSE_ARTIFACT
+                ),
                 "mode": selection.manifest["mode"],
                 "selected_producer_attempt": selection.producer_attempt,
             }

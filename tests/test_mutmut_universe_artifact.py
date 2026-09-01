@@ -12,6 +12,7 @@ from scripts.mutmut_universe_artifact import (
     create_artifact_manifest,
     validate_artifact_manifest,
 )
+from tests.symlink_support import DIRECTORY_SYMLINKS_SUPPORTED
 
 COMMIT_SHA = "a" * 40
 RUN_ID = "123456"
@@ -85,6 +86,18 @@ def _create(
     retry_provenance: dict[str, str] | None = None,
 ) -> dict[str, object]:
     output = _write_mutmut_tree(root)
+    if mode == "generation":
+        for relative in (
+            "mutants/mutmut-universe.json",
+            "mutants/mutmut-stats.json",
+            "mutants/mutmut-incremental-plan/plan-manifest.json",
+        ):
+            (root / relative).unlink()
+        (root / "mutants/mutmut-incremental-plan").rmdir()
+        (root / "mutants/mutmut-generation.json").write_text(
+            json.dumps({"schema_version": 1, "mutant_count": 1}),
+            encoding="utf-8",
+        )
     return create_artifact_manifest(
         root=root,
         output=output,
@@ -100,6 +113,8 @@ def _create(
                 "mutants/mutmut-incremental-plan",
             )
             if mode == "mutmut"
+            else ("mutants/app", "mutants/mutmut-generation.json")
+            if mode == "generation"
             else ()
         ),
         mode=mode,
@@ -132,6 +147,30 @@ def _create_retry_candidate(
     )
 
 
+def _rewrite_artifact_member(
+    root: Path,
+    relative: str,
+    update: dict[str, object],
+) -> None:
+    """Rewrite one inventoried member and refresh its transport digest."""
+
+    member = root / relative
+    member_payload = json.loads(member.read_text(encoding="utf-8"))
+    member_payload.update(update)
+    member.write_text(json.dumps(member_payload), encoding="utf-8")
+
+    artifact = root / "mutants/mutmut-artifact.json"
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    files = payload["files"]
+    files[relative] = hashlib.sha256(member.read_bytes()).hexdigest()
+    payload["files_sha256"] = hashlib.sha256(
+        json.dumps(
+            files, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    artifact.write_text(json.dumps(payload), encoding="utf-8")
+
+
 def test_mutmut_artifact_round_trip_binds_inventory_and_identity(
     tmp_path: Path,
 ) -> None:
@@ -158,6 +197,58 @@ def test_mutmut_artifact_round_trip_binds_inventory_and_identity(
         )
         == payload
     )
+
+
+def test_generation_artifact_round_trip_excludes_final_stats_and_plan(
+    tmp_path: Path,
+) -> None:
+    payload = _create(tmp_path, mode="generation")
+
+    assert payload["mode"] == "generation"
+    assert payload["generation_manifest"] == "mutants/mutmut-generation.json"
+    assert "mutants/mutmut-stats.json" not in payload["files"]
+    assert (
+        validate_artifact_manifest(
+            root=tmp_path,
+            manifest_path=Path("mutants/mutmut-artifact.json"),
+            commit_sha=COMMIT_SHA,
+            run_id=RUN_ID,
+            run_attempt=RUN_ATTEMPT,
+            workflow=WORKFLOW,
+            expected_mode="generation",
+        )
+        == payload
+    )
+
+
+def test_generation_artifact_rejects_final_stats_payload(tmp_path: Path) -> None:
+    payload = _create(tmp_path, mode="generation")
+    stats_path = tmp_path / "mutants/mutmut-stats.json"
+    stats_path.write_text("{}\n", encoding="utf-8")
+    files = payload["files"]
+    assert isinstance(files, dict)
+    files["mutants/mutmut-stats.json"] = hashlib.sha256(
+        stats_path.read_bytes()
+    ).hexdigest()
+    payload["files_sha256"] = hashlib.sha256(
+        json.dumps(
+            files, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    (tmp_path / "mutants/mutmut-artifact.json").write_text(
+        json.dumps(payload), encoding="utf-8"
+    )
+
+    with pytest.raises(ArtifactValidationError, match="final stats or plan"):
+        validate_artifact_manifest(
+            root=tmp_path,
+            manifest_path=Path("mutants/mutmut-artifact.json"),
+            commit_sha=COMMIT_SHA,
+            run_id=RUN_ID,
+            run_attempt=RUN_ATTEMPT,
+            workflow=WORKFLOW,
+            expected_mode="generation",
+        )
 
 
 def test_mutmut_artifact_rejects_content_tampering(tmp_path: Path) -> None:
@@ -314,6 +405,81 @@ def test_mutmut_artifact_rejects_path_traversal_in_downloaded_manifest(
         )
 
 
+def test_mutmut_artifact_rejects_noncanonical_inventory_alias_path(
+    tmp_path: Path,
+) -> None:
+    payload = _create(tmp_path)
+    files = payload["files"]
+    assert isinstance(files, dict)
+    files["mutants/app/./example.py"] = files.pop("mutants/app/example.py")
+    payload["files_sha256"] = hashlib.sha256(
+        json.dumps(
+            files, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
+    (tmp_path / "mutants/mutmut-artifact.json").write_text(
+        json.dumps(payload), encoding="utf-8"
+    )
+
+    with pytest.raises(ArtifactValidationError, match="repository-relative"):
+        validate_artifact_manifest(
+            root=tmp_path,
+            manifest_path=tmp_path / "mutants/mutmut-artifact.json",
+            commit_sha=COMMIT_SHA,
+            run_id=RUN_ID,
+            run_attempt=RUN_ATTEMPT,
+            workflow=WORKFLOW,
+        )
+
+
+@pytest.mark.parametrize(
+    ("mode", "member", "message"),
+    [
+        ("mutmut", "mutants/mutmut-universe.json", "universe manifest schema"),
+        ("generation", "mutants/mutmut-generation.json", "generation manifest schema"),
+    ],
+)
+def test_mutmut_artifact_rejects_boolean_semantic_schema_version(
+    tmp_path: Path,
+    mode: str,
+    member: str,
+    message: str,
+) -> None:
+    _create(tmp_path, mode=mode)
+    _rewrite_artifact_member(tmp_path, member, {"schema_version": True})
+
+    with pytest.raises(ArtifactValidationError, match=message):
+        validate_artifact_manifest(
+            root=tmp_path,
+            manifest_path=tmp_path / "mutants/mutmut-artifact.json",
+            commit_sha=COMMIT_SHA,
+            run_id=RUN_ID,
+            run_attempt=RUN_ATTEMPT,
+            workflow=WORKFLOW,
+            expected_mode=mode,
+        )
+
+
+def test_mutmut_artifact_rejects_boolean_envelope_schema_version(
+    tmp_path: Path,
+) -> None:
+    _create(tmp_path)
+    artifact = tmp_path / "mutants/mutmut-artifact.json"
+    payload = json.loads(artifact.read_text(encoding="utf-8"))
+    payload["schema_version"] = True
+    artifact.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ArtifactValidationError, match="artifact manifest schema"):
+        validate_artifact_manifest(
+            root=tmp_path,
+            manifest_path=artifact,
+            commit_sha=COMMIT_SHA,
+            run_id=RUN_ID,
+            run_attempt=RUN_ATTEMPT,
+            workflow=WORKFLOW,
+        )
+
+
 def test_mutmut_artifact_retry_selection_is_explicit_and_surfaces_prior_attempt(
     tmp_path: Path,
 ) -> None:
@@ -438,6 +604,47 @@ def test_mutmut_candidate_collection_selects_highest_valid_attempt_deterministic
     assert selection.candidate_root == second.resolve()
     assert reversed_selection == selection
     assert set_selection == selection
+
+
+@pytest.mark.skipif(
+    not DIRECTORY_SYMLINKS_SUPPORTED,
+    reason="directory symlinks are unavailable on this platform",
+)
+def test_safe_target_rejects_intermediate_symlink_path(tmp_path: Path) -> None:
+    root = tmp_path / "root"
+    outside = tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    (outside / "secret.txt").write_text("outside", encoding="utf-8")
+    (root / "linked").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(ArtifactValidationError, match="symlink or junction"):
+        mutmut_artifact._safe_target(root, "linked/secret.txt")
+
+
+@pytest.mark.skipif(
+    not DIRECTORY_SYMLINKS_SUPPORTED,
+    reason="directory symlinks are unavailable on this platform",
+)
+def test_candidate_collection_rejects_intermediate_symlink_root(
+    tmp_path: Path,
+) -> None:
+    real_parent = tmp_path / "real-parent"
+    candidate = real_parent / "attempt-1"
+    _create_retry_candidate(candidate, run_attempt="1")
+    alias = tmp_path / "candidate-alias"
+    alias.symlink_to(real_parent, target_is_directory=True)
+
+    with pytest.raises(ArtifactValidationError, match="symlink or junction"):
+        mutmut_artifact.select_artifact_manifest_candidates(
+            candidate_roots=[alias / "attempt-1"],
+            commit_sha=COMMIT_SHA,
+            run_id=RUN_ID,
+            run_attempt="2",
+            workflow=WORKFLOW,
+            expected_artifact="mutmut-universe",
+            consumer_retry_context=_consumer_retry_context(),
+        )
 
 
 @pytest.mark.parametrize(

@@ -9,10 +9,16 @@ from types import SimpleNamespace
 import pytest
 
 from scripts.mutmut_universe import (
+    GENERATION_MANIFEST_SCHEMA_VERSION,
     UniverseValidationError,
+    _also_copy_inventory,
     load_reused_generation_stats,
     prepare_mutants_directory,
+    prepare_reused_generation,
+    validate_configured_paths,
+    validate_generation_manifest,
     validate_universe_manifest,
+    write_generation_manifest,
     write_universe_manifest,
 )
 
@@ -81,7 +87,10 @@ _FAKE_STATE = _FakeState()
 
 
 class _FakeCli:
-    Config = SimpleNamespace(get=lambda: _FakeConfig())
+    Config = SimpleNamespace(
+        ensure_loaded=lambda: None,
+        get=lambda: _FakeConfig(),
+    )
     SourceFileMutationData = _FakeMutationData
     MutantGenerationStats = _FakeGenerationStats
 
@@ -106,6 +115,10 @@ class _FakeCli:
     @staticmethod
     def get_mutant_name(path: Path, function: str) -> str:
         return f"{path.as_posix().removesuffix('.py').replace('/', '.')}.{function}"
+
+    @staticmethod
+    def setup_source_paths() -> None:
+        return None
 
 
 def _write_universe(tmp_path: Path) -> None:
@@ -188,6 +201,73 @@ def test_generated_universe_manifest_round_trips_and_records_fingerprints(
     assert validate_universe_manifest(_FakeCli) == manifest
 
 
+def test_generation_manifest_round_trips_without_stats_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_universe(tmp_path)
+    (tmp_path / "mutants/mutmut-stats.json").unlink()
+    monkeypatch.chdir(tmp_path)
+
+    manifest = write_generation_manifest(_FakeCli)
+
+    assert manifest["schema_version"] == GENERATION_MANIFEST_SCHEMA_VERSION
+    assert "stats_sha256" not in manifest
+    assert validate_generation_manifest(_FakeCli) == manifest
+
+
+def test_reused_generation_initialization_does_not_regenerate_mutants(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_universe(tmp_path)
+    (tmp_path / "mutants/mutmut-stats.json").unlink()
+    monkeypatch.chdir(tmp_path)
+    write_generation_manifest(_FakeCli)
+
+    # The fake CLI intentionally has no copy/create methods.  A call to the
+    # expensive generation path would therefore fail; successful preparation
+    # proves that extraction uses only the validated generation tree.
+    _FAKE_STATE.current_function_hashes = {"stale": "hash"}
+    stats = prepare_reused_generation(_FakeCli)
+
+    assert stats.mutated == 0
+    assert stats.unmodified == 2
+    assert stats.ignored == 1
+    assert _FAKE_STATE.current_function_hashes == {"app.example.example": "hash"}
+
+
+def test_generation_manifest_rejects_tampered_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_universe(tmp_path)
+    (tmp_path / "mutants/mutmut-stats.json").unlink()
+    monkeypatch.chdir(tmp_path)
+    write_generation_manifest(_FakeCli)
+    metadata_path = Path("mutants/app/example.py.meta")
+    metadata_path.write_text(
+        metadata_path.read_text(encoding="utf-8") + "\n", encoding="utf-8"
+    )
+
+    with pytest.raises(UniverseValidationError, match="metadata fingerprint"):
+        validate_generation_manifest(_FakeCli)
+
+
+def test_generation_manifest_rejects_boolean_schema_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_universe(tmp_path)
+    (tmp_path / "mutants/mutmut-stats.json").unlink()
+    monkeypatch.chdir(tmp_path)
+    write_generation_manifest(_FakeCli)
+
+    manifest_path = Path("mutants/mutmut-generation.json")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["schema_version"] = True
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(UniverseValidationError, match="schema mismatch"):
+        validate_generation_manifest(_FakeCli)
+
+
 def test_generated_universe_validation_rejects_previous_manifest_schema(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -198,6 +278,22 @@ def test_generated_universe_validation_rejects_previous_manifest_schema(
     manifest_path = Path("mutants/mutmut-universe.json")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["schema_version"] = 1
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(UniverseValidationError, match="schema mismatch"):
+        validate_universe_manifest(_FakeCli)
+
+
+def test_generated_universe_validation_rejects_boolean_schema_version(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_universe(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    write_universe_manifest(_FakeCli)
+
+    manifest_path = Path("mutants/mutmut-universe.json")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["schema_version"] = True
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
     with pytest.raises(UniverseValidationError, match="schema mismatch"):
@@ -247,6 +343,92 @@ def test_missing_optional_also_copy_path_is_recorded_deterministically(
     }
 
 
+def test_also_copy_inventory_rejects_intermediate_symlink_escape(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    repo.mkdir()
+    outside.mkdir()
+    (outside / "secret.txt").write_text("not a repository input", encoding="utf-8")
+    link = repo / "linked-directory"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlink creation is unavailable: {exc}")
+
+    monkeypatch.chdir(repo)
+    config = SimpleNamespace(also_copy=[Path("linked-directory/secret.txt")])
+
+    with pytest.raises(UniverseValidationError, match="symlink or junction"):
+        _also_copy_inventory(config)
+
+
+def test_configured_also_copy_directory_rejects_symlink_descendant_before_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    copy_root = repo / "config"
+    repo.mkdir()
+    outside.mkdir()
+    copy_root.mkdir()
+    link = copy_root / "linked-directory"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlink creation is unavailable: {exc}")
+
+    monkeypatch.chdir(repo)
+    config = SimpleNamespace(source_paths=[], also_copy=[Path("config")])
+
+    with pytest.raises(UniverseValidationError, match="symlink or junction"):
+        validate_configured_paths(config)
+
+
+def test_also_copy_inventory_accepts_valid_nested_repository_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    nested = repo / "config" / "fixtures"
+    nested.mkdir(parents=True)
+    fixture = nested / "settings.toml"
+    fixture.write_text("enabled = true\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+
+    inventory = _also_copy_inventory(
+        SimpleNamespace(also_copy=[Path("config/fixtures")])
+    )
+
+    assert inventory["config/fixtures"] == {
+        "kind": "directory",
+        "files": {"settings.toml": hashlib.sha256(fixture.read_bytes()).hexdigest()},
+    }
+
+
+def test_configured_source_root_rejects_intermediate_symlink_escape(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    repo.mkdir()
+    outside.mkdir()
+    link = repo / "linked-source"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlink creation is unavailable: {exc}")
+
+    monkeypatch.chdir(repo)
+    config = SimpleNamespace(
+        source_paths=[Path("linked-source/python")],
+        also_copy=[],
+    )
+
+    with pytest.raises(UniverseValidationError, match="symlink or junction"):
+        validate_configured_paths(config)
+
+
 def test_prepare_mutants_directory_removes_stale_generated_sources_and_sidecars(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -259,6 +441,29 @@ def test_prepare_mutants_directory_removes_stale_generated_sources_and_sidecars(
     assert not Path("mutants/app/example.py.meta").exists()
     assert not Path("mutants/app/noop.py").exists()
     assert not Path("mutants/app/ignored.py").exists()
+
+
+def test_prepare_mutants_directory_rejects_symlinked_mutants_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = tmp_path / "repo"
+    outside = tmp_path / "outside"
+    (repo / "app").mkdir(parents=True)
+    (repo / "tests").mkdir()
+    outside.mkdir()
+    for name in ("example.py", "noop.py", "ignored.py"):
+        (repo / "app" / name).write_text("# source\n", encoding="utf-8")
+    target = outside / "mutants"
+    target.mkdir()
+    link = repo / "mutants"
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlink creation is unavailable: {exc}")
+
+    monkeypatch.chdir(repo)
+    with pytest.raises(UniverseValidationError, match="mutants root"):
+        prepare_mutants_directory(_FakeCli)
 
 
 def test_generated_universe_validation_fails_closed_when_metadata_changes(

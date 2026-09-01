@@ -18,14 +18,19 @@ import json
 from collections.abc import Iterable, Mapping
 from dataclasses import fields, is_dataclass
 from importlib import metadata as importlib_metadata
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
+from stat import S_ISLNK
 from typing import Any, cast
 
 UNIVERSE_MANIFEST_PATH = Path("mutants/mutmut-universe.json")
+# Source/metadata-only manifest shared by the stats matrix and central planner.
+# The final universe manifest remains separate and always binds merged stats.
+GENERATION_MANIFEST_PATH = Path("mutants/mutmut-generation.json")
 # Version 2 adds the content-addressed ``also_copy_inventory`` field.  A
 # manifest produced before that field is not safe to reuse, so validation must
 # reject it instead of silently accepting an incomplete input inventory.
 MANIFEST_SCHEMA_VERSION = 2
+GENERATION_MANIFEST_SCHEMA_VERSION = 1
 
 # ``mutmut.configuration.Config`` is a dataclass today.  Keep this fallback
 # list for contract-test doubles and future compatible config objects that
@@ -146,8 +151,20 @@ def _safe_mutant_path(path: Path | str) -> Path:
             f"mutmut path must be repository-relative: {normalized!r}"
         )
 
-    mutants_root = Path("mutants").resolve()
-    target = Path("mutants") / candidate
+    mutants_root_path = Path("mutants")
+    if _is_link_or_junction(mutants_root_path):
+        raise UniverseValidationError(
+            f"mutants root must not be a symlink or junction: {mutants_root_path}"
+        )
+    current = mutants_root_path
+    for component in candidate.parts:
+        current /= component
+        if _is_link_or_junction(current):
+            raise UniverseValidationError(
+                f"generated mutmut path traverses a symlink or junction: {current}"
+            )
+    mutants_root = mutants_root_path.resolve()
+    target = mutants_root_path / candidate
     try:
         resolved_target = target.resolve()
     except OSError as exc:
@@ -159,6 +176,164 @@ def _safe_mutant_path(path: Path | str) -> Path:
             f"generated mutmut path escapes mutants directory: {target}"
         )
     return target
+
+
+def _is_link_or_junction(path: Path) -> bool:
+    """Return whether ``path`` is a symlink or Windows directory junction.
+
+    ``Path.exists()`` follows links and returns ``False`` for a broken link, so
+    the security checks must use link-aware metadata before any existence or
+    content operation.  Junctions are the Windows equivalent of a directory
+    symlink and are checked when the running Python exposes ``is_junction``.
+    """
+
+    try:
+        if S_ISLNK(path.lstat().st_mode):
+            return True
+    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        raise UniverseValidationError(
+            f"unable to inspect mutmut repository path component: {path}"
+        ) from exc
+
+    is_junction = getattr(path, "is_junction", None)
+    if not callable(is_junction):
+        return False
+    try:
+        return bool(is_junction())
+    except OSError as exc:
+        raise UniverseValidationError(
+            f"unable to inspect mutmut repository path component: {path}"
+        ) from exc
+
+
+def _safe_repository_path(
+    path: Path | str,
+    *,
+    label: str,
+    allow_missing: bool,
+) -> Path:
+    """Validate a configured path before reading or copying it.
+
+    Configured mutmut paths are repository-relative.  Validate every existing
+    component (including intermediate parents) without following symlinks or
+    junctions, then resolve the complete path and require it to remain below
+    the current checkout.  This rejects both direct links and paths such as
+    ``link/outside.py`` where only an intermediate parent is a link.
+    """
+
+    normalized = _normalize_path(path)
+    try:
+        candidate = Path(normalized)
+        windows_candidate = PureWindowsPath(normalized)
+    except (TypeError, ValueError) as exc:
+        raise UniverseValidationError(
+            f"{label} must be a repository-relative path: {normalized!r}"
+        ) from exc
+
+    if (
+        not normalized
+        or normalized == "."
+        or candidate.is_absolute()
+        or windows_candidate.is_absolute()
+        or bool(windows_candidate.drive)
+        or ".." in candidate.parts
+    ):
+        raise UniverseValidationError(
+            f"{label} must be repository-relative: {normalized!r}"
+        )
+
+    checkout = Path.cwd()
+    try:
+        checkout_resolved = checkout.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise UniverseValidationError(
+            f"unable to resolve repository root for {label}: {checkout}"
+        ) from exc
+
+    current = checkout
+    for component in candidate.parts:
+        current /= component
+        if _is_link_or_junction(current):
+            raise UniverseValidationError(
+                f"{label} symlink or junction is not allowed: {current}"
+            )
+
+    target = checkout / candidate
+    try:
+        resolved_target = target.resolve(strict=False)
+    except (OSError, RuntimeError) as exc:
+        raise UniverseValidationError(f"unable to resolve {label}: {target}") from exc
+    if not resolved_target.is_relative_to(checkout_resolved):
+        raise UniverseValidationError(f"{label} escapes repository: {target}")
+
+    if not allow_missing:
+        try:
+            exists = target.exists()
+        except OSError as exc:
+            raise UniverseValidationError(
+                f"unable to inspect {label}: {target}"
+            ) from exc
+        if not exists:
+            raise UniverseValidationError(f"{label} is missing: {target}")
+    return candidate
+
+
+def _configured_entries(raw_entries: Any, *, label: str) -> list[Any]:
+    """Normalize a mutmut path setting into a list without splitting strings."""
+
+    if raw_entries is None:
+        return []
+    if isinstance(raw_entries, (Path, str)):
+        return [raw_entries]
+    try:
+        return list(raw_entries)
+    except TypeError as exc:
+        raise UniverseValidationError(f"{label} must be iterable") from exc
+
+
+def _validate_repository_tree(path: Path, *, label: str) -> None:
+    """Reject link-like descendants before a recursive mutmut copy."""
+
+    if not path.is_dir():
+        return
+    try:
+        children = sorted(path.rglob("*"), key=_normalize_path)
+    except OSError as exc:
+        raise UniverseValidationError(
+            f"unable to inspect {label} directory: {path}"
+        ) from exc
+    for child in children:
+        _safe_repository_path(
+            child,
+            label=f"{label} child",
+            allow_missing=False,
+        )
+
+
+def validate_configured_paths(config: Any) -> None:
+    """Validate mutmut source roots and copy inputs before filesystem access."""
+
+    for raw_entry in _configured_entries(
+        getattr(config, "source_paths", None), label="mutmut source_paths"
+    ):
+        source_root = _safe_repository_path(
+            raw_entry,
+            label="mutmut source root",
+            allow_missing=False,
+        )
+        _validate_repository_tree(source_root, label="mutmut source root")
+    for raw_entry in _configured_entries(
+        getattr(config, "also_copy", None), label="mutmut also_copy"
+    ):
+        copy_root = _safe_repository_path(
+            raw_entry,
+            label="mutmut also_copy path",
+            allow_missing=True,
+        )
+        if copy_root.exists():
+            _validate_repository_tree(copy_root, label="mutmut also_copy path")
 
 
 def _is_ephemeral_copy_file(root: Path, path: Path) -> bool:
@@ -183,27 +358,15 @@ def _also_copy_inventory(config: Any) -> dict[str, dict[str, Any]]:
         return {}
 
     inventory: dict[str, dict[str, Any]] = {}
-    try:
-        entries = list(raw_entries)
-    except TypeError as exc:
-        raise UniverseValidationError("mutmut also_copy must be iterable") from exc
+    entries = _configured_entries(raw_entries, label="mutmut also_copy")
 
     for raw_entry in entries:
         normalized = _normalize_path(raw_entry)
-        candidate = Path(normalized)
-        if (
-            not normalized
-            or normalized == "."
-            or candidate.is_absolute()
-            or ".." in candidate.parts
-        ):
-            raise UniverseValidationError(
-                f"mutmut also_copy path must be repository-relative: {normalized!r}"
-            )
-        if candidate.is_symlink():
-            raise UniverseValidationError(
-                f"mutmut also_copy symlink is not allowed: {candidate}"
-            )
+        candidate = _safe_repository_path(
+            raw_entry,
+            label="mutmut also_copy path",
+            allow_missing=True,
+        )
         if not candidate.exists():
             # mutmut appends optional compatibility paths (``test/``,
             # ``setup.cfg`` and several lockfiles) to every configuration and
@@ -233,10 +396,11 @@ def _also_copy_inventory(config: Any) -> dict[str, dict[str, Any]]:
                 f"unable to inspect mutmut also_copy directory: {candidate}"
             ) from exc
         for child in children:
-            if child.is_symlink():
-                raise UniverseValidationError(
-                    f"mutmut also_copy symlink is not allowed: {child}"
-                )
+            _safe_repository_path(
+                child,
+                label="mutmut also_copy child",
+                allow_missing=False,
+            )
             if not child.is_file() or _is_ephemeral_copy_file(candidate, child):
                 continue
             relative = _normalize_path(child.relative_to(candidate))
@@ -247,17 +411,30 @@ def _also_copy_inventory(config: Any) -> dict[str, dict[str, Any]]:
 
 
 def prepare_mutants_directory(mutmut_cli: Any) -> None:
-    """Remove stale generated source/sidecars before a fresh mutmut copy.
+    """Validate inputs and remove stale files before a fresh mutmut copy.
 
     mutmut deliberately keeps an existing generated file when its mtime is
     newer than the source.  That optimization is unsafe for an independently
     planned shard: a stale file can silently yield stale metadata and a false
-    manifest.  Delete only paths corresponding to the current source inventory;
+    manifest.  Validate configured source/copy paths before mutmut reads them,
+    then delete only paths corresponding to the current source inventory;
     unexpected directories/symlinks fail closed instead of being followed.
     """
 
-    Path("mutants").mkdir(parents=True, exist_ok=True)
+    config = mutmut_cli.Config.get()
+    validate_configured_paths(config)
+    mutants_root = Path("mutants")
+    if _is_link_or_junction(mutants_root):
+        raise UniverseValidationError(
+            f"mutants root must not be a symlink or junction: {mutants_root}"
+        )
+    mutants_root.mkdir(parents=True, exist_ok=True)
     for source_path in mutmut_cli.walk_source_files():
+        _safe_repository_path(
+            source_path,
+            label="mutmut source file",
+            allow_missing=False,
+        )
         generated = _safe_mutant_path(source_path)
         for candidate in (
             generated,
@@ -284,7 +461,16 @@ def _digest(value: Any) -> str:
 
 def _source_file_hashes(paths: Iterable[Path]) -> dict[str, str]:
     normalized_paths = sorted({_normalize_path(path) for path in paths})
-    return {path: _sha256_file(Path(path)) for path in normalized_paths}
+    return {
+        path: _sha256_file(
+            _safe_repository_path(
+                path,
+                label="mutmut source file",
+                allow_missing=False,
+            )
+        )
+        for path in normalized_paths
+    }
 
 
 def _mutated_file_hashes(paths: Iterable[Path]) -> dict[str, str]:
@@ -379,8 +565,9 @@ def _metadata_inventory(
     return metadata_hashes, sorted(mutant_names)
 
 
-def _build_manifest(mutmut_cli: Any, *, stats_path: Path) -> dict[str, Any]:
+def _build_generation_manifest(mutmut_cli: Any) -> dict[str, Any]:
     config = mutmut_cli.Config.get()
+    validate_configured_paths(config)
     source_paths = list(mutmut_cli.walk_source_files())
     mutatable_paths = list(mutmut_cli.walk_mutatable_files())
     if not source_paths:
@@ -392,11 +579,8 @@ def _build_manifest(mutmut_cli: Any, *, stats_path: Path) -> dict[str, Any]:
     generated_hashes = _mutated_file_hashes(source_paths)
     metadata_hashes, mutant_names = _metadata_inventory(mutmut_cli, mutatable_paths)
     also_copy_inventory = _also_copy_inventory(config)
-    if not stats_path.is_file():
-        raise UniverseValidationError(f"mutmut stats artifact is missing: {stats_path}")
-
     return {
-        "schema_version": MANIFEST_SCHEMA_VERSION,
+        "schema_version": GENERATION_MANIFEST_SCHEMA_VERSION,
         "mutmut_version": _mutmut_version(),
         "source_files": source_hashes,
         "source_fingerprint": _digest(source_hashes),
@@ -405,10 +589,95 @@ def _build_manifest(mutmut_cli: Any, *, stats_path: Path) -> dict[str, Any]:
         "mutatable_files": sorted(_normalize_path(path) for path in mutatable_paths),
         "mutant_count": len(mutant_names),
         "mutant_names_sha256": _digest(mutant_names),
-        "stats_sha256": _sha256_file(stats_path),
         "config": _config_snapshot(config),
         "config_fingerprint": _config_fingerprint(config),
         "also_copy_inventory": also_copy_inventory,
+    }
+
+
+_GENERATION_MANIFEST_FIELDS = (
+    "mutmut_version",
+    "source_files",
+    "source_fingerprint",
+    "generated_files",
+    "metadata_files",
+    "mutatable_files",
+    "mutant_count",
+    "mutant_names_sha256",
+    "config",
+    "config_fingerprint",
+    "also_copy_inventory",
+)
+
+
+def write_generation_manifest(
+    mutmut_cli: Any,
+    *,
+    manifest_path: Path = GENERATION_MANIFEST_PATH,
+) -> dict[str, Any]:
+    """Write a source/metadata-only manifest for pre-stats reuse."""
+
+    manifest = _build_generation_manifest(mutmut_cli)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return manifest
+
+
+def _read_manifest(path: Path, *, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise UniverseValidationError(f"{label} is missing: {path}") from exc
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise UniverseValidationError(f"{label} is invalid: {path}") from exc
+    if not isinstance(value, dict):
+        raise UniverseValidationError(f"{label} must be an object")
+    return value
+
+
+def validate_generation_manifest(
+    mutmut_cli: Any,
+    *,
+    manifest_path: Path = GENERATION_MANIFEST_PATH,
+) -> dict[str, Any]:
+    """Fail closed if a source/metadata generation tree cannot be trusted."""
+
+    manifest = _read_manifest(manifest_path, label="mutmut generation manifest")
+    if (
+        type(manifest.get("schema_version")) is not int
+        or manifest.get("schema_version") != GENERATION_MANIFEST_SCHEMA_VERSION
+    ):
+        raise UniverseValidationError("mutmut generation manifest schema mismatch")
+    expected = _build_generation_manifest(mutmut_cli)
+    for key in _GENERATION_MANIFEST_FIELDS:
+        if manifest.get(key) != expected[key]:
+            if key.startswith("source"):
+                detail = "source fingerprint"
+            elif key.startswith("metadata"):
+                detail = "metadata fingerprint"
+            elif key in {"config", "config_fingerprint"}:
+                detail = "config fingerprint"
+            elif key == "also_copy_inventory":
+                detail = "also_copy fingerprint"
+            else:
+                detail = key
+            raise UniverseValidationError(
+                f"mutmut generation {detail} mismatch; refusing reuse"
+            )
+    return manifest
+
+
+def _build_manifest(mutmut_cli: Any, *, stats_path: Path) -> dict[str, Any]:
+    if not stats_path.is_file():
+        raise UniverseValidationError(f"mutmut stats artifact is missing: {stats_path}")
+    return {
+        **_build_generation_manifest(mutmut_cli),
+        "schema_version": MANIFEST_SCHEMA_VERSION,
+        "stats_sha256": _sha256_file(stats_path),
     }
 
 
@@ -450,7 +719,10 @@ def validate_universe_manifest(
         ) from exc
     if not isinstance(manifest, dict):
         raise UniverseValidationError("mutmut universe manifest must be an object")
-    if manifest.get("schema_version") != MANIFEST_SCHEMA_VERSION:
+    if (
+        type(manifest.get("schema_version")) is not int
+        or manifest.get("schema_version") != MANIFEST_SCHEMA_VERSION
+    ):
         raise UniverseValidationError("mutmut universe manifest schema mismatch")
 
     expected = _build_manifest(mutmut_cli, stats_path=stats_path)
@@ -496,11 +768,17 @@ def load_reused_generation_stats(mutmut_cli: Any) -> Any:
     """
 
     config = mutmut_cli.Config.get()
+    validate_configured_paths(config)
     state = mutmut_cli.state()
     state.current_function_hashes.clear()
     stats = mutmut_cli.MutantGenerationStats()
     for path in mutmut_cli.walk_source_files():
         normalized_path = _normalize_path(path)
+        _safe_repository_path(
+            normalized_path,
+            label="mutmut source file",
+            allow_missing=False,
+        )
         generated = _safe_mutant_path(normalized_path)
         if not generated.is_file():
             raise UniverseValidationError(
@@ -536,3 +814,18 @@ def load_reused_generation_stats(mutmut_cli: Any) -> Any:
         else:
             stats.ignored += 1
     return stats
+
+
+def prepare_reused_generation(mutmut_cli: Any) -> Any:
+    """Validate and initialize an extracted generation tree without copying.
+
+    Callers must invoke this after the repository checkout and artifact
+    transport envelope have been validated.  No mutmut source copy or mutant
+    generation is performed here; the returned stats object only reconstructs
+    the in-memory function-hash state required by downstream collection.
+    """
+
+    mutmut_cli.Config.ensure_loaded()
+    mutmut_cli.setup_source_paths()
+    validate_generation_manifest(mutmut_cli)
+    return load_reused_generation_stats(mutmut_cli)

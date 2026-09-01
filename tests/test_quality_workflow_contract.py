@@ -1603,6 +1603,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     jobs = workflow["jobs"]
     stats_job = jobs["mutation-tests-stats"]
+    base_job = jobs["mutation-tests-universe-base"]
     universe_job = jobs["mutation-tests-universe"]
     mutation_job = jobs["mutation-tests-incremental"]
 
@@ -1610,12 +1611,41 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert workflow["concurrency"]["group"] == "ci-matrix-${{ github.ref }}"
     assert jobs["ci-success"]["name"] == "CI Success"
 
+    assert base_job["timeout-minutes"] == 20
+    assert base_job["needs"] == [
+        "mutation-scope",
+        "pre-commit-check",
+        "pre-commit-security-and-types",
+    ]
+    base_text = "\n".join(
+        step.get("run", "") for step in base_job["steps"] if isinstance(step, dict)
+    )
+    assert "scripts/mutmut_stats_shard.py" in base_text
+    assert "--prepare-only" in base_text
+    assert "mutmut-generation.json" in base_text
+    base_upload = next(
+        step
+        for step in base_job["steps"]
+        if step.get("name") == "Upload mutmut generation base"
+    )
+    assert base_upload["with"]["name"] == (
+        "mutmut-generation-base-${{ github.run_id }}-${{ github.run_attempt }}"
+    )
+    base_envelope = next(
+        step
+        for step in base_job["steps"]
+        if step.get("name") == "Create retry-scoped mutmut generation envelope"
+    )
+    assert "--mode generation" in base_envelope["run"]
+    assert "mutmut-universe-artifact.json" in base_envelope["run"]
+
     assert stats_job["strategy"]["matrix"] == (
         "${{ fromJSON(needs.mutation-scope.outputs.stats_matrix) }}"
     )
     assert stats_job["timeout-minutes"] == 25
     assert stats_job["needs"] == [
         "mutation-scope",
+        "mutation-tests-universe-base",
         "pre-commit-security-and-types",
         "backend-tests",
         "backend-type-check",
@@ -1626,6 +1656,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert universe_job["needs"] == [
         "pre-commit-check",
         "pre-commit-security-and-types",
+        "mutation-tests-universe-base",
         "mutation-tests-stats",
     ]
     assert mutation_job["strategy"]["fail-fast"] is False
@@ -1640,6 +1671,23 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert "scripts/mutmut_stats_shard.py" in stats_text
     assert "--shard-id" in stats_text
     assert "--num-shards 8" in stats_text
+    assert "--reuse-generated-universe" in stats_text
+    stats_generation_selector = next(
+        step
+        for step in stats_job["steps"]
+        if step.get("name") == "Select retry-safe mutmut generation base"
+    )
+    assert "--expected-mode generation" in stats_generation_selector["run"]
+    assert "mutmut-generation-selection.json" in stats_generation_selector["run"]
+    stats_generation_remote_selector = next(
+        step
+        for step in stats_job["steps"]
+        if step.get("name") == "Select immutable same-run mutmut generation base"
+    )
+    assert (
+        '--artifact-prefix "mutmut-generation-base-"'
+        in stats_generation_remote_selector["run"]
+    )
     helper_text = (REPOSITORY_ROOT / "scripts/mutmut_stats_shard.py").read_text(
         encoding="utf-8"
     )
@@ -1687,6 +1735,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert universe_selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
     assert "scripts/quality/select_same_run_artifact_cli.py" in universe_selector["run"]
     assert '--artifact-prefix "mutmut-universe-"' in universe_selector["run"]
+    assert '--artifact-prefix "mutmut-generation-base-"' not in universe_selector["run"]
     download_step = next(
         step
         for step in mutation_job["steps"]
@@ -1742,6 +1791,23 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert "--allow-empty-shards" in producer_text
     assert "python -m scripts.mutmut_retry_artifacts select-stats" in producer_text
     assert "python -m scripts.mutmut_retry_artifacts create-universe" in producer_text
+    assert "--reuse-generated-universe" in producer_text
+    universe_generation_selector = next(
+        step
+        for step in universe_job["steps"]
+        if step.get("name") == "Select retry-safe mutmut generation base"
+    )
+    assert "--expected-mode generation" in universe_generation_selector["run"]
+    assert "mutmut-generation-selection.json" in universe_generation_selector["run"]
+    universe_generation_remote_selector = next(
+        step
+        for step in universe_job["steps"]
+        if step.get("name") == "Select immutable same-run mutmut generation base"
+    )
+    assert (
+        '--artifact-prefix "mutmut-generation-base-"'
+        in universe_generation_remote_selector["run"]
+    )
     assert 'SOURCE_REVISION="$(git rev-parse HEAD)"' in producer_text
     assert 'SOURCE_REVISION="$(git rev-parse HEAD)"' in mutation_text
     assert 'test "$SOURCE_REVISION" = "$COMMIT_SHA"' in producer_text
@@ -1758,6 +1824,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert universe_upload["with"]["include-hidden-files"] is True
     assert universe_upload["with"]["retention-days"] == 30
     assert "mutation-tests-stats" in jobs["ci-success"]["needs"]
+    assert "mutation-tests-universe-base" in jobs["ci-success"]["needs"]
     assert "mutation-tests-universe" in jobs["ci-success"]["needs"]
     assert "needs.mutation-tests-stats.result" in jobs["ci-success"]["steps"][0]["run"]
     assert (
@@ -1766,12 +1833,13 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
 
 
 def test_mutation_stats_do_not_wait_for_an_unrelated_read_only_gate() -> None:
-    """Start stats after only the lightweight scope resolver.
+    """Start stats after scope and the immutable generation-base producer.
 
     Stats uses its own read-only checkout and its result is still required by
     both the universe producer and ``ci-success``.  It consumes no output or
     credentials from pre-commit; the dedicated scope job only determines
-    whether eight real legs or one explicit sentinel should be expanded.
+    whether eight real legs or one explicit sentinel should be expanded, while
+    the base producer supplies the immutable mutmut source/metadata tree.
     """
 
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
@@ -1782,6 +1850,7 @@ def test_mutation_stats_do_not_wait_for_an_unrelated_read_only_gate() -> None:
 
     assert stats_job["needs"] == [
         "mutation-scope",
+        "mutation-tests-universe-base",
         "pre-commit-security-and-types",
         "backend-tests",
         "backend-type-check",
@@ -1791,6 +1860,7 @@ def test_mutation_stats_do_not_wait_for_an_unrelated_read_only_gate() -> None:
     assert universe_job["needs"] == [
         "pre-commit-check",
         "pre-commit-security-and-types",
+        "mutation-tests-universe-base",
         "mutation-tests-stats",
     ]
     assert mutation_job["needs"] == [
@@ -1816,6 +1886,7 @@ def test_mutation_lanes_are_readiness_gated_and_leave_reserved_capacity() -> Non
     assert jobs["mutation-tests-stats"]["strategy"]["max-parallel"] == 8
     assert jobs["mutation-tests-stats"]["needs"] == [
         "mutation-scope",
+        "mutation-tests-universe-base",
         "pre-commit-security-and-types",
         "backend-tests",
         "backend-type-check",
@@ -1844,6 +1915,7 @@ def test_mutation_stats_scope_is_resolved_before_matrix_fanout() -> None:
     assert scope["timeout-minutes"] == 5
     assert stats["needs"] == [
         "mutation-scope",
+        "mutation-tests-universe-base",
         "pre-commit-security-and-types",
         "backend-tests",
         "backend-type-check",

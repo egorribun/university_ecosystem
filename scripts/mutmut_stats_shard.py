@@ -20,19 +20,39 @@ from pathlib import Path
 
 if not __package__:  # pragma: no cover - direct CI script entry point
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from scripts.mutmut_universe import prepare_mutants_directory
+from scripts.mutmut_universe import (
+    prepare_mutants_directory,
+    prepare_reused_generation,
+    write_generation_manifest,
+)
 
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--shard-id", type=int, required=True)
-    parser.add_argument("--num-shards", type=int, required=True)
+    parser.add_argument("--shard-id", type=int)
+    parser.add_argument("--num-shards", type=int)
     parser.add_argument("--max-children", type=int, default=2)
+    parser.add_argument(
+        "--prepare-only",
+        action="store_true",
+        help="generate and manifest the source/metadata tree without collecting stats",
+    )
+    parser.add_argument(
+        "--reuse-generated-universe",
+        action="store_true",
+        help="validate and reuse the extracted generation artifact",
+    )
     args = parser.parse_args()
-    if args.num_shards < 1:
-        parser.error("--num-shards must be positive")
-    if not 0 <= args.shard_id < args.num_shards:
-        parser.error("--shard-id must be within the configured shard range")
+    if args.prepare_only:
+        if args.shard_id is not None or args.num_shards is not None:
+            parser.error("--prepare-only cannot be combined with shard arguments")
+    else:
+        if args.shard_id is None or args.num_shards is None:
+            parser.error("--shard-id and --num-shards are required")
+        if args.num_shards < 1:
+            parser.error("--num-shards must be positive")
+        if not 0 <= args.shard_id < args.num_shards:
+            parser.error("--shard-id must be within the configured shard range")
     if args.max_children < 1:
         parser.error("--max-children must be positive")
     return args
@@ -82,11 +102,20 @@ def _generate_mutant_universe(mutmut_cli, *, max_children: int) -> None:
     )
 
 
-def collect_stats_shard(*, shard_id: int, num_shards: int, max_children: int) -> Path:
-    """Generate the mutmut universe and persist one pytest stats shard."""
+def collect_stats_shard(
+    *,
+    shard_id: int,
+    num_shards: int,
+    max_children: int,
+    reuse_generated_universe: bool = False,
+) -> Path:
+    """Persist one pytest stats shard, optionally reusing generation output."""
 
     mutmut_cli = _load_mutmut_cli()
-    _generate_mutant_universe(mutmut_cli, max_children=max_children)
+    if reuse_generated_universe:
+        prepare_reused_generation(mutmut_cli)
+    else:
+        _generate_mutant_universe(mutmut_cli, max_children=max_children)
 
     # The repository conftest assigns whole test files to deterministic shards.
     # Append partition args only when there is more than one shard. For 1/1,
@@ -118,10 +147,16 @@ def collect_stats_shard(*, shard_id: int, num_shards: int, max_children: int) ->
 
 def main() -> None:
     args = _parse_args()
+    if args.prepare_only:
+        mutmut_cli = _load_mutmut_cli()
+        _generate_mutant_universe(mutmut_cli, max_children=args.max_children)
+        write_generation_manifest(mutmut_cli)
+        return
     collect_stats_shard(
         shard_id=args.shard_id,
         num_shards=args.num_shards,
         max_children=args.max_children,
+        reuse_generated_universe=args.reuse_generated_universe,
     )
 
 

@@ -2742,11 +2742,126 @@ jobs:
             echo "- Stats matrix entries: $stats_total"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Generate mutmut's source/metadata tree once.  mutmut 3.7 requires that
+  # tree before every stats collection, but the generated files are immutable
+  # for a given checkout/configuration and can be safely transported as a
+  # same-run, provenance-bound artifact.  Stats legs and the planner validate
+  # this envelope instead of repeating create_mutants independently.
+  mutation-tests-universe-base:
+    name: Prepare mutmut generation base
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs:
+      - mutation-scope
+      - pre-commit-check
+      - pre-commit-security-and-types
+    env:
+      OTEL_SDK_DISABLED: "true"
+      REVOCATION_REDIS_URL: redis://localhost:6380/0
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        if: needs.mutation-scope.outputs.has_python == 'true'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        if: needs.mutation-scope.outputs.has_python == 'true'
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install dependencies
+        if: needs.mutation-scope.outputs.has_python == 'true'
+        run: uv sync --group dev
+
+      - name: Set up Helm
+        if: needs.mutation-scope.outputs.has_python == 'true'
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v3.17.0
+
+      - name: Resolve Helm chart dependencies
+        if: needs.mutation-scope.outputs.has_python == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if helm dependency build charts/university-ecosystem/; then
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "Helm dependency build failed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
+
+      - name: Generate reusable mutmut source and metadata
+        if: needs.mutation-scope.outputs.has_python == 'true'
+        run: |
+          set -euo pipefail
+          rm -rf mutants
+          uv run python scripts/mutmut_stats_shard.py \
+            --prepare-only \
+            --max-children 2
+          test -s mutants/mutmut-generation.json
+
+      - name: Create retry-scoped mutmut generation envelope
+        if: needs.mutation-scope.outputs.has_python == 'true'
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          COMMIT_SHA: ${{ github.sha }}
+          WORKFLOW: .github/workflows/ci.yml
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          SOURCE_REVISION="$(git rev-parse HEAD)"
+          test "$SOURCE_REVISION" = "$COMMIT_SHA"
+          python -m scripts.mutmut_retry_artifacts create-universe \
+            --root . \
+            --manifest mutmut-universe-artifact.json \
+            --mode generation \
+            --commit-sha "$COMMIT_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --workflow "$WORKFLOW" \
+            --repository "$REPOSITORY" \
+            --source-revision "$SOURCE_REVISION" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --event "$EVENT_NAME"
+          test -s mutmut-universe-artifact.json
+
+      - name: Upload mutmut generation base
+        if: needs.mutation-scope.outputs.has_python == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: mutmut-generation-base-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            mutmut-universe-artifact.json
+            mutants/
+          include-hidden-files: true
+          retention-days: 30
+          if-no-files-found: error
+
   mutation-tests-stats:
     name: Incremental Mutation Stats (mutmut) / shard ${{ matrix.stats_shard }}/${{ matrix.stats_total }}
     runs-on: ubuntu-24.04
     needs:
       - mutation-scope
+      - mutation-tests-universe-base
       - pre-commit-security-and-types
       - backend-tests
       - backend-type-check
@@ -2767,11 +2882,10 @@ jobs:
       # the Redis transport is mocked.  Keep the fail-closed URL explicit so
       # mutation stats cannot fail before collecting the shard mapping.
       REVOCATION_REDIS_URL: redis://localhost:6380/0
-    # Stats has an isolated read-only checkout and depends only on the
-    # lightweight mutation-scope resolver, not on a pre-commit output. Starting
-    # it beside pre-commit removes that gate's startup delay from the mutation
-    # critical path; ci-success still requires both jobs and fails closed if
-    # either one fails.
+    # Stats has an isolated read-only checkout. The immutable generation-base
+    # producer is an explicit prerequisite, while security, typing, and backend
+    # readiness gates remain blocking dependencies. Generation happens once and
+    # matrix legs consume that attempt-bound tree instead of repeating the copy.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -2823,6 +2937,87 @@ jobs:
           fi
           echo "has_python=$has_python" >> "$GITHUB_OUTPUT"
 
+      - name: Select immutable same-run mutmut generation base
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        id: select_mutmut_generation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/select_same_run_artifact_cli.py \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --consumer-run-attempt "${{ github.run_attempt }}" \
+            --commit-sha "${{ github.sha }}" \
+            --run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --event "${{ github.event_name }}" \
+            --workflow-path ".github/workflows/ci.yml" \
+            --artifact-prefix "mutmut-generation-base-" \
+            --artifact-suffix "" \
+            --attempt-policy current-or-earlier
+
+      - name: Download selected same-run mutmut generation base
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.select_mutmut_generation.outputs.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: mutmut-generation-candidates/${{ steps.select_mutmut_generation.outputs.artifact_name }}
+
+      - name: Verify selected mutmut generation payload
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ steps.select_mutmut_generation.outputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          root="mutmut-generation-candidates/$ARTIFACT_NAME"
+          test -d "$root" && test ! -L "$root"
+          test -f "$root/mutmut-universe-artifact.json" && test ! -L "$root/mutmut-universe-artifact.json"
+          test -d "$root/mutants" && test ! -L "$root/mutants"
+          test -f "$root/mutants/mutmut-generation.json" && test ! -L "$root/mutants/mutmut-generation.json"
+          test "$(stat --format='%h' "$root/mutmut-universe-artifact.json")" = "1"
+
+      - name: Select retry-safe mutmut generation base
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        shell: bash
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW: .github/workflows/ci.yml
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          ARTIFACT_NAME: ${{ steps.select_mutmut_generation.outputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          SOURCE_REVISION="$(git rev-parse HEAD)"
+          test "$SOURCE_REVISION" = "$COMMIT_SHA"
+          root="mutmut-generation-candidates/$ARTIFACT_NAME"
+          selection="$(python -m scripts.mutmut_retry_artifacts select-universe \
+            --root . \
+            --candidate-root "$root" \
+            --output-root . \
+            --selection-evidence mutmut-generation-selection.json \
+            --commit-sha "$COMMIT_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --workflow "$WORKFLOW" \
+            --expected-mode generation \
+            --repository "$REPOSITORY" \
+            --source-revision "$SOURCE_REVISION" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --event "$EVENT_NAME")"
+          test -s mutmut-generation-selection.json
+          test -s mutants/mutmut-generation.json
+          echo "Selected retry-safe mutmut generation base: $selection"
+
       - name: Set up Python
         if: steps.mutation_scope.outputs.has_python == 'true'
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -2868,11 +3063,12 @@ jobs:
       - name: Collect mutmut stats shard
         if: steps.mutation_scope.outputs.has_python == 'true'
         run: |
-          rm -rf mutants
+          rm -f mutants/mutmut-stats.json
           uv run python scripts/mutmut_stats_shard.py \
             --shard-id "${{ matrix.stats_shard }}" \
             --num-shards 8 \
-            --max-children 2
+            --max-children 2 \
+            --reuse-generated-universe
 
       - name: Create retry-bound mutmut stats sidecar
         if: steps.mutation_scope.outputs.has_python == 'true'
@@ -2968,6 +3164,7 @@ jobs:
     needs:
       - pre-commit-check
       - pre-commit-security-and-types
+      - mutation-tests-universe-base
       - mutation-tests-stats
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -3048,6 +3245,87 @@ jobs:
           path: mutmut-stats-candidates
           merge-multiple: false
 
+      - name: Select immutable same-run mutmut generation base
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        id: select_mutmut_generation
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 scripts/quality/select_same_run_artifact_cli.py \
+            --repository "${{ github.repository }}" \
+            --run-id "${{ github.run_id }}" \
+            --consumer-run-attempt "${{ github.run_attempt }}" \
+            --commit-sha "${{ github.sha }}" \
+            --run-head-sha "${{ github.event.pull_request.head.sha || github.sha }}" \
+            --event "${{ github.event_name }}" \
+            --workflow-path ".github/workflows/ci.yml" \
+            --artifact-prefix "mutmut-generation-base-" \
+            --artifact-suffix "" \
+            --attempt-policy current-or-earlier
+
+      - name: Download selected same-run mutmut generation base
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ steps.select_mutmut_generation.outputs.artifact_id }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
+          github-token: ${{ github.token }}
+          path: mutmut-generation-candidates/${{ steps.select_mutmut_generation.outputs.artifact_name }}
+
+      - name: Verify selected mutmut generation payload
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        shell: bash
+        env:
+          ARTIFACT_NAME: ${{ steps.select_mutmut_generation.outputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          root="mutmut-generation-candidates/$ARTIFACT_NAME"
+          test -d "$root" && test ! -L "$root"
+          test -f "$root/mutmut-universe-artifact.json" && test ! -L "$root/mutmut-universe-artifact.json"
+          test -d "$root/mutants" && test ! -L "$root/mutants"
+          test -f "$root/mutants/mutmut-generation.json" && test ! -L "$root/mutants/mutmut-generation.json"
+          test "$(stat --format='%h' "$root/mutmut-universe-artifact.json")" = "1"
+
+      - name: Select retry-safe mutmut generation base
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        shell: bash
+        env:
+          COMMIT_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPOSITORY: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW: .github/workflows/ci.yml
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          ARTIFACT_NAME: ${{ steps.select_mutmut_generation.outputs.artifact_name }}
+        run: |
+          set -euo pipefail
+          SOURCE_REVISION="$(git rev-parse HEAD)"
+          test "$SOURCE_REVISION" = "$COMMIT_SHA"
+          root="mutmut-generation-candidates/$ARTIFACT_NAME"
+          selection="$(python -m scripts.mutmut_retry_artifacts select-universe \
+            --root . \
+            --candidate-root "$root" \
+            --output-root . \
+            --selection-evidence mutmut-generation-selection.json \
+            --commit-sha "$COMMIT_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --workflow "$WORKFLOW" \
+            --expected-mode generation \
+            --repository "$REPOSITORY" \
+            --source-revision "$SOURCE_REVISION" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --event "$EVENT_NAME")"
+          test -s mutmut-generation-selection.json
+          test -s mutants/mutmut-generation.json
+          echo "Selected retry-safe mutmut generation base: $selection"
+
       - name: Select complete retry-safe mutmut stats cohort
         if: steps.mutation_scope.outputs.has_python == 'true'
         shell: bash
@@ -3108,6 +3386,7 @@ jobs:
             --changed-diff /tmp/changed_py.diff \
             --num-shards 128 \
             --max-children 2 \
+            --reuse-generated-universe \
             --allow-empty-shards \
             --output-directory mutants/mutmut-incremental-plan
           test -s mutants/mutmut-universe.json
@@ -4585,6 +4864,7 @@ jobs:
       - rust-ffi-tsan
       - rust-tests
       - mutation-tests-stats
+      - mutation-tests-universe-base
       - mutation-tests-universe
       - mutation-tests-incremental
       - mutation-scope
@@ -4650,6 +4930,7 @@ jobs:
             "rust-ffi-tsan|${{ needs.rust-ffi-tsan.result }}"
             "rust-tests|${{ needs.rust-tests.result }}"
             "mutation-scope|${{ needs.mutation-scope.result }}"
+            "mutation-tests-universe-base|${{ needs.mutation-tests-universe-base.result }}"
             "mutation-tests-stats|${{ needs.mutation-tests-stats.result }}"
             "mutation-tests-universe|${{ needs.mutation-tests-universe.result }}"
             "mutation-tests-incremental|${{ needs.mutation-tests-incremental.result }}"

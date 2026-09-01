@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -28,9 +29,11 @@ _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 _POSITIVE_INTEGER_PATTERN = re.compile(r"^[1-9][0-9]*$")
 _MUTMUT_MODE = "mutmut"
+_GENERATION_MODE = "generation"
 _EMPTY_MODE = "empty"
-_MODES = frozenset({_MUTMUT_MODE, _EMPTY_MODE})
+_MODES = frozenset({_MUTMUT_MODE, _GENERATION_MODE, _EMPTY_MODE})
 _DEFAULT_UNIVERSE_MANIFEST = "mutants/mutmut-universe.json"
+_DEFAULT_GENERATION_MANIFEST = "mutants/mutmut-generation.json"
 _DEFAULT_STATS_PATH = "mutants/mutmut-stats.json"
 _DEFAULT_PLAN_MANIFEST = "mutants/mutmut-incremental-plan/plan-manifest.json"
 _ATTEMPT_POLICIES = frozenset({"exact", "at-or-before"})
@@ -99,13 +102,14 @@ def _normalize_relative_path(path: Path | str) -> str:
     # ``Path.is_absolute`` on POSIX does not recognize a Windows drive path;
     # reject both forms because artifact members must stay below ``root``.
     windows_drive = len(value) >= 3 and value[1] == ":" and value[2] == "/"
+    components = value.split("/")
     if (
         not value
         or value == "."
         or candidate.is_absolute()
         or value.startswith("//")
         or windows_drive
-        or ".." in candidate.parts
+        or any(component in {"", ".", ".."} for component in components)
     ):
         raise ArtifactValidationError(
             f"artifact path must be repository-relative: {value!r}"
@@ -113,13 +117,46 @@ def _normalize_relative_path(path: Path | str) -> str:
     return value
 
 
+def _is_link_or_junction(path: Path) -> bool:
+    """Detect direct symlinks and Windows junctions without following them."""
+
+    try:
+        if path.is_symlink():
+            return True
+    except OSError as exc:
+        raise ArtifactValidationError(
+            f"unable to inspect artifact path component: {path}"
+        ) from exc
+    is_junction = getattr(path, "is_junction", None)
+    if not callable(is_junction):
+        return False
+    try:
+        return bool(is_junction())
+    except OSError as exc:
+        raise ArtifactValidationError(
+            f"unable to inspect artifact path component: {path}"
+        ) from exc
+
+
 def _safe_target(root: Path, relative_path: Path | str) -> Path:
     normalized = _normalize_relative_path(relative_path)
-    root_resolved = root.resolve()
-    target = root / Path(normalized)
     try:
-        resolved_target = target.resolve()
-    except OSError as exc:
+        root_resolved = root.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
+        raise ArtifactValidationError(
+            f"unable to resolve artifact root: {root}"
+        ) from exc
+    target = root / Path(normalized)
+    current = root
+    for component in Path(normalized).parts:
+        current /= component
+        if _is_link_or_junction(current):
+            raise ArtifactValidationError(
+                f"artifact path traverses a symlink or junction: {normalized}"
+            )
+    try:
+        resolved_target = target.resolve(strict=False)
+    except (OSError, RuntimeError) as exc:
         raise ArtifactValidationError(
             f"unable to resolve artifact path: {normalized}"
         ) from exc
@@ -387,7 +424,10 @@ def _validate_mutmut_semantics(
     manifest = _read_json(
         _safe_target(root, universe_manifest), label="mutmut universe manifest"
     )
-    if manifest.get("schema_version") != MUTMUT_UNIVERSE_MANIFEST_SCHEMA_VERSION:
+    if (
+        type(manifest.get("schema_version")) is not int
+        or manifest.get("schema_version") != MUTMUT_UNIVERSE_MANIFEST_SCHEMA_VERSION
+    ):
         raise ArtifactValidationError("mutmut universe manifest schema mismatch")
     if manifest.get("stats_sha256") != files[stats_path]:
         raise ArtifactValidationError(
@@ -400,6 +440,53 @@ def _validate_mutmut_semantics(
         or mutant_count < 1
     ):
         raise ArtifactValidationError("mutmut universe manifest has no mutants")
+
+
+def _validate_generation_semantics(
+    root: Path,
+    payload: dict[str, Any],
+    files: dict[str, str],
+) -> None:
+    generation_manifest = payload.get("generation_manifest")
+    if generation_manifest != _DEFAULT_GENERATION_MANIFEST:
+        raise ArtifactValidationError(
+            "artifact generation_manifest path is unsupported"
+        )
+    if generation_manifest not in files:
+        raise ArtifactValidationError(
+            "mutmut generation artifact is missing its generation manifest"
+        )
+    if any(
+        path in files
+        for path in (
+            _DEFAULT_UNIVERSE_MANIFEST,
+            _DEFAULT_STATS_PATH,
+            _DEFAULT_PLAN_MANIFEST,
+        )
+    ):
+        raise ArtifactValidationError(
+            "mutmut generation artifact must not include final stats or plan files"
+        )
+    if files[generation_manifest] != _sha256_file(
+        _safe_target(root, generation_manifest)
+    ):
+        raise ArtifactValidationError("mutmut generation manifest hash is inconsistent")
+    manifest = _read_json(
+        _safe_target(root, generation_manifest),
+        label="mutmut generation manifest",
+    )
+    if (
+        type(manifest.get("schema_version")) is not int
+        or manifest.get("schema_version") != 1
+    ):
+        raise ArtifactValidationError("mutmut generation manifest schema mismatch")
+    mutant_count = manifest.get("mutant_count")
+    if (
+        not isinstance(mutant_count, int)
+        or isinstance(mutant_count, bool)
+        or mutant_count < 1
+    ):
+        raise ArtifactValidationError("mutmut generation manifest has no mutants")
 
 
 def create_artifact_manifest(
@@ -415,7 +502,12 @@ def create_artifact_manifest(
     required_files: Sequence[Path | str] | None = None,
     retry_provenance: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Create a deterministic provenance/integrity envelope for one artifact."""
+    """Create a deterministic provenance/integrity envelope for one artifact.
+
+    Generation artifacts carry only the source/metadata tree.  Final mutmut
+    artifacts additionally bind that same tree to stats and an exact shard
+    plan, with both modes retaining the producer provenance envelope.
+    """
 
     if mode not in _MODES:
         raise ArtifactValidationError(f"unsupported artifact mode: {mode!r}")
@@ -444,6 +536,8 @@ def create_artifact_manifest(
         required: tuple[str, ...] = (
             (_DEFAULT_UNIVERSE_MANIFEST, _DEFAULT_STATS_PATH, _DEFAULT_PLAN_MANIFEST)
             if mode == _MUTMUT_MODE
+            else (_DEFAULT_GENERATION_MANIFEST,)
+            if mode == _GENERATION_MODE
             else ()
         )
     else:
@@ -473,6 +567,9 @@ def create_artifact_manifest(
         payload["universe_manifest"] = _DEFAULT_UNIVERSE_MANIFEST
         payload["stats_path"] = _DEFAULT_STATS_PATH
         _validate_mutmut_semantics(root, payload, files)
+    elif mode == _GENERATION_MODE:
+        payload["generation_manifest"] = _DEFAULT_GENERATION_MANIFEST
+        _validate_generation_semantics(root, payload, files)
 
     output_target = _safe_target(root, output_relative)
     if output_target.is_symlink():
@@ -514,7 +611,10 @@ def validate_artifact_manifest(
     if manifest_target.is_symlink():
         raise ArtifactValidationError("artifact manifest must not be a symlink")
     payload = _read_json(manifest_target, label="artifact manifest")
-    if payload.get("schema_version") != ARTIFACT_MANIFEST_SCHEMA_VERSION:
+    if (
+        type(payload.get("schema_version")) is not int
+        or payload.get("schema_version") != ARTIFACT_MANIFEST_SCHEMA_VERSION
+    ):
         raise ArtifactValidationError("artifact manifest schema mismatch")
     mode = payload.get("mode")
     if mode not in _MODES or (expected_mode is not None and mode != expected_mode):
@@ -635,6 +735,8 @@ def validate_artifact_manifest(
 
     if mode == _MUTMUT_MODE:
         _validate_mutmut_semantics(root, payload, files)
+    elif mode == _GENERATION_MODE:
+        _validate_generation_semantics(root, payload, files)
     return payload
 
 
@@ -677,12 +779,19 @@ def select_artifact_manifest(
 
 
 def _candidate_root(path: Path) -> Path:
-    if path.is_symlink():
+    requested = Path(os.path.abspath(path))
+    if _is_link_or_junction(requested):
         raise ArtifactValidationError(f"candidate root must not be a symlink: {path}")
     try:
-        root = path.resolve(strict=True)
-    except OSError as exc:
+        root = requested.resolve(strict=True)
+    except (OSError, RuntimeError) as exc:
         raise ArtifactValidationError(f"candidate root is unavailable: {path}") from exc
+    if os.path.normcase(os.path.normpath(str(requested))) != os.path.normcase(
+        os.path.normpath(str(root))
+    ):
+        raise ArtifactValidationError(
+            f"candidate root traverses a symlink or junction: {path}"
+        )
     if not root.is_dir():
         raise ArtifactValidationError(f"candidate root is not a directory: {root}")
     return root
@@ -696,7 +805,10 @@ def _candidate_producer(
     if manifest_target.is_symlink():
         raise ArtifactValidationError("artifact manifest must not be a symlink")
     payload = _read_json(manifest_target, label="artifact manifest")
-    if payload.get("schema_version") != ARTIFACT_MANIFEST_SCHEMA_VERSION:
+    if (
+        type(payload.get("schema_version")) is not int
+        or payload.get("schema_version") != ARTIFACT_MANIFEST_SCHEMA_VERSION
+    ):
         raise ArtifactValidationError("artifact manifest schema mismatch")
     mode = payload.get("mode")
     if mode not in _MODES or (expected_mode is not None and mode != expected_mode):

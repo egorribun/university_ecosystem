@@ -421,3 +421,58 @@ def test_universe_selector_reuses_the_highest_verified_prior_attempt(
     )
     assert evidence["consumer"]["run_attempt"] == "3"
     assert evidence["producer_attempt"] == 2
+
+
+def test_generation_selector_binds_distinct_provenance_and_mode(
+    repository: Path,
+) -> None:
+    candidate = repository / "generation-candidate"
+    (candidate / "mutants/app").mkdir(parents=True)
+    (candidate / "mutants/app/example.py").write_text(
+        "def example() -> bool:\n    return True\n", encoding="utf-8"
+    )
+    (candidate / "mutants/app/example.py.meta").write_text(
+        '{"exit_code_by_key": {"example__mutmut_1": null}}\n', encoding="utf-8"
+    )
+    (candidate / "mutants/mutmut-generation.json").write_text(
+        '{"schema_version": 1, "mutant_count": 1}\n', encoding="utf-8"
+    )
+    retry_artifacts.create_universe_artifact(
+        root=candidate,
+        output=Path("mutmut-universe-artifact.json"),
+        mode="generation",
+        commit_sha=_head(repository),
+        run_id=RUN_ID,
+        run_attempt="1",
+        workflow=WORKFLOW,
+        retry_provenance=_retry_context(
+            repository,
+            run_attempt="1",
+            artifact=retry_artifacts.GENERATION_ARTIFACT,
+        ),
+    )
+
+    consumer = repository / "generation-consumer"
+    consumer.mkdir()
+    selection = retry_artifacts.select_universe_candidate(
+        candidate_roots=[candidate],
+        output_root=consumer,
+        selection_evidence=Path("mutmut-generation-selection.json"),
+        commit_sha=_head(repository),
+        run_id=RUN_ID,
+        run_attempt="2",
+        workflow=WORKFLOW,
+        expected_mode="generation",
+        consumer_retry_context=_retry_context(
+            repository,
+            run_attempt="2",
+            artifact=retry_artifacts.GENERATION_ARTIFACT,
+        ),
+    )
+
+    assert selection.producer_attempt == 1
+    assert (consumer / "mutants/mutmut-generation.json").is_file()
+    evidence = json.loads(
+        (consumer / "mutmut-generation-selection.json").read_text(encoding="utf-8")
+    )
+    assert evidence["artifact"] == retry_artifacts.GENERATION_ARTIFACT
