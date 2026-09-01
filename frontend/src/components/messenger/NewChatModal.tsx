@@ -52,6 +52,7 @@ export function NewChatModal({
   const [selectedUsers, setSelectedUsers] = useState<User[]>([])
   const isGroupMode = canCreateGroup && mode === "group"
   const titleId = useId()
+  const descriptionId = useId()
   // PERF-20-05: Debounce to prevent API call on every keystroke.
   const debouncedSearch = useDebounced(search, "search") // PERF-23-04: search preset (200ms)
   // Wave 181 SW5 — explicit useReducedMotion guards on DRAMATIC animations
@@ -146,7 +147,7 @@ export function NewChatModal({
     queryKey: ["users", debouncedSearch],
     queryFn: async () => {
       const response = await client.get<User[]>(
-        `/users?limit=${USERS_PAGE_LIMIT}&search=${debouncedSearch}`
+        `/users?limit=${USERS_PAGE_LIMIT}&search=${encodeURIComponent(debouncedSearch)}`
       )
       return response.data
     },
@@ -173,6 +174,7 @@ export function NewChatModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby={titleId}
+            aria-describedby={descriptionId}
             initial={prefersReducedMotion ? false : { scale: 0.95, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={prefersReducedMotion ? { opacity: 0 } : { scale: 0.95, opacity: 0, y: 20 }}
@@ -187,6 +189,9 @@ export function NewChatModal({
               >
                 {isGroupMode ? t("messenger:newGroup") : t("messenger:newChat")}
               </h3>
+              <p id={descriptionId} className="sr-only">
+                {t("messenger:searchUsers")}
+              </p>
               <button
                 type="button"
                 onClick={onClose}
@@ -211,7 +216,7 @@ export function NewChatModal({
                     role="tab"
                     aria-selected={!isGroupMode}
                     onClick={() => setMode("dm")}
-                    className={`min-h-[40px] rounded-xl px-4 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) ${
+                    className={`min-h-[44px] rounded-xl px-4 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) ${
                       !isGroupMode
                         ? "bg-(--color-violet-500) text-(--color-white) shadow-sm"
                         : "text-(--text-secondary) hover:bg-(--bg-surface-hover)/(--opacity-medium)"
@@ -224,7 +229,7 @@ export function NewChatModal({
                     role="tab"
                     aria-selected={isGroupMode}
                     onClick={() => setMode("group")}
-                    className={`min-h-[40px] inline-flex items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) ${
+                    className={`min-h-[44px] inline-flex items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) ${
                       isGroupMode
                         ? "bg-(--color-violet-500) text-(--color-white) shadow-sm"
                         : "text-(--text-secondary) hover:bg-(--bg-surface-hover)/(--opacity-medium)"
@@ -256,7 +261,7 @@ export function NewChatModal({
                           type="button"
                           onClick={() => toggleUserSelection(u)}
                           aria-label={t("messenger:removeMember", { name: u.full_name })}
-                          className="matte-chip inline-flex items-center gap-1.5 rounded-full py-1 pl-1 pr-2.5 text-sm font-semibold text-(--text-primary) transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+                          className="matte-chip inline-flex min-h-[44px] items-center gap-1.5 rounded-full py-1 pl-1 pr-2.5 text-sm font-semibold text-(--text-primary) transition-colors hover:text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                         >
                           <SmartImage
                             srcRaw={u.avatar_url || AVATAR_PLACEHOLDER_URL}

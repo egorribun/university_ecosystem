@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react"
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
@@ -35,8 +35,8 @@ vi.mock("react-i18next", () => ({
 }))
 
 vi.mock("@/components/media/SmartImage", () => ({
-  default: ({ alt, className }: { alt?: string; className?: string }) => (
-    <img alt={alt} className={className} />
+  default: ({ alt, className, srcRaw }: { alt?: string; className?: string; srcRaw?: string }) => (
+    <img alt={alt} className={className} src={srcRaw} />
   ),
 }))
 
@@ -82,6 +82,7 @@ describe("NewChatModal", () => {
       { wrapper }
     )
     expect(container.firstChild).toBeNull()
+    expect(mocks.apiGet).not.toHaveBeenCalled()
   })
 
   it("renders dialog with proper ARIA when open=true", () => {
@@ -91,6 +92,9 @@ describe("NewChatModal", () => {
     expect(dialog).toBeTruthy()
     expect(dialog.getAttribute("aria-modal")).toBe("true")
     expect(dialog.getAttribute("aria-labelledby")).toBeTruthy()
+    const descriptionId = dialog.getAttribute("aria-describedby")
+    expect(descriptionId).toBeTruthy()
+    expect(document.getElementById(descriptionId!)).toHaveTextContent("messenger:searchUsers")
   })
 
   it("close button has aria-label + 44x44 touch target (W183 SW4)", () => {
@@ -102,12 +106,33 @@ describe("NewChatModal", () => {
     expect(closeButton.className).toContain("min-w-[44px]")
   })
 
-  it("Escape key triggers onClose", () => {
+  it("keeps mode tabs and selected-member chips at the accessible touch target", () => {
+    render(
+      <NewChatModal open={true} onClose={() => {}} onSelect={() => {}} onCreateGroup={() => {}} />,
+      { wrapper }
+    )
+
+    expect(screen.getByRole("tab", { name: "messenger:modeDirect" }).className).toContain(
+      "min-h-[44px]"
+    )
+    expect(screen.getByRole("tab", { name: "messenger:modeGroup" }).className).toContain(
+      "min-h-[44px]"
+    )
+  })
+
+  it("Escape key triggers onClose and the listener is removed when closed", () => {
     const onClose = vi.fn()
-    render(<NewChatModal open={true} onClose={onClose} onSelect={() => {}} />, { wrapper })
+    const { rerender } = render(
+      <NewChatModal open={true} onClose={onClose} onSelect={() => {}} />,
+      { wrapper }
+    )
 
     fireEvent.keyDown(document, { key: "ArrowLeft" })
     expect(onClose).not.toHaveBeenCalled()
+    fireEvent.keyDown(document, { key: "Escape" })
+    expect(onClose).toHaveBeenCalledTimes(1)
+
+    rerender(<NewChatModal open={false} onClose={onClose} onSelect={() => {}} />)
     fireEvent.keyDown(document, { key: "Escape" })
     expect(onClose).toHaveBeenCalledTimes(1)
   })
@@ -129,6 +154,29 @@ describe("NewChatModal", () => {
     const dialog = screen.getByRole("dialog")
     fireEvent.click(dialog)
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it("autofocuses the search field on the next frame and cancels it on unmount", async () => {
+    const callbacks: FrameRequestCallback[] = []
+    const requestSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callbacks.push(callback)
+      return callbacks.length
+    })
+    const cancelSpy = vi.spyOn(window, "cancelAnimationFrame")
+    const { unmount } = render(
+      <NewChatModal open={true} onClose={() => {}} onSelect={() => {}} />,
+      { wrapper }
+    )
+
+    await waitFor(() => expect(requestSpy).toHaveBeenCalledTimes(1))
+    const searchInput = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+    act(() => callbacks[0]?.(performance.now()))
+    expect(document.activeElement).toBe(searchInput)
+
+    unmount()
+    expect(cancelSpy).toHaveBeenCalledWith(1)
+    requestSpy.mockRestore()
+    cancelSpy.mockRestore()
   })
 
   it("user list container has role=listbox + aria-label (W183 SW4)", () => {
@@ -161,7 +209,15 @@ describe("NewChatModal", () => {
         <NewChatModal open={true} onClose={() => {}} onSelect={() => {}} onCreateGroup={() => {}} />
       )
       expect(screen.getByRole("tablist")).toBeTruthy()
-      expect(screen.getByRole("tab", { name: "messenger:modeGroup" })).toBeTruthy()
+      const directTab = screen.getByRole("tab", { name: "messenger:modeDirect" })
+      const groupTab = screen.getByRole("tab", { name: "messenger:modeGroup" })
+      expect(screen.getByRole("tablist")).toHaveAttribute("aria-label", "messenger:modeToggle")
+      expect(directTab).toHaveAttribute("aria-selected", "true")
+      expect(groupTab).toHaveAttribute("aria-selected", "false")
+
+      fireEvent.click(groupTab)
+      expect(directTab).toHaveAttribute("aria-selected", "false")
+      expect(groupTab).toHaveAttribute("aria-selected", "true")
     })
 
     it("group mode reveals the name field + create button", () => {
@@ -179,6 +235,7 @@ describe("NewChatModal", () => {
       const createBtn = screen.getByRole("button", { name: "messenger:createGroup" })
       // Disabled until a name + ≥2 members are chosen.
       expect((createBtn as HTMLButtonElement).disabled).toBe(true)
+      expect(screen.getByText("messenger:error.minMembers")).toBeInTheDocument()
 
       fireEvent.click(screen.getByRole("tab", { name: "messenger:modeDirect" }))
       expect(screen.getByRole("heading", { name: "messenger:newChat" })).toBeInTheDocument()
@@ -206,7 +263,7 @@ describe("NewChatModal", () => {
       // Name the group + search for members (≥2 chars → query enabled). Target
       // by role=textbox: the search aria-label is shared with the listbox div.
       fireEvent.change(screen.getByRole("textbox", { name: "messenger:groupName" }), {
-        target: { value: "Project Alpha" },
+        target: { value: "  Project Alpha  " },
       })
       fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
         target: { value: "user" },
@@ -218,6 +275,13 @@ describe("NewChatModal", () => {
       const createBtn = screen.getByRole("button", { name: "messenger:createGroup" })
       // One member selected — still under the ≥2 minimum.
       expect((createBtn as HTMLButtonElement).disabled).toBe(true)
+      expect(screen.getByRole("option", { name: /User One/ })).toHaveAttribute(
+        "aria-selected",
+        "true"
+      )
+      expect(screen.getByRole("button", { name: "messenger:removeMember" }).className).toContain(
+        "min-h-[44px]"
+      )
 
       fireEvent.click(screen.getByRole("button", { name: "messenger:removeMember" }))
       expect(screen.queryByRole("button", { name: "messenger:removeMember" })).toBeNull()
@@ -228,9 +292,51 @@ describe("NewChatModal", () => {
 
       fireEvent.click(screen.getByText("User Two"))
       await waitFor(() => expect((createBtn as HTMLButtonElement).disabled).toBe(false))
+      expect(screen.queryByText("messenger:error.minMembers")).toBeNull()
 
       fireEvent.click(createBtn)
       expect(onCreateGroup).toHaveBeenCalledWith("Project Alpha", ["u1", "u2"])
+    })
+
+    it("resets group mode, selections, and search when the modal is reopened", async () => {
+      mocks.apiGet.mockResolvedValue({
+        data: [{ id: "u1", full_name: "User One", email: "u1@x.com", avatar_url: null }],
+      })
+      const { rerender } = render(
+        <NewChatModal
+          open={true}
+          onClose={() => {}}
+          onSelect={() => {}}
+          onCreateGroup={() => {}}
+        />,
+        { wrapper }
+      )
+      fireEvent.click(screen.getByRole("tab", { name: "messenger:modeGroup" }))
+      fireEvent.change(screen.getByRole("textbox", { name: "messenger:groupName" }), {
+        target: { value: "Temporary" },
+      })
+      fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+        target: { value: "user" },
+      })
+      fireEvent.click(await screen.findByText("User One"))
+      expect(screen.getByRole("button", { name: "messenger:removeMember" })).toBeInTheDocument()
+
+      rerender(
+        <NewChatModal
+          open={false}
+          onClose={() => {}}
+          onSelect={() => {}}
+          onCreateGroup={() => {}}
+        />
+      )
+      rerender(
+        <NewChatModal open={true} onClose={() => {}} onSelect={() => {}} onCreateGroup={() => {}} />
+      )
+
+      expect(screen.getByRole("heading", { name: "messenger:newChat" })).toBeInTheDocument()
+      expect(screen.getByRole("textbox", { name: "messenger:searchUsers" })).toHaveValue("")
+      expect(screen.queryByRole("textbox", { name: "messenger:groupName" })).toBeNull()
+      expect(screen.queryByRole("button", { name: "messenger:removeMember" })).toBeNull()
     })
 
     it("selects a user in DM mode and handles the no-results state", async () => {
@@ -250,6 +356,88 @@ describe("NewChatModal", () => {
         target: { value: "missing" },
       })
       expect(await screen.findByText("messenger:noUsersFound")).toBeInTheDocument()
+    })
+
+    it("does not query or show empty state for a one-character search", async () => {
+      render(<NewChatModal open={true} onClose={() => {}} onSelect={() => {}} />, { wrapper })
+      const searchInput = screen.getByRole("textbox", { name: "messenger:searchUsers" })
+
+      fireEvent.change(searchInput, { target: { value: "a" } })
+      await waitFor(() => expect(mocks.apiGet).not.toHaveBeenCalled())
+      expect(screen.queryByText("messenger:noUsersFound")).toBeNull()
+    })
+
+    it("URL-encodes the user search query before requesting the API", async () => {
+      render(<NewChatModal open={true} onClose={() => {}} onSelect={() => {}} />, { wrapper })
+      fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+        target: { value: "a&b=c" },
+      })
+
+      await waitFor(() =>
+        expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&search=a%26b%3Dc")
+      )
+      expect(await screen.findByText("messenger:noUsersFound")).toBeInTheDocument()
+    })
+
+    it("renders five accessible skeleton rows while a search is pending", async () => {
+      let resolveSearch: ((value: { data: never[] }) => void) | undefined
+      const pendingSearch = new Promise<{ data: never[] }>((resolve) => {
+        resolveSearch = resolve
+      })
+      mocks.apiGet.mockReturnValue(pendingSearch)
+      render(<NewChatModal open={true} onClose={() => {}} onSelect={() => {}} />, { wrapper })
+      fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+        target: { value: "pending" },
+      })
+
+      const loading = await screen.findByRole("status", { name: "messenger:loading.users" })
+      expect(loading.querySelectorAll('[aria-hidden="true"]')).toHaveLength(5)
+      expect(loading.querySelectorAll(".messenger-skeleton")).toHaveLength(15)
+      const widthBars = [...loading.querySelectorAll<HTMLElement>("[style]")].filter(
+        (element) => element.style.width !== ""
+      )
+      expect(widthBars).toHaveLength(10)
+      expect(widthBars[0]?.style.width).toBe("55%")
+      expect(widthBars[1]?.style.width).toBe("35%")
+
+      await act(async () => {
+        resolveSearch?.({ data: [] })
+        await pendingSearch
+      })
+      await waitFor(() =>
+        expect(screen.queryByRole("status", { name: "messenger:loading.users" })).toBeNull()
+      )
+      expect(screen.getByText("messenger:noUsersFound")).toBeInTheDocument()
+    })
+
+    it("uses the avatar URL when present and the placeholder when absent", async () => {
+      mocks.apiGet.mockResolvedValue({
+        data: [
+          {
+            id: "with-avatar",
+            full_name: "With Avatar",
+            email: "with@example.com",
+            avatar_url: "https://cdn/avatar.png",
+          },
+          {
+            id: "without-avatar",
+            full_name: "Without Avatar",
+            email: "without@example.com",
+            avatar_url: null,
+          },
+        ],
+      })
+      render(<NewChatModal open={true} onClose={() => {}} onSelect={() => {}} />, { wrapper })
+      fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+        target: { value: "avatar" },
+      })
+
+      await screen.findByText("With Avatar")
+      const images = [...document.querySelectorAll<HTMLImageElement>("img")]
+      expect(images.map((image) => image.getAttribute("src"))).toEqual([
+        "https://cdn/avatar.png",
+        "/fallbacks/default_avatar.png",
+      ])
     })
 
     it("renders the fetch-error state and retries the user search", async () => {
@@ -303,7 +491,7 @@ describe("NewChatModal", () => {
       const createBtn = screen.getByRole("button", { name: "messenger:creatingGroup" })
       expect(createBtn).toBeDisabled()
       expect(screen.getByText("messenger:error.minMembers")).toBeInTheDocument()
-      expect(await screen.findByRole("option", { name: /Reduced User/ })).toBeInTheDocument()
+      expect(await screen.findByRole("option", { name: /Reduced User/ })).toBeDisabled()
     })
   })
 })
