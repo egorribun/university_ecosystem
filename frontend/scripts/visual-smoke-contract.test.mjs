@@ -1,4 +1,5 @@
 import assert from "node:assert/strict"
+import { readFile } from "node:fs/promises"
 import test from "node:test"
 
 import {
@@ -7,6 +8,19 @@ import {
   requestFailureRecord,
   responseRecord,
 } from "./visual-smoke-contract.mjs"
+
+test("unauthenticated smoke blocks service workers for deterministic SSR lifecycle", async () => {
+  const source = await readFile(
+    new URL("./unauthenticated-routes-smoke.mjs", import.meta.url),
+    "utf8"
+  )
+
+  assert.match(
+    source,
+    /browser\.newContext\(\{[\s\S]*serviceWorkers:\s*["']block["']/u,
+    "SSR smoke must not allow a PWA service worker to replace or hold the document while it closes"
+  )
+})
 
 test("authenticated audit classification fails closed when axe never completes", () => {
   const failures = classifyAuthenticatedAuditSummaries([

@@ -266,7 +266,14 @@ async function main() {
   const summaries = []
   for (const route of PUBLIC_ROUTES) {
     console.log(`→ ${route}`)
-    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } })
+    // This smoke validates the route-specific SSR document and hydration, not
+    // the PWA lifecycle.  Blocking service workers keeps registration,
+    // controllerchange reloads, and CacheStorage shutdown out of the route
+    // close path (the browser context must be disposable after every capture).
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+      serviceWorkers: "block",
+    })
     const routePage = await context.newPage()
     routePage.setDefaultTimeout(30_000)
     routePage.setDefaultNavigationTimeout(30_000)
