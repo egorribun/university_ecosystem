@@ -308,6 +308,9 @@ async def test_resend_returns_masked_delivery_hint() -> None:
             email_otp_module, "_generate_challenge_token", return_value="new-token"
         ),
         patch.object(email_otp_module, "_generate_otp", return_value="654321"),
+        patch.object(
+            service, "_build_delivery", wraps=service._build_delivery
+        ) as build_delivery,
     ):
         issued = await service.resend(
             db,
@@ -322,10 +325,13 @@ async def test_resend_returns_masked_delivery_hint() -> None:
         )
 
     assert issued.delivery_hint == email_otp_module.mask_email(user.email)
+    build_delivery.assert_called_once()
+    assert build_delivery.call_args.kwargs["otp"] == "654321"
+    assert build_delivery.call_args.kwargs["locale"] == "en"
     rotation_statement = db.execute.await_args_list[0].args[0]
-    assert "RETURNING mfa_challenges.id" in str(
-        rotation_statement.compile(dialect=postgresql.dialect())
-    )
+    compiled_rotation = rotation_statement.compile(dialect=postgresql.dialect())
+    assert "RETURNING mfa_challenges.id" in str(compiled_rotation)
+    assert compiled_rotation.params["otp_digest"] == "digest"
 
 
 def _challenge_for_survivor_resend() -> SimpleNamespace:

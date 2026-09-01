@@ -339,16 +339,20 @@ def test_configure_otel_optional_pipelines_without_endpoint_or_headers() -> None
     meter_provider = MagicMock()
     logger_provider = MagicMock()
     log_processor = MagicMock()
+    resource = MagicMock(name="otel-resource")
     engine = MagicMock()
     with (
         patch.object(observability, "settings", settings),
+        patch.object(observability, "_create_otel_resource", return_value=resource),
         patch.object(observability, "TracerProvider", return_value=provider),
         patch.object(observability, "MeterProvider", return_value=meter_provider),
         patch.object(observability, "OTLPSpanExporter"),
         patch.object(observability, "OTLPMetricExporter") as metric_exporter,
         patch.object(observability, "OTLPLogExporter") as log_exporter,
         patch.object(observability, "PeriodicExportingMetricReader"),
-        patch.object(observability, "LoggerProvider", return_value=logger_provider),
+        patch.object(
+            observability, "LoggerProvider", return_value=logger_provider
+        ) as logger_provider_factory,
         patch.object(
             observability,
             "BatchLogRecordProcessor",
@@ -369,6 +373,7 @@ def test_configure_otel_optional_pipelines_without_endpoint_or_headers() -> None
         observability._configure_otel(engine)
     metric_exporter.assert_called_once_with(timeout=0.75)
     log_exporter.assert_called_once_with(timeout=0.75)
+    logger_provider_factory.assert_called_once_with(resource=resource)
     batch_log_processor.assert_called_once_with(log_exporter.return_value)
     logger_provider.add_log_record_processor.assert_called_once_with(log_processor)
     sqlalchemy_instrumentor.return_value.instrument.assert_called_once_with(

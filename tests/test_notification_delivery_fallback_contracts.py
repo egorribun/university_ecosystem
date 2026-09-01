@@ -290,6 +290,21 @@ def test_unique_notification_ids_logs_the_stable_warning_text() -> None:
     warning.assert_called_once_with("Ignoring invalid notification id in outbox event")
 
 
+def test_unique_notification_ids_skips_invalid_values_without_losing_later_ids() -> (
+    None
+):
+    """A malformed event item must not discard valid IDs that follow it."""
+
+    first = uuid4()
+    second = uuid4()
+    with patch.object(delivery.logger, "warning") as warning:
+        assert delivery._unique_notification_ids(
+            [first, "not-a-uuid", second, first]
+        ) == [first, second]
+
+    warning.assert_called_once_with("Ignoring invalid notification id in outbox event")
+
+
 def test_redelivery_error_exposes_the_exact_retryable_failure_count() -> None:
     outcome = delivery.NotificationRedeliveryOutcome(retryable_failures=2)
 

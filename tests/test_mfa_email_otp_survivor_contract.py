@@ -137,6 +137,10 @@ def test_mask_email_is_stable_for_tld_local_and_nested_domains() -> None:
     assert email_otp_module.mask_email("u@localhost") == "u***@l***"
     assert email_otp_module.mask_email("u@sub.example.edu") == "u***@s***.edu"
     assert email_otp_module.mask_email("not-an-address") == "***"
+    # The first ``@`` is the separator contract.  Using ``rpartition`` would
+    # silently reinterpret an address containing another ``@`` and expose a
+    # different domain hint.
+    assert email_otp_module.mask_email("a@b@example.com") == "a***@b***.com"
 
 
 def test_key_ring_rejects_ambiguous_entries_with_multiple_delimiters() -> None:
@@ -903,6 +907,9 @@ async def test_recovery_opaque_forwards_all_binding_arguments_and_locks_at_expir
     )
     verify_recovery.assert_awaited_once_with(db, user=user, code="RECOVERY-CODE")
     assert challenge.state == ChallengeState.CONSUMED
+    service._rate_limit.assert_awaited_once_with(  # type: ignore[attr-defined]
+        action="verify", user_id=user.id, client_ip=IP
+    )
 
     # Equality with expiry is already invalid; accepting it would make the
     # strict ``<=`` boundary mutation observable.
