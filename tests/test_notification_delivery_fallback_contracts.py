@@ -109,6 +109,7 @@ async def test_redelivery_uses_safe_url_and_unknown_metric_type_fallback(
     assert outcome.sent == 1
     payload = send.await_args.args[1]
     assert payload["title"] == notification.title
+    assert payload["body"] == ""
     assert payload["url"] == "/"
     record_delivered.assert_called_once_with(notification_type="unknown")
     assert build_row.call_args is not None
