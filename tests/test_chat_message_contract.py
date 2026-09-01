@@ -90,3 +90,37 @@ def test_frontend_message_limit_is_generated_from_backend_contract() -> None:
     assert generated.exists(), "run scripts/generate_message_contract.py"
     source = generated.read_text(encoding="utf-8")
     assert f"CHAT_MESSAGE_MAX_LENGTH = {EXPECTED_LIMIT}" in source
+
+
+def test_openapi_message_content_limits_cover_send_edit_and_response() -> None:
+    """All public message surfaces expose the same inclusive content limit."""
+    from app.main import app
+
+    spec = app.openapi()
+    components = spec["components"]["schemas"]
+
+    send_ref = spec["paths"]["/api/v1/chats/{chat_id}/messages"]["post"]["requestBody"][
+        "content"
+    ]["multipart/form-data"]["schema"]["$ref"]
+    edit_ref = spec["paths"]["/api/v1/chats/{chat_id}/messages/{message_id}"]["patch"][
+        "requestBody"
+    ]["content"]["application/x-www-form-urlencoded"]["schema"]["$ref"]
+
+    send_schema = components[send_ref.rsplit("/", 1)[-1]]
+    edit_schema = components[edit_ref.rsplit("/", 1)[-1]]
+    response_schema = components["MessageResponse"]
+
+    send_content = send_schema["properties"]["content"]
+    edit_content = edit_schema["properties"]["content"]
+    response_content = response_schema["properties"]["content"]
+
+    assert (
+        send_content["type"]
+        == edit_content["type"]
+        == response_content["type"]
+        == "string"
+    )
+    assert send_content["maxLength"] == EXPECTED_LIMIT
+    assert edit_content["maxLength"] == EXPECTED_LIMIT
+    assert edit_content["minLength"] == 1
+    assert response_content["maxLength"] == EXPECTED_LIMIT

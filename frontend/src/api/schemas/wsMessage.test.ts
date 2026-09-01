@@ -52,6 +52,40 @@ describe("parseWsMessage — canonical message content boundary", () => {
   })
 })
 
+describe("parseWsMessage — edited message content boundary", () => {
+  it.each([MESSAGE_LIMIT - 1, MESSAGE_LIMIT])(
+    "accepts message_edited content with %s Unicode code points",
+    (size) => {
+      const frame = parseWsMessage(
+        JSON.stringify({
+          type: "message_edited",
+          chat_id: CHAT_ID,
+          message_id: MSG_ID,
+          content: "😀".repeat(size),
+          edited_at: READ_AT,
+        })
+      )
+
+      expect(frame).not.toBeNull()
+      expect(frame?.type).toBe("message_edited")
+    }
+  )
+
+  it("rejects message_edited content above the canonical limit", () => {
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "message_edited",
+          chat_id: CHAT_ID,
+          message_id: MSG_ID,
+          content: "x".repeat(MESSAGE_LIMIT + 1),
+          edited_at: READ_AT,
+        })
+      )
+    ).toBeNull()
+  })
+})
+
 describe("parseWsMessage — read frame (Wave 203 SW5 chat-level)", () => {
   it("accepts a chat-level read frame with read_at", () => {
     const frame = parseWsMessage(
