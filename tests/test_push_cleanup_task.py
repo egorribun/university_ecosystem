@@ -12,7 +12,9 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import select
 
+from app.models import PushSubscription
 from app.models.enums import UserRole
 from app.services import webpush as webpush_module
 from app.services.webpush import WebPushResult
@@ -135,6 +137,156 @@ async def test_broadcast_processes_results_for_each_batch() -> None:
 
     assert response.removed == 1
     process.assert_awaited_once_with([result])
+
+
+@pytest.mark.asyncio
+async def test_send_test_removes_gone_and_marks_sent_subscription(
+    db_session, user_factory, push_subscription_factory
+) -> None:
+    """Admin test push commits 404/410 cleanup and sent activity timestamps."""
+
+    from app.routers import notifications
+    from app.schemas.notifications import PushTestRequest
+
+    admin = await user_factory(role="admin")
+    target = await user_factory()
+    target_id = target.id
+    gone_404 = await push_subscription_factory(user=target)
+    gone_410 = await push_subscription_factory(user=target)
+    sent = await push_subscription_factory(user=target, last_seen_at=None)
+    old_seen = sent.last_seen_at
+
+    results = [
+        WebPushResult(
+            subscription_id=gone_404.id,
+            endpoint=gone_404.endpoint,
+            user_id=target.id,
+            status="gone",
+            status_code=404,
+        ),
+        WebPushResult(
+            subscription_id=gone_410.id,
+            endpoint=gone_410.endpoint,
+            user_id=target.id,
+            status="gone",
+            status_code=410,
+        ),
+        WebPushResult(
+            subscription_id=sent.id,
+            endpoint=sent.endpoint,
+            user_id=target.id,
+            status="sent",
+        ),
+    ]
+
+    request = MagicMock()
+    request.client.host = "127.0.0.1"
+    with (
+        patch.object(notifications, "enforce_rate_limit", new=AsyncMock()),
+        patch.object(
+            notifications.settings, "VAPID_PRIVATE_KEY", "private", create=True
+        ),
+        patch.object(notifications.settings, "VAPID_PUBLIC_KEY", "public", create=True),
+        patch.object(notifications.settings, "environment", "test", create=True),
+        patch.object(
+            notifications,
+            "deliver_push_to_subscriptions",
+            new=AsyncMock(return_value=results),
+        ),
+    ):
+        response = await notifications.send_test(
+            request,
+            db_session,
+            admin,
+            PushTestRequest(user_id=target.id, topic="system"),
+        )
+
+    assert response.total == 3
+    assert response.sent == 1
+    assert response.removed == 2
+    assert response.failed == 0
+
+    await db_session.rollback()
+    rows = (
+        (
+            await db_session.execute(
+                select(PushSubscription).where(PushSubscription.user_id == target_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [row.id for row in rows] == [sent.id]
+    assert rows[0].last_seen_at is not None
+    assert rows[0].last_seen_at != old_seen
+
+
+@pytest.mark.asyncio
+async def test_broadcast_removes_stale_and_marks_successful_subscription(
+    db_session, user_factory, push_subscription_factory
+) -> None:
+    """Broadcast fan-out applies terminal cleanup and success timestamps."""
+
+    from app.routers import notifications
+    from app.schemas.notifications import NotifyBody
+
+    admin = await user_factory(role="admin")
+    target = await user_factory()
+    stale = await push_subscription_factory(user=target)
+    sent = await push_subscription_factory(user=target, last_seen_at=None)
+    target_id = target.id
+    stale_id = stale.id
+    sent_id = sent.id
+
+    results = [
+        WebPushResult(
+            subscription_id=stale_id,
+            endpoint=stale.endpoint,
+            user_id=target_id,
+            status="gone",
+            status_code=410,
+        ),
+        WebPushResult(
+            subscription_id=sent_id,
+            endpoint=sent.endpoint,
+            user_id=target_id,
+            status="sent",
+        ),
+    ]
+    request = MagicMock()
+    request.client.host = "127.0.0.1"
+    with (
+        patch.object(notifications, "enforce_rate_limit", new=AsyncMock()),
+        patch.object(
+            notifications,
+            "deliver_push_to_subscriptions",
+            new=AsyncMock(return_value=results),
+        ),
+    ):
+        response = await notifications.broadcast(
+            NotifyBody(title="Broadcast", body="Body", topic="system"),
+            request,
+            db_session,
+            admin,
+        )
+
+    assert response.total == 2
+    assert response.sent == 1
+    assert response.removed == 1
+    assert response.failed == 0
+
+    await db_session.rollback()
+    rows = (
+        (
+            await db_session.execute(
+                select(PushSubscription).where(PushSubscription.user_id == target_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [row.id for row in rows] == [sent_id]
+    assert rows[0].last_seen_at is not None
 
 
 @pytest.mark.asyncio
