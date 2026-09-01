@@ -92,6 +92,7 @@ SBOM_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "sbom.yml"
 DEPENDENCY_AUDIT_VALIDATOR_PATH = (
     REPOSITORY_ROOT / "scripts" / "check_dependency_audit_report.py"
 )
+OSV_BATCH_AUDIT_PATH = REPOSITORY_ROOT / "scripts" / "osv_batch_audit.py"
 RUST_AUDIT_CONFIG_PATH = (
     REPOSITORY_ROOT / "native" / "rust_ext" / ".cargo" / "audit.toml"
 )
@@ -1116,6 +1117,7 @@ def test_dependency_audit_scanners_and_rust_policy_are_exactly_pinned() -> None:
         "severity_threshold": "high",
     }
     assert DEPENDENCY_AUDIT_VALIDATOR_PATH.is_file()
+    assert OSV_BATCH_AUDIT_PATH.is_file()
 
 
 def test_sbom_python_and_rust_audits_capture_then_validate_reports() -> None:
@@ -1139,20 +1141,16 @@ def test_sbom_python_and_rust_audits_capture_then_validate_reports() -> None:
     python_script = next(
         step["run"] for step in gate_steps if step.get("name") == python_name
     )
-    assert python_script.count("uv run --frozen --no-sync pip-audit ") == 1
-    assert "--strict" in python_script
-    assert "--no-deps" in python_script
-    assert "--disable-pip" in python_script
-    assert "--format json" in python_script
+    assert (
+        "uv run --frozen --no-sync python scripts/osv_batch_audit.py" in python_script
+    )
+    assert "--requirement /tmp/requirements.txt" in python_script
+    assert "--timeout 30" in python_script
+    assert "--attempts 4" in python_script
+    assert "--batch-size 100" in python_script
     assert "--output /tmp/pip-audit.json" in python_script
     assert "pip_audit_status=$?" in python_script
     assert "set +e" in python_script and "set -e" in python_script
-    assert "for attempt in 1 2 3; do" in python_script
-    assert (
-        'if [[ "$pip_audit_status" -eq 0 || -s /tmp/pip-audit.json ]]; then'
-        in python_script
-    )
-    assert "sleep $((attempt * 15))" in python_script
     assert python_script.index("set +e") < python_script.index("pip_audit_status=$?")
     assert python_script.index("pip_audit_status=$?") < python_script.index("set -e")
     assert (
@@ -1249,18 +1247,14 @@ def test_reusable_python_audit_uses_the_same_fail_closed_validator() -> None:
     step_name = "Run Python known-vulnerability allowlist gate"
     assert step_name in {step.get("name") for step in steps}
     script = next(step["run"] for step in steps if step.get("name") == step_name)
-    assert script.count("uv run --frozen --no-sync pip-audit ") == 1
-    assert "--strict" in script
-    assert "--no-deps" in script
-    assert "--disable-pip" in script
-    assert "--format json" in script
+    assert "uv run --frozen --no-sync python scripts/osv_batch_audit.py" in script
+    assert "--requirement /tmp/requirements.txt" in script
+    assert "--timeout 30" in script
+    assert "--attempts 4" in script
+    assert "--batch-size 100" in script
+    assert "--output /tmp/pip-audit.json" in script
     assert "pip_audit_status=$?" in script
     assert "set +e" in script and "set -e" in script
-    assert "for attempt in 1 2 3; do" in script
-    assert (
-        'if [[ "$pip_audit_status" -eq 0 || -s /tmp/pip-audit.json ]]; then' in script
-    )
-    assert "sleep $((attempt * 15))" in script
     assert (
         "uv run --frozen --no-sync python scripts/check_dependency_audit_report.py pip"
     ) in script
