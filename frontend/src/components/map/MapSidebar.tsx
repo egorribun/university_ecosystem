@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react"
 import { useTranslation } from "react-i18next"
 import { X, Clock, MapPin, Users, ChevronRight } from "lucide-react"
 import type { CampusBuilding, CampusRoom, BuildingFloor } from "@/data/campusBuildings"
@@ -47,6 +47,8 @@ export function MapSidebar({
   const { t } = useTranslation("map")
   const { setOverlayState } = useAppShell()
   const isOpen = !!building
+  const sidebarTitleId = useId()
+  const sidebarDescriptionId = useId()
 
   /* ── Bottom sheet drag state (mobile only) ── */
   const [sheetHeight, setSheetHeight] = useState(() => getViewportHeight() * 0.5)
@@ -99,6 +101,34 @@ export function MapSidebar({
       ;(e.target as HTMLElement).setPointerCapture(e.pointerId)
     },
     [sheetHeight]
+  )
+
+  /** Keyboard equivalent of the touch drag handle for WCAG 2.2 Target Size/Keyboard access. */
+  const handleResizeKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLDivElement>) => {
+      const snaps = [SNAP_PEEK, SNAP_HALF, SNAP_FULL]
+      const nearestIndex = snaps.reduce(
+        (best, current, index) =>
+          Math.abs(current - sheetHeight) < Math.abs(snaps[best]! - sheetHeight) ? index : best,
+        0
+      )
+
+      let nextIndex: number | undefined
+      if (e.key === "ArrowUp" || e.key === "ArrowRight" || e.key === "PageUp") {
+        nextIndex = Math.min(nearestIndex + 1, snaps.length - 1)
+      } else if (e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "PageDown") {
+        nextIndex = Math.max(nearestIndex - 1, 0)
+      } else if (e.key === "Home") {
+        nextIndex = 0
+      } else if (e.key === "End") {
+        nextIndex = snaps.length - 1
+      }
+
+      if (nextIndex === undefined || nextIndex === nearestIndex) return
+      e.preventDefault()
+      setSheetHeight(snaps[nextIndex]!)
+    },
+    [SNAP_FULL, SNAP_HALF, SNAP_PEEK, sheetHeight]
   )
 
   const handleDragMove = useCallback((clientY: number) => {
@@ -234,7 +264,9 @@ export function MapSidebar({
                 audit catches the h1 → h3 skip; chrome-devtools live-axe didn't.
                 Page heading sequence is now h1 (MapHeader) → h2 (this) →
                 downstream h3 in InstallPrompt (when visible). */}
-            <h2 className="font-bold text-sm text-text-primary">{building.name}</h2>
+            <h2 id={sidebarTitleId} className="font-bold text-sm text-text-primary">
+              {building.name}
+            </h2>
             <p className="text-xs text-[var(--text-tertiary)] flex items-center gap-1 mt-0.5">
               <MapPin className="h-3 w-3 shrink-0" />
               {building.address}
@@ -254,7 +286,9 @@ export function MapSidebar({
       </div>
 
       {/* Description */}
-      <p className="text-xs text-[var(--text-secondary)] leading-relaxed">{building.description}</p>
+      <p id={sidebarDescriptionId} className="text-xs text-[var(--text-secondary)] leading-relaxed">
+        {building.description}
+      </p>
 
       {/* Hours — structured Пн-Пт / Сб / Вс */}
       <div className="flex flex-col gap-1 text-xs">
@@ -387,7 +421,8 @@ export function MapSidebar({
         ref={sheetRef}
         role="dialog"
         aria-modal="true"
-        aria-label={building.name}
+        aria-labelledby={sidebarTitleId}
+        aria-describedby={sidebarDescriptionId}
         className="fixed inset-x-0 bottom-0 z-50 bg-[var(--map-sidebar-bg)] rounded-t-2xl map-sheet-slide-up"
         style={{
           height: `${sheetHeight}px`,
@@ -399,11 +434,18 @@ export function MapSidebar({
         <div
           aria-roledescription="drag handle"
           aria-label={t("sidebar.dragToResize")}
-          className="flex justify-center py-3 cursor-grab active:cursor-grabbing touch-none"
+          role="slider"
+          tabIndex={0}
+          aria-orientation="vertical"
+          aria-valuemin={100}
+          aria-valuemax={Math.round(getViewportHeight() * 0.9)}
+          aria-valuenow={Math.round(sheetHeight)}
+          className="flex min-h-[44px] justify-center py-3 cursor-grab active:cursor-grabbing touch-none"
           onPointerDown={handleDragStart}
           onPointerMove={(e) => handleDragMove(e.clientY)}
           onPointerUp={handleDragEnd}
           onPointerCancel={handleDragEnd}
+          onKeyDown={handleResizeKeyDown}
         >
           <div className="w-10 h-1 rounded-full bg-[var(--text-tertiary)] opacity-30" />
         </div>
