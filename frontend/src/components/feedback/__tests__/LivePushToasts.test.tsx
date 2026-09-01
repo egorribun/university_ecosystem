@@ -162,6 +162,7 @@ describe("LivePushToasts", () => {
 
     expect(screen.getByText("Saved")).toBeInTheDocument()
     expect(screen.getByText("Your changes were saved")).toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveClass("border-l-success-border")
   })
 
   it("renders an info toast for an unknown/missing severity (default branch)", async () => {
@@ -177,6 +178,53 @@ describe("LivePushToasts", () => {
     })
 
     expect(screen.getByText("Heads up")).toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveClass("border-l-brand")
+  })
+
+  it("normalizes severity casing and surrounding whitespace", async () => {
+    render(<LivePushToasts />)
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: {
+        id: "normalized-severity",
+        title: "Normalized warning",
+        body: "Severity is case-insensitive",
+        data: { severity: "  WARNING  " },
+      },
+    })
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    expect(screen.getByRole("status")).toHaveClass("border-l-warning-border")
+  })
+
+  it("falls back to a finite timestamp when id metadata has the wrong type", async () => {
+    render(<LivePushToasts />)
+
+    const message = {
+      type: "PUSH_NOTIFICATION",
+      toast: {
+        id: 123,
+        tag: { unexpected: true },
+        timestamp: 0,
+        title: "Timestamp identity",
+        body: "Zero is still a valid finite timestamp",
+      },
+    }
+    await dispatchSwMessage(message)
+    await dispatchSwMessage(message)
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    expect(screen.getAllByText("Timestamp identity")).toHaveLength(1)
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.close" }))
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+    expect(screen.queryByText("Timestamp identity")).not.toBeInTheDocument()
   })
 
   it("deduplicates repeated visible notifications by their canonical id", async () => {
@@ -269,6 +317,7 @@ describe("LivePushToasts", () => {
     })
 
     expect(screen.getByText("Careful")).toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveClass("border-l-warning-border")
   })
 
   it("renders an error toast", async () => {
@@ -289,6 +338,7 @@ describe("LivePushToasts", () => {
     })
 
     expect(screen.getByText("Failed")).toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveClass("border-l-error-border")
   })
 
   it("announces visible toasts and keeps action targets touch accessible", async () => {
@@ -353,6 +403,35 @@ describe("LivePushToasts", () => {
     ).resolves.toBeUndefined()
 
     expect(screen.queryByRole("heading", { level: 4 })).not.toBeInTheDocument()
+  })
+
+  it("uses localized defaults for omitted title or body", async () => {
+    render(<LivePushToasts />)
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: { id: "missing-title", body: "Body without a title" },
+    })
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+    expect(screen.getByText("notifications:defaultTitle")).toBeInTheDocument()
+    expect(screen.getByText("Body without a title")).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.close" }))
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: { id: "missing-body", title: "Title without a body" },
+    })
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+    expect(screen.getByText("Title without a body")).toBeInTheDocument()
+    expect(screen.getByText("notifications:defaultBody")).toBeInTheDocument()
   })
 
   it("renders a sync-complete toast from a SYNC_COMPLETE message (i18n keys)", async () => {
