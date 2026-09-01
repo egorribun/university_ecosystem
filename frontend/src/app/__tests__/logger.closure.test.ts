@@ -168,4 +168,42 @@ describe("logger closure paths", () => {
       vi.unstubAllEnvs()
     }
   })
+
+  it("does not add a trace tag when the trace context is only whitespace", () => {
+    resetLoggerMocks()
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+    setTag.mockClear()
+    setTraceContext("   ")
+
+    logError(new Error("without trace"))
+
+    expect(setTag).toHaveBeenCalledWith("trace_id", "")
+    expect(captureException.mock.calls.at(-1)?.[1]).toMatchObject({
+      tags: { logger: "app", level: "error" },
+    })
+    expect(captureException.mock.calls.at(-1)?.[1]).not.toMatchObject({
+      tags: { trace_id: expect.anything() },
+    })
+    expect(consoleError).toHaveBeenCalledOnce()
+  })
+
+  it("keeps logger fallbacks inert when optional Sentry methods are unavailable", () => {
+    resetLoggerMocks()
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+    setLoggerClient({ captureException: undefined, captureMessage: undefined })
+
+    expect(() => logError("plain error")).not.toThrow()
+    expect(() => logWarning("plain warning")).not.toThrow()
+
+    expect(consoleWarn).not.toHaveBeenCalledWith(
+      "[logger] Failed to forward error to Sentry",
+      expect.anything()
+    )
+    expect(consoleWarn).not.toHaveBeenCalledWith(
+      "[logger] Failed to forward warning to Sentry",
+      expect.anything()
+    )
+    expect(consoleError).toHaveBeenCalledWith("plain error")
+  })
 })

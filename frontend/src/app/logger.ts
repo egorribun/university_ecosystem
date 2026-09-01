@@ -31,12 +31,7 @@ function normalizeArg(value: unknown): unknown {
       stack: value.stack,
     }
   }
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
+  if (value === null || typeof value === "number" || typeof value === "boolean") {
     return value
   }
   if (typeof value === "object") {
@@ -62,8 +57,7 @@ function findFirstError(args: unknown[]): Error | undefined {
 }
 
 function findFirstMessage(args: unknown[]): string | undefined {
-  const candidate = args.find((value) => typeof value === "string")
-  return typeof candidate === "string" ? candidate : undefined
+  return args.find((value): value is string => typeof value === "string")
 }
 
 function resolveTags() {
