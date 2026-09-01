@@ -168,4 +168,48 @@ describe("OfflineIndicator", () => {
 
     expect(reactEffects.dependencies).toContainEqual([])
   })
+
+  it("does not assume navigator exists during the initial effect", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator")
+    Object.defineProperty(globalThis, "navigator", { configurable: true, value: undefined })
+
+    try {
+      render(<OfflineIndicator />)
+      expect(screen.queryByRole("status")).not.toBeInTheDocument()
+    } finally {
+      if (descriptor) Object.defineProperty(globalThis, "navigator", descriptor)
+      else Reflect.deleteProperty(globalThis, "navigator")
+    }
+  })
+
+  it("keeps all toast layout and motion classes stable", () => {
+    setOnline(false)
+    render(<OfflineIndicator />)
+
+    expect(screen.getByRole("status")).toHaveClass(
+      "flex",
+      "items-center",
+      "text-xs",
+      "transition-all",
+      "duration-slow",
+      "ease-out",
+      "animate-in",
+      "fade-in",
+      "slide-in-from-bottom-4"
+    )
+  })
+
+  it("does not attempt to portal when the document disappears", () => {
+    setOnline(false)
+    const view = render(<OfflineIndicator />)
+    expect(screen.getByRole("status")).toBeInTheDocument()
+
+    vi.stubGlobal("document", undefined)
+    try {
+      view.rerender(<OfflineIndicator />)
+      expect(screen.queryByRole("status")).not.toBeInTheDocument()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
 })
