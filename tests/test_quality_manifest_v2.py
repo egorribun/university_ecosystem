@@ -469,6 +469,56 @@ def test_v2_manifest_rejects_measured_tier0_statements_below_100(
     assert any("statements" in error and "100" in error for error in errors)
 
 
+@pytest.mark.parametrize(
+    "derivation",
+    [
+        "coverage.py JSON contains no num_statements units",
+        "Istanbul JSON contains no statement units",
+    ],
+)
+def test_v3_validator_trusts_zero_statement_derivations(
+    derivation: str,
+) -> None:
+    validator = _load_validator()
+    metric = {
+        "status": "derived",
+        "covered": 0,
+        "total": 0,
+        "percent": 100.0,
+        "derivation": derivation,
+    }
+
+    assert (
+        validator._validate_metric_for_floor(
+            metric,
+            floor=100,
+            field="tier0.fixture.statements",
+        )
+        == []
+    )
+
+
+def test_v3_validator_rejects_unknown_derived_metric_algorithm() -> None:
+    validator = _load_validator()
+    metric = {
+        "status": "derived",
+        "covered": 0,
+        "total": 0,
+        "percent": 100.0,
+        "derivation": "coverage report happened to be empty",
+    }
+
+    errors = validator._validate_metric_for_floor(
+        metric,
+        floor=100,
+        field="tier0.fixture.statements",
+    )
+
+    assert errors == [
+        "tier0.fixture.statements uses an untrusted derived-metric algorithm"
+    ]
+
+
 def test_v2_manifest_na_does_not_enter_aggregate_denominator(
     git_evidence_root: Path,
 ) -> None:
