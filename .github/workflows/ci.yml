@@ -523,10 +523,17 @@ jobs:
 
       - name: Install cargo-udeps
         run: |
+          set -euo pipefail
           rustup toolchain install nightly
-          curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh -o /tmp/install-binstall.sh
+          binstall_script_commit="5aafaaca52423a22d83a812fa3ca77492e2895db"
+          binstall_script_sha256="d3a93702160e0ec03e2a4e996855db1f01adee801fb84a43add24e0877ef8eae"
+          binstall_script_url="https://raw.githubusercontent.com/cargo-bins/cargo-binstall/${binstall_script_commit}/install-from-binstall-release.sh"
+          curl --fail --location --proto '=https' --tlsv1.2 --silent --show-error \
+            "${binstall_script_url}" --output /tmp/install-binstall.sh
+          printf '%s  %s\n' "${binstall_script_sha256}" /tmp/install-binstall.sh \
+            | sha256sum --check --strict
           sh /tmp/install-binstall.sh
-          cargo binstall -y cargo-udeps
+          cargo binstall -y cargo-udeps@0.1.61
 
       - name: Run cargo-udeps (unused dependencies check)
         run: |

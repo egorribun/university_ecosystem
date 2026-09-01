@@ -17,6 +17,8 @@ DETECT_SECRETS_REQUIREMENTS = ROOT / "security" / "detect-secrets-requirements.t
 ACTIONLINT_SHA256 = "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8"  # pragma: allowlist secret -- release checksum
 HADOLINT_SHA256 = "56de6d5e5ec427e17b74fa48d51271c7fc0d61244bf5c90e828aab8362d55010"  # pragma: allowlist secret -- release checksum
 SHELLCHECK_SHA256 = "6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87"  # pragma: allowlist secret -- release checksum
+CARGO_BINSTALL_SCRIPT_COMMIT = "5aafaaca52423a22d83a812fa3ca77492e2895db"  # pragma: allowlist secret -- immutable installer commit
+CARGO_BINSTALL_SCRIPT_SHA256 = "d3a93702160e0ec03e2a4e996855db1f01adee801fb84a43add24e0877ef8eae"  # pragma: allowlist secret -- release checksum
 
 
 def _workflow(path: Path) -> dict[str, Any]:
@@ -105,6 +107,23 @@ def test_security_audit_checkouts_disable_credentials_and_detect_secrets_is_lock
             rf"(?m)^{re.escape(requirement)}\s+--hash=sha256:{digest}\s*$",
             requirements,
         )
+
+
+def test_cargo_udeps_bootstrap_is_immutable_and_checksum_verified() -> None:
+    """Rust lint tooling must not execute mutable remote installer content."""
+
+    jobs = _workflow(CI)["jobs"]
+    install = _step(jobs["rust-lint"], "Install cargo-udeps")["run"]
+    assert "set -euo pipefail" in install
+    assert f'binstall_script_commit="{CARGO_BINSTALL_SCRIPT_COMMIT}"' in install
+    assert f'binstall_script_sha256="{CARGO_BINSTALL_SCRIPT_SHA256}"' in install
+    assert (
+        'binstall_script_url="https://raw.githubusercontent.com/cargo-bins/cargo-binstall/${binstall_script_commit}/install-from-binstall-release.sh"'
+        in install
+    )
+    assert "sha256sum --check --strict" in install
+    assert "cargo binstall -y cargo-udeps@0.1.61" in install
+    assert "cargo-binstall/main/" not in install
 
 
 def test_detect_secrets_verification_is_finding_level_and_base_bound() -> None:
