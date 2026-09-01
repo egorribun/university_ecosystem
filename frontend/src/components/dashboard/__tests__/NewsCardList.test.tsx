@@ -62,6 +62,7 @@ describe("NewsCardList", () => {
 
   it("renders one row per news item with truncated long content", () => {
     render(<NewsCardList news={NEWS} loading={false} locale="en" />)
+    expect(screen.getByRole("list", { name: "dashboard:aria.newsList" })).toBeInTheDocument()
     const items = screen.getAllByRole("button")
     expect(items).toHaveLength(NEWS.length)
     expect(screen.getByText(NEWS[0]!.title)).toBeInTheDocument()
