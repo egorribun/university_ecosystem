@@ -209,6 +209,77 @@ async def test_redelivery_updates_the_latest_attempt_for_each_pair(
     assert older.status_code == 503
 
 
+@pytest.mark.asyncio
+async def test_redelivery_preserves_provider_detail_when_updating_prior_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = uuid4()
+    notification_id = uuid4()
+    subscription_id = uuid4()
+    subscription = SimpleNamespace(
+        id=subscription_id,
+        user_id=user_id,
+        user=None,
+        endpoint="https://push.example.test/subscription",
+        topics=None,
+    )
+    notification = SimpleNamespace(
+        id=notification_id,
+        user_id=user_id,
+        title="A notification",
+        body="Body",
+        url="/news/1",
+        type="news",
+        created_at=datetime(2026, 8, 28, 12, 0, tzinfo=UTC),
+    )
+    prior = SimpleNamespace(
+        notification_id=notification_id,
+        subscription_id=subscription_id,
+        status="error",
+        attempted_at=datetime(2026, 8, 28, 11, 59, tzinfo=UTC),
+        delivered_at=None,
+        status_code=503,
+        detail="old provider detail",
+    )
+    provider_result = delivery.WebPushResult(
+        subscription_id=subscription_id,
+        endpoint=subscription.endpoint,
+        user_id=user_id,
+        status="error",
+        status_code=503,
+        error="retryable provider detail",
+    )
+
+    monkeypatch.setattr(delivery, "_is_push_configured", lambda: True)
+    monkeypatch.setattr(delivery, "subscription_supports_topic", lambda *_args: True)
+    monkeypatch.setattr(
+        delivery.webpush_module,
+        "_send_push_async",
+        AsyncMock(return_value=provider_result),
+    )
+    monkeypatch.setattr(delivery, "_process_canonical_push_results", AsyncMock())
+    monkeypatch.setattr(delivery.metrics, "record_notification_failed", Mock())
+    db = MagicMock(
+        execute=AsyncMock(
+            side_effect=[
+                _rows([notification]),
+                _rows([subscription]),
+                _rows([prior]),
+            ]
+        ),
+        flush=AsyncMock(),
+    )
+
+    outcome = await delivery.redeliver_notifications(
+        db, notification_ids=[notification_id]
+    )
+
+    assert outcome.retryable_failures == 1
+    assert prior.status == "error"
+    assert prior.status_code == 503
+    assert prior.detail == "retryable provider detail"
+
+
 def test_unique_notification_ids_logs_the_stable_warning_text() -> None:
     """Invalid outbox IDs are observable through one canonical warning."""
 
@@ -415,8 +486,14 @@ async def test_redelivery_payload_preserves_canonical_topic_metadata(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("notification_type", "expected_metric_type"),
+    [("news", "news"), (None, "unknown")],
+)
 async def test_redelivery_gone_result_uses_lowercase_metric_reason(
     monkeypatch: pytest.MonkeyPatch,
+    notification_type: str | None,
+    expected_metric_type: str,
 ) -> None:
     user_id = uuid4()
     subscription = SimpleNamespace(
@@ -432,7 +509,7 @@ async def test_redelivery_gone_result_uses_lowercase_metric_reason(
         title="A notification",
         body="Body",
         url="/news/1",
-        type="news",
+        type=notification_type,
         created_at=datetime(2026, 8, 28, 12, 0, tzinfo=UTC),
     )
     provider_result = delivery.WebPushResult(
@@ -470,7 +547,9 @@ async def test_redelivery_gone_result_uses_lowercase_metric_reason(
     )
 
     assert outcome.terminal_failures == 1
-    failed.assert_called_once_with(notification_type="news", reason="gone")
+    failed.assert_called_once_with(
+        notification_type=expected_metric_type, reason="gone"
+    )
 
 
 @pytest.mark.asyncio

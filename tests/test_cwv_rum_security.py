@@ -123,6 +123,13 @@ def test_cwv_collector_binding_enforces_inclusive_identifier_bounds() -> None:
         _collector_binding(binding, "x" * 129)
 
 
+def test_cwv_collector_binding_uses_stable_public_error_message() -> None:
+    with pytest.raises(CwvEnvelopeError) as caught:
+        _collector_binding(_binding(), "")
+
+    assert str(caught.value) == "CWV collector identifier is invalid"
+
+
 @pytest.mark.parametrize(
     ("pathname", "expected"),
     [
