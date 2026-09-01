@@ -394,6 +394,16 @@ async def test_process_push_results_binds_cleanup_to_endpoint(
             )
         ]
     )
+    await process_push_results(
+        [
+            WebPushResult(
+                subscription_id=subscription_id,
+                endpoint=old_endpoint,
+                user_id=user.id,
+                status="sent",
+            )
+        ]
+    )
 
     await db_session.rollback()
     current = await db_session.get(PushSubscription, subscription_id)
