@@ -42,10 +42,13 @@ const readWeekdayArray = (value: unknown, fallback: string[]): string[] =>
  * view instead of using the full schedule page's time hook.
  */
 const getLessonBounds = (lesson: LessonTimeFields | null): LessonBounds | null => {
-  const start = parseMinutes(lesson?.start_time ?? "")
+  // `parseMinutes` accepts optional values and treats missing fields as invalid.
+  // Passing the payload through preserves that contract without manufacturing a
+  // sentinel time string that could be mistaken for a real schedule value.
+  const start = parseMinutes(lesson?.start_time)
   // Keep malformed end times as NaN so the strict comparison below rejects
   // them without a redundant nullable guard (NaN is never greater than start).
-  const end = parseMinutes(lesson?.end_time ?? "") ?? Number.NaN
+  const end = parseMinutes(lesson?.end_time) ?? Number.NaN
   return start !== null && end > start ? { start, end } : null
 }
 
@@ -69,6 +72,17 @@ export function calculateLessonProgress(bounds: LessonBounds | null, minutesNow:
   const span = bounds.end - bounds.start
   const passed = Math.min(Math.max(0, minutesNow - bounds.start), span)
   return Math.round((passed / span) * 100)
+}
+
+/**
+ * Keep the lesson list hidden while its initial query is loading and when the
+ * current day has no valid lessons.  This explicit predicate makes the two
+ * states independently testable instead of relying on an unreachable JSX
+ * short-circuit combination.
+ */
+export function shouldRenderLessonList(loading: boolean, lessonCount: number): boolean {
+  if (loading) return false
+  return lessonCount > 0
 }
 
 export const ScheduleCard = memo(function ScheduleCard({
@@ -104,7 +118,7 @@ export const ScheduleCard = memo(function ScheduleCard({
   // locale changes in-place (i18next may retain the same `t` function).
   const weekDaysDisplay = readWeekdayArray(
     t("dashboard:weekDays.display", { returnObjects: true }) as unknown,
-    [...ENGLISH_WEEK_DAYS]
+    ENGLISH_WEEK_DAYS
   )
 
   const weekDaysRaw = readWeekdayArray(
@@ -159,8 +173,7 @@ export const ScheduleCard = memo(function ScheduleCard({
     [currentLesson, minutesNow]
   )
 
-  const shouldShowNextLesson = nextLesson !== null ? currentLesson === null : false
-  const nextLessonToDisplay = shouldShowNextLesson ? nextLesson : null
+  const nextLessonToDisplay = currentLesson === null ? nextLesson : null
 
   const warmScheduleRoute = useCallback(() => {
     void router.preloadRoute({ to: "/schedule" }).catch(() => undefined)
@@ -199,7 +212,7 @@ export const ScheduleCard = memo(function ScheduleCard({
         </div>
 
         {/* Current lesson — premium blue panel */}
-        {currentLesson && (
+        {currentLesson ? (
           <div className="list-item-blue rounded-xl p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
@@ -218,7 +231,7 @@ export const ScheduleCard = memo(function ScheduleCard({
               ariaLabel={t("common:ariaCurrentLessonProgress")}
             />
           </div>
-        )}
+        ) : null}
 
         {nextLessonToDisplay ? (
           <div className="list-item-blue flex items-center gap-3 rounded-xl p-4">
@@ -260,7 +273,7 @@ export const ScheduleCard = memo(function ScheduleCard({
         )}
 
         {/* Wave 49: always list view on dashboard — timeline removed (too cramped for card width) */}
-        {!loadingSched && todayLessons.length > 0 && (
+        {shouldRenderLessonList(loadingSched, todayLessons.length) ? (
           <ul className="space-y-2.5">
             {todayLessons.map((l, idx) => (
               <li key={l.id} className="dash-list-item px-0 py-0">
@@ -290,7 +303,7 @@ export const ScheduleCard = memo(function ScheduleCard({
               </li>
             ))}
           </ul>
-        )}
+        ) : null}
       </div>
     </Card>
   )

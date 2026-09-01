@@ -19,7 +19,7 @@ const translationCalls = vi.hoisted(() => ({
   entries: [] as Array<{ key: string; options?: Record<string, unknown> }>,
 }))
 const translationNamespaces = vi.hoisted(() => ({ calls: [] as unknown[] }))
-const parseMinutesCalls = vi.hoisted(() => ({ values: [] as string[] }))
+const parseMinutesCalls = vi.hoisted(() => ({ values: [] as Array<string | undefined> }))
 const { preloadRoute, routerState } = vi.hoisted(() => {
   const routePreload = vi.fn()
   return { preloadRoute: routePreload, routerState: { current: { preloadRoute: routePreload } } }
@@ -70,9 +70,9 @@ vi.mock("@/hooks/useDashboardSchedule", () => ({
 vi.mock("@/utils/scheduleUtils", () => ({
   fmtTime: (value: string) => value,
   nowParity: () => "odd",
-  parseMinutes: (value: string) => {
+  parseMinutes: (value: string | undefined) => {
     parseMinutesCalls.values.push(value)
-    const [hours = Number.NaN, minutes = Number.NaN] = value.split(":").map(Number)
+    const [hours = Number.NaN, minutes = Number.NaN] = (value ?? "").split(":").map(Number)
     return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : null
   },
 }))
@@ -98,7 +98,12 @@ vi.mock("@/components/ui", () => {
   return { Badge, Button, Card, ProgressBar, Skeleton }
 })
 
-import { calculateLessonProgress, findNextLesson, ScheduleCard } from "../ScheduleCard"
+import {
+  calculateLessonProgress,
+  findNextLesson,
+  ScheduleCard,
+  shouldRenderLessonList,
+} from "../ScheduleCard"
 
 const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
 
@@ -176,7 +181,7 @@ describe("ScheduleCard", () => {
     expect(screen.getAllByText("Cached lesson").length).toBeGreaterThan(0)
   })
 
-  it("passes an empty string to the time parser for each missing bound", () => {
+  it("passes missing bounds through as undefined for the optional time parser", () => {
     const time = new Date(2026, 6, 31, 9, 0)
     scheduleState.current = {
       data: [
@@ -192,7 +197,7 @@ describe("ScheduleCard", () => {
     }
 
     const first = render(<ScheduleCard time={time} userRole="student" userGroupId="group-1" />)
-    expect(parseMinutesCalls.values).toContain("")
+    expect(parseMinutesCalls.values).toContain(undefined)
     first.unmount()
 
     parseMinutesCalls.values = []
@@ -210,7 +215,7 @@ describe("ScheduleCard", () => {
     }
 
     render(<ScheduleCard time={time} userRole="student" userGroupId="group-1" />)
-    expect(parseMinutesCalls.values).toContain("")
+    expect(parseMinutesCalls.values).toContain(undefined)
   })
 
   it("renders the current lesson, progress, and sorted matching lessons", () => {
@@ -317,6 +322,14 @@ describe("ScheduleCard", () => {
     expect(calculateLessonProgress(bounds, 9 * 60)).toBe(0)
     expect(calculateLessonProgress(bounds, 10 * 60 + 30)).toBe(50)
     expect(calculateLessonProgress(bounds, 12 * 60)).toBe(100)
+  })
+
+  it("renders the lesson list only for a non-loading day with lessons", () => {
+    expect(shouldRenderLessonList(true, 3)).toBe(false)
+    expect(shouldRenderLessonList(true, 0)).toBe(false)
+    expect(shouldRenderLessonList(false, 0)).toBe(false)
+    expect(shouldRenderLessonList(false, -1)).toBe(false)
+    expect(shouldRenderLessonList(false, 1)).toBe(true)
   })
 
   it("does not promote malformed times to current or next lessons", () => {

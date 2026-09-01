@@ -3,8 +3,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 const state = vi.hoisted(() => ({ storiesInHero: false }))
 const mediaQueryMock = vi.hoisted(() => vi.fn(() => state.storiesInHero))
+const translationMock = vi.hoisted(() =>
+  vi.fn((namespace: string) => ({
+    t: (key: string) => {
+      const resolvedKey = key.includes(":") ? key : `${namespace}:${key}`
+      return (
+        {
+          "common:aria.loadingGreeting": "Loading greeting",
+          "common:aria.loadingTime": "Loading time",
+          "common:aria.loadingWeather": "Loading weather",
+          "common:aria.loadingDate": "Loading date",
+          "common:aria.loadingStory": "Loading story",
+        }[resolvedKey] ?? key
+      )
+    },
+  }))
+)
 
 vi.mock("@/hooks/useMediaQuery", () => ({ default: mediaQueryMock }))
+vi.mock("react-i18next", () => ({ useTranslation: translationMock }))
 
 import { DashboardSkeleton } from "@/components/dashboard/DashboardSkeleton"
 
@@ -12,12 +29,24 @@ describe("DashboardSkeleton", () => {
   beforeEach(() => {
     state.storiesInHero = false
     mediaQueryMock.mockClear()
+    translationMock.mockClear()
   })
 
   it("renders mobile story placeholders below the hero", () => {
     render(<DashboardSkeleton />)
 
     expect(mediaQueryMock).toHaveBeenCalledWith("(min-width: 1220px)")
+    expect(translationMock).toHaveBeenCalledWith("common")
+    expect(screen.getAllByLabelText("Loading story")).toHaveLength(5)
+  })
+
+  it("keeps every accessible loading label tied to the common translation namespace", () => {
+    render(<DashboardSkeleton />)
+
+    expect(screen.getByLabelText("Loading greeting")).toBeInTheDocument()
+    expect(screen.getByLabelText("Loading time")).toBeInTheDocument()
+    expect(screen.getByLabelText("Loading weather")).toBeInTheDocument()
+    expect(screen.getByLabelText("Loading date")).toBeInTheDocument()
     expect(screen.getAllByLabelText("Loading story")).toHaveLength(5)
   })
 
