@@ -94,42 +94,35 @@ vi.mock("@tanstack/react-router", () => ({
 // (header + menu + empty-state); ChatWindow's internal behavior is covered by
 // ChatWindow.test.tsx. Stub the children so jsdom doesn't have to render
 // @tanstack/react-virtual (W184 SW6 lesson) or framer-motion AnimatePresence
-// child exits (jsdom doesn't render Framer Motion exit animations).
-vi.mock("@/components/messenger", async () => {
-  const actual =
-    await vi.importActual<typeof import("@/components/messenger")>("@/components/messenger")
-  return {
-    ...actual,
-    ChatWindow: (props: {
-      messages?: unknown[]
-      isError?: boolean
-      onClearSearch?: () => void
-    }) => (
-      <div data-testid="mock-chat-window" data-message-count={props.messages?.length ?? 0}>
-        {props.onClearSearch && (
-          <button
-            type="button"
-            data-testid="mock-chat-window-clear-search"
-            onClick={props.onClearSearch}
-          />
-        )}
-      </div>
-    ),
-    MessageInput: (props: { onTyping?: () => void; onCancelReply?: () => void }) => (
-      <div data-testid="mock-message-input">
-        <button type="button" data-testid="mock-message-input-typing" onClick={props.onTyping} />
-        {props.onCancelReply && (
-          <button
-            type="button"
-            data-testid="mock-message-input-cancel-reply"
-            onClick={props.onCancelReply}
-          />
-        )}
-      </div>
-    ),
-    TypingIndicator: () => <div data-testid="mock-typing-indicator" />,
-  }
-})
+// child exits (jsdom doesn't render Framer Motion exit animations). Return only
+// the three exports imported by ChatArea; importing the barrel's other exports
+// would pull unrelated browser/WASM dependencies into this isolated suite.
+vi.mock("@/components/messenger", () => ({
+  ChatWindow: (props: { messages?: unknown[]; isError?: boolean; onClearSearch?: () => void }) => (
+    <div data-testid="mock-chat-window" data-message-count={props.messages?.length ?? 0}>
+      {props.onClearSearch && (
+        <button
+          type="button"
+          data-testid="mock-chat-window-clear-search"
+          onClick={props.onClearSearch}
+        />
+      )}
+    </div>
+  ),
+  MessageInput: (props: { onTyping?: () => void; onCancelReply?: () => void }) => (
+    <div data-testid="mock-message-input">
+      <button type="button" data-testid="mock-message-input-typing" onClick={props.onTyping} />
+      {props.onCancelReply && (
+        <button
+          type="button"
+          data-testid="mock-message-input-cancel-reply"
+          onClick={props.onCancelReply}
+        />
+      )}
+    </div>
+  ),
+  TypingIndicator: () => <div data-testid="mock-typing-indicator" />,
+}))
 
 afterEach(() => {
   sendTypingMock.mockReset()
