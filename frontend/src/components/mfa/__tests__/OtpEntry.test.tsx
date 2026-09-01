@@ -202,6 +202,32 @@ describe("OtpEntry", () => {
     })
   })
 
+  it("preserves newly entered digits when the server error is cleared", async () => {
+    const onSubmit = vi.fn()
+    const { rerender } = render(<OtpEntry onSubmit={onSubmit} />)
+    const inputs = screen.getAllByRole("textbox")
+
+    fireEvent.change(inputs[0]!, { target: { value: "1" } })
+    rerender(<OtpEntry onSubmit={onSubmit} error="Invalid code" />)
+    await waitFor(() => expect(inputs[0]).toHaveValue(""))
+
+    fireEvent.change(inputs[0]!, { target: { value: "7" } })
+    rerender(<OtpEntry onSubmit={onSubmit} error={null} />)
+
+    await waitFor(() => expect(inputs[0]).toHaveValue("7"))
+  })
+
+  it("returns focus to the first digit after the code is cleared", async () => {
+    render(<OtpEntry onSubmit={vi.fn()} />)
+    const inputs = screen.getAllByRole("textbox")
+
+    fireEvent.change(inputs[0]!, { target: { value: "1" } })
+    inputs[5]!.focus()
+    fireEvent.change(inputs[0]!, { target: { value: "" } })
+
+    await waitFor(() => expect(document.activeElement).toBe(inputs[0]))
+  })
+
   it("supports the explicit submit button after a complete code", async () => {
     const onSubmit = vi.fn()
     const user = userEvent.setup()
