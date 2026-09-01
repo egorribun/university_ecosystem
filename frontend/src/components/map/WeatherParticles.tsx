@@ -179,8 +179,6 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
         frameRef.current = requestAnimationFrame(render)
       }
     }
-    document.addEventListener("visibilitychange", onVisibilityChange)
-
     /* ---------- storm flash scheduling ---------- */
 
     if (isStorm) {
@@ -278,6 +276,8 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
       ctx.globalAlpha = 1
       frameRef.current = requestAnimationFrame(render)
     }
+
+    document.addEventListener("visibilitychange", onVisibilityChange)
 
     /* ---------- init ---------- */
 
