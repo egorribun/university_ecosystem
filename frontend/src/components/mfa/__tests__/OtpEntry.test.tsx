@@ -179,6 +179,29 @@ describe("OtpEntry", () => {
     )
   })
 
+  it("clears a partially entered code and restores focus when an error arrives", async () => {
+    const { rerender } = render(<OtpEntry onSubmit={vi.fn()} />)
+    const inputs = screen.getAllByRole("textbox")
+
+    fireEvent.change(inputs[0]!, { target: { value: "1" } })
+    fireEvent.change(inputs[1]!, { target: { value: "2" } })
+    expect(inputs.slice(0, 2).map((input) => (input as HTMLInputElement).value)).toEqual(["1", "2"])
+
+    rerender(<OtpEntry onSubmit={vi.fn()} error="Invalid code" />)
+
+    await waitFor(() => {
+      expect(inputs.map((input) => (input as HTMLInputElement).value)).toEqual([
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+      ])
+      expect(document.activeElement).toBe(inputs[0])
+    })
+  })
+
   it("supports the explicit submit button after a complete code", async () => {
     const onSubmit = vi.fn()
     const user = userEvent.setup()
