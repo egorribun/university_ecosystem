@@ -355,7 +355,9 @@ def test_also_copy_inventory_rejects_intermediate_symlink_escape(
     try:
         link.symlink_to(outside, target_is_directory=True)
     except (OSError, NotImplementedError) as exc:
-        pytest.skip(f"symlink creation is unavailable: {exc}")
+        pytest.skip(  # QUALITY-123 @egorribun — filesystem capability varies by runner
+            f"symlink creation is unavailable: {exc}"
+        )
 
     monkeypatch.chdir(repo)
     config = SimpleNamespace(also_copy=[Path("linked-directory/secret.txt")])
@@ -377,7 +379,9 @@ def test_configured_also_copy_directory_rejects_symlink_descendant_before_copy(
     try:
         link.symlink_to(outside, target_is_directory=True)
     except (OSError, NotImplementedError) as exc:
-        pytest.skip(f"symlink creation is unavailable: {exc}")
+        pytest.skip(  # QUALITY-123 @egorribun — filesystem capability varies by runner
+            f"symlink creation is unavailable: {exc}"
+        )
 
     monkeypatch.chdir(repo)
     config = SimpleNamespace(source_paths=[], also_copy=[Path("config")])
@@ -417,7 +421,9 @@ def test_configured_source_root_rejects_intermediate_symlink_escape(
     try:
         link.symlink_to(outside, target_is_directory=True)
     except (OSError, NotImplementedError) as exc:
-        pytest.skip(f"symlink creation is unavailable: {exc}")
+        pytest.skip(  # QUALITY-123 @egorribun — filesystem capability varies by runner
+            f"symlink creation is unavailable: {exc}"
+        )
 
     monkeypatch.chdir(repo)
     config = SimpleNamespace(
@@ -459,7 +465,9 @@ def test_prepare_mutants_directory_rejects_symlinked_mutants_root(
     try:
         link.symlink_to(target, target_is_directory=True)
     except (OSError, NotImplementedError) as exc:
-        pytest.skip(f"symlink creation is unavailable: {exc}")
+        pytest.skip(  # QUALITY-123 @egorribun — filesystem capability varies by runner
+            f"symlink creation is unavailable: {exc}"
+        )
 
     monkeypatch.chdir(repo)
     with pytest.raises(UniverseValidationError, match="mutants root"):
