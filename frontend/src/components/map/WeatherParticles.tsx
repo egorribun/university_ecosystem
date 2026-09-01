@@ -167,6 +167,17 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
 
     const onVisibilityChange = () => {
       pausedRef.current = document.hidden
+      if (pausedRef.current) {
+        // Do not keep a requestAnimationFrame loop alive in a hidden tab. The
+        // browser throttles background frames, but cancelling explicitly
+        // avoids needless callbacks and lets the effect resume on demand.
+        cancelAnimationFrame(frameRef.current)
+        frameRef.current = 0
+      } else {
+        // The render loop caps delta at 50ms, so resuming cannot create a
+        // large position jump even when no frame ran while the tab was hidden.
+        frameRef.current = requestAnimationFrame(render)
+      }
     }
     document.addEventListener("visibilitychange", onVisibilityChange)
 
@@ -181,8 +192,6 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
     let lastTime = performance.now()
 
     const render = (now: number) => {
-      frameRef.current = requestAnimationFrame(render)
-
       if (pausedRef.current) {
         lastTime = now
         return
@@ -267,6 +276,7 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
       }
 
       ctx.globalAlpha = 1
+      frameRef.current = requestAnimationFrame(render)
     }
 
     /* ---------- init ---------- */

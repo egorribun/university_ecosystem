@@ -232,6 +232,7 @@ describe("WeatherParticles", () => {
       callbacks.shift()?.(1000)
     })
     expect(canvasContext.clearRect).not.toHaveBeenCalled()
+    expect(callbacks).toHaveLength(0)
     unmount()
     hidden.mockRestore()
   })
