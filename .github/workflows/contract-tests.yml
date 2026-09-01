@@ -154,7 +154,7 @@ jobs:
           # sudo uses a restricted secure_path by default.  Pass the
           # actions/setup-go toolchain explicitly so this command cannot fall
           # back to an older runner Go and trigger a network toolchain download.
-          sudo env PATH="$PATH" GOTOOLCHAIN="${GOTOOLCHAIN:-local}" \
+          sudo env PATH="$PATH" GOTOOLCHAIN=local \
             go run github.com/pact-foundation/pact-go/v2 -l DEBUG install \
             --libDir /usr/local/lib
           sudo ldconfig

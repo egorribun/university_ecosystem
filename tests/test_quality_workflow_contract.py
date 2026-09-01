@@ -637,7 +637,7 @@ def test_pact_privileged_install_preserves_configured_go_toolchain() -> None:
     command = str(install["run"])
     assert "sudo env" in command
     assert 'PATH="$PATH"' in command
-    assert 'GOTOOLCHAIN="${GOTOOLCHAIN:-local}"' in command
+    assert "GOTOOLCHAIN=local" in command
     assert "sudo go run" not in command
 
 
