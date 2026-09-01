@@ -360,6 +360,48 @@ async def test_process_push_results_deduplicates_status_updates() -> None:
     assert session.execute.await_count == 1
 
 
+@pytest.mark.asyncio
+async def test_process_push_results_binds_cleanup_to_endpoint(
+    db_session, user_factory, push_subscription_factory
+) -> None:
+    """A late result cannot mutate a row that was re-used for another endpoint.
+
+    ``PushSubscription.id`` is normally stable while a client refreshes its
+    credentials.  A provider response from the previous endpoint must not
+    delete or touch that replacement row when delivery and subscribe race.
+    """
+
+    from app.services.webpush import process_push_results
+
+    user = await user_factory()
+    subscription = await push_subscription_factory(
+        user=user,
+        endpoint="https://push.example.test/current",
+        last_seen_at=None,
+    )
+    subscription_id = subscription.id
+    current_endpoint = subscription.endpoint
+    old_endpoint = "https://push.example.test/previous"
+
+    await process_push_results(
+        [
+            WebPushResult(
+                subscription_id=subscription_id,
+                endpoint=old_endpoint,
+                user_id=user.id,
+                status="gone",
+                status_code=410,
+            )
+        ]
+    )
+
+    await db_session.rollback()
+    current = await db_session.get(PushSubscription, subscription_id)
+    assert current is not None
+    assert current.endpoint == current_endpoint
+    assert current.last_seen_at is None
+
+
 def test_coalesce_push_results_normalizes_unhashable_status() -> None:
     """Malformed provider statuses must fail closed instead of raising TypeError."""
 

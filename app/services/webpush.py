@@ -20,7 +20,7 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pywebpush import WebPushException, webpush
-from sqlalchemy import create_engine, delete, update
+from sqlalchemy import and_, create_engine, delete, or_, update
 from sqlalchemy.engine import URL, Engine, make_url
 from sqlalchemy.orm import sessionmaker
 
@@ -817,22 +817,47 @@ def coalesce_push_results(results: Sequence[object]) -> list[WebPushResult]:
 
 async def process_push_results(results: list[WebPushResult]) -> None:
     canonical_results = coalesce_push_results(results)
-    gone_ids = [r.subscription_id for r in canonical_results if r.status == "gone"]
-    sent_ids = [r.subscription_id for r in canonical_results if r.status == "sent"]
+    gone_results = [r for r in canonical_results if r.status == "gone"]
+    sent_results = [r for r in canonical_results if r.status == "sent"]
 
-    if not gone_ids and not sent_ids:
+    if not gone_results and not sent_results:
         return
 
     await _ensure_async_sessionmaker()
     async with async_session() as session:
-        if gone_ids:
+        if gone_results:
+            # Bind terminal cleanup to the endpoint observed by the provider.
+            # A concurrent re-subscribe may reuse the row id while rotating
+            # credentials; an old 404/410 must not delete that replacement.
             await session.execute(
-                delete(PushSubscription).where(PushSubscription.id.in_(gone_ids))
+                delete(PushSubscription).where(
+                    or_(
+                        *(
+                            and_(
+                                PushSubscription.id == result.subscription_id,
+                                PushSubscription.endpoint == result.endpoint,
+                            )
+                            for result in gone_results
+                        )
+                    )
+                )
             )
-        if sent_ids:
+        if sent_results:
+            # The same binding prevents a late success from touching a row that
+            # now represents a different endpoint after a concurrent update.
             await session.execute(
                 update(PushSubscription)
-                .where(PushSubscription.id.in_(sent_ids))
+                .where(
+                    or_(
+                        *(
+                            and_(
+                                PushSubscription.id == result.subscription_id,
+                                PushSubscription.endpoint == result.endpoint,
+                            )
+                            for result in sent_results
+                        )
+                    )
+                )
                 .values(last_seen_at=datetime.now(UTC))
             )
         await session.commit()
