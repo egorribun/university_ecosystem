@@ -74,6 +74,18 @@ describe("queryClient — IDB persister", () => {
     expect(typeof idbPersister.removeClient).toBe("function")
   })
 
+  it("uses the canonical key for the default persister", async () => {
+    const client = makeClient()
+
+    await idbPersister.persistClient(client)
+    await idbPersister.restoreClient()
+    await idbPersister.removeClient()
+
+    expect(idbSet).toHaveBeenCalledWith("reactQuery", client)
+    expect(idbGet).toHaveBeenCalledWith("reactQuery")
+    expect(idbDel).toHaveBeenCalledWith("reactQuery")
+  })
+
   it("persistClient writes the client to IDB under the given key", async () => {
     const persister = createIDBPersister("myKey")
     const client = makeClient()

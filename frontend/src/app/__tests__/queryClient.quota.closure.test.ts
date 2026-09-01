@@ -67,6 +67,21 @@ describe("queryClient quota closure paths", () => {
     expect(warn).not.toHaveBeenCalled()
   })
 
+  it("logs before clearing a quota-exhausted cache in development", async () => {
+    vi.stubEnv("DEV", true)
+    vi.stubGlobal("navigator", { storage: { estimate: vi.fn().mockResolvedValue({ quota: 1e9 }) } })
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    idbSet.mockRejectedValueOnce(new DOMException("quota", "QuotaExceededError"))
+    const { createIDBPersister } = await import("@/app/queryClient")
+
+    await createIDBPersister("quota-development").persistClient(makeClient())
+
+    expect(idbDel).toHaveBeenCalledWith("quota-development")
+    expect(warn).toHaveBeenCalledWith(
+      "[IDBPersister] IndexedDB quota exceeded — clearing persisted cache"
+    )
+  })
+
   it("falls back to the default quota when the estimate is unavailable and memoizes it", async () => {
     const estimate = vi.fn().mockResolvedValue({ quota: 0 })
     vi.stubGlobal("navigator", { storage: { estimate } })
@@ -110,6 +125,16 @@ describe("queryClient quota closure paths", () => {
     expect(idbSet).toHaveBeenCalledWith("no-estimate", expect.anything())
   })
 
+  it("falls back safely when navigator is unavailable during SSR", async () => {
+    vi.stubGlobal("navigator", undefined)
+    const { createIDBPersister } = await import("@/app/queryClient")
+
+    await expect(
+      createIDBPersister("ssr-no-navigator").persistClient(makeClient())
+    ).resolves.toBeUndefined()
+    expect(idbSet).toHaveBeenCalledWith("ssr-no-navigator", expect.anything())
+  })
+
   it("rejects a negative storage quota instead of treating it as available", async () => {
     vi.stubGlobal("navigator", { storage: { estimate: vi.fn().mockResolvedValue({ quota: -1 }) } })
     const { createIDBPersister } = await import("@/app/queryClient")
@@ -117,6 +142,19 @@ describe("queryClient quota closure paths", () => {
     await createIDBPersister("negative-quota").persistClient(makeClient())
 
     expect(idbSet).toHaveBeenCalledWith("negative-quota", expect.anything())
+  })
+
+  it("falls back when storage reports an infinite quota", async () => {
+    vi.stubGlobal("navigator", {
+      storage: { estimate: vi.fn().mockResolvedValue({ quota: Number.POSITIVE_INFINITY }) },
+    })
+    const { createIDBPersister } = await import("@/app/queryClient")
+
+    await createIDBPersister("infinite-quota").persistClient(
+      makeClient("x".repeat(21 * 1024 * 1024))
+    )
+
+    expect(idbSet).not.toHaveBeenCalled()
   })
 
   it("accepts a payload exactly at the resolved quota boundary", async () => {

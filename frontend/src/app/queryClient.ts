@@ -56,22 +56,41 @@ const MAX_IDB_QUOTA_BYTES = 50 * 1024 * 1024 // 50 MB cap
 
 let _resolvedQuota: number | null = null
 
+function isPositiveFiniteQuota(value: unknown): value is number {
+  if (!Number.isFinite(value)) return false
+  return (value as number) > 0
+}
+
+async function readStorageEstimate(): Promise<StorageEstimate | undefined> {
+  if (typeof navigator === "undefined") return undefined
+
+  const storage = navigator.storage
+  if (storage === undefined) return undefined
+
+  const estimate = storage.estimate
+  if (typeof estimate !== "function") return undefined
+
+  // Keep the synchronous guard operations outside this catch so mutation
+  // tests can prove each availability contract. Only the browser API's
+  // asynchronous rejection is intentionally degraded to the default quota.
+  const pendingEstimate = estimate.call(storage)
+  try {
+    return await pendingEstimate
+  } catch {
+    return undefined
+  }
+}
+
 async function getIdbQuotaBytes(): Promise<number> {
   if (_resolvedQuota !== null) return _resolvedQuota
-  try {
-    const estimate = await navigator.storage?.estimate?.()
-    const availableQuota = estimate?.quota
-    if (
-      typeof availableQuota === "number" &&
-      Number.isFinite(availableQuota) &&
-      availableQuota > 0
-    ) {
+  const estimate = await readStorageEstimate()
+  if (estimate !== undefined) {
+    const availableQuota = estimate.quota
+    if (isPositiveFiniteQuota(availableQuota)) {
       // Use at most 5% of available storage, capped at 50 MB
       _resolvedQuota = Math.min(Math.floor(availableQuota * 0.05), MAX_IDB_QUOTA_BYTES)
       return _resolvedQuota
     }
-  } catch {
-    // Storage API unavailable (SSR, older browsers, etc.)
   }
   _resolvedQuota = DEFAULT_IDB_QUOTA_BYTES
   return _resolvedQuota
