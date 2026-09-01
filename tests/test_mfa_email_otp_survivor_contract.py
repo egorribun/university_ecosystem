@@ -12,6 +12,7 @@ import base64
 import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
@@ -155,6 +156,17 @@ def test_key_ring_rejects_zero_length_decoded_keys_with_generic_error() -> None:
         pytest.raises(MfaSecurityUnavailable, match=r"^MFA service unavailable$"),
     ):
         email_otp_module._parse_key_ring("active:AA==")
+
+
+def test_key_ring_rejects_invalid_characters_even_when_padding_length_is_valid() -> (
+    None
+):
+    """The URL-safe decoder must not silently discard non-alphabet bytes."""
+
+    with pytest.raises(MfaSecurityUnavailable, match=r"^MFA service unavailable$"):
+        # ``YWJj$A`` has a valid padding length; only the character allowlist
+        # rejects ``$`` before Python's permissive decoder can ignore it.
+        email_otp_module._parse_key_ring("active:YWJj$A")
 
 
 def test_key_ring_rejects_duplicate_identifiers_with_generic_error() -> None:
@@ -340,6 +352,9 @@ async def test_issue_binds_recipient_lookup_to_user_and_persists_outbox(
     assert added[0].trust_device_requested is False
     assert added[1].challenge_id == issued.challenge_id
     assert isinstance(added[2], StoredEvent)
+    # The API contract exposes a masked destination hint so clients can
+    # explain where the code was sent without leaking the full address.
+    assert issued.delivery_hint == email_otp_module.mask_email(user.email)
 
 
 @pytest.mark.asyncio
@@ -408,6 +423,43 @@ async def test_opaque_loader_selects_active_session_for_each_non_login_flow(
 
 
 @pytest.mark.asyncio
+async def test_bound_challenge_loader_waits_for_the_row_lock_and_rechecks_token(
+    service: EmailOtpService,
+) -> None:
+    """A concurrent verify/resend must serialize on the challenge row."""
+
+    challenge = _challenge(flow="login")
+    token = email_otp_module._generate_challenge_token(challenge.id)
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = challenge
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=result)
+    service._validate_binding = MagicMock()  # type: ignore[method-assign]
+    service._digest = MagicMock(return_value=challenge.token_digest)  # type: ignore[method-assign]
+
+    loaded = await service._load_bound_challenge(
+        db,
+        challenge_token=token,
+        user_id=challenge.user_id,
+        flow=challenge.flow,
+        session_identifier=challenge.session_identifier,
+        client_fingerprint=challenge.client_fingerprint,
+    )
+
+    assert loaded is challenge
+    statement = db.execute.await_args.args[0]
+    lock = statement._for_update_arg
+    assert lock is not None and lock.nowait is False
+    service._validate_binding.assert_called_once_with(  # type: ignore[attr-defined]
+        challenge,
+        user_id=challenge.user_id,
+        flow=challenge.flow,
+        session_identifier=challenge.session_identifier,
+        client_fingerprint=challenge.client_fingerprint,
+    )
+
+
+@pytest.mark.asyncio
 async def test_verify_forwards_client_ip_to_rate_limiter(
     service: EmailOtpService,
 ) -> None:
@@ -463,11 +515,17 @@ async def test_resend_opaque_preserves_the_bound_session_identifier(
     )
 
     assert result is expected
-    assert service.resend.await_args.kwargs["challenge_token"] == "opaque-token"
-    assert (
-        service.resend.await_args.kwargs["session_identifier"]
-        == challenge.session_identifier
-    )
+    forwarded = service.resend.await_args.kwargs
+    assert forwarded == {
+        "challenge_token": "opaque-token",
+        "user_id": challenge.user_id,
+        "flow": challenge.flow,
+        "session_identifier": challenge.session_identifier,
+        "client_fingerprint": FINGERPRINT,
+        "client_ip": IP,
+        "locale": "en",
+        "now": NOW,
+    }
 
 
 @pytest.mark.asyncio
@@ -536,6 +594,8 @@ async def test_resend_without_explicit_clock_uses_utc_and_rotates_expiry(
     compiled_rotation = rotation_statement.compile(dialect=postgresql.dialect())
     assert compiled_rotation.params["token_digest"] == challenge.token_digest
     assert compiled_rotation.params["token_key_id"] == "active"
+    assert compiled_rotation.params["otp_key_id"] == "active"
+    assert compiled_rotation.params["revision"] == 4
     assert compiled_rotation.params["resend_available_at"] == rotated_at + timedelta(
         seconds=60
     )
@@ -580,6 +640,130 @@ async def test_verify_rejects_an_exhausted_challenge_before_digest_or_mutation(
         )
 
     db.execute.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("missing_field", ["otp_digest", "otp_key_id"])
+async def test_verify_rejects_challenges_with_either_otp_secret_field_missing(
+    service: EmailOtpService,
+    missing_field: str,
+) -> None:
+    """A partially populated challenge must never reach the digest/update path."""
+
+    challenge = _challenge()
+    user = SimpleNamespace(id=challenge.user_id, email="student@example.edu")
+    challenge.recipient_digest = service._recipient_digest(
+        key_id="active", email=user.email
+    )
+    challenge.otp_digest = "digest"
+    challenge.otp_key_id = "active"
+    setattr(challenge, missing_field, None)
+    service._rate_limit = AsyncMock()  # type: ignore[method-assign]
+    service._resolve_recipient = AsyncMock(return_value=(user, user.email))  # type: ignore[method-assign]
+    service._load_bound_challenge = AsyncMock(return_value=challenge)  # type: ignore[method-assign]
+    service._digest = MagicMock()  # type: ignore[method-assign]
+    db = MagicMock()
+
+    with pytest.raises(MfaOtpRejected, match=r"^MFA verification failed$"):
+        await service.verify(
+            db,
+            challenge_token="opaque-token",
+            code="123456",
+            user_id=user.id,
+            flow="login",
+            session_identifier=SESSION,
+            client_fingerprint=FINGERPRINT,
+            client_ip=IP,
+            now=NOW,
+        )
+
+    db.execute.assert_not_called()
+    service._digest.assert_not_called()  # type: ignore[attr-defined]
+
+
+@pytest.mark.asyncio
+async def test_verify_treats_expiry_equality_as_already_expired(
+    service: EmailOtpService,
+) -> None:
+    """The expiry instant itself is outside the valid verification window."""
+
+    challenge = _challenge()
+    user = SimpleNamespace(id=challenge.user_id, email="student@example.edu")
+    challenge.recipient_digest = service._recipient_digest(
+        key_id="active", email=user.email
+    )
+    challenge.otp_digest = service._digest(
+        key_id="active",
+        purpose="email-otp",
+        challenge=challenge,  # type: ignore[arg-type]
+        secret_value="123456",
+    )
+    challenge.otp_key_id = "active"
+    challenge.expires_at = NOW
+    service._rate_limit = AsyncMock()  # type: ignore[method-assign]
+    service._resolve_recipient = AsyncMock(return_value=(user, user.email))  # type: ignore[method-assign]
+    service._load_bound_challenge = AsyncMock(return_value=challenge)  # type: ignore[method-assign]
+    consumed = SimpleNamespace(one_or_none=Mock(return_value=(challenge.id,)))
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=consumed)
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+
+    with pytest.raises(MfaOtpRejected, match=r"^MFA verification failed$"):
+        await service.verify(
+            db,
+            challenge_token="opaque-token",
+            code="123456",
+            user_id=user.id,
+            flow="login",
+            session_identifier=SESSION,
+            client_fingerprint=FINGERPRINT,
+            client_ip=IP,
+            now=NOW,
+        )
+
+    db.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_verify_wrong_code_increments_attempts_by_exactly_one(
+    service: EmailOtpService,
+) -> None:
+    challenge = _challenge()
+    user = SimpleNamespace(id=challenge.user_id, email="student@example.edu")
+    challenge.recipient_digest = service._recipient_digest(
+        key_id="active", email=user.email
+    )
+    challenge.otp_digest = service._digest(
+        key_id="active",
+        purpose="email-otp",
+        challenge=challenge,  # type: ignore[arg-type]
+        secret_value="123456",
+    )
+    challenge.otp_key_id = "active"
+    service._rate_limit = AsyncMock()  # type: ignore[method-assign]
+    service._resolve_recipient = AsyncMock(return_value=(user, user.email))  # type: ignore[method-assign]
+    service._load_bound_challenge = AsyncMock(return_value=challenge)  # type: ignore[method-assign]
+    attempt_update = SimpleNamespace(one_or_none=Mock(return_value=(challenge.id,)))
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=attempt_update)
+    db.flush = AsyncMock()
+
+    with pytest.raises(MfaOtpRejected, match=r"^MFA verification failed$"):
+        await service.verify(
+            db,
+            challenge_token="opaque-token",
+            code="000000",
+            user_id=user.id,
+            flow="login",
+            session_identifier=SESSION,
+            client_fingerprint=FINGERPRINT,
+            client_ip=IP,
+            now=NOW,
+        )
+
+    statement = db.execute.await_args.args[0]
+    assert statement.compile().params["attempt_count"] == 1
 
 
 @pytest.mark.asyncio
@@ -695,6 +879,13 @@ async def test_recovery_opaque_forwards_all_binding_arguments_and_locks_at_expir
             now=NOW,
         )
     assert consumed is challenge
+    service._load_opaque_challenge.assert_awaited_once_with(  # type: ignore[attr-defined]
+        db,
+        challenge_token="opaque-token",
+        client_fingerprint=FINGERPRINT,
+        login_session_identifier=None,
+        active_session_identifier=SESSION,
+    )
     service._resolve_recipient.assert_awaited_once_with(
         db, user_id=user.id, flow="step_up", for_update=True
     )
@@ -960,6 +1151,71 @@ async def test_delivery_completion_requires_exactly_one_row_and_forwards_rendere
     assert "mfa_email_deliveries.id =" in where_clause
     assert "mfa_email_deliveries.id !=" not in where_clause
     assert "mfa_email_deliveries.lease_token =" in where_clause
+
+
+@pytest.mark.asyncio
+async def test_delivery_without_explicit_clock_uses_utc_for_every_lease_timestamp(
+    service: EmailOtpService,
+) -> None:
+    """Worker leases must never be created with naive wall-clock timestamps."""
+
+    delivery_id = uuid.UUID("aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa")
+    challenge_id = uuid.UUID("bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb")
+    delivery = SimpleNamespace(
+        id=delivery_id,
+        challenge_id=challenge_id,
+        lease_token="lease-token",
+        revision=3,
+        locale="en",
+        message_id="<mfa-utc@example.edu>",
+    )
+    challenge = SimpleNamespace(
+        id=challenge_id,
+        method=MFA_METHOD_EMAIL_OTP,
+        state=ChallengeState.PENDING,
+        revision=3,
+        expires_at=NOW + timedelta(minutes=5),
+    )
+    claimed = SimpleNamespace(
+        one_or_none=Mock(return_value=SimpleNamespace(id=delivery_id))
+    )
+    challenge_result = SimpleNamespace(scalar_one_or_none=Mock(return_value=challenge))
+    completed = SimpleNamespace(rowcount=1)
+    db = MagicMock()
+    db.execute = AsyncMock(side_effect=[claimed, challenge_result, completed])
+    db.commit = AsyncMock()
+    db.get = AsyncMock(return_value=delivery)
+    db.flush = AsyncMock()
+    sender = AsyncMock()
+    service._decrypt_delivery = MagicMock(  # type: ignore[method-assign]
+        return_value={
+            "email": "student@example.edu",
+            "otp": "123456",
+            "display_name": "Student",
+        }
+    )
+
+    class _UtcClock:
+        calls: ClassVar[list[object]] = []
+
+        @classmethod
+        def now(cls, tz: object = None) -> datetime:
+            cls.calls.append(tz)
+            if tz is not UTC:
+                raise AssertionError("delivery timestamps must use UTC")
+            return NOW
+
+    with (
+        patch.object(
+            email_otp_module.secrets, "token_urlsafe", return_value="lease-token"
+        ),
+        patch.object(email_otp_module, "datetime", _UtcClock),
+    ):
+        await service.deliver(db, delivery_id=delivery_id, sender=sender)
+
+    assert _UtcClock.calls == [UTC, UTC, UTC]
+    sender.send.assert_awaited_once()
+    assert db.commit.await_count == 1
 
 
 @pytest.mark.asyncio

@@ -41,7 +41,10 @@ def _configured_keyring() -> tuple[dict[str, bytes], str]:
         if not entry.strip():
             continue
         try:
-            key_id, encoded = entry.split(":", 1)
+            parts = entry.split(":")
+            if len(parts) != 2:
+                raise ValueError("trusted-device key entry must contain one delimiter")
+            key_id, encoded = parts
             keys[key_id.strip()] = _base64url_decode(encoded.strip())
         except (ValueError, TypeError):
             raise RuntimeError("trusted-device key configuration invalid") from None

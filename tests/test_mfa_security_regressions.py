@@ -656,6 +656,27 @@ def test_trusted_device_keyring_rejects_key_ids_with_ambiguous_delimiters(
         trusted_device_module._configured_keyring()
 
 
+def test_trusted_device_keyring_rejects_a_valid_key_with_an_extra_delimiter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The decoder must not silently discard an appended colon fragment."""
+
+    encoded = base64.urlsafe_b64encode(b"k" * 32).decode().rstrip("=")
+    monkeypatch.setattr(
+        trusted_device_module.settings,
+        "mfa_trusted_device_hmac_keys",
+        f"primary:{encoded}:unexpected",
+    )
+    monkeypatch.setattr(
+        trusted_device_module.settings,
+        "mfa_trusted_device_active_hmac_key_id",
+        "primary",
+    )
+
+    with pytest.raises(RuntimeError, match="configuration invalid"):
+        trusted_device_module._configured_keyring()
+
+
 @pytest.mark.asyncio
 async def test_trusted_device_consume_rejects_deleted_user(
     monkeypatch: pytest.MonkeyPatch,

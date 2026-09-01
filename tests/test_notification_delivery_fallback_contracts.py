@@ -58,7 +58,6 @@ async def test_redelivery_uses_safe_url_and_unknown_metric_type_fallback(
     subscription = SimpleNamespace(
         id=uuid4(),
         user_id=user_id,
-        user=None,
         endpoint="https://push.example.test/subscription",
         topics=None,
     )
@@ -108,12 +107,16 @@ async def test_redelivery_uses_safe_url_and_unknown_metric_type_fallback(
 
     assert outcome.sent == 1
     payload = send.await_args.args[1]
+    assert payload["title"] == notification.title
     assert payload["url"] == "/"
     record_delivered.assert_called_once_with(notification_type="unknown")
     assert build_row.call_args is not None
     assert build_row.call_args.kwargs["delivered"] is True
     assert build_row.call_args.kwargs["detail"] is None
     assert build_row.call_args.kwargs["attempted_at"].tzinfo is UTC
+    query = db.execute.await_args_list[0].args[0]
+    assert len(query._order_by_clauses) == 1
+    assert query._order_by_clauses[0].compare(delivery.Notification.__table__.c.id)
 
 
 def test_unique_notification_ids_logs_the_stable_warning_text() -> None:
@@ -158,6 +161,7 @@ async def test_redelivery_records_exception_metric_with_unknown_type_fallback(
         created_at=datetime(2026, 8, 28, 12, 0, tzinfo=UTC),
     )
     failed = Mock()
+    build_row = MagicMock(side_effect=delivery._build_delivery_row)
     monkeypatch.setattr(delivery, "_is_push_configured", lambda: True)
     monkeypatch.setattr(delivery, "subscription_supports_topic", lambda *_args: True)
     monkeypatch.setattr(
@@ -167,6 +171,7 @@ async def test_redelivery_records_exception_metric_with_unknown_type_fallback(
     )
     monkeypatch.setattr(delivery.webpush_module, "process_push_results", AsyncMock())
     monkeypatch.setattr(delivery.metrics, "record_notification_failed", failed)
+    monkeypatch.setattr(delivery, "_build_delivery_row", build_row)
 
     db = MagicMock(
         execute=AsyncMock(
@@ -186,6 +191,12 @@ async def test_redelivery_records_exception_metric_with_unknown_type_fallback(
 
     assert outcome.retryable_failures == 1
     failed.assert_called_once_with(notification_type="unknown", reason="exception")
+    assert build_row.call_count == 1
+    row_call = build_row.call_args
+    assert row_call.args[:2] == (notification.id, notification.created_at)
+    assert row_call.kwargs["subscription_id"] == subscription.id
+    assert row_call.kwargs["attempted_at"].tzinfo is UTC
+    assert row_call.kwargs["detail"] == "exception:provider down"
 
 
 @pytest.mark.asyncio
