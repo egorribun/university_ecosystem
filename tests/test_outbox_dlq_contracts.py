@@ -83,6 +83,7 @@ async def test_terminal_mfa_dlq_clears_the_delivery_lease() -> None:
 
     statement = db.execute.await_args.args[0]
     params = statement.compile().params
+    assert "mfa_email_deliveries.id =" in str(statement.compile()).lower()
     assert params["status"] == "cancelled"
     assert params["lease_token"] is None
     assert params["lease_expires_at"] is None

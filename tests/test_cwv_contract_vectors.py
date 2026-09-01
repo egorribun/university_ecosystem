@@ -208,6 +208,17 @@ def test_route_group_preserves_empty_leading_segment_as_core(pathname: str) -> N
     assert derive_route_group(pathname) == "core"
 
 
+@pytest.mark.parametrize("pathname", ["/news ", "/settings\t"])
+def test_route_group_does_not_strip_non_delimiter_whitespace(pathname: str) -> None:
+    """Only trailing slashes are normalized; malformed paths fail closed."""
+
+    with pytest.raises(
+        CwvEnvelopeError,
+        match=r"^CWV route is not in the certification allowlist$",
+    ):
+        derive_route_group(pathname)
+
+
 @pytest.mark.parametrize(
     "value",
     [
@@ -390,6 +401,49 @@ def test_envelope_grace_period_has_exact_inclusive_limit_and_message() -> None:
         match=r"^CWV envelope grace period is invalid$",
     ):
         _verify_envelope(_binding(), token, now=NOW, expiration_grace_seconds=86_401)
+
+
+def test_envelope_expiry_at_grace_boundary_is_valid() -> None:
+    """A token remains valid through the inclusive configured grace window."""
+
+    claims = verify_envelope(_binding(), _issued(), now=NOW)
+    current = int(NOW.timestamp())
+    grace = 10
+    boundary = replace(
+        claims,
+        issued_at=current - 300,
+        expires_at=current - grace,
+    )
+
+    verified = _verify_envelope(
+        _binding(),
+        _sign_claims(_binding(), boundary),
+        now=NOW,
+        expiration_grace_seconds=grace,
+    )
+
+    assert verified.expires_at + grace == current
+
+
+def test_envelope_issue_time_at_future_skew_boundary_is_valid() -> None:
+    """The 30-second clock-skew allowance is inclusive."""
+
+    claims = verify_envelope(_binding(), _issued(), now=NOW)
+    current = int(NOW.timestamp())
+    boundary = replace(
+        claims,
+        issued_at=current + 30,
+        expires_at=current + 330,
+    )
+
+    verified = _verify_envelope(
+        _binding(),
+        _sign_claims(_binding(), boundary),
+        now=NOW,
+        expiration_grace_seconds=0,
+    )
+
+    assert verified.issued_at == current + 30
 
 
 def test_envelope_verification_uses_utc_for_an_implicit_clock() -> None:
@@ -581,6 +635,30 @@ def test_oidc_policy_rejects_missing_subject_or_workflow_with_exact_message() ->
         GithubActionsOidcVerifier(
             enabled=True, repository="acme/university", workflow_ref="", subject=SUBJECT
         ).verify("token", expected_sha=SHA)
+
+
+def test_oidc_verifier_rejects_disabled_policy_even_when_other_fields_are_valid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The disabled flag is an unconditional fail-closed boundary."""
+
+    verifier = GithubActionsOidcVerifier(
+        enabled=False,
+        repository="acme/university",
+        workflow_ref=WORKFLOW,
+        subject=SUBJECT,
+    )
+    monkeypatch.setattr(
+        verifier._jwks,
+        "get_signing_key_from_jwt",
+        Mock(side_effect=jwt.PyJWTError("disabled policy must short-circuit")),
+    )
+
+    with pytest.raises(
+        CwvConfigurationError,
+        match=r"^CWV exporter OIDC policy is not fully configured$",
+    ):
+        verifier.verify("token", expected_sha=SHA)
 
 
 def test_oidc_verifier_has_distinct_exact_identity_claim_errors(

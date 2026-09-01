@@ -499,3 +499,21 @@ async def test_mfa_coordinator_no_response():
         )
         assert res is not None
         assert res.default_method == "totp"
+
+
+async def test_publish_completed_step_up_forwards_request_context(login_service):
+    """Step-up completion must preserve the request for audit/context binding."""
+
+    user = MagicMock()
+    session = MagicMock()
+    request = MagicMock()
+    publish = AsyncMock()
+    login_service.session_manager.publish_completed_step_up = publish
+
+    await login_service.publish_completed_step_up(
+        user=user,
+        session=session,
+        request=request,
+    )
+
+    publish.assert_awaited_once_with(user=user, session=session, request=request)

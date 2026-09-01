@@ -614,6 +614,7 @@ async def test_outbox_redelivery_is_idempotent_by_notification_and_subscription(
         ("sent", subscription.id)
     ]
     assert rows[0].status_code == 201
+    assert rows[0].attempted_at is not None
 
 
 @pytest.mark.asyncio

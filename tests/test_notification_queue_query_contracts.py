@@ -42,5 +42,10 @@ async def test_dead_letter_listing_keeps_named_snapshot_ctes_and_true_filter() -
     assert "notification_dead_letter_page" in sql
     assert "notification_dead_letter_total" in sql
     assert sql.lower().count("notification_queue_jobs.dead_lettered is true") == 2
+    normalized_sql = " ".join(sql.lower().split())
+    assert (
+        "order by notification_dead_letter_page.enqueued_at desc, "
+        "notification_dead_letter_page.id desc" in normalized_sql
+    )
     make_alias.assert_called_once()
     assert make_alias.call_args.args[0] is models.NotificationQueueJob
