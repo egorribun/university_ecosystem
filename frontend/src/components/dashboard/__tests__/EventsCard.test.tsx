@@ -1,5 +1,5 @@
 import { createElement } from "react"
-import { fireEvent, render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { describe, it, expect, vi, beforeEach } from "vitest"
@@ -176,5 +176,40 @@ describe("EventsCard", () => {
     await user.click(event)
     expect(mockNavigate).toHaveBeenCalledWith({ to: "/events/$id", params: { id: "5" } })
     expect(screen.queryByText("Room")).not.toBeInTheDocument()
+  })
+
+  it("includes events exactly at the local day boundaries", () => {
+    vi.useFakeTimers()
+    try {
+      const noon = new Date(2026, 8, 1, 12, 0, 0, 0)
+      vi.setSystemTime(noon)
+      const startOfDay = new Date(noon)
+      startOfDay.setHours(0, 0, 0, 0)
+      const endOfDay = new Date(noon)
+      endOfDay.setHours(23, 59, 59, 999)
+
+      eventsState.current = {
+        data: [
+          { id: 6, title: "At day start", starts_at: startOfDay.toISOString(), location: "" },
+          { id: 7, title: "At day end", starts_at: endOfDay.toISOString(), location: "" },
+          {
+            id: 8,
+            title: "Tomorrow event",
+            starts_at: new Date(endOfDay.getTime() + 1).toISOString(),
+            location: "",
+          },
+        ],
+        isLoading: false,
+        isFetching: false,
+      }
+
+      renderCard()
+      const todayList = screen.getByRole("list", { name: "dashboard:aria.eventsToday" })
+      expect(within(todayList).getByText("At day start")).toBeInTheDocument()
+      expect(within(todayList).getByText("At day end")).toBeInTheDocument()
+      expect(screen.queryByText("Tomorrow event")).not.toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
