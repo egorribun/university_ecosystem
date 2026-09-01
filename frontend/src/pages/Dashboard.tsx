@@ -182,7 +182,7 @@ export default function Dashboard() {
 
   return (
     <PageLayout variant="full" className="dashboard-theme py-0 md:py-0">
-      <SEO title={t("dashboard:pageTitle", "Dashboard")} />
+      <SEO title={t("dashboard:pageTitle")} />
 
       {/* Static editorial backdrop; no per-scroll work or layout-affecting motion. */}
       <div className="aurora-mesh relative w-full">

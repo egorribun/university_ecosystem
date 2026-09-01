@@ -13,9 +13,8 @@ export function SyncStatus() {
   const statusTitle = !isOnline
     ? t("common:sync.offline", {
         count: totalPendingCount,
-        defaultValue: `Offline (${totalPendingCount} queued)`,
       })
-    : t("common:sync.online", { defaultValue: "All synced" })
+    : t("common:sync.online")
 
   return (
     <AnimatePresence>

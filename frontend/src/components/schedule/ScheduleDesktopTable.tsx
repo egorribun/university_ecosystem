@@ -146,7 +146,7 @@ export const ScheduleDesktopTable = memo(function ScheduleDesktopTable({
                   {isTodayCol && (
                     <span className="sched-today-badge inline-flex items-center gap-1 rounded-full bg-brand px-2 py-0.5 text-[0.5625rem] font-bold text-[var(--sched-on-accent)] shadow-glow-primary">
                       <TodayIcon size={9} aria-hidden="true" />
-                      {t("schedule:toolbar.today", { defaultValue: "" })}
+                      {t("schedule:toolbar.today")}
                     </span>
                   )}
                   {canEdit && (
@@ -239,7 +239,6 @@ export const ScheduleDesktopTable = memo(function ScheduleDesktopTable({
                         aria-label={t("schedule:table.emptyCell", {
                           day: visibleDays[colI]!.label,
                           row: rowIdx + 1,
-                          defaultValue: "Empty",
                         })}
                         className={cn(
                           "sched-grid-cell sched-day-snap flex items-center justify-center border-b outline-none",

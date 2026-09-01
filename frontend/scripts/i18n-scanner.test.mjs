@@ -71,6 +71,33 @@ test("raw user-facing literals are rejected while technical attributes are ignor
   assert.ok(report.errors.filter((error) => error.code === "RAW_USER_FACING_LITERAL").length >= 2)
 })
 
+test("camelCase accessibility props are treated as user-facing literals", () => {
+  const report = scanSource('<Skeleton ariaLabel="Loading profile" />', {
+    filePath: "src/components/Skeleton.tsx",
+    catalogs,
+  })
+
+  assert.ok(report.errors.some((error) => error.code === "RAW_USER_FACING_LITERAL"))
+})
+
+test("default values for user-facing labels are treated as raw literals", () => {
+  const report = scanSource(
+    'function ActionMenu({ ariaLabel = "Open menu" }) { return <button aria-label={ariaLabel} /> }',
+    { filePath: "src/components/ActionMenu.tsx", catalogs }
+  )
+
+  assert.ok(report.errors.some((error) => error.code === "RAW_USER_FACING_LITERAL"))
+})
+
+test("translation fallback literals are detected in nested call arguments", () => {
+  const report = scanSource(
+    'export const View = ({ t }) => <><span>{t("common:save", "Save")}</span><span>{t("common:save", { defaultValue: "Save" })}</span></>',
+    { filePath: "src/View.tsx", catalogs }
+  )
+
+  assert.equal(report.errors.filter((error) => error.code === "RAW_USER_FACING_LITERAL").length, 2)
+})
+
 test("locale scanner detects missing keys, orphan keys, plural variants, and placeholders", () => {
   const report = scanLocaleCatalogs({
     en: { common: { save: "Save {{name}}", orphan: "Orphan", count_one: "one" } },

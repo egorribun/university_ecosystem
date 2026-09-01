@@ -16,7 +16,13 @@ vi.mock("react", async (importOriginal) => {
 
 const translation = vi.hoisted(() => ({
   useTranslation: vi.fn(() => ({
-    t: (key: string, fallback?: string) => fallback ?? key,
+    t: (key: string, fallback?: string) => {
+      const catalog: Record<string, string> = {
+        "offlineIndicator.offline": "You're offline",
+        "offlineIndicator.online": "Back online",
+      }
+      return catalog[key] ?? fallback ?? key
+    },
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   })),
 }))

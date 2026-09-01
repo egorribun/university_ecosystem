@@ -76,12 +76,12 @@ export function OfflineIndicator() {
       {isOffline ? (
         <>
           <WifiOff className="h-4 w-4" />
-          <span>{t("offlineIndicator.offline", "You're offline")}</span>
+          <span>{t("offlineIndicator.offline")}</span>
         </>
       ) : (
         <>
           <Wifi className="h-4 w-4" />
-          <span>{t("offlineIndicator.online", "Back online")}</span>
+          <span>{t("offlineIndicator.online")}</span>
         </>
       )}
     </div>

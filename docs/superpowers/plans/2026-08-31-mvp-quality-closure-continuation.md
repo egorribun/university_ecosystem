@@ -129,7 +129,7 @@ Snapshot `2026-08-31T13:37:11+03:00` получен через все стран
 
 - backend unit shards 0–3, integration shard 0 и backend aggregate;
 - Alembic migrations;
-- Schemathesis shards 1–4 и aggregate;
+- Schemathesis shards 1–4 и aggregate (предыдущая конфигурация; после fan-out изменения требуется rerun shards 1–8);
 - Chromium E2E shards 1–4, Firefox, WebKit и mobile-WebKit;
 - Go integration для ws-hub/file-processor/gateway;
 - Go tests/lint для gateway, file-processor, uni-cli, SPIFFE и SpiceDB;
@@ -1606,9 +1606,9 @@ For:
 
 ### 20.5 API/contracts
 
-**Current evidence:** четыре Schemathesis shards/aggregate, OpenAPI/Spectral/backward compatibility, TypeScript/MSW/GraphQL drift и Pact boundaries зелёные на текущем tested merge SHA. Ниже требуется сохранение и final-SHA rerun, а не повторная реализация.
+**Current evidence:** предыдущий четырёхшардовый Schemathesis run/aggregate, OpenAPI/Spectral/backward compatibility, TypeScript/MSW/GraphQL drift и Pact boundaries зелёные на tested merge SHA. Workflow теперь закрепляет восемь shards для сокращения per-job lifecycle overhead; требуется final-SHA rerun всех восьми и aggregate.
 
-- [ ] Four Schemathesis shards.
+- [ ] Eight Schemathesis shards.
 - [ ] Aggregate rejects missing/cancelled shard.
 - [ ] OpenAPI generated deterministically.
 - [ ] TypeScript SDK drift zero.

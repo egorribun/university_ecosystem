@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from "vitest"
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, fallback?: string) => fallback ?? key,
+    t: (key: string, fallback?: string) =>
+      key === "common:noResults" ? "No results." : (fallback ?? key),
   }),
 }))
 

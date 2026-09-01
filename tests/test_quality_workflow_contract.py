@@ -1099,6 +1099,12 @@ def test_dependency_audit_scanners_and_rust_policy_are_exactly_pinned() -> None:
         dependency.startswith("pip-audit") and dependency != "pip-audit==2.10.1"
         for dependency in security_dependencies
     )
+    dev_dependencies = project["dependency-groups"]["dev"]
+    assert "pip-audit==2.10.1" in dev_dependencies
+    assert not any(
+        dependency.startswith("pip-audit") and dependency != "pip-audit==2.10.1"
+        for dependency in dev_dependencies
+    )
 
     lock = tomllib.loads((REPOSITORY_ROOT / "uv.lock").read_text(encoding="utf-8"))
     pip_audit_packages = [

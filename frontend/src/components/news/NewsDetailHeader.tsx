@@ -132,11 +132,7 @@ export function NewsDetailHeader({
             "transition-colors duration-fast",
             bookmarked && "border-brand/(--opacity-dim) bg-brand/(--opacity-subtle)"
           )}
-          aria-label={
-            bookmarked
-              ? t("news:actions.removeBookmark")
-              : t("news:actions.bookmark", { defaultValue: "Bookmark" })
-          }
+          aria-label={bookmarked ? t("news:actions.removeBookmark") : t("news:actions.bookmark")}
         >
           {bookmarked ? t("news:actions.saved") : t("news:actions.bookmark")}
         </Button>

@@ -72,10 +72,10 @@ describe("LoginCredentialForm translation fallbacks", () => {
     expect(button).not.toHaveAttribute("aria-label")
   })
 
-  it("preserves fallback copy, password toggle labels, and checkbox semantics", async () => {
+  it("renders catalog copy, password toggle labels, and checkbox semantics", async () => {
     const previous = translation.t.getMockImplementation()
-    translation.t.mockImplementation((key: string, options?: Record<string, unknown>) => {
-      if (key === "auth:login.subtitle") return String(options?.defaultValue ?? "")
+    translation.t.mockImplementation((key: string) => {
+      if (key === "auth:login.subtitle") return "Sign in to continue your university journey"
       return key
     })
 

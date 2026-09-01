@@ -419,6 +419,11 @@ dev = [
   # Pact Rust FFI and exposes the pact.v3 API used in tests/contracts/.
   "pact-python==3.4.0",
   "diff-cover>=9.2.0",
+  # The deterministic OSV adapter imports pip-audit's frozen dependency
+  # parser and service contracts in its backend regression tests. Keep the
+  # exact security pin in the shared dev group so every pytest shard has the
+  # same runtime rather than failing during collection.
+  "pip-audit==2.10.1",
   # The incremental planner uses mutmut's 3.7 publicized 3.x orchestration
   # interfaces; pin the tested release to keep CI mutation semantics stable.
   "mutmut==3.7.0",

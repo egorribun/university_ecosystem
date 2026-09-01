@@ -91,7 +91,7 @@ export const NewsHeader = ({
               type="button"
               onClick={() => onSearchChange("")}
               className="absolute right-1 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full text-(--text-secondary) hover:text-text-primary transition-colors focus-visible:ring-2 focus-visible:ring-brand"
-              aria-label={t("common:buttons.clear", { defaultValue: "Clear" })}
+              aria-label={t("common:buttons.clear")}
             >
               <X size={14} />
             </button>
@@ -174,7 +174,7 @@ export const NewsHeader = ({
                   : undefined
               }
             >
-              {t(cat.labelKey, { defaultValue: cat.id })}
+              {t(cat.labelKey)}
             </button>
           ))}
 

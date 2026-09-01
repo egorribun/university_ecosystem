@@ -13,7 +13,7 @@
   "today": "Сегодня",
   "next": "Далее",
   "sync": {
-    "offline": "Нет сети · последняя синхронизация {{time}}",
+    "offline": "Нет сети (в очереди: {{count}})",
     "online": "Всё синхронизировано"
   },
   "time": {
@@ -105,7 +105,15 @@
     "removeBookmark": "Убрать из сохранённых",
     "loadingProfile": "Загрузка профиля",
     "loadingSchedule": "Загрузка расписания",
-    "loadingUserMenu": "Загрузка меню пользователя"
+    "loadingUserMenu": "Загрузка меню пользователя",
+    "loadingGreeting": "Загрузка приветствия",
+    "loadingTime": "Загрузка времени",
+    "loadingWeather": "Загрузка погоды",
+    "loadingDate": "Загрузка даты",
+    "loadingStory": "Загрузка истории",
+    "loadingAvatar": "Загрузка аватара",
+    "loadingName": "Загрузка имени",
+    "loadingSubject": "Загрузка предмета"
   },
   "cta": {
     "learnMore": "Подробнее"

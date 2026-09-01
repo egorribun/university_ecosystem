@@ -227,7 +227,7 @@ export default function Profile() {
 
   return (
     <Layout className="bg-transparent!">
-      <SEO title={t("profile:pageTitle", "My Profile")} />
+      <SEO title={t("profile:pageTitle")} />
       <div className="fixed inset-0 z-hide pointer-events-none overflow-hidden" aria-hidden>
         <div
           className="absolute inset-0 bg-repeat mix-blend-soft-light translate-z-0"

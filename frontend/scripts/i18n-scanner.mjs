@@ -121,12 +121,23 @@ const SCOPE_EXCLUDED_DIRECTORIES = new Set([
 const USER_FACING_ATTRIBUTES = new Set([
   "alt",
   "aria-label",
+  // React component props are commonly camel-cased even when they map to a
+  // kebab-cased DOM attribute (for example, Skeleton's `ariaLabel`).
+  "ariaLabel",
   "aria-description",
   "aria-valuetext",
   "label",
   "placeholder",
   "title",
   "description",
+])
+const USER_FACING_DEFAULT_IDENTIFIERS = new Set([
+  "alt",
+  "ariaLabel",
+  "description",
+  "label",
+  "placeholder",
+  "title",
 ])
 const NON_USER_FACING_TAGS = new Set(["script", "style", "code", "pre"])
 const PLURAL_SUFFIX = /_(zero|one|two|few|many|other)$/u
@@ -434,6 +445,68 @@ function scanRawLiterals(ast, filePath, errors) {
             value
           )
         )
+      }
+      return
+    }
+    if (node.type === "AssignmentPattern") {
+      const name = node.left?.type === "Identifier" ? node.left.name : undefined
+      const value = nodeString(node.right)
+      if (
+        name &&
+        USER_FACING_DEFAULT_IDENTIFIERS.has(name) &&
+        value &&
+        /\p{L}/u.test(value) &&
+        !isTechnicalLiteral(value, filePath)
+      ) {
+        errors.push(
+          error(
+            "RAW_USER_FACING_LITERAL",
+            `Raw default value for user-facing ${name} must use a translation key`,
+            node.right,
+            value
+          )
+        )
+      }
+      return
+    }
+    if (node.type === "CallExpression" && isTranslationCallee(node.callee)) {
+      const fallback = node.arguments?.[1]
+      const fallbackValue = nodeString(fallback)
+      if (
+        fallbackValue &&
+        /\p{L}/u.test(fallbackValue) &&
+        !isTechnicalLiteral(fallbackValue, filePath)
+      ) {
+        errors.push(
+          error(
+            "RAW_USER_FACING_LITERAL",
+            "Raw translation fallback must use a catalogue key",
+            fallback,
+            fallbackValue
+          )
+        )
+      } else if (fallback?.type === "ObjectExpression") {
+        for (const property of fallback.properties ?? []) {
+          if (property.type !== "ObjectProperty" && property.type !== "ObjectMethod") continue
+          const propertyName =
+            property.key?.type === "Identifier" ? property.key.name : nodeString(property.key)
+          if (propertyName !== "defaultValue") continue
+          const defaultValue = nodeString(property.value)
+          if (
+            defaultValue &&
+            /\p{L}/u.test(defaultValue) &&
+            !isTechnicalLiteral(defaultValue, filePath)
+          ) {
+            errors.push(
+              error(
+                "RAW_USER_FACING_LITERAL",
+                "Raw translation defaultValue must use a catalogue key",
+                property.value,
+                defaultValue
+              )
+            )
+          }
+        }
       }
       return
     }

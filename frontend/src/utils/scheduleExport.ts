@@ -9,6 +9,7 @@
  */
 import type { Lesson } from "@/components/schedule/scheduleUtils"
 import { logError } from "@/app/logger"
+import i18n from "@/i18n/config"
 
 export interface ExportResult {
   success: boolean
@@ -76,7 +77,7 @@ export interface ScheduleExportLabels {
 
 export async function exportScheduleAsPdf(
   gridElement: HTMLElement,
-  title = "Schedule",
+  title = i18n.t("schedule:title.default"),
   filename = "schedule.pdf"
 ): Promise<ExportResult> {
   try {

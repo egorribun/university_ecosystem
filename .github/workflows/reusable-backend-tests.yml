@@ -313,7 +313,12 @@ jobs:
                   if-no-files-found: warn
 
             - name: Update historical test durations
-              if: always() && hashFiles('pytest-report.xml') != ''
+              # A failed collection can leave a syntactically valid but
+              # incomplete JUnit document (for example, an error testcase
+              # without file/classname). Historical timing is advisory and
+              # must not mask the primary pytest failure with a second parser
+              # failure; only update it after the test step succeeds.
+              if: success() && hashFiles('pytest-report.xml') != ''
               shell: pwsh
               env:
                 TEST_GROUP_NAME: ${{ inputs.test-group-name }}

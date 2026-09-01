@@ -1,4 +1,5 @@
 import { render, screen, fireEvent, act } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi, afterEach } from "vitest"
 import type { ReactNode } from "react"
 
@@ -40,22 +41,9 @@ vi.mock("react-i18next", () => ({
 }))
 
 vi.mock("@/components/media/SmartImage", () => ({
-  default: ({
-    alt,
-    className,
-    onClick,
-  }: {
-    alt?: string
-    className?: string
-    onClick?: () => void
-  }) =>
-    onClick ? (
-      <button type="button" onClick={onClick} aria-label={alt}>
-        <img alt={alt} className={className} />
-      </button>
-    ) : (
-      <img alt={alt} className={className} />
-    ),
+  default: ({ alt, className }: { alt?: string; className?: string }) => (
+    <img alt={alt} className={className} />
+  ),
 }))
 
 // Pass-through debounce so search filtering applies immediately (no fake timers).
@@ -278,6 +266,63 @@ describe("ChatWindow — attachments (W205)", () => {
       { wrapper }
     )
     expect(screen.getByAltText("pic.png")).toBeTruthy()
+  })
+
+  it("exposes image attachments as keyboard-accessible, focusable buttons", async () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null)
+    const user = userEvent.setup()
+
+    render(
+      <ChatWindow
+        messages={[
+          makeMessage({
+            id: "a11y-image",
+            text: "photo",
+            attachments: [
+              {
+                id: "att-a11y",
+                url: "https://example.com/pic.png",
+                type: "image",
+                name: "pic.png",
+                size: 2048,
+              },
+            ],
+          }),
+        ]}
+      />,
+      { wrapper }
+    )
+
+    const image = screen.getByAltText("pic.png")
+    const trigger = screen.getByRole("button", {
+      name: "messenger:viewAvatar: pic.png",
+    })
+
+    expect(trigger).toContainElement(image)
+    expect(trigger).toHaveAttribute("type", "button")
+    expect(trigger).toHaveClass("min-h-[44px]", "min-w-[44px]")
+
+    trigger.focus()
+    expect(trigger).toHaveFocus()
+
+    await user.keyboard("{Enter}")
+    await user.keyboard(" ")
+
+    expect(openSpy).toHaveBeenCalledTimes(2)
+    expect(openSpy).toHaveBeenNthCalledWith(
+      1,
+      "https://example.com/pic.png",
+      "_blank",
+      "noopener,noreferrer"
+    )
+    expect(openSpy).toHaveBeenNthCalledWith(
+      2,
+      "https://example.com/pic.png",
+      "_blank",
+      "noopener,noreferrer"
+    )
+
+    openSpy.mockRestore()
   })
 
   it("renders a file attachment as a link with name + size", () => {

@@ -33,7 +33,7 @@ The last measured checkout had a clean worktree, 4,434 tracked files, and 888,38
 | Rust crypto | Lines/functions are 100%, but branch evidence is `0/0` and the normalizer marks the component failed | Either measure real branches and cover them, or implement/test a fail-closed zero-branch derivation that reports 100% only when source analysis proves there are no branches |
 | Go | Native statement profiles are 100%; branch/function counters are not native Go metrics | Keep statement gate at 100%, document derived line metrics, and ensure the manifest does not silently treat unsupported metrics as measured |
 | Infrastructure/scripts/workflows | Manifest marks these reports missing and requires an alternative gate | Run and archive their declared validators; make the alternative gate explicit and machine-checked |
-| API contract | Schemathesis is a required four-shard gate | Run all four shards plus the aggregate job; cancelled or missing shards are failures |
+| API contract | Schemathesis is a required eight-shard gate | Run all eight shards plus the aggregate job; cancelled or missing shards are failures |
 | Docker | `start-docker.ps1 -Build` is the user-facing path | Validate every compose variant, backend readiness, dependency health, and startup logs from a clean build |
 | Harness/docs | `verify_harness.py` covers hooks, safety gates, subagents, and MCP configuration | Run repo-only harness, add regression coverage for every discovered failure, and reconcile active docs with actual workflows |
 
@@ -178,12 +178,12 @@ uv run pytest --cov=app --cov-branch `
 
 **Steps:**
 
-- [ ] Run all four Schemathesis shards with the same environment as CI (`ENVIRONMENT=testing`, SQLite test database, `SCHEMATHESIS_MAX_EXAMPLES=25`, shard count/index) and save each result.
+- [ ] Run all eight Schemathesis shards with the same environment as CI (`ENVIRONMENT=testing`, SQLite test database, `SCHEMATHESIS_MAX_EXAMPLES=25`, shard count/index) and save each result.
 - [ ] Run the aggregate job even when a shard fails; make cancellation, timeout, and missing shard evidence a hard failure rather than a silent skip.
 - [ ] Regenerate OpenAPI/types/mocks from the current backend and verify no generated file drift remains.
 - [ ] Run contract tests against the generated schema and add a regression test for each mismatch before changing production behavior.
 
-**Acceptance:** four shards plus aggregate are green, generated schema is deterministic, and every required PR contract job reports success.
+**Acceptance:** eight shards plus aggregate are green, generated schema is deterministic, and every required PR contract job reports success.
 
 ## Task 7: Validate Docker, Compose, readiness, and backend startup end-to-end
 

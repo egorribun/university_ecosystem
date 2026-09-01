@@ -11,6 +11,8 @@ vi.mock("react-i18next", () => ({
         { count?: number; duration?: string; defaultValue?: string } | undefined
       if (key === "schedule:time.hours") return `${opts?.count}h`
       if (key === "schedule:time.minutes") return `${opts?.count}m`
+      if (key === "schedule:time.hoursShort") return "h"
+      if (key === "schedule:time.minutesShort") return "m"
       if (key === "schedule:timeLeft.current") return `left ${opts?.duration}`
       if (key === "schedule:timeLeft.next") return `in ${opts?.duration}`
       return opts?.defaultValue ?? key

@@ -132,9 +132,9 @@ export function useScheduleTime(todayLessons: Lesson[], hasToday: boolean) {
     const h = Math.floor(mins / 60)
     const m = mins % 60
     if (h > 0 && m > 0)
-      return `${h}${t("schedule:time.hoursShort", { defaultValue: "h" })} ${m}${t("schedule:time.minutesShort", { defaultValue: "m" })}`
-    if (h > 0) return `${h}${t("schedule:time.hoursShort", { defaultValue: "h" })}`
-    return `${m}${t("schedule:time.minutesShort", { defaultValue: "m" })}`
+      return `${h}${t("schedule:time.hoursShort")} ${m}${t("schedule:time.minutesShort")}`
+    if (h > 0) return `${h}${t("schedule:time.hoursShort")}`
+    return `${m}${t("schedule:time.minutesShort")}`
   }, [currentLesson, nextLesson, minutesNow, t])
 
   const currentProgress = useMemo(() => {

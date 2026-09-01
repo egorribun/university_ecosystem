@@ -36,9 +36,10 @@ Run locally
 -----------
     uv run pytest tests/test_schemathesis_api.py -v -m schemathesis
 
-CI sets ``SCHEMATHESIS_SHARD_COUNT=4`` and
-``SCHEMATHESIS_SHARD_INDEX=0..3`` to distribute the same exhaustive operation
-set across four bounded jobs.
+CI sets ``SCHEMATHESIS_SHARD_COUNT=8`` and
+``SCHEMATHESIS_SHARD_INDEX=0..7`` to distribute the same exhaustive operation
+set across eight bounded jobs.  Each operation still receives the configured
+number of examples; only the process fan-out changes.
 """
 
 from __future__ import annotations

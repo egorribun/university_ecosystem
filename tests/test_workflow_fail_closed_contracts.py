@@ -569,6 +569,18 @@ def test_python_coverage_scope_and_migration_gate_are_explicit() -> None:
     assert "--cov=alembic/versions" not in pytest_runs
 
 
+def test_backend_duration_refresh_cannot_mask_a_failed_pytest_collection() -> None:
+    reusable = _workflow(WORKFLOWS / "reusable-backend-tests.yml")
+    duration_step = _step(
+        reusable["jobs"]["unit-tests"], "Update historical test durations"
+    )
+
+    # A collection/import error may still produce an incomplete JUnit XML file.
+    # Duration history is advisory and must run only after pytest succeeds so a
+    # parser error cannot obscure the primary test failure.
+    assert duration_step["if"] == "success() && hashFiles('pytest-report.xml') != ''"
+
+
 def test_spectral_upload_is_optional_but_enforcement_is_not() -> None:
     job = _workflow(WORKFLOWS / "contract-validation.yml")["jobs"]["spectral-lint"]
     report = _step(job, "Run Spectral lint")
@@ -1218,3 +1230,42 @@ def test_workflow_tool_installers_do_not_use_latest_selectors() -> None:
 def test_dependency_review_does_not_upload_a_report_it_never_creates() -> None:
     text = (WORKFLOWS / "dependency-review.yml").read_text(encoding="utf-8")
     assert "dependency-review-report.json" not in text
+
+
+def test_schemathesis_operation_shards_preserve_depth_and_fail_closed_aggregate() -> (
+    None
+):
+    workflow = _workflow(CI)
+    shard_job = workflow["jobs"]["schemathesis-api-tests-shard"]
+    matrix = shard_job["strategy"]["matrix"]["shard"]
+
+    # Every operation remains covered with the same 25 examples; only the
+    # process fan-out changes so each TestClient/lifespan-heavy shard is
+    # smaller.  Keep the matrix explicit so a missing logical shard cannot be
+    # hidden behind a dynamic expression.
+    assert matrix == list(range(8))
+    assert shard_job["name"] == (
+        "Schemathesis - API Schema Conformance / shard ${{ matrix.shard }}/8"
+    )
+    run = _step(shard_job, "Run Schemathesis conformance tests")
+    assert run["env"] == {
+        "DATABASE_URL": "sqlite+aiosqlite:///./test_schemathesis.db",
+        "ENVIRONMENT": "testing",
+        "REVOCATION_REDIS_URL": "redis://localhost:6380/0",
+        "OTEL_SDK_DISABLED": "true",
+        "UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET": "1",
+        "SCHEMATHESIS_MAX_EXAMPLES": "25",
+        "SCHEMATHESIS_SHARD_COUNT": "8",
+        "SCHEMATHESIS_SHARD_INDEX": "${{ matrix.shard }}",
+    }
+
+    aggregate = workflow["jobs"]["schemathesis-api-tests"]
+    assert aggregate["if"] == "${{ always() && !cancelled() }}"
+    assert aggregate["needs"] == "schemathesis-api-tests-shard"
+    gate = _step(aggregate, "Require every Schemathesis shard to pass")
+    assert gate["env"] == {
+        "SHARD_RESULT": "${{ needs.schemathesis-api-tests-shard.result }}"
+    }
+    assert 'if [[ "$SHARD_RESULT" != "success" ]]' in gate["run"]
+    assert 'echo "Schemathesis shard aggregate: $SHARD_RESULT"' in gate["run"]
+    assert "exit 1" in gate["run"]

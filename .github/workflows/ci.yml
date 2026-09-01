@@ -2169,16 +2169,16 @@ jobs:
   # and asserts every response conforms to the declared contract.
   # Uses ASGI transport — fully hermetic, no Docker or network required.
   schemathesis-api-tests-shard:
-    name: Schemathesis - API Schema Conformance / shard ${{ matrix.shard }}/4
+    name: Schemathesis - API Schema Conformance / shard ${{ matrix.shard }}/8
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     # 25 examples per operation across the complete OpenAPI surface are
-    # intentionally exhaustive.  Four independent operation shards preserve
-    # that depth while keeping each bounded job well below the old 60-minute
-    # cancellation point.
+    # intentionally exhaustive.  Eight independent operation shards preserve
+    # that depth while reducing the TestClient/lifespan cost of each bounded
+    # job well below the old 60-minute cancellation point.
     timeout-minutes: 60
     needs: pre-commit-check
     permissions:
@@ -2217,7 +2217,7 @@ jobs:
           OTEL_SDK_DISABLED: "true"
           UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
           SCHEMATHESIS_MAX_EXAMPLES: "25"
-          SCHEMATHESIS_SHARD_COUNT: "4"
+          SCHEMATHESIS_SHARD_COUNT: "8"
           SCHEMATHESIS_SHARD_INDEX: ${{ matrix.shard }}
         run: |
           uv run pytest tests/test_schemathesis_api.py -v \
@@ -2226,7 +2226,7 @@ jobs:
             -p no:cacheprovider
 
   # Preserve the exact required check name while exposing a single aggregate
-  # result for the four matrix shards above.  `always()` ensures a cancelled or
+  # result for the eight matrix shards above.  `always()` ensures a cancelled or
   # failed shard is reported as a hard failure instead of disappearing as a
   # skipped dependency in CI Success.
   schemathesis-api-tests:

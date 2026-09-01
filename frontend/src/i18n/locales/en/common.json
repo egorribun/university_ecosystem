@@ -13,7 +13,7 @@
   "today": "Today",
   "next": "Next",
   "sync": {
-    "offline": "Offline · last synced {{time}}",
+    "offline": "Offline ({{count}} queued)",
     "online": "All synced"
   },
   "time": {
@@ -112,7 +112,15 @@
     "removeBookmark": "Remove bookmark",
     "loadingProfile": "Loading profile",
     "loadingSchedule": "Loading schedule",
-    "loadingUserMenu": "Loading user menu"
+    "loadingUserMenu": "Loading user menu",
+    "loadingGreeting": "Loading greeting",
+    "loadingTime": "Loading time",
+    "loadingWeather": "Loading weather",
+    "loadingDate": "Loading date",
+    "loadingStory": "Loading story",
+    "loadingAvatar": "Loading avatar",
+    "loadingName": "Loading name",
+    "loadingSubject": "Loading subject"
   },
   "cta": {
     "learnMore": "Learn more"

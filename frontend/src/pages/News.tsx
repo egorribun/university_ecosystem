@@ -9,12 +9,7 @@ const News = () => {
 
   return (
     <Layout>
-      <SEO
-        title={t("news:pageTitle")}
-        description={t("news:pageDescription", {
-          defaultValue: "Latest news and updates from the university ecosystem.",
-        })}
-      />
+      <SEO title={t("news:pageTitle")} description={t("news:pageDescription")} />
       <NewsFeature />
     </Layout>
   )

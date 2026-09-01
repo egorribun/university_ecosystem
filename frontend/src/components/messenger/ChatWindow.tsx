@@ -738,10 +738,10 @@ export const ChatWindow = memo(function ChatWindow({
                               <div key={attachment.id} className="overflow-hidden rounded-xl">
                                 {attachment.type === "image" ? (
                                   sanitizeUrl(attachment.url) ? (
-                                    <SmartImage
-                                      srcRaw={attachment.url}
-                                      alt={attachment.name}
-                                      className="w-full h-auto max-h-72 object-cover cursor-pointer hover:scale-hover transition-transform duration-slow"
+                                    <button
+                                      type="button"
+                                      aria-label={`${t("messenger:viewAvatar")}: ${attachment.name}`}
+                                      className="block min-h-[44px] min-w-[44px] w-full rounded-xl border-0 bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--color-violet-500)"
                                       onClick={() => {
                                         // Rendering already proved this immutable URL safe.
                                         window.open(
@@ -750,7 +750,13 @@ export const ChatWindow = memo(function ChatWindow({
                                           "noopener,noreferrer"
                                         )
                                       }}
-                                    />
+                                    >
+                                      <SmartImage
+                                        srcRaw={attachment.url}
+                                        alt={attachment.name}
+                                        className="w-full h-auto max-h-72 object-cover cursor-pointer hover:scale-hover transition-transform duration-slow"
+                                      />
+                                    </button>
                                   ) : null
                                 ) : sanitizeUrl(attachment.url) ? (
                                   <a

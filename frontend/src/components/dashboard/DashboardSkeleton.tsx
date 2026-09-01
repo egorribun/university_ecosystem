@@ -1,4 +1,5 @@
 import { memo } from "react"
+import { useTranslation } from "react-i18next"
 import { Skeleton, Card } from "@/components/ui"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
@@ -9,6 +10,7 @@ import { breakpoints } from "@/theme/tokens"
  * Wave 118 (FIX-118-01): Aligned paddings with DashboardHero and grid to zero out CLS.
  */
 export const DashboardSkeleton = memo(function DashboardSkeleton() {
+  const { t } = useTranslation("common")
   const isStoriesInHero = useMediaQuery(`(min-width: ${breakpoints.storiesInHero})`)
 
   return (
@@ -23,11 +25,24 @@ export const DashboardSkeleton = memo(function DashboardSkeleton() {
         <div className="card-matte glass-noise mb-8 rounded-2xl p-8 md:p-10">
           <div className="flex flex-col gap-4 min-[1220px]:flex-row min-[1220px]:items-center min-[1220px]:gap-6">
             <div className="shrink-0 space-y-4">
-              <Skeleton width="14rem" height="2.25rem" ariaLabel="Loading greeting" />
+              <Skeleton
+                width="14rem"
+                height="2.25rem"
+                ariaLabel={t("common:aria.loadingGreeting")}
+              />
               <div className="flex items-center gap-3">
-                <Skeleton width="5rem" height="1.5rem" rounded="9999rem" ariaLabel="Loading time" />
-                <Skeleton width="4rem" height="1.25rem" ariaLabel="Loading weather" />
-                <Skeleton width="8rem" height="1rem" ariaLabel="Loading date" />
+                <Skeleton
+                  width="5rem"
+                  height="1.5rem"
+                  rounded="9999rem"
+                  ariaLabel={t("common:aria.loadingTime")}
+                />
+                <Skeleton
+                  width="4rem"
+                  height="1.25rem"
+                  ariaLabel={t("common:aria.loadingWeather")}
+                />
+                <Skeleton width="8rem" height="1rem" ariaLabel={t("common:aria.loadingDate")} />
               </div>
             </div>
 
@@ -56,7 +71,7 @@ export const DashboardSkeleton = memo(function DashboardSkeleton() {
                 width="5rem"
                 height="5rem"
                 rounded="50%"
-                ariaLabel="Loading story"
+                ariaLabel={t("common:aria.loadingStory")}
               />
             ))}
           </div>

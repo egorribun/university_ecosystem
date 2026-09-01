@@ -52,11 +52,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
       <form noValidate autoComplete="on" onSubmit={onSubmit} className="flex flex-col gap-6">
         <div className="space-y-2 text-center">
           <h2 className="text-3xl font-extrabold">{t("auth:login.title")}</h2>
-          <p className="text-sm text-text-secondary">
-            {t("auth:login.subtitle", {
-              defaultValue: "Sign in to continue your university journey",
-            })}
-          </p>
+          <p className="text-sm text-text-secondary">{t("auth:login.subtitle")}</p>
         </div>
 
         <div className="space-y-2">

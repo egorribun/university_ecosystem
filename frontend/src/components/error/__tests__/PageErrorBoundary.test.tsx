@@ -15,7 +15,15 @@ const {
   captureExceptionMock: vi.fn(),
   logErrorMock: vi.fn(),
   useTranslationMock: vi.fn((..._namespaces: unknown[]) => ({
-    t: (key: string, fallback?: string) => fallback ?? key,
+    t: (key: string, fallback?: string) => {
+      const catalog: Record<string, string> = {
+        "system:pageError.title": "Page Error",
+        "system:pageError.description": "Something went wrong loading this page.",
+        "system:pageError.retry": "Try Again",
+        "system:pageError.home": "Go Home",
+      }
+      return catalog[key] ?? fallback ?? key
+    },
     ready: translationState.ready,
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   })),

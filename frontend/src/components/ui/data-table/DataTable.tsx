@@ -94,7 +94,7 @@ function DataTableInner<TData extends RowData>({ columns, data }: DataTableProps
             ) : (
               <TableRow>
                 <TableCell colSpan={columns.length} className="h-24 text-center">
-                  {t("common:noResults", "No results.")}
+                  {t("common:noResults")}
                 </TableCell>
               </TableRow>
             )}

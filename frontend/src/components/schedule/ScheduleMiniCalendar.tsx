@@ -91,7 +91,7 @@ export function ScheduleMiniCalendar({
         <button
           type="button"
           onClick={() => changeMonth(-1)}
-          aria-label={t("common:prev", { defaultValue: "Previous" })}
+          aria-label={t("common:prev")}
           className="flex h-7 w-7 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
         >
           <ChevronLeft size={14} aria-hidden="true" />
@@ -108,13 +108,13 @@ export function ScheduleMiniCalendar({
             }}
             className="ml-1 rounded-md bg-brand px-2 py-0.5 text-[0.5625rem] font-bold text-[var(--sched-on-accent)] transition-colors hover:bg-brand-hover focus-visible:ring-2 focus-visible:ring-brand"
           >
-            {t("common:today", { defaultValue: "Today" })}
+            {t("common:today")}
           </button>
         )}
         <button
           type="button"
           onClick={() => changeMonth(1)}
-          aria-label={t("common:next", { defaultValue: "Next" })}
+          aria-label={t("common:next")}
           className="flex h-7 w-7 items-center justify-center rounded-lg text-text-secondary transition-colors hover:bg-surface-elevated/(--opacity-dim) hover:text-text-primary focus-visible:ring-2 focus-visible:ring-brand"
         >
           <ChevronRight size={14} aria-hidden="true" />

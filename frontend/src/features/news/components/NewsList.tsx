@@ -91,9 +91,7 @@ export const NewsList = ({
           <EmptyState
             icon={<ArticleIcon className="h-8 w-8" />}
             title={t("news:states.empty")}
-            description={t("news:states.checkLater", {
-              defaultValue: "Check back later for updates",
-            })}
+            description={t("news:states.checkLater")}
             action={
               isAdmin ? (
                 <Button

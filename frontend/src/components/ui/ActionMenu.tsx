@@ -25,6 +25,7 @@ import {
 } from "react"
 
 import { MoreVertical as MoreVertIcon } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 
 export interface ActionMenuItem {
@@ -63,8 +64,10 @@ export const ActionMenu = ({
   triggerClassName,
   menuClassName,
   placement = "bottom-end",
-  ariaLabel = "Open menu",
+  ariaLabel,
 }: ActionMenuProps) => {
+  const { t } = useTranslation("navigation")
+  const resolvedAriaLabel = ariaLabel ?? t("navigation:aria.openMenu")
   const [isOpen, setIsOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -153,7 +156,7 @@ export const ActionMenu = ({
         type="button"
         onClick={handleToggle}
         onKeyDown={handleKeyDown}
-        aria-label={ariaLabel}
+        aria-label={resolvedAriaLabel}
         aria-haspopup="menu"
         aria-expanded={isOpen}
         className={cn(
