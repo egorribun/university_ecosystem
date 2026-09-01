@@ -1610,6 +1610,8 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
         "mutation-scope",
         "pre-commit-check",
         "pre-commit-security-and-types",
+        "backend-tests",
+        "backend-type-check",
         "coverage-policy-gate",
     ]
     base_text = "\n".join(
@@ -1641,6 +1643,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert stats_job["needs"] == [
         "mutation-scope",
         "mutation-tests-universe-base",
+        "pre-commit-check",
         "pre-commit-security-and-types",
         "backend-tests",
         "backend-type-check",
@@ -1863,6 +1866,7 @@ def test_mutation_stats_wait_for_the_foundational_coverage_gate() -> None:
     assert stats_job["needs"] == [
         "mutation-scope",
         "mutation-tests-universe-base",
+        "pre-commit-check",
         "pre-commit-security-and-types",
         "backend-tests",
         "backend-type-check",
@@ -1903,6 +1907,7 @@ def test_mutation_lanes_are_readiness_gated_and_use_the_runner_budget() -> None:
     assert jobs["mutation-tests-stats"]["needs"] == [
         "mutation-scope",
         "mutation-tests-universe-base",
+        "pre-commit-check",
         "pre-commit-security-and-types",
         "backend-tests",
         "backend-type-check",
@@ -1933,6 +1938,7 @@ def test_mutation_stats_scope_is_resolved_before_matrix_fanout() -> None:
     assert stats["needs"] == [
         "mutation-scope",
         "mutation-tests-universe-base",
+        "pre-commit-check",
         "pre-commit-security-and-types",
         "backend-tests",
         "backend-type-check",

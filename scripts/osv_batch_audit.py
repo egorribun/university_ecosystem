@@ -184,22 +184,24 @@ class OsvBatchService(VulnerabilityService):  # type: ignore[misc]
                         ids.append(identifier)
                 references[self._dependency_key(spec)] = sorted(ids)
 
-        detail_cache: dict[str, VulnerabilityResult | None] = {}
+        # Cache the immutable OSV payload by advisory ID, then parse it for
+        # each queried package.  A single advisory may affect several PyPI
+        # packages with different fixed versions; caching the parsed result by
+        # ID would leak the first package's remediation into every later one.
+        detail_payload_cache: dict[str, dict[str, object]] = {}
         findings: dict[tuple[str, str], list[VulnerabilityResult]] = {}
         for spec in specs:
             key = self._dependency_key(spec)
             package_name = canonicalize_name(spec.name)
             parsed: list[VulnerabilityResult] = []
             for identifier in references[key]:
-                if identifier not in detail_cache:
-                    detail_cache[identifier] = self._parse_vulnerability(
-                        identifier,
-                        self._request_json(
-                            f"{OSV_VULN_URL}{identifier}", None, method="GET"
-                        ),
-                        package_name,
+                if identifier not in detail_payload_cache:
+                    detail_payload_cache[identifier] = self._request_json(
+                        f"{OSV_VULN_URL}{identifier}", None, method="GET"
                     )
-                detail = detail_cache[identifier]
+                detail = self._parse_vulnerability(
+                    identifier, detail_payload_cache[identifier], package_name
+                )
                 if detail is not None:
                     parsed.append(detail)
             findings[key] = parsed
@@ -269,7 +271,15 @@ class OsvBatchService(VulnerabilityService):  # type: ignore[misc]
             raise OsvBatchError(
                 f"OSV vulnerability id mismatch: requested {identifier!r}, got {payload_id!r}"
             )
-        if payload.get("withdrawn") is not None:
+        withdrawn = payload.get("withdrawn")
+        if withdrawn is not None:
+            withdrawn_text = _string(withdrawn, label="OSV vulnerability.withdrawn")
+            try:
+                VulnerabilityService._parse_rfc3339(withdrawn_text)
+            except ValueError as exc:
+                raise OsvBatchError(
+                    f"invalid OSV withdrawn timestamp: {withdrawn_text}"
+                ) from exc
             return None
 
         schema = _string(
@@ -427,6 +437,10 @@ def main(argv: list[str] | None = None) -> int:
         payload, has_findings = _report(results)
         _write_atomic(args.output, payload)
         return 1 if has_findings else 0
+    # The CLI boundary must remove any partial report for parser, dependency
+    # source, transport, or third-party service failures.  This intentionally
+    # broad catch is fail-closed: callers receive status 2 and never consume
+    # incomplete audit output.
     except Exception as exc:
         args.output.unlink(missing_ok=True)
         print(f"::error::OSV batch audit failed: {exc}")

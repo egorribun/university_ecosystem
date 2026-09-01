@@ -2775,6 +2775,8 @@ jobs:
       - mutation-scope
       - pre-commit-check
       - pre-commit-security-and-types
+      - backend-tests
+      - backend-type-check
       - coverage-policy-gate
     env:
       OTEL_SDK_DISABLED: "true"
@@ -2883,6 +2885,7 @@ jobs:
     needs:
       - mutation-scope
       - mutation-tests-universe-base
+      - pre-commit-check
       - pre-commit-security-and-types
       - backend-tests
       - backend-type-check

@@ -112,6 +112,47 @@ def test_batch_service_retries_transient_response_and_sorts_report() -> None:
     assert sleeps == [1.0]
 
 
+def test_shared_vulnerability_detail_is_parsed_for_each_package() -> None:
+    """One OSV record can affect multiple packages with different fixes."""
+
+    payload = _detail()
+    payload["affected"].append(
+        {
+            "package": {"name": "other-package", "ecosystem": "PyPI"},
+            "ranges": [
+                {
+                    "type": "ECOSYSTEM",
+                    "events": [{"introduced": "0"}, {"fixed": "3.0.0"}],
+                }
+            ],
+        }
+    )
+    service = _service(
+        [
+            _Response(
+                200,
+                {
+                    "results": [
+                        {"vulns": [{"id": "PYSEC-2099-1"}]},
+                        {"vulns": [{"id": "PYSEC-2099-1"}]},
+                    ]
+                },
+            ),
+            _Response(200, payload),
+        ]
+    )
+    first = ResolvedDependency("demo-package", Version("1.0.0"))
+    second = ResolvedDependency("other-package", Version("1.0.0"))
+
+    result = list(service.query_all(iter([first, second])))
+
+    assert result[0][1][0].fix_versions == [Version("2.0.0")]
+    assert result[1][1][0].fix_versions == [Version("3.0.0")]
+    assert [url for url, _ in service._session.calls].count(
+        "https://api.osv.dev/v1/vulns/PYSEC-2099-1"
+    ) == 1
+
+
 @pytest.mark.parametrize(
     "responses",
     [
@@ -123,6 +164,17 @@ def test_batch_service_retries_transient_response_and_sorts_report() -> None:
         [
             _Response(200, {"results": [{"vulns": [{"id": "PYSEC-1"}]}]}),
             _Response(200, {"id": "PYSEC-1", "affected": []}),
+        ],
+        [
+            _Response(200, {"results": [{"vulns": [{"id": "PYSEC-1"}]}]}),
+            _Response(
+                200,
+                {
+                    "id": "PYSEC-1",
+                    "withdrawn": False,
+                    "affected": [],
+                },
+            ),
         ],
         [_Response(302, {})],
     ],
