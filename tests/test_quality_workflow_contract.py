@@ -616,6 +616,31 @@ def test_pact_workflow_replays_every_cross_process_boundary() -> None:
     assert "uvicorn app.main:app" in http_provider_text
 
 
+def test_pact_privileged_install_preserves_configured_go_toolchain() -> None:
+    """The Pact installer must not fall back to the runner's system Go under sudo.
+
+    ``actions/setup-go`` prepends the selected toolchain to ``PATH``.  A plain
+    ``sudo go`` invocation uses sudo's secure_path instead, which can launch an
+    older system Go and trigger an unbounded toolchain download.  The workflow
+    therefore has to pass the configured PATH and local toolchain mode
+    explicitly into the privileged command.
+    """
+
+    workflow = yaml.safe_load(PACT_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["message-provider-verify"]["steps"]
+    setup_go = next(step for step in steps if step.get("name") == "Set up Go")
+    install = next(
+        step for step in steps if step.get("name") == "Install Pact FFI library"
+    )
+
+    assert setup_go["with"]["go-version-file"] == "services/ws-hub/go.mod"
+    command = str(install["run"])
+    assert "sudo env" in command
+    assert 'PATH="$PATH"' in command
+    assert 'GOTOOLCHAIN="${GOTOOLCHAIN:-local}"' in command
+    assert "sudo go run" not in command
+
+
 def test_cross_browser_e2e_is_advisory_during_stabilization() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     jobs = workflow["jobs"]
