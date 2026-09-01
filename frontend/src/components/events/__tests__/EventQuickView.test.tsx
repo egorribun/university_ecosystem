@@ -159,4 +159,14 @@ describe("EventQuickView", () => {
     )
     expect(screen.getByText("events:quickView.viewDetails")).toBeInTheDocument()
   })
+
+  it("renders an empty date label when date formatting has no result", () => {
+    formatDateMock.mockReturnValueOnce("")
+
+    const { container } = render(<EventQuickView {...baseProps} />)
+
+    const calendar = container.querySelector("svg.lucide-calendar")
+    expect(calendar?.parentElement?.textContent).toBe("")
+    expect(screen.queryByText(`date:${baseProps.startsAt}`)).not.toBeInTheDocument()
+  })
 })

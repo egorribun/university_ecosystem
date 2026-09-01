@@ -612,7 +612,12 @@ def test_scheduled_workflows_reject_missing_required_inputs() -> None:
         end = collect.index("exit 1", start)
         assert "exit 0" not in collect[start:end]
 
-    cleanup = _workflow(WORKFLOWS / "weekly-cleanup.yml")["jobs"]["cleanup"]
+    weekly_workflow = _workflow(WORKFLOWS / "weekly-cleanup.yml")
+    cleanup = weekly_workflow["jobs"]["cleanup"]
+    assert weekly_workflow["concurrency"] == {
+        "group": "weekly-cleanup",
+        "cancel-in-progress": False,
+    }
     missing = _step(cleanup, "Fail when required cleanup configuration is missing")
     assert "::error::" in missing["run"]
     assert "exit 1" in missing["run"]

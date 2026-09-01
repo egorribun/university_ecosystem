@@ -404,4 +404,13 @@ describe("EventCardView closure paths", () => {
     expect(callbacks.onDeleteConfirm).toHaveBeenCalledOnce()
     expect(callbacks.onErrorClose).toHaveBeenCalledOnce()
   })
+
+  it("normalizes a missing admin location before opening the edit dialog", async () => {
+    await act(async () => {
+      render(<EventCardView {...makeProps({ isAdmin: true, editOpen: true, location: "" })} />)
+    })
+
+    await waitFor(() => expect(screen.getByTestId("event-edit-dialog")).toBeInTheDocument())
+    expect(screen.getByTestId("normalized-location").textContent).toBe("")
+  })
 })
