@@ -52,23 +52,24 @@ const getLessonBounds = (lesson: LessonTimeFields | null): LessonBounds | null =
 const lessonStartsAfter = (lesson: LessonTimeFields, threshold: number): boolean =>
   (getLessonBounds(lesson)?.start ?? Number.NaN) > threshold
 
-export const findNextLesson = <T extends LessonTimeFields>(
+export function findNextLesson<T extends LessonTimeFields>(
   todayLessons: readonly T[],
   currentLesson: T | null,
   minutesNow: number
-): T | null =>
-  todayLessons.find((lesson) =>
-    lessonStartsAfter(lesson, getLessonBounds(currentLesson)?.end ?? minutesNow)
-  ) ?? null
+): T | null {
+  return (
+    todayLessons.find((lesson) =>
+      lessonStartsAfter(lesson, getLessonBounds(currentLesson)?.end ?? minutesNow)
+    ) ?? null
+  )
+}
 
-const calculateLessonProgress = (bounds: LessonBounds | null, minutesNow: number): number =>
-  bounds === null
-    ? 0
-    : Math.round(
-        (Math.min(Math.max(0, minutesNow - bounds.start), bounds.end - bounds.start) /
-          (bounds.end - bounds.start)) *
-          100
-      )
+export function calculateLessonProgress(bounds: LessonBounds | null, minutesNow: number): number {
+  if (bounds === null) return 0
+  const span = bounds.end - bounds.start
+  const passed = Math.min(Math.max(0, minutesNow - bounds.start), span)
+  return Math.round((passed / span) * 100)
+}
 
 export const ScheduleCard = memo(function ScheduleCard({
   userRole,

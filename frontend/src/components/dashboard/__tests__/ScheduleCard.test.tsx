@@ -89,7 +89,7 @@ vi.mock("@/components/ui", () => {
   return { Badge, Button, Card, ProgressBar, Skeleton }
 })
 
-import { findNextLesson, ScheduleCard } from "../ScheduleCard"
+import { calculateLessonProgress, findNextLesson, ScheduleCard } from "../ScheduleCard"
 
 const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
 
@@ -256,6 +256,15 @@ describe("ScheduleCard", () => {
     })
 
     expect(findNextLesson([startsNow, later], null, 10 * 60 + 30)).toBe(later)
+  })
+
+  it("clamps lesson progress to the validated interval", () => {
+    const bounds = { start: 10 * 60, end: 11 * 60 }
+
+    expect(calculateLessonProgress(null, 10 * 60 + 30)).toBe(0)
+    expect(calculateLessonProgress(bounds, 9 * 60)).toBe(0)
+    expect(calculateLessonProgress(bounds, 10 * 60 + 30)).toBe(50)
+    expect(calculateLessonProgress(bounds, 12 * 60)).toBe(100)
   })
 
   it("does not promote malformed times to current or next lessons", () => {
