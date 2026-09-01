@@ -1,19 +1,24 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-const { useEventCardLogicMock } = vi.hoisted(() => ({
-  useEventCardLogicMock: vi.fn(),
-}))
+const { useEventCardLogicMock, useTranslationMock, translationMock } = vi.hoisted(() => {
+  const translationMock = vi.fn((key: string) => key)
+  return {
+    useEventCardLogicMock: vi.fn(),
+    useTranslationMock: vi.fn(() => ({
+      t: translationMock,
+      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+    })),
+    translationMock,
+  }
+})
 
 vi.mock("@/hooks/useEventCardLogic", () => ({
   useEventCardLogic: useEventCardLogicMock,
 }))
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  useTranslation: useTranslationMock,
 }))
 
 vi.mock("@/components/events/EventCard/EventCardSkeleton", () => ({
@@ -30,12 +35,20 @@ vi.mock("@/components/events/EventCard/EventCardView", () => ({
 
     return (
       <div data-testid="event-card-view">
-        <span>{String(props.title)}</span>
+        <span data-testid="event-card-title">{String(props.title)}</span>
         <span data-testid="event-card-admin">{String(props.isAdmin)}</span>
         <span data-testid="event-card-loading">{String(props.loading)}</span>
         <span data-testid="event-card-image">{String(props.imageUrl)}</span>
         <span data-testid="event-card-starts">{String(props.startsAt)}</span>
+        <span data-testid="event-card-speaker">{String(props.speaker)}</span>
+        <span data-testid="event-card-ends">{String(props.endsAt)}</span>
         <span data-testid="event-card-location">{String(props.location)}</span>
+        <span data-testid="event-card-description">{String(props.description)}</span>
+        <span data-testid="event-card-category">{String(props.category)}</span>
+        <span data-testid="event-card-priority">{String(props.priority)}</span>
+        <span data-testid="event-card-delete-title">
+          {String((props.t as { deleteTitle: string }).deleteTitle)}
+        </span>
         <button type="button" onClick={onEditOpen}>
           edit-open
         </button>
@@ -115,6 +128,11 @@ describe("EventCard logic wrapper closure paths", () => {
     await waitFor(() => expect(screen.getByTestId("event-card-view")).toBeInTheDocument())
     expect(screen.getByText("Workshop")).toBeInTheDocument()
     expect(screen.getByTestId("event-card-admin")).toHaveTextContent("true")
+    expect(useTranslationMock).toHaveBeenCalledWith(["events", "common"])
+    expect(translationMock).toHaveBeenCalledWith("events:card.dialogs.delete.title")
+    expect(translationMock).toHaveBeenCalledWith("events:card.dialogs.delete.description")
+    expect(translationMock).toHaveBeenCalledWith("common:buttons.delete")
+    expect(translationMock).toHaveBeenCalledWith("common:buttons.cancel")
 
     fireEvent.click(screen.getByRole("button", { name: "edit-open" }))
     fireEvent.click(screen.getByRole("button", { name: "edit-close" }))
@@ -142,6 +160,27 @@ describe("EventCard logic wrapper closure paths", () => {
 
     rerender(<EventCard {...baseProps} participant_count={2} />)
     expect(useEventCardLogicMock).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([
+    ["id", { id: "event-2" }],
+    ["title", { title: "Updated workshop" }],
+    ["description", { description: "Updated description" }],
+    ["location", { location: "Room 2" }],
+    ["image_url", { image_url: "https://example.test/updated.jpg" }],
+    ["starts_at", { starts_at: "2026-06-16T14:00:00Z" }],
+    ["ends_at", { ends_at: "2026-06-16T17:00:00Z" }],
+    ["is_registered", { is_registered: true }],
+  ] as const)("rerenders when the compared %s field changes", async (_field, change) => {
+    const logic = makeLogic()
+    useEventCardLogicMock.mockReturnValue(logic)
+    const { rerender } = render(<EventCard {...baseProps} />)
+
+    await waitFor(() => expect(screen.getByTestId("event-card-view")).toBeInTheDocument())
+    useEventCardLogicMock.mockClear()
+
+    rerender(<EventCard {...baseProps} {...change} />)
+    await waitFor(() => expect(useEventCardLogicMock).toHaveBeenCalledTimes(1))
   })
 
   it("handles anonymous users, empty optional fields, and registration loading", async () => {
@@ -178,7 +217,15 @@ describe("EventCard logic wrapper closure paths", () => {
     expect(screen.getByTestId("event-card-loading")).toHaveTextContent("true")
     expect(screen.getByTestId("event-card-image")).toHaveTextContent("undefined")
     expect(screen.getByTestId("event-card-starts")).toHaveTextContent("")
+    expect(screen.getByTestId("event-card-speaker")).toHaveTextContent("undefined")
+    expect(screen.getByTestId("event-card-ends")).toHaveTextContent("undefined")
     expect(screen.getByTestId("event-card-location")).toHaveTextContent("undefined")
+    expect(screen.getByTestId("event-card-description")).toHaveTextContent("undefined")
+    expect(screen.getByTestId("event-card-category")).toHaveTextContent("other")
+    expect(screen.getByTestId("event-card-priority")).toHaveTextContent("false")
+    expect(screen.getByTestId("event-card-delete-title")).toHaveTextContent(
+      "events:card.dialogs.delete.title"
+    )
   })
 
   it("grants event administration controls to teachers", async () => {
@@ -190,5 +237,52 @@ describe("EventCard logic wrapper closure paths", () => {
     render(<EventCard {...baseProps} />)
 
     await waitFor(() => expect(screen.getByTestId("event-card-admin")).toHaveTextContent("true"))
+  })
+
+  it("forwards every event field and prefers the primary category type", async () => {
+    useEventCardLogicMock.mockReturnValue(makeLogic())
+
+    render(
+      <EventCard
+        {...baseProps}
+        speaker="Dr. Lovelace"
+        ends_at="2026-06-15T16:00:00Z"
+        event_type="workshop"
+        event_type_en="conference"
+        priority
+      />
+    )
+
+    await waitFor(() => expect(screen.getByTestId("event-card-view")).toBeInTheDocument())
+    expect(screen.getByTestId("event-card-speaker")).toHaveTextContent("Dr. Lovelace")
+    expect(screen.getByTestId("event-card-ends")).toHaveTextContent("2026-06-15T16:00:00Z")
+    expect(screen.getByTestId("event-card-description")).toHaveTextContent("Description")
+    expect(screen.getByTestId("event-card-category")).toHaveTextContent("workshop")
+    expect(screen.getByTestId("event-card-priority")).toHaveTextContent("true")
+  })
+
+  it("falls back to the English event type when the primary type is absent", async () => {
+    useEventCardLogicMock.mockReturnValue(makeLogic())
+
+    render(
+      <EventCard
+        {...baseProps}
+        id="event-fallback"
+        event_type={undefined}
+        event_type_en="lecture"
+      />
+    )
+
+    await waitFor(() => expect(screen.getByTestId("event-card-view")).toBeInTheDocument())
+    expect(screen.getByTestId("event-card-category")).toHaveTextContent("lecture")
+  })
+
+  it("preserves an empty title rather than injecting placeholder content", async () => {
+    useEventCardLogicMock.mockReturnValue(makeLogic())
+
+    render(<EventCard {...baseProps} id="event-empty-title" title="" />)
+
+    await waitFor(() => expect(screen.getByTestId("event-card-view")).toBeInTheDocument())
+    expect(screen.getByTestId("event-card-title")).toHaveTextContent("")
   })
 })

@@ -18,4 +18,27 @@ describe("LoadingState", () => {
     expect(container.querySelector("[data-scroll-root]")).not.toBeNull()
     expect(container.querySelector("header")).not.toBeNull()
   })
+
+  test("uses a caller-provided label for both the hidden heading and status content", async () => {
+    const { container } = await renderWithA11y(<LoadingState label="Loading profile" />)
+
+    expect(screen.getByRole("heading", { name: "Loading profile" })).toHaveClass("sr-only")
+    expect(screen.getByRole("status")).toHaveTextContent("Loading profile")
+    expect(screen.getByRole("status")).toHaveClass(
+      "flex",
+      "flex-col",
+      "items-center",
+      "justify-center",
+      "min-h-60dvh",
+      "text-center"
+    )
+    expect(container.querySelector(".animate-spin")).toHaveClass(
+      "h-12",
+      "w-12",
+      "rounded-full",
+      "border-4",
+      "border-t-brand"
+    )
+    expect(container.querySelector(".animate-pulse")).toBeInTheDocument()
+  })
 })

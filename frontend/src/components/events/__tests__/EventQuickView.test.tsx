@@ -1,18 +1,52 @@
 import { render, screen } from "@testing-library/react"
 import { afterEach, describe, it, expect, vi } from "vitest"
 
-vi.mock("framer-motion", async () =>
-  (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
-)
+vi.mock("framer-motion", () => ({
+  m: {
+    div: ({
+      children,
+      initial,
+      animate,
+      exit,
+      transition,
+      ...props
+    }: {
+      children?: React.ReactNode
+      initial?: unknown
+      animate?: unknown
+      exit?: unknown
+      transition?: unknown
+      [key: string]: unknown
+    }) => (
+      <div
+        {...props}
+        data-motion-initial={JSON.stringify(initial)}
+        data-motion-animate={JSON.stringify(animate)}
+        data-motion-exit={JSON.stringify(exit)}
+        data-motion-transition={JSON.stringify(transition)}
+      >
+        {children}
+      </div>
+    ),
+  },
+  AnimatePresence: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
+}))
 const { reducedMotion } = vi.hoisted(() => ({ reducedMotion: vi.fn(() => false) }))
+const { useTranslationMock, translationMock, formatDateMock } = vi.hoisted(() => {
+  const translationMock = vi.fn((key: string) => key)
+  return {
+    useTranslationMock: vi.fn(() => ({
+      t: translationMock,
+      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+    })),
+    translationMock,
+    formatDateMock: vi.fn((value: string) => `date:${value}`),
+  }
+})
 
 vi.mock("@/hooks/useMediaQuery", () => ({ default: () => reducedMotion() }))
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
-}))
+vi.mock("react-i18next", () => ({ useTranslation: useTranslationMock }))
+vi.mock("@/utils/date", () => ({ formatDate: formatDateMock }))
 
 import { EventQuickView } from "@/components/events/EventQuickView"
 
@@ -39,6 +73,12 @@ describe("EventQuickView", () => {
     expect(screen.getByText("Auditorium 42")).toBeInTheDocument()
     expect(screen.getByText("137")).toBeInTheDocument()
     expect(screen.getByText("events:quickView.viewDetails")).toBeInTheDocument()
+    expect(useTranslationMock).toHaveBeenCalledWith(["events"])
+    expect(translationMock).toHaveBeenCalledWith("events:quickView.viewDetails")
+    expect(formatDateMock).toHaveBeenCalledWith(
+      baseProps.startsAt,
+      expect.objectContaining({ day: "numeric", month: "short", hour12: false })
+    )
     // category branch — badge renders the localized label key
     expect(screen.getByText("events:categories.lecture")).toBeInTheDocument()
   })
@@ -63,10 +103,25 @@ describe("EventQuickView", () => {
   })
 
   it("renders the bottom-position variant and a different category branch", () => {
-    render(<EventQuickView {...baseProps} position="bottom" category="conference" startsAt="" />)
+    const { container } = render(
+      <EventQuickView {...baseProps} position="bottom" category="conference" startsAt="" />
+    )
     // bottom position still shows core content
     expect(screen.getByText("Quantum Computing Lecture")).toBeInTheDocument()
     expect(screen.getByText("events:categories.conference")).toBeInTheDocument()
+    expect(container.querySelector("[data-motion-initial]")).toHaveAttribute(
+      "data-motion-initial",
+      JSON.stringify({ opacity: 0, y: -8, scale: 0.96 })
+    )
+    expect(container.querySelector("[data-motion-exit]")).toHaveAttribute(
+      "data-motion-exit",
+      JSON.stringify({ opacity: 0, y: -4, scale: 0.98 })
+    )
+    expect(container.querySelector("[data-motion-transition]")).toHaveAttribute(
+      "data-motion-transition",
+      JSON.stringify({ duration: 0.18, ease: [0.16, 1, 0.3, 1] })
+    )
+    expect(container.querySelector("svg.lucide-calendar")).not.toBeInTheDocument()
   })
 
   it("uses reduced-motion transitions and tolerates an invalid date", () => {
@@ -85,5 +140,23 @@ describe("EventQuickView", () => {
     expect(
       screen.queryByText("An introductory survey of qubits and gates.")
     ).not.toBeInTheDocument()
+    const motion = document.querySelector("[data-motion-initial]")
+    expect(motion).toHaveAttribute("data-motion-initial", "false")
+    expect(motion).toHaveAttribute("data-motion-transition", JSON.stringify({ duration: 0 }))
+  })
+
+  it("omits the date row when startsAt is empty and keeps the title visible", () => {
+    const { container } = render(<EventQuickView {...baseProps} startsAt="" />)
+    expect(screen.getByText(baseProps.title)).toBeInTheDocument()
+    expect(container.querySelector("svg.lucide-calendar")).not.toBeInTheDocument()
+  })
+
+  it("uses the default top position and preserves all stat labels", () => {
+    const { container } = render(<EventQuickView {...baseProps} position={undefined} />)
+    expect(container.querySelector("[data-motion-initial]")).toHaveAttribute(
+      "data-motion-initial",
+      JSON.stringify({ opacity: 0, y: 8, scale: 0.96 })
+    )
+    expect(screen.getByText("events:quickView.viewDetails")).toBeInTheDocument()
   })
 })

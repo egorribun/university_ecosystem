@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest"
 
-import { parseWsMessage } from "./wsMessage"
+import * as v from "valibot"
+
+import { parseWsMessage, WsServerMessageSchema } from "./wsMessage"
 
 const CHAT_ID = "11111111-1111-1111-1111-111111111111"
 const USER_ID = "22222222-2222-2222-2222-222222222222"
@@ -617,5 +619,183 @@ describe("parseWsMessage — new_message with forwarded_from_name (Wave 211)", (
     if (frame?.type === "new_message") {
       expect(frame.message.forwarded_from_name).toBeNull()
     }
+  })
+})
+
+describe("parseWsMessage — remaining server frame variants and contracts", () => {
+  const baseMessage = {
+    ...messageWithContent("hello"),
+    read_at: null,
+  }
+
+  it("accepts presence, online, online_list, typing, pong, and reaction frames", () => {
+    expect(parseWsMessage(JSON.stringify({ type: "pong" }))).toEqual({ type: "pong" })
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "typing",
+          chat_id: CHAT_ID,
+          user_id: USER_ID,
+          user_name: "Alex",
+        })
+      )
+    ).toEqual({ type: "typing", chat_id: CHAT_ID, user_id: USER_ID, user_name: "Alex" })
+    expect(
+      parseWsMessage(JSON.stringify({ type: "online", user_id: USER_ID, status: true }))
+    ).toEqual({ type: "online", user_id: USER_ID, status: true })
+    expect(
+      parseWsMessage(JSON.stringify({ type: "online_list", users: [USER_ID, SENDER_ID] }))
+    ).toEqual({ type: "online_list", users: [USER_ID, SENDER_ID] })
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "presence",
+          user_id: USER_ID,
+          active: false,
+          last_seen: null,
+        })
+      )
+    ).toEqual({ type: "presence", user_id: USER_ID, active: false, last_seen: null })
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "reaction_changed",
+          chat_id: CHAT_ID,
+          message_id: MSG_ID,
+          user_id: USER_ID,
+          emoji: "👍",
+          action: "removed",
+        })
+      )
+    ).toEqual({
+      type: "reaction_changed",
+      chat_id: CHAT_ID,
+      message_id: MSG_ID,
+      user_id: USER_ID,
+      emoji: "👍",
+      action: "removed",
+    })
+  })
+
+  it("rejects malformed variant payloads instead of silently broadening schemas", () => {
+    expect(parseWsMessage(JSON.stringify({ type: "pong", extra: true }))).toEqual({ type: "pong" })
+    expect(
+      parseWsMessage(JSON.stringify({ type: "online_list", users: ["not-a-uuid"] }))
+    ).toBeNull()
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "reaction_changed",
+          chat_id: CHAT_ID,
+          message_id: MSG_ID,
+          user_id: USER_ID,
+          emoji: "👍",
+          action: "changed",
+        })
+      )
+    ).toBeNull()
+    expect(
+      parseWsMessage(
+        JSON.stringify({ type: "typing", chat_id: CHAT_ID, user_id: USER_ID, user_name: "" })
+      )
+    ).toBeNull()
+  })
+
+  it("preserves and validates a reply preview on new messages", () => {
+    const reply = {
+      id: MSG_ID,
+      sender_id: SENDER_ID,
+      sender_name: "Alex",
+      content: "quoted text",
+      deleted_at: null,
+    }
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "new_message",
+        chat_id: CHAT_ID,
+        message: { ...baseMessage, reply_to: reply },
+      })
+    )
+    expect(frame).not.toBeNull()
+    if (frame?.type === "new_message") {
+      expect(frame.message.reply_to).toEqual(reply)
+    }
+
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          chat_id: CHAT_ID,
+          message: { ...baseMessage, reply_to: { sender_name: "missing id" } },
+        })
+      )
+    ).toBeNull()
+  })
+
+  it("keeps the custom content-limit issue actionable for direct schema consumers", () => {
+    const invalid = {
+      type: "new_message",
+      chat_id: CHAT_ID,
+      message: messageWithContent("x".repeat(MESSAGE_LIMIT + 1)),
+    }
+    const result = v.safeParse(WsServerMessageSchema, invalid)
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.issues.some((issue) => issue.message.includes("Unicode code points"))).toBe(
+        true
+      )
+    }
+  })
+
+  it("unwraps payloads by presence and enforces complete stream metadata binding", () => {
+    const inner = { type: "new_message", chat_id: CHAT_ID, message: baseMessage }
+    expect(
+      parseWsMessage(JSON.stringify({ type: "notifications", room: CHAT_ID, payload: inner }))
+    ).toMatchObject({ type: "new_message", chat_id: CHAT_ID })
+
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          room: "not-a-uuid",
+          payload: inner,
+          seq: 7,
+          resume_token: "token",
+        })
+      )
+    ).toBeNull()
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          room: CHAT_ID,
+          payload: inner,
+          seq: 7,
+          resume_token: "token",
+          replayed: false,
+        })
+      )
+    ).toMatchObject({ stream_seq: 7, replayed: false, resume_token: "token" })
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          room: CHAT_ID,
+          payload: inner,
+          seq: 7,
+          replayed: false,
+        })
+      )
+    ).toBeNull()
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          room: CHAT_ID,
+          payload: inner,
+          resume_token: "token",
+        })
+      )
+    ).toBeNull()
   })
 })

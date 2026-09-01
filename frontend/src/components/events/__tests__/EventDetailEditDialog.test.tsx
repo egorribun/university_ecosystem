@@ -7,11 +7,14 @@ import { waitFor } from "@testing-library/react"
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
+const { useTranslationMock } = vi.hoisted(() => ({
+  useTranslationMock: vi.fn(() => ({
     t: (key: string) => key,
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  })),
+}))
+vi.mock("react-i18next", () => ({
+  useTranslation: useTranslationMock,
 }))
 const mocks = vi.hoisted(() => ({
   patch: vi.fn(),
@@ -74,6 +77,7 @@ describe("EventDetailEditDialog", () => {
     const dialog = screen.getByRole("dialog")
     expect(dialog).toBeInTheDocument()
     expect(dialog.querySelectorAll("input,textarea").length).toBeGreaterThan(0)
+    expect(useTranslationMock).toHaveBeenCalledWith(["events", "common"])
   })
 
   it("does not render the dialog when closed", () => {
@@ -179,5 +183,79 @@ describe("EventDetailEditDialog", () => {
 
     await waitFor(() => expect(onError).toHaveBeenCalledWith("events:card.messages.saveFailure"))
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it("updates localized fields and submits the complete edited draft", async () => {
+    const user = userEvent.setup()
+    renderDialog()
+
+    const title = screen.getByLabelText("events:form.title_en")
+    const location = screen.getByLabelText("events:form.location_en")
+    await user.clear(title)
+    await user.type(title, "Updated English title")
+    await user.clear(location)
+    await user.type(location, "Updated room")
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalled())
+    expect(mocks.patch).toHaveBeenCalledWith(
+      "/events/evt-1",
+      expect.objectContaining({
+        title_en: "Updated English title",
+        location_en: "Updated room",
+      })
+    )
+  })
+
+  it("resets edited values when cancelled without a parent remount", async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    renderDialog({ ...baseProps, onClose })
+
+    const title = screen.getByLabelText("events:form.title_en")
+    await user.clear(title)
+    await user.type(title, "Unsaved title")
+    await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+
+    expect(onClose).toHaveBeenCalledOnce()
+    expect(title).toHaveValue(baseEvent.title)
+  })
+
+  it("keeps the save action disabled while the patch request is pending", async () => {
+    let resolvePatch!: (value: unknown) => void
+    const pendingPatch = new Promise((resolve) => {
+      resolvePatch = resolve
+    })
+    mocks.patch.mockImplementationOnce(() => pendingPatch)
+    const user = userEvent.setup()
+    renderDialog()
+
+    const saveButton = screen.getByRole("button", { name: "common:buttons.save" })
+    await user.click(saveButton)
+    expect(saveButton).toBeDisabled()
+
+    resolvePatch({ data: {} })
+    await waitFor(() => expect(mocks.patch).toHaveBeenCalledOnce())
+  })
+
+  it("reports image upload failures and does not issue a patch", async () => {
+    const user = userEvent.setup()
+    const onError = vi.fn()
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:failed")
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    mocks.uploadEventImage.mockRejectedValueOnce(new Error("upload failed"))
+
+    try {
+      renderDialog({ ...baseProps, onError })
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      await user.upload(input, new File(["image"], "failed.png", { type: "image/png" }))
+      await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+
+      await waitFor(() => expect(onError).toHaveBeenCalledWith("events:card.messages.saveFailure"))
+      expect(mocks.patch).not.toHaveBeenCalled()
+    } finally {
+      createObjectUrl.mockRestore()
+      revokeObjectUrl.mockRestore()
+    }
   })
 })

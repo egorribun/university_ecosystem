@@ -11,7 +11,15 @@ vi.mock("@/app/logger", () => ({ logDebug: vi.fn(), logError: vi.fn() }))
 
 import { onCLS, onFCP, onINP, onLCP, onTTFB } from "web-vitals"
 import { logDebug } from "@/app/logger"
-import { initWebVitals, reportBootstrapTTI, resetWebVitalsForTesting } from "@/app/webVitals"
+import {
+  createCustomMetric,
+  initWebVitals,
+  isSameOriginEndpoint,
+  reportBootstrapTTI,
+  resetWebVitalsForTesting,
+  resolveNavigationType,
+  resolveRating,
+} from "@/app/webVitals"
 
 const PROD_BASE = { DEV: false, MODE: "production" } as unknown as ImportMetaEnv
 const enabledEnv = (extra: Record<string, unknown> = {}) =>
@@ -68,6 +76,52 @@ describe("webVitals", () => {
     expect(sendBeacon).toHaveBeenCalledWith("https://metrics.test/v", expect.any(Blob))
   })
 
+  it.each(["true", "1", "yes", " YES "])(
+    "accepts the documented web-vitals flag value %s",
+    (flag) => {
+      expect(
+        initWebVitals(
+          enabledEnv({ VITE_ENABLE_WEB_VITALS: flag, VITE_WEB_VITALS_ENDPOINT: undefined })
+        )
+      ).toBe(true)
+      expect(onCLS).toHaveBeenCalledOnce()
+    }
+  )
+
+  it("serializes labelled metrics with the exact beacon payload contract", () => {
+    const sendBeacon = vi.fn(() => true)
+    class TestBlob {
+      constructor(
+        readonly parts: string[],
+        readonly options: Record<string, unknown>
+      ) {}
+    }
+    vi.stubGlobal("navigator", { ...navigator, sendBeacon })
+    vi.stubGlobal("Blob", TestBlob)
+    initWebVitals(enabledEnv({ VITE_WEB_VITALS_ENDPOINT: "https://metrics.test/v" }))
+
+    const reporter = vi.mocked(onCLS).mock.calls[0]![0]
+    reporter(sampleMetric({ label: "dashboard" }) as never)
+    const beaconCalls = sendBeacon.mock.calls as unknown as Array<[string, TestBlob]>
+    const labelledBlob = beaconCalls[0]?.[1]
+    expect(labelledBlob).toBeDefined()
+    expect(labelledBlob!.options).toEqual({ type: "application/json" })
+    expect(JSON.parse(labelledBlob!.parts[0]!)).toEqual({
+      name: "CLS",
+      value: 0.1,
+      delta: 0.1,
+      id: "v1-123",
+      rating: "good",
+      navigationType: "navigate",
+      label: "dashboard",
+    })
+
+    reporter(sampleMetric({ label: 42 }) as never)
+    const unlabelledBlob = beaconCalls[1]?.[1]
+    expect(unlabelledBlob).toBeDefined()
+    expect(JSON.parse(unlabelledBlob!.parts[0]!)).not.toHaveProperty("label")
+  })
+
   it("falls back to fetch when sendBeacon throws", () => {
     const sendBeacon = vi.fn(() => {
       throw new Error("beacon down")
@@ -94,6 +148,48 @@ describe("webVitals", () => {
     reporter(sampleMetric() as never)
     await Promise.resolve()
 
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
+  it("uses the exact fetch transport options when beacon transport is unavailable", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })))
+    vi.stubGlobal("navigator", { ...navigator, sendBeacon: undefined })
+    vi.stubGlobal("fetch", fetchMock)
+    initWebVitals(enabledEnv({ VITE_WEB_VITALS_ENDPOINT: "https://metrics.test/v" }))
+
+    vi.mocked(onLCP).mock.calls[0]![0](sampleMetric({ name: "LCP" }) as never)
+    await Promise.resolve()
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://metrics.test/v",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        keepalive: true,
+        credentials: "omit",
+      })
+    )
+    const fetchCalls = fetchMock.mock.calls as unknown as Array<[string, RequestInit | undefined]>
+    const body = fetchCalls[0]?.[1]?.body as string
+    expect(JSON.parse(body)).toEqual(expect.objectContaining({ name: "LCP", value: 0.1 }))
+  })
+
+  it("does not construct a beacon when navigator is unavailable", () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })))
+    const BlobSpy = vi.fn(
+      class TestBlob {
+        constructor(readonly parts: string[]) {}
+      }
+    )
+    vi.stubGlobal("navigator", undefined)
+    vi.stubGlobal("Blob", BlobSpy)
+    vi.stubGlobal("fetch", fetchMock)
+    initWebVitals(enabledEnv({ VITE_WEB_VITALS_ENDPOINT: "https://metrics.test/v" }))
+
+    const reporter = vi.mocked(onCLS).mock.calls[0]![0]
+    reporter(sampleMetric() as never)
+
+    expect(BlobSpy).not.toHaveBeenCalled()
     expect(fetchMock).toHaveBeenCalledOnce()
   })
 
@@ -151,5 +247,49 @@ describe("webVitals", () => {
       "[web-vitals] APP_TTI",
       expect.objectContaining({ rating: "poor" })
     )
+  })
+
+  it("keeps exact CWV threshold boundaries inclusive", () => {
+    initWebVitals(enabledEnv())
+    expect(reportBootstrapTTI(3800)).toBe(true)
+    expect(logDebug).toHaveBeenLastCalledWith(
+      "[web-vitals] APP_TTI",
+      expect.objectContaining({ rating: "good" })
+    )
+    expect(reportBootstrapTTI(7300)).toBe(true)
+    expect(logDebug).toHaveBeenLastCalledWith(
+      "[web-vitals] APP_TTI",
+      expect.objectContaining({ rating: "needs-improvement" })
+    )
+  })
+
+  it("exposes deterministic metric and navigation helper contracts", () => {
+    expect(resolveRating(3800, [3800, 7300])).toBe("good")
+    expect(resolveRating(7300, [3800, 7300])).toBe("needs-improvement")
+    expect(resolveRating(7301, [3800, 7300])).toBe("poor")
+
+    vi.stubGlobal("performance", {
+      getEntriesByType: vi.fn(() => [{ type: "reload" }]),
+    })
+    expect(resolveNavigationType()).toBe("reload")
+    const metric = createCustomMetric("APP_TTI", 100, [3800, 7300])
+    expect(metric).toEqual(
+      expect.objectContaining({
+        name: "APP_TTI",
+        value: 100,
+        delta: 100,
+        rating: "good",
+        entries: [],
+        navigationType: "reload",
+        navigationId: 0,
+      })
+    )
+    expect(metric.id).toMatch(/^APP_TTI-\d+$/)
+  })
+
+  it("fails closed for malformed same-origin URLs", () => {
+    expect(isSameOriginEndpoint("/api/v1/cwv")).toBe(true)
+    expect(isSameOriginEndpoint("http://[invalid")).toBe(false)
+    expect(isSameOriginEndpoint("https://metrics.example/v1")).toBe(false)
   })
 })

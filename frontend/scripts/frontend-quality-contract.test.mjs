@@ -57,6 +57,12 @@ test("Stryker mutation scope is derived from the complete frontend coverage deno
     strykerConfig.ignorePatterns?.includes("/dist/**"),
     "Generated production output must not be copied into the mutation sandbox"
   )
+  for (const generatedPattern of ["/storybook-static/**", "/test-results/**", "/coverage-*/**"]) {
+    assert.ok(
+      strykerConfig.ignorePatterns?.includes(generatedPattern),
+      `${generatedPattern} must stay outside mutation sandboxes`
+    )
+  }
   assert.equal(
     strykerConfig.dryRunTimeoutMinutes,
     15,

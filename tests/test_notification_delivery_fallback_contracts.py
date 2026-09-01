@@ -488,11 +488,11 @@ async def test_redelivery_continues_after_an_unsupported_subscription(
     )
     send = AsyncMock(return_value=provider_result)
     monkeypatch.setattr(delivery, "_is_push_configured", lambda: True)
-    monkeypatch.setattr(
-        delivery,
-        "subscription_supports_topic",
-        MagicMock(side_effect=[False, True]),
+    supports_topic = MagicMock(
+        side_effect=lambda subscription, topic: subscription is supported
+        and topic == "news.published"
     )
+    monkeypatch.setattr(delivery, "subscription_supports_topic", supports_topic)
     monkeypatch.setattr(delivery.webpush_module, "_send_push_async", send)
     monkeypatch.setattr(delivery.webpush_module, "process_push_results", AsyncMock())
     db = MagicMock(
@@ -515,6 +515,10 @@ async def test_redelivery_continues_after_an_unsupported_subscription(
     assert outcome.sent == 1
     send.assert_awaited_once()
     assert send.await_args.args[0] is supported
+    assert supports_topic.call_args_list == [
+        ((unsupported, "news.published"),),
+        ((supported, "news.published"),),
+    ]
 
 
 @pytest.mark.asyncio

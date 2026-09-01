@@ -99,21 +99,17 @@ export const ScheduleCard = memo(function ScheduleCard({
   const parity = nowParity()
   const todayIndex = time.getDay()
 
-  const weekDaysDisplay = useMemo(
-    () =>
-      readWeekdayArray(t("dashboard:weekDays.display", { returnObjects: true }) as unknown, [
-        ...ENGLISH_WEEK_DAYS,
-      ]),
-    [t]
+  // These arrays are tiny and are intentionally read on every render.  Keeping
+  // them derived from the current translator avoids stale weekday maps when a
+  // locale changes in-place (i18next may retain the same `t` function).
+  const weekDaysDisplay = readWeekdayArray(
+    t("dashboard:weekDays.display", { returnObjects: true }) as unknown,
+    [...ENGLISH_WEEK_DAYS]
   )
 
-  const weekDaysRaw = useMemo(
-    () =>
-      readWeekdayArray(
-        t("dashboard:weekDays.raw", { returnObjects: true }) as unknown,
-        weekDaysDisplay
-      ),
-    [t, weekDaysDisplay]
+  const weekDaysRaw = readWeekdayArray(
+    t("dashboard:weekDays.raw", { returnObjects: true }) as unknown,
+    weekDaysDisplay
   )
 
   const weekdayIndex = useMemo(() => {

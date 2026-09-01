@@ -227,6 +227,83 @@ describe("LivePushToasts", () => {
     expect(screen.queryByText("Timestamp identity")).not.toBeInTheDocument()
   })
 
+  it("trims identity metadata and gives an explicit id precedence over tag/timestamp", async () => {
+    render(<LivePushToasts />)
+
+    const canonical = {
+      type: "PUSH_NOTIFICATION",
+      toast: {
+        id: "  canonical-id  ",
+        tag: "different-tag",
+        timestamp: 1700000000000,
+        title: "Canonical identity",
+        body: "The trimmed id is the deduplication key",
+      },
+    }
+    await dispatchSwMessage(canonical)
+    await dispatchSwMessage({
+      ...canonical,
+      toast: { ...canonical.toast, id: "canonical-id", title: "Canonical identity replay" },
+    })
+    act(() => vi.advanceTimersByTime(0))
+
+    expect(screen.getByText("Canonical identity")).toBeInTheDocument()
+    expect(screen.queryByText("Canonical identity replay")).not.toBeInTheDocument()
+  })
+
+  it("uses a trimmed tag before a finite timestamp when the id is absent", async () => {
+    render(<LivePushToasts />)
+
+    const tagged = {
+      type: "PUSH_NOTIFICATION",
+      toast: {
+        tag: "  stable-tag  ",
+        timestamp: 1700000000001,
+        title: "Tagged identity",
+        body: "Tag is preferred",
+      },
+    }
+    await dispatchSwMessage(tagged)
+    await dispatchSwMessage({
+      ...tagged,
+      toast: { ...tagged.toast, tag: "stable-tag", title: "Tagged identity replay" },
+    })
+    act(() => vi.advanceTimersByTime(0))
+
+    expect(screen.getByText("Tagged identity")).toBeInTheDocument()
+    expect(screen.queryByText("Tagged identity replay")).not.toBeInTheDocument()
+  })
+
+  it("generates independent fallback identities for payloads without usable metadata", async () => {
+    const randomSpy = vi.spyOn(Math, "random").mockReturnValueOnce(0.111).mockReturnValueOnce(0.222)
+    const nowSpy = vi.spyOn(Date, "now").mockReturnValue(1700000000000)
+    render(<LivePushToasts />)
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: { id: "", tag: " ", timestamp: Number.NaN, title: "Generated one", body: "First" },
+    })
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: {
+        id: "",
+        tag: " ",
+        timestamp: Number.POSITIVE_INFINITY,
+        title: "Generated two",
+        body: "Second",
+      },
+    })
+    act(() => vi.advanceTimersByTime(0))
+
+    expect(screen.getByText("Generated one")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.close" }))
+    act(() => vi.advanceTimersByTime(300))
+    expect(screen.getByText("Generated two")).toBeInTheDocument()
+
+    randomSpy.mockRestore()
+    nowSpy.mockRestore()
+  })
+
   it("deduplicates repeated visible notifications by their canonical id", async () => {
     render(<LivePushToasts />)
 
@@ -402,6 +479,27 @@ describe("LivePushToasts", () => {
       })
     ).resolves.toBeUndefined()
 
+    expect(screen.queryByRole("heading", { level: 4 })).not.toBeInTheDocument()
+  })
+
+  it("trims content before rendering and rejects whitespace-only content", async () => {
+    render(<LivePushToasts />)
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: { id: "trimmed-content", title: "  Trimmed title  ", body: "  Trimmed body  " },
+    })
+    act(() => vi.advanceTimersByTime(0))
+
+    expect(screen.getByText("Trimmed title")).toBeInTheDocument()
+    expect(screen.getByText("Trimmed body")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.close" }))
+    act(() => vi.advanceTimersByTime(300))
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: { id: "whitespace-content", title: "   ", body: "\t\n" },
+    })
     expect(screen.queryByRole("heading", { level: 4 })).not.toBeInTheDocument()
   })
 
@@ -862,6 +960,48 @@ describe("LivePushToasts", () => {
     expect(raw).toContain("hidden-1")
 
     visibilitySpy.mockRestore()
+  })
+
+  it("does not buffer hidden pushes in the test transport sentinel mode", async () => {
+    const visibilitySpy = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden")
+    const previousName = window.name
+    window.name = "__mock_api_initialized__"
+    try {
+      render(<LivePushToasts />)
+      await dispatchSwMessage({
+        type: "PUSH_NOTIFICATION",
+        toast: { id: "sentinel-hidden", title: "Sentinel push", body: "Render for tests" },
+      })
+      act(() => vi.advanceTimersByTime(0))
+      expect(screen.getByText("Sentinel push")).toBeInTheDocument()
+      expect(window.localStorage.getItem(BUFFER_STORAGE_KEY)).toBeNull()
+    } finally {
+      window.name = previousName
+      visibilitySpy.mockRestore()
+    }
+  })
+
+  it("bounds the persisted hidden buffer to the newest twenty notifications", async () => {
+    const visibilitySpy = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden")
+    try {
+      render(<LivePushToasts />)
+      for (let index = 0; index < 25; index += 1) {
+        await dispatchSwMessage({
+          type: "PUSH_NOTIFICATION",
+          toast: { id: `buffer-bound-${index}`, title: `Buffered ${index}`, body: "Bounded" },
+        })
+      }
+      const persisted = JSON.parse(
+        window.localStorage.getItem(BUFFER_STORAGE_KEY) ?? "null"
+      ) as Array<{
+        id: string
+      }>
+      expect(persisted).toHaveLength(20)
+      expect(persisted[0]?.id).toBe("buffer-bound-5")
+      expect(persisted.at(-1)?.id).toBe("buffer-bound-24")
+    } finally {
+      visibilitySpy.mockRestore()
+    }
   })
 
   it("ignores a storage write failure while buffering a hidden push", async () => {

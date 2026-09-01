@@ -1,16 +1,22 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
-}))
+const { useTranslationMock, translationMock } = vi.hoisted(() => {
+  const translationMock = vi.fn((key: string) => key)
+  return {
+    useTranslationMock: vi.fn(() => ({
+      t: translationMock,
+      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+    })),
+    translationMock,
+  }
+})
+
+vi.mock("react-i18next", () => ({ useTranslation: useTranslationMock }))
 
 import { EventMedia } from "@/components/events/EventCard/EventMedia"
 
@@ -29,6 +35,7 @@ describe("EventMedia", () => {
     render(<EventMedia {...baseProps} />)
     expect(screen.getByText("Workshop")).toBeInTheDocument()
     expect(screen.getByRole("button")).toBeEnabled()
+    expect(useTranslationMock).toHaveBeenCalledWith(["events"])
   })
 
   it("shows the live status indicator", () => {
@@ -39,6 +46,7 @@ describe("EventMedia", () => {
   it("shows the soon status indicator with the countdown text", () => {
     render(<EventMedia {...baseProps} timeStatus={{ status: "soon", timeText: "15m" }} />)
     expect(screen.getByText(/events:card.statuses.in/)).toBeInTheDocument()
+    expect(translationMock).toHaveBeenCalledWith("events:card.statuses.in", { time: "15m" })
   })
 
   it("fires onImageClick when the image is clicked", async () => {
@@ -57,5 +65,35 @@ describe("EventMedia", () => {
   it("shows the loading overlay until the image is ready", () => {
     const { container } = render(<EventMedia {...baseProps} isReady={false} />)
     expect(container.querySelector(".animate-pulse")).toBeInTheDocument()
+  })
+
+  it("disables the image action and does not invoke a missing callback", async () => {
+    const user = userEvent.setup()
+    render(<EventMedia {...baseProps} onImageClick={undefined} />)
+    const button = screen.getByRole("button")
+
+    expect(button).toBeDisabled()
+    await user.click(button)
+    expect(baseProps.onImageClick).not.toHaveBeenCalled()
+  })
+
+  it("omits the type badge when eventType is empty", () => {
+    render(<EventMedia {...baseProps} eventType="" />)
+    expect(screen.queryByText("Workshop")).not.toBeInTheDocument()
+  })
+
+  it("only shows the soon indicator when a countdown is supplied", () => {
+    render(<EventMedia {...baseProps} timeStatus={{ status: "soon" }} />)
+    expect(screen.queryByText(/events:card.statuses.in/)).not.toBeInTheDocument()
+  })
+
+  it("reports both successful and failed image loads as ready", () => {
+    const onReady = vi.fn()
+    render(<EventMedia {...baseProps} onReady={onReady} />)
+    const image = screen.getByRole("img", { name: "Event banner" })
+
+    fireEvent.load(image)
+    fireEvent.error(image)
+    expect(onReady).toHaveBeenCalledTimes(2)
   })
 })

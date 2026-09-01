@@ -30,7 +30,9 @@ describe("hydration boundary", () => {
   it("releases and removes the SSR loader once hydration is published", () => {
     const loader = appendLoader()
     const onHydrated = vi.fn()
-    window.addEventListener(APP_HYDRATED_EVENT, onHydrated)
+    // Keep the wire-level event name literal here so changing the exported
+    // constant cannot make the test follow the same typo as production.
+    window.addEventListener("ue:app-hydrated", onHydrated)
 
     markAppHydrated()
 
@@ -46,15 +48,19 @@ describe("hydration boundary", () => {
     vi.advanceTimersByTime(1)
     expect(loader).not.toBeInTheDocument()
 
-    window.removeEventListener(APP_HYDRATED_EVENT, onHydrated)
+    window.removeEventListener("ue:app-hydrated", onHydrated)
   })
 
   it("removes the legacy loader on transition end and cancels its fallback timer", () => {
     const loader = appendLoader()
     const clearTimeoutSpy = vi.spyOn(window, "clearTimeout")
+    const addEventListenerSpy = vi.spyOn(loader, "addEventListener")
 
     markAppHydrated()
     vi.advanceTimersByTime(0)
+    expect(addEventListenerSpy).toHaveBeenCalledWith("transitionend", expect.any(Function), {
+      once: true,
+    })
     loader.dispatchEvent(new Event("transitionend"))
 
     expect(loader).not.toBeInTheDocument()
@@ -97,7 +103,7 @@ describe("hydration boundary", () => {
   it("publishes hydration and schedules cleanup only once", () => {
     const loader = appendLoader()
     const onHydrated = vi.fn()
-    window.addEventListener(APP_HYDRATED_EVENT, onHydrated)
+    window.addEventListener("ue:app-hydrated", onHydrated)
 
     markAppHydrated()
     markAppHydrated()
@@ -107,7 +113,7 @@ describe("hydration boundary", () => {
     vi.advanceTimersByTime(BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS)
     expect(loader).not.toBeInTheDocument()
 
-    window.removeEventListener(APP_HYDRATED_EVENT, onHydrated)
+    window.removeEventListener("ue:app-hydrated", onHydrated)
   })
 
   it("does not schedule a second legacy cleanup while the first is queued", () => {
@@ -125,5 +131,18 @@ describe("hydration boundary", () => {
     expect(loader).not.toBeInTheDocument()
 
     window.removeEventListener(APP_HYDRATED_EVENT, onHydrated)
+  })
+
+  it("does not publish or schedule anything when hydration is already complete", () => {
+    const loader = appendLoader()
+    window.__APP_HYDRATED = true
+    const dispatchSpy = vi.spyOn(window, "dispatchEvent")
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout")
+
+    markAppHydrated()
+
+    expect(dispatchSpy).not.toHaveBeenCalled()
+    expect(setTimeoutSpy).not.toHaveBeenCalled()
+    expect(loader).toHaveAttribute("data-state", "active")
   })
 })

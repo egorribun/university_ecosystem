@@ -18,7 +18,7 @@ import { Controller } from "react-hook-form"
 // ... imports
 
 export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
-  const { t } = useTranslation(["auth"])
+  const { t } = useTranslation("auth")
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const {

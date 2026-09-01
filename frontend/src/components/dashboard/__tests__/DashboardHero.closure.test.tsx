@@ -11,12 +11,15 @@ const greetingState = vi.hoisted(() => ({
 }))
 
 const parityMock = vi.hoisted(() => vi.fn(() => "even" as "even" | "odd"))
-
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
+const useTranslationMock = vi.hoisted(() =>
+  vi.fn((_namespaces: string[]) => ({
     t: (key: string, options?: { week?: number }) =>
       options?.week == null ? key : `${key}:${options.week}`,
-  }),
+  }))
+)
+
+vi.mock("react-i18next", () => ({
+  useTranslation: useTranslationMock,
 }))
 
 vi.mock("@/hooks/useGreeting", () => ({
@@ -75,6 +78,7 @@ describe("DashboardHero closure", () => {
     greetingState.specialKey = null
     greetingState.emoji = null
     parityMock.mockReturnValue("even")
+    useTranslationMock.mockClear()
   })
 
   it("renders personalized greeting, a static special marker, and stories", () => {
@@ -99,6 +103,7 @@ describe("DashboardHero closure", () => {
     expect(screen.getByText(/dashboard:academicWeek:/)).toBeInTheDocument()
     expect(screen.getByText("dashboard:parityEven")).toBeInTheDocument()
     expect(screen.getByTestId("weather-widget")).toBeInTheDocument()
+    expect(useTranslationMock).toHaveBeenCalledWith(["dashboard", "common"])
     expect(document.querySelector('[class*="animate-[spin_40s_linear_infinite]"]')).toBeNull()
     expect(document.querySelector('[class*="group-hover:translate-x"]')).toBeNull()
     expect(document.querySelector(".animate-dash-colon-blink")).toBeNull()
@@ -127,6 +132,7 @@ describe("DashboardHero closure", () => {
 
   it("refreshes academic-week parity when the clock date changes", () => {
     const { rerender } = render(<DashboardHero {...baseProps} user={null} />)
+    expect(screen.getByRole("status")).toHaveTextContent("dashboard:academicWeek:32")
     expect(screen.getByText("dashboard:parityEven")).toBeInTheDocument()
 
     parityMock.mockReturnValue("odd")
@@ -139,6 +145,92 @@ describe("DashboardHero closure", () => {
       />
     )
 
+    expect(screen.getByRole("status")).toHaveTextContent("dashboard:academicWeek:33")
     expect(screen.getByText("dashboard:parityOdd")).toBeInTheDocument()
+  })
+
+  it("computes ISO academic weeks across year boundaries", () => {
+    const cases = [
+      [new Date(2021, 0, 1, 9, 15), 53],
+      [new Date(2021, 0, 4, 9, 15), 1],
+      [new Date(2020, 11, 31, 9, 15), 53],
+      [new Date(2022, 0, 1, 9, 15), 52],
+    ] as const
+
+    for (const [time, expectedWeek] of cases) {
+      const { unmount } = render(
+        <DashboardHero
+          {...baseProps}
+          time={time}
+          user={null}
+          dateStr={time.toISOString().slice(0, 10)}
+        />
+      )
+      expect(screen.getByRole("status")).toHaveTextContent(`dashboard:academicWeek:${expectedWeek}`)
+      unmount()
+    }
+  })
+
+  it("preserves the dashboard header visual contract and separator", () => {
+    render(<DashboardHero {...baseProps} user={null} />)
+
+    const header = screen.getByRole("banner")
+    expect(header).toHaveClass(
+      "glass-noise",
+      "relative",
+      "rounded-xl",
+      "border",
+      "border-(--dash-border)",
+      "px-8",
+      "py-8",
+      "md:px-10",
+      "md:py-9",
+      "greeting-morning"
+    )
+    expect(header).toHaveStyle({
+      background: "var(--hero-card-bg)",
+      boxShadow:
+        "0 1px 3px color-mix(in srgb, black 8%, transparent), 0 4px 16px color-mix(in srgb, black 6%, transparent), inset 0 1px 0 color-mix(in srgb, white 4%, transparent)",
+    })
+
+    const accent = header.querySelector('span[aria-hidden="true"]')
+    expect(accent).toHaveClass(
+      "pointer-events-none",
+      "absolute",
+      "inset-x-[20%]",
+      "top-0",
+      "z-10",
+      "h-px"
+    )
+    expect(accent).toHaveStyle({ background: "var(--dash-accent-line)", opacity: "0.5" })
+
+    const heading = screen.getByRole("heading")
+    expect(heading).toHaveClass(
+      "font-display",
+      "font-extrabold",
+      "leading-[1.15]",
+      "tracking-tight",
+      "min-h-[2lh]"
+    )
+    expect(heading).toHaveAttribute(
+      "style",
+      expect.stringContaining("font-size: clamp(1.75rem, 3vw, 2.75rem)")
+    )
+
+    const parity = screen.getByText("dashboard:parityEven")
+    expect(parity.parentElement?.textContent).toBe(
+      "dashboard:academicWeek:32 · dashboard:parityEven"
+    )
+  })
+
+  it("does not mount an empty stories wrapper when no slot is provided", () => {
+    render(<DashboardHero {...baseProps} user={null} />)
+
+    const header = screen.getByRole("banner")
+    expect(
+      [...header.querySelectorAll("div")].some((node) =>
+        String(node.className).includes("min-[1220px]:flex-1")
+      )
+    ).toBe(false)
   })
 })

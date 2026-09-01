@@ -47,6 +47,26 @@ describe("RelatedEvents", () => {
     expect(links).toHaveLength(ITEMS.length)
     expect(links[0]!.getAttribute("href")).toContain("/events/e1")
     expect(links[1]!.getAttribute("href")).toContain("/events/e2")
+
+    const section = screen.getByRole("region", { name: "Related events" })
+    expect(section).toHaveClass("mt-10")
+    expect(screen.getByRole("heading", { level: 2 })).toHaveClass(
+      "text-lg",
+      "font-bold",
+      "text-text-primary",
+      "mb-4"
+    )
+    expect(screen.getByRole("heading", { level: 2 })).toHaveAttribute(
+      "style",
+      expect.stringContaining("scroll-margin-top: 5rem")
+    )
+    expect(screen.getByRole("heading", { level: 3, name: ITEMS[0]!.title_en! })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { level: 3, name: ITEMS[1]!.title_en! })).toBeInTheDocument()
+    expect(screen.getAllByText("View details")).toHaveLength(ITEMS.length)
+    expect(screen.getByAltText(ITEMS[0]!.title_en!)).toHaveAttribute("src", ITEMS[0]!.image_url)
+    expect(screen.getByText("Jun 15")).toBeInTheDocument()
+    expect(screen.getByText("Jun 18")).toBeInTheDocument()
+    expect(section.querySelector(".grid")).toHaveClass("grid-cols-1", "sm:grid-cols-3", "gap-4")
   })
 
   it("renders nothing when there are no related events", async () => {
@@ -67,6 +87,33 @@ describe("RelatedEvents", () => {
     } as unknown as Event
 
     await renderWithRouter({ ui: () => <RelatedEvents items={[sparseEvent]} />, extraRoutes })
-    expect(screen.getByRole("link")).toHaveAttribute("href", "/events/sparse")
+    const link = screen.getByRole("link")
+    expect(link).toHaveAttribute("href", "/events/sparse")
+    expect(link).toHaveClass(
+      "group",
+      "relative",
+      "rounded-xl",
+      "card-matte",
+      "glass-noise",
+      "border",
+      "overflow-hidden",
+      "transition-all",
+      "duration-slower",
+      "hover:-translate-y-1"
+    )
+    expect(screen.queryByRole("img")).not.toBeInTheDocument()
+    expect(link.querySelector("svg")).toHaveClass("h-8", "w-8", "text-brand/(--opacity-medium)")
+    expect(screen.getByRole("heading", { level: 3 })).toHaveTextContent("")
+    expect(screen.queryByText("View details")).toBeInTheDocument()
+  })
+
+  it("uses the English title and image alt text when the active language is English", async () => {
+    await renderWithRouter({ ui: () => <RelatedEvents items={[ITEMS[0]!]} />, extraRoutes })
+
+    const link = screen.getByRole("link")
+    const title = screen.getByRole("heading", { level: 3 })
+    expect(title).toHaveTextContent(ITEMS[0]!.title_en!)
+    expect(screen.getByAltText(ITEMS[0]!.title_en!)).toBeInTheDocument()
+    expect(link.querySelector(".absolute.top-2.left-2")).toBeInTheDocument()
   })
 })

@@ -220,17 +220,24 @@ export type WsServerMessage = WsServerMessagePayload & {
 
 const StreamSequenceSchema = v.pipe(v.number(), v.safeInteger(), v.minValue(1))
 
+type JsonParseResult = { ok: true; value: unknown } | { ok: false }
+
 /**
  * Parse a raw WebSocket frame. Returns the typed message on success, or null
  * on any parse/validation failure (errors are already logged by the caller).
  */
 export function parseWsMessage(raw: string): WsServerMessage | null {
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(raw)
-  } catch {
+  const parseResult: JsonParseResult = (() => {
+    try {
+      return { ok: true, value: JSON.parse(raw) }
+    } catch {
+      return { ok: false }
+    }
+  })()
+  if (!parseResult.ok) {
     return null
   }
+  const parsed = parseResult.value
   // Wave 204 SW3 — ws-hub fans out the `{type, room, payload}` envelope
   // (services/ws-hub hub.go:323 marshals the whole Message struct), where
   // `payload` is the flat frame the backend published to chat.{chat_id}.

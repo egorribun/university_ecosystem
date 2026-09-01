@@ -12,7 +12,12 @@ describe("EventDetailSkeleton", () => {
     expect(root).toHaveClass("aurora-mesh")
     expect(root).toHaveClass("overflow-clip")
     // EventsBackdrop (aria-hidden decorative layer) renders inside.
-    expect(container.querySelector("[aria-hidden='true']")).not.toBeNull()
+    const backdrop = container.querySelector("[aria-hidden='true']")
+    expect(backdrop).not.toBeNull()
+    const [primary, secondary, tertiary] = Array.from(backdrop!.children) as HTMLElement[]
+    expect(primary).toHaveStyle({ width: "85%", height: "460px", filter: "blur(40px)" })
+    expect(secondary).toHaveStyle({ width: "50%", height: "280px", filter: "blur(60px)" })
+    expect(tertiary).toHaveStyle({ width: "40%", height: "220px", filter: "blur(50px)" })
   })
 
   it("renders the full set of pulsing placeholder blocks", () => {
@@ -32,7 +37,12 @@ describe("EventDetailSkeleton", () => {
     const root = container.firstElementChild
     expect(root).toHaveClass("events-theme")
     // Structure is prop-independent — backdrop still present, blocks unchanged.
-    expect(container.querySelector("[aria-hidden='true']")).not.toBeNull()
+    const backdrop = container.querySelector("[aria-hidden='true']")
+    expect(backdrop).not.toBeNull()
+    const [primary, secondary, tertiary] = Array.from(backdrop!.children) as HTMLElement[]
+    expect(primary).toHaveStyle({ width: "100%", height: "300px", filter: "none" })
+    expect(secondary).toHaveStyle({ width: "60%", height: "200px", filter: "none" })
+    expect(tertiary).toHaveStyle({ width: "40%", height: "160px", filter: "none" })
     expect(container.querySelector(".aspect-video")).not.toBeNull()
     expect(container.querySelectorAll(".grid > .rounded-xl")).toHaveLength(3)
   })

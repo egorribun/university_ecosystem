@@ -1345,8 +1345,14 @@ jobs:
 
       - name: Install slsa-verifier
         run: |
-          curl -sSLo /tmp/slsa-verifier \
-            https://github.com/slsa-framework/slsa-verifier/releases/download/v2.7.0/slsa-verifier-linux-amd64
+          set -euo pipefail
+          slsa_verifier_version="2.7.0"
+          slsa_verifier_url="https://github.com/slsa-framework/slsa-verifier/releases/download/v${slsa_verifier_version}/slsa-verifier-linux-amd64"
+          slsa_verifier_sha256="499befb675efcca9001afe6e5156891b91e71f9c07ab120a8943979f85cc82e6" # pragma: allowlist secret -- release checksum
+          curl --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 \
+            --output /tmp/slsa-verifier "$slsa_verifier_url"
+          echo "$slsa_verifier_sha256  /tmp/slsa-verifier" | sha256sum --check --strict
           chmod +x /tmp/slsa-verifier
 
       - name: Verify slsa-verifier is functional
@@ -2014,8 +2020,14 @@ jobs:
 
       - name: Install kubeconform
         run: |
-          curl -sSLo /tmp/kubeconform.tar.gz \
-            https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz
+          set -euo pipefail
+          kubeconform_version="0.6.7"
+          kubeconform_url="https://github.com/yannh/kubeconform/releases/download/v${kubeconform_version}/kubeconform-linux-amd64.tar.gz"
+          kubeconform_sha256="95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73" # pragma: allowlist secret -- release checksum
+          curl --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 \
+            --output /tmp/kubeconform.tar.gz "$kubeconform_url"
+          echo "$kubeconform_sha256  /tmp/kubeconform.tar.gz" | sha256sum --check --strict
           tar xf /tmp/kubeconform.tar.gz -C /tmp
           chmod +x /tmp/kubeconform
 
@@ -2024,7 +2036,7 @@ jobs:
           /tmp/kubeconform -strict -summary \
             -skip NetworkChaos,PodChaos,HTTPChaos,ClusterPolicy,ScaledObject,ExternalSecret,SecretStore,ClusterSecretStore,PrometheusRule,TriggerAuthentication,ServiceMonitor,Kustomization,Test \
             -schema-location default \
-            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/866b2653a5334db9aed20ad74701e20fd464471b/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             /tmp/backend-manifests.yaml
 
       - name: Validate static K8s manifests with kubeconform
@@ -2037,7 +2049,7 @@ jobs:
             -ignore-filename-pattern '.*kustomization\.yaml' \
             -skip NetworkChaos,PodChaos,HTTPChaos,ClusterPolicy,ScaledObject,ExternalSecret,SecretStore,ClusterSecretStore,PrometheusRule,TriggerAuthentication,TestSuite,UnitTest,ServiceMonitor,Kustomization,Test \
             -schema-location default \
-            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/866b2653a5334db9aed20ad74701e20fd464471b/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
             k8s/
 
       - name: Validate SPIRE runtime configuration
@@ -4113,8 +4125,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install k6
         run: |
-          curl https://github.com/grafana/k6/releases/download/v0.54.0/k6-v0.54.0-linux-amd64.tar.gz -L | tar xvz
-          sudo mv k6-v0.54.0-linux-amd64/k6 /usr/local/bin/
+          set -euo pipefail
+          k6_version="0.54.0"
+          k6_url="https://github.com/grafana/k6/releases/download/v${k6_version}/k6-v${k6_version}-linux-amd64.tar.gz"
+          k6_sha256="c7f03434854f837b6790ee81572e4b0f955241974c79a43cbb9f8d0fef069589" # pragma: allowlist secret -- release checksum
+          curl --fail --silent --show-error --location \
+            --proto '=https' --tlsv1.2 \
+            --output /tmp/k6.tar.gz "$k6_url"
+          echo "$k6_sha256  /tmp/k6.tar.gz" | sha256sum --check --strict
+          tar xzf /tmp/k6.tar.gz -C /tmp
+          sudo mv "/tmp/k6-v${k6_version}-linux-amd64/k6" /usr/local/bin/
       - name: Validate k6 script syntax
         run: k6 inspect tests/performance/ws_hub_10k_test.js
 

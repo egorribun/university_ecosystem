@@ -307,6 +307,26 @@ async def test_cwv_retention_missing_rowcount_defaults_to_zero(
 
 
 @pytest.mark.asyncio
+async def test_cwv_retention_owned_session_forwards_explicit_clock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An owned session must recurse with the same wall-clock instant."""
+    outer_cleanup = cwv_retention.cleanup_stale_cwv_observations
+    session = AsyncMock()
+    context = MagicMock()
+    context.__aenter__ = AsyncMock(return_value=session)
+    context.__aexit__ = AsyncMock(return_value=False)
+    nested_cleanup = AsyncMock(return_value=23)
+    monkeypatch.setattr(cwv_retention, "async_session", lambda: context)
+    monkeypatch.setattr(cwv_retention, "cleanup_stale_cwv_observations", nested_cleanup)
+
+    result = await outer_cleanup(db=None, now=NOW, retention_days=7)
+
+    assert result == 23
+    nested_cleanup.assert_awaited_once_with(db=session, now=NOW, retention_days=7)
+
+
+@pytest.mark.asyncio
 async def test_retry_dead_letter_audit_records_canonical_batch_count() -> None:
     job_ids = [
         uuid.UUID("aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa"),

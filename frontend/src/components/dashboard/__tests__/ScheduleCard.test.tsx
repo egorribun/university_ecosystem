@@ -18,28 +18,36 @@ const translationState = vi.hoisted(() => ({
 const translationCalls = vi.hoisted(() => ({
   entries: [] as Array<{ key: string; options?: Record<string, unknown> }>,
 }))
-const preloadRoute = vi.hoisted(() => vi.fn())
+const translationNamespaces = vi.hoisted(() => ({ calls: [] as unknown[] }))
+const parseMinutesCalls = vi.hoisted(() => ({ values: [] as string[] }))
+const { preloadRoute, routerState } = vi.hoisted(() => {
+  const routePreload = vi.fn()
+  return { preloadRoute: routePreload, routerState: { current: { preloadRoute: routePreload } } }
+})
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, options?: Record<string, unknown>) => {
-      translationCalls.entries.push({ key, options })
-      if (
-        options?.returnObjects &&
-        translationState.useArrays &&
-        (key === "dashboard:weekDays.display" || key === "dashboard:weekDays.raw")
-      ) {
-        if (key === "dashboard:weekDays.display" && translationState.displayOverride) {
-          return translationState.displayOverride
+  useTranslation: (namespaces: unknown) => {
+    translationNamespaces.calls.push(namespaces)
+    return {
+      t: (key: string, options?: Record<string, unknown>) => {
+        translationCalls.entries.push({ key, options })
+        if (
+          options?.returnObjects &&
+          translationState.useArrays &&
+          (key === "dashboard:weekDays.display" || key === "dashboard:weekDays.raw")
+        ) {
+          if (key === "dashboard:weekDays.display" && translationState.displayOverride) {
+            return translationState.displayOverride
+          }
+          if (key === "dashboard:weekDays.raw" && translationState.rawOverride) {
+            return translationState.rawOverride
+          }
+          return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
         }
-        if (key === "dashboard:weekDays.raw" && translationState.rawOverride) {
-          return translationState.rawOverride
-        }
-        return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-      }
-      return key
-    },
-  }),
+        return key
+      },
+    }
+  },
 }))
 
 vi.mock("@tanstack/react-router", () => ({
@@ -52,7 +60,7 @@ vi.mock("@tanstack/react-router", () => ({
       {children}
     </a>
   ),
-  useRouter: () => ({ preloadRoute }),
+  useRouter: () => routerState.current,
 }))
 
 vi.mock("@/hooks/useDashboardSchedule", () => ({
@@ -63,6 +71,7 @@ vi.mock("@/utils/scheduleUtils", () => ({
   fmtTime: (value: string) => value,
   nowParity: () => "odd",
   parseMinutes: (value: string) => {
+    parseMinutesCalls.values.push(value)
     const [hours = Number.NaN, minutes = Number.NaN] = value.split(":").map(Number)
     return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : null
   },
@@ -116,6 +125,9 @@ describe("ScheduleCard", () => {
     translationState.displayOverride = undefined
     translationState.rawOverride = undefined
     translationCalls.entries = []
+    translationNamespaces.calls = []
+    parseMinutesCalls.values = []
+    routerState.current = { preloadRoute }
     preloadRoute.mockReset()
     preloadRoute.mockResolvedValue(undefined)
   })
@@ -134,6 +146,8 @@ describe("ScheduleCard", () => {
 
     expect(screen.getByRole("article")).toHaveAttribute("aria-busy", "true")
     expect(screen.getAllByTestId("schedule-skeleton")).toHaveLength(9)
+    expect(screen.queryByText("dashboard:noClasses")).not.toBeInTheDocument()
+    expect(screen.queryByRole("list")).not.toBeInTheDocument()
   })
 
   it("does not show a loading state for non-students or missing groups", () => {
@@ -162,6 +176,43 @@ describe("ScheduleCard", () => {
     expect(screen.getAllByText("Cached lesson").length).toBeGreaterThan(0)
   })
 
+  it("passes an empty string to the time parser for each missing bound", () => {
+    const time = new Date(2026, 6, 31, 9, 0)
+    scheduleState.current = {
+      data: [
+        lessonFor(time, {
+          id: "missing-start",
+          subject: "Missing start",
+          start_time: undefined,
+          end_time: "11:00",
+        }),
+      ],
+      isLoading: false,
+      isFetching: false,
+    }
+
+    const first = render(<ScheduleCard time={time} userRole="student" userGroupId="group-1" />)
+    expect(parseMinutesCalls.values).toContain("")
+    first.unmount()
+
+    parseMinutesCalls.values = []
+    scheduleState.current = {
+      data: [
+        lessonFor(time, {
+          id: "missing-end",
+          subject: "Missing end",
+          start_time: "12:00",
+          end_time: undefined,
+        }),
+      ],
+      isLoading: false,
+      isFetching: false,
+    }
+
+    render(<ScheduleCard time={time} userRole="student" userGroupId="group-1" />)
+    expect(parseMinutesCalls.values).toContain("")
+  })
+
   it("renders the current lesson, progress, and sorted matching lessons", () => {
     const time = new Date(2026, 6, 31, 10, 30)
     scheduleState.current = {
@@ -179,6 +230,7 @@ describe("ScheduleCard", () => {
     expect(screen.getAllByText("Databases").length).toBeGreaterThan(0)
     expect(screen.getByRole("progressbar")).toHaveValue(50)
     expect(screen.getByText("dashboard:now")).toBeInTheDocument()
+    expect(screen.queryByText("dashboard:next")).not.toBeInTheDocument()
     expect(screen.getByText("Algorithms")).toBeInTheDocument()
     expect(screen.getAllByText("dashboard:lessonMeta").length).toBeGreaterThan(0)
     expect(screen.queryByText("Even-only")).not.toBeInTheDocument()
@@ -418,6 +470,16 @@ describe("ScheduleCard", () => {
     )
     const listItems = Array.from(container.querySelectorAll("ul > li"))
     expect(listItems).toHaveLength(2)
+    expect(screen.queryByText("dashboard:noClasses")).not.toBeInTheDocument()
+    expect(screen.getByRole("list")).toBeInTheDocument()
+    expect(listItems[0]).toHaveClass("dash-list-item", "px-0", "py-0")
+    expect(listItems[0]?.firstElementChild).toHaveClass(
+      "list-item-blue",
+      "list-item-blue-hover",
+      "flex",
+      "flex-col",
+      "cursor-default"
+    )
     expect(listItems[0]).toHaveTextContent("Earlier subject")
     expect(listItems[1]).toHaveTextContent("Later subject")
 
@@ -464,6 +526,12 @@ describe("ScheduleCard", () => {
     expect(card).toHaveAttribute("data-fade", "true")
     expect(card).toHaveStyle({ color: "rgb(255, 0, 0)" })
     expect(screen.getByRole("heading")).toHaveClass("font-extrabold")
+    expect(screen.getByRole("heading")).toHaveAttribute(
+      "style",
+      expect.stringContaining("font-size: clamp(1.35rem, 2.5vw, 1.75rem)")
+    )
+    expect(screen.getByText("dashboard:fullSchedule")).toBeInTheDocument()
+    expect(translationNamespaces.calls).toContainEqual(["dashboard", "common"])
     expect(screen.getByRole("link", { name: "dashboard:aria.openFullSchedule" })).toHaveClass(
       "btn-dash",
       "whitespace-nowrap",
@@ -486,6 +554,25 @@ describe("ScheduleCard", () => {
     render(<ScheduleCard time={time} userRole="student" userGroupId="group-1" />)
 
     expect(screen.getByText("dashboard:noClasses")).toBeInTheDocument()
+  })
+
+  it("uses every source English weekday when translated arrays are unavailable", () => {
+    translationState.useArrays = false
+
+    dayNames.forEach((weekday, index) => {
+      const time = new Date(2026, 6, 26 + index, 10, 30)
+      scheduleState.current = {
+        data: [lessonFor(time, { id: `fallback-${weekday}`, subject: `Fallback ${weekday}` })],
+        isLoading: false,
+        isFetching: false,
+      }
+
+      const { unmount } = render(
+        <ScheduleCard time={time} userRole="student" userGroupId="group-1" />
+      )
+      expect(screen.getAllByText(`Fallback ${weekday}`).length).toBeGreaterThan(0)
+      unmount()
+    })
   })
 
   it("matches a localized display weekday when the translated arrays are complete", () => {
@@ -524,6 +611,118 @@ describe("ScheduleCard", () => {
     expect(screen.getAllByText("Localized raw").length).toBeGreaterThan(0)
   })
 
+  it("keeps English backend weekday aliases when the locale uses non-English names", () => {
+    translationState.displayOverride = [
+      "воскресенье",
+      "понедельник",
+      "вторник",
+      "среда",
+      "четверг",
+      "пятница",
+      "суббота",
+    ]
+    translationState.rawOverride = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"]
+
+    dayNames.forEach((weekday, index) => {
+      const time = new Date(2026, 6, 26 + index, 10, 30)
+      scheduleState.current = {
+        data: [lessonFor(time, { id: `english-${weekday}`, subject: `English ${weekday}` })],
+        isLoading: false,
+        isFetching: false,
+      }
+
+      const { unmount } = render(
+        <ScheduleCard time={time} userRole="student" userGroupId="group-1" />
+      )
+      expect(screen.getAllByText(`English ${weekday}`).length).toBeGreaterThan(0)
+      unmount()
+    })
+  })
+
+  it("rejects an empty weekday while a translated label happens to contain filler text", () => {
+    const time = new Date(2026, 6, 27, 10, 30)
+    translationState.displayOverride = [
+      "воскресенье",
+      "Stryker was here!",
+      "вторник",
+      "среда",
+      "четверг",
+      "пятница",
+      "суббота",
+    ]
+    translationState.rawOverride = [...translationState.displayOverride]
+    scheduleState.current = {
+      data: [
+        lessonFor(time, { id: "empty-weekday", subject: "Empty weekday", weekday: undefined }),
+      ],
+      isLoading: false,
+      isFetching: false,
+    }
+
+    render(<ScheduleCard time={time} userRole="student" userGroupId="group-1" />)
+
+    expect(screen.queryByText("Empty weekday")).not.toBeInTheDocument()
+    expect(screen.getByText("dashboard:noClasses")).toBeInTheDocument()
+  })
+
+  it("recomputes the weekday map when locale labels change during a mounted card", () => {
+    const time = new Date(2026, 6, 27, 10, 30)
+    translationState.displayOverride = [
+      "воскресенье",
+      "старый-понедельник",
+      "вторник",
+      "среда",
+      "четверг",
+      "пятница",
+      "суббота",
+    ]
+    translationState.rawOverride = [...translationState.displayOverride]
+    scheduleState.current = {
+      data: [
+        lessonFor(time, {
+          id: "old-weekday",
+          subject: "Old localized lesson",
+          weekday: "старый-понедельник",
+        }),
+      ],
+      isLoading: false,
+      isFetching: false,
+    }
+
+    const { rerender } = render(
+      <ScheduleCard time={time} userRole="student" userGroupId="group-1" />
+    )
+    expect(screen.getAllByText("Old localized lesson").length).toBeGreaterThan(0)
+
+    translationState.displayOverride = [
+      "воскресенье",
+      "новый-понедельник",
+      "вторник",
+      "среда",
+      "четверг",
+      "пятница",
+      "суббота",
+    ]
+    translationState.rawOverride = [...translationState.displayOverride]
+    scheduleState.current = {
+      data: [
+        lessonFor(time, {
+          id: "new-weekday",
+          subject: "New localized lesson",
+          weekday: "новый-понедельник",
+        }),
+      ],
+      isLoading: false,
+      isFetching: false,
+    }
+    rerender(
+      <ScheduleCard time={new Date(time.getTime())} userRole="student" userGroupId="group-1" />
+    )
+
+    expect(screen.getAllByText("New localized lesson").length).toBeGreaterThan(0)
+    expect(screen.queryByText("dashboard:noClasses")).not.toBeInTheDocument()
+  })
+
   it("rejects translated weekday arrays with the wrong length", () => {
     const time = new Date(2026, 6, 27, 10, 30)
     translationState.displayOverride = ["вс", "пн", "вт", "ср", "чт", "пт"]
@@ -559,6 +758,53 @@ describe("ScheduleCard", () => {
     expect(screen.queryByText("dashboard:now")).not.toBeInTheDocument()
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument()
     expect(screen.getByText("Boundary lesson")).toBeInTheDocument()
+  })
+
+  it("updates the next lesson when the clock moves past the first candidate", () => {
+    const firstTime = new Date(2026, 6, 27, 9, 0)
+    const secondTime = new Date(2026, 6, 27, 11, 30)
+    scheduleState.current = {
+      data: [
+        lessonFor(firstTime, { id: "first-next", subject: "First next", start_time: "10:00" }),
+        lessonFor(firstTime, {
+          id: "second-next",
+          subject: "Second next",
+          start_time: "12:00",
+          end_time: "13:00",
+        }),
+      ],
+      isLoading: false,
+      isFetching: false,
+    }
+
+    const { rerender } = render(
+      <ScheduleCard time={firstTime} userRole="student" userGroupId="group-1" />
+    )
+    expect(screen.getByText("dashboard:next")).toBeInTheDocument()
+    expect(screen.getAllByText("First next").length).toBeGreaterThan(0)
+
+    rerender(<ScheduleCard time={secondTime} userRole="student" userGroupId="group-1" />)
+    const nextBadge = screen.getByText("dashboard:next")
+    expect(within(nextBadge.parentElement!).getByText("Second next")).toBeInTheDocument()
+    expect(within(nextBadge.parentElement!).queryByText("First next")).not.toBeInTheDocument()
+  })
+
+  it("updates current lesson progress when the clock moves within the same interval", () => {
+    const firstTime = new Date(2026, 6, 27, 10, 15)
+    const secondTime = new Date(2026, 6, 27, 10, 45)
+    scheduleState.current = {
+      data: [lessonFor(firstTime, { id: "progress", start_time: "10:00", end_time: "11:00" })],
+      isLoading: false,
+      isFetching: false,
+    }
+
+    const { rerender } = render(
+      <ScheduleCard time={firstTime} userRole="student" userGroupId="group-1" />
+    )
+    expect(screen.getByRole("progressbar")).toHaveValue(25)
+
+    rerender(<ScheduleCard time={secondTime} userRole="student" userGroupId="group-1" />)
+    expect(screen.getByRole("progressbar")).toHaveValue(75)
   })
 
   it("handles missing role/group and malformed weekday/time payloads safely", () => {
@@ -622,6 +868,20 @@ describe("ScheduleCard", () => {
     fireEvent.keyDown(link, { key: " " })
     fireEvent.keyDown(link, { key: "Spacebar" })
     fireEvent.keyDown(link, { key: "Escape" })
+  })
+
+  it("refreshes the route preloader when the router object changes", () => {
+    const firstPreload = vi.fn().mockResolvedValue(undefined)
+    const secondPreload = vi.fn().mockResolvedValue(undefined)
+    routerState.current = { preloadRoute: firstPreload }
+
+    const { rerender } = renderCard({ userRole: "student", userGroupId: "group-1" })
+    routerState.current = { preloadRoute: secondPreload }
+    rerender(<ScheduleCard time={new Date(2026, 6, 31, 10, 30)} />)
+
+    fireEvent.pointerDown(screen.getByRole("link", { name: "dashboard:aria.openFullSchedule" }))
+    expect(secondPreload).toHaveBeenCalledWith({ to: "/schedule" })
+    expect(firstPreload).not.toHaveBeenCalled()
   })
 
   it("absorbs a rejected schedule route warmup", async () => {

@@ -4,16 +4,23 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { ComponentProps } from "react"
 
 const { language } = vi.hoisted(() => ({ language: { current: "en" } }))
+const { useTranslationMock, translationMock } = vi.hoisted(() => {
+  const translationMock = vi.fn((key: string) => key)
+  return {
+    useTranslationMock: vi.fn(() => ({
+      t: translationMock,
+      i18n: {
+        get language() {
+          return language.current
+        },
+      },
+    })),
+    translationMock,
+  }
+})
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: {
-      get language() {
-        return language.current
-      },
-    },
-  }),
+  useTranslation: useTranslationMock,
 }))
 
 vi.mock("@/components/media/SmartImage", () => ({
@@ -82,6 +89,14 @@ describe("EventEditDialog", () => {
     expect(screen.getByLabelText("events:form.end")).toHaveValue("2026-06-15T16:00")
     expect(screen.getByLabelText("events:form.speaker")).toHaveValue("Dr. Ivanova")
     expect(screen.getByAltText("events:alt.preview")).toHaveAttribute("src", draft.image_url)
+    expect(screen.getByLabelText("events:form.title_en")).toHaveClass(
+      "bg-(--input-bg)",
+      "border",
+      "focus:border-brand"
+    )
+    expect(screen.getByLabelText("events:form.end")).not.toHaveClass("border-error-border")
+    expect(useTranslationMock).toHaveBeenCalledWith(["events", "common"])
+    expect(translationMock).toHaveBeenCalledWith("events:card.dialogs.edit.title")
 
     await user.clear(screen.getByLabelText("events:form.title_en"))
     await user.type(screen.getByLabelText("events:form.title_en"), "Updated")
@@ -131,7 +146,7 @@ describe("EventEditDialog", () => {
       expect.objectContaining({ title: "Новое название" })
     )
 
-    const fileInput = screen.getByLabelText("common:buttons.changePhoto") as HTMLInputElement
+    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
     fireEvent.change(fileInput, { target: { files: [] } })
     expect(props.setNewImage).not.toHaveBeenCalled()
   })
@@ -143,6 +158,7 @@ describe("EventEditDialog", () => {
 
     await screen.findByRole("dialog")
     expect(screen.getByText("events:form.errors.endsBeforeStarts")).toBeInTheDocument()
+    expect(screen.getByLabelText("events:form.end")).toHaveClass("border-error-border")
     expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
     expect(screen.getByText("common:statuses.uploading").closest("label")).toHaveAttribute(
       "aria-disabled",
@@ -192,5 +208,22 @@ describe("EventEditDialog", () => {
     Object.defineProperty(fileInput, "files", { configurable: true, value: undefined })
     fireEvent.change(fileInput)
     expect(props.setNewImage).not.toHaveBeenCalled()
+  })
+
+  it("disables saving when a normalized title or location is missing", async () => {
+    const { unmount } = render(
+      <EventEditDialog
+        {...createProps({ normalizedTitle: "", normalizedLocation: "Main Building" })}
+      />
+    )
+    await screen.findByRole("dialog")
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+    unmount()
+
+    render(
+      <EventEditDialog {...createProps({ normalizedTitle: "Workshop", normalizedLocation: "" })} />
+    )
+    await screen.findByRole("dialog")
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
   })
 })

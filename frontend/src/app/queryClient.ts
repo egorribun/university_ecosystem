@@ -60,9 +60,14 @@ async function getIdbQuotaBytes(): Promise<number> {
   if (_resolvedQuota !== null) return _resolvedQuota
   try {
     const estimate = await navigator.storage?.estimate?.()
-    if (estimate?.quota && estimate.quota > 0) {
+    const availableQuota = estimate?.quota
+    if (
+      typeof availableQuota === "number" &&
+      Number.isFinite(availableQuota) &&
+      availableQuota > 0
+    ) {
       // Use at most 5% of available storage, capped at 50 MB
-      _resolvedQuota = Math.min(Math.floor(estimate.quota * 0.05), MAX_IDB_QUOTA_BYTES)
+      _resolvedQuota = Math.min(Math.floor(availableQuota * 0.05), MAX_IDB_QUOTA_BYTES)
       return _resolvedQuota
     }
   } catch {

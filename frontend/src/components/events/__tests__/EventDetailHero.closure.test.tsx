@@ -3,12 +3,19 @@ import { act } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const { mockOnDeactivate } = vi.hoisted(() => ({ mockOnDeactivate: vi.fn() }))
+const { useTranslationMock, translationMock } = vi.hoisted(() => {
+  const translationMock = vi.fn((key: string) => key)
+  return {
+    useTranslationMock: vi.fn(() => ({
+      t: translationMock,
+      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+    })),
+    translationMock,
+  }
+})
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  useTranslation: useTranslationMock,
 }))
 vi.mock("@/components/media/SmartImage", () => ({
   default: ({
@@ -48,6 +55,11 @@ describe("EventDetailHero closure", () => {
     const image = screen.getByRole("img") as HTMLImageElement
     const hero = container.firstElementChild as HTMLElement
 
+    expect(image).toHaveAttribute("src", props.imageUrl)
+    expect(image).toHaveAttribute("alt", "events:alt.image")
+    expect(image).toHaveAttribute("loading", "eager")
+    expect(image).toHaveAttribute("fetchpriority", "high")
+
     setNaturalSize(image, 600, 1000)
     fireEvent.load(image)
     expect(hero).toHaveClass("aspect-3/4")
@@ -61,6 +73,14 @@ describe("EventDetailHero closure", () => {
     fireEvent.load(image)
     expect(hero).toHaveClass("aspect-video")
     expect(image).toHaveClass("object-cover")
+
+    setNaturalSize(image, 85, 100)
+    fireEvent.load(image)
+    expect(hero).toHaveClass("aspect-square")
+
+    setNaturalSize(image, 140, 100)
+    fireEvent.load(image)
+    expect(hero).toHaveClass("aspect-square")
 
     setNaturalSize(image, 0, 0)
     fireEvent.load(image)
@@ -92,6 +112,8 @@ describe("EventDetailHero closure", () => {
 
     const lightboxImage = dialog.querySelector("img")
     expect(lightboxImage).not.toBeNull()
+    expect(lightboxImage).toHaveAttribute("src", props.imageUrl)
+    expect(lightboxImage).toHaveAttribute("alt", "events:alt.image")
     fireEvent.click(lightboxImage!)
     expect(screen.getByRole("dialog")).toBeInTheDocument()
 
@@ -104,5 +126,34 @@ describe("EventDetailHero closure", () => {
     fireEvent.click(screen.getByRole("button", { name: "events:detail.actions.zoom" }))
     fireEvent.click(screen.getByRole("dialog"))
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+
+    expect(useTranslationMock).toHaveBeenCalledWith(["events"])
+    expect(translationMock).toHaveBeenCalledWith("events:detail.actions.zoom")
+    expect(translationMock).toHaveBeenCalledWith("common:buttons.close")
+  })
+
+  it("cleans up the Escape listener when the lightbox closes", () => {
+    const { unmount } = render(<EventDetailHero {...props} />)
+    fireEvent.click(screen.getByRole("button", { name: "events:detail.actions.zoom" }))
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: "Escape" })
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    fireEvent.keyDown(document, { key: "Escape" })
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    unmount()
+  })
+
+  it("does not focus a detached close button after unmount", () => {
+    vi.useFakeTimers()
+    const focusSpy = vi.spyOn(HTMLButtonElement.prototype, "focus")
+    const { unmount } = render(<EventDetailHero {...props} />)
+    fireEvent.click(screen.getByRole("button", { name: "events:detail.actions.zoom" }))
+    unmount()
+
+    act(() => {
+      vi.advanceTimersByTime(50)
+    })
+    expect(focusSpy).not.toHaveBeenCalled()
+    focusSpy.mockRestore()
   })
 })

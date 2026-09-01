@@ -53,7 +53,9 @@ describe("initGlobalErrorHandlers", () => {
     const { initGlobalErrorHandlers } = await import("../globalErrorHandlers")
     expect(initGlobalErrorHandlers(target)).toBe(true)
     expect(addEventListenerMock).toHaveBeenCalledTimes(2)
-    expect(logInfo).toHaveBeenCalledWith("[GlobalErrors] Handlers registered", expect.any(Object))
+    expect(logInfo).toHaveBeenCalledWith("[GlobalErrors] Handlers registered", {
+      source: "global-error-handler",
+    })
 
     const rejectionHandler = listeners.unhandledrejection?.[0]
     expect(rejectionHandler).toBeTypeOf("function")
@@ -88,6 +90,25 @@ describe("initGlobalErrorHandlers", () => {
       "[GlobalErrors] Promise rejected with a non-error value",
       "plain-value"
     )
+
+    rejectionHandler?.({ reason: undefined } as PromiseRejectionEvent)
+    expect(logWarning).toHaveBeenCalledWith(
+      "[GlobalErrors] Promise rejected with a non-error value",
+      undefined
+    )
+
+    rejectionHandler?.({ reason: null } as PromiseRejectionEvent)
+    expect(logWarning).toHaveBeenCalledWith(
+      "[GlobalErrors] Promise rejected with a non-error value",
+      null
+    )
+
+    const nested = { context: { requestId: "req-1" } }
+    rejectionHandler?.({ reason: nested } as PromiseRejectionEvent)
+    const clonedReason = logWarning.mock.calls.at(-1)?.[1]
+    expect(clonedReason).toEqual(nested)
+    expect(clonedReason).not.toBe(nested)
+    expect((clonedReason as { context: unknown }).context).not.toBe(nested.context)
 
     const cyclic: Record<string, unknown> = {}
     cyclic.self = cyclic
@@ -150,5 +171,10 @@ describe("initGlobalErrorHandlers", () => {
     resetGlobalErrorHandlersForTesting()
     expect(removeEventListenerMock).toHaveBeenCalledTimes(2)
     resetGlobalErrorHandlersForTesting()
+
+    // Teardown clears the module guard, so an explicit re-initialization must
+    // attach a fresh pair rather than silently remaining disabled.
+    expect(initGlobalErrorHandlers(target)).toBe(true)
+    expect(addEventListenerMock).toHaveBeenCalledTimes(4)
   })
 })

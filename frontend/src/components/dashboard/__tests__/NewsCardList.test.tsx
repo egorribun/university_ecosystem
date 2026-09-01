@@ -3,13 +3,16 @@ import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const { mockNavigate } = vi.hoisted(() => ({ mockNavigate: vi.fn() }))
-
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
+const useTranslationMock = vi.hoisted(() =>
+  vi.fn((namespaces: string[]) => ({
     t: (key: string, opts?: Record<string, unknown>) =>
       opts && "title" in opts ? `${key}:${String(opts.title)}` : key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+    namespaces,
+  }))
+)
+
+vi.mock("react-i18next", () => ({
+  useTranslation: useTranslationMock,
 }))
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mockNavigate,
@@ -37,11 +40,15 @@ const NEWS = [
 describe("NewsCardList", () => {
   beforeEach(() => {
     mockNavigate.mockClear()
+    useTranslationMock.mockClear()
   })
 
   it("renders skeleton placeholders while loading", () => {
     const { container } = render(<NewsCardList news={[]} loading locale="en" />)
+    expect(useTranslationMock).toHaveBeenCalledWith(["dashboard"])
     expect(container.querySelector('[role="presentation"]')).toBeInTheDocument()
+    expect(container.querySelectorAll('[role="presentation"] > div')).toHaveLength(2)
+    expect(container.querySelectorAll('[role="presentation"] .skeleton')).toHaveLength(8)
     // No interactive news rows during loading.
     expect(screen.queryByRole("list")).not.toBeInTheDocument()
     expect(screen.queryByRole("button")).not.toBeInTheDocument()
@@ -61,8 +68,22 @@ describe("NewsCardList", () => {
     expect(screen.getByText(NEWS[1]!.title)).toBeInTheDocument()
     // Long content gets an ellipsis suffix.
     expect(screen.getByText(/…$/)).toBeInTheDocument()
+    const longContent = items[0]?.querySelector("span.text-sm.leading-relaxed")
+    expect(longContent?.textContent).toBe(`${NEWS[0]!.content!.slice(0, 110)}…`)
     // Short content has no ellipsis.
     expect(screen.getByText("Коротко.")).toBeInTheDocument()
+    expect(items[0]).toHaveClass(
+      "group",
+      "list-item-blue",
+      "list-item-blue-hover",
+      "flex",
+      "items-center",
+      "gap-4",
+      "text-left",
+      "sm:gap-5"
+    )
+    expect(items[0]).toHaveAttribute("title", NEWS[0]!.title)
+    expect(items[0]).toHaveAttribute("aria-label", `dashboard:aria.newsItem:${NEWS[0]!.title}`)
   })
 
   it("navigates to the news detail route when a row is clicked", async () => {
@@ -78,6 +99,22 @@ describe("NewsCardList", () => {
     ] as unknown as NewsItem[]
     render(<NewsCardList news={missing} loading={false} locale="en" />)
     expect(screen.getByText("Без контента")).toBeInTheDocument()
-    expect(screen.getByRole("button")).toBeInTheDocument()
+    const button = screen.getByRole("button")
+    expect(button).toBeInTheDocument()
+    expect(button.querySelector("span.text-sm.leading-relaxed")?.textContent).toBe("")
+  })
+
+  it("does not append an ellipsis to content exactly at the truncation boundary", () => {
+    const exact = "x".repeat(110)
+    render(
+      <NewsCardList
+        news={[{ id: "exact", title: "Exact boundary", content: exact } as NewsItem]}
+        loading={false}
+        locale="en"
+      />
+    )
+
+    const content = screen.getByRole("button").querySelector("span.text-sm.leading-relaxed")
+    expect(content?.textContent).toBe(exact)
   })
 })

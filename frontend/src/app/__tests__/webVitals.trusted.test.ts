@@ -10,7 +10,13 @@ vi.mock("web-vitals", () => ({
 vi.mock("@/app/logger", () => ({ logDebug: vi.fn() }))
 
 import { onFCP, onLCP } from "web-vitals"
-import { initWebVitals, resetWebVitalsForTesting } from "@/app/webVitals"
+import {
+  buildTrustedEnvelopeBody,
+  initWebVitals,
+  isTrustedEnvelopeFresh,
+  parseTrustedEnvelope,
+  resetWebVitalsForTesting,
+} from "@/app/webVitals"
 
 const env: ImportMetaEnv & {
   VITE_ENABLE_WEB_VITALS: string
@@ -86,6 +92,15 @@ describe("trusted field CWV transport", () => {
     })
     expect(JSON.stringify(observationBody)).not.toContain("browser-id")
     expect(JSON.stringify(observationBody)).not.toMatch(/email|user_agent|ip_address/i)
+    expect(fetchMock.mock.calls[1]![0]).toBe("/api/v1/cwv/observations")
+    expect(fetchMock.mock.calls[1]![1]).toEqual(
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        keepalive: true,
+        headers: expect.objectContaining({ "Content-Type": "application/json" }),
+      })
+    )
   })
 
   it("never submits non-certification metrics and absorbs envelope failure", async () => {
@@ -95,6 +110,28 @@ describe("trusted field CWV transport", () => {
     vi.mocked(onFCP).mock.calls[0]![0]({ name: "FCP", value: 1000 } as never)
     await Promise.resolve()
     await Promise.resolve()
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
+  it("filters non-certification metrics after a valid envelope is available", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            envelope: "signed-envelope",
+            expires_at: new Date(Date.now() + 300_000).toISOString(),
+          }),
+          { status: 200 }
+        )
+      )
+      .mockResolvedValue(new Response(null, { status: 202 }))
+    vi.stubGlobal("fetch", fetchMock)
+    expect(initWebVitals(env)).toBe(true)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+
+    vi.mocked(onFCP).mock.calls[0]![0]({ name: "FCP", value: 1000 } as never)
+    await new Promise((resolve) => window.setTimeout(resolve, 0))
     expect(fetchMock).toHaveBeenCalledOnce()
   })
 
@@ -203,10 +240,70 @@ describe("trusted field CWV transport", () => {
     )
   })
 
+  it("trims cookie segments before locating the CSRF token", () => {
+    document.cookie = "other=value; path=/"
+    document.cookie = "csrf_token=bound%20token; path=/"
+    const fetchMock = vi.fn().mockRejectedValue(new Error("offline"))
+    vi.stubGlobal("fetch", fetchMock)
+
+    expect(initWebVitals(env)).toBe(true)
+    expect(fetchMock.mock.calls[0]![1]).toEqual(
+      expect.objectContaining({
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": "bound token",
+        },
+      })
+    )
+  })
+
   it("rejects malformed and cross-origin trusted endpoints before registration", () => {
     expect(initWebVitals({ ...env, VITE_WEB_VITALS_ENDPOINT: "http://[invalid" })).toBe(false)
     expect(initWebVitals({ ...env, VITE_WEB_VITALS_ENDPOINT: "https://metrics.example/v1" })).toBe(
       false
+    )
+  })
+
+  it("fails closed before touching an unavailable fetch transport", () => {
+    vi.stubGlobal("fetch", undefined)
+    expect(() =>
+      initWebVitals({ ...env, VITE_WEB_VITALS_ENDPOINT: "https://metrics.example/v1" })
+    ).not.toThrow()
+    expect(initWebVitals({ ...env, VITE_WEB_VITALS_ENDPOINT: "https://metrics.example/v1" })).toBe(
+      false
+    )
+  })
+
+  it("normalizes trailing endpoint slashes for envelope and observation URLs", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("offline"))
+    vi.stubGlobal("fetch", fetchMock)
+    expect(initWebVitals({ ...env, VITE_WEB_VITALS_ENDPOINT: "/api/v1/cwv///" })).toBe(true)
+
+    expect(fetchMock.mock.calls[0]![0]).toBe("/api/v1/cwv/envelope")
+  })
+
+  it("keeps renewal metadata absent until a real envelope exists", () => {
+    expect(buildTrustedEnvelopeBody("/dashboard", "desktop")).toEqual({
+      pathname: "/dashboard",
+      device_class: "desktop",
+    })
+    expect(buildTrustedEnvelopeBody("/dashboard", "desktop", "signed")).toEqual({
+      pathname: "/dashboard",
+      device_class: "desktop",
+      renewal_envelope: "signed",
+    })
+  })
+
+  it("validates trusted envelope payloads and exact expiry boundaries", () => {
+    const now = Date.parse("2026-09-01T10:00:00.000Z")
+    expect(
+      parseTrustedEnvelope({ envelope: "signed", expires_at: "2026-09-01T10:00:01.000Z" }, now)
+    ).toEqual({ envelope: "signed", expiresAt: now + 1000 })
+    expect(() =>
+      parseTrustedEnvelope({ envelope: "signed", expires_at: new Date(now).toISOString() }, now)
+    ).toThrow("CWV envelope malformed")
+    expect(() => parseTrustedEnvelope({ envelope: "signed", expires_at: 123 }, now)).toThrow(
+      "CWV envelope malformed"
     )
   })
 
@@ -238,6 +335,13 @@ describe("trusted field CWV transport", () => {
       "/api/v1/cwv/observations",
       "/api/v1/cwv/observations",
     ])
+  })
+
+  it("renews an envelope exactly at the thirty-second safety boundary", async () => {
+    const now = Date.parse("2026-09-01T10:00:00.000Z")
+    expect(isTrustedEnvelopeFresh(now + 30_000, now)).toBe(false)
+    expect(isTrustedEnvelopeFresh(now + 30_001, now)).toBe(true)
+    expect(isTrustedEnvelopeFresh(Number.NaN, now)).toBe(false)
   })
 
   it("binds a desktop envelope when the initial viewport is wider than mobile", () => {

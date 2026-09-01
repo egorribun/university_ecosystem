@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { screen } from "@testing-library/react"
+import { fireEvent, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useForm } from "react-hook-form"
 import { useEffect, type ReactNode } from "react"
@@ -89,7 +89,9 @@ describe("LoginCredentialForm — default render", () => {
     await mountWithStub(() => ({}))
     expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
     expect(screen.getByLabelText(/password/i, { selector: "input" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: /^sign in$/i })).toBeInTheDocument()
+    const submit = screen.getByRole("button", { name: /^sign in$/i })
+    expect(submit).toBeInTheDocument()
+    expect(submit.querySelector("svg")).toBeInTheDocument()
   })
 
   it("separates email persistence from explicit trusted-device consent", async () => {
@@ -159,6 +161,40 @@ describe("LoginCredentialForm — email suggestion", () => {
     await user.click(button!)
     expect(applySuggestion).toHaveBeenCalledOnce()
   })
+
+  it("chains the React Hook Form blur handler before the suggestion hook", async () => {
+    const handleEmailBlur = vi.fn()
+    const registerNames: string[] = []
+
+    function BlurHarness(): ReactNode {
+      const stub = useFormStub({ handleEmailBlur })
+      const originalRegister = stub.form.register
+      const wrappedForm = {
+        ...stub.form,
+        register: ((name: string, ...args: unknown[]) => {
+          registerNames.push(name)
+          return originalRegister(name as never, ...(args as never[]))
+        }) as typeof stub.form.register,
+      }
+      return <LoginCredentialForm form={{ ...stub, form: wrappedForm }} />
+    }
+
+    await renderWithRouter({
+      ui: BlurHarness,
+      extraRoutes: [
+        { path: "/forgot-password", Component: () => <div>forgot</div> },
+        { path: "/register", Component: () => <div>register</div> },
+      ],
+    })
+
+    const user = userEvent.setup()
+    const email = screen.getByLabelText(/^e-mail$/i, { selector: "input" })
+    await user.click(email)
+    await user.tab()
+    expect(registerNames).toContain("email")
+    expect(registerNames).not.toContain("")
+    expect(handleEmailBlur).toHaveBeenCalledOnce()
+  })
 })
 
 // ── 3. Caps lock indicator ──────────────────────────────────────────────────
@@ -204,6 +240,26 @@ describe("LoginCredentialForm — show password", () => {
     const input = screen.getByLabelText(/password/i, { selector: "input" })
     expect(input).toHaveAttribute("type", "password")
   })
+
+  it("passes the exact CapsLock modifier key through both keyboard handlers", async () => {
+    const setCaps = vi.fn()
+    const modifierSpy = vi
+      .spyOn(KeyboardEvent.prototype, "getModifierState")
+      .mockImplementation((key) => key === "CapsLock")
+
+    try {
+      await mountWithStub(() => ({ setCaps }))
+      const password = screen.getByLabelText(/password/i, { selector: "input" })
+
+      fireEvent.keyDown(password)
+      fireEvent.keyUp(password)
+
+      expect(modifierSpy).toHaveBeenCalledWith("CapsLock")
+      expect(setCaps).toHaveBeenCalledWith(true)
+    } finally {
+      modifierSpy.mockRestore()
+    }
+  })
 })
 
 // ── 5. Submitting state ─────────────────────────────────────────────────────
@@ -213,7 +269,9 @@ describe("LoginCredentialForm — submitting state", () => {
     await mountWithStub(() => ({ submitting: true }))
     expect(screen.getByLabelText(/email/i)).toBeDisabled()
     expect(screen.getByLabelText(/password/i, { selector: "input" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: /^sign in$/i })).toBeDisabled()
+    const submit = screen.getByRole("button", { name: /^sign in$/i })
+    expect(submit).toBeDisabled()
+    expect(submit.querySelector("svg")).not.toBeInTheDocument()
   })
 })
 
@@ -222,7 +280,9 @@ describe("LoginCredentialForm — submitting state", () => {
 describe("LoginCredentialForm — errors", () => {
   it("renders submitError when present", async () => {
     await mountWithStub(() => ({ submitError: "Invalid credentials" }))
-    expect(screen.getByText("Invalid credentials")).toBeInTheDocument()
+    const error = screen.getByText("Invalid credentials")
+    expect(error).toBeInTheDocument()
+    expect(error).toHaveAttribute("role", "alert")
   })
 
   it("renders react-hook-form field errors and the email fallback message", async () => {
@@ -252,7 +312,10 @@ describe("LoginCredentialForm — errors", () => {
     const passwordError = screen.getByText("Password validation failed")
 
     expect(email).toHaveAttribute("aria-describedby", emailError.id)
+    expect(email).toHaveAttribute("aria-invalid", "true")
+    expect(email).toHaveClass("border-error-text", "focus:border-error-text")
     expect(password).toHaveAttribute("aria-describedby", passwordError.id)
+    expect(password).toHaveAttribute("aria-invalid", "true")
     expect(emailError).toHaveAttribute("role", "alert")
     expect(passwordError).toHaveAttribute("role", "alert")
   })
@@ -275,6 +338,13 @@ describe("LoginCredentialForm — errors", () => {
     })
 
     expect(await screen.findByText("Enter a password")).toBeInTheDocument()
+  })
+
+  it("omits the empty email error placeholder only when its single space is present", async () => {
+    await mountWithStub(() => ({}))
+    expect(screen.getByText((_, element) => element?.id === "login-email-error").textContent).toBe(
+      " "
+    )
   })
 })
 

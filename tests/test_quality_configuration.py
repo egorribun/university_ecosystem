@@ -666,6 +666,9 @@ def test_stryker_does_not_copy_generated_caches_or_sandboxes() -> None:
         '"**/.codex_*/**"',
         '"**/target/**"',
         '"/reports/**"',
+        '"/storybook-static/**"',
+        '"/test-results/**"',
+        '"/coverage-*/**"',
     ):
         assert fragment in config
 

@@ -1,26 +1,36 @@
 import { render, screen, fireEvent } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
-const { routeState, navigateMock, translationState } = vi.hoisted(() => ({
+const {
+  routeState,
+  navigateMock,
+  translationState,
+  captureExceptionMock,
+  logErrorMock,
+  useTranslationMock,
+} = vi.hoisted(() => ({
   routeState: { current: "/start" },
   navigateMock: vi.fn(),
   translationState: { ready: true },
+  captureExceptionMock: vi.fn(),
+  logErrorMock: vi.fn(),
+  useTranslationMock: vi.fn((..._namespaces: unknown[]) => ({
+    t: (key: string, fallback?: string) => fallback ?? key,
+    ready: translationState.ready,
+    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+  })),
 }))
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    ready: translationState.ready,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  useTranslation: useTranslationMock,
 }))
 vi.mock("@tanstack/react-router", () => ({
   useRouterState: (opts?: { select?: (s: unknown) => unknown }) =>
     opts?.select ? opts.select({ location: { pathname: routeState.current } }) : routeState.current,
   useNavigate: () => navigateMock,
 }))
-vi.mock("@sentry/react", () => ({ captureException: vi.fn() }))
-vi.mock("@/app/logger", () => ({ logError: vi.fn(), logDebug: vi.fn() }))
+vi.mock("@sentry/react", () => ({ captureException: captureExceptionMock }))
+vi.mock("@/app/logger", () => ({ logError: logErrorMock, logDebug: vi.fn() }))
 
 import * as Sentry from "@sentry/react"
 import { PageErrorBoundary } from "@/components/error/PageErrorBoundary"
@@ -58,12 +68,24 @@ describe("PageErrorBoundary", () => {
       </PageErrorBoundary>
     )
     expect(screen.getByRole("alert")).toBeInTheDocument()
-    expect(screen.getByText("system:pageError.title")).toBeInTheDocument()
+    expect(screen.getByText("Page Error")).toBeInTheDocument()
+    expect(screen.getByText("Something went wrong loading this page.")).toBeInTheDocument()
+    expect(useTranslationMock).toHaveBeenCalledWith(["system"])
     // DEV error details branch (import.meta.env.DEV is true under vitest)
     expect(screen.getByText("Non-API Error")).toBeInTheDocument()
     expect(Sentry.captureException).toHaveBeenCalledWith(
       expect.any(Error),
-      expect.objectContaining({ contexts: expect.objectContaining({ page: { name: "events" } }) })
+      expect.objectContaining({
+        contexts: expect.objectContaining({
+          react: expect.objectContaining({ componentStack: expect.any(String) }),
+          page: { name: "events" },
+        }),
+        tags: { errorBoundary: "page", page: "events" },
+      })
+    )
+    expect(logErrorMock).toHaveBeenCalledWith(
+      "[PageErrorBoundary]",
+      expect.objectContaining({ page: "events" })
     )
   })
 
@@ -141,7 +163,7 @@ describe("PageErrorBoundary", () => {
         <Boom />
       </PageErrorBoundary>
     )
-    fireEvent.click(screen.getByText("system:pageError.home"))
+    fireEvent.click(screen.getByText("Go Home"))
     expect(navigateMock).toHaveBeenCalledWith({ to: "/" })
   })
 
@@ -151,7 +173,7 @@ describe("PageErrorBoundary", () => {
         <Boom />
       </PageErrorBoundary>
     )
-    fireEvent.click(screen.getByText("system:pageError.retry"))
+    fireEvent.click(screen.getByText("Try Again"))
     expect(screen.getByRole("alert")).toBeInTheDocument()
   })
 
@@ -183,5 +205,51 @@ describe("PageErrorBoundary", () => {
 
     expect(screen.getByRole("alert")).toBeInTheDocument()
     expect(Sentry.captureException).toHaveBeenCalled()
+    expect(logErrorMock).not.toHaveBeenCalled()
+  })
+
+  it("omits an empty API details list from the development diagnostics", () => {
+    const apiError = Object.assign(new Error("no field details"), {
+      isAxiosError: true,
+      response: {
+        status: 422,
+        data: { detail: [], trace_id: "trace-empty" },
+      },
+    })
+    function EmptyDetailsBoom(): never {
+      throw apiError
+    }
+
+    const { container } = render(
+      <PageErrorBoundary>
+        <EmptyDetailsBoom />
+      </PageErrorBoundary>
+    )
+
+    expect(screen.getByText("Status: 422")).toBeInTheDocument()
+    expect(container.querySelector("ul")).not.toBeInTheDocument()
+  })
+
+  it("labels detail entries without a field as Error", () => {
+    const apiError = Object.assign(new Error("detail failure"), {
+      isAxiosError: true,
+      response: {
+        status: 422,
+        data: {
+          detail: [{ type: "value_error", msg: "General failure", loc: [] }],
+        },
+      },
+    })
+    function UnfieldedBoom(): never {
+      throw apiError
+    }
+
+    render(
+      <PageErrorBoundary>
+        <UnfieldedBoom />
+      </PageErrorBoundary>
+    )
+
+    expect(screen.getByRole("listitem")).toHaveTextContent("Error: General failure")
   })
 })

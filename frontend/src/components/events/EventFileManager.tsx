@@ -1,4 +1,11 @@
-import { useState, useRef, useActionState, useOptimistic, type ChangeEvent } from "react"
+import {
+  startTransition,
+  useState,
+  useRef,
+  useActionState,
+  useOptimistic,
+  type ChangeEvent,
+} from "react"
 import { useTranslation } from "react-i18next"
 import { Trash2 as DeleteIcon } from "lucide-react"
 import { isAxiosError } from "axios"
@@ -101,7 +108,7 @@ export function EventFileManager({
     if (isUploadErrorState(uploadState) && !uploadPending) {
       const marker = new FormData()
       marker.append("__upload_reset__", "1")
-      uploadAction(marker)
+      startTransition(() => uploadAction(marker))
     }
   }
 
@@ -109,18 +116,24 @@ export function EventFileManager({
     uploadTelemetryContextRef.current = captureActiveTelemetryContext()
   }
 
-  const handleDeleteFile = async (fileId: string) => {
+  const handleDeleteFile = (fileId: string) => {
     const telemetryContext = captureActiveTelemetryContext()
-    mutateFiles({ type: "remove", id: fileId })
-    try {
-      await telemetryContext.run(() => api.delete(`/events/file/${fileId}`))
-      onSuccess(t("events:detail.messages.fileDeleted"))
-    } catch (err) {
-      logError("[EventFileManager] Delete failed:", err)
-      onError(t("events:detail.messages.fileDeleteFailed"))
-    } finally {
-      await telemetryContext.run(onUpdate)
-    }
+    // useOptimistic updates must be scheduled in a transition when they are
+    // initiated by an event handler (rather than a form action). Keeping the
+    // async operation inside that transition preserves the optimistic row
+    // until the server response settles and avoids React warnings.
+    startTransition(async () => {
+      mutateFiles({ type: "remove", id: fileId })
+      try {
+        await telemetryContext.run(() => api.delete(`/events/file/${fileId}`))
+        onSuccess(t("events:detail.messages.fileDeleted"))
+      } catch (err) {
+        logError("[EventFileManager] Delete failed:", err)
+        onError(t("events:detail.messages.fileDeleteFailed"))
+      } finally {
+        await telemetryContext.run(onUpdate)
+      }
+    })
   }
 
   return (

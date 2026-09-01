@@ -3,8 +3,16 @@ import { describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 import { EventsEmptyState } from "../EventsEmptyState"
 
+const { useTranslationMock, translationMock } = vi.hoisted(() => {
+  const translationMock = vi.fn((key: string) => key)
+  return {
+    useTranslationMock: vi.fn(() => ({ t: translationMock })),
+    translationMock,
+  }
+})
+
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: useTranslationMock,
 }))
 
 vi.mock("@/components/ui", () => ({
@@ -19,6 +27,9 @@ describe("EventsEmptyState", () => {
     render(<EventsEmptyState tab="active" onTabChange={onTabChange} />)
 
     expect(screen.getByText("events:states.emptyHint.active")).toBeInTheDocument()
+    expect(useTranslationMock).toHaveBeenCalledWith(["events"])
+    expect(translationMock).toHaveBeenCalledWith("events:states.empty")
+    expect(translationMock).toHaveBeenCalledWith("events:states.emptyHint.active")
     fireEvent.click(screen.getByRole("button", { name: "events:tabs.archive" }))
 
     expect(onTabChange).toHaveBeenCalledWith("archive")

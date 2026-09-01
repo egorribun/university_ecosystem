@@ -96,7 +96,41 @@ function trustedRequestHeaders(): Record<string, string> {
   return headers
 }
 
-function isSameOriginEndpoint(endpoint: string): boolean {
+export function buildTrustedEnvelopeBody(
+  pathname: string,
+  deviceClass: string,
+  renewalEnvelope?: string
+): Record<string, string> {
+  const body: Record<string, string> = {
+    pathname,
+    device_class: deviceClass,
+  }
+  if (renewalEnvelope) body.renewal_envelope = renewalEnvelope
+  return body
+}
+
+export function parseTrustedEnvelope(
+  responseBody: unknown,
+  now = Date.now()
+): { envelope: string; expiresAt: number } {
+  const body = responseBody as { envelope?: unknown; expires_at?: unknown }
+  const expiresAt = typeof body.expires_at === "string" ? Date.parse(body.expires_at) : Number.NaN
+  if (typeof body.envelope !== "string" || !Number.isFinite(expiresAt) || expiresAt <= now) {
+    throw new Error("CWV envelope malformed")
+  }
+  return { envelope: body.envelope, expiresAt }
+}
+
+/**
+ * Keep a trusted RUM envelope only while it has more than the safety window
+ * left.  The strict comparison deliberately renews an envelope at the exact
+ * boundary so an observation cannot race expiry in transit.
+ */
+export function isTrustedEnvelopeFresh(expiresAt: number, now = Date.now()): boolean {
+  return Number.isFinite(expiresAt) && expiresAt > now + 30_000
+}
+
+export function isSameOriginEndpoint(endpoint: string): boolean {
   try {
     return new URL(endpoint, window.location.origin).origin === window.location.origin
   } catch {
@@ -123,7 +157,7 @@ function createTrustedReporter(endpoint: string): WebVitalReporter | undefined {
   const getEnvelope = (): Promise<EnvelopeState> => {
     if (
       cachedEnvelope?.navigationKey === navigationKey &&
-      cachedEnvelope.expiresAt > Date.now() + 30_000
+      isTrustedEnvelopeFresh(cachedEnvelope.expiresAt)
     ) {
       return Promise.resolve(cachedEnvelope)
     }
@@ -132,11 +166,7 @@ function createTrustedReporter(endpoint: string): WebVitalReporter | undefined {
     }
     const renewalEnvelope =
       cachedEnvelope?.navigationKey === navigationKey ? cachedEnvelope.envelope : undefined
-    const body: Record<string, string> = {
-      pathname,
-      device_class: deviceClass,
-    }
-    if (renewalEnvelope) body.renewal_envelope = renewalEnvelope
+    const body = buildTrustedEnvelopeBody(pathname, deviceClass, renewalEnvelope)
     const pending = fetch(`${base}/envelope`, {
       method: "POST",
       headers: trustedRequestHeaders(),
@@ -144,23 +174,9 @@ function createTrustedReporter(endpoint: string): WebVitalReporter | undefined {
       body: JSON.stringify(body),
     }).then(async (response) => {
       if (!response.ok) throw new Error("CWV envelope rejected")
-      const responseBody = (await response.json()) as {
-        envelope?: unknown
-        expires_at?: unknown
-      }
-      const expiresAt =
-        typeof responseBody.expires_at === "string"
-          ? Date.parse(responseBody.expires_at)
-          : Number.NaN
-      if (
-        typeof responseBody.envelope !== "string" ||
-        !Number.isFinite(expiresAt) ||
-        expiresAt <= Date.now()
-      ) {
-        throw new Error("CWV envelope malformed")
-      }
+      const { envelope, expiresAt } = parseTrustedEnvelope(await response.json())
       cachedEnvelope = {
-        envelope: responseBody.envelope,
+        envelope,
         expiresAt,
         navigationKey,
       }
@@ -255,7 +271,7 @@ export function resetWebVitalsForTesting(): void {
   reporterRef = undefined
 }
 
-function resolveRating(
+export function resolveRating(
   value: number,
   [goodThreshold, needsImprovementThreshold]: [number, number]
 ): MetricRating {
@@ -270,7 +286,7 @@ function resolveRating(
   return "poor"
 }
 
-function resolveNavigationType(): WebVitalMetric["navigationType"] {
+export function resolveNavigationType(): WebVitalMetric["navigationType"] {
   if (typeof performance === "undefined" || typeof performance.getEntriesByType !== "function") {
     return "navigate"
   }
@@ -288,7 +304,7 @@ function resolveNavigationType(): WebVitalMetric["navigationType"] {
   return navigationEntry.type as WebVitalMetric["navigationType"]
 }
 
-function createCustomMetric(
+export function createCustomMetric(
   name: string,
   value: number,
   thresholds: [number, number]

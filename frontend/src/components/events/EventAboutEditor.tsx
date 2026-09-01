@@ -29,15 +29,17 @@ export function EventAboutEditor({
   onSuccess,
 }: EventAboutEditorProps) {
   const { t } = useTranslation(["events", "common"])
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState("")
-  const [saving, setSaving] = useState(false)
-  const sectionRef = useRef<HTMLHeadingElement | null>(null)
-
   const baseline = useMemo(
     () => (language === "en" ? (event.about_en ?? "") : (event.about ?? "")),
     [language, event.about_en, event.about]
   )
+  const [editing, setEditing] = useState(false)
+  // Initialise the draft from the current localized value.  Editing still
+  // refreshes it from `baseline`, but deriving the initial value avoids an
+  // unreachable magic placeholder and keeps state safe for the first render.
+  const [draft, setDraft] = useState(baseline)
+  const [saving, setSaving] = useState(false)
+  const sectionRef = useRef<HTMLHeadingElement | null>(null)
 
   const handleEdit = () => {
     setDraft(baseline)

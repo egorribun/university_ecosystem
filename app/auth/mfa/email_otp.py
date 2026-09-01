@@ -15,7 +15,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 import orjson
 from cryptography.exceptions import InvalidTag
@@ -95,6 +95,11 @@ class MfaEmailSender(Protocol):
         html: str,
         message_id: str,
     ) -> None: ...
+
+
+class _RowcountResult(Protocol):
+    @property
+    def rowcount(self) -> int: ...
 
 
 class _DeliveryOnlyRateLimiter:
@@ -1230,7 +1235,15 @@ class EmailOtpService:
                 lease_expires_at=None,
             )
         )
-        if getattr(completed, "rowcount", 0) != 1:
+        # SQLAlchemy's update result must expose an explicit single-row
+        # completion.  Access the attribute directly so a driver that omits
+        # ``rowcount`` fails closed instead of silently selecting a fallback
+        # value that could mask an incompatible result object.
+        try:
+            completed_rowcount = cast(_RowcountResult, completed).rowcount
+        except AttributeError as exc:
+            raise MfaDeliveryError() from exc
+        if completed_rowcount != 1:
             raise MfaDeliveryError()
         await db.flush()
 

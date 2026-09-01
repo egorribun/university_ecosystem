@@ -185,6 +185,22 @@ describe("fetchWeatherSnapshot", () => {
     expect(result.temperatureC).toBe(-3)
   })
 
+  it("prefers the modern current block when both provider shapes are present", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        current: { weather_code: 1, temperature_2m: 11, time: "2026-06-05T10:00:00Z" },
+        current_weather: { weathercode: 95, temperature: -3, time: "2026-06-05T11:00:00Z" },
+      })
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    const result = await fetchWeatherSnapshot({ coordinates: { lat: 1, lon: 2 } })
+
+    expect(result.conditionCode).toBe(1)
+    expect(result.temperatureC).toBe(11)
+    expect(result.observedAt).toBe("2026-06-05T10:00:00.000Z")
+  })
+
   it("uses legacy field names when the modern current block fields are absent", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       okResponse({

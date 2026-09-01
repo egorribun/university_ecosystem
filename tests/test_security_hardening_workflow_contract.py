@@ -19,6 +19,10 @@ HADOLINT_SHA256 = "56de6d5e5ec427e17b74fa48d51271c7fc0d61244bf5c90e828aab8362d55
 SHELLCHECK_SHA256 = "6c881ab0698e4e6ea235245f22832860544f17ba386442fe7e9d629f8cbedf87"  # pragma: allowlist secret -- release checksum
 CARGO_BINSTALL_SCRIPT_COMMIT = "5aafaaca52423a22d83a812fa3ca77492e2895db"  # pragma: allowlist secret -- immutable installer commit
 CARGO_BINSTALL_SCRIPT_SHA256 = "d3a93702160e0ec03e2a4e996855db1f01adee801fb84a43add24e0877ef8eae"  # pragma: allowlist secret -- release checksum
+SLSA_VERIFIER_SHA256 = "499befb675efcca9001afe6e5156891b91e71f9c07ab120a8943979f85cc82e6"  # pragma: allowlist secret -- release checksum
+KUBECONFORM_SHA256 = "95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73"  # pragma: allowlist secret -- release checksum
+K6_SHA256 = "c7f03434854f837b6790ee81572e4b0f955241974c79a43cbb9f8d0fef069589"  # pragma: allowlist secret -- release checksum
+CRD_CATALOG_COMMIT = "866b2653a5334db9aed20ad74701e20fd464471b"  # pragma: allowlist secret -- immutable schema revision
 
 
 def _workflow(path: Path) -> dict[str, Any]:
@@ -124,6 +128,49 @@ def test_cargo_udeps_bootstrap_is_immutable_and_checksum_verified() -> None:
     assert "sha256sum --check --strict" in install
     assert "cargo binstall -y cargo-udeps@0.1.61" in install
     assert "cargo-binstall/main/" not in install
+
+
+def test_ci_provenance_and_kubernetes_tooling_are_immutable_and_verified() -> None:
+    """Downloaded CI tooling and remote schemas cannot drift silently."""
+
+    jobs = _workflow(CI)["jobs"]
+    provenance = _step(jobs["provenance-check"], "Install slsa-verifier")["run"]
+    assert 'slsa_verifier_version="2.7.0"' in provenance
+    assert SLSA_VERIFIER_SHA256 in provenance
+    assert "curl --fail" in provenance
+    assert "--proto '=https'" in provenance
+    assert "--tlsv1.2" in provenance
+    assert "sha256sum --check --strict" in provenance
+    assert "curl -sSLo" not in provenance
+
+    k8s = jobs["helm-validate"]
+    kubeconform = _step(k8s, "Install kubeconform")["run"]
+    assert 'kubeconform_version="0.6.7"' in kubeconform
+    assert KUBECONFORM_SHA256 in kubeconform
+    assert "curl --fail" in kubeconform
+    assert "--proto '=https'" in kubeconform
+    assert "--tlsv1.2" in kubeconform
+    assert "sha256sum --check --strict" in kubeconform
+    assert "curl -sSLo" not in kubeconform
+
+    for step_name in (
+        "Validate manifests with kubeconform",
+        "Validate static K8s manifests with kubeconform",
+    ):
+        schema_validation = _step(k8s, step_name)["run"]
+        assert CRD_CATALOG_COMMIT in schema_validation
+        assert "/CRDs-catalog/main/" not in schema_validation
+
+    stress = jobs["ws-stress-test"]
+    k6 = _step(stress, "Install k6")["run"]
+    assert 'k6_version="0.54.0"' in k6
+    assert K6_SHA256 in k6
+    assert "curl --fail" in k6
+    assert "--proto '=https'" in k6
+    assert "--tlsv1.2" in k6
+    assert "sha256sum --check --strict" in k6
+    assert "| tar" not in k6
+    assert '"/tmp/k6-v${k6_version}-linux-amd64/k6"' in k6
 
 
 def test_detect_secrets_verification_is_finding_level_and_base_bound() -> None:

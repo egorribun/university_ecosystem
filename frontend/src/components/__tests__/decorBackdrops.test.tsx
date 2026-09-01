@@ -66,6 +66,16 @@ describe("Presentational Backdrops Coverage Sweep", () => {
     ])
   })
 
+  it("drops expensive orb blur on mobile even without reduced motion", () => {
+    const { container } = render(<AuthBackdrop isMobile prefersReducedMotion={false} />)
+
+    const orbs = container.querySelectorAll("[aria-hidden='true'] > div")
+    expect(orbs).toHaveLength(3)
+    for (const orb of orbs) {
+      expect(orb).toHaveStyle({ filter: "none" })
+    }
+  })
+
   it("renders DashboardBackdrop under all branches", () => {
     const { rerender, container } = render(
       <DashboardBackdrop isNarrow={false} prefersReducedMotion={false} />

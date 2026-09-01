@@ -346,6 +346,10 @@ async def test_issue_binds_recipient_lookup_to_user_and_persists_outbox(
     added = db.add_all.call_args.args[0]
     assert len(added) == 3
     assert added[0].user_id == user_id
+    # Keep the legacy nullable session relation explicitly initialized.  The
+    # ORM property reads as None either way, but the instance state records the
+    # deliberate absence of the old session foreign key.
+    assert "session_id" in added[0].__dict__
     assert added[0].session_id is None
     assert added[0].attempt_count == 0
     assert added[0].state is ChallengeState.PENDING
@@ -927,6 +931,51 @@ async def test_recovery_opaque_forwards_all_binding_arguments_and_locks_at_expir
     verify_recovery.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_recovery_opaque_preserves_login_session_binding(
+    service: EmailOtpService,
+) -> None:
+    """Login recovery must bind the opaque challenge to the login session."""
+    user = SimpleNamespace(
+        id=uuid.UUID("66666666-6666-7666-8666-666666666666"), email="login@example.edu"
+    )
+    challenge = _challenge(user_id=user.id, flow="login")
+    challenge.recipient_digest = service._recipient_digest(
+        key_id="active", email=user.email
+    )
+    service._load_opaque_challenge = AsyncMock(return_value=challenge)  # type: ignore[method-assign]
+    service._resolve_recipient = AsyncMock(return_value=(user, user.email))  # type: ignore[method-assign]
+    service._load_bound_challenge = AsyncMock(return_value=challenge)  # type: ignore[method-assign]
+    service._rate_limit = AsyncMock()  # type: ignore[method-assign]
+    db = MagicMock()
+    db.flush = AsyncMock()
+    with patch(
+        "app.auth.mfa.recovery.verify_recovery_code",
+        new_callable=AsyncMock,
+        return_value=True,
+    ) as verify_recovery:
+        consumed = await service.consume_recovery_opaque(
+            db,
+            challenge_token="opaque-token",
+            code="RECOVERY-CODE",
+            client_fingerprint=FINGERPRINT,
+            client_ip=IP,
+            login_session_identifier=SESSION,
+            active_session_identifier=None,
+            now=NOW,
+        )
+
+    assert consumed is challenge
+    service._load_opaque_challenge.assert_awaited_once_with(  # type: ignore[attr-defined]
+        db,
+        challenge_token="opaque-token",
+        client_fingerprint=FINGERPRINT,
+        login_session_identifier=SESSION,
+        active_session_identifier=None,
+    )
+    verify_recovery.assert_awaited_once_with(db, user=user, code="RECOVERY-CODE")
+
+
 def test_smtp_missing_either_host_or_port_fails_closed_and_preserves_headers() -> None:
     smtp_settings = SimpleNamespace(
         smtp_host="smtp.example.edu",
@@ -1151,6 +1200,8 @@ async def test_delivery_completion_requires_exactly_one_row_and_forwards_rendere
     assert "mfa_email_deliveries.id =" in where_clause
     assert "mfa_email_deliveries.id !=" not in where_clause
     assert "mfa_email_deliveries.lease_token =" in where_clause
+    compiled_completion = completion.compile(dialect=postgresql.dialect())
+    assert compiled_completion.params["sent_at"] == NOW
 
 
 @pytest.mark.asyncio

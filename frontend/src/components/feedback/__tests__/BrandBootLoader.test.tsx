@@ -66,6 +66,22 @@ describe("BrandBootLoader", () => {
     expect(screen.queryByRole("status", { name: "Загрузка" })).not.toBeInTheDocument()
   })
 
+  it("ignores unrelated transition events while exiting", () => {
+    render(<BrandBootLoader />)
+    const loader = screen.getByRole("status", { name: "Загрузка" })
+    act(() => window.dispatchEvent(new Event(APP_HYDRATED_EVENT)))
+
+    fireEvent.transitionEnd(loader, { propertyName: "transform" })
+    fireEvent.transitionEnd(loader.querySelector(".brand-boot-loader__content")!, {
+      propertyName: "opacity",
+    })
+
+    expect(screen.getByRole("status", { name: "Загрузка" })).toHaveAttribute(
+      "data-state",
+      "exiting"
+    )
+  })
+
   it("uses the timeout fallback when transitionend is unavailable", () => {
     render(<BrandBootLoader />)
     act(() => window.dispatchEvent(new Event(APP_HYDRATED_EVENT)))
@@ -111,6 +127,22 @@ describe("BrandBootLoader", () => {
       "data-state",
       "exiting"
     )
+  })
+
+  it("reflects an initially hidden document without waiting for an event", () => {
+    hidden = true
+    render(<BrandBootLoader />)
+
+    expect(screen.getByRole("status", { name: "Загрузка" })).toHaveAttribute("data-paused", "true")
+  })
+
+  it("removes the hydration listener when unmounted", () => {
+    const removeEventListener = vi.spyOn(window, "removeEventListener")
+    const { unmount } = render(<BrandBootLoader />)
+
+    unmount()
+
+    expect(removeEventListener).toHaveBeenCalledWith(APP_HYDRATED_EVENT, expect.any(Function))
   })
 
   it("remains idempotent under StrictMode and duplicate completion events", () => {

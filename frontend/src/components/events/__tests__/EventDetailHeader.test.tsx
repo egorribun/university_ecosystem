@@ -5,11 +5,20 @@ import { describe, it, expect, vi } from "vitest"
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
+
+const { useTranslationMock, translationMock } = vi.hoisted(() => {
+  const translationMock = vi.fn((key: string) => key)
+  return {
+    useTranslationMock: vi.fn(() => ({
+      t: translationMock,
+      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+    })),
+    translationMock,
+  }
+})
+
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  useTranslation: useTranslationMock,
 }))
 
 import { EventDetailHeader } from "@/components/events/EventDetailHeader"
@@ -42,6 +51,8 @@ describe("EventDetailHeader", () => {
     expect(screen.getByText("Prof. A. Ivanova")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "events:detail.actions.share" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "events:card.actions.register" })).toBeInTheDocument()
+    expect(useTranslationMock).toHaveBeenCalledWith(["events", "common"])
+    expect(translationMock).toHaveBeenCalledWith("events:card.participants", { count: 248 })
   })
 
   it("shows unregister when the user is registered", () => {
@@ -52,6 +63,11 @@ describe("EventDetailHeader", () => {
     expect(
       screen.queryByRole("button", { name: "events:card.actions.register" })
     ).not.toBeInTheDocument()
+  })
+
+  it("disables the register action while registration is pending", () => {
+    render(<EventDetailHeader {...baseProps} registering />)
+    expect(screen.getByRole("button", { name: "events:card.actions.register" })).toBeDisabled()
   })
 
   it("hides register/unregister and shows admin actions for admins", () => {
@@ -74,6 +90,42 @@ describe("EventDetailHeader", () => {
     expect(onRegister).toHaveBeenCalledOnce()
   })
 
+  it("fires unregister and admin edit/delete callbacks and disables registration while pending", async () => {
+    const user = userEvent.setup()
+    const onUnregister = vi.fn()
+    const onEditOpen = vi.fn()
+    const onDeleteOpen = vi.fn()
+    const { rerender } = render(
+      <EventDetailHeader
+        {...baseProps}
+        isRegistered
+        onUnregister={onUnregister}
+        onEditOpen={onEditOpen}
+        onDeleteOpen={onDeleteOpen}
+      />
+    )
+
+    await user.click(screen.getByRole("button", { name: "events:card.actions.unregister" }))
+    expect(onUnregister).toHaveBeenCalledOnce()
+
+    rerender(
+      <EventDetailHeader
+        {...baseProps}
+        isAdmin
+        registering
+        onEditOpen={onEditOpen}
+        onDeleteOpen={onDeleteOpen}
+      />
+    )
+    await user.click(screen.getByRole("button", { name: "common:buttons.edit" }))
+    await user.click(screen.getByRole("button", { name: "common:buttons.delete" }))
+    expect(onEditOpen).toHaveBeenCalledOnce()
+    expect(onDeleteOpen).toHaveBeenCalledOnce()
+    expect(
+      screen.queryByRole("button", { name: "events:card.actions.register" })
+    ).not.toBeInTheDocument()
+  })
+
   it("uses the English category fallback and ended status when optional dates are absent", () => {
     render(
       <EventDetailHeader
@@ -91,5 +143,32 @@ describe("EventDetailHeader", () => {
       screen.queryByRole("button", { name: "events:card.actions.register" })
     ).not.toBeInTheDocument()
     expect(screen.getByText("events:card.statuses.ended")).toBeInTheDocument()
+  })
+
+  it("omits optional metadata and registration for ended events", () => {
+    render(
+      <EventDetailHeader
+        {...baseProps}
+        startsAt={undefined}
+        endsAt={undefined}
+        location={undefined}
+        speaker={undefined}
+        isEnded
+      />
+    )
+
+    expect(screen.queryByText("Main Auditorium")).not.toBeInTheDocument()
+    expect(screen.queryByText("Prof. A. Ivanova")).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole("button", { name: "events:card.actions.register" })
+    ).not.toBeInTheDocument()
+    expect(screen.getByText("events:card.statuses.ended")).toBeInTheDocument()
+  })
+
+  it("announces a registered status before the ended status in the live region", () => {
+    render(<EventDetailHeader {...baseProps} isRegistered isEnded />)
+    const liveRegion = document.querySelector('[aria-live="polite"]')
+    expect(liveRegion).toHaveTextContent("events:card.statuses.registered")
+    expect(liveRegion).not.toHaveTextContent("events:card.statuses.ended")
   })
 })

@@ -4,6 +4,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { APP_HYDRATED_EVENT } from "@/app/hydration"
 
+const hydration = vi.hoisted(() => {
+  const markAppHydrated = vi.fn(() => {
+    if (window.__APP_HYDRATED) return
+    window.__APP_HYDRATED = true
+    window.dispatchEvent(new Event("ue:app-hydrated"))
+  })
+  return { markAppHydrated }
+})
+
+vi.mock("@/app/hydration", () => ({
+  APP_HYDRATED_EVENT: "ue:app-hydrated",
+  markAppHydrated: hydration.markAppHydrated,
+}))
+
 const provider = (name: string) => {
   const TestProvider = ({ children }: { children?: ReactNode }) => (
     <div data-provider={name}>{children}</div>
@@ -73,6 +87,7 @@ const loadProviders = async (lhci: string) => {
 
 beforeEach(() => {
   delete window.__APP_HYDRATED
+  hydration.markAppHydrated.mockClear()
   vi.unstubAllEnvs()
 })
 
@@ -140,5 +155,25 @@ describe("AppProviders closure", () => {
     await waitFor(() => expect(window.__APP_HYDRATED).toBe(true))
     expect(onHydrated).toHaveBeenCalledTimes(1)
     window.removeEventListener(APP_HYDRATED_EVENT, onHydrated)
+  })
+
+  it("does not rerun the hydration effect when provider children update", async () => {
+    const AppProviders = await loadProviders("false")
+
+    const { rerender } = render(
+      <AppProviders>
+        <span>first child</span>
+      </AppProviders>
+    )
+    await waitFor(() => expect(window.__APP_HYDRATED).toBe(true))
+    const initialCalls = hydration.markAppHydrated.mock.calls.length
+
+    rerender(
+      <AppProviders>
+        <span>second child</span>
+      </AppProviders>
+    )
+
+    expect(hydration.markAppHydrated).toHaveBeenCalledTimes(initialCalls)
   })
 })

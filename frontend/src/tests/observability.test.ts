@@ -3,8 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 vi.mock("@sentry/react", () => ({
   init: vi.fn(),
 }))
+vi.mock("../app/telemetry", () => ({
+  initTelemetry: vi.fn(),
+}))
+vi.mock("../app/logger", () => ({
+  logInfo: vi.fn(),
+}))
 
 import * as Sentry from "@sentry/react"
+import { initTelemetry } from "../app/telemetry"
+import { logInfo } from "../app/logger"
 import { initObservability, resetObservabilityForTesting } from "../app/observability"
 
 describe("initObservability", () => {
@@ -79,6 +87,9 @@ describe("initObservability", () => {
 
     expect(result).toBe(false)
     expect(Sentry.init).not.toHaveBeenCalled()
+    expect(logInfo).toHaveBeenCalledWith(
+      "Sentry disabled in development mode; skipping initialization"
+    )
   })
 
   it("skips development logging when the console is unavailable", () => {
@@ -117,6 +128,40 @@ describe("initObservability", () => {
     )
   })
 
+  it("accepts exact sample-rate boundaries and rejects empty values", () => {
+    const result = initObservability({
+      DEV: false,
+      PROD: true,
+      BASE_URL: "http://localhost",
+      MODE: "production",
+      VITE_SENTRY_DSN: "https://examplePublicKey.ingest.sentry.io/123",
+      VITE_SENTRY_TRACES_SAMPLE_RATE: "0",
+      VITE_SENTRY_PROFILES_SAMPLE_RATE: "1",
+    } as unknown as ImportMetaEnv)
+
+    expect(result).toBe(true)
+    expect(Sentry.init).toHaveBeenCalledWith(
+      expect.objectContaining({ tracesSampleRate: 0, profilesSampleRate: 1 })
+    )
+
+    resetObservabilityForTesting()
+    vi.clearAllMocks()
+    const emptyResult = initObservability({
+      DEV: false,
+      PROD: true,
+      BASE_URL: "http://localhost",
+      MODE: "production",
+      VITE_SENTRY_DSN: "https://examplePublicKey.ingest.sentry.io/123",
+      VITE_SENTRY_TRACES_SAMPLE_RATE: "",
+      VITE_SENTRY_PROFILES_SAMPLE_RATE: "-0.1",
+    } as unknown as ImportMetaEnv)
+
+    expect(emptyResult).toBe(true)
+    expect(Sentry.init).toHaveBeenCalledWith(
+      expect.objectContaining({ tracesSampleRate: undefined, profilesSampleRate: undefined })
+    )
+  })
+
   it("rejects a non-numeric sample rate and returns true on repeated initialization", () => {
     const env = {
       DEV: false,
@@ -137,5 +182,6 @@ describe("initObservability", () => {
         profilesSampleRate: undefined,
       })
     )
+    expect(initTelemetry).toHaveBeenCalledTimes(1)
   })
 })

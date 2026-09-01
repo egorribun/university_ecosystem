@@ -150,9 +150,36 @@ describe("NotificationsBell", () => {
     useNotificationsMock.mockReturnValue(baseState())
     render(<NotificationsBell />)
 
+    const trigger = screen.getByRole("button", { name: "Open notifications" })
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(trigger).toHaveAttribute("aria-expanded", "false")
+    expect(trigger).not.toHaveAttribute("data-unread")
+    expect(document.querySelector(".animate-ping")).not.toBeInTheDocument()
     expect(translationState.namespaces).toContainEqual(["system"])
     expect(mediaQueryState.queries).toContain("(prefers-reduced-motion: reduce)")
+  })
+
+  it("does not render an unread badge when the count is zero", async () => {
+    const state = baseState()
+    state.data = [
+      {
+        id: "read-only",
+        title: "Read update",
+        body: "No badge expected",
+        created_at: "2024-01-01T00:00:00Z",
+        read: true,
+      },
+    ]
+    useNotificationsMock.mockReturnValue(state)
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+
+    await user.click(screen.getByRole("button", { name: "Open notifications" }))
+    expect(screen.getByRole("heading", { name: "Notifications" })).toBeInTheDocument()
+    expect(screen.queryByText(/New$/)).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Open notifications" })).not.toHaveAttribute(
+      "data-unread"
+    )
   })
 
   it("does not access the DOM while rendering on the server", () => {
@@ -288,6 +315,33 @@ describe("NotificationsBell", () => {
 
     const loadMoreButton = screen.getByRole("button", { name: "Loading more…" })
     expect(loadMoreButton).toBeDisabled()
+  })
+
+  it("disables pagination when the server advertises more data without a cursor", async () => {
+    const state = baseState()
+    state.data = [
+      {
+        id: "uuid-no-cursor",
+        title: "Welcome",
+        body: "",
+        created_at: "2024-01-01T00:00:00Z",
+        read: true,
+      },
+    ]
+    state.hasMore = true
+    state.nextCursor = null
+    const fetchMore = vi.fn()
+    state.fetchMore = fetchMore
+    useNotificationsMock.mockReturnValue(state)
+
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+    await user.click(screen.getByRole("button", { name: "Open notifications" }))
+
+    const loadMoreButton = screen.getByRole("button", { name: "Load more" })
+    expect(loadMoreButton).toBeDisabled()
+    await user.click(loadMoreButton)
+    expect(fetchMore).not.toHaveBeenCalled()
   })
 
   it("surfaces pagination errors to the user", async () => {

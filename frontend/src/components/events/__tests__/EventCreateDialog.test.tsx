@@ -5,11 +5,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
+const { useTranslationMock } = vi.hoisted(() => ({
+  useTranslationMock: vi.fn(() => ({
     t: (key: string) => key,
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  })),
+}))
+vi.mock("react-i18next", () => ({
+  useTranslation: useTranslationMock,
 }))
 // NEVER let the upload request reach MSW — module-mock the api fn directly.
 // vi.hoisted so the fn exists before the hoisted vi.mock factory runs.
@@ -280,5 +283,113 @@ describe("EventCreateDialog", () => {
       urlCtor.createObjectURL = previousCreate
       urlCtor.revokeObjectURL = previousRevoke
     }
+  })
+
+  it("keeps Russian and English localized drafts independent", async () => {
+    const user = userEvent.setup()
+    const onCreated = vi.fn()
+    const { rerender } = render(
+      <EventCreateDialog {...baseProps} language="en" onCreated={onCreated} />
+    )
+
+    await user.type(fieldByLabel("events:form.title_en"), "English title")
+    await user.type(fieldByLabel("events:form.location_en"), "English hall")
+
+    rerender(<EventCreateDialog {...baseProps} language="ru" onCreated={onCreated} />)
+    expect(fieldByLabel("events:form.title")).toHaveValue("")
+    expect(fieldByLabel("events:form.location")).toHaveValue("")
+    await user.type(fieldByLabel("events:form.title"), "Русское название")
+    await user.type(fieldByLabel("events:form.location"), "Русский зал")
+
+    rerender(<EventCreateDialog {...baseProps} language="en" onCreated={onCreated} />)
+    expect(fieldByLabel("events:form.title_en")).toHaveValue("English title")
+    expect(fieldByLabel("events:form.location_en")).toHaveValue("English hall")
+
+    rerender(<EventCreateDialog {...baseProps} language="ru" onCreated={onCreated} />)
+    expect(fieldByLabel("events:form.title")).toHaveValue("Русское название")
+    expect(fieldByLabel("events:form.location")).toHaveValue("Русский зал")
+  })
+
+  it("resets the draft immediately when the dialog is closed", async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<EventCreateDialog {...baseProps} onClose={onClose} />)
+
+    await user.type(fieldByLabel("events:form.title"), "Temporary title")
+    await user.type(fieldByLabel("events:form.location"), "Temporary hall")
+    await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+
+    expect(onClose).toHaveBeenCalledOnce()
+    expect(fieldByLabel("events:form.title")).toHaveValue("")
+    expect(fieldByLabel("events:form.location")).toHaveValue("")
+  })
+
+  it("rejects equal start and end timestamps", async () => {
+    const user = userEvent.setup()
+    render(<EventCreateDialog {...baseProps} />)
+
+    await user.type(fieldByLabel("events:form.title"), "Equal dates")
+    await user.type(fieldByLabel("events:form.location"), "Hall E")
+    await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+    await user.type(fieldByLabel("events:form.end"), "2026-01-15T10:00")
+
+    expect(screen.getByText("events:form.errors.endsBeforeStarts")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeDisabled()
+  })
+
+  it("blocks submission while an image upload is still pending", async () => {
+    let resolveUpload!: (url: string) => void
+    const pendingUpload = new Promise<string>((resolve) => {
+      resolveUpload = resolve
+    })
+    uploadEventImage.mockImplementationOnce(() => pendingUpload)
+
+    const urlCtor = URL as unknown as {
+      createObjectURL?: (obj: unknown) => string
+      revokeObjectURL?: (url: string) => void
+    }
+    const previousCreate = urlCtor.createObjectURL
+    const previousRevoke = urlCtor.revokeObjectURL
+    urlCtor.createObjectURL = vi.fn(() => "blob:pending")
+    urlCtor.revokeObjectURL = vi.fn()
+
+    try {
+      const user = userEvent.setup()
+      render(<EventCreateDialog {...baseProps} />)
+      const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      await user.type(fieldByLabel("events:form.title"), "Pending upload")
+      await user.type(fieldByLabel("events:form.location"), "Hall pending")
+      await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+      await user.type(fieldByLabel("events:form.end"), "2026-01-15T11:00")
+      await user.upload(fileInput, new File(["x"], "pending.png", { type: "image/png" }))
+      expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeDisabled()
+
+      resolveUpload("https://cdn.example.com/pending.png")
+      await waitFor(() => expect(screen.getByText("events:form.imageSelected")).toBeInTheDocument())
+      expect(screen.queryByText("common:statuses.uploading")).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeEnabled()
+    } finally {
+      urlCtor.createObjectURL = previousCreate
+      urlCtor.revokeObjectURL = previousRevoke
+    }
+  })
+
+  it("submits an English-only title and location through normalization", async () => {
+    const user = userEvent.setup()
+    const onCreated = vi.fn()
+    render(<EventCreateDialog {...baseProps} language="en" onCreated={onCreated} />)
+
+    await user.type(fieldByLabel("events:form.title_en"), "Only English")
+    await user.type(fieldByLabel("events:form.location_en"), "English room")
+    await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+    await user.type(fieldByLabel("events:form.end"), "2026-01-15T11:00")
+
+    const submit = screen.getByRole("button", { name: "common:buttons.create" })
+    expect(submit).toBeEnabled()
+    await user.click(submit)
+    expect(onCreated).toHaveBeenCalledWith(
+      expect.objectContaining({ title_en: "Only English", location_en: "English room" })
+    )
   })
 })

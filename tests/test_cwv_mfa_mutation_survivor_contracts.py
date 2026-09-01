@@ -79,7 +79,9 @@ def test_cwv_api_binding_propagates_enabled_setting(
         "cwv_deployment_run_attempt": 2,
         "cwv_deployment_url": "https://staging.example.edu",
         "cwv_allowed_origins": "https://staging.example.edu",
-        "cwv_envelope_ttl_seconds": 300,
+        # Use a non-default TTL so an omitted constructor argument cannot
+        # silently look equivalent to the configured binding.
+        "cwv_envelope_ttl_seconds": 301,
     }
     for name, value in values.items():
         monkeypatch.setattr(cwv_api.settings, name, value)
@@ -87,6 +89,14 @@ def test_cwv_api_binding_propagates_enabled_setting(
     binding = cwv_api._binding()
 
     assert binding.enabled is True
+    assert binding.signing_secret == SECRET
+    assert binding.release_sha == SHA
+    assert binding.frontend_image_digest == DIGEST
+    assert binding.deployment_run_id == 123
+    assert binding.deployment_run_attempt == 2
+    assert binding.deployment_url == "https://staging.example.edu"
+    assert binding.allowed_origins == ("https://staging.example.edu",)
+    assert binding.envelope_ttl_seconds == 301
 
 
 def test_cwv_binding_release_sha_error_message_is_stable() -> None:
@@ -144,6 +154,42 @@ async def test_email_challenge_forwards_resolved_client_ip_to_service() -> None:
         )
 
     assert email_service.issue.await_args.kwargs["client_ip"] == MFA_IP
+
+
+@pytest.mark.asyncio
+async def test_email_challenge_uses_stable_unknown_ip_fallback() -> None:
+    """Missing peer metadata must use the canonical rate-limit bucket label."""
+    issued = SimpleNamespace(
+        challenge_token="b" * 32,
+        expires_at=NOW + timedelta(minutes=10),
+        delivery_hint="s***@e***.edu",
+        resend_available_at=NOW + timedelta(seconds=60),
+        revision=2,
+    )
+    email_service = MagicMock()
+    email_service.issue = AsyncMock(return_value=issued)
+    login_service = MagicMock()
+    login_service.get_email_otp_service.return_value = email_service
+    request = SimpleNamespace(
+        state=SimpleNamespace(active_session=SimpleNamespace(id="session-unknown"))
+    )
+    user = SimpleNamespace(id=uuid.UUID("33333333-3333-7333-8333-333333333333"))
+    db = AsyncMock()
+
+    with (
+        patch.object(mfa_api, "extract_request_fingerprint", return_value="f" * 64),
+        patch("app.core.ratelimit.resolve_client_ip", return_value=None),
+        patch("app.core.localization.resolve_locale", return_value="en"),
+    ):
+        await mfa_api._issue_email_challenge_for_session(
+            flow="email_verification",
+            request=request,
+            db=db,
+            login_service=login_service,
+            user=user,
+        )
+
+    assert email_service.issue.await_args.kwargs["client_ip"] == "unknown"
 
 
 @pytest.mark.asyncio

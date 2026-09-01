@@ -45,6 +45,20 @@ describe("logger closure paths", () => {
     expect(captureException.mock.calls[0]?.[1]).toMatchObject({
       tags: { logger: "app", trace_id: " trace-123 ", level: "error" },
     })
+    const context = captureException.mock.calls[0]?.[1] as
+      { extra?: Record<string, unknown> } | undefined
+    const normalized = context?.extra?.logArgs as unknown[]
+    expect(normalized[0]).toMatchObject({ name: "Error", message: "boom" })
+    expect(normalized.slice(1)).toEqual([
+      "message",
+      4,
+      true,
+      null,
+      { safe: true },
+      "[object Object]",
+      "undefined",
+      "Symbol(x)",
+    ])
     expect(consoleError).toHaveBeenCalledOnce()
   })
 
@@ -58,6 +72,7 @@ describe("logger closure paths", () => {
     setTraceContext("   ")
     logError("plain error")
     logError(42)
+    logError("")
     logWarning("warning")
     logWarning(42)
     logInfo("info")
@@ -65,8 +80,10 @@ describe("logger closure paths", () => {
 
     expect(setTag).toHaveBeenCalledWith("trace_id", "")
     expect(captureMessage).toHaveBeenCalledWith("plain error", "error")
+    expect(captureMessage).not.toHaveBeenCalledWith("", "error")
+    expect(captureMessage).not.toHaveBeenCalledWith(42, "error")
     expect(captureMessage).toHaveBeenCalledWith("warning", "warning")
-    expect(consoleError).toHaveBeenCalledTimes(2)
+    expect(consoleError).toHaveBeenCalledTimes(3)
     expect(consoleWarn).toHaveBeenCalledTimes(2)
     expect(consoleInfo).toHaveBeenCalledWith("info")
     expect(consoleLog).toHaveBeenCalledWith("debug")
@@ -110,10 +127,23 @@ describe("logger closure paths", () => {
     expect(() => logError("still logged")).not.toThrow()
   })
 
+  it("normalizes non-string trace ids and keeps message fallback guards strict", () => {
+    resetLoggerMocks()
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+    setTraceContext(123 as unknown as string)
+    logError(42)
+
+    expect(setTag).toHaveBeenCalledWith("trace_id", "123")
+    expect(captureMessage).not.toHaveBeenCalled()
+    expect(consoleError).toHaveBeenCalledWith(42)
+  })
+
   it("continues safely when a console method and Sentry message capture are unavailable", () => {
     resetLoggerMocks()
     const originalInfo = Object.getOwnPropertyDescriptor(console, "info")
+    const originalError = Object.getOwnPropertyDescriptor(console, "error")
     Object.defineProperty(console, "info", { configurable: true, value: undefined })
+    Object.defineProperty(console, "error", { configurable: true, value: undefined })
     setLoggerClient({ captureMessage: undefined })
 
     try {
@@ -121,6 +151,7 @@ describe("logger closure paths", () => {
       expect(() => logError(42)).not.toThrow()
     } finally {
       if (originalInfo) Object.defineProperty(console, "info", originalInfo)
+      if (originalError) Object.defineProperty(console, "error", originalError)
       setLoggerClient({ captureMessage })
     }
   })
