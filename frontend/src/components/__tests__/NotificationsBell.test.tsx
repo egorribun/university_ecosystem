@@ -379,8 +379,30 @@ describe("NotificationsBell", () => {
     const readRow = readLink.parentElement!
     expect(chatRow).toHaveClass("relative", "group", "bg-brand/(--opacity-faint)")
     expect(readRow).not.toHaveClass("bg-brand/(--opacity-faint)")
+    expect(readRow.className).toBe(
+      "relative group border-b border-glass-border last:border-0 p-4 transition-all hover:bg-(--text-secondary)/(--opacity-faint)"
+    )
+    expect(chatLink.children[0]).toHaveClass(
+      "w-8",
+      "h-8",
+      "rounded-full",
+      "bg-brand/(--opacity-subtle)",
+      "text-brand",
+      "dark:text-brand"
+    )
+    expect(readLink.children[0]).toHaveClass(
+      "w-8",
+      "h-8",
+      "rounded-full",
+      "bg-(--border-subtle)",
+      "text-(--text-secondary)"
+    )
+    expect(chatLink.querySelector("svg")).toHaveClass("lucide-message-circle")
+    expect(scheduleLink.querySelector("svg")).toHaveClass("lucide-calendar")
+    expect(readLink.querySelector("svg")).toHaveClass("lucide-bell")
     expect(screen.getByText("Unread chat")).toHaveClass("text-text-primary")
     expect(screen.getByText("Read update")).toHaveClass("text-(--text-secondary)")
+    expect(screen.getByText("Unread chat")).toHaveClass("text-sm", "font-medium", "leading-tight")
     expect(chatRow.querySelector("svg")?.outerHTML).not.toBe(
       scheduleRow.querySelector("svg")?.outerHTML
     )
@@ -397,11 +419,16 @@ describe("NotificationsBell", () => {
     await user.click(screen.getByText("Unread chat"))
     expect(markRead).toHaveBeenCalledWith("chat-1")
 
+    const noLinkClick = new MouseEvent("click", { bubbles: true, cancelable: true })
+    fireEvent(chatLink, noLinkClick)
+    expect(noLinkClick.defaultPrevented).toBe(true)
+    expect(markRead).toHaveBeenCalledTimes(2)
+
     fireEvent.click(screen.getByText("Unread reminder"))
     expect(markRead).toHaveBeenCalledWith("schedule-1")
 
     fireEvent.click(screen.getByText("Read update"))
-    expect(markRead).toHaveBeenCalledTimes(2)
+    expect(markRead).toHaveBeenCalledTimes(3)
 
     const markButtons = screen.getAllByTitle("Mark as read")
     expect(markButtons).toHaveLength(2)
