@@ -22,7 +22,8 @@ from app.api.auth import mfa as mfa_api
 from app.auth.constants import MFA_METHOD_EMAIL_OTP
 from app.auth.mfa import email_otp as email_otp_module
 from app.auth.mfa import totp
-from app.auth.mfa.email_otp import EmailOtpService, MfaDeliveryError
+from app.auth.mfa.email_otp import EmailOtpService, MfaDeliveryError, MfaOtpRejected
+from app.core import observability
 from app.core.ratelimit import RateLimitExceeded, RateLimitInfo
 from app.models import ChallengeState
 from app.services import cwv, cwv_retention, notification_queue
@@ -167,6 +168,185 @@ async def test_delivery_completion_requires_an_explicit_single_row_update() -> N
 
     sender.send.assert_awaited_once()
     db.flush.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_delivery_completion_with_single_rowcount_succeeds() -> None:
+    """A completion update is accepted only when exactly one row changed."""
+
+    service = _email_service()
+    delivery, challenge = _delivery_fixture()
+    claimed = SimpleNamespace(one_or_none=Mock(return_value=delivery.id))
+    challenge_result = SimpleNamespace(scalar_one_or_none=Mock(return_value=challenge))
+    completed = SimpleNamespace(rowcount=1)
+    db = MagicMock()
+    db.execute = AsyncMock(side_effect=[claimed, challenge_result, completed])
+    db.get = AsyncMock(return_value=delivery)
+    db.commit = AsyncMock()
+    db.flush = AsyncMock()
+    service._decrypt_delivery = MagicMock(  # type: ignore[method-assign]
+        return_value={
+            "email": "student@example.edu",
+            "otp": "123456",
+            "display_name": "Student",
+        }
+    )
+    sender = AsyncMock()
+    with patch.object(
+        email_otp_module.secrets, "token_urlsafe", return_value="lease-token"
+    ):
+        await service.deliver(db, delivery_id=delivery.id, sender=sender, now=NOW)
+
+    sender.send.assert_awaited_once()
+    db.flush.assert_awaited_once()
+
+
+def test_otel_shutdown_suppresses_unexpected_provider_errors() -> None:
+    """Provider cleanup must not leak a non-TypeError shutdown failure."""
+
+    provider = MagicMock()
+    provider.shutdown.side_effect = RuntimeError("provider already closed")
+
+    observability._shutdown_otel_provider(provider)
+
+    provider.shutdown.assert_called_once_with(timeout_millis=1200)
+
+
+@pytest.mark.asyncio
+async def test_verify_wrong_code_update_retains_revision_and_pending_guards() -> None:
+    """Failed OTP attempts must be compare-and-set against current challenge state."""
+
+    service = _email_service()
+    user_id = uuid.UUID("11111111-1111-7111-8111-111111111111")
+    challenge = SimpleNamespace(
+        id=uuid.UUID("22222222-2222-7222-8222-222222222222"),
+        user_id=user_id,
+        flow="login",
+        token_key_id="active",
+        otp_key_id="active",
+        recipient_digest="recipient",
+        otp_digest="otp",
+        state=ChallengeState.PENDING,
+        expires_at=NOW + timedelta(minutes=5),
+        attempt_count=0,
+        revision=7,
+    )
+    user = SimpleNamespace(
+        id=user_id,
+        email="student@example.edu",
+        email_mfa_enabled_at=NOW,
+    )
+    service._rate_limit = AsyncMock()  # type: ignore[method-assign]
+    service._resolve_recipient = AsyncMock(  # type: ignore[method-assign]
+        return_value=(user, user.email)
+    )
+    service._load_bound_challenge = AsyncMock(  # type: ignore[method-assign]
+        return_value=challenge
+    )
+    service._recipient_digest = MagicMock(return_value="recipient")  # type: ignore[method-assign]
+    service._digest = MagicMock(return_value="different-otp")  # type: ignore[method-assign]
+    update_result = SimpleNamespace(one_or_none=Mock(return_value=None))
+    db = MagicMock()
+    db.execute = AsyncMock(return_value=update_result)
+    db.flush = AsyncMock()
+
+    with pytest.raises(MfaOtpRejected):
+        await service.verify(
+            db,
+            challenge_token="opaque-token",
+            code="123456",
+            user_id=user_id,
+            flow="login",
+            session_identifier=SESSION,
+            client_fingerprint=FINGERPRINT,
+            client_ip=IP,
+            now=NOW,
+        )
+
+    statement = db.execute.await_args.args[0]
+    compiled = statement.compile()
+    sql = str(statement.whereclause)
+    assert "mfa_challenges.revision =" in sql
+    assert "mfa_challenges.state =" in sql
+    assert compiled.params["revision_1"] == challenge.revision
+    assert compiled.params["state_1"] is ChallengeState.PENDING
+
+
+@pytest.mark.asyncio
+async def test_resend_returns_masked_delivery_hint() -> None:
+    """Resend responses must preserve the same non-enumerating hint as issue."""
+
+    from sqlalchemy.dialects import postgresql
+
+    service = _email_service()
+    challenge = _challenge_for_survivor_resend()
+    user = SimpleNamespace(
+        id=challenge.user_id,
+        email="student@example.edu",
+        email_mfa_enabled_at=NOW,
+    )
+    service._rate_limit = AsyncMock()  # type: ignore[method-assign]
+    service._resolve_recipient = AsyncMock(  # type: ignore[method-assign]
+        return_value=(user, user.email)
+    )
+    service._load_bound_challenge = AsyncMock(  # type: ignore[method-assign]
+        return_value=challenge
+    )
+    service._recipient_digest = MagicMock(return_value="recipient")  # type: ignore[method-assign]
+    service._digest = MagicMock(return_value="digest")  # type: ignore[method-assign]
+    db = MagicMock()
+    db.execute = AsyncMock(
+        side_effect=[
+            SimpleNamespace(one_or_none=Mock(return_value=(challenge.id,))),
+            MagicMock(),
+        ]
+    )
+    db.flush = AsyncMock()
+
+    with (
+        patch.object(
+            email_otp_module, "_generate_challenge_token", return_value="new-token"
+        ),
+        patch.object(email_otp_module, "_generate_otp", return_value="654321"),
+    ):
+        issued = await service.resend(
+            db,
+            challenge_token="old-token",
+            user_id=challenge.user_id,
+            flow=challenge.flow,
+            session_identifier=challenge.session_identifier,
+            client_fingerprint=challenge.client_fingerprint,
+            client_ip=IP,
+            locale="en",
+            now=NOW + timedelta(minutes=2),
+        )
+
+    assert issued.delivery_hint == email_otp_module.mask_email(user.email)
+    rotation_statement = db.execute.await_args_list[0].args[0]
+    assert "RETURNING mfa_challenges.id" in str(
+        rotation_statement.compile(dialect=postgresql.dialect())
+    )
+
+
+def _challenge_for_survivor_resend() -> SimpleNamespace:
+    return SimpleNamespace(
+        id=uuid.UUID("33333333-3333-7333-8333-333333333333"),
+        user_id=uuid.UUID("44444444-4444-7444-8444-444444444444"),
+        flow="login",
+        method=MFA_METHOD_EMAIL_OTP,
+        session_identifier=SESSION,
+        client_fingerprint=FINGERPRINT,
+        revision=1,
+        token_key_id="active",
+        otp_key_id="active",
+        token_digest="old-token-digest",
+        otp_digest="old-otp-digest",
+        recipient_digest="recipient",
+        state=ChallengeState.PENDING,
+        expires_at=NOW + timedelta(minutes=5),
+        resend_available_at=NOW,
+        attempt_count=0,
+    )
 
 
 @pytest.mark.asyncio

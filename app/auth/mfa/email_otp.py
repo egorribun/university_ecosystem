@@ -15,7 +15,8 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
-from typing import TYPE_CHECKING, Protocol, cast
+from operator import attrgetter
+from typing import TYPE_CHECKING, Protocol
 
 import orjson
 from cryptography.exceptions import InvalidTag
@@ -95,13 +96,6 @@ class MfaEmailSender(Protocol):
         html: str,
         message_id: str,
     ) -> None: ...
-
-
-class _RowcountResult(Protocol):
-    # SQLAlchemy's update result exposes rowcount as a data attribute.  Keep
-    # this structural contract non-executable so coverage measures only
-    # runtime delivery logic, while mypy still rejects incompatible results.
-    rowcount: int
 
 
 class _DeliveryOnlyRateLimiter:
@@ -1238,11 +1232,11 @@ class EmailOtpService:
             )
         )
         # SQLAlchemy's update result must expose an explicit single-row
-        # completion.  Access the attribute directly so a driver that omits
+        # completion.  Resolve the attribute explicitly so a driver that omits
         # ``rowcount`` fails closed instead of silently selecting a fallback
         # value that could mask an incompatible result object.
         try:
-            completed_rowcount = cast(_RowcountResult, completed).rowcount
+            completed_rowcount = attrgetter("rowcount")(completed)
         except AttributeError as exc:
             raise MfaDeliveryError() from exc
         if completed_rowcount != 1:

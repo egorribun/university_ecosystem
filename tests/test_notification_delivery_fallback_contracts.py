@@ -9,6 +9,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.models import NotificationDelivery
 from app.services.notifications import delivery
 
 
@@ -117,6 +118,95 @@ async def test_redelivery_uses_safe_url_and_unknown_metric_type_fallback(
     query = db.execute.await_args_list[0].args[0]
     assert len(query._order_by_clauses) == 1
     assert query._order_by_clauses[0].compare(delivery.Notification.__table__.c.id)
+
+
+@pytest.mark.asyncio
+async def test_redelivery_updates_the_latest_attempt_for_each_pair(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Retries must mutate the newest journal row, never an older attempt."""
+
+    user_id = uuid4()
+    notification_id = uuid4()
+    subscription_id = uuid4()
+    subscription = SimpleNamespace(
+        id=subscription_id,
+        user_id=user_id,
+        user=None,
+        endpoint="https://push.example.test/subscription",
+        topics=None,
+    )
+    notification = SimpleNamespace(
+        id=notification_id,
+        user_id=user_id,
+        title="A notification",
+        body="Body",
+        url="/news/1",
+        type="news",
+        created_at=datetime(2026, 8, 28, 12, 0, tzinfo=UTC),
+    )
+    older = SimpleNamespace(
+        notification_id=notification_id,
+        subscription_id=subscription_id,
+        status="error",
+        attempted_at=datetime(2026, 8, 28, 11, 58, tzinfo=UTC),
+        delivered_at=None,
+        status_code=503,
+        detail="first failure",
+    )
+    newer = SimpleNamespace(
+        notification_id=notification_id,
+        subscription_id=subscription_id,
+        status="error",
+        attempted_at=datetime(2026, 8, 28, 11, 59, tzinfo=UTC),
+        delivered_at=None,
+        status_code=503,
+        detail="latest failure",
+    )
+    sent = delivery.WebPushResult(
+        subscription_id=subscription_id,
+        endpoint=subscription.endpoint,
+        user_id=user_id,
+        status="sent",
+        status_code=201,
+    )
+
+    monkeypatch.setattr(delivery, "_is_push_configured", lambda: True)
+    monkeypatch.setattr(delivery, "subscription_supports_topic", lambda *_args: True)
+    monkeypatch.setattr(
+        delivery.webpush_module, "_send_push_async", AsyncMock(return_value=sent)
+    )
+    monkeypatch.setattr(delivery, "_process_canonical_push_results", AsyncMock())
+    monkeypatch.setattr(delivery.metrics, "record_notification_delivered", Mock())
+
+    calls = 0
+
+    async def execute(statement: object) -> MagicMock:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return _rows([notification])
+        if calls == 2:
+            return _rows([subscription])
+        if calls == 3:
+            # A real database honours the ORDER BY clause.  Returning rows in
+            # the corresponding order makes this test exercise the observable
+            # idempotency contract rather than just inspecting SQL text.
+            ordered = bool(getattr(statement, "_order_by_clauses", ()))
+            return _rows([newer, older] if ordered else [older, newer])
+        raise AssertionError("unexpected database query")
+
+    db = MagicMock(execute=AsyncMock(side_effect=execute), flush=AsyncMock())
+
+    outcome = await delivery.redeliver_notifications(
+        db, notification_ids=[notification_id]
+    )
+
+    assert outcome.sent == 1
+    assert newer.status == "sent"
+    assert newer.status_code == 201
+    assert older.status == "error"
+    assert older.status_code == 503
 
 
 def test_unique_notification_ids_logs_the_stable_warning_text() -> None:
@@ -635,6 +725,9 @@ async def test_redelivery_accumulates_already_delivered_pairs(
     compiled_prior_query = prior_delivery_query.compile()
     assert "notification_deliveries.channel =" in str(compiled_prior_query)
     assert "webpush" in compiled_prior_query.params.values()
+    order_by = tuple(prior_delivery_query._order_by_clauses)
+    assert len(order_by) == 1
+    assert order_by[0].compare(NotificationDelivery.__table__.c.attempted_at.desc())
 
 
 @pytest.mark.asyncio
