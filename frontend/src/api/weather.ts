@@ -18,9 +18,11 @@ export interface WeatherCacheEntry {
   expiresAt: number
 }
 
-export const WEATHER_CACHE_TTL_MS = 10 * 60_000
+export const WEATHER_CACHE_TTL_MS = 600_000
 
-const WEATHER_CACHE_PREFIX = "weather:snapshot"
+function weatherCachePrefix(): string {
+  return "weather:snapshot"
+}
 
 const toNumber = (value: unknown): number | null => {
   if (value == null) return null
@@ -29,7 +31,7 @@ const toNumber = (value: unknown): number | null => {
 }
 
 const toIsoString = (value: unknown): string | null => {
-  if (typeof value !== "string" || value.trim().length === 0) return null
+  if (typeof value !== "string") return null
   const parsed = new Date(value)
   if (Number.isNaN(parsed.getTime())) return null
   return parsed.toISOString()
@@ -38,47 +40,67 @@ const toIsoString = (value: unknown): string | null => {
 const toCacheKey = ({ lat, lon }: WeatherCoordinates) => {
   const latKey = Number(lat).toFixed(4)
   const lonKey = Number(lon).toFixed(4)
-  return `${WEATHER_CACHE_PREFIX}:${latKey},${lonKey}`
+  return `${weatherCachePrefix()}:${latKey},${lonKey}`
+}
+
+type ParsedCacheResult = { value: unknown }
+
+const parseCacheEntry = (raw: string): ParsedCacheResult | null => {
+  try {
+    return { value: JSON.parse(raw) }
+  } catch {
+    return null
+  }
 }
 
 const readCacheEntry = (
   key: string,
   { allowExpired = false }: { allowExpired?: boolean } = {}
 ): WeatherCacheEntry | null => {
-  if (typeof window === "undefined") return null
+  let raw: string | null
   try {
-    const raw = window.sessionStorage?.getItem(key)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as WeatherCacheEntry
-    if (!parsed || typeof parsed !== "object") return null
-    if (typeof parsed.expiresAt !== "number" || !parsed.data) return null
-    if (!allowExpired && parsed.expiresAt <= Date.now()) return null
-    return parsed
+    raw = window.sessionStorage.getItem(key)
   } catch {
     return null
   }
+
+  if (typeof raw !== "string" || raw.length === 0) return null
+  const parsedResult = parseCacheEntry(raw)
+  if (parsedResult === null) return null
+  const parsed = parsedResult.value
+  if (Object.prototype.toString.call(parsed) === "[object Object]") {
+    const entry = parsed as Partial<WeatherCacheEntry>
+    if (typeof entry.expiresAt !== "number" || !entry.data) return null
+    if (!allowExpired && entry.expiresAt <= Date.now()) return null
+    return entry as WeatherCacheEntry
+  }
+  return null
 }
 
 const writeCacheEntry = (key: string, entry: WeatherCacheEntry) => {
-  if (typeof window === "undefined") return
   try {
-    window.sessionStorage?.setItem(key, JSON.stringify(entry))
+    window.sessionStorage.setItem(key, JSON.stringify(entry))
   } catch {
     /* ignore persistence failures */
   }
 }
 
 const pickCurrentBlock = (input: unknown) => {
-  if (!input || typeof input !== "object") return null
-  const current = (input as { current?: unknown }).current
-  if (current && typeof current === "object") return current
-  const legacy = (input as { current_weather?: unknown }).current_weather
-  if (legacy && typeof legacy === "object") {
-    const block = legacy as { time?: unknown; temperature?: unknown; weathercode?: unknown }
-    return {
-      time: block.time,
-      temperature_2m: block.temperature,
-      weather_code: block.weathercode,
+  if (
+    typeof input === "object" &&
+    input !== null &&
+    ("current" in input || "current_weather" in input)
+  ) {
+    const current = (input as { current?: unknown }).current
+    if (typeof current === "object" && current !== null) return current
+    const legacy = (input as { current_weather?: unknown }).current_weather
+    if (typeof legacy === "object" && legacy !== null) {
+      const block = legacy as { time?: unknown; temperature?: unknown; weathercode?: unknown }
+      return {
+        time: block.time,
+        temperature_2m: block.temperature,
+        weather_code: block.weathercode,
+      }
     }
   }
   return null
@@ -86,16 +108,16 @@ const pickCurrentBlock = (input: unknown) => {
 
 const normalizeSnapshot = (payload: unknown): WeatherSnapshot => {
   const current = pickCurrentBlock(payload)
-  if (!current || typeof current !== "object") {
+  if (current === null) {
     throw new Error("Missing current weather data")
   }
 
-  const codeValue =
-    (current as { weather_code?: unknown }).weather_code ??
-    (current as { weathercode?: unknown }).weathercode
-  const tempValue =
-    (current as { temperature_2m?: unknown }).temperature_2m ??
-    (current as { temperature?: unknown }).temperature
+  const modernCode = (current as { weather_code?: unknown }).weather_code
+  const legacyCode = (current as { weathercode?: unknown }).weathercode
+  const modernTemperature = (current as { temperature_2m?: unknown }).temperature_2m
+  const legacyTemperature = (current as { temperature?: unknown }).temperature
+  const codeValue = modernCode === undefined ? legacyCode : modernCode
+  const tempValue = modernTemperature === undefined ? legacyTemperature : modernTemperature
   const timeValue = (current as { time?: unknown }).time
 
   const parsedCode = toNumber(codeValue)
@@ -115,7 +137,7 @@ const normalizeSnapshot = (payload: unknown): WeatherSnapshot => {
 export class WeatherFetchError extends Error {
   fallback: WeatherSnapshot | null
   aborted: boolean
-  cause?: unknown
+  declare cause?: unknown
 
   constructor(
     message: string,

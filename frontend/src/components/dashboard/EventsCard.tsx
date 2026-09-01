@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, useCallback, type CSSProperties, type KeyboardEvent } from "react"
+import { memo, useMemo, useState, type CSSProperties } from "react"
 
 import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
@@ -21,6 +21,12 @@ interface EventsCardProps {
   style?: CSSProperties
   "data-fade"?: string
   "data-pop"?: string
+}
+
+export function prepareOnKey(event: { key: string }, callback: () => void) {
+  if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+    callback()
+  }
 }
 
 export const EventsCard = memo(function EventsCard({
@@ -53,12 +59,6 @@ export const EventsCard = memo(function EventsCard({
       limit: EVENTS_PAGE_SIZE,
     })
   }
-
-  const prepareOnKey = useCallback((event: KeyboardEvent, callback: () => void) => {
-    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
-      callback()
-    }
-  }, [])
 
   const todayEvents = useMemo(() => {
     const from = new Date()
@@ -184,9 +184,11 @@ export const EventsCard = memo(function EventsCard({
           >
             <AnimatePresence mode="popLayout" initial={false}>
               {scopedEvents.map((e, idx) => {
+                const eventKey = `${eventsScope}-${e.id}`
                 return (
                   <m.li
-                    key={`${eventsScope}-${e.id}`}
+                    key={eventKey}
+                    data-event-key={eventKey}
                     initial={prefersReduced ? false : { opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={prefersReduced ? { opacity: 0 } : { opacity: 0, y: -4 }}
