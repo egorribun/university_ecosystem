@@ -100,7 +100,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
     queryKey: ["users", debouncedSearch],
     queryFn: async () => {
       const response = await client.get<User[]>(
-        `/users?limit=${USERS_PAGE_LIMIT}&search=${debouncedSearch}`
+        `/users?limit=${USERS_PAGE_LIMIT}&search=${encodeURIComponent(debouncedSearch)}`
       )
       return response.data
     },
@@ -338,7 +338,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                               ? t("messenger:leaveGroup")
                               : t("messenger:removeMember", { name: member.full_name })
                           }
-                          className="flex size-9 shrink-0 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--error-text)/(--opacity-subtle) hover:text-(--error-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)"
+                          className="flex size-9 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--error-text)/(--opacity-subtle) hover:text-(--error-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)"
                         >
                           {isSelf ? (
                             <LogOut className="size-4" strokeWidth={2} aria-hidden="true" />

@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ReactNode } from "react"
 import type { Chat } from "@/api/chat"
+import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 
 /**
  * Sibling branch-coverage test for GroupInfoPanel (do NOT touch
@@ -24,27 +25,43 @@ import type { Chat } from "@/api/chat"
  * so the add-member useQuery fires immediately (no fake timers needed).
  */
 
-const mocks = vi.hoisted(() => ({ apiGet: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  apiGet: vi.fn(),
+  focusTrap: vi.fn<(...args: [unknown]) => { current: null }>(() => ({ current: null })),
+  debounced: vi.fn<(value: unknown, strategy?: unknown) => unknown>((value) => value),
+  translation: vi.fn<(...args: unknown[]) => void>(),
+}))
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, opts?: Record<string, unknown>) =>
-      opts ? `${key}|${JSON.stringify(opts)}` : key,
-  }),
+  useTranslation: (...namespaces: unknown[]) => {
+    mocks.translation(...namespaces)
+    return {
+      t: (key: string, opts?: Record<string, unknown>) =>
+        opts ? `${key}|${JSON.stringify(opts)}` : key,
+    }
+  },
 }))
 
 vi.mock("@/components/media/SmartImage", () => ({
-  default: ({ alt, className }: { alt?: string; className?: string }) => (
-    <img alt={alt} className={className} />
+  default: ({ alt, className, srcRaw }: { alt?: string; className?: string; srcRaw?: string }) => (
+    <img alt={alt} className={className} src={srcRaw} />
   ),
 }))
 
-vi.mock("@/hooks/useFocusTrap", () => ({ default: () => ({ current: null }) }))
+vi.mock("@/hooks/useFocusTrap", () => ({
+  default: (options: unknown) => {
+    mocks.focusTrap(options)
+    return { current: null }
+  },
+}))
 
 // Pass-through debounce so the add-member useQuery fires synchronously once the
 // search input has > 1 char (no 300ms wait / fake timers).
 vi.mock("@/hooks/useDebounced", () => ({
-  useDebounced: <T,>(value: T) => value,
+  useDebounced: (value: unknown, strategy?: unknown) => {
+    mocks.debounced(value, strategy)
+    return value
+  },
 }))
 
 vi.mock("@/api/client", async (importOriginal) => {
@@ -381,5 +398,184 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
     const leaveButtons = screen.getAllByRole("button", { name: "messenger:leaveGroup" })
     fireEvent.click(leaveButtons[0]!)
     expect(onRemoveMember).toHaveBeenCalledWith(MEMBER)
+  })
+
+  it("binds the documented translation, debounce, and focus-trap contracts", () => {
+    const onClose = vi.fn()
+    render(
+      <GroupInfoPanel
+        {...baseProps}
+        onClose={onClose}
+        chat={groupChat(OWNER)}
+        currentUserId={OWNER}
+      />,
+      { wrapper }
+    )
+
+    expect(mocks.translation).toHaveBeenCalledWith(["messenger", "common"])
+    expect(mocks.debounced).toHaveBeenCalledWith("", "search")
+    expect(mocks.focusTrap).toHaveBeenCalledWith(
+      expect.objectContaining({
+        active: true,
+        initialFocus: false,
+        returnFocus: true,
+        onDeactivate: onClose,
+      })
+    )
+
+    const dialog = screen.getByRole("dialog", { name: "Project Alpha" })
+    expect(dialog).toHaveAttribute("aria-modal", "true")
+    expect(dialog).toHaveAccessibleName("Project Alpha")
+  })
+
+  it("removes Escape listeners and clears transient state after closing", () => {
+    const onClose = vi.fn()
+    const { rerender } = render(
+      <GroupInfoPanel
+        {...baseProps}
+        onClose={onClose}
+        chat={groupChat(OWNER)}
+        currentUserId={OWNER}
+      />,
+      { wrapper }
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:renameGroup" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:groupName" }), {
+      target: { value: "stale draft" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+      target: { value: "stale search" },
+    })
+
+    rerender(
+      <GroupInfoPanel {...baseProps} open={false} onClose={onClose} chat={groupChat(OWNER)} />
+    )
+    fireEvent.keyDown(document, { key: "Escape" })
+    expect(onClose).not.toHaveBeenCalled()
+
+    rerender(<GroupInfoPanel {...baseProps} open chat={groupChat(OWNER)} currentUserId={OWNER} />)
+    expect(screen.queryByRole("textbox", { name: "messenger:groupName" })).toBeNull()
+    expect(screen.queryByRole("textbox", { name: "messenger:searchUsers" })).toBeNull()
+    expect(screen.getByRole("button", { name: "messenger:renameGroup" })).toBeTruthy()
+    expect(screen.getByRole("button", { name: "messenger:addMember" })).toBeTruthy()
+  })
+
+  it("keeps owner controls and member rows accessible with precise authorization labels", () => {
+    const onRemoveMember = vi.fn()
+    render(
+      <GroupInfoPanel
+        {...baseProps}
+        onRemoveMember={onRemoveMember}
+        chat={groupChat(OWNER)}
+        currentUserId={OWNER}
+      />,
+      { wrapper }
+    )
+
+    const ownerRow = screen.getByText("Olga Owner").closest("li")
+    const memberRow = screen.getByText("Mike Member").closest("li")
+    expect(ownerRow).not.toBeNull()
+    expect(memberRow).not.toBeNull()
+    expect(ownerRow).toHaveTextContent("messenger:memberYou")
+    expect(ownerRow).toHaveTextContent("messenger:groupOwner")
+    expect(ownerRow?.querySelector('button[aria-label*="messenger:removeMember"]')).toBeNull()
+
+    const kick = screen.getByRole("button", {
+      name: 'messenger:removeMember|{"name":"Mike Member"}',
+    })
+    expect(kick.className).toContain("min-h-[44px]")
+    expect(kick.className).toContain("min-w-[44px]")
+    fireEvent.click(kick)
+    expect(onRemoveMember).toHaveBeenCalledWith(MEMBER)
+  })
+
+  it("disables rename and add-member mutations while their requests are pending", async () => {
+    const onRename = vi.fn()
+    const onAddMember = vi.fn()
+    mocks.apiGet.mockResolvedValue({
+      data: [{ id: "new-user", full_name: "Nina Newbie", avatar_url: null, is_active: true }],
+    })
+    const { rerender } = render(
+      <GroupInfoPanel
+        {...baseProps}
+        onRename={onRename}
+        onAddMember={onAddMember}
+        isRenaming
+        isAddingMember
+        chat={groupChat(OWNER)}
+        currentUserId={OWNER}
+      />,
+      { wrapper }
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:renameGroup" }))
+    const save = screen.getByRole("button", { name: "common:buttons.save" })
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:groupName" }), {
+      target: { value: "Renamed" },
+    })
+    expect(save).toBeDisabled()
+    fireEvent.click(save)
+    expect(onRename).not.toHaveBeenCalled()
+
+    rerender(
+      <GroupInfoPanel
+        {...baseProps}
+        onAddMember={onAddMember}
+        isAddingMember
+        chat={groupChat(OWNER)}
+        currentUserId={OWNER}
+      />
+    )
+    fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+      target: { value: "Ni" },
+    })
+    const add = await screen.findByRole("button", { name: /Nina Newbie/ })
+    expect(add).toBeDisabled()
+    fireEvent.click(add)
+    expect(onAddMember).not.toHaveBeenCalled()
+  })
+
+  it("encodes add-member search terms and preserves avatar fallback semantics", async () => {
+    mocks.apiGet.mockResolvedValue({
+      data: [{ id: "new-user", full_name: "Nina Newbie", avatar_url: null, is_active: true }],
+    })
+    render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />, {
+      wrapper,
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+      target: { value: "A+B&C" },
+    })
+    await waitFor(() => {
+      expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&search=A%2BB%26C")
+    })
+    const add = await screen.findByRole("button", { name: /Nina Newbie/ })
+    expect(add.querySelector("img")).toHaveAttribute("src", AVATAR_PLACEHOLDER_URL)
+  })
+
+  it("does not show no-results feedback during loading, then shows it after an empty response", async () => {
+    let resolveSearch: ((value: { data: never[] }) => void) | undefined
+    mocks.apiGet.mockReturnValue(
+      new Promise<{ data: never[] }>((resolve) => {
+        resolveSearch = resolve
+      })
+    )
+    render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />, {
+      wrapper,
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+    fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+      target: { value: "ab" },
+    })
+    await waitFor(() => expect(mocks.apiGet).toHaveBeenCalled())
+    expect(screen.queryByText("messenger:noUsersFound")).toBeNull()
+
+    resolveSearch?.({ data: [] })
+    expect(await screen.findByText("messenger:noUsersFound")).toBeTruthy()
   })
 })
