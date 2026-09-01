@@ -55,7 +55,12 @@ const CAMPUS_BUILDINGS: CampusBuilding[] = [
     letter: "ЛК",
     name: "Campus Annex",
     floorCount: 2,
-    floors: [{ floor: 2, rooms: [{ id: "ЛК-201", number: "201", name: "Seminar Room" }] }],
+    floors: [
+      {
+        floor: 2,
+        rooms: [{ id: "ЛК-201", number: "201", name: "Seminar Room", type: "seminar" }],
+      },
+    ],
   },
 ]
 
