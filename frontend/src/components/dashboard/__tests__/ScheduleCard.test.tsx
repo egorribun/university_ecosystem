@@ -89,7 +89,7 @@ vi.mock("@/components/ui", () => {
   return { Badge, Button, Card, ProgressBar, Skeleton }
 })
 
-import { ScheduleCard } from "../ScheduleCard"
+import { findNextLesson, ScheduleCard } from "../ScheduleCard"
 
 const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]
 
@@ -207,6 +207,57 @@ describe("ScheduleCard", () => {
     expect(screen.getAllByText("Networks").length).toBeGreaterThan(0)
   })
 
+  it("selects the first lesson after the active interval and skips overlaps, adjacency, and malformed bounds", () => {
+    const time = new Date(2026, 6, 31, 10, 30)
+    const current = lessonFor(time, { id: "current", subject: "Current lesson" })
+    const overlap = lessonFor(time, {
+      id: "overlap",
+      subject: "Overlapping lesson",
+      start_time: "10:45",
+      end_time: "11:30",
+    })
+    const adjacent = lessonFor(time, {
+      id: "adjacent",
+      subject: "Adjacent lesson",
+      start_time: "11:00",
+      end_time: "12:00",
+    })
+    const malformed = lessonFor(time, {
+      id: "malformed",
+      subject: "Malformed candidate",
+      start_time: "bad",
+      end_time: "12:00",
+    })
+    const later = lessonFor(time, {
+      id: "later",
+      subject: "First non-overlapping lesson",
+      start_time: "12:30",
+      end_time: "13:30",
+    })
+
+    expect(
+      findNextLesson([current, overlap, adjacent, malformed, later], current, 10 * 60 + 30)
+    ).toBe(later)
+  })
+
+  it("keeps a lesson that starts now out of the next slot when no current lesson is supplied", () => {
+    const time = new Date(2026, 6, 31, 10, 30)
+    const startsNow = lessonFor(time, {
+      id: "starts-now",
+      subject: "Starts now",
+      start_time: "10:30",
+      end_time: "11:30",
+    })
+    const later = lessonFor(time, {
+      id: "later",
+      subject: "Later lesson",
+      start_time: "12:00",
+      end_time: "13:00",
+    })
+
+    expect(findNextLesson([startsNow, later], null, 10 * 60 + 30)).toBe(later)
+  })
+
   it("does not promote malformed times to current or next lessons", () => {
     const time = new Date(2026, 6, 31, 10, 30)
     scheduleState.current = {
@@ -236,6 +287,60 @@ describe("ScheduleCard", () => {
     expect(within(nextBadge.parentElement!).getByText("Valid next lesson")).toBeInTheDocument()
     expect(within(nextBadge.parentElement!).queryByText("Malformed time")).not.toBeInTheDocument()
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument()
+  })
+
+  it("rejects an invalid end time even when the start time is valid", () => {
+    const time = new Date(2026, 6, 31, 10, 30)
+    scheduleState.current = {
+      data: [
+        lessonFor(time, {
+          id: "bad-end",
+          subject: "Malformed end",
+          start_time: "10:00",
+          end_time: "bad",
+        }),
+        lessonFor(time, {
+          id: "valid-next",
+          subject: "Valid next after malformed end",
+          start_time: "12:00",
+          end_time: "13:00",
+        }),
+      ],
+      isLoading: false,
+      isFetching: false,
+    }
+
+    render(<ScheduleCard time={time} userRole="student" userGroupId="group-1" />)
+
+    expect(screen.queryByText("dashboard:now")).not.toBeInTheDocument()
+    const nextBadge = screen.getByText("dashboard:next")
+    expect(
+      within(nextBadge.parentElement!).getByText("Valid next after malformed end")
+    ).toBeInTheDocument()
+    expect(within(nextBadge.parentElement!).queryByText("Malformed end")).not.toBeInTheDocument()
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument()
+  })
+
+  it("does not promote a zero-length interval to the next lesson", () => {
+    const time = new Date(2026, 6, 31, 9, 0)
+    scheduleState.current = {
+      data: [
+        lessonFor(time, {
+          id: "zero-length",
+          subject: "Zero-length interval",
+          start_time: "10:00",
+          end_time: "10:00",
+        }),
+      ],
+      isLoading: false,
+      isFetching: false,
+    }
+
+    render(<ScheduleCard time={time} userRole="student" userGroupId="group-1" />)
+
+    expect(screen.getByText("Zero-length interval")).toBeInTheDocument()
+    expect(screen.queryByText("dashboard:next")).not.toBeInTheDocument()
+    expect(screen.queryByText("dashboard:now")).not.toBeInTheDocument()
   })
 
   it("normalizes uppercase backend weekdays and filters parity", () => {

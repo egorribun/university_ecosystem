@@ -17,6 +17,22 @@ interface ScheduleCardProps {
   "data-pop"?: string
 }
 
+type LessonBounds = { start: number; end: number }
+type LessonTimeFields = Pick<DashboardLesson, "start_time" | "end_time">
+
+const ENGLISH_WEEK_DAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+]
+
+const readWeekdayArray = (value: unknown, fallback: string[]): string[] =>
+  Array.isArray(value) && value.length === 7 ? (value as string[]) : fallback
+
 /**
  * Return a lesson's validated half-open interval.
  *
@@ -25,11 +41,34 @@ interface ScheduleCardProps {
  * Keep this guard local to the card because the card derives its own schedule
  * view instead of using the full schedule page's time hook.
  */
-const getLessonBounds = (lesson: DashboardLesson): { start: number; end: number } | null => {
-  const start = parseMinutes(lesson.start_time)
-  const end = parseMinutes(lesson.end_time)
-  return start !== null && end !== null && end > start ? { start, end } : null
+const getLessonBounds = (lesson: LessonTimeFields | null): LessonBounds | null => {
+  const start = parseMinutes(lesson?.start_time ?? "")
+  // Keep malformed end times as NaN so the strict comparison below rejects
+  // them without a redundant nullable guard (NaN is never greater than start).
+  const end = parseMinutes(lesson?.end_time ?? "") ?? Number.NaN
+  return start !== null && end > start ? { start, end } : null
 }
+
+const lessonStartsAfter = (lesson: LessonTimeFields, threshold: number): boolean =>
+  (getLessonBounds(lesson)?.start ?? Number.NaN) > threshold
+
+export const findNextLesson = <T extends LessonTimeFields>(
+  todayLessons: readonly T[],
+  currentLesson: T | null,
+  minutesNow: number
+): T | null =>
+  todayLessons.find((lesson) =>
+    lessonStartsAfter(lesson, getLessonBounds(currentLesson)?.end ?? minutesNow)
+  ) ?? null
+
+const calculateLessonProgress = (bounds: LessonBounds | null, minutesNow: number): number =>
+  bounds === null
+    ? 0
+    : Math.round(
+        (Math.min(Math.max(0, minutesNow - bounds.start), bounds.end - bounds.start) /
+          (bounds.end - bounds.start)) *
+          100
+      )
 
 export const ScheduleCard = memo(function ScheduleCard({
   userRole,
@@ -59,21 +98,22 @@ export const ScheduleCard = memo(function ScheduleCard({
   const parity = nowParity()
   const todayIndex = time.getDay()
 
-  const weekDaysDisplay = useMemo(() => {
-    const result = t("dashboard:weekDays.display", { returnObjects: true }) as unknown
-    if (Array.isArray(result) && result.length === 7) {
-      return result as string[]
-    }
-    return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-  }, [t])
+  const weekDaysDisplay = useMemo(
+    () =>
+      readWeekdayArray(t("dashboard:weekDays.display", { returnObjects: true }) as unknown, [
+        ...ENGLISH_WEEK_DAYS,
+      ]),
+    [t]
+  )
 
-  const weekDaysRaw = useMemo(() => {
-    const result = t("dashboard:weekDays.raw", { returnObjects: true }) as unknown
-    if (Array.isArray(result) && result.length === 7) {
-      return result as string[]
-    }
-    return weekDaysDisplay
-  }, [t, weekDaysDisplay])
+  const weekDaysRaw = useMemo(
+    () =>
+      readWeekdayArray(
+        t("dashboard:weekDays.raw", { returnObjects: true }) as unknown,
+        weekDaysDisplay
+      ),
+    [t, weekDaysDisplay]
+  )
 
   const weekdayIndex = useMemo(() => {
     const map = new Map<string, number>()
@@ -85,15 +125,7 @@ export const ScheduleCard = memo(function ScheduleCard({
       map.set(name.toLowerCase(), index)
     })
     // English backend names — API returns weekday as "sunday", "monday", etc.
-    const englishDays = [
-      "sunday",
-      "monday",
-      "tuesday",
-      "wednesday",
-      "thursday",
-      "friday",
-      "saturday",
-    ]
+    const englishDays = ENGLISH_WEEK_DAYS.map((name) => name.toLowerCase())
     englishDays.forEach((name, index) => {
       map.set(name, index)
     })
@@ -120,31 +152,18 @@ export const ScheduleCard = memo(function ScheduleCard({
     )
   }, [todayLessons, minutesNow])
 
-  const nextLesson = useMemo(() => {
-    if (currentLesson) {
-      const currentBounds = getLessonBounds(currentLesson)!
-      return (
-        todayLessons.find((l) => {
-          const bounds = getLessonBounds(l)
-          return bounds !== null && bounds.start > currentBounds.end
-        }) || null
-      )
-    }
-    return (
-      todayLessons.find((l) => {
-        const bounds = getLessonBounds(l)
-        return bounds !== null && bounds.start > minutesNow
-      }) || null
-    )
-  }, [todayLessons, currentLesson, minutesNow])
+  const nextLesson = useMemo(
+    () => findNextLesson(todayLessons, currentLesson, minutesNow),
+    [todayLessons, currentLesson, minutesNow]
+  )
 
-  const currentProgress = useMemo(() => {
-    if (!currentLesson) return 0
-    const bounds = getLessonBounds(currentLesson)!
-    const span = bounds.end - bounds.start
-    const passed = Math.min(Math.max(0, minutesNow - bounds.start), span)
-    return Math.round((passed / span) * 100)
-  }, [currentLesson, minutesNow])
+  const currentProgress = useMemo(
+    () => calculateLessonProgress(getLessonBounds(currentLesson), minutesNow),
+    [currentLesson, minutesNow]
+  )
+
+  const shouldShowNextLesson = nextLesson !== null ? currentLesson === null : false
+  const nextLessonToDisplay = shouldShowNextLesson ? nextLesson : null
 
   const warmScheduleRoute = useCallback(() => {
     void router.preloadRoute({ to: "/schedule" }).catch(() => undefined)
@@ -204,7 +223,7 @@ export const ScheduleCard = memo(function ScheduleCard({
           </div>
         )}
 
-        {!currentLesson && nextLesson && (
+        {nextLessonToDisplay ? (
           <div className="list-item-blue flex items-center gap-3 rounded-xl p-4">
             <Badge
               size="sm"
@@ -214,13 +233,13 @@ export const ScheduleCard = memo(function ScheduleCard({
               label={t("dashboard:next")}
             />
             <span className="min-w-0 flex-1 text-base font-semibold leading-tight text-text-primary truncate">
-              {nextLesson.subject}
+              {nextLessonToDisplay.subject}
             </span>
             <span className="shrink-0 font-mono text-sm font-medium text-brand">
-              {fmtTime(nextLesson.start_time)}–{fmtTime(nextLesson.end_time)}
+              {fmtTime(nextLessonToDisplay.start_time)}–{fmtTime(nextLessonToDisplay.end_time)}
             </span>
           </div>
-        )}
+        ) : null}
 
         {loadingSched && (
           <div className="space-y-3" role="presentation">
