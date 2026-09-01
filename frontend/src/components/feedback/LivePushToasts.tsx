@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { m, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { sanitizeHttpUrl } from "@/utils/sanitize"
@@ -37,6 +37,10 @@ const VALID_SEVERITIES: readonly SnackbarSeverity[] = [
 
 const BUFFER_STORAGE_KEY = "livePushToastBuffer"
 const MAX_BUFFER_SIZE = 20
+const MAX_SEEN_TOAST_IDS = 256
+
+const trimString = (value: unknown): string | undefined =>
+  typeof value === "string" ? value.trim() : undefined
 
 const resolveSeverity = (toast: ActiveToast | null): SnackbarSeverity => {
   if (!toast?.data || typeof toast.data !== "object") return DEFAULT_SEVERITY
@@ -48,17 +52,26 @@ const resolveSeverity = (toast: ActiveToast | null): SnackbarSeverity => {
 }
 
 const buildToastId = (toast: ToastPayload) => {
-  if (toast.id && toast.id.trim()) return toast.id
-  if (toast.tag && toast.tag.trim()) return toast.tag
-  if (toast.timestamp && Number.isFinite(toast.timestamp)) return String(toast.timestamp)
+  const id = trimString(toast.id)
+  if (id) return id
+  const tag = trimString(toast.tag)
+  if (tag) return tag
+  if (typeof toast.timestamp === "number" && Number.isFinite(toast.timestamp)) {
+    return String(toast.timestamp)
+  }
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-const toActiveToast = (toast: ToastPayload): ActiveToast | null => {
-  const hasContent = Boolean(toast.title?.trim() || toast.body?.trim())
+const toActiveToast = (payload: unknown): ActiveToast | null => {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null
+  const toast = payload as ToastPayload
+  const title = trimString(toast.title)
+  const body = trimString(toast.body)
+  const url = trimString(toast.url)
+  const hasContent = Boolean(title || body)
   if (!hasContent) return null
-  const safeUrl = toast.url ? (sanitizeHttpUrl(toast.url) ?? undefined) : undefined
-  return { ...toast, id: buildToastId(toast), url: safeUrl }
+  const safeUrl = url ? (sanitizeHttpUrl(url) ?? undefined) : undefined
+  return { ...toast, title, body, id: buildToastId(toast), url: safeUrl }
 }
 
 let memoryBuffer: ActiveToast[] = []
@@ -114,8 +127,17 @@ export default function LivePushToasts() {
   const [queue, setQueue] = useState<ActiveToast[]>([])
   const [current, setCurrent] = useState<ActiveToast | null>(null)
   const [open, setOpen] = useState(false)
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const seenToastIdsRef = useRef(new Set<string>())
 
   const enqueue = useCallback((toast: ActiveToast) => {
+    const seenIds = seenToastIdsRef.current
+    if (seenIds.has(toast.id)) return
+    if (seenIds.size >= MAX_SEEN_TOAST_IDS) {
+      const oldestId = seenIds.values().next().value
+      if (typeof oldestId === "string") seenIds.delete(oldestId)
+    }
+    seenIds.add(toast.id)
     setQueue((prev) => [...prev, toast])
   }, [])
 
@@ -175,7 +197,20 @@ export default function LivePushToasts() {
 
   const handleClose = useCallback(() => {
     setOpen(false)
-    setTimeout(() => setCurrent(null), 300)
+    if (closeTimerRef.current !== null) clearTimeout(closeTimerRef.current)
+    closeTimerRef.current = setTimeout(() => {
+      closeTimerRef.current = null
+      setCurrent(null)
+    }, 300)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current !== null) {
+        clearTimeout(closeTimerRef.current)
+        closeTimerRef.current = null
+      }
+    }
   }, [])
 
   const handleAction = useCallback(() => {
@@ -240,6 +275,9 @@ export default function LivePushToasts() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
             className={cn(
               "pointer-events-auto relative overflow-hidden flex items-start gap-4 p-4 rounded-2xl",
               "glass-noise backdrop-blur-2xl border border-(--glass-border) shadow-premium",
@@ -270,7 +308,7 @@ export default function LivePushToasts() {
                 <button
                   onClick={handleAction}
                   className={cn(
-                    "mt-3 inline-flex items-center gap-1.5 text-label-md font-black uppercase tracking-widest hover:underline",
+                    "mt-3 inline-flex min-h-11 items-center gap-1.5 px-2 text-label-md font-black uppercase tracking-widest hover:underline",
                     severityIconColor
                   )}
                 >
@@ -284,7 +322,7 @@ export default function LivePushToasts() {
               type="button"
               whileTap={{ scale: 0.94 }}
               onClick={() => handleClose()}
-              className="group/btn relative z-base flex h-7 w-7 items-center justify-center rounded-full bg-linear-to-tr from-white/(--opacity-faint) to-white/(--opacity-subtle) text-(--text-secondary) transition-all duration-base hover:scale-110 hover:shadow-premium active:scale-95"
+              className="group/btn relative z-base flex h-7 w-7 min-h-11 min-w-11 items-center justify-center rounded-full bg-linear-to-tr from-white/(--opacity-faint) to-white/(--opacity-subtle) text-(--text-secondary) transition-all duration-base hover:scale-110 hover:shadow-premium active:scale-95"
               aria-label={t("common:buttons.close")}
             >
               <X className="h-3.5 w-3.5 opacity-hover transition-opacity group-hover/btn:opacity-100" />

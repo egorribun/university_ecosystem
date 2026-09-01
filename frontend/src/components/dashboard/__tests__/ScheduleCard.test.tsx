@@ -10,7 +10,11 @@ const scheduleState = vi.hoisted(() => ({
   },
 }))
 
-const translationState = vi.hoisted(() => ({ useArrays: true }))
+const translationState = vi.hoisted(() => ({
+  useArrays: true,
+  displayOverride: undefined as string[] | undefined,
+  rawOverride: undefined as string[] | undefined,
+}))
 const preloadRoute = vi.hoisted(() => vi.fn())
 
 vi.mock("react-i18next", () => ({
@@ -21,6 +25,12 @@ vi.mock("react-i18next", () => ({
         translationState.useArrays &&
         (key === "dashboard:weekDays.display" || key === "dashboard:weekDays.raw")
       ) {
+        if (key === "dashboard:weekDays.display" && translationState.displayOverride) {
+          return translationState.displayOverride
+        }
+        if (key === "dashboard:weekDays.raw" && translationState.rawOverride) {
+          return translationState.rawOverride
+        }
         return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
       }
       return key
@@ -99,6 +109,8 @@ describe("ScheduleCard", () => {
   beforeEach(() => {
     scheduleState.current = { data: undefined, isLoading: false, isFetching: false }
     translationState.useArrays = true
+    translationState.displayOverride = undefined
+    translationState.rawOverride = undefined
     preloadRoute.mockReset()
     preloadRoute.mockResolvedValue(undefined)
   })
@@ -126,6 +138,23 @@ describe("ScheduleCard", () => {
 
     expect(screen.getByRole("article")).toHaveAttribute("aria-busy", "false")
     expect(screen.getByText("dashboard:noClasses")).toBeInTheDocument()
+  })
+
+  it("keeps cached lessons visible while a student schedule refetches", () => {
+    const time = new Date(2026, 6, 31, 10, 30)
+    scheduleState.current = {
+      data: [lessonFor(time, { subject: "Cached lesson" })],
+      isLoading: true,
+      isFetching: true,
+    }
+
+    render(<ScheduleCard time={time} userRole="student" userGroupId="group-1" />)
+
+    const card = screen.getByRole("article")
+    expect(card).toHaveAttribute("aria-busy", "false")
+    expect(card).toHaveAttribute("data-refetching", "false")
+    expect(screen.queryByTestId("schedule-skeleton")).not.toBeInTheDocument()
+    expect(screen.getAllByText("Cached lesson").length).toBeGreaterThan(0)
   })
 
   it("renders the current lesson, progress, and sorted matching lessons", () => {
@@ -185,6 +214,79 @@ describe("ScheduleCard", () => {
     render(<ScheduleCard time={time} userRole="student" userGroupId="group-1" />)
 
     expect(screen.getByText("dashboard:noClasses")).toBeInTheDocument()
+  })
+
+  it("matches a localized display weekday when the translated arrays are complete", () => {
+    const time = new Date(2026, 6, 27, 10, 30)
+    translationState.displayOverride = [
+      "воскресенье",
+      "понедельник",
+      "вторник",
+      "среда",
+      "четверг",
+      "пятница",
+      "суббота",
+    ]
+    scheduleState.current = {
+      data: [lessonFor(time, { weekday: "понедельник", subject: "Localized display" })],
+      isLoading: false,
+      isFetching: false,
+    }
+
+    render(<ScheduleCard time={time} userRole="student" userGroupId="group-1" />)
+
+    expect(screen.getAllByText("Localized display").length).toBeGreaterThan(0)
+  })
+
+  it("matches a localized raw weekday when the translated arrays are complete", () => {
+    const time = new Date(2026, 6, 27, 10, 30)
+    translationState.rawOverride = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"]
+    scheduleState.current = {
+      data: [lessonFor(time, { weekday: "пн", subject: "Localized raw" })],
+      isLoading: false,
+      isFetching: false,
+    }
+
+    render(<ScheduleCard time={time} userRole="student" userGroupId="group-1" />)
+
+    expect(screen.getAllByText("Localized raw").length).toBeGreaterThan(0)
+  })
+
+  it("rejects translated weekday arrays with the wrong length", () => {
+    const time = new Date(2026, 6, 27, 10, 30)
+    translationState.displayOverride = ["вс", "пн", "вт", "ср", "чт", "пт"]
+    translationState.rawOverride = ["sun", "mon", "tue", "wed", "thu", "fri"]
+    scheduleState.current = {
+      data: [lessonFor(time, { weekday: "пн", subject: "Malformed translation" })],
+      isLoading: false,
+      isFetching: false,
+    }
+
+    render(<ScheduleCard time={time} userRole="student" userGroupId="group-1" />)
+
+    expect(screen.queryByText("Malformed translation")).not.toBeInTheDocument()
+    expect(screen.getByText("dashboard:noClasses")).toBeInTheDocument()
+  })
+
+  it("treats lesson intervals as half-open at their start and end", () => {
+    const lessonTime = new Date(2026, 6, 27, 10, 0)
+    scheduleState.current = {
+      data: [lessonFor(lessonTime, { subject: "Boundary lesson" })],
+      isLoading: false,
+      isFetching: false,
+    }
+
+    const { rerender } = render(
+      <ScheduleCard time={lessonTime} userRole="student" userGroupId="group-1" />
+    )
+    expect(screen.getByText("dashboard:now")).toBeInTheDocument()
+    expect(screen.getByRole("progressbar")).toHaveValue(0)
+
+    const lessonEnd = new Date(2026, 6, 27, 11, 0)
+    rerender(<ScheduleCard time={lessonEnd} userRole="student" userGroupId="group-1" />)
+    expect(screen.queryByText("dashboard:now")).not.toBeInTheDocument()
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument()
+    expect(screen.getByText("Boundary lesson")).toBeInTheDocument()
   })
 
   it("handles missing role/group and malformed weekday/time payloads safely", () => {

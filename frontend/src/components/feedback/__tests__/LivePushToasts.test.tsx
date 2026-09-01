@@ -179,6 +179,27 @@ describe("LivePushToasts", () => {
     expect(screen.getByText("Heads up")).toBeInTheDocument()
   })
 
+  it("deduplicates repeated visible notifications by their canonical id", async () => {
+    render(<LivePushToasts />)
+
+    const message = {
+      type: "PUSH_NOTIFICATION",
+      toast: { id: "duplicate-visible", title: "Only once", body: "Do not replay" },
+    }
+    await dispatchSwMessage(message)
+    await dispatchSwMessage(message)
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    expect(screen.getAllByText("Only once")).toHaveLength(1)
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.close" }))
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+    expect(screen.queryByText("Only once")).not.toBeInTheDocument()
+  })
+
   it("falls back for non-string and unknown severity values", async () => {
     render(<LivePushToasts />)
 
@@ -270,6 +291,32 @@ describe("LivePushToasts", () => {
     expect(screen.getByText("Failed")).toBeInTheDocument()
   })
 
+  it("announces visible toasts and keeps action targets touch accessible", async () => {
+    render(<LivePushToasts />)
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: {
+        id: "a11y-toast",
+        title: "Accessible notification",
+        body: "Assistive technology should announce this",
+        url: "/events/1",
+      },
+    })
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    const toast = screen.getByRole("status")
+    expect(toast).toHaveAttribute("aria-live", "polite")
+    expect(toast).toHaveAttribute("aria-atomic", "true")
+    expect(screen.getByRole("button", { name: "common:buttons.close" })).toHaveClass(
+      "min-h-11",
+      "min-w-11"
+    )
+    expect(screen.getByRole("button", { name: "notifications:toast.open" })).toHaveClass("min-h-11")
+  })
+
   it("ignores a PUSH_NOTIFICATION with no content (empty title and body)", async () => {
     render(<LivePushToasts />)
 
@@ -285,6 +332,25 @@ describe("LivePushToasts", () => {
     render(<LivePushToasts />)
 
     await dispatchSwMessage({ type: "PUSH_NOTIFICATION" })
+
+    expect(screen.queryByRole("heading", { level: 4 })).not.toBeInTheDocument()
+  })
+
+  it("ignores push payloads with malformed field types without throwing", async () => {
+    render(<LivePushToasts />)
+
+    await expect(
+      dispatchSwMessage({
+        type: "PUSH_NOTIFICATION",
+        toast: {
+          id: 123,
+          tag: { unexpected: true },
+          title: 456,
+          body: { unexpected: true },
+          url: { unexpected: true },
+        },
+      })
+    ).resolves.toBeUndefined()
 
     expect(screen.queryByRole("heading", { level: 4 })).not.toBeInTheDocument()
   })
@@ -335,6 +401,55 @@ describe("LivePushToasts", () => {
     })
 
     expect(screen.queryByText("Closable")).not.toBeInTheDocument()
+  })
+
+  it("does not let repeated close actions clear the next queued toast", async () => {
+    render(<LivePushToasts />)
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: { id: "first-close", title: "First toast", body: "Dismiss me" },
+    })
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: { id: "second-close", title: "Second toast", body: "Keep me visible" },
+    })
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    const closeButton = screen.getByRole("button", { name: "common:buttons.close" })
+    fireEvent.click(closeButton)
+    // A rapid second click can target the exiting DOM node before the animation completes.
+    fireEvent.click(closeButton)
+
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+    expect(screen.getByText("Second toast")).toBeInTheDocument()
+
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+    expect(screen.getByText("Second toast")).toBeInTheDocument()
+  })
+
+  it("cleans up the deferred close timer when the toast unmounts", async () => {
+    const { unmount } = render(<LivePushToasts />)
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: { id: "unmount-close", title: "Unmount me", body: "No timer leak" },
+    })
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.close" }))
+    expect(vi.getTimerCount()).toBe(1)
+
+    unmount()
+    expect(vi.getTimerCount()).toBe(0)
   })
 
   it("renders an action button when the toast carries a safe URL, and opening it dismisses the toast", async () => {
