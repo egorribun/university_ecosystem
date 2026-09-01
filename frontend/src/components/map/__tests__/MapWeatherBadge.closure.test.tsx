@@ -5,12 +5,13 @@ const weatherState = vi.hoisted(() => ({
   value: null as null | { condition: string; isDay: boolean; temperature: number },
   loading: false,
 }))
+const useTranslationMock = vi.hoisted(() => vi.fn())
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
+  useTranslation: useTranslationMock.mockImplementation(() => ({
     t: (key: string, options?: { condition?: string; temp?: number }) =>
-      options ? `${key}:${options.condition ?? options.temp ?? ""}` : key,
-  }),
+      options ? `${key}:${options.condition ?? ""}:${options.temp ?? ""}` : key,
+  })),
 }))
 
 vi.mock("@/hooks/useMapWeather", () => ({
@@ -60,5 +61,46 @@ describe("MapWeatherBadge defensive branches", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "close weather" }))
     expect(screen.getByTestId("weather-panel")).toHaveTextContent("false")
+  })
+
+  it("preserves the map namespace, aria interpolation, and condition label", () => {
+    weatherState.value = { condition: "rain", isDay: true, temperature: 0 }
+    render(<MapWeatherBadge />)
+
+    expect(useTranslationMock).toHaveBeenCalledWith("map")
+    const weatherButton = screen.getByRole("button", { name: "weather.ariaLabel:weather.rain:0" })
+    expect(weatherButton).toBeInTheDocument()
+    expect(screen.getByText("weather.rain")).toBeInTheDocument()
+    expect(weatherButton.querySelector("svg")).toHaveClass("lucide-cloud-rain")
+  })
+
+  it("selects the day/night icon for every supported condition", () => {
+    const { container, rerender } = render(<MapWeatherBadge />)
+    const conditions = [
+      ["clear", "sun", "moon"],
+      ["cloudy", "cloud", "cloud"],
+      ["rain", "cloud-rain", "cloud-rain"],
+      ["snow", "snowflake", "snowflake"],
+      ["fog", "cloud-fog", "cloud-fog"],
+      ["storm", "cloud-lightning", "cloud-lightning"],
+    ] as const
+
+    for (const [condition, dayIcon, nightIcon] of conditions) {
+      weatherState.value = { condition, isDay: true, temperature: 1 }
+      rerender(<MapWeatherBadge />)
+      expect(container.querySelector("svg")).toHaveClass(`lucide-${dayIcon}`)
+
+      weatherState.value = { condition, isDay: false, temperature: 1 }
+      rerender(<MapWeatherBadge />)
+      expect(container.querySelector("svg")).toHaveClass(`lucide-${nightIcon}`)
+    }
+  })
+
+  it("does not add a plus sign at the zero-degree boundary", () => {
+    weatherState.value = { condition: "clear", isDay: true, temperature: 0 }
+    render(<MapWeatherBadge />)
+
+    expect(screen.getByText("0°")).toBeInTheDocument()
+    expect(screen.queryByText("+0°")).not.toBeInTheDocument()
   })
 })
