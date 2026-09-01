@@ -736,6 +736,75 @@ describe("LivePushToasts", () => {
     expect(window.localStorage.getItem(BUFFER_STORAGE_KEY)).toBe("[]")
   })
 
+  it("deduplicates a buffered notification against one delivered before the visibility flush", async () => {
+    const visibilitySpy = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden")
+
+    try {
+      render(<LivePushToasts />)
+
+      const duplicate = {
+        type: "PUSH_NOTIFICATION",
+        toast: { id: "flush-race", title: "Flush race", body: "Only one delivery" },
+      }
+      await dispatchSwMessage(duplicate)
+      expect(screen.queryByText("Flush race")).not.toBeInTheDocument()
+
+      visibilitySpy.mockReturnValue("visible")
+      await dispatchSwMessage(duplicate)
+      act(() => {
+        vi.advanceTimersByTime(0)
+      })
+      expect(screen.getByText("Flush race")).toBeInTheDocument()
+
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"))
+      })
+
+      fireEvent.click(screen.getByRole("button", { name: "common:buttons.close" }))
+      act(() => {
+        vi.advanceTimersByTime(300)
+      })
+
+      expect(screen.queryByText("Flush race")).not.toBeInTheDocument()
+    } finally {
+      visibilitySpy.mockRestore()
+    }
+  })
+
+  it("marks restored notifications as seen so later live delivery is not replayed", async () => {
+    const visibilitySpy = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden")
+
+    try {
+      render(<LivePushToasts />)
+
+      const buffered = {
+        type: "PUSH_NOTIFICATION",
+        toast: { id: "restored-seen", title: "Restored once", body: "Do not replay" },
+      }
+      await dispatchSwMessage(buffered)
+
+      visibilitySpy.mockReturnValue("visible")
+      await act(async () => {
+        document.dispatchEvent(new Event("visibilitychange"))
+      })
+      expect(screen.getByText("Restored once")).toBeInTheDocument()
+
+      await dispatchSwMessage(buffered)
+      act(() => {
+        vi.advanceTimersByTime(0)
+      })
+
+      fireEvent.click(screen.getByRole("button", { name: "common:buttons.close" }))
+      act(() => {
+        vi.advanceTimersByTime(300)
+      })
+
+      expect(screen.queryByText("Restored once")).not.toBeInTheDocument()
+    } finally {
+      visibilitySpy.mockRestore()
+    }
+  })
+
   it("restores tag/timestamp ids and filters malformed buffered entries", () => {
     window.localStorage.setItem(
       BUFFER_STORAGE_KEY,

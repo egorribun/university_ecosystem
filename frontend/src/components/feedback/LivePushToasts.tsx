@@ -146,8 +146,12 @@ export default function LivePushToasts() {
   const flushBufferedToasts = useCallback(() => {
     const buffered = consumeBufferedToasts()
     if (buffered.length === 0) return
-    setQueue((prev) => [...prev, ...buffered])
-  }, [])
+    // Route restored messages through the same identity window as live
+    // delivery.  A visibility transition can race with a push that arrived
+    // after the tab became visible; appending directly would show that toast
+    // twice and would not mark restored ids as seen.
+    buffered.forEach(enqueue)
+  }, [enqueue])
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {

@@ -1,14 +1,18 @@
 import { render, screen } from "@testing-library/react"
-import { afterEach, describe, it, expect, vi } from "vitest"
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
 
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
+const translation = vi.hoisted(() => ({
+  useTranslation: vi.fn(() => ({
     t: (key: string) => key,
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  })),
+}))
+
+vi.mock("react-i18next", () => ({
+  useTranslation: translation.useTranslation,
 }))
 const { reducedMotion } = vi.hoisted(() => ({ reducedMotion: vi.fn(() => false) }))
 vi.mock("@/hooks/useMediaQuery", () => ({ default: () => reducedMotion() }))
@@ -25,6 +29,10 @@ const baseProps = {
 }
 
 describe("NewsQuickView", () => {
+  beforeEach(() => {
+    translation.useTranslation.mockClear()
+  })
+
   afterEach(() => {
     reducedMotion.mockReturnValue(false)
   })
@@ -96,5 +104,18 @@ describe("NewsQuickView", () => {
     render(<NewsCategoryBadge category="science" size="md" />)
 
     expect(screen.getByText("news:categories.science")).toHaveClass("px-3")
+  })
+
+  it("uses the compact badge variant when size is omitted", () => {
+    render(<NewsCategoryBadge category="science" />)
+
+    const label = screen.getByText("news:categories.science")
+    const badge = label.closest("span")
+    expect(badge).toHaveClass("px-2.5", "text-[10px]")
+    expect(badge).toHaveStyle({ "--_badge-accent": "var(--cat-purple-text)" })
+    expect(badge?.querySelector('[aria-hidden="true"]')).toHaveStyle({
+      backgroundColor: "var(--cat-purple-text)",
+    })
+    expect(translation.useTranslation).toHaveBeenCalledWith(["news"])
   })
 })

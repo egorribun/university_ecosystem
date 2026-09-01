@@ -11,7 +11,9 @@ import { TIMEOUTS } from "@/config/timeouts"
  */
 export function OfflineIndicator() {
   const [isOffline, setIsOffline] = useState(false)
-  const [show, setShow] = useState(false)
+  // Keep the initial browser render deterministic for hydration while making
+  // the initial connection state the source of truth for visibility.
+  const [show, setShow] = useState(isOffline)
   const { t } = useTranslation("system")
 
   useEffect(() => {
@@ -49,8 +51,12 @@ export function OfflineIndicator() {
     }
   }, [isOffline, show])
 
-  if (typeof document === "undefined") return null
-  if (!show) return null
+  // Resolve the portal target without touching `document` during SSR.  Keeping
+  // the target in a local makes both branches explicit: browser renders can
+  // never silently drop a visible state, while server renders remain markup
+  // free until hydration has a real document body.
+  const portalTarget = typeof document === "undefined" ? null : document.body
+  if (!show || portalTarget === null) return null
 
   const content = (
     <div
@@ -81,7 +87,7 @@ export function OfflineIndicator() {
     </div>
   )
 
-  return createPortal(content, document.body)
+  return createPortal(content, portalTarget)
 }
 
 export default OfflineIndicator
