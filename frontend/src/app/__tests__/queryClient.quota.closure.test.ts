@@ -119,6 +119,16 @@ describe("queryClient quota closure paths", () => {
     expect(defaults.queries?.gcTime).toBe(30 * 60_000)
   })
 
+  it("falls back when a duration is exactly zero", async () => {
+    vi.stubEnv("VITE_QUERY_STALE_TIME_MS", "0")
+    vi.stubEnv("VITE_QUERY_CACHE_TTL_MS", "0")
+    const { createQueryClient } = await import("@/app/queryClient")
+    const defaults = createQueryClient().getDefaultOptions()
+
+    expect(defaults.queries?.staleTime).toBe(5 * 60_000)
+    expect(defaults.queries?.gcTime).toBe(30 * 60_000)
+  })
+
   it("uses the fallback for empty duration values", async () => {
     vi.stubEnv("VITE_QUERY_STALE_TIME_MS", "")
     vi.stubEnv("VITE_QUERY_CACHE_TTL_MS", "")

@@ -13,7 +13,7 @@ type MfaChallengeViewProps = {
 }
 
 export function MfaChallengeView({ activeEmail, mfa }: MfaChallengeViewProps) {
-  const { t } = useTranslation(["auth"])
+  const { t } = useTranslation("auth")
   const [recoveryCode, setRecoveryCode] = useState("")
 
   const {
@@ -40,12 +40,12 @@ export function MfaChallengeView({ activeEmail, mfa }: MfaChallengeViewProps) {
           <div className="flex flex-col items-center gap-6 text-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-glass-border-subtle bg-surface-hover/(--opacity-subtle) px-4 py-1 text-sm font-semibold tracking-wide text-text-primary">
               <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-              {t("auth:mfa.verifyTitle")}
+              {t("mfa.verifyTitle")}
             </div>
             <div className="space-y-3">
               <h1 className="text-3xl font-extrabold leading-tight sm:text-4xl">
-                {t("auth:mfa.verifySubtitle", {
-                  email: activeEmail || t("auth:mfa.unknownEmail"),
+                {t("mfa.verifySubtitle", {
+                  email: activeEmail || t("mfa.unknownEmail"),
                 })}
               </h1>
             </div>
@@ -70,10 +70,10 @@ export function MfaChallengeView({ activeEmail, mfa }: MfaChallengeViewProps) {
                 }}
               >
                 <h3 className="text-lg font-black tracking-tight text-center text-text-primary">
-                  {t("auth:mfa.recovery.heading")}
+                  {t("mfa.recovery.heading")}
                 </h3>
                 <p className="text-sm text-center text-(--text-secondary) font-medium leading-relaxed">
-                  {t("auth:mfa.recovery.description")}
+                  {t("mfa.recovery.description")}
                 </p>
                 <input
                   type="text"
@@ -81,7 +81,7 @@ export function MfaChallengeView({ activeEmail, mfa }: MfaChallengeViewProps) {
                   autoComplete="one-time-code"
                   disabled={mfaBusy}
                   className="w-full h-14 text-center text-xl font-mono tracking-widest rounded-2xl bg-(--bg-surface-raised)/(--opacity-medium) text-text-primary border-2 border-(--glass-border)/(--opacity-dim) focus:outline-none focus:border-(--brand-main) focus:ring-4 focus:ring-(--brand-main)/(--opacity-subtle) transition-all duration-base"
-                  aria-label={t("auth:mfa.recovery.inputLabel")}
+                  aria-label={t("mfa.recovery.inputLabel")}
                   value={recoveryCode}
                   onChange={(event) => setRecoveryCode(event.target.value)}
                 />
@@ -93,7 +93,7 @@ export function MfaChallengeView({ activeEmail, mfa }: MfaChallengeViewProps) {
                   size="lg"
                   fullWidth
                 >
-                  {t("auth:mfa.recovery.submit")}
+                  {t("mfa.recovery.submit")}
                 </Button>
                 <Button
                   type="button"
@@ -105,7 +105,7 @@ export function MfaChallengeView({ activeEmail, mfa }: MfaChallengeViewProps) {
                     setShowRecoveryInput(false)
                   }}
                 >
-                  {t("auth:mfa.recovery.useOtp")}
+                  {t("mfa.recovery.useOtp")}
                 </Button>
               </form>
             ) : (
@@ -115,9 +115,9 @@ export function MfaChallengeView({ activeEmail, mfa }: MfaChallengeViewProps) {
                     <div className="flex items-start gap-3">
                       <Mail className="mt-0.5 h-5 w-5 shrink-0 text-brand" aria-hidden="true" />
                       <div>
-                        <h2 className="font-bold text-text-primary">{t("auth:mfa.email.title")}</h2>
+                        <h2 className="font-bold text-text-primary">{t("mfa.email.title")}</h2>
                         <p className="text-sm text-text-secondary">
-                          {t("auth:mfa.email.sentTo", {
+                          {t("mfa.email.sentTo", {
                             hint: emailChallenge.delivery_hint ?? activeEmail,
                           })}
                         </p>
@@ -127,7 +127,7 @@ export function MfaChallengeView({ activeEmail, mfa }: MfaChallengeViewProps) {
                       method="email_otp"
                       loading={mfaBusy}
                       error={mfaErrorSource === "email_otp" ? mfaError : null}
-                      helperText={t("auth:mfa.email.expires")}
+                      helperText={t("mfa.email.expires")}
                       onSubmit={handleEmailOtpVerify}
                     />
                     <Button
@@ -140,8 +140,8 @@ export function MfaChallengeView({ activeEmail, mfa }: MfaChallengeViewProps) {
                       leadingIcon={<RotateCcw className="h-4 w-4" aria-hidden="true" />}
                     >
                       {resendSeconds > 0
-                        ? t("auth:mfa.email.resendIn", { seconds: resendSeconds })
-                        : t("auth:mfa.email.resend")}
+                        ? t("mfa.email.resendIn", { seconds: resendSeconds })
+                        : t("mfa.email.resend")}
                     </Button>
                   </div>
                 ) : null}
@@ -154,9 +154,7 @@ export function MfaChallengeView({ activeEmail, mfa }: MfaChallengeViewProps) {
                           <div className="w-full border-t border-glass-border-subtle"></div>
                         </div>
                         <div className="relative flex justify-center text-xs uppercase">
-                          <span className="bg-surface px-2 text-text-secondary">
-                            {t("auth:mfa.or", { defaultValue: "OR" })}
-                          </span>
+                          <span className="bg-surface px-2 text-text-secondary">{t("mfa.or")}</span>
                         </div>
                       </div>
                     )}
@@ -183,14 +181,14 @@ export function MfaChallengeView({ activeEmail, mfa }: MfaChallengeViewProps) {
                       onClick={() => setShowRecoveryInput(true)}
                       id="use-recovery-code-toggle"
                     >
-                      {t("auth:mfa.recovery.useRecovery")}
+                      {t("mfa.recovery.useRecovery")}
                     </Button>
                   </div>
                 ) : null}
 
                 {!otpChallenge && !emailChallenge && (
                   <div className="w-full rounded-md border border-warning-border/(--opacity-medium) bg-warning-bg/(--opacity-subtle) px-4 py-3 text-sm font-semibold text-warning-text">
-                    {t("auth:mfa.noMethods")}
+                    {t("mfa.noMethods")}
                   </div>
                 )}
               </>
@@ -204,7 +202,7 @@ export function MfaChallengeView({ activeEmail, mfa }: MfaChallengeViewProps) {
               className="rounded-full border-brand/(--opacity-medium) text-brand hover:bg-brand/(--opacity-subtle)"
               leadingIcon={<Zap className="h-4 w-4" aria-hidden="true" />}
             >
-              {t("auth:mfa.startOver")}
+              {t("mfa.startOver")}
             </Button>
           </div>
         </div>

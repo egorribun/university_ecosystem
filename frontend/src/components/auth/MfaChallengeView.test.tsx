@@ -48,8 +48,11 @@ const props = {
 describe("MfaChallengeView — render shapes", () => {
   it("renders the no-methods warning when both challenges are absent", () => {
     const { container } = render(<MfaChallengeView {...props} />)
-    // The warning carries the auth:mfa.noMethods translation. We test by
-    // looking for any text content rather than the exact i18n value.
+    expect(screen.getByText("Verify it's you")).toBeInTheDocument()
+    expect(
+      screen.getByText("No verification methods are available for this account.")
+    ).toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /use a recovery code/i })).not.toBeInTheDocument()
     expect(container.querySelector("h1")).toBeInTheDocument()
   })
 
@@ -64,6 +67,9 @@ describe("MfaChallengeView — render shapes", () => {
     // mounted with no crash. (Detailed OtpEntry behaviour is its own test.)
     expect(container).toBeInTheDocument()
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText("No verification methods are available for this account.")
+    ).not.toBeInTheDocument()
   })
 
   it("uses the account fallback when the active email is empty", () => {
@@ -129,6 +135,12 @@ describe("MfaChallengeView — email OTP interaction", () => {
       <MfaChallengeView {...props} mfa={{ ...baseMfa, emailChallenge, handleResendEmailOtp }} />
     )
     expect(screen.getByText(/u\*\*\*@example\.com/i)).toBeInTheDocument()
+    expect(
+      screen.getByText("The code expires in 10 minutes and can be used once.")
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText("No verification methods are available for this account.")
+    ).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: /send.*code|resend/i }))
     expect(handleResendEmailOtp).toHaveBeenCalledOnce()
   })
@@ -152,6 +164,9 @@ describe("MfaChallengeView — email OTP interaction", () => {
 
     rerender(<MfaChallengeView {...props} mfa={{ ...baseMfa, emailChallenge, otpChallenge }} />)
     expect(screen.getByText("OR")).toBeInTheDocument()
+    expect(
+      screen.queryByText("No verification methods are available for this account.")
+    ).not.toBeInTheDocument()
   })
 
   it("shows only an email-specific error in the email OTP entry", () => {
@@ -193,6 +208,8 @@ describe("MfaChallengeView — recovery interaction", () => {
       />
     )
 
+    expect(screen.getByText("Use a recovery code")).toBeInTheDocument()
+    expect(screen.getByText("Enter one of your one-time recovery codes.")).toBeInTheDocument()
     const input = screen.getByRole("textbox", { name: "Recovery code" })
     await user.type(input, "  ABC-123  ")
     await user.keyboard("{Enter}")
@@ -209,6 +226,7 @@ describe("MfaChallengeView — recovery interaction", () => {
 
     await user.click(screen.getByRole("button", { name: /обычный код|regular verification/i }))
     expect(setShowRecoveryInput).toHaveBeenCalledWith(false)
+    expect(input).toHaveValue("")
   })
 
   it("does not submit an empty recovery code and disables recovery controls while busy", async () => {
@@ -324,6 +342,46 @@ describe("MfaChallengeView — error display", () => {
       />
     )
     expect(screen.getByText("Invalid authenticator code")).toBeInTheDocument()
+  })
+
+  it("does not pass a TOTP error into the email OTP entry", () => {
+    const emailChallenge = {
+      method: "email_otp" as const,
+      challenge_token: "abc",
+      challenge_expires_at: "2099-01-01T00:00:00Z",
+    }
+    render(
+      <MfaChallengeView
+        {...props}
+        mfa={{
+          ...baseMfa,
+          emailChallenge,
+          mfaError: "TOTP-only error",
+          mfaErrorSource: "totp",
+        }}
+      />
+    )
+    expect(screen.queryByText("TOTP-only error")).not.toBeInTheDocument()
+  })
+
+  it("does not pass an email error into the TOTP entry", () => {
+    const otpChallenge = {
+      method: "totp" as const,
+      challenge_token: "abc",
+      challenge_expires_at: "2099-01-01T00:00:00Z",
+    }
+    render(
+      <MfaChallengeView
+        {...props}
+        mfa={{
+          ...baseMfa,
+          otpChallenge,
+          mfaError: "Email-only error",
+          mfaErrorSource: "email_otp",
+        }}
+      />
+    )
+    expect(screen.queryByText("Email-only error")).not.toBeInTheDocument()
   })
 })
 
