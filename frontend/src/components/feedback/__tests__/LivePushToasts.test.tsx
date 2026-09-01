@@ -405,6 +405,15 @@ describe("LivePushToasts", () => {
     expect(screen.queryByRole("heading", { level: 4 })).not.toBeInTheDocument()
   })
 
+  it("ignores non-object toast payloads without rendering or throwing", async () => {
+    render(<LivePushToasts />)
+
+    await dispatchSwMessage({ type: "PUSH_NOTIFICATION", toast: "not-an-object" })
+    await dispatchSwMessage({ type: "PUSH_NOTIFICATION", toast: [] })
+
+    expect(screen.queryByRole("heading", { level: 4 })).not.toBeInTheDocument()
+  })
+
   it("uses localized defaults for omitted title or body", async () => {
     render(<LivePushToasts />)
 
@@ -511,6 +520,48 @@ describe("LivePushToasts", () => {
       vi.advanceTimersByTime(300)
     })
     expect(screen.getByText("Second toast")).toBeInTheDocument()
+  })
+
+  it("replaces an active close timer when close is invoked twice in one interaction", async () => {
+    render(<LivePushToasts />)
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: { id: "double-close", title: "Double close", body: "Reset the timer" },
+    })
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    const closeButton = screen.getByRole("button", { name: "common:buttons.close" })
+    act(() => {
+      // Keep both events in the same React batch so the second event reaches
+      // the still-mounted control before the exit state commits.
+      closeButton.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+      closeButton.dispatchEvent(new MouseEvent("click", { bubbles: true }))
+    })
+
+    expect(vi.getTimerCount()).toBe(1)
+  })
+
+  it("evicts the oldest seen id after the deduplication window is full", () => {
+    render(<LivePushToasts />)
+
+    act(() => {
+      for (let index = 0; index <= 256; index += 1) {
+        messageHandler?.({
+          data: {
+            type: "PUSH_NOTIFICATION",
+            toast: { id: `seen-${index}`, title: `Toast ${index}`, body: "Seen window" },
+          },
+        } as MessageEvent)
+      }
+    })
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    expect(screen.getByText("Toast 0")).toBeInTheDocument()
   })
 
   it("cleans up the deferred close timer when the toast unmounts", async () => {

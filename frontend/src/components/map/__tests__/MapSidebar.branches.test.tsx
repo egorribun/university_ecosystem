@@ -136,6 +136,27 @@ describe("MapSidebar branches", () => {
     expect(Number(handle.getAttribute("aria-valuenow"))).toBe(160)
   })
 
+  it("ignores unrelated keyboard input without changing the sheet", () => {
+    render(<MapSidebar {...baseProps} isMobile />)
+    const handle = screen.getByRole("slider", { name: "sidebar.dragToResize" })
+    const initialHeight = handle.getAttribute("aria-valuenow")
+
+    fireEvent.keyDown(handle, { key: "Tab" })
+
+    expect(handle).toHaveAttribute("aria-valuenow", initialHeight)
+  })
+
+  it("does not reschedule when a keyboard snap is already at its endpoint", () => {
+    render(<MapSidebar {...baseProps} isMobile />)
+    const handle = screen.getByRole("slider", { name: "sidebar.dragToResize" })
+
+    fireEvent.keyDown(handle, { key: "End" })
+    const fullHeight = handle.getAttribute("aria-valuenow")
+    fireEvent.keyDown(handle, { key: "End" })
+
+    expect(handle).toHaveAttribute("aria-valuenow", fullHeight)
+  })
+
   it("tracks mobile pointer drag and ignores move/up events before dragging", () => {
     render(<MapSidebar {...baseProps} isMobile />)
     const handle = screen.getByLabelText("sidebar.dragToResize")

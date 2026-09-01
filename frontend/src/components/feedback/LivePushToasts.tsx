@@ -134,8 +134,10 @@ export default function LivePushToasts() {
     const seenIds = seenToastIdsRef.current
     if (seenIds.has(toast.id)) return
     if (seenIds.size >= MAX_SEEN_TOAST_IDS) {
-      const oldestId = seenIds.values().next().value
-      if (typeof oldestId === "string") seenIds.delete(oldestId)
+      // The size guard makes the iterator non-empty; the non-null assertion
+      // keeps this eviction path branch-free and preserves the Set<string>
+      // invariant for the exact-100% coverage contract.
+      seenIds.delete(seenIds.values().next().value!)
     }
     seenIds.add(toast.id)
     setQueue((prev) => [...prev, toast])
