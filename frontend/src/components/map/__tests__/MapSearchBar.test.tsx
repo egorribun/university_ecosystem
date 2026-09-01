@@ -168,7 +168,7 @@ describe("MapSearchBar", () => {
 
   it("does not treat the fallback room name as searchable content", () => {
     render(<MapSearchBar {...baseProps} />)
-    fireEvent.change(screen.getByRole("combobox"), { target: { value: "Stryker was here" } })
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "tryker" } })
     expect(screen.queryByRole("option")).not.toBeInTheDocument()
   })
 
@@ -271,6 +271,7 @@ describe("MapSearchBar", () => {
 
       fireEvent.change(input, { target: { value: "   " } })
       fireEvent.keyDown(input, { key: "ArrowDown" })
+      fireEvent.keyDown(input, { key: "ArrowUp" })
       expect(input).not.toHaveAttribute("aria-activedescendant")
     } finally {
       vi.useRealTimers()
@@ -365,6 +366,35 @@ describe("MapSearchBar", () => {
     } finally {
       clearTimeoutSpy.mockRestore()
       vi.useRealTimers()
+    }
+  })
+
+  it("cancels a pending blur timer when clearing the query", () => {
+    vi.useFakeTimers()
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout")
+    try {
+      render(<MapSearchBar {...baseProps} />)
+      const input = screen.getByRole("combobox")
+      fireEvent.change(input, { target: { value: "Главный" } })
+      fireEvent.blur(input)
+      fireEvent.click(screen.getByRole("button", { name: "search.clear" }))
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(1)
+    } finally {
+      clearTimeoutSpy.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
+  it("does not clear a timeout when clearing without a pending blur", () => {
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout")
+    try {
+      render(<MapSearchBar {...baseProps} />)
+      const input = screen.getByRole("combobox")
+      fireEvent.change(input, { target: { value: "Главный" } })
+      fireEvent.click(screen.getByRole("button", { name: "search.clear" }))
+      expect(clearTimeoutSpy).not.toHaveBeenCalled()
+    } finally {
+      clearTimeoutSpy.mockRestore()
     }
   })
 
@@ -466,6 +496,7 @@ describe("MapSearchBar", () => {
     expect(screen.getByText("search.groupRooms")).toBeInTheDocument()
     const options = screen.getAllByRole("option")
     expect(options).toHaveLength(3)
+    expect(options.every((option) => option.getAttribute("aria-selected") === "false")).toBe(true)
     expect(new Set(options.map((option) => option.id)).size).toBe(3)
     expect(options.map((option) => option.id)).toEqual(
       expect.arrayContaining([expect.stringMatching(/-opt-0$/), expect.stringMatching(/-opt-1$/)])
@@ -474,6 +505,11 @@ describe("MapSearchBar", () => {
     const roomOption = screen.getByRole("option", { name: /ГУК-101.*Большая аудитория/ })
     fireEvent.pointerEnter(roomOption)
     expect(input).toHaveAttribute("aria-activedescendant", roomOption.id)
+    expect(roomOption).toHaveAttribute("aria-selected", "true")
+    expect(options.find((option) => option !== roomOption)).toHaveAttribute(
+      "aria-selected",
+      "false"
+    )
   })
 
   it("applies the active style only to the option under keyboard or pointer focus", () => {
@@ -485,10 +521,35 @@ describe("MapSearchBar", () => {
     fireEvent.keyDown(input, { key: "ArrowDown" })
     expect(options[0]).toHaveStyle({ backgroundColor: "var(--bg-surface-hover)" })
     expect(options[1]).not.toHaveStyle({ backgroundColor: "var(--bg-surface-hover)" })
+    expect(options[0]).toHaveAttribute("aria-selected", "true")
+    expect(options[1]).toHaveAttribute("aria-selected", "false")
 
     fireEvent.pointerEnter(options[1]!)
     expect(options[0]).not.toHaveStyle({ backgroundColor: "var(--bg-surface-hover)" })
     expect(options[1]).toHaveStyle({ backgroundColor: "var(--bg-surface-hover)" })
+    expect(options[0]).toHaveAttribute("aria-selected", "false")
+    expect(options[1]).toHaveAttribute("aria-selected", "true")
+  })
+
+  it("applies the active style to room options as well as building options", () => {
+    render(<MapSearchBar {...baseProps} />)
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "ГУК" } })
+    const roomOptions = screen
+      .getAllByRole("option")
+      .filter((option) => option.textContent?.startsWith("ГУК-"))
+    expect(roomOptions).toHaveLength(2)
+
+    fireEvent.pointerEnter(roomOptions[0]!)
+    expect(roomOptions[0]).toHaveStyle({ backgroundColor: "var(--bg-surface-hover)" })
+    expect(roomOptions[1]).not.toHaveStyle({ backgroundColor: "var(--bg-surface-hover)" })
+    expect(roomOptions[0]).toHaveAttribute("aria-selected", "true")
+    expect(roomOptions[1]).toHaveAttribute("aria-selected", "false")
+
+    fireEvent.pointerEnter(roomOptions[1]!)
+    expect(roomOptions[0]).not.toHaveStyle({ backgroundColor: "var(--bg-surface-hover)" })
+    expect(roomOptions[1]).toHaveStyle({ backgroundColor: "var(--bg-surface-hover)" })
+    expect(roomOptions[0]).toHaveAttribute("aria-selected", "false")
+    expect(roomOptions[1]).toHaveAttribute("aria-selected", "true")
   })
 
   it("omits empty room and building sublabels instead of rendering empty spans", () => {
