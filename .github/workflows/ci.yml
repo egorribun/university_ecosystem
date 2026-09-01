@@ -748,7 +748,8 @@ jobs:
     needs:
       - pre-commit-check
       - frontend-tests
-    if: ${{ github.event_name == 'pull_request' && needs.frontend-tests.result == 'success' && needs.pre-commit-check.result == 'success' }}
+      - coverage-policy-gate
+    if: ${{ github.event_name == 'pull_request' && needs.frontend-tests.result == 'success' && needs.pre-commit-check.result == 'success' && needs.coverage-policy-gate.result == 'success' }}
     permissions:
       contents: read
       actions: read
@@ -2774,6 +2775,7 @@ jobs:
       - mutation-scope
       - pre-commit-check
       - pre-commit-security-and-types
+      - coverage-policy-gate
     env:
       OTEL_SDK_DISABLED: "true"
       REVOCATION_REDIS_URL: redis://localhost:6380/0
@@ -2884,6 +2886,7 @@ jobs:
       - pre-commit-security-and-types
       - backend-tests
       - backend-type-check
+      - coverage-policy-gate
     strategy:
       fail-fast: false
       # Reserve four of the repository's 20 hosted-runner slots for required
@@ -3185,6 +3188,7 @@ jobs:
       - pre-commit-security-and-types
       - mutation-tests-universe-base
       - mutation-tests-stats
+      - coverage-policy-gate
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -3456,10 +3460,10 @@ jobs:
             echo "## Mutation matrix capacity"
             echo "- $matrix_summary"
             echo "- $descriptor_summary"
-            echo "- Mutmut producer max concurrency: 8"
+            echo "- Mutmut producer max concurrency: 12"
             echo "- Stryker producer max concurrency: 8"
-            echo "- GitHub global hosted-runner cap: 20 (aggregate ceiling across both producer families)."
-            echo "- Review scheduler queue p50/p95 and per-family completion times before changing the cap policy."
+            echo "- GitHub global hosted-runner cap: 20 (12 mutmut + 8 Stryker after the coverage phase barrier)."
+            echo "- The coverage phase barrier prevents mutation fan-out when foundational evidence is red."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Create retry-scoped mutmut universe envelope
@@ -3517,14 +3521,13 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
-      # Keep an explicit 8-runner mutmut lane beside the 8-runner Stryker lane;
-      # four hosted-runner slots remain available for required diagnostics and
-      # aggregation under the repository's 20-slot cap. Shard assignments,
-      # quality gates, and the bounded inner mutmut worker count remain
-      # unchanged.
-      # Keep the initial 8+8 mutation lane budget below the 20-runner cap and
-      # preserve four slots for required diagnostics and aggregation.
-      max-parallel: 8
+      # Coverage is a deliberate phase barrier for both mutation families, so
+      # expensive runners are not allocated when the foundational quality gate
+      # is already red. Once that gate is green, use the complete hosted-runner
+      # budget: eight Stryker workers plus twelve mutmut workers equals the
+      # repository's 20-runner ceiling. The bounded inner mutmut worker count
+      # and the complete 128-assignment evidence plan remain unchanged.
+      max-parallel: 12
       # The producer validates all 128 fixed assignments, then dynamically
       # emits only exact nonempty entries. This preserves the full plan as
       # evidence while preventing empty shards from consuming the scarce
@@ -3549,6 +3552,7 @@ jobs:
       - pre-commit-security-and-types
       - mutation-tests-stats
       - mutation-tests-universe
+      - coverage-policy-gate
     steps:
       # This must stay before checkout and dependency installation. Each Actions
       # step starts a new shell, so persist wall-clock epochs through GITHUB_ENV.
@@ -4920,7 +4924,12 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           EVENT_REF: ${{ github.ref }}
           PRE_COMMIT_RESULT: ${{ needs.pre-commit-check.result }}
+          PRE_COMMIT_SECURITY_RESULT: ${{ needs.pre-commit-security-and-types.result }}
           FRONTEND_TESTS_RESULT: ${{ needs.frontend-tests.result }}
+          BACKEND_TESTS_RESULT: ${{ needs.backend-tests.result }}
+          BACKEND_TYPE_CHECK_RESULT: ${{ needs.backend-type-check.result }}
+          MUTATION_SCOPE_RESULT: ${{ needs.mutation-scope.result }}
+          COVERAGE_RESULT: ${{ needs.coverage-policy-gate.result }}
         run: |
           set -euo pipefail
           # The full load-and-chaos stack runs in nightly-full-gate.yml. It is
@@ -4973,11 +4982,32 @@ jobs:
             "kyverno-test|${{ needs.kyverno-test.result }}"
           )
 
+          # Mutation producers are intentionally phase-gated on the aggregate
+          # coverage contract. A failed prerequisite already blocks this
+          # finalizer; in that case the expensive matrix is expected to be
+          # skipped, while any producer that started despite green readiness
+          # remains fail-closed and must conclude successfully.
+          mutation_expected_result=success
+          if {
+            [[ "$COVERAGE_RESULT" != "success" ]] ||
+            [[ "$PRE_COMMIT_RESULT" != "success" ]] ||
+            [[ "$PRE_COMMIT_SECURITY_RESULT" != "success" ]] ||
+            [[ "$BACKEND_TESTS_RESULT" != "success" ]] ||
+            [[ "$BACKEND_TYPE_CHECK_RESULT" != "success" ]] ||
+            [[ "$MUTATION_SCOPE_RESULT" != "success" ]]
+          }; then
+            mutation_expected_result=skipped
+          fi
+
           failed=0
           for entry in "${required_results[@]}"; do
             IFS='|' read -r job result <<< "$entry"
-            if [[ "$result" != "success" ]]; then
-              echo "::error::Required CI job '$job' concluded '$result'; only success is accepted."
+            expected_result=success
+            if [[ "$job" == mutation-tests-* ]]; then
+              expected_result="$mutation_expected_result"
+            fi
+            if [[ "$result" != "$expected_result" ]]; then
+              echo "::error::Required CI job '$job' concluded '$result'; expected '$expected_result'."
               failed=1
             fi
           done
@@ -4998,7 +5028,7 @@ jobs:
             # required result above; avoid reporting those expected skips as
             # synthetic mutation failures while keeping every started lane
             # fail-closed.
-            if [[ "$PRE_COMMIT_RESULT" == "success" && "$FRONTEND_TESTS_RESULT" == "success" ]]; then
+            if [[ "$PRE_COMMIT_RESULT" == "success" && "$FRONTEND_TESTS_RESULT" == "success" && "$COVERAGE_RESULT" == "success" ]]; then
               assert_event_result "stryker-preflight" "${{ needs.stryker-preflight.result }}" "success"
               assert_event_result "stryker-aggregate" "${{ needs.stryker-aggregate.result }}" "success"
               assert_event_result "stryker-evidence-roundtrip" "${{ needs.stryker-evidence-roundtrip.result }}" "success"

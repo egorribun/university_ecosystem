@@ -392,20 +392,18 @@ def test_mutation_matrix_publishes_bounded_capacity_telemetry() -> None:
     )
     assert 'echo "- $matrix_summary"' in matrix_step["run"]
     assert 'echo "- $descriptor_summary"' in matrix_step["run"]
-    assert "scheduler queue p50/p95" in matrix_step["run"]
-    assert 'echo "- Mutmut producer max concurrency: 8"' in matrix_step["run"]
+    assert "coverage phase barrier" in matrix_step["run"]
+    assert 'echo "- Mutmut producer max concurrency: 12"' in matrix_step["run"]
     assert 'echo "- Stryker producer max concurrency: 8"' in matrix_step["run"]
     assert "global hosted-runner cap: 20" in matrix_step["run"]
 
-    # The two producer lanes are intentionally bounded to eight each so the
-    # repository-wide 20-runner cap retains four slots for diagnostics and
-    # aggregation. Keep this reservation explicit until three comparable
-    # green runs provide evidence for a different split.
-    for family in (runners, stryker):
+    # After the coverage phase barrier, the two producer lanes consume the
+    # complete repository-wide 20-runner budget (12 mutmut + 8 Stryker).
+    for family, expected in ((runners, 12), (stryker, 8)):
         max_parallel = family["strategy"]["max-parallel"]
         assert isinstance(max_parallel, int)
         assert 1 <= max_parallel <= 20
-        assert max_parallel == 8
+        assert max_parallel == expected
     assert runners["strategy"]["matrix"] == (
         "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
     )
@@ -757,15 +755,23 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
         "EVENT_NAME": "${{ github.event_name }}",
         "EVENT_REF": "${{ github.ref }}",
         "PRE_COMMIT_RESULT": "${{ needs.pre-commit-check.result }}",
+        "PRE_COMMIT_SECURITY_RESULT": "${{ needs.pre-commit-security-and-types.result }}",
         "FRONTEND_TESTS_RESULT": "${{ needs.frontend-tests.result }}",
+        "BACKEND_TESTS_RESULT": "${{ needs.backend-tests.result }}",
+        "BACKEND_TYPE_CHECK_RESULT": "${{ needs.backend-type-check.result }}",
+        "MUTATION_SCOPE_RESULT": "${{ needs.mutation-scope.result }}",
+        "COVERAGE_RESULT": "${{ needs.coverage-policy-gate.result }}",
     }
     assert "required_results=(" in gate
-    assert 'if [[ "$result" != "success" ]]' in gate
+    assert 'if [[ "$result" != "$expected_result" ]]' in gate
+    assert 'if [[ "$job" == mutation-tests-* ]]; then' in gate
+    assert "mutation_expected_result=skipped" in gate
     assert '"$res" != "success" && "$res" != "skipped"' not in gate
     assert "stryker-preflight" in job["needs"]
     assert (
         'if [[ "$PRE_COMMIT_RESULT" == "success" && '
-        '"$FRONTEND_TESTS_RESULT" == "success" ]]; then' in gate
+        '"$FRONTEND_TESTS_RESULT" == "success" && '
+        '"$COVERAGE_RESULT" == "success" ]]; then' in gate
     )
     for mutation_job in (
         "stryker-preflight",

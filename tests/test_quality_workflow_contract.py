@@ -1610,6 +1610,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
         "mutation-scope",
         "pre-commit-check",
         "pre-commit-security-and-types",
+        "coverage-policy-gate",
     ]
     base_text = "\n".join(
         step.get("run", "") for step in base_job["steps"] if isinstance(step, dict)
@@ -1643,6 +1644,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
         "pre-commit-security-and-types",
         "backend-tests",
         "backend-type-check",
+        "coverage-policy-gate",
     ]
     for job in (stats_job, universe_job, mutation_job):
         assert job["env"]["REVOCATION_REDIS_URL"] == ("redis://localhost:6380/0")
@@ -1652,10 +1654,11 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
         "pre-commit-security-and-types",
         "mutation-tests-universe-base",
         "mutation-tests-stats",
+        "coverage-policy-gate",
     ]
     assert mutation_job["strategy"]["fail-fast"] is False
     assert 1 <= mutation_job["strategy"]["max-parallel"] <= 20
-    assert mutation_job["strategy"]["max-parallel"] == 8
+    assert mutation_job["strategy"]["max-parallel"] == 12
     assert mutation_job["strategy"]["matrix"] == (
         "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
     )
@@ -1839,14 +1842,16 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     )
 
 
-def test_mutation_stats_do_not_wait_for_an_unrelated_read_only_gate() -> None:
-    """Start stats after scope and the immutable generation-base producer.
+def test_mutation_stats_wait_for_the_foundational_coverage_gate() -> None:
+    """Start stats only after foundational coverage is green.
 
     Stats uses its own read-only checkout and its result is still required by
     both the universe producer and ``ci-success``.  It consumes no output or
     credentials from pre-commit; the dedicated scope job only determines
     whether eight real legs or one explicit sentinel should be expanded, while
-    the base producer supplies the immutable mutmut source/metadata tree.
+    the base producer supplies the immutable mutmut source/metadata tree.  The
+    coverage gate is a phase barrier so expensive mutation work is not started
+    for a commit that cannot pass its foundational quality contract.
     """
 
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
@@ -1861,6 +1866,7 @@ def test_mutation_stats_do_not_wait_for_an_unrelated_read_only_gate() -> None:
         "pre-commit-security-and-types",
         "backend-tests",
         "backend-type-check",
+        "coverage-policy-gate",
     ]
     assert workflow["permissions"] == "read-all"
     assert "secrets" not in stats_job
@@ -1869,18 +1875,20 @@ def test_mutation_stats_do_not_wait_for_an_unrelated_read_only_gate() -> None:
         "pre-commit-security-and-types",
         "mutation-tests-universe-base",
         "mutation-tests-stats",
+        "coverage-policy-gate",
     ]
     assert mutation_job["needs"] == [
         "pre-commit-check",
         "pre-commit-security-and-types",
         "mutation-tests-stats",
         "mutation-tests-universe",
+        "coverage-policy-gate",
     ]
     assert "mutation-tests-stats" in ci_success["needs"]
     assert "needs.mutation-tests-stats.result" in ci_success["steps"][0]["run"]
 
 
-def test_mutation_lanes_are_readiness_gated_and_leave_reserved_capacity() -> None:
+def test_mutation_lanes_are_readiness_gated_and_use_the_runner_budget() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     jobs = workflow["jobs"]
 
@@ -1888,6 +1896,7 @@ def test_mutation_lanes_are_readiness_gated_and_leave_reserved_capacity() -> Non
     assert jobs["stryker-preflight"]["needs"] == [
         "pre-commit-check",
         "frontend-tests",
+        "coverage-policy-gate",
     ]
     assert jobs["stryker-shards"]["strategy"]["max-parallel"] == 8
     assert jobs["mutation-tests-stats"]["strategy"]["max-parallel"] == 8
@@ -1897,8 +1906,9 @@ def test_mutation_lanes_are_readiness_gated_and_leave_reserved_capacity() -> Non
         "pre-commit-security-and-types",
         "backend-tests",
         "backend-type-check",
+        "coverage-policy-gate",
     ]
-    assert jobs["mutation-tests-incremental"]["strategy"]["max-parallel"] == 8
+    assert jobs["mutation-tests-incremental"]["strategy"]["max-parallel"] == 12
 
 
 def test_mutation_stats_scope_is_resolved_before_matrix_fanout() -> None:
@@ -1926,6 +1936,7 @@ def test_mutation_stats_scope_is_resolved_before_matrix_fanout() -> None:
         "pre-commit-security-and-types",
         "backend-tests",
         "backend-type-check",
+        "coverage-policy-gate",
     ]
     assert stats["strategy"]["matrix"] == (
         "${{ fromJSON(needs.mutation-scope.outputs.stats_matrix) }}"
@@ -1993,13 +2004,13 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
     )
     assert 'echo "- $matrix_summary"' in matrix_step["run"]
     assert 'echo "- $descriptor_summary"' in matrix_step["run"]
-    assert "scheduler queue p50/p95" in matrix_step["run"]
+    assert "coverage phase barrier" in matrix_step["run"]
 
     assert mutation_job["strategy"]["matrix"] == (
         "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
     )
     assert 1 <= mutation_job["strategy"]["max-parallel"] <= 20
-    assert mutation_job["strategy"]["max-parallel"] == 8
+    assert mutation_job["strategy"]["max-parallel"] == 12
 
     selection_step = _step_named(
         mutation_job, "Validate selected mutmut execution matrix entry"
@@ -3730,7 +3741,11 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     )
     jobs = ci_workflow["jobs"]
     mutation_preflight = jobs["stryker-preflight"]
-    assert mutation_preflight["needs"] == ["pre-commit-check", "frontend-tests"]
+    assert mutation_preflight["needs"] == [
+        "pre-commit-check",
+        "frontend-tests",
+        "coverage-policy-gate",
+    ]
     assert "github.event_name == 'pull_request'" in mutation_preflight["if"]
     assert mutation_preflight["permissions"] == {
         "contents": "read",
