@@ -2944,6 +2944,12 @@ jobs:
           fi
           echo "has_python=$has_python" >> "$GITHUB_OUTPUT"
 
+      - name: Set up Python for artifact provenance selection
+        if: steps.mutation_scope.outputs.has_python == 'true'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
       - name: Select immutable same-run mutmut generation base
         if: steps.mutation_scope.outputs.has_python == 'true'
         id: select_mutmut_generation
@@ -3024,12 +3030,6 @@ jobs:
           test -s mutmut-generation-selection.json
           test -s mutants/mutmut-generation.json
           echo "Selected retry-safe mutmut generation base: $selection"
-
-      - name: Set up Python
-        if: steps.mutation_scope.outputs.has_python == 'true'
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.14"
 
       - name: Install uv
         if: steps.mutation_scope.outputs.has_python == 'true'

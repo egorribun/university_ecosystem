@@ -1684,6 +1684,19 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
         for step in stats_job["steps"]
         if step.get("name") == "Select immutable same-run mutmut generation base"
     )
+    stats_step_names = [
+        step.get("name") for step in stats_job["steps"] if isinstance(step, dict)
+    ]
+    setup_python_index = stats_step_names.index(
+        "Set up Python for artifact provenance selection"
+    )
+    selector_index = stats_step_names.index(
+        "Select immutable same-run mutmut generation base"
+    )
+    assert setup_python_index < selector_index
+    setup_python = stats_job["steps"][setup_python_index]
+    assert setup_python["uses"] == SETUP_PYTHON_ACTION_PIN
+    assert setup_python["with"]["python-version"] == "3.14"
     assert (
         '--artifact-prefix "mutmut-generation-base-"'
         in stats_generation_remote_selector["run"]
