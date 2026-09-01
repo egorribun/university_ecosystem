@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, it, expect, vi } from "vitest"
 
@@ -79,6 +79,25 @@ describe("EventAboutEditor", () => {
     ).toBeInTheDocument()
   })
 
+  it("refreshes the localized baseline when the language changes", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<EventAboutEditor {...baseProps} />)
+
+    expect(
+      screen.getByText("A hands-on workshop on React 19 concurrent features.")
+    ).toBeInTheDocument()
+
+    rerender(<EventAboutEditor {...baseProps} language="ru" />)
+    expect(
+      screen.getByText("Практический воркшоп по конкурентным возможностям React 19.")
+    ).toBeInTheDocument()
+
+    await user.click(screen.getByLabelText("events:detail.sections.about.editAria"))
+    expect(screen.getByRole("textbox")).toHaveValue(
+      "Практический воркшоп по конкурентным возможностям React 19."
+    )
+  })
+
   it("renders the empty placeholder when there is no about text", () => {
     render(
       <EventAboutEditor
@@ -90,6 +109,26 @@ describe("EventAboutEditor", () => {
     expect(screen.getByText("events:detail.sections.about.empty")).toBeInTheDocument()
     expect(screen.getByText("events:detail.sections.about.empty")).toHaveClass(
       "text-(--text-secondary)"
+    )
+  })
+
+  it("uses the primary text style for a populated about section", () => {
+    const { rerender } = render(<EventAboutEditor {...baseProps} />)
+
+    expect(screen.getByText("A hands-on workshop on React 19 concurrent features.")).toHaveClass(
+      "text-text-primary"
+    )
+
+    rerender(
+      <EventAboutEditor
+        {...baseProps}
+        event={{ ...baseEvent, about: "", about_en: "" }}
+        language="ru"
+      />
+    )
+    expect(screen.getByText("events:detail.sections.about.empty")).toHaveAttribute(
+      "class",
+      expect.stringContaining("text-(--text-secondary)")
     )
   })
 
@@ -157,6 +196,20 @@ describe("EventAboutEditor", () => {
     expect(save).toBeEnabled()
   })
 
+  it("compares trimmed drafts with trimmed baselines", async () => {
+    const user = userEvent.setup()
+    mockPatch.mockResolvedValue({ status: 200 })
+    render(
+      <EventAboutEditor
+        {...baseProps}
+        event={{ ...baseEvent, about_en: "  Stable workshop details  " }}
+      />
+    )
+
+    await user.click(screen.getByLabelText("events:detail.sections.about.editAria"))
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
+  })
+
   it("exposes the pending state and restores heading focus after a successful save", async () => {
     const user = userEvent.setup()
     let resolvePatch: ((value: { status: number }) => void) | undefined
@@ -188,6 +241,28 @@ describe("EventAboutEditor", () => {
       ).toHaveFocus()
     )
     expect(onUpdate).toHaveBeenCalledOnce()
+  })
+
+  it("clears the pending state after a successful save", async () => {
+    const user = userEvent.setup()
+    mockPatch.mockResolvedValue({ status: 200 })
+    render(<EventAboutEditor {...baseProps} />)
+
+    const heading = screen.getByRole("heading", { name: "events:detail.sections.about.title" })
+    expect(heading).toHaveAttribute("tabindex", "-1")
+
+    await user.click(screen.getByLabelText("events:detail.sections.about.editAria"))
+    const textarea = screen.getByRole("textbox")
+    await user.clear(textarea)
+    await user.type(textarea, "Updated workshop details")
+    await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+
+    await waitFor(() => expect(screen.queryByRole("textbox")).not.toBeInTheDocument())
+    await user.click(screen.getByLabelText("events:detail.sections.about.editAria"))
+    const reopenedTextarea = screen.getByRole("textbox")
+    await user.clear(reopenedTextarea)
+    await user.type(reopenedTextarea, "Another workshop update")
+    expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeEnabled()
   })
 
   it("reports refresh failures without leaving the editor stuck in the pending state", async () => {
@@ -225,7 +300,10 @@ describe("EventAboutEditor", () => {
     await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
 
     expect(mockPatch).toHaveBeenCalledWith("/events/evt-1", { about: "Новое описание" })
-    expect(mockLogError).toHaveBeenCalledWith("[EventAboutEditor] Save failed:", failure)
-    expect(onError).toHaveBeenCalledWith("events:detail.messages.aboutUpdateFailed")
+    await waitFor(() => {
+      expect(mockLogError).toHaveBeenCalledWith("[EventAboutEditor] Save failed:", failure)
+      expect(onError).toHaveBeenCalledWith("events:detail.messages.aboutUpdateFailed")
+    })
+    expect(screen.getByRole("textbox")).toBeInTheDocument()
   })
 })

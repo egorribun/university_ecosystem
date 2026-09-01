@@ -97,8 +97,21 @@ describe("EventActions", () => {
     expect(qrButton).toBeDefined()
     await user.click(qrButton!)
     expect(await screen.findByRole("dialog")).toBeInTheDocument()
+    expect(window.sessionStorage.getItem("event:qr_open:evt-1")).toBe("1")
     await user.click(screen.getByRole("button", { name: "events:card.actions.closeQr" }))
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+  })
+
+  it("rechecks persisted QR state when the event token arrives after mount", async () => {
+    const { rerender } = render(
+      <EventActions {...baseProps} eventId="evt-before" isRegistered qrToken={undefined} />
+    )
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    window.sessionStorage.setItem("event:qr_open:evt-after", "1")
+    rerender(<EventActions {...baseProps} eventId="evt-after" isRegistered qrToken="late-token" />)
+
+    expect(await screen.findByRole("dialog")).toBeInTheDocument()
   })
 
   it.each([

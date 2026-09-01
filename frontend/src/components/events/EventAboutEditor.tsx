@@ -62,7 +62,11 @@ export function EventAboutEditor({
       setEditing(false)
       onSuccess(t("events:detail.messages.aboutUpdated"))
       await telemetryContext.run(onUpdate)
-      setTimeout(() => sectionRef.current?.focus?.(), 0)
+      setTimeout(() => {
+        const heading = sectionRef.current
+        if (heading === null) return
+        heading.focus()
+      }, 0)
     } catch (err) {
       logError("[EventAboutEditor] Save failed:", err)
       onError(t("events:detail.messages.aboutUpdateFailed"))
