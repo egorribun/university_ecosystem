@@ -1422,7 +1422,9 @@ async def test_email_factor_start_commits_and_returns_delivery_contract() -> Non
     request = _api_request(active_session=session)
 
     with (
-        patch.object(mfa_api, "extract_request_fingerprint", return_value="f" * 64),
+        patch.object(
+            mfa_api, "extract_request_fingerprint", return_value="f" * 64
+        ) as extract_fingerprint,
         patch("app.core.ratelimit.resolve_client_ip", return_value="203.0.113.5"),
         patch(
             "app.core.localization.resolve_locale", return_value="en"
@@ -1437,6 +1439,10 @@ async def test_email_factor_start_commits_and_returns_delivery_contract() -> Non
         )
 
     resolve_locale.assert_called_once_with(request=request, user=user)
+    extract_fingerprint.assert_called_once_with(request)
+    assert email_service.issue.await_args.kwargs["session_identifier"] == str(
+        session.id
+    )
 
     assert result.method == MFA_METHOD_EMAIL_OTP
     assert result.challenge_token == issued.challenge_token

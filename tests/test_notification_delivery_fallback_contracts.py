@@ -314,6 +314,65 @@ async def test_redelivery_payload_preserves_canonical_topic_metadata(
 
 
 @pytest.mark.asyncio
+async def test_redelivery_gone_result_uses_lowercase_metric_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    user_id = uuid4()
+    subscription = SimpleNamespace(
+        id=uuid4(),
+        user_id=user_id,
+        user=None,
+        endpoint="https://push.example.test/subscription",
+        topics=None,
+    )
+    notification = SimpleNamespace(
+        id=uuid4(),
+        user_id=user_id,
+        title="A notification",
+        body="Body",
+        url="/news/1",
+        type="news",
+        created_at=datetime(2026, 8, 28, 12, 0, tzinfo=UTC),
+    )
+    provider_result = delivery.WebPushResult(
+        subscription_id=subscription.id,
+        endpoint=subscription.endpoint,
+        user_id=user_id,
+        status="gone",
+        status_code=410,
+        error="expired endpoint",
+    )
+    failed = Mock()
+    monkeypatch.setattr(delivery, "_is_push_configured", lambda: True)
+    monkeypatch.setattr(delivery, "subscription_supports_topic", lambda *_args: True)
+    monkeypatch.setattr(
+        delivery.webpush_module,
+        "_send_push_async",
+        AsyncMock(return_value=provider_result),
+    )
+    monkeypatch.setattr(delivery.webpush_module, "process_push_results", AsyncMock())
+    monkeypatch.setattr(delivery.metrics, "record_notification_failed", failed)
+    db = MagicMock(
+        execute=AsyncMock(
+            side_effect=[
+                _rows([notification]),
+                _rows([subscription]),
+                _rows([]),
+                MagicMock(),
+            ]
+        ),
+        flush=AsyncMock(),
+    )
+
+    outcome = await delivery.redeliver_notifications(
+        db, notification_ids=[notification.id]
+    )
+
+    assert outcome.terminal_failures == 1
+    failed.assert_called_once_with(notification_type="news", reason="gone")
+
+
+@pytest.mark.asyncio
 async def test_redelivery_continues_after_an_already_delivered_subscription(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
