@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, it, expect, vi } from "vitest"
 
@@ -241,6 +241,30 @@ describe("EventAboutEditor", () => {
       ).toHaveFocus()
     )
     expect(onUpdate).toHaveBeenCalledOnce()
+  })
+
+  it("skips focus restoration when the editor unmounts before the timer runs", async () => {
+    vi.useFakeTimers()
+    try {
+      const onSuccess = vi.fn()
+      mockPatch.mockResolvedValue({ status: 200 })
+      const { unmount } = render(<EventAboutEditor {...baseProps} onSuccess={onSuccess} />)
+
+      fireEvent.click(screen.getByLabelText("events:detail.sections.about.editAria"))
+      const textarea = screen.getByRole("textbox")
+      fireEvent.change(textarea, { target: { value: "Updated workshop details" } })
+      fireEvent.click(screen.getByRole("button", { name: "common:buttons.save" }))
+
+      // Resolve the async save/update chain while keeping the focus timer pending.
+      await Promise.resolve()
+      await Promise.resolve()
+      expect(onSuccess).toHaveBeenCalledWith("events:detail.messages.aboutUpdated")
+
+      unmount()
+      vi.runAllTimers()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("clears the pending state after a successful save", async () => {
