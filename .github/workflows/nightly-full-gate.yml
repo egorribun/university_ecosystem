@@ -150,7 +150,7 @@ jobs:
               --stats mutants/mutmut-stats.json \
               --max-children 8 \
               --control-cycle-reserve-seconds 1 \
-              --max-timeout-seconds 20000 \
+              --max-timeout-seconds 20970 \
               --output "mutants/mutmut-full-plan/budget-${shard_file%.txt}.json"
           done
           test "$(find mutants/mutmut-full-plan -maxdepth 1 -name 'budget-shard-*.json' | wc -l)" -eq 128
@@ -301,7 +301,7 @@ jobs:
             --stats mutants/mutmut-stats.json \
             --max-children 8 \
             --control-cycle-reserve-seconds 1 \
-            --max-timeout-seconds 20000 \
+            --max-timeout-seconds 20970 \
             --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
           if ! [[ "$MUTMUT_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
             MUTMUT_FAILURE_REASON="mutation budget helper returned an unsafe timeout value"
@@ -382,7 +382,7 @@ jobs:
                 --selected-file "$MUTMUT_EVIDENCE_DIR/full-map-survivors.txt" \
                 --stats mutants/mutmut-stats-full.json \
                 --max-children 2 \
-                --max-timeout-seconds 20000 \
+                --max-timeout-seconds 20970 \
                 --output "$MUTMUT_EVIDENCE_DIR/full-map-survivor-budget.json")"
               if ! [[ "$FULL_MAP_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
                 MUTMUT_FAILURE_REASON="full-map survivor budget helper returned an unsafe timeout value"

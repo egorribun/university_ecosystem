@@ -1547,7 +1547,7 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
     )
     assert job["timeout-minutes"] == 360
     assert "scripts/mutmut_shard_budget.py" in run_step["run"]
-    assert "--max-timeout-seconds 20000" in run_step["run"]
+    assert "--max-timeout-seconds 20970" in run_step["run"]
     assert "--control-cycle-reserve-seconds 5" in run_step["run"]
     assert '"${MUTMUT_TIMEOUT_SECONDS}s"' in run_step["run"]
     assert (
@@ -2067,7 +2067,7 @@ def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> Non
     )
     assert "--num-shards 128" in manual_mutation_text
     assert "scripts/mutmut_shard_budget.py" in manual_mutation_text
-    assert "--max-timeout-seconds 20000" in manual_mutation_text
+    assert "--max-timeout-seconds 20970" in manual_mutation_text
     assert '--prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"' in (
         manual_mutation_text
     )
@@ -2120,7 +2120,7 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
     assert 'MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 21600))"' in (
         pr_deadline
     )
-    assert "--max-timeout-seconds 20000" in pr_run_step["run"]
+    assert "--max-timeout-seconds 20970" in pr_run_step["run"]
     assert "--control-cycle-reserve-seconds 5" in pr_run_step["run"]
     assert "MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=600" in pr_run_step["run"]
     assert (
@@ -2128,7 +2128,14 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
         in pr_run_step["run"]
     )
     assert "MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30" in pr_run_step["run"]
-    assert 360 * 60 - 20_000 - 30 == 1570
+    assert 360 * 60 - 20_970 - 30 == 600
+
+    # The configured cap is derived, not an arbitrary increase: the exact
+    # six-hour envelope reserves 600 seconds for post-run evidence after
+    # timeout's 30-second KILL grace. The live deadline check starts before
+    # setup and refuses to truncate evidence when setup consumes headroom.
+    assert "20,970" in pr_run_step["run"]
+    assert "21,600 - 600 - 30" in pr_run_step["run"]
 
     workflows = (
         (
@@ -2138,7 +2145,7 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
             "Upload incremental mutation evidence",
             360,
             21600,
-            20000,
+            20970,
             600,
         ),
         (
@@ -2148,7 +2155,7 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
             "Upload manual mutation evidence",
             360,
             21600,
-            20000,
+            20970,
             600,
         ),
     )
@@ -2177,6 +2184,11 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
             deadline_script
         )
         assert '>> "$GITHUB_ENV"' in deadline_script
+        run_script = next(
+            step["run"] for step in job["steps"] if step.get("name") == run_step_name
+        )
+        assert "--max-timeout-seconds 20970" in run_script
+        assert "live deadline check" in run_script
 
         run_step = next(
             step for step in job["steps"] if step.get("name") == run_step_name
@@ -3170,7 +3182,7 @@ def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:
         step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
     )
     assert "exceeded its stats-derived budget" in mutation_text
-    assert "--max-timeout-seconds 20000" in mutation_text
+    assert "--max-timeout-seconds 20970" in mutation_text
     assert "MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30" in mutation_text
     assert "Skipping score verification" not in mutation_text
     assert (

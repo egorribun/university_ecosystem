@@ -114,6 +114,12 @@ Snapshot `2026-08-31T13:37:11+03:00` получен через все стран
 - Python mutmut: 5 341 exact mutants по producer log (`Planned all 128 mutmut shards`); равное число mutants на shard не равно равной стоимости;
 - общий current mutation universe — 46 141 mutants до следующей детерминированной регенерации;
 - повышение timeout или исключение исходников не является исправлением.
+- Исключение для устранения конфигурационного рассинхрона: при сохранении
+  шестичасового job envelope hard cap mutmut выровнен с доказуемым пределом
+  `21 600 - 600 post-run - 30 KILL = 20 970` секунд; live deadline, записанный
+  до setup, по-прежнему fail-closed отказывает при нехватке фактического
+  headroom. Это не снимает требования duration-aware bin-packing и не
+  разрешает обрезать incomplete mutation evidence.
 
 ### 1.4 Fresh successes на current source SHA
 

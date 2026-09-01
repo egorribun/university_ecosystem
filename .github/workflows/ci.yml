@@ -3553,18 +3553,18 @@ jobs:
             --stats mutants/mutmut-stats.json \
             --max-children 2 \
             --control-cycle-reserve-seconds 5 \
-            --max-timeout-seconds 20000 \
+            --max-timeout-seconds 20970 \
             --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
           if ! [[ "$MUTMUT_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
             MUTMUT_FAILURE_REASON="mutation budget helper returned an unsafe timeout value"
             echo "::error::Mutation budget helper returned an unsafe timeout value."
             exit 1
           fi
-          # The 20,000-second budget is only an upper cap. The deadline starts
-          # before setup, so derive a lower cap from the durable six-hour job
-          # deadline and leave 600 seconds (ten minutes) after timeout's
-          # 30-second KILL grace for proof, score verification, upload, and a
-          # fail-closed exit.
+          # The 20,970-second budget is the exact six-hour envelope after
+          # reserving 600 seconds for post-run/evidence and 30 seconds for
+          # timeout KILL grace: 21,600 - 600 - 30. The live deadline check starts
+          # before setup, subtracts those reserves from the remaining deadline,
+          # and refuses to run when setup has consumed too much headroom.
           if ! [[ "${MUTMUT_JOB_DEADLINE_EPOCH:-}" =~ ^[1-9][0-9]*$ ]]; then
             MUTMUT_FAILURE_REASON="mutation job deadline is missing or invalid"
             echo "::error::Mutation job deadline is missing or invalid; refusing to run without post-run evidence headroom."

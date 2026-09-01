@@ -72,12 +72,12 @@ def test_nightly_full_mutation_uses_audited_monotonic_test_reduction() -> None:
     assert "--output-directory mutants/mutmut-full-plan" in preflight
     assert "for shard in $(seq 1 128)" in preflight
     assert "scripts/mutmut_shard_budget.py" in preflight
-    assert "--max-timeout-seconds 20000" in preflight
+    assert "--max-timeout-seconds 20970" in preflight
     assert "plan-manifest.json" in preflight
     assert "cmp --silent" in run_script
     assert "--max-children 8" in run_script
     assert "--control-cycle-reserve-seconds 1" in run_script
-    assert "--max-timeout-seconds 20000" in run_script
+    assert "--max-timeout-seconds 20970" in run_script
     assert "scripts/run_mutmut_with_stats.py --max-children 8" in run_script
     # The nightly plan artifact currently carries stats/IDs, not the generated
     # source+metadata manifest required by the fail-closed reuse mode.

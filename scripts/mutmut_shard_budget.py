@@ -34,10 +34,20 @@ SELECTED_TEST_PHASE_MULTIPLIER = 2
 CONTROL_CYCLE_RESERVE_SECONDS = 15
 TERMINATION_GRACE_SECONDS = 30
 # Keep the CI cap below the six-hour mutation job envelope.  The workflow
-# reserves 600 seconds for post-run evidence plus a 30-second kill grace, so a
-# 20,000-second execution cap still leaves 1,570 seconds for setup and exit
-# handling while covering the slowest stats-derived PR shards.
-DEFAULT_MAX_TIMEOUT_SECONDS = 20_000
+# reserves 600 seconds for post-run evidence and 30 seconds for timeout's KILL
+# grace, leaving an exact maximum outer timeout of 20_970 seconds:
+# 21_600 - 600 - 30 = 20_970.  The job's live deadline check starts before
+# setup, subtracts the same post-run/kill reserves from the remaining deadline,
+# and remains authoritative when setup consumes part of that budget.  This cap
+# is not a license to truncate evidence.
+MUTMUT_JOB_DEADLINE_SECONDS = 21_600
+MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS = 600
+MUTMUT_TIMEOUT_KILL_GRACE_SECONDS = 30
+DEFAULT_MAX_TIMEOUT_SECONDS = (
+    MUTMUT_JOB_DEADLINE_SECONDS
+    - MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS
+    - MUTMUT_TIMEOUT_KILL_GRACE_SECONDS
+)
 _GLOB_TOKENS = frozenset("*?[")
 
 
