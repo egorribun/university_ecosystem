@@ -57,6 +57,7 @@ import LivePushToasts, {
   readBuffer,
   rememberToastId,
   resolveSeverity,
+  resolveToastActionUrl,
   resolveToastContent,
   sanitizeBuffer,
   shouldBufferPush,
@@ -161,6 +162,8 @@ describe("LivePushToasts", () => {
       title: "notifications:defaultTitle",
       body: "notifications:defaultBody",
     })
+    expect(resolveToastActionUrl(null)).toBeUndefined()
+    expect(resolveToastActionUrl({ id: "action", url: "/events/42" })).toBe("/events/42")
     expect(getToastWindowTarget(true)).toBe("_self")
     expect(getToastWindowTarget(false)).toBe("_blank")
     expect(getToastWindowFeatures(true)).toBeUndefined()
@@ -1156,6 +1159,34 @@ describe("LivePushToasts", () => {
     fireEvent.click(screen.getByText("notifications:toast.open"))
 
     expect(openSpy).toHaveBeenCalledWith(`${window.location.origin}/events/42`, "_self", undefined)
+    openSpy.mockRestore()
+  })
+
+  it("ignores a stale action click after the toast has been closed", async () => {
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null)
+    render(<LivePushToasts />)
+
+    await dispatchSwMessage({
+      type: "PUSH_NOTIFICATION",
+      toast: {
+        id: "t-stale-action",
+        title: "Stale action",
+        body: "Close before the delayed click",
+        url: "/events/stale",
+      },
+    })
+    act(() => {
+      vi.advanceTimersByTime(0)
+    })
+
+    const actionButton = screen.getByText("notifications:toast.open")
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.close" }))
+    act(() => {
+      vi.advanceTimersByTime(300)
+    })
+
+    expect(() => fireEvent.click(actionButton)).not.toThrow()
+    expect(openSpy).not.toHaveBeenCalled()
     openSpy.mockRestore()
   })
 

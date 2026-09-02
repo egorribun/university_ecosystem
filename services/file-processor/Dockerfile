@@ -52,7 +52,7 @@ RUN probe_module="github.com/grpc-ecosystem/grpc-health-probe@${GRPC_HEALTH_PROB
     chmod -R u+w . && \
     go get \
       github.com/spiffe/go-spiffe/v2@v2.7.0 \
-      google.golang.org/grpc@v1.83.0 \
+      google.golang.org/grpc@v1.83.1 \
       golang.org/x/net@v0.57.0 \
       golang.org/x/text@v0.40.0 && \
     go mod tidy && \

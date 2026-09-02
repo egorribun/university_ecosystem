@@ -29,7 +29,7 @@ RUN xcaddy build v${CADDY_VERSION} \
     --with github.com/mholt/caddy-ratelimit@v0.1.0 \
     --replace golang.org/x/net=golang.org/x/net@v0.56.0 \
     --replace golang.org/x/text=golang.org/x/text@v0.39.0 \
-    --replace google.golang.org/grpc=google.golang.org/grpc@v1.82.1
+    --replace google.golang.org/grpc=google.golang.org/grpc@v1.83.1
 
 # ── Stage 2: runtime ──────────────────────────────────────────────────────────
 FROM caddy:2.11.4-alpine@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648

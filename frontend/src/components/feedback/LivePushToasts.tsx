@@ -113,6 +113,11 @@ export function resolveToastContent(
   }
 }
 
+/** @internal Action callbacks may outlive the transient toast during exit. */
+export function resolveToastActionUrl(current: ActiveToast | null): string | undefined {
+  return current?.url
+}
+
 /** @internal Window target policy is same-origin aware and deterministic. */
 export function getToastWindowTarget(sameOrigin: boolean): "_self" | "_blank" {
   return sameOrigin ? "_self" : "_blank"
@@ -356,7 +361,12 @@ export default function LivePushToasts() {
   useSyncExternalStore(subscribeLifecycle, getStableSnapshot, getStableSnapshot)
 
   const handleAction = useCallback(() => {
-    const safeUrl = current!.url!
+    // The action callback can outlive the transient toast when a close timer
+    // clears `current` between pointer down and click (or while an exit
+    // animation is in flight). Treat that stale event as a no-op instead of
+    // dereferencing a cleared toast and destabilising the app shell.
+    const safeUrl = resolveToastActionUrl(current)
+    if (!safeUrl) return
     try {
       const resolved = new URL(safeUrl, window.location.href)
       const sameOrigin = resolved.origin === window.location.origin
