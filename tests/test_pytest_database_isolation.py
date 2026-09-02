@@ -241,7 +241,9 @@ def test_environment_and_integration_selectors_do_not_authorize_database_reset(
         )
 
 
-def test_async_cleanup_preserves_anyio_runner_and_cancels_owned_tasks() -> None:
+def test_async_cleanup_preserves_anyio_runner_and_cancels_owned_tasks(
+    tmp_path: Path,
+) -> None:
     """A leaked task must not cancel AnyIO's fixture finalizer.
 
     ``cleanup_asyncio_tasks`` is an autouse fixture, so a regression here only
@@ -250,7 +252,10 @@ def test_async_cleanup_preserves_anyio_runner_and_cancels_owned_tasks() -> None:
     leaves an owned task behind and the second test proves that the runner and
     the fixture stack survived teardown while the owned task was cancelled.
     """
-    probe_path = PROJECT_ROOT / "tests" / "_tmp_async_cleanup_probe.py"
+    # Keep the subprocess probe outside the repository so concurrent shards
+    # cannot race on a shared path and a failed subprocess cannot leave an
+    # untracked file in the developer worktree.
+    probe_path = tmp_path / "async_cleanup_probe.py"
     probe_path.write_text(
         dedent(
             """
@@ -285,7 +290,7 @@ def test_async_cleanup_preserves_anyio_runner_and_cancels_owned_tasks() -> None:
                 "-m",
                 "pytest",
                 "-q",
-                str(probe_path.relative_to(PROJECT_ROOT)),
+                str(probe_path),
                 "--tb=short",
             ],
             cwd=PROJECT_ROOT,
