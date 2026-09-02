@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788384414887,
+  "lastUpdate": 1788384417996,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -11515,6 +11515,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 57213,
             "range": "± 200",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "egorribun2005@gmail.com",
+            "name": "Egor",
+            "username": "egorribun"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d654e3f66cd1946910832cba9f3dea88ddcc33d4",
+          "message": "feat(mvp): deliver reference-quality university ecosystem platform (#1257)\n\n* fix(e2e): preserve application assets during accessibility audits\n\n* fix(perf): opt out of background RxDB initialization\n\n* fix(frontend): stabilize hydration and notification delivery\n\n* fix(frontend): synchronize hydration boundary\n\n* fix(frontend): cover ignored push message types\n\n* fix(frontend): schedule boot loader exit in layout phase\n\n* fix(frontend): stabilize hydration navigation retries\n\n* fix(frontend): make event filter callback test deterministic\n\n* fix(frontend): reduce constrained map intro work\n\n* fix(testing): isolate OIDC verifier monkeypatches\n\n* fix(frontend): normalize LHCI route override paths\n\n* docs(frontend): clarify LHCI route normalization\n\n* fix(database): harden PostgreSQL shadow migration\n\n* fix(frontend): flush boot loader timeout handoff\n\n* fix(testing): assert observability and CWV contracts\n\n* fix(testing): cover telemetry ownership contracts\n\n* fix(testing): cover backend mutation contracts\n\n* fix(testing): bound frontend mutation discovery\n\n* fix(testing): stabilize performance and mutation builds\n\n* fix(testing): stabilize accessibility axe navigation\n\n* fix(testing): stabilize brand loader browser lifecycle\n\n* fix(frontend): defer MapLibre loading until idle or intent\n\n* fix(frontend): harden deferred map lifecycle\n\n* fix(frontend): harden deferred map focus and visibility\n\n* fix(frontend): ship lightweight not-found fallback\n\n* fix(frontend): defer map activation until user intent\n\n* fix(frontend): defer offline database loading\n\n* fix(frontend): preserve graphql 404 contract\n\n* fix(frontend): preserve service 404 contracts\n\n* fix(infrastructure): bound Docker resource usage\n\n* fix(infrastructure): align Docker resource contract inventory\n\n* fix(infrastructure): include compose assets in mutmut sandbox\n\n* fix(infrastructure): copy all compose layers for mutation stats\n\n* fix(frontend): preserve lighthouse static effects after mount\n\n* fix(infrastructure): exclude ignored compose override from mutmut\n\n* fix(ci): optimize parallel quality execution\n\nReserve a measured mutation runner share, persist complete producer evidence, and cancel superseded pull-request workflows without changing release gates.\n\n* fix(quality): harden mutation evidence and runner scheduling\n\n* fix(quality): centralize mutation evidence and parallel gates\n\n* fix(frontend): defer messenger realtime graph and align Lighthouse routes\n\n* fix(quality): close backend mutation survivor contracts\n\n* fix(quality): harden map control and clock contracts\n\n* perf(ci): parallelize mutation setup\n\n* fix(partitions): prevent overlapping monthly ranges\n\n* fix(frontend): fail closed on malformed chat responses\n\n* fix(frontend): guard malformed chat presence data\n\n* fix(auth): revoke session-only WebAuthn state\n\n* perf(ci): skip empty mutation shard bootstraps\n\n* test(ci): cover mutation matrix command entrypoint\n\n* perf(frontend): defer route token CSS\n\n* perf(ci): parallelize verified pre-commit gates\n\n* fix(ci): reuse verified Stryker evidence on retries\n\n* fix(quality): harden retry evidence selection\n\n* fix(quality): bind retry evidence reuse\n\n* refactor(frontend): balance mutation shard costs\n\n* fix(quality): reject linked provenance inputs\n\n* fix(quality): add trusted retry provenance CLI\n\n* feat(infra): add revocation store chart and harden quality retry provenance\n\n* fix(auth): reject ambiguous email MFA key rings\n\n* fix(quality): align CWV staging security fixtures\n\n* fix(quality): bind retry artifact downloads to server ids\n\n* fix(ws-hub): close revocation lifecycle lint gaps\n\n* test(ws-hub): cover revocation lifecycle branches\n\n* fix(quality): refresh detect-secrets baseline\n\n* fix(perf): skip dashboard prefetch in lighthouse builds\n\n* fix(quality): bind CI artifacts to trusted run identity\n\n* fix(testing): align MFA fixtures and security contracts\n\n* fix(quality): refresh detect-secrets baseline\n\n* fix(quality): enforce verified TLS for artifact download\n\n* fix(testing): inherit context in revocation callback\n\n* fix(testing): inherit callback context in revocation test\n\n* fix(quality): reject cross-platform absolute artifact paths\n\n* fix(quality): copy revocation chart for mutation tests\n\n* fix(quality): invoke mutmut retry helper as module\n\n* fix(quality): flatten mutmut stats artifact staging\n\n* fix(quality): harden schemathesis and mutmut artifacts\n\n* fix(perf): keep Lighthouse push probe side effect free\n\n* fix(perf): exclude generated frontend output from Stryker\n\n* fix(ci): guard frontend aggregate before checkout\n\n* fix(perf): make lighthouse SSR evidence deterministic\n\n* fix(ci): bound nightly chaos compose scope\n\n* fix(quality): strengthen dead-letter mutation contract\n\n* fix(quality): align SSR bundle boundary contract\n\n* fix(frontend): align authenticated SSR hydration state\n\n* fix(ci): retry image vulnerability database resolution\n\n* fix(frontend): stabilize online status during hydration\n\n* fix(quality): harden lighthouse not-found evidence\n\n* fix(quality): align workflow gate inventory\n\n* fix(security): make lhci script stripping exhaustive\n\n* fix(security): fail closed across trivy retries\n\n* fix(ci): fail closed for Helm and Semgrep scans\n\n* fix(ci): close mutation and deployment evidence gaps\n\n* perf: partition campus mutation workload\n\n* fix(ci): close mutation survivor contracts\n\n* fix(ci): harden quality gates and local runtime\n\n* fix(ci): refresh secret baseline line bindings\n\n* fix(ci): close fresh mutation and evidence survivors\n\n* test: close mutation survivor contracts\n\n* fix(quality): avoid focused-marker false positive\n\n* fix(ci): gate mutmut stats fanout by scope\n\n* perf(ci): reduce mutation and Lighthouse runner overhead\n\n* fix(ci): validate Lighthouse report argv pairs\n\n* fix(ci): close lighthouse and coverage gates\n\n* fix(ci): use locked Python for coverage gates\n\n* fix(ci): harden coverage and mutation scheduling\n\n* fix(ci): fail closed on coverage comparison errors\n\n* test: close frontend coverage and ws session inventory\n\n* fix(quality): align coverage evidence with native scopes\n\n* fix: checkpoint MVP quality closure\n\n* fix(quality): close MVP quality blockers\n\n* docs: record MVP quality closure plan\n\n* fix(ci): make Go diagnostic naming shellcheck-safe\n\n* test: align localized accessibility selectors\n\n* fix(docs): satisfy markdown quality gates\n\n* fix(a11y): restore schedule accent contrast\n\n* fix(a11y): close Lighthouse navbar and schedule violations\n\n* fix(ci): avoid synthetic skipped mutation failures\n\n* fix(security): pin scanner toolchains and checkout credentials\n\n* feat(i18n): enforce repository translation contracts\n\n* fix(messenger): align transport contracts and touch targets\n\n* fix(security): decode Python translation escapes once\n\n* fix(quality): parse paginated CI job evidence\n\n* fix(testing): tolerate mutation string sentinels\n\n* perf(ci): parallelize isolated benchmark sides\n\n* perf(ci): schedule Go mutation diagnostics\n\n* fix(testing): preserve complete Stryker mutation ranges\n\n* test(ci): keep Go diagnostics off required lane\n\n* fix(quality): close coverage and mutation contracts\n\n* fix(quality): bound stop gate Go vet concurrency\n\n* fix(quality): move stop gate contract test\n\n* fix(security): upgrade Go crypto dependency\n\n* fix(quality): measure GitHub job queue wait\n\n* fix(quality): close coverage and mutation evidence gaps\n\n* test(quality): assert schedule timeline behavior\n\n* test(quality): cover messenger controller contracts\n\n* test(quality): cover worker and service contracts\n\n* fix(quality): normalize coverage provenance version\n\n* fix(quality): bind mutation evidence to PR provenance\n\n* fix(quality): handle empty workflow base refs\n\n* fix(security): remove credential-like deployment examples\n\n* fix(security): enforce finding-level secret baseline\n\n* fix(quality): stabilize mutation regression contracts\n\n* fix(quality): apply contract test formatting\n\n* test(quality): cover digest and schedule tooltip contracts\n\n* fix(quality): refresh secret baseline and date boundary contract\n\n* fix(security): remove expired npm advisory allowances\n\n* fix(quality): trust zero-unit coverage derivations\n\n* fix(quality): copy websocket hook in mutmut tree\n\n* test(notifications): cover push cleanup admin flows\n\n* test(messenger): cover message boundary contracts\n\n* test(map): cover search boundary interactions\n\n* fix(notifications): localize unread badge\n\n* fix(map): complete search fixture contract\n\n* test(notifications): cover bell contracts\n\n* test(mfa): cover otp reset state\n\n* test(mfa): cover otp error transitions\n\n* test(map): cover search accessibility transitions\n\n* fix(messenger): harden new chat modal contracts\n\n* fix(map): make mobile sidebar keyboard accessible\n\n* test(map): cover weather particle lifecycle\n\n* fix(map): pause weather animation in hidden tabs\n\n* fix(map): initialize weather visibility handler safely\n\n* fix(notifications): harden push toast lifecycle\n\n* test(notifications): cover toast severity identity\n\n* test(quality): close frontend overlay coverage gaps\n\n* fix(quality): validate dashboard schedule intervals\n\n* fix(messenger): harden member search and controls\n\n* fix(quality): align mutmut deadline budget\n\n* fix(quality): harden schedule interval handling\n\n* fix(quality): close schedule progress mutations\n\n* test(quality): harden mutmut boundary contracts\n\n* fix(quality): close frontend feedback mutation contracts\n\n* test(quality): close backend survivor contracts\n\n* test(quality): close notification delivery contracts\n\n* test(quality): close settings ui mutation contracts\n\n* fix(quality): harden mfa translation contracts\n\n* test(quality): close notification bell mutation contracts\n\n* fix(quality): harden login hero translation contracts\n\n* test(quality): close backend mutation survivor contracts\n\n* perf(ci): reuse validated mutmut generation\n\n* test(quality): harden dashboard weather contracts\n\n* test(quality): annotate filesystem capability skips\n\n* fix(quality): pin cargo udeps bootstrap\n\n* fix(quality): use project Python for mutmut selection\n\n* fix(quality): isolate unauthenticated smoke service workers\n\n* fix(quality): close mutation and supply-chain contracts\n\n* fix(quality): stabilize bounded Go fuzz smoke\n\n* fix(quality): keep rowcount contract coverage-neutral\n\n* fix(quality): use deterministic OSV batch audit\n\n* fix(quality): close frontend coverage branches\n\n* test(quality): assert dashboard news list semantics\n\n* perf(ci): phase mutation lanes after coverage gate\n\n* test(quality): close backend mutation survivors\n\n* fix(quality): align mutation readiness and advisory parsing\n\n* fix(quality): close current CI blockers and shard API checks\n\n* fix(quality): bind push cleanup to endpoint\n\n* fix(messenger): isolate ChatArea test dependencies\n\n* test(quality): cover stale push success results\n\n* docs(quality): refresh current MVP closure ledger\n\n* fix(quality): close event editor and qr mutation gaps\n\n* fix(quality): close mutmut notification and cwv survivors\n\n* test(quality): close OfflineIndicator mutation survivors\n\n* fix(quality): close logger mutation survivors\n\n* fix(quality): harden dashboard schedule loading states\n\n* fix(quality): close mfa reset and push payload survivors\n\n* test(quality): close Footer mutation survivors\n\n* test(quality): close EventQrDialog mutation survivors\n\n* test(quality): close map header and filter survivors\n\n* fix(quality): close remaining Python mutation survivors\n\n* test(quality): close MessengerButton mutation survivors\n\n* test(quality): close weather badge mutation survivors\n\n* test(quality): close SyncStatus mutation survivors\n\n* test(quality): close profile utility mutation survivors\n\n* test(quality): close sessions query mutation survivor\n\n* fix(quality): harden query client quota handling\n\n* test(quality): cover MapBackdrop visual contracts\n\n* test(quality): close layout and content mutation survivors\n\n* test(quality): close MapControls mutation survivors\n\n* test(quality): close offline fallback mutation survivors\n\n* test(quality): cover MapShortcutsOverlay behavior\n\n* test(quality): close map weather panel mutation survivors\n\n* fix(quality): type map shortcut motion mock\n\n* test(quality): close MapSidebar mutation survivors\n\n* test(quality): close weather particle mutation survivors\n\n* test(quality): cover InstallPrompt behavior\n\n* fix(ci): preserve configured Go toolchain for Pact\n\n* fix(ci): pin local Go toolchain for Pact installer\n\n* test(quality): cover deferred event focus guard\n\n* test: close mutmut observability and reminder survivors\n\n* perf(ci): isolate image build caches\n\n* perf(ci): raise mutmut worker parallelism\n\n* test(quality): close frontend mutation survivors\n\n* fix: patch grpc vulnerability and toast race\n\n* test: close frontend coverage gaps\n\n* ci: keep diagnostic e2e artifacts non-blocking\n\n* test: close map search coverage paths\n\n* test: close frontend mutation contracts\n\n* fix: preserve otp input shape on paste\n\n* perf(ci): balance mutation shard workload\n\n* fix: keep schedule card compiler-safe\n\n* fix: canonicalize mutation shard assignments\n\n* fix(test): isolate async fixture cleanup\n\n* test: isolate async cleanup probe\n\n* fix: use deterministic golangci lint binaries\n\n* fix: align golangci lint with Go 1.26\n\n* fix: confine GraphQL schema loading\n\n* fix: make coverage finalizer fail closed\n\n* fix: preserve async test runner cleanup\n\n* fix: refresh vulnerable dependency pins\n\n* update\n\n---------\n\nCo-authored-by: Egor Ribun <egorribun@gmail.com>",
+          "timestamp": "2026-09-03T01:52:25+05:00",
+          "tree_id": "d24a52861a2b63f9cb121604a02e7b3b27f0b5bc",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/d654e3f66cd1946910832cba9f3dea88ddcc33d4"
+        },
+        "date": 1788384417193,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 6288,
+            "range": "± 20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 7056,
+            "range": "± 40",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 10004,
+            "range": "± 61",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10564,
+            "range": "± 129",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 94497,
+            "range": "± 519",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5561,
+            "range": "± 9",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6447,
+            "range": "± 28",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 9098,
+            "range": "± 27",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9411,
+            "range": "± 33",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 89127,
+            "range": "± 245",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5393,
+            "range": "± 35",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6380,
+            "range": "± 20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8658,
+            "range": "± 16",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9102,
+            "range": "± 22",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 87054,
+            "range": "± 983",
             "unit": "ns/iter"
           }
         ]
