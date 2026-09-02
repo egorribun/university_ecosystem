@@ -55,6 +55,7 @@ describe("hydration boundary", () => {
     const loader = appendLoader()
     const clearTimeoutSpy = vi.spyOn(window, "clearTimeout")
     const addEventListenerSpy = vi.spyOn(loader, "addEventListener")
+    const removeEventListenerSpy = vi.spyOn(loader, "removeEventListener")
 
     markAppHydrated()
     vi.advanceTimersByTime(0)
@@ -65,6 +66,7 @@ describe("hydration boundary", () => {
 
     expect(loader).not.toBeInTheDocument()
     expect(clearTimeoutSpy).toHaveBeenCalledWith(expect.anything())
+    expect(removeEventListenerSpy).toHaveBeenCalledWith("transitionend", expect.any(Function))
     vi.advanceTimersByTime(BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS)
     expect(loader).not.toBeInTheDocument()
   })

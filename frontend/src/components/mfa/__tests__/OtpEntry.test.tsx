@@ -12,8 +12,26 @@ vi.mock("react-i18next", () => ({
   useId: () => "test-id",
 }))
 vi.mock("@/components/settings", () => ({
-  Button: ({ children, onClick }: { children: ReactNode; onClick?: () => void }) => (
-    <button type="button" onClick={onClick}>
+  Button: ({
+    children,
+    onClick,
+    disabled,
+    loading,
+    className,
+  }: {
+    children: ReactNode
+    onClick?: () => void
+    disabled?: boolean
+    loading?: boolean
+    className?: string
+  }) => (
+    <button
+      type="button"
+      onClick={onClick}
+      className={className}
+      data-disabled={disabled ? "true" : "false"}
+      data-loading={loading ? "true" : "false"}
+    >
       {children}
     </button>
   ),
@@ -24,6 +42,10 @@ describe("OtpEntry", () => {
     render(<OtpEntry onSubmit={vi.fn()} />)
     const inputs = screen.getAllByRole("textbox")
     expect(inputs).toHaveLength(6)
+    expect(screen.getByRole("heading")).toHaveTextContent("mfa.otp.methods.totp")
+    expect(inputs[0]).toHaveAttribute("aria-label", "mfa.otp.methods.totp - digit 1")
+    expect(inputs[0]).toHaveAttribute("inputmode", "numeric")
+    expect(inputs[0]).toHaveAttribute("maxlength", "1")
   })
 
   it("labels email OTP inputs with the selected verification method", () => {
@@ -107,6 +129,24 @@ describe("OtpEntry", () => {
     expect(document.activeElement).toBe(inputs[5])
   })
 
+  it("truncates multi-digit changes at the six-field boundary", () => {
+    const onSubmit = vi.fn()
+    render(<OtpEntry onSubmit={onSubmit} />)
+    const inputs = screen.getAllByRole("textbox")
+
+    fireEvent.change(inputs[5]!, { target: { value: "9876" } })
+
+    expect(inputs.map((input) => (input as HTMLInputElement).value)).toEqual([
+      "",
+      "",
+      "",
+      "",
+      "",
+      "9",
+    ])
+    expect(document.activeElement).toBe(inputs[5])
+  })
+
   it("handles backspace and arrow navigation at interior and boundary fields", () => {
     render(<OtpEntry onSubmit={vi.fn()} />)
     const inputs = screen.getAllByRole("textbox")
@@ -159,6 +199,25 @@ describe("OtpEntry", () => {
     expect(inputs[0]).toHaveValue("1")
   })
 
+  it("fills exactly six fields for an oversized paste and focuses the last field", () => {
+    const onSubmit = vi.fn()
+    render(<OtpEntry onSubmit={onSubmit} />)
+    const inputs = screen.getAllByRole("textbox")
+
+    fireEvent.paste(inputs[0]!, { clipboardData: { getData: () => "1a2-3 4 5 6 7" } })
+
+    expect(inputs.map((input) => (input as HTMLInputElement).value)).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+    ])
+    expect(document.activeElement).toBe(inputs[5])
+    expect(onSubmit).toHaveBeenCalledWith("123456")
+  })
+
   it("renders helper/error accessibility states and loading affordance", () => {
     const { rerender } = render(
       <OtpEntry onSubmit={vi.fn()} helperText="Use the code from your app" />
@@ -177,6 +236,30 @@ describe("OtpEntry", () => {
     expect(screen.getAllByRole("textbox").every((input) => input.hasAttribute("disabled"))).toBe(
       true
     )
+    expect(screen.getByRole("button", { name: "mfa.otp.submit" })).toHaveAttribute(
+      "data-disabled",
+      "true"
+    )
+    expect(screen.getByRole("button", { name: "mfa.otp.submit" })).toHaveAttribute(
+      "data-loading",
+      "true"
+    )
+  })
+
+  it("exposes deterministic focus, filled, and error classes for digit states", async () => {
+    const { rerender } = render(<OtpEntry onSubmit={vi.fn()} />)
+    const inputs = screen.getAllByRole("textbox")
+
+    expect(inputs[1]).toHaveClass("border-(--glass-border)/(--opacity-dim)")
+    fireEvent.focus(inputs[0]!)
+    expect(inputs[0]).toHaveClass("scale-105")
+    fireEvent.change(inputs[0]!, { target: { value: "4" } })
+    fireEvent.blur(inputs[0]!)
+    expect(inputs[0]).toHaveClass("border-brand-main/(--opacity-medium)")
+
+    rerender(<OtpEntry onSubmit={vi.fn()} error="Invalid code" />)
+    await waitFor(() => expect(inputs[0]).toHaveClass("border-(--error-border)/(--opacity-medium)"))
+    expect(inputs[0]).toHaveAttribute("aria-invalid", "true")
   })
 
   it("clears a partially entered code and restores focus when an error arrives", async () => {
@@ -240,13 +323,26 @@ describe("OtpEntry", () => {
     expect(onSubmit).toHaveBeenCalledTimes(2)
   })
 
-  it("reports the required validation when an incomplete code is submitted", () => {
+  it("keeps a complete code blocked by server errors until they are cleared", async () => {
+    const onSubmit = vi.fn()
+    const { rerender } = render(<OtpEntry onSubmit={onSubmit} error="Invalid code" />)
+    const inputs = screen.getAllByRole("textbox")
+    fireEvent.paste(inputs[0]!, { clipboardData: { getData: () => "123456" } })
+
+    await Promise.resolve()
+    expect(onSubmit).not.toHaveBeenCalled()
+
+    rerender(<OtpEntry onSubmit={onSubmit} error={null} />)
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith("123456"))
+  })
+
+  it("reports the required validation when an incomplete code is submitted", async () => {
     render(<OtpEntry onSubmit={vi.fn()} />)
     const submit = screen.getByRole("button", { name: "mfa.otp.submit" })
     submit.removeAttribute("disabled")
 
     fireEvent.click(submit)
 
-    expect(screen.getByText("mfa.otp.validation.required")).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText("mfa.otp.validation.required")).toBeInTheDocument())
   })
 })

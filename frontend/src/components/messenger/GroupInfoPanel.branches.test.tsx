@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, act, waitFor } from "@testing-library/react"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import type { ReactNode } from "react"
+import { createElement, forwardRef, type ReactNode } from "react"
 import type { Chat } from "@/api/chat"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
 
@@ -30,14 +30,19 @@ const mocks = vi.hoisted(() => ({
   focusTrap: vi.fn<(...args: [unknown]) => { current: null }>(() => ({ current: null })),
   debounced: vi.fn<(value: unknown, strategy?: unknown) => unknown>((value) => value),
   translation: vi.fn<(...args: unknown[]) => void>(),
+  tCalls: vi.fn<(...args: unknown[]) => void>(),
+  mediaQuery: vi.fn<(query: string) => boolean>(),
+  reducedMotion: false,
 }))
 
 vi.mock("react-i18next", () => ({
   useTranslation: (...namespaces: unknown[]) => {
     mocks.translation(...namespaces)
     return {
-      t: (key: string, opts?: Record<string, unknown>) =>
-        opts ? `${key}|${JSON.stringify(opts)}` : key,
+      t: (key: string, opts?: Record<string, unknown>) => {
+        mocks.tCalls(key, opts)
+        return opts ? `${key}|${JSON.stringify(opts)}` : key
+      },
     }
   },
 }))
@@ -64,17 +69,57 @@ vi.mock("@/hooks/useDebounced", () => ({
   },
 }))
 
+vi.mock("@/hooks/useMediaQuery", () => ({
+  default: (query: string) => {
+    mocks.mediaQuery(query)
+    return mocks.reducedMotion
+  },
+}))
+
 vi.mock("@/api/client", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/api/client")>()
   return { ...actual, default: { get: mocks.apiGet } }
 })
 
+vi.mock("framer-motion", () => {
+  const motionComponent = (Tag: "div") => {
+    const Component = forwardRef<HTMLElement, Record<string, unknown> & { children?: ReactNode }>(
+      ({ children, ...props }, ref) => {
+        const { initial, animate, exit, transition, ...domProps } = props
+        return createElement(
+          Tag,
+          {
+            ...domProps,
+            ref,
+            "data-motion-initial": initial === undefined ? undefined : JSON.stringify(initial),
+            "data-motion-animate": animate === undefined ? undefined : JSON.stringify(animate),
+            "data-motion-exit": exit === undefined ? undefined : JSON.stringify(exit),
+            "data-motion-transition":
+              transition === undefined ? undefined : JSON.stringify(transition),
+          },
+          children as ReactNode
+        )
+      }
+    )
+    Component.displayName = `Motion(${Tag})`
+    return Component
+  }
+  const motionProxy = { div: motionComponent("div") }
+  return {
+    AnimatePresence: ({ children }: { children?: ReactNode }) => <>{children}</>,
+    m: motionProxy,
+    motion: motionProxy,
+  }
+})
+
 import { GroupInfoPanel } from "@/components/messenger/GroupInfoPanel"
 
+let latestQueryClient: QueryClient | undefined
 const wrapper = ({ children }: { children: ReactNode }) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
+  latestQueryClient = queryClient
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }
 
@@ -106,6 +151,8 @@ const baseProps = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.reducedMotion = false
+  latestQueryClient = undefined
   mocks.apiGet.mockResolvedValue({ data: [] })
 })
 
@@ -144,6 +191,67 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
   it("renders nothing when chat is null even though open is true (124 guard)", () => {
     render(<GroupInfoPanel {...baseProps} chat={null} />, { wrapper })
     expect(screen.queryByRole("dialog")).toBeNull()
+  })
+
+  it("preserves translation, reduced-motion, focus-trap, and dialog motion contracts", () => {
+    const onClose = vi.fn()
+    render(
+      <GroupInfoPanel
+        {...baseProps}
+        onClose={onClose}
+        chat={groupChat(OWNER)}
+        currentUserId={OWNER}
+      />,
+      { wrapper }
+    )
+
+    expect(mocks.translation).toHaveBeenCalledWith(["messenger", "common"])
+    expect(mocks.mediaQuery).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
+    expect(mocks.debounced).toHaveBeenCalledWith("", "search")
+    expect(mocks.focusTrap).toHaveBeenCalledWith(
+      expect.objectContaining({
+        active: true,
+        initialFocus: false,
+        returnFocus: true,
+        onDeactivate: onClose,
+      })
+    )
+
+    const backdrop = screen.getAllByRole("presentation")[0]!
+    expect(backdrop).toHaveAttribute("data-motion-initial", JSON.stringify({ opacity: 0 }))
+    expect(backdrop).toHaveAttribute("data-motion-animate", JSON.stringify({ opacity: 1 }))
+    expect(backdrop).toHaveAttribute("data-motion-exit", JSON.stringify({ opacity: 0 }))
+
+    const dialog = screen.getByRole("dialog")
+    expect(dialog).toHaveAttribute(
+      "data-motion-initial",
+      JSON.stringify({ opacity: 0, scale: 0.92, y: 20 })
+    )
+    expect(dialog).toHaveAttribute(
+      "data-motion-animate",
+      JSON.stringify({ scale: 1, opacity: 1, y: 0 })
+    )
+    expect(dialog).toHaveAttribute(
+      "data-motion-exit",
+      JSON.stringify({ scale: 0.92, opacity: 0, y: 20 })
+    )
+    expect(dialog).not.toHaveAttribute("data-motion-transition")
+    expect(screen.getByRole("list")).toHaveAttribute(
+      "aria-label",
+      'messenger:group.members|{"count":2}'
+    )
+    expect(mocks.tCalls).toHaveBeenCalledWith("messenger:group.members", { count: 2 })
+    expect(mocks.tCalls).toHaveBeenCalledWith("messenger:removeMember", { name: "Mike Member" })
+  })
+
+  it("uses empty participants safely when the chat omits its member collection", () => {
+    const chat = { ...groupChat(OWNER), participants: undefined } as never as Chat
+    render(<GroupInfoPanel {...baseProps} chat={chat} currentUserId={OWNER} />, { wrapper })
+    expect(screen.getByRole("list")).toHaveAttribute(
+      "aria-label",
+      'messenger:group.members|{"count":0}'
+    )
+    expect(screen.getByText('messenger:group.members|{"count":0}')).toBeInTheDocument()
   })
 
   it("resets transient sub-state when the panel transitions open → closed (86-90)", () => {
@@ -232,6 +340,7 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
     render(<GroupInfoPanel {...baseProps} onRename={onRename} chat={chat} />, { wrapper })
     fireEvent.click(screen.getByRole("button", { name: "messenger:renameGroup" }))
     const input = screen.getByRole("textbox", { name: "messenger:groupName" })
+    expect(input).toHaveValue("")
     fireEvent.change(input, { target: { value: "   " } })
     fireEvent.keyDown(input, { key: "Enter" })
     expect(onRename).not.toHaveBeenCalled()
@@ -273,10 +382,17 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
       await waitFor(() => {
         expect(mocks.apiGet).toHaveBeenCalledWith("/users?limit=10&search=Ni")
       })
+      await waitFor(() => {
+        expect(latestQueryClient?.getQueryData(["users", "Ni"])).toEqual([
+          { id: "new-user", full_name: "Nina Newbie", avatar_url: null, is_active: true },
+          { id: MEMBER, full_name: "Mike Member", avatar_url: null, is_active: false },
+        ])
+      })
 
       // Addable row (the existing member is excluded).
       const addButton = await screen.findByRole("button", { name: /Nina Newbie/ })
       expect(screen.queryByText("Mike Member")).toBeTruthy() // member list still has Mike
+      expect(screen.queryByText("messenger:noUsersFound")).toBeNull()
       fireEvent.click(addButton)
       expect(onAddMember).toHaveBeenCalledWith("new-user")
     })
@@ -298,6 +414,73 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
         expect(mocks.apiGet).toHaveBeenCalled()
       })
       expect(await screen.findByText("messenger:noUsersFound")).toBeTruthy()
+    })
+
+    it("does not show no-results for the one-character minimum search", () => {
+      render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />, {
+        wrapper,
+      })
+      fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+      fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+        target: { value: "x" },
+      })
+      expect(screen.queryByText("messenger:noUsersFound")).toBeNull()
+      expect(mocks.apiGet).not.toHaveBeenCalled()
+    })
+
+    it("keeps the no-results message hidden while a search request is pending", async () => {
+      let resolveSearch: ((value: { data: never[] }) => void) | undefined
+      mocks.apiGet.mockReturnValue(
+        new Promise<{ data: never[] }>((resolve) => {
+          resolveSearch = resolve
+        })
+      )
+      render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />, {
+        wrapper,
+      })
+      fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+      fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+        target: { value: "ab" },
+      })
+      await waitFor(() => expect(mocks.apiGet).toHaveBeenCalled())
+      expect(screen.queryByText("messenger:noUsersFound")).toBeNull()
+      resolveSearch?.({ data: [] })
+      expect(await screen.findByText("messenger:noUsersFound")).toBeInTheDocument()
+    })
+
+    it("does not render no-results when the response contains an addable user", async () => {
+      mocks.apiGet.mockResolvedValue({
+        data: [{ id: "new-user", full_name: "Nina Newbie", avatar_url: null, is_active: true }],
+      })
+      render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />, {
+        wrapper,
+      })
+      fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+      fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+        target: { value: "ab" },
+      })
+      expect(await screen.findByRole("button", { name: /Nina Newbie/ })).toBeInTheDocument()
+      expect(screen.queryByText("messenger:noUsersFound")).toBeNull()
+    })
+
+    it("treats an undefined search response as an empty result list", async () => {
+      mocks.apiGet.mockResolvedValue({ data: undefined })
+      render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />, {
+        wrapper,
+      })
+      fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+      fireEvent.change(screen.getByRole("textbox", { name: "messenger:searchUsers" }), {
+        target: { value: "ab" },
+      })
+      expect(await screen.findByText("messenger:noUsersFound")).toBeInTheDocument()
+    })
+
+    it("does not fetch users before the add search is opened", async () => {
+      render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} currentUserId={OWNER} />, {
+        wrapper,
+      })
+      await act(async () => {})
+      expect(mocks.apiGet).not.toHaveBeenCalled()
     })
 
     it("cancel button closes the search + clears the query without fetching (232-235)", () => {
@@ -342,32 +525,12 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
   })
 
   it("renders the reduced-motion variant (138 / 140-141 branches)", () => {
-    // matchMedia → true for the reduced-motion query in this test only.
-    const original = window.matchMedia
-    Object.defineProperty(window, "matchMedia", {
-      configurable: true,
-      writable: true,
-      value: (query: string) => ({
-        matches: query.includes("prefers-reduced-motion"),
-        media: query,
-        onchange: null,
-        addEventListener: () => {},
-        removeEventListener: () => {},
-        addListener: () => {},
-        removeListener: () => {},
-        dispatchEvent: () => false,
-      }),
-    })
-    try {
-      render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} />, { wrapper })
-      expect(screen.getByRole("dialog")).toBeTruthy()
-    } finally {
-      Object.defineProperty(window, "matchMedia", {
-        configurable: true,
-        writable: true,
-        value: original,
-      })
-    }
+    mocks.reducedMotion = true
+    render(<GroupInfoPanel {...baseProps} chat={groupChat(OWNER)} />, { wrapper })
+    const dialog = screen.getByRole("dialog")
+    expect(dialog).toHaveAttribute("data-motion-initial", "false")
+    expect(dialog).toHaveAttribute("data-motion-exit", JSON.stringify({ opacity: 0 }))
+    expect(dialog).toHaveAttribute("data-motion-transition", JSON.stringify({ duration: 0 }))
   })
 
   it("footer Leave is a no-op when currentUserId is undefined (361 && guard)", () => {
@@ -380,6 +543,7 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
     fireEvent.click(leaveButtons[leaveButtons.length - 1]!)
     // No currentUserId → the `currentUserId &&` short-circuits, onRemoveMember not called.
     expect(onRemoveMember).not.toHaveBeenCalled()
+    expect(screen.queryByRole("button", { name: /messenger:removeMember/ })).toBeNull()
   })
 
   it("self-leave row icon calls onRemoveMember with the current user (canRemove isSelf branch)", () => {
@@ -398,6 +562,25 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
     const leaveButtons = screen.getAllByRole("button", { name: "messenger:leaveGroup" })
     fireEvent.click(leaveButtons[0]!)
     expect(onRemoveMember).toHaveBeenCalledWith(MEMBER)
+  })
+
+  it("keeps owner/member avatar sources and fallback semantics exact", () => {
+    const chat = {
+      ...groupChat(OWNER),
+      participants: [
+        { id: OWNER, full_name: "Olga Owner", avatar_url: "owner.png", is_active: true },
+        { id: MEMBER, full_name: "Mike Member", avatar_url: null, is_active: false },
+      ] as never,
+    } as Chat
+    const { container } = render(
+      <GroupInfoPanel {...baseProps} chat={chat} currentUserId={OWNER} />,
+      { wrapper }
+    )
+
+    const memberImages = container.querySelectorAll("img")
+    expect(memberImages).toHaveLength(2)
+    expect(memberImages[0]).toHaveAttribute("src", "owner.png")
+    expect(memberImages[1]).toHaveAttribute("src", AVATAR_PLACEHOLDER_URL)
   })
 
   it("binds the documented translation, debounce, and focus-trap contracts", () => {
@@ -460,6 +643,9 @@ describe("GroupInfoPanel branch coverage (W211 G4)", () => {
     expect(screen.queryByRole("textbox", { name: "messenger:searchUsers" })).toBeNull()
     expect(screen.getByRole("button", { name: "messenger:renameGroup" })).toBeTruthy()
     expect(screen.getByRole("button", { name: "messenger:addMember" })).toBeTruthy()
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:addMember" }))
+    expect(screen.getByRole("textbox", { name: "messenger:searchUsers" })).toHaveValue("")
   })
 
   it("keeps owner controls and member rows accessible with precise authorization labels", () => {

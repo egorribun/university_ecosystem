@@ -1,13 +1,24 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { ErrorBoundary } from "./ErrorBoundary"
+import {
+  createErrorBoundaryInitialState,
+  ERROR_BOUNDARY_DETAIL_BACKGROUND,
+  ERROR_BOUNDARY_RADIAL_BACKGROUND,
+  ErrorBoundary,
+  ErrorBoundaryInner,
+} from "./ErrorBoundary"
 import * as Sentry from "@sentry/react"
+import { logError } from "@/app/logger"
 // i18n mocked below
 
 // Mock Sentry
 vi.mock("@sentry/react", () => ({
   captureException: vi.fn(),
+}))
+
+vi.mock("@/app/logger", () => ({
+  logError: vi.fn(),
 }))
 
 // Mock i18next
@@ -53,6 +64,11 @@ describe("ErrorBoundary", () => {
   }
 
   it("renders children when no error occurs", () => {
+    expect(createErrorBoundaryInitialState()).toStrictEqual({
+      hasError: false,
+      error: null,
+      errorInfo: null,
+    })
     render(
       <ErrorBoundary>
         <div>Content</div>
@@ -72,6 +88,27 @@ describe("ErrorBoundary", () => {
     expect(screen.getByText("system:errorBoundary.description")).toBeInTheDocument()
     expect(screen.getByText("system:errorBoundary.details")).toBeInTheDocument()
     expect(screen.getByText("Error: Test Error")).toBeInTheDocument()
+    const details = screen.getByText("system:errorBoundary.details").closest("details")
+    expect(details).not.toBeNull()
+    const detailPre = details?.querySelectorAll("pre")
+    expect(detailPre).toHaveLength(2)
+    expect(detailPre?.[0]?.getAttribute("style")).toContain(
+      `background-color: ${ERROR_BOUNDARY_DETAIL_BACKGROUND}`
+    )
+    expect(detailPre?.[1]?.getAttribute("style")).toContain(
+      `background-color: ${ERROR_BOUNDARY_DETAIL_BACKGROUND}`
+    )
+    const glow = document.querySelector<HTMLElement>(".pointer-events-none.absolute.inset-0")
+    expect(glow?.getAttribute("style")).toContain(
+      `background-image: ${ERROR_BOUNDARY_RADIAL_BACKGROUND}`
+    )
+    expect(logError).toHaveBeenCalledWith(
+      "ErrorBoundary caught an error:",
+      expect.objectContaining({
+        error: expect.any(Error),
+        errorInfo: expect.objectContaining({ componentStack: expect.any(String) }),
+      })
+    )
     expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
       "system:errorBoundary.retry",
       "system:errorBoundary.reload",
@@ -163,15 +200,46 @@ describe("ErrorBoundary", () => {
 
   it("offers reload and home recovery actions", async () => {
     const user = userEvent.setup()
-    render(
-      <ErrorBoundary>
-        <ThrowError />
-      </ErrorBoundary>
-    )
+    const originalLocation = Object.getOwnPropertyDescriptor(window, "location")
+    const reload = vi.fn()
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { href: "/before-error", reload },
+    })
 
-    await user.click(screen.getByText("system:errorBoundary.reload"))
-    await user.click(screen.getByText("system:errorBoundary.goHome"))
+    try {
+      render(
+        <ErrorBoundary>
+          <ThrowError />
+        </ErrorBoundary>
+      )
 
-    expect(screen.getByText("system:errorBoundary.title")).toBeInTheDocument()
+      await user.click(screen.getByText("system:errorBoundary.reload"))
+      await user.click(screen.getByText("system:errorBoundary.goHome"))
+
+      expect(reload).toHaveBeenCalledOnce()
+      expect(window.location.href).toBe("/")
+      expect(screen.getByText("system:errorBoundary.title")).toBeInTheDocument()
+    } finally {
+      if (originalLocation) Object.defineProperty(window, "location", originalLocation)
+    }
+  })
+
+  it("does not render development details when the captured error is absent", () => {
+    const instance = new ErrorBoundaryInner({ children: null, t: (key: string) => key } as never)
+    instance.state = { hasError: true, error: null, errorInfo: null }
+
+    const { container } = render(instance.render())
+
+    expect(container.querySelector("details")).not.toBeInTheDocument()
+  })
+
+  it("does not render a component stack when error metadata is absent", () => {
+    const instance = new ErrorBoundaryInner({ children: null, t: (key: string) => key } as never)
+    instance.state = { hasError: true, error: new Error("without metadata"), errorInfo: null }
+
+    const { container } = render(instance.render())
+
+    expect(container.querySelectorAll("details pre")).toHaveLength(1)
   })
 })

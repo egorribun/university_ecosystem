@@ -151,15 +151,18 @@ vi.mock("@/components/events/EventEditDialog", () => ({
     onClose,
     onSave,
     normalizedLocation,
+    dateError,
   }: {
     open: boolean
     onClose: () => void
     onSave: () => void
     normalizedLocation: string
+    dateError: boolean
   }) =>
     open ? (
       <div data-testid="event-edit-dialog">
         <span data-testid="normalized-location">{normalizedLocation}</span>
+        <span data-testid="date-error">{String(dateError)}</span>
         <button type="button" onClick={onClose}>
           close-edit
         </button>
@@ -433,5 +436,12 @@ describe("EventCardView closure paths", () => {
 
     await waitFor(() => expect(screen.getByTestId("event-edit-dialog")).toBeInTheDocument())
     expect(screen.getByTestId("normalized-location").textContent).toBe("")
+  })
+
+  it("keeps the edit dialog date validation clear by default", async () => {
+    render(<EventCardView {...makeProps({ isAdmin: true, editOpen: true })} />)
+
+    await waitFor(() => expect(screen.getByTestId("event-edit-dialog")).toBeInTheDocument())
+    expect(screen.getByTestId("date-error")).toHaveTextContent("false")
   })
 })

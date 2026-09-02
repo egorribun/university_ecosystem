@@ -103,11 +103,14 @@ export function MapControls({ mapRef }: MapControlsProps) {
   }, [mapRef])
 
   /* FIX-111-07: Sync state when user exits fullscreen via Esc (bypasses button click) */
-  useEffect(() => {
-    const handler = () => setIsFullscreen(!!document.fullscreenElement)
-    document.addEventListener("fullscreenchange", handler)
-    return () => document.removeEventListener("fullscreenchange", handler)
-  }, [])
+  useEffect(
+    () => {
+      const handler = () => setIsFullscreen(!!document.fullscreenElement)
+      document.addEventListener("fullscreenchange", handler)
+      return () => document.removeEventListener("fullscreenchange", handler)
+    },
+    [] as readonly []
+  )
 
   const toggleFullscreen = useCallback(() => {
     const map = resolveMap(mapRef)

@@ -1,13 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
-import { MainLayout } from "../MainLayout"
+import type React from "react"
+import { handleMainSkipLink, MainLayout } from "../MainLayout"
 
 const mocks = vi.hoisted(() => ({
   routeType: { isCompactPage: false, hideFooter: false, isMessenger: false },
   t: (key: string) => key,
+  useTranslation: vi.fn(),
 }))
 
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: mocks.t }) }))
+vi.mock("react-i18next", () => ({
+  useTranslation: (...args: unknown[]) => {
+    mocks.useTranslation(...args)
+    return { t: mocks.t }
+  },
+}))
 vi.mock("@/hooks/useRouteType", () => ({ useRouteType: () => mocks.routeType }))
 vi.mock("@/components/navbar", () => ({ default: () => <nav data-testid="navbar" /> }))
 vi.mock("@/components/layout/Footer", () => ({ default: () => <footer data-testid="footer" /> }))
@@ -21,6 +28,7 @@ vi.mock("@/components/layout/MobileBottomNav", () => ({
 describe("MainLayout", () => {
   beforeEach(() => {
     mocks.routeType = { isCompactPage: false, hideFooter: false, isMessenger: false }
+    mocks.useTranslation.mockClear()
     Element.prototype.scrollIntoView = vi.fn()
   })
 
@@ -41,9 +49,21 @@ describe("MainLayout", () => {
     expect(screen.getByTestId("mobile-bottom-nav")).toBeInTheDocument()
 
     const main = screen.getByRole("main")
+    expect(main).toHaveAttribute("tabindex", "-1")
+    expect(main).toHaveClass("vt-page-content", "w-full", "outline-none", "min-h-dvh")
     fireEvent.click(screen.getByRole("link", { name: "common:skipToMain" }))
     expect(main).toHaveFocus()
     expect(main.scrollIntoView).toHaveBeenCalledWith({ block: "start" })
+    expect(mocks.useTranslation).toHaveBeenCalledWith(["navigation", "common"])
+  })
+
+  it("keeps the skip link safe when the main landmark is unavailable", () => {
+    const getElementById = vi.spyOn(document, "getElementById").mockReturnValue(null)
+    const event = { preventDefault: vi.fn() } as unknown as React.MouseEvent<HTMLAnchorElement>
+
+    expect(() => handleMainSkipLink(event)).not.toThrow()
+    expect(event.preventDefault).toHaveBeenCalledOnce()
+    getElementById.mockRestore()
   })
 
   it("removes nonessential chrome on compact routes", () => {
@@ -78,6 +98,35 @@ describe("MainLayout", () => {
     expect(container.querySelector('[data-e2e-stub="main-nav"]')).toBeInTheDocument()
     expect(container.querySelector('[data-e2e-stub="footer"]')).toBeInTheDocument()
     expect(container.querySelector('[data-e2e-stub="mobile-bottom-nav"]')).toBeInTheDocument()
+    expect(container.querySelector('[data-e2e-stub="mobile-bottom-nav"]')).toHaveAttribute(
+      "aria-label",
+      "navigation:aria.mainNavigation"
+    )
     expect(screen.queryByTestId("navbar")).not.toBeInTheDocument()
+  })
+
+  it("honors compact and footer-hidden flags in E2E mode", async () => {
+    vi.stubEnv("VITE_E2E_MODE", "1")
+    vi.resetModules()
+    const { MainLayout: E2EMainLayout } = await import("../MainLayout")
+
+    mocks.routeType = { isCompactPage: true, hideFooter: false, isMessenger: false }
+    const compact = render(<E2EMainLayout>compact e2e content</E2EMainLayout>)
+    expect(compact.container.querySelector('[data-e2e-stub="main-nav"]')).not.toBeInTheDocument()
+    expect(compact.container.querySelector('[data-e2e-stub="footer"]')).not.toBeInTheDocument()
+    expect(
+      compact.container.querySelector('[data-e2e-stub="mobile-bottom-nav"]')
+    ).not.toBeInTheDocument()
+    compact.unmount()
+
+    mocks.routeType = { isCompactPage: false, hideFooter: true, isMessenger: false }
+    const withoutFooter = render(<E2EMainLayout>footer-hidden e2e content</E2EMainLayout>)
+    expect(withoutFooter.container.querySelector('[data-e2e-stub="main-nav"]')).toBeInTheDocument()
+    expect(
+      withoutFooter.container.querySelector('[data-e2e-stub="footer"]')
+    ).not.toBeInTheDocument()
+    expect(
+      withoutFooter.container.querySelector('[data-e2e-stub="mobile-bottom-nav"]')
+    ).toBeInTheDocument()
   })
 })

@@ -15,18 +15,24 @@ interface ErrorBoundaryState {
   errorInfo: ErrorInfo | null
 }
 
+export const ERROR_BOUNDARY_RADIAL_BACKGROUND =
+  "radial-gradient(circle at 50% 50%, color-mix(in_srgb, var(--primary-main) var(--opacity-subtle), transparent) 0%, transparent 70%)"
+export const ERROR_BOUNDARY_DETAIL_BACKGROUND = "rgb(0 0 0 / var(--opacity-faint))"
+
+export const createErrorBoundaryInitialState = () => ({
+  hasError: false,
+  error: null,
+  errorInfo: null,
+})
+
 /**
  * Error boundary component that catches JavaScript errors anywhere in the
  * child component tree, logs them to Sentry, and displays a fallback UI.
  */
-class ErrorBoundaryInner extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+export class ErrorBoundaryInner extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props)
-    this.state = {
-      hasError: false,
-      error: null,
-      errorInfo: null,
-    }
+    this.state = createErrorBoundaryInitialState()
   }
 
   static getDerivedStateFromError(error: Error): Partial<ErrorBoundaryState> {
@@ -84,8 +90,7 @@ class ErrorBoundaryInner extends Component<ErrorBoundaryProps, ErrorBoundaryStat
           <div
             className="pointer-events-none absolute inset-0"
             style={{
-              backgroundImage:
-                "radial-gradient(circle at 50% 50%, color-mix(in_srgb, var(--primary-main) var(--opacity-subtle), transparent) 0%, transparent 70%)",
+              backgroundImage: ERROR_BOUNDARY_RADIAL_BACKGROUND,
             }}
           />
 
@@ -103,14 +108,14 @@ class ErrorBoundaryInner extends Component<ErrorBoundaryProps, ErrorBoundaryStat
                 </summary>
                 <pre
                   className="mt-4 overflow-x-auto whitespace-pre-wrap wrap-break-word rounded-md border border-error-text p-3 text-xs text-error-text"
-                  style={{ backgroundColor: "rgb(0 0 0 / var(--opacity-faint))" }}
+                  style={{ backgroundColor: ERROR_BOUNDARY_DETAIL_BACKGROUND }}
                 >
                   {this.state.error.toString()}
                 </pre>
                 {this.state.errorInfo && (
                   <pre
                     className="mt-2 overflow-x-auto whitespace-pre-wrap wrap-break-word rounded-md border border-error-text p-3 text-xs text-error-text"
-                    style={{ backgroundColor: "rgb(0 0 0 / var(--opacity-faint))" }}
+                    style={{ backgroundColor: ERROR_BOUNDARY_DETAIL_BACKGROUND }}
                   >
                     {this.state.errorInfo.componentStack}
                   </pre>

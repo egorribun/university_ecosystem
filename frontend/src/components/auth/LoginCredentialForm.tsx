@@ -66,7 +66,6 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
             id="email"
             {...register("email")}
             type="email"
-            className={errors.email ? "border-error-text focus:border-error-text" : ""}
             onBlur={(e) => {
               register("email").onBlur(e)
               handleEmailBlur()

@@ -49,4 +49,42 @@ describe("MessengerBackdrop", () => {
     expect(narrowOrb?.style.width).toBe("120%")
     expect(narrowOrb?.style.height).toBe("380px")
   })
+
+  it("keeps the secondary and tertiary orbs top-anchored with their theme gradients", () => {
+    const { container } = render(<MessengerBackdrop />)
+    const orbs = container.querySelectorAll<HTMLElement>(".rounded-full")
+    expect(orbs).toHaveLength(3)
+    expect(orbs[0]).toHaveStyle({
+      left: "50%",
+      transform: "translateX(-50%)",
+      background: "radial-gradient(ellipse at center, var(--messenger-orb-1), transparent 70%)",
+      opacity: "0.6",
+      top: "-160px",
+    })
+    expect(orbs[1]).toHaveStyle({
+      width: "42%",
+      height: "320px",
+      top: "100px",
+      right: "-6%",
+      background: "radial-gradient(ellipse at center, var(--messenger-orb-2), transparent 70%)",
+      opacity: "0.5",
+    })
+    expect(orbs[2]).toHaveStyle({
+      width: "38%",
+      height: "300px",
+      top: "400px",
+      left: "5%",
+      background: "radial-gradient(ellipse at center, var(--messenger-orb-3), transparent 70%)",
+      opacity: "0.4",
+    })
+  })
+
+  it("uses the compact top geometry for every orb on a narrow mobile stage", () => {
+    const { container } = render(<MessengerBackdrop isNarrow isMobile />)
+    const orbs = container.querySelectorAll<HTMLElement>(".rounded-full")
+    expect(orbs[0]).toHaveStyle({ width: "120%", height: "380px", top: "-120px", left: "50%" })
+    expect(orbs[1]).toHaveStyle({ width: "60%", height: "240px", top: "60px", right: "-12%" })
+    expect(orbs[2]).toHaveStyle({ width: "70%", height: "240px", top: "320px", left: "-10%" })
+    orbs.forEach((orb) => expect(orb.style.filter).toBe("none"))
+  })
 })

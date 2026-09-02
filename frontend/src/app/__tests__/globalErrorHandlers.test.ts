@@ -119,6 +119,7 @@ describe("initGlobalErrorHandlers", () => {
     )
     const serializedCyclic = logWarning.mock.calls.at(-1)?.[1] as { self?: unknown } | undefined
     expect(serializedCyclic).not.toBeUndefined()
+    expect(serializedCyclic).not.toBe(cyclic)
     expect(serializedCyclic?.self).toBe(cyclic)
   })
 

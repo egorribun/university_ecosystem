@@ -13,8 +13,27 @@ vi.mock("react-i18next", () => ({
 }))
 
 vi.mock("qrcode.react", () => ({
-  QRCodeSVG: ({ value, size }: { value: string; size: number }) => (
-    <svg data-testid="qr-code" data-value={value} data-size={size} />
+  QRCodeSVG: ({
+    value,
+    size,
+    includeMargin,
+    bgColor,
+    fgColor,
+  }: {
+    value: string
+    size: number
+    includeMargin?: boolean
+    bgColor?: string
+    fgColor?: string
+  }) => (
+    <svg
+      data-testid="qr-code"
+      data-value={value}
+      data-size={size}
+      data-margin={includeMargin ? "true" : "false"}
+      data-bg={bgColor}
+      data-fg={fgColor}
+    />
   ),
 }))
 
@@ -43,6 +62,14 @@ describe("TotpQrDisplay", () => {
     expect(screen.getByLabelText("mfa.totp.qrAriaLabel")).toBeInTheDocument()
     expect(document.querySelector(".animate-pulse")).toBeInTheDocument()
     expect(screen.getByDisplayValue("ABCD12")).toBeInTheDocument()
+    expect(screen.getByLabelText("mfa.totp.qrAriaLabel")).toHaveClass("min-h-56")
+
+    const qr = await screen.findByTestId("qr-code")
+    expect(qr).toHaveAttribute("data-value", "otpauth://totp/Campus")
+    expect(qr).toHaveAttribute("data-size", "192")
+    expect(qr).toHaveAttribute("data-margin", "true")
+    expect(qr).toHaveAttribute("data-bg", "#FFFFFF")
+    expect(qr).toHaveAttribute("data-fg", "#0F172A")
 
     vi.useFakeTimers()
     const button = screen.getByRole("button", { name: "mfa.totp.copySecret" })
@@ -74,6 +101,52 @@ describe("TotpQrDisplay", () => {
     const button = screen.getByRole("button", { name: "mfa.totp.copySecret" })
     fireEvent.click(button)
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("XYZ"))
+    expect(button).not.toHaveClass("text-success-text")
+  })
+
+  it("removes consecutive whitespace and refreshes the copy callback when the secret changes", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal("navigator", { clipboard: { writeText } })
+    const { rerender } = render(
+      <TotpQrDisplay otpauthUrl="otpauth://totp/First" secret={"a  \n\t b"} label="" />
+    )
+
+    expect(screen.getByDisplayValue("AB")).toBeInTheDocument()
+    expect(screen.queryByText(/mfa\.totp\.accountLabel/)).not.toBeInTheDocument()
+    rerender(
+      <TotpQrDisplay
+        otpauthUrl="otpauth://totp/Second"
+        secret={"x y" /* pragma: allowlist secret */}
+      />
+    )
+    expect(screen.getByDisplayValue("XY")).toBeInTheDocument()
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "mfa.totp.copySecret" }))
+      await Promise.resolve()
+    })
+    expect(writeText).toHaveBeenCalledWith("XY")
+  })
+
+  it("recovers from a clipboard failure after a successful copy", async () => {
+    const writeText = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("clipboard denied"))
+    vi.stubGlobal("navigator", { clipboard: { writeText } })
+    render(<TotpQrDisplay otpauthUrl="otpauth://totp/Retry" secret="secret" />)
+    const button = screen.getByRole("button", { name: "mfa.totp.copySecret" })
+
+    await act(async () => {
+      fireEvent.click(button)
+      await Promise.resolve()
+    })
+    expect(button).toHaveClass("text-success-text")
+
+    await act(async () => {
+      fireEvent.click(button)
+      await Promise.resolve()
+    })
     expect(button).not.toHaveClass("text-success-text")
   })
 

@@ -20,6 +20,9 @@ vi.mock("react-i18next", () => ({
 
 import {
   DEFAULT_EVENT_FILTER_PLACEMENT,
+  EVENT_FILTER_FOCUS_MODAL,
+  EVENT_FILTER_MIDDLEWARE,
+  EVENT_FILTER_ROLE,
   useEventFilterPopover,
 } from "@/components/events/EventFilterPopover"
 import type { EventDateRange } from "@/features/events/types"
@@ -68,6 +71,20 @@ function Harness({
 describe("useEventFilterPopover", () => {
   it("keeps the documented default placement stable", () => {
     expect(DEFAULT_EVENT_FILTER_PLACEMENT).toBe("bottom-end")
+  })
+
+  it("keeps positioning and accessibility contracts stable", () => {
+    expect(EVENT_FILTER_MIDDLEWARE).toHaveLength(3)
+    expect(EVENT_FILTER_MIDDLEWARE.map((middleware) => middleware.name)).toEqual([
+      "offset",
+      "flip",
+      "shift",
+    ])
+    expect(EVENT_FILTER_MIDDLEWARE[2]).toEqual(
+      expect.objectContaining({ name: "shift", options: [{ padding: 8 }, undefined] })
+    )
+    expect(EVENT_FILTER_ROLE).toStrictEqual({ role: "dialog" })
+    expect(EVENT_FILTER_FOCUS_MODAL).toBe(false)
   })
 
   it("opens the popover on trigger click and renders the date quick-buttons", async () => {

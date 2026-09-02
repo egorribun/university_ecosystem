@@ -1,10 +1,10 @@
 import { render, screen, fireEvent } from "@testing-library/react"
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
+import { createElement, forwardRef, type ReactNode } from "react"
 
 import { ContactList } from "@/components/messenger/ContactList"
 import { GroupAvatar } from "@/components/messenger/GroupAvatar"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import type { ReactNode } from "react"
 
 /**
  * Wave 183 SW12 — ContactList unit tests.
@@ -22,11 +22,19 @@ import type { ReactNode } from "react"
  *  - role="status" + aria-live="polite" on empty state.
  */
 
+const { translationMock, mediaQueryMock } = vi.hoisted(() => ({
+  translationMock: vi.fn(),
+  mediaQueryMock: vi.fn(),
+}))
+
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, opts?: Record<string, unknown>) =>
-      opts ? `${key}|${JSON.stringify(opts)}` : key,
-  }),
+  useTranslation: (...namespaces: unknown[]) => {
+    translationMock(...namespaces)
+    return {
+      t: (key: string, opts?: Record<string, unknown>) =>
+        opts ? `${key}|${JSON.stringify(opts)}` : key,
+    }
+  },
 }))
 
 vi.mock("@/components/media/SmartImage", () => ({
@@ -40,8 +48,46 @@ const { mockReducedMotion } = vi.hoisted(() => ({
 }))
 
 vi.mock("@/hooks/useMediaQuery", () => ({
-  default: () => mockReducedMotion(),
+  default: (query: string) => {
+    mediaQueryMock(query)
+    return mockReducedMotion()
+  },
 }))
+
+vi.mock("framer-motion", () => {
+  const motionComponent = (Tag: "div" | "button" | "span") => {
+    const Component = forwardRef<HTMLElement, Record<string, unknown> & { children?: ReactNode }>(
+      ({ children, ...props }, ref) => {
+        const { initial, animate, exit, transition, whileHover, whileTap, ...domProps } = props
+        const motionAttrs = {
+          "data-motion-initial": initial === undefined ? undefined : JSON.stringify(initial),
+          "data-motion-animate": animate === undefined ? undefined : JSON.stringify(animate),
+          "data-motion-exit": exit === undefined ? undefined : JSON.stringify(exit),
+          "data-motion-transition":
+            transition === undefined ? undefined : JSON.stringify(transition),
+          "data-motion-while-hover":
+            whileHover === undefined ? undefined : JSON.stringify(whileHover),
+          "data-motion-while-tap": whileTap === undefined ? undefined : JSON.stringify(whileTap),
+        }
+        return createElement(Tag, { ...domProps, ...motionAttrs, ref }, children as ReactNode)
+      }
+    )
+    Component.displayName = `Motion(${Tag})`
+    return Component
+  }
+
+  const motionProxy = {
+    div: motionComponent("div"),
+    button: motionComponent("button"),
+    span: motionComponent("span"),
+  }
+
+  return {
+    AnimatePresence: ({ children }: { children?: ReactNode }) => <>{children}</>,
+    m: motionProxy,
+    motion: motionProxy,
+  }
+})
 
 const queryClient = new QueryClient()
 
@@ -51,6 +97,8 @@ const wrapper = ({ children }: { children: ReactNode }) => (
 
 afterEach(() => {
   mockReducedMotion.mockReturnValue(false)
+  translationMock.mockClear()
+  mediaQueryMock.mockClear()
 })
 
 const mockContacts = [
@@ -86,6 +134,53 @@ const mockContacts = [
 describe("ContactList — empty state (W183 SW1)", () => {
   beforeEach(() => {
     mockReducedMotion.mockReturnValue(false)
+  })
+
+  it("binds the canonical translation namespace, media query, and empty-search default", () => {
+    render(<ContactList contacts={[]} selectedId={null} onSelect={() => {}} isSearchActive />, {
+      wrapper,
+    })
+
+    expect(translationMock).toHaveBeenCalledWith(["messenger"])
+    expect(mediaQueryMock).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
+    expect(
+      screen.getByText('messenger:noChats.searchEmpty.description|{"query":""}')
+    ).toBeInTheDocument()
+  })
+
+  it("preserves the empty-state motion contract and theme tokens", () => {
+    const { container } = render(
+      <ContactList contacts={[]} selectedId={null} onSelect={() => {}} />,
+      { wrapper }
+    )
+
+    const entrance = container.querySelector("[data-motion-animate]")
+    expect(entrance).toBeInTheDocument()
+    expect(entrance).toHaveAttribute(
+      "data-motion-initial",
+      JSON.stringify({ scale: 0.92, opacity: 0, y: 8 })
+    )
+    expect(entrance).toHaveAttribute(
+      "data-motion-transition",
+      JSON.stringify({ duration: 0.45, ease: [0.22, 1, 0.36, 1] })
+    )
+
+    const iconContainer = container.querySelector(".messenger-card-matte")
+    expect(iconContainer).toHaveStyle({ background: "var(--messenger-card-bg)" })
+    expect(iconContainer?.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
+  })
+
+  it("omits empty-state animation objects under reduced motion while keeping the state visible", () => {
+    mockReducedMotion.mockReturnValue(true)
+    const { container } = render(
+      <ContactList contacts={[]} selectedId={null} onSelect={() => {}} />,
+      { wrapper }
+    )
+
+    const animated = container.querySelector("[data-motion-animate]")
+    expect(animated).not.toHaveAttribute("data-motion-initial")
+    expect(animated).toHaveAttribute("data-motion-transition", JSON.stringify({ duration: 0 }))
+    expect(screen.getByRole("status")).toBeInTheDocument()
   })
 
   it("renders no-chats empty state when contacts is empty and !isSearchActive", () => {
@@ -151,6 +246,39 @@ describe("ContactList — empty state (W183 SW1)", () => {
     })
     fireEvent.click(cta)
     expect(onClearSearch).toHaveBeenCalledTimes(1)
+  })
+
+  it("uses the same CTA motion contract for search-clear and start-chat actions", () => {
+    const onClearSearch = vi.fn()
+    const onStartNewChat = vi.fn()
+    const { rerender } = render(
+      <ContactList
+        contacts={[]}
+        selectedId={null}
+        onSelect={() => {}}
+        isSearchActive
+        onClearSearch={onClearSearch}
+      />,
+      { wrapper }
+    )
+
+    const clear = screen.getByRole("button", {
+      name: /messenger:noChats.searchEmpty.clearSearch/,
+    })
+    expect(clear).toHaveAttribute("data-motion-while-hover", JSON.stringify({ scale: 1.04 }))
+    expect(clear).toHaveAttribute("data-motion-while-tap", JSON.stringify({ scale: 0.96 }))
+
+    rerender(
+      <ContactList
+        contacts={[]}
+        selectedId={null}
+        onSelect={() => {}}
+        onStartNewChat={onStartNewChat}
+      />
+    )
+    const start = screen.getByRole("button", { name: /messenger:noChats.cta/ })
+    expect(start).toHaveAttribute("data-motion-while-hover", JSON.stringify({ scale: 1.04 }))
+    expect(start).toHaveAttribute("data-motion-while-tap", JSON.stringify({ scale: 0.96 }))
   })
 
   it("omits the optional empty-state callbacks when they are not provided", () => {
@@ -238,6 +366,54 @@ describe("ContactList — empty state (W183 SW1)", () => {
     expect(onClearSearch).toHaveBeenCalledOnce()
     expect(onStartNewChat).toHaveBeenCalledOnce()
   })
+
+  it("exposes the error motion, icon, and retry contracts when motion is enabled", () => {
+    const onRetry = vi.fn()
+    const { container } = render(
+      <ContactList contacts={[]} selectedId={null} onSelect={() => {}} isError onRetry={onRetry} />,
+      { wrapper }
+    )
+
+    const panel = container.querySelector("[data-motion-animate]")
+    expect(panel).toHaveAttribute(
+      "data-motion-initial",
+      JSON.stringify({ scale: 0.92, opacity: 0, y: 8 })
+    )
+    expect(panel).toHaveAttribute(
+      "data-motion-animate",
+      JSON.stringify({ scale: 1, opacity: 1, y: 0 })
+    )
+    expect(panel).toHaveAttribute(
+      "data-motion-transition",
+      JSON.stringify({ duration: 0.45, ease: [0.22, 1, 0.36, 1] })
+    )
+
+    const iconContainer = container.querySelector(".messenger-card-matte")
+    expect(iconContainer).toHaveStyle({ background: "var(--messenger-card-bg)" })
+    expect(iconContainer?.querySelector("svg")).toHaveStyle({ opacity: "var(--opacity-strong)" })
+
+    const retry = screen.getByRole("button", { name: /messenger:error.retry/ })
+    expect(retry).toHaveAttribute("data-motion-while-hover", JSON.stringify({ scale: 1.04 }))
+    expect(retry).toHaveAttribute("data-motion-while-tap", JSON.stringify({ scale: 0.96 }))
+  })
+
+  it("removes retry hover/tap animation objects under reduced motion", () => {
+    mockReducedMotion.mockReturnValue(true)
+    render(
+      <ContactList
+        contacts={[]}
+        selectedId={null}
+        onSelect={() => {}}
+        isError
+        onRetry={() => {}}
+      />,
+      { wrapper }
+    )
+
+    const retry = screen.getByRole("button", { name: /messenger:error.retry/ })
+    expect(retry).not.toHaveAttribute("data-motion-while-hover")
+    expect(retry).not.toHaveAttribute("data-motion-while-tap")
+  })
 })
 
 describe("ContactList — keyboard navigation (W183 SW4)", () => {
@@ -276,6 +452,18 @@ describe("ContactList — keyboard navigation (W183 SW4)", () => {
     bobRow.focus()
     fireEvent.keyDown(bobRow, { key: "ArrowUp" })
     expect(document.activeElement).toBe(aliceRow)
+  })
+
+  it("ArrowUp from the last contact focuses the immediate predecessor", () => {
+    render(<ContactList contacts={mockContacts} selectedId={null} onSelect={() => {}} />, {
+      wrapper,
+    })
+
+    const carolRow = document.getElementById("messenger-contact-3")!
+    const bobRow = document.getElementById("messenger-contact-2")!
+    carolRow.focus()
+    fireEvent.keyDown(carolRow, { key: "ArrowUp" })
+    expect(document.activeElement).toBe(bobRow)
   })
 
   it("Home jumps focus to first contact", () => {
@@ -350,6 +538,22 @@ describe("ContactList — keyboard navigation (W183 SW4)", () => {
 
     fireEvent.keyDown(bobRow, { key: "Enter" })
     expect(onSelect).toHaveBeenCalledWith("2")
+  })
+
+  it("supports Space activation and clamps keyboard navigation to list bounds", () => {
+    const onSelect = vi.fn()
+    render(<ContactList contacts={mockContacts} selectedId={null} onSelect={onSelect} />, {
+      wrapper,
+    })
+
+    const bobRow = document.getElementById("messenger-contact-2")!
+    fireEvent.keyDown(bobRow, { key: " " })
+    expect(onSelect).toHaveBeenCalledWith("2")
+
+    const carolRow = document.getElementById("messenger-contact-3")!
+    carolRow.focus()
+    fireEvent.keyDown(carolRow, { key: "ArrowDown" })
+    expect(document.activeElement).toBe(carolRow)
   })
 })
 
@@ -545,6 +749,50 @@ describe("ContactList — populated contacts", () => {
     expect(bob.querySelector(".messenger-online-indicator")).not.toBeInTheDocument()
     expect(screen.getByLabelText('messenger:aria.unread|{"count":99}')).toHaveTextContent("99")
     expect(screen.getByLabelText('messenger:aria.unread|{"count":100}')).toHaveTextContent("99+")
+  })
+
+  it("keeps non-active row semantics, focus ring, row motion, and unread entrance exact", () => {
+    render(
+      <ContactList
+        contacts={[
+          { ...mockContacts[0]!, unread: 0 },
+          { ...mockContacts[1]!, unread: 2 },
+        ]}
+        selectedId="1"
+        onSelect={() => {}}
+      />,
+      { wrapper }
+    )
+
+    const active = document.getElementById("messenger-contact-1")!
+    const inactive = document.getElementById("messenger-contact-2")!
+    expect(active).toHaveClass("messenger-active-chip", "focus-visible:ring-2")
+    expect(inactive).toHaveClass(
+      "hover:bg-(--bg-surface-hover)/(--opacity-subtle)",
+      "focus-visible:ring-2"
+    )
+    expect(inactive).not.toHaveAttribute("aria-current")
+    expect(inactive).toHaveAttribute("data-motion-while-hover", JSON.stringify({ x: 4 }))
+    expect(inactive).toHaveAttribute("data-motion-while-tap", JSON.stringify({ scale: 0.98 }))
+
+    const unread = screen.getByLabelText('messenger:aria.unread|{"count":2}')
+    expect(unread).toHaveAttribute("data-motion-initial", JSON.stringify({ scale: 0 }))
+    expect(unread).toHaveAttribute("data-motion-animate", JSON.stringify({ scale: 1 }))
+    expect(unread).not.toHaveAttribute("data-motion-transition")
+  })
+
+  it("disables contact-row and unread entrance motion under reduced motion", () => {
+    mockReducedMotion.mockReturnValue(true)
+    render(<ContactList contacts={mockContacts} selectedId="1" onSelect={() => {}} />, {
+      wrapper,
+    })
+
+    const row = document.getElementById("messenger-contact-2")!
+    expect(row).not.toHaveAttribute("data-motion-while-hover")
+    expect(row).not.toHaveAttribute("data-motion-while-tap")
+    const unread = screen.getByLabelText('messenger:aria.unread|{"count":2}')
+    expect(unread).toHaveAttribute("data-motion-initial", "false")
+    expect(unread).toHaveAttribute("data-motion-transition", JSON.stringify({ duration: 0 }))
   })
 
   it("uses the current row as a safe fallback when a keyboard target is missing", () => {

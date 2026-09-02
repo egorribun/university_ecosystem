@@ -9,6 +9,30 @@ import { ensurePushMessageBridge } from "@/push/pushMessageBus"
 // primary route to settle, while still making the conveniences available
 // quickly for a normal user. An explicit interaction promotes them sooner.
 export const DEFERRED_OVERLAY_DELAY_MS = 4_000
+export const DEFERRED_INTERACTION_EVENTS = [
+  "pointerdown",
+  "keydown",
+  "touchstart",
+  "focusin",
+] as const
+export const DEFERRED_INTERACTION_OPTIONS = { once: true, passive: true } as const
+
+export function createMountedCommit(isMounted: () => boolean, commit: () => void) {
+  return () => {
+    if (isMounted()) commit()
+  }
+}
+
+export function clearDeferredTimer(timer: number | null, clear: (handle: number) => void) {
+  if (timer !== null) clear(timer)
+}
+
+export function cancelDeferredIdle(
+  idleHandle: number | null,
+  cancel: ((handle: number) => void) | undefined
+) {
+  if (idleHandle !== null && typeof cancel === "function") cancel(idleHandle)
+}
 
 // These surfaces are global conveniences, not part of the first meaningful
 // paint. Keep them out of the root route's synchronous module graph so every
@@ -37,6 +61,10 @@ export function DeferredGlobalOverlays() {
     ensurePushMessageBridge()
 
     let mounted = true
+    const commitReady = createMountedCommit(
+      () => mounted,
+      () => setReady(true)
+    )
     let timer: number | null = window.setTimeout(() => {
       timer = null
       const idleWindow = window as Window & {
@@ -47,46 +75,38 @@ export function DeferredGlobalOverlays() {
         idleHandle = idleWindow.requestIdleCallback(
           () => {
             idleHandle = null
-            if (mounted) setReady(true)
+            commitReady()
           },
           { timeout: 2_000 }
         )
-      } else if (mounted) {
-        setReady(true)
+      } else {
+        commitReady()
       }
     }, DEFERRED_OVERLAY_DELAY_MS)
     let idleHandle: number | null = null
 
     const promoteOnInteraction = () => {
-      if (!mounted) return
-      if (timer !== null) {
-        window.clearTimeout(timer)
-        timer = null
-      }
+      clearDeferredTimer(timer, window.clearTimeout)
+      timer = null
       const idleWindow = window as Window & {
         cancelIdleCallback?: (handle: number) => void
       }
-      if (idleHandle !== null && typeof idleWindow.cancelIdleCallback === "function") {
-        idleWindow.cancelIdleCallback(idleHandle)
-        idleHandle = null
-      }
-      setReady(true)
+      cancelDeferredIdle(idleHandle, idleWindow.cancelIdleCallback)
+      idleHandle = null
+      commitReady()
     }
-    const interactionEvents = ["pointerdown", "keydown", "touchstart", "focusin"] as const
-    interactionEvents.forEach((eventName) =>
-      window.addEventListener(eventName, promoteOnInteraction, { once: true, passive: true })
+    DEFERRED_INTERACTION_EVENTS.forEach((eventName) =>
+      window.addEventListener(eventName, promoteOnInteraction, DEFERRED_INTERACTION_OPTIONS)
     )
 
     return () => {
       mounted = false
-      if (timer !== null) window.clearTimeout(timer)
+      clearDeferredTimer(timer, window.clearTimeout)
       const idleWindow = window as Window & {
         cancelIdleCallback?: (handle: number) => void
       }
-      if (idleHandle !== null && typeof idleWindow.cancelIdleCallback === "function") {
-        idleWindow.cancelIdleCallback(idleHandle)
-      }
-      interactionEvents.forEach((eventName) =>
+      cancelDeferredIdle(idleHandle, idleWindow.cancelIdleCallback)
+      DEFERRED_INTERACTION_EVENTS.forEach((eventName) =>
         window.removeEventListener(eventName, promoteOnInteraction)
       )
     }

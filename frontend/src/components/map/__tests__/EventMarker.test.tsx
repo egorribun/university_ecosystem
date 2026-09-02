@@ -3,38 +3,61 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, it, expect, vi } from "vitest"
 
-const mocks = vi.hoisted(() => ({
-  language: "en",
-  popupOnClose: undefined as (() => void) | undefined,
-  logError: vi.fn(),
-}))
+const mocks = vi.hoisted(() => {
+  const translationCalls: Array<{ key: string; options?: Record<string, unknown> }> = []
+  const useTranslation = vi.fn(() => ({
+    t: (key: string, options?: Record<string, unknown>) => {
+      translationCalls.push({ key, options })
+      return key
+    },
+    i18n: { language: mocks.language, changeLanguage: () => Promise.resolve() },
+  }))
+
+  return {
+    language: "en",
+    popupOnClose: undefined as (() => void) | undefined,
+    popupProps: [] as Array<Record<string, unknown>>,
+    linkProps: undefined as { to?: unknown; params?: unknown } | undefined,
+    translationCalls,
+    useTranslation,
+    logError: vi.fn(),
+  }
+})
 
 vi.mock("react-map-gl/maplibre", async () => {
   const { createElement } = await import("react")
   const base = (await import("@/tests/helpers/mapGlMock")).mapGlMock()
   return {
     ...base,
-    Popup: ({ children, onClose }: { children?: unknown; onClose?: () => void }) => {
+    Popup: ({
+      children,
+      onClose,
+      ...props
+    }: { children?: unknown; onClose?: () => void } & Record<string, unknown>) => {
       mocks.popupOnClose = onClose
+      mocks.popupProps.push(props)
       return createElement("div", null, children as never)
     },
   }
 })
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { language: mocks.language, changeLanguage: () => Promise.resolve() },
-  }),
+  useTranslation: mocks.useTranslation,
 }))
 vi.mock("@/app/logger", () => ({ logError: mocks.logError }))
 vi.mock("@tanstack/react-router", () => ({
   Link: ({
     children,
     to,
-    params: _params,
+    params,
     ...rest
-  }: { children?: unknown; to?: unknown; params?: unknown } & Record<string, unknown>) =>
-    createElement("a", { href: typeof to === "string" ? to : "#", ...rest }, children as never),
+  }: { children?: unknown; to?: unknown; params?: unknown } & Record<string, unknown>) => {
+    mocks.linkProps = { to, params }
+    return createElement(
+      "a",
+      { href: typeof to === "string" ? to : "#", ...rest },
+      children as never
+    )
+  },
 }))
 
 import { EventMarker } from "@/components/map/EventMarker"
@@ -51,19 +74,41 @@ const EVENT = {
 
 const baseProps = { event: EVENT }
 
+const formatExpectedDate = (isoString: string, locale: string) =>
+  new Intl.DateTimeFormat(locale, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  }).format(new Date(isoString))
+
 describe("EventMarker", () => {
   beforeEach(() => {
     mocks.language = "en"
     mocks.popupOnClose = undefined
+    mocks.popupProps.length = 0
+    mocks.linkProps = undefined
+    mocks.translationCalls.length = 0
+    mocks.useTranslation.mockClear()
     mocks.logError.mockReset()
   })
 
   it("renders the event pin with an accessible label", () => {
     render(<EventMarker {...baseProps} />)
-    expect(screen.getByRole("button", { name: "events.markerLabel" })).toHaveStyle({
+    const pin = screen.getByRole("button", { name: "events.markerLabel" })
+    expect(pin).toHaveStyle({
       minWidth: "44px",
       minHeight: "44px",
     })
+    expect(pin.querySelector("path")).toHaveAttribute("fill", "#f59e0b")
+    expect(mocks.useTranslation).toHaveBeenCalledWith("map")
+    expect(mocks.translationCalls.find(({ key }) => key === "events.markerLabel")?.options).toEqual(
+      {
+        title: EVENT.title,
+        date: formatExpectedDate(EVENT.startsAt, "en"),
+      }
+    )
   })
 
   it("fires onPopupOpen when the pin is clicked", async () => {
@@ -100,6 +145,43 @@ describe("EventMarker", () => {
     render(<EventMarker {...baseProps} isPopupOpen />)
     expect(screen.getByText("Hackathon 2026")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: /events\.viewDetails/ })).toBeInTheDocument()
+    expect(screen.getByText("events.participants")).toBeInTheDocument()
+    expect(
+      mocks.translationCalls.find(({ key }) => key === "events.participants")?.options
+    ).toEqual({ count: EVENT.participantCount })
+    expect(mocks.linkProps).toEqual({ to: "/events/$id", params: { id: EVENT.id } })
+    expect(mocks.popupProps[0]).toMatchObject({
+      closeButton: true,
+      closeOnClick: false,
+      className: "map-popup-premium",
+      maxWidth: "260px",
+    })
+    expect(document.querySelector(".map-popup-card--compact .rounded-full")).toHaveStyle({
+      backgroundColor: "#f59e0b",
+    })
+  })
+
+  it.each([
+    ["zero", 0],
+    ["missing", undefined],
+    ["null", null],
+    ["non-numeric", "12"],
+  ])("does not render a participant label for %s counts", (_label, participantCount) => {
+    const event = { ...EVENT, participantCount } as unknown as MapEvent
+    render(<EventMarker event={event} isPopupOpen />)
+    expect(screen.queryByText("events.participants")).not.toBeInTheDocument()
+  })
+
+  it("recomputes the formatted date when the event timestamp changes", () => {
+    const nextStartsAt = "2026-06-20T09:15:00Z"
+    const initialDate = formatExpectedDate(EVENT.startsAt, "en")
+    const nextDate = formatExpectedDate(nextStartsAt, "en")
+    const { rerender } = render(<EventMarker {...baseProps} isPopupOpen />)
+
+    expect(screen.getByText(initialDate)).toBeInTheDocument()
+    rerender(<EventMarker event={{ ...EVENT, startsAt: nextStartsAt }} isPopupOpen />)
+    expect(screen.getByText(nextDate)).toBeInTheDocument()
+    expect(screen.queryByText(initialDate)).not.toBeInTheDocument()
   })
 
   it("forwards popup closure to the owner", () => {

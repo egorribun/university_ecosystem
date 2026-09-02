@@ -90,14 +90,11 @@ function trustedRequestHeaders(): Record<string, string> {
     .find((part) => part.startsWith("csrf_token="))
   if (csrfCookie) {
     const encodedToken = csrfCookie.slice("csrf_token=".length)
-    let decodedToken = ""
-    let malformedToken = false
     try {
-      decodedToken = decodeURIComponent(encodedToken)
+      headers["X-CSRF-Token"] = decodeURIComponent(encodedToken)
     } catch {
-      malformedToken = true
+      // Ignore malformed cookies and keep the request headers safe.
     }
-    if (!malformedToken) headers["X-CSRF-Token"] = decodedToken
   }
   return headers
 }
@@ -150,28 +147,22 @@ function createTrustedReporter(endpoint: string): WebVitalReporter | undefined {
   type EnvelopeState = {
     envelope: string
     expiresAt: number
-    navigationKey: string
   }
   let cachedEnvelope: EnvelopeState | undefined
-  let envelopeRequest: { navigationKey: string; promise: Promise<EnvelopeState> } | undefined
+  let envelopeRequest: { promise: Promise<EnvelopeState> } | undefined
   // web-vitals callbacks describe the current document lifecycle. Pin the
   // initial route/device so a soft navigation cannot relabel lifetime CLS/INP.
   const pathname = window.location.pathname
   const deviceClass = window.matchMedia("(max-width: 767px)").matches ? "mobile" : "desktop"
-  const navigationKey = JSON.stringify([deviceClass, pathname])
 
   const getEnvelope = (): Promise<EnvelopeState> => {
-    if (
-      cachedEnvelope?.navigationKey === navigationKey &&
-      isTrustedEnvelopeFresh(cachedEnvelope.expiresAt)
-    ) {
+    if (cachedEnvelope && isTrustedEnvelopeFresh(cachedEnvelope.expiresAt)) {
       return Promise.resolve(cachedEnvelope)
     }
-    if (envelopeRequest?.navigationKey === navigationKey) {
+    if (envelopeRequest) {
       return envelopeRequest.promise
     }
-    const renewalEnvelope =
-      cachedEnvelope?.navigationKey === navigationKey ? cachedEnvelope.envelope : undefined
+    const renewalEnvelope = cachedEnvelope?.envelope
     const body = buildTrustedEnvelopeBody(pathname, deviceClass, renewalEnvelope)
     const pending = fetch(`${base}/envelope`, {
       method: "POST",
@@ -187,11 +178,10 @@ function createTrustedReporter(endpoint: string): WebVitalReporter | undefined {
       cachedEnvelope = {
         envelope,
         expiresAt,
-        navigationKey,
       }
       return cachedEnvelope
     })
-    envelopeRequest = { navigationKey, promise: pending }
+    envelopeRequest = { promise: pending }
     const clearPending = () => {
       envelopeRequest = undefined
     }

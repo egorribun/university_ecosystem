@@ -5,7 +5,11 @@ vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
 
-import { RelatedEvents } from "@/components/events/RelatedEvents"
+import {
+  RELATED_EVENT_CARD_TRANSLATION_NAMESPACES,
+  RELATED_EVENTS_TRANSLATION_NAMESPACES,
+  RelatedEvents,
+} from "@/components/events/RelatedEvents"
 import type { Event } from "@/types/Event"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 
@@ -41,6 +45,11 @@ const ITEMS: Event[] = [
 const extraRoutes = [{ path: "/events/$id", Component: () => <div>Event detail</div> }]
 
 describe("RelatedEvents", () => {
+  it("keeps the translation namespace contracts explicit", () => {
+    expect(RELATED_EVENTS_TRANSLATION_NAMESPACES).toStrictEqual(["events", "common"])
+    expect(RELATED_EVENT_CARD_TRANSLATION_NAMESPACES).toStrictEqual(["events"])
+  })
+
   it("renders one linked card per event", async () => {
     await renderWithRouter({ ui: () => <RelatedEvents items={ITEMS} />, extraRoutes })
     const links = screen.getAllByRole("link")
@@ -72,6 +81,7 @@ describe("RelatedEvents", () => {
   it("renders nothing when there are no related events", async () => {
     await renderWithRouter({ ui: () => <RelatedEvents items={[]} />, extraRoutes })
     expect(screen.queryByRole("link")).not.toBeInTheDocument()
+    expect(screen.queryByRole("region", { name: "Related events" })).not.toBeInTheDocument()
   })
 
   it("uses safe fallbacks for optional title, category, date, and image fields", async () => {
@@ -130,5 +140,47 @@ describe("RelatedEvents", () => {
     expect(
       [...link.querySelectorAll("span")].filter((span) => span.textContent === "Jun 15")
     ).toHaveLength(1)
+  })
+
+  it("uses the English event type only when the primary type is nullish", async () => {
+    const missingPrimary = {
+      ...ITEMS[0]!,
+      id: "missing-primary-type",
+      event_type: undefined,
+      event_type_en: "conference",
+    } as unknown as Event
+    await renderWithRouter({ ui: () => <RelatedEvents items={[missingPrimary]} />, extraRoutes })
+    expect(screen.getByText("Conference")).toBeInTheDocument()
+
+    const emptyPrimary = {
+      ...ITEMS[0]!,
+      id: "empty-primary-type",
+      event_type: "",
+      event_type_en: "conference",
+    }
+    await renderWithRouter({ ui: () => <RelatedEvents items={[emptyPrimary]} />, extraRoutes })
+    expect(screen.getByText("Other")).toBeInTheDocument()
+
+    const nullPrimary = {
+      ...ITEMS[0]!,
+      id: "null-primary-type",
+      event_type: null,
+      event_type_en: "conference",
+    }
+    await renderWithRouter({ ui: () => <RelatedEvents items={[nullPrimary]} />, extraRoutes })
+    expect(screen.getAllByText("Conference")).toHaveLength(2)
+  })
+
+  it("keeps the primary title for the Russian locale", async () => {
+    const previousLanguage = window.localStorage.getItem("ue:language")
+    window.localStorage.setItem("ue:language", "ru")
+
+    try {
+      await renderWithRouter({ ui: () => <RelatedEvents items={[ITEMS[0]!]} />, extraRoutes })
+      expect(screen.getByRole("heading", { level: 3 })).toHaveTextContent(ITEMS[0]!.title)
+    } finally {
+      if (previousLanguage === null) window.localStorage.removeItem("ue:language")
+      else window.localStorage.setItem("ue:language", previousLanguage)
+    }
   })
 })

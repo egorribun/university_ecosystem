@@ -267,6 +267,22 @@ describe("EventCardHero", () => {
     expect(observers[1]?.observe).toHaveBeenCalledOnce()
   })
 
+  it("rebinds the back-navigation transition when the event id changes", () => {
+    vi.useFakeTimers()
+    transitions.getEventsHeroId.mockReturnValue("evt-2")
+    const { rerender, container } = render(<EventCardHero {...baseProps} id="evt-1" />)
+
+    expect(transitions.getEventsHeroId).toHaveBeenCalled()
+    expect((container.firstElementChild as HTMLElement).style.viewTransitionName).toBe("")
+
+    rerender(<EventCardHero {...baseProps} id="evt-2" />)
+    expect((container.firstElementChild as HTMLElement).style.viewTransitionName).toBe(
+      "events-hero"
+    )
+    expect(transitions.clearEventsHeroId).toHaveBeenCalledOnce()
+    vi.runOnlyPendingTimers()
+  })
+
   it("passes the complete parallax threshold configuration to the observer", () => {
     let observerOptions: IntersectionObserverInit | undefined
     class MockIntersectionObserver {
@@ -283,6 +299,31 @@ describe("EventCardHero", () => {
     render(<EventCardHero {...baseProps} />)
 
     expect(observerOptions).toEqual({ threshold: [0, 0.25, 0.5, 0.75, 1] })
+  })
+
+  it("passes the complete date formatting options to the formatter", () => {
+    render(<EventCardHero {...baseProps} />)
+
+    expect(formatDateMock).toHaveBeenCalledWith(
+      baseProps.startsAt,
+      expect.objectContaining({
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
+    )
+  })
+
+  it("does not create a parallax observer when no image source exists", () => {
+    const observer = vi.fn()
+    vi.stubGlobal("IntersectionObserver", observer)
+    vi.spyOn(window, "matchMedia").mockReturnValue({ matches: false } as MediaQueryList)
+
+    render(<EventCardHero {...baseProps} imageUrl="" />)
+
+    expect(observer).not.toHaveBeenCalled()
   })
 
   it("recomputes readiness when the image source changes", () => {

@@ -45,6 +45,8 @@ const toCacheKey = ({ lat, lon }: WeatherCoordinates) => {
 
 type ParsedCacheResult = { value: unknown }
 
+type CacheReadResult = { ok: true; value: string | null } | { ok: false }
+
 const parseCacheEntry = (raw: string): ParsedCacheResult | null => {
   try {
     return { value: JSON.parse(raw) }
@@ -57,15 +59,19 @@ const readCacheEntry = (
   key: string,
   { allowExpired = false }: { allowExpired?: boolean } = {}
 ): WeatherCacheEntry | null => {
-  let raw: string | null
-  try {
-    raw = window.sessionStorage?.getItem(key) ?? null
-  } catch {
-    return null
-  }
-
+  const readResult: CacheReadResult = (() => {
+    try {
+      const storage = window.sessionStorage
+      if (!storage) return { ok: false }
+      return { ok: true, value: storage.getItem(key) }
+    } catch {
+      return { ok: false }
+    }
+  })()
+  if (readResult.ok === false) return null
+  const raw = readResult.value
   if (typeof raw !== "string") return null
-  const parsedResult = parseCacheEntry(raw.slice())
+  const parsedResult = parseCacheEntry(raw)
   if (parsedResult === null) return null
   const parsed = parsedResult.value
   if (Object.prototype.toString.call(parsed) === "[object Object]") {

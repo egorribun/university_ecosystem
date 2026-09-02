@@ -1,18 +1,91 @@
 import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it, vi } from "vitest"
-import type { ReactNode } from "react"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import { createElement, type HTMLAttributes, type ReactNode } from "react"
 
-vi.mock("framer-motion", async () =>
-  (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
-)
+const motionState = vi.hoisted(() => ({
+  entries: [] as Array<{ tag: string; props: Record<string, unknown> }>,
+}))
 
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
+const translationState = vi.hoisted(() => ({
+  useTranslation: vi.fn(() => ({
     t: (key: string) => key,
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  })),
 }))
+
+const overlayState = vi.hoisted(() => ({
+  setOverlayState: vi.fn(),
+}))
+
+const swipeState = vi.hoisted(() => ({
+  config: undefined as
+    | {
+        direction: string
+        threshold: number
+        enabled: boolean
+        onSwipeClose: () => void
+      }
+    | undefined,
+  dragOffset: 12,
+}))
+
+const serializeMotionValue = (value: unknown): string | undefined => {
+  if (value === undefined) return undefined
+  return typeof value === "string" ? value : JSON.stringify(value)
+}
+
+vi.mock("framer-motion", () => {
+  const makeMotionElement = (tag: string) => {
+    const MotionElement = ({
+      children,
+      initial,
+      animate,
+      exit,
+      transition,
+      whileTap,
+      variants: _variants,
+      ...props
+    }: HTMLAttributes<HTMLElement> &
+      Record<string, unknown> & {
+        children?: ReactNode
+        initial?: unknown
+        animate?: unknown
+        exit?: unknown
+        transition?: unknown
+        whileTap?: unknown
+      }) => {
+      motionState.entries.push({
+        tag,
+        props: { initial, animate, exit, transition, whileTap, ...props },
+      })
+      return createElement(
+        tag,
+        {
+          ...props,
+          "data-motion-initial": serializeMotionValue(initial),
+          "data-motion-animate": serializeMotionValue(animate),
+          "data-motion-exit": serializeMotionValue(exit),
+          "data-motion-transition": serializeMotionValue(transition),
+          "data-motion-while-tap": serializeMotionValue(whileTap),
+        },
+        children
+      )
+    }
+    return MotionElement
+  }
+
+  return {
+    AnimatePresence: ({ children }: { children?: ReactNode }) => <>{children}</>,
+    m: {
+      button: makeMotionElement("button"),
+      div: makeMotionElement("div"),
+      li: makeMotionElement("li"),
+    },
+  }
+})
+
+vi.mock("react-i18next", () => ({ useTranslation: translationState.useTranslation }))
 
 vi.mock("@tanstack/react-router", () => ({
   Link: ({
@@ -31,15 +104,16 @@ vi.mock("@tanstack/react-router", () => ({
   ),
 }))
 
-vi.mock("@/contexts/AppShellContext", () => ({
-  useAppShell: () => ({ setOverlayState: vi.fn() }),
-}))
+vi.mock("@/contexts/AppShellContext", () => ({ useAppShell: () => overlayState }))
 
 vi.mock("@/hooks/useSwipeGesture", () => ({
-  useSwipeGesture: ({ onSwipeClose }: { onSwipeClose: () => void }) => ({
-    dragOffset: 12,
-    handlers: { onTouchEnd: onSwipeClose },
-  }),
+  useSwipeGesture: (config: typeof swipeState.config) => {
+    swipeState.config = config
+    return {
+      dragOffset: swipeState.dragOffset,
+      handlers: { onTouchEnd: () => swipeState.config?.onSwipeClose() },
+    }
+  },
 }))
 
 vi.mock("@/components/navbar/MobileDrawerProfile", () => ({
@@ -84,6 +158,14 @@ const links = [
 
 const user = { id: "user-1", email: "user@example.com" } as never
 
+beforeEach(() => {
+  motionState.entries.length = 0
+  translationState.useTranslation.mockClear()
+  overlayState.setOverlayState.mockClear()
+  swipeState.config = undefined
+  swipeState.dragOffset = 12
+})
+
 function renderMenu(overrides: Partial<React.ComponentProps<typeof MobileMenu>> = {}) {
   const onClose = vi.fn()
   const go = vi.fn()
@@ -119,9 +201,68 @@ describe("MobileMenu closure paths", () => {
     const dialog = screen.getByRole("dialog", { name: "navigation:aria.mobileMenu" })
     expect(dialog).toHaveClass("h-dvh", "max-h-dvh")
     expect(dialog).toHaveAttribute("aria-describedby", "mobile-drawer-description")
+    expect(dialog).toHaveAttribute("tabindex", "-1")
+    expect(
+      screen.getByRole("navigation", { name: "navigation:aria.mobileMenu" })
+    ).toBeInTheDocument()
     expect(screen.getByTestId("schedule-icon")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Dashboard" })).toHaveAttribute("data-active", "true")
     expect(document.getElementById("mobile-nav-link-home")).toBeInTheDocument()
+    expect(document.getElementById("mobile-nav-link-schedule")).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        (content) => content === `© ${new Date().getFullYear()} navigation:brandName`
+      )
+    ).toBeInTheDocument()
+    expect(translationState.useTranslation).toHaveBeenCalledWith(["navigation"])
+    expect(swipeState.config).toEqual(
+      expect.objectContaining({ direction: "right", threshold: 80, enabled: true })
+    )
+    expect(overlayState.setOverlayState).toHaveBeenCalledWith("mobile-drawer", {
+      scrollLocked: true,
+      blurred: true,
+    })
+
+    const backdrop = screen.getByTestId("mobile-menu-backdrop")
+    expect(backdrop).toHaveAttribute("data-motion-initial", '{"opacity":0}')
+    expect(backdrop).toHaveAttribute("data-motion-animate", '{"opacity":1}')
+    expect(backdrop).toHaveAttribute("data-motion-transition", '{"duration":0.2}')
+    expect(dialog).toHaveAttribute("data-motion-initial", '{"x":"100%"}')
+    expect(dialog).toHaveAttribute("data-motion-animate", '{"x":12}')
+    expect(dialog).toHaveAttribute(
+      "data-motion-transition",
+      '{"type":"spring","stiffness":300,"damping":28,"mass":0.8}'
+    )
+    expect(dialog).toHaveClass(
+      "fixed",
+      "inset-y-0",
+      "right-0",
+      "z-overlay",
+      "drawer-glass",
+      "glass-noise",
+      "shadow-glass-strong"
+    )
+    const closeButtons = screen.getAllByRole("button", { name: "navigation:aria.closeMenu" })
+    expect(closeButtons.at(-1)).toHaveAttribute("data-motion-while-tap", '{"scale":0.9}')
+    expect(closeButtons.at(-1)).toHaveAttribute(
+      "data-motion-transition",
+      '{"type":"spring","stiffness":260,"damping":25,"mass":1}'
+    )
+    const separator = document.querySelector('[style*="var(--glass-border)"]') as HTMLElement | null
+    expect(separator).toHaveStyle({
+      background: "linear-gradient(90deg, transparent, var(--glass-border), transparent)",
+    })
+
+    const navEntries = motionState.entries.filter(({ tag }) => tag === "li")
+    expect(navEntries[0]?.props.initial).toEqual({ opacity: 0, x: 20 })
+    expect(navEntries[0]?.props.animate).toEqual({ opacity: 1, x: 0 })
+    expect(navEntries[0]?.props.transition).toEqual(
+      expect.objectContaining({ delay: 0.05, type: "spring" })
+    )
+    expect(navEntries[1]?.props.transition).toEqual(
+      expect.objectContaining({ delay: 0.08, type: "spring" })
+    )
+    expect(screen.getByRole("link", { name: "Home" })).not.toHaveAttribute("data-active")
 
     await user.click(screen.getByRole("button", { name: "profile-action" }))
     expect(go).toHaveBeenCalledWith("/profile")
@@ -161,6 +302,82 @@ describe("MobileMenu closure paths", () => {
 
     expect(container).toBeEmptyDOMElement()
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+  })
+
+  it("keeps the profile private when a stale user object is supplied while signed out", () => {
+    renderMenu({ isAuth: false, user })
+
+    expect(screen.queryByRole("button", { name: "profile-action" })).not.toBeInTheDocument()
+  })
+
+  it("cleans up overlay state and keeps current callbacks across rerenders", () => {
+    const firstClose = vi.fn()
+    const secondClose = vi.fn()
+    const view = renderMenu({ onClose: firstClose })
+
+    expect(overlayState.setOverlayState).toHaveBeenCalledWith("mobile-drawer", {
+      scrollLocked: true,
+      blurred: true,
+    })
+    view.rerender(
+      <MobileMenu
+        isOpen
+        onClose={secondClose}
+        menuLinks={links}
+        isActive={(to) => to === "/dashboard"}
+        go={vi.fn()}
+        user={user}
+        isAuth
+        prefersReducedMotion={false}
+        drawerTrapRef={{ current: null }}
+      />
+    )
+    swipeState.config?.onSwipeClose()
+    expect(secondClose).toHaveBeenCalledOnce()
+    expect(firstClose).not.toHaveBeenCalled()
+
+    view.rerender(
+      <MobileMenu
+        isOpen={false}
+        onClose={secondClose}
+        menuLinks={links}
+        isActive={() => false}
+        go={vi.fn()}
+        user={null}
+        isAuth={false}
+        prefersReducedMotion={false}
+        drawerTrapRef={{ current: null }}
+      />
+    )
+    expect(overlayState.setOverlayState).toHaveBeenLastCalledWith("mobile-drawer", null)
+    view.unmount()
+    expect(overlayState.setOverlayState).toHaveBeenLastCalledWith("mobile-drawer", null)
+  })
+
+  it("uses reduced-motion-safe transitions and item/link semantics", () => {
+    renderMenu({ prefersReducedMotion: true, isAuth: false, user: null })
+
+    const backdrop = screen.getByTestId("mobile-menu-backdrop")
+    expect(backdrop).toHaveAttribute("data-motion-transition", '{"duration":0}')
+    const dialog = screen.getByRole("dialog", { name: "navigation:aria.mobileMenu" })
+    expect(dialog).toHaveAttribute("data-motion-transition", '{"duration":0}')
+    const closeButtons = screen.getAllByRole("button", { name: "navigation:aria.closeMenu" })
+    expect(closeButtons.at(-1)).not.toHaveAttribute("data-motion-while-tap")
+    const navEntries = motionState.entries.filter(({ tag }) => tag === "li")
+    expect(navEntries[0]?.props.initial).toBe(false)
+    expect(navEntries[0]?.props.transition).toEqual({ duration: 0 })
+    expect(overlayState.setOverlayState).toHaveBeenCalledWith("mobile-drawer", {
+      scrollLocked: true,
+      blurred: false,
+    })
+  })
+
+  it("does not throw when the global notifications trigger is absent", async () => {
+    const user = userEvent.setup()
+    const { onClose } = renderMenu({ isAuth: false, user: null })
+
+    await user.click(screen.getByRole("button", { name: "notifications-action" }))
+    expect(onClose).toHaveBeenCalledOnce()
   })
 
   it("renders the open unauthenticated drawer and respects a prevented Escape", () => {

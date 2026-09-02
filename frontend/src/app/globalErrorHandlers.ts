@@ -11,10 +11,7 @@ const LOGGER_TAGS = {
 }
 
 function serializeReason(reason: unknown): unknown {
-  if (reason === null) {
-    return null
-  }
-  if (typeof reason === "object") {
+  if (typeof reason === "object" && reason !== null) {
     try {
       return JSON.parse(JSON.stringify(reason))
     } catch {
@@ -55,7 +52,7 @@ function handleWindowError(event: ErrorEvent) {
 export function initGlobalErrorHandlers(target?: GlobalTarget): boolean {
   if (initialized) return true
 
-  const resolvedTarget = target ?? (typeof window !== "undefined" ? window : undefined)
+  const resolvedTarget = target ?? globalThis.window
   if (!resolvedTarget) {
     return false
   }

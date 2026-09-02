@@ -28,9 +28,7 @@ type SearchResult =
       floor: number
     }
 
-type SelectionResult = SearchResult | { type: "none" }
-
-const NO_SELECTION: SelectionResult = { type: "none" }
+type SelectionResult = SearchResult
 
 /**
  * Dispatch a selected result to the matching consumer.  A stale keyboard or
@@ -43,18 +41,19 @@ export function applySearchSelection(
   onSelectRoom: (letter: BuildingId, floor: number, roomId: string) => void,
   onSelectionApplied?: () => void
 ): boolean {
-  const selected = result ?? NO_SELECTION
-  switch (selected.type) {
+  if (!result) return false
+
+  switch (result.type) {
     case "building":
-      onSelectBuilding(selected.buildingLetter)
+      onSelectBuilding(result.buildingLetter)
       break
     case "room":
-      onSelectRoom(selected.buildingLetter, selected.floor, selected.roomId)
+      onSelectRoom(result.buildingLetter, result.floor, result.roomId)
       break
     default:
       return false
   }
-  onSelectionApplied?.()
+  if (onSelectionApplied) onSelectionApplied()
   return true
 }
 
@@ -92,7 +91,7 @@ export function MapSearchBar({
   const inputRef = useRef<HTMLInputElement>(null)
 
   const [query, setQuery] = useState("")
-  const [isOpen, setIsOpen] = useState(() => query.length > 0)
+  const [isOpen, setIsOpen] = useState(false)
   // null represents "no active option" without relying on a magic sentinel.
   const [activeIdx, setActiveIdx] = useState<number | null>(null)
 

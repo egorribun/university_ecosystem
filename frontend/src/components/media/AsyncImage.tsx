@@ -22,6 +22,9 @@ import { useIntersectionObserver } from "@/hooks/useIntersectionObserver"
 // (AsyncImage is unused in prod + its jsdom test uses a lenient IO mock, so the
 // bug stayed latent until a real-browser Storybook render exposed it).
 const LAZY_ROOT_MARGIN = "200px"
+const NOOP_IMAGE_EVENT = () => undefined
+const IMAGE_INITIAL_OPACITY = { opacity: 0 } as const
+const IMAGE_TRANSITION = { duration: 0.3 } as const
 
 type Status = "idle" | "loading" | "loaded" | "error"
 
@@ -47,8 +50,8 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
       thumbSrc,
       objectFit = "cover",
       version,
-      onLoad,
-      onError,
+      onLoad = NOOP_IMAGE_EVENT,
+      onError = NOOP_IMAGE_EVENT,
       className,
       style,
       ...rest
@@ -76,12 +79,12 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
 
     const handleLoad: ComponentProps<"img">["onLoad"] = (event) => {
       setStatus("loaded")
-      onLoad?.(event)
+      onLoad(event)
     }
 
     const handleError: ComponentProps<"img">["onError"] = (event) => {
       setStatus("error")
-      onError?.(event)
+      onError(event)
     }
 
     const shouldShowSkeleton = status === "loading"
@@ -130,9 +133,9 @@ const AsyncImage = forwardRef<HTMLImageElement, AsyncImageProps>(
             decoding="async"
             onLoad={handleLoad}
             onError={handleError}
-            initial={{ opacity: 0 }}
+            initial={IMAGE_INITIAL_OPACITY}
             animate={{ opacity: status === "loaded" ? 1 : 0 }}
-            transition={{ duration: 0.3 }}
+            transition={IMAGE_TRANSITION}
             className="absolute inset-0 h-full w-full block"
             style={{ objectFit }}
             data-testid="async-image-img"

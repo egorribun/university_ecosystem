@@ -14,6 +14,7 @@ vi.mock("@sentry/react", () => ({ captureException: vi.fn() }))
 vi.mock("@/app/logger", () => ({ logError: vi.fn() }))
 
 import ErrorBoundary from "@/components/feedback/ErrorBoundary"
+import { logError } from "@/app/logger"
 
 function BrokenChild(): never {
   throw new Error("production failure")
@@ -36,5 +37,7 @@ describe("feedback ErrorBoundary production behavior", () => {
     )
 
     expect(screen.getByText("system:errorBoundary.title")).toBeInTheDocument()
+    expect(screen.queryByText("system:errorBoundary.details")).not.toBeInTheDocument()
+    expect(logError).not.toHaveBeenCalled()
   })
 })

@@ -71,7 +71,15 @@ describe("EventSearchBar", () => {
       "focus:ring-4",
       "focus:ring-brand/(--opacity-subtle)"
     )
-    expect(screen.getByRole("button", { name: "events:aria.openFilters" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "events:aria.openFilters" })).toHaveClass(
+      "relative",
+      "rounded-full",
+      "p-2",
+      "transition-all",
+      "duration-rapid",
+      "hover:bg-(--bg-surface)/(--opacity-dim)",
+      "active:scale-95"
+    )
     expect(useTranslationMock).toHaveBeenCalledWith(["events"])
     expect(filterHookMock).toHaveBeenCalledWith({
       dateRange: "",

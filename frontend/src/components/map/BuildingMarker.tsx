@@ -32,6 +32,8 @@ interface BuildingMarkerProps {
   offset?: MapMarkerOffset
 }
 
+const NOOP_POPUP_CALLBACK = () => undefined
+
 export function BuildingMarker({
   building,
   isSelected,
@@ -39,8 +41,8 @@ export function BuildingMarker({
   onClick,
   index = 0,
   isPopupOpen,
-  onPopupOpen,
-  onPopupClose,
+  onPopupOpen = NOOP_POPUP_CALLBACK,
+  onPopupClose = NOOP_POPUP_CALLBACK,
   eventCount = 0,
   offset,
 }: BuildingMarkerProps) {
@@ -91,13 +93,13 @@ export function BuildingMarker({
           onClick={(e) => {
             e.stopPropagation()
             onClick(building.letter)
-            onPopupOpen?.()
+            onPopupOpen()
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault()
               onClick(building.letter)
-              onPopupOpen?.()
+              onPopupOpen()
             }
           }}
         >
@@ -148,7 +150,7 @@ export function BuildingMarker({
           offset={isActive ? 62 : 52}
           closeButton
           closeOnClick={false}
-          onClose={() => onPopupClose?.()}
+          onClose={onPopupClose}
           className="map-popup-premium"
           maxWidth="280px"
         >

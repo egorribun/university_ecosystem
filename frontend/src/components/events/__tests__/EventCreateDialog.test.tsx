@@ -23,7 +23,14 @@ const { uploadEventImage } = vi.hoisted(() => ({
 }))
 vi.mock("@/api/events", () => ({ uploadEventImage }))
 
-import { EventCreateDialog } from "@/components/events/EventCreateDialog"
+import {
+  EventCreateDialog,
+  canSubmitEventDraft,
+  firstSelectedFile,
+  hasInvalidEventDates,
+  invalidateUploadGeneration,
+  normalizeLocalizedValue,
+} from "@/components/events/EventCreateDialog"
 
 const baseProps = {
   open: true,
@@ -51,6 +58,49 @@ describe("EventCreateDialog", () => {
   beforeEach(() => {
     uploadEventImage.mockReset()
     uploadEventImage.mockResolvedValue("https://cdn.example.com/uploaded.png")
+  })
+
+  it("normalizes localized required values and rejects whitespace-only fallbacks", () => {
+    expect(normalizeLocalizedValue("  Primary title  ", "Fallback title")).toBe("Primary title")
+    expect(normalizeLocalizedValue("   ", "  Fallback title  ")).toBe("Fallback title")
+    expect(normalizeLocalizedValue(" ", "\t")).toBe("")
+  })
+
+  it("reports date errors only for complete, non-increasing ranges", () => {
+    expect(hasInvalidEventDates("", "2026-01-15T10:00")).toBe(false)
+    expect(hasInvalidEventDates("2026-01-15T10:00", "")).toBe(false)
+    expect(hasInvalidEventDates("2026-01-15T12:00", "2026-01-15T10:00")).toBe(true)
+    expect(hasInvalidEventDates("2026-01-15T10:00", "2026-01-15T12:00")).toBe(false)
+    expect(hasInvalidEventDates("2026-01-15T10:00", "2026-01-15T10:00")).toBe(true)
+  })
+
+  it("requires every submit precondition", () => {
+    const valid = {
+      normalizedTitle: "Title",
+      startsAt: "2026-01-15T10:00",
+      endsAt: "2026-01-15T11:00",
+      normalizedLocation: "Room",
+      imageUploading: false,
+      dateError: false,
+    } as const
+    expect(canSubmitEventDraft(valid)).toBe(true)
+    for (const key of ["normalizedTitle", "startsAt", "endsAt", "normalizedLocation"] as const) {
+      expect(canSubmitEventDraft({ ...valid, [key]: "" })).toBe(false)
+    }
+    expect(canSubmitEventDraft({ ...valid, imageUploading: true })).toBe(false)
+    expect(canSubmitEventDraft({ ...valid, dateError: true })).toBe(false)
+  })
+
+  it("returns only the first selected file and invalidates upload generations monotonically", () => {
+    const file = new File(["payload"], "cover.png", { type: "image/png" })
+    expect(firstSelectedFile(null)).toBeUndefined()
+    expect(firstSelectedFile(undefined)).toBeUndefined()
+    expect(firstSelectedFile([] as unknown as FileList)).toBeUndefined()
+    expect(firstSelectedFile([file] as unknown as FileList)).toBe(file)
+
+    const generation = { current: 4 }
+    invalidateUploadGeneration(generation)
+    expect(generation.current).toBe(5)
   })
 
   it("renders nothing when open=false", () => {
@@ -127,6 +177,26 @@ describe("EventCreateDialog", () => {
     expect(draft.ends_at).toBe("2026-01-15T12:00")
     // handleSubmit also closes the dialog
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ["title", "events:form.title"],
+    ["location", "events:form.location"],
+    ["start", "events:form.start"],
+    ["end", "events:form.end"],
+  ] as const)("keeps create disabled when the required %s is missing", (_field, missingLabel) => {
+    render(<EventCreateDialog {...baseProps} />)
+    const values: Record<string, string> = {
+      "events:form.title": "Required title",
+      "events:form.location": "Required room",
+      "events:form.start": "2026-01-15T10:00",
+      "events:form.end": "2026-01-15T11:00",
+    }
+    for (const [label, value] of Object.entries(values)) {
+      if (label !== missingLabel) fireEvent.change(fieldByLabel(label), { target: { value } })
+    }
+
+    expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeDisabled()
   })
 
   it("shows the end-before-start validation error and keeps submit disabled", async () => {
@@ -548,5 +618,34 @@ describe("EventCreateDialog", () => {
     await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
 
     expect(screen.queryByText("events:form.errors.endsBeforeStarts")).not.toBeInTheDocument()
+  })
+
+  it("invalidates an upload when the dialog unmounts before the request resolves", async () => {
+    let resolveUpload!: (url: string) => void
+    const pending = new Promise<string>((resolve) => {
+      resolveUpload = resolve
+    })
+    uploadEventImage.mockImplementationOnce(() => pending)
+
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:unmounted")
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    try {
+      const user = userEvent.setup()
+      const { unmount } = render(<EventCreateDialog {...baseProps} />)
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      await user.upload(input, new File(["x"], "unmounted.png", { type: "image/png" }))
+      expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument()
+
+      unmount()
+      await act(async () => {
+        resolveUpload("https://cdn.example.com/stale.png")
+        await pending
+      })
+
+      expect(revokeObjectUrl).toHaveBeenCalledWith("blob:unmounted")
+    } finally {
+      createObjectUrl.mockRestore()
+      revokeObjectUrl.mockRestore()
+    }
   })
 })

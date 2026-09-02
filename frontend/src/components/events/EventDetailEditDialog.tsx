@@ -24,6 +24,12 @@ interface EventDetailEditDialogProps {
 const EMPTY_EDIT_VALUE = ""
 const EVENT_DIALOG_NAMESPACES = ["events", "common"] as const
 
+/** Normalize required localized fields before handing them to the edit form. */
+export function normalizeLocalizedEditValue(primary: string, fallback: string): string {
+  const normalizedPrimary = primary.trim()
+  return normalizedPrimary || fallback.trim()
+}
+
 export function EventDetailEditDialog({
   open,
   onClose,
@@ -106,8 +112,8 @@ export function EventDetailEditDialog({
 
   // initialDraft normalizes all editable fields to strings, and the controlled
   // inputs in EventEditDialog preserve that invariant on every update.
-  const normalizedTitle = draft.title!.trim() || draft.title_en!.trim()
-  const normalizedLocation = draft.location!.trim() || draft.location_en!.trim()
+  const normalizedTitle = normalizeLocalizedEditValue(draft.title!, draft.title_en!)
+  const normalizedLocation = normalizeLocalizedEditValue(draft.location!, draft.location_en!)
 
   return (
     <EventEditDialog

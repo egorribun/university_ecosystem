@@ -188,6 +188,7 @@ describe("frontend telemetry", () => {
       .propagateTraceHeaderCorsUrls
     expect(targets).toHaveLength(1)
     expect(targets[0]?.test("/api/users")).toBe(true)
+    expect(targets[0]?.test("/prefix/api/users")).toBe(false)
     expect(targets[0]?.test("/not-api/users")).toBe(false)
   })
 

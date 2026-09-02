@@ -116,6 +116,8 @@ describe("ScrollReveal", () => {
     expect(variants.visible[axis]).toBe(0)
     expect(variants.hidden.opacity).toBe(0)
     expect(variants.visible.opacity).toBe(1)
+    expect(variants.hidden.filter).toBe("blur(0.5rem)")
+    expect(variants.visible.filter).toBe("blur(0px)")
     expect(motionState.props.at(-1)?.transition).toEqual(
       expect.objectContaining({ duration: expect.any(Number), delay: 0 })
     )
@@ -141,6 +143,33 @@ describe("ScrollReveal", () => {
     expect(props.transition).toEqual(expect.objectContaining({ delay: 0.4, type: "spring" }))
   })
 
+  it("uses documented defaults and keeps pop mode free of directional offsets", () => {
+    render(<ScrollReveal>defaults</ScrollReveal>)
+
+    const wrapper = screen.getByText("defaults").parentElement!
+    expect(wrapper).toHaveStyle({ width: "100%" })
+    expect(observers[0]?.options).toEqual({ rootMargin: "0px 0px -50px 0px" })
+    const defaults = motionState.props.at(-1)!
+    expect((defaults.variants as { hidden: Record<string, unknown> }).hidden).toEqual(
+      expect.objectContaining({ y: "20px", opacity: 0, filter: "blur(0.5rem)" })
+    )
+
+    const { rerender } = render(
+      <ScrollReveal mode="pop" direction="up">
+        pop
+      </ScrollReveal>
+    )
+    const pop = motionState.props.at(-1)!
+    expect((pop.variants as { hidden: Record<string, unknown> }).hidden).not.toHaveProperty("y")
+    rerender(
+      <ScrollReveal mode="slide" direction="down" viewportMargin="24px">
+        changed
+      </ScrollReveal>
+    )
+    expect(observers).toHaveLength(3)
+    expect(observers.at(-1)?.options).toEqual({ rootMargin: "24px" })
+  })
+
   it("supports an unhandled direction without adding an offset and cleans up unseen observers", () => {
     const { unmount } = render(
       <ScrollReveal mode={"slide"} direction={"diagonal" as never} viewportMargin="0px">
@@ -163,5 +192,15 @@ describe("ScrollReveal", () => {
     rerender(<ScrollReveal>still visible</ScrollReveal>)
     expect(observers).toHaveLength(count)
     expect(motionState.props.at(-1)?.animate).toBe("visible")
+  })
+
+  it("recreates the observer when the viewport margin changes before reveal", () => {
+    const { rerender } = render(<ScrollReveal viewportMargin="0px">pending</ScrollReveal>)
+    expect(observers).toHaveLength(1)
+    rerender(<ScrollReveal viewportMargin="100px">pending</ScrollReveal>)
+
+    expect(observers).toHaveLength(2)
+    expect(observers[0]?.disconnect).toHaveBeenCalledOnce()
+    expect(observers[1]?.options).toEqual({ rootMargin: "100px" })
   })
 })

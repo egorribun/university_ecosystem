@@ -28,6 +28,11 @@ const DATE_OPTIONS: { value: EventDateRange; labelKey: string }[] = [
 
 export const DEFAULT_EVENT_FILTER_PLACEMENT: Placement = "bottom-end"
 
+/** Positioning and accessibility contracts for the shared filter popover. */
+export const EVENT_FILTER_MIDDLEWARE = [offset(8), flip(), shift({ padding: 8 })]
+export const EVENT_FILTER_ROLE = { role: "dialog" } as const
+export const EVENT_FILTER_FOCUS_MODAL = false
+
 type EventFilterPopoverProps = {
   dateRange: EventDateRange
   onDateRangeChange: (value: EventDateRange) => void
@@ -61,13 +66,13 @@ export function useEventFilterPopover({
     open: isOpen,
     onOpenChange: setIsOpen,
     placement,
-    middleware: [offset(8), flip(), shift({ padding: 8 })],
+    middleware: EVENT_FILTER_MIDDLEWARE,
     whileElementsMounted: autoUpdate,
   })
 
   const click = useClick(context)
   const dismiss = useDismiss(context, { outsidePressEvent: "mousedown" })
-  const role = useRole(context, { role: "dialog" })
+  const role = useRole(context, EVENT_FILTER_ROLE)
 
   const { getReferenceProps, getFloatingProps } = useInteractions([click, dismiss, role])
 
@@ -81,7 +86,7 @@ export function useEventFilterPopover({
     filtersActive,
     referenceProps: { ref: setReference, ...getReferenceProps() },
     popoverNode: isOpen ? (
-      <FloatingFocusManager context={context} modal={false}>
+      <FloatingFocusManager context={context} modal={EVENT_FILTER_FOCUS_MODAL}>
         <div
           ref={setFloating}
           style={floatingStyles}

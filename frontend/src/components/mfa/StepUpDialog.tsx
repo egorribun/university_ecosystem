@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom"
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import { useAuth, ChallengeLockedError } from "@/contexts/AuthContext"
 import type { PendingMfaState, SubmitMfaChallengePayload } from "@/types/Auth"
@@ -19,13 +19,15 @@ type ChallengeMethod = PendingMfaState["methods"][number] | null
 type ChallengeWithAttempts = NonNullable<ChallengeMethod> &
   Partial<{ attempt_limit: number | null; remaining_attempts: number | null }>
 
+const NOOP_CALLBACK = () => undefined
+
 export const StepUpDialog = ({
   open,
   onClose,
   title,
   description,
-  onCompleted,
-  onChallengeReset,
+  onCompleted = NOOP_CALLBACK,
+  onChallengeReset = NOOP_CALLBACK,
 }: StepUpDialogProps) => {
   const { t } = useTranslation(["auth", "common"])
   const { requireMfa, submitMfaChallenge } = useAuth()
@@ -33,14 +35,11 @@ export const StepUpDialog = ({
   const [verifying, setVerifying] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const challenge = useMemo<ChallengeMethod>(() => {
-    if (!pending) return null
-    return (
-      pending.methods.find((candidate) => candidate.method === pending.default_method) ??
+  const challenge: ChallengeMethod = pending
+    ? (pending.methods.find((candidate) => candidate.method === pending.default_method) ??
       pending.methods[0] ??
-      null
-    )
-  }, [pending])
+      null)
+    : null
   const refreshChallenges = useCallback(async () => {
     const result = await requireMfa()
     setPending(result)
@@ -93,7 +92,7 @@ export const StepUpDialog = ({
       setError(null)
       try {
         await submitMfaChallenge(payload)
-        onCompleted?.()
+        onCompleted()
         onClose()
       } catch (err) {
         if (err instanceof ChallengeLockedError) {
@@ -102,7 +101,7 @@ export const StepUpDialog = ({
             try {
               const refreshed = await refreshChallenges()
               if (refreshed) {
-                onChallengeReset?.()
+                onChallengeReset()
               }
             } catch (refreshError) {
               setError(
@@ -146,10 +145,7 @@ export const StepUpDialog = ({
     [t]
   )
 
-  const helperText = useMemo(
-    () => formatRemainingAttempts(challenge),
-    [challenge, formatRemainingAttempts]
-  )
+  const helperText = formatRemainingAttempts(challenge)
 
   if (!open) return null
 

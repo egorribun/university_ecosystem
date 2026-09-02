@@ -23,6 +23,7 @@ import type { MapMarkerOffset } from "@/features/map/markerCollisionLayout"
  * Matches --color-amber-500.
  */
 const EVENT_PIN_COLOR = "#f59e0b"
+const NOOP_POPUP_CALLBACK = () => undefined
 
 interface EventMarkerProps {
   event: MapEvent
@@ -56,8 +57,8 @@ function formatEventDate(isoString: string, locale: string): string {
 export function EventMarker({
   event,
   isPopupOpen,
-  onPopupOpen,
-  onPopupClose,
+  onPopupOpen = NOOP_POPUP_CALLBACK,
+  onPopupClose = NOOP_POPUP_CALLBACK,
   offset,
 }: EventMarkerProps) {
   const { t, i18n } = useTranslation("map")
@@ -95,12 +96,12 @@ export function EventMarker({
           }}
           onClick={(e) => {
             e.stopPropagation()
-            onPopupOpen?.()
+            onPopupOpen()
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault()
-              onPopupOpen?.()
+              onPopupOpen()
             }
           }}
         >
@@ -138,7 +139,7 @@ export function EventMarker({
           offset={48}
           closeButton
           closeOnClick={false}
-          onClose={() => onPopupClose?.()}
+          onClose={onPopupClose}
           className="map-popup-premium"
           maxWidth="260px"
         >
@@ -161,7 +162,7 @@ export function EventMarker({
             <p className="text-[10px] opacity-50 mb-1">{event.location}</p>
 
             {/* Participant count */}
-            {event.participantCount != null && event.participantCount > 0 && (
+            {typeof event.participantCount === "number" && event.participantCount > 0 && (
               <p className="text-[10px] opacity-50 mb-2">
                 {t("events.participants", {
                   count: event.participantCount,

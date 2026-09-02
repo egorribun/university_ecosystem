@@ -29,19 +29,20 @@ interface MainLayoutProps {
 // drop the entire E2E branch.
 const E2E_MODE = import.meta.env.VITE_E2E_MODE === "1"
 
+export function handleMainSkipLink(event: React.MouseEvent<HTMLAnchorElement>): void {
+  event.preventDefault()
+  const mainContent = document.getElementById("main-content")
+  mainContent?.focus()
+  mainContent?.scrollIntoView({ block: "start" })
+}
+
 export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const { t } = useTranslation(["navigation", "common"])
   const { isCompactPage, hideFooter, isMessenger } = useRouteType()
-  const handleSkipLinkClick = React.useCallback((event: React.MouseEvent<HTMLAnchorElement>) => {
-    event.preventDefault()
-    const mainContent = document.getElementById("main-content")
-    mainContent?.focus()
-    mainContent?.scrollIntoView({ block: "start" })
-  }, [])
 
   return (
     <div className="flex min-h-dvh flex-col">
-      <a href="#main-content" className="skip-link" onClick={handleSkipLinkClick}>
+      <a href="#main-content" className="skip-link" onClick={handleMainSkipLink}>
         {t("common:skipToMain")}
       </a>
 

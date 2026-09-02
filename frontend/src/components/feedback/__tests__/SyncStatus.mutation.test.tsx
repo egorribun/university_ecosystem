@@ -122,6 +122,9 @@ describe("SyncStatus mutation contracts", () => {
       "bg-success-bg/20"
     )
     expect(screen.getByTestId("sync-icon-cloud")).toHaveClass("h-4", "w-4")
+    expect(status).toHaveAttribute("data-motion-initial", '{"opacity":0,"scale":0.8}')
+    expect(status).toHaveAttribute("data-motion-animate", '{"opacity":1,"scale":1}')
+    expect(status).toHaveAttribute("data-motion-exit", '{"opacity":0,"scale":0.8}')
 
     fireEvent.click(status)
     expect(state.triggerManualSync).toHaveBeenCalledOnce()

@@ -1,5 +1,5 @@
 import { render } from "@testing-library/react"
-import { describe, it, expect, vi } from "vitest"
+import { beforeEach, describe, it, expect, vi } from "vitest"
 
 import { TypingIndicator } from "@/components/messenger/TypingIndicator"
 
@@ -15,14 +15,23 @@ import { TypingIndicator } from "@/components/messenger/TypingIndicator"
 // args (name + count) were threaded correctly. This is tighter than the
 // `t: (key) => key` shortcut in `MessengerVisuals.test.tsx` which would
 // lose interpolation visibility.
+const translationMock = vi.hoisted(() => vi.fn())
+
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, opts?: Record<string, unknown>) =>
-      opts ? `${key}|${JSON.stringify(opts)}` : key,
-  }),
+  useTranslation: (...args: unknown[]) => {
+    translationMock(...args)
+    return {
+      t: (key: string, opts?: Record<string, unknown>) =>
+        opts ? `${key}|${JSON.stringify(opts)}` : key,
+    }
+  },
 }))
 
 describe("TypingIndicator", () => {
+  beforeEach(() => {
+    translationMock.mockClear()
+  })
+
   it("renders null when users array is empty", () => {
     const { container } = render(<TypingIndicator users={[]} />)
 
@@ -129,5 +138,10 @@ describe("TypingIndicator", () => {
     // the animated 3-dot path.
     const dots = container.querySelectorAll(".messenger-typing-dot")
     expect(dots).toHaveLength(3)
+  })
+
+  it("loads the messenger translation namespace exactly once", () => {
+    render(<TypingIndicator users={[{ userId: "u1", userName: "Alice" }]} />)
+    expect(translationMock).toHaveBeenCalledWith(["messenger"])
   })
 })

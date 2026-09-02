@@ -71,6 +71,10 @@ describe("EventCardContent closure", () => {
     expect(screen.getByRole("heading", { level: 3 })).toHaveAttribute("id", "event-title-event-1")
     expect(screen.getByText("Dr. Ada Lovelace")).toBeInTheDocument()
     expect(screen.getByText("Main hall")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { level: 3 })).toContainElement(
+      screen.getByRole("link", { name: "Campus lecture" })
+    )
+    expect(document.querySelector("#event-location-event-1")).toHaveTextContent("Main hall")
     expect(screen.getByText("A practical lecture")).toBeInTheDocument()
     expect(
       screen.getByText("formatted:2026-08-04T10:00:00.000Z — formatted:2026-08-04T12:00:00.000Z")

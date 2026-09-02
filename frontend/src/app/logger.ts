@@ -31,9 +31,6 @@ function normalizeArg(value: unknown): unknown {
       stack: value.stack,
     }
   }
-  if (value === null) {
-    return null
-  }
   if (typeof value === "number" || typeof value === "boolean") {
     return value
   }

@@ -29,7 +29,10 @@ vi.mock("@/api/client", () => ({
 }))
 vi.mock("@/app/logger", () => ({ logError: mocks.logError }))
 
-import { EventDetailEditDialog } from "@/components/events/EventDetailEditDialog"
+import {
+  EventDetailEditDialog,
+  normalizeLocalizedEditValue,
+} from "@/components/events/EventDetailEditDialog"
 import type { Event } from "@/types/Event"
 
 const baseEvent: Event = {
@@ -71,6 +74,12 @@ describe("EventDetailEditDialog", () => {
     vi.clearAllMocks()
     mocks.patch.mockResolvedValue({ data: {} })
     mocks.uploadEventImage.mockResolvedValue("")
+  })
+
+  it("normalizes required localized title/location values deterministically", () => {
+    expect(normalizeLocalizedEditValue("  Primary  ", "Fallback")).toBe("Primary")
+    expect(normalizeLocalizedEditValue("   ", "  Fallback  ")).toBe("Fallback")
+    expect(normalizeLocalizedEditValue(" ", "\t")).toBe("")
   })
 
   it("renders the edit dialog when open", () => {
@@ -163,6 +172,20 @@ describe("EventDetailEditDialog", () => {
     )
   })
 
+  it("preserves non-null optional description and type values while normalizing nulls", () => {
+    const localizedEvent = {
+      ...baseEvent,
+      description: "Russian description",
+      description_en: "English description",
+      event_type: "lecture",
+      event_type_en: "Lecture",
+    }
+    renderDialog({ ...baseProps, event: localizedEvent })
+
+    expect(screen.getByLabelText("events:form.description_en")).toHaveValue("English description")
+    expect(screen.getByLabelText("events:form.type_en")).toHaveValue("Lecture")
+  })
+
   it("fires onClose when the cancel button is clicked", async () => {
     const user = userEvent.setup()
     const onClose = vi.fn()
@@ -222,6 +245,39 @@ describe("EventDetailEditDialog", () => {
     expect(revokeObjectUrl).toHaveBeenCalledWith("blob:preview")
     createObjectUrl.mockRestore()
     revokeObjectUrl.mockRestore()
+  })
+
+  it("exposes image upload pending state and clears it after the upload resolves", async () => {
+    let resolveUpload!: (url: string) => void
+    mocks.uploadEventImage.mockReturnValueOnce(
+      new Promise<string>((resolve) => {
+        resolveUpload = resolve
+      })
+    )
+    const user = userEvent.setup()
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:pending")
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    try {
+      renderDialog()
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      await user.upload(input, new File(["image"], "pending.png", { type: "image/png" }))
+      await user.click(screen.getByRole("button", { name: "common:buttons.save" }))
+      await waitFor(() => expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument())
+
+      resolveUpload("https://cdn.example/pending.png")
+      await waitFor(() =>
+        expect(screen.getByText("common:buttons.changePhoto")).toBeInTheDocument()
+      )
+      expect(mocks.uploadEventImage).toHaveBeenCalledOnce()
+      expect(mocks.patch).toHaveBeenCalledWith(
+        "/events/evt-1",
+        expect.objectContaining({ image_url: "https://cdn.example/pending.png" })
+      )
+      expect(screen.getByAltText("events:alt.preview")).toHaveAttribute("src", "blob:pending")
+    } finally {
+      createObjectUrl.mockRestore()
+      revokeObjectUrl.mockRestore()
+    }
   })
 
   it("reports save failures without closing the dialog", async () => {

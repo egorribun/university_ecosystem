@@ -12,16 +12,50 @@ import { useTranslation } from "react-i18next"
 import { markIfFromBottom, smoothToTop, getScrollRoot } from "@/utils/scrollUtils"
 import useMediaQuery from "@/hooks/useMediaQuery"
 
-function samePath(a: string, b: string) {
-  const na = a.replace(/\/+$/, "")
-  const nb = b.replace(/\/+$/, "")
-  return na === nb
+/** Normalize route paths before comparing navigation sections. */
+export function normalizeNavPath(path: string): string {
+  const normalized = path.replace(/\/+$/u, "")
+  return normalized || "/"
 }
 
-function isSectionActive(pathname: string, section: string) {
-  const path = pathname.replace(/\/+$/, "")
-  const target = section.replace(/\/+$/, "")
-  return path === target || path.startsWith(`${target}/`)
+export function sameNavPath(a: string, b: string): boolean {
+  return normalizeNavPath(a) === normalizeNavPath(b)
+}
+
+export function isNavSectionActive(pathname: string, section: string): boolean {
+  const path = normalizeNavPath(pathname)
+  const target = normalizeNavPath(section)
+  return path === target || (target !== "/" && path.startsWith(`${target}/`))
+}
+
+export function navScrollBehavior(prefersReducedMotion: boolean): ScrollBehavior {
+  return prefersReducedMotion ? "auto" : "smooth"
+}
+
+export function shouldHideForVirtualKeyboard(
+  activeElement: Element | null,
+  innerHeight: number,
+  viewportHeight: number,
+  scale?: number
+): boolean {
+  const hasEditableFocus =
+    activeElement instanceof HTMLInputElement ||
+    activeElement instanceof HTMLTextAreaElement ||
+    (activeElement instanceof HTMLElement && activeElement.isContentEditable)
+  const atDefaultScale = scale === undefined || Math.abs(scale - 1) < 0.01
+  return Boolean(hasEditableFocus && atDefaultScale && innerHeight - viewportHeight > 150)
+}
+
+type Translation = (key: string) => string
+
+export function createMobileNavItems(t: Translation) {
+  return [
+    { to: "/dashboard", label: t("navigation:menu.dashboard"), icon: DashboardIcon },
+    { to: "/news", label: t("navigation:menu.news"), icon: ArticleIcon },
+    { to: "/events", label: t("navigation:menu.events"), icon: EventNoteIcon },
+    { to: "/schedule", label: t("navigation:menu.schedule"), icon: TodayIcon },
+    { to: "/profile", label: t("navigation:menu.profile"), icon: PersonIcon },
+  ]
 }
 
 export default function MobileBottomNav() {
@@ -58,13 +92,13 @@ export default function MobileBottomNav() {
 
     const syncKeyboardState = () => {
       const activeElement = document.activeElement
-      const hasEditableFocus =
-        activeElement instanceof HTMLInputElement ||
-        activeElement instanceof HTMLTextAreaElement ||
-        (activeElement instanceof HTMLElement && activeElement.isContentEditable)
-      const atDefaultScale = viewport.scale === undefined || Math.abs(viewport.scale - 1) < 0.01
       setIsVirtualKeyboardOpen(
-        hasEditableFocus && atDefaultScale && window.innerHeight - viewport.height > 150
+        shouldHideForVirtualKeyboard(
+          activeElement,
+          window.innerHeight,
+          viewport.height,
+          viewport.scale
+        )
       )
     }
     syncKeyboardState()
@@ -76,25 +110,12 @@ export default function MobileBottomNav() {
     }
   }, [])
 
-  const items = useMemo(
-    () => [
-      {
-        to: "/dashboard",
-        label: t("navigation:menu.dashboard"),
-        icon: DashboardIcon,
-      },
-      { to: "/news", label: t("navigation:menu.news"), icon: ArticleIcon },
-      { to: "/events", label: t("navigation:menu.events"), icon: EventNoteIcon },
-      { to: "/schedule", label: t("navigation:menu.schedule"), icon: TodayIcon },
-      { to: "/profile", label: t("navigation:menu.profile"), icon: PersonIcon },
-    ],
-    [t]
-  )
+  const items = useMemo(() => createMobileNavItems(t), [t])
 
   const hideOn = ["/login", "/register", "/forgot-password", "/reset-password"]
-  const hidden = hideOn.some((path) => isSectionActive(pathname, path))
+  const hidden = hideOn.some((path) => isNavSectionActive(pathname, path))
 
-  const activeIndex = items.findIndex((item) => isSectionActive(pathname, item.to))
+  const activeIndex = items.findIndex((item) => isNavSectionActive(pathname, item.to))
 
   if (hidden) return null
 
@@ -121,7 +142,7 @@ export default function MobileBottomNav() {
           </span>
         )}
         {items.map((it) => {
-          const isActive = isSectionActive(pathname, it.to)
+          const isActive = isNavSectionActive(pathname, it.to)
           const Icon = it.icon
           return (
             <Link
@@ -130,9 +151,9 @@ export default function MobileBottomNav() {
               data-tab-key={it.to}
               onPointerDown={markIfFromBottom}
               onClick={(e) => {
-                if (samePath(pathname, it.to)) {
+                if (sameNavPath(pathname, it.to)) {
                   e.preventDefault()
-                  smoothToTop(getScrollRoot(), prefersReducedMotion ? "auto" : "smooth")
+                  smoothToTop(getScrollRoot(), navScrollBehavior(prefersReducedMotion))
                 }
               }}
               className="group relative flex h-full min-h-11 w-full flex-col items-center justify-center text-text-primary outline-none select-none focus-visible:shadow-focus"
@@ -159,7 +180,7 @@ export default function MobileBottomNav() {
       </nav>
 
       {/* Spacer for bottom nav */}
-      {!isVirtualKeyboardOpen && !isSectionActive(pathname, "/messenger") && (
+      {!isVirtualKeyboardOpen && !isNavSectionActive(pathname, "/messenger") && (
         <span
           data-bottom-nav-spacer
           className="relative z-decor block h-[calc(var(--bottom-nav-h)+var(--safe-area-bottom))] bg-transparent md:hidden"

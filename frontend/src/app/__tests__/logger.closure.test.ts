@@ -35,6 +35,7 @@ describe("logger closure paths", () => {
     const error = new Error("boom")
     const circular: Record<string, unknown> = {}
     circular.self = circular
+    circular.toString = () => "custom circular value"
 
     setTraceContext(" trace-123 ")
     logError(error, "message", 4, true, null, { safe: true }, circular, undefined, Symbol("x"))
@@ -93,6 +94,7 @@ describe("logger closure paths", () => {
   it("falls back to message capture when an Error has no exception sink", () => {
     resetLoggerMocks()
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {})
     const error = new Error("exception sink unavailable")
     const captureExceptionUnavailable = undefined
     setLoggerClient({
@@ -109,7 +111,9 @@ describe("logger closure paths", () => {
     expect(captureMessage).toHaveBeenCalledOnce()
     expect(captureException).not.toHaveBeenCalled()
     expect(consoleError).toHaveBeenCalledWith(error, "fallback message")
+    expect(consoleWarn).not.toHaveBeenCalled()
     consoleError.mockRestore()
+    consoleWarn.mockRestore()
   })
 
   it("fails closed when Sentry forwarding throws", () => {
@@ -207,6 +211,7 @@ describe("logger closure paths", () => {
     expect(captureException.mock.calls.at(-1)?.[1]).not.toMatchObject({
       tags: { trace_id: expect.anything() },
     })
+    expect(captureException.mock.calls.at(-1)?.[1]).not.toHaveProperty("tags.trace_id")
     expect(consoleError).toHaveBeenCalledOnce()
   })
 

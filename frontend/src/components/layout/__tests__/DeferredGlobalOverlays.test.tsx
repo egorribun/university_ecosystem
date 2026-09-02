@@ -2,7 +2,15 @@ import { act, render, screen } from "@testing-library/react"
 import { renderToString } from "react-dom/server"
 import { useEffect, useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { DEFERRED_OVERLAY_DELAY_MS, DeferredGlobalOverlays } from "../DeferredGlobalOverlays"
+import {
+  cancelDeferredIdle,
+  clearDeferredTimer,
+  createMountedCommit,
+  DEFERRED_INTERACTION_EVENTS,
+  DEFERRED_INTERACTION_OPTIONS,
+  DEFERRED_OVERLAY_DELAY_MS,
+  DeferredGlobalOverlays,
+} from "../DeferredGlobalOverlays"
 
 function MockOfflineIndicator() {
   const [mounted, setMounted] = useState(false)
@@ -28,6 +36,38 @@ describe("DeferredGlobalOverlays", () => {
     vi.useRealTimers()
   })
 
+  it("keeps deferred lifecycle helpers fail-safe and observable", () => {
+    const commit = vi.fn()
+    const mountedCommit = createMountedCommit(() => true, commit)
+    mountedCommit()
+    expect(commit).toHaveBeenCalledOnce()
+
+    const unmountedCommit = createMountedCommit(() => false, commit)
+    unmountedCommit()
+    expect(commit).toHaveBeenCalledOnce()
+
+    const clear = vi.fn()
+    clearDeferredTimer(12, clear)
+    clearDeferredTimer(null, clear)
+    expect(clear).toHaveBeenCalledWith(12)
+    expect(clear).toHaveBeenCalledTimes(1)
+
+    const cancel = vi.fn()
+    cancelDeferredIdle(17, cancel)
+    cancelDeferredIdle(null, cancel)
+    cancelDeferredIdle(23, undefined)
+    expect(cancel).toHaveBeenCalledWith(17)
+    expect(cancel).toHaveBeenCalledTimes(1)
+
+    expect(DEFERRED_INTERACTION_EVENTS).toStrictEqual([
+      "pointerdown",
+      "keydown",
+      "touchstart",
+      "focusin",
+    ])
+    expect(DEFERRED_INTERACTION_OPTIONS).toStrictEqual({ once: true, passive: true })
+  })
+
   it("keeps the server and first client render empty, then mounts every overlay", async () => {
     expect(renderToString(<DeferredGlobalOverlays />)).toBe("")
 
@@ -48,6 +88,7 @@ describe("DeferredGlobalOverlays", () => {
 
   it("promotes optional overlays immediately after an explicit interaction", async () => {
     vi.useFakeTimers()
+    const clearTimeout = vi.spyOn(window, "clearTimeout")
     render(<DeferredGlobalOverlays />)
 
     await act(async () => {
@@ -58,6 +99,23 @@ describe("DeferredGlobalOverlays", () => {
     expect(screen.getByTestId("deferred-search")).toBeInTheDocument()
     expect(screen.getByTestId("deferred-live-push")).toBeInTheDocument()
     expect(screen.getByTestId("deferred-install")).toBeInTheDocument()
+    expect(clearTimeout).toHaveBeenCalled()
+    clearTimeout.mockRestore()
+  })
+
+  it("registers every promotion listener with one-shot passive options", () => {
+    const addEventListener = vi.spyOn(window, "addEventListener")
+    const { unmount } = render(<DeferredGlobalOverlays />)
+    const expectedEvents = ["pointerdown", "keydown", "touchstart", "focusin"]
+
+    for (const eventName of expectedEvents) {
+      expect(addEventListener).toHaveBeenCalledWith(eventName, expect.any(Function), {
+        once: true,
+        passive: true,
+      })
+    }
+    unmount()
+    addEventListener.mockRestore()
   })
 
   it("mounts the offline indicator before deferred convenience overlays", () => {
@@ -202,6 +260,23 @@ describe("DeferredGlobalOverlays", () => {
 
     expect(screen.queryByTestId("deferred-search")).not.toBeInTheDocument()
     addEventListenerSpy.mockRestore()
+  })
+
+  it("removes each promotion listener with its original callback", () => {
+    const addEventListener = vi.spyOn(window, "addEventListener")
+    const removeEventListener = vi.spyOn(window, "removeEventListener")
+    const { unmount } = render(<DeferredGlobalOverlays />)
+    const registrations = addEventListener.mock.calls.filter(([eventName]) =>
+      ["pointerdown", "keydown", "touchstart", "focusin"].includes(String(eventName))
+    )
+    expect(registrations).toHaveLength(4)
+
+    unmount()
+    for (const [eventName, listener] of registrations) {
+      expect(removeEventListener).toHaveBeenCalledWith(eventName, listener)
+    }
+    addEventListener.mockRestore()
+    removeEventListener.mockRestore()
   })
 
   it("cancels a pending idle callback during unmount cleanup", async () => {

@@ -112,14 +112,16 @@ describe("EventMedia", () => {
   })
 
   it("omits the type badge when eventType is empty", () => {
-    render(<EventMedia {...baseProps} eventType="" />)
+    const { container } = render(<EventMedia {...baseProps} eventType="" />)
     expect(screen.queryByText("Workshop")).not.toBeInTheDocument()
+    expect(container.querySelector(".absolute.top-3.left-3")).not.toBeInTheDocument()
   })
 
   it("only shows the soon indicator when a countdown is supplied", () => {
-    render(<EventMedia {...baseProps} timeStatus={{ status: "soon" }} />)
+    const { container } = render(<EventMedia {...baseProps} timeStatus={{ status: "soon" }} />)
     expect(screen.queryByText(/events:card.statuses.in/)).not.toBeInTheDocument()
     expect(screen.queryByText("common:statuses.live")).not.toBeInTheDocument()
+    expect(container.querySelector(".absolute.top-3.right-3")).not.toBeInTheDocument()
   })
 
   it("reports both successful and failed image loads as ready", () => {

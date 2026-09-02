@@ -274,6 +274,16 @@ describe("trusted field CWV transport", () => {
     )
   })
 
+  it("fails closed when a same-origin endpoint has no fetch transport", () => {
+    vi.stubGlobal("fetch", undefined)
+    let result: boolean | undefined
+    expect(() => {
+      result = initWebVitals({ ...env, VITE_WEB_VITALS_ENDPOINT: "/api/v1/cwv" })
+    }).not.toThrow()
+    expect(result).toBe(false)
+    expect(onLCP).not.toHaveBeenCalled()
+  })
+
   it("normalizes trailing endpoint slashes for envelope and observation URLs", async () => {
     const fetchMock = vi.fn().mockRejectedValue(new Error("offline"))
     vi.stubGlobal("fetch", fetchMock)
@@ -283,11 +293,11 @@ describe("trusted field CWV transport", () => {
   })
 
   it("keeps renewal metadata absent until a real envelope exists", () => {
-    expect(buildTrustedEnvelopeBody("/dashboard", "desktop")).toEqual({
+    expect(buildTrustedEnvelopeBody("/dashboard", "desktop")).toStrictEqual({
       pathname: "/dashboard",
       device_class: "desktop",
     })
-    expect(buildTrustedEnvelopeBody("/dashboard", "desktop", "signed")).toEqual({
+    expect(buildTrustedEnvelopeBody("/dashboard", "desktop", "signed")).toStrictEqual({
       pathname: "/dashboard",
       device_class: "desktop",
       renewal_envelope: "signed",
@@ -303,6 +313,9 @@ describe("trusted field CWV transport", () => {
       parseTrustedEnvelope({ envelope: "signed", expires_at: new Date(now).toISOString() }, now)
     ).toThrow("CWV envelope malformed")
     expect(() => parseTrustedEnvelope({ envelope: "signed", expires_at: 123 }, now)).toThrow(
+      "CWV envelope malformed"
+    )
+    expect(() => parseTrustedEnvelope({ envelope: "signed", expires_at: 0 }, 0)).toThrow(
       "CWV envelope malformed"
     )
   })

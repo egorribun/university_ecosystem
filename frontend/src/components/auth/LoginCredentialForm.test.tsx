@@ -120,6 +120,15 @@ describe("LoginCredentialForm — default render", () => {
     expect(screen.getByText(/future sign-ins.*skip MFA for 30 days/i)).toBeInTheDocument()
   })
 
+  it("keeps the visible consent labels distinct from checkbox accessible names", async () => {
+    await mountWithStub(() => ({}))
+
+    expect(screen.getByText(/^remember email$/i, { selector: "label" })).toBeInTheDocument()
+    expect(
+      screen.getByText(/^trust this device for 30 days$/i, { selector: "label" })
+    ).toBeInTheDocument()
+  })
+
   it("does not hide or translate the form entrance when reduced motion is requested", async () => {
     const matchMedia = vi.spyOn(window, "matchMedia").mockImplementation(
       (query) =>
@@ -331,6 +340,7 @@ describe("LoginCredentialForm — errors", () => {
     expect(email).toHaveAttribute("aria-describedby", emailError.id)
     expect(email).toHaveAttribute("aria-invalid", "true")
     expect(email).toHaveClass("border-error-text", "focus:border-error-text")
+    expect(email).toHaveClass("focus:ring-error-text/(--opacity-subtle)")
     expect(password).toHaveAttribute("aria-describedby", passwordError.id)
     expect(password).toHaveAttribute("aria-invalid", "true")
     expect(emailError).toHaveAttribute("role", "alert")

@@ -116,6 +116,9 @@ describe("EventAboutEditor", () => {
     const { rerender } = render(<EventAboutEditor {...baseProps} />)
 
     expect(screen.getByText("A hands-on workshop on React 19 concurrent features.")).toHaveClass(
+      "whitespace-pre-line",
+      "text-lg",
+      "leading-relaxed",
       "text-text-primary"
     )
 

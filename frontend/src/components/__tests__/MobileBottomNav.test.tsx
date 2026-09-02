@@ -54,6 +54,32 @@ describe("MobileBottomNav", () => {
     const indicator = container.querySelector("[data-nav-indicator]") as HTMLElement
     expect(indicator).toHaveClass("w-1/5", "transition-[transform,opacity]")
     expect(indicator.className).not.toContain("transition-all")
+    expect(indicator).toHaveStyle({ transform: "translate3d(0%, 0, 0)" })
+
+    expect(nav).toHaveClass(
+      "fixed",
+      "inset-x-0",
+      "bottom-0",
+      "grid",
+      "h-[calc(var(--bottom-nav-h)+var(--safe-area-bottom))]",
+      "grid-cols-5",
+      "items-stretch",
+      "transition-[transform,opacity]",
+      "md:hidden",
+      "translate-y-0",
+      "opacity-100"
+    )
+    expect(links[0]!.querySelector("[data-nav-icon]")).toHaveClass(
+      "-translate-y-px",
+      "text-(--nav-active-color)"
+    )
+    expect(links[0]!.querySelector("[data-nav-label]")).toHaveClass("opacity-100")
+    expect(links[1]!.querySelector("[data-nav-icon]")).toHaveClass(
+      "translate-y-0",
+      "text-(--text-secondary)",
+      "group-hover:text-(--text-primary)"
+    )
+    expect(links[1]!.querySelector("[data-nav-label]")).toHaveClass("opacity-0")
 
     const spacer = container.querySelector("[data-bottom-nav-spacer]")
     expect(spacer).toHaveClass("block", "h-[calc(var(--bottom-nav-h)+var(--safe-area-bottom))]")
@@ -169,6 +195,18 @@ describe("MobileBottomNav", () => {
     expect(raf).toHaveBeenCalledOnce()
   })
 
+  it("does not schedule deferred scrolling when no marker is present", async () => {
+    const raf = vi.spyOn(window, "requestAnimationFrame")
+
+    await renderWithRouter({
+      ui: MobileBottomNav,
+      path: "/dashboard",
+      initialPath: "/dashboard",
+    })
+
+    expect(raf).not.toHaveBeenCalled()
+  })
+
   it("cancels deferred scrolling and visual viewport listeners on unmount", async () => {
     const resizeListeners = new Set<EventListener>()
     const scrollListeners = new Set<EventListener>()
@@ -240,6 +278,12 @@ describe("MobileBottomNav", () => {
       "aria-hidden",
       "true"
     )
+    expect(container.querySelector("nav[data-virtual-keyboard='open']")).toHaveAttribute("inert")
+    expect(container.querySelector("nav[data-virtual-keyboard='open']")).toHaveClass(
+      "pointer-events-none",
+      "translate-y-full",
+      "opacity-0"
+    )
     expect(container.querySelector("[data-bottom-nav-spacer]")).not.toBeInTheDocument()
   })
 
@@ -270,5 +314,34 @@ describe("MobileBottomNav", () => {
       "closed"
     )
     expect(container.querySelector("[data-bottom-nav-spacer]")).toBeInTheDocument()
+  })
+
+  it("uses the active indicator position for every navigable section", async () => {
+    for (const [index, path] of [
+      "/dashboard",
+      "/news",
+      "/events",
+      "/schedule",
+      "/profile",
+    ].entries()) {
+      const { container, unmount } = await renderWithRouter({
+        ui: MobileBottomNav,
+        path,
+        initialPath: path,
+      })
+      expect(container.querySelector("[data-nav-indicator]")).toHaveStyle({
+        transform: `translate3d(${index * 100}%, 0, 0)`,
+      })
+      unmount()
+    }
+  })
+
+  it("does not render an indicator for an unrelated route", async () => {
+    const { container } = await renderWithRouter({
+      ui: MobileBottomNav,
+      path: "/newsroom",
+      initialPath: "/newsroom",
+    })
+    expect(container.querySelector("[data-nav-indicator]")).not.toBeInTheDocument()
   })
 })

@@ -10,7 +10,7 @@ type PageFadeInProps = {
 export default function PageFadeIn({
   children,
   delay = motionTokens.delayShort * 1000,
-  effect = "default",
+  effect,
 }: PageFadeInProps) {
   const isTestEnvironment = import.meta.env.MODE === "test"
 
