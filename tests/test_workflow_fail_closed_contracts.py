@@ -980,6 +980,16 @@ def test_literal_continue_on_error_cases_are_exhaustively_classified() -> None:
             "Upload SARIF to GitHub Code Scanning",
         ),
         (
+            "reusable-e2e-tests.yml",
+            "e2e",
+            "Upload E2E coverage artifact",
+        ),
+        (
+            "reusable-e2e-tests.yml",
+            "e2e",
+            "Upload Playwright report",
+        ),
+        (
             "quality-promotion-check.yml",
             "stabilization-window",
             "Evaluate stabilization window",
