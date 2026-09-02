@@ -3856,7 +3856,7 @@ jobs:
           MUTMUT_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
             --selected-file /tmp/mutmut-shard.txt \
             --stats mutants/mutmut-stats.json \
-            --max-children 2 \
+            --max-children 3 \
             --control-cycle-reserve-seconds 5 \
             --max-timeout-seconds 20970 \
             --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
@@ -3904,12 +3904,12 @@ jobs:
           # the CI-supported cap; mutmut exits 0 on completion regardless of
           # survivors, so the exact-execution proof and 100% viable-score gate
           # remain blocking defenses.
-          # --max-children 2 caps concurrent forked mutant
+          # --max-children 3 caps concurrent forked mutant
           # workers (default = nproc) to bound peak RAM (one full app load per fork)
           # and reduce the runner OOM-killer firing mid-sweep.
           MUTMUT_FAILURE_REASON="mutmut pipeline did not complete"
           set +e
-          timeout --kill-after=30s "${MUTMUT_TIMEOUT_SECONDS}s" uv run python scripts/run_mutmut_with_stats.py --max-children 2 --reuse-generated-universe "${MUTANT_NAMES[@]}" 2>&1 | tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"
+          timeout --kill-after=30s "${MUTMUT_TIMEOUT_SECONDS}s" uv run python scripts/run_mutmut_with_stats.py --max-children 3 --reuse-generated-universe "${MUTANT_NAMES[@]}" 2>&1 | tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"
           pipeline_status=("${PIPESTATUS[@]}")
           mutmut_exit_code="${pipeline_status[0]}"
           tee_exit_code="${pipeline_status[1]}"

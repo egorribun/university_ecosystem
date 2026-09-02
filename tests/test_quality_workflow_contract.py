@@ -2354,7 +2354,7 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
         assert "refusing to run incomplete mutation evidence" in run_script
         assert (
             'timeout --kill-after=30s "${MUTMUT_TIMEOUT_SECONDS}s" '
-            "uv run python scripts/run_mutmut_with_stats.py --max-children 2 "
+            "uv run python scripts/run_mutmut_with_stats.py --max-children 3 "
             "--reuse-generated-universe "
             '"${MUTANT_NAMES[@]}" 2>&1 '
             '| tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"'
