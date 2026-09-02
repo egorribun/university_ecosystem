@@ -770,6 +770,8 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
         "PRE_COMMIT_SECURITY_RESULT": "${{ needs.pre-commit-security-and-types.result }}",
         "FRONTEND_TESTS_RESULT": "${{ needs.frontend-tests.result }}",
         "BACKEND_TESTS_RESULT": "${{ needs.backend-tests.result }}",
+        "GO_TESTS_RESULT": "${{ needs.go-tests.result }}",
+        "RUST_TESTS_RESULT": "${{ needs.rust-tests.result }}",
         "BACKEND_TYPE_CHECK_RESULT": "${{ needs.backend-type-check.result }}",
         "MUTATION_SCOPE_RESULT": "${{ needs.mutation-scope.result }}",
         "COVERAGE_RESULT": "${{ needs.coverage-policy-gate.result }}",
@@ -777,6 +779,9 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
     assert "required_results=(" in gate
     assert 'if [[ "$result" != "$expected_result" ]]' in gate
     assert 'if [[ "$job" == mutation-tests-* ]]; then' in gate
+    assert 'if [[ "$job" == "coverage-policy-gate" ]]; then' in gate
+    assert 'expected_result="$coverage_expected_result"' in gate
+    assert '"coverage-policy-gate|$COVERAGE_RESULT"' in gate
     assert "mutation_expected_result=skipped" in gate
     assert '"$res" != "success" && "$res" != "skipped"' not in gate
     assert "stryker-preflight" in job["needs"]
@@ -807,6 +812,41 @@ def test_ci_success_only_allows_skips_for_explicit_event_guards() -> None:
         "db-migration-integrity",
     ):
         assert f'"{advisory}|${{{{ needs.{advisory}.result }}}}"' not in gate
+
+
+def test_ci_success_allows_coverage_skip_only_after_producer_failure() -> None:
+    """A dependency skip is expected only for a failed coverage producer.
+
+    The aggregate coverage job is dependency-gated, so a backend/frontend/Go/
+    Rust failure naturally makes it ``skipped``.  The finalizer must model that
+    narrow, known state while rejecting a skipped gate when all producers are
+    green (or when a producer was cancelled unexpectedly).
+    """
+
+    job = _workflow(CI)["jobs"]["ci-success"]
+    gate = _step(job, "Check all jobs passed")["run"]
+
+    assert "coverage_expected_result=success" in gate
+    assert "for prerequisite in" in gate
+    for prerequisite in (
+        '"$BACKEND_TESTS_RESULT"',
+        '"$FRONTEND_TESTS_RESULT"',
+        '"$GO_TESTS_RESULT"',
+        '"$RUST_TESTS_RESULT"',
+    ):
+        assert prerequisite in gate
+    assert '"$RUST_TESTS_RESULT"; do' in gate
+    assert (
+        'if [[ "$prerequisite" == "failure" || "$prerequisite" == "skipped" ]]; then'
+        in gate
+    )
+    assert "coverage_expected_result=skipped" in gate
+    assert 'expected_result="$coverage_expected_result"' in gate
+    assert '"coverage-policy-gate|$COVERAGE_RESULT"' in gate
+
+    # The special case must not turn an arbitrary skipped result into success:
+    # only the explicit producer states above may select ``skipped``.
+    assert 'if [[ "$prerequisite" == "cancelled"' not in gate
 
 
 def test_stryker_preflight_candidates_are_retry_safe_and_fail_closed() -> None:

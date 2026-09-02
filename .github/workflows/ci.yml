@@ -4932,6 +4932,8 @@ jobs:
           PRE_COMMIT_SECURITY_RESULT: ${{ needs.pre-commit-security-and-types.result }}
           FRONTEND_TESTS_RESULT: ${{ needs.frontend-tests.result }}
           BACKEND_TESTS_RESULT: ${{ needs.backend-tests.result }}
+          GO_TESTS_RESULT: ${{ needs.go-tests.result }}
+          RUST_TESTS_RESULT: ${{ needs.rust-tests.result }}
           BACKEND_TYPE_CHECK_RESULT: ${{ needs.backend-type-check.result }}
           MUTATION_SCOPE_RESULT: ${{ needs.mutation-scope.result }}
           COVERAGE_RESULT: ${{ needs.coverage-policy-gate.result }}
@@ -4982,10 +4984,30 @@ jobs:
             "graphql-drift-check|${{ needs.graphql-drift-check.result }}"
             "quality|${{ needs.quality.result }}"
             "rust-lint|${{ needs.rust-lint.result }}"
-            "coverage-policy-gate|${{ needs.coverage-policy-gate.result }}"
+            # The aggregate gate is skipped when one of its four producers is
+            # unsuccessful. Use the same value exported above for the actual
+            # result so an expression/context mismatch cannot manufacture a
+            # second, misleading failure in this finalizer.
+            "coverage-policy-gate|$COVERAGE_RESULT"
             "quality-inventory-check|${{ needs.quality-inventory-check.result }}"
             "kyverno-test|${{ needs.kyverno-test.result }}"
           )
+
+          # Coverage is allowed to be skipped only when a direct producer
+          # failed (or was itself skipped because an earlier producer failed).
+          # Any other skip, including a cancelled producer or a skipped gate
+          # with all four producers green, remains fail-closed below.
+          coverage_expected_result=success
+          for prerequisite in \
+            "$BACKEND_TESTS_RESULT" \
+            "$FRONTEND_TESTS_RESULT" \
+            "$GO_TESTS_RESULT" \
+            "$RUST_TESTS_RESULT"; do
+            if [[ "$prerequisite" == "failure" || "$prerequisite" == "skipped" ]]; then
+              coverage_expected_result=skipped
+              break
+            fi
+          done
 
           # Mutation producers are intentionally phase-gated on the aggregate
           # coverage contract. A failed prerequisite already blocks this
@@ -5008,7 +5030,9 @@ jobs:
           for entry in "${required_results[@]}"; do
             IFS='|' read -r job result <<< "$entry"
             expected_result=success
-            if [[ "$job" == mutation-tests-* ]]; then
+            if [[ "$job" == "coverage-policy-gate" ]]; then
+              expected_result="$coverage_expected_result"
+            elif [[ "$job" == mutation-tests-* ]]; then
               expected_result="$mutation_expected_result"
             fi
             if [[ "$result" != "$expected_result" ]]; then
