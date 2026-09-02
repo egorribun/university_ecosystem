@@ -147,6 +147,7 @@ async def test_generate_reminders_deduplicates_and_skips_invalid_rows(monkeypatc
     assert create.await_args.kwargs["actions"] == [
         {"action": "open-schedule", "title": "Open schedule", "url": "/schedule"}
     ]
+    assert create.await_args.kwargs["payload_data"] == {"lessonId": "s2"}
     assert create.await_args.kwargs["topic"] == "schedule.changed"
 
 

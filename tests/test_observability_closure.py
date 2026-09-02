@@ -7,6 +7,7 @@ import builtins
 import logging
 import runpy
 import sys
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 from typing import ClassVar
@@ -545,6 +546,35 @@ def test_shutdown_observability_shuts_down_registered_providers() -> None:
         patch.object(observability, "_otel_logger_provider", None),
     ):
         observability.shutdown_observability()
+
+
+def test_bounded_shutdown_logs_timeout_warning_for_hanging_provider() -> None:
+    """A provider that ignores its SDK timeout remains observable and bounded."""
+    from app.core import observability
+
+    release = threading.Event()
+    started = threading.Event()
+    finished = threading.Event()
+
+    class HangingProvider:
+        def shutdown(self, **_kwargs: object) -> None:
+            started.set()
+            release.wait()
+            finished.set()
+
+    logger = MagicMock()
+    with patch.object(observability.logging, "getLogger", return_value=logger):
+        observability._shutdown_otel_providers_bounded((HangingProvider(),))
+
+    try:
+        assert started.is_set()
+        logger.warning.assert_called_once_with(
+            "OpenTelemetry provider shutdown exceeded timeout; continuing without flush"
+        )
+    finally:
+        release.set()
+
+    assert finished.wait(timeout=1)
 
 
 def test_shutdown_observability_owns_providers_rejected_by_otel_globals() -> None:
