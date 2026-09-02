@@ -10,6 +10,7 @@ import time
 import uuid
 from contextlib import closing
 from pathlib import Path
+from textwrap import dedent
 from threading import Event
 
 import pytest
@@ -238,6 +239,66 @@ def test_environment_and_integration_selectors_do_not_authorize_database_reset(
         assert connection.execute("SELECT value FROM sentinel").fetchone() == (
             "preserve-me",
         )
+
+
+def test_async_cleanup_preserves_anyio_runner_and_cancels_owned_tasks() -> None:
+    """A leaked task must not cancel AnyIO's fixture finalizer.
+
+    ``cleanup_asyncio_tasks`` is an autouse fixture, so a regression here only
+    appears when pytest executes an async-generator fixture through AnyIO's
+    runner.  Run a tiny two-test module in a fresh process: the first test
+    leaves an owned task behind and the second test proves that the runner and
+    the fixture stack survived teardown while the owned task was cancelled.
+    """
+    probe_path = PROJECT_ROOT / "tests" / "_tmp_async_cleanup_probe.py"
+    probe_path.write_text(
+        dedent(
+            """
+            import asyncio
+
+            import pytest
+
+
+            _owned_task = None
+
+
+            @pytest.mark.anyio
+            async def test_owned_task_is_cancelled_after_test():
+                global _owned_task
+                _owned_task = asyncio.create_task(asyncio.sleep(60))
+                await asyncio.sleep(0)
+                assert not _owned_task.done()
+
+
+            @pytest.mark.anyio
+            async def test_anyio_runner_survives_fixture_teardown():
+                assert _owned_task is not None
+                assert _owned_task.cancelled()
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
+    try:
+        process = subprocess.run(  # noqa: S603 - fixed local test command
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                str(probe_path.relative_to(PROJECT_ROOT)),
+                "--tb=short",
+            ],
+            cwd=PROJECT_ROOT,
+            env=os.environ.copy(),
+            capture_output=True,
+            text=True,
+            timeout=90,
+            check=False,
+        )
+    finally:
+        probe_path.unlink(missing_ok=True)
+
+    assert process.returncode == 0, process.stdout + process.stderr
 
 
 def test_xdist_explicit_sqlite_preserves_location_driver_query_and_suffixes_stem(

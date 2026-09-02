@@ -539,6 +539,22 @@ def seed_random_generators():
 
 
 @pytest.fixture(autouse=True)
+def isolate_otel_sdk_disable_switch(monkeypatch):
+    """Keep the CI process kill-switch from changing unit-test semantics.
+
+    The backend unit workflow sets ``OTEL_SDK_DISABLED=true`` to prevent an
+    application lifespan from starting real telemetry exporters.  Observability
+    contract tests deliberately patch ``settings.enable_otel`` and exercise
+    provider construction, so inheriting that process-wide switch makes those
+    tests silently return ``None`` instead of testing the requested branch.
+    Tests that cover the kill-switch explicitly set the variable themselves via
+    ``monkeypatch``; this fixture only removes the ambient workflow default.
+    """
+    monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+    yield
+
+
+@pytest.fixture(autouse=True)
 def link_read_db_to_write_db():
     """
     Ensure get_read_db uses the same dependency as get_db during tests.
@@ -813,13 +829,34 @@ def _log_query_before_execute(
 
 @pytest.fixture(autouse=True)
 async def cleanup_asyncio_tasks():
-    """Cancel all running tasks except the current one to prevent hangs/leaks."""
-    yield
+    """Cancel tasks spawned by the current test without touching test runners.
+
+    Async tests in this suite are executed by both pytest-asyncio and AnyIO.
+    AnyIO keeps an internal dispatcher task alive while it runs async fixtures;
+    its ``run_asyncgen_fixture`` implementation also creates an outer waiter
+    task.  Cancelling every task in ``asyncio.all_tasks()`` therefore cancels
+    pytest's own fixture finalizer and prevents database cleanup from running.
+    Keep a per-fixture snapshot and only cancel tasks created after setup.  The
+    AnyIO dispatcher/waiter are still excluded explicitly because the waiter is
+    created after setup and legitimately awaits the fixture finalizer itself.
+    """
     import asyncio
     import gc
 
+    # Snapshot the loop before the test body starts.  The AnyIO dispatcher is
+    # present here and must survive teardown; the outer waiter is handled by
+    # ``_is_async_test_framework_task`` because it is created later.
+    baseline_tasks = set(asyncio.all_tasks())
+    yield
+
     current_task = asyncio.current_task()
-    tasks = [t for t in asyncio.all_tasks() if t is not current_task]
+    tasks = [
+        task
+        for task in asyncio.all_tasks()
+        if task is not current_task
+        and task not in baseline_tasks
+        and not _is_async_test_framework_task(task)
+    ]
     if tasks:
         for task in tasks:
             task.cancel()
@@ -832,6 +869,20 @@ async def cleanup_asyncio_tasks():
 
     # Reclaim memory to prevent OOM-killer termination in CI
     gc.collect()
+
+
+def _is_async_test_framework_task(task: Any) -> bool:
+    """Return whether *task* belongs to pytest's async test harness.
+
+    AnyIO's outer ``_call_in_runner_task`` waiter is created after the cleanup
+    fixture setup and consequently cannot be identified by the baseline task
+    snapshot.  Its coroutine module is stable across supported AnyIO 4.x
+    versions; keeping the check module-based avoids relying on task names,
+    which are configurable and differ between Python versions.
+    """
+    coroutine = task.get_coro()
+    module = getattr(coroutine, "__module__", "")
+    return module.startswith("anyio.")
 
 
 def pytest_addoption(parser):
