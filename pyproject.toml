@@ -475,6 +475,9 @@ override-dependencies = [
     "click>=8.2.1",
     "tomli>=2.2.1",
     "mcp>=1.28.1,<2",
+    # PYSEC-2026-3721: pip 26.2+ contains the security fix; enforce the
+    # patched resolver transitively through pip-api/pip-audit in every group.
+    "pip>=26.2.0",
 ]
 
 [tool.uv.sources]
