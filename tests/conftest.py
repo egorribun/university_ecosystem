@@ -876,13 +876,43 @@ def _is_async_test_framework_task(task: Any) -> bool:
 
     AnyIO's outer ``_call_in_runner_task`` waiter is created after the cleanup
     fixture setup and consequently cannot be identified by the baseline task
-    snapshot.  Its coroutine module is stable across supported AnyIO 4.x
-    versions; keeping the check module-based avoids relying on task names,
-    which are configurable and differ between Python versions.
+    snapshot.  On Python 3.14 the coroutine's ``__module__`` can be empty,
+    however, so identify the runner by its qualified name and source filename
+    as well.  Task names are intentionally ignored because callers can
+    override them and they differ across Python versions.
     """
     coroutine = task.get_coro()
-    module = getattr(coroutine, "__module__", "")
-    return module.startswith("anyio.")
+    module = getattr(coroutine, "__module__", "") or ""
+    if module.startswith(("anyio.", "pytest_asyncio.")):
+        return True
+
+    qualname = getattr(coroutine, "__qualname__", "")
+    if qualname in {
+        "TestRunner._run_tests_and_fixtures",
+        "TestRunner._call_in_runner_task",
+    }:
+        return True
+
+    def _is_framework_filename(filename: object) -> bool:
+        normalized = str(filename).replace("\\", "/").lower()
+        path_parts = {part for part in normalized.split("/") if part}
+        return bool(path_parts & {"anyio", "pytest_asyncio"})
+
+    code = getattr(coroutine, "cr_code", None)
+    if _is_framework_filename(getattr(code, "co_filename", "")):
+        return True
+
+    # A wrapper coroutine may expose application metadata while suspending in
+    # the AnyIO runner.  Restrict stack inspection to the runner entry points
+    # so application tasks awaiting an AnyIO primitive remain owned by the
+    # test and are still cancelled.
+    for frame in task.get_stack():
+        if frame.f_code.co_name in {
+            "_run_tests_and_fixtures",
+            "_call_in_runner_task",
+        } and _is_framework_filename(frame.f_code.co_filename):
+            return True
+    return False
 
 
 def pytest_addoption(parser):

@@ -256,6 +256,28 @@ def test_async_cleanup_preserves_anyio_runner_and_cancels_owned_tasks(
     # cannot race on a shared path and a failed subprocess cannot leave an
     # untracked file in the developer worktree.
     probe_path = tmp_path / "async_cleanup_probe.py"
+    probe_conftest_path = tmp_path / "conftest.py"
+    probe_conftest_path.write_text(
+        dedent(
+            """
+            import pytest
+
+            from tests.conftest import cleanup_asyncio_tasks as _project_cleanup
+
+
+            # Run the project fixture under AnyIO's native runner.  The normal
+            # repository invocation also loads pytest-asyncio, whose AUTO mode
+            # takes precedence on some platforms and hides runner regressions.
+            pytest.fixture(autouse=True)(_project_cleanup.__wrapped__)
+
+
+            @pytest.fixture(scope="session")
+            def anyio_backend():
+                return "asyncio"
+            """
+        ).lstrip(),
+        encoding="utf-8",
+    )
     probe_path.write_text(
         dedent(
             """
@@ -292,6 +314,10 @@ def test_async_cleanup_preserves_anyio_runner_and_cancels_owned_tasks(
                 "-q",
                 str(probe_path),
                 "--tb=short",
+                "-p",
+                "no:asyncio",
+                "--confcutdir",
+                str(tmp_path),
             ],
             cwd=PROJECT_ROOT,
             env=os.environ.copy(),
@@ -302,6 +328,7 @@ def test_async_cleanup_preserves_anyio_runner_and_cancels_owned_tasks(
         )
     finally:
         probe_path.unlink(missing_ok=True)
+        probe_conftest_path.unlink(missing_ok=True)
 
     assert process.returncode == 0, process.stdout + process.stderr
 
