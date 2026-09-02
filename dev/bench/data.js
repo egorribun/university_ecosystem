@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788362966396,
+  "lastUpdate": 1788362970062,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -10975,6 +10975,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 89878,
             "range": "± 527",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d565d067b049a4e3df3a306b3e13b898b1a5bf6b",
+          "message": "build(deps): Bump the go-file-processor group (#1261)\n\nBumps the go-file-processor group in /services/file-processor with 3 updates: [github.com/grpc-ecosystem/go-grpc-middleware/v2](https://github.com/grpc-ecosystem/go-grpc-middleware), [go.temporal.io/sdk](https://github.com/temporalio/sdk-go) and [google.golang.org/grpc](https://github.com/grpc/grpc-go).\n\n\nUpdates `github.com/grpc-ecosystem/go-grpc-middleware/v2` from 2.3.3 to 2.3.4\n- [Release notes](https://github.com/grpc-ecosystem/go-grpc-middleware/releases)\n- [Commits](https://github.com/grpc-ecosystem/go-grpc-middleware/compare/v2.3.3...v2.3.4)\n\nUpdates `go.temporal.io/sdk` from 1.47.0 to 1.48.0\n- [Release notes](https://github.com/temporalio/sdk-go/releases)\n- [Changelog](https://github.com/temporalio/sdk-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/temporalio/sdk-go/compare/v1.47.0...v1.48.0)\n\nUpdates `google.golang.org/grpc` from 1.83.0 to 1.83.1\n- [Release notes](https://github.com/grpc/grpc-go/releases)\n- [Commits](https://github.com/grpc/grpc-go/compare/v1.83.0...v1.83.1)\n\n---\nupdated-dependencies:\n- dependency-name: github.com/grpc-ecosystem/go-grpc-middleware/v2\n  dependency-version: 2.3.4\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: go-file-processor\n- dependency-name: go.temporal.io/sdk\n  dependency-version: 1.48.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n- dependency-name: google.golang.org/grpc\n  dependency-version: 1.83.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: go-file-processor\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: Egor <egorribun2005@gmail.com>",
+          "timestamp": "2026-09-02T19:15:59+05:00",
+          "tree_id": "bc20ae5c0238812453c7ec3374a69178692c77d9",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/d565d067b049a4e3df3a306b3e13b898b1a5bf6b"
+        },
+        "date": 1788362969054,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 6021,
+            "range": "± 122",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 6894,
+            "range": "± 37",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 10071,
+            "range": "± 158",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10717,
+            "range": "± 879",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 99009,
+            "range": "± 531",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5385,
+            "range": "± 78",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6342,
+            "range": "± 16",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 9037,
+            "range": "± 270",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9329,
+            "range": "± 65",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 92925,
+            "range": "± 1069",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5233,
+            "range": "± 58",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6254,
+            "range": "± 30",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8840,
+            "range": "± 30",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9250,
+            "range": "± 36",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 90375,
+            "range": "± 279",
             "unit": "ns/iter"
           }
         ]
