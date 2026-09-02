@@ -430,6 +430,93 @@ export function normalizeStrykerRuntimeReport(report) {
 // same plan from the exact preflight universe.
 const largeMutationUniverseThreshold = 10_000
 const firstAttemptUnitSplitFactor = 16
+// These weights are the distinct test counts observed in the latest
+// provenance-bound Stryker mutation graph for the source ranges that completed
+// (run 33618615853).  They are intentionally checked in: a fresh run has no
+// historical timing model, but these API modules still fan out to materially
+// different related-test graphs.  A weight of one means that the regular
+// locality-aware count model remains in effect.
+const firstAttemptSourceCostWeights = new Map([
+  ["src/api/interceptors/etagCache.ts", 267], // 137 mutants / 267 tests
+  ["src/api/hooks/users.ts", 229], // 8 mutants / 229 tests
+  ["src/api/hooks/events.ts", 52], // 253 mutants / 52 tests
+  ["src/api/hooks/news.ts", 38], // 170 mutants / 38 tests
+  ["src/api/hooks/messenger.ts", 131], // 35 mutants / 131 tests
+  ["src/api/validation.ts", 46], // 20 mutants / 46 tests
+  ["src/api/weather.ts", 41], // 163 mutants / 41 tests
+  ["src/api/hooks/schedule.ts", 33], // 23 mutants / 33 tests
+])
+const firstAttemptCostAwareShardCount = 8
+
+function firstAttemptSourceCostWeight(file) {
+  return firstAttemptSourceCostWeights.get(file) ?? 1
+}
+
+function assignWeightedMutationUnits(weightedUnits, shards) {
+  const orderedUnits = [...weightedUnits].sort(
+    (left, right) =>
+      right.estimatedCost - left.estimatedCost ||
+      right.mutantCount - left.mutantCount ||
+      left.pattern.localeCompare(right.pattern)
+  )
+  let cursor = 0
+
+  // Seed each shard before choosing the lightest target.  This preserves the
+  // planner's invariant that every requested logical shard has an assignment
+  // whenever there are at least as many units as shards.
+  for (const target of shards) {
+    const entry = orderedUnits[cursor]
+    target.files.push(entry.pattern)
+    target.mutantCount += entry.mutantCount
+    target.estimatedCost += entry.estimatedCost
+    cursor += 1
+  }
+
+  for (; cursor < orderedUnits.length; cursor += 1) {
+    const entry = orderedUnits[cursor]
+    const target = shards.reduce((lightest, shard) => {
+      return shard.estimatedCost < lightest.estimatedCost ||
+        (shard.estimatedCost === lightest.estimatedCost && shard.id < lightest.id)
+        ? shard
+        : lightest
+    })
+    target.files.push(entry.pattern)
+    target.mutantCount += entry.mutantCount
+    target.estimatedCost += entry.estimatedCost
+  }
+}
+
+function assignFirstAttemptMutationUnits(weightedUnits, shards) {
+  const expensiveUnits = weightedUnits.filter((entry) => entry.costWeight > 1)
+  if (expensiveUnits.length === 0) {
+    assignLocalityAwareMutationUnits(weightedUnits, shards)
+    return
+  }
+
+  const regularUnits = weightedUnits.filter((entry) => entry.costWeight === 1)
+  if (shards.length === 1) {
+    // A single requested shard has no isolation boundary.  Put both classes
+    // on that shard rather than dropping the regular units while reserving a
+    // nonexistent companion shard.
+    assignWeightedMutationUnits(weightedUnits, shards)
+    return
+  }
+  // Keep the expensive API graph in a bounded group of dedicated shards.  The
+  // lower bound guarantees that the regular units can still seed every
+  // remaining shard when the inventory is small or unusually fragmented.
+  const minimumExpensiveShards = Math.max(1, shards.length - regularUnits.length)
+  const maximumExpensiveShards = regularUnits.length > 0 ? shards.length - 1 : shards.length
+  const expensiveShardCount = Math.min(
+    expensiveUnits.length,
+    maximumExpensiveShards,
+    Math.max(minimumExpensiveShards, Math.min(firstAttemptCostAwareShardCount, shards.length))
+  )
+  const expensiveShards = shards.slice(0, expensiveShardCount)
+  const regularShards = shards.slice(expensiveShardCount)
+
+  assignWeightedMutationUnits(expensiveUnits, expensiveShards)
+  assignLocalityAwareMutationUnits(regularUnits, regularShards)
+}
 
 function assignLocalityAwareMutationUnits(weightedUnits, shards) {
   const orderedUnits = [...weightedUnits].sort((left, right) =>
@@ -497,18 +584,22 @@ export function planMutationShards(
   const requestedUnitBudget = requestedShardCount
     ? Math.max(1, Math.ceil(totalMutants / requestedShardCount))
     : targetMutants
+  const firstAttempt =
+    validatedCosts === undefined && totalMutants >= largeMutationUniverseThreshold
   const unitBudget =
     requestedShardCount !== undefined && totalMutants >= largeMutationUniverseThreshold
       ? Math.max(1, Math.ceil(requestedUnitBudget / firstAttemptUnitSplitFactor))
       : requestedUnitBudget
   const weightedUnits = sourceEntries.flatMap(({ file, mutantCount, estimatedCost }) => {
     const mutants = preflightByFile.get(file)?.mutants ?? []
-    return splitMutationUnits({
+    const costWeight = firstAttempt ? firstAttemptSourceCostWeight(file) : 1
+    const units = splitMutationUnits({
       file,
       mutants,
       budget: unitBudget,
-      estimatedCost: estimatedCost ?? mutantCount,
+      estimatedCost: estimatedCost ?? mutantCount * costWeight,
     })
+    return units.map((unit) => ({ ...unit, costWeight }))
   })
   const shardCount = Math.min(weightedUnits.length, requestedOrTargetShardCount)
   const shards = Array.from({ length: shardCount }, (_, index) => ({
@@ -517,12 +608,13 @@ export function planMutationShards(
     mutantCount: 0,
     estimatedCost: 0,
   }))
-  if (validatedCosts === undefined && totalMutants >= largeMutationUniverseThreshold) {
+  if (firstAttempt) {
     // Related-mode test discovery is the dominant first-attempt cost for
     // static mutants. Keeping adjacent source ranges together avoids turning
-    // every logical shard into a union of unrelated feature test graphs while
-    // the fine-grained units above still keep mutant counts tightly bounded.
-    assignLocalityAwareMutationUnits(weightedUnits, shards)
+    // every regular logical shard into a union of unrelated feature test
+    // graphs.  Checked-in API graph weights are isolated first so the most
+    // expensive related-test regions cannot monopolize a count-balanced shard.
+    assignFirstAttemptMutationUnits(weightedUnits, shards)
     return shards.map(({ id, files, mutantCount }) => ({ id, files, mutantCount }))
   }
   weightedUnits.sort(

@@ -399,6 +399,70 @@ def test_configure_otel_returns_none_when_disabled() -> None:
     assert observability._otel_configured is False
 
 
+@pytest.mark.parametrize("disabled_value", ["true", "TRUE", "1", "yes", " On "])
+def test_otel_sdk_disabled_env_skips_provider_construction(
+    monkeypatch: pytest.MonkeyPatch, disabled_value: str
+) -> None:
+    """The standard SDK kill switch must be fail-closed before any SDK factory."""
+    from app.core import observability
+
+    monkeypatch.setenv("OTEL_SDK_DISABLED", disabled_value)
+    settings = _otel_settings(metrics=True, logs=True)
+    with (
+        patch.object(observability, "settings", settings),
+        patch.object(observability, "TracerProvider") as tracer_provider,
+        patch.object(observability, "OTLPSpanExporter") as span_exporter,
+        patch.object(observability, "MeterProvider") as meter_provider,
+        patch.object(observability, "OTLPMetricExporter") as metric_exporter,
+        patch.object(observability, "OTLPLogExporter") as log_exporter,
+    ):
+        assert observability._otel_sdk_disabled() is True
+        assert observability._configure_otel(MagicMock()) is None
+
+    tracer_provider.assert_not_called()
+    span_exporter.assert_not_called()
+    meter_provider.assert_not_called()
+    metric_exporter.assert_not_called()
+    log_exporter.assert_not_called()
+    assert observability._otel_configured is False
+
+
+@pytest.mark.parametrize("disabled_value", [None, "", "false", "0", "no", "off", "  "])
+def test_otel_sdk_disabled_env_allows_enabled_provider_for_blank_or_false_values(
+    monkeypatch: pytest.MonkeyPatch, disabled_value: str | None
+) -> None:
+    """Unset/blank/false values must preserve the normal enabled OTel path."""
+    from app.core import observability
+
+    if disabled_value is None:
+        monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+    else:
+        monkeypatch.setenv("OTEL_SDK_DISABLED", disabled_value)
+
+    settings = _otel_settings(metrics=False, logs=False)
+    tracer_provider = MagicMock()
+    meter_provider = MagicMock()
+    resource = MagicMock(name="otel-resource")
+    with (
+        patch.object(observability, "settings", settings),
+        patch.object(observability, "_create_otel_resource", return_value=resource),
+        patch.object(observability, "TracerProvider", return_value=tracer_provider),
+        patch.object(observability, "MeterProvider", return_value=meter_provider),
+        patch.object(observability, "OTLPSpanExporter"),
+        patch.object(observability, "BatchSpanProcessor"),
+        patch.object(observability, "trace"),
+        patch.object(observability, "metrics"),
+        patch.object(observability, "set_global_textmap"),
+        patch.object(observability, "SQLAlchemyInstrumentor"),
+        patch.object(observability, "RedisInstrumentor"),
+        patch.object(observability, "HTTPXClientInstrumentor"),
+    ):
+        assert observability._otel_sdk_disabled() is False
+        assert observability._configure_otel(MagicMock()) is tracer_provider
+
+    assert observability._otel_configured is True
+
+
 def test_configure_observability_short_circuits_configured_app() -> None:
     from app.core import observability
 

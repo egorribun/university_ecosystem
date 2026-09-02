@@ -44,6 +44,10 @@ async def test_dead_letter_listing_keeps_named_snapshot_ctes_and_true_filter() -
     assert sql.lower().count("notification_queue_jobs.dead_lettered is true") == 2
     normalized_sql = " ".join(sql.lower().split())
     assert (
+        "order by notification_queue_jobs.enqueued_at desc, "
+        "notification_queue_jobs.id desc" in normalized_sql
+    )
+    assert (
         "order by notification_dead_letter_page.enqueued_at desc, "
         "notification_dead_letter_page.id desc" in normalized_sql
     )

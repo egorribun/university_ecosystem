@@ -555,6 +555,129 @@ test("fine-grains large first-attempt universes to distribute expensive source r
   assert.ok(assignments.every((pattern) => !pattern.endsWith(".ts")))
 })
 
+test("isolates measured API test-graph hotspots in dedicated first-attempt shards", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index * 2, column: 0 },
+        end: { line: index * 2, column: 4 },
+      },
+    }))
+  const hotspotFiles = [
+    ["src/api/interceptors/etagCache.ts", 239],
+    ["src/api/hooks/users.ts", 8],
+    ["src/api/hooks/events.ts", 301],
+    ["src/api/hooks/news.ts", 170],
+  ]
+  const regularFiles = Array.from({ length: 10 }, (_, index) => {
+    const file = `src/regular-${index}.ts`
+    return [file, { mutants: makeMutants(file, 1_000) }]
+  })
+  const preflight = new Map([
+    ...hotspotFiles.map(([file, count]) => [file, { mutants: makeMutants(file, count) }]),
+    ...regularFiles,
+  ])
+
+  const plan = planMutationShards(preflight, 750, 64)
+
+  assert.equal(plan.length, 64)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    10_718
+  )
+  const assignments = plan.flatMap(({ files }) => files)
+  assert.equal(new Set(assignments).size, assignments.length)
+
+  for (const [file, count] of hotspotFiles) {
+    const assignedShardIndexes = plan.flatMap((shard, shardIndex) =>
+      shard.files.some((pattern) => pattern === file || pattern.startsWith(`${file}:`))
+        ? [shardIndex]
+        : []
+    )
+    assert.ok(assignedShardIndexes.length > 0, `${file} is missing from the shard plan`)
+    assert.ok(
+      assignedShardIndexes.every((shardIndex) => shardIndex < 8),
+      `${file} leaked into a regular first-attempt shard`
+    )
+    if (count > 8) {
+      assert.ok(
+        new Set(assignedShardIndexes).size > 1,
+        `${file} should be split across the dedicated hotspot shards`
+      )
+    }
+  }
+  assert.ok(
+    plan
+      .slice(0, 8)
+      .every((shard) =>
+        shard.files.some((pattern) => hotspotFiles.some(([file]) => pattern.startsWith(file)))
+      ),
+    "each dedicated hotspot shard must receive a measured API source range"
+  )
+  assert.ok(
+    plan
+      .slice(8)
+      .every((shard) =>
+        shard.files.every((pattern) =>
+          regularFiles.some(([file]) => pattern === file || pattern.startsWith(`${file}:`))
+        )
+      ),
+    "regular shards must not inherit an expensive API graph"
+  )
+})
+
+test("reserves a regular shard when a first-attempt plan has eight requested shards", async () => {
+  const { planMutationShards } = await import(runnerUrl)
+  const makeMutants = (file, count) =>
+    Array.from({ length: count }, (_, index) => ({
+      fileName: file,
+      mutatorName: "BooleanLiteral",
+      replacement: index % 2 === 0 ? "true" : "false",
+      location: {
+        start: { line: index * 2, column: 0 },
+        end: { line: index * 2, column: 4 },
+      },
+    }))
+  const hotspotFile = "src/api/interceptors/etagCache.ts"
+  const regularFile = "src/regular.ts"
+  const preflight = new Map([
+    [hotspotFile, { mutants: makeMutants(hotspotFile, 5_000) }],
+    [regularFile, { mutants: makeMutants(regularFile, 5_000) }],
+  ])
+
+  const plan = planMutationShards(preflight, 750, 8)
+  const assignments = plan.flatMap(({ files }) => files)
+
+  assert.equal(plan.length, 8)
+  assert.equal(
+    plan.reduce((total, shard) => total + shard.mutantCount, 0),
+    10_000
+  )
+  assert.equal(new Set(assignments).size, assignments.length)
+  const hotspotShardIndexes = plan.flatMap((shard, shardIndex) =>
+    shard.files.some((pattern) => pattern === hotspotFile || pattern.startsWith(`${hotspotFile}:`))
+      ? [shardIndex]
+      : []
+  )
+  const regularShardIndexes = plan.flatMap((shard, shardIndex) =>
+    shard.files.some((pattern) => pattern === regularFile || pattern.startsWith(`${regularFile}:`))
+      ? [shardIndex]
+      : []
+  )
+  assert.ok(hotspotShardIndexes.length > 1)
+  assert.ok(regularShardIndexes.length > 0)
+  assert.ok(regularShardIndexes.every((shardIndex) => shardIndex >= 7))
+
+  const singleShardPlan = planMutationShards(preflight, 750, 1)
+  assert.equal(singleShardPlan.length, 1)
+  assert.equal(singleShardPlan[0].mutantCount, 10_000)
+  assert.equal(new Set(singleShardPlan[0].files).size, singleShardPlan[0].files.length)
+})
+
 test("keeps related source domains local in a large first-attempt shard plan", async () => {
   const { planMutationShards } = await import(runnerUrl)
   const makeMutants = (file, count) =>

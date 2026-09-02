@@ -149,6 +149,7 @@ async def test_generate_reminders_deduplicates_and_skips_invalid_rows(monkeypatc
     ]
     assert create.await_args.kwargs["payload_data"] == {"lessonId": "s2"}
     assert create.await_args.kwargs["topic"] == "schedule.changed"
+    assert create.await_args.kwargs["user_filter"] is reminders.only_active_users
 
 
 @pytest.mark.asyncio

@@ -1163,7 +1163,11 @@ class EmailOtpService:
                     lease_expires_at=None,
                 )
             )
-            if getattr(cancelled, "rowcount", 0) != 1:
+            try:
+                cancelled_rowcount = attrgetter("rowcount")(cancelled)
+            except AttributeError as exc:
+                raise MfaDeliveryError() from exc
+            if cancelled_rowcount != 1:
                 raise MfaDeliveryError()
             await db.commit()
             return

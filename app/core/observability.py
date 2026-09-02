@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import socket
 import threading
@@ -103,6 +104,21 @@ _notification_queue_metrics_lock = threading.RLock()
 
 _request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
 _trace_id_ctx: ContextVar[str | None] = ContextVar("trace_id", default=None)
+
+_OTEL_SDK_DISABLED_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def _otel_sdk_disabled() -> bool:
+    """Return whether the standard OpenTelemetry SDK disable flag is active.
+
+    ``OTEL_SDK_DISABLED`` is a process-level kill switch defined by the
+    OpenTelemetry environment-variable specification.  Check it before any
+    provider or exporter is constructed so short-lived workers and mutation
+    processes do not start SDK threads or fork-sensitive callbacks.
+    """
+
+    value = os.getenv("OTEL_SDK_DISABLED")
+    return value is not None and value.strip().lower() in _OTEL_SDK_DISABLED_VALUES
 
 
 def get_request_id() -> str | None:
@@ -236,7 +252,7 @@ def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
     global _otel_configured, _otel_meter_provider, _otel_tracer_provider
     global _otel_logger_provider, _otel_logging_handler, _otel_shutdown
     global _sqlalchemy_instrumented
-    if not settings.enable_otel:
+    if not settings.enable_otel or _otel_sdk_disabled():
         return None
     # The OpenTelemetry Python globals are write-once. Once providers owned by
     # this process have been shut down, constructing replacements would create
