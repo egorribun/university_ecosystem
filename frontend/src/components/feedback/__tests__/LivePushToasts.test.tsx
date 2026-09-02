@@ -58,6 +58,7 @@ import LivePushToasts, {
   rememberToastId,
   resolveSeverity,
   resolveToastActionUrl,
+  performToastAction,
   resolveToastContent,
   sanitizeBuffer,
   shouldBufferPush,
@@ -169,6 +170,17 @@ describe("LivePushToasts", () => {
     expect(getToastWindowFeatures(true)).toBeUndefined()
     expect(getToastWindowFeatures(false)).toBe("noopener,noreferrer")
     expect(getToastStorage()).toBe(window.localStorage)
+  })
+
+  it("ignores an action callback after the active toast has been cleared", () => {
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null)
+    const onClose = vi.fn()
+
+    expect(() => performToastAction(null, onClose)).not.toThrow()
+    expect(openSpy).not.toHaveBeenCalled()
+    expect(onClose).not.toHaveBeenCalled()
+
+    openSpy.mockRestore()
   })
 
   it("keeps the pure payload boundary fail-closed for every supported shape", () => {
@@ -312,6 +324,21 @@ describe("LivePushToasts", () => {
       expect(() =>
         writeBuffer([{ id: "blocked", title: "Blocked", body: "Storage denied" }])
       ).not.toThrow()
+    } finally {
+      if (descriptor) Object.defineProperty(window, "localStorage", descriptor)
+      else delete (window as unknown as { localStorage?: Storage }).localStorage
+    }
+  })
+
+  it("returns null when browser storage is unavailable", () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, "localStorage")
+    Object.defineProperty(window, "localStorage", {
+      configurable: true,
+      value: undefined,
+    })
+
+    try {
+      expect(getToastStorage()).toBeNull()
     } finally {
       if (descriptor) Object.defineProperty(window, "localStorage", descriptor)
       else delete (window as unknown as { localStorage?: Storage }).localStorage

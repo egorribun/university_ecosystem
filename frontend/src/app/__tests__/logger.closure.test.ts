@@ -90,6 +90,28 @@ describe("logger closure paths", () => {
     expect(consoleLog).toHaveBeenCalledWith("debug")
   })
 
+  it("falls back to message capture when an Error has no exception sink", () => {
+    resetLoggerMocks()
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+    const error = new Error("exception sink unavailable")
+    const captureExceptionUnavailable = undefined
+    setLoggerClient({
+      captureException: captureExceptionUnavailable,
+      captureMessage,
+    })
+
+    logError(error, "fallback message")
+    logError(error)
+    setLoggerClient({ captureException: undefined, captureMessage: undefined })
+    logError(error)
+
+    expect(captureMessage).toHaveBeenCalledWith("fallback message", "error")
+    expect(captureMessage).toHaveBeenCalledOnce()
+    expect(captureException).not.toHaveBeenCalled()
+    expect(consoleError).toHaveBeenCalledWith(error, "fallback message")
+    consoleError.mockRestore()
+  })
+
   it("fails closed when Sentry forwarding throws", () => {
     resetLoggerMocks()
     const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {})

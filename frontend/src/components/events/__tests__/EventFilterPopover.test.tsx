@@ -215,6 +215,19 @@ describe("useEventFilterPopover", () => {
     expect(screen.getByTestId("active")).toHaveTextContent("false")
   })
 
+  it("treats a non-string location value as inactive without coercing it", () => {
+    expect(() =>
+      render(
+        <Harness
+          onDateRangeChange={vi.fn()}
+          onLocationChange={vi.fn()}
+          initialLocation={null as unknown as string}
+        />
+      )
+    ).not.toThrow()
+    expect(screen.getByTestId("active")).toHaveTextContent("false")
+  })
+
   it("supports keyboard dismissal of the open popover", async () => {
     const user = userEvent.setup()
     render(<Harness onDateRangeChange={vi.fn()} onLocationChange={vi.fn()} />)

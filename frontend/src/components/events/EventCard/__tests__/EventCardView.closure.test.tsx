@@ -174,7 +174,7 @@ vi.mock("@/utils/eventsTransition", () => ({
   clearEventsHeroId: vi.fn(),
 }))
 
-import { EventCardView, type EventCardViewProps } from "../EventCardView"
+import { EventCardView, resolveQuickViewPosition, type EventCardViewProps } from "../EventCardView"
 import { clearEventsHeroId } from "@/utils/eventsTransition"
 
 const makeProps = (overrides: Partial<EventCardViewProps> = {}): EventCardViewProps => ({
@@ -233,6 +233,10 @@ afterEach(() => {
 })
 
 describe("EventCardView closure paths", () => {
+  it("keeps the default placement when a stale interaction has no article", () => {
+    expect(resolveQuickViewPosition(null)).toBe("top")
+  })
+
   it("shows and hides the positioned quick view and tracks view transitions", async () => {
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
       top: 120,
@@ -303,6 +307,19 @@ describe("EventCardView closure paths", () => {
     expect(screen.getByTestId("event-quick-view")).toHaveAttribute("data-visible", "true")
     expect(screen.getByTestId("event-quick-view")).toHaveAttribute("data-position", "top")
     expect(screen.getByTestId("event-quick-view")).toHaveAttribute("data-description", "")
+  })
+
+  it("keeps the top position when the card has no measurable client rect", () => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+      undefined as unknown as DOMRect
+    )
+
+    render(<EventCardView {...makeProps()} />)
+    const card = screen.getByTestId("event-card")
+
+    fireEvent.mouseEnter(card)
+
+    expect(screen.getByTestId("event-quick-view")).toHaveAttribute("data-position", "top")
   })
 
   it("keeps the quick-view boundary strict at the 280px threshold", () => {

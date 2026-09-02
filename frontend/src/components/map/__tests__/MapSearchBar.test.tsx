@@ -15,7 +15,7 @@ const translation = vi.hoisted(() => {
 
 vi.mock("react-i18next", () => ({ useTranslation: translation.useTranslation }))
 
-import { MapSearchBar } from "@/components/map/MapSearchBar"
+import { applySearchSelection, MapSearchBar } from "@/components/map/MapSearchBar"
 import type { CampusBuilding } from "@/data/campusBuildings"
 
 const BUILDING: CampusBuilding = {
@@ -85,6 +85,15 @@ afterEach(() => {
 })
 
 describe("MapSearchBar", () => {
+  it("ignores a missing selection without invoking either callback", () => {
+    const onSelectBuilding = vi.fn()
+    const onSelectRoom = vi.fn()
+
+    expect(applySearchSelection(undefined, onSelectBuilding, onSelectRoom)).toBe(false)
+    expect(onSelectBuilding).not.toHaveBeenCalled()
+    expect(onSelectRoom).not.toHaveBeenCalled()
+  })
+
   it("uses the map translation namespace and exposes the combobox contract", () => {
     render(<MapSearchBar {...baseProps} />)
 

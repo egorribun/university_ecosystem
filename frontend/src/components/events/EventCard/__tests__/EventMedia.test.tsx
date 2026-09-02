@@ -18,7 +18,7 @@ const { useTranslationMock, translationMock } = vi.hoisted(() => {
 
 vi.mock("react-i18next", () => ({ useTranslation: useTranslationMock }))
 
-import { EventMedia } from "@/components/events/EventCard/EventMedia"
+import { EventMedia, invokeImageClick } from "@/components/events/EventCard/EventMedia"
 
 const baseProps = {
   imageUrl: "https://picsum.photos/seed/ue-event/640/360",
@@ -31,6 +31,15 @@ const baseProps = {
 }
 
 describe("EventMedia", () => {
+  it("ignores an absent image action callback", () => {
+    const callback = vi.fn()
+
+    invokeImageClick(undefined)
+    invokeImageClick(callback)
+
+    expect(callback).toHaveBeenCalledOnce()
+  })
+
   it("renders the image button and the event type badge", () => {
     const { container } = render(<EventMedia {...baseProps} />)
     expect(screen.getByText("Workshop")).toBeInTheDocument()

@@ -118,6 +118,25 @@ export function resolveToastActionUrl(current: ActiveToast | null): string | und
   return current?.url
 }
 
+/**
+ * Open the active toast action and dismiss the toast after the navigation has
+ * been requested.  Keeping the action boundary outside the component makes
+ * the transient no-active-toast state explicit and testable: a stale callback
+ * must be a no-op instead of dereferencing a cleared toast.
+ */
+export function performToastAction(current: ActiveToast | null, onClose: () => void): void {
+  const safeUrl = resolveToastActionUrl(current)
+  if (!safeUrl) return
+  try {
+    const resolved = new URL(safeUrl, window.location.href)
+    const sameOrigin = resolved.origin === window.location.origin
+    window.open(resolved.href, getToastWindowTarget(sameOrigin), getToastWindowFeatures(sameOrigin))
+  } catch (_error) {
+    window.open(safeUrl, "_blank", "noopener,noreferrer")
+  }
+  onClose()
+}
+
 /** @internal Window target policy is same-origin aware and deterministic. */
 export function getToastWindowTarget(sameOrigin: boolean): "_self" | "_blank" {
   return sameOrigin ? "_self" : "_blank"
@@ -361,24 +380,7 @@ export default function LivePushToasts() {
   useSyncExternalStore(subscribeLifecycle, getStableSnapshot, getStableSnapshot)
 
   const handleAction = useCallback(() => {
-    // The action callback can outlive the transient toast when a close timer
-    // clears `current` between pointer down and click (or while an exit
-    // animation is in flight). Treat that stale event as a no-op instead of
-    // dereferencing a cleared toast and destabilising the app shell.
-    const safeUrl = resolveToastActionUrl(current)
-    if (!safeUrl) return
-    try {
-      const resolved = new URL(safeUrl, window.location.href)
-      const sameOrigin = resolved.origin === window.location.origin
-      window.open(
-        resolved.href,
-        getToastWindowTarget(sameOrigin),
-        getToastWindowFeatures(sameOrigin)
-      )
-    } catch (_error) {
-      window.open(safeUrl, "_blank", "noopener,noreferrer")
-    }
-    handleClose()
+    performToastAction(current, handleClose)
   }, [current, handleClose])
 
   useEffect(() => {

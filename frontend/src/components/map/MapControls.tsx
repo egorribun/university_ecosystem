@@ -39,7 +39,6 @@ type MapInstance = ReturnType<MapRef["getMap"]>
  */
 const NOOP_FULLSCREEN_CONTAINER = {
   requestFullscreen: () => Promise.resolve(),
-  closest: () => null,
 } as unknown as HTMLElement
 
 const NOOP_MAP_CONTAINER = {

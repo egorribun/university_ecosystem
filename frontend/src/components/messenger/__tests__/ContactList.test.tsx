@@ -556,4 +556,24 @@ describe("ContactList — populated contacts", () => {
     fireEvent.keyDown(firstRow, { key: "ArrowUp" })
     expect(document.activeElement).toBe(firstRow)
   })
+
+  it("keeps focus on the current row when the target data or DOM node disappears", () => {
+    const contacts = [mockContacts[0]!, mockContacts[1]!]
+    render(<ContactList contacts={contacts} selectedId={null} onSelect={() => {}} />, { wrapper })
+    const firstRow = document.getElementById("messenger-contact-1")!
+    firstRow.focus()
+
+    // A concurrent list update can remove the target DOM node before the
+    // keyboard event is delivered; the current row is the safe focus fallback.
+    document.getElementById("messenger-contact-2")?.remove()
+    fireEvent.keyDown(firstRow, { key: "ArrowDown" })
+    expect(document.activeElement).toBe(firstRow)
+
+    // The same race can leave a sparse snapshot while the old event handler is
+    // still alive. Keep the navigation operation total for that malformed
+    // transient input as well.
+    ;(contacts as unknown as Array<unknown>)[1] = undefined
+    fireEvent.keyDown(firstRow, { key: "ArrowDown" })
+    expect(document.activeElement).toBe(firstRow)
+  })
 })

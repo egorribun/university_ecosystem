@@ -151,6 +151,25 @@ describe("webVitals", () => {
     )
   })
 
+  it("falls back to fetch when the browser does not expose Blob", async () => {
+    const sendBeacon = vi.fn(() => true)
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })))
+    vi.stubGlobal("navigator", { ...navigator, sendBeacon })
+    vi.stubGlobal("Blob", undefined)
+    vi.stubGlobal("fetch", fetchMock)
+    initWebVitals(enabledEnv({ VITE_WEB_VITALS_ENDPOINT: "https://metrics.test/v" }))
+
+    const reporter = vi.mocked(onLCP).mock.calls[0]![0]
+    reporter(sampleMetric({ name: "LCP" }) as never)
+    await Promise.resolve()
+
+    expect(sendBeacon).not.toHaveBeenCalled()
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://metrics.test/v",
+      expect.objectContaining({ method: "POST" })
+    )
+  })
+
   it("uses fetch when the beacon API is unavailable and absorbs rejection", async () => {
     const fetchMock = vi.fn(() => Promise.reject(new Error("metrics endpoint down")))
     vi.stubGlobal("navigator", { ...navigator, sendBeacon: undefined })

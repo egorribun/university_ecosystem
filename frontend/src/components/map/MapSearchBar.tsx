@@ -32,6 +32,30 @@ type SelectionResult = SearchResult | { type: "none" }
 
 const NO_SELECTION: SelectionResult = { type: "none" }
 
+/**
+ * Dispatch a selected result to the matching consumer.  A stale keyboard or
+ * pointer event may arrive without a result while the dropdown is closing;
+ * treating that input as a no-op keeps the selection boundary total.
+ */
+export function applySearchSelection(
+  result: SelectionResult | undefined,
+  onSelectBuilding: (letter: BuildingId) => void,
+  onSelectRoom: (letter: BuildingId, floor: number, roomId: string) => void
+): boolean {
+  const selected = result ?? NO_SELECTION
+  switch (selected.type) {
+    case "building":
+      onSelectBuilding(selected.buildingLetter)
+      break
+    case "room":
+      onSelectRoom(selected.buildingLetter, selected.floor, selected.roomId)
+      break
+    default:
+      return false
+  }
+  return true
+}
+
 interface MapSearchBarProps {
   buildings: CampusBuilding[]
   onSelectBuilding: (letter: BuildingId) => void
@@ -116,17 +140,7 @@ export function MapSearchBar({
 
   const handleSelect = useCallback(
     (result: SelectionResult | undefined) => {
-      const selected = result ?? NO_SELECTION
-      switch (selected.type) {
-        case "building":
-          onSelectBuilding(selected.buildingLetter)
-          break
-        case "room":
-          onSelectRoom(selected.buildingLetter, selected.floor, selected.roomId)
-          break
-        default:
-          return
-      }
+      if (!applySearchSelection(result, onSelectBuilding, onSelectRoom)) return
 
       // Cancel any pending blur→close timer so it doesn't race with this explicit close.
       if (blurTimeoutRef.current !== null) {
