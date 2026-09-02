@@ -40,7 +40,8 @@ const NO_SELECTION: SelectionResult = { type: "none" }
 export function applySearchSelection(
   result: SelectionResult | undefined,
   onSelectBuilding: (letter: BuildingId) => void,
-  onSelectRoom: (letter: BuildingId, floor: number, roomId: string) => void
+  onSelectRoom: (letter: BuildingId, floor: number, roomId: string) => void,
+  onSelectionApplied?: () => void
 ): boolean {
   const selected = result ?? NO_SELECTION
   switch (selected.type) {
@@ -53,7 +54,18 @@ export function applySearchSelection(
     default:
       return false
   }
+  onSelectionApplied?.()
   return true
+}
+
+/** Keep transient focus operations total when a route transition clears the ref. */
+export function blurSearchInput(input: HTMLInputElement | null): void {
+  if (input) input.blur()
+}
+
+/** Keep the clear-button focus operation total when its input has unmounted. */
+export function focusSearchInput(input: HTMLInputElement | null): void {
+  if (input) input.focus()
 }
 
 interface MapSearchBarProps {
@@ -140,18 +152,17 @@ export function MapSearchBar({
 
   const handleSelect = useCallback(
     (result: SelectionResult | undefined) => {
-      if (!applySearchSelection(result, onSelectBuilding, onSelectRoom)) return
-
-      // Cancel any pending blur→close timer so it doesn't race with this explicit close.
-      if (blurTimeoutRef.current !== null) {
-        clearTimeout(blurTimeoutRef.current)
-        blurTimeoutRef.current = null
-      }
-      setQuery("")
-      setActiveIdx(null)
-      skipNextBlurCloseRef.current = true
-      const input = inputRef.current
-      if (input) input.blur()
+      applySearchSelection(result, onSelectBuilding, onSelectRoom, () => {
+        // Cancel any pending blur→close timer so it doesn't race with this explicit close.
+        if (blurTimeoutRef.current !== null) {
+          clearTimeout(blurTimeoutRef.current)
+          blurTimeoutRef.current = null
+        }
+        setQuery("")
+        setActiveIdx(null)
+        skipNextBlurCloseRef.current = true
+        blurSearchInput(inputRef.current)
+      })
     },
     [onSelectBuilding, onSelectRoom]
   )
@@ -245,8 +256,7 @@ export function MapSearchBar({
               }
               setQuery("")
               setActiveIdx(null)
-              const input = inputRef.current
-              if (input) input.focus()
+              focusSearchInput(inputRef.current)
             }}
             className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full hover:bg-[var(--bg-surface-hover)]"
             aria-label={t("search.clear")}

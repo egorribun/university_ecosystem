@@ -15,7 +15,12 @@ const translation = vi.hoisted(() => {
 
 vi.mock("react-i18next", () => ({ useTranslation: translation.useTranslation }))
 
-import { applySearchSelection, MapSearchBar } from "@/components/map/MapSearchBar"
+import {
+  applySearchSelection,
+  blurSearchInput,
+  focusSearchInput,
+  MapSearchBar,
+} from "@/components/map/MapSearchBar"
 import type { CampusBuilding } from "@/data/campusBuildings"
 
 const BUILDING: CampusBuilding = {
@@ -88,10 +93,36 @@ describe("MapSearchBar", () => {
   it("ignores a missing selection without invoking either callback", () => {
     const onSelectBuilding = vi.fn()
     const onSelectRoom = vi.fn()
+    const onSelectionApplied = vi.fn()
 
-    expect(applySearchSelection(undefined, onSelectBuilding, onSelectRoom)).toBe(false)
+    expect(
+      applySearchSelection(undefined, onSelectBuilding, onSelectRoom, onSelectionApplied)
+    ).toBe(false)
     expect(onSelectBuilding).not.toHaveBeenCalled()
     expect(onSelectRoom).not.toHaveBeenCalled()
+    expect(onSelectionApplied).not.toHaveBeenCalled()
+  })
+
+  it("keeps nullable focus helpers total while exercising the applied callback", () => {
+    const input = document.createElement("input")
+    const blur = vi.spyOn(input, "blur")
+    const focus = vi.spyOn(input, "focus")
+    const onSelectionApplied = vi.fn()
+
+    blurSearchInput(null)
+    focusSearchInput(null)
+    blurSearchInput(input)
+    focusSearchInput(input)
+    applySearchSelection(
+      { type: "building", buildingLetter: "ГУК", label: "Main" },
+      vi.fn(),
+      vi.fn(),
+      onSelectionApplied
+    )
+
+    expect(blur).toHaveBeenCalledOnce()
+    expect(focus).toHaveBeenCalledOnce()
+    expect(onSelectionApplied).toHaveBeenCalledOnce()
   })
 
   it("uses the map translation namespace and exposes the combobox contract", () => {
@@ -267,9 +298,12 @@ describe("MapSearchBar", () => {
 
     expect(input).not.toHaveAttribute("aria-activedescendant")
 
-    fireEvent.keyDown(input, { key: "ArrowDown" })
+    fireEvent.keyDown(input, { key: "ArrowUp" })
     expect(options[0]).toHaveAttribute("aria-selected", "true")
-    expect(input).toHaveAttribute("aria-activedescendant", options[0]!.id)
+
+    fireEvent.keyDown(input, { key: "ArrowDown" })
+    expect(options[1]).toHaveAttribute("aria-selected", "true")
+    expect(input).toHaveAttribute("aria-activedescendant", options[1]!.id)
 
     fireEvent.keyDown(input, { key: "ArrowDown" })
     expect(options[1]).toHaveAttribute("aria-selected", "true")
