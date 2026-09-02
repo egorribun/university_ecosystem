@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788362607726,
+  "lastUpdate": 1788362966396,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -5586,6 +5586,150 @@ window.BENCHMARK_DATA = {
             "value": 11163,
             "unit": "ns/op",
             "extra": "144957 times\n4 procs"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "d565d067b049a4e3df3a306b3e13b898b1a5bf6b",
+          "message": "build(deps): Bump the go-file-processor group (#1261)\n\nBumps the go-file-processor group in /services/file-processor with 3 updates: [github.com/grpc-ecosystem/go-grpc-middleware/v2](https://github.com/grpc-ecosystem/go-grpc-middleware), [go.temporal.io/sdk](https://github.com/temporalio/sdk-go) and [google.golang.org/grpc](https://github.com/grpc/grpc-go).\n\n\nUpdates `github.com/grpc-ecosystem/go-grpc-middleware/v2` from 2.3.3 to 2.3.4\n- [Release notes](https://github.com/grpc-ecosystem/go-grpc-middleware/releases)\n- [Commits](https://github.com/grpc-ecosystem/go-grpc-middleware/compare/v2.3.3...v2.3.4)\n\nUpdates `go.temporal.io/sdk` from 1.47.0 to 1.48.0\n- [Release notes](https://github.com/temporalio/sdk-go/releases)\n- [Changelog](https://github.com/temporalio/sdk-go/blob/main/CHANGELOG.md)\n- [Commits](https://github.com/temporalio/sdk-go/compare/v1.47.0...v1.48.0)\n\nUpdates `google.golang.org/grpc` from 1.83.0 to 1.83.1\n- [Release notes](https://github.com/grpc/grpc-go/releases)\n- [Commits](https://github.com/grpc/grpc-go/compare/v1.83.0...v1.83.1)\n\n---\nupdated-dependencies:\n- dependency-name: github.com/grpc-ecosystem/go-grpc-middleware/v2\n  dependency-version: 2.3.4\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: go-file-processor\n- dependency-name: go.temporal.io/sdk\n  dependency-version: 1.48.0\n  dependency-type: direct:production\n  update-type: version-update:semver-minor\n  dependency-group: go-file-processor\n- dependency-name: google.golang.org/grpc\n  dependency-version: 1.83.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: go-file-processor\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: Egor <egorribun2005@gmail.com>",
+          "timestamp": "2026-09-02T19:15:59+05:00",
+          "tree_id": "bc20ae5c0238812453c7ec3374a69178692c77d9",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/d565d067b049a4e3df3a306b3e13b898b1a5bf6b"
+        },
+        "date": 1788362964714,
+        "tool": "go",
+        "benches": [
+          {
+            "name": "BenchmarkJWKSValidation (github.com/university-ecosystem/gateway/middleware)",
+            "value": 79977,
+            "unit": "ns/op",
+            "extra": "14470 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkRateLimitFallback (github.com/university-ecosystem/gateway/middleware)",
+            "value": 99.7,
+            "unit": "ns/op",
+            "extra": "11780346 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkExtractAlgFromHeader (github.com/university-ecosystem/gateway/middleware)",
+            "value": 792.8,
+            "unit": "ns/op",
+            "extra": "1506338 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkValidateIAT (github.com/university-ecosystem/gateway/middleware)",
+            "value": 54.19,
+            "unit": "ns/op",
+            "extra": "22075501 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Hit (github.com/university-ecosystem/gateway/middleware)",
+            "value": 172.1,
+            "unit": "ns/op",
+            "extra": "6932361 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCheckL1Cache_Miss (github.com/university-ecosystem/gateway/middleware)",
+            "value": 39.64,
+            "unit": "ns/op",
+            "extra": "30211870 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWKToRSAPublicKey (github.com/university-ecosystem/gateway/middleware)",
+            "value": 536.4,
+            "unit": "ns/op",
+            "extra": "2232603 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkShouldRefreshProbabilistic (github.com/university-ecosystem/gateway/middleware)",
+            "value": 119.9,
+            "unit": "ns/op",
+            "extra": "9999513 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkKeyFunc_HS256 (github.com/university-ecosystem/gateway/middleware)",
+            "value": 28.22,
+            "unit": "ns/op",
+            "extra": "41718536 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageMarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 507.6,
+            "unit": "ns/op",
+            "extra": "2358477 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkMessageUnmarshal (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1565,
+            "unit": "ns/op",
+            "extra": "797988 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkClientLookup (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 17.83,
+            "unit": "ns/op",
+            "extra": "66822906 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Room (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 690,
+            "unit": "ns/op",
+            "extra": "1679206 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_DirectMessage (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 42.81,
+            "unit": "ns/op",
+            "extra": "25225135 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkCollectRecipients_Broadcast (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 1340,
+            "unit": "ns/op",
+            "extra": "852274 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkSafeSend (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 50.66,
+            "unit": "ns/op",
+            "extra": "23035812 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkHandleRegister (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 90.15,
+            "unit": "ns/op",
+            "extra": "12792469 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkNATSPublishSimulated (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 65.55,
+            "unit": "ns/op",
+            "extra": "18298372 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkJWTVerify (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 829.7,
+            "unit": "ns/op",
+            "extra": "1314114 times\n4 procs"
+          },
+          {
+            "name": "BenchmarkBroadcastTo1000Clients (github.com/university-ecosystem/ws-hub/pkg/hub)",
+            "value": 17861,
+            "unit": "ns/op",
+            "extra": "104904 times\n4 procs"
           }
         ]
       }
