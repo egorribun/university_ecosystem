@@ -51,7 +51,10 @@ jobs:
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.3.0
-          install-mode: goinstall
+          # Use the action's release binary instead of compiling the linter
+          # from source.  This keeps the required gate deterministic and
+          # avoids a fan-out of Go module downloads/rate limits on runners.
+          install-mode: binary
           working-directory: services/${{ matrix.service }}
           args: --config ../../.golangci.yml --timeout 5m
           # Do not make the standalone lint workflow depend on the remote

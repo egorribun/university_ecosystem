@@ -53,6 +53,7 @@ FRONTEND_WORKFLOW_PATH = (
 )
 E2E_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "reusable-e2e-tests.yml"
 GO_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "reusable-go-tests.yml"
+GO_LINT_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "go-lint.yml"
 BUILD_ORCHESTRATED_LINUX_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "build-orchestrated-linux.yml"
 )
@@ -2860,6 +2861,14 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
     )
     assert merged_upload["with"]["include-hidden-files"] is True
 
+    go_lint_workflow = yaml.safe_load(GO_LINT_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    go_lint_job_action = next(
+        step
+        for step in go_lint_workflow["jobs"]["golangci-lint"]["steps"]
+        if step.get("uses", "").startswith("golangci/golangci-lint-action@")
+    )
+    assert go_lint_job_action["with"]["install-mode"] == "binary"
+
     go = yaml.safe_load(GO_WORKFLOW_PATH.read_text(encoding="utf-8"))
     assert go["jobs"]["test"]["timeout-minutes"] == 120
     assert go["jobs"]["lint"]["timeout-minutes"] == 20
@@ -2869,6 +2878,7 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
         if step.get("uses", "").startswith("golangci/golangci-lint-action@")
     )
     assert go_lint_action["with"]["verify"] is False
+    assert go_lint_action["with"]["install-mode"] == "binary"
 
     security = yaml.safe_load(SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8"))
     assert {
