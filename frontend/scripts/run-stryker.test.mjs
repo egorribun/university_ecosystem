@@ -631,7 +631,9 @@ test("isolates measured API test-graph hotspots in dedicated first-attempt shard
 })
 
 test("reserves a regular shard when a first-attempt plan has eight requested shards", async () => {
-  const { planMutationShards } = await import(runnerUrl)
+  const { buildHistoricalCostArtifactFromShardTimings, planMutationShards } = await import(
+    runnerUrl
+  )
   const makeMutants = (file, count) =>
     Array.from({ length: count }, (_, index) => ({
       fileName: file,
@@ -645,8 +647,8 @@ test("reserves a regular shard when a first-attempt plan has eight requested sha
   const hotspotFile = "src/api/interceptors/etagCache.ts"
   const regularFile = "src/regular.ts"
   const preflight = new Map([
-    [hotspotFile, { mutants: makeMutants(hotspotFile, 5_000) }],
-    [regularFile, { mutants: makeMutants(regularFile, 5_000) }],
+    [hotspotFile, { sourceSha256: "b".repeat(64), mutants: makeMutants(hotspotFile, 5_000) }],
+    [regularFile, { sourceSha256: "c".repeat(64), mutants: makeMutants(regularFile, 5_000) }],
   ])
 
   const plan = planMutationShards(preflight, 750, 8)
@@ -671,6 +673,21 @@ test("reserves a regular shard when a first-attempt plan has eight requested sha
   assert.ok(hotspotShardIndexes.length > 1)
   assert.ok(regularShardIndexes.length > 0)
   assert.ok(regularShardIndexes.every((shardIndex) => shardIndex >= 7))
+  for (const shard of plan) {
+    assert.deepEqual(shard.files, [...shard.files].sort())
+    assert.equal(new Set(shard.files).size, shard.files.length)
+  }
+
+  const historicalCostArtifact = buildHistoricalCostArtifactFromShardTimings({
+    sourceRevision: { headSha: "a".repeat(40) },
+    config: {},
+    preflightByFile: preflight,
+    shardResults: plan.map((shard) => ({ ...shard, durationMs: 1_000 })),
+  })
+  assert.deepEqual(
+    historicalCostArtifact.payload.costs.map(({ file }) => file),
+    [hotspotFile, regularFile].sort()
+  )
 
   const singleShardPlan = planMutationShards(preflight, 750, 1)
   assert.equal(singleShardPlan.length, 1)

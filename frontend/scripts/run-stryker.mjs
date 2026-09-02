@@ -547,6 +547,14 @@ function assignLocalityAwareMutationUnits(weightedUnits, shards) {
   }
 }
 
+function canonicalizeShardAssignments(shards) {
+  return shards.map(({ id, files, mutantCount }) => ({
+    id,
+    files: [...files].sort(),
+    mutantCount,
+  }))
+}
+
 export function planMutationShards(
   preflightByFile,
   targetMutants = 750,
@@ -615,7 +623,7 @@ export function planMutationShards(
     // graphs.  Checked-in API graph weights are isolated first so the most
     // expensive related-test regions cannot monopolize a count-balanced shard.
     assignFirstAttemptMutationUnits(weightedUnits, shards)
-    return shards.map(({ id, files, mutantCount }) => ({ id, files, mutantCount }))
+    return canonicalizeShardAssignments(shards)
   }
   weightedUnits.sort(
     (left, right) =>
@@ -639,8 +647,7 @@ export function planMutationShards(
     target.mutantCount += entry.mutantCount
     target.estimatedCost += validatedCosts ? entry.estimatedCost : entry.mutantCount
   }
-  for (const shard of shards) shard.files.sort()
-  return shards.map(({ id, files, mutantCount }) => ({ id, files, mutantCount }))
+  return canonicalizeShardAssignments(shards)
 }
 
 function assertShardReportConfig(report, files, id) {
