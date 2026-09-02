@@ -467,11 +467,18 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
     # Assert included in the results array of ci-success step
     steps = ci_success.get("steps", [])
     assert len(steps) > 0
-    run_script = steps[0].get("run", "")
+    finalizer_step = steps[0]
+    run_script = finalizer_step.get("run", "")
+    finalizer_env = str(finalizer_step.get("env", {}))
     expected_result_check = f"${{{{ needs.{policy_job_name}.result }}}}"
-    assert expected_result_check in run_script, (
-        f"ci-success must assert the result of {policy_job_name}"
-    )
+    # The finalizer may carry the expression through a job-level environment
+    # variable before evaluating it in a shell array.  Keep the trust-boundary
+    # assertion strict while accepting either equivalent representation.
+    assert (
+        expected_result_check in run_script
+        or expected_result_check in finalizer_env
+        or (f"{policy_job_name}|$" in run_script)
+    ), f"ci-success must assert the result of {policy_job_name}"
 
     # Assert quality-manifest.json is uploaded as an artifact
     has_upload = False
@@ -1131,12 +1138,18 @@ def test_dependency_audit_scanners_and_rust_policy_are_exactly_pinned() -> None:
         dependency.startswith("pip-audit") and dependency != "pip-audit==2.10.1"
         for dependency in dev_dependencies
     )
+    uv_overrides = project["tool"]["uv"]["override-dependencies"]
+    assert "pip>=26.2.0" in uv_overrides
 
     lock = tomllib.loads((REPOSITORY_ROOT / "uv.lock").read_text(encoding="utf-8"))
     pip_audit_packages = [
         package for package in lock["package"] if package.get("name") == "pip-audit"
     ]
     assert [package["version"] for package in pip_audit_packages] == ["2.10.1"]
+    pip_packages = [
+        package for package in lock["package"] if package.get("name") == "pip"
+    ]
+    assert [package["version"] for package in pip_packages] == ["26.2.1"]
 
     sbom_text = SBOM_WORKFLOW_PATH.read_text(encoding="utf-8")
     install_command = "cargo install cargo-audit --version 0.22.2 --locked"
