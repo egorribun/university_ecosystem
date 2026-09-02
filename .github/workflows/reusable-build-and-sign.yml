@@ -161,8 +161,12 @@ jobs:
             ${{ inputs.canonical_frontend && 'VITE_CWV_TRUSTED_RUM=true' || '' }}
             ${{ inputs.canonical_frontend && 'VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv' || '' }}
           target: ${{ inputs.target }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Keep each image's BuildKit cache isolated while allowing repeat
+          # builds of that image to reuse layers.  The required image_name is
+          # the canonical producer matrix value, so this scope is deterministic
+          # and cannot collide across the six release images.
+          cache-from: type=gha,scope=university-${{ inputs.image_name }}
+          cache-to: type=gha,scope=university-${{ inputs.image_name }},mode=max
           provenance: false
           sbom: false
 

@@ -33,6 +33,32 @@ def _run_text(job: dict) -> str:
     return "\n".join(str(step.get("run", "")) for step in job.get("steps", []))
 
 
+def test_reusable_image_build_scopes_buildkit_cache_per_image() -> None:
+    reusable = _workflow(WORKFLOWS / "reusable-build-and-sign.yml")
+    build_steps = reusable["jobs"]["build"]["steps"]
+    build_step = next(
+        step
+        for step in build_steps
+        if str(step.get("uses", "")).startswith("docker/build-push-action@")
+    )
+    build_with = build_step["with"]
+    expected_scope = "university-${{ inputs.image_name }}"
+
+    def cache_scope(specification: object) -> str:
+        parts = [part.strip() for part in str(specification).split(",")]
+        scopes = [part.split("=", 1)[1] for part in parts if part.startswith("scope=")]
+        assert len(scopes) == 1, specification
+        scope = scopes[0]
+        assert scope, specification
+        assert "\n" not in scope and "\r" not in scope, specification
+        return scope
+
+    from_scope = cache_scope(build_with["cache-from"])
+    to_scope = cache_scope(build_with["cache-to"])
+    assert from_scope == expected_scope
+    assert to_scope == expected_scope
+
+
 def test_exact_six_images_have_one_canonical_main_only_producer() -> None:
     producer = _workflow(PRODUCER)
     inputs = _dispatch_inputs(producer)
