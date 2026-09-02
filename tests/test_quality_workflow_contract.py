@@ -2868,6 +2868,7 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
         if step.get("uses", "").startswith("golangci/golangci-lint-action@")
     )
     assert go_lint_job_action["with"]["install-mode"] == "binary"
+    assert go_lint_job_action["with"]["version"] == "v2.13.2"
 
     go = yaml.safe_load(GO_WORKFLOW_PATH.read_text(encoding="utf-8"))
     assert go["jobs"]["test"]["timeout-minutes"] == 120
@@ -2879,6 +2880,7 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
     )
     assert go_lint_action["with"]["verify"] is False
     assert go_lint_action["with"]["install-mode"] == "binary"
+    assert go_lint_action["with"]["version"] == "v2.13.2"
 
     security = yaml.safe_load(SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8"))
     assert {
