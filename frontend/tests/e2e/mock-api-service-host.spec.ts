@@ -1,4 +1,5 @@
 import { expect, test } from "./test"
+import { validateResponseBody } from "../../src/tests/contractValidator"
 import { useMockApi } from "./utils/mockApi"
 
 test("mock API supports credentialed service-host requests", async ({ page }) => {
@@ -36,4 +37,77 @@ test("mock API provides a stable WebSocket for authenticated pages", async ({ pa
   )
 
   expect(opened).toBe(true)
+})
+
+test("mock API notification collections satisfy their declared contracts", async ({ page }) => {
+  const mock = await useMockApi(page)
+  mock.state.profile.role = "admin"
+  await page.goto("/login")
+
+  const responses = await page.evaluate(async () => {
+    const notificationsResponse = await fetch("/api/v1/notifications")
+    const deadLetterResponse = await fetch("/api/v1/notifications/admin/dead-letter")
+
+    return {
+      notifications: {
+        status: notificationsResponse.status,
+        body: (await notificationsResponse.json()) as unknown,
+      },
+      deadLetter: {
+        status: deadLetterResponse.status,
+        body: (await deadLetterResponse.json()) as unknown,
+      },
+    }
+  })
+
+  expect(responses.notifications.status).toBe(200)
+  validateResponseBody({
+    path: "/api/v1/notifications",
+    method: "GET",
+    statusCode: responses.notifications.status,
+    body: responses.notifications.body,
+  })
+  expect(responses.notifications.body).toEqual({
+    items: [],
+    unread_count: 0,
+    has_more: false,
+    next_cursor: null,
+  })
+
+  expect(responses.deadLetter.status).toBe(200)
+  expect(responses.deadLetter.body).toMatchObject({
+    items: expect.any(Array),
+    total: 2,
+  })
+  expect(Object.keys(responses.deadLetter.body as Record<string, unknown>).sort()).toEqual([
+    "items",
+    "total",
+  ])
+  const deadLetterItems = (responses.deadLetter.body as { items: unknown[] }).items
+  expect(deadLetterItems).toHaveLength(2)
+  for (const item of deadLetterItems) {
+    expect(Object.keys(item as Record<string, unknown>).sort()).toEqual([
+      "attempts",
+      "claimed_at",
+      "enqueued_at",
+      "id",
+      "kind",
+      "last_error",
+      "locale",
+      "next_retry_at",
+      "record_id",
+    ])
+  }
+})
+
+test("mock API rejects unauthenticated notification dead-letter access", async ({ page }) => {
+  await useMockApi(page, { authenticated: false })
+  await page.goto("/login")
+
+  const response = await page.evaluate(async () => {
+    const result = await fetch("/api/v1/notifications/admin/dead-letter")
+    return { status: result.status, body: await result.json() }
+  })
+
+  expect(response).toEqual({ status: 401, body: { detail: "Unauthorized" } })
 })

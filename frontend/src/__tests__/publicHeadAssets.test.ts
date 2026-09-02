@@ -13,6 +13,14 @@ const headIcons = [
 ] as const
 
 describe("public head assets", () => {
+  it("ships a valid robots policy instead of falling back to the SPA document", () => {
+    const robots = readFileSync(resolve(publicDir, "robots.txt"), "utf8")
+
+    expect(robots).toMatch(/^User-agent:\s*\*/mu)
+    expect(robots).toContain("Disallow: /api/")
+    expect(robots).not.toMatch(/<html|<!doctype/iu)
+  })
+
   it.each(headIcons)("ships %s referenced by both static and SSR heads", (filename) => {
     const href = `/${filename}`
     const staticShell = readFileSync(resolve(frontendRoot, "index.html"), "utf8")

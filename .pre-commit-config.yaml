@@ -25,7 +25,9 @@ repos:
     hooks:
       - id: detect-secrets
         name: detect-secrets scan
+        entry: python scripts/run_detect_secrets.py
         args: ["--baseline", ".secrets.baseline"]
+        require_serial: true
         exclude: ".env.docker.example|.env.example|uv.lock"
 
   - repo: https://github.com/gitleaks/gitleaks

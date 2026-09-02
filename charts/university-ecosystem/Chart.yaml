@@ -2,7 +2,7 @@ apiVersion: v2
 name: university-ecosystem
 description: A Helm chart for the University Ecosystem microservices platform
 type: application
-version: 0.2.0
+version: 0.2.1
 appVersion: "1.0.0"
 maintainers:
   - name: antigravity
@@ -16,11 +16,6 @@ dependencies:
     version: "~20.x"
     repository: oci://registry-1.docker.io/bitnamicharts
     condition: redis.enabled
-  - name: redis
-    alias: revocationRedis
-    version: "~20.x"
-    repository: oci://registry-1.docker.io/bitnamicharts
-    condition: revocationRedis.enabled
   - name: nats
     version: "~8.x"
     repository: oci://registry-1.docker.io/bitnamicharts

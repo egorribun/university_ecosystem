@@ -5,12 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { AppShellProvider } from "@/contexts/AppShellContext"
 import useScrollRestoration from "../useScrollRestoration"
 
-declare global {
-  interface Window {
-    matchMedia: (query: string) => MediaQueryList
-  }
-}
-
 const ScrollHarness = ({ path, mark }: { path: string; mark?: boolean }) => {
   const { markScrollFromBottom, scrollToTop } = useScrollRestoration(path)
 

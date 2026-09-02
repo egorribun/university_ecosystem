@@ -33,17 +33,18 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: vi.fn(),
 }))
 
-vi.mock("@/db", () => ({
+vi.mock("@/db/lazy", () => ({
   getDatabase: vi.fn(),
+  getDatabaseLazily: vi.fn(),
 }))
 
 import api from "@/api/client"
 import { useAuth } from "@/contexts/AuthContext"
-import { getDatabase } from "@/db"
+import { getDatabaseLazily } from "@/db/lazy"
 
 const apiGetMock = vi.mocked(api.get)
 const useAuthMock = vi.mocked(useAuth)
-const getDatabaseMock = vi.mocked(getDatabase)
+const getDatabaseMock = vi.mocked(getDatabaseLazily)
 
 function newClient(): QueryClient {
   return new QueryClient({

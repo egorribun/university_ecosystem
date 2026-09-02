@@ -10,6 +10,8 @@ If either test fails it means:
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 from sqlalchemy import text
 
@@ -62,7 +64,11 @@ async def test_recovery_codes_are_hashed_in_db(db_session, user_factory):
     """
     user = await user_factory()
 
-    plaintext_codes = await mfa.generate_recovery_codes(db_session, user=user)
+    plaintext_codes = await mfa.generate_recovery_codes(
+        db_session,
+        user=user,
+        fresh_mfa_verified_at=datetime.now(UTC),
+    )
     assert plaintext_codes, "generate_recovery_codes must return at least one code"
 
     first_code = plaintext_codes[0]

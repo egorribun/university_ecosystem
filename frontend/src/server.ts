@@ -45,16 +45,20 @@ import {
 // node:async_hooks is server-only — Vite's environments build keeps this
 // import in the server chunk only; client bundle never loads it.
 //
-// Four storages (W126 + W127 + W133):
+// Six storages (W126 + W127 + W133):
 //   - requestAuthStorage: SSR auth state from access_token_v2 cookie (W126 SW3)
 //   - requestCookieStorage: raw Cookie header for SSR-side authenticated
 //     backend calls via axios interceptor (W133 SW1 — see api/client.ts)
+//   - requestFingerprintHeadersStorage: original browser UA/language for the
+//     same SSR backend calls, preserving the session security binding
 //   - requestThemeStorage: resolved theme from ue-mode cookie (W127 SW4)
 //   - requestLangStorage: resolved lang from ue:language cookie (W127 SW4)
 //
 // Layered as nested .run() calls so all four are visible to the handler.
 const requestAuthStorage = new AsyncLocalStorage<SsrAuthState>()
 const requestCookieStorage = new AsyncLocalStorage<string>()
+type SsrFingerprintHeaders = { userAgent: string; acceptLanguage: string }
+const requestFingerprintHeadersStorage = new AsyncLocalStorage<SsrFingerprintHeaders>()
 const requestThemeStorage = new AsyncLocalStorage<ResolvedTheme>()
 const requestLangStorage = new AsyncLocalStorage<ResolvedLang>()
 const requestI18nStorage = new AsyncLocalStorage<I18nInstance>()
@@ -70,12 +74,14 @@ declare global {
   // `vars-on-top` rules do not flag declarations inside `declare global`.
   var __ssrAuthGetter__: (() => SsrAuthState | undefined) | undefined
   var __ssrCookieGetter__: (() => string | undefined) | undefined
+  var __ssrFingerprintHeadersGetter__: (() => SsrFingerprintHeaders | undefined) | undefined
   var __ssrThemeGetter__: (() => ResolvedTheme | undefined) | undefined
   var __ssrLangGetter__: (() => ResolvedLang | undefined) | undefined
   var __ssrI18nGetter__: (() => I18nInstance | undefined) | undefined
 }
 globalThis.__ssrAuthGetter__ = () => requestAuthStorage.getStore()
 globalThis.__ssrCookieGetter__ = () => requestCookieStorage.getStore()
+globalThis.__ssrFingerprintHeadersGetter__ = () => requestFingerprintHeadersStorage.getStore()
 globalThis.__ssrThemeGetter__ = () => requestThemeStorage.getStore()
 globalThis.__ssrLangGetter__ = () => requestLangStorage.getStore()
 globalThis.__ssrI18nGetter__ = () => requestI18nStorage.getStore()
@@ -190,6 +196,10 @@ export default createServerEntry({
     // the chain is active. NEVER log or surface the raw value — it
     // contains the access_token_v2 HttpOnly cookie.
     const cookie = request.headers.get("cookie") ?? ""
+    const fingerprintHeaders: SsrFingerprintHeaders = {
+      userAgent: request.headers.get("user-agent") ?? "",
+      acceptLanguage: request.headers.get("accept-language") ?? "",
+    }
     // Wave 180 SW3 — /messenger privacy posture: inject Cache-Control: no-store
     // + Vary: Cookie after handler.fetch resolves. Branch is path-prefix based;
     // all other routes return upstream response unchanged (fast path; no
@@ -197,12 +207,14 @@ export default createServerEntry({
     const isMessengerPath = url.pathname.startsWith(MESSENGER_PATH_PREFIX)
     return requestAuthStorage.run(auth, () =>
       requestCookieStorage.run(cookie, () =>
-        requestThemeStorage.run(theme, () =>
-          requestLangStorage.run(lang, () =>
-            requestI18nStorage.run(requestI18n, async () => {
-              const response = await handler.fetch(request)
-              return isMessengerPath ? augmentResponseForMessenger(response) : response
-            })
+        requestFingerprintHeadersStorage.run(fingerprintHeaders, () =>
+          requestThemeStorage.run(theme, () =>
+            requestLangStorage.run(lang, () =>
+              requestI18nStorage.run(requestI18n, async () => {
+                const response = await handler.fetch(request)
+                return isMessengerPath ? augmentResponseForMessenger(response) : response
+              })
+            )
           )
         )
       )

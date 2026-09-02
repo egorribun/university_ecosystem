@@ -116,12 +116,12 @@ async def test_finalize_login_uses_model_copy_and_supports_password_login() -> N
             bg_tasks=MagicMock(),
             db_session=MagicMock(),
             mfa_completed=True,
-            method="webauthn",
+            method="email_otp",
         )
 
     user.model_copy.assert_called_once()
     metadata = session_service.create_access_token.await_args.kwargs["metadata"]
-    assert metadata["mfa_method"] == "webauthn"
+    assert metadata["mfa_method"] == "email_otp"
 
     session_service.create_access_token.reset_mock()
     user.model_copy.reset_mock()

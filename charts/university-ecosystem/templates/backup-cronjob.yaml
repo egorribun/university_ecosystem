@@ -40,7 +40,7 @@ spec:
           initContainers:
             - name: database-dump
               image: {{ .Values.backup.postgresImage | quote }}
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: {{ ternary "Always" "IfNotPresent" (has .Values.global.environment (list "staging" "production")) }}
               command: ["/bin/sh", "-ec"]
               args:
                 - >-
@@ -74,7 +74,7 @@ spec:
           containers:
             - name: upload
               image: {{ .Values.backup.minioClientImage | quote }}
-              imagePullPolicy: IfNotPresent
+              imagePullPolicy: {{ ternary "Always" "IfNotPresent" (has .Values.global.environment (list "staging" "production")) }}
               command: ["/bin/sh", "-ec"]
               args:
                 - |

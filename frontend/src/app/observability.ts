@@ -2,21 +2,20 @@ import * as Sentry from "@sentry/react"
 import { initTelemetry } from "./telemetry"
 import { logInfo } from "./logger"
 
-let initialized = false
+let initialized: boolean | undefined
 
 const MIN_SAMPLE_RATE = 0
 const MAX_SAMPLE_RATE = 1
 
 function parseSampleRate(value: string | undefined): number | undefined {
-  if (!value) return undefined
-  const parsed = Number.parseFloat(value)
+  const parsed = value === undefined ? Number.NaN : Number.parseFloat(value)
   if (Number.isNaN(parsed)) return undefined
   if (parsed < MIN_SAMPLE_RATE || parsed > MAX_SAMPLE_RATE) return undefined
   return parsed
 }
 
 export function initObservability(env: ImportMetaEnv = import.meta.env): boolean {
-  if (initialized) return true
+  if (initialized === true) return true
 
   // ── OTel Web SDK ───────────────────────────────────────────────────────────
   // Initialize telemetry unconditionally so that spans are exported in local
@@ -65,5 +64,5 @@ export function initObservability(env: ImportMetaEnv = import.meta.env): boolean
 }
 
 export function resetObservabilityForTesting(): void {
-  initialized = false
+  initialized = undefined
 }

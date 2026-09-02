@@ -78,6 +78,12 @@ export interface EventCardViewProps {
   priority?: boolean
 }
 
+/** Resolve the quick-view placement even when a stale event has no article. */
+export function resolveQuickViewPosition(article: HTMLElement | null): "top" | "bottom" {
+  const rect = article ? article.getBoundingClientRect() : undefined
+  return rect && rect.top < 280 ? "bottom" : "top"
+}
+
 export const EventCardView: FC<EventCardViewProps> = ({
   id,
   title,
@@ -126,11 +132,11 @@ export const EventCardView: FC<EventCardViewProps> = ({
 
   const showQuickView = useCallback(() => {
     if (hoveringDisabled) return
-    const rect = articleRef.current?.getBoundingClientRect()
-    setQuickViewPosition(rect && rect.top < 280 ? "bottom" : "top")
+    const article = articleRef.current
+    setQuickViewPosition(resolveQuickViewPosition(article))
     setQuickViewVisible(true)
   }, [hoveringDisabled])
-  const hideQuickView = useCallback(() => setQuickViewVisible(false), [])
+  const hideQuickView = () => setQuickViewVisible(false)
 
   /* ── View Transition: mark hero for morphing on navigation ── */
   const [transitioning, setTransitioning] = useState(false)
@@ -140,7 +146,7 @@ export const EventCardView: FC<EventCardViewProps> = ({
       setTransitioning(true)
     }
   }, [hoveringDisabled])
-  const handleTransitionReset = useCallback(() => setTransitioning(false), [])
+  const handleTransitionReset = () => setTransitioning(false)
 
   return (
     <m.article

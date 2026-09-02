@@ -59,7 +59,7 @@ var (
 	// on active_goroutines > expected_workers + active_connections.
 	ActiveGoroutines = promauto.NewGauge(prometheus.GaugeOpts{
 		Name: "ws_hub_active_goroutines",
-		Help: "Number of active goroutines managed by the hub (broadcast workers, NATS handlers).",
+		Help: "Number of active goroutines managed by ws-hub, including listeners, pumps, replay, workers, and cleanup tasks.",
 	})
 
 	// RZ-27-02: Incoming messages dropped due to exceeding the size limit.
@@ -103,4 +103,32 @@ var (
 		Name: "ws_hub_jetstream_replayed_total",
 		Help: "Total number of JetStream messages replayed to reconnecting clients.",
 	})
+
+	// ReplayJoinRateLimitedTotal tracks replay-bearing join requests rejected
+	// before they can churn JetStream pull consumers.
+	ReplayJoinRateLimitedTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "ws_hub_replay_join_rate_limited_total",
+		Help: "Total number of replay-bearing room joins rejected by the per-client limiter.",
+	})
 )
+
+var noTrackedGoroutineExit = func() {}
+
+// StartTrackedGoroutine launches run and keeps ActiveGoroutines balanced for
+// the complete lifetime of the background task.
+func StartTrackedGoroutine(run func()) {
+	startTrackedGoroutine(run, noTrackedGoroutineExit)
+}
+
+// startTrackedGoroutine runs onExit only after the ActiveGoroutines gauge has
+// been decremented. Lifecycle owners use that ordering to make Stop a true
+// join: when their completion signal fires, neither the worker nor its metric
+// accounting remains live.
+func startTrackedGoroutine(run func(), onExit func()) {
+	ActiveGoroutines.Inc()
+	go func() {
+		defer onExit()
+		defer ActiveGoroutines.Dec()
+		run()
+	}()
+}

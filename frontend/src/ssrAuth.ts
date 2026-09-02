@@ -148,7 +148,7 @@ export async function validateJwt(token: string): Promise<SsrAuthState> {
  *
  * The cookie name `access_token_v2` mirrors the backend's
  * `LoginSessionManager._set_access_token_cookie` chokepoint (issued for ALL
- * login flows: password, passkey, MFA verify, OAuth). No new cookie is added
+ * login flows: password, MFA verify, OAuth). No new cookie is added
  * by W126 — Phase 3 reuses existing infrastructure.
  */
 export async function extractAuthFromRequest(request: Request): Promise<SsrAuthState> {

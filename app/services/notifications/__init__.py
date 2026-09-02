@@ -19,6 +19,7 @@ from app.services.notifications.core import (
 )
 from app.services.notifications.delivery import (
     create_notifications_for_users,
+    deliver_and_process_push_results,
     only_active_users,
     send_web_push,  # Re-exported from delivery for test compatibility
 )
@@ -58,6 +59,7 @@ __all__ = [
     # Cleanup
     "cleanup_stale_notifications",
     "create_notifications_for_users",
+    "deliver_and_process_push_results",
     # Internal module re-exports for test patching
     "dt",
     "generate_schedule_reminders",

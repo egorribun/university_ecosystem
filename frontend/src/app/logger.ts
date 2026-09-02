@@ -13,11 +13,11 @@ type SentryClient = {
 }
 
 let currentTraceId: string | null = null
-let sentry: SentryClient = {
-  captureException: sentryCaptureException,
-  captureMessage: sentryCaptureMessage,
-  setTag: sentrySetTag,
-}
+const defaultSentry = Object.create(null) as SentryClient
+defaultSentry.captureException = sentryCaptureException
+defaultSentry.captureMessage = sentryCaptureMessage
+defaultSentry.setTag = sentrySetTag
+let sentry: SentryClient = defaultSentry
 
 export function setLoggerClient(overrides: Partial<SentryClient>): void {
   sentry = { ...sentry, ...overrides }
@@ -31,12 +31,7 @@ function normalizeArg(value: unknown): unknown {
       stack: value.stack,
     }
   }
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-  ) {
+  if (typeof value === "number" || typeof value === "boolean") {
     return value
   }
   if (typeof value === "object") {
@@ -62,15 +57,14 @@ function findFirstError(args: unknown[]): Error | undefined {
 }
 
 function findFirstMessage(args: unknown[]): string | undefined {
-  const candidate = args.find((value) => typeof value === "string")
-  return typeof candidate === "string" ? candidate : undefined
+  return args.find((value): value is string => typeof value === "string")
 }
 
 function resolveTags() {
   const tags: Record<string, string> = {
     logger: "app",
   }
-  if (currentTraceId) {
+  if (currentTraceId !== null) {
     tags.trace_id = currentTraceId
   }
   return tags
@@ -86,16 +80,23 @@ export function setTraceContext(traceId: string | null | undefined): void {
 export function logError(...args: unknown[]): void {
   const error = findFirstError(args)
   try {
-    if (error && typeof sentry.captureException === "function") {
-      sentry.captureException(error, {
-        extra: {
-          logArgs: args.map(normalizeArg),
-        },
-        tags: {
-          ...resolveTags(),
-          level: "error",
-        },
-      })
+    if (error) {
+      if (typeof sentry.captureException === "function") {
+        sentry.captureException(error, {
+          extra: {
+            logArgs: args.map(normalizeArg),
+          },
+          tags: {
+            ...resolveTags(),
+            level: "error",
+          },
+        })
+      } else if (typeof sentry.captureMessage === "function") {
+        const message = findFirstMessage(args)
+        if (message) {
+          sentry.captureMessage(message, "error")
+        }
+      }
     } else if (typeof sentry.captureMessage === "function") {
       const message = findFirstMessage(args)
       if (message) {

@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ImgHTMLAttributes } from "react"
+import { useMemo, useState, type CSSProperties, type ImgHTMLAttributes } from "react"
 import { IMAGE_PLACEHOLDER_URL } from "@/constants/placeholders"
 import { addVersionParam, resolveMediaUrl, resolveProxyImageUrl, sanitizeUrl } from "@/utils/media"
 
 const RESPONSIVE_DEFAULT_WIDTHS = [320, 540, 768, 1024, 1440] as const
+const NOOP_IMAGE_EVENT = () => undefined
 
 export type SmartImageProps = {
   srcRaw?: string
@@ -35,17 +36,17 @@ export default function SmartImage({
   responsiveWidths = RESPONSIVE_DEFAULT_WIDTHS,
   alt = "",
   style,
-  onError,
-  onLoad,
+  onError = NOOP_IMAGE_EVENT,
+  onLoad = NOOP_IMAGE_EVENT,
   sizes = "(max-width: 45rem) 82vw, 28.75rem",
   ...rest
 }: SmartImageProps) {
-  const isBlobUrl = srcRaw?.startsWith("blob:")
+  const isBlobUrl = typeof srcRaw === "string" && srcRaw.startsWith("blob:")
 
   const computed = useMemo(() => {
     // We use proxy for all images that are not blobs
     if (isBlobUrl) {
-      return sanitizeUrl(srcRaw!) ? resolveMediaUrl(srcRaw) : ""
+      return sanitizeUrl(srcRaw ?? "") ? resolveMediaUrl(srcRaw) : ""
     }
 
     if (!sanitizeUrl(srcRaw || "")) return ""
@@ -59,20 +60,12 @@ export default function SmartImage({
 
   const [useFallback, setUseFallback] = useState(false)
 
-  useEffect(() => {
-    // Status tracking removed for production
-  }, [computed])
-
   const finalSrc = useFallback || !computed ? fallback : computed
   const srcSet = useMemo(() => {
     // Don't add srcSet for blob URLs — query params break them
     if (!srcRaw || isBlobUrl) return ""
     return buildSrcSet(srcRaw, responsiveWidths)
   }, [srcRaw, responsiveWidths, isBlobUrl])
-
-  useEffect(() => {
-    // Dev logging removed
-  }, [finalSrc, useFallback, computed])
 
   const mergedStyle: CSSProperties = { objectFit: "cover", ...(style ?? {}) }
 
@@ -91,13 +84,13 @@ export default function SmartImage({
       srcSet={srcSet || undefined}
       sizes={srcSet ? sizes : undefined}
       onLoad={(event) => {
-        onLoad?.(event)
+        onLoad(event)
       }}
       onError={(event) => {
         if (!useFallback) {
           setUseFallback(true)
         }
-        onError?.(event)
+        onError(event)
       }}
     />
   )

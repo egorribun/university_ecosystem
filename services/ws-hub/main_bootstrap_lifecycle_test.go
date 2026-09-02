@@ -146,6 +146,36 @@ func TestRun_BootstrapFailureStagesArePropagated(t *testing.T) {
 	})
 }
 
+func TestRun_InvalidListenPortsFailBeforeExternalInitialization(t *testing.T) {
+	t.Setenv("WS_HUB_INTERNAL_SECRET", "test-secret-at-least-32-characters-long")
+
+	for _, testCase := range []struct {
+		name     string
+		envName  string
+		envValue string
+	}{
+		{name: "websocket negative", envName: "WS_HUB_PORT", envValue: "-1"},
+		{name: "webtransport above range", envName: "WS_HUB_WT_PORT", envValue: "65536"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			resetBootstrapSeams(t)
+			t.Setenv("WS_HUB_PORT", "0")
+			t.Setenv("WS_HUB_WT_PORT", "0")
+			t.Setenv(testCase.envName, testCase.envValue)
+			natsCalled := false
+			setTestInitNATS(t, func(context.Context, *config.Config, *slog.Logger) (*nats.Conn, error) {
+				natsCalled = true
+				return nil, errors.New("NATS must not initialize for an invalid listen port")
+			})
+
+			err := run()
+
+			assert.ErrorContains(t, err, "listen port must be between 0 and 65535")
+			assert.False(t, natsCalled)
+		})
+	}
+}
+
 func TestInitializeTracerShutdown_InitializesNoopOnError(t *testing.T) {
 	resetBootstrapSeams(t)
 	cleanup := initializeTracerShutdown(context.Background(), &config.Config{}, slog.New(slog.NewTextHandler(io.Discard, nil)))

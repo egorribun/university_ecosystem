@@ -1,15 +1,15 @@
 import {
   confirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost,
-  confirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPost,
   deletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDelete,
   deleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDelete,
-  deleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDelete,
+  disableEmailMfaEndpointApiV1AuthMfaEmailDelete,
   generateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPost,
   listTotpEnrollmentsApiV1AuthMfaTotpGet,
-  listWebauthnCredentialsApiV1AuthMfaWebauthnGet,
+  resendEmailMfaChallengeApiV1AuthMfaEmailResendPost,
   requestStepUpApiV1AuthMfaStepUpPost,
+  startEmailMfaEnablementApiV1AuthMfaEmailEnablePost,
+  startEmailVerificationApiV1AuthMfaEmailVerificationStartPost,
   startTotpEnrollmentEndpointApiV1AuthMfaTotpStartPost,
-  startWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPost,
   verifyMfaChallengeApiV1AuthMfaVerifyPost,
 } from "@/api/generated"
 import type {
@@ -71,34 +71,30 @@ export const requestStepUpChallenge = async () => {
   return data as StepUpResponse
 }
 
-export const startWebAuthnRegistration = async () => {
-  const { data } = await startWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPost({
+export const startEmailVerification = async () => {
+  const { data } = await startEmailVerificationApiV1AuthMfaEmailVerificationStartPost({
     throwOnError: true,
   })
-  return data as { publicKey: unknown; challenge_token: string }
+  return data
 }
 
-export const confirmWebAuthnRegistration = async (payload: {
-  challenge: string
-  response: unknown
-  label?: string
-}) => {
-  const { data } = await confirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPost({
-    // @ts-expect-error - type mismatch in generated body
-    body: payload,
+export const startEmailMfaEnablement = async () => {
+  const { data } = await startEmailMfaEnablementApiV1AuthMfaEmailEnablePost({
     throwOnError: true,
   })
-  return data as MfaFactorStatus
+  return data
 }
 
-export const listWebAuthnCredentials = async () => {
-  const { data } = await listWebauthnCredentialsApiV1AuthMfaWebauthnGet({ throwOnError: true })
-  return data as unknown[]
+export const resendEmailMfaChallenge = async (challengeToken: string) => {
+  const { data } = await resendEmailMfaChallengeApiV1AuthMfaEmailResendPost({
+    body: { challenge_token: challengeToken },
+    throwOnError: true,
+  })
+  return data
 }
 
-export const deleteWebAuthnCredential = async (credentialId: string) => {
-  const { data } = await deleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDelete({
-    path: { credential_id: credentialId },
+export const disableEmailMfa = async () => {
+  const { data } = await disableEmailMfaEndpointApiV1AuthMfaEmailDelete({
     throwOnError: true,
   })
   return data as MfaFactorStatus

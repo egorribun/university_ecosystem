@@ -4,7 +4,7 @@
  * Functions coverage was 1/8 — the inline JSX handlers (search change/clear,
  * category pills, saved filter, sort toggle, admin add) were unexercised.
  */
-import { screen } from "@testing-library/react"
+import { fireEvent, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
@@ -50,6 +50,7 @@ describe("NewsHeader", () => {
   it("clears the search via the clear button", async () => {
     const props = await renderHeader({ searchQuery: "rust" })
     const clearButton = screen.getByRole("button", { name: /clear/i })
+    expect(clearButton).toHaveClass("size-11")
     await userEvent.click(clearButton)
     expect(props.onSearchChange).toHaveBeenCalledWith("")
   })
@@ -69,6 +70,25 @@ describe("NewsHeader", () => {
 
     await userEvent.click(allPill)
     expect(props.onCategoryChange).toHaveBeenCalledWith("all")
+  })
+
+  it("exposes 44px category targets in a keyboard-navigable toolbar", async () => {
+    await renderHeader()
+    const toolbar = screen.getByRole("toolbar", { name: /filter news by category/i })
+    const allButton = screen.getByRole("button", { name: /^all$/i })
+    const categoryButtons = toolbar.querySelectorAll<HTMLButtonElement>("button")
+
+    expect(allButton).toHaveClass("min-h-[44px]")
+    allButton.focus()
+    await userEvent.keyboard("{ArrowRight}")
+    expect(categoryButtons[1]).toHaveFocus()
+    await userEvent.keyboard("{ArrowLeft}")
+    expect(allButton).toHaveFocus()
+
+    fireEvent.keyDown(toolbar, { key: "Enter" })
+    allButton.blur()
+    fireEvent.keyDown(toolbar, { key: "ArrowRight" })
+    expect(document.activeElement).not.toBe(categoryButtons[1])
   })
 
   it("shows the saved filter only when bookmarks exist and selects it", async () => {

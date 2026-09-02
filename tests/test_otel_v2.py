@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -22,10 +23,17 @@ def _reset_otel():
     obs.shutdown_observability()
     original_configured = obs._otel_configured
     original_instrumented = obs._sqlalchemy_instrumented
+    original_shutdown = obs._otel_shutdown
+    obs._otel_shutdown = False
     obs._otel_configured = False
     obs._sqlalchemy_instrumented = False
-    yield
-    obs.shutdown_observability()
+    with (
+        patch("app.core.observability.trace.set_tracer_provider"),
+        patch("app.core.observability.metrics.set_meter_provider"),
+    ):
+        yield
+        obs.shutdown_observability()
+    obs._otel_shutdown = original_shutdown
     obs._otel_configured = original_configured
     obs._sqlalchemy_instrumented = original_instrumented
 
@@ -47,7 +55,9 @@ async def test_otel_span_generation():
         with (
             patch("app.core.observability.OTLPSpanExporter"),
             patch("app.core.observability.FastAPIInstrumentor"),
-            patch("app.core.observability.SQLAlchemyInstrumentor"),
+            patch(
+                "app.core.observability.SQLAlchemyInstrumentor"
+            ) as sqlalchemy_instrumentor,
         ):
             engine = create_async_engine("sqlite+aiosqlite:///:memory:")
             tracer_provider = _configure_otel(engine)
@@ -57,6 +67,56 @@ async def test_otel_span_generation():
 
             tracer = tracer_provider.get_tracer("test-tracer")
             assert tracer is not None
+            instrument_call = sqlalchemy_instrumentor.return_value.instrument.call_args
+            assert instrument_call is not None
+            assert instrument_call.kwargs["engine"] is engine.sync_engine
+            assert instrument_call.kwargs["tracer_provider"] is tracer_provider
+            assert instrument_call.kwargs["enable_metrics"] is False
+            assert instrument_call.kwargs["meter_provider"] is None
+            assert instrument_call.kwargs["enable_commenter"] is True
+            assert instrument_call.kwargs["commenter_options"] == {
+                "opentelemetry_values": True
+            }
+
+            await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_otel_logging_pipeline_preserves_provider_and_handler_contract():
+    """Logging exports retain the provider and handler wiring they own."""
+    import app.core.observability as obs
+
+    with patch("app.core.observability.settings") as mock_settings:
+        mock_settings.enable_otel = True
+        mock_settings.otel_service_name = "test-logging"
+        mock_settings.otel_exporter_otlp_endpoint = None
+        mock_settings.otel_trace_sampler_ratio = 1.0
+        mock_settings.enable_otel_metrics = False
+        mock_settings.enable_otel_logs = True
+        mock_settings.service_version = "1.0.0"
+        mock_settings.environment = "testing"
+        mock_settings.otel_exporter_otlp_headers = {}
+
+        with (
+            patch("app.core.observability.OTLPSpanExporter"),
+            patch("app.core.observability.OTLPLogExporter"),
+            patch("app.core.observability.FastAPIInstrumentor"),
+            patch("app.core.observability.SQLAlchemyInstrumentor"),
+            patch("app.core.observability.set_logger_provider") as set_logger,
+            patch("app.core.observability.LoggingHandler") as logging_handler,
+        ):
+            logging_handler.side_effect = lambda **_kwargs: logging.NullHandler()
+            engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+            provider = _configure_otel(engine)
+
+            assert provider is not None
+            logger_provider = obs._otel_logger_provider
+            assert logger_provider is not None
+            set_logger.assert_called_once_with(logger_provider)
+            logging_handler.assert_called_once_with(
+                level=logging.NOTSET, logger_provider=logger_provider
+            )
+            assert isinstance(obs._otel_logging_handler, logging.Handler)
 
             await engine.dispose()
 

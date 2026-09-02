@@ -8,7 +8,8 @@ import {
 } from "@/components/messenger"
 import { ProfileModal } from "@/components/messenger/ProfileModal"
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog"
-import { useMessenger } from "@/contexts/MessengerContext"
+import { MessengerProvider, useMessenger } from "@/contexts/MessengerContext"
+import { WebSocketProvider } from "@/hooks/useChatWebSocket"
 import { useMessengerController } from "@/hooks/features/useMessengerController"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { breakpoints } from "@/theme/tokens"
@@ -28,7 +29,22 @@ import { useTranslation } from "react-i18next"
  * is URL-derived via `useMessengerController` (`useParams({ strict: false })`) so
  * both routes render the same component with different `chatId` param.
  */
+/**
+ * The realtime providers live at the route boundary rather than in the global
+ * shell.  This keeps chat's WebSocket/API graph out of every other route's
+ * critical bundle while preserving the same provider order for this feature.
+ */
 export default function MessengerFeature() {
+  return (
+    <WebSocketProvider>
+      <MessengerProvider>
+        <MessengerFeatureContent />
+      </MessengerProvider>
+    </WebSocketProvider>
+  )
+}
+
+function MessengerFeatureContent() {
   const { t } = useTranslation(["messenger", "common"])
   const {
     // State
@@ -64,6 +80,10 @@ export default function MessengerFeature() {
     refetchChats,
     messagesError,
     refetchMessages,
+    hasMoreMessages,
+    isLoadingOlderMessages,
+    olderMessagesError,
+    handleLoadOlderMessages,
 
     // Profile
     profileUser,
@@ -91,6 +111,7 @@ export default function MessengerFeature() {
     handleRemoveMember,
     isRenamingGroup,
     isAddingMember,
+    canManageChat,
     handleClearChat,
     handleDeleteChat,
 
@@ -173,6 +194,10 @@ export default function MessengerFeature() {
       onRetryMessages={() => {
         void refetchMessages()
       }}
+      hasMoreMessages={hasMoreMessages}
+      isLoadingOlderMessages={isLoadingOlderMessages}
+      olderMessagesError={olderMessagesError}
+      onLoadOlderMessages={handleLoadOlderMessages}
       showSearchInChat={showSearchInChat}
       setShowSearchInChat={setShowSearchInChat}
       searchQuery={searchQuery}
@@ -183,6 +208,7 @@ export default function MessengerFeature() {
       handleViewProfile={handleViewProfile}
       handleClearChat={handleClearChat}
       handleDeleteChat={handleDeleteChat}
+      canManageChat={canManageChat}
       getOtherParticipant={getOtherParticipant}
       presenceMap={presenceMap}
       editingMessageId={editingMessageId}

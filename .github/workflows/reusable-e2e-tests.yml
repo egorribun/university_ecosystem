@@ -12,7 +12,7 @@ on:
         description: "Node.js version to use"
         required: false
         type: string
-        default: "22"
+        default: "24"
       python-version:
         description: "Python version for backend"
         required: false
@@ -342,6 +342,9 @@ jobs:
 
       - name: Upload E2E coverage artifact
         if: ${{ always() && inputs.collect-coverage && inputs.browser == 'chromium' }}
+        # Coverage is diagnostic evidence; an artifact transport outage must
+        # not turn a passing browser test into a false product failure.
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: frontend-e2e-coverage-${{ inputs.shard-index }}-of-${{ inputs.shard-total }}
@@ -358,6 +361,9 @@ jobs:
 
       - name: Upload Playwright report
         if: always()
+        # Keep the test result authoritative while making report transport
+        # best-effort (GitHub artifact service can transiently time out).
+        continue-on-error: true
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: playwright-report-${{ inputs.browser }}-shard-${{ inputs.shard-index }}-of-${{ inputs.shard-total }}

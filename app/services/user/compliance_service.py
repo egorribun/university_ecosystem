@@ -102,8 +102,9 @@ class UserComplianceService:
         if not db_user:
             raise EntityNotFound("User", user_identity)
 
-        # db_user is already a DTO and has mfa_challenges/totp_enrollments
-        profile = db_user.model_dump()
+        # Export the public DTO only. Authentication challenges are counted
+        # separately and their bindings/digests are never serialized.
+        profile = db_user.model_dump(exclude={"mfa_challenges"})
 
         import asyncio
 
@@ -140,16 +141,7 @@ class UserComplianceService:
             for n in notifications_list
         ]
 
-        challenges = [
-            {
-                "id": c.id,
-                "type": c.challenge_type,
-                "expires_at": c.expires_at,
-                "consumed_at": c.consumed_at,
-                "created_at": c.created_at,
-            }
-            for c in getattr(db_user, "mfa_challenges", [])
-        ]
+        challenge_count = len(getattr(db_user, "mfa_challenges", []))
 
         enrollments = [
             {
@@ -190,7 +182,7 @@ class UserComplianceService:
             profile=profile,
             sessions=sessions,
             notifications=notifications,
-            mfa_challenges=challenges,
+            mfa_challenge_count=challenge_count,
             mfa_enrollments=enrollments,
             access_logs=access_log_payload,
         )
@@ -272,8 +264,10 @@ class UserComplianceService:
                 "hashed_password": hashed_password,
                 "role": requested_role.value,
                 "email": normalized_email,
-                "mfa_required": settings.mfa_enabled,
-                "mfa_default_method": settings.mfa_default_method,
+                # Global MFA policy must not create a factorless account.
+                # Enrollment/verified-email enablement sets these atomically.
+                "mfa_required": False,
+                "mfa_default_method": None,
             }
         )
         try:

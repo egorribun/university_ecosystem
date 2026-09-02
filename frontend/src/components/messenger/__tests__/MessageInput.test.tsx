@@ -76,6 +76,55 @@ describe("MessageInput", () => {
       expect(sendButton.className).toContain("min-h-[44px]")
       expect(sendButton.className).toContain("min-w-[44px]")
     })
+
+    it("textarea exposes a UTF-16 envelope for the code-point boundary", () => {
+      render(<MessageInput onSend={() => {}} />)
+      const textarea = screen.getByRole("textbox", {
+        name: "messenger:typeMessage",
+      })
+
+      expect(textarea).toHaveAttribute("maxLength", "65536")
+    })
+
+    it("counts Unicode code points when guarding composer input", () => {
+      render(<MessageInput onSend={() => {}} />)
+      const textarea = screen.getByRole("textbox", {
+        name: "messenger:typeMessage",
+      }) as HTMLTextAreaElement
+      const limit = "😀".repeat(32_768)
+
+      fireEvent.change(textarea, { target: { value: limit } })
+      expect(textarea.value).toBe(limit)
+
+      fireEvent.change(textarea, { target: { value: `${limit}😀` } })
+      expect(textarea.value).toBe(limit)
+    })
+
+    it("reply cancel control has a 44x44 hit area", () => {
+      render(
+        <MessageInput
+          onSend={() => {}}
+          replyingTo={{ senderName: "Alice", isMe: false, text: "quoted" }}
+          onCancelReply={() => {}}
+        />
+      )
+
+      const cancelButton = screen.getByRole("button", { name: "common:buttons.cancel" })
+      expect(cancelButton.className).toContain("min-h-[44px]")
+      expect(cancelButton.className).toContain("min-w-[44px]")
+    })
+
+    it("attachment menu actions have a 44x44 hit area", () => {
+      render(<MessageInput onSend={() => {}} />)
+      fireEvent.click(screen.getByRole("button", { name: "messenger:aria.attachments" }))
+
+      for (const type of ["photo", "document", "file"]) {
+        const action = document.querySelector(`#chat-attach-type-${type}`)
+        expect(action).toBeTruthy()
+        expect(action?.className).toContain("min-h-[44px]")
+        expect(action?.className).toContain("min-w-[44px]")
+      }
+    })
   })
 
   describe("send behaviour", () => {
@@ -140,6 +189,55 @@ describe("MessageInput", () => {
 
       expect(textarea.value).toBe("")
     })
+
+    it("does not send whitespace-only content and notifies typing on edits", () => {
+      const onSend = vi.fn()
+      const onTyping = vi.fn()
+      render(<MessageInput onSend={onSend} onTyping={onTyping} />)
+      const textarea = screen.getByRole("textbox", { name: "messenger:typeMessage" })
+
+      fireEvent.change(textarea, { target: { value: "   " } })
+      expect(onTyping).toHaveBeenCalledOnce()
+      expect(screen.getByRole("button", { name: "messenger:aria.sendMessage" })).toBeDisabled()
+      fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false })
+      expect(onSend).not.toHaveBeenCalled()
+    })
+
+    it("allows sending attachments without text", async () => {
+      const onSend = vi.fn()
+      const { container } = render(<MessageInput onSend={onSend} />)
+      const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(["pdf"], "notes.pdf", { type: "application/pdf" })
+      Object.defineProperty(fileInput, "files", { value: [file], writable: false })
+
+      await act(async () => {
+        fireEvent.change(fileInput)
+      })
+      fireEvent.click(screen.getByRole("button", { name: "messenger:aria.sendMessage" }))
+
+      expect(onSend).toHaveBeenCalledWith("", [file])
+    })
+
+    it("assigns the correct accept filter before opening each attachment picker", () => {
+      const { container } = render(<MessageInput onSend={() => {}} />)
+      const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+      const click = vi.spyOn(fileInput, "click")
+      const attach = screen.getByRole("button", { name: "messenger:aria.attachments" })
+
+      fireEvent.click(attach)
+      fireEvent.click(screen.getByRole("button", { name: "messenger:attachPhoto" }))
+      expect(fileInput.accept).toBe("image/png,image/jpeg,image/gif,image/webp")
+      expect(click).toHaveBeenCalledOnce()
+
+      fireEvent.click(attach)
+      fireEvent.click(screen.getByRole("button", { name: "messenger:attachDocument" }))
+      expect(fileInput.accept).toBe(".pdf,.doc,.docx,.txt")
+
+      fireEvent.click(attach)
+      fireEvent.click(screen.getByRole("button", { name: "messenger:attachFile" }))
+      expect(fileInput.accept).toBe("*")
+      expect(click).toHaveBeenCalledTimes(3)
+    })
   })
 
   describe("Blob URL lifecycle (W183 SW7 regression)", () => {
@@ -203,6 +301,9 @@ describe("MessageInput", () => {
       const removeButton = screen.getByRole("button", {
         name: "messenger:aria.removeAttachment",
       })
+
+      expect(removeButton.className).toContain("min-h-[44px]")
+      expect(removeButton.className).toContain("min-w-[44px]")
 
       revokeObjectURLSpy.mockClear()
 

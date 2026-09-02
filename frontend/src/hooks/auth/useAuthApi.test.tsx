@@ -30,7 +30,6 @@ const mocks = vi.hoisted(() => ({
   hasPushConsent: vi.fn(() => false),
   softSyncPushSubscription: vi.fn(async () => null),
   setPushConsent: vi.fn(),
-  startAuthentication: vi.fn(async () => ({ id: "assertion" })),
   prefetchDashboardStories: vi.fn(),
   prefetchDashboardNews: vi.fn(),
   prefetchDashboardEvents: vi.fn(),
@@ -57,10 +56,6 @@ vi.mock("@/push/subscribe", () => ({
   hasPushConsent: mocks.hasPushConsent,
   softSyncPushSubscription: mocks.softSyncPushSubscription,
   setPushConsent: mocks.setPushConsent,
-}))
-
-vi.mock("@simplewebauthn/browser", () => ({
-  startAuthentication: mocks.startAuthentication,
 }))
 
 vi.mock("@/i18n/config", () => ({ default: mocks.i18n }))
@@ -113,15 +108,17 @@ const wrapper = ({ children }: { children: ReactNode }) => {
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }
 
+type UseAuthApiArgs = Parameters<typeof useAuthApi>
+
 type Wires = {
-  user: User | null
-  setUser: ReturnType<typeof vi.fn>
-  updatePendingMfa: ReturnType<typeof vi.fn>
-  handleUnauthorized: ReturnType<typeof vi.fn>
-  updateSessionSigningKey: ReturnType<typeof vi.fn>
+  user: UseAuthApiArgs[0]
+  setUser: UseAuthApiArgs[1]
+  updatePendingMfa: UseAuthApiArgs[2]
+  handleUnauthorized: UseAuthApiArgs[3]
+  updateSessionSigningKey: UseAuthApiArgs[4]
   authOperation: boolean
-  setAuthOperation: ReturnType<typeof vi.fn>
-  resetEtagCache: ReturnType<typeof vi.fn>
+  setAuthOperation: UseAuthApiArgs[6]
+  resetEtagCache: UseAuthApiArgs[7]
 }
 
 const makeWires = (overrides: Partial<Wires> = {}): Wires => ({
@@ -185,7 +182,6 @@ beforeEach(() => {
   mocks.recoverPushConsentFromBrowser.mockResolvedValue(false)
   mocks.hasPushConsent.mockReturnValue(false)
   mocks.softSyncPushSubscription.mockResolvedValue(null)
-  mocks.startAuthentication.mockResolvedValue({ id: "assertion" })
 })
 
 afterEach(() => {
@@ -301,13 +297,17 @@ describe("login", () => {
 
   it("maps 423 lockout WITH retry-after seconds to a duration message (lines 189-195)", async () => {
     const w = makeWires()
-    mocks.apiPost.mockRejectedValue(lockedError("30"))
+    const cause = lockedError("30")
+    mocks.apiPost.mockRejectedValue(cause)
     const { result } = renderApi(w)
     await expect(
       act(async () => {
         await result.current.login("a@b.dev", "pw")
       })
-    ).rejects.toThrow(/login\.locked .*login\.lockedRetry/)
+    ).rejects.toMatchObject({
+      message: expect.stringMatching(/login\.locked .*login\.lockedRetry/),
+      cause,
+    })
   })
 
   it("re-throws non-423 errors unchanged (line 198)", async () => {
@@ -328,6 +328,30 @@ describe("login", () => {
 // ---------------------------------------------------------------------------
 
 describe("login → prefetchDashboardData branches", () => {
+  it("skips dashboard prefetches in LHCI synthetic-auth builds", async () => {
+    vi.stubEnv("VITE_LHCI", "true")
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValue({
+      status: 200,
+      data: { user: fullUser({ group_id: "grp-1" }) },
+    })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.login("a@b.dev", "pw")
+      await result.current.submitMfaChallenge({ code: "123456", challengeToken: "ct" })
+      // Allow any already-scheduled dynamic-import continuations to settle;
+      // a LHCI guard must prevent those imports from being scheduled at all.
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(mocks.prefetchDashboardStories).not.toHaveBeenCalled()
+    expect(mocks.prefetchDashboardNews).not.toHaveBeenCalled()
+    expect(mocks.prefetchDashboardEvents).not.toHaveBeenCalled()
+    expect(mocks.prefetchEventsListQuery).not.toHaveBeenCalled()
+  })
+
   it("prefetches events list when the user has a group_id (lines 110-116)", async () => {
     const w = makeWires()
     mocks.apiPost.mockResolvedValue({
@@ -398,6 +422,30 @@ describe("login → prefetchDashboardData branches", () => {
     await waitFor(() => expect(mocks.prefetchDashboardStories).toHaveBeenCalled())
     expect(mocks.logWarning).not.toHaveBeenCalled()
   })
+
+  it("reports dashboard prefetch failures in development", async () => {
+    // The prefetch is deliberately best-effort, but diagnostics remain
+    // visible to developers when a dynamically imported dashboard surface
+    // fails synchronously.
+    vi.stubEnv("DEV", true)
+    const failure = new Error("prefetch unavailable")
+    mocks.prefetchDashboardStories.mockImplementationOnce(() => {
+      throw failure
+    })
+    const w = makeWires()
+    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.login("a@b.dev", "pw")
+    })
+
+    await waitFor(() => expect(mocks.prefetchDashboardStories).toHaveBeenCalled())
+    expect(mocks.logWarning).toHaveBeenCalledWith(
+      "Failed to prefetch dashboard data",
+      expect.objectContaining({ error: failure })
+    )
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -465,7 +513,6 @@ describe("submitMfaChallenge", () => {
         method: "totp",
         code: "654321",
         challengeToken: "ct-1",
-        trustDevice: true,
       })
     })
     expect(mocks.apiPost).toHaveBeenCalledWith(
@@ -474,7 +521,6 @@ describe("submitMfaChallenge", () => {
         method: "totp",
         code: "654321",
         challenge_token: "ct-1",
-        trust_device: true,
       }),
       expect.objectContaining({ skipRateLimitQueue: true })
     )
@@ -483,24 +529,6 @@ describe("submitMfaChallenge", () => {
     expect(w.setUser).toHaveBeenCalled()
     expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: SPOTIFY_REAUTH_EVENT }))
     dispatch.mockRestore()
-  })
-
-  it("sends webauthn_response for the webauthn method (lines 251-253)", async () => {
-    const w = makeWires()
-    mocks.apiPost.mockResolvedValue({ status: 200, data: { user: fullUser() } })
-    const { result } = renderApi(w)
-    await act(async () => {
-      await result.current.submitMfaChallenge({
-        method: "webauthn",
-        webauthnResponse: { id: "assertion" },
-        challengeToken: "ct-2",
-      })
-    })
-    expect(mocks.apiPost).toHaveBeenCalledWith(
-      "/auth/mfa/verify",
-      expect.objectContaining({ method: "webauthn", webauthn_response: { id: "assertion" } }),
-      expect.anything()
-    )
   })
 
   it("sends an empty challenge token when the optional token is absent", async () => {
@@ -679,6 +707,20 @@ describe("refresh", () => {
     expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
   })
 
+  it("does not sync push when refreshed profile has no browser consent", async () => {
+    const w = makeWires()
+    mocks.fetchCurrentUser.mockResolvedValue(fullUser())
+    mocks.hasPushConsent.mockReturnValue(false)
+    const { result } = renderApi(w)
+
+    await act(async () => {
+      await result.current.refresh()
+    })
+
+    expect(w.setUser).toHaveBeenCalled()
+    expect(mocks.softSyncPushSubscription).not.toHaveBeenCalled()
+  })
+
   it("calls handleUnauthorized on a 401 from fetchCurrentUser (lines 347-350)", async () => {
     const w = makeWires()
     const err = new AxiosError("unauth")
@@ -717,110 +759,6 @@ describe("refresh", () => {
 
     expect(mocks.softSyncPushSubscription).toHaveBeenCalled()
     expect(w.setAuthOperation).toHaveBeenLastCalledWith(false)
-  })
-})
-
-// ---------------------------------------------------------------------------
-// loginWithPasskey — lines 356-433
-// ---------------------------------------------------------------------------
-
-describe("loginWithPasskey", () => {
-  it("no-ops when authOperation is in-flight (line ~358)", async () => {
-    const w = makeWires({ authOperation: true })
-    const { result } = renderApi(w)
-    await act(async () => {
-      await result.current.loginWithPasskey("a@b.dev")
-    })
-    expect(mocks.apiPost).not.toHaveBeenCalled()
-  })
-
-  it("runs the full passkey flow then signs in (lines 361-408)", async () => {
-    const w = makeWires()
-    mocks.apiPost
-      .mockResolvedValueOnce({
-        status: 200,
-        data: { publicKey: { challenge: "x" }, challenge_token: "ct-pk" },
-      })
-      .mockResolvedValueOnce({
-        status: 200,
-        data: { user: fullUser({ spotify_connected: true }), session: { signing_key: "sk-pk" } },
-      })
-    const dispatch = vi.spyOn(window, "dispatchEvent")
-    const { result } = renderApi(w)
-    await act(async () => {
-      await result.current.loginWithPasskey("a@b.dev", true)
-    })
-    expect(mocks.startAuthentication).toHaveBeenCalled()
-    expect(mocks.apiPost).toHaveBeenCalledWith(
-      "/auth/login/passkey/start",
-      { email: "a@b.dev" },
-      expect.anything()
-    )
-    expect(mocks.apiPost).toHaveBeenCalledWith(
-      "/auth/login/passkey/verify",
-      expect.objectContaining({ challenge_token: "ct-pk", trust_device: true }),
-      expect.anything()
-    )
-    expect(w.updateSessionSigningKey).toHaveBeenCalledWith("sk-pk")
-    expect(mocks.incrementSessionEpoch).toHaveBeenCalled()
-    expect(w.setUser).toHaveBeenCalled()
-    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: SPOTIFY_REAUTH_EVENT }))
-    dispatch.mockRestore()
-  })
-
-  it("maps 423 lockout with retry-after to a duration message (lines 410-417)", async () => {
-    const w = makeWires()
-    mocks.apiPost.mockResolvedValueOnce({
-      status: 200,
-      data: { publicKey: {}, challenge_token: "ct" },
-    })
-    mocks.startAuthentication.mockRejectedValue(lockedError("120"))
-    const { result } = renderApi(w)
-    await expect(
-      act(async () => {
-        await result.current.loginWithPasskey("a@b.dev")
-      })
-    ).rejects.toThrow(/login\.locked .*login\.lockedRetry/)
-  })
-
-  it("maps 423 lockout without retry-after to plain locked message (line 417)", async () => {
-    const w = makeWires()
-    mocks.apiPost.mockRejectedValue(lockedError())
-    const { result } = renderApi(w)
-    await expect(
-      act(async () => {
-        await result.current.loginWithPasskey("a@b.dev")
-      })
-    ).rejects.toThrow("login.locked")
-  })
-
-  it("re-throws non-423 errors unchanged (line 419)", async () => {
-    const w = makeWires()
-    mocks.apiPost.mockRejectedValue(new Error("passkey unavailable"))
-    const { result } = renderApi(w)
-    await expect(
-      act(async () => {
-        await result.current.loginWithPasskey("a@b.dev")
-      })
-    ).rejects.toThrow("passkey unavailable")
-  })
-
-  it("leaves auth state untouched for a malformed passkey verification payload", async () => {
-    const w = makeWires()
-    mocks.apiPost
-      .mockResolvedValueOnce({
-        status: 200,
-        data: { publicKey: {}, challenge_token: "ct" },
-      })
-      .mockResolvedValueOnce({ status: 200, data: {} })
-    const { result } = renderApi(w)
-
-    await act(async () => {
-      await result.current.loginWithPasskey("a@b.dev")
-    })
-
-    expect(w.setUser).not.toHaveBeenCalled()
-    expect(w.updatePendingMfa).not.toHaveBeenCalled()
   })
 })
 
@@ -902,43 +840,6 @@ describe("useAuthApi — residual defensive branches", () => {
 
     await act(async () => {
       await result.current.submitMfaChallenge({ code: "123456", challengeToken: "ct" })
-      await Promise.resolve()
-    })
-
-    expect(w.setUser).toHaveBeenCalled()
-  })
-
-  it("swallows push soft-sync failures after a passkey verification", async () => {
-    const w = makeWires()
-    mocks.apiPost
-      .mockResolvedValueOnce({
-        status: 200,
-        data: { publicKey: {}, challenge_token: "ct" },
-      })
-      .mockResolvedValueOnce({ status: 200, data: { user: fullUser() } })
-    mocks.recoverPushConsentFromBrowser.mockResolvedValue(true)
-    mocks.softSyncPushSubscription.mockRejectedValue(new Error("push sync unavailable"))
-    const { result } = renderApi(w)
-
-    await act(async () => {
-      await result.current.loginWithPasskey("a@b.dev")
-    })
-    await waitFor(() => expect(mocks.softSyncPushSubscription).toHaveBeenCalled())
-  })
-
-  it("swallows push-consent recovery rejection after passkey verification", async () => {
-    const w = makeWires()
-    mocks.apiPost
-      .mockResolvedValueOnce({
-        status: 200,
-        data: { publicKey: {}, challenge_token: "ct" },
-      })
-      .mockResolvedValueOnce({ status: 200, data: { user: fullUser() } })
-    mocks.recoverPushConsentFromBrowser.mockRejectedValue(new Error("permission unavailable"))
-    const { result } = renderApi(w)
-
-    await act(async () => {
-      await result.current.loginWithPasskey("a@b.dev")
       await Promise.resolve()
     })
 

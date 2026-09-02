@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { useLanguage, getLocaleForLanguage } from "@/contexts/LanguageContext"
 import { useActivitySummaryQuery } from "@/api/hooks/activity"
@@ -18,9 +18,6 @@ import {
   parseAttendanceRecent,
   parseGradeRecent,
   parseParticipationRecent,
-  DEFAULT_ATTENDANCE_RECENT,
-  DEFAULT_GRADE_RECENT,
-  DEFAULT_PARTICIPATION_RECENT,
 } from "@/features/activity/parsers"
 
 /**
@@ -100,42 +97,6 @@ export default function useActivityData() {
     [t]
   )
 
-  // i18n returnObjects fallbacks — stored in state (not refs) so React
-  // Compiler can track them as useMemo dependencies without flagging a
-  // ref-read during render (RC-78-01 / RC-91-01 pattern).
-  const [fallbackAttendanceRecent, setFallbackAttendanceRecent] =
-    useState(DEFAULT_ATTENDANCE_RECENT)
-  const [fallbackGradeRecent, setFallbackGradeRecent] = useState(DEFAULT_GRADE_RECENT)
-  const [fallbackParticipationRecent, setFallbackParticipationRecent] = useState(
-    DEFAULT_PARTICIPATION_RECENT
-  )
-
-  // react-i18next returnObjects returns TFunctionResult which doesn't narrow
-  // to unknown[]. Cast to `unknown` is safe because each value passes through
-  // typed parsers below. Language-change is the only trigger — re-render cost
-  // is negligible compared to the correctness win.
-  useEffect(() => {
-    const attendanceRaw = t("activity:fallback.attendance.recent", {
-      returnObjects: true,
-    }) as unknown
-    const attendanceParsed = parseAttendanceRecent(attendanceRaw)
-    setFallbackAttendanceRecent(
-      attendanceParsed.length > 0 ? attendanceParsed : DEFAULT_ATTENDANCE_RECENT
-    )
-
-    const gradesRaw = t("activity:fallback.grades.recent", { returnObjects: true }) as unknown
-    const gradesParsed = parseGradeRecent(gradesRaw)
-    setFallbackGradeRecent(gradesParsed.length > 0 ? gradesParsed : DEFAULT_GRADE_RECENT)
-
-    const participationRaw = t("activity:fallback.participation.recent", {
-      returnObjects: true,
-    }) as unknown
-    const participationParsed = parseParticipationRecent(participationRaw)
-    setFallbackParticipationRecent(
-      participationParsed.length > 0 ? participationParsed : DEFAULT_PARTICIPATION_RECENT
-    )
-  }, [t])
-
   // ── Data fetching via TanStack Query ────────────
   const summaryQuery = useActivitySummaryQuery({ period, language })
   const envelope = summaryQuery.data
@@ -160,18 +121,8 @@ export default function useActivityData() {
         recent: parseAttendanceRecent(d.recent),
       }
     }
-    if (!hasInitiallyLoaded) return null
-    // Per-section fallback when /stats/summary or /stats/attendance returns null.
-    return {
-      percent: 92,
-      present: 83,
-      total: 90,
-      trend: 1.4,
-      periodKey: period,
-      periodLabel: labelByPeriod(period),
-      recent: fallbackAttendanceRecent.map((item) => ({ ...item })),
-    }
-  }, [envelope?.attendance, period, labelByPeriod, hasInitiallyLoaded, fallbackAttendanceRecent])
+    return null
+  }, [envelope?.attendance, period, labelByPeriod])
 
   const grades = useMemo<GradeStats | null>(() => {
     const d = envelope?.grades
@@ -183,14 +134,8 @@ export default function useActivityData() {
         recent: parseGradeRecent(d.recent),
       }
     }
-    if (!hasInitiallyLoaded) return null
-    return {
-      average: 4.4,
-      scale: "5",
-      trend: 0.3,
-      recent: fallbackGradeRecent.map((item) => ({ ...item })),
-    }
-  }, [envelope?.grades, hasInitiallyLoaded, fallbackGradeRecent])
+    return null
+  }, [envelope?.grades])
 
   const participation = useMemo<ParticipationStats | null>(() => {
     const d = envelope?.participation
@@ -203,15 +148,19 @@ export default function useActivityData() {
         recent: parseParticipationRecent(d.recent),
       }
     }
-    if (!hasInitiallyLoaded) return null
-    return {
-      events: 6,
-      hours: 12,
-      groups: 2,
-      trend: 2.0,
-      recent: fallbackParticipationRecent.map((item) => ({ ...item })),
-    }
-  }, [envelope?.participation, hasInitiallyLoaded, fallbackParticipationRecent])
+    return null
+  }, [envelope?.participation])
+
+  const hasAnyData = Boolean(attendance || grades || participation)
+  const availability = {
+    attendance: Boolean(envelope?.attendance),
+    grades: Boolean(envelope?.grades),
+    participation: Boolean(envelope?.participation),
+  }
+  const isPartial =
+    hasInitiallyLoaded &&
+    hasAnyData &&
+    (!availability.attendance || !availability.grades || !availability.participation)
 
   // ── Chart data derivation (Phase B) ───────────────
   const attendanceTrendData = useMemo(() => {
@@ -275,6 +224,12 @@ export default function useActivityData() {
     participation,
     loading,
     hasInitiallyLoaded,
+    hasAnyData,
+    availability,
+    isPartial,
+    isError: summaryQuery.isError,
+    error: summaryQuery.error,
+    refetch: summaryQuery.refetch,
     periodOptions,
     separator,
     formatDate,

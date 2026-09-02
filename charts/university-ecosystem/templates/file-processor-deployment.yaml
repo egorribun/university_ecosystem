@@ -20,7 +20,9 @@ spec:
       labels:
         {{- include "university-ecosystem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: file-processor
+        {{ printf "%s-nats-client" .Release.Name }}: "true"
       annotations:
+        university-ecosystem.io/source-sha: {{ .Values.global.imageTag | quote }}
         prometheus.io/scrape: "true"
         prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
@@ -40,7 +42,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: file-processor
-          image: {{ printf "%s/%s:%s" .Values.global.imageRegistry .Values.fileProcessor.image.repository (.Values.fileProcessor.image.tag | default .Values.global.imageTag | default .Chart.AppVersion) | trimPrefix "/" | quote }}
+          image: {{ include "university-ecosystem.image" (dict "root" . "image" .Values.fileProcessor.image) | quote }}
           imagePullPolicy: {{ .Values.fileProcessor.image.pullPolicy }}
           securityContext:
             allowPrivilegeEscalation: false
@@ -92,20 +94,45 @@ spec:
               value: /run/secrets/temporal-api-key
             - name: FP_RSA_PUBLIC_KEY_FILE
               value: /run/secrets/jwt-rsa-public-key.pem
+            {{- if .Values.internalGrpcMTLS.enabled }}
+            - name: FP_GRPC_TLS_CERT_FILE
+              value: /run/secrets/internal-grpc-mtls-server/tls.crt
+            - name: FP_GRPC_TLS_KEY_FILE
+              value: /run/secrets/internal-grpc-mtls-server/tls.key
+            - name: FP_GRPC_CLIENT_CA_FILE
+              value: /run/secrets/internal-grpc-mtls-server/ca.crt
+            - name: FP_GRPC_ALLOWED_CLIENT_URIS
+              value: {{ join "," .Values.internalGrpcMTLS.allowedClientURIs | quote }}
+            {{- end }}
           startupProbe:
+            {{- if .Values.internalGrpcMTLS.enabled }}
+            tcpSocket:
+              port: grpc
+            {{- else }}
             grpc:
               port: {{ .Values.fileProcessor.service.port }}
+            {{- end }}
             failureThreshold: 30
             periodSeconds: 5
           livenessProbe:
+            {{- if .Values.internalGrpcMTLS.enabled }}
+            tcpSocket:
+              port: grpc
+            {{- else }}
             grpc:
               port: {{ .Values.fileProcessor.service.port }}
+            {{- end }}
             periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 3
           readinessProbe:
+            {{- if .Values.internalGrpcMTLS.enabled }}
+            tcpSocket:
+              port: grpc
+            {{- else }}
             grpc:
               port: {{ .Values.fileProcessor.service.port }}
+            {{- end }}
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
@@ -115,6 +142,11 @@ spec:
             - name: credentials
               mountPath: /run/secrets
               readOnly: true
+            {{- if .Values.internalGrpcMTLS.enabled }}
+            - name: internal-grpc-mtls-server
+              mountPath: /run/secrets/internal-grpc-mtls-server
+              readOnly: true
+            {{- end }}
       volumes:
         - name: credentials
           secret:
@@ -125,4 +157,17 @@ spec:
                 path: jwt-rsa-public-key.pem
               - key: temporal-api-key
                 path: temporal-api-key
+        {{- if .Values.internalGrpcMTLS.enabled }}
+        - name: internal-grpc-mtls-server
+          secret:
+            secretName: {{ required "internalGrpcMTLS.fileProcessorServer.existingSecret must be set" .Values.internalGrpcMTLS.fileProcessorServer.existingSecret | quote }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.internalGrpcMTLS.fileProcessorServer.certKey | quote }}
+                path: tls.crt
+              - key: {{ .Values.internalGrpcMTLS.fileProcessorServer.privateKeyKey | quote }}
+                path: tls.key
+              - key: {{ .Values.internalGrpcMTLS.fileProcessorServer.clientCAKey | quote }}
+                path: ca.crt
+        {{- end }}
 {{- end }}

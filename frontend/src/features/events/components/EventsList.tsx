@@ -48,7 +48,8 @@ export const EventsList = ({
   registerCardRef,
 }: EventsListProps) => {
   const { t } = useTranslation(["events", "common"])
-  const showEmptyState = !isInitialLoading && eventsList.length === 0
+  const showEmptyState =
+    !isInitialLoading && !isFetchingNextPage && !hasNextPage && eventsList.length === 0
 
   /* ── Infinite scroll sentinel ── */
   const sentinelRef = useRef<HTMLDivElement>(null)

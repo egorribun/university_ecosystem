@@ -3,11 +3,14 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
 )
 
@@ -33,7 +36,7 @@ func TestHandleChat_Deduplication(t *testing.T) {
 	header := make(nats.Header)
 	header.Set("Nats-Msg-Id", "unique-msg-100")
 
-	payload := []byte(`{"type":"new_message","room":"room-dedup","payload":{"text":"test"}}`)
+	payload := []byte(`{"type":"new_message","room":"room-dedup","payload":{"chat_id":"room-dedup","text":"test"}}`)
 	msg1 := &nats.Msg{
 		Subject: "chat.room-dedup",
 		Header:  header,
@@ -65,6 +68,113 @@ func TestHandleChat_Deduplication(t *testing.T) {
 	case msg := <-h.Broadcast:
 		t.Fatalf("expected duplicate message to be dropped, but received: %+v", msg)
 	default:
+	}
+}
+
+func TestHandleChat_ExposesJetStreamSequence(t *testing.T) {
+	h := newNatsTestHub(&mockAuthClient{allowed: true}, "", 10)
+	h.enableJetStream = true
+	handler := h.handleChat(context.Background())
+	msg := &nats.Msg{
+		Subject: "chat.room-sequence",
+		Reply:   "$JS.ACK.CHAT_EVENTS.ws-hub-chat.1.42.1.1690000000000000000.0",
+		Data:    []byte(`{"type":"new_message","room":"room-sequence","payload":{"chat_id":"room-sequence","text":"test"}}`),
+		Sub:     &nats.Subscription{},
+	}
+
+	handler(msg)
+	out := recvBroadcast(t, h)
+	encoded, err := json.Marshal(out)
+	assert.NoError(t, err)
+	var envelope map[string]any
+	assert.NoError(t, json.Unmarshal(encoded, &envelope))
+	assert.Equal(t, float64(42), envelope["seq"])
+}
+
+func TestHandleChat_JetStreamMetadataFailureIsNotBroadcast(t *testing.T) {
+	oldTerm := jetStreamTermFunc
+	t.Cleanup(func() { jetStreamTermFunc = oldTerm })
+	for _, testCase := range []struct {
+		name  string
+		reply string
+		sub   *nats.Subscription
+	}{
+		{name: "missing metadata"},
+		{
+			name:  "zero stream sequence",
+			reply: "$JS.ACK.CHAT_EVENTS.ws-hub-chat.1.0.1.1690000000000000000.0",
+			sub:   &nats.Subscription{},
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			termCalls := 0
+			jetStreamTermFunc = func(*nats.Msg) error {
+				termCalls++
+				return nil
+			}
+			h := newNatsTestHub(&mockAuthClient{allowed: true}, "", 10)
+			h.enableJetStream = true
+			handler := h.handleChat(context.Background())
+			handler(&nats.Msg{
+				Subject: "chat.room-sequence",
+				Reply:   testCase.reply,
+				Data:    []byte(`{"type":"new_message","room":"room-sequence","payload":{"chat_id":"room-sequence","text":"test"}}`),
+				Sub:     testCase.sub,
+			})
+
+			select {
+			case message := <-h.Broadcast:
+				t.Fatalf("unsequenced JetStream message must not be broadcast: %+v", message)
+			default:
+			}
+			assert.Equal(t, 1, termCalls, "permanently invalid JetStream metadata must not retry forever")
+		})
+	}
+}
+
+func TestHandleChat_RejectsCrossRoomSubjectEnvelopeAndPayload(t *testing.T) {
+	oldTerm := jetStreamTermFunc
+	t.Cleanup(func() { jetStreamTermFunc = oldTerm })
+	for _, testCase := range []struct {
+		name    string
+		subject string
+		data    string
+	}{
+		{
+			name:    "subject disagrees with envelope",
+			subject: "chat.room-a",
+			data:    `{"type":"new_message","room":"room-b","payload":{"chat_id":"room-b"}}`,
+		},
+		{
+			name:    "payload disagrees with envelope",
+			subject: "chat.room-a",
+			data:    `{"type":"new_message","room":"room-a","payload":{"chat_id":"room-b"}}`,
+		},
+		{
+			name:    "nested message disagrees with envelope",
+			subject: "chat.room-a",
+			data:    `{"type":"new_message","room":"room-a","payload":{"message":{"chat_id":"room-b"}}}`,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			termCalls := 0
+			jetStreamTermFunc = func(*nats.Msg) error { termCalls++; return nil }
+			h := newNatsTestHub(&mockAuthClient{allowed: true}, "", 10)
+			h.enableJetStream = true
+			h.handleChat(context.Background())(&nats.Msg{
+				Subject: testCase.subject,
+				Reply:   "$JS.ACK.CHAT_EVENTS.ws-hub-chat.1.42.1.1690000000000000000.0",
+				Data:    []byte(testCase.data),
+				Sub:     &nats.Subscription{},
+			})
+
+			select {
+			case message := <-h.Broadcast:
+				t.Fatalf("cross-room frame must not be broadcast: %+v", message)
+			default:
+			}
+			assert.Equal(t, 1, termCalls)
+		})
 	}
 }
 
@@ -124,7 +234,7 @@ func TestHandleJoin_WithLastSeqAndMsgID(t *testing.T) {
 		Payload: json.RawMessage(`{"last_seq": 42, "last_msg_id": "msg-42"}`),
 	}
 
-	client.handleJoin(joinMsg)
+	client.handleJoin(client.ctx, joinMsg)
 
 	client.mu.Lock()
 	inRoom := client.Rooms["room-replay"]
@@ -139,7 +249,7 @@ func TestHandleChat_BroadcastFull_NotCachedAndNaked(t *testing.T) {
 	header := make(nats.Header)
 	header.Set("Nats-Msg-Id", "full-queue-msg-1")
 
-	payload := []byte(`{"type":"new_message","room":"room-full","payload":{"text":"test"}}`)
+	payload := []byte(`{"type":"new_message","room":"room-full","payload":{"chat_id":"room-full","text":"test"}}`)
 	msg1 := &nats.Msg{
 		Subject: "chat.room-full",
 		Header:  header,
@@ -170,6 +280,79 @@ func TestHandleChat_BroadcastFull_NotCachedAndNaked(t *testing.T) {
 
 	_, foundAfter := h.dedupCache.Get("full-queue-msg-1")
 	assert.True(t, foundAfter, "msgID SHOULD be cached after successful push to Broadcast")
+}
+
+func TestHandleChat_SequencedBroadcastFullDisconnectsRoomBeforeNak(t *testing.T) {
+	oldNak := jetStreamNakFunc
+	t.Cleanup(func() { jetStreamNakFunc = oldNak })
+	nakCalls := 0
+	jetStreamNakFunc = func(*nats.Msg, time.Duration) error { nakCalls++; return nil }
+	h := newNatsTestHub(&mockAuthClient{allowed: true}, "", 1)
+	h.enableJetStream = true
+	ctx, cancel := context.WithCancel(context.Background())
+	client := &Client{
+		ID: "ordered-client", UserID: "ordered-user", Hub: h,
+		Rooms: map[string]bool{"room-full": true}, Send: make(chan []byte, 1), ctx: ctx, cancel: cancel,
+	}
+	h.Rooms["room-full"] = map[*Client]bool{client: true}
+	h.Broadcast <- &Message{Type: "dummy"}
+
+	h.handleChat(context.Background())(&nats.Msg{
+		Subject: "chat.room-full",
+		Reply:   "$JS.ACK.CHAT_EVENTS.ws-hub-chat.1.42.1.1690000000000000000.0",
+		Data:    []byte(`{"type":"new_message","room":"room-full","payload":{"chat_id":"room-full"}}`),
+		Sub:     &nats.Subscription{},
+	})
+
+	assert.Error(t, client.ctx.Err(), "a saturated sequenced ingress lane must invalidate room clients")
+	assert.Equal(t, 1, nakCalls)
+	assert.Equal(t, "dummy", (<-h.Broadcast).Type)
+}
+
+func TestSubscribeToNATS_SecureReplayInitializationFailsClosed(t *testing.T) {
+	created := time.Date(2026, time.August, 26, 12, 0, 0, 0, time.UTC)
+	for _, testCase := range []struct {
+		name       string
+		secret     string
+		streamInfo *nats.StreamInfo
+		streamErr  error
+	}{
+		{name: "missing signing secret", streamInfo: &nats.StreamInfo{Created: created}},
+		{name: "stream metadata unavailable", secret: "signing-secret", streamErr: errors.New("metadata unavailable")},
+		{name: "stream incarnation absent", secret: "signing-secret", streamInfo: &nats.StreamInfo{}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			h := setupTestHub()
+			h.Nats = &nats.Conn{}
+			h.enableJetStream = true
+			h.internalSecret = testCase.secret // pragma: allowlist secret -- table-driven test fixture only
+			subscribeCalls := 0
+			h.js = &scriptedSubscribeJetStream{
+				subscribe: func(string, nats.MsgHandler, ...nats.SubOpt) (*nats.Subscription, error) {
+					subscribeCalls++
+					return &nats.Subscription{}, nil
+				},
+				streamInfo: func(string, ...nats.JSOpt) (*nats.StreamInfo, error) {
+					return testCase.streamInfo, testCase.streamErr
+				},
+			}
+			oldCoreSubscribe := coreNATSSubscribeFunc
+			coreCalls := 0
+			coreNATSSubscribeFunc = func(*nats.Conn, string, nats.MsgHandler) (*nats.Subscription, error) {
+				coreCalls++
+				return &nats.Subscription{}, nil
+			}
+			t.Cleanup(func() { coreNATSSubscribeFunc = oldCoreSubscribe })
+
+			err := h.SubscribeToNATS(context.Background())
+
+			require.Error(t, err)
+			assert.False(t, h.chatReplayAvailable.Load())
+			assert.Empty(t, h.subs)
+			assert.Zero(t, coreCalls, "replay-capable mode must never silently downgrade to core NATS")
+			assert.LessOrEqual(t, subscribeCalls, 1, "secure prerequisites must be transactional")
+		})
+	}
 }
 
 func TestHandleNotifications_BroadcastFull_NotCachedAndNaked(t *testing.T) {

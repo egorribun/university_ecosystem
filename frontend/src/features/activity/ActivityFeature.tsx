@@ -19,6 +19,7 @@ import { ActivityHeatmap } from "./components/ActivityHeatmap"
 import { ActivityComparativeCard } from "./components/ActivityComparativeCard"
 import { ActivityExportButton } from "./components/ActivityExportButton"
 import { ActivityTimeline } from "./components/ActivityTimeline"
+import { ActivityUnavailableCard } from "./components/ActivityUnavailableCard"
 
 /**
  * ActivityFeature — Wave 112 SW2 orchestrator.
@@ -42,6 +43,11 @@ export function ActivityFeature() {
     grades,
     participation,
     hasInitiallyLoaded,
+    hasAnyData,
+    isError,
+    refetch,
+    availability,
+    isPartial,
     periodOptions,
     separator,
     formatDate,
@@ -102,12 +108,14 @@ export function ActivityFeature() {
         </header>
 
         {/* ── Motivation ──────────────────────────── */}
-        <ActivityMotivation
-          attendance={attendance}
-          grades={grades}
-          participation={participation}
-          hasInitiallyLoaded={hasInitiallyLoaded}
-        />
+        {!isError && hasAnyData && (
+          <ActivityMotivation
+            attendance={attendance}
+            grades={grades}
+            participation={participation}
+            hasInitiallyLoaded={hasInitiallyLoaded}
+          />
+        )}
 
         {/* ── Period Selector ────────────────────────
             Wave 124 SW1 — refactored from framer-motion layoutId to CSS
@@ -115,7 +123,7 @@ export function ActivityFeature() {
         <FadeSection delay="100ms">
           <div
             ref={periodSelectorRef}
-            className="activity-period-selector mb-6 relative inline-flex items-center gap-1"
+            className="activity-period-selector relative mx-auto mb-6 flex w-fit items-center gap-1"
             role="radiogroup"
             aria-label={t("activity:a11y.periodSelector")}
           >
@@ -156,45 +164,106 @@ export function ActivityFeature() {
           </div>
         </FadeSection>
 
-        {/* ── Stat Cards ──────────────────────────── */}
-        <section aria-label={t("activity:title")} className="mb-8 md:mb-10">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 md:gap-6">
-            <div
-              className="activity-card-container activity-stagger-item"
-              style={{ "--stagger-index": 0 } as CSSProperties}
+        {isError && (
+          <div
+            role="alert"
+            className="activity-card-matte mb-8 flex flex-col items-center gap-3 p-6 text-center"
+          >
+            <h2 className="text-lg font-extrabold text-text-primary">
+              {t("activity:error.title")}
+            </h2>
+            <p className="text-sm text-text-secondary">{t("activity:error.description")}</p>
+            <button
+              type="button"
+              onClick={() => void refetch()}
+              className="matte-chip min-h-[44px] px-5 py-2 text-sm font-semibold text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
-              <AttendanceCard
-                attendance={attendance}
-                hasInitiallyLoaded={hasInitiallyLoaded}
-                ringSize={ringSize}
-              />
-            </div>
-            <div
-              className="activity-card-container activity-stagger-item"
-              style={{ "--stagger-index": 1 } as CSSProperties}
-            >
-              <GradesCard
-                grades={grades}
-                hasInitiallyLoaded={hasInitiallyLoaded}
-                ringSize={ringSize}
-              />
-            </div>
-            <div
-              className="activity-card-container activity-stagger-item"
-              style={{ "--stagger-index": 2 } as CSSProperties}
-            >
-              <ParticipationCard
-                participation={participation}
-                hasInitiallyLoaded={hasInitiallyLoaded}
-                separator={separator}
-                ringSize={ringSize}
-              />
-            </div>
+              {t("activity:error.retry")}
+            </button>
           </div>
-        </section>
+        )}
+
+        {!isError && hasInitiallyLoaded && !hasAnyData && (
+          <section className="activity-card-matte mb-8 p-8 text-center" aria-live="polite">
+            <h2 className="text-lg font-extrabold text-text-primary">
+              {t("activity:empty.title")}
+            </h2>
+            <p className="mt-2 text-sm text-text-secondary">{t("activity:empty.description")}</p>
+          </section>
+        )}
+
+        {!isError && isPartial && (
+          <div
+            role="status"
+            className="activity-card-matte mb-6 flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div>
+              <p className="font-bold text-text-primary">{t("activity:partial.title")}</p>
+              <p className="text-sm text-text-secondary">{t("activity:partial.description")}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void refetch()}
+              className="matte-chip min-h-[44px] shrink-0 px-5 py-2 text-sm font-semibold text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+            >
+              {t("activity:partial.retry")}
+            </button>
+          </div>
+        )}
+
+        {/* ── Stat Cards ──────────────────────────── */}
+        {!isError && (!hasInitiallyLoaded || hasAnyData) && (
+          <section aria-label={t("activity:title")} className="mb-8 md:mb-10">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 md:gap-6">
+              <div
+                className="activity-card-container activity-stagger-item"
+                style={{ "--stagger-index": 0 } as CSSProperties}
+              >
+                {!hasInitiallyLoaded || availability.attendance ? (
+                  <AttendanceCard
+                    attendance={attendance}
+                    hasInitiallyLoaded={hasInitiallyLoaded}
+                    ringSize={ringSize}
+                  />
+                ) : (
+                  <ActivityUnavailableCard title={t("activity:sections.attendance.title")} />
+                )}
+              </div>
+              <div
+                className="activity-card-container activity-stagger-item"
+                style={{ "--stagger-index": 1 } as CSSProperties}
+              >
+                {!hasInitiallyLoaded || availability.grades ? (
+                  <GradesCard
+                    grades={grades}
+                    hasInitiallyLoaded={hasInitiallyLoaded}
+                    ringSize={ringSize}
+                  />
+                ) : (
+                  <ActivityUnavailableCard title={t("activity:sections.grades.title")} />
+                )}
+              </div>
+              <div
+                className="activity-card-container activity-stagger-item"
+                style={{ "--stagger-index": 2 } as CSSProperties}
+              >
+                {!hasInitiallyLoaded || availability.participation ? (
+                  <ParticipationCard
+                    participation={participation}
+                    hasInitiallyLoaded={hasInitiallyLoaded}
+                    separator={separator}
+                    ringSize={ringSize}
+                  />
+                ) : (
+                  <ActivityUnavailableCard title={t("activity:sections.participation.title")} />
+                )}
+              </div>
+            </div>
+          </section>
+        )}
 
         {/* ── Charts ──────────────────────────────── */}
-        {hasInitiallyLoaded && (
+        {hasInitiallyLoaded && hasAnyData && !isError && (
           <FadeSection delay="140ms">
             <section aria-label={t("activity:charts.title")} className="mb-8 md:mb-10">
               <h2 className="mb-4 text-lg font-extrabold text-text-primary">
@@ -205,22 +274,30 @@ export function ActivityFeature() {
                   className="activity-stagger-item"
                   style={{ "--stagger-index": 3 } as CSSProperties}
                 >
-                  <ActivityTrendChart
-                    data={attendanceTrendData}
-                    colorVar="var(--activity-present-accent)"
-                    ariaLabel={t("activity:a11y.attendanceTrend")}
-                    formatDate={formatDate}
-                  />
+                  {availability.attendance ? (
+                    <ActivityTrendChart
+                      data={attendanceTrendData}
+                      colorVar="var(--activity-present-accent)"
+                      ariaLabel={t("activity:a11y.attendanceTrend")}
+                      formatDate={formatDate}
+                    />
+                  ) : (
+                    <ActivityUnavailableCard title={t("activity:charts.attendanceTrend")} />
+                  )}
                 </div>
                 <div
                   className="activity-stagger-item"
                   style={{ "--stagger-index": 4 } as CSSProperties}
                 >
-                  <ActivityBarChart
-                    data={gradesBySubject}
-                    colorVar="var(--activity-grade-accent)"
-                    ariaLabel={t("activity:a11y.gradesBySubject")}
-                  />
+                  {availability.grades ? (
+                    <ActivityBarChart
+                      data={gradesBySubject}
+                      colorVar="var(--activity-grade-accent)"
+                      ariaLabel={t("activity:a11y.gradesBySubject")}
+                    />
+                  ) : (
+                    <ActivityUnavailableCard title={t("activity:charts.gradesBySubject")} />
+                  )}
                 </div>
               </div>
             </section>
@@ -228,7 +305,7 @@ export function ActivityFeature() {
         )}
 
         {/* ── Heatmap Calendar ────────────────────── */}
-        {hasInitiallyLoaded && (
+        {hasInitiallyLoaded && hasAnyData && !isError && (
           <FadeSection delay="180ms">
             <section className="mb-8 md:mb-10">
               <ActivityHeatmap
@@ -241,7 +318,7 @@ export function ActivityFeature() {
         )}
 
         {/* ── Comparative Analytics ────────────────── */}
-        {hasInitiallyLoaded && comparative.hasData && (
+        {hasInitiallyLoaded && hasAnyData && !isError && comparative.hasData && (
           <FadeSection delay="200ms">
             <section aria-label={t("activity:comparative.title")} className="mb-8 md:mb-10">
               <h2 className="mb-4 text-lg font-extrabold text-text-primary">
@@ -252,40 +329,46 @@ export function ActivityFeature() {
                   className="activity-stagger-item"
                   style={{ "--stagger-index": 5 } as CSSProperties}
                 >
-                  <ActivityComparativeCard
-                    label={t("activity:comparative.attendanceLabel")}
-                    current={comparative.attendance.current}
-                    previous={comparative.attendance.previous}
-                    delta={comparative.attendance.delta}
-                    format="percent"
-                    colorVar="var(--activity-present-accent)"
-                  />
+                  {availability.attendance && (
+                    <ActivityComparativeCard
+                      label={t("activity:comparative.attendanceLabel")}
+                      current={comparative.attendance.current}
+                      previous={comparative.attendance.previous}
+                      delta={comparative.attendance.delta}
+                      format="percent"
+                      colorVar="var(--activity-present-accent)"
+                    />
+                  )}
                 </div>
                 <div
                   className="activity-stagger-item"
                   style={{ "--stagger-index": 6 } as CSSProperties}
                 >
-                  <ActivityComparativeCard
-                    label={t("activity:comparative.gradesLabel")}
-                    current={comparative.grades.current}
-                    previous={comparative.grades.previous}
-                    delta={comparative.grades.delta}
-                    format="decimal"
-                    colorVar="var(--activity-grade-accent)"
-                  />
+                  {availability.grades && (
+                    <ActivityComparativeCard
+                      label={t("activity:comparative.gradesLabel")}
+                      current={comparative.grades.current}
+                      previous={comparative.grades.previous}
+                      delta={comparative.grades.delta}
+                      format="decimal"
+                      colorVar="var(--activity-grade-accent)"
+                    />
+                  )}
                 </div>
                 <div
                   className="activity-stagger-item"
                   style={{ "--stagger-index": 7 } as CSSProperties}
                 >
-                  <ActivityComparativeCard
-                    label={t("activity:comparative.participationLabel")}
-                    current={comparative.participation.current}
-                    previous={comparative.participation.previous}
-                    delta={comparative.participation.delta}
-                    format="count"
-                    colorVar="var(--activity-participation-accent)"
-                  />
+                  {availability.participation && (
+                    <ActivityComparativeCard
+                      label={t("activity:comparative.participationLabel")}
+                      current={comparative.participation.current}
+                      previous={comparative.participation.previous}
+                      delta={comparative.participation.delta}
+                      format="count"
+                      colorVar="var(--activity-participation-accent)"
+                    />
+                  )}
                 </div>
               </div>
             </section>
@@ -293,14 +376,16 @@ export function ActivityFeature() {
         )}
 
         {/* ── Timeline ────────────────────────────── */}
-        <ActivityTimeline
-          attendance={attendance}
-          grades={grades}
-          participation={participation}
-          hasInitiallyLoaded={hasInitiallyLoaded}
-          attendanceStatusLabel={attendanceStatusLabel}
-          formatDate={formatDate}
-        />
+        {!isError && hasAnyData && (
+          <ActivityTimeline
+            attendance={attendance}
+            grades={grades}
+            participation={participation}
+            hasInitiallyLoaded={hasInitiallyLoaded}
+            attendanceStatusLabel={attendanceStatusLabel}
+            formatDate={formatDate}
+          />
+        )}
       </div>
     </div>
   )

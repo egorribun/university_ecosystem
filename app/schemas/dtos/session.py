@@ -22,6 +22,7 @@ class ActiveSessionDTO(SecureBaseModel):
     mfa_completed_at: datetime | None = None
     mfa_method: str | None = None
     mfa_verified_at: datetime | None = None
+    mfa_epoch: int = 0
     accept_language: str | None = None
     signing_key: str | None = None
     fingerprint_hash: str | None = None

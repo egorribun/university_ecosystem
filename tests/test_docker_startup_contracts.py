@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from tests.test_helm_staging_contract import _resolved_staging_args
+
 
 def _find_repo_root() -> Path:
     current = Path(__file__).resolve().parent
@@ -105,6 +107,7 @@ def test_launcher_generates_documented_secret_lengths_and_syncs_rs256() -> None:
     for variable in (
         "minioPassword",
         "redisPassword",
+        "revocationRedisPassword",
         "elasticPassword",
         "natsPassword",
         "grafanaPassword",
@@ -136,6 +139,7 @@ def test_launcher_syncs_all_required_compose_variables_from_docker_env() -> None
         "WS_HUB_INTERNAL_SECRET",
         "GRAFANA_ADMIN_PASSWORD",
         "REDIS_PASSWORD",
+        "REVOCATION_REDIS_PASSWORD",
         "SECRET_KEY",
         "INTERNAL_HMAC_SECRET",
         "METRICS_BASIC_AUTH_PASSWORD",
@@ -147,6 +151,53 @@ def test_launcher_syncs_all_required_compose_variables_from_docker_env() -> None
     assert "Get-EnvEntry -Path $EnvFile -Key $key" in sync_block
     assert "Set-EnvEntry -Path $EnvCompose -Key $key -Value $dockerValue" in sync_block
     assert "Required variables are missing or empty" in sync_block
+
+
+def test_launcher_refuses_equal_cache_and_revocation_redis_passwords() -> None:
+    script = _read("start-docker.ps1")
+    guard = _powershell_function(
+        script, "Assert-IndependentRedisCredentials", "Ensure-JwtEnvironment"
+    )
+
+    assert 'Get-EnvEntry -Path $EnvFile -Key "REDIS_PASSWORD"' in guard
+    assert 'Get-EnvEntry -Path $EnvFile -Key "REVOCATION_REDIS_PASSWORD"' in guard
+    assert "-ceq" in guard
+    assert "REDIS_PASSWORD and REVOCATION_REDIS_PASSWORD must differ" in guard
+    error_line = next(
+        line
+        for line in guard.splitlines()
+        if "REDIS_PASSWORD and REVOCATION_REDIS_PASSWORD must differ" in line
+    )
+    assert "$cachePassword" not in error_line
+    assert "$revocationPassword" not in error_line
+
+    initialization = script[
+        script.index("# Give each application security domain") : script.index(
+            "# -- Sync check"
+        )
+    ]
+    assert initialization.index("Ensure-ApplicationSecrets") < initialization.index(
+        "Assert-IndependentRedisCredentials"
+    )
+
+
+def test_launcher_generates_a_redacted_worker_environment_file() -> None:
+    script = _read("start-docker.ps1")
+
+    assert '$WorkerEnvFile = ".env.docker.workers"' in script
+    assert "function Write-WorkerEnvironmentFile" in script
+    assert "REVOCATION_REDIS_(?:URL|PASSWORD)" in script
+    assert "Write-Utf8NoBom -Path $WorkerEnvFile" in script
+
+    invocation_start = script.index("# Fail closed if an existing local configuration")
+    invocation_end = script.index("# -- Sync check")
+    invocation = script[invocation_start:invocation_end]
+    assert (
+        invocation.index("Assert-IndependentRedisCredentials")
+        < invocation.index("Ensure-JwtEnvironment")
+        < invocation.index("Ensure-DockerConfigRevision")
+        < invocation.index("Write-WorkerEnvironmentFile")
+    )
 
 
 def test_backend_image_retries_transient_uv_registry_failures() -> None:
@@ -251,6 +302,7 @@ def test_docker_env_example_matches_full_stack_contract() -> None:
         "METRICS_BASIC_AUTH_USERNAME",
         "METRICS_BASIC_AUTH_PASSWORD",
         "REDIS_PASSWORD",
+        "REVOCATION_REDIS_PASSWORD",
         "ENVIRONMENT",
         "VAPID_SUBJECT",
         "SPOTIFY_CLIENT_ID",
@@ -298,6 +350,9 @@ def test_all_caddy_configs_expose_the_same_auth_and_websocket_routes() -> None:
         assert "rewrite * /ws" in caddyfile
         assert "reverse_proxy gateway:8080" in caddyfile
         assert "reverse_proxy ws-hub:8081" in caddyfile
+        frontend_block = caddyfile[caddyfile.index("reverse_proxy frontend:3000 {") :]
+        assert "health_uri /healthz" in frontend_block
+        assert "health_timeout 20s" in frontend_block
         assert (
             caddyfile.index("handle /ws/ticket")
             < caddyfile.index("handle /ws/chat*")
@@ -405,6 +460,117 @@ def test_start_script_removes_obsolete_containers_and_waits_for_the_full_stack()
     ).group(1)
     assert "Test-ServiceHttp -Url" in script
     assert "-Timeout $requestTimeout" in script
+
+
+def test_launcher_exposes_an_explicit_bounded_core_mode() -> None:
+    """The local launcher must offer an opt-in, resource-conscious core stack."""
+
+    script = _read("start-docker.ps1")
+    core_start = script.index("$CoreBootstrapServices =")
+    core_end = script.index("$CoreOptionalComposeServices =", core_start)
+    core_block = script[core_start:core_end]
+
+    assert '[Alias("Lean")]' in script
+    assert "[switch]$Core" in script
+    assert '"docker-compose.full.yml"' in script
+
+    required_core_services = {
+        "postgres",
+        "redis",
+        "revocation-redis",
+        "minio",
+        "nats",
+        "flagd",
+        "flagd-healthprobe",
+        "postgres-databases-init",
+        "minio-init",
+        "migrations",
+        "spicedb-migrate",
+        "spicedb",
+        "backend",
+        "frontend",
+        "notifications-worker",
+        "outbox-worker",
+        "gateway",
+        "ws-hub",
+        "imgproxy",
+        "caddy",
+    }
+    for service in required_core_services:
+        assert f'"{service}"' in core_block, service
+
+    excluded_services = {
+        "elasticsearch",
+        "redis-exporter",
+        "temporal",
+        "temporal-admin-tools",
+        "temporal-namespace-init",
+        "grafana",
+        "prometheus",
+        "tempo",
+        "tempo-healthprobe",
+        "loki",
+        "loki-healthprobe",
+        "alloy",
+        "pyroscope",
+        "file-processor",
+    }
+    for service in excluded_services:
+        assert f'"{service}"' not in core_block, service
+
+    # Full mode remains the default and must retain its historical all-service
+    # invocation; only the explicit core opt-in is allowed to scope the command.
+    assert "if ($Core)" in script
+    assert "up -d --no-deps --remove-orphans" in script
+    assert "up -d --remove-orphans" in script
+
+
+def test_core_mode_filters_optional_health_probes_and_prometheus_validation() -> None:
+    script = _read("start-docker.ps1")
+
+    excluded_start = script.index("$CoreExcludedHealthServices =")
+    excluded_end = script.index("# -- Helpers", excluded_start)
+    excluded_block = script[excluded_start:excluded_end]
+    for service in (
+        "elasticsearch",
+        "redisexporter",
+        "temporal",
+        "grafana",
+        "prometheus",
+        "tempo",
+        "tempo-healthprobe",
+        "loki",
+        "loki-healthprobe",
+        "alloy",
+        "pyroscope",
+        "fileprocessor",
+    ):
+        assert f'"{service}"' in excluded_block, service
+
+    services_start = script.index("$services = [ordered]@{")
+    services_end = script.index("do {", services_start)
+    services_block = script[services_start:services_end]
+    assert "$services.Remove($name)" in services_block
+
+    prometheus_start = script.rfind(
+        "if (-not $Core)",
+        0,
+        script.index('Write-Status "Validating Prometheus scrape targets..."'),
+    )
+    prometheus_block = script[
+        prometheus_start : script.index("# -- Done", prometheus_start)
+    ]
+    assert "if (-not $Core)" in prometheus_block
+    assert "Skipping Prometheus target validation in core mode" in prometheus_block
+
+
+def test_core_mode_is_documented_for_local_resource_constrained_runs() -> None:
+    for relative_path in ("docs/DEPLOY.md", "docs/DEPLOY.en.md"):
+        document = _read(relative_path)
+        assert "start-docker.ps1 -Core" in document
+        assert "observability" in document.lower()
+        assert "temporal" in document.lower()
+        assert "file-processor" in document.lower()
 
 
 def test_published_ports_have_a_non_internal_network() -> None:
@@ -640,6 +806,73 @@ def test_postgres_database_bootstrap_is_cleanly_idempotent() -> None:
 
     launcher = _read("start-docker.ps1")
     assert 'psql -U postgres -c "CREATE DATABASE spicedb"' not in launcher
+
+
+def test_compose_files_do_not_claim_global_project_or_container_names() -> None:
+    """Compose-generated project resources must not have globally fixed names.
+
+    Host ports are intentionally fixed by the local developer contract, so this
+    check prevents container/network/volume name collisions rather than
+    claiming that two complete stacks can bind the same ports concurrently.
+    """
+    compose_paths = sorted(ROOT.glob("docker-compose*.yml"))
+    assert compose_paths, "No supported Compose files were discovered"
+
+    for compose_path in compose_paths:
+        relative_path = compose_path.relative_to(ROOT).as_posix()
+        compose = _compose(relative_path)
+        assert "name" not in compose, (
+            f"{relative_path} fixes a global Compose project name instead of "
+            "allowing the launcher or worktree directory to provide one"
+        )
+        services = compose.get("services", {})
+        offenders = sorted(
+            service_name
+            for service_name, service in services.items()
+            if service is not None and "container_name" in service
+        )
+        assert offenders == [], (
+            f"{relative_path} contains globally conflicting container_name values: "
+            f"{offenders}"
+        )
+
+
+def test_launcher_seed_commands_are_compose_project_safe() -> None:
+    launcher = _read("start-docker.ps1")
+
+    assert "university_ecosystem-backend-1" not in launcher
+    assert "docker compose -f `$ComposeFile --env-file `$EnvFile cp" not in launcher
+    expected_commands = (
+        "docker compose -f $ComposeFile --env-file $EnvFile cp "
+        "scripts/seed_demo_data.py backend:/app/seed_demo_data.py",
+        "docker compose -f $ComposeFile --env-file $EnvFile exec -T -w /app "
+        "backend python seed_demo_data.py",
+        "docker compose -f $ComposeFile --env-file $EnvFile cp "
+        "scripts/seed_admin_data.py backend:/app/seed_admin_data.py",
+        "docker compose -f $ComposeFile --env-file $EnvFile exec -T -w /app "
+        "backend python seed_admin_data.py",
+    )
+    for command in expected_commands:
+        assert launcher.count(command) == 1, (
+            f"Expected exactly one launcher command: {command}"
+        )
+
+
+def test_sandbox_runner_uses_a_worktree_scoped_compose_project() -> None:
+    runner = _read("scripts/run-test-sandbox.ps1")
+
+    assert "SHA256]::HashData" in runner
+    assert '$composeProject = "ue-sandbox-$worktreeHash"' in runner
+    assert (
+        runner.count("docker compose --project-name $composeProject -f $compose") == 2
+    )
+    assert "docker compose -f $compose up" not in runner
+    assert "docker compose -f $compose down" not in runner
+
+
+def test_smoke_script_is_printable_in_the_windows_launcher_console() -> None:
+    """The supported PowerShell flow may inherit the default CP1251 code page."""
+    _read("scripts/smoke_test.py").encode("cp1251")
 
 
 def test_local_temporal_and_spicedb_opt_out_of_external_auth_telemetry_noise() -> None:
@@ -944,7 +1177,7 @@ def test_helm_outbox_scaler_targets_a_real_database_backed_worker() -> None:
     assert "stored_events" in keda
     assert "OUTBOX_EVENTS" not in keda
     assert (
-        'list "backend" "gateway" "frontend" "file-processor" "outbox-worker" "backup"'
+        'list "backend" "gateway" "frontend" "ws-hub" "file-processor" "outbox-worker" "backup"'
         in rbac
     )
     assert "app.kubernetes.io/component: outbox-worker" in network_policy
@@ -983,13 +1216,15 @@ def test_helm_references_only_real_workloads_and_services_select_their_pods() ->
     assert 'prometheus.io/path: "/metrics"' in gateway_deployment
     assert "containerPort: 9102" in gateway_deployment
     assert (
-        'list "backend" "gateway" "frontend" "file-processor" "outbox-worker" "backup"'
+        'list "backend" "gateway" "frontend" "ws-hub" "file-processor" "outbox-worker" "backup"'
         in rbac
     )
     assert "app.kubernetes.io/component: file-processor" in network_policy
 
 
 def test_helm_images_do_not_gain_a_leading_slash_when_registry_is_empty() -> None:
+    helpers = _read("charts/university-ecosystem/templates/_helpers.tpl")
+    assert 'trimPrefix "/"' in helpers
     deployments = (
         "backend-deployment.yaml",
         "frontend-deployment.yaml",
@@ -999,7 +1234,7 @@ def test_helm_images_do_not_gain_a_leading_slash_when_registry_is_empty() -> Non
     )
     for name in deployments:
         deployment = _read(f"charts/university-ecosystem/templates/{name}")
-        assert 'trimPrefix "/"' in deployment, name
+        assert 'include "university-ecosystem.image"' in deployment, name
         assert ".Values.global.imagePullSecrets" in deployment, name
 
 
@@ -1040,8 +1275,6 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "--set",
         "redis.enabled=false",
         "--set",
-        "revocationRedis.enabled=false",
-        "--set",
         "nats.enabled=false",
         "--set",
         "global.imageTag=contract-sha",
@@ -1065,6 +1298,18 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "backend.config.auditLogSecret=ci-placeholder",
         "--set",
         "backend.config.idempotencyHMACSecret=ci-placeholder",
+        "--set",
+        "backend.config.mfaEmailOtpHMACKeys=test-key:ci-placeholder",
+        "--set",
+        "backend.config.mfaEmailOtpActiveHMACKeyId=test-key",
+        "--set",
+        "backend.config.mfaEmailDeliveryKEKs=test-key:ci-placeholder",
+        "--set",
+        "backend.config.mfaEmailDeliveryActiveKEKId=test-key",
+        "--set",
+        "backend.config.mfaTrustedDeviceHMACKeys=test-key:ci-placeholder",
+        "--set",
+        "backend.config.mfaTrustedDeviceActiveHMACKeyId=test-key",
         "--set",
         "fileProcessor.config.rsaPublicKeyPEM=ci-placeholder",
         "--set",
@@ -1107,6 +1352,10 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
     assert migration_env["DATABASE_URL"]["valueFrom"]["secretKeyRef"] == {
         "name": "university-connections",
         "key": "database-url",
+    }
+    assert migration_env["REVOCATION_REDIS_URL"]["valueFrom"]["secretKeyRef"] == {
+        "name": "university-connections",
+        "key": "redis-revocation-url",
     }
     assert migration_env["ENVIRONMENT"]["value"] == "development"
     assert migration_container["securityContext"]["readOnlyRootFilesystem"] is True
@@ -1169,6 +1418,14 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "SPICEDB_PRESHARED_KEY": "spicedb-preshared-key",
         "AUDIT_LOG_SECRET": "audit-log-secret",  # pragma: allowlist secret
         "IDEMPOTENCY_HMAC_SECRET": "idempotency-hmac-secret",  # pragma: allowlist secret
+        "MFA_EMAIL_OTP_HMAC_KEYS": "mfa-email-otp-hmac-keys",
+        "MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID": "mfa-email-otp-active-hmac-key-id",
+        "MFA_EMAIL_DELIVERY_KEKS": "mfa-email-delivery-keks",
+        "MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID": "mfa-email-delivery-active-kek-id",
+        "MFA_TRUSTED_DEVICE_HMAC_KEYS": "mfa-trusted-device-hmac-keys",
+        "MFA_TRUSTED_DEVICE_ACTIVE_HMAC_KEY_ID": (
+            "mfa-trusted-device-active-hmac-key-id"
+        ),
     }.items():
         assert backend_env[variable]["valueFrom"]["secretKeyRef"] == {
             "name": "contract-secrets",
@@ -1215,7 +1472,6 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
     for variable, key in {
         "DATABASE_URL": "database-url",
         "CACHE_REDIS_URL": "redis-backend-url",
-        "REVOCATION_REDIS_URL": "redis-revocation-url",
         "NATS_URL": "nats-url",
         "NATS_AUTH_TOKEN": "nats-auth-token",
         "KEDA_POSTGRESQL_CONNECTION": "keda-postgresql-url",
@@ -1224,6 +1480,9 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
             "name": connections_secret,
             "key": key,
         }
+    assert outbox_env["APP_PROCESS_ROLE"]["value"] == "outbox-worker"
+    assert outbox_env["REVOCATION_REDIS_ACCESS_ENABLED"]["value"] == "false"
+    assert "REVOCATION_REDIS_URL" not in outbox_env
     assert outbox_env["ENVIRONMENT"]["value"] == "development"
     assert outbox_env["SECRET_KEY"]["valueFrom"]["secretKeyRef"] == {
         "name": "contract-secrets",
@@ -1238,6 +1497,7 @@ def test_rendered_helm_services_and_scalers_target_real_pods() -> None:
         "SPICEDB_PRESHARED_KEY": "spicedb-preshared-key",
         "AUDIT_LOG_SECRET": "audit-log-secret",  # pragma: allowlist secret
         "IDEMPOTENCY_HMAC_SECRET": "idempotency-hmac-secret",  # pragma: allowlist secret
+        "MFA_EMAIL_DELIVERY_KEKS": "mfa-email-delivery-keks",
     }.items():
         assert outbox_env[variable]["valueFrom"]["secretKeyRef"] == {
             "name": "contract-secrets",
@@ -1292,8 +1552,6 @@ def test_helm_supports_an_externally_managed_application_secret() -> None:
             *_helm_skip_dep_flag(helm),
             "--set",
             "redis.enabled=false",
-            "--set",
-            "revocationRedis.enabled=false",
             "--set",
             "nats.enabled=false",
             "--set",
@@ -1366,52 +1624,69 @@ def test_helm_supports_an_externally_managed_application_secret() -> None:
     assert "managed-application-secrets" in secret_refs
 
 
-def test_helm_production_render_rejects_plaintext_data_planes() -> None:
-    helm = shutil.which("helm")
-    if helm is None:
-        pytest.skip("Helm is not installed")  # QUALITY-123 @egorribun
-
-    base_command = [
+def _production_render_command(helm: str) -> list[str]:
+    return [
         helm,
         "template",
         "production",
         str(ROOT / "charts" / "university-ecosystem"),
         *_helm_skip_dep_flag(helm),
-        "--set",
-        "redis.enabled=false",
-        "--set",
-        "revocationRedis.enabled=false",
-        "--set",
-        "nats.enabled=false",
-        "--set",
+        "--values",
+        str(ROOT / "charts" / "university-ecosystem" / "values-staging.yaml"),
+        *_resolved_staging_args(),
+        "--set-string",
         "global.environment=production",
-        "--set",
-        "applicationSecrets.existingSecret=managed-application-secrets",
+        "--set-string",
+        "ingress.issuer.kind=ClusterIssuer",
+        "--set-string",
+        "ingress.issuer.name=letsencrypt-prod",
     ]
+
+
+@pytest.mark.parametrize(
+    ("override", "expected_error"),
+    [
+        ("backend.config.minioSecure=false", "backend.config.minioSecure=true"),
+        ("gateway.config.grpcUseTLS=false", "gateway.config.grpcUseTLS=true"),
+        (
+            "fileProcessor.config.minioSecure=false",
+            "fileProcessor.config.minioSecure=true",
+        ),
+        (
+            "fileProcessor.config.temporalTLSDisabled=true",
+            "fileProcessor.config.temporalTLSDisabled=false",
+        ),
+        (
+            "fileProcessor.config.otlpInsecure=true",
+            "fileProcessor.config.otlpInsecure=false",
+        ),
+    ],
+)
+def test_helm_production_render_rejects_plaintext_data_planes(
+    override: str, expected_error: str
+) -> None:
+    helm = shutil.which("helm")
+    if helm is None:
+        pytest.skip("Helm is not installed")  # QUALITY-123 @egorribun
+
     insecure = subprocess.run(  # noqa: S603 - fixed Helm contract command
-        base_command,
+        [*_production_render_command(helm), "--set", override],
         check=False,
         capture_output=True,
         text=True,
         encoding="utf-8",
     )
     assert insecure.returncode != 0
-    assert "backend.config.minioSecure=true" in insecure.stderr
+    assert expected_error in insecure.stderr
+
+
+def test_helm_production_render_accepts_secure_data_planes() -> None:
+    helm = shutil.which("helm")
+    if helm is None:
+        pytest.skip("Helm is not installed")  # QUALITY-123 @egorribun
 
     secure = subprocess.run(  # noqa: S603 - fixed Helm contract command
-        [
-            *base_command,
-            "--set",
-            "backend.config.minioSecure=true",
-            "--set",
-            "gateway.config.grpcUseTLS=true",
-            "--set",
-            "fileProcessor.config.minioSecure=true",
-            "--set",
-            "fileProcessor.config.temporalTLSDisabled=false",
-            "--set",
-            "fileProcessor.config.otlpInsecure=false",
-        ],
+        _production_render_command(helm),
         check=False,
         capture_output=True,
         text=True,
@@ -1433,6 +1708,11 @@ def test_non_root_python_images_create_the_declared_home_directory() -> None:
 def test_caddy_plugin_dependency_is_version_pinned() -> None:
     dockerfile = _read("services/caddy/Dockerfile")
 
+    assert "ARG XCADDY_VERSION=v0.4.5" in dockerfile
+    assert "go install" in dockerfile
+    assert "github.com/caddyserver/xcaddy/cmd/xcaddy@${XCADDY_VERSION}" in dockerfile
+    assert "ca-certificates=20260611-r0" in dockerfile
+    assert "git=2.54.0-r0" in dockerfile
     assert "github.com/mholt/caddy-ratelimit@v0.1.0" in dockerfile
     assert not re.search(
         r"--with github\.com/mholt/caddy-ratelimit\s*$", dockerfile, re.M
@@ -1445,9 +1725,25 @@ def test_caddy_build_uses_matching_current_builder_and_runtime_images() -> None:
     dockerfile = _read("services/caddy/Dockerfile")
     full_caddy = _compose("docker-compose.full.yml")["services"]["caddy"]
 
-    assert "caddy:2.11.4-builder-alpine@sha256:" in dockerfile
+    assert "golang:1.26.6-alpine3.24@sha256:" in dockerfile
     assert "caddy:2.11.4-alpine@sha256:" in dockerfile
     assert "ARG CADDY_VERSION=2.11.4" in dockerfile
+    assert "--replace golang.org/x/net=golang.org/x/net@v0.56.0" in dockerfile
+    assert "--replace golang.org/x/text=golang.org/x/text@v0.39.0" in dockerfile
+    assert (
+        "--replace google.golang.org/grpc=google.golang.org/grpc@v1.83.1" in dockerfile
+    )
+    for package in (
+        "libapk=3.0.7-r0",
+        "apk-tools=3.0.7-r0",
+        "libcrypto3=3.5.8-r0",
+        "libssl3=3.5.8-r0",
+        "c-ares=1.34.8-r0",
+        "libcurl=8.20.0-r0",
+        "curl=8.20.0-r0",
+    ):
+        assert package in dockerfile
+    assert "apk upgrade" not in dockerfile
     assert "build" in full_caddy
     assert full_caddy["build"]["context"] == "./services/caddy"
     assert full_caddy["build"]["dockerfile"] == "Dockerfile"
@@ -1724,7 +2020,7 @@ def test_file_processor_builds_health_probe_with_patched_dependencies() -> None:
     assert "GRPC_HEALTH_PROBE_VERSION=v0.4.51" in health_probe
     for dependency in (
         "github.com/spiffe/go-spiffe/v2@v2.7.0",
-        "google.golang.org/grpc@v1.83.0",
+        "google.golang.org/grpc@v1.83.1",
         "golang.org/x/net@v0.57.0",
         "golang.org/x/text@v0.40.0",
     ):

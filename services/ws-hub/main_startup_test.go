@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net"
@@ -12,6 +13,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/nats-io/nats.go"
@@ -183,6 +185,63 @@ func TestInitNats_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, nc)
 	nc.Close()
+}
+
+func TestDefaultInitNats_UsesTokenAuthentication(t *testing.T) {
+	lc := net.ListenConfig{}
+	l, err := lc.Listen(t.Context(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = l.Close() }() //nolint:errcheck // test listener cleanup
+
+	connectPayload := make(chan map[string]interface{}, 1)
+	go func() {
+		conn, acceptErr := l.Accept()
+		if acceptErr != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }() //nolint:errcheck // test conn cleanup
+		if _, writeErr := conn.Write([]byte(`INFO {"server_id":"MOCK","version":"2.0.0","host":"127.0.0.1","port":4222,"auth_required":true}` + "\r\n")); writeErr != nil {
+			return
+		}
+
+		reader := bufio.NewReader(conn)
+		for {
+			line, readErr := reader.ReadString('\n')
+			if readErr != nil {
+				return
+			}
+			if strings.HasPrefix(line, "CONNECT ") {
+				payload := make(map[string]interface{})
+				if json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "CONNECT "))), &payload) != nil {
+					return
+				}
+				connectPayload <- payload
+			}
+			if strings.HasPrefix(line, "PING") {
+				if _, writeErr := conn.Write([]byte("PONG\r\n")); writeErr != nil {
+					return
+				}
+			}
+		}
+	}()
+
+	cfg := &config.Config{
+		NatsURL:       "nats://" + l.Addr().String(),
+		NatsAuthToken: "test-token",
+	}
+	nc, err := defaultInitNats(context.Background(), cfg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	require.NoError(t, err)
+	require.NotNil(t, nc)
+	t.Cleanup(nc.Close)
+
+	select {
+	case payload := <-connectPayload:
+		assert.Equal(t, "test-token", payload["auth_token"])
+		assert.NotContains(t, payload, "user")
+		assert.NotContains(t, payload, "pass")
+	case <-time.After(time.Second):
+		t.Fatal("NATS client did not send a CONNECT payload")
+	}
 }
 
 func TestInitNats_ExitOnFailure(t *testing.T) {

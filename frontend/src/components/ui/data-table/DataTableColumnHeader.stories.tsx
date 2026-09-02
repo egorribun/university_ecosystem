@@ -1,11 +1,7 @@
 import type { Meta, StoryObj, Decorator } from "@storybook/react-vite"
-import {
-  useReactTable,
-  getCoreRowModel,
-  getSortedRowModel,
-  type ColumnDef,
-} from "@tanstack/react-table"
+import { useTable } from "@tanstack/react-table"
 import { DataTableColumnHeader } from "./DataTableColumnHeader"
+import { dataTableFeatures, type DataTableColumnDef } from "./dataTableFeatures"
 
 // Wave 196 SW3 — DataTableColumnHeader Storybook fixture (LEAF tier batch 2).
 //
@@ -21,14 +17,13 @@ type Row = { name: string; email: string }
 const data: Row[] = [{ name: "Anna Petrova", email: "anna@guu.ru" }]
 
 function Harness({ title, sortable }: { title: string; sortable: boolean }) {
-  const columns: ColumnDef<Row>[] = [
+  const columns: DataTableColumnDef<Row>[] = [
     { accessorKey: "name", header: title, enableSorting: sortable },
   ]
-  const table = useReactTable<Row>({
+  const table = useTable({
+    features: dataTableFeatures,
     data,
     columns,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
   })
   const column = table.getColumn("name")
   if (!column) return null

@@ -329,8 +329,12 @@ async def test_require_fresh_mfa_confirmed(mock_request, db_session):
 @pytest.mark.asyncio
 async def test_require_fresh_mfa_not_confirmed(mock_request, db_session):
     user = MagicMock(spec=User)
+    user.email_mfa_enabled_at = None
     with (
-        patch("app.auth.mfa.user_has_confirmed_interactive_factor", return_value=False),
+        patch(
+            "app.auth.mfa.has_totp_enabled",
+            new=AsyncMock(return_value=False),
+        ),
         patch("app.models.user_loaders.ensure_mfa_relationships_loaded"),
     ):
         with patch("app.api.deps.auth._enforce_fresh_mfa") as mock_enforce:

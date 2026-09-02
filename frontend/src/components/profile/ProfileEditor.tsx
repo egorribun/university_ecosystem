@@ -41,7 +41,6 @@ export const ProfileEditor = ({
   fullName,
   setFullName,
   email,
-  setEmail,
   telegram,
   setTelegram,
   about,
@@ -100,11 +99,15 @@ export const ProfileEditor = ({
           </label>
           <input
             id="profile-email"
+            aria-describedby="profile-email-hint"
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-text-primary placeholder:text-(--text-secondary) focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast"
+            readOnly
+            className="w-full px-3 sm:px-4 py-2 sm:py-3 text-sm sm:text-base rounded-lg sm:rounded-xl border border-glass-border bg-(--bg-surface) text-text-primary placeholder:text-(--text-secondary) read-only:cursor-not-allowed read-only:opacity-75 focus:outline-none focus:ring-2 focus:ring-(--brand-main) focus:border-transparent transition-all duration-fast"
           />
+          <p id="profile-email-hint" className="text-label-xs xs:text-xs text-hint">
+            {t("profile:form.emailHint")}
+          </p>
         </div>
 
         {/* Telegram Field */}

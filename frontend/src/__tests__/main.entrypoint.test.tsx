@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
   ensurePushSubscription: vi.fn(),
 }))
 
+let requestedIdleOptions: IdleRequestOptions | undefined
+
 vi.mock("react-dom/client", () => ({
   createRoot: mocks.createRoot,
   hydrateRoot: mocks.hydrateRoot,
@@ -67,7 +69,8 @@ const setServiceWorkerSupport = (supported: boolean) => {
 const runIdleImmediately = () => {
   Object.defineProperty(window, "requestIdleCallback", {
     configurable: true,
-    value: (callback: IdleRequestCallback) => {
+    value: (callback: IdleRequestCallback, options?: IdleRequestOptions) => {
+      requestedIdleOptions = options
       callback({ didTimeout: false, timeRemaining: () => 5 } as IdleDeadline)
       return 1
     },
@@ -86,6 +89,7 @@ beforeEach(() => {
   vi.resetModules()
   vi.unstubAllEnvs()
   vi.clearAllMocks()
+  requestedIdleOptions = undefined
   vi.useRealTimers()
 
   document.documentElement.innerHTML =
@@ -121,6 +125,7 @@ describe("browser entrypoint", () => {
     expect(mocks.hydrateRoot).toHaveBeenCalledWith(document, expect.anything())
     expect(mocks.createRoot).not.toHaveBeenCalled()
     expect(mocks.initObservability).toHaveBeenCalledOnce()
+    expect(requestedIdleOptions).toEqual({ timeout: 10_000 })
     expect(mocks.reportBootstrapTTI).toHaveBeenCalledWith(45)
     expect(mocks.registerServiceWorker).not.toHaveBeenCalled()
   })
@@ -133,6 +138,18 @@ describe("browser entrypoint", () => {
 
     expect(mocks.createRoot).toHaveBeenCalledWith(document)
     expect(mocks.render).toHaveBeenCalledWith(expect.anything())
+    expect(mocks.hydrateRoot).not.toHaveBeenCalled()
+    expect(document.documentElement).not.toHaveAttribute("data-render-mode")
+  })
+
+  it("mounts the LHCI static shell without hydrating route-agnostic markup", async () => {
+    vi.stubEnv("PROD", false)
+    vi.stubEnv("VITE_LHCI", "true")
+    document.documentElement.dataset.renderMode = "static-spa"
+
+    await importMain()
+
+    expect(mocks.createRoot).toHaveBeenCalledWith(document)
     expect(mocks.hydrateRoot).not.toHaveBeenCalled()
     expect(document.documentElement).not.toHaveAttribute("data-render-mode")
   })
@@ -235,9 +252,23 @@ describe("browser entrypoint", () => {
     setServiceWorkerSupport(true)
 
     await importMain()
+    await vi.waitFor(() => expect(mocks.hydrateRoot).toHaveBeenCalledOnce())
 
     expect(document.getElementById("lhci-marker")).toHaveStyle({ display: "none" })
     expect(mocks.registerServiceWorker).not.toHaveBeenCalled()
+  })
+
+  it("keeps synchronous error guards but skips optional telemetry in LHCI mode", async () => {
+    vi.stubEnv("VITE_LHCI", "true")
+
+    await importMain()
+    await vi.waitFor(() => expect(mocks.hydrateRoot).toHaveBeenCalledOnce())
+
+    expect(mocks.initGlobalErrorHandlers).toHaveBeenCalledOnce()
+    expect(mocks.ensureTrustedTypesPolicies).toHaveBeenCalledOnce()
+    expect(mocks.initObservability).not.toHaveBeenCalled()
+    expect(mocks.initWebVitals).not.toHaveBeenCalled()
+    expect(requestedIdleOptions).toBeUndefined()
   })
 
   it("tolerates an LHCI document without the optional marker", async () => {
@@ -245,6 +276,20 @@ describe("browser entrypoint", () => {
     document.getElementById("lhci-marker")?.remove()
 
     await importMain()
+
+    await vi.waitFor(() => expect(mocks.hydrateRoot).toHaveBeenCalledOnce())
+  })
+
+  it("waits for the document load event before hydrating an LHCI SSR shell", async () => {
+    vi.useFakeTimers()
+    vi.stubEnv("VITE_LHCI", "true")
+    setReadyState("loading")
+
+    await importMain()
+    expect(mocks.hydrateRoot).not.toHaveBeenCalled()
+
+    window.dispatchEvent(new Event("load"))
+    await vi.runAllTimersAsync()
 
     expect(mocks.hydrateRoot).toHaveBeenCalledOnce()
   })

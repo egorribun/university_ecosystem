@@ -2,6 +2,7 @@
 declare const self: ServiceWorkerGlobalScope
 
 import { buildNotificationDetails, parsePushEventData } from "@/push/notification-helpers"
+import { resolveNotificationDeepLink, resolveOptionalSameOriginUrl } from "@/notifications/contract"
 import { sanitizeReportPayload, storePendingNavigation, storePendingReport } from "./offline"
 
 /**
@@ -17,12 +18,26 @@ export function initPushHandlers() {
       const visibleClients = clientList.filter((c) => c.visibilityState === "visible")
 
       if (visibleClients.length > 0 && payload.data?.type === "in-app") {
+        const notificationData =
+          options.data && typeof options.data === "object"
+            ? (options.data as Record<string, unknown>)
+            : {}
+        const notificationId =
+          typeof notificationData.notificationId === "string"
+            ? notificationData.notificationId
+            : undefined
+        const topic =
+          typeof notificationData.topic === "string" ? notificationData.topic : undefined
         const message = {
           type: "PUSH_NOTIFICATION",
+          ...(notificationId ? { notificationId } : {}),
+          ...(topic ? { topic } : {}),
           toast: {
+            ...(notificationId ? { id: notificationId } : {}),
             title,
             body: options.body || payload.body,
             url: payload.url || options.data?.url || "/",
+            ...(notificationId || topic ? { data: notificationData } : {}),
           },
         }
         for (const client of visibleClients) {
@@ -41,7 +56,7 @@ export function initPushHandlers() {
 
     const clickData = event.notification.data
     const urlToOpen = clickData?.url || "/"
-    const absoluteUrl = new URL(urlToOpen, self.location.origin).toString()
+    const absoluteUrl = resolveNotificationDeepLink(urlToOpen, self.location.origin)
 
     const handleNavigationAndReporting = async () => {
       let navigated = false
@@ -70,7 +85,16 @@ export function initPushHandlers() {
       }
 
       if (clickData?.reportUrl) {
-        const absoluteReportUrl = new URL(clickData.reportUrl, self.location.origin).toString()
+        const absoluteReportUrl = resolveOptionalSameOriginUrl(
+          clickData.reportUrl,
+          self.location.origin
+        )
+        if (!absoluteReportUrl) {
+          if (!navigated) {
+            await storePendingNavigation({ url: absoluteUrl, timestamp: Date.now() })
+          }
+          return
+        }
         const rawPayload = clickData.reportPayload || {}
         const sanitized = sanitizeReportPayload(rawPayload)
         const payload =

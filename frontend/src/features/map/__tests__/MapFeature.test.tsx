@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { act, render, screen } from "@testing-library/react"
 import type { ComponentType } from "react"
 import { Suspense } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -23,6 +23,13 @@ vi.mock("@/hooks/useMediaQuery", () => ({ default: () => mq.value }))
 /* Sidestep the entire maplibre stack — the lazy child is replaced with null. */
 vi.mock("@/components/map/MapLibreMap", () => ({ default: () => null }))
 
+/* MapFeature's lazy loader also imports MapLibre's worker asset. Mock the
+   loader at this unit-test boundary so shell renders never depend on the
+   browser-only worker/CSS graph (including isolated Stryker sandboxes). */
+vi.mock("@/features/map/loadMapLibre", () => ({
+  loadMapLibre: () => import("@/components/map/MapLibreMap"),
+}))
+
 /* Module-mock every data/router hook MapFeature reaches. */
 vi.mock("@/hooks/useURLState", () => ({
   useURLState: () => ({ params: {}, setParam: vi.fn(), setParams: vi.fn() }),
@@ -39,12 +46,18 @@ vi.mock("@/hooks/useMapKeyboardShortcuts", () => ({ useMapKeyboardShortcuts: () 
 
 import { MapFeature } from "@/features/map/MapFeature"
 
-function renderFeature() {
-  return render(
-    <Suspense fallback={null}>
-      <MapFeature />
-    </Suspense>
-  )
+async function renderFeature() {
+  let result: ReturnType<typeof render> | undefined
+  await act(async () => {
+    result = render(
+      <Suspense fallback={null}>
+        <MapFeature />
+      </Suspense>
+    )
+    await Promise.resolve()
+  })
+  if (!result) throw new Error("Map feature failed to render")
+  return result
 }
 
 describe("MapFeature", () => {
@@ -52,8 +65,8 @@ describe("MapFeature", () => {
     mq.value = false
   })
 
-  it("renders the feature shell with header, search bar, and category filter (wide)", () => {
-    const { container } = renderFeature()
+  it("renders the feature shell with header, search bar, and category filter (wide)", async () => {
+    const { container } = await renderFeature()
     // Page title + badge from MapHeader
     expect(screen.getByRole("heading", { name: /page\.title/ })).toBeInTheDocument()
     // Search combobox from MapSearchBar
@@ -67,23 +80,23 @@ describe("MapFeature", () => {
     expect(root).toHaveAttribute("data-season", "spring")
   })
 
-  it("does not render the building sidebar when no building is selected", () => {
-    renderFeature()
+  it("does not render the building sidebar when no building is selected", async () => {
+    await renderFeature()
     // Sidebar only mounts when currentBuilding is truthy (none selected on mount)
     expect(screen.queryByText("sidebar.close")).not.toBeInTheDocument()
   })
 
-  it("renders the all-categories filter with the 'all' radio active by default", () => {
-    renderFeature()
+  it("renders the all-categories filter with the 'all' radio active by default", async () => {
+    await renderFeature()
     const radios = screen.getAllByRole("radio")
     expect(radios.length).toBeGreaterThan(0)
     const allRadio = radios[0]!
     expect(allRadio).toHaveAttribute("aria-checked", "true")
   })
 
-  it("renders the narrow-viewport branch (useMediaQuery true)", () => {
+  it("renders the narrow-viewport branch (useMediaQuery true)", async () => {
     mq.value = true
-    const { container } = renderFeature()
+    const { container } = await renderFeature()
     expect(screen.getByRole("heading", { name: /page\.title/ })).toBeInTheDocument()
     expect(container.querySelector(".map-theme")).not.toBeNull()
   })

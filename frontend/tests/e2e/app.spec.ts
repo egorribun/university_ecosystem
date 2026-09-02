@@ -37,10 +37,7 @@ test.describe("University ecosystem app", () => {
     const { login } = await useMockApi(page)
     await login(page)
 
-    await page
-      .getByRole("link", { name: /Посмотреть все|See all/i })
-      .first()
-      .click()
+    await page.getByRole("link", { name: /Посмотреть все новости|See all news/i }).click()
     await expect(page).toHaveURL(/\/news$/)
     await expect(page.getByRole("heading", { name: /Новости|News/i })).toBeVisible()
 
@@ -61,10 +58,7 @@ test.describe("University ecosystem app", () => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
-    await page
-      .getByRole("link", { name: /Посмотреть все|See all/i })
-      .first()
-      .click()
+    await page.getByRole("link", { name: /Посмотреть все новости|See all news/i }).click()
     await expect(page.getByText(/Новость дня|News of the day/i)).toBeVisible()
 
     // Wait for the cache effect to run and verify it's saved
@@ -101,10 +95,7 @@ test.describe("University ecosystem app", () => {
     await mock.login(page)
 
     // 1. Visit news page to populate localStorage
-    await page
-      .getByRole("link", { name: /Посмотреть все|See all/i })
-      .first()
-      .click()
+    await page.getByRole("link", { name: /Посмотреть все новости|See all news/i }).click()
     await expect(
       page.getByText(/\u041d\u043e\u0432\u043e\u0441\u0442\u044c \u0434\u043d\u044f/)
     ).toBeVisible()
@@ -134,10 +125,13 @@ test.describe("University ecosystem app", () => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
-    await page.goto("/settings")
+    await gotoWithTransientRetry(page, "/settings")
     await expect(page.getByRole("heading", { name: /Settings|Настройки/i })).toBeVisible()
 
-    await page.getByRole("tab", { name: /Security|Безопасность/i }).click()
+    // Sessions is a dedicated settings section. Keep the test aligned with
+    // the product IA instead of relying on the security accordion from the
+    // pre-split settings navigation.
+    await page.getByRole("tab", { name: /Сессии|Sessions/i }).click()
 
     // Verify sessions list
     const sessionsAccordion = page.getByRole("button", {
@@ -170,7 +164,7 @@ test.describe("University ecosystem app", () => {
 
     // 2. Reload to ensure persistence
     await page.reload()
-    await page.getByRole("tab", { name: /Security|Безопасность/i }).click()
+    await page.getByRole("tab", { name: /Сессии|Sessions/i }).click()
     await page
       .getByRole("button", { name: /Устройства и сессии|Devices (?:&|and) sessions/i })
       .click()

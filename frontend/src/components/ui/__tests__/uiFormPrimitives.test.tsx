@@ -25,6 +25,23 @@ const renderMotion = (ui: React.ReactElement) =>
 // --------------------------------------------------------------------------- #
 
 describe("Button", () => {
+  it("keeps compact and icon controls at least 44px tall and wide", () => {
+    const { rerender } = render(<Button size="sm">Compact</Button>)
+    expect(screen.getByRole("button", { name: "Compact" })).toHaveClass("min-h-11")
+
+    rerender(
+      <Button size="icon" aria-label="Icon action">
+        <span aria-hidden>+</span>
+      </Button>
+    )
+    expect(screen.getByRole("button", { name: "Icon action" })).toHaveClass(
+      "h-11",
+      "w-11",
+      "min-h-11",
+      "min-w-11"
+    )
+  })
+
   it("renders an enabled solid button and fires onClick", () => {
     const onClick = vi.fn()
     render(<Button onClick={onClick}>Click</Button>)
@@ -87,6 +104,11 @@ describe("Button", () => {
 // --------------------------------------------------------------------------- #
 
 describe("Input", () => {
+  it("keeps the compact input at least 44px tall", () => {
+    render(<Input size="sm" aria-label="Compact input" />)
+    expect(screen.getByRole("textbox", { name: "Compact input" })).toHaveClass("min-h-11")
+  })
+
   it("sets aria-invalid from error and forwards onChange", () => {
     const onChange = vi.fn()
     render(<Input value="x" onChange={onChange} error size="sm" placeholder="ph" />)
@@ -137,6 +159,12 @@ describe("Card", () => {
 // --------------------------------------------------------------------------- #
 
 describe("TextField", () => {
+  it("generates a control id when a labelled field does not receive one", () => {
+    render(<TextField label="Generated label" value="" onChange={() => {}} />)
+    const input = screen.getByLabelText("Generated label")
+    expect(input.id).not.toBe("")
+  })
+
   it("renders label + non-error helper wired via aria-describedby", () => {
     const onChange = vi.fn()
     render(<TextField id="f1" label="Name" value="v" onChange={onChange} helperText="hint" />)
@@ -200,6 +228,17 @@ describe("TextField", () => {
 // --------------------------------------------------------------------------- #
 
 describe("RadioGroup", () => {
+  it("exposes a named radiogroup and 44px item targets", () => {
+    renderMotion(
+      <RadioGroup value="a" aria-label="Delivery method">
+        <RadioGroupItem value="a" />
+      </RadioGroup>
+    )
+
+    expect(screen.getByRole("radiogroup", { name: "Delivery method" })).toBeInTheDocument()
+    expect(screen.getByRole("radio").nextElementSibling).toHaveClass("min-h-11", "min-w-11")
+  })
+
   it("marks the selected item and fires onChange(null, value) on click", () => {
     const onChange = vi.fn()
     renderMotion(

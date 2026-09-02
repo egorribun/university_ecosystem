@@ -40,7 +40,7 @@ describe("EventFormDialog", () => {
     mocks.props = undefined
   })
 
-  it("forwards dialog props and completes a successful creation", async () => {
+  it("forwards dialog props and preserves the current scroll anchor after creation", async () => {
     const onClose = vi.fn()
     const onSuccess = vi.fn()
     const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined)
@@ -54,7 +54,7 @@ describe("EventFormDialog", () => {
     expect(mocks.createEvent).toHaveBeenCalledWith(draft)
     expect(onClose).toHaveBeenCalledOnce()
     expect(onSuccess).toHaveBeenCalledOnce()
-    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" })
+    expect(scrollTo).not.toHaveBeenCalled()
   })
 
   it("logs a creation failure and keeps the dialog open", async () => {

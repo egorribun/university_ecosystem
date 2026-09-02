@@ -9,6 +9,7 @@ import type { Chat } from "@/api/chat"
 import type { User } from "@/types/User"
 
 type ChatAreaProps = ComponentProps<typeof ChatArea>
+type ChatAreaCapabilityProps = ChatAreaProps & { canManageChat?: boolean }
 
 /**
  * Wave 189 SW4 (B2) — ChatArea unit tests for the 19-prop render surface.
@@ -93,42 +94,35 @@ vi.mock("@tanstack/react-router", () => ({
 // (header + menu + empty-state); ChatWindow's internal behavior is covered by
 // ChatWindow.test.tsx. Stub the children so jsdom doesn't have to render
 // @tanstack/react-virtual (W184 SW6 lesson) or framer-motion AnimatePresence
-// child exits (jsdom doesn't render Framer Motion exit animations).
-vi.mock("@/components/messenger", async () => {
-  const actual =
-    await vi.importActual<typeof import("@/components/messenger")>("@/components/messenger")
-  return {
-    ...actual,
-    ChatWindow: (props: {
-      messages?: unknown[]
-      isError?: boolean
-      onClearSearch?: () => void
-    }) => (
-      <div data-testid="mock-chat-window" data-message-count={props.messages?.length ?? 0}>
-        {props.onClearSearch && (
-          <button
-            type="button"
-            data-testid="mock-chat-window-clear-search"
-            onClick={props.onClearSearch}
-          />
-        )}
-      </div>
-    ),
-    MessageInput: (props: { onTyping?: () => void; onCancelReply?: () => void }) => (
-      <div data-testid="mock-message-input">
-        <button type="button" data-testid="mock-message-input-typing" onClick={props.onTyping} />
-        {props.onCancelReply && (
-          <button
-            type="button"
-            data-testid="mock-message-input-cancel-reply"
-            onClick={props.onCancelReply}
-          />
-        )}
-      </div>
-    ),
-    TypingIndicator: () => <div data-testid="mock-typing-indicator" />,
-  }
-})
+// child exits (jsdom doesn't render Framer Motion exit animations). Return only
+// the three exports imported by ChatArea; importing the barrel's other exports
+// would pull unrelated browser/WASM dependencies into this isolated suite.
+vi.mock("@/components/messenger", () => ({
+  ChatWindow: (props: { messages?: unknown[]; isError?: boolean; onClearSearch?: () => void }) => (
+    <div data-testid="mock-chat-window" data-message-count={props.messages?.length ?? 0}>
+      {props.onClearSearch && (
+        <button
+          type="button"
+          data-testid="mock-chat-window-clear-search"
+          onClick={props.onClearSearch}
+        />
+      )}
+    </div>
+  ),
+  MessageInput: (props: { onTyping?: () => void; onCancelReply?: () => void }) => (
+    <div data-testid="mock-message-input">
+      <button type="button" data-testid="mock-message-input-typing" onClick={props.onTyping} />
+      {props.onCancelReply && (
+        <button
+          type="button"
+          data-testid="mock-message-input-cancel-reply"
+          onClick={props.onCancelReply}
+        />
+      )}
+    </div>
+  ),
+  TypingIndicator: () => <div data-testid="mock-typing-indicator" />,
+}))
 
 afterEach(() => {
   sendTypingMock.mockReset()
@@ -184,7 +178,7 @@ const baseMessages: Message[] = [
 // ReturnType<...> derivation). `as ChatAreaProps` final cast covers the
 // `messages: Message[]` field where the source's optimisticMessages type
 // uses a structurally-identical UiMessage shape.
-const baseProps: ChatAreaProps = {
+const baseProps: ChatAreaCapabilityProps = {
   isMobile: false,
   selectedChatId: null,
   activeChat: null,
@@ -276,6 +270,21 @@ describe("ChatArea — normal header rendering (chat selected)", () => {
     // Offline i18n label present
     expect(screen.getByText("messenger:offline")).toBeTruthy()
     expect(screen.queryByText("messenger:online")).toBeFalsy()
+  })
+
+  it("gives header search and menu controls a 44x44 hit area", () => {
+    const chat = makeChat()
+    const { container } = render(
+      <ChatArea {...baseProps} selectedChatId={chat.id} activeChat={chat} />,
+      { wrapper }
+    )
+
+    for (const id of ["chat-search-toggle", "chat-menu-toggle"]) {
+      const control = container.querySelector(`#${id}`)
+      expect(control).toBeTruthy()
+      expect(control?.className).toContain("min-h-[44px]")
+      expect(control?.className).toContain("min-w-[44px]")
+    }
   })
 
   it("renders online status + presence indicator when presenceMap.active=true", () => {
@@ -410,10 +419,34 @@ describe("ChatArea — chat menu interactions", () => {
     expect(setShowChatMenu).toHaveBeenCalledWith(true)
   })
 
-  it("renders 3 menu items when showChatMenu=true (View Profile + Clear + Delete)", () => {
+  it("hides destructive chat actions for a non-admin participant", () => {
     const chat = makeChat()
     const { container } = render(
-      <ChatArea {...baseProps} selectedChatId={chat.id} activeChat={chat} showChatMenu />,
+      <ChatArea
+        {...baseProps}
+        canManageChat={false}
+        selectedChatId={chat.id}
+        activeChat={chat}
+        showChatMenu
+      />,
+      { wrapper }
+    )
+
+    expect(container.querySelector("#chat-action-view-profile")).toBeTruthy()
+    expect(container.querySelector("#chat-action-clear-chat")).toBeFalsy()
+    expect(container.querySelector("#chat-action-delete-chat")).toBeFalsy()
+  })
+
+  it("renders destructive chat actions for an admin", () => {
+    const chat = makeChat()
+    const { container } = render(
+      <ChatArea
+        {...baseProps}
+        canManageChat
+        selectedChatId={chat.id}
+        activeChat={chat}
+        showChatMenu
+      />,
       { wrapper }
     )
 
@@ -422,12 +455,38 @@ describe("ChatArea — chat menu interactions", () => {
     expect(container.querySelector("#chat-action-delete-chat")).toBeTruthy()
   })
 
+  it("gives every chat menu action a 44x44 hit area", () => {
+    const chat = makeChat()
+    const { container } = render(
+      <ChatArea
+        {...baseProps}
+        canManageChat
+        selectedChatId={chat.id}
+        activeChat={chat}
+        showChatMenu
+      />,
+      { wrapper }
+    )
+
+    for (const id of [
+      "chat-action-view-profile",
+      "chat-action-clear-chat",
+      "chat-action-delete-chat",
+    ]) {
+      const action = container.querySelector(`#${id}`)
+      expect(action).toBeTruthy()
+      expect(action?.className).toContain("min-h-[44px]")
+      expect(action?.className).toContain("min-w-[44px]")
+    }
+  })
+
   it("clicking menu items fires the correct callback (Clear Chat case)", () => {
     const handleClearChat = vi.fn()
     const chat = makeChat()
     const { container } = render(
       <ChatArea
         {...baseProps}
+        canManageChat
         selectedChatId={chat.id}
         activeChat={chat}
         showChatMenu
@@ -449,6 +508,7 @@ describe("ChatArea — chat menu interactions", () => {
     const { container } = render(
       <ChatArea
         {...baseProps}
+        canManageChat
         selectedChatId={chat.id}
         activeChat={chat}
         showChatMenu
@@ -567,8 +627,12 @@ describe("ChatArea — mobile vs desktop", () => {
     const lucideChevronMobile = container.querySelector(".lucide-chevron-left")
     expect(lucideChevronMobile).toBeTruthy()
 
-    fireEvent.click(lucideChevronMobile!.parentElement!)
-    expect(navigateMock).toHaveBeenCalledWith({ to: "/messenger" })
+    const backButton = screen.getByRole("button", { name: "messenger:backToChats" })
+    expect(backButton.className).toContain("min-h-[44px]")
+    expect(backButton.className).toContain("min-w-[44px]")
+
+    fireEvent.click(backButton)
+    expect(navigateMock).toHaveBeenCalledWith({ to: "/messenger", replace: true })
 
     prefersReducedMotionMock.mockReturnValue(true)
     rerender(

@@ -1,7 +1,12 @@
 import { act, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import type { ReactNode } from "react"
 
-const motionState = vi.hoisted(() => ({ initialValues: [] as unknown[] }))
+const motionState = vi.hoisted(() => ({
+  initialValues: [] as unknown[],
+  props: [] as Array<Record<string, unknown>>,
+  lazyFeatures: [] as unknown[],
+}))
 
 // The animated branch only commits after the async `import("framer-motion")` →
 // setState chain resolves. waitFor polls inside act(), absorbing the
@@ -18,39 +23,54 @@ const expectAnimatedChild = async (text: string) =>
   })
 
 vi.mock("framer-motion", async () => {
-  const { createElement } = await import("react")
+  const { createElement, Fragment } = await import("react")
   const base = (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
   const BaseDiv = base.m.div
   if (!BaseDiv) throw new Error("framer-motion mock did not provide m.div")
   const CapturingDiv = (props: Record<string, unknown>) => {
     motionState.initialValues.push(props.initial)
+    motionState.props.push(props)
     return createElement(BaseDiv, props)
   }
-  return { ...base, m: { div: CapturingDiv } }
+  const CapturingLazyMotion = ({
+    children,
+    features,
+  }: {
+    children?: ReactNode
+    features?: unknown
+  }) => {
+    motionState.lazyFeatures.push(features)
+    return createElement(Fragment, null, children)
+  }
+  return { ...base, LazyMotion: CapturingLazyMotion, m: { div: CapturingDiv } }
 })
 
 import PageTransition from "@/components/motion/PageTransition"
 
 const setReduceMotion = (matches: boolean) => {
+  const matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches,
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  }))
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
     writable: true,
-    value: vi.fn().mockImplementation((query: string) => ({
-      matches,
-      media: query,
-      onchange: null,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })),
+    value: matchMedia,
   })
+  return matchMedia
 }
 
 describe("PageTransition", () => {
   beforeEach(() => {
     motionState.initialValues.length = 0
+    motionState.props.length = 0
+    motionState.lazyFeatures.length = 0
     setReduceMotion(false)
   })
 
@@ -66,6 +86,7 @@ describe("PageTransition", () => {
     )
     await expectAnimatedChild("Initial paint child")
     expect(motionState.initialValues).toContain(false)
+    expect(motionState.lazyFeatures).toHaveLength(1)
   })
 
   it("keeps the fallback wrapper when matchMedia is unavailable", () => {
@@ -133,6 +154,35 @@ describe("PageTransition", () => {
     )
     await expectAnimatedChild("Second paint child")
     expect(screen.getByText("Second paint child")).toBeInTheDocument()
+    expect(motionState.initialValues.at(-1)).toEqual({
+      opacity: 0,
+      scale: 0.98,
+      y: "0.75rem",
+      filter: "blur(0.25rem)",
+    })
+    expect(motionState.props.at(-1)?.animate).toEqual({
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      filter: "blur(0rem)",
+      transition: {
+        type: "spring",
+        stiffness: 200,
+        damping: 28,
+        mass: 1.2,
+        restDelta: 0.001,
+      },
+    })
+    expect(motionState.props.at(-1)?.exit).toEqual({
+      opacity: 0,
+      scale: 0.99,
+      y: -12,
+      filter: "blur(0.125rem)",
+      transition: expect.objectContaining({
+        duration: expect.any(Number),
+        ease: expect.anything(),
+      }),
+    })
   })
 
   it("responds to a reduced-motion preference change after mount", async () => {

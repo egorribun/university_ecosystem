@@ -1,11 +1,12 @@
 import { useTranslation } from "react-i18next"
 import { Link } from "@tanstack/react-router"
-import { Eye, EyeOff, Sparkles, Fingerprint, LogIn } from "lucide-react"
+import { Eye, EyeOff, Sparkles, LogIn } from "lucide-react"
 
 import { FadeIn } from "@/components/ui/motion/FadeIn"
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { Checkbox } from "@/components/ui/Checkbox"
+import useMediaQuery from "@/hooks/useMediaQuery"
 import type { useLoginForm } from "@/hooks/auth/useLoginFlow"
 
 type LoginCredentialFormProps = {
@@ -17,7 +18,11 @@ import { Controller } from "react-hook-form"
 // ... imports
 
 export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
-  const { t } = useTranslation(["auth"])
+  // Translation keys are fully qualified (``auth:...``), so the component
+  // does not need to pin a default namespace.  This keeps the presentational
+  // form usable with lightweight i18n test adapters and SSR fallbacks.
+  const { t } = useTranslation()
+  const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const {
     form: {
@@ -35,29 +40,22 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
     // computed
     submitting,
     submitError,
-    passkeyError,
-    webauthnSupported,
-    // actions
-    handlePasskeyLogin,
     onSubmit,
   } = form
 
   return (
     <FadeIn
+      {...(prefersReducedMotion ? { initial: false as const } : {})}
       direction="up"
-      distance={200}
-      duration={0.5}
+      distance={8}
+      duration={0.2}
       delay={0.2}
       className="auth-card-glass flex w-full min-w-0 flex-col justify-center bg-surface/(--opacity-hover) p-6 sm:p-10"
     >
       <form noValidate autoComplete="on" onSubmit={onSubmit} className="flex flex-col gap-6">
         <div className="space-y-2 text-center">
           <h2 className="text-3xl font-extrabold">{t("auth:login.title")}</h2>
-          <p className="text-sm text-text-secondary">
-            {t("auth:login.subtitle", {
-              defaultValue: "Sign in to continue your university journey",
-            })}
-          </p>
+          <p className="text-sm text-text-secondary">{t("auth:login.subtitle")}</p>
         </div>
 
         <div className="space-y-2">
@@ -68,7 +66,6 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
             id="email"
             {...register("email")}
             type="email"
-            className={errors.email ? "border-error-text focus:border-error-text" : ""}
             onBlur={(e) => {
               register("email").onBlur(e)
               handleEmailBlur()
@@ -78,8 +75,13 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
             inputMode="email"
             required
             error={!!errors.email}
+            aria-describedby={errors.email ? "login-email-error" : undefined}
           />
-          <p className="text-xs text-text-secondary/(--opacity-hover)">
+          <p
+            id="login-email-error"
+            role={errors.email ? "alert" : undefined}
+            className="text-xs text-text-secondary/(--opacity-hover)"
+          >
             {errors.email ? t(errors.email.message || "auth:messages.invalidFormat") : " "}
           </p>
           {emailSuggestion ? (
@@ -101,20 +103,24 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
             </label>
             <button
               type="button"
-              onMouseDown={() => setShowPassword(true)}
-              onMouseUp={() => setShowPassword(false)}
-              onMouseLeave={() => setShowPassword(false)}
               onClick={() => setShowPassword((v) => !v)}
-              className="inline-flex items-center gap-2 rounded-full border border-transparent px-3 py-1 text-xs font-bold uppercase tracking-widest text-brand transition hover:bg-brand/5 focus:outline-none focus:ring-2 focus:ring-brand/20"
-              title={t("auth:actions.holdReveal") ?? undefined}
-              aria-label={t("auth:actions.showPassword") ?? undefined}
+              className="inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-full border border-transparent px-3 py-1 text-xs font-bold uppercase tracking-widest text-brand transition hover:bg-brand/5 focus:outline-none focus:ring-2 focus:ring-brand/20"
+              title={
+                t(showPassword ? "auth:actions.hideCredential" : "auth:actions.showPassword") ??
+                undefined
+              }
+              aria-label={
+                t(showPassword ? "auth:actions.hideCredential" : "auth:actions.showPassword") ??
+                undefined
+              }
+              aria-pressed={showPassword}
             >
               {showPassword ? (
                 <EyeOff className="h-4 w-4" aria-hidden="true" />
               ) : (
                 <Eye className="h-4 w-4" aria-hidden="true" />
               )}
-              {t("auth:actions.showPassword")}
+              {t(showPassword ? "auth:actions.hideCredential" : "auth:actions.showPassword")}
             </button>
           </div>
           <div className="relative">
@@ -130,6 +136,7 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
               disabled={submitting}
               required
               error={!!errors.password}
+              aria-describedby={errors.password ? "login-password-error" : undefined}
             />
             {caps ? (
               <span className="absolute inset-y-0 right-4 flex items-center text-xs font-semibold text-warning-text">
@@ -138,34 +145,66 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
             ) : null}
           </div>
           {errors.password && (
-            <p className="text-xs text-error-text">
+            <p id="login-password-error" role="alert" className="text-xs text-error-text">
               {t(errors.password.message || "auth:messages.passwordRequired")}
             </p>
           )}
         </div>
 
         <div
+          role={submitError ? "alert" : undefined}
           className="min-h-6 text-center text-sm font-semibold text-error-text"
           aria-live="assertive"
         >
-          {submitError || passkeyError}
+          {submitError}
         </div>
 
-        <div className="flex items-center gap-3 text-sm font-medium text-text-primary">
-          <Controller
-            control={control}
-            name="trustDevice"
-            render={({ field: { value, onChange, ...field } }) => (
-              <Checkbox
-                {...field}
-                checked={!!value}
-                onCheckedChange={onChange}
-                disabled={submitting}
-                aria-label={t("auth:actions.rememberEmail")}
+        <div className="space-y-3">
+          <div className="flex min-h-11 items-center gap-3 text-sm font-medium text-text-primary">
+            <Controller
+              control={control}
+              name="rememberEmail"
+              render={({ field: { value, onChange, ...field } }) => (
+                <Checkbox
+                  {...field}
+                  id="remember-email"
+                  checked={!!value}
+                  onCheckedChange={onChange}
+                  disabled={submitting}
+                  aria-label={t("auth:actions.rememberEmail")}
+                />
+              )}
+            />
+            <label htmlFor="remember-email" className="flex-1 cursor-pointer">
+              {t("auth:actions.rememberEmail")}
+            </label>
+          </div>
+
+          <div className="rounded-xl border border-warning-border/(--opacity-medium) bg-warning-bg/(--opacity-subtle) p-3">
+            <div className="flex min-h-11 items-center gap-3 text-sm font-semibold text-text-primary">
+              <Controller
+                control={control}
+                name="trustDevice"
+                render={({ field: { value, onChange, ...field } }) => (
+                  <Checkbox
+                    {...field}
+                    id="trust-device"
+                    checked={!!value}
+                    onCheckedChange={onChange}
+                    disabled={submitting}
+                    aria-label={t("auth:actions.trustDevice")}
+                    aria-describedby="trust-device-description"
+                  />
+                )}
               />
-            )}
-          />
-          {t("auth:actions.rememberEmail")}
+              <label htmlFor="trust-device" className="flex-1 cursor-pointer">
+                {t("auth:actions.trustDevice")}
+              </label>
+            </div>
+            <p id="trust-device-description" className="pl-9 text-xs text-text-secondary">
+              {t("auth:actions.trustDeviceHint")}
+            </p>
+          </div>
         </div>
 
         <div className="flex flex-col gap-3">
@@ -182,22 +221,6 @@ export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
           >
             {t("auth:actions.signIn")}
           </Button>
-
-          {webauthnSupported && (
-            <Button
-              id="login-passkey"
-              type="button"
-              onClick={handlePasskeyLogin}
-              disabled={submitting}
-              variant="outline"
-              size="lg"
-              fullWidth
-              className="border-brand/(--opacity-medium) bg-brand/(--opacity-subtle) text-lg font-extrabold text-brand hover:bg-brand/(--opacity-dim)"
-              leadingIcon={<Fingerprint className="h-6 w-6" />}
-            >
-              {t("auth:login.signInWithPasskey")}
-            </Button>
-          )}
         </div>
 
         <div className="space-y-2 text-center text-sm">

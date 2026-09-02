@@ -125,15 +125,15 @@ export const EventsHeader = ({
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={t("events:filters.search")}
-            className="w-full rounded-xl matte-input pl-9 pr-16 py-2 text-sm text-text-primary placeholder:text-(--text-secondary)/(--opacity-medium) focus:outline-none focus-visible:ring-2 focus-visible:ring-brand transition-shadow"
+            className="w-full rounded-xl matte-input py-2 pl-9 pr-24 text-sm text-text-primary placeholder:text-(--text-secondary)/(--opacity-medium) focus:outline-none focus-visible:ring-2 focus-visible:ring-brand transition-shadow"
             aria-label={t("events:filters.search")}
           />
-          <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+          <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center">
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => onSearchChange("")}
-                className="rounded-full p-1.5 text-(--text-secondary) hover:text-text-primary transition-colors focus-visible:ring-2 focus-visible:ring-brand"
+                className="flex size-11 items-center justify-center rounded-full text-(--text-secondary) hover:text-text-primary transition-colors focus-visible:ring-2 focus-visible:ring-brand"
                 aria-label={t("events:aria.clearSearch")}
               >
                 <X size={14} />
@@ -143,7 +143,7 @@ export const EventsHeader = ({
               type="button"
               {...filter.referenceProps}
               className={cn(
-                "relative rounded-full p-1.5 transition-colors focus-visible:ring-2 focus-visible:ring-brand",
+                "relative flex size-11 items-center justify-center rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-brand",
                 filter.filtersActive
                   ? "text-brand"
                   : "text-(--text-secondary) hover:text-text-primary"
@@ -180,7 +180,36 @@ export const EventsHeader = ({
           Wave 124 SW1 — Refactored from framer-motion layoutId to a single
           absolutely-positioned indicator + CSS transition (layoutId requires
           domMax). Same sliding UX, no framer-motion involvement. */}
-      <FadeSection delay="100ms" role="tablist" aria-label={t("events:pageTitle")}>
+      <FadeSection
+        delay="100ms"
+        className="flex w-full justify-center"
+        role="tablist"
+        aria-label={t("events:pageTitle")}
+        onKeyDown={(event: React.KeyboardEvent) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return
+          const tabButtons = Array.from(
+            event.currentTarget.querySelectorAll<HTMLButtonElement>("[role='tab']")
+          )
+          if (tabButtons.length === 0) return
+          const focusedIndex = tabButtons.indexOf(document.activeElement as HTMLButtonElement)
+          const currentIndex =
+            focusedIndex >= 0 ? focusedIndex : tabs.findIndex((item) => item.key === tab)
+          const nextIndex =
+            event.key === "Home"
+              ? 0
+              : event.key === "End"
+                ? tabButtons.length - 1
+                : event.key === "ArrowRight"
+                  ? (currentIndex + 1) % tabButtons.length
+                  : (currentIndex - 1 + tabButtons.length) % tabButtons.length
+          const nextTab = tabs[nextIndex]
+          const nextButton = tabButtons[nextIndex]
+          if (!nextTab || !nextButton) return
+          event.preventDefault()
+          onTabChange(nextTab.key)
+          nextButton.focus()
+        }}
+      >
         <div
           ref={tabsRef}
           className="relative inline-flex items-center gap-1 rounded-xl border border-glass-border bg-(--bg-surface)/(--opacity-medium) p-1 backdrop-blur-md shadow-glass sm:w-auto"
@@ -207,6 +236,7 @@ export const EventsHeader = ({
               type="button"
               role="tab"
               aria-selected={tab === tabItem.key}
+              tabIndex={tab === tabItem.key ? 0 : -1}
               // Wave 116 polish — single stable tabpanel ID instead of
               // per-tab suffix. Only the active tab's panel is rendered (the
               // other tabs act as a filter over the same EventsList section),
@@ -218,7 +248,7 @@ export const EventsHeader = ({
               aria-controls="events-tabpanel"
               onClick={() => onTabChange(tabItem.key)}
               className={cn(
-                "relative z-base px-4 py-2 text-body-sm font-semibold rounded-lg transition-colors duration-fast",
+                "relative z-base min-h-11 min-w-11 px-4 py-2 text-body-sm font-semibold rounded-lg transition-colors duration-fast",
                 "sm:px-6 sm:text-base",
                 tab === tabItem.key
                   ? "text-text-primary"

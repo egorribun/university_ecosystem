@@ -310,6 +310,7 @@ async def test_outbox_worker_process_batch_increments_error_count_on_failure() -
 
     mock_db = AsyncMock()
     mock_db.execute = AsyncMock(side_effect=[mock_result, mock_count_result])
+    mock_db.add = MagicMock()
     mock_db.__aenter__ = AsyncMock(return_value=mock_db)
     mock_db.__aexit__ = AsyncMock(return_value=None)
 
@@ -425,6 +426,7 @@ async def test_outbox_worker_promotes_to_dlq_after_max_retries() -> None:
 
     mock_db = AsyncMock()
     mock_db.execute = AsyncMock(side_effect=[mock_result, mock_count_result])
+    mock_db.add = MagicMock()
     mock_db.__aenter__ = AsyncMock(return_value=mock_db)
     mock_db.__aexit__ = AsyncMock(return_value=None)
 

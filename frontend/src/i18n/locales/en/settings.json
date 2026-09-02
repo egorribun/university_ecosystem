@@ -5,8 +5,10 @@
   "tabs": {
     "ariaLabel": "Settings sections",
     "general": "General",
-    "account": "Account",
+    "account": "Profile",
     "security": "Security",
+    "notifications": "Notifications",
+    "sessions": "Sessions",
     "integrations": "Integrations"
   },
   "appearance": {
@@ -39,6 +41,13 @@
   },
   "notifications": {
     "title": "Notifications",
+    "subtitle": "Control browser notifications and quiet hours.",
+    "push": {
+      "title": "Push notifications",
+      "subtitle": "Receive timely updates about your university activity."
+    },
+    "loading": "Loading notification settings…",
+    "notSupported": "Push notifications are not supported in this browser.",
     "unsupported": "Web push notifications aren't supported in your browser.",
     "blocked": {
       "description": "Notifications are blocked in the browser. Open the site settings and allow notifications for \"GUU Ecosystem\".",
@@ -125,6 +134,7 @@
     "loading": "Loading sessions…",
     "empty": "No other sessions are active.",
     "loadFailed": "Couldn't load sessions",
+    "error": "Couldn't load sessions",
     "revoke": "Revoke",
     "revokeAll": "Sign out of other sessions",
     "revokeAllHint": "This keeps you signed in here but signs out every other active session.",
@@ -158,6 +168,7 @@
       "title": "Email",
       "subtitle": "We'll use this address for notifications and security alerts.",
       "label": "New email",
+      "newLabel": "New email",
       "passwordLabel": "Current password",
       "updateButton": "Update email",
       "helper": "We'll email you a confirmation link to finish the update.",
@@ -194,7 +205,7 @@
     },
     "method": {
       "totp": "Authenticator app",
-      "webauthn": "Security Keys (Passkeys)"
+      "emailOtp": "Email verification codes"
     },
     "status": {
       "defaultTotp": "Default method: authenticator app",
@@ -218,23 +229,13 @@
       "unnamed": "Authenticator {{index}}",
       "limitReached": "Only one authenticator app can be connected at a time. Remove the existing app to start over."
     },
-    "webauthn": {
-      "description": "Use your fingerprint, Face ID, or a USB key to sign in without passwords.",
-      "empty": "You don't have any registered security keys yet.",
-      "add": "Add security key",
-      "added": "Added on {{value}}",
-      "lastUsed": "Last used {{value}}",
-      "labelField": "Key name",
-      "labelPlaceholder": "e.g., MacBook Touch ID",
-      "defaultLabel": "Security key",
-      "dialog": {
-        "title": "Add security key",
-        "description": "Enter a name for your new security key to help you recognize it."
-      },
-      "errors": {
-        "cancelled": "Registration cancelled by user"
-      },
-      "notSupported": "WebAuthn is not available. HTTPS is required to register a fingerprint or security key."
+    "emailMfa": {
+      "description": "Receive a single-use 6-digit code at your verified university email address.",
+      "sentTo": "Enter the code sent to {{hint}}.",
+      "enable": "Enable email codes",
+      "disable": "Disable email codes",
+      "verifyEmail": "Verify email first",
+      "resend": "Send a new code"
     },
     "snackbar": {
       "totpStartFailed": "Couldn't start authenticator setup",
@@ -244,10 +245,14 @@
       "totpDisabled": "Authenticator app removed",
       "totpDisableFailed": "Couldn't remove authenticator app",
       "challengeReset": "Verification challenge refreshed. Try again.",
-      "webauthnEnabled": "Security key added",
-      "webauthnFailed": "Couldn't add security key",
-      "webauthnDeleted": "Security key removed",
-      "webauthnDeleteFailed": "Couldn't remove security key"
+      "emailVerified": "Email address verified. You can now enable email codes.",
+      "emailMfaStartFailed": "Couldn't send an email verification code",
+      "emailMfaEnabled": "Email verification codes enabled",
+      "emailMfaConfirmFailed": "Couldn't verify the email code",
+      "emailMfaResent": "A new verification code was sent",
+      "emailMfaResendFailed": "Couldn't send a new verification code",
+      "emailMfaDisabled": "Email verification codes disabled",
+      "emailMfaDisableFailed": "Couldn't disable email verification codes"
     },
     "stepUp": {
       "description": "Complete multi-factor authentication to continue."

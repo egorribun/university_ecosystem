@@ -26,12 +26,13 @@ def _session() -> SimpleNamespace:
         accept_language=None,
         fingerprint_hash=None,
         mfa_verified_at=None,
+        mfa_epoch=0,
         last_seen_at=None,
     )
 
 
 def _auth_patches(user_id, jti, redis_session):
-    user = SimpleNamespace(id=user_id, is_active=True)
+    user = SimpleNamespace(id=user_id, is_active=True, mfa_epoch=0)
     session = _session()
     client = AsyncMock()
     client.exists.return_value = False
@@ -130,7 +131,7 @@ async def test_get_current_user_cached_stale_db_session_is_rejected():
         "user_id": str(user_id),
         "session_id": str(uuid4()),
     }
-    user = SimpleNamespace(id=user_id, is_active=True)
+    user = SimpleNamespace(id=user_id, is_active=True, mfa_epoch=0)
     db = AsyncMock()
     db.get.side_effect = lambda model, *_args, **_kwargs: (
         user if model is User else None
@@ -207,7 +208,7 @@ async def test_get_current_user_cached_session_id_branches(session_id: str | Non
 
     user_id = uuid4()
     jti = "session-id-branch"
-    user = SimpleNamespace(id=user_id, is_active=True)
+    user = SimpleNamespace(id=user_id, is_active=True, mfa_epoch=0)
     session = _session()
     redis_session = AsyncMock()
     cached = {"user_id": str(user_id)}

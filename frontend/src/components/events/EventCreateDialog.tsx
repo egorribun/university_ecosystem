@@ -25,21 +25,66 @@ type EventDraft = {
   about_en: string
 }
 
+const EMPTY_DRAFT_VALUE = ""
+const TRANSLATION_NAMESPACES = ["events", "common"] as const
+
+/** Resolve a localized required value without accepting whitespace-only input. */
+export function normalizeLocalizedValue(primary: string, fallback: string): string {
+  const normalizedPrimary = primary.trim()
+  return normalizedPrimary || fallback.trim()
+}
+
+/** Date validation is only applicable once both endpoints have been supplied. */
+export function hasInvalidEventDates(startsAt: string, endsAt: string): boolean {
+  if (!startsAt || !endsAt) return false
+  return new Date(endsAt).getTime() <= new Date(startsAt).getTime()
+}
+
+export type EventSubmitState = {
+  normalizedTitle: string
+  startsAt: string
+  endsAt: string
+  normalizedLocation: string
+  imageUploading: boolean
+  dateError: boolean
+}
+
+export function canSubmitEventDraft(state: EventSubmitState): boolean {
+  return (
+    Boolean(state.normalizedTitle) &&
+    Boolean(state.startsAt) &&
+    Boolean(state.endsAt) &&
+    Boolean(state.normalizedLocation) &&
+    !state.imageUploading &&
+    !state.dateError
+  )
+}
+
+/** File inputs can emit null/empty FileLists; never manufacture a file. */
+export function firstSelectedFile(files: FileList | null | undefined): File | undefined {
+  if (!files || files.length === 0) return undefined
+  return files[0]
+}
+
+export function invalidateUploadGeneration(ref: { current: number }): void {
+  ref.current += 1
+}
+
 const INITIAL_DRAFT: EventDraft = {
-  title: "",
-  title_en: "",
-  description: "",
-  description_en: "",
-  event_type: "",
-  event_type_en: "",
-  location: "",
-  location_en: "",
-  starts_at: "",
-  ends_at: "",
-  speaker: "",
-  image_url: "",
-  about: "",
-  about_en: "",
+  title: EMPTY_DRAFT_VALUE,
+  title_en: EMPTY_DRAFT_VALUE,
+  description: EMPTY_DRAFT_VALUE,
+  description_en: EMPTY_DRAFT_VALUE,
+  event_type: EMPTY_DRAFT_VALUE,
+  event_type_en: EMPTY_DRAFT_VALUE,
+  location: EMPTY_DRAFT_VALUE,
+  location_en: EMPTY_DRAFT_VALUE,
+  starts_at: EMPTY_DRAFT_VALUE,
+  ends_at: EMPTY_DRAFT_VALUE,
+  speaker: EMPTY_DRAFT_VALUE,
+  image_url: EMPTY_DRAFT_VALUE,
+  about: EMPTY_DRAFT_VALUE,
+  about_en: EMPTY_DRAFT_VALUE,
 }
 
 type EventCreateDialogProps = {
@@ -50,7 +95,7 @@ type EventCreateDialogProps = {
 }
 
 export function EventCreateDialog({ open, onClose, onCreated, language }: EventCreateDialogProps) {
-  const { t } = useTranslation(["events", "common"])
+  const { t } = useTranslation(TRANSLATION_NAMESPACES)
 
   const [draft, setDraft] = useState<EventDraft>(INITIAL_DRAFT)
   const [imageUploading, setImageUploading] = useState(false)
@@ -101,12 +146,12 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
 
   useEffect(() => {
     return () => {
-      uploadGenerationRef.current += 1
+      invalidateUploadGeneration(uploadGenerationRef)
     }
   }, [])
 
   const handleClose = () => {
-    uploadGenerationRef.current += 1
+    invalidateUploadGeneration(uploadGenerationRef)
     setDraft(INITIAL_DRAFT)
     setImageUploading(false)
     setPreview(null)
@@ -118,19 +163,18 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
     handleClose()
   }
 
-  const normalizedTitle = draft.title.trim() || draft.title_en.trim()
-  const normalizedLocation = draft.location.trim() || draft.location_en.trim()
-  const starts = new Date(draft.starts_at).getTime()
-  const ends = new Date(draft.ends_at).getTime()
-  const dateError = !!(draft.starts_at && draft.ends_at && ends <= starts)
+  const normalizedTitle = normalizeLocalizedValue(draft.title, draft.title_en)
+  const normalizedLocation = normalizeLocalizedValue(draft.location, draft.location_en)
+  const dateError = hasInvalidEventDates(draft.starts_at, draft.ends_at)
 
-  const canSubmit =
-    !!normalizedTitle &&
-    !!draft.starts_at &&
-    !!draft.ends_at &&
-    !!normalizedLocation &&
-    !imageUploading &&
-    !dateError
+  const canSubmit = canSubmitEventDraft({
+    normalizedTitle,
+    startsAt: draft.starts_at,
+    endsAt: draft.ends_at,
+    normalizedLocation,
+    imageUploading,
+    dateError,
+  })
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="lg" fullWidth>
@@ -202,7 +246,7 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
                   hidden
                   accept="image/*"
                   onChange={(event) => {
-                    const file = event.target.files?.[0]
+                    const file = firstSelectedFile(event.currentTarget.files)
                     if (file) void handleImageUpload(file)
                   }}
                 />

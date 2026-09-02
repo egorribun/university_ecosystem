@@ -1,6 +1,6 @@
 import type { Meta, StoryObj, Decorator } from "@storybook/react-vite"
-import type { ColumnDef } from "@tanstack/react-table"
 import { DataTable } from "./DataTable"
+import type { DataTableColumnDef } from "./dataTableFeatures"
 
 // Wave 199 SW1 — DataTable Storybook fixture (CONTEXT-tier, no infra).
 //
@@ -21,7 +21,7 @@ const DATA: Person[] = Array.from({ length: 18 }, (_, i) => ({
   role: i % 3 === 0 ? "admin" : "student",
 }))
 
-const columns: ColumnDef<Person>[] = [
+const columns: DataTableColumnDef<Person>[] = [
   { accessorKey: "name", header: "Имя" },
   { accessorKey: "email", header: "Email" },
   { accessorKey: "role", header: "Роль" },

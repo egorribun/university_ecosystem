@@ -57,14 +57,10 @@ class MessageDispatcher:
             )
 
         elif msg_type == "read":
-            # Wave 203 SW4 — chat-level read receipt. The client marks the whole
-            # chat read (no per-message id); the SQL filter (sender_id != user)
-            # in mark_messages_read scopes the update to the OTHER participant's
-            # messages. Then broadcast a chat-level frame to that participant so
-            # their sent bubbles flip to "seen" live. Mirrors typing's chat_id
-            # coercion + ValueError guard. Gated on affected > 0 (nothing new →
-            # no broadcast). All UUID fields stringified (RZ-33-08: json.dumps
-            # cannot serialize uuid.UUID).
+            # Legacy direct-backend clients may still send a chat-level read
+            # command. The browser-facing ws-hub path uses REST mark-read as the
+            # canonical owner, but retaining this compatibility path avoids
+            # breaking standalone backend deployments and old clients.
             chat_id = data.get("chat_id")
             if chat_id:
                 try:
@@ -92,12 +88,9 @@ class MessageDispatcher:
                         )
                         return
 
-                    # Wave 210 G2 — the dispatcher does not load the chat (only
-                    # check_participant), so a cheap chat_type lookup lets
-                    # mark_messages_read branch DM (Message.read_status) vs group
-                    # (per-recipient ChatReadReceipt high-water-mark). None →
-                    # "dm" is the safe default if the chat vanished between the
-                    # participant check and the read.
+                    # The dispatcher does not load the chat (only checks
+                    # participation), so fetch chat_type before selecting the
+                    # DM read_status or group high-water-mark implementation.
                     chat_type = await repo.get_chat_type(chat_uuid)
                     read_at, affected = await repo.mark_messages_read(
                         chat_uuid, user.id, chat_type or "dm"

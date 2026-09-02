@@ -43,6 +43,7 @@ import {
 import { WidgetErrorBoundary } from "@/components/error"
 import FadeSection from "@/components/motion/FadeSection"
 import type { MapRef } from "react-map-gl/maplibre"
+import { loadMapLibre } from "@/features/map/loadMapLibre"
 
 /* ── Reactive dark mode detection ── */
 function subscribeToDarkMode(cb: () => void) {
@@ -60,8 +61,8 @@ function getIsDark() {
 }
 const SERVER_SNAPSHOT = false
 
-/** Lazy-load MapLibre GL — CSS + JS only loaded when map page is activated */
-const MapLibreMapComponent = lazy(() => import("@/components/map/MapLibreMap"))
+/** Lazy-load MapLibre GL — CSS + JS only loaded after explicit user intent. */
+const MapLibreMapComponent = lazy(loadMapLibre)
 
 /**
  * MapFeature — central orchestrator for the campus map page.
@@ -102,6 +103,21 @@ export function MapFeature() {
 
   /* ── MapLibre GL map ref ── */
   const mapLibreRef = useRef<MapRef | null>(null)
+  const mapViewportRef = useRef<HTMLDivElement | null>(null)
+  const [mapReady, setMapReady] = useState(false)
+  const mapPlaceholderRef = useRef<HTMLButtonElement | null>(null)
+  const restoreMapFocusRef = useRef(false)
+  const activateMap = useCallback((preserveFocus = false) => {
+    restoreMapFocusRef.current =
+      preserveFocus || document.activeElement === mapPlaceholderRef.current
+    setMapReady(true)
+  }, [])
+
+  useEffect(() => {
+    if (!mapReady || !restoreMapFocusRef.current) return
+    restoreMapFocusRef.current = false
+    mapViewportRef.current?.focus({ preventScroll: true })
+  }, [mapReady])
 
   /* ── URL-state sync (Wave 120 SW5 — Item #2) ──
      Reads ?z/lat/lng/p/b on mount → if all five present + valid, MapLibreMap
@@ -140,11 +156,15 @@ export function MapFeature() {
   }, [debouncedViewport, setUrlParams])
 
   /* ── Building selection ── */
-  const handleBuildingClick = useCallback((letter: BuildingId) => {
-    setSelectedBuilding(letter)
-    setSelectedFloor(1)
-    setSelectedRoom(null)
-  }, [])
+  const handleBuildingClick = useCallback(
+    (letter: BuildingId) => {
+      activateMap()
+      setSelectedBuilding(letter)
+      setSelectedFloor(1)
+      setSelectedRoom(null)
+    },
+    [activateMap]
+  )
 
   const handleFloorChange = useCallback((floor: number) => {
     setSelectedFloor(floor)
@@ -162,11 +182,15 @@ export function MapFeature() {
   }, [])
 
   /* ── Navigate to a specific room (from search or schedule) ── */
-  const navigateToRoom = useCallback((letter: BuildingId, floor: number, roomId: string) => {
-    setSelectedBuilding(letter)
-    setSelectedFloor(floor)
-    setSelectedRoom(roomId)
-  }, [])
+  const navigateToRoom = useCallback(
+    (letter: BuildingId, floor: number, roomId: string) => {
+      activateMap()
+      setSelectedBuilding(letter)
+      setSelectedFloor(floor)
+      setSelectedRoom(roomId)
+    },
+    [activateMap]
+  )
 
   /* ── Escape key → close sidebar ── */
   useEffect(() => {
@@ -238,7 +262,14 @@ export function MapFeature() {
         {/* Map viewport + sidebar layout */}
         <FadeSection delay="140ms">
           <div className={`flex gap-4 ${!isNarrow && currentBuilding ? "flex-row" : "flex-col"}`}>
-            <div className="map-card-matte map-viewport flex-1 min-w-0 overflow-hidden relative">
+            <div
+              ref={mapViewportRef}
+              className="map-card-matte map-viewport flex-1 min-w-0 overflow-hidden relative"
+              role="region"
+              aria-label={t("campusMap.ariaLabel")}
+              tabIndex={-1}
+              onPointerDown={() => activateMap(!mapReady)}
+            >
               <WidgetErrorBoundary
                 widgetName="MapLibreGL"
                 showFallback
@@ -248,28 +279,42 @@ export function MapFeature() {
                   </div>
                 }
               >
-                <Suspense
-                  fallback={
-                    <div className="h-full min-h-[inherit] flex items-center justify-center">
-                      <div className="map-poi-chip animate-pulse">{t("campusMap.loading")}</div>
-                    </div>
-                  }
-                >
-                  <MapLibreMapComponent
-                    selectedBuilding={selectedBuilding}
-                    activeCategory={activeCategory}
-                    highlightedBuilding={nextLessonInfo?.building ?? null}
-                    onSelectBuilding={handleBuildingClick}
-                    onDeselectBuilding={handleCloseSidebar}
-                    mapRef={mapLibreRef}
-                    isDark={isDark}
-                    timePeriod={timePeriod}
-                    weatherCondition={weatherData?.condition}
-                    mapEvents={mapEvents}
-                    urlInitialViewport={latchedInitialViewport}
-                    onMapMoveEnd={handleMapMoveEnd}
-                  />
-                </Suspense>
+                {mapReady ? (
+                  <Suspense
+                    fallback={
+                      <div className="h-full min-h-[inherit] flex items-center justify-center">
+                        <div className="map-poi-chip animate-pulse">{t("campusMap.loading")}</div>
+                      </div>
+                    }
+                  >
+                    <MapLibreMapComponent
+                      selectedBuilding={selectedBuilding}
+                      activeCategory={activeCategory}
+                      highlightedBuilding={nextLessonInfo?.building ?? null}
+                      onSelectBuilding={handleBuildingClick}
+                      onDeselectBuilding={handleCloseSidebar}
+                      mapRef={mapLibreRef}
+                      isDark={isDark}
+                      timePeriod={timePeriod}
+                      weatherCondition={weatherData?.condition}
+                      mapEvents={mapEvents}
+                      urlInitialViewport={latchedInitialViewport}
+                      onMapMoveEnd={handleMapMoveEnd}
+                    />
+                  </Suspense>
+                ) : (
+                  <button
+                    type="button"
+                    data-testid="map-activation-placeholder"
+                    ref={mapPlaceholderRef}
+                    className="absolute inset-0 flex min-h-[inherit] cursor-pointer items-center justify-center p-6 text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-teal-500)]"
+                    aria-label={t("campusMap.interactiveHint")}
+                    onFocus={() => activateMap(true)}
+                    onClick={() => activateMap(true)}
+                  >
+                    <span className="map-poi-chip">{t("campusMap.interactiveHint")}</span>
+                  </button>
+                )}
               </WidgetErrorBoundary>
             </div>
 

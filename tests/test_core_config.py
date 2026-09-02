@@ -184,7 +184,7 @@ def test_notifications_allowed_push_topics_parsed(monkeypatch):
     monkeypatch.delenv("SECRET_KEY", raising=False)
     monkeypatch.setenv(
         "NOTIFICATIONS_ALLOWED_PUSH_TOPICS",
-        "alerts, Schedule,alerts , System ",
+        "news, Schedule,news , System ",
     )
 
     with _temporary_env_file(None):
@@ -192,14 +192,14 @@ def test_notifications_allowed_push_topics_parsed(monkeypatch):
         settings = config_module.Settings(_allow_missing=True)
 
     assert settings.notifications_allowed_push_topics == [
-        "alerts",
-        "schedule",
-        "system",
+        "news.published",
+        "schedule.changed",
+        "system.release",
     ]
     assert settings.notifications_allowed_push_topics_set == {
-        "alerts",
-        "schedule",
-        "system",
+        "news.published",
+        "schedule.changed",
+        "system.release",
     }
 
 

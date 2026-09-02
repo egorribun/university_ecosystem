@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react"
 import { Trash2 } from "lucide-react"
 import { useTranslation } from "react-i18next"
-import { ColumnDef } from "@tanstack/react-table"
+import type { DataTableColumnDef } from "@/components/ui/data-table/dataTableFeatures"
 import { useQueryClient } from "@tanstack/react-query"
 // PERF-20-05 (audit 2026-03-24): Debounce text filters.
 import { useDebounced } from "@/hooks/useDebounced"
@@ -106,7 +106,7 @@ export function AdminUsersFeature() {
     setFilters((previousFilters) => ({ ...previousFilters, group_id: value }))
   }
 
-  const columns = useMemo<ColumnDef<AdminUser>[]>(
+  const columns = useMemo<DataTableColumnDef<AdminUser>[]>(
     () => [
       {
         accessorKey: "avatar_url",

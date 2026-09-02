@@ -59,6 +59,10 @@ describe("MapControls closure", () => {
     const { map, ref } = createMapFixture()
     render(<MapControls mapRef={ref} />)
 
+    for (const control of screen.getAllByRole("button")) {
+      expect(control).toHaveStyle({ minWidth: "44px", minHeight: "44px" })
+    }
+
     await user.click(screen.getByRole("button", { name: "zoom.in" }))
     await user.click(screen.getByRole("button", { name: "zoom.out" }))
     await user.click(screen.getByRole("button", { name: "controls.compass" }))
@@ -72,7 +76,7 @@ describe("MapControls closure", () => {
     expect(map.easeTo).toHaveBeenNthCalledWith(2, { pitch: 0, duration: 400 })
     expect(map.easeTo).toHaveBeenNthCalledWith(3, { pitch: 45, duration: 400 })
     expect(map.flyTo).toHaveBeenCalledWith(
-      expect.objectContaining({ zoom: 16, pitch: 45, bearing: 0, duration: 800 })
+      expect.objectContaining({ zoom: 17, pitch: 45, bearing: 0, duration: 800 })
     )
   })
 
@@ -125,6 +129,19 @@ describe("MapControls closure", () => {
     const user = userEvent.setup()
     const mapContainer = document.createElement("div")
     const map = { getContainer: vi.fn(() => mapContainer) }
+    const ref = {
+      current: { getMap: vi.fn(() => map) },
+    } as unknown as MutableRefObject<MapRef | null>
+    render(<MapControls mapRef={ref} />)
+
+    await user.click(screen.getByRole("button", { name: "controls.fullscreen" }))
+
+    expect(map.getContainer).toHaveBeenCalledOnce()
+  })
+
+  it("does nothing when the live map has no container", async () => {
+    const user = userEvent.setup()
+    const map = { getContainer: vi.fn(() => null) }
     const ref = {
       current: { getMap: vi.fn(() => map) },
     } as unknown as MutableRefObject<MapRef | null>

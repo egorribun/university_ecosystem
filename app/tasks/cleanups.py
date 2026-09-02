@@ -2,6 +2,7 @@ from app.core.config import settings
 from app.core.logging import get_logger
 from app.core.nats_broker import broker
 from app.services import notification_queue
+from app.services.cwv_retention import cleanup_stale_cwv_observations
 from app.services.email_change_cleanup import cleanup_stale_email_change_tokens
 from app.services.mfa_challenge_cleanup import cleanup_stale_mfa_challenges
 from app.services.notifications import cleanup_stale_notifications
@@ -76,6 +77,8 @@ async def cleanup_privacy_artifacts_task() -> None:
         interval_seconds=settings.privacy_cleanup_interval_seconds,
     )
     await cleanup_privacy_artifacts(config=config)
+    if settings.cwv_rum_enabled:
+        await cleanup_stale_cwv_observations(retention_days=settings.cwv_retention_days)
 
 
 @broker.task()

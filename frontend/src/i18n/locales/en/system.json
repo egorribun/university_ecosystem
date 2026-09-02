@@ -16,6 +16,7 @@
   "notificationsBell": {
     "open": "Open notifications",
     "title": "Notifications",
+    "new": "New",
     "markAll": "Mark all as read",
     "clear": "Clear",
     "loading": "Loading…",

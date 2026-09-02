@@ -21,6 +21,8 @@ def reset_otel_state():
     leftover handlers compare log levels against their logger_provider,
     which may be a MagicMock, causing TypeError in subsequent tests.
     """
+    app.core.observability.shutdown_observability()
+    app.core.observability._otel_shutdown = False
     app.core.observability._otel_configured = False
     app.core.observability._sqlalchemy_instrumented = False
     yield
@@ -30,8 +32,12 @@ def reset_otel_state():
         import logging
 
         logging.getLogger().removeHandler(handler)
+    app.core.observability.shutdown_observability()
+    app.core.observability._otel_shutdown = False
     app.core.observability._otel_configured = False
     app.core.observability._sqlalchemy_instrumented = False
+    app.core.observability._otel_tracer_provider = None
+    app.core.observability._otel_meter_provider = None
     app.core.observability._otel_logger_provider = None
     app.core.observability._otel_logging_handler = None
 
@@ -71,13 +77,10 @@ def test_configure_otel_concurrency():
 
     mock_provider = MagicMock()
 
-    # Branch 1: _otel_configured=True → early-return via get_tracer_provider()
+    # Branch 1: an owned provider is the authoritative fast-path state.
     with (
         patch("app.core.observability.settings") as mock_settings,
-        patch(
-            "app.core.observability.trace.get_tracer_provider",
-            return_value=mock_provider,
-        ),
+        patch("app.core.observability._otel_tracer_provider", mock_provider),
     ):
         mock_settings.enable_otel = True
         app.core.observability._otel_configured = True
@@ -89,6 +92,7 @@ def test_configure_otel_concurrency():
 
     class MockOtelLock:
         def __enter__(self):
+            app.core.observability._otel_tracer_provider = mock_provider
             app.core.observability._otel_configured = True
             return self
 
@@ -97,15 +101,31 @@ def test_configure_otel_concurrency():
 
     with (
         patch("app.core.observability.settings") as mock_settings,
-        patch(
-            "app.core.observability.trace.get_tracer_provider",
-            return_value=mock_provider,
-        ),
         patch("app.core.observability._otel_lock", MockOtelLock()),
     ):
         mock_settings.enable_otel = True
         res = app.core.observability._configure_otel(MagicMock())
         assert res is not None
+
+    # Branch 3: shutdown wins while a concurrent configure waits for the lock.
+    app.core.observability._otel_configured = False
+    app.core.observability._otel_tracer_provider = None
+
+    class ShutdownLock:
+        def __enter__(self):
+            app.core.observability._otel_shutdown = True
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            pass
+
+    with (
+        patch("app.core.observability.settings") as mock_settings,
+        patch("app.core.observability._otel_lock", ShutdownLock()),
+    ):
+        mock_settings.enable_otel = True
+        app.core.observability._otel_shutdown = False
+        assert app.core.observability._configure_otel(MagicMock()) is None
 
 
 def test_configure_otel_instrumentation_errors():
@@ -113,12 +133,14 @@ def test_configure_otel_instrumentation_errors():
     # spawned (real OTLP exporters try to connect to localhost:4317).
     with (
         patch("app.core.observability.settings") as mock_settings,
-        patch("app.core.observability.TracerProvider", return_value=MagicMock()),
+        patch(
+            "app.core.observability.TracerProvider", return_value=MagicMock()
+        ) as tracer_provider_factory,
         patch("app.core.observability.MeterProvider", return_value=MagicMock()),
         patch("app.core.observability.LoggerProvider", return_value=MagicMock()),
-        patch("app.core.observability.OTLPSpanExporter"),
-        patch("app.core.observability.OTLPMetricExporter"),
-        patch("app.core.observability.OTLPLogExporter"),
+        patch("app.core.observability.OTLPSpanExporter") as span_exporter,
+        patch("app.core.observability.OTLPMetricExporter") as metric_exporter,
+        patch("app.core.observability.OTLPLogExporter") as log_exporter,
         patch("app.core.observability.PeriodicExportingMetricReader"),
         patch("app.core.observability.BatchSpanProcessor"),
         patch("app.core.observability.BatchLogRecordProcessor"),
@@ -149,6 +171,27 @@ def test_configure_otel_instrumentation_errors():
 
         res = app.core.observability._configure_otel(MagicMock())
         assert res is not None
+        span_exporter.assert_called_once_with(
+            timeout=0.75,
+            endpoint="http://localhost:4317",
+            headers={"a": "b", "c": "d"},
+        )
+        tracer_provider_factory.return_value.add_span_processor.assert_called_once()
+        assert (
+            tracer_provider_factory.return_value.add_span_processor.call_args.args[0]
+            is not None
+        )
+        metric_exporter.assert_called_once_with(
+            timeout=0.75,
+            endpoint="http://localhost:4317",
+            headers={"a": "b", "c": "d"},
+        )
+        log_exporter.assert_called_once_with(
+            timeout=0.75,
+            endpoint="http://localhost:4317",
+            headers={"a": "b", "c": "d"},
+        )
+        assert app.core.observability._sqlalchemy_instrumented is True
 
 
 def test_configure_observability_instrument_app_error():
@@ -186,13 +229,9 @@ def test_shutdown_observability_supports_legacy_meter_shutdown_signature():
 
     meter_provider = LegacyMeterProvider()
     with (
-        patch(
-            "app.core.observability.trace.get_tracer_provider", return_value=MagicMock()
-        ),
-        patch(
-            "app.core.observability.metrics.get_meter_provider",
-            return_value=meter_provider,
-        ),
+        patch("app.core.observability._otel_tracer_provider", None),
+        patch("app.core.observability._otel_meter_provider", meter_provider),
+        patch("app.core.observability._otel_shutdown", False),
         patch("app.core.observability._otel_logging_handler", None),
         patch("app.core.observability._otel_logger_provider", None),
     ):

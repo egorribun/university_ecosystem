@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   benchmark:
     name: Run Go Benchmarks
@@ -46,6 +50,21 @@ jobs:
             artifacts/performance/advisory/go/gateway-bench.txt \
             artifacts/performance/advisory/go/wshub-bench.txt \
             > artifacts/performance/advisory/go/benchmarks.txt
+
+      - name: Enforce gateway HashRing lookup budget
+        shell: bash
+        run: |
+          set -euo pipefail
+          (
+            cd services/gateway
+            go test -run=^$ -bench=^BenchmarkHashRingLookup$ -benchtime=1s -count=5 .
+          ) 2>&1 | tee artifacts/performance/advisory/go/gateway-hashring-budget.txt
+          python3 scripts/quality/check_go_benchmark_budget.py \
+            artifacts/performance/advisory/go/gateway-hashring-budget.txt \
+            --benchmark BenchmarkHashRingLookup \
+            --metric ns/op \
+            --exclusive-maximum 4000 \
+            --expected-samples 5
 
       - name: Upload advisory Go benchmark evidence
         if: always()

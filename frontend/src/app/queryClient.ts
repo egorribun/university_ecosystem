@@ -56,17 +56,38 @@ const MAX_IDB_QUOTA_BYTES = 50 * 1024 * 1024 // 50 MB cap
 
 let _resolvedQuota: number | null = null
 
+function isPositiveFiniteQuota(value: unknown): value is number {
+  if (!Number.isFinite(value)) return false
+  return (value as number) > 0
+}
+
+async function readStorageEstimate(): Promise<StorageEstimate | undefined> {
+  if (typeof navigator === "undefined") return undefined
+
+  const storage = navigator.storage
+  if (storage === undefined) return undefined
+
+  const estimate = storage.estimate
+  if (typeof estimate !== "function") return undefined
+
+  // Keep the synchronous guard operations outside this rejection handler so
+  // only the browser API's asynchronous failure is degraded to the default
+  // quota.  Using Promise.catch also keeps that contract explicit without a
+  // redundant try/catch whose empty-body mutant would be equivalent.
+  const pendingEstimate = estimate.call(storage)
+  return await pendingEstimate.catch(() => undefined)
+}
+
 async function getIdbQuotaBytes(): Promise<number> {
   if (_resolvedQuota !== null) return _resolvedQuota
-  try {
-    const estimate = await navigator.storage?.estimate?.()
-    if (estimate?.quota && estimate.quota > 0) {
+  const estimate = await readStorageEstimate()
+  if (estimate !== undefined) {
+    const availableQuota = estimate.quota
+    if (isPositiveFiniteQuota(availableQuota)) {
       // Use at most 5% of available storage, capped at 50 MB
-      _resolvedQuota = Math.min(Math.floor(estimate.quota * 0.05), MAX_IDB_QUOTA_BYTES)
+      _resolvedQuota = Math.min(Math.floor(availableQuota * 0.05), MAX_IDB_QUOTA_BYTES)
       return _resolvedQuota
     }
-  } catch {
-    // Storage API unavailable (SSR, older browsers, etc.)
   }
   _resolvedQuota = DEFAULT_IDB_QUOTA_BYTES
   return _resolvedQuota

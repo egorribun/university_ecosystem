@@ -139,7 +139,7 @@ func TestWSUpgradeRateLimiter_GC(t *testing.T) {
 		stopGC: make(chan struct{}),
 		gcDone: make(chan struct{}),
 	}
-	go defaultInterval.gcLoop()
+	defaultInterval.startGC()
 	time.Sleep(5 * time.Millisecond)
 	defaultInterval.Stop()
 
@@ -148,6 +148,7 @@ func TestWSUpgradeRateLimiter_GC(t *testing.T) {
 		ratePerSec:  2,
 		idleTimeout: 1 * time.Second,
 		stopGC:      make(chan struct{}),
+		gcDone:      make(chan struct{}),
 		gcInterval:  10 * time.Millisecond,
 	}
 
@@ -160,7 +161,7 @@ func TestWSUpgradeRateLimiter_GC(t *testing.T) {
 		lastRefr: time.Now(),
 	})
 
-	go l.gcLoop()
+	l.startGC()
 
 	time.Sleep(50 * time.Millisecond)
 	l.Stop()

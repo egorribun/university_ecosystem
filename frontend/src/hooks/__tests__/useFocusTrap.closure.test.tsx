@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
         onDeactivate: () => void
         allowOutsideClick: boolean
         returnFocusOnDeactivate: boolean
+        escapeDeactivates: boolean
       }
     | undefined,
 }))
@@ -36,12 +37,14 @@ function TrapHarness({
   initialFocus,
   fallbackFocus,
   onDeactivate,
+  escapeDeactivates,
 }: {
   active: boolean
   tabIndex?: number
   initialFocus?: false
   fallbackFocus?: HTMLElement
   onDeactivate?: () => void
+  escapeDeactivates?: boolean
 }) {
   const ref = useFocusTrap<HTMLDivElement>({
     active,
@@ -50,6 +53,7 @@ function TrapHarness({
     onDeactivate,
     allowOutsideClick: false,
     returnFocus: false,
+    escapeDeactivates,
   })
   return <div ref={ref} tabIndex={tabIndex} />
 }
@@ -77,10 +81,13 @@ describe("useFocusTrap deterministic lifecycle", () => {
 
   it("honors an explicit fallback target and cleans up the active trap", () => {
     const fallback = document.createElement("button")
-    const { unmount } = render(<TrapHarness active tabIndex={0} fallbackFocus={fallback} />)
+    const { unmount } = render(
+      <TrapHarness active tabIndex={0} fallbackFocus={fallback} escapeDeactivates={false} />
+    )
 
     expect(mocks.options?.fallbackFocus).toBe(fallback)
     expect(mocks.options?.initialFocus).toBeUndefined()
+    expect(mocks.options?.escapeDeactivates).toBe(false)
     unmount()
     expect(mocks.deactivate).toHaveBeenCalled()
   })

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -97,6 +97,7 @@ def _user(user_id=None):
         mfa_required=False,
         mfa_default_method=None,
         mfa_last_verified_at=None,
+        mfa_epoch=0,
         created_at=datetime.now(UTC),
         profile=UserProfile(user_id=user_id, full_name="Repo User"),
         preferences=UserPreferences(user_id=user_id, dnd_enabled=False),
@@ -219,7 +220,17 @@ async def test_user_related_getters_and_email_checks():
     notification = Notification(
         user_id=user.id, title="Title", body="Body", type="info"
     )
-    challenge = MfaChallenge(user_id=user.id, token="token", challenge_type="totp")
+    challenge = MfaChallenge(
+        user_id=user.id,
+        challenge_type="totp",
+        flow="login",
+        session_identifier="repository-test",
+        client_fingerprint="f" * 64,
+        method="totp",
+        token_digest="d" * 64,
+        token_key_id="test-key",
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+    )
     enrollment = MfaTotpEnrollment(user_id=user.id, secret="secret")
     db = _DB(
         [

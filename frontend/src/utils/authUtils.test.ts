@@ -6,7 +6,7 @@ import { levenshtein } from "./levenshtein"
 /**
  * Tests for the email-suggestion state-machine input used by useLoginForm.
  * The hook itself glues together AuthContext + react-hook-form + TanStack
- * Router + WebAuthn — its observable state machine (caps lock, show password,
+ * Router + MFA — its observable state machine (caps lock, show password,
  * MFA branches) is best verified via the E2E suite. The deterministic
  * suggestion logic — `suggestEmailDomain` and the underlying
  * `levenshtein` distance — is the testable kernel and has direct user-facing

@@ -7,7 +7,11 @@ from pathlib import Path
 import pytest
 
 from scripts.mutmut_shard_budget import (
+    DEFAULT_MAX_TIMEOUT_SECONDS,
     METADATA_AND_STARTUP_RESERVE_SECONDS,
+    MUTMUT_JOB_DEADLINE_SECONDS,
+    MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS,
+    MUTMUT_TIMEOUT_KILL_GRACE_SECONDS,
     MUTMUT_WALL_TIMEOUT_GRACE_SECONDS,
     MUTMUT_WALL_TIMEOUT_MULTIPLIER,
     SELECTED_TEST_PHASE_MULTIPLIER,
@@ -267,6 +271,16 @@ def test_calculate_shard_budget_rejects_missing_test_durations() -> None:
         )
 
 
+def test_calculate_shard_budget_rejects_boolean_test_durations() -> None:
+    with pytest.raises(ValueError, match="invalid duration"):
+        calculate_shard_budget(
+            ["app.module.x_invalid__mutmut_1"],
+            {"app.module.x_invalid": ["tests/test_invalid.py::test_invalid"]},
+            {"tests/test_invalid.py::test_invalid": True},
+            max_children=1,
+        )
+
+
 def test_calculate_shard_budget_rejects_invalid_worker_count() -> None:
     with pytest.raises(ValueError, match="max_children"):
         calculate_shard_budget(
@@ -280,3 +294,14 @@ def test_calculate_shard_budget_rejects_invalid_worker_count() -> None:
 def test_watchdog_multiplier_remains_the_mutmut_37_wall_timeout_contract() -> None:
     assert MUTMUT_WALL_TIMEOUT_MULTIPLIER == 15
     assert MUTMUT_WALL_TIMEOUT_GRACE_SECONDS == 6
+
+
+def test_default_timeout_cap_is_derived_from_the_six_hour_job_envelope() -> None:
+    """The hard cap leaves explicit post-run and termination headroom."""
+
+    assert DEFAULT_MAX_TIMEOUT_SECONDS == (
+        MUTMUT_JOB_DEADLINE_SECONDS
+        - MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS
+        - MUTMUT_TIMEOUT_KILL_GRACE_SECONDS
+    )
+    assert DEFAULT_MAX_TIMEOUT_SECONDS == 20_970

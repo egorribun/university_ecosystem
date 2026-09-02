@@ -15,6 +15,40 @@ const fillOtp = async (page: Page, code: string) => {
 }
 
 test.describe("Multi-factor authentication flows", () => {
+  test("keeps remember-email separate from explicit trusted-device consent", async ({ page }) => {
+    await page.addInitScript(() => {
+      window.localStorage.setItem("auth:trustDevice", JSON.stringify("1"))
+    })
+    await useMockApi(page, { authenticated: false })
+
+    await page.goto("/login")
+    await page.waitForFunction(() => window.__APP_HYDRATED === true)
+
+    const rememberEmail = page.getByRole("checkbox", { name: /Remember email|Запомнить email/i })
+    const trustDevice = page.getByRole("checkbox", {
+      name: /Trust this device for 30 days|Доверять этому устройству 30 дней/i,
+    })
+    await expect(rememberEmail).not.toBeChecked()
+    await expect(trustDevice).not.toBeChecked()
+    await expect(page.getByText(/skip MFA for 30 days|обходиться без MFA 30 дней/i)).toBeVisible()
+
+    await page.getByText(/^(Remember email|Запомнить email)$/i).click()
+    await expect(rememberEmail).toBeChecked()
+    await page.locator('input[name="email"]').fill("mfa@example.com")
+    await page.locator('input[name="password"]').fill("Password123")
+    const loginRequest = page.waitForRequest(
+      (request) => request.url().includes("/auth/login") && request.method() === "POST"
+    )
+    await page.locator('button[type="submit"]').click()
+
+    const request = await loginRequest
+    const params = new URLSearchParams(request.postData() ?? "")
+    expect(params.get("trust_device")).toBeNull()
+    await expect
+      .poll(() => page.evaluate(() => window.localStorage.getItem("auth:lastEmail")))
+      .toContain("mfa@example.com")
+  })
+
   test("allows enabling TOTP in settings", async ({ page }) => {
     const mock = await useMockApi(page)
     await mock.login(page)
@@ -56,6 +90,7 @@ test.describe("Multi-factor authentication flows", () => {
 
     await page.goto("/login")
     await page.waitForURL(/\/login$/)
+    await page.waitForFunction(() => window.__APP_HYDRATED === true)
 
     await page.locator('input[name="email"]').fill("mfa@example.com")
     await page.locator('input[name="password"]').fill("Password123")
@@ -73,6 +108,7 @@ test.describe("Multi-factor authentication flows", () => {
 
     await page.goto("/login")
     await page.waitForURL(/\/login$/)
+    await page.waitForFunction(() => window.__APP_HYDRATED === true)
 
     await page.locator('input[name="email"]').fill("mfa@example.com")
     await page.locator('input[name="password"]').fill("Password123")

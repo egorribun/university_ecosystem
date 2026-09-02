@@ -19,4 +19,18 @@ describe("FadeIn direction variants", () => {
       expect(screen.getByText(direction)).toBeInTheDocument()
     }
   )
+
+  it("renders the paintable initial state in Lighthouse mode", () => {
+    vi.stubEnv("VITE_LHCI", "true")
+    try {
+      render(
+        <FadeIn>
+          <span>lhci content</span>
+        </FadeIn>
+      )
+      expect(screen.getByText("lhci content")).toBeInTheDocument()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
 })

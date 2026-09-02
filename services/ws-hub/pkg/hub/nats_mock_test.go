@@ -141,9 +141,9 @@ func TestSubscribeToNATS_SuccessAndStop(t *testing.T) {
 
 	h := setupTestHub()
 	h.Nats = nc
-	// Exercise the production fallback when JetStream is enabled but the
-	// connected server does not expose a JetStream context.
-	h.enableJetStream = true
+	// Core NATS remains an explicit operator-selected mode; replay-capable
+	// JetStream startup no longer downgrades silently when prerequisites fail.
+	h.enableJetStream = false
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

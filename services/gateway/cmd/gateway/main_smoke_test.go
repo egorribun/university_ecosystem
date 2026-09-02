@@ -97,6 +97,30 @@ func TestSetupRouter_WiresRoutesAndProbes(t *testing.T) {
 		assert.Equal(t, http.StatusBadGateway, rec.Code)
 	})
 
+	t.Run("CWV export is OIDC-authenticated by backend only", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/cwv/export", nil)
+		req.Header.Set("Authorization", "Bearer github-oidc-token")
+		router.ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusBadGateway, rec.Code)
+
+		for _, probe := range []struct {
+			method string
+			path   string
+		}{
+			{method: http.MethodPost, path: "/api/v1/cwv/export"},
+			{method: http.MethodPost, path: "/api/v1/cwv/envelope"},
+			{method: http.MethodPost, path: "/api/v1/cwv/observations"},
+		} {
+			rejected := httptest.NewRecorder()
+			router.ServeHTTP(
+				rejected,
+				httptest.NewRequestWithContext(t.Context(), probe.method, probe.path, nil),
+			)
+			assert.Equal(t, http.StatusUnauthorized, rejected.Code, probe.path)
+		}
+	})
+
 	t.Run("authenticated protected route reaches the backend proxy", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/users/me", nil)

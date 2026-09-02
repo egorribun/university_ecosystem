@@ -187,7 +187,8 @@ async def test_notify_new_message_creates_push_for_other_participants() -> None:
     chat_id = uuid.uuid4()
     message = _msg(chat_id=chat_id, sender_id=sender.id, content="hello")
 
-    svc = ChatNotificationService(MagicMock())
+    session = MagicMock()
+    svc = ChatNotificationService(session)
 
     with (
         patch(
@@ -214,6 +215,7 @@ async def test_notify_new_message_creates_push_for_other_participants() -> None:
     assert kwargs["title"] == "Alice"
     assert kwargs["body"] == "hello"
     assert kwargs["type"] == "chat.message"
+    assert kwargs["topic"] == "chat.message.created"
     assert kwargs["url"] == f"/messenger/{chat_id}"
     assert kwargs["tag"] == f"chat:{chat_id}"
     assert set(kwargs["user_ids"]) == {other_a.id, other_b.id}
@@ -472,7 +474,8 @@ async def test_notify_reply_supersedes_quoted_author_off_generic() -> None:
     message = _msg(chat_id=chat_id, sender_id=sender.id, content="re: hi")
     replied = _replied(message_id=uuid.uuid4(), sender_id=quoted.id)
 
-    svc = ChatNotificationService(MagicMock())
+    session = MagicMock()
+    svc = ChatNotificationService(session)
 
     with (
         patch(
@@ -513,7 +516,7 @@ async def test_notify_reply_supersedes_quoted_author_off_generic() -> None:
     assert reply["url"] == f"/messenger/{chat_id}"
     assert reply["tag"] == f"chat-reply:{replied.id}"
     assert reply["dedupe_key"] == f"chat-reply:{message.id}"
-    assert reply["topic"] == "chat"
+    assert reply["topic"] == "chat.message.created"
     payload = reply["payload_data"]
     assert payload["chatId"] == str(chat_id)
     assert payload["repliedToMessageId"] == str(replied.id)
@@ -521,6 +524,7 @@ async def test_notify_reply_supersedes_quoted_author_off_generic() -> None:
     assert payload["senderId"] == str(sender.id)
     # All payload UUIDs stringified for JSON safety.
     assert all(isinstance(v, str) for v in payload.values())
+    assert all(call.args and call.args[0] is session for call in create.await_args_list)
 
 
 @pytest.mark.asyncio

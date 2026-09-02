@@ -7,13 +7,17 @@ from typing import Any
 from sqlalchemy import (
     JSON,
     UUID,
+    BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy import (
@@ -89,6 +93,9 @@ class ActiveSession(Base, UUID7PrimaryKeyMixin, UserFK):
     mfa_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
+    mfa_epoch: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     # Session fingerprint for security binding
     accept_language: Mapped[str | None] = mapped_column(String(256))
     fingerprint_hash: Mapped[str | None] = mapped_column(
@@ -131,6 +138,10 @@ class MfaTotpEnrollment(Base, UUID7PrimaryKeyMixin, UserFK):
     last_used_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Monotonic RFC 6238 counter accepted for this enrollment.  Unlike a digest
+    # of the submitted digits, this also rejects an older skew-window code after
+    # a newer counter has already succeeded.
+    last_used_timecode: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
 
     user = relationship("User", back_populates="totp_enrollments", lazy="noload")
 
@@ -146,7 +157,25 @@ class MfaChallenge(Base, UUID7PrimaryKeyMixin, UserFK):
         index=True,
     )
     challenge_type: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    token: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    flow: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    session_identifier: Mapped[str] = mapped_column(
+        String(128), nullable=False, index=True
+    )
+    client_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    method: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    revision: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1"
+    )
+    trust_device_requested: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    token_digest: Mapped[str] = mapped_column(
+        String(64), nullable=False, unique=True, index=True
+    )
+    token_key_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    recipient_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    otp_digest: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    otp_key_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
@@ -162,6 +191,9 @@ class MfaChallenge(Base, UUID7PrimaryKeyMixin, UserFK):
     payload: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     attempt_count: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0", default=0
+    )
+    resend_available_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
     )
     # TD-W5-01: Explicit state machine column — single source of truth.
     state: Mapped[ChallengeState] = mapped_column(
@@ -179,9 +211,20 @@ class MfaChallenge(Base, UUID7PrimaryKeyMixin, UserFK):
     session = relationship("ActiveSession", back_populates="challenges", lazy="noload")
 
     __table_args__ = (
+        CheckConstraint(
+            "method != 'email_otp' OR recipient_digest IS NOT NULL",
+            name="ck_mfa_challenges_email_recipient_digest",
+        ),
         Index("ix_mfa_challenges_user_expires", "user_id", "expires_at"),
         Index("ix_mfa_challenges_consumed_expires", "consumed_at", "expires_at"),
         Index("ix_mfa_challenges_state", "state"),
+        Index(
+            "ix_mfa_challenges_binding",
+            "user_id",
+            "flow",
+            "session_identifier",
+            "method",
+        ),
     )
 
 
@@ -316,6 +359,8 @@ class TrustedDevice(Base, UUID7PrimaryKeyMixin, UserFK):
     token_hash: Mapped[str] = mapped_column(
         String(128), unique=True, index=True, nullable=False
     )
+    token_key_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    binding_digest: Mapped[str] = mapped_column(String(64), nullable=False)
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
@@ -328,6 +373,9 @@ class TrustedDevice(Base, UUID7PrimaryKeyMixin, UserFK):
     # Raw ip_address/user_agent kept for audit/display; hashes used for comparison.
     ip_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     ua_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    mfa_epoch: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -337,40 +385,80 @@ class TrustedDevice(Base, UUID7PrimaryKeyMixin, UserFK):
     user = relationship("User", back_populates="trusted_devices", lazy="noload")
 
 
-class WebAuthnCredential(Base, UUID7PrimaryKeyMixin, UserFK):
-    __tablename__ = "webauthn_credentials"
+class MfaEmailDelivery(Base, UUID7PrimaryKeyMixin):
+    """Encrypted, PII-free-at-rest envelope for transactional MFA email."""
 
-    credential_id: Mapped[str] = mapped_column(
-        String(1366),
-        unique=True,
-        index=True,
-        nullable=False,  # LOW-W19: bounded String (WebAuthn spec)
-    )
-    # OZ-1 (audit 2026-02-26): Bound public_key to String(4096). Without a limit
-    # an attacker could write multi-MB values during registration, causing OOM on
-    # bulk credential list queries. COSE EC key ≈ 512 B base64, RSA-4096 ≈ 736 B base64.
-    public_key: Mapped[str] = mapped_column(String(4096), nullable=False)
-    sign_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    transports: Mapped[list[Any] | None] = mapped_column(
-        JSON, nullable=True
-    )  # List of allowed transports
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
+    __tablename__ = "mfa_email_deliveries"
+
+    challenge_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("mfa_challenges.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
-    last_used_at: Mapped[datetime | None] = mapped_column(
+    revision: Mapped[int] = mapped_column(Integer, nullable=False)
+    message_id: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    template: Mapped[str] = mapped_column(String(64), nullable=False)
+    locale: Mapped[str] = mapped_column(String(2), nullable=False)
+    kek_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    envelope_nonce: Mapped[bytes | None] = mapped_column(LargeBinary(12), nullable=True)
+    envelope_ciphertext: Mapped[bytes | None] = mapped_column(
+        LargeBinary, nullable=True
+    )
+    wrap_nonce: Mapped[bytes | None] = mapped_column(LargeBinary(12), nullable=True)
+    wrapped_dek: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="pending", server_default="pending"
+    )
+    attempt_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    lease_token: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    label: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    backing_up: Mapped[bool] = mapped_column(Boolean, default=False)
-    backup_state: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    shredded_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
-    user = relationship("User", back_populates="webauthn_credentials", lazy="noload")
+    challenge = relationship("MfaChallenge", lazy="noload")
 
-    def __init__(self, **kwargs: Any) -> None:
-        kwargs.pop("_allow_system_managed_assignment", False)
-        super().__init__(**kwargs)
+    __table_args__ = (
+        UniqueConstraint(
+            "challenge_id",
+            "revision",
+            name="uq_mfa_email_delivery_challenge_revision",
+        ),
+        CheckConstraint("locale IN ('en','ru')", name="ck_mfa_email_delivery_locale"),
+        CheckConstraint(
+            "status IN ('pending','sending','sent','cancelled')",
+            name="ck_mfa_email_delivery_status",
+        ),
+        CheckConstraint(
+            "(status IN ('pending','sending') AND envelope_nonce IS NOT NULL "
+            "AND envelope_ciphertext IS NOT NULL AND wrap_nonce IS NOT NULL "
+            "AND wrapped_dek IS NOT NULL AND shredded_at IS NULL) OR "
+            "(status IN ('sent','cancelled') AND envelope_nonce IS NULL "
+            "AND envelope_ciphertext IS NULL AND wrap_nonce IS NULL "
+            "AND wrapped_dek IS NULL AND shredded_at IS NOT NULL)",
+            name="ck_mfa_email_delivery_envelope_lifecycle",
+        ),
+        Index(
+            "ix_mfa_email_deliveries_pending_created",
+            "created_at",
+            "id",
+            postgresql_where=(status == "pending"),
+        ),
+    )
 
 
 class RecoveryCode(Base, UUID7PrimaryKeyMixin, UserFK):

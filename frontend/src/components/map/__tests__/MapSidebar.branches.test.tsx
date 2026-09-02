@@ -8,13 +8,14 @@ vi.mock("react-i18next", () => ({
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
   }),
 }))
-vi.mock("@/contexts/AppShellContext", () => ({
-  useAppShell: () => ({ setOverlayState: vi.fn() }),
-}))
-
 const hooks = vi.hoisted(() => ({
   open: true,
   roomStatus: null as { status: "free" | "busy"; busyUntil?: string } | null,
+  setOverlayState: vi.fn(),
+}))
+
+vi.mock("@/contexts/AppShellContext", () => ({
+  useAppShell: () => ({ setOverlayState: hooks.setOverlayState }),
 }))
 
 vi.mock("@/utils/buildingHours", () => ({
@@ -24,7 +25,7 @@ vi.mock("@/utils/roomStatus", () => ({
   getRoomStatus: () => hooks.roomStatus,
 }))
 
-import { getViewportHeight, MapSidebar } from "@/components/map/MapSidebar"
+import { getInitialSheetHeight, getViewportHeight, MapSidebar } from "@/components/map/MapSidebar"
 import type { CampusBuilding, BuildingFloor } from "@/data/campusBuildings"
 
 const FLOOR_1: BuildingFloor = {
@@ -81,20 +82,85 @@ describe("MapSidebar branches", () => {
   it("uses the server viewport fallback without a window", () => {
     vi.stubGlobal("window", undefined)
     expect(getViewportHeight()).toBe(800)
+    expect(getInitialSheetHeight()).toBe(400)
+  })
+
+  it("derives the initial mobile sheet height from the current viewport", () => {
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 1000 })
+    expect(getInitialSheetHeight()).toBe(500)
   })
 
   it("renders the mobile bottom sheet branch (role=dialog, drag handle, sheetReady timer)", () => {
     render(<MapSidebar {...baseProps} isMobile />)
     const dialog = screen.getByRole("dialog")
     expect(dialog).toHaveAttribute("aria-modal", "true")
-    expect(dialog).toHaveAttribute("aria-label", "Главный учебный корпус")
-    expect(screen.getByLabelText("sidebar.dragToResize")).toBeInTheDocument()
+    expect(dialog).toHaveAttribute("aria-labelledby")
+    expect(dialog).toHaveAttribute("aria-describedby")
+    expect(document.getElementById(dialog.getAttribute("aria-labelledby")!)).toHaveTextContent(
+      "Главный учебный корпус"
+    )
+    expect(document.getElementById(dialog.getAttribute("aria-describedby")!)).toHaveTextContent(
+      "Главное здание университета."
+    )
+    const handle = screen.getByRole("slider", { name: "sidebar.dragToResize" })
+    expect(handle).toHaveAttribute("aria-orientation", "vertical")
+    expect(handle).toHaveAttribute("tabindex", "0")
+    expect(handle.className).toContain("min-h-[44px]")
     // No desktop close button in the mobile branch
     expect(screen.queryByRole("button", { name: "sidebar.close" })).not.toBeInTheDocument()
     // Advance past the 260ms sheetReady entrance timer (overflow-hidden → overflow-y-auto)
     act(() => {
       vi.advanceTimersByTime(300)
     })
+    expect(dialog.querySelector(".overflow-y-auto")).toBeInTheDocument()
+    expect(hooks.setOverlayState).toHaveBeenCalledWith("map-sidebar", {
+      scrollLocked: true,
+      blurred: false,
+    })
+  })
+
+  it("cleans up the app-shell scroll lock when the mobile sheet closes", () => {
+    const { unmount } = render(<MapSidebar {...baseProps} isMobile />)
+    unmount()
+    expect(hooks.setOverlayState).toHaveBeenLastCalledWith("map-sidebar", null)
+  })
+
+  it("supports keyboard resizing with bounded snap points", () => {
+    render(<MapSidebar {...baseProps} isMobile />)
+    const handle = screen.getByRole("slider", { name: "sidebar.dragToResize" })
+    const maxHeight = Math.round(window.innerHeight * 0.9)
+    expect(Number(handle.getAttribute("aria-valuemin"))).toBe(100)
+    expect(Number(handle.getAttribute("aria-valuemax"))).toBe(maxHeight)
+
+    fireEvent.keyDown(handle, { key: "ArrowDown" })
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(160)
+    fireEvent.keyDown(handle, { key: "ArrowUp" })
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(Math.round(window.innerHeight * 0.5))
+    fireEvent.keyDown(handle, { key: "End" })
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(Math.round(window.innerHeight * 0.85))
+    fireEvent.keyDown(handle, { key: "Home" })
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(160)
+  })
+
+  it("ignores unrelated keyboard input without changing the sheet", () => {
+    render(<MapSidebar {...baseProps} isMobile />)
+    const handle = screen.getByRole("slider", { name: "sidebar.dragToResize" })
+    const initialHeight = handle.getAttribute("aria-valuenow")
+
+    fireEvent.keyDown(handle, { key: "Tab" })
+
+    expect(handle).toHaveAttribute("aria-valuenow", initialHeight)
+  })
+
+  it("does not reschedule when a keyboard snap is already at its endpoint", () => {
+    render(<MapSidebar {...baseProps} isMobile />)
+    const handle = screen.getByRole("slider", { name: "sidebar.dragToResize" })
+
+    fireEvent.keyDown(handle, { key: "End" })
+    const fullHeight = handle.getAttribute("aria-valuenow")
+    fireEvent.keyDown(handle, { key: "End" })
+
+    expect(handle).toHaveAttribute("aria-valuenow", fullHeight)
   })
 
   it("tracks mobile pointer drag and ignores move/up events before dragging", () => {
@@ -118,6 +184,29 @@ describe("MapSidebar branches", () => {
     expect(releasePointerCapture).toHaveBeenCalledWith(7)
   })
 
+  it("clamps a mobile drag and snaps to the nearest point on release", () => {
+    render(<MapSidebar {...baseProps} isMobile />)
+    const dialog = screen.getByRole("dialog")
+    const handle = screen.getByRole("slider", { name: "sidebar.dragToResize" })
+    const setPointerCapture = vi.fn()
+    const releasePointerCapture = vi.fn()
+    Object.defineProperty(handle, "setPointerCapture", { value: setPointerCapture })
+    Object.defineProperty(handle, "releasePointerCapture", { value: releasePointerCapture })
+
+    fireEvent.pointerDown(handle, { pointerId: 11, clientY: 500 })
+    fireEvent.pointerMove(handle, { pointerId: 11, clientY: -100 })
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(Math.round(window.innerHeight * 0.9))
+    fireEvent.pointerUp(handle, { pointerId: 11, clientY: -100 })
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(Math.round(window.innerHeight * 0.85))
+    expect(dialog).toHaveStyle({ height: `${window.innerHeight * 0.85}px` })
+
+    fireEvent.pointerDown(handle, { pointerId: 12, clientY: 500 })
+    fireEvent.pointerMove(handle, { pointerId: 12, clientY: 2000 })
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(100)
+    fireEvent.pointerUp(handle, { pointerId: 12, clientY: 2000 })
+    expect(Number(handle.getAttribute("aria-valuenow"))).toBe(160)
+  })
+
   it("renders the amenities section when building.amenities is non-empty", () => {
     render(<MapSidebar {...baseProps} />)
     expect(screen.getByText("sidebar.amenities")).toBeInTheDocument()
@@ -128,6 +217,19 @@ describe("MapSidebar branches", () => {
   it("omits the amenities section when building.amenities is empty", () => {
     render(<MapSidebar {...baseProps} building={{ ...BUILDING, amenities: [] }} />)
     expect(screen.queryByText("sidebar.amenities")).not.toBeInTheDocument()
+  })
+
+  it("exposes the selected floor through radio semantics", () => {
+    render(<MapSidebar {...baseProps} selectedFloor={2} />)
+    expect(screen.getByRole("radio", { name: "1" })).toHaveAttribute("aria-checked", "false")
+    expect(screen.getByRole("radio", { name: "2" })).toHaveAttribute("aria-checked", "true")
+  })
+
+  it("does not render a floor selector for a single-floor building", () => {
+    render(
+      <MapSidebar {...baseProps} building={{ ...BUILDING, floors: [FLOOR_1], floorCount: 1 }} />
+    )
+    expect(screen.queryByRole("radiogroup")).not.toBeInTheDocument()
   })
 
   it("renders the selected-room detail panel with type and capacity", () => {
@@ -152,6 +254,20 @@ describe("MapSidebar branches", () => {
     expect(screen.getByText(/sidebar\.roomBusy/)).toBeInTheDocument()
   })
 
+  it("applies distinct status colors to free and busy room badges", () => {
+    hooks.roomStatus = { status: "free" }
+    const { rerender } = render(
+      <MapSidebar {...baseProps} todayLessons={[{ room: "101", start_time: "10:00" }]} />
+    )
+    expect(screen.getByText("sidebar.roomFree")).toHaveStyle({
+      color: "var(--color-emerald-500)",
+    })
+
+    hooks.roomStatus = { status: "busy", busyUntil: "11:30" }
+    rerender(<MapSidebar {...baseProps} todayLessons={[{ room: "101", start_time: "10:00" }]} />)
+    expect(screen.getByText(/sidebar\.roomBusy/)).toHaveStyle({ color: "var(--color-rose-500)" })
+  })
+
   it("renders the building photo as an img when building.photo is present", () => {
     render(<MapSidebar {...baseProps} building={{ ...BUILDING, photo: "https://x/photo.jpg" }} />)
     const img = screen.getByRole("img", { name: "Главный учебный корпус" })
@@ -173,5 +289,12 @@ describe("MapSidebar branches", () => {
     hooks.open = false
     render(<MapSidebar {...baseProps} />)
     expect(screen.getByText("hours.closedNow")).toBeInTheDocument()
+  })
+
+  it("remounts the scroll container when the selected building changes", () => {
+    const { container, rerender } = render(<MapSidebar {...baseProps} />)
+    const firstSidebar = container.querySelector(".map-sidebar-container")
+    rerender(<MapSidebar {...baseProps} building={{ ...BUILDING, letter: "Б" }} />)
+    expect(container.querySelector(".map-sidebar-container")).not.toBe(firstSidebar)
   })
 })

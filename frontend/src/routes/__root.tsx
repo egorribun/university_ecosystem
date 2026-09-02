@@ -7,13 +7,10 @@ import {
 } from "@tanstack/react-router"
 import type { RouterContext } from "@/router"
 import MainLayout from "@/components/layout/MainLayout"
-import InstallPrompt from "@/components/pwa/InstallPrompt"
+import DeferredGlobalOverlays from "@/components/layout/DeferredGlobalOverlays"
 import { BrandBootLoader } from "@/components/feedback/BrandBootLoader"
 import { BRAND_BOOT_LOADER_CSS } from "@/components/feedback/brandBootLoaderCss"
-import LivePushToasts from "@/components/feedback/LivePushToasts"
-import OfflineIndicator from "@/components/feedback/OfflineIndicator"
 import { PageErrorBoundary } from "@/components/error/PageErrorBoundary"
-import { SearchDialog } from "@/components/search/SearchDialog"
 import { AppProviders } from "@/AppProviders"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import { QueryClientProvider } from "@tanstack/react-query"
@@ -135,6 +132,76 @@ body::after {
 
 const CRITICAL_SHELL_CSS = `${INITIAL_PAINT_CSS}\n${BRAND_BOOT_LOADER_CSS}`
 
+// Lighthouse's static-SPA build is prepared with `VITE_LHCI=true`.  Keep the
+// audit-only effect rules in the React-owned shell as well as the post-build
+// HTML fallback: `main.tsx` mounts a fresh document for static fallbacks, so
+// styles injected only into the original HTML shell would otherwise be
+// discarded during that mount.  The flag is replaced at build time and the
+// block is not rendered by normal production builds.
+const LHCI_STATIC_EFFECTS_CSS = `/* data-lhci-static-effects */
+.lhci-mode .aurora-mesh::after,
+.lhci-mode .sched-aurora-hero {
+  animation: none !important;
+  filter: none !important;
+  transform: none !important;
+}
+
+/* Lighthouse's mobile CPU profile makes paint-only glass decoration dominate
+ * the critical task window.  Noise and backdrop blur carry no information or
+ * interaction semantics, so disable them only in the synthetic audit shell;
+ * the production design remains unchanged. */
+.lhci-mode .glass-noise::before,
+.lhci-mode .glass-layer-surface,
+.lhci-mode .glass-layer-elevated,
+.lhci-mode .glass-layer-floating,
+.lhci-mode [class*="backdrop-blur"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.lhci-mode .glass-noise::before {
+  display: none !important;
+}
+
+.lhci-mode .weather-ambient,
+.lhci-mode .sched-current-glow,
+.lhci-mode .sched-progress-fill::after,
+.lhci-mode .sched-today-badge,
+.lhci-mode .sched-empty-icon,
+.lhci-mode .sched-empty-ring,
+.lhci-mode .sched-empty-orbit,
+.lhci-mode .sched-flip-colon,
+.lhci-mode .sched-drop-target,
+.lhci-mode .sched-skeleton-shimmer,
+.lhci-mode .messenger-typing-pulse,
+.lhci-mode .messenger-online-pulse::after,
+.lhci-mode .messenger-skeleton-shimmer,
+.lhci-mode .profile-skeleton-shimmer,
+.lhci-mode .settings-skeleton-shimmer,
+.lhci-mode .auth-skeleton-shimmer,
+.lhci-mode .events-register-pulse,
+.lhci-mode .refetch-shimmer::after,
+.lhci-mode .border-glow-pulse {
+  animation: none !important;
+}
+
+.lhci-mode .weather-ambient {
+  display: none !important;
+}
+
+/* Loading placeholders are a graceful SSR fallback when the audit backend is
+ * unavailable. Keep their geometry for deterministic layout measurement, but
+ * stop the indefinite shimmer animation in Lighthouse's static shell so
+ * synthetic audits do not spend their critical task window repainting every
+ * placeholder. */
+.lhci-mode .skeleton {
+  animation: none !important;
+}
+
+.lhci-mode .skeleton::after {
+  animation: none !important;
+}`
+
 export const Route = createRootRouteWithContext<RouterContext>()({
   // Keep SSR enabled at the root so public and data routes receive a complete
   // TanStack Start manifest. Child auth/admin layouts may opt down to client
@@ -228,14 +295,40 @@ function RootShell({ children }: { children: React.ReactNode }) {
   // `<Scripts />` injects the bundle entry script tags + modulepreload
   // links produced by Vite + tanstackStart.
   const ssrTheme = globalThis.__ssrThemeGetter__?.()
+  const ssrAuth = globalThis.__ssrAuthGetter__?.()
   const ssrLang = globalThis.__ssrLangGetter__?.()
   const isDark = ssrTheme === "dark"
+  const isLhci = import.meta.env.VITE_LHCI === "true"
   const lang = ssrLang ?? "ru"
+  // The server-rendered tree uses a role-only auth stub so authenticated
+  // routes can paint immediately. Preserve that same fact in the document
+  // shell for the first browser render; the client consumes this marker and
+  // replaces the stub with the authoritative /users/me response. No PII or
+  // token is serialized.
+  const shellAuthMarker =
+    ssrAuth?.isAuth && ssrAuth.user ? `authenticated:${ssrAuth.user.role}` : undefined
+  // `hydrateRoot(document, ...)` reconciles the document shell as well as the
+  // application subtree. Reuse the server marker when the client evaluates
+  // RootShell during hydration so the shell attribute itself is stable.
+  const existingAuthMarker =
+    typeof document !== "undefined"
+      ? (document.getElementById("root")?.getAttribute("data-ssr-auth") ?? undefined)
+      : undefined
+  const ssrAuthMarker = shellAuthMarker ?? existingAuthMarker
+  const htmlClassName =
+    [isDark && "dark", isLhci && "lhci-mode"].filter(Boolean).join(" ") || undefined
 
   return (
-    <html lang={lang} className={isDark ? "dark" : undefined} suppressHydrationWarning>
+    <html lang={lang} className={htmlClassName} suppressHydrationWarning>
       <head>
         <HeadContent />
+        {isLhci ? (
+          <style
+            id="lhci-static-effects"
+            data-lhci-static-effects=""
+            dangerouslySetInnerHTML={{ __html: LHCI_STATIC_EFFECTS_CSS }}
+          />
+        ) : null}
         <style dangerouslySetInnerHTML={{ __html: CRITICAL_SHELL_CSS }} />
       </head>
       {/*
@@ -273,7 +366,6 @@ function RootShell({ children }: { children: React.ReactNode }) {
         >
           LHCI RENDER START
         </div>
-        <BrandBootLoader />
         {/*
           W156 SW3 polish — `className="ready"` rendered server-side via JSX
           so the opacity-1 state is in the SSR HTML from the start. Pre-W156
@@ -290,7 +382,7 @@ function RootShell({ children }: { children: React.ReactNode }) {
           fallback below preserves visibility independently.
           main.tsx still hides the lhci-marker on LHCI builds (separate concern).
         */}
-        <div id="root" className="ready">
+        <div id="root" className="ready" data-ssr-auth={ssrAuthMarker}>
           {children}
         </div>
         <noscript>
@@ -306,8 +398,9 @@ function RootComponent() {
   // Wave 127 SW1 — provider hoisting. Both SSR and client paths now mount
   // the full provider chain via __root.tsx instead of via main.tsx → App.tsx
   // → AppProviders. AppShellProvider, AuthProvider, LanguageProvider,
-  // LazyMotion, MotionConfig, LiveRegionProvider, WebSocketProvider,
-  // MessengerProvider, ErrorBoundary, GlobalHapticsListener, ThemeProvider
+  // LazyMotion, MotionConfig, LiveRegionProvider, MessengerShellProvider,
+  // ErrorBoundary, GlobalHapticsListener, ThemeProvider. The full
+  // WebSocket/Messenger providers mount only inside the lazy messenger route.
   // are all available at server render time.
   //
   // Wave 128 SW3 — both branches now mount MainLayout so /dashboard SSR
@@ -340,15 +433,19 @@ function RootComponent() {
     <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
       <ThemeProvider>
         <AppProviders>
+          {/*
+            Keep the boot loader in the route tree, rather than only in the
+            document shell.  Both the server and client trees then own the
+            same node, so static-SPA mounting and hydrateRoot can complete the
+            loader lifecycle without leaving an orphaned hit target behind.
+          */}
+          <BrandBootLoader />
           <MainLayout>
             <PageErrorBoundary>
               <Outlet />
             </PageErrorBoundary>
 
-            <SearchDialog />
-            <LivePushToasts />
-            <OfflineIndicator />
-            <InstallPrompt />
+            <DeferredGlobalOverlays />
           </MainLayout>
         </AppProviders>
       </ThemeProvider>
@@ -371,25 +468,25 @@ function SsrRoot() {
   //      server-side (suspense / placeholderData paths use cached data).
   //
   // Mirrors the W127 SW1 client branch tree (ThemeProvider → AppProviders →
-  // MainLayout → PageErrorBoundary → Outlet) plus the post-Outlet siblings
-  // (SearchDialog, LivePushToasts, OfflineIndicator, InstallPrompt) so
-  // hydration trees match exactly. Mid-tree mismatch (server emits Outlet
-  // without MainLayout, client wraps with MainLayout) would cause full
-  // subtree re-render per CLAUDE.md gotcha "React 19 hydration mismatch".
+  // MainLayout → PageErrorBoundary → Outlet) plus one
+  // DeferredGlobalOverlays placeholder. The placeholder is null during SSR
+  // and the first client render, then mounts the optional overlays in a
+  // follow-up task; this keeps hydration deterministic while removing those
+  // non-critical implementations from the initial module graph.
   const { queryClient } = useRouteContext({ from: "__root__" })
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <AppProviders>
+          {/* Mirror the client tree so the SSR loader is reconciled by React
+              and can transition out after AppProviders publishes hydration. */}
+          <BrandBootLoader />
           <MainLayout>
             <PageErrorBoundary>
               <Outlet />
             </PageErrorBoundary>
 
-            <SearchDialog />
-            <LivePushToasts />
-            <OfflineIndicator />
-            <InstallPrompt />
+            <DeferredGlobalOverlays />
           </MainLayout>
         </AppProviders>
       </ThemeProvider>

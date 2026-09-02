@@ -18,12 +18,13 @@ export function MobileDrawerProfile({ user, onProfileClick, t }: MobileDrawerPro
 
   const avatarSource = user.avatar_url || ""
   const hasAvatar = Boolean(avatarSource)
+  const roleKey = user.role === "admin" ? "admin" : user.role === "teacher" ? "teacher" : "student"
 
   return (
     <button
       type="button"
       onClick={onProfileClick}
-      className="flex items-center gap-4 w-full rounded-2xl p-4 text-left transition-all duration-200 hover:bg-(--bg-surface-hover)/(--opacity-soft) cursor-pointer border-none"
+      className="flex w-full items-center gap-4 rounded-2xl border-none p-4 text-left transition-[transform,opacity,background-color] duration-200 hover:bg-(--bg-surface-hover)/(--opacity-soft) cursor-pointer"
       style={{
         background: "linear-gradient(135deg, var(--quick-action-icon-bg), transparent 60%)",
       }}
@@ -48,8 +49,8 @@ export function MobileDrawerProfile({ user, onProfileClick, t }: MobileDrawerPro
         <span className="font-bold text-base text-(--text-primary) truncate">{user.full_name}</span>
         {user.role && (
           <span className="inline-flex items-center gap-1.5 text-xs font-medium text-(--text-secondary) mt-0.5">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-(--nav-active-color) animate-pulse" />
-            {user.role === "admin" ? t("navigation:role.admin") : t("navigation:role.student")}
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-(--nav-active-color)" />
+            {t(`navigation:role.${roleKey}`)}
           </span>
         )}
       </div>

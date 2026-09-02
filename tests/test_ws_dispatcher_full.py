@@ -1,6 +1,6 @@
 """Comprehensive tests for app/api/ws/dispatcher.py — MessageDispatcher.
 
-Covers all message types: ping, typing, read, get_online, unknown.
+Covers direct-backend message types: ping, legacy read, get_online, unknown.
 Tests participant validation, admin checks, error handling, and audit logging.
 """
 
@@ -76,14 +76,12 @@ class TestDispatchRead:
     async def test_read_marks_chat_and_broadcasts(
         self, ws_dispatcher, mock_websocket, mock_user, mock_conn_manager
     ):
-        # Wave 203 SW4 — chat-level: bulk-mark via mark_messages_read, then
-        # broadcast a chat-level read frame to the other participant.
+        # Legacy direct-backend path: chat-level bulk-mark and live broadcast.
         chat_id = str(uuid.uuid4())
         read_at = datetime.now(UTC)
 
         mock_repo = MagicMock()
         mock_repo.check_participant = AsyncMock(return_value=True)
-        # Wave 210 G2 — the handler fetches chat_type to branch DM vs group.
         mock_repo.get_chat_type = AsyncMock(return_value="dm")
         mock_repo.mark_messages_read = AsyncMock(return_value=(read_at, 2))
 
@@ -151,17 +149,11 @@ class TestDispatchRead:
     async def test_read_no_unread_skips_broadcast(
         self, ws_dispatcher, mock_websocket, mock_user, mock_conn_manager
     ):
-        """When nothing new is marked read (affected == 0), no receipt is sent.
-
-        Wave 203 SW4 — the per-message "own message" guard is now the SQL filter
-        (sender_id != user_id) inside mark_messages_read, so the handler simply
-        skips the broadcast when affected == 0.
-        """
+        """When nothing new is marked read (affected == 0), no receipt is sent."""
         chat_id = str(uuid.uuid4())
 
         mock_repo = MagicMock()
         mock_repo.check_participant = AsyncMock(return_value=True)
-        # Wave 210 G2 — the handler awaits get_chat_type before mark_messages_read.
         mock_repo.get_chat_type = AsyncMock(return_value="dm")
         mock_repo.mark_messages_read = AsyncMock(return_value=(datetime.now(UTC), 0))
 
@@ -204,12 +196,7 @@ class TestDispatchRead:
     async def test_read_invalid_chat_id_format(
         self, ws_dispatcher, mock_websocket, mock_user, mock_conn_manager
     ):
-        """A malformed chat_id is rejected with an error frame (no DB work).
-
-        Wave 203 SW4 — the chat-level handler coerces chat_id to UUID up-front
-        (mirroring the typing handler); an invalid value short-circuits before
-        any session/repo call.
-        """
+        """A malformed chat_id is rejected with an error frame (no DB work)."""
         await ws_dispatcher.dispatch(
             mock_websocket,
             mock_user,

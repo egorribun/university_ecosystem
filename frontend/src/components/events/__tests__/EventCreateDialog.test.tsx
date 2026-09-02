@@ -5,11 +5,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 vi.mock("framer-motion", async () =>
   (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
 )
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
+const { useTranslationMock } = vi.hoisted(() => ({
+  useTranslationMock: vi.fn(() => ({
     t: (key: string) => key,
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  })),
+}))
+vi.mock("react-i18next", () => ({
+  useTranslation: useTranslationMock,
 }))
 // NEVER let the upload request reach MSW — module-mock the api fn directly.
 // vi.hoisted so the fn exists before the hoisted vi.mock factory runs.
@@ -20,7 +23,14 @@ const { uploadEventImage } = vi.hoisted(() => ({
 }))
 vi.mock("@/api/events", () => ({ uploadEventImage }))
 
-import { EventCreateDialog } from "@/components/events/EventCreateDialog"
+import {
+  EventCreateDialog,
+  canSubmitEventDraft,
+  firstSelectedFile,
+  hasInvalidEventDates,
+  invalidateUploadGeneration,
+  normalizeLocalizedValue,
+} from "@/components/events/EventCreateDialog"
 
 const baseProps = {
   open: true,
@@ -46,7 +56,51 @@ function fieldByLabel(labelText: string): HTMLElement {
 
 describe("EventCreateDialog", () => {
   beforeEach(() => {
-    uploadEventImage.mockClear()
+    uploadEventImage.mockReset()
+    uploadEventImage.mockResolvedValue("https://cdn.example.com/uploaded.png")
+  })
+
+  it("normalizes localized required values and rejects whitespace-only fallbacks", () => {
+    expect(normalizeLocalizedValue("  Primary title  ", "Fallback title")).toBe("Primary title")
+    expect(normalizeLocalizedValue("   ", "  Fallback title  ")).toBe("Fallback title")
+    expect(normalizeLocalizedValue(" ", "\t")).toBe("")
+  })
+
+  it("reports date errors only for complete, non-increasing ranges", () => {
+    expect(hasInvalidEventDates("", "2026-01-15T10:00")).toBe(false)
+    expect(hasInvalidEventDates("2026-01-15T10:00", "")).toBe(false)
+    expect(hasInvalidEventDates("2026-01-15T12:00", "2026-01-15T10:00")).toBe(true)
+    expect(hasInvalidEventDates("2026-01-15T10:00", "2026-01-15T12:00")).toBe(false)
+    expect(hasInvalidEventDates("2026-01-15T10:00", "2026-01-15T10:00")).toBe(true)
+  })
+
+  it("requires every submit precondition", () => {
+    const valid = {
+      normalizedTitle: "Title",
+      startsAt: "2026-01-15T10:00",
+      endsAt: "2026-01-15T11:00",
+      normalizedLocation: "Room",
+      imageUploading: false,
+      dateError: false,
+    } as const
+    expect(canSubmitEventDraft(valid)).toBe(true)
+    for (const key of ["normalizedTitle", "startsAt", "endsAt", "normalizedLocation"] as const) {
+      expect(canSubmitEventDraft({ ...valid, [key]: "" })).toBe(false)
+    }
+    expect(canSubmitEventDraft({ ...valid, imageUploading: true })).toBe(false)
+    expect(canSubmitEventDraft({ ...valid, dateError: true })).toBe(false)
+  })
+
+  it("returns only the first selected file and invalidates upload generations monotonically", () => {
+    const file = new File(["payload"], "cover.png", { type: "image/png" })
+    expect(firstSelectedFile(null)).toBeUndefined()
+    expect(firstSelectedFile(undefined)).toBeUndefined()
+    expect(firstSelectedFile([] as unknown as FileList)).toBeUndefined()
+    expect(firstSelectedFile([file] as unknown as FileList)).toBe(file)
+
+    const generation = { current: 4 }
+    invalidateUploadGeneration(generation)
+    expect(generation.current).toBe(5)
   })
 
   it("renders nothing when open=false", () => {
@@ -61,6 +115,20 @@ describe("EventCreateDialog", () => {
     expect(screen.getByText("events:form.location")).toBeInTheDocument()
     expect(screen.getByText("events:form.start")).toBeInTheDocument()
     expect(screen.getByText("events:form.end")).toBeInTheDocument()
+    expect(screen.getByText("events:form.description")).toBeInTheDocument()
+    expect(screen.getByText("events:form.type")).toBeInTheDocument()
+    expect(screen.getByText("events:form.speaker")).toBeInTheDocument()
+    expect(screen.getByText("events:form.image")).toBeInTheDocument()
+    expect(screen.getByText("events:form.uploadImage")).toBeInTheDocument()
+    expect(useTranslationMock).toHaveBeenCalledWith(["events", "common"])
+    expect(fieldByLabel("events:form.title")).toHaveValue("")
+    expect(fieldByLabel("events:form.description")).toHaveValue("")
+    expect(fieldByLabel("events:form.type")).toHaveValue("")
+    expect(fieldByLabel("events:form.location")).toHaveValue("")
+    expect(fieldByLabel("events:form.speaker")).toHaveValue("")
+    expect(fieldByLabel("events:form.start")).toHaveValue("")
+    expect(fieldByLabel("events:form.end")).toHaveValue("")
+    expect(screen.queryByText("events:form.errors.endsBeforeStarts")).not.toBeInTheDocument()
     // Submit disabled until required fields are filled
     expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeDisabled()
   })
@@ -70,6 +138,7 @@ describe("EventCreateDialog", () => {
     expect(screen.getByText("events:form.title_en")).toBeInTheDocument()
     expect(screen.getByText("events:form.location_en")).toBeInTheDocument()
     expect(screen.getByText("events:form.description_en")).toBeInTheDocument()
+    expect(screen.getByText("events:form.type_en")).toBeInTheDocument()
   })
 
   it("updates optional description, type, and speaker fields", async () => {
@@ -108,6 +177,26 @@ describe("EventCreateDialog", () => {
     expect(draft.ends_at).toBe("2026-01-15T12:00")
     // handleSubmit also closes the dialog
     expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ["title", "events:form.title"],
+    ["location", "events:form.location"],
+    ["start", "events:form.start"],
+    ["end", "events:form.end"],
+  ] as const)("keeps create disabled when the required %s is missing", (_field, missingLabel) => {
+    render(<EventCreateDialog {...baseProps} />)
+    const values: Record<string, string> = {
+      "events:form.title": "Required title",
+      "events:form.location": "Required room",
+      "events:form.start": "2026-01-15T10:00",
+      "events:form.end": "2026-01-15T11:00",
+    }
+    for (const [label, value] of Object.entries(values)) {
+      if (label !== missingLabel) fireEvent.change(fieldByLabel(label), { target: { value } })
+    }
+
+    expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeDisabled()
   })
 
   it("shows the end-before-start validation error and keeps submit disabled", async () => {
@@ -251,11 +340,312 @@ describe("EventCreateDialog", () => {
   })
 
   it("ignores a file-input change when no file was selected", () => {
+    // Keep the invalid-file mutation deterministic: Stryker's `if (file)` ->
+    // `if (true)` must reach the upload path without jsdom throwing because it
+    // does not provide URL.createObjectURL. The production contract remains
+    // unchanged: an empty selection must never create a preview or upload.
+    const urlCtor = URL as unknown as {
+      createObjectURL?: (obj: unknown) => string
+      revokeObjectURL?: (url: string) => void
+    }
+    const previousCreate = urlCtor.createObjectURL
+    const previousRevoke = urlCtor.revokeObjectURL
+    const createObjectURL = vi
+      .fn<(object: unknown) => string>()
+      .mockReturnValue("blob:unexpected-empty-selection")
+    const revokeObjectURL = vi.fn()
+    urlCtor.createObjectURL = createObjectURL
+    urlCtor.revokeObjectURL = revokeObjectURL
+
+    try {
+      render(<EventCreateDialog {...baseProps} />)
+      const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+
+      fireEvent.change(fileInput, { target: { files: [] } })
+      fireEvent.change(fileInput, { target: { files: null } })
+
+      expect(createObjectURL).not.toHaveBeenCalled()
+      expect(uploadEventImage).not.toHaveBeenCalled()
+    } finally {
+      urlCtor.createObjectURL = previousCreate
+      urlCtor.revokeObjectURL = previousRevoke
+    }
+  })
+
+  it("keeps an in-flight upload valid across ordinary draft edits", async () => {
+    let resolveUpload!: (url: string) => void
+    uploadEventImage.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveUpload = resolve
+        })
+    )
+
+    const urlCtor = URL as unknown as {
+      createObjectURL?: (obj: unknown) => string
+      revokeObjectURL?: (url: string) => void
+    }
+    const previousCreate = urlCtor.createObjectURL
+    const previousRevoke = urlCtor.revokeObjectURL
+    urlCtor.createObjectURL = vi.fn(() => "blob:editing")
+    urlCtor.revokeObjectURL = vi.fn()
+
+    try {
+      const user = userEvent.setup()
+      render(<EventCreateDialog {...baseProps} />)
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      await user.upload(input, new File(["x"], "editing.png", { type: "image/png" }))
+      await user.type(fieldByLabel("events:form.title"), "Draft edit")
+
+      resolveUpload("https://cdn.example.com/editing.png")
+      await waitFor(() => expect(screen.getByText("events:form.imageSelected")).toBeInTheDocument())
+      expect(screen.queryByText("common:statuses.uploading")).not.toBeInTheDocument()
+    } finally {
+      urlCtor.createObjectURL = previousCreate
+      urlCtor.revokeObjectURL = previousRevoke
+    }
+  })
+
+  it("does not let a stale upload clear a newer upload's pending state", async () => {
+    let resolveFirst!: (url: string) => void
+    const firstUpload = new Promise<string>((resolve) => {
+      resolveFirst = resolve
+    })
+    uploadEventImage
+      .mockImplementationOnce(() => firstUpload)
+      .mockImplementationOnce(() => new Promise<string>(() => undefined))
+
+    const urlCtor = URL as unknown as {
+      createObjectURL?: (obj: unknown) => string
+      revokeObjectURL?: (url: string) => void
+    }
+    const previousCreate = urlCtor.createObjectURL
+    const previousRevoke = urlCtor.revokeObjectURL
+    urlCtor.createObjectURL = vi
+      .fn<(obj: unknown) => string>()
+      .mockReturnValueOnce("blob:first")
+      .mockReturnValueOnce("blob:second")
+    urlCtor.revokeObjectURL = vi.fn()
+
+    try {
+      const user = userEvent.setup()
+      render(<EventCreateDialog {...baseProps} />)
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      await user.upload(input, new File(["a"], "first.png", { type: "image/png" }))
+      await user.upload(input, new File(["b"], "second.png", { type: "image/png" }))
+      expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument()
+
+      resolveFirst("https://cdn.example.com/stale.png")
+      await act(async () => {
+        await firstUpload
+      })
+      expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument()
+    } finally {
+      urlCtor.createObjectURL = previousCreate
+      urlCtor.revokeObjectURL = previousRevoke
+    }
+  })
+
+  it("revokes no preview when closing without an image", () => {
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    const { unmount } = render(<EventCreateDialog {...baseProps} />)
+
+    unmount()
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+    revokeObjectURL.mockRestore()
+  })
+
+  it("clears upload state when the dialog is closed and reopened", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<EventCreateDialog {...baseProps} />)
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    const urlCtor = URL as unknown as {
+      createObjectURL?: (obj: unknown) => string
+      revokeObjectURL?: (url: string) => void
+    }
+    const previousCreate = urlCtor.createObjectURL
+    const previousRevoke = urlCtor.revokeObjectURL
+    urlCtor.createObjectURL = vi.fn(() => "blob:close")
+    urlCtor.revokeObjectURL = vi.fn()
+
+    try {
+      // Start a pending upload, then close while it is still in flight.
+      uploadEventImage.mockImplementationOnce(() => new Promise<string>(() => undefined))
+      await user.upload(input, new File(["x"], "close.png", { type: "image/png" }))
+      expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument()
+      await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+
+      rerender(<EventCreateDialog {...baseProps} open />)
+      expect(screen.getByText("events:form.uploadImage")).toBeInTheDocument()
+      expect(document.querySelector<HTMLInputElement>('input[type="file"]')).not.toBeDisabled()
+    } finally {
+      urlCtor.createObjectURL = previousCreate
+      urlCtor.revokeObjectURL = previousRevoke
+    }
+  })
+
+  it("keeps Russian and English localized drafts independent", async () => {
+    const user = userEvent.setup()
+    const onCreated = vi.fn()
+    const { rerender } = render(
+      <EventCreateDialog {...baseProps} language="en" onCreated={onCreated} />
+    )
+
+    await user.type(fieldByLabel("events:form.title_en"), "English title")
+    await user.type(fieldByLabel("events:form.location_en"), "English hall")
+
+    rerender(<EventCreateDialog {...baseProps} language="ru" onCreated={onCreated} />)
+    expect(fieldByLabel("events:form.title")).toHaveValue("")
+    expect(fieldByLabel("events:form.location")).toHaveValue("")
+    await user.type(fieldByLabel("events:form.title"), "Русское название")
+    await user.type(fieldByLabel("events:form.location"), "Русский зал")
+
+    rerender(<EventCreateDialog {...baseProps} language="en" onCreated={onCreated} />)
+    expect(fieldByLabel("events:form.title_en")).toHaveValue("English title")
+    expect(fieldByLabel("events:form.location_en")).toHaveValue("English hall")
+
+    rerender(<EventCreateDialog {...baseProps} language="ru" onCreated={onCreated} />)
+    expect(fieldByLabel("events:form.title")).toHaveValue("Русское название")
+    expect(fieldByLabel("events:form.location")).toHaveValue("Русский зал")
+  })
+
+  it("resets the draft immediately when the dialog is closed", async () => {
+    const user = userEvent.setup()
+    const onClose = vi.fn()
+    render(<EventCreateDialog {...baseProps} onClose={onClose} />)
+
+    await user.type(fieldByLabel("events:form.title"), "Temporary title")
+    await user.type(fieldByLabel("events:form.location"), "Temporary hall")
+    await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+
+    expect(onClose).toHaveBeenCalledOnce()
+    expect(fieldByLabel("events:form.title")).toHaveValue("")
+    expect(fieldByLabel("events:form.location")).toHaveValue("")
+  })
+
+  it("rejects equal start and end timestamps", async () => {
+    const user = userEvent.setup()
     render(<EventCreateDialog {...baseProps} />)
-    const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
 
-    fireEvent.change(fileInput, { target: { files: [] } })
+    await user.type(fieldByLabel("events:form.title"), "Equal dates")
+    await user.type(fieldByLabel("events:form.location"), "Hall E")
+    await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+    await user.type(fieldByLabel("events:form.end"), "2026-01-15T10:00")
 
-    expect(uploadEventImage).not.toHaveBeenCalled()
+    expect(screen.getByText("events:form.errors.endsBeforeStarts")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeDisabled()
+  })
+
+  it("blocks submission while an image upload is still pending", async () => {
+    let resolveUpload!: (url: string) => void
+    const pendingUpload = new Promise<string>((resolve) => {
+      resolveUpload = resolve
+    })
+    uploadEventImage.mockImplementationOnce(() => pendingUpload)
+
+    const urlCtor = URL as unknown as {
+      createObjectURL?: (obj: unknown) => string
+      revokeObjectURL?: (url: string) => void
+    }
+    const previousCreate = urlCtor.createObjectURL
+    const previousRevoke = urlCtor.revokeObjectURL
+    urlCtor.createObjectURL = vi.fn(() => "blob:pending")
+    urlCtor.revokeObjectURL = vi.fn()
+
+    try {
+      const user = userEvent.setup()
+      render(<EventCreateDialog {...baseProps} />)
+      const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      await user.type(fieldByLabel("events:form.title"), "Pending upload")
+      await user.type(fieldByLabel("events:form.location"), "Hall pending")
+      await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+      await user.type(fieldByLabel("events:form.end"), "2026-01-15T11:00")
+      await user.upload(fileInput, new File(["x"], "pending.png", { type: "image/png" }))
+      expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeDisabled()
+
+      resolveUpload("https://cdn.example.com/pending.png")
+      await waitFor(() => expect(screen.getByText("events:form.imageSelected")).toBeInTheDocument())
+      expect(screen.queryByText("common:statuses.uploading")).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeEnabled()
+    } finally {
+      urlCtor.createObjectURL = previousCreate
+      urlCtor.revokeObjectURL = previousRevoke
+    }
+  })
+
+  it("submits an English-only title and location through normalization", async () => {
+    const user = userEvent.setup()
+    const onCreated = vi.fn()
+    render(<EventCreateDialog {...baseProps} language="en" onCreated={onCreated} />)
+
+    await user.type(fieldByLabel("events:form.title_en"), "Only English")
+    await user.type(fieldByLabel("events:form.location_en"), "English room")
+    await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+    await user.type(fieldByLabel("events:form.end"), "2026-01-15T11:00")
+
+    const submit = screen.getByRole("button", { name: "common:buttons.create" })
+    expect(submit).toBeEnabled()
+    await user.click(submit)
+    expect(onCreated).toHaveBeenCalledWith(
+      expect.objectContaining({ title_en: "Only English", location_en: "English room" })
+    )
+  })
+
+  it("also enables a Russian-only draft when English fallbacks are empty", async () => {
+    const user = userEvent.setup()
+    const onCreated = vi.fn()
+    render(<EventCreateDialog {...baseProps} language="ru" onCreated={onCreated} />)
+
+    await user.type(fieldByLabel("events:form.title"), "Русское название")
+    await user.type(fieldByLabel("events:form.location"), "Русский зал")
+    await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+    await user.type(fieldByLabel("events:form.end"), "2026-01-15T11:00")
+
+    expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeEnabled()
+    await user.click(screen.getByRole("button", { name: "common:buttons.create" }))
+    expect(onCreated).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Русское название", location: "Русский зал" })
+    )
+  })
+
+  it("keeps date validation clear until both timestamps are present", async () => {
+    const user = userEvent.setup()
+    render(<EventCreateDialog {...baseProps} />)
+
+    await user.type(fieldByLabel("events:form.title"), "Partial dates")
+    await user.type(fieldByLabel("events:form.location"), "Hall F")
+    await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+
+    expect(screen.queryByText("events:form.errors.endsBeforeStarts")).not.toBeInTheDocument()
+  })
+
+  it("invalidates an upload when the dialog unmounts before the request resolves", async () => {
+    let resolveUpload!: (url: string) => void
+    const pending = new Promise<string>((resolve) => {
+      resolveUpload = resolve
+    })
+    uploadEventImage.mockImplementationOnce(() => pending)
+
+    const createObjectUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:unmounted")
+    const revokeObjectUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    try {
+      const user = userEvent.setup()
+      const { unmount } = render(<EventCreateDialog {...baseProps} />)
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      await user.upload(input, new File(["x"], "unmounted.png", { type: "image/png" }))
+      expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument()
+
+      unmount()
+      await act(async () => {
+        resolveUpload("https://cdn.example.com/stale.png")
+        await pending
+      })
+
+      expect(revokeObjectUrl).toHaveBeenCalledWith("blob:unmounted")
+    } finally {
+      createObjectUrl.mockRestore()
+      revokeObjectUrl.mockRestore()
+    }
   })
 })

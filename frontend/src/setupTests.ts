@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import "vitest"
 import "@testing-library/jest-dom/vitest"
 import "fake-indexeddb/auto"
 import { TextEncoder, TextDecoder } from "node:util"
@@ -17,7 +16,7 @@ import {
   resetTestNews,
 } from "./tests/mocks/handlers"
 import i18n from "./i18n/config"
-import { resetEtagCache } from "./api/client"
+import { etagCache, responseCache } from "./api/interceptors/etagCache"
 import { validateRequestBody, validateResponseBody } from "./tests/contractValidator"
 
 declare module "vitest" {
@@ -181,7 +180,8 @@ afterEach(async () => {
   resetTestNews()
   resetTestMfa()
   resetAdminDeadLetterJobs()
-  resetEtagCache()
+  etagCache.clear()
+  responseCache.clear()
   await i18n.changeLanguage("en")
   if (typeof document !== "undefined") {
     document.documentElement.lang = "en"
@@ -209,28 +209,33 @@ if (typeof window !== "undefined") {
     }
 
     if (typeof window.Storage !== "undefined") {
-      window.Storage.prototype.getItem = vi.fn(function (this: any, key: string) {
+      // Keep these baseline implementations as plain functions. `vi.spyOn`
+      // must be able to replace and then restore them between tests. Wrapping
+      // the baseline in `vi.fn` makes `spyOn` reuse the same mock object, so a
+      // test-specific throwing implementation leaks into later tests even
+      // after `vi.restoreAllMocks()`.
+      window.Storage.prototype.getItem = function (this: any, key: string) {
         const store = getStore(this)
-        return store[key] || null
-      })
-      window.Storage.prototype.setItem = vi.fn(function (this: any, key: string, value: string) {
+        return store[key] ?? null
+      }
+      window.Storage.prototype.setItem = function (this: any, key: string, value: string) {
         const store = getStore(this)
         store[key] = String(value)
-      })
-      window.Storage.prototype.removeItem = vi.fn(function (this: any, key: string) {
+      }
+      window.Storage.prototype.removeItem = function (this: any, key: string) {
         const store = getStore(this)
         delete store[key]
-      })
-      window.Storage.prototype.clear = vi.fn(function (this: any) {
+      }
+      window.Storage.prototype.clear = function (this: any) {
         const store = getStore(this)
         for (const k of Object.keys(store)) {
           delete store[k]
         }
-      })
-      window.Storage.prototype.key = vi.fn(function (this: any, index: number) {
+      }
+      window.Storage.prototype.key = function (this: any, index: number) {
         const store = getStore(this)
-        return Object.keys(store)[index] || null
-      })
+        return Object.keys(store)[index] ?? null
+      }
       Object.defineProperty(window.Storage.prototype, "length", {
         get(this: any) {
           const store = getStore(this)
@@ -298,7 +303,10 @@ if (typeof window !== "undefined") {
 
   Object.defineProperty(window, "matchMedia", {
     writable: true,
-    value: vi.fn().mockImplementation((query) => ({
+    // Keep the shared baseline as a plain function. `restoreMocks` restores
+    // spies between tests and would otherwise erase a `vi.fn` implementation,
+    // leaving later consumers with an undefined MediaQueryList.
+    value: (query: string) => ({
       matches: false,
       media: query,
       onchange: null,
@@ -307,7 +315,7 @@ if (typeof window !== "undefined") {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
       dispatchEvent: vi.fn(),
-    })),
+    }),
   })
 
   if (!("IntersectionObserver" in window)) {

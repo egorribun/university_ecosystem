@@ -143,8 +143,8 @@ export function ActivityBarChart({
         <caption>{ariaLabel}</caption>
         <thead>
           <tr>
-            <th scope="col">{t("activity:charts.tableHeaders.subject")}</th>
-            <th scope="col">{t("activity:charts.tableHeaders.value")}</th>
+            <th scope="col">{t("activity:chartTableHeaders.subject")}</th>
+            <th scope="col">{t("activity:chartTableHeaders.value")}</th>
           </tr>
         </thead>
         <tbody>

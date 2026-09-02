@@ -5,35 +5,23 @@ import { FadeIn } from "@/components/ui/motion/FadeIn"
 import { motion } from "@/theme/tokens"
 
 export function LoginHero() {
-  const { t } = useTranslation(["auth"])
+  const { t } = useTranslation("auth")
 
   const heroHighlights = [
     {
       icon: Calendar,
-      title: t("auth:login.highlightSchedule", {
-        defaultValue: "Class schedule",
-      }),
-      description: t("auth:login.highlightScheduleDescription", {
-        defaultValue: "Up-to-date schedule of classes, exams, and consultations.",
-      }),
+      title: t("login.highlightSchedule"),
+      description: t("login.highlightScheduleDescription"),
     },
     {
       icon: Newspaper,
-      title: t("auth:login.highlightNews", {
-        defaultValue: "News and events",
-      }),
-      description: t("auth:login.highlightNewsDescription", {
-        defaultValue: "Stay up to date with university life and important events.",
-      }),
+      title: t("login.highlightNews"),
+      description: t("login.highlightNewsDescription"),
     },
     {
       icon: MessageCircle,
-      title: t("auth:login.highlightMessenger", {
-        defaultValue: "Messenger",
-      }),
-      description: t("auth:login.highlightMessengerDescription", {
-        defaultValue: "Chat with classmates and professors.",
-      }),
+      title: t("login.highlightMessenger"),
+      description: t("login.highlightMessengerDescription"),
     },
   ]
 
@@ -45,18 +33,13 @@ export function LoginHero() {
       className="auth-card-glass flex w-full min-w-0 flex-col justify-center p-8 lg:p-12"
     >
       <p className="text-sm font-semibold uppercase tracking-hero text-text-primary/(--opacity-strong)">
-        {t("auth:login.heroBadge", { defaultValue: "University Ecosystem" })}
+        {t("login.heroBadge")}
       </p>
       <h1 className="mt-4 text-4xl font-extrabold leading-tight text-text-primary sm:text-5xl">
-        {t("auth:login.heroHeading", {
-          defaultValue: "Welcome to the University system",
-        })}
+        {t("login.heroHeading")}
       </h1>
       <p className="mt-4 text-lg leading-relaxed text-text-secondary">
-        {t("auth:login.heroDescription", {
-          defaultValue:
-            "Schedule, news, events, and messenger — all in one place for students and professors.",
-        })}
+        {t("login.heroDescription")}
       </p>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2">
@@ -77,16 +60,16 @@ export function LoginHero() {
         <div className="auth-stat-glass w-auto px-6">
           <Zap className="mr-1 h-4 w-4 text-brand" strokeWidth={3} />
           <span className="text-xs font-extrabold uppercase tracking-widest-xl">
-            {t("auth:login.statFast", { defaultValue: "Fast" })}
+            {t("login.statFast")}
           </span>
           <span className="text-xs font-extrabold uppercase tracking-widest-xl ml-1">
-            {t("auth:login.statFastLabel", { defaultValue: "and secure" })}
+            {t("login.statFastLabel")}
           </span>
         </div>
         <div className="auth-stat-glass w-auto px-6">
           <Sparkles className="mr-1 h-4 w-4 text-brand" strokeWidth={3} />
           <span className="text-xs font-extrabold uppercase tracking-widest-xl">
-            {t("auth:login.statSmart", { defaultValue: "Smart interface" })}
+            {t("login.statSmart")}
           </span>
         </div>
       </div>

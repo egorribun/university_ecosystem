@@ -24,7 +24,7 @@ html:has(.brand-boot-loader) {
   animation: brand-boot-loader-scroll-unlock 1ms linear 12s forwards;
 }
 
-.brand-boot-loader ~ #root {
+#root:has(> .brand-boot-loader) {
   overflow-x: hidden;
   overflow-x: clip;
 }

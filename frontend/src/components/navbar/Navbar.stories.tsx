@@ -24,7 +24,6 @@ const MESSENGER_STUB = {
   presenceMap: {},
   isConnected: true,
   sendTyping: () => {},
-  sendRead: () => {},
   sendJoin: () => {},
   sendLeave: () => {},
   getTypingUsersForChat: () => [],

@@ -47,7 +47,9 @@ beforeEach(() => {
   mockToPng.mockResolvedValue("data:image/png;base64,test")
   mockLogError.mockReset()
   mockJsPDF.mockReset()
-  mockJsPDF.mockReturnValue(pdf)
+  mockJsPDF.mockImplementation(function MockJsPdf(this: typeof pdf) {
+    Object.assign(this, pdf)
+  })
 })
 
 afterEach(() => {

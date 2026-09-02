@@ -44,7 +44,7 @@ on:
   workflow_dispatch: #checkov:skip=CKV_GHA_7:manual input intentionally selects the audited URL subset
     inputs:
       urls:
-        description: "Comma-separated URL paths (empty = full default 9-URL sweep). Example: `,login,dashboard` for / + /login + /dashboard."
+        description: "Comma-separated URL paths (empty = full default 10-URL sweep). Example: `,login,dashboard` for / + /login + /dashboard."
         required: false
         type: string
         default: ""
@@ -97,7 +97,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
@@ -143,11 +143,12 @@ jobs:
       #   3. Invokes `npx lhci collect` against staticDistDir (no preview
       #      server needed)
       #   4. Invokes `npx lhci assert` with the .lighthouserc.js gates
-      #      (Perf warn@0.40, CLS error@0.10, A11y/BP/SEO error@0.95)
+      #      (strict Perf/A11y/BP/CWV budgets; public SEO error@0.90;
+      #       protected-route robots policy is checked by the runner)
       #   5. Lighthouse 13.1.0 via package.json override (W121 SW8 — fixes
       #      LanternError that blocked /activity + /map on 12.x)
       #
-      # LHCI_URLS env support: empty string (default) uses the full 9-URL
+      # LHCI_URLS env support: empty string (default) uses the full 10-URL
       # default sweep. User can override via workflow_dispatch input for
       # minimal subset (e.g. `,login,dashboard` for / + /login + /dashboard).
       - name: Run Lighthouse CI

@@ -58,9 +58,9 @@ class TestDomainEventFromDict:
     def test_mfa_enabled_from_dict(self):
         from app.core.events import MfaEnabled
 
-        data = {"user_id": str(uuid.uuid4()), "method": "webauthn"}
+        data = {"user_id": str(uuid.uuid4()), "method": "email_otp"}
         event = MfaEnabled.from_dict(data)
-        assert event.method == "webauthn"
+        assert event.method == "email_otp"
 
     def test_from_dict_strips_schema_version(self):
         from app.core.events import UserCreated

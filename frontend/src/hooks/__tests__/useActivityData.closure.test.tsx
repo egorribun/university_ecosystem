@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from "@testing-library/react"
+import { act, renderHook } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
 
 const mocks = vi.hoisted(() => {
@@ -107,17 +107,15 @@ describe("useActivityData defensive derivation branches", () => {
     })
   })
 
-  it("parses non-empty translated fallback arrays after a successful empty response", async () => {
+  it("does not replace an empty response with translated demo records", () => {
     mocks.params.p = "90d"
     mocks.translationMode.value = "valid"
     mocks.query.mockReturnValue({ data: null, isFetching: false, isSuccess: true })
 
     const { result } = renderHook(() => useActivityData())
-    await waitFor(() => {
-      expect(result.current.attendance?.recent).toHaveLength(1)
-      expect(result.current.grades?.recent).toHaveLength(1)
-      expect(result.current.participation?.recent).toHaveLength(1)
-    })
-    expect(result.current.heatmapData.get("2026-05-01")).toBe(3)
+    expect(result.current.attendance).toBeNull()
+    expect(result.current.grades).toBeNull()
+    expect(result.current.participation).toBeNull()
+    expect(result.current.heatmapData.size).toBe(0)
   })
 })

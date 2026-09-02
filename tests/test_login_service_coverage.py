@@ -1,4 +1,5 @@
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -390,14 +391,15 @@ async def test_collect_mfa_challenges_totp_flow(login_service):
     user = MagicMock()
     user.id = uuid4()
 
-    capabilities = {"totp": True, "webauthn": False}
+    capabilities = {"totp": True, "email_otp": False}
 
     with patch(
         "app.services.auth.mfa_coordinator.mfa.start_totp_verification",
         new_callable=AsyncMock,
     ) as mock_start:
         challenge = MagicMock()
-        challenge.token = "auth-token"
+        challenge.challenge_token = "auth-token"
+        challenge.challenge.revision = 1
         challenge.expires_at = datetime.now(UTC)
         mock_start.return_value = challenge
 
@@ -421,12 +423,12 @@ async def test_resolve_mfa_capabilities(login_service, mock_db):
     user.mfa_default_method = None
 
     # Service delegates to AuthRepository.get_user_mfa_capabilities
-    mock_db.get_user_mfa_capabilities.return_value = {"totp": True, "webauthn": False}
+    mock_db.get_user_mfa_capabilities.return_value = {"totp": True, "email_otp": False}
 
     caps = await login_service._resolve_mfa_capabilities(user)
 
     assert caps["totp"] is True
-    assert caps["webauthn"] is False
+    assert caps["email_otp"] is False
 
 
 async def test_resolve_mfa_capabilities_legacy_totp(login_service, mock_db):
@@ -435,47 +437,12 @@ async def test_resolve_mfa_capabilities_legacy_totp(login_service, mock_db):
     user.mfa_default_method = "totp"  # Trigger legacy check
 
     # Service delegates to AuthRepository.get_user_mfa_capabilities
-    mock_db.get_user_mfa_capabilities.return_value = {"totp": True, "webauthn": False}
+    mock_db.get_user_mfa_capabilities.return_value = {"totp": True, "email_otp": False}
 
     caps = await login_service._resolve_mfa_capabilities(user)
 
     assert caps["totp"] is True
-    assert caps["webauthn"] is False
-
-
-async def test_collect_mfa_challenges_webauthn_flow(login_service):
-    user = MagicMock()
-    user.id = uuid4()
-
-    capabilities = {"totp": False, "webauthn": True}
-
-    with patch(
-        "app.services.auth.mfa_coordinator.mfa.issue_challenge", new_callable=AsyncMock
-    ) as mock_issue:
-        challenge = MagicMock()
-        challenge.token = "webauthn-token"
-        challenge.expires_at = datetime.now(UTC)
-        mock_issue.return_value = challenge
-
-        # Mock WebAuthn service via correct path
-        with patch("app.services.webauthn.WebAuthnService") as MockService:
-            service = MockService.return_value
-            service.get_authentication_options = AsyncMock(
-                return_value={"challenge": "stuff"}
-            )
-
-            with patch(
-                "app.services.auth.mfa_coordinator.mfa.describe_challenge_attempts",
-                return_value=(0, 3, 3),
-            ):
-                challenges = await login_service._collect_mfa_challenges(
-                    user, "en", capabilities
-                )
-
-                assert len(challenges) == 1
-                assert challenges[0].method == "webauthn"
-                assert challenges[0].challenge_token == "webauthn-token"
-                assert challenges[0].challenge_expires_at == challenge.expires_at
+    assert caps["email_otp"] is False
 
 
 async def test_extract_client_info_forwarded(login_service):
@@ -509,9 +476,12 @@ async def test_mfa_coordinator_no_response():
     user.mfa_required = True
     user.mfa_default_method = "totp"
 
-    challenge = MagicMock()
-    challenge.token = "token"
-    challenge.expires_at = datetime.now(UTC)
+    challenge_row = MagicMock(attempt_count=0, revision=1)
+    challenge = SimpleNamespace(
+        challenge=challenge_row,
+        challenge_token="token",
+        expires_at=datetime.now(UTC),
+    )
 
     with (
         patch(
@@ -529,3 +499,48 @@ async def test_mfa_coordinator_no_response():
         )
         assert res is not None
         assert res.default_method == "totp"
+
+
+async def test_publish_completed_step_up_forwards_request_context(login_service):
+    """Step-up completion must preserve the request for audit/context binding."""
+
+    user = MagicMock()
+    session = MagicMock()
+    request = MagicMock()
+    publish = AsyncMock()
+    login_service.session_manager.publish_completed_step_up = publish
+
+    await login_service.publish_completed_step_up(
+        user=user,
+        session=session,
+        request=request,
+    )
+
+    publish.assert_awaited_once_with(user=user, session=session, request=request)
+
+
+async def test_complete_step_up_forwards_all_bound_context(login_service):
+    """Step-up completion must not drop the session or request binding."""
+
+    user = MagicMock()
+    session = MagicMock()
+    request = MagicMock()
+    expected = object()
+    complete = AsyncMock(return_value=expected)
+    login_service.session_manager.complete_step_up = complete
+
+    result = await login_service.complete_step_up(
+        user=user,
+        session=session,
+        request=request,
+        method="email_otp",
+    )
+
+    assert result is expected
+    complete.assert_awaited_once_with(
+        user=user,
+        session=session,
+        request=request,
+        db_session=login_service.db,
+        method="email_otp",
+    )

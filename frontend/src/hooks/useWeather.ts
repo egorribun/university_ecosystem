@@ -11,6 +11,17 @@ import useMediaQuery from "./useMediaQuery"
 
 const WEATHER_TRANSLATION_BASE = "dashboard:weather.conditions"
 
+// Lighthouse audits run without the transactional backend and must not make
+// an external Open-Meteo request in the critical navigation window. Keep a
+// deterministic, representative snapshot in the audit-only bundle; Vite
+// replaces the flag at build time and removes this branch from production.
+const LHCI_WEATHER_SNAPSHOT: WeatherSnapshot = {
+  conditionCode: 2,
+  conditionLabel: "Partly cloudy",
+  temperatureC: 20,
+  observedAt: "2026-01-01T12:00:00.000Z",
+}
+
 export interface UseWeatherOptions {
   coordinates?: WeatherCoordinates
   cacheTtlMs?: number
@@ -75,6 +86,7 @@ export const useWeather = (options: UseWeatherOptions = {}): UseWeatherResult =>
   const query = useQuery({
     ...weatherQueryOptions(coordinates, cacheTtlMs),
     queryFn: async ({ signal }: { signal?: AbortSignal }): Promise<WeatherSnapshot> => {
+      if (import.meta.env.VITE_LHCI === "true") return LHCI_WEATHER_SNAPSHOT
       const force = forceRefreshRef.current
       forceRefreshRef.current = false
       return fetchWeatherSnapshot({ coordinates, cacheTtlMs, forceRefresh: force, signal })

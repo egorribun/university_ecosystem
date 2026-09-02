@@ -114,6 +114,470 @@ def check_python_duplicates_and_imports(file_path: Path, errors: list[str]) -> s
         return set()
 
 
+_REPOSITORY_ROOT_NAMES = frozenset({"ROOT", "REPOSITORY_ROOT", "PROJECT_ROOT"})
+
+
+def _repository_root_parent_index(node: ast.AST) -> int | None:
+    if not isinstance(node, ast.Subscript):
+        return None
+    parents = node.value
+    if not (
+        isinstance(parents, ast.Attribute)
+        and parents.attr == "parents"
+        and isinstance(node.slice, ast.Constant)
+        and isinstance(node.slice.value, int)
+        and node.slice.value >= 0
+    ):
+        return None
+    resolved = parents.value
+    is_canonical = (
+        isinstance(resolved, ast.Call)
+        and not resolved.args
+        and not resolved.keywords
+        and isinstance(resolved.func, ast.Attribute)
+        and resolved.func.attr == "resolve"
+        and isinstance(resolved.func.value, ast.Call)
+        and isinstance(resolved.func.value.func, ast.Name)
+        and resolved.func.value.func.id == "Path"
+        and len(resolved.func.value.args) == 1
+        and isinstance(resolved.func.value.args[0], ast.Name)
+        and resolved.func.value.args[0].id == "__file__"
+    )
+    return node.slice.value if is_canonical else None
+
+
+def _is_valid_repository_root(node: ast.AST, file_path: Path) -> bool:
+    parent_index = _repository_root_parent_index(node)
+    if parent_index is None:
+        return False
+    try:
+        resolved_parent = file_path.resolve().parents[parent_index]
+    except IndexError:
+        return False
+    return resolved_parent == REPOSITORY_ROOT.resolve()
+
+
+_NAMESPACE_MUTATION_METHODS = frozenset(
+    {
+        "__delitem__",
+        "__init__",
+        "__ior__",
+        "__setitem__",
+        "clear",
+        "pop",
+        "popitem",
+        "setdefault",
+        "update",
+    }
+)
+
+
+def _is_direct_namespace_mapping(node: ast.AST, *, locals_are_module: bool) -> bool:
+    if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+        if node.func.id == "globals":
+            return True
+        if node.func.id == "locals":
+            return locals_are_module
+        if node.func.id == "vars":
+            return bool(node.args or node.keywords) or locals_are_module
+    # A lexical checker cannot prove which object owns an arbitrary __dict__.
+    # Treat direct mutation through one as a possible module namespace write.
+    return isinstance(node, ast.Attribute) and node.attr == "__dict__"
+
+
+def _is_direct_dynamic_namespace_call(
+    node: ast.Call, *, locals_are_module: bool
+) -> bool:
+    if isinstance(node.func, ast.Name) and node.func.id in {"eval", "exec"}:
+        return True
+    if not (
+        isinstance(node.func, ast.Attribute)
+        and node.func.attr in _NAMESPACE_MUTATION_METHODS
+    ):
+        return False
+    if _is_direct_namespace_mapping(
+        node.func.value, locals_are_module=locals_are_module
+    ):
+        return True
+    return (
+        isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "dict"
+        and bool(node.args)
+        and _is_direct_namespace_mapping(
+            node.args[0], locals_are_module=locals_are_module
+        )
+    )
+
+
+class _ComprehensionWalrusVisitor(ast.NodeVisitor):
+    """Collect walrus targets that escape a module-level comprehension."""
+
+    def __init__(self, names: set[str], module_effects: set[str]) -> None:
+        self.names = names
+        self.module_effects = module_effects
+
+    def visit_NamedExpr(self, node: ast.NamedExpr) -> None:
+        if isinstance(node.target, ast.Name):
+            self.names.add(node.target.id)
+        self.visit(node.value)
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        # A lambda created inside the comprehension evaluates its defaults in
+        # the comprehension's function scope; neither defaults nor body bind
+        # names in the surrounding module.
+        return
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if _is_direct_dynamic_namespace_call(node, locals_are_module=False):
+            self.module_effects.update(_REPOSITORY_ROOT_NAMES)
+        self.generic_visit(node)
+
+    def visit_Subscript(self, node: ast.Subscript) -> None:
+        if isinstance(node.ctx, (ast.Store, ast.Del)) and _is_direct_namespace_mapping(
+            node.value, locals_are_module=False
+        ):
+            self.module_effects.update(_REPOSITORY_ROOT_NAMES)
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if isinstance(node.ctx, (ast.Store, ast.Del)) and node.attr == "__dict__":
+            self.module_effects.update(_REPOSITORY_ROOT_NAMES)
+        self.generic_visit(node)
+
+
+class _ModuleBindingVisitor(ast.NodeVisitor):
+    """Collect bindings in the current module scope without entering child scopes."""
+
+    def __init__(self, *, locals_are_module: bool = True) -> None:
+        self.names: set[str] = set()
+        self.module_effects: set[str] = set()
+        self.locals_are_module = locals_are_module
+
+    def visit_Name(self, node: ast.Name) -> None:
+        if isinstance(node.ctx, (ast.Store, ast.Del)):
+            self.names.add(node.id)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        # ``name: Type`` records metadata in __annotations__, but does not bind
+        # name. An annotated assignment with a value does bind its target.
+        self.visit(node.annotation)
+        if node.value is not None:
+            self.visit(node.target)
+            self.visit(node.value)
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if _is_direct_dynamic_namespace_call(
+            node, locals_are_module=self.locals_are_module
+        ):
+            self.module_effects.update(_REPOSITORY_ROOT_NAMES)
+        self.generic_visit(node)
+
+    def visit_Subscript(self, node: ast.Subscript) -> None:
+        if isinstance(node.ctx, (ast.Store, ast.Del)) and _is_direct_namespace_mapping(
+            node.value, locals_are_module=self.locals_are_module
+        ):
+            self.module_effects.update(_REPOSITORY_ROOT_NAMES)
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node: ast.Attribute) -> None:
+        if isinstance(node.ctx, (ast.Store, ast.Del)) and node.attr == "__dict__":
+            self.module_effects.update(_REPOSITORY_ROOT_NAMES)
+        self.generic_visit(node)
+
+    def visit_ExceptHandler(self, node: ast.ExceptHandler) -> None:
+        # ``except ... as name`` stores its target as a string rather than a
+        # Name(Store) node, and deletes that binding when the handler exits.
+        if node.name is not None:
+            self.names.add(node.name)
+        self.generic_visit(node)
+
+    def visit_MatchAs(self, node: ast.MatchAs) -> None:
+        if node.name is not None:
+            self.names.add(node.name)
+        self.generic_visit(node)
+
+    def visit_MatchStar(self, node: ast.MatchStar) -> None:
+        if node.name is not None:
+            self.names.add(node.name)
+
+    def visit_MatchMapping(self, node: ast.MatchMapping) -> None:
+        if node.rest is not None:
+            self.names.add(node.rest)
+        self.generic_visit(node)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self.names.add(node.name)
+        self._visit_function_definition_expressions(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self.names.add(node.name)
+        self._visit_function_definition_expressions(node)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        self.names.add(node.name)
+        # Decorators, base classes, and class keywords are evaluated in the
+        # defining module. The class body and type parameters have child scopes.
+        for expression in (*node.decorator_list, *node.bases):
+            self.visit(expression)
+        for keyword in node.keywords:
+            self.visit(keyword.value)
+        self.module_effects.update(_class_module_effects(node))
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        # Defaults are evaluated where the lambda is created; parameters and
+        # its body belong to the lambda scope.
+        self._visit_arguments_defaults(node.args)
+
+    def visit_ListComp(self, node: ast.ListComp) -> None:
+        self._visit_comprehension(node, (node.elt,))
+
+    def visit_SetComp(self, node: ast.SetComp) -> None:
+        self._visit_comprehension(node, (node.elt,))
+
+    def visit_DictComp(self, node: ast.DictComp) -> None:
+        self._visit_comprehension(node, (node.key, node.value))
+
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+        self._visit_comprehension(node, (node.elt,))
+
+    def visit_Import(self, node: ast.Import) -> None:
+        for alias in node.names:
+            self.names.add(alias.asname or alias.name.split(".")[0])
+
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
+        for alias in node.names:
+            if alias.name == "*":
+                self.names.update(_REPOSITORY_ROOT_NAMES)
+            else:
+                self.names.add(alias.asname or alias.name)
+
+    def _visit_arguments_defaults(self, arguments: ast.arguments) -> None:
+        for default in arguments.defaults:
+            self.visit(default)
+        for default in arguments.kw_defaults:
+            if default is not None:
+                self.visit(default)
+
+    def _visit_function_definition_expressions(
+        self, node: ast.FunctionDef | ast.AsyncFunctionDef
+    ) -> None:
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        self._visit_arguments_defaults(node.args)
+
+    def _visit_comprehension(
+        self,
+        node: ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp,
+        result_expressions: tuple[ast.expr, ...],
+    ) -> None:
+        if not node.generators:
+            return
+        # Python evaluates only the outermost iterable in the defining scope.
+        # Comprehension targets are local, while PEP 572 walrus targets escape
+        # every nested comprehension to the nearest non-comprehension scope.
+        self.visit(node.generators[0].iter)
+        walrus_visitor = _ComprehensionWalrusVisitor(self.names, self.module_effects)
+        for expression in result_expressions:
+            walrus_visitor.visit(expression)
+        for index, generator in enumerate(node.generators):
+            if index:
+                walrus_visitor.visit(generator.iter)
+            for condition in generator.ifs:
+                walrus_visitor.visit(condition)
+
+
+class _ExactScopeGlobalVisitor(ast.NodeVisitor):
+    """Collect global declarations without descending into child code scopes."""
+
+    def __init__(self) -> None:
+        self.names: set[str] = set()
+
+    def visit_Global(self, node: ast.Global) -> None:
+        self.names.update(node.names)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        return
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        return
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> None:
+        return
+
+    def visit_Lambda(self, node: ast.Lambda) -> None:
+        return
+
+    def visit_ListComp(self, node: ast.ListComp) -> None:
+        return
+
+    def visit_SetComp(self, node: ast.SetComp) -> None:
+        return
+
+    def visit_DictComp(self, node: ast.DictComp) -> None:
+        return
+
+    def visit_GeneratorExp(self, node: ast.GeneratorExp) -> None:
+        return
+
+
+def _class_module_effects(node: ast.ClassDef) -> set[str]:
+    globals_visitor = _ExactScopeGlobalVisitor()
+    bindings_visitor = _ModuleBindingVisitor(locals_are_module=False)
+    for statement in node.body:
+        globals_visitor.visit(statement)
+        bindings_visitor.visit(statement)
+    return (
+        bindings_visitor.names & globals_visitor.names
+    ) | bindings_visitor.module_effects
+
+
+def _module_binding_names(statement: ast.stmt) -> set[str]:
+    visitor = _ModuleBindingVisitor()
+    visitor.visit(statement)
+    return visitor.names | visitor.module_effects
+
+
+def _direct_root_assignment(
+    statement: ast.stmt,
+) -> tuple[str, ast.expr] | None:
+    if (
+        isinstance(statement, ast.Assign)
+        and len(statement.targets) == 1
+        and isinstance(statement.targets[0], ast.Name)
+    ):
+        return statement.targets[0].id, statement.value
+    if (
+        isinstance(statement, ast.AnnAssign)
+        and isinstance(statement.target, ast.Name)
+        and statement.value is not None
+    ):
+        return statement.target.id, statement.value
+    return None
+
+
+def _static_repository_path_parts(
+    node: ast.AST, repository_root_names: set[str], file_path: Path
+) -> tuple[tuple[str, ...], bool] | None:
+    """Resolve the static prefix of a repository-relative ``Path`` expression."""
+    if _is_valid_repository_root(node, file_path):
+        return (), False
+    if isinstance(node, ast.Name) and node.id in repository_root_names:
+        return (), False
+
+    if isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div):
+        left = _static_repository_path_parts(
+            node.left, repository_root_names, file_path
+        )
+        if left is None:
+            return None
+        left_parts, has_dynamic_suffix = left
+        if has_dynamic_suffix:
+            # Once a dynamic segment appears, its value may contain separators.
+            # No later static segment can be proven repository-relative.
+            return None
+        if isinstance(node.right, ast.Constant) and isinstance(node.right.value, str):
+            right = tuple(
+                part
+                for part in node.right.value.replace("\\", "/").split("/")
+                if part not in {"", "."}
+            )
+            return left_parts + right, False
+        # A dynamic final segment still leaves a useful, verifiable directory
+        # prefix, e.g. ``ROOT / "alembic" / "versions" / migration_name``.
+        return left_parts, True
+
+    if (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "Path"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+        and isinstance(node.args[0].value, str)
+    ):
+        value = node.args[0].value.replace("\\", "/")
+        if re.match(r"^(?:[A-Za-z]:)?/", value):
+            return None
+        return (
+            tuple(part for part in value.split("/") if part not in {"", "."}),
+            False,
+        )
+
+    return None
+
+
+def find_python_repository_references(file_path: Path) -> set[str]:
+    """Return statically declared repository paths from a Python contract test.
+
+    The lexical contract fails closed for wildcard imports and direct dynamic
+    namespace operations (exec/eval, globals/locals/vars mappings, and direct
+    ``__dict__`` mutation). It cannot prove the purity of arbitrary calls or
+    follow namespace mappings through aliases; those are outside this static
+    boundary and require the ordinary test/code-review gates.
+    """
+    try:
+        tree = ast.parse(file_path.read_text(encoding="utf-8"), filename=str(file_path))
+    except Exception:
+        return set()
+
+    binding_counts = {name: 0 for name in _REPOSITORY_ROOT_NAMES}
+    canonical_statements: dict[str, ast.stmt] = {}
+    for statement in tree.body:
+        for name in _module_binding_names(statement) & _REPOSITORY_ROOT_NAMES:
+            binding_counts[name] += 1
+        assignment = _direct_root_assignment(statement)
+        if (
+            assignment is not None
+            and assignment[0] in _REPOSITORY_ROOT_NAMES
+            and _is_valid_repository_root(assignment[1], file_path)
+        ):
+            canonical_statements[assignment[0]] = statement
+
+    authoritative_statements = {
+        name: statement
+        for name, statement in canonical_statements.items()
+        if binding_counts[name] == 1
+    }
+
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
+    active_root_names: set[str] = set()
+    references: set[str] = set()
+    for statement in tree.body:
+        for node in ast.walk(statement):
+            parent = parents.get(node)
+            if (
+                isinstance(parent, ast.BinOp)
+                and isinstance(parent.op, ast.Div)
+                and parent.left is node
+            ):
+                continue
+            resolved = _static_repository_path_parts(node, active_root_names, file_path)
+            if resolved is not None and resolved[0]:
+                references.add("/".join(resolved[0]))
+        for name, binding_statement in authoritative_statements.items():
+            if binding_statement is statement:
+                active_root_names.add(name)
+    return references
+
+
+def _references_inventory_target(
+    repository_references: set[str], reference_paths: set[str]
+) -> bool:
+    for reference in repository_references:
+        normalized = reference.replace("\\", "/").rstrip("/")
+        if not normalized:
+            continue
+        if any(
+            candidate == normalized or candidate.startswith(normalized + "/")
+            for candidate in reference_paths
+        ):
+            return True
+    return False
+
+
 def check_go_duplicates(file_path: Path, errors: list[str]) -> None:
     try:
         content = file_path.read_text(encoding="utf-8")
@@ -216,6 +680,8 @@ def matches_source(
     allowed_orphans: list[str],
     imported_modules: set[str] | None = None,
     workflow_paths: set[str] | None = None,
+    repository_references: set[str] | None = None,
+    reference_paths: set[str] | None = None,
 ) -> bool:
     if matches_any_glob(test_path, allowed_orphans):
         return True
@@ -247,6 +713,15 @@ def matches_source(
             or "services" in imported_modules
             or "native" in imported_modules
             or "scripts" in imported_modules
+        ):
+            return True
+
+        # Contract tests often validate authored repository assets that are not
+        # executable runtime source: migrations, Helm charts, hooks, schemas,
+        # or quality scripts. Accept only AST-resolved Path expressions that
+        # point to a real non-test inventory target.
+        if repository_references and _references_inventory_target(
+            repository_references, reference_paths or set()
         ):
             return True
 
@@ -399,6 +874,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     errors = []
 
     source_paths = {f["path"] for f in files if f["classification"] == "source"}
+    reference_paths = {f["path"] for f in files if f["classification"] != "test"}
     # Workflows are classified as utilities. Keep them separate from ordinary
     # source paths so only the exact workflow-contract matcher may use them.
     workflow_paths = {
@@ -423,8 +899,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         # 2. Python duplicate and import checks
         imported_modules = None
+        repository_references = None
         if path_str.endswith(".py") and classification == "test":
             imported_modules = check_python_duplicates_and_imports(file_path, errors)
+            repository_references = find_python_repository_references(file_path)
 
         # 3. Orphan Tests Check
         if classification == "test":
@@ -434,6 +912,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 allowed_orphans,
                 imported_modules,
                 workflow_paths,
+                repository_references,
+                reference_paths,
             ):
                 errors.append(
                     f"ERROR: {path_str}: orphaned test file (no matching source file found)"

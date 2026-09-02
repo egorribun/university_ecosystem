@@ -21,9 +21,10 @@ type RuntimeProps = {
 
 const renderRuntime = (
   ensureSessionSigningKey: () => Promise<string | null>,
-  initialSigningKey: string | null = signingKey
+  initialSigningKey: string | null = signingKey,
+  providedQueryClient?: ReturnType<typeof createQueryClient>
 ) => {
-  const queryClient = createQueryClient()
+  const queryClient = providedQueryClient ?? createQueryClient()
   const updateSessionSigningKey = vi.fn()
   const signingKeyRef = { current: initialSigningKey } as MutableRefObject<string | null>
   const signingKeyPromiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
@@ -50,6 +51,50 @@ afterEach(() => {
 })
 
 describe("useProfileSync runtime defensive paths", () => {
+  it("uses the role-only SSR hint during browser hydration", () => {
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(new Promise(() => undefined) as never)
+    const signingKeyRef = { current: null } as MutableRefObject<string | null>
+    const promiseRef = { current: null } as MutableRefObject<Promise<string | null> | null>
+    const ensureSessionSigningKey = vi.fn(async () => null)
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+
+    const view = renderHook(
+      () =>
+        useProfileSync(vi.fn(), signingKeyRef, promiseRef, ensureSessionSigningKey, {
+          isAuth: true,
+          user: { role: "teacher" },
+        }),
+      { wrapper }
+    )
+
+    expect(view.result.current.user).toMatchObject({ id: "ssr-stub", role: "teacher" })
+    view.unmount()
+  })
+
+  it("skips cross-tab cache synchronization when the browser runtime is incomplete", () => {
+    const originalWindow = globalThis.window
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(new Promise(() => undefined) as never)
+    // A server-like global can expose a document object while lacking a
+    // location. The cache listener must fail closed instead of subscribing.
+    vi.stubGlobal("window", { document: globalThis.document, location: undefined })
+
+    try {
+      const view = renderRuntime(
+        vi.fn(async () => null),
+        null,
+        queryClient
+      )
+      expect(view.result.current.loading).toBe(true)
+      view.unmount()
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+    }
+  })
+
   it("uses the LHCI user without fetching the profile", async () => {
     vi.stubEnv("VITE_LHCI", "true")
     const getSpy = vi.spyOn(api, "get")
@@ -59,9 +104,67 @@ describe("useProfileSync runtime defensive paths", () => {
       null
     )
 
+    // The synthetic audit identity must be available during the very first
+    // client render.  Waiting for the effect would leave SSR markup hydrated
+    // with an anonymous user and postpone the first meaningful paint until
+    // React commits the follow-up state update.
+    expect(result.current.user?.id).toBe("lhci-mock-user")
+    expect(result.current.loading).toBe(false)
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(result.current.user?.id).toBe("lhci-mock-user")
     await waitFor(() => expect(result.current.user?.id).toBe("lhci-mock-user"))
     expect(result.current.loading).toBe(false)
     expect(getSpy).not.toHaveBeenCalled()
+  })
+
+  it("restores the synthetic user when an LHCI render was replaced", async () => {
+    vi.stubEnv("VITE_LHCI", "true")
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(new Promise(() => undefined) as never)
+    const view = renderRuntime(
+      vi.fn(async () => null),
+      null,
+      queryClient
+    )
+    expect(view.result.current.user?.id).toBe("lhci-mock-user")
+
+    await act(async () => {
+      view.result.current.setUser({ ...testUser, id: "temporary-user" } as never)
+      await Promise.resolve()
+    })
+
+    const replacementEnsure = vi.fn(async () => null)
+    view.rerender({ ensureSessionSigningKey: replacementEnsure })
+    await waitFor(() => expect(view.result.current.user?.id).toBe("lhci-mock-user"))
+    view.unmount()
+  })
+
+  it("starts a cold profile fetch after an authenticated audit state is cleared", async () => {
+    vi.stubEnv("VITE_LHCI", "true")
+    const queryClient = createQueryClient()
+    vi.spyOn(queryClient, "fetchQuery").mockReturnValue(new Promise(() => undefined) as never)
+    const view = renderRuntime(
+      vi.fn(async () => null),
+      null,
+      queryClient
+    )
+    expect(view.result.current.user?.id).toBe("lhci-mock-user")
+
+    // Switch back to the normal runtime and clear the synthetic identity. A
+    // dependency change then exercises the cold-start condition: no user,
+    // no cache, not initializing, and no previous fetch attempt.
+    vi.stubEnv("VITE_LHCI", "false")
+    await act(async () => {
+      view.result.current.setUser(null)
+      await Promise.resolve()
+    })
+    view.rerender({ ensureSessionSigningKey: vi.fn(async () => null) })
+
+    await waitFor(() => expect(view.result.current.loading).toBe(true))
+    expect(queryClient.fetchQuery).toHaveBeenCalled()
+    view.unmount()
   })
 
   it("swallows a localStorage exception thrown during cache migration", async () => {

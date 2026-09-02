@@ -106,6 +106,13 @@ if (import.meta.env.VITE_LHCI === "true") {
 // Hook the generated client to our customized axios instance
 generatedClient.setConfig({
   axios: api,
+  // The generated singleton starts with baseURL="/". Keeping that value
+  // makes its URL builder concatenate "/" + "/api/v1/..." into the
+  // protocol-relative "//api/v1/...", which browsers interpret as host
+  // "api". An empty override delegates base URL ownership to our configured
+  // Axios instance; the interceptor below then normalizes the duplicated API
+  // prefix while preserving a same-origin path.
+  baseURL: "",
 })
 
 export const resetEtagCache = () => {
@@ -185,6 +192,11 @@ export const ensureCsrfCookie = (): Promise<void> => {
   // Node runtime gets the Cookie header via W133 SW1 globalThis.__ssrCookieGetter__
   // (the SSR caller already has the cookie chain from the incoming request).
   if (typeof document === "undefined") return Promise.resolve()
+  // LHCI builds use a deterministic, side-effect-free Axios adapter and do
+  // not have a backend service behind the preview server.  Do not bypass that
+  // contract with a real browser `fetch` which can wait for the network
+  // timeout on every audited route; production builds never set this flag.
+  if (import.meta.env.VITE_LHCI === "true") return Promise.resolve()
   // Test env skip — vitest sets `import.meta.env.MODE === "test"` and tests
   // mount AuthContext.Provider with real auth (mocked). Hitting the CSRF
   // endpoint in tests would trip MSW unhandled-request warnings + risk
@@ -297,9 +309,18 @@ api.interceptors.request.use(async (config) => {
   // contains the access_token_v2 HttpOnly cookie.
   if (typeof window === "undefined") {
     const cookie = globalThis.__ssrCookieGetter__?.()
-    if (cookie && cookie.length > 0) {
+    const fingerprintHeaders = globalThis.__ssrFingerprintHeadersGetter__?.()
+    if (cookie || fingerprintHeaders) {
       const headers = AxiosHeaders.from(config.headers)
-      headers.set("Cookie", cookie)
+      if (cookie && cookie.length > 0) {
+        headers.set("Cookie", cookie)
+      }
+      if (fingerprintHeaders?.userAgent) {
+        headers.set("User-Agent", fingerprintHeaders.userAgent)
+      }
+      if (fingerprintHeaders?.acceptLanguage) {
+        headers.set("Accept-Language", fingerprintHeaders.acceptLanguage)
+      }
       config.headers = headers
     }
   }
@@ -340,6 +361,7 @@ api.interceptors.response.use(
   },
   async (error) => {
     const config = error?.config as ApiRequestConfig | undefined
+    const responseStatus = error?.response?.status
     _cleanupIdempotencyKey(config)
     // @ts-expect-error - axios config bridge
     releaseClientQueueSlot(config)
@@ -348,12 +370,12 @@ api.interceptors.response.use(
       updateTraceContext(error.response.headers as AxiosHeaders)
     }
 
-    if (config?.etagCacheKey && error?.response?.status >= 400 && error.response.status !== 304) {
+    if (config?.etagCacheKey && responseStatus >= 400) {
       etagCache.delete(config.etagCacheKey)
     }
 
-    if (error?.response?.status === 429 && config && !config.skipRateLimitQueue) {
-      const delay = getRetryDelay(error.response?.headers)
+    if (responseStatus === 429 && config && !config.skipRateLimitQueue) {
+      const delay = getRetryDelay(error.response.headers)
       scheduleRateLimitWindow(delay)
 
       const retryCount = config.__rateLimitRetryCount ?? 0
@@ -365,7 +387,7 @@ api.interceptors.response.use(
       }
     }
 
-    if (error?.response?.status === 401) {
+    if (responseStatus === 401) {
       const headers = (config?.headers ?? {}) as Record<string, unknown>
       if (headers[SKIP_UNAUTHORIZED_HEADER]) {
         delete headers[SKIP_UNAUTHORIZED_HEADER]

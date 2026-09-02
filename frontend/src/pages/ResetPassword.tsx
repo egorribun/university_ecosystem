@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, type FormEvent } from "react"
 import api from "@/api/client"
 import { useParams, useSearch, Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { m, AnimatePresence } from "framer-motion"
+import "@/styles/tokens/auth.css"
 import {
   Eye as Visibility,
   EyeOff as VisibilityOff,
@@ -20,6 +21,11 @@ import { ProgressBar } from "@/components/ui"
 import AuthBackdrop from "@/components/auth/AuthBackdrop"
 import useMediaQuery from "@/hooks/useMediaQuery"
 import { newPasswordSchema, type NewPasswordValues } from "@/features/auth/schemas"
+import { analyzePasswordStrength } from "@/utils/passwordStrength"
+import {
+  captureActiveTelemetryContext,
+  type CapturedTelemetryContext,
+} from "@/utils/telemetryContext"
 
 const RESET_URL = "/password/reset"
 const STRENGTH_VALUES = [10, 30, 55, 75, 100]
@@ -36,18 +42,24 @@ async function sha1Hex(str: string) {
 const PWNED_API_URL = "https://api.pwnedpasswords.com/range/"
 const HASH_PREFIX_LEN = 5
 
-async function isPwnedPassword(pwd: string) {
+async function isPwnedPassword(pwd: string, signal: AbortSignal) {
+  signal.throwIfAborted()
   const hash = await sha1Hex(pwd)
+  signal.throwIfAborted()
   const prefix = hash.slice(0, HASH_PREFIX_LEN)
   const suffix = hash.slice(HASH_PREFIX_LEN)
-  const resp = await fetch(`${PWNED_API_URL}${prefix}`)
+  const resp = await fetch(`${PWNED_API_URL}${prefix}`, { signal })
   if (!resp.ok) return false
   const text = await resp.text()
   return text.split("\n").some((line) => line.split(":")[0] === suffix)
 }
 
+const isAbortError = (error: unknown): boolean =>
+  typeof error === "object" && error !== null && "name" in error && error.name === "AbortError"
+
 export default function ResetPassword() {
-  const { t } = useTranslation(["auth", "common"])
+  const { t, i18n } = useTranslation(["auth", "common"])
+  const passwordStrengthLanguage = i18n.resolvedLanguage ?? i18n.language
   // Wave 186 SW3 — useReducedMotion via project's useMediaQuery (jsdom-safe
   // per W184 SW6). Drops AuthBackdrop blur on mobile/reduced-motion.
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
@@ -93,13 +105,14 @@ export default function ResetPassword() {
       setFeedback("")
       return
     }
+    let active = true
+    const controller = new AbortController()
+    setPwned(false)
 
     const checkPassword = async () => {
       try {
-        const { zxcvbn, zxcvbnOptions } = await import("@zxcvbn-ts/core")
-        const zxcvbnCommon = await import("@zxcvbn-ts/language-common")
-        zxcvbnOptions.setOptions(zxcvbnCommon)
-        const complexityResult = zxcvbn(password)
+        const complexityResult = await analyzePasswordStrength(password, passwordStrengthLanguage)
+        if (!active) return
         setStrength(complexityResult.score)
         const tips =
           (complexityResult.feedback?.warning || "") +
@@ -108,14 +121,16 @@ export default function ResetPassword() {
             : "")
         setFeedback(tips)
       } catch {
-        // ignore
+        if (!active) return
+        setStrength(null)
+        setFeedback("")
       }
 
       try {
-        const bad = await isPwnedPassword(password)
-        setPwned(bad)
-      } catch {
-        // ignore
+        const bad = await isPwnedPassword(password, controller.signal)
+        if (active) setPwned(bad)
+      } catch (error: unknown) {
+        if (active && !isAbortError(error)) setPwned(false)
       }
     }
 
@@ -124,17 +139,21 @@ export default function ResetPassword() {
       void checkPassword()
     }, 300)
 
-    return () => clearTimeout(handler)
-  }, [password])
+    return () => {
+      active = false
+      clearTimeout(handler)
+      controller.abort()
+    }
+  }, [password, passwordStrengthLanguage])
 
-  const onSubmit = async (data: NewPasswordValues) => {
+  const onSubmit = async (data: NewPasswordValues, telemetryContext: CapturedTelemetryContext) => {
     if (!token) {
       setError("root", { message: t("auth:reset.invalidLink") })
       return
     }
 
     try {
-      await api.post(RESET_URL, { token, password: data.password })
+      await telemetryContext.run(() => api.post(RESET_URL, { token, password: data.password }))
       setIsSuccess(true)
     } catch (error: unknown) {
       let errorMessage = t("auth:reset.errorGeneric")
@@ -144,6 +163,11 @@ export default function ResetPassword() {
       }
       setError("root", { message: errorMessage })
     }
+  }
+
+  const handleTelemetrySubmit = (event: FormEvent<HTMLFormElement>) => {
+    const telemetryContext = captureActiveTelemetryContext()
+    return handleSubmit((data) => onSubmit(data, telemetryContext))(event)
   }
 
   // Initial token check
@@ -161,7 +185,7 @@ export default function ResetPassword() {
       <AuthBackdrop prefersReducedMotion={prefersReducedMotion} />
 
       <m.div
-        initial={{ opacity: 0, y: 20 }}
+        initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-(--layout-max-modal) z-modal"
       >
@@ -171,7 +195,7 @@ export default function ResetPassword() {
               {isSuccess ? (
                 <m.div
                   key="success"
-                  initial={{ opacity: 0, scale: 0.95 }}
+                  initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   className="space-y-6 pt-4 text-center"
                 >
@@ -203,7 +227,7 @@ export default function ResetPassword() {
               ) : (
                 <m.div
                   key="form"
-                  initial={{ opacity: 0 }}
+                  initial={prefersReducedMotion ? false : { opacity: 0 }}
                   animate={{ opacity: 1 }}
                   className="space-y-6"
                 >
@@ -216,7 +240,7 @@ export default function ResetPassword() {
                     </p>
                   </div>
 
-                  <form onSubmit={handleSubmit(onSubmit)} autoComplete="off" className="space-y-6">
+                  <form onSubmit={handleTelemetrySubmit} autoComplete="on" className="space-y-6">
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <TextField
@@ -231,6 +255,7 @@ export default function ResetPassword() {
                           onKeyDown={(event: React.KeyboardEvent<HTMLInputElement>) =>
                             setCapsPass(event.getModifierState("CapsLock"))
                           }
+                          autoComplete="new-password"
                           disabled={isSubmitting}
                           className="rounded-lg"
                           error={!!errors.password}
@@ -240,10 +265,19 @@ export default function ResetPassword() {
                               id="reset-password-toggle"
                               type="button"
                               onClick={() => setShowPass(!showPass)}
-                              className="p-1 hover:bg-black/(--opacity-subtle) dark:hover:bg-white/(--opacity-subtle) rounded-md transition-colors"
-                              tabIndex={-1}
+                              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md transition-colors hover:bg-black/(--opacity-subtle) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:hover:bg-white/(--opacity-subtle)"
+                              aria-label={t(
+                                showPass
+                                  ? "auth:actions.hideCredential"
+                                  : "auth:actions.showPassword"
+                              )}
+                              aria-pressed={showPass}
                             >
-                              {showPass ? <VisibilityOff size={16} /> : <Visibility size={16} />}
+                              {showPass ? (
+                                <VisibilityOff size={16} aria-hidden="true" />
+                              ) : (
+                                <Visibility size={16} aria-hidden="true" />
+                              )}
                             </button>
                           }
                         />
@@ -311,10 +345,19 @@ export default function ResetPassword() {
                               id="reset-confirm-toggle"
                               type="button"
                               onClick={() => setShowConfirm(!showConfirm)}
-                              className="p-1 hover:bg-black/(--opacity-subtle) dark:hover:bg-white/(--opacity-subtle) rounded-md transition-colors"
-                              tabIndex={-1}
+                              className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md transition-colors hover:bg-black/(--opacity-subtle) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:hover:bg-white/(--opacity-subtle)"
+                              aria-label={t(
+                                showConfirm
+                                  ? "auth:actions.hideCredential"
+                                  : "auth:actions.showPassword"
+                              )}
+                              aria-pressed={showConfirm}
                             >
-                              {showConfirm ? <VisibilityOff size={16} /> : <Visibility size={16} />}
+                              {showConfirm ? (
+                                <VisibilityOff size={16} aria-hidden="true" />
+                              ) : (
+                                <Visibility size={16} aria-hidden="true" />
+                              )}
                             </button>
                           }
                         />
@@ -337,7 +380,7 @@ export default function ResetPassword() {
                     </div>
 
                     {errors.root?.message && (
-                      <p className="text-sm font-bold text-error-text text-center animate-bounce">
+                      <p role="alert" className="text-center text-sm font-bold text-error-text">
                         {errors.root.message}
                       </p>
                     )}

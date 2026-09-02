@@ -61,6 +61,7 @@
     "unpublishFailed": "Failed to unpublish the story.",
     "deleteFailed": "Failed to delete the story.",
     "required": "Please fill in the required Russian fields.",
+    "invalidFileType": "Please choose a supported image file.",
     "invalidDate": "Please choose valid dates.",
     "expirationAfterPublish": "Expiration must be later than the publish date."
   }

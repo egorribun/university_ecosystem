@@ -60,6 +60,14 @@ vi.mock("@/components/map/MapLibreMap", () => ({
   },
 }))
 
+/* Keep this orchestration test independent from MapLibre's worker and CSS
+   side effects. MapFeature owns the lazy loader, so mocking only the child
+   module still executes loadMapLibre's browser-only Promise.all path in a
+   Stryker sandbox where those assets are unavailable. */
+vi.mock("@/features/map/loadMapLibre", () => ({
+  loadMapLibre: () => import("@/components/map/MapLibreMap"),
+}))
+
 /* Capture the keyboard-shortcut options so we can invoke them directly. */
 // Named methods (not a string-index Record) so dot-access isn't widened to
 // `| undefined` by noUncheckedIndexedAccess when we invoke them below.
@@ -148,10 +156,12 @@ function renderFeature() {
   )
 }
 
-/* The lazy MapLibre child resolves on a microtask — wait for the mock to run
-   so `mapProps.current` is populated. Skips this when fake timers are active
-   (in those tests MapLibre props aren't read until after a manual flush). */
+/* The production map is intentionally deferred until explicit interaction.
+   Trigger the interaction here so orchestration tests exercise the real child
+   contract without loading MapLibre during initial route rendering. */
 async function whenMapMounted() {
+  const placeholder = document.querySelector('[data-testid="map-activation-placeholder"]')
+  if (placeholder) fireEvent.pointerDown(placeholder)
   await waitFor(() => expect(mapProps.current).not.toBeNull())
 }
 

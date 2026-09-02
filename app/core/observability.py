@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
 import socket
 import threading
@@ -88,7 +89,10 @@ if TYPE_CHECKING:
 
 _logging_configured = False
 _otel_configured = False
+_otel_shutdown = False
 _sqlalchemy_instrumented = False
+_otel_tracer_provider: TracerProvider | None = None
+_otel_meter_provider: MeterProvider | None = None
 _otel_logger_provider: LoggerProvider | None = None
 _otel_logging_handler: LoggingHandler | None = None
 _notification_queue_metrics: NotificationQueueMetrics | None = None
@@ -100,6 +104,21 @@ _notification_queue_metrics_lock = threading.RLock()
 
 _request_id_ctx: ContextVar[str | None] = ContextVar("request_id", default=None)
 _trace_id_ctx: ContextVar[str | None] = ContextVar("trace_id", default=None)
+
+_OTEL_SDK_DISABLED_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def _otel_sdk_disabled() -> bool:
+    """Return whether the standard OpenTelemetry SDK disable flag is active.
+
+    ``OTEL_SDK_DISABLED`` is a process-level kill switch defined by the
+    OpenTelemetry environment-variable specification.  Check it before any
+    provider or exporter is constructed so short-lived workers and mutation
+    processes do not start SDK threads or fork-sensitive callbacks.
+    """
+
+    value = os.getenv("OTEL_SDK_DISABLED")
+    return value is not None and value.strip().lower() in _OTEL_SDK_DISABLED_VALUES
 
 
 def get_request_id() -> str | None:
@@ -192,116 +211,188 @@ def _create_otel_resource() -> Resource:
     return Resource.create(_build_otel_resource_attributes())
 
 
+def _shutdown_otel_provider(provider: object | None) -> None:
+    if provider is None:
+        return
+    with suppress(Exception):
+        try:
+            cast(Any, provider).shutdown(timeout_millis=1200)
+        except TypeError:
+            cast(Any, provider).shutdown()
+
+
+def _shutdown_otel_providers_bounded(providers: Iterable[object | None]) -> None:
+    threads = [
+        threading.Thread(
+            target=_shutdown_otel_provider,
+            args=(provider,),
+            name=f"otel-shutdown-{index}",
+            daemon=True,
+        )
+        for index, provider in enumerate(providers, start=1)
+        if provider is not None
+    ]
+    for thread in threads:
+        with suppress(RuntimeError):
+            thread.start()
+
+    # Keep both failed startup and normal process teardown below the public
+    # 2.05 s SLA even if an exporter ignores the SDK timeout argument.
+    deadline = time.monotonic() + 1.8
+    for thread in threads:
+        remaining = max(0.0, deadline - time.monotonic())
+        thread.join(timeout=remaining)
+        if thread.is_alive():
+            logging.getLogger(__name__).warning(
+                "OpenTelemetry provider shutdown exceeded timeout; continuing without flush"
+            )
+
+
 def _configure_otel(engine: AsyncEngine) -> TracerProvider | None:
-    global _otel_configured, _sqlalchemy_instrumented
-    if not settings.enable_otel:
+    global _otel_configured, _otel_meter_provider, _otel_tracer_provider
+    global _otel_logger_provider, _otel_logging_handler, _otel_shutdown
+    global _sqlalchemy_instrumented
+    if not settings.enable_otel or _otel_sdk_disabled():
+        return None
+    # The OpenTelemetry Python globals are write-once. Once providers owned by
+    # this process have been shut down, constructing replacements would create
+    # exporter workers that the rejected global registration cannot own.
+    if _otel_shutdown:
         return None
     # MED-W19: double-checked locking prevents concurrent threads from both
     # passing the first guard and registering providers more than once.
-    if _otel_configured:
-        return cast("TracerProvider | None", trace.get_tracer_provider())
     with _otel_lock:
-        if _otel_configured:
-            return cast("TracerProvider | None", trace.get_tracer_provider())  # type: ignore[unreachable]
+        if _otel_shutdown:
+            return None  # type: ignore[unreachable]
+        if _otel_tracer_provider is not None:
+            _otel_configured = True
+            return _otel_tracer_provider
 
-        resource = _create_otel_resource()
+        tracer_provider: TracerProvider | None = None
+        meter_provider: MeterProvider | None = None
+        logger_provider: LoggerProvider | None = None
+        logging_handler: LoggingHandler | None = None
+        try:
+            resource = _create_otel_resource()
 
-        sampler = ParentBased(
-            TraceIdRatioBased(max(min(settings.otel_trace_sampler_ratio, 1.0), 0.0))
-        )
-        tracer_provider = TracerProvider(resource=resource, sampler=sampler)
-
-        otlp_headers = _resolve_headers(settings.otel_exporter_otlp_headers)
-
-        span_exporter_kwargs: dict[str, Any] = {}
-        if settings.otel_exporter_otlp_endpoint:
-            span_exporter_kwargs["endpoint"] = settings.otel_exporter_otlp_endpoint
-        if otlp_headers:
-            span_exporter_kwargs["headers"] = otlp_headers
-        span_exporter = OTLPSpanExporter(**span_exporter_kwargs)
-        tracer_provider.add_span_processor(BatchSpanProcessor(span_exporter))
-        trace.set_tracer_provider(tracer_provider)
-
-        # Propagate both trace context and W3C Baggage across service boundaries
-        # (FastAPI → Go gateway → WS-hub). Must be set after the tracer provider.
-        set_global_textmap(
-            CompositePropagator(
-                [TraceContextTextMapPropagator(), W3CBaggagePropagator()]
+            sampler = ParentBased(
+                TraceIdRatioBased(max(min(settings.otel_trace_sampler_ratio, 1.0), 0.0))
             )
-        )
+            tracer_provider = TracerProvider(resource=resource, sampler=sampler)
 
-        meter_readers = []
-        if settings.enable_otel_metrics:
-            metric_exporter_kwargs: dict[str, Any] = {}
+            otlp_headers = _resolve_headers(settings.otel_exporter_otlp_headers)
+
+            # Export calls must finish inside the public 2.05 s process-shutdown
+            # budget; otherwise SDK worker threads can outlive logging teardown.
+            span_exporter_kwargs: dict[str, Any] = {"timeout": 0.75}
             if settings.otel_exporter_otlp_endpoint:
-                metric_exporter_kwargs["endpoint"] = (
-                    settings.otel_exporter_otlp_endpoint
+                span_exporter_kwargs["endpoint"] = settings.otel_exporter_otlp_endpoint
+            if otlp_headers:
+                span_exporter_kwargs["headers"] = otlp_headers
+            span_exporter = OTLPSpanExporter(**span_exporter_kwargs)
+            tracer_provider.add_span_processor(BatchSpanProcessor(span_exporter))
+            trace.set_tracer_provider(tracer_provider)
+
+            # Propagate both trace context and W3C Baggage across service boundaries
+            # (FastAPI → Go gateway → WS-hub). Must be set after the tracer provider.
+            set_global_textmap(
+                CompositePropagator(
+                    [TraceContextTextMapPropagator(), W3CBaggagePropagator()]
                 )
-            if otlp_headers:
-                metric_exporter_kwargs["headers"] = otlp_headers
-            metric_exporter = OTLPMetricExporter(**metric_exporter_kwargs)
-            reader = PeriodicExportingMetricReader(metric_exporter)
-            meter_readers.append(reader)
-
-        meter_provider = MeterProvider(resource=resource, metric_readers=meter_readers)
-        metrics.set_meter_provider(meter_provider)
-
-        global _otel_logger_provider, _otel_logging_handler
-
-        if settings.enable_otel_logs:
-            logger_provider = LoggerProvider(resource=resource)
-            log_exporter_kwargs: dict[str, Any] = {}
-            if settings.otel_exporter_otlp_endpoint:
-                log_exporter_kwargs["endpoint"] = settings.otel_exporter_otlp_endpoint
-            if otlp_headers:
-                log_exporter_kwargs["headers"] = otlp_headers
-            log_exporter = OTLPLogExporter(**log_exporter_kwargs)
-            logger_provider.add_log_record_processor(
-                BatchLogRecordProcessor(log_exporter)
             )
-            set_logger_provider(logger_provider)
-            handler = LoggingHandler(
-                level=logging.NOTSET, logger_provider=logger_provider
-            )
-            logging.getLogger().addHandler(handler)
-            _otel_logger_provider = logger_provider
-            _otel_logging_handler = handler
 
-        if not _sqlalchemy_instrumented:
+            meter_readers = []
+            if settings.enable_otel_metrics:
+                metric_exporter_kwargs: dict[str, Any] = {"timeout": 0.75}
+                if settings.otel_exporter_otlp_endpoint:
+                    metric_exporter_kwargs["endpoint"] = (
+                        settings.otel_exporter_otlp_endpoint
+                    )
+                if otlp_headers:
+                    metric_exporter_kwargs["headers"] = otlp_headers
+                metric_exporter = OTLPMetricExporter(**metric_exporter_kwargs)
+                reader = PeriodicExportingMetricReader(metric_exporter)
+                meter_readers.append(reader)
+
+            meter_provider = MeterProvider(
+                resource=resource, metric_readers=meter_readers
+            )
+            metrics.set_meter_provider(meter_provider)
+
+            if settings.enable_otel_logs:
+                logger_provider = LoggerProvider(resource=resource)
+                log_exporter_kwargs: dict[str, Any] = {"timeout": 0.75}
+                if settings.otel_exporter_otlp_endpoint:
+                    log_exporter_kwargs["endpoint"] = (
+                        settings.otel_exporter_otlp_endpoint
+                    )
+                if otlp_headers:
+                    log_exporter_kwargs["headers"] = otlp_headers
+                log_exporter = OTLPLogExporter(**log_exporter_kwargs)
+                logger_provider.add_log_record_processor(
+                    BatchLogRecordProcessor(log_exporter)
+                )
+                set_logger_provider(logger_provider)
+                logging_handler = LoggingHandler(
+                    level=logging.NOTSET, logger_provider=logger_provider
+                )
+                logging.getLogger().addHandler(logging_handler)
+
+            if not _sqlalchemy_instrumented:
+                try:
+                    SQLAlchemyInstrumentor().instrument(
+                        engine=engine.sync_engine,
+                        tracer_provider=tracer_provider,
+                        enable_metrics=settings.enable_otel_metrics,
+                        meter_provider=meter_provider
+                        if settings.enable_otel_metrics
+                        else None,
+                        enable_commenter=True,
+                        commenter_options={"opentelemetry_values": True},
+                    )
+                    _sqlalchemy_instrumented = True
+                except RuntimeError:
+                    # Already instrumented or engine incompatible
+                    _sqlalchemy_instrumented = True
+
+            # Instrument Redis if not already instrumented
             try:
-                SQLAlchemyInstrumentor().instrument(
-                    engine=engine.sync_engine,
+                RedisInstrumentor().instrument(
                     tracer_provider=tracer_provider,
-                    enable_metrics=settings.enable_otel_metrics,
-                    meter_provider=meter_provider
-                    if settings.enable_otel_metrics
-                    else None,
-                    enable_commenter=True,
-                    commenter_options={"opentelemetry_values": True},
                 )
-                _sqlalchemy_instrumented = True
             except RuntimeError:
-                # Already instrumented or engine incompatible
-                _sqlalchemy_instrumented = True
+                # Already instrumented
+                pass
 
-        # Instrument Redis if not already instrumented
-        try:
-            RedisInstrumentor().instrument(
-                tracer_provider=tracer_provider,
+            # Instrument HTTPX if not already instrumented
+            try:
+                HTTPXClientInstrumentor().instrument(
+                    tracer_provider=tracer_provider,
+                )
+            except RuntimeError:
+                # Already instrumented
+                pass
+        except Exception:
+            # Provider registration is process-global and write-once. A partial
+            # startup is therefore terminal for this process: tear down every
+            # locally-created worker immediately and refuse unsafe retries.
+            if logging_handler is not None:
+                with suppress(Exception):
+                    logging.getLogger().removeHandler(logging_handler)
+            _shutdown_otel_providers_bounded(
+                (logger_provider, meter_provider, tracer_provider)
             )
-        except RuntimeError:
-            # Already instrumented
-            pass
+            _otel_shutdown = True
+            _otel_configured = False
+            raise
 
-        # Instrument HTTPX if not already instrumented
-        try:
-            HTTPXClientInstrumentor().instrument(
-                tracer_provider=tracer_provider,
-            )
-        except RuntimeError:
-            # Already instrumented
-            pass
-
+        # Keep ownership of the providers created by this lifecycle even when
+        # an in-process global registration is rejected with only a warning;
+        # shutdown must terminate local exporter workers, never foreign globals.
+        _otel_tracer_provider = tracer_provider
+        _otel_meter_provider = meter_provider
+        _otel_logger_provider = logger_provider
+        _otel_logging_handler = logging_handler
         _otel_configured = True
         return tracer_provider
 
@@ -314,12 +405,17 @@ def configure_observability(app: FastAPI, *, engine: AsyncEngine) -> None:
         tracer_provider = _configure_otel(engine)
         _configure_sentry(tracer_provider)
 
-        if settings.enable_otel and not getattr(app.state, "otel_instrumented", False):
+        # ``otel_instrumented`` is an explicit boolean lifecycle marker.  Use
+        # an identity check so a missing state attribute gets the documented
+        # ``False`` default (and cannot be confused with an arbitrary
+        # false-y value such as ``None`` supplied by an integration).
+        otel_instrumented = getattr(app.state, "otel_instrumented", False)
+        if tracer_provider is not None and otel_instrumented is False:
             try:
                 FastAPIInstrumentor.instrument_app(
                     app,
-                    tracer_provider=trace.get_tracer_provider(),
-                    meter_provider=metrics.get_meter_provider(),
+                    tracer_provider=tracer_provider,
+                    meter_provider=_otel_meter_provider,
                 )
             except RuntimeError:
                 # Already instrumented
@@ -331,9 +427,23 @@ def configure_observability(app: FastAPI, *, engine: AsyncEngine) -> None:
 
 def shutdown_observability() -> None:
     global _otel_configured, _otel_logger_provider, _otel_logging_handler
-    provider = trace.get_tracer_provider()
-    meter_provider = metrics.get_meter_provider()
-    logger_provider = _otel_logger_provider
+    global _otel_meter_provider, _otel_shutdown, _otel_tracer_provider
+    with _otel_lock:
+        provider = _otel_tracer_provider
+        meter_provider = _otel_meter_provider
+        logger_provider = _otel_logger_provider
+        owned_lifecycle = any(
+            item is not None for item in (provider, meter_provider, logger_provider)
+        )
+
+        # Clear ownership before potentially blocking SDK shutdown calls so a
+        # concurrent or repeated teardown cannot target the same provider twice.
+        _otel_tracer_provider = None
+        _otel_meter_provider = None
+        _otel_logger_provider = None
+        _otel_configured = False
+        if owned_lifecycle:
+            _otel_shutdown = True
 
     if _otel_logging_handler is not None:
         with suppress(
@@ -342,68 +452,9 @@ def shutdown_observability() -> None:
             logging.getLogger().removeHandler(_otel_logging_handler)
         _otel_logging_handler = None
 
-    _otel_logger_provider = None
-
-    def _shutdown_trace() -> None:
-        with suppress(
-            Exception
-        ):  # RZ-22-01-JUSTIFIED: best-effort tracer provider teardown without blocking process exit
-            cast(TracerProvider, provider).shutdown()
-
-    def _shutdown_metrics() -> None:
-        with suppress(
-            Exception
-        ):  # RZ-22-01-JUSTIFIED: best-effort meter provider teardown with bounded timeout
-            try:
-                cast(MeterProvider, meter_provider).shutdown(timeout_millis=2000)
-            except TypeError:
-                cast(MeterProvider, meter_provider).shutdown()
-
-    def _shutdown_logs() -> None:
-        with suppress(
-            Exception
-        ):  # RZ-22-01-JUSTIFIED: safe shutdown of otel logger provider
-            try:
-                cast(Any, logger_provider).shutdown(timeout_millis=2000)
-            except TypeError:
-                cast(Any, logger_provider).shutdown()
-
-    shutdown_tasks = []
-    if isinstance(provider, TracerProvider):
-        shutdown_tasks.append(_shutdown_trace)
-    if isinstance(meter_provider, MeterProvider):
-        shutdown_tasks.append(_shutdown_metrics)
-    if logger_provider is not None:
-        shutdown_tasks.append(_shutdown_logs)
-
-    if shutdown_tasks:
-        # Exporter shutdown can block on an unreachable collector.  A regular
-        # ThreadPoolExecutor owns non-daemon workers, so ``shutdown(wait=False)``
-        # still keeps the interpreter alive until those workers return.  Use
-        # daemon threads instead: the application teardown remains bounded and
-        # no best-effort telemetry flush can prevent a clean process exit.
-        threads = [
-            threading.Thread(
-                target=task,
-                name=f"otel-shutdown-{index}",
-                daemon=True,
-            )
-            for index, task in enumerate(shutdown_tasks, start=1)
-        ]
-        for thread in threads:
-            with suppress(RuntimeError):
-                thread.start()
-
-        deadline = time.monotonic() + 2.0
-        for thread in threads:
-            remaining = max(0.0, deadline - time.monotonic())
-            thread.join(timeout=remaining)
-            if thread.is_alive():
-                logging.getLogger(__name__).warning(
-                    "OpenTelemetry provider shutdown exceeded timeout; continuing without flush"
-                )
-
-    _otel_configured = False
+    # Daemon workers keep shutdown bounded even if an exporter ignores its
+    # timeout; no best-effort telemetry flush may keep the process alive.
+    _shutdown_otel_providers_bounded((logger_provider, meter_provider, provider))
 
 
 def _sanitize_metric_name(name: str) -> str:

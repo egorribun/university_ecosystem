@@ -19,10 +19,44 @@ import {
   LocateFixed,
 } from "lucide-react"
 import type { MapRef } from "react-map-gl/maplibre"
-import { CAMPUS_COORDINATES } from "@/constants/campus"
+import {
+  CAMPUS_COORDINATES,
+  CAMPUS_DETAIL_ZOOM,
+  MAP_INTERACTIVE_TARGET_PX,
+} from "@/constants/campus"
 
 interface MapControlsProps {
   mapRef: React.MutableRefObject<MapRef | null>
+}
+
+type MapInstance = ReturnType<MapRef["getMap"]>
+
+/**
+ * Map controls are rendered before MapLibre has mounted (and can outlive it
+ * during route transitions).  Normalising the absent map to a no-op instance
+ * keeps every event handler total: a click during that short window is safe
+ * and does not need a branch that can drift away from the operation itself.
+ */
+const NOOP_FULLSCREEN_CONTAINER = {
+  requestFullscreen: () => Promise.resolve(),
+} as unknown as HTMLElement
+
+const NOOP_MAP_CONTAINER = {
+  closest: () => NOOP_FULLSCREEN_CONTAINER,
+} as unknown as HTMLElement
+
+const NOOP_MAP = {
+  zoomIn: () => undefined,
+  zoomOut: () => undefined,
+  easeTo: () => undefined,
+  flyTo: () => undefined,
+  getContainer: () => NOOP_MAP_CONTAINER,
+} as unknown as MapInstance
+
+const NOOP_MAP_REF = { getMap: () => NOOP_MAP } as unknown as MapRef
+
+function resolveMap(mapRef: React.MutableRefObject<MapRef | null>) {
+  return (mapRef.current ?? NOOP_MAP_REF).getMap() ?? NOOP_MAP
 }
 
 export function MapControls({ mapRef }: MapControlsProps) {
@@ -33,24 +67,34 @@ export function MapControls({ mapRef }: MapControlsProps) {
   const isMobile = useMediaQuery("(max-width: 640px)")
   const isSmall = useMediaQuery("(max-width: 380px), (max-height: 500px)")
   const iconSize = isSmall ? 12 : isMobile ? 14 : 16
+  const targetStyle = { minWidth: MAP_INTERACTIVE_TARGET_PX, minHeight: MAP_INTERACTIVE_TARGET_PX }
 
-  const zoomIn = useCallback(() => mapRef.current?.getMap().zoomIn(), [mapRef])
-  const zoomOut = useCallback(() => mapRef.current?.getMap().zoomOut(), [mapRef])
+  const zoomIn = useCallback(() => {
+    const map = resolveMap(mapRef)
+    map.zoomIn()
+  }, [mapRef])
+  const zoomOut = useCallback(() => {
+    const map = resolveMap(mapRef)
+    map.zoomOut()
+  }, [mapRef])
 
   const resetNorth = useCallback(() => {
-    mapRef.current?.easeTo({ bearing: 0, duration: 400 })
+    const map = resolveMap(mapRef)
+    map.easeTo({ bearing: 0, duration: 400 })
   }, [mapRef])
 
   const togglePitch = useCallback(() => {
     const newPitch = is3D ? 0 : 45
-    mapRef.current?.easeTo({ pitch: newPitch, duration: 400 })
+    const map = resolveMap(mapRef)
+    map.easeTo({ pitch: newPitch, duration: 400 })
     setIs3D(!is3D)
   }, [mapRef, is3D])
 
   const recenter = useCallback(() => {
-    mapRef.current?.flyTo({
+    const map = resolveMap(mapRef)
+    map.flyTo({
       center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
-      zoom: 16,
+      zoom: CAMPUS_DETAIL_ZOOM,
       pitch: 45,
       bearing: 0,
       duration: 800,
@@ -59,15 +103,19 @@ export function MapControls({ mapRef }: MapControlsProps) {
   }, [mapRef])
 
   /* FIX-111-07: Sync state when user exits fullscreen via Esc (bypasses button click) */
-  useEffect(() => {
-    const handler = () => setIsFullscreen(!!document.fullscreenElement)
-    document.addEventListener("fullscreenchange", handler)
-    return () => document.removeEventListener("fullscreenchange", handler)
-  }, [])
+  useEffect(
+    () => {
+      const handler = () => setIsFullscreen(!!document.fullscreenElement)
+      document.addEventListener("fullscreenchange", handler)
+      return () => document.removeEventListener("fullscreenchange", handler)
+    },
+    [] as readonly []
+  )
 
   const toggleFullscreen = useCallback(() => {
-    const container = mapRef.current?.getMap().getContainer()?.closest(".map-card-matte")
-    if (!container) return
+    const map = resolveMap(mapRef)
+    const mapContainer = map.getContainer() ?? NOOP_MAP_CONTAINER
+    const container = mapContainer.closest(".map-card-matte") ?? NOOP_FULLSCREEN_CONTAINER
 
     if (!document.fullscreenElement) {
       container.requestFullscreen().catch(logError)
@@ -80,7 +128,13 @@ export function MapControls({ mapRef }: MapControlsProps) {
   return (
     <div className="map-control-panel" role="group" aria-label={t("zoom.ariaLabel")}>
       {/* Zoom */}
-      <button type="button" onClick={zoomIn} className="map-control-btn" aria-label={t("zoom.in")}>
+      <button
+        type="button"
+        onClick={zoomIn}
+        className="map-control-btn"
+        aria-label={t("zoom.in")}
+        style={targetStyle}
+      >
         <Plus size={iconSize} />
       </button>
       <button
@@ -88,6 +142,7 @@ export function MapControls({ mapRef }: MapControlsProps) {
         onClick={zoomOut}
         className="map-control-btn"
         aria-label={t("zoom.out")}
+        style={targetStyle}
       >
         <Minus size={iconSize} />
       </button>
@@ -100,6 +155,7 @@ export function MapControls({ mapRef }: MapControlsProps) {
         onClick={resetNorth}
         className="map-control-btn"
         aria-label={t("controls.compass")}
+        style={targetStyle}
       >
         <Compass size={iconSize} />
       </button>
@@ -110,6 +166,7 @@ export function MapControls({ mapRef }: MapControlsProps) {
         onClick={togglePitch}
         className="map-control-btn"
         aria-label={t("controls.pitchToggle")}
+        style={targetStyle}
       >
         {is3D ? <MapIcon size={iconSize} /> : <Box size={iconSize} />}
       </button>
@@ -122,6 +179,7 @@ export function MapControls({ mapRef }: MapControlsProps) {
         onClick={recenter}
         className="map-control-btn map-control-btn--accent"
         aria-label={t("zoom.reset")}
+        style={targetStyle}
       >
         <LocateFixed size={iconSize} />
       </button>
@@ -132,6 +190,7 @@ export function MapControls({ mapRef }: MapControlsProps) {
         onClick={toggleFullscreen}
         className="map-control-btn"
         aria-label={t("controls.fullscreen")}
+        style={targetStyle}
       >
         {isFullscreen ? <Minimize2 size={iconSize} /> : <Maximize2 size={iconSize} />}
       </button>

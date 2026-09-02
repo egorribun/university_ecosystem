@@ -69,8 +69,16 @@ func NewWSUpgradeRateLimiter(capacity int, windowSec int) *WSUpgradeRateLimiter 
 		gcDone:      make(chan struct{}),
 		gcInterval:  time.Minute,
 	}
-	go l.gcLoop()
+	l.startGC()
 	return l
+}
+
+func (l *WSUpgradeRateLimiter) startGC() {
+	startTrackedGoroutine(l.gcLoop, func() {
+		if l.gcDone != nil {
+			close(l.gcDone)
+		}
+	})
 }
 
 // Allow returns true if the request from ip should be permitted.
@@ -92,9 +100,6 @@ func (l *WSUpgradeRateLimiter) Stop() {
 
 // gcLoop removes stale buckets every minute to prevent unbounded memory growth.
 func (l *WSUpgradeRateLimiter) gcLoop() {
-	if l.gcDone != nil {
-		defer close(l.gcDone)
-	}
 	interval := l.gcInterval
 	if interval == 0 {
 		interval = time.Minute

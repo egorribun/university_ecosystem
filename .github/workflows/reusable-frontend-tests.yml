@@ -11,7 +11,7 @@ on:
         description: "Node.js version to use"
         required: false
         type: string
-        default: "22"
+        default: "24"
       working-directory:
         description: "Frontend directory"
         required: false
@@ -28,8 +28,65 @@ on:
         type: boolean
         default: false
 jobs:
+  # Compile the immutable WASM packages once per workflow attempt. Unit,
+  # static-analysis, and production-build jobs consume this same-run artifact
+  # instead of competing for runner CPU while rebuilding identical Rust code.
+  wasm-build:
+    name: Build WASM modules
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
+        with:
+          tool: wasm-pack@0.13.1
+
+      - name: Build immutable WASM modules
+        run: |
+          set -euo pipefail
+          rustup target add wasm32-unknown-unknown
+          rustup target list --installed | grep -Fxq "wasm32-unknown-unknown"
+          crypto_status=0
+          sanitizer_status=0
+          wasm-pack build rust-crypto --target web --release &
+          crypto_pid=$!
+          wasm-pack build wasm-sanitizer --target web --release &
+          sanitizer_pid=$!
+          wait "$crypto_pid" || crypto_status=$?
+          wait "$sanitizer_pid" || sanitizer_status=$?
+          if (( crypto_status != 0 || sanitizer_status != 0 )); then
+            echo "::error::WASM build failed (rust-crypto=$crypto_status, wasm-sanitizer=$sanitizer_status)"
+            exit 1
+          fi
+          node scripts/verify-wasm-artifacts.mjs
+
+      - name: Upload immutable WASM modules
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: frontend-wasm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: |
+            ${{ inputs.working-directory }}/rust-crypto/pkg
+            ${{ inputs.working-directory }}/wasm-sanitizer/pkg
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 1
+          compression-level: 0
+
   unit-tests-shard:
     name: Unit Tests (shard ${{ matrix.shard }}/4)
+    needs: wasm-build
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -44,6 +101,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Download immutable WASM modules
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: frontend-wasm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: ${{ inputs.working-directory }}
+
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -54,21 +117,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Install wasm-pack
-        # W142 polish-v3 — taiki-e/install-action wasm-pack broken (drager/
-        # wasm-pack 404; rustwasm/wasm-pack canonical since v0.14.0). Same
-        # fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
-        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
-        with:
-          tool: wasm-pack@0.13.1
-
-      - name: Build WASM modules
-        run: |
-          wasm-pack build rust-crypto --target web
-          wasm-pack build wasm-sanitizer --target web
-
-      - name: Run type check
-        run: npm run typecheck
+      - name: Clean frontend shard coverage outputs
+        run: rm -rf -- coverage
 
       - name: Run unit-test shard
         # Each shard sees only a fraction of the repository and therefore
@@ -85,6 +135,43 @@ jobs:
         env:
           CI: "true"
 
+      - name: Write frontend shard provenance
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        env:
+          SHARD_ID: ${{ matrix.shard }}
+          ARTIFACT_NAME: frontend-coverage-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          EXPECTED_SHA: ${{ github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          test -s frontend/coverage/coverage-final.json
+          node_version="$(node -p 'process.versions.node')"
+          vitest_version="$(node -p 'require("./frontend/node_modules/vitest/package.json").version')"
+          python3 scripts/quality/coverage_provenance.py write \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --output frontend/coverage/coverage-provenance.json \
+            --expected-sha "$EXPECTED_SHA" \
+            --identity-provider github-actions \
+            --repository "$WORKFLOW_REPOSITORY" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --event "$WORKFLOW_EVENT" \
+            --job "$GITHUB_JOB" \
+            --artifact "$ARTIFACT_NAME" \
+            --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --tool-version "node=$node_version" \
+            --tool-version "vitest=$vitest_version" \
+            --tool-version quality-provenance=2.0.0 \
+            --report "frontend-shard|istanbul-json|frontend/coverage/coverage-final.json|frontend/.coverage-shards/$ARTIFACT_NAME/coverage-final.json"
+
       - name: Upload Vitest shard report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -95,8 +182,11 @@ jobs:
       - name: Upload frontend coverage shard
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: frontend-coverage-shard-${{ matrix.shard }}
-          path: ${{ inputs.working-directory }}/coverage/
+          name: frontend-coverage-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: |
+            ${{ inputs.working-directory }}/coverage/coverage-final.json
+            ${{ inputs.working-directory }}/coverage/coverage-provenance.json
+          if-no-files-found: error
 
   # Keep a stable `Frontend Tests / Unit Tests` check for branch protection.
   # The matrix above owns execution; this job owns the merged, repository-wide
@@ -115,6 +205,11 @@ jobs:
     steps:
       - name: Fail if a test shard failed
         if: ${{ needs.unit-tests-shard.result != 'success' }}
+        # This guard intentionally runs before checkout so a failed shard
+        # exits quickly.  The repository-relative default working directory
+        # does not exist until checkout, therefore pin the guard to the
+        # runner workspace explicitly.
+        working-directory: ${{ github.workspace }}
         run: |
           echo "::error::At least one frontend Vitest shard did not pass."
           exit 1
@@ -137,12 +232,55 @@ jobs:
       - name: Run production-only client contracts
         run: npm run test:client-production
 
+      - name: Clean merged frontend coverage outputs
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf -- frontend/.coverage-shards
+          rm -rf -- frontend/.vitest-reports
+          rm -rf -- frontend/coverage
+
       - name: Download frontend coverage shards
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: frontend-coverage-shard-*
+          pattern: frontend-coverage-shard-*-attempt-${{ github.run_attempt }}
           path: ${{ inputs.working-directory }}/.coverage-shards
           merge-multiple: false
+
+      - name: Verify frontend shard provenance
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          test "$(find frontend/.coverage-shards -mindepth 1 -maxdepth 1 -type d | wc -l)" -eq 4
+          for shard in 1 2 3 4; do
+            artifact="frontend-coverage-shard-${shard}-attempt-${RUN_ATTEMPT}"
+            shard_root="frontend/.coverage-shards/$artifact"
+            test "$(find "$shard_root" -maxdepth 1 -type f | wc -l)" -eq 2
+            test -s "$shard_root/coverage-final.json"
+            test -s "$shard_root/coverage-provenance.json"
+            python3 scripts/quality/coverage_provenance.py verify \
+              --repository-root "$GITHUB_WORKSPACE" \
+              --expected-sha "$EXPECTED_SHA" \
+              --expected-repository "$WORKFLOW_REPOSITORY" \
+              --expected-run-id "$RUN_ID" \
+              --expected-run-attempt "$RUN_ATTEMPT" \
+              --expected-workflow-ref "$WORKFLOW_REF" \
+              --expected-workflow-sha "$WORKFLOW_SHA" \
+              --expected-event "$WORKFLOW_EVENT" \
+              --expected-job unit-tests-shard \
+              --expected-artifact "$artifact" \
+              --metadata "$shard_root/coverage-provenance.json"
+          done
 
       - name: Merge frontend coverage shards
         run: node scripts/merge-vitest-coverage.mjs --input=.coverage-shards --output=coverage --expected-shards=4
@@ -180,6 +318,44 @@ jobs:
           # ratchet strict so newly changed source cannot reintroduce debt.
           uv run diff-cover frontend/coverage/lcov.info --compare-branch=origin/$env:COMPARE_BRANCH --fail-under=100
 
+      - name: Write frontend coverage provenance
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          test -s frontend/coverage/lcov.info
+          test -s frontend/coverage/coverage-final.json
+          test "$(find frontend/coverage -maxdepth 1 -type f | wc -l)" -eq 2
+          node_version="$(node -p 'process.versions.node')"
+          vitest_version="$(node -p 'require("./frontend/node_modules/vitest/package.json").version')"
+          python3 scripts/quality/coverage_provenance.py write \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --output frontend/coverage/coverage-provenance.json \
+            --expected-sha "$EXPECTED_SHA" \
+            --identity-provider github-actions \
+            --repository "$WORKFLOW_REPOSITORY" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --event "$WORKFLOW_EVENT" \
+            --job "$GITHUB_JOB" \
+            --artifact "frontend-coverage-attempt-$RUN_ATTEMPT" \
+            --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --tool-version "node=$node_version" \
+            --tool-version "vitest=$vitest_version" \
+            --tool-version quality-provenance=2.0.0 \
+            --report "frontend|lcov|frontend/coverage/lcov.info|frontend/coverage/lcov.info" \
+            --report "frontend|istanbul-json|frontend/coverage/coverage-final.json|frontend/coverage/coverage-final.json"
+
       - name: Upload Vitest report
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -190,11 +366,16 @@ jobs:
       - name: Upload coverage artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: frontend-coverage
-          path: ${{ inputs.working-directory }}/coverage/
+          name: frontend-coverage-attempt-${{ github.run_attempt }}
+          path: |
+            frontend/coverage/lcov.info
+            frontend/coverage/coverage-final.json
+            frontend/coverage/coverage-provenance.json
+          if-no-files-found: error
 
   lint:
     name: Lint & Format
+    needs: wasm-build
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     defaults:
@@ -205,6 +386,12 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Download immutable WASM modules
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: frontend-wasm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: ${{ inputs.working-directory }}
+
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -214,25 +401,6 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
-
-      - name: Install wasm-pack
-        # W142 polish-v3 — taiki-e/install-action wasm-pack broken (drager/
-        # wasm-pack 404; rustwasm/wasm-pack canonical since v0.14.0). Same
-        # fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
-        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
-        with:
-          tool: wasm-pack@0.13.1
-
-      - name: Build WASM modules
-        run: |
-          wasm-pack build rust-crypto --target web
-          wasm-pack build wasm-sanitizer --target web
-
-      - name: Run ESLint
-        run: npm run lint
-
-      - name: Check formatting
-        run: npm run format:check
 
       # MOD-43-01 (audit 2026-03-29 Wave 43): Token sync drift gate.
       # Ensures CSS → TS token mirror stays in sync. Fails if sync produces a diff.
@@ -244,19 +412,51 @@ jobs:
             exit 1
           }
 
-      # Wave 112 — i18n EN↔RU parity gate (was manual via npm run i18n:check,
-      # now enforced in CI so missing translations fail the build).
-      - name: Verify i18n EN↔RU parity
-        run: npm run i18n:check
+      # These read-only gates are independent. Run them on the same bounded
+      # runner in parallel so the workflow does not spend one full process
+      # duration per gate while still collecting every exit status and log.
+      - name: Run frontend static gates in parallel
+        shell: bash
+        env:
+          STATIC_GATE_LOG_DIR: ${{ runner.temp }}/frontend-static-gates
+        run: |
+          set -euo pipefail
+          rm -rf -- "$STATIC_GATE_LOG_DIR"
+          mkdir -p "$STATIC_GATE_LOG_DIR"
 
-      - name: Run ts-prune (dead code check)
-        run: npm run lint:deadcode
+          run_gate() {
+            local gate="$1"
+            shift
+            local status=0
+            "$@" >"$STATIC_GATE_LOG_DIR/$gate.log" 2>&1 || status=$?
+            printf '%s\n' "$status" >"$STATIC_GATE_LOG_DIR/$gate.status"
+          }
 
-      - name: Run depcheck (dependency check)
-        run: npm run lint:depcheck
+          run_gate typecheck npm run typecheck &
+          run_gate eslint npm run lint &
+          run_gate formatting npm run format:check &
+          run_gate i18n npm run i18n:check &
+          run_gate message_contract python ../scripts/generate_message_contract.py --check &
+          run_gate deadcode npm run lint:deadcode &
+          run_gate depcheck npm run lint:depcheck &
+          wait
+
+          failed=0
+          for gate in typecheck eslint formatting i18n message_contract deadcode depcheck; do
+            echo "::group::$gate"
+            cat "$STATIC_GATE_LOG_DIR/$gate.log"
+            echo "::endgroup::"
+            status="$(cat "$STATIC_GATE_LOG_DIR/$gate.status")"
+            if [[ "$status" -ne 0 ]]; then
+              echo "::error title=Frontend static gate failed::$gate exited with $status"
+              failed=1
+            fi
+          done
+          exit "$failed"
 
   build:
     name: Production Build
+    needs: wasm-build
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     defaults:
@@ -264,10 +464,21 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
     env:
       VITE_BACKEND_ORIGIN: http://localhost:8000
+      # The 1536 MiB V8 heap cap excludes Rolldown's Rust worker pool and
+      # other native allocations. Keep finite RSS headroom around that heap;
+      # this same bounded pair is exercised by the Linux E2E/browser builds.
+      FRONTEND_BUILD_MAX_RSS_MB: "2048"
+      FRONTEND_BUILD_MAX_OLD_SPACE_MB: "1536"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Download immutable WASM modules
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: frontend-wasm-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
+          path: ${{ inputs.working-directory }}
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -279,24 +490,10 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # P0-01 (audit 2026-03-06): Replaced unsafe shell-piped installer with taiki-e/install-action.
-      # The action verifies SHA256 checksums from official GitHub releases, preventing
-      # supply chain attacks via DNS hijacking or CDN compromise (OWASP CI/CD C-PPE-1).
-      - name: Install wasm-pack
-        # W142 polish-v3 — taiki-e/install-action wasm-pack broken (drager/
-        # wasm-pack 404; rustwasm/wasm-pack canonical since v0.14.0). Same
-        # fix as W141 polish-v2 visual-audit.yml + W142 chromatic.yml.
-        uses: taiki-e/install-action@54420ca6e3a4cab262aeabc1af4f52908ca28931 # wasm-pack
-        with:
-          tool: wasm-pack@0.13.1
-
-      - name: Build rust-crypto
-        run: |
-          cd rust-crypto
-          wasm-pack build --target web
-
       - name: Build app
         run: npm run build
+        env:
+          SKIP_WASM_BUILD: "1"
 
       - name: Upload production bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -323,8 +520,7 @@ jobs:
           path: ${{ inputs.working-directory }}/dist
           if-no-files-found: error
 
-  # MOD-23-06 (audit 2026-03-25 Wave 23): Bundle size analysis.
-  # Alerts on >500 KB main chunk growth and generates a JSON report for trend tracking.
+  # Fail-closed bundle budgets and a machine-readable report for trend tracking.
   bundle-analysis:
     name: Bundle Analysis
     needs: build
@@ -338,40 +534,22 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node-version }}
+
       - name: Download production bundle
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: frontend-dist
           path: ${{ inputs.working-directory }}/dist
 
+      - name: Test bundle analyzer
+        run: node --test scripts/check-bundle-budget.test.mjs
+
       - name: Analyze bundle size
-        run: |
-          # Generate JSON report of all chunks
-          echo '{}' > bundle-report.json
-          total_size=0
-          main_chunk_size=0
-          for f in dist/client/assets/*.js; do
-            size=$(wc -c < "$f")
-            name=$(basename "$f")
-            total_size=$((total_size + size))
-            # Track main/index chunk specifically
-            if echo "$name" | grep -qE '^(index|main)'; then
-              main_chunk_size=$size
-            fi
-            echo "  $name: $(( size / 1024 )) KB"
-          done
-          echo ""
-          echo "Total JS: $(( total_size / 1024 )) KB"
-          echo "Main chunk: $(( main_chunk_size / 1024 )) KB"
-          echo ""
-          # Fail if main chunk exceeds 500 KB (gzipped will be ~150 KB)
-          LIMIT_KB=500
-          main_kb=$(( main_chunk_size / 1024 ))
-          if [ "$main_kb" -gt "$LIMIT_KB" ]; then
-            echo "::error::Main chunk ($main_kb KB) exceeds $LIMIT_KB KB budget"
-            exit 1
-          fi
-          echo "::notice::Bundle analysis passed — main chunk $main_kb KB (limit: $LIMIT_KB KB)"
+        run: node scripts/check-bundle-budget.mjs
 
       - name: Upload bundle report
         if: always()
@@ -395,13 +573,13 @@ jobs:
       matrix:
         include:
           - shard: core
-            urls: ",login,dashboard"
+            urls: ",login/,dashboard/"
           - shard: content
-            urls: "news,schedule,events"
+            urls: "news/,schedule/,events/"
           - shard: realtime
-            urls: "activity,map,messenger"
+            urls: "activity/,map/,messenger/"
           - shard: fallback
-            urls: "404"
+            urls: "404/"
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -415,6 +593,11 @@ jobs:
       # starts. run-lhci still prepares route fallbacks and performs the
       # complete collect/assert gate.
       SKIP_BUILD: "1"
+      # Serve route-specific SSR HTML from the immutable build. Measuring the
+      # route-agnostic static SPA fallback would clear it through createRoot()
+      # on every deep link and turn route chunk loading into synthetic LCP.
+      LHCI_USE_SSR_PREVIEW: "1"
+      LHCI_SSR_PREVIEW_PORT: "4175"
       # ubuntu-24.04 already contains the browser runtime libraries. The
       # Playwright apt bootstrap is intentionally opt-in here: every matrix
       # shard has its own runner, and a slow apt mirror can consume the full
@@ -448,18 +631,19 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
-          name: lighthouse-reports-${{ matrix.shard }}
+          name: lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
           path: ${{ inputs.working-directory }}/.lighthouseci
           include-hidden-files: true
-          if-no-files-found: warn
+          if-no-files-found: error
 
   # Preserve the required check display name and the single artifact consumed
   # by ci.yml's Performance Gate while allowing the route shards to run in
-  # parallel. Every shard has already run lhci assert; this job only verifies
-  # all shards succeeded and normalizes their numeric LHR filenames.
+  # parallel. Every shard has already run lhci assert plus the route privacy
+  # policy; this job verifies the complete matrix and materializes one exact,
+  # retry-safe LHR artifact.
   lighthouse:
     name: Lighthouse Audit
-    if: ${{ always() && inputs.run-lighthouse }}
+    if: ${{ always() && !cancelled() && inputs.run-lighthouse }}
     needs: lighthouse-shards
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -477,34 +661,245 @@ jobs:
           echo "::error::One or more Lighthouse shards failed"
           exit 1
 
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
       - name: Download Lighthouse shard reports
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          pattern: lighthouse-reports-*
+          pattern: lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}-*
           path: ${{ inputs.working-directory }}/.lighthouseci-shards
           merge-multiple: false
 
-      - name: Merge Lighthouse reports
+      - name: Assemble canonical Lighthouse evidence
+        working-directory: ${{ github.workspace }}
         shell: bash
+        env:
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          SHARDS_ROOT: "${{ inputs.working-directory }}/.lighthouseci-shards"
         run: |
           set -euo pipefail
-          rm -rf .lighthouseci
-          mkdir -p .lighthouseci
-          counter=0
-          while IFS= read -r -d '' report; do
-            cp "$report" ".lighthouseci/lhr-${counter}.json"
-            counter=$((counter + 1))
-          done < <(find .lighthouseci-shards -type f -name 'lhr-*.json' -print0 | sort -z)
-          if [ "$counter" -eq 0 ]; then
-            echo "::error::No Lighthouse LHR JSON reports were produced"
+          producer_root=artifacts/lighthouse/producer
+          shards_root="$SHARDS_ROOT"
+          prefix="lighthouse-reports-${RUN_ID}-${RUN_ATTEMPT}"
+          expected_shards=(core content realtime fallback)
+          expected_counts=(9 9 9 3)
+
+          if [[ -L artifacts || -L artifacts/lighthouse || -L "$shards_root" ]]; then
+            echo "::error::Lighthouse evidence path must not traverse a symlink"
             exit 1
           fi
-          echo "Merged $counter Lighthouse LHR reports"
+          rm -rf -- "$producer_root"
+          mkdir -p "$producer_root/lhr"
+          test -d "$shards_root"
+          if find "$shards_root" -mindepth 1 -maxdepth 1 -type l -print -quit | grep -q .; then
+            echo "::error::Lighthouse shard download contains a symlink"
+            exit 1
+          fi
+          actual_members="$(find "$shards_root" -mindepth 1 -maxdepth 1 -print | wc -l)"
+          if [[ "$actual_members" -ne "${#expected_shards[@]}" ]]; then
+            echo "::error::Lighthouse shard download contains an unexpected artifact member"
+            exit 1
+          fi
+          actual_shards="$(find "$shards_root" -mindepth 1 -maxdepth 1 -type d | wc -l)"
+          if [[ "$actual_shards" -ne "${#expected_shards[@]}" ]]; then
+            echo "::error::Expected exactly ${#expected_shards[@]} Lighthouse shard artifacts, found $actual_shards"
+            exit 1
+          fi
 
-      - name: Upload merged Lighthouse reports
+          total=0
+          for position in "${!expected_shards[@]}"; do
+            shard="${expected_shards[$position]}"
+            expected_count="${expected_counts[$position]}"
+            shard_dir="$shards_root/${prefix}-${shard}"
+            if [[ ! -d "$shard_dir" ]]; then
+              echo "::error::Missing Lighthouse artifact for shard $shard"
+              exit 1
+            fi
+            if find "$shard_dir" -type l -print -quit | grep -q .; then
+              echo "::error::Lighthouse shard artifact contains a symlink: $shard"
+              exit 1
+            fi
+            mapfile -d '' reports < <(find "$shard_dir" -type f -name 'lhr-*.json' -print0 | sort -z)
+            if [[ "${#reports[@]}" -ne "$expected_count" ]]; then
+              echo "::error::Expected $expected_count Lighthouse LHR JSON reports for shard $shard, found ${#reports[@]}"
+              exit 1
+            fi
+            mkdir -p "$producer_root/lhr/$shard"
+            for index in "${!reports[@]}"; do
+              report="${reports[$index]}"
+              printf -v report_name "lhr-%02d.json" "$index"
+              target="$producer_root/lhr/$shard/$report_name"
+              test -f "$report"
+              test ! -L "$report"
+              cp -- "$report" "$target"
+              total=$((total + 1))
+            done
+          done
+          # core/content/realtime carry three routes × three runs; fallback
+          # carries the dedicated 404 route × three runs.  The retry selector
+          # accepts only this fixed 30-LHR matrix.
+          if [[ "$total" -ne 30 ]]; then
+            echo "::error::Expected exactly 30 Lighthouse LHR JSON reports, found $total"
+            exit 1
+          fi
+          echo "Assembled $total canonical Lighthouse LHR reports"
+
+      - name: Write Lighthouse evidence provenance
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        env:
+          LOGICAL_ARTIFACT_NAME: lighthouse-reports
+          PHYSICAL_ARTIFACT_NAME: lighthouse-reports-attempt-${{ github.run_attempt }}
+          EXPECTED_SHA: ${{ github.sha }}
+          WORKFLOW_REPOSITORY: ${{ github.repository }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          WORKFLOW_EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          cd "$GITHUB_WORKSPACE"
+          workspace_root="$(pwd -P)"
+          github_workspace_root="$(realpath -- "$GITHUB_WORKSPACE")"
+          if [[ "$workspace_root" != "$github_workspace_root" ]]; then
+            echo "::error::Lighthouse provenance workspace is not the canonical checkout root" >&2
+            printf 'pwd -P=%s\nGITHUB_WORKSPACE=%s\nrealpath(GITHUB_WORKSPACE)=%s\n' \
+              "$workspace_root" "$GITHUB_WORKSPACE" "$github_workspace_root" >&2
+            exit 1
+          fi
+          producer_root=artifacts/lighthouse/producer
+          test -d "$producer_root"
+          python_version="$(python3 --version | awk '{print $2}')"
+          reports=()
+          for shard_spec in core:9 content:9 realtime:9 fallback:3; do
+            shard="${shard_spec%%:*}"
+            count="${shard_spec##*:}"
+            for ((index = 0; index < count; index += 1)); do
+              printf -v report_name "lhr-%02d.json" "$index"
+              source="$producer_root/lhr/$shard/$report_name"
+              test -s "$source"
+              reports+=(--report "lighthouse-$shard|lighthouse-lhr-json|$source|lhr/$shard/$report_name")
+            done
+          done
+          # Each report is passed as a ``--report``/value pair.  Validate the
+          # number of complete pairs rather than the raw argv length; checking
+          # the latter against 30 would make this step exit silently at 60
+          # elements before the provenance writer runs.
+          test "${#reports[@]}" -eq 60
+          provenance_dir="$producer_root/provenance"
+          mkdir -p -- "$provenance_dir"
+          test -d "$provenance_dir"
+          test ! -L "$provenance_dir"
+          provenance_output="$provenance_dir/lighthouse-reports.json"
+          retry_output="$(mktemp)"
+          retry_error="$(mktemp)"
+          write_output="$(mktemp)"
+          write_error="$(mktemp)"
+          trap 'rm -f "$retry_output" "$retry_error" "$write_output" "$write_error"' EXIT
+          retry_status=0
+          python3 -m scripts.quality.coverage_retry_provenance_cli \
+              --repository-root "$GITHUB_WORKSPACE" \
+              --repository "$WORKFLOW_REPOSITORY" \
+              --run-id "$RUN_ID" \
+              --run-attempt "$RUN_ATTEMPT" \
+              --workflow-ref "$WORKFLOW_REF" \
+              --workflow-sha "$WORKFLOW_SHA" \
+              --event "$WORKFLOW_EVENT" \
+              --artifact "$LOGICAL_ARTIFACT_NAME" \
+              --config-input .github/workflows/reusable-frontend-tests.yml \
+              --config-input .lighthouserc.js \
+              --config-input frontend/package.json \
+              --config-input frontend/package-lock.json \
+              --config-input frontend/scripts/run-lhci.mjs \
+              --config-input frontend/scripts/lhci-route-policy.mjs \
+              --config-input frontend/scripts/lhci-route-policy-config.cjs \
+              --policy-input budget.json \
+              --policy-input frontend/public/robots.txt \
+              --policy-input quality/quality-contract.json \
+              --policy-input .github/workflows/ci.yml \
+              --policy-input scripts/quality/coverage_provenance.py \
+              --policy-input scripts/quality/coverage_retry_context.py \
+              --policy-input scripts/quality/coverage_retry_provenance_cli.py \
+              --policy-input scripts/quality/select_coverage_artifacts.py \
+              --policy-input scripts/quality/select_lighthouse_artifacts.py \
+              --policy-input scripts/quality/select_lighthouse_artifacts_cli.py \
+              >"$retry_output" 2>"$retry_error" || retry_status=$?
+          if [[ "$retry_status" -ne 0 ]]; then
+            echo "::error::Lighthouse retry provenance CLI failed with exit $retry_status." >&2
+            cat "$retry_error" >&2
+            exit "$retry_status"
+          fi
+          retry_values=()
+          mapfile -t retry_values < "$retry_output"
+          if [[ "${#retry_values[@]}" -ne 11 ]]; then
+            echo "::error::Lighthouse retry CLI returned ${#retry_values[@]} values; expected 11." >&2
+            cat "$retry_error" >&2
+            nl -ba "$retry_output" >&2
+            exit 1
+          fi
+          retry_args=()
+          for value in "${retry_values[@]}"; do
+            retry_args+=(--retry-provenance "$value")
+          done
+          write_status=0
+          python3 scripts/quality/coverage_provenance.py write \
+            --repository-root "$GITHUB_WORKSPACE" \
+            --output "$provenance_output" \
+            --expected-sha "$EXPECTED_SHA" \
+            --identity-provider github-actions \
+            --repository "$WORKFLOW_REPOSITORY" \
+            --workflow-ref "$WORKFLOW_REF" \
+            --workflow-sha "$WORKFLOW_SHA" \
+            --run-id "$RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --event "$WORKFLOW_EVENT" \
+            --job "$GITHUB_JOB" \
+            --artifact "$LOGICAL_ARTIFACT_NAME" \
+            --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --tool-version "python=$python_version" \
+            --tool-version quality-provenance=2.0.0 \
+            --tool-version lighthouse-lhr-inventory=30 \
+            "${reports[@]}" \
+            "${retry_args[@]}" \
+            >"$write_output" 2>"$write_error" || write_status=$?
+          if [[ "$write_status" -ne 0 ]]; then
+            echo "::error::Lighthouse evidence provenance writer failed with exit $write_status." >&2
+            cat "$write_error" >&2
+            cat "$write_output" >&2
+            exit "$write_status"
+          fi
+          if [[ ! -f "$provenance_output" || -L "$provenance_output" || ! -s "$provenance_output" ]]; then
+            echo "::error::Lighthouse evidence provenance writer produced no regular, non-empty sidecar at the expected workspace path." >&2
+            printf 'working directory: %s\n' "$(pwd -P)" >&2
+            printf 'provenance directory listing:\n' >&2
+            ls -la "$provenance_dir" >&2 || true
+            printf 'provenance output path: %s\n' "$provenance_output" >&2
+            if [[ -e "$provenance_output" || -L "$provenance_output" ]]; then
+              stat --printf='mode=%a size=%s inode=%i links=%h type=%F\n' "$provenance_output" >&2 || true
+            fi
+            printf 'writer stderr:\n' >&2
+            cat "$write_error" >&2
+            printf 'writer stdout:\n' >&2
+            cat "$write_output" >&2
+            exit 1
+          fi
+          test -s "$provenance_output"
+
+      - name: Upload Lighthouse retry evidence
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: lighthouse-reports
-          path: ${{ inputs.working-directory }}/.lighthouseci
+          name: lighthouse-reports-attempt-${{ github.run_attempt }}
+          path: artifacts/lighthouse/producer
           include-hidden-files: true
           if-no-files-found: error
+          overwrite: false

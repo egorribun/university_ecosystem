@@ -137,9 +137,20 @@ async def test_nats_dlq_integration_flow(nats_server, db_session) -> None:
             temp_db.add(failing_se)
             await temp_db.commit()
 
-        # Run process_batch: 1st run (increments error_count from 0 to 2 due to double-increment in outbox.py)
+        # Each failed dispatch consumes exactly one retry attempt.
         processed1 = await worker.process_batch()
         assert processed1 > 0
+
+        async with async_session() as temp_db:
+            stmt = select(StoredEvent).where(StoredEvent.id == failing_se.id)
+            res = await temp_db.execute(stmt)
+            failing_db_event = res.scalar_one()
+            assert failing_db_event.error_count == 1
+            assert failing_db_event.processed_at is None
+
+        # The second failure remains retryable.
+        processed2 = await worker.process_batch()
+        assert processed2 > 0
 
         async with async_session() as temp_db:
             stmt = select(StoredEvent).where(StoredEvent.id == failing_se.id)
@@ -148,16 +159,16 @@ async def test_nats_dlq_integration_flow(nats_server, db_session) -> None:
             assert failing_db_event.error_count == 2
             assert failing_db_event.processed_at is None
 
-        # Run process_batch: 2nd run (increments error_count from 2 to 4; 4 >= max_retries(3) promotes to DLQ)
-        processed2 = await worker.process_batch()
-        assert processed2 > 0
+        # The third failed attempt reaches max_retries and is dead-lettered.
+        processed3 = await worker.process_batch()
+        assert processed3 > 0
 
         # The event should now be marked processed (dead-lettered)
         async with async_session() as temp_db:
             stmt = select(StoredEvent).where(StoredEvent.id == failing_se.id)
             res = await temp_db.execute(stmt)
             failing_db_event = res.scalar_one()
-            assert failing_db_event.error_count == 4
+            assert failing_db_event.error_count == 3
             assert failing_db_event.processed_at is not None
 
         # Verify FailedOutboxEvent entry exists in DB with trace details

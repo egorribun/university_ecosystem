@@ -81,6 +81,11 @@ describe("EventDetailBody", () => {
     )
 
     expect(container.querySelectorAll("section")).toHaveLength(2)
+    const sections = container.querySelectorAll("section")
+    expect(sections[0]).toHaveAttribute("aria-labelledby", "event-about-heading")
+    expect(sections[0]).toHaveAttribute("style", "scroll-margin-top: 5rem;")
+    expect(sections[1]).toHaveAttribute("aria-labelledby", "event-files-heading")
+    expect(sections[1]).toHaveAttribute("style", "scroll-margin-top: 5rem;")
     expect(screen.getByTestId("event-about-editor")).toHaveTextContent("event-1:ru:true")
     expect(screen.getByTestId("event-file-manager")).toHaveTextContent("event-1:true")
 

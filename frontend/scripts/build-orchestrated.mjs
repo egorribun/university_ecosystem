@@ -13,6 +13,7 @@
  */
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs"
+import { rename, rm } from "node:fs/promises"
 import path from "node:path"
 import process from "node:process"
 import { execFile, spawn } from "node:child_process"
@@ -455,15 +456,35 @@ async function step5_workboxInject() {
     )
   }
 
-  // Inject after the Vite process exits so Workbox cannot retain Vite's
-  // plugin lifecycle. The shared config controls deterministic glob ordering
-  // and the maximum precache size.
-  const result = await injectManifest({
-    swSrc: swPath,
-    swDest: swPath,
-    globDirectory: path.join(cwd, "dist/client"),
-    ...PWA_INJECT_CONFIG,
-  })
+  // Workbox 7 rejects `swSrc === swDest` before it scans the source. Stage the
+  // generated service worker in the same directory, then atomically replace
+  // the un-injected bundle. A same-directory rename keeps the operation on a
+  // single filesystem (and therefore atomic on POSIX); Windows may require a
+  // short remove-and-rename fallback when the target is still open.
+  const workboxTempPath = path.join(
+    path.dirname(swPath),
+    `.sw-workbox-${process.pid}-${Date.now()}.tmp.js`
+  )
+
+  let result
+  try {
+    result = await injectManifest({
+      swSrc: swPath,
+      swDest: workboxTempPath,
+      globDirectory: path.join(cwd, "dist/client"),
+      ...PWA_INJECT_CONFIG,
+    })
+
+    try {
+      await rename(workboxTempPath, swPath)
+    } catch (error) {
+      if (!error || !["EEXIST", "EPERM"].includes(error.code)) throw error
+      await rm(swPath, { force: true })
+      await rename(workboxTempPath, swPath)
+    }
+  } finally {
+    await rm(workboxTempPath, { force: true })
+  }
 
   console.log(
     `Workbox: precached ${result.count} files (${(result.size / 1024 / 1024).toFixed(2)} MB)`

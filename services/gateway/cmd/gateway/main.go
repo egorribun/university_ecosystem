@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"flag"
 	"fmt"
@@ -41,6 +42,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	grpc_health_v1 "google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/quic-go/quic-go/http3"
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
@@ -439,7 +441,15 @@ func initGRPC(cfg *config.Config, logger *slog.Logger, spiffeClients ...*spiffe.
 		}
 		grpcCreds = grpc.WithTransportCredentials(creds)
 	} else if cfg.GrpcUseTLS {
-		grpcCreds = grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, ""))
+		if cfg.GRPCCAFile != "" || cfg.GRPCClientCertFile != "" || cfg.GRPCClientKeyFile != "" || cfg.GRPCServerName != "" {
+			creds, err := conventionalGRPCClientCredentials(cfg)
+			if err != nil {
+				return nil, nil, err
+			}
+			grpcCreds = grpc.WithTransportCredentials(creds)
+		} else {
+			grpcCreds = grpc.WithTransportCredentials(credentials.NewClientTLSFromCert(nil, ""))
+		}
 	} else {
 		grpcCreds = grpc.WithTransportCredentials(insecure.NewCredentials())
 	}
@@ -454,9 +464,75 @@ func initGRPC(cfg *config.Config, logger *slog.Logger, spiffeClients ...*spiffe.
 		logger.ErrorContext(context.Background(), "Failed to initialize File Processor gRPC transport", "err", err)
 		return nil, nil, err
 	}
-	logger.InfoContext(context.Background(), "Connected to File Processor gRPC", "addr", cfg.FileProcessorAddr)
+	logger.InfoContext(context.Background(), "Initialized File Processor gRPC client", "addr", cfg.FileProcessorAddr)
 
 	return grpcConn, pb.NewFileProcessingServiceClient(grpcConn), nil
+}
+
+func conventionalGRPCClientCredentials(cfg *config.Config) (credentials.TransportCredentials, error) {
+	tlsConfig, err := conventionalGRPCClientTLSConfig(cfg)
+	if err != nil {
+		return nil, err
+	}
+	return credentials.NewTLS(tlsConfig), nil
+}
+
+func conventionalGRPCClientTLSConfig(cfg *config.Config) (*tls.Config, error) {
+	caPEM, err := os.ReadFile(cfg.GRPCCAFile)
+	if err != nil {
+		return nil, fmt.Errorf("read gRPC client CA: %w", err)
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM(caPEM) {
+		return nil, errors.New("parse gRPC client CA: no certificates found")
+	}
+	certificate, err := tls.LoadX509KeyPair(cfg.GRPCClientCertFile, cfg.GRPCClientKeyFile)
+	if err != nil {
+		return nil, fmt.Errorf("load gRPC client certificate: %w", err)
+	}
+	if err := validateConventionalClientCertificate(certificate, cfg.GRPCClientIdentityURI, time.Now()); err != nil {
+		return nil, err
+	}
+	return &tls.Config{
+		MinVersion:   tls.VersionTLS13,
+		RootCAs:      roots,
+		Certificates: []tls.Certificate{certificate},
+		ServerName:   cfg.GRPCServerName,
+	}, nil
+}
+
+func validateConventionalClientCertificate(certificate tls.Certificate, expectedIdentity string, now time.Time) error {
+	if err := config.ValidateGRPCClientIdentityURI(expectedIdentity); err != nil {
+		return err
+	}
+	var leaf *x509.Certificate
+	leafCount := 0
+	for index, rawCertificate := range certificate.Certificate {
+		parsed, err := x509.ParseCertificate(rawCertificate)
+		if err != nil {
+			return fmt.Errorf("parse gRPC client certificate chain: %w", err)
+		}
+		if !parsed.IsCA {
+			leafCount++
+			leaf = parsed
+			if index != 0 {
+				return errors.New("gRPC client certificate leaf must be first in the chain")
+			}
+		}
+	}
+	if leafCount != 1 || leaf == nil {
+		return errors.New("gRPC client certificate must contain exactly one non-CA leaf")
+	}
+	if now.Before(leaf.NotBefore) || now.After(leaf.NotAfter) {
+		return errors.New("gRPC client certificate is outside its validity period")
+	}
+	if len(leaf.ExtKeyUsage) != 1 || leaf.ExtKeyUsage[0] != x509.ExtKeyUsageClientAuth || len(leaf.UnknownExtKeyUsage) != 0 {
+		return errors.New("gRPC client certificate must be clientAuth-only")
+	}
+	if len(leaf.URIs) != 1 || leaf.URIs[0].String() != expectedIdentity {
+		return errors.New("gRPC client certificate must contain exactly the configured URI SAN")
+	}
+	return nil
 }
 
 //nolint:gocognit,cyclop
@@ -609,6 +685,12 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	// Admin/Metrics separation
 	public := router.Group("/")
 	public.GET("/health", handlers.HealthHandler)
+	public.GET("/health/live", handlers.HealthHandler)
+	if grpcConn == nil {
+		public.GET("/health/ready", handlers.ReadinessHandler(nil, 2*time.Second))
+	} else {
+		public.GET("/health/ready", handlers.ReadinessHandler(grpc_health_v1.NewHealthClient(grpcConn), 2*time.Second))
+	}
 
 	// JWT. Revocation always gets its own client, even when an operator points
 	// both URLs at the same Redis endpoint. Authentication never owns or reuses
@@ -680,6 +762,13 @@ func setupRouter(cfg *config.Config, logger *slog.Logger, grpcConn *grpc.ClientC
 	{
 		api.Any("/v1/*path", func(c *gin.Context) {
 			subPath := c.Param("path")
+			// Field evidence export carries a GitHub Actions OIDC token, not an
+			// application JWT. Only this exact read-only path bypasses edge JWT;
+			// the backend verifies issuer, audience, workflow, environment and SHA.
+			if subPath == "/cwv/export" && c.Request.Method == http.MethodGet {
+				fileFn(c)
+				return
+			}
 			if strings.HasPrefix(subPath, "/auth/") {
 				// Auth routes: optional JWT
 				jwtMiddleware.Optional(ctx)(c)

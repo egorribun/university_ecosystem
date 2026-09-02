@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from fastapi import BackgroundTasks, Request
 from pydantic import EmailStr, TypeAdapter
-from sqlalchemy import inspect
+from sqlalchemy import delete, inspect
 from sqlalchemy.orm import exc as orm_exc
 
 from app.core.logging import get_logger
@@ -24,6 +24,8 @@ if TYPE_CHECKING:
 
 import app.models as models
 from app.api.validation import raise_validation_error
+from app.auth.constants import MFA_METHOD_EMAIL_OTP
+from app.auth.mfa.lifecycle import refresh_user_mfa_preferences
 from app.auth.security import (
     get_password_hash,
     validate_password_hibp,
@@ -340,11 +342,29 @@ class AuthService:
                 locale,
             )
 
-        db_user = await self.user_repo.update(
-            record.user_id, {"email": record.new_email}
-        )
+        db_user = await self.user_repo._get_orm(record.user_id, with_for_update=True)
         if not db_user:
             raise EntityNotFound("User", record.user_id)
+        db_user.email = record.new_email
+        # The link proves the new address, but an email MFA factor is bound to
+        # the previous recipient and must be re-enabled explicitly.
+        db_user.email_verified_at = now
+        db_user.email_mfa_enabled_at = None
+        db_user.mfa_epoch = int(db_user.mfa_epoch or 0) + 1
+        if db_user.mfa_default_method == MFA_METHOD_EMAIL_OTP:
+            db_user.mfa_default_method = None
+        await self.auth_repo.db.execute(
+            delete(models.MfaChallenge).where(
+                models.MfaChallenge.user_id == db_user.id,
+                models.MfaChallenge.method == MFA_METHOD_EMAIL_OTP,
+            )
+        )
+        await self.auth_repo.db.execute(
+            delete(models.TrustedDevice).where(
+                models.TrustedDevice.user_id == db_user.id
+            )
+        )
+        await refresh_user_mfa_preferences(self.auth_repo.db, user=db_user)
 
         await self.auth_repo.mark_email_change_token_used(record.id)
         await self.auth_repo.invalidate_other_email_change_tokens(

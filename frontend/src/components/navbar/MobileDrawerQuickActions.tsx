@@ -37,7 +37,7 @@ export function MobileDrawerQuickActions({
               "flex flex-col items-center justify-center gap-1 rounded-xl py-3 px-1",
               "border border-(--glass-border) bg-(--bg-surface-hover)/(--opacity-subtle)",
               "text-(--text-primary) text-[11px] font-medium leading-tight",
-              "transition-all hover:bg-(--bg-surface-hover)/(--opacity-dim)",
+              "transition-[transform,opacity,background-color] hover:bg-(--bg-surface-hover)/(--opacity-dim)",
               prefersReducedMotion ? "duration-0" : "duration-200",
               "cursor-pointer",
               !prefersReducedMotion && "active:scale-[0.97]"

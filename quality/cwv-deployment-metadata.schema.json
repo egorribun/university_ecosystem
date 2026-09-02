@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://university-ecosystem.local/schemas/cwv-deployment-metadata.schema.json",
+  "title": "Trusted University Ecosystem staging deployment metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "environment",
+    "release_sha",
+    "frontend_image_digest",
+    "image_manifest_sha256",
+    "image_build_run_id",
+    "image_build_run_attempt",
+    "images",
+    "deployment_url",
+    "deployed_at",
+    "workflow_run_id",
+    "workflow_run_attempt"
+  ],
+  "properties": {
+    "schema_version": { "const": 2 },
+    "environment": { "const": "staging" },
+    "release_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "frontend_image_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "image_manifest_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "image_build_run_id": { "type": "integer", "minimum": 1 },
+    "image_build_run_attempt": { "type": "integer", "minimum": 1 },
+    "images": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "backend",
+        "caddy",
+        "frontend",
+        "ws-hub",
+        "gateway",
+        "file-processor"
+      ],
+      "properties": {
+        "backend": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "caddy": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "frontend": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "ws-hub": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "gateway": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "file-processor": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
+      }
+    },
+    "deployment_url": {
+      "type": "string",
+      "format": "uri",
+      "pattern": "^https://",
+      "maxLength": 2048
+    },
+    "deployed_at": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "workflow_run_id": { "type": "integer", "minimum": 1 },
+    "workflow_run_attempt": { "type": "integer", "minimum": 1 }
+  }
+}

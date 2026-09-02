@@ -327,7 +327,7 @@ describe("InstallPrompt", () => {
 
     expect(screen.getByText("system:installPrompt.toggleLabel")).toBeInTheDocument()
     expect(screen.getByText("notifications:topics.schedule")).toBeInTheDocument()
-    const switches = screen.getAllByRole("checkbox")
+    const switches = screen.getAllByRole("switch")
     await user.click(switches[0]!)
     expect(disableNotifications).toHaveBeenCalled()
     await user.click(switches[1]!)
@@ -338,7 +338,7 @@ describe("InstallPrompt", () => {
       notificationsEnabled: false,
     })
     rerender(<InstallPrompt />)
-    await user.click(screen.getAllByRole("checkbox")[0]!)
+    await user.click(screen.getAllByRole("switch")[0]!)
     expect(enableNotifications).toHaveBeenCalled()
   })
 

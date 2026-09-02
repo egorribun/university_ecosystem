@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { m, useAnimation } from "framer-motion"
+import { m } from "framer-motion"
 import { cn } from "@/utils/cn"
 
 interface SwitchProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -13,26 +13,6 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
   ({ className, checked, onCheckedChange, disabled, ...props }, ref) => {
     const [hover, setHover] = React.useState(false)
     const [focus, setFocus] = React.useState(false)
-    const controls = useAnimation()
-    const isFirstRender = React.useRef(true)
-
-    React.useEffect(() => {
-      if (isFirstRender.current) {
-        isFirstRender.current = false
-        return
-      }
-      controls.start({
-        x: checked ? 26 : 0,
-        scaleX: [1, 1.6, 0.85, 1.1, 1],
-        scaleY: [1, 0.7, 1.15, 0.95, 1],
-        transition: {
-          x: { type: "spring", stiffness: 200, damping: 20 },
-          scaleX: { duration: 0.5, ease: "easeInOut", times: [0, 0.4, 0.7, 0.9, 1] },
-          scaleY: { duration: 0.5, ease: "easeInOut", times: [0, 0.4, 0.7, 0.9, 1] },
-        },
-      })
-    }, [checked, controls])
-
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
       onCheckedChange?.(e.target.checked)
     }
@@ -40,7 +20,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
     return (
       <span
         className={cn(
-          "relative inline-flex h-7 w-14 cursor-pointer items-center rounded-full p-0.5",
+          "relative inline-flex min-h-11 w-14 cursor-pointer items-center rounded-full",
           "touch-manipulation select-none transition-premium",
           disabled ? "cursor-not-allowed opacity-medium" : "hover:scale-105 active:scale-95",
           className
@@ -51,7 +31,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
         {/* Focus ring */}
         <span
           className={cn(
-            "pointer-events-none absolute -inset-1 rounded-full transition-premium",
+            "pointer-events-none absolute inset-x-0 top-2 h-7 rounded-full transition-premium",
             focus && !disabled
               ? "scale-100 opacity-100 ring-4 ring-brand/(--opacity-dim)"
               : "scale-90 opacity-0"
@@ -61,7 +41,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
         {/* Track */}
         <m.span
           className={cn(
-            "absolute inset-0 rounded-full border border-border-subtle transition-colors duration-base",
+            "absolute inset-x-0 top-2 h-7 rounded-full border border-border-subtle transition-colors duration-base",
             "bg-(--bg-surface)-tint backdrop-blur-sm",
             checked && "bg-brand/(--opacity-dim) border-brand/(--opacity-soft)"
           )}
@@ -89,7 +69,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
           }}
           transition={{ type: "spring", stiffness: 500, damping: 30 }}
           className={cn(
-            "relative z-deep block h-5.5 w-5.5 rounded-full bg-surface shadow-surface",
+            "relative z-deep ml-0.5 block h-5.5 w-5.5 rounded-full bg-surface shadow-surface",
             "border border-glass-border-subtle",
             "bg-surface",
             checked && "bg-surface"
@@ -101,6 +81,7 @@ const Switch = React.forwardRef<HTMLInputElement, SwitchProps>(
 
         <input
           type="checkbox"
+          role="switch"
           ref={ref}
           checked={checked}
           disabled={disabled}

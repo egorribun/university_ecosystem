@@ -1,5 +1,6 @@
 import json
 import subprocess
+import threading
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -7,12 +8,15 @@ from types import SimpleNamespace
 import pytest
 
 from scripts.quality.capture_isolated_benchmarks import (
+    CAPTURE_SIDE_WORKERS,
     CONTAINER_HOME,
     DOCKER_BINARY,
+    PAIR_COUNT,
     TIMEOUT_BINARY,
     CaptureArguments,
     CaptureError,
     _build_rust_image,
+    _capture_pair_sides_concurrently,
     _container_tool_output,
     _copy_limited_stream,
     _create_private_volume,
@@ -409,15 +413,129 @@ def test_capture_accepts_worktrees_with_matching_declared_heads(
             "HEAD^{commit}",
         ],
     ]
-    assert captured_descriptions == [
+    assert captured_descriptions[:2] == [
         "warm base benchmark build",
         "warm candidate benchmark build",
-        *[
-            f"capture {side} benchmark pair {pair:02d}"
-            for pair in range(1, 13)
-            for side in (("base", "candidate") if pair % 2 else ("candidate", "base"))
-        ],
     ]
+    expected_pair_descriptions = {
+        f"capture {side} benchmark pair {pair:02d}"
+        for pair in range(1, PAIR_COUNT + 1)
+        for side in ("base", "candidate")
+    }
+    assert set(captured_descriptions[2:]) == expected_pair_descriptions
+    assert len(captured_descriptions[2:]) == PAIR_COUNT * CAPTURE_SIDE_WORKERS
+
+
+def test_capture_pair_sides_concurrently_starts_both_independent_sides(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One pair overlaps its independent Docker captures without sharing output."""
+
+    sides = (
+        ("base", tmp_path / "base", "base-cache"),
+        ("candidate", tmp_path / "candidate", "candidate-cache"),
+    )
+    started: list[dict[str, object]] = []
+    lock = threading.Lock()
+    barrier = threading.Barrier(CAPTURE_SIDE_WORKERS, timeout=2)
+
+    def fake_capture(**kwargs: object) -> None:
+        with lock:
+            started.append(kwargs)
+        try:
+            barrier.wait()
+        except threading.BrokenBarrierError as exc:
+            raise AssertionError("pair sides were not started concurrently") from exc
+
+    monkeypatch.setattr(
+        "scripts.quality.capture_isolated_benchmarks._capture_pair", fake_capture
+    )
+
+    _capture_pair_sides_concurrently(
+        image="example.invalid/performance@sha256:" + "a" * 64,
+        ordered_sides=sides,
+        workdir="/src",
+        environment={"HOME": CONTAINER_HOME},
+        program=("cargo", "bench"),
+        artifact_root=tmp_path / "artifacts",
+        pair=3,
+    )
+
+    assert len(started) == CAPTURE_SIDE_WORKERS
+    assert {str(item["description"]) for item in started} == {
+        "capture base benchmark pair 03",
+        "capture candidate benchmark pair 03",
+    }
+    assert {Path(item["output_path"]) for item in started} == {
+        tmp_path / "artifacts" / "base" / "pair-03.txt",
+        tmp_path / "artifacts" / "candidate" / "pair-03.txt",
+    }
+    assert all(item["emit_markers"] is False for item in started)
+
+
+def test_capture_pair_sides_concurrently_propagates_worker_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A side failure fails the pair after both workers have completed cleanup."""
+
+    sides = (
+        ("base", tmp_path / "base", "base-cache"),
+        ("candidate", tmp_path / "candidate", "candidate-cache"),
+    )
+    barrier = threading.Barrier(CAPTURE_SIDE_WORKERS, timeout=2)
+    calls: list[str] = []
+
+    def fake_capture(**kwargs: object) -> None:
+        description = str(kwargs["description"])
+        calls.append(description)
+        barrier.wait()
+        if description.startswith("capture base"):
+            raise CaptureError("base capture failed")
+
+    monkeypatch.setattr(
+        "scripts.quality.capture_isolated_benchmarks._capture_pair", fake_capture
+    )
+
+    with pytest.raises(CaptureError, match="base capture failed"):
+        _capture_pair_sides_concurrently(
+            image="example.invalid/performance@sha256:" + "b" * 64,
+            ordered_sides=sides,
+            workdir="/src",
+            environment={"HOME": CONTAINER_HOME},
+            program=("cargo", "bench"),
+            artifact_root=tmp_path / "artifacts",
+            pair=1,
+        )
+
+    assert set(calls) == {
+        "capture base benchmark pair 01",
+        "capture candidate benchmark pair 01",
+    }
+
+
+def test_capture_pair_sides_concurrently_requires_one_base_and_candidate(
+    tmp_path: Path,
+) -> None:
+    """Reject malformed side lists before creating any benchmark container."""
+
+    with pytest.raises(
+        CaptureError,
+        match="exactly one base and one candidate side",
+    ):
+        _capture_pair_sides_concurrently(
+            image="example.invalid/performance@sha256:" + "c" * 64,
+            ordered_sides=(
+                ("base", tmp_path / "base", "base-cache"),
+                ("base", tmp_path / "other", "other-cache"),
+            ),
+            workdir="/src",
+            environment={"HOME": CONTAINER_HOME},
+            program=("cargo", "bench"),
+            artifact_root=tmp_path / "artifacts",
+            pair=1,
+        )
 
 
 def test_image_content_id_must_be_an_immutable_sha256_identifier() -> None:
@@ -1041,6 +1159,45 @@ def test_cleanup_failure_cannot_leave_github_command_parsing_disabled(
     assert marker_lines[0].startswith("::stop-commands::")
     marker = marker_lines[0].removeprefix("::stop-commands::")
     assert marker_lines[-1] == f"::{marker}::"
+
+
+def test_safe_capture_can_suppress_nested_github_command_markers(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Parallel workers keep their captured output out of the command stream."""
+
+    class FinishedProcess:
+        stdout = BytesIO()
+
+        def poll(self) -> int:
+            return 0
+
+        def wait(self) -> int:
+            return 0
+
+    monkeypatch.setattr(
+        "scripts.quality.capture_isolated_benchmarks.subprocess.Popen",
+        lambda *_args, **_kwargs: FinishedProcess(),
+    )
+    monkeypatch.setattr(
+        "scripts.quality.capture_isolated_benchmarks._force_remove_container",
+        lambda _container_name: None,
+    )
+    output_path = tmp_path / "capture.txt"
+
+    _safe_capture(
+        ("docker", "run", "example"),
+        output_path,
+        description="parallel worker capture",
+        timeout_seconds=1,
+        container_name="quality-benchmark-" + "e" * 32,
+        emit_markers=False,
+    )
+
+    assert capsys.readouterr().out == ""
+    assert output_path.read_bytes() == b""
 
 
 def test_base_exception_cleanup_paths_have_required_audit_rationales() -> None:

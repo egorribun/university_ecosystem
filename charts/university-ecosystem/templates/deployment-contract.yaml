@@ -1,0 +1,83 @@
+{{- if .Values.deploymentContract.enabled -}}
+{{- $mfaKeys := list .Values.applicationSecrets.keys.mfaEmailOtpHMACKeys .Values.applicationSecrets.keys.mfaEmailOtpActiveHMACKeyId .Values.applicationSecrets.keys.mfaEmailDeliveryKEKs .Values.applicationSecrets.keys.mfaEmailDeliveryActiveKEKId .Values.applicationSecrets.keys.mfaTrustedDeviceHMACKeys .Values.applicationSecrets.keys.mfaTrustedDeviceActiveHMACKeyId -}}
+{{- $cwvKeys := list -}}
+{{- if eq .Values.global.environment "staging" -}}
+  {{- $cwvKeys = list .Values.applicationSecrets.keys.cwvManualTesterUserIds -}}
+{{- end -}}
+{{- $backendKeys := concat (list "jwt-secret" "jwt-rsa-private-key" "internal-hmac-secret" "ws-hub-internal-secret" "csrf-hmac-secret" "spotify-token-secret" "elasticsearch-password" "spicedb-preshared-key" "audit-log-secret" "idempotency-hmac-secret") $mfaKeys $cwvKeys | uniq | sortAlpha -}}
+{{- $outboxKeys := list "jwt-secret" "jwt-rsa-private-key" "internal-hmac-secret" "ws-hub-internal-secret" "csrf-hmac-secret" "spotify-token-secret" "elasticsearch-password" "spicedb-preshared-key" "audit-log-secret" "idempotency-hmac-secret" .Values.applicationSecrets.keys.mfaEmailDeliveryKEKs | uniq | sortAlpha -}}
+{{- $applicationKeys := concat $backendKeys $outboxKeys -}}
+{{- if .Values.fileProcessor.enabled -}}
+  {{- $applicationKeys = concat $applicationKeys (list "jwt-rsa-public-key" "minio-access-key" "minio-secret-key" "temporal-api-key") -}}
+{{- end -}}
+{{- if .Values.backup.enabled -}}
+  {{- $applicationKeys = concat $applicationKeys (list "minio-access-key" "minio-secret-key") -}}
+{{- end -}}
+{{- $connectionKeys := list .Values.connections.databaseURLKey .Values.connections.redisBackendURLKey .Values.connections.redisGatewayURLKey .Values.connections.redisRevocationURLKey .Values.connections.natsURLKey .Values.connections.natsAuthTokenKey -}}
+{{- if and .Values.keda.enabled .Values.keda.outboxWorker.enabled .Values.keda.outboxWorker.postgresql.enabled -}}
+  {{- $connectionKeys = append $connectionKeys .Values.connections.kedaPostgresqlURLKey -}}
+{{- end -}}
+{{- if .Values.backup.enabled -}}
+  {{- $connectionKeys = append $connectionKeys .Values.connections.backupDatabaseURLKey -}}
+{{- end -}}
+{{- $dependencyImages := dict -}}
+{{- if .Values.redis.enabled -}}
+  {{- $redisRegistry := default .Values.redis.image.registry .Values.global.imageRegistry -}}
+  {{- $_ := set $dependencyImages "redis" (printf "%s/%s@%s" $redisRegistry .Values.redis.image.repository .Values.redis.image.digest) -}}
+  {{- if .Values.redis.metrics.enabled -}}
+    {{- $redisMetricsRegistry := default .Values.redis.metrics.image.registry .Values.global.imageRegistry -}}
+    {{- $_ := set $dependencyImages "redis.metrics" (printf "%s/%s@%s" $redisMetricsRegistry .Values.redis.metrics.image.repository .Values.redis.metrics.image.digest) -}}
+  {{- end -}}
+{{- end -}}
+{{- if .Values.nats.enabled -}}
+  {{- $natsRegistry := default .Values.nats.image.registry .Values.global.imageRegistry -}}
+  {{- $_ := set $dependencyImages "nats" (printf "%s/%s@%s" $natsRegistry .Values.nats.image.repository .Values.nats.image.digest) -}}
+{{- end -}}
+{{- $dependencyChartVersions := dict -}}
+{{- if .Values.redis.enabled -}}
+  {{- $_ := set $dependencyChartVersions "redis" .Subcharts.redis.Chart.Version -}}
+{{- end -}}
+{{- if .Values.nats.enabled -}}
+  {{- $_ := set $dependencyChartVersions "nats" .Subcharts.nats.Chart.Version -}}
+{{- end -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "university-ecosystem.fullname" . }}-deployment-contract
+  labels:
+    {{- include "university-ecosystem.labels" . | nindent 4 }}
+    app.kubernetes.io/component: deployment-contract
+data:
+  source-sha: {{ .Values.global.imageTag | quote }}
+  application-secret-name: {{ include "university-ecosystem.applicationSecretName" . | quote }}
+  application-secret-keys.json: {{ $applicationKeys | uniq | sortAlpha | toJson | quote }}
+  connection-secret-name: {{ required "connections.existingSecret must be set" .Values.connections.existingSecret | quote }}
+  connection-secret-keys.json: {{ $connectionKeys | uniq | sortAlpha | toJson | quote }}
+  # The deploy workflow verifies that the Secret URL points at this rendered
+  # bootstrap-release service, never the cache Redis Service.
+  revocation-redis-url-key: {{ .Values.connections.redisRevocationURLKey | quote }}
+  revocation-redis-service-host: {{ printf "%s-revocation-redis-master" .Release.Name | quote }}
+  revocation-redis-binding-label: "university-ecosystem.io/revocation-store-for"
+  revocation-redis-binding-value: {{ .Release.Name | quote }}
+  dependency-images.json: {{ $dependencyImages | toJson | quote }}
+  dependency-chart-versions.json: {{ $dependencyChartVersions | toJson | quote }}
+  {{- if and .Values.redis.enabled .Values.redis.auth.enabled }}
+  redis-secret-name: {{ required "redis.auth.existingSecret must be set" .Values.redis.auth.existingSecret | quote }}
+  redis-secret-keys.json: {{ list .Values.redis.auth.existingSecretPasswordKey | toJson | quote }}
+  {{- end }}
+  {{- if and .Values.nats.enabled .Values.nats.existingSecret }}
+  nats-config-secret-name: {{ .Values.nats.existingSecret | quote }}
+  nats-config-secret-keys.json: {{ list "nats-server.conf" | toJson | quote }}
+  {{- end }}
+  backend-secret-keys.json: {{ $backendKeys | toJson | quote }}
+  outbox-worker-secret-keys.json: {{ $outboxKeys | toJson | quote }}
+  mfa-key-contract.json: {{ dict "otp" (dict "ring" .Values.applicationSecrets.keys.mfaEmailOtpHMACKeys "active" .Values.applicationSecrets.keys.mfaEmailOtpActiveHMACKeyId) "delivery" (dict "ring" .Values.applicationSecrets.keys.mfaEmailDeliveryKEKs "active" .Values.applicationSecrets.keys.mfaEmailDeliveryActiveKEKId) "trusted" (dict "ring" .Values.applicationSecrets.keys.mfaTrustedDeviceHMACKeys "active" .Values.applicationSecrets.keys.mfaTrustedDeviceActiveHMACKeyId) | toJson | quote }}
+  {{- if .Values.internalGrpcMTLS.enabled }}
+  internal-grpc-gateway-client-secret-name: {{ required "internalGrpcMTLS.gatewayClient.existingSecret must be set" .Values.internalGrpcMTLS.gatewayClient.existingSecret | quote }}
+  internal-grpc-gateway-client-secret-keys.json: {{ list .Values.internalGrpcMTLS.gatewayClient.certKey .Values.internalGrpcMTLS.gatewayClient.privateKeyKey .Values.internalGrpcMTLS.gatewayClient.caKey | uniq | sortAlpha | toJson | quote }}
+  internal-grpc-file-processor-server-secret-name: {{ required "internalGrpcMTLS.fileProcessorServer.existingSecret must be set" .Values.internalGrpcMTLS.fileProcessorServer.existingSecret | quote }}
+  internal-grpc-file-processor-server-secret-keys.json: {{ list .Values.internalGrpcMTLS.fileProcessorServer.certKey .Values.internalGrpcMTLS.fileProcessorServer.privateKeyKey .Values.internalGrpcMTLS.fileProcessorServer.clientCAKey | uniq | sortAlpha | toJson | quote }}
+  internal-grpc-allowed-client-uris.json: {{ .Values.internalGrpcMTLS.allowedClientURIs | uniq | sortAlpha | toJson | quote }}
+  internal-grpc-gateway-identity-uri: {{ .Values.internalGrpcMTLS.gatewayIdentityURI | quote }}
+  {{- end }}
+{{- end -}}

@@ -1,75 +1,295 @@
 name: Release
+
 on:
-  workflow_dispatch: {} # manual-only until production release infrastructure is ready
-  # push:
-  #   branches:
-  #     - main
+  workflow_dispatch:
+    inputs:
+      release-sha:
+        description: "Exact current main commit to release"
+        required: true
+        type: string
+      quality-run-id:
+        description: "Successful CI run certified by the canonical image manifest"
+        required: true
+        type: string
+      image-build-run-id:
+        description: "Successful canonical six-image producer workflow run ID"
+        required: true
+        type: string
+      image-build-run-attempt:
+        description: "Exact canonical image producer run attempt"
+        required: true
+        type: string
+      cwv-certification-run-id:
+        description: "Successful staging field-CWV certification workflow run ID"
+        required: true
+        type: string
+      cwv-certification-run-attempt:
+        description: "Exact staging field-CWV certification run attempt"
+        required: true
+        type: string
 
 permissions: read-all
 
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
 jobs:
-  release:
-    name: Release
-    # Release credentials must never reach code from an arbitrary dispatch ref.
-    # The main branch is protected and is the only trusted release source.
+  resolve-images:
+    name: Resolve promoted canonical image set
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 20 # CI-03 (audit Wave 10)
+    timeout-minutes: 20
     permissions:
       actions: read
-      contents: write
-      issues: write
-      pull-requests: write
+      attestations: read
+      contents: read
+      packages: read
+    outputs:
+      frontend-digest: ${{ steps.manifest.outputs.frontend-digest }}
+      manifest-sha256: ${{ steps.manifest.outputs.manifest-sha256 }}
     steps:
-      - name: Checkout
+      - name: Checkout certified source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-          token: ${{ secrets.RELEASE_TOKEN }}
+          # The workflow event SHA is the only trusted source revision.  The
+          # dispatch input is data used to bind promoted artifacts, never a
+          # selector for code executed by this privileged job.
+          ref: ${{ github.sha }}
 
-      - name: Generate quality certification record
+      - name: Verify canonical image producer run and artifact inventory
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-          QUALITY_CERTIFICATION_KEY: ${{ secrets.QUALITY_CERTIFICATION_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          BUILD_RUN_ID: ${{ inputs.image-build-run-id }}
+          BUILD_RUN_ATTEMPT: ${{ inputs.image-build-run-attempt }}
         run: |
-          test -n "$QUALITY_CERTIFICATION_KEY" || {
-            echo "::error::QUALITY_CERTIFICATION_KEY is required for a signed release certification";
-            exit 1;
-          }
-          mkdir -p artifacts/quality
-          gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" > artifacts/quality/check-runs.json
-          python -c 'import json; raw=json.load(open("artifacts/quality/check-runs.json", encoding="utf-8")); checks={item["name"]: item.get("conclusion", "unknown") for item in raw.get("check_runs", [])}; assert checks, "no completed check runs found for release SHA"; json.dump({"check_runs": checks}, open("artifacts/quality/required-checks.json", "w", encoding="utf-8"), indent=2); print(f"collected {len(checks)} check runs")'
-          quality_run_id="$(gh run list --workflow ci.yml --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
-          test -n "$quality_run_id"
-          gh run download "$quality_run_id" --dir artifacts/quality/ci
-          manifest_path="$(find artifacts/quality/ci -name quality-manifest.json -print -quit)"
-          test -n "$manifest_path"
-          python scripts/quality/generate_certification.py \
-            --commit-sha "$GITHUB_SHA" \
-            --contract quality/quality-contract.json \
-            --checks artifacts/quality/required-checks.json \
-            --report-dir artifacts/quality/ci \
-            --output artifacts/quality/certification.json \
-            --limitation "Per-tool raw reports remain in the CI run; this release record hashes the normalized quality manifest and contract."
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$BUILD_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$BUILD_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$RELEASE_SHA" = "$GITHUB_SHA"
+          test "$RELEASE_SHA" = "$GITHUB_WORKFLOW_SHA"
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
+          mkdir -p artifacts/release-images/provenance
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID" \
+            > artifacts/release-images/provenance/build-run.json
+          jq --exit-status \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg sha "$RELEASE_SHA" \
+            --argjson attempt "$BUILD_RUN_ATTEMPT" \
+            '.repository.full_name == $repository and .head_sha == $sha and
+             .run_attempt == $attempt and .conclusion == "success" and
+             .event == "workflow_dispatch" and .head_branch == "main" and
+             .path == ".github/workflows/build-release-images.yml"' \
+            artifacts/release-images/provenance/build-run.json >/dev/null
+          gh api --paginate --slurp \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID/artifacts?per_page=100" \
+            > artifacts/release-images/provenance/artifact-pages.json
+          python scripts/quality/validate_release_artifact_evidence.py \
+            --pages artifacts/release-images/provenance/artifact-pages.json \
+            --expected-name "release-image-provenance-$RELEASE_SHA-attempt-$BUILD_RUN_ATTEMPT"
 
-      - name: Upload quality certification
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Download exact canonical image manifest
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: quality-certification-${{ github.sha }}
-          path: artifacts/quality/certification.json
-          if-no-files-found: error
+          name: release-image-provenance-${{ inputs.release-sha }}-attempt-${{ inputs.image-build-run-attempt }}
+          run-id: ${{ inputs.image-build-run-id }}
+          github-token: ${{ github.token }}
+          path: artifacts/release-images
+
+      - name: Verify attested canonical image manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        run: |
+          set -euo pipefail
+          gh attestation verify artifacts/release-images/release-image-manifest.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build-release-images.yml" \
+            --source-digest "$RELEASE_SHA" \
+            --source-ref refs/heads/main \
+            --deny-self-hosted-runners > /dev/null
+
+      - name: Resolve exact image digests
+        id: manifest
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          BUILD_RUN_ID: ${{ inputs.image-build-run-id }}
+          BUILD_RUN_ATTEMPT: ${{ inputs.image-build-run-attempt }}
+          QUALITY_RUN_ID: ${{ inputs.quality-run-id }}
+        run: |
+          set -euo pipefail
+          python scripts/quality/verify_release_image_manifest.py \
+            --manifest artifacts/release-images/release-image-manifest.json \
+            --checksum artifacts/release-images/release-image-manifest.json.sha256 \
+            --repository "$GITHUB_REPOSITORY" \
+            --source-sha "$RELEASE_SHA" \
+            --build-run-id "$BUILD_RUN_ID" \
+            --build-run-attempt "$BUILD_RUN_ATTEMPT" \
+            --quality-run-id "$QUALITY_RUN_ID" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Verify exact staging field certification
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          CWV_RUN_ID: ${{ inputs.cwv-certification-run-id }}
+          CWV_RUN_ATTEMPT: ${{ inputs.cwv-certification-run-attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$CWV_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$CWV_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          mkdir -p artifacts/cwv/provenance
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CWV_RUN_ID" \
+            > artifacts/cwv/provenance/cwv-run.json
+          jq --exit-status \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg sha "$RELEASE_SHA" \
+            --argjson attempt "$CWV_RUN_ATTEMPT" \
+            '.repository.full_name == $repository and .head_sha == $sha and
+             .run_attempt == $attempt and .conclusion == "success" and
+             .event == "workflow_dispatch" and .head_branch == "main" and
+             .path == ".github/workflows/cwv-field-certification.yml"' \
+            artifacts/cwv/provenance/cwv-run.json >/dev/null
+          gh api --paginate --slurp \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$CWV_RUN_ID/artifacts?per_page=100" \
+            > artifacts/cwv/provenance/artifact-pages.json
+          python scripts/quality/validate_release_artifact_evidence.py \
+            --pages artifacts/cwv/provenance/artifact-pages.json \
+            --expected-name "cwv-field-certificate-$RELEASE_SHA-attempt-$CWV_RUN_ATTEMPT"
+
+      - name: Download exact staging field certification
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: cwv-field-certificate-${{ inputs.release-sha }}-attempt-${{ inputs.cwv-certification-run-attempt }}
+          run-id: ${{ inputs.cwv-certification-run-id }}
+          github-token: ${{ github.token }}
+          path: artifacts/cwv
+
+      - name: Require field-certified canonical image manifest
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          FRONTEND_IMAGE_DIGEST: ${{ steps.manifest.outputs.frontend-digest }}
+          IMAGE_MANIFEST_SHA256: ${{ steps.manifest.outputs.manifest-sha256 }}
+          BUILD_RUN_ID: ${{ inputs.image-build-run-id }}
+          BUILD_RUN_ATTEMPT: ${{ inputs.image-build-run-attempt }}
+        run: |
+          set -euo pipefail
+          (cd artifacts/cwv/certificate && sha256sum --check field-verdict.json.sha256)
+          (cd artifacts/cwv/deployment && sha256sum --check staging-deployment.json.sha256)
+          jq --exit-status \
+            --arg sha "$RELEASE_SHA" \
+            --arg digest "$FRONTEND_IMAGE_DIGEST" \
+            --arg manifest_sha256 "$IMAGE_MANIFEST_SHA256" \
+            --argjson build_run_id "$BUILD_RUN_ID" \
+            --argjson build_run_attempt "$BUILD_RUN_ATTEMPT" \
+            '.schema_version == 2 and .valid == true and
+             .environment == "staging" and .release_sha == $sha and
+             .frontend_image_digest == $digest and
+             .image_manifest_sha256 == $manifest_sha256 and
+             .image_build_run_id == $build_run_id and
+             .image_build_run_attempt == $build_run_attempt' \
+            artifacts/cwv/certificate/field-verdict.json >/dev/null
+          jq --exit-status \
+            --arg sha "$RELEASE_SHA" \
+            --arg digest "$FRONTEND_IMAGE_DIGEST" \
+            --arg manifest_sha256 "$IMAGE_MANIFEST_SHA256" \
+            --argjson build_run_id "$BUILD_RUN_ID" \
+            --argjson build_run_attempt "$BUILD_RUN_ATTEMPT" \
+            '.schema_version == 2 and .environment == "staging" and
+             .release_sha == $sha and .frontend_image_digest == $digest and
+             .image_manifest_sha256 == $manifest_sha256 and
+             .image_build_run_id == $build_run_id and
+             .image_build_run_attempt == $build_run_attempt' \
+            artifacts/cwv/deployment/staging-deployment.json >/dev/null
+
+  publish:
+    name: Publish Release
+    needs: [resolve-images]
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      attestations: read
+      contents: write
+      issues: write
+      packages: read
+      pull-requests: write
+    steps:
+      - name: Checkout certified source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          # Never let a workflow_dispatch input choose the source executed by
+          # this write-capable job; bind checkout to the event SHA instead.
+          ref: ${{ github.sha }}
+
+      - name: Verify publish source
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$RELEASE_SHA" = "$GITHUB_SHA"
+          test "$RELEASE_SHA" = "$GITHUB_WORKFLOW_SHA"
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
+
+      - name: Download promoted canonical image manifest
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-image-provenance-${{ inputs.release-sha }}-attempt-${{ inputs.image-build-run-attempt }}
+          run-id: ${{ inputs.image-build-run-id }}
+          github-token: ${{ github.token }}
+          path: artifacts/release-images
+
+      - name: Reverify promoted image manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          BUILD_RUN_ID: ${{ inputs.image-build-run-id }}
+          BUILD_RUN_ATTEMPT: ${{ inputs.image-build-run-attempt }}
+          QUALITY_RUN_ID: ${{ inputs.quality-run-id }}
+        run: |
+          set -euo pipefail
+          gh attestation verify artifacts/release-images/release-image-manifest.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build-release-images.yml" \
+            --source-digest "$RELEASE_SHA" \
+            --source-ref refs/heads/main \
+            --deny-self-hosted-runners > /dev/null
+          python scripts/quality/verify_release_image_manifest.py \
+            --manifest artifacts/release-images/release-image-manifest.json \
+            --checksum artifacts/release-images/release-image-manifest.json.sha256 \
+            --repository "$GITHUB_REPOSITORY" \
+            --source-sha "$RELEASE_SHA" \
+            --build-run-id "$BUILD_RUN_ID" \
+            --build-run-attempt "$BUILD_RUN_ATTEMPT" \
+            --quality-run-id "$QUALITY_RUN_ID" \
+            --github-output "$GITHUB_OUTPUT"
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          # Pin a runtime supported by semantic-release 25 and its plugins.
           node-version: 24.15.0
-          cache: "npm"
+          cache: npm
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        # npm ci installs from the lockfile exactly — reproducible and faster than npm install.
         run: npm ci
 
       - name: Verify release toolchain
@@ -79,42 +299,10 @@ jobs:
         id: semantic
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-        # Execute the exact integrity-checked package installed by `npm ci`
-        # without invoking npm while the write-capable token is present.
-        run: node node_modules/semantic-release/bin/semantic-release.js
-
-  build:
-    name: Build & Sign Releases
-    needs: [release]
-    permissions:
-      contents: read
-      packages: write # Required: push Docker images to GHCR
-      id-token: write
-      attestations: write
-      security-events: write # Required: upload SARIF security scan results
-    strategy:
-      matrix:
-        include:
-          - image_name: "backend"
-            file: "backend.Dockerfile"
-            context: "."
-          - image_name: "frontend"
-            file: "frontend.Dockerfile"
-            context: "."
-          - image_name: "ws-hub"
-            file: "services/ws-hub/Dockerfile"
-            context: "services/ws-hub"
-          - image_name: "gateway"
-            file: "services/gateway/Dockerfile"
-            context: "services/gateway"
-          - image_name: "file-processor"
-            file: "services/file-processor/Dockerfile"
-            context: "services/file-processor"
-    uses: ./.github/workflows/reusable-build-and-sign.yml
-    with:
-      image_name: ${{ matrix.image_name }}
-      context: ${{ matrix.context }}
-      file: ${{ matrix.file }}
-      tags: |
-        ghcr.io/${{ github.repository }}/${{ matrix.image_name }}:latest
-        ghcr.io/${{ github.repository }}/${{ matrix.image_name }}:${{ github.sha }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        run: |
+          set -euo pipefail
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
+          node node_modules/semantic-release/bin/semantic-release.js

@@ -115,6 +115,14 @@ interface ChatWindowProps {
    * query is disabled (the pill still renders + toggles).
    */
   chatId?: string
+  /** Whether the server has an older cursor page available. */
+  hasMore?: boolean
+  /** Prepends the next older cursor page to the message cache. */
+  onLoadOlder?: () => void | Promise<void>
+  /** Disables duplicate cursor requests while an older page is loading. */
+  isLoadingOlder?: boolean
+  /** Keeps history-loading failures separate from the initial history error. */
+  olderMessagesError?: boolean
 }
 
 // Wave 206 — fixed quick-reaction set (no emoji-picker dependency). Module-level
@@ -147,6 +155,10 @@ export const ChatWindow = memo(function ChatWindow({
   onStartReply,
   onForward,
   chatId,
+  hasMore = false,
+  onLoadOlder,
+  isLoadingOlder = false,
+  olderMessagesError = false,
 }: ChatWindowProps) {
   const { t } = useTranslation()
   // Wave 206 — which message's emoji picker is open (null = none). The "+react"
@@ -182,10 +194,18 @@ export const ChatWindow = memo(function ChatWindow({
     count: filteredMessages.length,
     getScrollElement: () => containerRef.current,
     estimateSize: () => 80,
+    // Message identity, rather than an array index, lets Virtual Core retain
+    // measurements and the visible anchor when an older cursor page is
+    // prepended. The installed virtual-core 3.17.7 supports end anchoring and
+    // follows appends only if the viewport was already at the end.
+    getItemKey: (index) => filteredMessages[index]!.id,
+    anchorTo: "end",
+    followOnAppend: "auto",
+    scrollEndThreshold: 48,
     overscan: 5,
   })
 
-  const prevMessagesLengthRef = useRef(0)
+  const didInitialScrollRef = useRef(false)
 
   // Wave 202 SW6 — animate ONLY newly-appended messages, not every virtualized
   // row that scrolls back into view (pre-W202 each remount re-fired the entrance
@@ -193,10 +213,10 @@ export const ChatWindow = memo(function ChatWindow({
   // from which rows count as "new"; rows below it render `initial={false}`
   // (instant, no entrance). Init to Infinity so the first populated render (e.g.
   // loaded history) never stampede-animates; the auto-scroll effect bumps it to
-  // the new length on each growth — which runs AFTER the new-message render, so
-  // at render time it still equals the previous length = exactly the just-
-  // appended tail. State (not a ref) → safe to read in render under React
-  // Compiler; the only ref (prevMessagesLengthRef) is touched solely in effects.
+  // the new length after each non-empty length change — which runs AFTER the
+  // new-message render, so at render time it still equals the previous length =
+  // exactly the just-appended tail. State (not a ref) is safe to read in render
+  // under React Compiler; the lifecycle refs are touched solely in effects.
   const [animateFromIndex, setAnimateFromIndex] = useState(Number.POSITIVE_INFINITY)
 
   // Wave 208 SW4 — scroll-to-bottom FAB visibility. State (not a ref) → safe to
@@ -207,35 +227,26 @@ export const ChatWindow = memo(function ChatWindow({
   // they return to (or auto-scroll back to) the latest message.
   const [showJumpButton, setShowJumpButton] = useState(false)
 
-  // Auto-scroll to bottom when new messages arrive.
-  // Wave 184 SW1 — track filtered length so search-narrowing doesn't trigger
-  // a spurious scroll-to-end. Auto-scroll only fires when the underlying
-  // message list grows (new incoming message), not when search filtering
-  // shrinks the displayed set.
+  // Scroll once when history first arrives. Subsequent append/prepend behavior
+  // belongs to Virtual Core: followOnAppend keeps a reader at the end only when
+  // they were already there, while anchorTo + stable keys preserve the visible
+  // item when older history is prepended.
   useEffect(() => {
-    if (!isSearchActive && filteredMessages.length > prevMessagesLengthRef.current) {
-      virtualizer.scrollToIndex(filteredMessages.length - 1, {
-        align: "end",
-        behavior: "auto",
-      })
-      // Wave 202 SW6 — advance the entrance boundary to the new length so the
-      // NEXT growth's render (which sees this as the previous length) animates
-      // only the freshly-appended rows. setAnimateFromIndex is a stable setter,
-      // so it's not required in the dependency array.
-      setAnimateFromIndex(filteredMessages.length)
+    const nextLength = messages.length
+    if (nextLength === 0) {
+      didInitialScrollRef.current = false
+    } else {
+      if (!isSearchActive && !didInitialScrollRef.current) {
+        virtualizer.scrollToIndex(nextLength - 1, { align: "end", behavior: "auto" })
+        didInitialScrollRef.current = true
+      }
+      // The preceding render sees the prior boundary, so only an appended tail
+      // animates. Always re-base after any non-empty length change: this prevents
+      // messages incorporated during search from replaying when search closes,
+      // and lets a later append animate correctly after history contracts.
+      setAnimateFromIndex(nextLength)
     }
-    prevMessagesLengthRef.current = filteredMessages.length
-  }, [filteredMessages.length, isSearchActive, virtualizer])
-
-  // Initial scroll to bottom
-  useEffect(() => {
-    if (!isSearchActive && filteredMessages.length > 0) {
-      virtualizer.scrollToIndex(filteredMessages.length - 1, {
-        align: "end",
-        behavior: "auto",
-      })
-    }
-  }, [filteredMessages.length, isSearchActive, virtualizer])
+  }, [messages.length, isSearchActive, virtualizer])
 
   // Wave 208 SW4 — toggle the scroll-to-bottom FAB based on scroll position.
   // The scroll metrics are read inside the handler (ref access in a handler is
@@ -267,8 +278,8 @@ export const ChatWindow = memo(function ChatWindow({
   useEffect(() => {
     if (!reactionPickerForId) return
     const onMouseDown = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null
-      if (target?.closest("[data-reaction-ui]")) return
+      const target = event.target
+      if (target instanceof Element && target.closest("[data-reaction-ui]")) return
       setReactionPickerForId(null)
     }
     const onKeyDown = (event: KeyboardEvent) => {
@@ -352,6 +363,7 @@ export const ChatWindow = memo(function ChatWindow({
   if (isLoading) {
     return (
       <div
+        ref={containerRef}
         role="status"
         aria-live="polite"
         aria-label={t("messenger:loading.messages")}
@@ -498,6 +510,25 @@ export const ChatWindow = memo(function ChatWindow({
 
   return (
     <div className="relative flex flex-1 min-h-0 flex-col">
+      {hasMore && onLoadOlder ? (
+        <div className="flex shrink-0 flex-col items-center gap-1 px-4 py-2">
+          <button
+            type="button"
+            onClick={() => void onLoadOlder()}
+            disabled={isLoadingOlder}
+            className="inline-flex min-h-[44px] items-center justify-center rounded-full border border-(--glass-border) bg-(--bg-surface-raised) px-4 text-sm font-semibold text-(--text-primary) transition-colors hover:bg-(--bg-surface-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) disabled:cursor-wait disabled:opacity-medium"
+          >
+            {isLoadingOlder
+              ? t("messenger:history.loadingOlder")
+              : t("messenger:history.loadOlder")}
+          </button>
+          {olderMessagesError ? (
+            <span role="alert" className="text-sm text-(--error-text)">
+              {t("messenger:history.loadOlderError")}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <div
         ref={containerRef}
         role="log"
@@ -650,14 +681,14 @@ export const ChatWindow = memo(function ChatWindow({
                           <button
                             type="button"
                             onClick={onCancelEdit}
-                            className="inline-flex min-h-[40px] items-center rounded-full px-4 text-sm font-semibold text-(--text-secondary) transition-colors hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                            className="-my-0.5 inline-flex min-h-[44px] min-w-[44px] items-center rounded-full px-4 text-sm font-semibold text-(--text-secondary) transition-colors hover:text-(--text-primary) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
                           >
                             {t("common:buttons.cancel")}
                           </button>
                           <button
                             type="button"
                             onClick={() => onSaveEdit?.(message.id)}
-                            className="messenger-send-btn inline-flex min-h-[40px] items-center rounded-full px-5 text-sm font-semibold text-[var(--text-inverse)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
+                            className="messenger-send-btn -my-0.5 inline-flex min-h-[44px] min-w-[44px] items-center rounded-full px-5 text-sm font-semibold text-[var(--text-inverse)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-2 focus-visible:ring-offset-(--bg-surface)"
                           >
                             {t("common:buttons.save")}
                           </button>
@@ -707,10 +738,10 @@ export const ChatWindow = memo(function ChatWindow({
                               <div key={attachment.id} className="overflow-hidden rounded-xl">
                                 {attachment.type === "image" ? (
                                   sanitizeUrl(attachment.url) ? (
-                                    <SmartImage
-                                      srcRaw={attachment.url}
-                                      alt={attachment.name}
-                                      className="w-full h-auto max-h-72 object-cover cursor-pointer hover:scale-hover transition-transform duration-slow"
+                                    <button
+                                      type="button"
+                                      aria-label={`${t("messenger:viewAvatar")}: ${attachment.name}`}
+                                      className="block min-h-[44px] min-w-[44px] w-full rounded-xl border-0 bg-transparent p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--color-violet-500)"
                                       onClick={() => {
                                         // Rendering already proved this immutable URL safe.
                                         window.open(
@@ -719,7 +750,13 @@ export const ChatWindow = memo(function ChatWindow({
                                           "noopener,noreferrer"
                                         )
                                       }}
-                                    />
+                                    >
+                                      <SmartImage
+                                        srcRaw={attachment.url}
+                                        alt={attachment.name}
+                                        className="w-full h-auto max-h-72 object-cover cursor-pointer hover:scale-hover transition-transform duration-slow"
+                                      />
+                                    </button>
                                   ) : null
                                 ) : sanitizeUrl(attachment.url) ? (
                                   <a
@@ -807,27 +844,25 @@ export const ChatWindow = memo(function ChatWindow({
                           {/* Wave 205 SW6 — own-message edit/delete affordance. Always
                           rendered + reachable (touch + keyboard + mouse), subtle by
                           default (opacity-medium → full on hover/focus). Icons sit on
-                          the violet sent bubble so they use text-inverse. p-1.5 around
-                          a size-4 icon = 28px hit area (WCAG 2.5.8 AA ≥24px; below the
-                          codebase 44px convention — accepted for dense in-bubble
-                          secondary controls; a context-menu / long-press affordance is
-                          future polish). A right-context-menu / hover-reveal UX is
-                          out of W205 scope. */}
+                          the violet sent bubble so they use text-inverse. The icon
+                          remains size-4 while the button exposes the shared 44px hit
+                          area contract. A right-context-menu / hover-reveal UX is out
+                          of W205 scope. */}
                           {onStartReply || onForward || message.isMe ? (
                             <div className="flex items-center gap-0.5">
                               {/* Wave 207 — reply affordance on ALL bubbles (not just
                               own). On the violet sent bubble it uses text-inverse +
                               inverse focus ring (matching edit/delete); on the neutral
                               received bubble it uses text-secondary + violet focus
-                              ring. Same 28px hit area as edit/delete (accepted dense
-                              in-bubble secondary control, per the W205 note below). */}
+                              ring. The button keeps the same glyph and styling while
+                              exposing the shared 44px hit area contract. */}
                               {onStartReply ? (
                                 <button
                                   type="button"
                                   onClick={() => onStartReply(message.id)}
                                   aria-label={t("messenger:reply")}
                                   className={cn(
-                                    "flex items-center justify-center rounded-md p-1.5 opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2",
+                                    "-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1.5 opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2",
                                     message.isMe
                                       ? "text-[var(--text-inverse)] focus-visible:ring-[var(--text-inverse)]"
                                       : "text-(--text-secondary) focus-visible:ring-(--color-violet-500)"
@@ -838,7 +873,7 @@ export const ChatWindow = memo(function ChatWindow({
                               ) : null}
                               {/* Wave 211 — forward affordance on ALL bubbles (like
                               reply). Opens the ForwardModal destination picker. Same
-                              28px hit area + theme-aware styling as reply (text-inverse
+                              44px hit area + theme-aware styling as reply (text-inverse
                               + inverse ring on the violet sent bubble; text-secondary +
                               violet ring on the neutral received bubble). */}
                               {onForward ? (
@@ -847,7 +882,7 @@ export const ChatWindow = memo(function ChatWindow({
                                   onClick={() => onForward(message.id)}
                                   aria-label={t("messenger:forward")}
                                   className={cn(
-                                    "flex items-center justify-center rounded-md p-1.5 opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2",
+                                    "-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1.5 opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2",
                                     message.isMe
                                       ? "text-[var(--text-inverse)] focus-visible:ring-[var(--text-inverse)]"
                                       : "text-(--text-secondary) focus-visible:ring-(--color-violet-500)"
@@ -862,7 +897,7 @@ export const ChatWindow = memo(function ChatWindow({
                                     type="button"
                                     onClick={() => onEditMessage?.(message.id, message.text)}
                                     aria-label={t("messenger:editMessage")}
-                                    className="flex items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
+                                    className="-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
                                   >
                                     <Pencil className="size-4" strokeWidth={2} aria-hidden="true" />
                                   </button>
@@ -870,7 +905,7 @@ export const ChatWindow = memo(function ChatWindow({
                                     type="button"
                                     onClick={() => onDeleteMessage?.(message.id)}
                                     aria-label={t("messenger:deleteMessage")}
-                                    className="flex items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
+                                    className="-m-2 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md p-1.5 text-[var(--text-inverse)] opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
                                   >
                                     <Trash2 className="size-4" strokeWidth={2} aria-hidden="true" />
                                   </button>
@@ -988,7 +1023,7 @@ export const ChatWindow = memo(function ChatWindow({
                             }
                             aria-label={t("messenger:reactions.add")}
                             aria-expanded={reactionPickerForId === message.id}
-                            className="inline-flex min-h-[28px] min-w-[28px] items-center justify-center rounded-full text-(--text-secondary) opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-1 focus-visible:ring-offset-(--bg-surface)"
+                            className="-m-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-(--text-secondary) opacity-medium transition-opacity hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500) focus-visible:ring-offset-1 focus-visible:ring-offset-(--bg-surface)"
                           >
                             <SmilePlus className="size-4" strokeWidth={2} aria-hidden="true" />
                           </button>
@@ -1014,7 +1049,7 @@ export const ChatWindow = memo(function ChatWindow({
                               setReactionPickerForId(null)
                             }}
                             aria-label={t("messenger:reactions.react", { emoji })}
-                            className="inline-flex min-h-[36px] min-w-[36px] items-center justify-center rounded-full text-xl transition-transform hover:scale-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
+                            className="-m-2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-xl transition-transform hover:scale-125 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                           >
                             <span aria-hidden="true">{emoji}</span>
                           </button>

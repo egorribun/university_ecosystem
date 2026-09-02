@@ -35,38 +35,31 @@ const Navbar = () => {
     t,
   } = logic
 
-  const morph = useNavbarMorph(menuLinks)
+  const morph = useNavbarMorph(menuLinks, {
+    isScrolled,
+    viewport: logic.viewport,
+    prefersReducedMotion,
+  })
 
   // Desktop: full morph to pill. Mobile: just glass bg on scroll (no pill).
   const showPill = morph.isCompact && !isMobile
-
-  const dur = prefersReducedMotion ? "duration-0" : "duration-500"
-  const ease = "ease-[var(--ease-premium)]"
 
   return (
     <>
       <nav
         ref={navRef}
+        style={{ boxShadow: "none" }}
         className={cn(
           "vt-navbar sticky top-0 z-(--z-navbar) w-full",
           // FIXED height — never changes, no layout shift
           "h-(--navbar-height)",
           "flex items-center justify-center",
-          // Only visual properties transition (no height, no padding)
-          "transition-[background,backdrop-filter,box-shadow]",
-          dur,
-          ease,
           showPill
             ? "bg-transparent"
             : isScrolled && isMobile
-              ? "bg-(--pill-bg) backdrop-blur-xl backdrop-saturate-[1.4]"
-              : "bg-nav/(--opacity-hover) backdrop-blur-(--blur-xl)"
+              ? "bg-(--pill-bg)"
+              : "bg-nav/(--opacity-hover)"
         )}
-        style={{
-          boxShadow: showPill
-            ? "none"
-            : "0 1px 0 var(--nav-glow-line), 0 8px 30px 0px var(--nav-glow-spread)",
-        }}
       >
         <NavbarPill isCompact={showPill} prefersReducedMotion={prefersReducedMotion}>
           <NavbarLogo

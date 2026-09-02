@@ -1,6 +1,6 @@
 import { render, screen, fireEvent } from "@testing-library/react"
-import { describe, it, expect, vi } from "vitest"
-import type { ReactNode } from "react"
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
+import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from "react"
 
 import { ChatWindow } from "@/components/messenger/ChatWindow"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
@@ -42,15 +42,66 @@ vi.mock("@/components/media/SmartImage", () => ({
   ),
 }))
 
-// W190 SW1 migrated ChatWindow + sibling messenger components from framer-motion's
-// jsdom-incompat `useReducedMotion()` hook to project's `useMediaQuery
-// ("(prefers-reduced-motion: reduce)")` DEFAULT export (jsdom-polyfilled at
-// setupTests.ts:13-30). The previous `vi.mock("framer-motion", { useReducedMotion:
-// () => false })` block was W184 SW6 defensive code that's now dead — no SUT-tree
-// code under this test calls framer-motion's useReducedMotion anymore. Removed at
-// W190 polish-v1 «безупречно?» cleanup. framer-motion's `motion.div` exports used
-// by ChatWindow internals are still present from real framer-motion module
-// (no mock needed; jsdom-compatible).
+type MotionFields = {
+  initial?: unknown
+  animate?: unknown
+  transition?: unknown
+}
+
+type MotionDivProps = HTMLAttributes<HTMLDivElement> & MotionFields
+
+type MotionButtonProps = ButtonHTMLAttributes<HTMLButtonElement> &
+  MotionFields & {
+    whileHover?: unknown
+    whileTap?: unknown
+  }
+
+const motionMocks = vi.hoisted(() => ({
+  divInitials: [] as unknown[],
+  buttonAriaLabels: [] as Array<string | undefined>,
+}))
+
+// Keep motion deterministic in jsdom and retain the transient `initial` values
+// from both renders around an append effect. The final DOM alone cannot expose
+// whether only the appended row received an entrance animation before the
+// animation boundary advanced.
+vi.mock("framer-motion", () => ({
+  m: {
+    div: ({ initial, animate, transition, ...props }: MotionDivProps) => {
+      motionMocks.divInitials.push(initial)
+      void animate
+      void transition
+      return <div {...props} />
+    },
+    button: ({
+      initial,
+      animate,
+      transition,
+      whileHover,
+      whileTap,
+      ...props
+    }: MotionButtonProps) => {
+      motionMocks.buttonAriaLabels.push(
+        typeof props["aria-label"] === "string" ? props["aria-label"] : undefined
+      )
+      void initial
+      void animate
+      void transition
+      void whileHover
+      void whileTap
+      return <button {...props} />
+    },
+  },
+}))
+
+const hookMocks = vi.hoisted(() => ({
+  useDebounced: vi.fn((value: unknown) => value),
+  useMediaQuery: vi.fn(() => false),
+}))
+
+vi.mock("@/hooks/useMediaQuery", () => ({
+  default: hookMocks.useMediaQuery,
+}))
 
 // Wave 185 SW2 — mock useDebounced to be a pass-through so search-filter
 // tests don't need fake timers + 200ms advance to trigger the debounce
@@ -58,7 +109,7 @@ vi.mock("@/components/media/SmartImage", () => ({
 // value, not the raw searchQuery, so mocking the hook to return value
 // immediately exercises the filter logic without timing concerns.
 vi.mock("@/hooks/useDebounced", () => ({
-  useDebounced: <T,>(value: T) => value,
+  useDebounced: hookMocks.useDebounced,
 }))
 
 // Wave 185 SW2 — mock useVirtualizer to render all rows. In jsdom the
@@ -66,21 +117,43 @@ vi.mock("@/hooks/useDebounced", () => ({
 // returns empty virtualItems → message text doesn't render → text-content
 // assertions fail. Mock returns all rows as if container had unlimited
 // height. This lets us assert ACTUAL rendered text for filter verification.
+const virtualizerMock = vi.hoisted(() => ({
+  options: undefined as
+    | {
+        count: number
+        getScrollElement?: () => HTMLElement | null
+        estimateSize?: () => number
+        getItemKey?: (index: number) => string | number | bigint
+        anchorTo?: "start" | "end"
+        followOnAppend?: boolean | "auto" | "smooth" | "instant"
+        scrollEndThreshold?: number
+      }
+    | undefined,
+  scrollToIndex: vi.fn(),
+  scrollToEnd: vi.fn(),
+}))
+
 vi.mock("@tanstack/react-virtual", () => ({
-  useVirtualizer: ({ count }: { count: number }) => ({
-    getVirtualItems: () =>
-      Array.from({ length: count }, (_, idx) => ({
-        key: idx,
-        index: idx,
-        start: idx * 80,
-        end: (idx + 1) * 80,
-        size: 80,
-        lane: 0,
-      })),
-    getTotalSize: () => count * 80,
-    measureElement: () => {},
-    scrollToIndex: () => {},
-  }),
+  useVirtualizer: (options: NonNullable<typeof virtualizerMock.options>) => {
+    virtualizerMock.options = options
+    return {
+      getVirtualItems: () =>
+        Array.from({ length: options.count }, (_, idx) => ({
+          key: options.getItemKey?.(idx) ?? idx,
+          index: idx,
+          start: idx * 80,
+          end: (idx + 1) * 80,
+          size: 80,
+          lane: 0,
+        })),
+      getTotalSize: () => options.count * 80,
+      measureElement: () => {},
+      scrollToIndex: virtualizerMock.scrollToIndex,
+      scrollToEnd: virtualizerMock.scrollToEnd,
+      isAtEnd: () => false,
+      getDistanceFromEnd: () => 500,
+    }
+  },
 }))
 
 const queryClient = new QueryClient()
@@ -104,7 +177,221 @@ const mockMessages: Message[] = [
   makeMessage({ id: "3", text: "Have a nice day", senderName: "Carol" }),
 ]
 
+beforeEach(() => {
+  hookMocks.useDebounced.mockClear()
+  hookMocks.useMediaQuery.mockClear()
+  motionMocks.divInitials.length = 0
+  motionMocks.buttonAriaLabels.length = 0
+  virtualizerMock.options = undefined
+  virtualizerMock.scrollToIndex.mockReset()
+  virtualizerMock.scrollToEnd.mockReset()
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+describe("ChatWindow — stable end-anchored virtualization", () => {
+  it("keys rows by message id and enables end-only append following", () => {
+    render(<ChatWindow messages={mockMessages} />, { wrapper })
+
+    expect(virtualizerMock.options?.getItemKey?.(0)).toBe("1")
+    expect(virtualizerMock.options?.getItemKey?.(2)).toBe("3")
+    expect(virtualizerMock.options?.getScrollElement?.()).toBe(screen.getByRole("log"))
+    expect(virtualizerMock.options?.estimateSize?.()).toBe(80)
+    expect(virtualizerMock.options).toMatchObject({
+      anchorTo: "end",
+      followOnAppend: "auto",
+      scrollEndThreshold: 48,
+    })
+  })
+
+  it("delegates appended-message following to the virtualizer instead of forcing scroll", () => {
+    const { rerender } = render(<ChatWindow messages={mockMessages} />, { wrapper })
+    virtualizerMock.scrollToIndex.mockClear()
+    virtualizerMock.scrollToEnd.mockClear()
+
+    rerender(
+      <ChatWindow
+        messages={[...mockMessages, makeMessage({ id: "4", text: "new while reading" })]}
+      />
+    )
+
+    expect(virtualizerMock.scrollToIndex).not.toHaveBeenCalled()
+    expect(virtualizerMock.scrollToEnd).not.toHaveBeenCalled()
+  })
+
+  it("scrolls exactly to the initial tail and re-arms after history becomes empty", () => {
+    const { rerender } = render(<ChatWindow messages={[]} />, { wrapper })
+    expect(virtualizerMock.scrollToIndex).not.toHaveBeenCalled()
+
+    rerender(<ChatWindow messages={mockMessages} />)
+    expect(virtualizerMock.scrollToIndex).toHaveBeenNthCalledWith(1, mockMessages.length - 1, {
+      align: "end",
+      behavior: "auto",
+    })
+
+    rerender(<ChatWindow messages={[]} />)
+    rerender(<ChatWindow messages={[mockMessages[0]!]} />)
+    expect(virtualizerMock.scrollToIndex).toHaveBeenNthCalledWith(2, 0, {
+      align: "end",
+      behavior: "auto",
+    })
+    expect(virtualizerMock.scrollToIndex).toHaveBeenCalledTimes(2)
+  })
+
+  it("defers the initial tail scroll until message search is inactive", () => {
+    const { rerender } = render(<ChatWindow messages={mockMessages} searchQuery="Hello" />, {
+      wrapper,
+    })
+    expect(virtualizerMock.scrollToIndex).not.toHaveBeenCalled()
+
+    rerender(<ChatWindow messages={mockMessages} searchQuery="" />)
+    expect(virtualizerMock.scrollToIndex).toHaveBeenCalledOnce()
+    expect(virtualizerMock.scrollToIndex).toHaveBeenCalledWith(mockMessages.length - 1, {
+      align: "end",
+      behavior: "auto",
+    })
+  })
+
+  it("animates only the appended row before advancing the replay boundary", () => {
+    const first = makeMessage({ id: "append-first", text: "first" })
+    const second = makeMessage({ id: "append-second", text: "second" })
+    const { rerender } = render(<ChatWindow messages={[first]} />, { wrapper })
+    motionMocks.divInitials.length = 0
+
+    rerender(<ChatWindow messages={[first, second]} />)
+
+    expect(motionMocks.divInitials).toContainEqual({ opacity: 0, y: 10, scale: 0.95 })
+    expect(motionMocks.divInitials.slice(-2)).toEqual([false, false])
+  })
+
+  it("does not replay arrivals that were already incorporated while search was active", () => {
+    const first = makeMessage({ id: "searched-first", text: "first" })
+    const second = makeMessage({ id: "searched-second", text: "second" })
+    const { rerender } = render(<ChatWindow messages={[first]} />, { wrapper })
+
+    rerender(<ChatWindow messages={[first, second]} searchQuery="first" />)
+    motionMocks.divInitials.length = 0
+    rerender(<ChatWindow messages={[first, second]} searchQuery="" />)
+
+    expect(motionMocks.divInitials).not.toContainEqual({ opacity: 0, y: 10, scale: 0.95 })
+  })
+
+  it("re-bases the animation boundary after contraction so a later append animates", () => {
+    const first = makeMessage({ id: "contract-first", text: "first" })
+    const removed = makeMessage({ id: "contract-removed", text: "removed" })
+    const appended = makeMessage({ id: "contract-appended", text: "appended" })
+    const { rerender } = render(<ChatWindow messages={[first, removed]} />, { wrapper })
+
+    rerender(<ChatWindow messages={[first]} />)
+    motionMocks.divInitials.length = 0
+    rerender(<ChatWindow messages={[first, appended]} />)
+
+    expect(motionMocks.divInitials).toContainEqual({ opacity: 0, y: 10, scale: 0.95 })
+    expect(motionMocks.divInitials.slice(-2)).toEqual([false, false])
+  })
+
+  it("never renders a transient jump button at the initial bottom position", () => {
+    render(<ChatWindow messages={[makeMessage({ id: "initial-bottom", text: "bottom" })]} />, {
+      wrapper,
+    })
+
+    expect(motionMocks.buttonAriaLabels).not.toContain("messenger:aria.jumpToLatest")
+  })
+
+  it("clears jump visibility before returning from an early render branch", () => {
+    const message = makeMessage({ id: "jump-reset", text: "bottom" })
+    const { rerender } = render(<ChatWindow messages={[message]} />, { wrapper })
+    const log = screen.getByRole("log")
+    Object.defineProperty(log, "scrollHeight", { value: 1000, configurable: true })
+    Object.defineProperty(log, "clientHeight", { value: 300, configurable: true })
+    Object.defineProperty(log, "scrollTop", { value: 100, configurable: true })
+    fireEvent.scroll(log)
+    expect(screen.getByRole("button", { name: "messenger:aria.jumpToLatest" })).toBeTruthy()
+
+    rerender(<ChatWindow messages={[message]} isLoading />)
+    motionMocks.buttonAriaLabels.length = 0
+    rerender(<ChatWindow messages={[message]} />)
+
+    expect(motionMocks.buttonAriaLabels).not.toContain("messenger:aria.jumpToLatest")
+  })
+
+  it("rebinds one passive scroll listener and removes the exact handler", () => {
+    const first = makeMessage({ id: "listener-first", text: "first" })
+    const second = makeMessage({ id: "listener-second", text: "second" })
+    const { rerender, unmount } = render(<ChatWindow messages={[first]} />, { wrapper })
+    const log = screen.getByRole("log")
+    const addSpy = vi.spyOn(log, "addEventListener")
+    const removeSpy = vi.spyOn(log, "removeEventListener")
+
+    rerender(<ChatWindow messages={[first, second]} />)
+
+    const scrollAdd = addSpy.mock.calls.find(([type]) => type === "scroll")
+    expect(scrollAdd).toBeDefined()
+    expect(scrollAdd?.[2]).toEqual({ passive: true })
+    expect(removeSpy.mock.calls.some(([type]) => type === "scroll")).toBe(true)
+
+    const reboundHandler = scrollAdd?.[1]
+    unmount()
+    expect(removeSpy).toHaveBeenCalledWith("scroll", reboundHandler)
+  })
+
+  it("keeps scroll ownership attached to the loading-state container", () => {
+    render(
+      <ChatWindow messages={[makeMessage({ id: "loading-owner", text: "pending" })]} isLoading />,
+      { wrapper }
+    )
+
+    expect(virtualizerMock.options?.getScrollElement?.()).toBe(screen.getByRole("status"))
+  })
+
+  it("exposes a keyboard-accessible older-history action", () => {
+    const onLoadOlder = vi.fn()
+    render(<ChatWindow messages={mockMessages} hasMore onLoadOlder={onLoadOlder} />, { wrapper })
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:history.loadOlder" }))
+    expect(onLoadOlder).toHaveBeenCalledTimes(1)
+  })
+
+  it("shows the pending and failed older-history states", () => {
+    render(
+      <ChatWindow
+        messages={mockMessages}
+        hasMore
+        onLoadOlder={vi.fn()}
+        isLoadingOlder
+        olderMessagesError
+      />,
+      { wrapper }
+    )
+
+    expect(screen.getByRole("button", { name: "messenger:history.loadingOlder" })).toBeDisabled()
+    expect(screen.getByRole("alert")).toHaveTextContent("messenger:history.loadOlderError")
+  })
+
+  it("keeps both optional older-history states disabled by default", () => {
+    const onLoadOlder = vi.fn()
+    const { rerender } = render(<ChatWindow messages={mockMessages} onLoadOlder={onLoadOlder} />, {
+      wrapper,
+    })
+
+    expect(screen.queryByRole("button", { name: "messenger:history.loadOlder" })).toBeFalsy()
+
+    rerender(<ChatWindow messages={mockMessages} hasMore onLoadOlder={onLoadOlder} />)
+    expect(screen.getByRole("button", { name: "messenger:history.loadOlder" })).toBeTruthy()
+    expect(screen.queryByRole("alert")).toBeFalsy()
+  })
+})
+
 describe("ChatWindow — W184 SW1 search-filter render path", () => {
+  it("passes the exact reduced-motion query and search debounce preset to shared hooks", () => {
+    render(<ChatWindow messages={mockMessages} searchQuery="Hello" />, { wrapper })
+
+    expect(hookMocks.useMediaQuery).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
+    expect(hookMocks.useDebounced).toHaveBeenCalledWith("Hello", "search")
+  })
+
   it("filters messages by case-insensitive substring on text field", () => {
     render(<ChatWindow messages={mockMessages} searchQuery="HELLO" />, { wrapper })
 
@@ -152,6 +439,18 @@ describe("ChatWindow — W184 SW1 search-filter render path", () => {
     // role="log" virtualized list container present
     const logEl = container.querySelector('[role="log"]')
     expect(logEl).toBeTruthy()
+  })
+
+  it("treats whitespace-only search as inactive and preserves the source array fast path", () => {
+    const messages = [...mockMessages]
+    const filter = vi.fn(messages.filter.bind(messages))
+    Object.defineProperty(messages, "filter", { value: filter })
+
+    render(<ChatWindow messages={messages} searchQuery="   " />, { wrapper })
+
+    expect(filter).not.toHaveBeenCalled()
+    expect(screen.queryByText("messenger:noMessages.searchEmpty.title")).toBeFalsy()
+    expect(virtualizerMock.options?.count).toBe(messages.length)
   })
 })
 
@@ -469,6 +768,15 @@ describe("ChatWindow — W205 SW6 edit/delete affordance + tombstone + inline ed
     expect(screen.queryByText("original")).toBeFalsy()
   })
 
+  it("uses an empty controlled editor value when editing content is omitted", () => {
+    render(
+      <ChatWindow messages={[makeOwn({ id: "edit-default" })]} editingMessageId="edit-default" />,
+      { wrapper }
+    )
+
+    expect(screen.getByRole("textbox")).toHaveValue("")
+  })
+
   it("Save fires onSaveEdit(id), Cancel fires onCancelEdit, typing fires onEditingContentChange", () => {
     const onSaveEdit = vi.fn()
     const onCancelEdit = vi.fn()
@@ -514,6 +822,54 @@ describe("ChatWindow — W205 SW6 edit/delete affordance + tombstone + inline ed
     fireEvent.keyDown(textarea, { key: "ArrowLeft" })
     expect(onSaveEdit).toHaveBeenCalledTimes(1)
     expect(onCancelEdit).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("ChatWindow — messenger controls meet the 44px hit-area contract", () => {
+  it("keeps every message action and reaction control at least 44x44", () => {
+    const own = makeMessage({
+      id: "hitbox-own",
+      text: "hello",
+      isMe: true,
+      reactions: [{ emoji: "👍", count: 1, reactedByMe: false }],
+    })
+    render(
+      <ChatWindow
+        messages={[own]}
+        onStartReply={() => {}}
+        onForward={() => {}}
+        onEditMessage={() => {}}
+        onDeleteMessage={() => {}}
+        onToggleReaction={() => {}}
+      />,
+      { wrapper }
+    )
+
+    const actionLabels = [
+      "messenger:reply",
+      "messenger:forward",
+      "messenger:editMessage",
+      "messenger:deleteMessage",
+      "messenger:reactions.add",
+    ]
+    for (const label of actionLabels) {
+      expect(screen.getByRole("button", { name: label })).toHaveClass(
+        "min-h-[44px]",
+        "min-w-[44px]"
+      )
+    }
+
+    expect(
+      screen.getByRole("button", {
+        name: 'messenger:reactions.tally|{"emoji":"👍","count":1}',
+      })
+    ).toHaveClass("min-h-[44px]", "min-w-[44px]")
+
+    fireEvent.click(screen.getByRole("button", { name: "messenger:reactions.add" }))
+    const pickerButton = screen.getByRole("button", {
+      name: 'messenger:reactions.react|{"emoji":"👍"}',
+    })
+    expect(pickerButton).toHaveClass("min-h-[44px]", "min-w-[44px]")
   })
 })
 

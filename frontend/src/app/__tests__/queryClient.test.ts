@@ -74,6 +74,18 @@ describe("queryClient — IDB persister", () => {
     expect(typeof idbPersister.removeClient).toBe("function")
   })
 
+  it("uses the canonical key for the default persister", async () => {
+    const client = makeClient()
+
+    await idbPersister.persistClient(client)
+    await idbPersister.restoreClient()
+    await idbPersister.removeClient()
+
+    expect(idbSet).toHaveBeenCalledWith("reactQuery", client)
+    expect(idbGet).toHaveBeenCalledWith("reactQuery")
+    expect(idbDel).toHaveBeenCalledWith("reactQuery")
+  })
+
   it("persistClient writes the client to IDB under the given key", async () => {
     const persister = createIDBPersister("myKey")
     const client = makeClient()
@@ -114,5 +126,20 @@ describe("queryClient — IDB persister", () => {
     idbSet.mockRejectedValueOnce(boom)
     const persister = createIDBPersister("errKey")
     await expect(persister.persistClient(makeClient())).rejects.toBe(boom)
+  })
+
+  it("falls back to the default quota when storage estimation rejects", async () => {
+    // Import a fresh module after installing the rejecting browser API so the
+    // lazy quota resolver exercises its asynchronous catch contract directly.
+    vi.resetModules()
+    vi.stubGlobal("navigator", {
+      storage: { estimate: vi.fn().mockRejectedValue(new Error("storage unavailable")) },
+    })
+
+    const isolated = await import("@/app/queryClient")
+    await expect(
+      isolated.createIDBPersister("estimate-error").persistClient(makeClient())
+    ).resolves.toBeUndefined()
+    expect(idbSet).toHaveBeenCalledWith("estimate-error", expect.anything())
   })
 })

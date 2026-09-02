@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import os
 from functools import cached_property
 from typing import Any
 
-from pydantic import Field, ValidationInfo, field_validator
+from pydantic import Field, ValidationInfo, field_validator, model_validator
 
 from app.core.logging import get_logger
+from app.core.notification_contract import (
+    CANONICAL_NOTIFICATION_TOPICS,
+    canonicalize_notification_topic,
+)
 
 from .base import (
     _DEVELOPMENT_ENVIRONMENTS,
@@ -76,7 +81,7 @@ class NotificationSettings(BaseAppSettings):
     notifications_queue_in_memory_only: bool = False
     notifications_queue_retry_base_seconds: float = 1.0
     notifications_allowed_push_topics: list[str] | str = Field(
-        default_factory=lambda: ["news", "schedule", "events", "system"]
+        default_factory=lambda: list(CANONICAL_NOTIFICATION_TOPICS)
     )
     notifications_queue_max_attempts: int = 5
 
@@ -124,15 +129,34 @@ class NotificationSettings(BaseAppSettings):
             )
         return value
 
+    @model_validator(mode="after")
+    def _require_encrypted_smtp_transport(self) -> NotificationSettings:
+        environment = str(
+            getattr(self, "environment", "")
+            or os.environ.get("ENVIRONMENT", "development")
+        ).lower()
+        if (
+            self.smtp_host.strip()
+            and self.smtp_security == "none"
+            and environment not in _DEVELOPMENT_ENVIRONMENTS
+        ):
+            raise ValueError(
+                "SMTP_SECURITY must be starttls or ssl when SMTP_HOST is configured "
+                "outside development environments"
+            )
+        return self
+
     @field_validator("notifications_allowed_push_topics", mode="before")
     @classmethod
     def _validate_notifications_allowed_push_topics(cls, value: Any) -> list[str]:
         normalized: list[str] = []
         seen: set[str] = set()
         for item in _coerce_str_list(value):
-            candidate = item.strip().lower()
+            candidate = canonicalize_notification_topic(item)
             if not candidate or candidate in seen:
                 continue
+            if candidate not in CANONICAL_NOTIFICATION_TOPICS:
+                raise ValueError(f"Unknown notification topic: {item!r}")
             seen.add(candidate)
             normalized.append(candidate)
         if not normalized:

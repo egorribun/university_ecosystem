@@ -76,14 +76,15 @@ func newConnPair(t *testing.T) (server, client *websocket.Conn) {
 func newClientOn(h *Hub, serverConn *websocket.Conn, id, userID string) *Client {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Client{
-		ID:     id,
-		UserID: userID,
-		Conn:   NewWebSocketSession(serverConn),
-		Rooms:  make(map[string]bool),
-		Send:   make(chan []byte, 8),
-		Hub:    h,
-		ctx:    ctx,
-		cancel: cancel,
+		ID:         id,
+		UserID:     userID,
+		SessionJTI: "test-" + id,
+		Conn:       NewWebSocketSession(serverConn),
+		Rooms:      make(map[string]bool),
+		Send:       make(chan []byte, 8),
+		Hub:        h,
+		ctx:        ctx,
+		cancel:     cancel,
 	}
 }
 
@@ -246,12 +247,12 @@ func TestHandleIncomingMessage_JoinLeaveDispatch(t *testing.T) {
 	srv, _ := newConnPair(t)
 	c := newClientOn(h, srv, "c-disp", "u-disp")
 
-	c.handleIncomingMessage(Message{Type: "join", Room: "room-d"}, nil)
+	c.handleIncomingMessage(c.ctx, Message{Type: "join", Room: "room-d"}, nil)
 	h.mu.RLock()
 	assert.Len(t, h.Rooms["room-d"], 1)
 	h.mu.RUnlock()
 
-	c.handleIncomingMessage(Message{Type: "leave", Room: "room-d"}, nil)
+	c.handleIncomingMessage(c.ctx, Message{Type: "leave", Room: "room-d"}, nil)
 	h.mu.RLock()
 	_, ok := h.Rooms["room-d"]
 	h.mu.RUnlock()
@@ -272,7 +273,7 @@ func TestHandleIncomingMessage_UnknownTypeIncrementsMetric(t *testing.T) {
 	c := newClientOn(h, srv, "c-unk", "u-unk")
 
 	before := testutil.ToFloat64(UnknownMsgTypeTotal)
-	c.handleIncomingMessage(Message{Type: "totally-bogus"}, nil)
+	c.handleIncomingMessage(c.ctx, Message{Type: "totally-bogus"}, nil)
 	assert.Equal(t, before+1, testutil.ToFloat64(UnknownMsgTypeTotal))
 }
 
@@ -280,7 +281,7 @@ func TestHandleJoin_EmptyRoomNoOp(t *testing.T) {
 	h := setupTestHub()
 	srv, _ := newConnPair(t)
 	c := newClientOn(h, srv, "c-empty", "u-empty")
-	c.handleJoin(Message{Type: "join", Room: ""})
+	c.handleJoin(c.ctx, Message{Type: "join", Room: ""})
 	h.mu.RLock()
 	assert.Empty(t, h.Rooms)
 	h.mu.RUnlock()
@@ -294,7 +295,7 @@ func TestHandleJoin_DeniedIncrementsAuthFailures(t *testing.T) {
 	c := newClientOn(h, srv, "c-deny", "u-deny")
 
 	before := testutil.ToFloat64(AuthFailuresTotal.WithLabelValues("room_join_denied"))
-	c.handleJoin(Message{Type: "join", Room: "secret"})
+	c.handleJoin(c.ctx, Message{Type: "join", Room: "secret"})
 	assert.Equal(t, before+1,
 		testutil.ToFloat64(AuthFailuresTotal.WithLabelValues("room_join_denied")))
 	h.mu.RLock()
@@ -321,7 +322,7 @@ func TestReadPump_InvalidJSONThenJoin(t *testing.T) {
 		return ok
 	}, 2*time.Second, 10*time.Millisecond)
 
-	go c.ReadPump()
+	go c.ReadPump(c.ctx)
 
 	require.NoError(t, cli.WriteMessage(websocket.TextMessage, []byte("{not valid json")))
 	require.NoError(t, cli.WriteJSON(map[string]string{"type": "join", "room": "room-r"}))
@@ -347,13 +348,17 @@ func TestReadPump_DisallowedTypeOverSocket(t *testing.T) {
 	srv, cli := newConnPair(t)
 	c := newClientOn(h, srv, "c-bad", "u-bad")
 	h.Register <- c
-	go c.ReadPump()
+	go c.ReadPump(c.ctx)
 
 	before := testutil.ToFloat64(UnknownMsgTypeTotal)
-	// "ping" is not in allowedMessageTypes → rejected at the parse boundary.
-	require.NoError(t, cli.WriteJSON(map[string]string{"type": "ping"}))
+	// Application-level ping, read receipts, and typing are not ws-hub commands:
+	// ping uses the WebSocket control frame, while read/typing are REST-owned
+	// backend broadcasts. All three must be rejected at the parse boundary.
+	for _, messageType := range []string{"ping", "read", "typing"} {
+		require.NoError(t, cli.WriteJSON(map[string]string{"type": messageType}))
+	}
 	require.Eventually(t, func() bool {
-		return testutil.ToFloat64(UnknownMsgTypeTotal) >= before+1
+		return testutil.ToFloat64(UnknownMsgTypeTotal) >= before+3
 	}, 2*time.Second, 10*time.Millisecond)
 	require.NoError(t, cli.Close())
 }
@@ -373,7 +378,7 @@ func TestReadPump_HubCtxDoneTeardown(t *testing.T) {
 	c := newClientOn(h, srv, "c-ctx", "u-ctx")
 
 	done := make(chan struct{})
-	go func() { c.ReadPump(); close(done) }()
+	go func() { c.ReadPump(c.ctx); close(done) }()
 	require.NoError(t, cli.Close()) // ends the read loop → teardown
 	select {
 	case <-done:

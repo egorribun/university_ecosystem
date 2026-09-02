@@ -512,7 +512,7 @@ func TestIntegration_HandleWebSocketPrecheckMaxClients(t *testing.T) {
 	}
 	setTicket := func(t *testing.T, token, userID string) {
 		t.Helper()
-		require.NoError(t, rdb.Set(ctx, "ott:ws:"+token, userID+":jti-x", 30*time.Second).Err())
+		require.NoError(t, rdb.Set(ctx, "ott:ws:"+token, userID+":"+validSessionJTI, 30*time.Second).Err())
 	}
 	tok1, uid1 := mkTicket(0xa1)
 	tok2, uid2 := mkTicket(0xa2)

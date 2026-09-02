@@ -13,14 +13,14 @@ def check_health(url, name, timeout=30, interval=2):
         try:
             response = requests.get(url, timeout=5)
             if response.status_code == 200:
-                print(f"✅ {name} is healthy!")
+                print(f"[OK] {name} is healthy!")
                 return True
         except requests.exceptions.RequestException:
             pass
 
         elapsed = time.time() - start_time
         if elapsed >= timeout:
-            print(f"❌ {name} health check timed out after {timeout}s")
+            print(f"[FAIL] {name} health check timed out after {timeout}s")
             return False
 
         print(f"Waiting for {name}... ({int(elapsed)}s elapsed)")
@@ -47,10 +47,10 @@ def run_smoke_test():
         results.append(check_health(rust_optimizer_url, "Rust Optimizer"))
 
     if all(results):
-        print("🚀 All services are healthy! Smoke test passed.")
+        print("[OK] All services are healthy! Smoke test passed.")
         sys.exit(0)
     else:
-        print("❌ Smoke test failed.")
+        print("[FAIL] Smoke test failed.")
         sys.exit(1)
 
 

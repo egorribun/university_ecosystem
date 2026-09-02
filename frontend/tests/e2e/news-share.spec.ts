@@ -1,5 +1,6 @@
 import { devices, expect, test } from "./test"
 import { MOCK_NEWS_ID, useMockApi } from "./utils/mockApi"
+import { gotoWithTransientRetry } from "./utils/navigation"
 
 const newsPath = `/news/${MOCK_NEWS_ID}`
 
@@ -25,7 +26,7 @@ test.describe("News detail sharing (desktop)", () => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
-    await page.goto(newsPath)
+    await gotoWithTransientRetry(page, newsPath)
     await expect(
       page.getByRole("heading", { name: /(Новость дня|News of the day)/i })
     ).toBeVisible()
@@ -71,7 +72,7 @@ test.describe("News detail sharing (mobile)", () => {
     const mock = await useMockApi(page)
     await mock.login(page)
 
-    await page.goto(newsPath)
+    await gotoWithTransientRetry(page, newsPath)
     await expect(
       page.getByRole("heading", { name: /(Новость дня|News of the day)/i })
     ).toBeVisible()

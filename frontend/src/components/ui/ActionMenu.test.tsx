@@ -36,6 +36,18 @@ describe("ActionMenu — trigger", () => {
     render(<ActionMenu items={items} ariaLabel="More actions" />)
     expect(screen.getByRole("button", { name: /more actions/i })).toBeInTheDocument()
   })
+
+  it("keeps the trigger and menu items at least 44px tall", async () => {
+    const user = userEvent.setup()
+    render(<ActionMenu items={items} />)
+    const trigger = screen.getByRole("button", { name: /open menu/i })
+    expect(trigger).toHaveClass("h-11", "w-11")
+
+    await user.click(trigger)
+    for (const item of screen.getAllByRole("menuitem")) {
+      expect(item).toHaveClass("min-h-11")
+    }
+  })
 })
 
 describe("ActionMenu — open + close", () => {

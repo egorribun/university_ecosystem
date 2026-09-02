@@ -1,6 +1,6 @@
 {
-  "name": "npm",
-  "version": "0.0.0-private",
+  "name": "runner-npm-cli-bridge",
+  "version": "1.0.0",
   "private": true,
   "description": "Fail-closed bridge from semantic-release plugins to the runner-managed npm CLI",
   "type": "module",

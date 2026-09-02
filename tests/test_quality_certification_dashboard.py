@@ -89,12 +89,68 @@ def test_certification_cli_hashes_every_file_in_report_directory(
     certification = _load_script("generate_certification")
     contract = tmp_path / "contract.json"
     checks = tmp_path / "checks.json"
+    check_policy = tmp_path / "release-required-checks.json"
     reports = tmp_path / "reports"
     reports.mkdir()
     report = reports / "mutation.json"
     output = tmp_path / "certification.json"
     contract.write_text('{"exclusions": [], "quarantines": []}\n', encoding="utf-8")
-    checks.write_text('{"ci-success": "success"}\n', encoding="utf-8")
+    commit_sha = "c" * 40
+    checks.write_text(
+        json.dumps(
+            {
+                "commit_sha": commit_sha,
+                "check_runs": [
+                    {
+                        "id": 1,
+                        "name": "CI Success",
+                        "head_sha": commit_sha,
+                        "status": "completed",
+                        "conclusion": "success",
+                        "details_url": "https://example.test/check-runs/1",
+                        "app": {"slug": "github-actions"},
+                        "workflow_run": {
+                            "id": 1001,
+                            "path": ".github/workflows/ci.yml",
+                            "event": "push",
+                            "head_branch": "main",
+                            "head_sha": commit_sha,
+                            "status": "completed",
+                            "conclusion": "success",
+                            "run_attempt": 1,
+                            "repository": "egorribun/university_ecosystem",
+                            "job_id": 2001,
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    check_policy.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "events": {
+                    "push_main": {
+                        "github_event": "push",
+                        "github_ref": "refs/heads/main",
+                        "github_repository": "egorribun/university_ecosystem",
+                        "required_checks": [
+                            {
+                                "name": "CI Success",
+                                "workflow_path": ".github/workflows/ci.yml",
+                                "category": "aggregate",
+                                "allowed_conclusions": ["success"],
+                                "rationale": "Test release aggregate.",
+                            }
+                        ],
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     report.write_text('{"score": 1.0}\n', encoding="utf-8")
 
     monkeypatch.setattr(
@@ -103,11 +159,15 @@ def test_certification_cli_hashes_every_file_in_report_directory(
         [
             "generate_certification.py",
             "--commit-sha",
-            "c" * 40,
+            commit_sha,
             "--contract",
             str(contract),
             "--checks",
             str(checks),
+            "--check-policy",
+            str(check_policy),
+            "--check-event",
+            "push_main",
             "--report-dir",
             str(reports),
             "--output",
@@ -119,6 +179,8 @@ def test_certification_cli_hashes_every_file_in_report_directory(
     assert certification.main() == 0
     record = json.loads(output.read_text(encoding="utf-8"))
     assert report.as_posix() in record["report_hashes"]
+    assert record["check_event"] == "push_main"
+    assert record["check_policy_sha256"] == certification._sha256(check_policy)
 
 
 def test_stabilization_window_requires_every_calendar_day() -> None:

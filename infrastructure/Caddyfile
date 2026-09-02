@@ -132,7 +132,10 @@
 		reverse_proxy frontend:3000 {
 			health_uri /healthz
 			health_interval 10s
-			health_timeout 5s
+			# Bound above cold authenticated SSR module loading; otherwise the
+			# single healthy upstream is transiently evicted and the next route gets
+			# a synthetic 503 even though Node completes the render successfully.
+			health_timeout 20s
 		}
 	}
 }

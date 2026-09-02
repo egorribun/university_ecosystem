@@ -28,6 +28,11 @@ services:
     volumes:
       - ./infrastructure/observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
       - tempo-data:/var/tempo
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
     networks:
       - internal
       - public
@@ -42,6 +47,11 @@ services:
     volumes:
       - ./infrastructure/observability/loki.yaml:/etc/loki/loki.yaml:ro
       - loki-data:/loki
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
     networks:
       - internal
       - public
@@ -60,6 +70,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: 32M
     restart: unless-stopped
 
   # Grafana Alloy - supported Docker log collector for Loki. Promtail reached
@@ -90,6 +105,11 @@ services:
     # state volume; all other Linux capabilities remain dropped.
     cap_add:
       - DAC_OVERRIDE
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
     networks:
       - internal
       - public
@@ -106,6 +126,11 @@ services:
       - "127.0.0.1:4040:4040"
     volumes:
       - pyroscope-data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
     networks:
       - internal
       - public
@@ -150,6 +175,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
     restart: unless-stopped
 
   # Prometheus - Metrics (extend existing if present)
@@ -186,6 +216,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
     restart: unless-stopped
 
   redis-exporter:
@@ -206,6 +241,11 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 64M
     restart: unless-stopped
 
 volumes:

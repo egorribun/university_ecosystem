@@ -1,16 +1,30 @@
 import { useState } from "react"
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 
+const { useTranslationMock, translationMock } = vi.hoisted(() => {
+  const translationMock = vi.fn((key: string) => key)
+  return {
+    useTranslationMock: vi.fn(() => ({
+      t: translationMock,
+      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+    })),
+    translationMock,
+  }
+})
+
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  useTranslation: useTranslationMock,
 }))
 
-import { useEventFilterPopover } from "@/components/events/EventFilterPopover"
+import {
+  DEFAULT_EVENT_FILTER_PLACEMENT,
+  EVENT_FILTER_FOCUS_MODAL,
+  EVENT_FILTER_MIDDLEWARE,
+  EVENT_FILTER_ROLE,
+  useEventFilterPopover,
+} from "@/components/events/EventFilterPopover"
 import type { EventDateRange } from "@/features/events/types"
 
 /**
@@ -55,6 +69,24 @@ function Harness({
 }
 
 describe("useEventFilterPopover", () => {
+  it("keeps the documented default placement stable", () => {
+    expect(DEFAULT_EVENT_FILTER_PLACEMENT).toBe("bottom-end")
+  })
+
+  it("keeps positioning and accessibility contracts stable", () => {
+    expect(EVENT_FILTER_MIDDLEWARE).toHaveLength(3)
+    expect(EVENT_FILTER_MIDDLEWARE.map((middleware) => middleware.name)).toEqual([
+      "offset",
+      "flip",
+      "shift",
+    ])
+    expect(EVENT_FILTER_MIDDLEWARE[2]).toEqual(
+      expect.objectContaining({ name: "shift", options: [{ padding: 8 }, undefined] })
+    )
+    expect(EVENT_FILTER_ROLE).toStrictEqual({ role: "dialog" })
+    expect(EVENT_FILTER_FOCUS_MODAL).toBe(false)
+  })
+
   it("opens the popover on trigger click and renders the date quick-buttons", async () => {
     const user = userEvent.setup()
     render(<Harness onDateRangeChange={vi.fn()} onLocationChange={vi.fn()} />)
@@ -68,6 +100,35 @@ describe("useEventFilterPopover", () => {
     expect(screen.getByText("events:filters.today")).toBeInTheDocument()
     expect(screen.getByText("events:filters.thisWeek")).toBeInTheDocument()
     expect(screen.getByText("events:filters.thisMonth")).toBeInTheDocument()
+    expect(screen.getByText("events:filters.allDates")).toHaveClass("bg-brand")
+    const dialog = screen.getByRole("dialog")
+    expect(dialog).toHaveClass(
+      "z-modal",
+      "min-w-64",
+      "rounded-xl",
+      "border",
+      "border-glass-border",
+      "bg-(--bg-surface)/(--opacity-heavy)",
+      "p-4",
+      "shadow-glass",
+      "backdrop-blur-xl"
+    )
+    expect(screen.getByText("events:filters.allDates")).toHaveClass(
+      "rounded-full",
+      "px-3",
+      "py-1.5",
+      "text-xs",
+      "font-semibold",
+      "transition-colors",
+      "duration-fast",
+      "focus-visible:ring-2",
+      "focus-visible:ring-brand",
+      "bg-brand",
+      "text-[var(--text-inverse)]",
+      "shadow-sm"
+    )
+    expect(useTranslationMock).toHaveBeenCalledWith(["events", "common"])
+    expect(translationMock).toHaveBeenCalledWith("events:filters.dateRange")
   })
 
   it("fires onDateRangeChange with the right range for each quick-button", async () => {
@@ -79,6 +140,8 @@ describe("useEventFilterPopover", () => {
 
     await user.click(screen.getByText("events:filters.today"))
     expect(onDateRangeChange).toHaveBeenLastCalledWith("today")
+    expect(screen.getByText("events:filters.today")).toHaveClass("bg-brand")
+    expect(screen.getByText("events:filters.allDates")).toHaveClass("matte-chip")
 
     await user.click(screen.getByText("events:filters.thisWeek"))
     expect(onDateRangeChange).toHaveBeenLastCalledWith("week")
@@ -95,12 +158,21 @@ describe("useEventFilterPopover", () => {
 
     await user.click(screen.getByText("open filters"))
 
-    await user.type(screen.getByLabelText("events:filters.location"), "A")
-    expect(onLocationChange).toHaveBeenCalledWith("A")
+    const locationInput = screen.getByLabelText("events:filters.location")
+    // This unit test verifies the controlled input contract.  Dispatching one
+    // change event keeps the assertion deterministic under Stryker's
+    // instrumented runner; realistic character-by-character typing remains
+    // covered by the browser journeys.
+    fireEvent.change(locationInput, { target: { value: "A" } })
+    expect(locationInput).toHaveValue("A")
+    await waitFor(() => expect(onLocationChange).toHaveBeenCalledWith("A"))
 
     await user.click(screen.getByText("common:buttons.reset"))
-    expect(onDateRangeChange).toHaveBeenLastCalledWith("")
-    expect(onLocationChange).toHaveBeenLastCalledWith("")
+    await waitFor(() => {
+      expect(onDateRangeChange).toHaveBeenLastCalledWith("")
+      expect(onLocationChange).toHaveBeenLastCalledWith("")
+    })
+    expect(screen.getByTestId("active")).toHaveTextContent("false")
   })
 
   it("closes the popover via the Done button", async () => {
@@ -128,5 +200,68 @@ describe("useEventFilterPopover", () => {
   it("reports filtersActive=false when nothing is filtered", () => {
     render(<Harness onDateRangeChange={vi.fn()} onLocationChange={vi.fn()} />)
     expect(screen.getByTestId("active")).toHaveTextContent("false")
+  })
+
+  it("treats whitespace-only locations as inactive and meaningful locations as active", () => {
+    const { unmount } = render(
+      <Harness onDateRangeChange={vi.fn()} onLocationChange={vi.fn()} initialLocation="   " />
+    )
+    expect(screen.getByTestId("active")).toHaveTextContent("false")
+
+    unmount()
+    render(
+      <Harness
+        onDateRangeChange={vi.fn()}
+        onLocationChange={vi.fn()}
+        initialLocation=" Main hall "
+      />
+    )
+    expect(screen.getByTestId("active")).toHaveTextContent("true")
+  })
+
+  it("treats an unavailable location value as inactive without throwing", () => {
+    expect(() =>
+      render(
+        <Harness
+          onDateRangeChange={vi.fn()}
+          onLocationChange={vi.fn()}
+          initialLocation={undefined as unknown as string}
+        />
+      )
+    ).not.toThrow()
+    expect(screen.getByTestId("active")).toHaveTextContent("false")
+  })
+
+  it("treats a non-string location value as inactive without coercing it", () => {
+    expect(() =>
+      render(
+        <Harness
+          onDateRangeChange={vi.fn()}
+          onLocationChange={vi.fn()}
+          initialLocation={null as unknown as string}
+        />
+      )
+    ).not.toThrow()
+    expect(screen.getByTestId("active")).toHaveTextContent("false")
+  })
+
+  it("supports keyboard dismissal of the open popover", async () => {
+    const user = userEvent.setup()
+    render(<Harness onDateRangeChange={vi.fn()} onLocationChange={vi.fn()} />)
+    await user.click(screen.getByText("open filters"))
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+
+    await user.keyboard("{Escape}")
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+  })
+
+  it("supports outside-press dismissal while keeping the trigger contract", async () => {
+    const user = userEvent.setup()
+    render(<Harness onDateRangeChange={vi.fn()} onLocationChange={vi.fn()} />)
+    await user.click(screen.getByText("open filters"))
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+
+    fireEvent.mouseDown(document.body)
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
   })
 })

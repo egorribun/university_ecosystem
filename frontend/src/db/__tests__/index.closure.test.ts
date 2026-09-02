@@ -41,6 +41,34 @@ afterEach(async () => {
 })
 
 describe("RxDB database lifecycle", () => {
+  it("does not register the noisy development plugin in the test runtime", async () => {
+    vi.stubEnv("DEV", true)
+    vi.stubEnv("MODE", "test")
+    vi.resetModules()
+    addRxPlugin.mockClear()
+
+    try {
+      await import("../index")
+      expect(addRxPlugin).not.toHaveBeenCalled()
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it("registers the development plugin for an actual development build", async () => {
+    vi.stubEnv("DEV", true)
+    vi.stubEnv("MODE", "development")
+    vi.resetModules()
+    addRxPlugin.mockClear()
+
+    try {
+      await import("../index")
+      expect(addRxPlugin).toHaveBeenCalledWith("dev-mode-plugin")
+    } finally {
+      vi.unstubAllEnvs()
+    }
+  })
+
   it("does not register the development plugin in production", async () => {
     vi.stubEnv("DEV", false)
     vi.resetModules()
@@ -54,7 +82,7 @@ describe("RxDB database lifecycle", () => {
     }
   })
 
-  it("creates the validated database once and adds all application collections", async () => {
+  it("creates the validated database once and opens the Dexie collections", async () => {
     const database = makeDatabase()
     createRxDatabase.mockResolvedValue(database)
 
@@ -70,6 +98,7 @@ describe("RxDB database lifecycle", () => {
     })
     expect(getRxStorageDexie).toHaveBeenCalledOnce()
     expect(wrappedValidateAjvStorage).toHaveBeenCalledWith({ storage: "dexie-storage" })
+    expect(database.addCollections).toHaveBeenCalledOnce()
     expect(database.addCollections).toHaveBeenCalledWith({
       schedule: expect.objectContaining({ schema: expect.any(Object) }),
       notes: expect.objectContaining({ schema: expect.any(Object) }),

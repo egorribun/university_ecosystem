@@ -15,7 +15,6 @@ if TYPE_CHECKING:
 USER_MFA_RELATIONSHIP_NAMES: tuple[str, ...] = (
     "totp_enrollments",
     "mfa_challenges",
-    "webauthn_credentials",
     "preferences",
     "spotify",
     "email_change_tokens",
@@ -27,7 +26,6 @@ USER_MFA_RELATIONSHIP_NAMES: tuple[str, ...] = (
 USER_MFA_COLLECTION_OPTIONS: tuple[Any, ...] = (
     selectinload(User.totp_enrollments),
     selectinload(User.mfa_challenges),
-    selectinload(User.webauthn_credentials),
     selectinload(User.email_change_tokens),
     selectinload(User.recovery_codes),
 )
@@ -70,7 +68,6 @@ USER_AUTH_WITH_MFA_OPTIONS: tuple[Any, ...] = (
     joinedload(User.education_path),
     selectinload(User.totp_enrollments),
     selectinload(User.mfa_challenges),
-    selectinload(User.webauthn_credentials),
     selectinload(User.email_change_tokens),
     selectinload(User.recovery_codes),
 )
@@ -86,20 +83,14 @@ async def ensure_mfa_relationships_loaded(
 ) -> User | UserDTO | UserAuthDTO | None:
     """Ensure MFA-related relationships are loaded on the given user instance.
 
-    PERF-4: Idempotent — sets ``_mfa_loaded = True`` after the first successful
-    refresh so subsequent calls (e.g. from both deps.py and auth_service.py in
-    the same request) bypass the SQLAlchemy inspect overhead entirely.
+    Authorization checks intentionally revalidate ``lazy="noload"``
+    relationships on every call.  The historical ``_mfa_loaded`` shortcut can
+    become stale when factors are enrolled or revoked while the ORM identity
+    remains alive.
     """
 
     if user is None:
         return None
-
-    # Short-circuit if we have already loaded relationships in this request.
-    # User.__allow_unmapped__ = True permits the extra attribute on ORM instances;
-    # for DTO objects (Pydantic) we also set it since model_config allows extras
-    # or we use object.__setattr__ to avoid validation.
-    if getattr(user, "_mfa_loaded", False):
-        return user
 
     try:
         state = inspect(user)
@@ -110,13 +101,33 @@ async def ensure_mfa_relationships_loaded(
     if state is None:
         return user
 
+    mapper = getattr(state, "mapper", None)
+    relationships = getattr(mapper, "relationships", None)
+
+    def _uses_noload(name: str) -> bool:
+        if relationships is None:
+            return False
+        relationship = relationships.get(name)
+        return relationship is not None and relationship.lazy == "noload"
+
+    # SQLAlchemy's ``noload`` strategy materializes an empty collection and does
+    # not keep the attribute in ``state.unloaded``.  Sensitive MFA checks must
+    # therefore refresh noload relationships explicitly; otherwise a confirmed
+    # factor is indistinguishable from no factor and step-up authorization can
+    # be bypassed.  Do not trust the historical ``_mfa_loaded`` marker here:
+    # factor enrollment/revocation can mutate the database while the same ORM
+    # identity remains alive, making that marker stale at the authorization
+    # boundary.
     to_refresh = [
-        name for name in USER_MFA_RELATIONSHIP_NAMES if name in state.unloaded
+        name
+        for name in USER_MFA_RELATIONSHIP_NAMES
+        if name in state.unloaded or _uses_noload(name)
     ]
     if to_refresh:
         await db.refresh(user, attribute_names=to_refresh)
 
-    # Mark as loaded to avoid redundant inspect() calls on subsequent invocations.
+    # Preserve the marker for compatibility with callers that expose diagnostic
+    # state.  It is deliberately not trusted as an authorization cache.
     try:
         object.__setattr__(user, "_mfa_loaded", True)
     except (TypeError, AttributeError):  # RZ-28-01

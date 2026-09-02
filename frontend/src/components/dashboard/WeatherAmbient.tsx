@@ -8,14 +8,12 @@ interface WeatherAmbientProps {
   disabled?: boolean
 }
 
-/** Number of particles per variant */
-const PARTICLE_COUNTS: Record<WeatherAnimationVariant, number> = {
-  none: 0,
-  glow: 0,
-  breeze: 0,
-  drizzle: 18,
-  snow: 14,
-  storm: 22,
+/** Number of particles per variant. */
+function particleCountFor(animation: WeatherAnimationVariant): number {
+  if (animation === "drizzle") return 18
+  if (animation === "snow") return 14
+  if (animation === "storm") return 22
+  return 0
 }
 
 /**
@@ -26,10 +24,12 @@ const PARTICLE_COUNTS: Record<WeatherAnimationVariant, number> = {
  * zero JS animation loops. Respects prefers-reduced-motion via `disabled` prop.
  */
 export function WeatherAmbient({ animation, disabled = false }: WeatherAmbientProps) {
-  const count = disabled ? 0 : (PARTICLE_COUNTS[animation] ?? 0)
+  const count = disabled ? 0 : particleCountFor(animation)
+  const particleColor = animation === "snow" ? "bg-white" : "bg-sky-300/40"
 
   const particles = useMemo(() => {
     if (count === 0) return []
+
     return Array.from({ length: count }, (_, i) => ({
       id: i,
       // Deterministic pseudo-random positions using golden ratio
@@ -41,18 +41,17 @@ export function WeatherAmbient({ animation, disabled = false }: WeatherAmbientPr
     }))
   }, [count, animation])
 
-  if (count === 0) return null
+  if (particles.length === 0) return null
 
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden z-[1]" aria-hidden="true">
+    <div
+      className="weather-ambient pointer-events-none absolute inset-0 overflow-hidden z-[1]"
+      aria-hidden="true"
+    >
       {particles.map((p) => (
         <span
           key={p.id}
-          className={cn(
-            "absolute rounded-full",
-            animation === "snow" && "bg-white",
-            (animation === "drizzle" || animation === "storm") && "bg-sky-300/40"
-          )}
+          className={cn("absolute rounded-full", particleColor)}
           style={
             {
               left: p.left,

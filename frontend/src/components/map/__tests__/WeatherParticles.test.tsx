@@ -1,9 +1,12 @@
 import { act, render } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
-const hoisted = vi.hoisted(() => ({ reducedMotion: false }))
+const hoisted = vi.hoisted(() => ({ reducedMotion: false, lowPower: false }))
 
 vi.mock("@/hooks/useMediaQuery", () => ({ default: () => hoisted.reducedMotion }))
+vi.mock("@/utils/deviceCapabilities", () => ({
+  isLowPowerDevice: () => hoisted.lowPower,
+}))
 
 import { WeatherParticles } from "@/components/map/WeatherParticles"
 
@@ -26,7 +29,12 @@ const canvasContext = {
 
 describe("WeatherParticles", () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     hoisted.reducedMotion = false
+    hoisted.lowPower = false
+    canvasContext.fillStyle = ""
+    canvasContext.strokeStyle = ""
+    canvasContext.globalAlpha = 1
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(canvasContext)
     let n = 0
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((cb) => {
@@ -58,6 +66,13 @@ describe("WeatherParticles", () => {
     expect(container.querySelector("canvas")).toBeNull()
   })
 
+  it("does not start canvas effects on a low-power device", () => {
+    hoisted.lowPower = true
+    const { container } = render(<WeatherParticles condition="rain" isDark={false} />)
+    expect(container.querySelector("canvas")).toBeNull()
+    expect(window.requestAnimationFrame).not.toHaveBeenCalled()
+  })
+
   it.each(DRAWING_CONDITIONS)("draws a canvas for the %s condition (light)", (condition) => {
     const { container } = render(<WeatherParticles condition={condition} isDark={false} />)
     expect(container.querySelector("canvas")).not.toBeNull()
@@ -68,6 +83,39 @@ describe("WeatherParticles", () => {
   it.each(DRAWING_CONDITIONS)("draws a canvas for the %s condition (dark)", (condition) => {
     const { container } = render(<WeatherParticles condition={condition} isDark={true} />)
     expect(container.querySelector("canvas")).not.toBeNull()
+  })
+
+  it("draws weather with the condition-specific light/dark design tokens", () => {
+    const callbacks: FrameRequestCallback[] = []
+    vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
+      callbacks.push(callback)
+      return callbacks.length
+    })
+
+    const { unmount } = render(<WeatherParticles condition="rain" isDark={false} />)
+    act(() => callbacks.shift()?.(performance.now() + 16))
+    expect(canvasContext.strokeStyle).toBe("#60a5fa")
+    unmount()
+    callbacks.length = 0
+
+    render(<WeatherParticles condition="snow" isDark={true} />)
+    act(() => callbacks.shift()?.(performance.now() + 16))
+    expect(canvasContext.fillStyle).toBe("#e2e8f0")
+  })
+
+  it("sizes the canvas to its container on initial resize", () => {
+    const clientWidth = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(320)
+    const clientHeight = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(180)
+
+    try {
+      const { container } = render(<WeatherParticles condition="rain" isDark={false} />)
+      const canvas = container.querySelector("canvas")!
+      expect(canvas).toHaveProperty("width", 320)
+      expect(canvas).toHaveProperty("height", 180)
+    } finally {
+      clientWidth.mockRestore()
+      clientHeight.mockRestore()
+    }
   })
 
   it("exercises the particle-recycle branches when particles fall out of bounds", () => {
@@ -109,12 +157,13 @@ describe("WeatherParticles", () => {
     const randomSpy = vi.spyOn(Math, "random").mockReturnValue(0.999)
 
     try {
+      const startedAt = performance.now()
       render(<WeatherParticles condition="fog" isDark={false} />)
       expect(callbacks).toHaveLength(1)
 
       act(() => {
-        for (let index = 0; index < 80; index += 1) {
-          callbacks.shift()?.(10_000 + index * 16)
+        for (let index = 0; index < 400; index += 1) {
+          callbacks.shift()?.(startedAt + (index + 1) * 16)
         }
       })
 
@@ -168,6 +217,26 @@ describe("WeatherParticles", () => {
     hidden.mockRestore()
   })
 
+  it("does not draw a frame while the document is hidden", () => {
+    const callbacks: FrameRequestCallback[] = []
+    vi.mocked(window.requestAnimationFrame).mockImplementation((callback) => {
+      callbacks.push(callback)
+      return callbacks.length
+    })
+    const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(true)
+
+    const { unmount } = render(<WeatherParticles condition="rain" isDark={false} />)
+    expect(callbacks).toHaveLength(1)
+    act(() => {
+      document.dispatchEvent(new Event("visibilitychange"))
+      callbacks.shift()?.(1000)
+    })
+    expect(canvasContext.clearRect).not.toHaveBeenCalled()
+    expect(callbacks).toHaveLength(0)
+    unmount()
+    hidden.mockRestore()
+  })
+
   it("returns null for an unknown defensive condition", () => {
     const { container } = render(<WeatherParticles condition={"unknown" as never} isDark={false} />)
     expect(container.querySelector("canvas")).toBeNull()
@@ -204,6 +273,44 @@ describe("WeatherParticles", () => {
     } finally {
       vi.unstubAllGlobals()
     }
+  })
+
+  it("disconnects observers, listeners, and the animation frame on unmount", () => {
+    const disconnect = vi.fn()
+    let callback: ResizeObserverCallback | undefined
+    class ResizeObserverStub {
+      constructor(next: ResizeObserverCallback) {
+        callback = next
+      }
+
+      observe() {}
+
+      disconnect() {
+        disconnect()
+      }
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverStub)
+    const addEventListener = vi.spyOn(document, "addEventListener")
+    const removeEventListener = vi.spyOn(document, "removeEventListener")
+    const { unmount } = render(<WeatherParticles condition="rain" isDark={false} />)
+
+    expect(callback).toBeDefined()
+    expect(addEventListener).toHaveBeenCalledWith("visibilitychange", expect.any(Function))
+    unmount()
+    expect(disconnect).toHaveBeenCalledOnce()
+    expect(removeEventListener).toHaveBeenCalledWith("visibilitychange", expect.any(Function))
+    expect(window.cancelAnimationFrame).toHaveBeenCalled()
+  })
+
+  it("tears down the animation when reduced motion becomes enabled", () => {
+    const { container, rerender } = render(<WeatherParticles condition="rain" isDark={false} />)
+    expect(container.querySelector("canvas")).not.toBeNull()
+
+    hoisted.reducedMotion = true
+    rerender(<WeatherParticles condition="rain" isDark={false} />)
+
+    expect(container.querySelector("canvas")).toBeNull()
+    expect(window.cancelAnimationFrame).toHaveBeenCalled()
   })
 
   it("cleans up on unmount without throwing", () => {

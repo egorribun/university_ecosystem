@@ -1,5 +1,4 @@
 import asyncio
-from unittest.mock import AsyncMock
 
 import pyotp
 import pytest
@@ -19,12 +18,7 @@ async def test_mfa_challenge_race_condition(
     totp = pyotp.TOTP(user_with_totp._totp_secret)
     valid_code = totp.now()
 
-    # 2. Mock fingerprint verification to bypass Redis/Context requirements in test
-    monkeypatch.setattr(
-        "app.api.auth.login.verify_mfa_fingerprint", AsyncMock(return_value=True)
-    )
-
-    # 3. Simulate row-level locking for SQLite (which doesn't support SELECT FOR UPDATE)
+    # 2. Simulate row-level locking for SQLite (which doesn't support SELECT FOR UPDATE)
     # We wrap consume_challenge with an asyncio lock to ensure fetch-verify-commit atomicity
     from app.auth import mfa as mfa_module
 
@@ -39,7 +33,7 @@ async def test_mfa_challenge_race_condition(
 
     monkeypatch.setattr("app.auth.mfa.consume_challenge", mocked_consume_challenge)
 
-    # 4. Execution: Send 10 concurrent requests
+    # 3. Execution: Send 10 concurrent requests
     async def send_request():
         payload = {
             "challenge_token": challenge.token,
@@ -52,7 +46,7 @@ async def test_mfa_challenge_race_condition(
     tasks = [send_request() for _ in range(10)]
     results = await asyncio.gather(*tasks)
 
-    # 5. Verification
+    # 4. Verification
     successes = sum(1 for r in results if r.status_code == 200)
     failures = sum(1 for r in results if r.status_code == 400)
 
@@ -73,10 +67,6 @@ async def test_mfa_step_up_challenge_verification_race(
     challenge = await mfa_challenge_factory(user_with_totp)
     totp = pyotp.TOTP(user_with_totp._totp_secret)
     valid_code = totp.now()
-
-    monkeypatch.setattr(
-        "app.api.auth.login.verify_mfa_fingerprint", AsyncMock(return_value=True)
-    )
 
     from app.auth import mfa as mfa_module
 

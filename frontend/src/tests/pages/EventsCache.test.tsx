@@ -45,7 +45,6 @@ type AuthContextValue = ContextType<typeof AuthContext>
 
 const authValue: AuthContextValue = {
   login: vi.fn(),
-  loginWithPasskey: vi.fn(),
   logout: vi.fn(),
   setUser: vi.fn(),
   refresh: vi.fn(),

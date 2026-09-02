@@ -136,6 +136,25 @@ describe("AppShellContext", () => {
       })
       expect(document.body.style.overflow).not.toBe("hidden")
     })
+
+    it("preserves the original overflow across nested overlay locks", () => {
+      document.body.style.overflow = "clip"
+      const { result } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => {
+        result.current.setOverlayState("drawer", { blurred: false, scrollLocked: true })
+      })
+      expect(document.body.style.overflow).toBe("hidden")
+
+      act(() => {
+        result.current.setOverlayState("dialog", { blurred: true, scrollLocked: true })
+        result.current.setOverlayState("drawer", null)
+      })
+      expect(document.body.style.overflow).toBe("hidden")
+
+      act(() => result.current.setOverlayState("dialog", null))
+      expect(document.body.style.overflow).toBe("clip")
+    })
   })
 
   describe("scrollToTop", () => {
@@ -324,6 +343,38 @@ describe("AppShellContext", () => {
         secondFrame?.(520)
       })
       expect(scrollRoot.scrollTop).toBe(0)
+      document.body.removeChild(scrollRoot)
+    })
+
+    it("cancels a pending RAF fallback when the provider unmounts", () => {
+      const scrollRoot = document.createElement("div")
+      scrollRoot.setAttribute("data-scroll-root", "")
+      Object.defineProperty(scrollRoot, "scrollHeight", { value: 2000, configurable: true })
+      Object.defineProperty(scrollRoot, "clientHeight", { value: 500, configurable: true })
+      Object.defineProperty(scrollRoot, "scrollTop", {
+        value: 420,
+        writable: true,
+        configurable: true,
+      })
+      vi.spyOn(window, "getComputedStyle").mockReturnValue({
+        overflowY: "auto",
+      } as CSSStyleDeclaration)
+      Object.defineProperty(scrollRoot, "scrollTo", {
+        value: vi.fn(() => {
+          throw new Error("smooth scroll unavailable")
+        }),
+        configurable: true,
+      })
+      document.body.appendChild(scrollRoot)
+
+      vi.spyOn(window, "requestAnimationFrame").mockReturnValue(17)
+      const cancelAnimationFrame = vi.spyOn(window, "cancelAnimationFrame")
+      const { result, unmount } = renderHook(() => useAppShell(), { wrapper })
+
+      act(() => result.current.scrollToTop("smooth"))
+      unmount()
+
+      expect(cancelAnimationFrame).toHaveBeenCalledWith(17)
       document.body.removeChild(scrollRoot)
     })
   })

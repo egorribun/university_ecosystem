@@ -14,6 +14,7 @@ import sys
 import tempfile
 import uuid
 from collections.abc import Mapping, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
@@ -50,6 +51,7 @@ CONTAINER_RUN_TMPFS = "/run:rw,nosuid,nodev,size=64m,mode=1777"
 _CAPTURE_READ_BYTES = 64 * 1024
 _TERMINATE_WAIT_SECONDS = 30
 CONTROL_PLANE_TIMEOUT_SECONDS = 30
+CAPTURE_SIDE_WORKERS = 2
 _SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 _IMAGE_ID_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _CONTAINER_NAME_RE = re.compile(r"^quality-benchmark-[0-9a-f]{32}$")
@@ -439,11 +441,13 @@ def _safe_capture(
     description: str,
     timeout_seconds: int,
     container_name: str | None = None,
+    emit_markers: bool = True,
 ) -> None:
     """Capture untrusted container output without exposing GitHub command syntax."""
 
-    marker = uuid.uuid4().hex
-    print(f"::stop-commands::{marker}", flush=True)
+    marker = uuid.uuid4().hex if emit_markers else None
+    if marker is not None:
+        print(f"::stop-commands::{marker}", flush=True)
     return_code: int | None = None
     output_exceeded = False
     process: subprocess.Popen[bytes] | None = None
@@ -481,7 +485,8 @@ def _safe_capture(
             if container_name is not None:
                 _force_remove_container(container_name)
         finally:
-            print(f"::{marker}::", flush=True)
+            if marker is not None:
+                print(f"::{marker}::", flush=True)
 
     if output_exceeded:
         raise CaptureError(
@@ -834,6 +839,7 @@ def _capture_pair(
     program: Sequence[str],
     output_path: Path,
     description: str,
+    emit_markers: bool = True,
 ) -> None:
     container_name = _new_container_name()
     _safe_capture(
@@ -852,7 +858,74 @@ def _capture_pair(
         description=description,
         timeout_seconds=300,
         container_name=container_name,
+        emit_markers=emit_markers,
     )
+
+
+def _capture_pair_sides_concurrently(
+    *,
+    image: str,
+    ordered_sides: Sequence[tuple[str, Path, str]],
+    workdir: str,
+    environment: Mapping[str, str],
+    program: Sequence[str],
+    artifact_root: Path,
+    pair: int,
+) -> None:
+    """Capture one base/candidate pair concurrently with bounded workers.
+
+    Each side owns a private cache volume and output file, so the two Docker
+    containers are independent.  Keeping the pair loop itself sequential
+    preserves the alternating base/candidate measurement schedule while
+    reducing wall time by overlapping only the independent sides.  The outer
+    stop-command marker is deliberately shared: nested GitHub command markers
+    would be ambiguous when both workers start at once, and all worker output
+    is already captured to files rather than streamed to the job log.
+    """
+
+    side_names = tuple(side for side, _, _ in ordered_sides)
+    if len(side_names) != CAPTURE_SIDE_WORKERS or set(side_names) != {
+        "base",
+        "candidate",
+    }:
+        raise CaptureError(
+            "Each benchmark pair must contain exactly one base and one candidate side"
+        )
+
+    marker = uuid.uuid4().hex
+    print(f"::stop-commands::{marker}", flush=True)
+    first_error: Exception | None = None
+    try:
+        with ThreadPoolExecutor(
+            max_workers=CAPTURE_SIDE_WORKERS,
+            thread_name_prefix="quality-benchmark-side",
+        ) as executor:
+            futures = []
+            for side, worktree, volume in ordered_sides:
+                futures.append(
+                    executor.submit(
+                        _capture_pair,
+                        image=image,
+                        source_worktree=worktree,
+                        cache_volume=volume,
+                        workdir=workdir,
+                        environment=environment,
+                        program=program,
+                        output_path=artifact_root / side / f"pair-{pair:02d}.txt",
+                        description=f"capture {side} benchmark pair {pair:02d}",
+                        emit_markers=False,
+                    )
+                )
+            for future in futures:
+                try:
+                    future.result()
+                except Exception as exc:
+                    if first_error is None:
+                        first_error = exc
+        if first_error is not None:
+            raise first_error
+    finally:
+        print(f"::{marker}::", flush=True)
 
 
 def _prefetch(
@@ -1050,17 +1123,15 @@ def capture(arguments: CaptureArguments) -> None:
                     ("base", base_worktree, base_volume),
                 )
             )
-            for side, worktree, volume in ordered_sides:
-                _capture_pair(
-                    image=image,
-                    source_worktree=worktree,
-                    cache_volume=volume,
-                    workdir=workdir,
-                    environment=measurement_environment,
-                    program=measurement_program,
-                    output_path=artifact_root / side / f"pair-{pair:02d}.txt",
-                    description=f"capture {side} benchmark pair {pair:02d}",
-                )
+            _capture_pair_sides_concurrently(
+                image=image,
+                ordered_sides=ordered_sides,
+                workdir=workdir,
+                environment=measurement_environment,
+                program=measurement_program,
+                artifact_root=artifact_root,
+                pair=pair,
+            )
     finally:
         if base_volume is not None:
             _remove_volume(base_volume)

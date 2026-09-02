@@ -21,6 +21,7 @@
   },
   "role": {
     "admin": "Администратор",
+    "teacher": "Преподаватель",
     "student": "Студент"
   },
   "aria": {
@@ -32,8 +33,10 @@
     "closeMenu": "Закрыть меню",
     "mainNavigation": "Основная навигация",
     "mobileMenu": "Мобильное меню",
+    "mobileMenuDescription": "Навигация, профиль и действия с аккаунтом",
     "overflowMenu": "Дополнительная навигация",
-    "close": "Закрыть"
+    "close": "Закрыть",
+    "messenger": "Открыть мессенджер"
   },
   "footer": {
     "navigationTitle": "Разделы",
@@ -41,7 +44,9 @@
     "myProfile": "Мой профиль",
     "contactTelegram": "Напишите нам в Telegram",
     "contactEmail": "Отправить письмо",
+    "opensNewTab": "откроется в новой вкладке",
     "copyright": "© {{year}} Экосистема ГУУ",
     "careNote": "Создано с заботой о студентах и сотрудниках"
-  }
+  },
+  "safariGuide": "Как включить уведомления в Safari"
 }

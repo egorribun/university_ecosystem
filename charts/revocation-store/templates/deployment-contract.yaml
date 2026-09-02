@@ -1,0 +1,17 @@
+{{- include "revocation-store.validate" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}-deployment-contract
+  namespace: {{ .Release.Namespace }}
+  labels:
+    app.kubernetes.io/name: revocation-store
+    app.kubernetes.io/component: deployment-contract
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    university-ecosystem.io/revocation-store-for: {{ .Values.applicationReleaseName | quote }}
+data:
+  application-release-name: {{ .Values.applicationReleaseName | quote }}
+  master-service-host: {{ include "revocation-store.serviceHost" . | quote }}
+  master-statefulset-name: {{ include "revocation-store.serviceHost" . | quote }}
+  binding-label: "university-ecosystem.io/revocation-store-for"
+  binding-value: {{ .Values.applicationReleaseName | quote }}

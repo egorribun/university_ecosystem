@@ -10,7 +10,7 @@ export const ProfileSkeleton = () => {
           <Card className="overflow-hidden">
             <div className="h-64 relative">
               <Skeleton width="100%" height="100%" />
-              <div className="absolute -bottom-16 left-1/(--opacity-trace) -translate-x-1/(--opacity-trace)">
+              <div className="absolute -bottom-16 left-1/2 -translate-x-1/2">
                 <Skeleton
                   width={160}
                   height={160}

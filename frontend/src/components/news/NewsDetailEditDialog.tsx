@@ -6,6 +6,7 @@ import { Button, Input, Textarea } from "@/components/ui"
 import { updateNews, uploadNewsImage } from "@/api/news"
 import { useTranslation } from "react-i18next"
 import { useQueryClient } from "@tanstack/react-query"
+import { captureActiveTelemetryContext } from "@/utils/telemetryContext"
 
 /* ── Form field helper ── */
 type FieldProps = {
@@ -102,19 +103,27 @@ export function NewsDetailEditDialog({
   const imageUrl = previewUrl || editData.image_url
 
   const handleSave = async () => {
+    const telemetryContext = captureActiveTelemetryContext()
     setSaving(true)
     try {
       let finalImageUrl = editData.image_url
-      if (newImage) finalImageUrl = await uploadNewsImage(newImage)
-      const { data } = await updateNews(newsId, {
-        title: editData.title,
-        content: editData.content,
-        title_en: editData.title_en,
-        content_en: editData.content_en,
-        image_url: finalImageUrl,
-      })
+      const image = newImage
+      if (image) {
+        finalImageUrl = await telemetryContext.run(() => uploadNewsImage(image))
+      }
+      const { data } = await telemetryContext.run(() =>
+        updateNews(newsId, {
+          title: editData.title,
+          content: editData.content,
+          title_en: editData.title_en,
+          content_en: editData.content_en,
+          image_url: finalImageUrl,
+        })
+      )
       queryClient.setQueryData(["news", newsId, language], data)
-      await queryClient.invalidateQueries({ queryKey: ["news", "list"] })
+      await telemetryContext.run(() =>
+        queryClient.invalidateQueries({ queryKey: ["news", "list"] })
+      )
       onSuccess(t("news:notifications.updated"))
       handleClose()
     } catch {

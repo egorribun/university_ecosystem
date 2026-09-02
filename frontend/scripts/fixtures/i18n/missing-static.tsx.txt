@@ -1,0 +1,1 @@
+export const Missing = ({ t }) => <button>{t("common:doesNotExist")}</button>

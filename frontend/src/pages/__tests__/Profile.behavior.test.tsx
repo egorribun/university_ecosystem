@@ -193,12 +193,14 @@ vi.mock("@/components/profile", () => {
   )
 
   const ProfileEditor = ({
+    email,
     fullName,
     onCancel,
     onSave,
     saving,
     setFullName,
   }: {
+    email: string
     fullName: string
     onCancel: () => void
     onSave: () => void
@@ -211,6 +213,7 @@ vi.mock("@/components/profile", () => {
         value={fullName}
         onChange={(event) => setFullName(event.target.value)}
       />
+      <input aria-label="email" value={email} readOnly />
       <span data-testid="saving-state">{String(saving)}</span>
       <button type="button" onClick={onSave} disabled={saving}>
         save profile
@@ -301,6 +304,7 @@ describe("Profile behavior", () => {
     render(<Profile />)
 
     expect(screen.getByTestId("profile-editor")).toBeInTheDocument()
+    expect(screen.getByRole("textbox", { name: "email" })).toHaveValue("ada@example.com")
   })
 
   it("initializes a deep-linked editor when the authenticated user arrives asynchronously", async () => {
@@ -323,11 +327,11 @@ describe("Profile behavior", () => {
       "/users/me",
       expect.objectContaining({
         full_name: user.full_name,
-        email: user.email,
         profile_detail: expect.objectContaining({ telegram: "@ada" }),
         education_path: expect.objectContaining({ program: "Computer Science" }),
       })
     )
+    expect(apiState.put.mock.calls[0]?.[1]).not.toHaveProperty("email")
   })
 
   it("renders profile details, now playing, responsive backdrop, and dialogs", () => {
@@ -388,24 +392,82 @@ describe("Profile behavior", () => {
 
     fireEvent.click(screen.getByText("profile:buttons.edit"))
     expect(screen.getByTestId("profile-editor")).toBeInTheDocument()
+    expect(screen.getByRole("textbox", { name: "email" })).toHaveValue("ada@example.com")
     fireEvent.change(screen.getByRole("textbox", { name: "full name" }), {
       target: { value: "Grace Lovelace" },
     })
     fireEvent.click(screen.getByRole("button", { name: "save profile" }))
 
     await waitFor(() => expect(apiState.put).toHaveBeenCalledOnce())
-    expect(apiState.put).toHaveBeenCalledWith(
-      "/users/me",
-      expect.objectContaining({
-        full_name: "Grace Lovelace",
-        email: user.email,
-        profile_detail: expect.objectContaining({ telegram: "@ada" }),
-        education_path: expect.objectContaining({ program: "Computer Science" }),
-      })
-    )
-    expect(authState.setUser).toHaveBeenCalledWith(updatedUser)
-    expect(navigate).toHaveBeenCalledWith({ to: "/profile", replace: true })
-    expect(screen.getByTestId("snackbar")).toHaveTextContent("profile:snackbar.profileUpdated")
+    expect(apiState.put).toHaveBeenCalledWith("/users/me", {
+      full_name: "Grace Lovelace",
+      profile_detail: {
+        about: "Builds analytical engines",
+        status: "active",
+        telegram: "@ada",
+        achievements: "Award",
+        department: "Computing",
+        position: "Student",
+      },
+      education_path: {
+        record_book_number: "RB-1",
+        institute: "Institute",
+        course: "2",
+        education_level: "bachelor",
+        track: "Software",
+        program: "Computer Science",
+      },
+    })
+    expect(apiState.put.mock.calls[0]?.[1]).not.toHaveProperty("email")
+
+    // The API promise resolving and React committing the success state are
+    // separate turns.  Waiting only for the mock call races the success
+    // snackbar/edit-mode transition under a busy CI worker.
+    await waitFor(() => {
+      expect(authState.setUser).toHaveBeenCalledWith(updatedUser)
+      expect(navigate).toHaveBeenCalledWith({ to: "/profile", replace: true })
+      expect(screen.getByTestId("snackbar")).toHaveTextContent("profile:snackbar.profileUpdated")
+    })
+  })
+
+  it("initializes every editor field safely when optional profile records are absent", async () => {
+    searchState.edit = "1"
+    authState.user = {
+      id: "partial-user",
+      full_name: undefined,
+      email: undefined,
+      role: "student",
+      spotify_connected: false,
+      profile_detail: undefined,
+      education_path: undefined,
+    } as unknown as User
+
+    render(<Profile />)
+
+    expect(screen.getByRole("textbox", { name: "full name" })).toHaveValue("")
+    expect(screen.getByRole("textbox", { name: "email" })).toHaveValue("")
+    fireEvent.click(screen.getByRole("button", { name: "save profile" }))
+
+    await waitFor(() => expect(apiState.put).toHaveBeenCalledOnce())
+    expect(apiState.put).toHaveBeenCalledWith("/users/me", {
+      full_name: "",
+      profile_detail: {
+        about: "",
+        status: "",
+        telegram: "",
+        achievements: "",
+        department: "",
+        position: "",
+      },
+      education_path: {
+        record_book_number: "",
+        institute: "",
+        course: "",
+        education_level: "",
+        track: "",
+        program: "",
+      },
+    })
   })
 
   it("renders a server string validation error while leaving edit mode active", async () => {

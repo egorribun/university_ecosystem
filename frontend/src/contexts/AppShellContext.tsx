@@ -64,18 +64,24 @@ const getScrollRoot = (): HTMLElement | null => {
   return (document.scrollingElement || document.documentElement || null) as HTMLElement | null
 }
 
-const smoothScrollToTop = (target: HTMLElement, behavior: ScrollBehaviorOption) => {
+const smoothScrollToTop = (
+  target: HTMLElement,
+  behavior: ScrollBehaviorOption,
+  trackFrame?: (frame: number | null) => void
+) => {
   if (behavior === "auto") {
     try {
       target.scrollTo({ top: 0, behavior: "auto" })
     } catch {
       target.scrollTop = 0
     }
+    trackFrame?.(null)
     return
   }
 
   try {
     target.scrollTo({ top: 0, behavior: "smooth" })
+    trackFrame?.(null)
   } catch {
     const start = target.scrollTop
     const duration = 420
@@ -85,9 +91,13 @@ const smoothScrollToTop = (target: HTMLElement, behavior: ScrollBehaviorOption) 
       const progress = Math.min(1, (timestamp - startTimestamp) / duration)
       const eased = 1 - Math.pow(1 - progress, 3)
       target.scrollTop = Math.round(start * (1 - eased))
-      if (progress < 1) requestAnimationFrame(step)
+      if (progress < 1) {
+        trackFrame?.(requestAnimationFrame(step))
+      } else {
+        trackFrame?.(null)
+      }
     }
-    requestAnimationFrame(step)
+    trackFrame?.(requestAnimationFrame(step))
   }
 }
 
@@ -116,6 +126,8 @@ const consumeScrollTopNext = (): boolean => {
 export const AppShellProvider = ({ children }: PropsWithChildren) => {
   const overlaysRef = useRef<OverlayMap>(new Map())
   const previousOverflowRef = useRef<string>("")
+  const scrollLockActiveRef = useRef(false)
+  const pendingScrollFrameRef = useRef<number | null>(null)
 
   const [overlayStatus, setOverlayStatus] = useState({ blurred: false, scrollLocked: false })
 
@@ -128,11 +140,13 @@ export const AppShellProvider = ({ children }: PropsWithChildren) => {
       document.body.classList.remove("blurred")
     }
 
-    if (scrollLocked) {
+    if (scrollLocked && !scrollLockActiveRef.current) {
       previousOverflowRef.current = document.body.style.overflow
+      scrollLockActiveRef.current = true
       document.body.style.overflow = "hidden"
-    } else {
+    } else if (!scrollLocked && scrollLockActiveRef.current) {
       document.body.style.overflow = previousOverflowRef.current || ""
+      scrollLockActiveRef.current = false
     }
   }, [overlayStatus])
 
@@ -151,20 +165,36 @@ export const AppShellProvider = ({ children }: PropsWithChildren) => {
     })
   }, [])
 
+  const cancelPendingScrollFrame = useCallback(() => {
+    if (pendingScrollFrameRef.current === null) return
+    cancelAnimationFrame(pendingScrollFrameRef.current)
+    pendingScrollFrameRef.current = null
+  }, [])
+
   useEffect(
     () => () => {
+      cancelPendingScrollFrame()
       document.body.classList.remove("blurred")
-      document.body.style.overflow = ""
+      if (scrollLockActiveRef.current) {
+        document.body.style.overflow = previousOverflowRef.current || ""
+        scrollLockActiveRef.current = false
+      }
     },
-    []
+    [cancelPendingScrollFrame]
   )
 
-  const scrollToTop = useCallback((behavior?: ScrollBehaviorOption) => {
-    const target = getScrollRoot()
-    if (!target) return
-    const resolvedBehavior = behavior ?? (prefersReducedMotionGlobal() ? "auto" : "smooth")
-    smoothScrollToTop(target, resolvedBehavior)
-  }, [])
+  const scrollToTop = useCallback(
+    (behavior?: ScrollBehaviorOption) => {
+      const target = getScrollRoot()
+      if (!target) return
+      cancelPendingScrollFrame()
+      const resolvedBehavior = behavior ?? (prefersReducedMotionGlobal() ? "auto" : "smooth")
+      smoothScrollToTop(target, resolvedBehavior, (frame) => {
+        pendingScrollFrameRef.current = frame
+      })
+    },
+    [cancelPendingScrollFrame]
+  )
 
   const markScrollSnapshot = useCallback(() => {
     const target = getScrollRoot()
@@ -179,12 +209,15 @@ export const AppShellProvider = ({ children }: PropsWithChildren) => {
     if (!consumeScrollTopNext()) return
     const target = getScrollRoot()
     if (!target) return
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() =>
-        smoothScrollToTop(target, prefersReducedMotionGlobal() ? "auto" : "smooth")
-      )
-    )
-  }, [])
+    cancelPendingScrollFrame()
+    pendingScrollFrameRef.current = requestAnimationFrame(() => {
+      pendingScrollFrameRef.current = requestAnimationFrame(() => {
+        smoothScrollToTop(target, prefersReducedMotionGlobal() ? "auto" : "smooth", (frame) => {
+          pendingScrollFrameRef.current = frame
+        })
+      })
+    })
+  }, [cancelPendingScrollFrame])
 
   const value = useMemo<AppShellContextValue>(
     () => ({ setOverlayState, scrollToTop, markScrollSnapshot, restoreScrollIfNeeded }),

@@ -18,7 +18,10 @@ spec:
       labels:
         {{- include "university-ecosystem.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: gateway
+        {{ printf "%s-redis-client" .Release.Name }}: "true"
+        {{ printf "%s-revocation-redis-client" .Release.Name }}: "true"
       annotations:
+        university-ecosystem.io/source-sha: {{ .Values.global.imageTag | quote }}
         prometheus.io/scrape: "true"
         prometheus.io/port: "9102"
         prometheus.io/path: "/metrics"
@@ -36,11 +39,13 @@ spec:
         runAsNonRoot: true
         runAsUser: 65532
         runAsGroup: 65532
+        fsGroup: 65532
+        fsGroupChangePolicy: OnRootMismatch
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: gateway
-          image: {{ printf "%s/%s:%s" .Values.global.imageRegistry .Values.gateway.image.repository (.Values.gateway.image.tag | default .Values.global.imageTag | default .Chart.AppVersion) | trimPrefix "/" | quote }}
+          image: {{ include "university-ecosystem.image" (dict "root" . "image" .Values.gateway.image) | quote }}
           imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
           # RZ-03: distroless Go binary has no filesystem writes — readOnlyRootFilesystem
           # is safe without any emptyDir volumes.
@@ -84,6 +89,18 @@ spec:
               value: {{ .Values.global.environment | quote }}
             - name: GRPC_USE_TLS
               value: {{ .Values.gateway.config.grpcUseTLS | quote }}
+            {{- if .Values.internalGrpcMTLS.enabled }}
+            - name: GRPC_CA_FILE
+              value: /run/secrets/internal-grpc-mtls/ca.crt
+            - name: GRPC_CLIENT_CERT_FILE
+              value: /run/secrets/internal-grpc-mtls/tls.crt
+            - name: GRPC_CLIENT_KEY_FILE
+              value: /run/secrets/internal-grpc-mtls/tls.key
+            - name: GRPC_SERVER_NAME
+              value: {{ .Values.internalGrpcMTLS.serverName | quote }}
+            - name: GRPC_CLIENT_IDENTITY_URI
+              value: {{ .Values.internalGrpcMTLS.gatewayIdentityURI | quote }}
+            {{- end }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ .Values.gateway.config.otelEndpoint | quote }}
             - name: GATEWAY_H3_ENABLED
@@ -105,13 +122,13 @@ spec:
           # TD-04 (audit Wave 12): explicit probe timing.
           startupProbe:
             httpGet:
-              path: /health
+              path: /health/live
               port: http
             failureThreshold: 30
             periodSeconds: 5
           livenessProbe:
             httpGet:
-              path: /health
+              path: /health/live
               port: http
             initialDelaySeconds: 10
             periodSeconds: 15
@@ -119,7 +136,7 @@ spec:
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /health
+              path: /health/ready
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
@@ -127,3 +144,23 @@ spec:
             failureThreshold: 3
           resources:
             {{- toYaml .Values.gateway.resources | nindent 12 }}
+          {{- if .Values.internalGrpcMTLS.enabled }}
+          volumeMounts:
+            - name: internal-grpc-mtls
+              mountPath: /run/secrets/internal-grpc-mtls
+              readOnly: true
+          {{- end }}
+      {{- if .Values.internalGrpcMTLS.enabled }}
+      volumes:
+        - name: internal-grpc-mtls
+          secret:
+            secretName: {{ required "internalGrpcMTLS.gatewayClient.existingSecret must be set" .Values.internalGrpcMTLS.gatewayClient.existingSecret | quote }}
+            defaultMode: 0440
+            items:
+              - key: {{ .Values.internalGrpcMTLS.gatewayClient.certKey | quote }}
+                path: tls.crt
+              - key: {{ .Values.internalGrpcMTLS.gatewayClient.privateKeyKey | quote }}
+                path: tls.key
+              - key: {{ .Values.internalGrpcMTLS.gatewayClient.caKey | quote }}
+                path: ca.crt
+      {{- end }}

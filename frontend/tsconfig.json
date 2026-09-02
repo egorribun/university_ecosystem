@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2020",
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
@@ -17,9 +17,8 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noUncheckedIndexedAccess": true,
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": ["./src/*"]
     },
     "types": [
       "vite/client",
@@ -27,7 +26,7 @@
       "vitest",
       "vitest/globals",
       "jsdom",
-      "@testing-library/jest-dom"
+      "@testing-library/jest-dom/vitest"
     ]
   },
   "include": ["src", "tests", "playwright.config.ts", "vitest.config.ts", ".storybook"]

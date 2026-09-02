@@ -13,6 +13,11 @@ interface ImportMetaEnv {
   readonly VITE_SERVICE_VERSION?: string
   readonly VITE_VAPID_PUBLIC_KEY?: string
   readonly VITE_LHCI?: string
+  /** Keep optional realtime bootstrap enabled for URL-state chat E2E flows. */
+  readonly VITE_LHCI_ENABLE_MESSENGER?: string
+  readonly VITE_ENABLE_WEB_VITALS?: string
+  readonly VITE_WEB_VITALS_ENDPOINT?: string
+  readonly VITE_CWV_TRUSTED_RUM?: string
   readonly VITE_E2E_MODE?: string
   readonly VITE_RELEASE?: string
   readonly VITE_SENTRY_RELEASE?: string
@@ -30,7 +35,8 @@ interface ImportMeta {
  *
  * Set to `true` by a useEffect in `AppProviders.tsx` AFTER React commits the
  * full provider tree (LanguageProvider → LazyMotion → MotionConfig →
- * ProvidersInner → AuthContext → WebSocketProvider → MessengerProvider).
+ * ProvidersInner → AuthContext → MessengerShellProvider (the full
+ * WebSocket/Messenger providers mount only on the lazy messenger route).
  * `tests/e2e/url-state-persistence.spec.ts` uses
  * `page.waitForFunction(() => window.__APP_HYDRATED === true)` to gate
  * clicks/fills on controls that depend on onClick bindings from

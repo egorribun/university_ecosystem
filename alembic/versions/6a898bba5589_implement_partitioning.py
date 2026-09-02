@@ -37,7 +37,11 @@ def upgrade() -> None:
             ),
             {"table_name": table_name},
         ).fetchone()
-        return res and res[0] == "p"
+        if not res:
+            return False
+        value = res[0]
+        relkind = value.decode("ascii") if isinstance(value, bytes) else str(value)
+        return relkind == "p"
 
     def safe_rename(old_name, new_name):
         """Drops any relation with new_name before renaming old_name to new_name."""

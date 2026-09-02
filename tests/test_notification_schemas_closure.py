@@ -40,7 +40,7 @@ def test_push_subscription_input_normalizes_endpoint_and_optional_topics():
     assert empty_topics.endpoint == ""
     assert empty_topics.topics is None
     assert normalized_topics.endpoint == "https://push.example"
-    assert normalized_topics.topics == ["news"]
+    assert normalized_topics.topics == ["news.published"]
 
 
 def test_push_subscription_output_handles_empty_and_legacy_topics_values():
@@ -55,7 +55,9 @@ def test_push_subscription_output_handles_empty_and_legacy_topics_values():
 
     assert PushSubscriptionOut(**common, topics=None).topics == []
     assert PushSubscriptionOut(**common, topics="legacy").topics == []
-    assert PushSubscriptionOut(**common, topics=["news", " news "]).topics == ["news"]
+    assert PushSubscriptionOut(**common, topics=["news", " news "]).topics == [
+        "news.published"
+    ]
 
 
 def test_push_subscription_update_and_delete_accept_none_endpoints_and_topics():
@@ -71,13 +73,13 @@ def test_push_subscription_update_and_delete_accept_none_endpoints_and_topics():
     )
     normalized_delete = PushSubscriptionDelete(endpoint="  https://push.example  ")
     assert normalized_update.endpoint == "https://push.example"
-    assert normalized_update.topics == ["news"]
+    assert normalized_update.topics == ["news.published"]
     assert normalized_delete.endpoint == "https://push.example"
 
 
 def test_notify_body_normalizes_topics():
     assert NotifyBody(title="Title", topic=None).topic is None
-    assert NotifyBody(title="Title", topic="  news  ").topic == "news"
+    assert NotifyBody(title="Title", topic="  news  ").topic == "news.published"
 
 
 def test_admin_topics_update_accepts_none_and_strictly_normalizes_values():
@@ -85,4 +87,4 @@ def test_admin_topics_update_accepts_none_and_strictly_normalizes_values():
     normalized = AdminUserTopicsUpdate(topics=["news", " news "])
 
     assert empty.topics == []
-    assert normalized.topics == ["news"]
+    assert normalized.topics == ["news.published"]

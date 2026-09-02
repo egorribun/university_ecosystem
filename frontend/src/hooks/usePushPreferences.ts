@@ -16,21 +16,23 @@ import {
 import { currentUserQueryKey, useAuth } from "@/contexts/AuthContext"
 import { isSafariIOS } from "@/utils/browser"
 import { useTranslation } from "react-i18next"
+import {
+  CANONICAL_NOTIFICATION_TOPICS,
+  NOTIFICATION_TOPIC_LABEL_KEYS,
+  normalizeNotificationTopics,
+  type NotificationTopic,
+} from "@/notifications/contract"
 
-export type NotificationTopicKey = "news" | "schedule" | "events" | "system"
+export type NotificationTopicKey = NotificationTopic
 
-export const NOTIFICATION_TOPIC_KEYS: NotificationTopicKey[] = [
-  "schedule",
-  "news",
-  "events",
-  "system",
-]
+export const NOTIFICATION_TOPIC_KEYS: NotificationTopicKey[] = [...CANONICAL_NOTIFICATION_TOPICS]
 
 export const DEFAULT_NOTIFICATION_TOPICS: Record<NotificationTopicKey, boolean> = {
-  schedule: true,
-  news: true,
-  events: true,
-  system: true,
+  "news.published": true,
+  "schedule.changed": true,
+  "events.published": true,
+  "chat.message.created": true,
+  "system.release": true,
 }
 
 export type NotificationToast = {
@@ -72,7 +74,7 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
     () =>
       NOTIFICATION_TOPIC_KEYS.reduce(
         (acc, key) => {
-          acc[key] = t(`notifications:topics.${key}`)
+          acc[key] = t(`notifications:topics.${NOTIFICATION_TOPIC_LABEL_KEYS[key]}`)
           return acc
         },
         {} as Record<NotificationTopicKey, string>
@@ -135,12 +137,8 @@ export function usePushPreferences(options?: UsePushPreferencesOptions) {
       for (const key of topicKeys) {
         next[key] = false
       }
-      for (const raw of topics) {
-        if (!raw) continue
-        const normalized = raw.toString().trim().toLowerCase() as NotificationTopicKey
-        if ((topicKeys as string[]).includes(normalized)) {
-          next[normalized as NotificationTopicKey] = true
-        }
+      for (const normalized of normalizeNotificationTopics(topics)) {
+        next[normalized] = true
       }
       setTopicState(next)
     },

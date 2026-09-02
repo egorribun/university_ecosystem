@@ -78,7 +78,6 @@ const makePending = (
       method: "totp",
       challenge_token: "challenge-token-1234567890",
       challenge_expires_at: "2026-08-01T12:00:00Z",
-      options: null,
       attempt_count: 0,
       attempt_limit: 5,
       remaining_attempts: 2,
@@ -121,6 +120,28 @@ describe("StepUpDialog closure", () => {
     rerender(<StepUpDialog open={false} onClose={onClose} />)
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     await user.click(document.body)
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("renders translated defaults and resets stale state across close and reopen", async () => {
+    const onClose = vi.fn()
+    auth.value.requireMfa.mockResolvedValueOnce(makePending()).mockResolvedValueOnce(null)
+
+    const { rerender } = render(<StepUpDialog open onClose={onClose} />)
+    expect(await screen.findByRole("heading", { name: "mfa.stepUp.title" })).toHaveClass(
+      "text-xl",
+      "font-bold"
+    )
+    expect(screen.getByText("mfa.stepUp.description")).toBeInTheDocument()
+
+    rerender(<StepUpDialog open={false} onClose={onClose} />)
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    rerender(<StepUpDialog open onClose={onClose} />)
+
+    expect(await screen.findByText("mfa.stepUp.requestFailed")).toBeInTheDocument()
+    expect(screen.queryByTestId("otp-entry")).not.toBeInTheDocument()
   })
 
   it("shows Error and non-Error request failures", async () => {
@@ -151,12 +172,69 @@ describe("StepUpDialog closure", () => {
     await user.click(await screen.findByRole("button", { name: "otp-submit" }))
     await waitFor(() => {
       expect(auth.value.submitMfaChallenge).toHaveBeenCalledWith({
+        method: "totp",
         code: "123456",
         challengeToken: "challenge-token-1234567890",
       })
       expect(onCompleted).toHaveBeenCalledTimes(1)
       expect(onClose).toHaveBeenCalledTimes(1)
     })
+  })
+
+  it("submits the exact email OTP method selected by the challenge", async () => {
+    const user = userEvent.setup()
+    auth.value.requireMfa.mockResolvedValue(
+      makePending({ method: "email_otp", delivery_hint: "u***@example.com" })
+    )
+    auth.value.submitMfaChallenge.mockResolvedValue(undefined)
+
+    renderDialog()
+    await user.click(await screen.findByRole("button", { name: "otp-submit" }))
+
+    await waitFor(() =>
+      expect(auth.value.submitMfaChallenge).toHaveBeenCalledWith({
+        method: "email_otp",
+        code: "123456",
+        challengeToken: "challenge-token-1234567890",
+      })
+    )
+  })
+
+  it("prefers the configured default method when several challenges are available", async () => {
+    const user = userEvent.setup()
+    const email = {
+      method: "email_otp" as const,
+      challenge_token: "email-token",
+      challenge_expires_at: "2026-08-01T12:00:00Z",
+      attempt_count: 0,
+      attempt_limit: 5,
+      remaining_attempts: 4,
+    }
+    const totp = {
+      method: "totp" as const,
+      challenge_token: "totp-token",
+      challenge_expires_at: "2026-08-01T12:00:00Z",
+      attempt_count: 0,
+      attempt_limit: 5,
+      remaining_attempts: 1,
+    }
+    auth.value.requireMfa.mockResolvedValue({
+      ...makePending(),
+      default_method: "email_otp",
+      methods: [totp, email],
+    })
+    auth.value.submitMfaChallenge.mockResolvedValue(undefined)
+
+    renderDialog()
+    await user.click(await screen.findByRole("button", { name: "otp-submit" }))
+
+    await waitFor(() =>
+      expect(auth.value.submitMfaChallenge).toHaveBeenCalledWith({
+        method: "email_otp",
+        code: "123456",
+        challengeToken: "email-token",
+      })
+    )
   })
 
   it("handles generic verification failures and missing attempt metadata", async () => {
@@ -174,6 +252,7 @@ describe("StepUpDialog closure", () => {
     await user.click(screen.getByRole("button", { name: "otp-submit" }))
     expect(await screen.findByText("verification failed")).toBeInTheDocument()
     expect(onClose).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "otp-submit" })).not.toBeDisabled()
   })
 
   it("uses the fallback verification message for non-Error failures", async () => {
@@ -187,6 +266,23 @@ describe("StepUpDialog closure", () => {
 
     await user.click(await screen.findByRole("button", { name: "otp-submit" }))
     expect(await screen.findByText("mfa.stepUp.verifyFailed")).toBeInTheDocument()
+  })
+
+  it("normalizes negative attempt counts and rejects invalid limits", async () => {
+    auth.value.requireMfa.mockResolvedValue(
+      makePending({ attempt_limit: -1, remaining_attempts: -2 })
+    )
+    const { rerender } = renderDialog()
+
+    await waitFor(() => expect(screen.getByTestId("otp-entry")).toBeInTheDocument())
+    expect(screen.queryByText(/attempts remaining/)).not.toBeInTheDocument()
+
+    rerender(<StepUpDialog open={false} onClose={vi.fn()} />)
+    auth.value.requireMfa.mockResolvedValue(
+      makePending({ attempt_limit: 5, remaining_attempts: -2 })
+    )
+    rerender(<StepUpDialog open onClose={vi.fn()} />)
+    await waitFor(() => expect(screen.getByText("0 attempts remaining")).toBeInTheDocument())
   })
 
   it("refreshes a refreshable locked challenge and invokes the reset callback", async () => {

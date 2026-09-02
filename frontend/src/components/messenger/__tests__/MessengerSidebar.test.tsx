@@ -15,11 +15,35 @@ import { MessengerSidebar } from "@/components/messenger/MessengerSidebar"
  * surfaces the props the sidebar forwards as data-attributes.
  */
 
+const mocks = vi.hoisted(() => ({
+  translation: vi.fn(),
+  motion: vi.fn(),
+}))
+
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, opts?: Record<string, unknown>) =>
-      opts ? `${key}|${JSON.stringify(opts)}` : key,
-  }),
+  useTranslation: (...args: unknown[]) => {
+    mocks.translation(...args)
+    return {
+      t: (key: string, opts?: Record<string, unknown>) =>
+        opts ? `${key}|${JSON.stringify(opts)}` : key,
+    }
+  },
+}))
+
+vi.mock("framer-motion", () => ({
+  m: {
+    div: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => {
+      mocks.motion("div", props)
+      return <div>{children}</div>
+    },
+    button: ({ children, ...props }: { children?: ReactNode; [key: string]: unknown }) => {
+      const { whileHover, whileTap, ...domProps } = props
+      mocks.motion("button", props)
+      void whileHover
+      void whileTap
+      return <button {...domProps}>{children}</button>
+    },
+  },
 }))
 
 const { mediaQueryMock } = vi.hoisted(() => ({ mediaQueryMock: vi.fn(() => false) }))
@@ -40,6 +64,7 @@ vi.mock("@/components/messenger", async () => {
       isLoading?: boolean
       isError?: boolean
       isSearchActive?: boolean
+      searchQuery?: string
       onSelect?: (id: string) => void
       onClearSearch?: () => void
       onRetry?: () => void
@@ -51,6 +76,7 @@ vi.mock("@/components/messenger", async () => {
           data-loading={String(!!props.isLoading)}
           data-error={String(!!props.isError)}
           data-search-active={String(!!props.isSearchActive)}
+          data-search-query={props.searchQuery ?? ""}
         />
         <button type="button" onClick={() => props.onSelect?.("c2")}>
           mock-select-contact
@@ -95,6 +121,8 @@ const baseProps: SidebarProps = {
 describe("MessengerSidebar", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.translation.mockClear()
+    mocks.motion.mockClear()
     mediaQueryMock.mockReturnValue(false)
   })
 
@@ -158,6 +186,39 @@ describe("MessengerSidebar", () => {
     mediaQueryMock.mockReturnValue(true)
     render(<MessengerSidebar {...baseProps} isMobile />, { wrapper })
     expect(screen.getByRole("button", { name: "messenger:newChat" })).toBeInTheDocument()
+  })
+
+  it("uses the exact sidebar motion contracts when reduced motion is disabled", () => {
+    render(<MessengerSidebar {...baseProps} isMobile />)
+    expect(mocks.translation).toHaveBeenCalledWith(["messenger", "common"])
+    const sidebar = mocks.motion.mock.calls.find(
+      ([tag, props]) => tag === "div" && props.className?.includes("panel-glass")
+    )
+    expect(sidebar?.[1]).toMatchObject({
+      initial: { x: -300, opacity: 0 },
+      animate: { x: 0, opacity: 1 },
+      exit: { x: -300, opacity: 0 },
+      transition: { duration: 0.4, ease: [0.22, 1, 0.36, 1] },
+    })
+    const newChat = mocks.motion.mock.calls.find(
+      ([tag, props]) => tag === "button" && props.id === "messenger-new-chat-btn"
+    )
+    expect(newChat?.[1]).toMatchObject({
+      whileHover: { scale: 1.08, backgroundColor: "var(--msg-sidebar-hover)" },
+      whileTap: { scale: 0.94 },
+    })
+  })
+
+  it("passes trimmed search text and default loading/error flags to ContactList", () => {
+    const { isLoading: _loading, isError: _error, onRetry: _retry, ...withoutFlags } = baseProps
+    render(<MessengerSidebar {...withoutFlags} />)
+    fireEvent.change(screen.getByPlaceholderText("messenger:search"), {
+      target: { value: "  soon  " },
+    })
+    const list = screen.getByTestId("mock-contact-list")
+    expect(list).toHaveAttribute("data-search-query", "soon")
+    expect(list).toHaveAttribute("data-loading", "false")
+    expect(list).toHaveAttribute("data-error", "false")
   })
 
   it("uses animated mobile transitions while filtering valid contacts", () => {

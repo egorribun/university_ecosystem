@@ -9,15 +9,17 @@
     "startsSoon": "In {{minutes}} min."
   },
   "topics": {
-    "schedule": "Schedule",
-    "news": "News",
-    "events": "Events",
-    "system": "System"
+    "newsPublished": "Published news",
+    "scheduleChanged": "Schedule changes",
+    "eventsPublished": "Published events",
+    "chatMessageCreated": "Chat messages",
+    "systemRelease": "System releases"
   },
   "permission": {
     "granted": "allowed",
     "denied": "blocked",
-    "default": "not requested"
+    "default": "not requested",
+    "unsupported": "unsupported"
   },
   "messages": {
     "noTopics": "No topics selected",

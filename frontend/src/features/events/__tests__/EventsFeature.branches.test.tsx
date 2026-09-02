@@ -201,8 +201,10 @@ describe("EventsFeature — URL change handlers (set + delete branches)", () => 
     expect(navigateSpy.fn).toHaveBeenCalled()
     const call = navigateSpy.fn.mock.calls[0]![0] as {
       search: (p: Record<string, unknown>) => unknown
+      resetScroll?: boolean
     }
     expect(call.search({})).toEqual({ loc: "hall" })
+    expect(call.resetScroll).toBe(false)
   })
 
   it("deletes a key via navigate when a setter receives an empty value (87-88)", () => {
@@ -349,6 +351,8 @@ describe("EventsFeature — client-side category + date filters", () => {
   it("uses the Monday offset for a Sunday week start", () => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date("2026-08-09T12:00:00.000Z"))
+    // Keep the calendar branch deterministic across CI runner time zones.
+    const dayOfWeekSpy = vi.spyOn(Date.prototype, "getDay").mockReturnValue(0)
     search.params = { dr: "week" }
     listQuery.events = [evt({ id: "sunday-week" })]
 
@@ -356,6 +360,7 @@ describe("EventsFeature — client-side category + date filters", () => {
       render(<EventsFeature />)
       expect(screen.getByTestId("list-count")).toHaveTextContent("0")
     } finally {
+      dayOfWeekSpy.mockRestore()
       vi.useRealTimers()
     }
   })
@@ -470,11 +475,12 @@ describe("EventsFeature — refresh + dialog + derived flags", () => {
     expect(listQuery.fetchNextPage).toHaveBeenCalled()
   })
 
-  it("disables fetch-more once a category filter is active", () => {
+  it("keeps pagination available and completes the dataset for a category filter", () => {
     search.params = { cat: "lecture" }
     listQuery.hasNextPage = true
     render(<EventsFeature />)
-    expect(screen.getByTestId("list-has-next")).toHaveTextContent("false")
+    expect(screen.getByTestId("list-has-next")).toHaveTextContent("true")
+    expect(listQuery.fetchNextPage).toHaveBeenCalledOnce()
   })
 
   it("treats teacher + admin roles as admins (isAdmin derivation)", () => {

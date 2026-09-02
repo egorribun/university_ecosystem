@@ -73,6 +73,7 @@
     "imageSelected": "Изображение выбрано",
     "start": "Начало",
     "end": "Окончание",
+    "dates": "Даты события",
     "errors": {
       "titleRequired": "Укажите название",
       "startRequired": "Укажите время начала",

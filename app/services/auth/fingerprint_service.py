@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import logging
 import os
 from datetime import UTC, datetime
@@ -44,6 +45,14 @@ class AuthFingerprintService:
             fingerprint_hash=str(session.fingerprint_hash or ""),
         )
 
+        # Accept-Language is controlled by the application's locale selector
+        # for API calls but by the browser for document/SSR requests. It is
+        # useful telemetry, not a stable authentication signal. Keep the
+        # fail-closed revocation boundary on a non-empty User-Agent change.
+        if stored_fp.user_agent and hmac.compare_digest(
+            current_fp.user_agent, stored_fp.user_agent
+        ):
+            return
         if current_fp.fingerprint_hash != stored_fp.fingerprint_hash:
             detector = get_suspicious_activity_detector()
             event = detector.check_fingerprint_mismatch(

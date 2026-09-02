@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest"
-import { screen } from "@testing-library/react"
+import { fireEvent, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useForm } from "react-hook-form"
 import { useEffect, type ReactNode } from "react"
@@ -10,7 +10,7 @@ import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 /**
  * LoginCredentialForm — presentational component that consumes the
  * shape returned by ``useLoginForm``. The hook itself owns the
- * underlying state machine (AuthContext + react-hook-form + WebAuthn);
+ * underlying state machine (AuthContext + react-hook-form);
  * here we feed a controlled stub so we can pin the rendering
  * contract: which buttons appear, what each click invokes, what
  * disabled / hidden states the component honours.
@@ -28,8 +28,13 @@ type FormStub = Parameters<typeof LoginCredentialForm>[0]["form"]
  * everything else.
  */
 function useFormStub(overrides: Partial<FormStub> = {}): FormStub {
-  const rhf = useForm<{ email: string; password: string; trustDevice: boolean }>({
-    defaultValues: { email: "", password: "", trustDevice: false },
+  const rhf = useForm<{
+    email: string
+    password: string
+    rememberEmail: boolean
+    trustDevice: boolean
+  }>({
+    defaultValues: { email: "", password: "", rememberEmail: false, trustDevice: false },
   })
 
   const onSubmit = vi.fn((e?: React.FormEvent) => {
@@ -48,11 +53,6 @@ function useFormStub(overrides: Partial<FormStub> = {}): FormStub {
     activeEmail: "",
     submitting: false,
     submitError: undefined,
-    passkeyError: null,
-    webauthnSupported: true,
-    trustDevice: false,
-    setTrustDevice: vi.fn(),
-    handlePasskeyLogin: vi.fn(),
     onSubmit,
     pendingMfa: null,
     savedEmail: "",
@@ -87,20 +87,72 @@ async function mountWithStub(buildOverrides: () => Partial<FormStub>): Promise<v
 describe("LoginCredentialForm — default render", () => {
   it("renders email + password inputs and the submit button", async () => {
     await mountWithStub(() => ({}))
-    expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
+    const email = screen.getByLabelText(/email/i)
+    expect(email).toBeInTheDocument()
+    expect(email).not.toHaveClass("Stryker was here!")
     expect(screen.getByLabelText(/password/i, { selector: "input" })).toBeInTheDocument()
-    // /^sign in$/i excludes the "Sign in with passkey" button.
-    expect(screen.getByRole("button", { name: /^sign in$/i })).toBeInTheDocument()
+    const submit = screen.getByRole("button", { name: /^sign in$/i })
+    expect(submit).toBeInTheDocument()
+    expect(submit.querySelector("svg")).toBeInTheDocument()
   })
 
-  it("renders the passkey button when webauthnSupported is true", async () => {
-    await mountWithStub(() => ({ webauthnSupported: true }))
-    expect(screen.getByRole("button", { name: /passkey/i })).toBeInTheDocument()
+  it("keeps password and consent controls fully labelled for assistive technology", async () => {
+    await mountWithStub(() => ({}))
+
+    const reveal = screen.getByRole("button", { name: /show password/i })
+    expect(reveal).toHaveAttribute("title", expect.stringMatching(/show password/i))
+    expect(reveal).toHaveAttribute("aria-label", expect.stringMatching(/show password/i))
+    expect(reveal).toHaveTextContent(/show password/i)
+
+    const remember = screen.getByRole("checkbox", { name: /remember email/i })
+    expect(remember).toHaveAttribute("aria-label", expect.stringMatching(/remember email/i))
+    const trust = screen.getByRole("checkbox", { name: /trust this device/i })
+    expect(trust).toHaveAttribute("aria-label", expect.stringMatching(/trust this device/i))
   })
 
-  it("hides the passkey button when webauthnSupported is false", async () => {
-    await mountWithStub(() => ({ webauthnSupported: false }))
-    expect(screen.queryByRole("button", { name: /passkey/i })).toBeNull()
+  it("separates email persistence from explicit trusted-device consent", async () => {
+    await mountWithStub(() => ({}))
+
+    expect(screen.getByRole("checkbox", { name: /^remember email$/i })).not.toBeChecked()
+    expect(
+      screen.getByRole("checkbox", { name: /trust this device for 30 days/i })
+    ).not.toBeChecked()
+    expect(screen.getByText(/future sign-ins.*skip MFA for 30 days/i)).toBeInTheDocument()
+  })
+
+  it("keeps the visible consent labels distinct from checkbox accessible names", async () => {
+    await mountWithStub(() => ({}))
+
+    expect(screen.getByText(/^remember email$/i, { selector: "label" })).toBeInTheDocument()
+    expect(
+      screen.getByText(/^trust this device for 30 days$/i, { selector: "label" })
+    ).toBeInTheDocument()
+  })
+
+  it("does not hide or translate the form entrance when reduced motion is requested", async () => {
+    const matchMedia = vi.spyOn(window, "matchMedia").mockImplementation(
+      (query) =>
+        ({
+          matches: query === "(prefers-reduced-motion: reduce)",
+          media: query,
+          onchange: null,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }) as unknown as MediaQueryList
+    )
+
+    try {
+      await mountWithStub(() => ({}))
+      const entrance = screen
+        .getByRole("button", { name: /^sign in$/i })
+        .closest("form")?.parentElement
+      expect(entrance?.getAttribute("style") ?? "").not.toMatch(/opacity:\s*0|translate/i)
+    } finally {
+      matchMedia.mockRestore()
+    }
   })
 })
 
@@ -133,6 +185,40 @@ describe("LoginCredentialForm — email suggestion", () => {
     expect(button).not.toBeNull()
     await user.click(button!)
     expect(applySuggestion).toHaveBeenCalledOnce()
+  })
+
+  it("chains the React Hook Form blur handler before the suggestion hook", async () => {
+    const handleEmailBlur = vi.fn()
+    const registerNames: string[] = []
+
+    function BlurHarness(): ReactNode {
+      const stub = useFormStub({ handleEmailBlur })
+      const originalRegister = stub.form.register
+      const wrappedForm = {
+        ...stub.form,
+        register: ((name: string, ...args: unknown[]) => {
+          registerNames.push(name)
+          return originalRegister(name as never, ...(args as never[]))
+        }) as typeof stub.form.register,
+      }
+      return <LoginCredentialForm form={{ ...stub, form: wrappedForm }} />
+    }
+
+    await renderWithRouter({
+      ui: BlurHarness,
+      extraRoutes: [
+        { path: "/forgot-password", Component: () => <div>forgot</div> },
+        { path: "/register", Component: () => <div>register</div> },
+      ],
+    })
+
+    const user = userEvent.setup()
+    const email = screen.getByLabelText(/^e-mail$/i, { selector: "input" })
+    await user.click(email)
+    await user.tab()
+    expect(registerNames).toContain("email")
+    expect(registerNames).not.toContain("")
+    expect(handleEmailBlur).toHaveBeenCalledOnce()
   })
 })
 
@@ -168,6 +254,11 @@ describe("LoginCredentialForm — show password", () => {
     await mountWithStub(() => ({ showPassword: true }))
     const input = screen.getByLabelText(/password/i, { selector: "input" })
     expect(input).toHaveAttribute("type", "text")
+    const hide = screen.getByRole("button", { name: /hide password/i })
+    expect(hide).toHaveClass("min-h-11", "min-w-11")
+    expect(hide).toHaveAttribute("title", expect.stringMatching(/hide password/i))
+    expect(hide).toHaveAttribute("aria-label", expect.stringMatching(/hide password/i))
+    expect(hide).toHaveTextContent(/hide password/i)
   })
 
   it("renders password input as type='password' when showPassword is false", async () => {
@@ -175,17 +266,38 @@ describe("LoginCredentialForm — show password", () => {
     const input = screen.getByLabelText(/password/i, { selector: "input" })
     expect(input).toHaveAttribute("type", "password")
   })
+
+  it("passes the exact CapsLock modifier key through both keyboard handlers", async () => {
+    const setCaps = vi.fn()
+    const modifierSpy = vi
+      .spyOn(KeyboardEvent.prototype, "getModifierState")
+      .mockImplementation((key) => key === "CapsLock")
+
+    try {
+      await mountWithStub(() => ({ setCaps }))
+      const password = screen.getByLabelText(/password/i, { selector: "input" })
+
+      fireEvent.keyDown(password)
+      fireEvent.keyUp(password)
+
+      expect(modifierSpy.mock.calls).toEqual([["CapsLock"], ["CapsLock"]])
+      expect(setCaps).toHaveBeenCalledWith(true)
+    } finally {
+      modifierSpy.mockRestore()
+    }
+  })
 })
 
 // ── 5. Submitting state ─────────────────────────────────────────────────────
 
 describe("LoginCredentialForm — submitting state", () => {
-  it("disables submit + passkey + email + password while submitting", async () => {
+  it("disables submit, email, and password while submitting", async () => {
     await mountWithStub(() => ({ submitting: true }))
     expect(screen.getByLabelText(/email/i)).toBeDisabled()
     expect(screen.getByLabelText(/password/i, { selector: "input" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: /^sign in$/i })).toBeDisabled()
-    expect(screen.getByRole("button", { name: /passkey/i })).toBeDisabled()
+    const submit = screen.getByRole("button", { name: /^sign in$/i })
+    expect(submit).toBeDisabled()
+    expect(submit.querySelector("svg")).not.toBeInTheDocument()
   })
 })
 
@@ -194,22 +306,9 @@ describe("LoginCredentialForm — submitting state", () => {
 describe("LoginCredentialForm — errors", () => {
   it("renders submitError when present", async () => {
     await mountWithStub(() => ({ submitError: "Invalid credentials" }))
-    expect(screen.getByText("Invalid credentials")).toBeInTheDocument()
-  })
-
-  it("renders passkeyError when present", async () => {
-    await mountWithStub(() => ({ passkeyError: "Passkey rejected" }))
-    expect(screen.getByText("Passkey rejected")).toBeInTheDocument()
-  })
-
-  it("submitError takes precedence when both are set", async () => {
-    await mountWithStub(() => ({
-      submitError: "Submit error",
-      passkeyError: "Passkey error",
-    }))
-    // The component renders `submitError || passkeyError`, so submit wins.
-    expect(screen.getByText("Submit error")).toBeInTheDocument()
-    expect(screen.queryByText("Passkey error")).toBeNull()
+    const error = screen.getByText("Invalid credentials")
+    expect(error).toBeInTheDocument()
+    expect(error).toHaveAttribute("role", "alert")
   })
 
   it("renders react-hook-form field errors and the email fallback message", async () => {
@@ -232,6 +331,20 @@ describe("LoginCredentialForm — errors", () => {
 
     expect(await screen.findByText("Invalid email format")).toBeInTheDocument()
     expect(screen.getByText("Password validation failed")).toBeInTheDocument()
+
+    const email = screen.getByLabelText(/^e-mail$/i, { selector: "input" })
+    const password = screen.getByLabelText(/password/i, { selector: "input" })
+    const emailError = screen.getByText("Invalid email format")
+    const passwordError = screen.getByText("Password validation failed")
+
+    expect(email).toHaveAttribute("aria-describedby", emailError.id)
+    expect(email).toHaveAttribute("aria-invalid", "true")
+    expect(email).toHaveClass("border-error-text", "focus:border-error-text")
+    expect(email).toHaveClass("focus:ring-error-text/(--opacity-subtle)")
+    expect(password).toHaveAttribute("aria-describedby", passwordError.id)
+    expect(password).toHaveAttribute("aria-invalid", "true")
+    expect(emailError).toHaveAttribute("role", "alert")
+    expect(passwordError).toHaveAttribute("role", "alert")
   })
 
   it("renders the password fallback message when the validator omits a message", async () => {
@@ -253,18 +366,12 @@ describe("LoginCredentialForm — errors", () => {
 
     expect(await screen.findByText("Enter a password")).toBeInTheDocument()
   })
-})
 
-// ── 7. Passkey click ────────────────────────────────────────────────────────
-
-describe("LoginCredentialForm — passkey click", () => {
-  it("calls handlePasskeyLogin when the passkey button is clicked", async () => {
-    const handlePasskeyLogin = vi.fn()
-    const user = userEvent.setup()
-    await mountWithStub(() => ({ handlePasskeyLogin }))
-
-    await user.click(screen.getByRole("button", { name: /passkey/i }))
-    expect(handlePasskeyLogin).toHaveBeenCalledOnce()
+  it("omits the empty email error placeholder only when its single space is present", async () => {
+    await mountWithStub(() => ({}))
+    expect(screen.getByText((_, element) => element?.id === "login-email-error").textContent).toBe(
+      " "
+    )
   })
 })
 

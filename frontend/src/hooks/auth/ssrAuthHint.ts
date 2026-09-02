@@ -4,10 +4,10 @@ import type { SsrAuthState } from "@/ssrAuth"
  * @fileoverview Wave 128 SW1 — Strategy A bridge for AuthProvider.
  *
  * Reads the per-request SSR auth state injected by `src/server.ts` via
- * `globalThis.__ssrAuthGetter__` (W126 SW4 pattern). Server-only utility:
- * client-side `globalThis.__ssrAuthGetter__` is undefined (server.ts is
- * server-only per Vite environments build), so returns undefined and
- * AuthProvider falls back to the existing localStorage/Zustand path.
+ * `globalThis.__ssrAuthGetter__` (W126 SW4 pattern). The server also emits a
+ * role-only marker on `#root`; reading that marker on the browser keeps the
+ * first client render aligned with the authenticated SSR tree until the
+ * authoritative `/users/me` request resolves. No token or PII is serialized.
  *
  * NOT a React Hook — this is a plain function (no `use` prefix). The
  * value must be read at `useState` initFn time (or any non-render time)
@@ -21,7 +21,15 @@ import type { SsrAuthState } from "@/ssrAuth"
  */
 export function readSsrAuthHint(): SsrAuthState | undefined {
   try {
-    return globalThis.__ssrAuthGetter__?.()
+    const serverHint = globalThis.__ssrAuthGetter__?.()
+    if (serverHint) return serverHint
+
+    if (typeof document === "undefined") return undefined
+    const marker = document.getElementById("root")?.getAttribute("data-ssr-auth")
+    if (!marker?.startsWith("authenticated:")) return undefined
+    const role = marker.slice("authenticated:".length)
+    if (!role || role.trim() !== role) return undefined
+    return { isAuth: true, user: { role }, loading: false }
   } catch {
     return undefined
   }

@@ -52,7 +52,7 @@ function handleWindowError(event: ErrorEvent) {
 export function initGlobalErrorHandlers(target?: GlobalTarget): boolean {
   if (initialized) return true
 
-  const resolvedTarget = target ?? (typeof window !== "undefined" ? window : undefined)
+  const resolvedTarget = target ?? globalThis.window
   if (!resolvedTarget) {
     return false
   }
@@ -73,9 +73,5 @@ export function initGlobalErrorHandlers(target?: GlobalTarget): boolean {
 }
 
 export function resetGlobalErrorHandlersForTesting(): void {
-  if (teardown) {
-    teardown()
-  } else {
-    initialized = false
-  }
+  teardown?.()
 }

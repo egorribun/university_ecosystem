@@ -24,6 +24,7 @@ class RedisSessionData(TypedDict):
     last_seen_at: str | None  # ISO format
     created_at: str
     is_active: bool
+    mfa_epoch: int
 
 
 class RedisSessionService:
@@ -48,6 +49,7 @@ class RedisSessionService:
         fingerprint: SessionFingerprint | None,
         mfa_verified_at: datetime | None,
         session_id: UUID | None = None,
+        mfa_epoch: int = 0,
     ) -> None:
         """Cache a newly created session in Redis."""
         if not self.redis_url:
@@ -66,6 +68,7 @@ class RedisSessionService:
             "last_seen_at": now.isoformat(),
             "created_at": now.isoformat(),
             "is_active": "1",
+            "mfa_epoch": str(mfa_epoch),
         }
 
         try:
@@ -121,6 +124,7 @@ class RedisSessionService:
                 last_seen_at=data.get("last_seen_at") or None,
                 created_at=data.get("created_at", ""),
                 is_active=True,
+                mfa_epoch=int(data.get("mfa_epoch", "0")),
             )
         except (RedisError, OSError):
             # Fail open (fallback to DB)

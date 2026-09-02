@@ -217,6 +217,23 @@ describe("api/client — BroadcastChannel idempotency coordination", () => {
     ])
   })
 
+  it("does not broadcast cleanup messages for requests without an idempotency key", async () => {
+    const { default: channelApi } = await import("@/api/client")
+    const channel = RecordingBroadcastChannel.instances[0]
+    channelApi.defaults.adapter = async (config): Promise<AxiosResponse> => ({
+      config,
+      data: { ok: true },
+      status: 200,
+      statusText: "OK",
+      headers: new AxiosHeaders(),
+      request: {},
+    })
+
+    await channelApi.get("/news")
+
+    expect(channel?.messages).toEqual([])
+  })
+
   it("continues without cross-tab coordination when BroadcastChannel construction fails", async () => {
     class ThrowingBroadcastChannel {
       constructor() {
@@ -251,7 +268,13 @@ describe("api/client — BroadcastChannel idempotency coordination", () => {
       request: {},
     })
 
-    await expect(safeApi.get("/news")).resolves.toMatchObject({ status: 200 })
+    const requestConfig = { headers: { "Idempotency-Key": "local-only-key" } } as never
+    await expect(safeApi.post("/events", { ok: true }, requestConfig)).resolves.toMatchObject({
+      status: 200,
+    })
+    await expect(safeApi.post("/events", { ok: true }, requestConfig)).resolves.toMatchObject({
+      status: 200,
+    })
   })
 })
 
@@ -303,6 +326,10 @@ describe("api/client — SSR request branches", () => {
       "__ssrCookieGetter__",
       vi.fn(() => "access_token_v2=server-token")
     )
+    vi.stubGlobal(
+      "__ssrFingerprintHeadersGetter__",
+      vi.fn(() => ({ userAgent: "Browser/123", acceptLanguage: "en-GB,en;q=0.9" }))
+    )
     vi.stubEnv("VITE_BACKEND_ORIGIN", "")
     vi.stubEnv("BACKEND_ORIGIN", "")
   })
@@ -326,6 +353,8 @@ describe("api/client — SSR request branches", () => {
     await ensureCsrfCookie()
 
     expect(AxiosHeaders.from(seen[0]!.headers).get("Cookie")).toBe("access_token_v2=server-token")
+    expect(AxiosHeaders.from(seen[0]!.headers).get("User-Agent")).toBe("Browser/123")
+    expect(AxiosHeaders.from(seen[0]!.headers).get("Accept-Language")).toBe("en-GB,en;q=0.9")
     const { resolveSsrBackendOrigin } = await import("@/api/backendOrigin")
     expect(resolveSsrBackendOrigin()).toBe("http://localhost:8000")
   })
@@ -400,6 +429,106 @@ describe("api/client — defensive request/response interceptor inputs", () => {
     const error = { response: { status: 401 }, config: { headers: undefined } }
 
     await expect(responseHandler(error)).rejects.toBe(error)
+  })
+
+  it("preserves the original rejection when axios provides no response or config", async () => {
+    const { default: client } = await import("@/api/client")
+    const responseHandler = (client.interceptors.response as any).handlers.find(
+      (handler: { rejected?: unknown }) => typeof handler.rejected === "function"
+    )?.rejected as (error: unknown) => Promise<unknown>
+    const networkError = new Error("network unavailable")
+
+    await expect(responseHandler(networkError)).rejects.toBe(networkError)
+    await expect(responseHandler(undefined)).rejects.toBeUndefined()
+  })
+
+  it("evicts ETags only for HTTP errors while preserving redirects and 304 responses", async () => {
+    const { default: client } = await import("@/api/client")
+    const { etagCache } = await import("@/api/interceptors/etagCache")
+    const responseHandler = (client.interceptors.response as any).handlers.find(
+      (handler: { rejected?: unknown }) => typeof handler.rejected === "function"
+    )?.rejected as (error: unknown) => Promise<unknown>
+    const cacheKey = "events:status-boundary"
+    const config = { headers: new AxiosHeaders(), etagCacheKey: cacheKey }
+
+    for (const [status, tag] of [
+      [399, '"etag-399"'],
+      [304, '"etag-304"'],
+    ] as const) {
+      etagCache.set(cacheKey, tag)
+      const error = { config, response: { status, headers: new AxiosHeaders() } }
+
+      await expect(responseHandler(error)).rejects.toBe(error)
+      expect(etagCache.get(cacheKey)).toBe(tag)
+    }
+
+    etagCache.set(cacheKey, '"etag-400"')
+    const badRequest = { config, response: { status: 400, headers: new AxiosHeaders() } }
+
+    await expect(responseHandler(badRequest)).rejects.toBe(badRequest)
+    expect(etagCache.get(cacheKey)).toBeUndefined()
+  })
+
+  it("preserves a configured ETag when a network failure has no HTTP response", async () => {
+    const { default: client } = await import("@/api/client")
+    const { etagCache } = await import("@/api/interceptors/etagCache")
+    const responseHandler = (client.interceptors.response as any).handlers.find(
+      (handler: { rejected?: unknown }) => typeof handler.rejected === "function"
+    )?.rejected as (error: unknown) => Promise<unknown>
+    const cacheKey = "events:network-failure"
+    const error = { config: { headers: new AxiosHeaders(), etagCacheKey: cacheKey } }
+    etagCache.set(cacheKey, '"etag-network"')
+
+    await expect(responseHandler(error)).rejects.toBe(error)
+    expect(etagCache.get(cacheKey)).toBe('"etag-network"')
+  })
+
+  it("does not mutate the skip-unauthorized header on non-401 failures", async () => {
+    const { default: client, SKIP_UNAUTHORIZED_HEADER } = await import("@/api/client")
+    const responseHandler = (client.interceptors.response as any).handlers.find(
+      (handler: { rejected?: unknown }) => typeof handler.rejected === "function"
+    )?.rejected as (error: unknown) => Promise<unknown>
+    const headers = { [SKIP_UNAUTHORIZED_HEADER]: "1" }
+    const error = {
+      config: { headers },
+      response: { status: 500, headers: new AxiosHeaders() },
+    }
+
+    await expect(responseHandler(error)).rejects.toBe(error)
+    expect(headers).toHaveProperty(SKIP_UNAUTHORIZED_HEADER, "1")
+  })
+
+  it("preserves a disabled empty skip-unauthorized marker on a 401", async () => {
+    const { default: client, SKIP_UNAUTHORIZED_HEADER } = await import("@/api/client")
+    const responseHandler = (client.interceptors.response as any).handlers.find(
+      (handler: { rejected?: unknown }) => typeof handler.rejected === "function"
+    )?.rejected as (error: unknown) => Promise<unknown>
+    const headers = { [SKIP_UNAUTHORIZED_HEADER]: "" }
+    const error = {
+      config: { headers },
+      response: { status: 401, headers: new AxiosHeaders() },
+    }
+
+    await expect(responseHandler(error)).rejects.toBe(error)
+    expect(headers).toHaveProperty(SKIP_UNAUTHORIZED_HEADER, "")
+  })
+
+  it("accepts a successful axios response without request metadata", async () => {
+    const { default: client } = await import("@/api/client")
+    const { etagCache } = await import("@/api/interceptors/etagCache")
+    const responseHandler = (client.interceptors.response as any).handlers.find(
+      (handler: { fulfilled?: unknown }) => typeof handler.fulfilled === "function"
+    )?.fulfilled as (response: unknown) => Promise<unknown>
+    const response = {
+      data: { ok: true },
+      status: 200,
+      statusText: "OK",
+      headers: AxiosHeaders.from({ etag: '"unscoped"' }),
+      config: undefined,
+    }
+
+    await expect(responseHandler(response)).resolves.toBe(response)
+    expect(etagCache.get(undefined as never)).toBeUndefined()
   })
 
   it("uses the default backoff for a direct 429 response without headers", async () => {

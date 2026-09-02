@@ -21,6 +21,9 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/component: migration
+        # This exact client label is required by the dedicated noeviction
+        # revocation Redis NetworkPolicy; do not substitute cache Redis.
+        {{ printf "%s-revocation-redis-client" .Release.Name }}: "true"
     spec:
       automountServiceAccountToken: false
       restartPolicy: Never
@@ -37,7 +40,7 @@ spec:
       {{- end }}
       containers:
         - name: migrate
-          image: {{ printf "%s/%s:%s" .Values.global.imageRegistry .Values.backend.image.repository (.Values.backend.image.tag | default .Values.global.imageTag | default .Chart.AppVersion) | trimPrefix "/" | quote }}
+          image: {{ include "university-ecosystem.image" (dict "root" . "image" .Values.backend.image) | quote }}
           imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
           command: ["alembic", "upgrade", "head"]
           env:
@@ -46,8 +49,16 @@ spec:
                 secretKeyRef:
                   name: {{ required "connections.existingSecret must be set before Helm install" .Values.connections.existingSecret | quote }}
                   key: {{ required "connections.databaseURLKey must be set" .Values.connections.databaseURLKey | quote }}
-            # Alembic only needs the DSN. Development mode prevents unrelated
-            # runtime-service secret validators from blocking the isolated Job.
+            # Contract retirement may revoke already-issued bearer JTIs before
+            # altering their database rows. This must target the dedicated,
+            # persistent noeviction datastore, never the cache Redis instance.
+            - name: REVOCATION_REDIS_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "connections.existingSecret must be set before Helm install" .Values.connections.existingSecret | quote }}
+                  key: {{ required "connections.redisRevocationURLKey must be set" .Values.connections.redisRevocationURLKey | quote }}
+            # Development mode prevents unrelated runtime-service secret
+            # validators from blocking the isolated migration Job.
             - name: ENVIRONMENT
               value: development
             - name: AUTO_CREATE_SCHEMA

@@ -139,6 +139,17 @@ async def test_generate_reminders_deduplicates_and_skips_invalid_rows(monkeypatc
     assert created == 2
     assert create.await_count == 1
     assert create.await_args.kwargs["user_ids"] == ["u1"]
+    assert create.await_args.kwargs["title"] == "title-s2"
+    assert create.await_args.kwargs["body"] == "body"
+    assert create.await_args.kwargs["title_translations"] == {"en": "title-s2"}
+    assert create.await_args.kwargs["body_translations"] == {"en": "body"}
+    assert create.await_args.kwargs["tag"] == "tag-s2"
+    assert create.await_args.kwargs["actions"] == [
+        {"action": "open-schedule", "title": "Open schedule", "url": "/schedule"}
+    ]
+    assert create.await_args.kwargs["payload_data"] == {"lessonId": "s2"}
+    assert create.await_args.kwargs["topic"] == "schedule.changed"
+    assert create.await_args.kwargs["user_filter"] is reminders.only_active_users
 
 
 @pytest.mark.asyncio

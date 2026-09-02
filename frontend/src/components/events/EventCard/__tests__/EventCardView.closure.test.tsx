@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { MotionValue } from "framer-motion"
@@ -51,18 +51,78 @@ vi.mock("@/components/ui/Spotlight", () => ({
 }))
 
 vi.mock("@/components/events/EventCard/EventCardContent", () => ({
-  default: ({ title }: { title: string }) => <div data-testid="event-card-content">{title}</div>,
+  default: (props: {
+    id: string
+    title: string
+    speaker?: string
+    startsAt: string
+    endsAt?: string
+    location?: string
+    description?: string
+    participantCount: number
+    isRegistered: boolean
+    isEnded: boolean
+    hoveringDisabled?: boolean
+  }) => (
+    <div
+      data-testid="event-card-content"
+      data-id={props.id}
+      data-speaker={props.speaker}
+      data-starts={props.startsAt}
+      data-ends={props.endsAt}
+      data-location={props.location}
+      data-description={props.description}
+      data-participants={String(props.participantCount)}
+      data-registered={String(props.isRegistered)}
+      data-ended={String(props.isEnded)}
+      data-hovering-disabled={String(props.hoveringDisabled)}
+    >
+      {props.title}
+    </div>
+  ),
 }))
 
 vi.mock("@/components/events/EventCard/EventCardHero", () => ({
-  default: ({ transitioning }: { transitioning: boolean }) => (
-    <div data-testid="event-card-hero" data-transitioning={String(transitioning)} />
+  default: (props: {
+    id?: string
+    imageUrl?: string
+    title?: string
+    startsAt: string
+    endsAt?: string
+    timeStatus?: string
+    transitioning?: boolean
+    priority?: boolean
+  }) => (
+    <div
+      data-testid="event-card-hero"
+      data-id={props.id}
+      data-image={props.imageUrl}
+      data-title={props.title}
+      data-starts={props.startsAt}
+      data-ends={props.endsAt}
+      data-time-status={props.timeStatus}
+      data-transitioning={String(props.transitioning)}
+      data-priority={String(props.priority)}
+    />
   ),
 }))
 
 vi.mock("@/components/events/EventQuickView", () => ({
-  EventQuickView: ({ visible, position }: { visible: boolean; position: string }) => (
-    <div data-testid="event-quick-view" data-visible={String(visible)} data-position={position} />
+  EventQuickView: ({
+    visible,
+    position,
+    description,
+  }: {
+    visible: boolean
+    position: string
+    description: string
+  }) => (
+    <div
+      data-testid="event-quick-view"
+      data-visible={String(visible)}
+      data-position={position}
+      data-description={description}
+    />
   ),
 }))
 
@@ -91,15 +151,18 @@ vi.mock("@/components/events/EventEditDialog", () => ({
     onClose,
     onSave,
     normalizedLocation,
+    dateError,
   }: {
     open: boolean
     onClose: () => void
     onSave: () => void
     normalizedLocation: string
+    dateError: boolean
   }) =>
     open ? (
       <div data-testid="event-edit-dialog">
         <span data-testid="normalized-location">{normalizedLocation}</span>
+        <span data-testid="date-error">{String(dateError)}</span>
         <button type="button" onClick={onClose}>
           close-edit
         </button>
@@ -114,7 +177,7 @@ vi.mock("@/utils/eventsTransition", () => ({
   clearEventsHeroId: vi.fn(),
 }))
 
-import { EventCardView, type EventCardViewProps } from "../EventCardView"
+import { EventCardView, resolveQuickViewPosition, type EventCardViewProps } from "../EventCardView"
 import { clearEventsHeroId } from "@/utils/eventsTransition"
 
 const makeProps = (overrides: Partial<EventCardViewProps> = {}): EventCardViewProps => ({
@@ -173,7 +236,11 @@ afterEach(() => {
 })
 
 describe("EventCardView closure paths", () => {
-  it("shows and hides the positioned quick view and tracks view transitions", () => {
+  it("keeps the default placement when a stale interaction has no article", () => {
+    expect(resolveQuickViewPosition(null)).toBe("top")
+  })
+
+  it("shows and hides the positioned quick view and tracks view transitions", async () => {
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
       top: 120,
       bottom: 420,
@@ -186,15 +253,20 @@ describe("EventCardView closure paths", () => {
       toJSON: () => ({}),
     } as DOMRect)
 
-    render(<EventCardView {...makeProps()} />)
+    await act(async () => {
+      render(<EventCardView {...makeProps()} />)
+    })
     const card = screen.getByTestId("event-card")
     const quickView = screen.getByTestId("event-quick-view")
     const hero = screen.getByTestId("event-card-hero")
 
     expect(quickView).toHaveAttribute("data-visible", "false")
+    expect(quickView).toHaveAttribute("data-position", "top")
+    expect(card).toHaveClass("events-card-container", "cursor-pointer")
     fireEvent.mouseEnter(card)
     expect(quickView).toHaveAttribute("data-visible", "true")
     expect(quickView).toHaveAttribute("data-position", "bottom")
+    expect(quickView).toHaveAttribute("data-description", "Description")
 
     fireEvent.pointerDown(card)
     expect(clearEventsHeroId).toHaveBeenCalledOnce()
@@ -208,6 +280,8 @@ describe("EventCardView closure paths", () => {
   it("keeps hover and transition behavior disabled when requested", () => {
     render(<EventCardView {...makeProps({ hoveringDisabled: true })} />)
     const card = screen.getByTestId("event-card")
+
+    expect(card).toHaveClass("cursor-default")
 
     fireEvent.mouseEnter(card)
     fireEvent.pointerDown(card)
@@ -235,6 +309,75 @@ describe("EventCardView closure paths", () => {
 
     expect(screen.getByTestId("event-quick-view")).toHaveAttribute("data-visible", "true")
     expect(screen.getByTestId("event-quick-view")).toHaveAttribute("data-position", "top")
+    expect(screen.getByTestId("event-quick-view")).toHaveAttribute("data-description", "")
+  })
+
+  it("keeps the top position when the card has no measurable client rect", () => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+      undefined as unknown as DOMRect
+    )
+
+    render(<EventCardView {...makeProps()} />)
+    const card = screen.getByTestId("event-card")
+
+    fireEvent.mouseEnter(card)
+
+    expect(screen.getByTestId("event-quick-view")).toHaveAttribute("data-position", "top")
+  })
+
+  it("keeps the quick-view boundary strict at the 280px threshold", () => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({
+      top: 280,
+      bottom: 580,
+      left: 0,
+      right: 300,
+      width: 300,
+      height: 300,
+      x: 0,
+      y: 280,
+      toJSON: () => ({}),
+    } as DOMRect)
+
+    render(<EventCardView {...makeProps()} />)
+    fireEvent.mouseEnter(screen.getByTestId("event-card"))
+
+    expect(screen.getByTestId("event-quick-view")).toHaveAttribute("data-position", "top")
+  })
+
+  it("refreshes hover and transition callbacks when the disabled state changes", () => {
+    const clear = vi.mocked(clearEventsHeroId)
+    const { rerender } = render(<EventCardView {...makeProps()} />)
+    const card = screen.getByTestId("event-card")
+
+    fireEvent.mouseEnter(card)
+    expect(screen.getByTestId("event-quick-view")).toHaveAttribute("data-visible", "true")
+    fireEvent.mouseLeave(card)
+
+    rerender(<EventCardView {...makeProps({ hoveringDisabled: true })} />)
+    fireEvent.mouseEnter(card)
+    fireEvent.pointerDown(card)
+
+    expect(screen.getByTestId("event-quick-view")).toHaveAttribute("data-visible", "false")
+    expect(clear).not.toHaveBeenCalled()
+  })
+
+  it("forwards card metadata to the hero and content presenters", () => {
+    render(<EventCardView {...makeProps({ isRegistered: true, isEnded: true, priority: true })} />)
+
+    const hero = screen.getByTestId("event-card-hero")
+    expect(hero).toHaveAttribute("data-id", "event-1")
+    expect(hero).toHaveAttribute("data-image", "https://example.test/event.jpg")
+    expect(hero).toHaveAttribute("data-time-status", "soon")
+    expect(hero).toHaveAttribute("data-priority", "true")
+
+    const content = screen.getByTestId("event-card-content")
+    expect(content).toHaveAttribute("data-speaker", "Speaker")
+    expect(content).toHaveAttribute("data-ends", "2026-06-15T16:00:00Z")
+    expect(content).toHaveAttribute("data-location", "Room 1")
+    expect(content).toHaveAttribute("data-description", "Description")
+    expect(content).toHaveAttribute("data-participants", "3")
+    expect(content).toHaveAttribute("data-registered", "true")
+    expect(content).toHaveAttribute("data-ended", "true")
   })
 
   it("renders lazy admin/edit flows plus delete and error callbacks", async () => {
@@ -248,22 +391,24 @@ describe("EventCardView closure paths", () => {
       onEditSave: vi.fn(),
       onErrorClose: vi.fn(),
     }
-    render(
-      <EventCardView
-        {...makeProps({
-          ...callbacks,
-          isAdmin: true,
-          editOpen: true,
-          confirmDeleteOpen: true,
-          error: "Save failed",
-          location: undefined,
-        })}
-      />
-    )
+    await act(async () => {
+      render(
+        <EventCardView
+          {...makeProps({
+            ...callbacks,
+            isAdmin: true,
+            editOpen: true,
+            confirmDeleteOpen: true,
+            error: "Save failed",
+            location: "Room 2",
+          })}
+        />
+      )
+    })
 
     await waitFor(() => expect(screen.getByTestId("event-admin-actions")).toBeInTheDocument())
     expect(screen.getByTestId("event-edit-dialog")).toBeInTheDocument()
-    expect(screen.getByTestId("normalized-location")).toBeEmptyDOMElement()
+    expect(screen.getByTestId("normalized-location")).toHaveTextContent("Room 2")
     expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument()
     expect(screen.getByTestId("snackbar")).toHaveTextContent("Save failed")
 
@@ -282,5 +427,21 @@ describe("EventCardView closure paths", () => {
     expect(callbacks.onDeleteClose).toHaveBeenCalledOnce()
     expect(callbacks.onDeleteConfirm).toHaveBeenCalledOnce()
     expect(callbacks.onErrorClose).toHaveBeenCalledOnce()
+  })
+
+  it("normalizes a missing admin location before opening the edit dialog", async () => {
+    await act(async () => {
+      render(<EventCardView {...makeProps({ isAdmin: true, editOpen: true, location: "" })} />)
+    })
+
+    await waitFor(() => expect(screen.getByTestId("event-edit-dialog")).toBeInTheDocument())
+    expect(screen.getByTestId("normalized-location").textContent).toBe("")
+  })
+
+  it("keeps the edit dialog date validation clear by default", async () => {
+    render(<EventCardView {...makeProps({ isAdmin: true, editOpen: true })} />)
+
+    await waitFor(() => expect(screen.getByTestId("event-edit-dialog")).toBeInTheDocument())
+    expect(screen.getByTestId("date-error")).toHaveTextContent("false")
   })
 })

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react"
 import { useNavigate, useRouterState } from "@tanstack/react-router"
+import "@/styles/tokens/auth.css"
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
 import AuthBackdrop from "@/components/auth/AuthBackdrop"
 import useMediaQuery from "@/hooks/useMediaQuery"
@@ -61,15 +62,7 @@ const Login = () => {
 
   // MFA challenge screen — shown when backend requires second factor
   if (mfa.loginChallenge) {
-    return (
-      <MfaChallengeView
-        activeEmail={form.activeEmail}
-        trustDevice={!!form.trustDevice}
-        onTrustDeviceChange={form.setTrustDevice}
-        webauthnSupported={form.webauthnSupported}
-        mfa={mfa}
-      />
-    )
+    return <MfaChallengeView activeEmail={form.activeEmail} mfa={mfa} />
   }
 
   // Primary login screen — hero panel + credential form. Wave 186 SW3 adds

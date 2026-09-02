@@ -1,0 +1,15 @@
+# The bootstrap script supplies applicationReleaseName, the canonical
+# fullnameOverride, the binding label, and immutable image digests.  This file
+# intentionally contains no Secret material and remains safe to commit.
+redis:
+  image:
+    registry: docker.io
+    repository: bitnami/redis
+    digest: REQUIRED_SHA256_DIGEST
+    pullPolicy: Always
+  metrics:
+    image:
+      registry: docker.io
+      repository: bitnami/redis-exporter
+      digest: REQUIRED_SHA256_DIGEST
+      pullPolicy: Always

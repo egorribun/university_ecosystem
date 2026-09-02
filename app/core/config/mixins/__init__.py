@@ -4,7 +4,7 @@ Each mixin addresses a single logical concern:
 - JwtSettingsMixin: JWT signing keys, key rotation, token lifetime
 - CorsSettingsMixin: CORS policy, trusted hosts, origin validation
 - RateLimitSettingsMixin: Rate limit thresholds and storage backend
-- MfaSettingsMixin: MFA, WebAuthn, trusted devices, password policy
+- MfaSettingsMixin: TOTP/email MFA, trusted devices, password policy
 - CspSettingsMixin: CSP, HSTS, COOP, COEP, CORP, security headers
 """
 

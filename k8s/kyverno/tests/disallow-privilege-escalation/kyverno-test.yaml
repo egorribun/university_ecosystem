@@ -9,12 +9,10 @@ resources:
   - bad.yaml
 results:
   - policy: disallow-privilege-escalation
-    rule: check-allowPrivilegeEscalation
     resources: [university-ecosystem/compliant-pod]
     kind: Pod
     result: pass
   - policy: disallow-privilege-escalation
-    rule: check-allowPrivilegeEscalation
     resources: [university-ecosystem/privilege-escalation-pod]
     kind: Pod
     result: fail

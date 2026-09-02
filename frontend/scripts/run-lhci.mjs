@@ -13,25 +13,30 @@ import { spawn } from "node:child_process"
 
 import { chromium } from "playwright"
 
+import { buildSafeCommandInvocation } from "./lhci-command.mjs"
+import routePolicyConfig from "./lhci-route-policy-config.cjs"
+import { assertLhciRoutePolicy, normalizeLhciPath } from "./lhci-route-policy.mjs"
+import {
+  pathForLhciPreview,
+  previewReadyPattern,
+  previewServerCommand,
+  resolveLhciPreviewMode,
+} from "./lhci-preview-mode.mjs"
+
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 const frontendRoot = path.resolve(__dirname, "..")
 
 process.env.VITE_LHCI = "true"
 
-const base = process.env.PREVIEW_URL ?? process.env.LHCI_URL ?? ""
-const useRemotePreview = Boolean(base)
+const previewMode = resolveLhciPreviewMode(process.env)
+const base = previewMode.base
+const useRemotePreview = previewMode.kind === "remote"
+const useSsrPreview = previewMode.kind === "ssr"
 let dependenciesEnsured = false
 
 async function runCommand(command, args, description, extraEnv = {}) {
-  // npm and npx are .cmd shims on Windows and cannot be spawned directly with
-  // shell:false. Invoke the Windows command interpreter explicitly while
-  // keeping Node's shell option disabled; all command names and arguments are
-  // fixed by this script.
-  const isWindowsBatchCommand =
-    process.platform === "win32" && (command === "npm" || command === "npx")
-  const executable = isWindowsBatchCommand ? (process.env.ComSpec ?? "cmd.exe") : command
-  const spawnArgs = isWindowsBatchCommand ? ["/d", "/s", "/c", `${command}.cmd`, ...args] : args
+  const { executable, args: spawnArgs } = buildSafeCommandInvocation(command, args)
 
   await new Promise((resolve, reject) => {
     const child = spawn(executable, spawnArgs, {
@@ -108,6 +113,43 @@ async function ensureSystemDependencies() {
   dependenciesEnsured = true
 }
 
+async function fetchRemoteRobots(previewUrl) {
+  let preview
+  try {
+    preview = new URL(previewUrl)
+  } catch {
+    throw new Error("PREVIEW_URL/LHCI_URL must be an absolute HTTP(S) URL")
+  }
+  if (preview.protocol !== "http:" && preview.protocol !== "https:") {
+    throw new Error("PREVIEW_URL/LHCI_URL must use HTTP(S)")
+  }
+
+  const robotsUrl = new URL("/robots.txt", preview)
+  let response
+  try {
+    response = await fetch(robotsUrl, {
+      redirect: "error",
+      signal: AbortSignal.timeout(10_000),
+    })
+  } catch (error) {
+    throw new Error(`Unable to fetch preview robots.txt ${robotsUrl}: ${error.message}`)
+  }
+  if (!response.ok) {
+    throw new Error(`Preview robots.txt returned HTTP ${response.status}`)
+  }
+
+  let responseUrl
+  try {
+    responseUrl = new URL(response.url)
+  } catch {
+    throw new Error("Preview robots.txt response URL is invalid")
+  }
+  if (responseUrl.origin !== preview.origin || responseUrl.pathname !== "/robots.txt") {
+    throw new Error("Preview robots.txt response crossed the tested origin boundary")
+  }
+  return response.text()
+}
+
 async function createConfig() {
   const chromePath = await ensureChromiumExecutable()
   process.env.CHROME_PATH = chromePath
@@ -122,22 +164,12 @@ async function createConfig() {
   // deferral); included in defaults so CI surface is the same as auth-bypass
   // sweep but expect those audits to fail under Lighthouse — investigate or
   // skip per Wave 120+ scope.
-  const defaultPaths = [
-    "/",
-    "/login",
-    "/dashboard",
-    "/news",
-    "/schedule",
-    "/events",
-    "/activity",
-    "/map",
-    "/messenger",
-    "/404",
-  ]
-  // Wave 119 SW2 — empty string trims to "/" so callers can measure root via
-  // LHCI_URLS=,schedule,404 (Windows MSYS_NO_PATHCONV bypass: leading slashes
-  // in /-paths are mangled to git-bash absolute paths). Without this map,
-  // .filter(Boolean) drops "" and root never gets measured.
+  const defaultPaths = [...routePolicyConfig.defaultLhciPaths]
+  // Wave 119 SW2 — empty segments normalize to "/" so callers can measure
+  // root via LHCI_URLS=,schedule,404 (Windows MSYS_NO_PATHCONV bypass: leading
+  // slashes in /-paths are mangled to git-bash absolute paths). The shared
+  // normalizer also adds a slash to route-name inputs such as `404` before
+  // Lighthouse and the route-policy inventory see them.
   // Wave 160 SW1 — distinguish truly-empty LHCI_URLS (the workflow_dispatch
   // default "" when no override is intended → use defaults) from a non-empty
   // override with leading comma (`,schedule,404` → measure / + 2 paths).
@@ -149,15 +181,16 @@ async function createConfig() {
   // from any non-empty string (process via the W119 SW2 leading-comma flow).
   const lhciUrlsEnv = process.env.LHCI_URLS
   const overridePaths = lhciUrlsEnv
-    ? lhciUrlsEnv
-        .split(",")
-        .map((p) => p.trim() || "/")
-        .filter(Boolean)
+    ? lhciUrlsEnv.split(",").map(normalizeLhciPath).filter(Boolean)
     : undefined
   const targetPaths = overridePaths?.length ? overridePaths : defaultPaths
+  const previewPaths = targetPaths.map((pathname) => pathForLhciPreview(pathname, previewMode))
   const collect = {
     numberOfRuns: 3,
-    url: useRemotePreview ? targetPaths.map((p) => `${base}${p === "/" ? "" : p}`) : targetPaths,
+    url:
+      useRemotePreview || useSsrPreview
+        ? previewPaths.map((p) => `${base}${p === "/" ? "" : p}`)
+        : targetPaths,
     chromePath,
     settings: {
       // W162 SW1 (Tier 1 Path d) — W160 §Honesty NEW #1 CLOSED via "platform
@@ -175,7 +208,7 @@ async function createConfig() {
       //      screenshots during the page load"). Runs `25988551157` +
       //      `25989078530` + `25989579477`. CLS/LCP/TBT measured cleanly.
       //
-      //   2. W161 SW1 Approach A (drop `--disable-gpu`): CI run
+      //   2. W161 SW1 Approach A (restore GPU-backed capture): CI run
       //      `25997872114` Perf=null at run 1; workflow cancelled at 25m.
       //
       //   3. W161 SW1 Approach B (swap `--headless=new` → `--headless=chrome`
@@ -242,7 +275,7 @@ async function createConfig() {
       // Monitoring snapshot (2026-05-21): the upstream issue remained OPEN
       // without maintainer activity. The GitHub issue state is the source of
       // truth for future reassessment. Until upstream behavior changes, Linux
-      // CI keeps `categories:performance` at the advisory warn@0.40 level.
+      // The current MVP contract supersedes this historical advisory floor.
       //
       // W180 SW1 — monitoring tick at W180 open (2026-05-21). WebFetch re-
       // verified at session start: state OPEN, still NO triage, NO maintainer
@@ -307,16 +340,22 @@ async function createConfig() {
       // canonical Perf measurement per W162 SW1 acceptance. See
       // memory/wave192_lighthouse_upstream_check.md for full snapshot.
       chromeFlags:
-        "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --disable-gpu --headless=new",
+        "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --headless=new",
       throttlingMethod: "devtools",
+      // Lighthouse normally aborts on non-2xx navigations.  The route matrix
+      // deliberately includes the production 404 document, whose HTTP 404
+      // status is part of the public contract.  Keep the status semantics in
+      // the server and ask Lighthouse to continue collecting the document so
+      // the same accessibility/SEO/performance gates apply to it.
+      ignoreStatusCode: true,
       emulatedFormFactor: "mobile",
-      budgetPath: path.resolve(frontendRoot, "../../budget.json"),
+      budgetPath: path.resolve(frontendRoot, "../budget.json"),
       maxWaitForFcp: 45000,
       maxWaitForLoad: 60000,
     },
   }
 
-  if (!useRemotePreview) {
+  if (!useRemotePreview && !useSsrPreview) {
     // W139 SW5 fix — post-W125 SSR migration, dist/ is split into dist/client/
     // (browser bundle + index.html) + dist/server/ (SSR handler). Lighthouse
     // staticDistDir MUST point at dist/client/ for index.html-driven routes.
@@ -333,129 +372,56 @@ async function createConfig() {
     collect.staticDistDir = path.resolve(frontendRoot, "dist", "client")
     collect.isSinglePageApplication = true
   } else {
-    collect.startServerCommand = "node scripts/lhci-preview.mjs"
-    collect.startServerReadyPattern = "LHCI_READY"
+    collect.startServerCommand = previewServerCommand(previewMode)
+    collect.startServerReadyPattern = previewReadyPattern(previewMode)
     collect.startServerReadyTimeout = 120000
   }
 
   return {
     ci: {
       collect,
-      // Wave 112 — thresholds per production-grade April 2026 brief.
-      // Wave 117 SW8 — flipped `categories:performance` from `warn@0.9`
-      // → `error@0.15` (ratchet floor based on Wave-117 measured medians
-      // 0.18-0.56). Wave 118 SW5 — ratcheted again to `error@0.30` after
-      // SW1-SW4 dropped CLS 86%+ on authenticated routes by addressing
-      // four content-shift culprits (footer anchor, InstallPrompt
-      // bottom-anchored variable height, EventsBackdrop %-based sizing,
-      // Dashboard hero + dash-tilt-card growing-content). Wave 119 SW3 —
-      // ratcheted Perf 0.30 → 0.40 + flipped CLS warn@0.1 → error@0.15.
-      // Wave 120 SW2 — ratcheted CLS error@0.15 → error@0.10 after fresh
-      // 3-run sweep on /, /dashboard, /events (worst CLS post-W119-SW7)
-      // showed worst median = 0.062 (/events) with variance ~0.01 across
-      // 3 runs. Plan decision tree threshold "worst ≤ 0.06" was missed
-      // by 0.002 (effectively rounding noise); paired with measured
-      // variance (0.01, NOT W119's plan-assumed 0.04 due to install-panel
-      // CLS-119-02 closure), worst-case 0.072 leaves 0.028 (28%) margin
-      // from new gate ceiling 0.10.
-      // Wave 120 SW2 3-run medians (mobile, devtools throttling):
-      //   /          0.43/CLS 0.033
-      //   /dashboard 0.44/CLS 0.033
-      //   /events    0.46/CLS 0.062
-      // Perf floor stays 0.40 (matches Wave 119 SW3 decision; min Perf
-      // here 0.43 still > 0.40 + ~0.04 variance buffer).
-      // A11y/BP/SEO already production-grade (error@0.95).
-      //
-      // Routine-e5 close-out (2026-05-04) — calibration drift discovered:
-      // gate `categories:performance error@0.40` was calibrated on dev
-      // wrapper measurements (`npm run lhci:windows`, my dev hardware
-      // running Lighthouse 13.1.0). CI Linux runner produces measurements
-      // ~0.10-0.12 lower for the same Lighthouse version + build artifact
-      // (e.g. /dashboard: dev wrapper 0.49 ↔ CI Linux 0.37). Beyond the
-      // documented W123/W124 SW4 variance band (±0.04-0.06).
-      // Verified: routine-e5 NOT the cause (0 frontend changes); routine
-      // -f4/g3 (hooks barrel + i18n keys merged in pre-routine-e5) NOT the
-      // cause either (dev wrapper measurements match W124 SW6 baseline).
-      // Root cause: CI runner is systematically slower under load.
-      // Wave 125 SSR Phase 1 (`docs/audits/archive/AUDIT_WAVE125.md`)
-      // is the structural fix — drops auth-route LCP from ~12s → < 2.5s,
-      // hoists Perf well above 0.40 in both dev + CI environments.
-      // Until then, relaxed Perf assertion to `warn@0.40`: keeps the
-      // threshold visible in CI summaries but does not block merges.
-      // Will re-ratchet to `error@0.40` (or higher) once SSR ships.
-      //
-      // Wave 160 SW2 (2026-05-17) — first 3-session × 3-run methodology
-      // applied on Linux CI post-W149 SSR + W158 canonical minified PROD.
-      // 9 URLs × 3 sessions × 3 runs = 81 LHRs (closes W134 §Honesty #1
-      // + W159 NEW #2). Cross-session medians (extremely tight variance
-      // ±0.01-0.05 across sessions — methodology validates):
-      //   /          CLS 0.001 LCP 2895ms TBT 549ms A11y 1.00
-      //   /login     CLS 0.000 LCP  324ms TBT 272ms A11y 1.00
-      //   /dashboard CLS 0.000 LCP 2857ms TBT 517ms A11y 1.00
-      //   /news      CLS 0.000 LCP  340ms TBT 446ms A11y 1.00
-      //   /schedule  CLS 0.000 LCP  376ms TBT 423ms A11y 1.00
-      //   /events    CLS 0.000 LCP  396ms TBT 454ms A11y 1.00
-      //   /activity  CLS 0.000 LCP  411ms TBT 455ms A11y 1.00
-      //   /map       CLS 0.044 LCP  403ms TBT 466ms A11y 1.00  ← worst CLS
-      //   /404       CLS 0.000 LCP  309ms TBT 425ms A11y 1.00
-      //
-      // Ratchet decisions (data-driven per plan §SW2 step 3 decision tree):
-      //
-      // (1) CLS error@0.10 → error@0.05 — worst cross-session median = 0.044
-      //     on /map; variance ~0.000 across 3 sessions (truly stable); 0.05
-      //     ceiling has 12% margin (0.006 buffer). Tightens WCAG-Good ceiling
-      //     by 50%. SAFE — confirmed all 9 URLs measure ≤ 0.044 across 81
-      //     LHRs (worst single-run value also 0.044).
-      //
-      // (2) Perf HOLD warn@0.40 — STRUCTURAL Linux CI blocker. Chrome flags
-      //     `--headless=new --disable-gpu` (this file lines 130 inline) fail
-      //     to collect screenshots → `categories.performance.score = null`
-      //     for ALL 9 URLs × 81 LHRs. Lighthouse audits `speed-index`,
-      //     `screenshot-thumbnails`, `metrics` all error with "Chrome didn't
-      //     collect any screenshots during the page load". Individual metrics
-      //     (FCP/LCP/TBT/CLS) DO measure — but composite Perf score requires
-      //     all of them including speed-index. Cannot ratchet Perf this wave.
-      //     Routine-e5 calibration drift PARTIALLY closed (acknowledged +
-      //     structurally documented in W160 SW2; full closure pending W161+
-      //     Lighthouse chrome flags investigation — likely drop `--disable-gpu`
-      //     or switch `--headless=chrome` to restore screenshot collection).
-      //
-      // (3) LCP HOLD warn@2500ms — worst cross-session median 2895ms on /
-      //     (above 2500ms ceiling). Mobile devtools throttling on Linux CI
-      //     is harsher than Windows wrapper baselines (W159 SW2 measured
-      //     LCP 2000ms on /; CI Linux measures 2895ms — same dist, different
-      //     throttling environment). Realistic mobile measurement, but
-      //     ratchet warn→error would block merges. Hold until perf work
-      //     lands (W161+ or later).
-      //
-      // (4) TBT HOLD warn@200ms — worst cross-session median 549ms on /
-      //     (above 200ms ceiling). Same mobile throttling reality as LCP.
-      //     Hold.
+      // Release-blocking lab budgets are shared by every route. SEO is
+      // intentionally route-aware: only public/auth pages receive an SEO
+      // assertion, while the companion route policy validates robots.txt and
+      // crawl-audit provenance for protected pages. INP is a field metric and
+      // is therefore measured by the production CWV pipeline, not Lighthouse.
       assert: {
-        assertions: {
-          // W125-pending — relaxed from `error@0.40` to `warn@0.40` after
-          // routine-e5 found dev/CI calibration drift. W160 SW2 confirmed
-          // CI Linux Perf score unmeasurable under current chrome flags;
-          // hold at warn@0.40 pending W161+ Chrome flags fix.
-          "categories:performance": ["warn", { minScore: 0.4 }],
-          "categories:accessibility": ["error", { minScore: 0.95 }],
-          "categories:best-practices": ["error", { minScore: 0.95 }],
-          "categories:seo": ["error", { minScore: 0.9 }],
-          "largest-contentful-paint": [
-            "warn",
-            { maxNumericValue: 2500, aggregationMethod: "median" },
-          ],
-          "total-blocking-time": ["warn", { maxNumericValue: 200, aggregationMethod: "median" }],
-          "cumulative-layout-shift": [
-            "error",
-            // W160 SW2 — ratcheted error@0.10 → error@0.05 after 3-session
-            // × 3-run CI Linux methodology measured worst cross-session
-            // median 0.044 (on /map; 8 of 9 URLs measure CLS ≤ 0.001).
-            // Variance ~0.000 across sessions; 0.05 ceiling has 12% margin
-            // (0.006 buffer). Tightens WCAG-Good ceiling by 50%.
-            { maxNumericValue: 0.05, aggregationMethod: "median" },
-          ],
-        },
+        assertMatrix: [
+          {
+            matchingUrlPattern: ".*",
+            assertions: {
+              // INP is a field metric, not a Lighthouse navigation audit. Production
+              // p75 aggregation is a separate release-closure requirement; TBT is the
+              // blocking lab responsiveness proxy in this configuration.
+              "categories:performance": ["error", { minScore: 0.95 }],
+              "categories:accessibility": ["error", { minScore: 0.95 }],
+              "categories:best-practices": ["error", { minScore: 0.95 }],
+              "largest-contentful-paint": [
+                "error",
+                { maxNumericValue: 2500, aggregationMethod: "median" },
+              ],
+              "total-blocking-time": [
+                "error",
+                { maxNumericValue: 200, aggregationMethod: "median" },
+              ],
+              "cumulative-layout-shift": [
+                "error",
+                // W160 SW2 — ratcheted error@0.10 → error@0.05 after 3-session
+                // × 3-run CI Linux methodology measured worst cross-session
+                // median 0.044 (on /map; 8 of 9 URLs measure CLS ≤ 0.001).
+                // Variance ~0.000 across sessions; 0.05 ceiling has 12% margin
+                // (0.006 buffer). Tightens WCAG-Good ceiling by 50%.
+                { maxNumericValue: 0.05, aggregationMethod: "median" },
+              ],
+            },
+          },
+          {
+            matchingUrlPattern: routePolicyConfig.publicSeoUrlPattern,
+            assertions: {
+              "categories:seo": ["error", { minScore: routePolicyConfig.publicSeoMinScore }],
+            },
+          },
+        ],
       },
     },
   }
@@ -466,10 +432,16 @@ async function run() {
   const tempConfigPath = path.join(tempDir, "lighthouserc.json")
 
   const config = await createConfig()
+  const expectedPaths = config.ci.collect.url
 
-  // Build and prepare dist for LHCI mode if not using remote preview
-  const useRemotePreview = Boolean(process.env.PREVIEW_URL ?? process.env.LHCI_URL ?? "")
-  if (!useRemotePreview) {
+  // Build and prepare dist for LHCI mode if using the static fallback. The
+  // managed SSR preview serves route-specific HTML directly from the same
+  // immutable build, so copying a route-agnostic SPA shell would reintroduce
+  // the createRoot() cold-start penalty this mode is designed to measure.
+  const runPreviewMode = resolveLhciPreviewMode(process.env)
+  const useRemotePreview = runPreviewMode.kind === "remote"
+  const useSsrPreview = runPreviewMode.kind === "ssr"
+  if (!useRemotePreview && !useSsrPreview) {
     if (!process.env.SKIP_BUILD) {
       console.log("Building for LHCI...")
       await runCommand("npm", ["run", "build"], "npm run build")
@@ -480,12 +452,21 @@ async function run() {
     await runCommand("node", ["scripts/prepare-lhci-routes.mjs"], "prepare-lhci-routes")
   }
 
+  // Never merge reports from a previous local invocation. CI starts with a
+  // clean workspace, but explicit cleanup keeps local reruns equally
+  // fail-closed and makes the report set SHA/attempt scoped by construction.
+  await rm(path.resolve(frontendRoot, ".lighthouseci"), {
+    recursive: true,
+    force: true,
+    maxRetries: 5,
+    retryDelay: 1000,
+  })
   await writeFile(tempConfigPath, JSON.stringify(config), "utf8")
 
-  // Wave 116 SW3 — invoke @lhci/cli via npx so the script works without a
-  // global `lhci` install. `-y` auto-accepts the download prompt; after the
-  // first run npx caches the package locally. Previously the script assumed
-  // a global install and failed fast on fresh environments.
+  // Wave 116 SW3 — invoke @lhci/cli through the package manager so the script
+  // works without a global `lhci` install. POSIX uses npx's local resolution;
+  // Windows uses the shell-free npm exec form selected above. `--yes`
+  // auto-accepts the download prompt on the Windows path.
   //
   // Wave 121 polish — switched from `npx -y @lhci/cli@^0.15.1` to plain `npx
   // lhci` so the local node_modules install (with the package.json
@@ -498,10 +479,12 @@ async function run() {
   // paths like `/news` into `c:/Program Files/Git/news` when LHCI forwards
   // them to the Lighthouse CLI subprocess.
   const lhciEnv = { MSYS_NO_PATHCONV: "1" }
+  const lhciCommand = process.platform === "win32" ? "npm" : "npx"
+  const lhciPrefix = process.platform === "win32" ? ["exec", "--yes", "lhci", "--"] : ["lhci"]
   try {
     await runCommand(
-      "npx",
-      ["lhci", "collect", `--config=${tempConfigPath}`],
+      lhciCommand,
+      [...lhciPrefix, "collect", `--config=${tempConfigPath}`],
       "lhci collect",
       lhciEnv
     )
@@ -542,7 +525,25 @@ async function run() {
       throw error
     }
   }
-  await runCommand("npx", ["lhci", "assert", `--config=${tempConfigPath}`], "lhci assert", lhciEnv)
+  await runCommand(
+    lhciCommand,
+    [...lhciPrefix, "assert", `--config=${tempConfigPath}`],
+    "lhci assert",
+    lhciEnv
+  )
+
+  // LHCI supports category assertions but cannot express the intentional
+  // SEO distinction between public and robots-protected application routes.
+  // Validate that route intent, robots directives, and crawl-audit provenance
+  // all agree before the shard is uploaded as release evidence.
+  const robotsText = useRemotePreview ? await fetchRemoteRobots(base) : undefined
+  await assertLhciRoutePolicy({
+    reportsDir: path.resolve(frontendRoot, ".lighthouseci"),
+    robotsPath: path.resolve(frontendRoot, "public", "robots.txt"),
+    robotsText,
+    expectedPaths,
+    expectedRuns: config.ci.collect.numberOfRuns,
+  })
 
   await rm(tempDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 1000 })
 }

@@ -154,7 +154,7 @@ jobs:
       - name: Set up Node.js (for openapi-diff CLI)
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: Install openapi-diff
         # oasdiff detects breaking vs. non-breaking changes.
@@ -223,19 +223,25 @@ jobs:
           import json, pathlib
           from app.main import app
           spec = app.openapi()
-          pathlib.Path('frontend/openapi.json').write_text(json.dumps(spec, indent=2))
+          pathlib.Path('frontend/openapi.json').write_text(
+              json.dumps(spec, indent=2, sort_keys=True) + '\n'
+          )
           "
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: "22"
+          node-version: "24"
           cache: "npm"
           cache-dependency-path: "frontend/package-lock.json"
 
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Normalize generated OpenAPI schema
+        working-directory: frontend
+        run: npm exec -- prettier --write openapi.json
 
       - name: Regenerate TypeScript client and MSW mocks
         working-directory: frontend

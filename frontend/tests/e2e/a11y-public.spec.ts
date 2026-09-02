@@ -1,4 +1,4 @@
-import { expect, test } from "./test"
+import { blockBackgroundNetwork, expect, test } from "./test"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
@@ -124,6 +124,14 @@ const THEMES = [
 const AXE_RUN_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] as const
 
 test.describe("@a11y public routes axe scan", () => {
+  // The accessibility audit exercises the rendered public document, not the
+  // PWA lifecycle.  Production registers the service worker after bootstrap
+  // and reloads once on its first `controllerchange`; allowing that lifecycle
+  // in this suite can replace the document while axe is evaluating it and
+  // destroy Firefox's execution context.  Keep the audit's document stable
+  // while preserving the real service-worker behavior everywhere else.
+  test.use({ serviceWorkers: "block" })
+
   // Wave 147 SW2 — inject axe via `page.addInitScript({content})` BEFORE
   // each `page.goto()`. See `a11y-cdn-axe.spec.ts` for the full
   // page-vs-context fixture timing rationale. TL;DR: Playwright's default
@@ -139,17 +147,22 @@ test.describe("@a11y public routes axe scan", () => {
       test(`${route.name} — ${theme.name} theme has no critical/serious axe violations`, async ({
         page,
       }) => {
+        const documentNavigationUrls: string[] = []
+        page.on("request", (request) => {
+          if (request.resourceType() === "document" && request.frame() === page.mainFrame()) {
+            documentNavigationUrls.push(request.url())
+          }
+        })
+
         await page.emulateMedia({ colorScheme: theme.scheme, reducedMotion: "reduce" })
         await page.goto(route.path, { waitUntil: "domcontentloaded", timeout: 30_000 })
 
-        // W147 SW2 — block ALL subsequent network requests so React Query
-        // / useProfileSync / dynamic chunks / service workers can't starve
-        // the page event loop and prevent axe.run from scheduling. The
-        // DOM tree axe scans is already rendered post-goto. See
-        // `a11y-cdn-axe.spec.ts` for the full root-cause narrative.
-        // Inner param renamed `r` to avoid shadowing the outer for-loop
-        // `route` (PUBLIC_ROUTES element).
-        await page.route("**/*", (r) => r.abort())
+        // W147 SW2 — quiesce background API/realtime traffic so React Query
+        // / useProfileSync / service workers can't starve the page event loop
+        // and prevent axe.run from scheduling, while lazy application chunks
+        // remain available. The DOM tree axe scans is already rendered
+        // post-goto. See `a11y-cdn-axe.spec.ts` for the root-cause narrative.
+        await blockBackgroundNetwork(page)
 
         // Wave 146 polish-v4 — removed `page.waitForLoadState("networkidle")`
         // which hung tests deterministically when backend is up and serving
@@ -239,6 +252,10 @@ test.describe("@a11y public routes axe scan", () => {
         const blocking = results.violations.filter(
           (v) => v.impact === "critical" || v.impact === "serious"
         )
+        expect(
+          documentNavigationUrls.length,
+          `public accessibility scans must keep one stable document; an unexpected document reload can destroy axe's execution context (${documentNavigationUrls.join(", ")})`
+        ).toBe(1)
         // Surface the violation list in the test failure for fast triage.
         expect(blocking, JSON.stringify(blocking, null, 2)).toEqual([])
       })

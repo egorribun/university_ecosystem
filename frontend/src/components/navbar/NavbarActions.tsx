@@ -46,7 +46,12 @@ export const NavbarActions = ({ logic, morph }: NavbarActionsProps) => {
         <MessengerButton />
         <NotificationsBell />
         {isAuth && user && !loading ? (
-          <m.div
+          <m.button
+            type="button"
+            aria-label={profileTitle}
+            title={profileTitle}
+            className="flex size-11 items-center justify-center rounded-full border-none bg-transparent p-0"
+            onClick={() => go("/profile")}
             whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
             transition={prefersReducedMotion ? { duration: 0 } : springSoft}
           >
@@ -55,12 +60,11 @@ export const NavbarActions = ({ logic, morph }: NavbarActionsProps) => {
               fallback={avatarFallback}
               alt={profileAlt}
               title={profileTitle}
-              className="block cursor-pointer rounded-full border-2 border-brand/(--opacity-medium) shadow-sm object-cover shrink-0 w-8 h-8"
-              onClick={() => go("/profile")}
+              className="pointer-events-none block size-8 shrink-0 rounded-full border-2 border-brand/(--opacity-medium) object-cover"
             />
-          </m.div>
+          </m.button>
         ) : (
-          <div className="rounded-full shrink-0 bg-brand/(--opacity-soft) animate-pulse w-8 h-8" />
+          <div className="size-11 shrink-0 rounded-full bg-brand/(--opacity-soft) animate-pulse" />
         )}
         <button
           type="button"

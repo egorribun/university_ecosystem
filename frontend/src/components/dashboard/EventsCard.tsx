@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, useCallback, type CSSProperties, type KeyboardEvent } from "react"
+import { memo, useMemo, useState, type CSSProperties } from "react"
 
 import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
@@ -23,6 +23,12 @@ interface EventsCardProps {
   "data-pop"?: string
 }
 
+export function prepareOnKey(event: { key: string }, callback: () => void) {
+  if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+    callback()
+  }
+}
+
 export const EventsCard = memo(function EventsCard({
   className,
   style,
@@ -45,10 +51,7 @@ export const EventsCard = memo(function EventsCard({
   )
   const loadingEvents = dashboardEventsQuery.isLoading && events.length === 0
 
-  const warmEventsPage = () => import("../../pages/Events").catch(() => {})
-
   const prefetchEventsList = () => {
-    warmEventsPage()
     void prefetchDashboardEvents(queryClient)
     void prefetchEventsListQuery(queryClient, {
       language,
@@ -56,12 +59,6 @@ export const EventsCard = memo(function EventsCard({
       limit: EVENTS_PAGE_SIZE,
     })
   }
-
-  const prepareOnKey = useCallback((event: KeyboardEvent, callback: () => void) => {
-    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
-      callback()
-    }
-  }, [])
 
   const todayEvents = useMemo(() => {
     const from = new Date()
@@ -187,9 +184,11 @@ export const EventsCard = memo(function EventsCard({
           >
             <AnimatePresence mode="popLayout" initial={false}>
               {scopedEvents.map((e, idx) => {
+                const eventKey = `${eventsScope}-${e.id}`
                 return (
                   <m.li
-                    key={`${eventsScope}-${e.id}`}
+                    key={eventKey}
+                    data-event-key={eventKey}
                     initial={prefersReduced ? false : { opacity: 0, y: 8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={prefersReduced ? { opacity: 0 } : { opacity: 0, y: -4 }}
@@ -248,22 +247,6 @@ export const EventsCard = memo(function EventsCard({
           </ul>
         )}
       </div>
-
-      {/* Decorative orbs — visible accent glow (Wave 48: dash-orb-reactive) */}
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-hide dash-orb-reactive mix-blend-soft-light opacity-medium transition-opacity duration-slow motion-reduce:!animate-none"
-        style={{
-          background:
-            "radial-gradient(circle at top left, var(--dash-card-events-radial), transparent 70%)",
-          animation: "orb-sway 6.5s ease-in-out infinite",
-        }}
-      />
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-hide dash-orb-reactive opacity-dim bg-(--grad-events-flare) mix-blend-soft-light transition-opacity duration-slow motion-reduce:!animate-none"
-        style={{ animation: "orb-drift-alt 9s ease-in-out infinite" }}
-      />
     </Card>
   )
 })

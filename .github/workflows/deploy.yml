@@ -11,6 +11,37 @@ on:
         options:
           - staging
           - production
+      release-sha:
+        description: "Exact current main commit to deploy"
+        required: true
+        type: string
+      quality-run-id:
+        description: "Successful CI run that produced this SHA's quality evidence"
+        required: true
+        type: string
+      image-build-run-id:
+        description: "Successful canonical six-image producer workflow run ID"
+        required: true
+        type: string
+      image-build-run-attempt:
+        description: "Exact canonical image producer run attempt"
+        required: true
+        type: string
+      cwv-certification-run-id:
+        description: "Successful field-CWV certification run (required for production)"
+        required: false
+        default: ""
+        type: string
+      cwv-certification-run-attempt:
+        description: "Exact field-CWV certification run attempt (required for production)"
+        required: false
+        default: ""
+        type: string
+      rotate-mfa-keys:
+        description: "Reconcile ExternalSecret and restart MFA consumers"
+        required: true
+        default: false
+        type: boolean
       # TD-W10-09: skip_tests input removed. Pre-deployment tests are mandatory.
       # If the test suite is too slow, parallelise via matrix strategy.
       # Fast deploy ≠ safe deploy — a broken migration that reaches production
@@ -34,6 +65,7 @@ jobs:
     # controlled while later jobs hold registry/OIDC/deployment privileges.
     if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     services:
       postgres:
         image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
@@ -51,7 +83,80 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Verify trusted release checkout and quality run
+        id: quality-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          QUALITY_RUN_ID: ${{ inputs.quality-run-id }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$QUALITY_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
+          mkdir -p artifacts/quality
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$QUALITY_RUN_ID" > artifacts/quality/quality-run.json
+          test "$(jq -r .head_sha artifacts/quality/quality-run.json)" = "$RELEASE_SHA"
+          test "$(jq -r .conclusion artifacts/quality/quality-run.json)" = success
+          test "$(jq -r .event artifacts/quality/quality-run.json)" = push
+          test "$(jq -r .head_branch artifacts/quality/quality-run.json)" = main
+          test "$(jq -r .path artifacts/quality/quality-run.json)" = .github/workflows/ci.yml
+          run_attempt="$(jq -r .run_attempt artifacts/quality/quality-run.json)"
+          [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]]
+          echo "run-attempt=$run_attempt" >> "$GITHUB_OUTPUT"
+          gh api --paginate --slurp \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$QUALITY_RUN_ID/artifacts?per_page=100" \
+            > artifacts/quality/quality-artifact-pages.json
+          python scripts/quality/validate_release_artifact_evidence.py \
+            --pages artifacts/quality/quality-artifact-pages.json \
+            --expected-name "quality-evidence-$RELEASE_SHA"
+
+      - name: Clean quality evidence destinations
+        run: |
+          set -euo pipefail
+          rm -f -- coverage.xml
+          rm -rf -- frontend/coverage
+          rm -rf -- artifacts/coverage
+
+      - name: Download SHA-bound quality evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: quality-evidence-${{ inputs.release-sha }}
+          run-id: ${{ inputs.quality-run-id }}
+          github-token: ${{ github.token }}
+          path: .
+
+      - name: Validate SHA-bound quality evidence
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          QUALITY_RUN_ID: ${{ inputs.quality-run-id }}
+          QUALITY_RUN_ATTEMPT: ${{ steps.quality-run.outputs.run-attempt }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test -s artifacts/coverage/quality-manifest.json
+          test -s artifacts/coverage/quality-manifest.json.sha256
+          sha256sum --check artifacts/coverage/quality-manifest.json.sha256
+          python scripts/quality/validate_quality_contract.py \
+            --schema quality/coverage-manifest.schema.json \
+            --artifact-root "$GITHUB_WORKSPACE" \
+            --mutation-registry quality/mutation-exclusions.json \
+            --manifest artifacts/coverage/quality-manifest.json \
+            --expected-commit-sha "$RELEASE_SHA" \
+            --expected-workflow-run-id "$QUALITY_RUN_ID" \
+            --expected-workflow-run-attempt "$QUALITY_RUN_ATTEMPT" \
+            --expected-workflow-event push \
+            --expected-workflow-repository "$GITHUB_REPOSITORY" \
+            --expected-workflow-ref "$GITHUB_REPOSITORY/.github/workflows/ci.yml@refs/heads/main" \
+            --expected-workflow-job coverage-policy-gate
 
       - name: Setup Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -87,6 +192,7 @@ jobs:
   prepare:
     name: Prepare release metadata
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     needs: [validate]
     if: ${{ always() && needs.validate.result == 'success' }}
     outputs:
@@ -98,102 +204,125 @@ jobs:
       # Level 2 provenance requirements.
       - name: Generate version tag
         id: version
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
         run: |
-          VERSION="${GITHUB_SHA}"
+          VERSION="$RELEASE_SHA"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-  build-backend:
-    name: Build Backend
+  resolve-images:
+    name: Resolve canonical release images
     needs: [prepare]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
+      actions: read
+      attestations: read
       contents: read
-      packages: write  # Required: push Docker images to GHCR
-      id-token: write
-      attestations: write
-    uses: ./.github/workflows/reusable-build-and-sign.yml
-    with:
-      image_name: "backend"
-      file: "backend.Dockerfile"
-      tags: |
-        ghcr.io/${{ github.repository }}/backend:${{ needs.prepare.outputs.version }}
+      packages: read
+    outputs:
+      backend-digest: ${{ steps.manifest.outputs.backend-digest }}
+      caddy-digest: ${{ steps.manifest.outputs.caddy-digest }}
+      frontend-digest: ${{ steps.manifest.outputs.frontend-digest }}
+      ws-hub-digest: ${{ steps.manifest.outputs.ws-hub-digest }}
+      gateway-digest: ${{ steps.manifest.outputs.gateway-digest }}
+      file-processor-digest: ${{ steps.manifest.outputs.file-processor-digest }}
+      manifest-sha256: ${{ steps.manifest.outputs.manifest-sha256 }}
+    steps:
+      - name: Checkout trusted release source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          ref: ${{ github.sha }}
 
-  build-frontend:
-    name: Build Frontend
-    needs: [prepare]
-    permissions:
-      contents: read
-      packages: write  # Required: push Docker images to GHCR
-      id-token: write
-      attestations: write
-    uses: ./.github/workflows/reusable-build-and-sign.yml
-    with:
-      image_name: "frontend"
-      file: "frontend.Dockerfile"
-      tags: |
-        ghcr.io/${{ github.repository }}/frontend:${{ needs.prepare.outputs.version }}
+      - name: Verify canonical image producer run and artifact inventory
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          BUILD_RUN_ID: ${{ inputs.image-build-run-id }}
+          BUILD_RUN_ATTEMPT: ${{ inputs.image-build-run-attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$BUILD_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$BUILD_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
+          mkdir -p artifacts/release-images/provenance
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID" \
+            > artifacts/release-images/provenance/build-run.json
+          jq --exit-status \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg sha "$RELEASE_SHA" \
+            --argjson attempt "$BUILD_RUN_ATTEMPT" \
+            '.repository.full_name == $repository and .head_sha == $sha and
+             .run_attempt == $attempt and .conclusion == "success" and
+             .event == "workflow_dispatch" and .head_branch == "main" and
+             .path == ".github/workflows/build-release-images.yml"' \
+            artifacts/release-images/provenance/build-run.json >/dev/null
+          gh api --paginate --slurp \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID/artifacts?per_page=100" \
+            > artifacts/release-images/provenance/artifact-pages.json
+          python scripts/quality/validate_release_artifact_evidence.py \
+            --pages artifacts/release-images/provenance/artifact-pages.json \
+            --expected-name "release-image-provenance-$RELEASE_SHA-attempt-$BUILD_RUN_ATTEMPT"
 
-  build-ws-hub:
-    name: Build WS Hub
-    needs: [prepare]
-    permissions:
-      contents: read
-      packages: write  # Required: push Docker images to GHCR
-      id-token: write
-      attestations: write
-    uses: ./.github/workflows/reusable-build-and-sign.yml
-    with:
-      image_name: "ws-hub"
-      context: "."
-      file: "services/ws-hub/Dockerfile"
-      tags: |
-        ghcr.io/${{ github.repository }}/ws-hub:${{ needs.prepare.outputs.version }}
+      - name: Download exact canonical image manifest
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-image-provenance-${{ inputs.release-sha }}-attempt-${{ inputs.image-build-run-attempt }}
+          run-id: ${{ inputs.image-build-run-id }}
+          github-token: ${{ github.token }}
+          path: artifacts/release-images
 
-  build-gateway:
-    name: Build Gateway
-    needs: [prepare]
-    permissions:
-      contents: read
-      packages: write  # Required: push Docker images to GHCR
-      id-token: write
-      attestations: write
-    uses: ./.github/workflows/reusable-build-and-sign.yml
-    with:
-      image_name: "gateway"
-      context: "."
-      file: "services/gateway/Dockerfile"
-      tags: |
-        ghcr.io/${{ github.repository }}/gateway:${{ needs.prepare.outputs.version }}
+      - name: Verify attested canonical image manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        run: |
+          set -euo pipefail
+          gh attestation verify artifacts/release-images/release-image-manifest.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/build-release-images.yml" \
+            --source-digest "$RELEASE_SHA" \
+            --source-ref refs/heads/main \
+            --deny-self-hosted-runners > /dev/null
 
-  build-file-processor:
-    name: Build File Processor
-    needs: [prepare]
-    permissions:
-      contents: read
-      packages: write  # Required: push Docker images to GHCR
-      id-token: write
-      attestations: write
-    uses: ./.github/workflows/reusable-build-and-sign.yml
-    with:
-      image_name: "file-processor"
-      context: "."
-      file: "services/file-processor/Dockerfile"
-      tags: |
-        ghcr.io/${{ github.repository }}/file-processor:${{ needs.prepare.outputs.version }}
+      - name: Resolve exact image digests
+        id: manifest
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          BUILD_RUN_ID: ${{ inputs.image-build-run-id }}
+          BUILD_RUN_ATTEMPT: ${{ inputs.image-build-run-attempt }}
+          QUALITY_RUN_ID: ${{ inputs.quality-run-id }}
+        run: |
+          set -euo pipefail
+          python scripts/quality/verify_release_image_manifest.py \
+            --manifest artifacts/release-images/release-image-manifest.json \
+            --checksum artifacts/release-images/release-image-manifest.json.sha256 \
+            --repository "$GITHUB_REPOSITORY" \
+            --source-sha "$RELEASE_SHA" \
+            --build-run-id "$BUILD_RUN_ID" \
+            --build-run-attempt "$BUILD_RUN_ATTEMPT" \
+            --quality-run-id "$QUALITY_RUN_ID" \
+            --github-output "$GITHUB_OUTPUT"
 
   deploy:
     name: Deploy to ${{ inputs.environment }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 120
     needs:
       [
         prepare,
-        build-backend,
-        build-frontend,
-        build-ws-hub,
-        build-gateway,
-        build-file-processor,
+        resolve-images,
       ]
     permissions:
       contents: read
+      actions: read  # Verify and download exact field-CWV evidence for production.
       deployments: write  # Required: create and update GitHub deployment status records
       id-token: write  # Required: request JWT via OIDC for cloud provider authentication
     environment:
@@ -202,7 +331,111 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Verify trusted release checkout
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
+
+      - name: Verify production field certification run
+        if: ${{ inputs.environment == 'production' }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.frontend-digest }}
+          CERTIFICATION_RUN_ID: ${{ inputs.cwv-certification-run-id }}
+          CERTIFICATION_RUN_ATTEMPT: ${{ inputs.cwv-certification-run-attempt }}
+        run: |
+          set -euo pipefail
+          [[ "$CERTIFICATION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$CERTIFICATION_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          mkdir -p artifacts/cwv/production-provenance
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CERTIFICATION_RUN_ID" \
+            > artifacts/cwv/production-provenance/certification-run.json
+          jq --exit-status \
+            --arg sha "$RELEASE_SHA" \
+            --argjson attempt "$CERTIFICATION_RUN_ATTEMPT" \
+            '.head_sha == $sha and .conclusion == "success" and
+             .run_attempt == $attempt and
+             .event == "workflow_dispatch" and .head_branch == "main" and
+             .path == ".github/workflows/cwv-field-certification.yml"' \
+            artifacts/cwv/production-provenance/certification-run.json >/dev/null
+          gh api --paginate --slurp \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$CERTIFICATION_RUN_ID/artifacts?per_page=100" \
+            > artifacts/cwv/production-provenance/certification-artifact-pages.json
+          python scripts/quality/validate_release_artifact_evidence.py \
+            --pages artifacts/cwv/production-provenance/certification-artifact-pages.json \
+            --expected-name "cwv-field-certificate-$RELEASE_SHA-attempt-$CERTIFICATION_RUN_ATTEMPT"
+          test -n "$FRONTEND_IMAGE_DIGEST"
+
+      - name: Download production field certification
+        if: ${{ inputs.environment == 'production' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: cwv-field-certificate-${{ inputs.release-sha }}-attempt-${{ inputs.cwv-certification-run-attempt }}
+          run-id: ${{ inputs.cwv-certification-run-id }}
+          github-token: ${{ github.token }}
+          path: artifacts/cwv/production-certificate
+
+      - name: Validate production field certification
+        if: ${{ inputs.environment == 'production' }}
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.frontend-digest }}
+          IMAGE_MANIFEST_SHA256: ${{ needs.resolve-images.outputs.manifest-sha256 }}
+          IMAGE_BUILD_RUN_ID: ${{ inputs.image-build-run-id }}
+          IMAGE_BUILD_RUN_ATTEMPT: ${{ inputs.image-build-run-attempt }}
+        run: |
+          set -euo pipefail
+          cd artifacts/cwv/production-certificate/certificate
+          test -s field-verdict.json
+          test -s field-verdict.json.sha256
+          sha256sum --check field-verdict.json.sha256
+          jq --exit-status \
+            --arg sha "$RELEASE_SHA" \
+            --arg digest "$FRONTEND_IMAGE_DIGEST" \
+            --arg manifest_sha256 "$IMAGE_MANIFEST_SHA256" \
+            --argjson build_run_id "$IMAGE_BUILD_RUN_ID" \
+            --argjson build_run_attempt "$IMAGE_BUILD_RUN_ATTEMPT" \
+            '.schema_version == 2 and .valid == true and
+             .environment == "staging" and .release_sha == $sha and
+             .frontend_image_digest == $digest and
+             .image_manifest_sha256 == $manifest_sha256 and
+             .image_build_run_id == $build_run_id and
+             .image_build_run_attempt == $build_run_attempt' \
+            field-verdict.json >/dev/null
+          test -s ../deployment/staging-deployment.json
+          test -s ../deployment/staging-deployment.json.sha256
+          (cd ../deployment && sha256sum --check staging-deployment.json.sha256)
+          jq --exit-status \
+            --arg sha "$RELEASE_SHA" \
+            --arg digest "$FRONTEND_IMAGE_DIGEST" \
+            --arg manifest_sha256 "$IMAGE_MANIFEST_SHA256" \
+            --argjson build_run_id "$IMAGE_BUILD_RUN_ID" \
+            --argjson build_run_attempt "$IMAGE_BUILD_RUN_ATTEMPT" \
+            '.schema_version == 2 and .environment == "staging" and
+             .release_sha == $sha and .frontend_image_digest == $digest and
+             .image_manifest_sha256 == $manifest_sha256 and
+             .image_build_run_id == $build_run_id and
+             .image_build_run_attempt == $build_run_attempt' \
+            ../deployment/staging-deployment.json >/dev/null
+          generated_epoch="$(date -u -d "$(jq -r '.generated_at' field-verdict.json)" +%s)"
+          current_epoch="$(date -u +%s)"
+          test "$generated_epoch" -le "$current_epoch"
+          test "$((current_epoch - generated_epoch))" -le 259200
 
       - name: Validate deployment contract
         shell: bash
@@ -215,31 +448,58 @@ jobs:
           HELM_VALUES_FILE: ${{ vars.HELM_VALUES_FILE }}
           CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
           APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
-          WS_HUB_DEPLOYMENT_NAME: ${{ vars.WS_HUB_DEPLOYMENT_NAME }}
-          WS_HUB_CONTAINER_NAME: ${{ vars.WS_HUB_CONTAINER_NAME }}
+          APPLICATION_EXTERNAL_SECRET_NAME: ${{ vars.APPLICATION_EXTERNAL_SECRET_NAME }}
+          ROTATE_MFA_KEYS: ${{ inputs.rotate-mfa-keys }}
+          MFA_OVERLAP_SMOKE_SCRIPT: ${{ vars.MFA_OVERLAP_SMOKE_SCRIPT }}
+          MFA_SMOKE_BASE_URL: ${{ vars.MFA_SMOKE_BASE_URL }}
+          MFA_SMOKE_MAILBOX_URL: ${{ vars.MFA_SMOKE_MAILBOX_URL }}
+          MFA_SMOKE_EMAIL: ${{ secrets.MFA_SMOKE_EMAIL }}
+          MFA_SMOKE_PASSWORD: ${{ secrets.MFA_SMOKE_PASSWORD }}
+          MFA_SMOKE_MAILBOX_TOKEN: ${{ secrets.MFA_SMOKE_MAILBOX_TOKEN }}
           DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
+          CWV_EXPORT_OIDC_SUBJECT: ${{ vars.CWV_EXPORT_OIDC_SUBJECT }}
+          FRONTEND_HOST: ${{ vars.FRONTEND_HOST }}
+          API_HOST: ${{ vars.API_HOST }}
+          TLS_SECRET_NAME: ${{ vars.TLS_SECRET_NAME }}
+          CERT_MANAGER_ISSUER_NAME: ${{ vars.CERT_MANAGER_ISSUER_NAME }}
+          ELASTICSEARCH_URL: ${{ vars.ELASTICSEARCH_URL }}
+          FLAGD_HOST: ${{ vars.FLAGD_HOST }}
+          OTLP_ENDPOINT: ${{ vars.OTLP_ENDPOINT }}
+          MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}
+          TEMPORAL_HOST: ${{ vars.TEMPORAL_HOST }}
           GATEWAY_HEALTH_URL: ${{ vars.GATEWAY_HEALTH_URL }}
           WS_HUB_HEALTH_URL: ${{ vars.WS_HUB_HEALTH_URL }}
           BACKEND_HEALTH_URL: ${{ vars.BACKEND_HEALTH_URL }}
           FRONTEND_HEALTH_URL: ${{ vars.FRONTEND_HEALTH_URL }}
           DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
-          BACKEND_IMAGE_DIGEST: ${{ needs.build-backend.outputs.digest }}
-          FRONTEND_IMAGE_DIGEST: ${{ needs.build-frontend.outputs.digest }}
-          WS_HUB_IMAGE_DIGEST: ${{ needs.build-ws-hub.outputs.digest }}
-          GATEWAY_IMAGE_DIGEST: ${{ needs.build-gateway.outputs.digest }}
-          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.build-file-processor.outputs.digest }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.frontend-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.ws-hub-digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.gateway-digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.file-processor-digest }}
+          CADDY_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.caddy-digest }}
+          IMAGE_MANIFEST_SHA256: ${{ needs.resolve-images.outputs.manifest-sha256 }}
+          REDIS_IMAGE_DIGEST: ${{ vars.REDIS_IMAGE_DIGEST }}
+          REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REDIS_METRICS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+          NATS_IMAGE_DIGEST: ${{ vars.NATS_IMAGE_DIGEST }}
         run: |
           set -euo pipefail
 
           required=(
             OIDC_DEPLOY_ROLE_ARN AWS_REGION EKS_CLUSTER_NAME K8S_NAMESPACE
             HELM_RELEASE_NAME HELM_VALUES_FILE CONNECTIONS_SECRET_NAME
-            APPLICATION_SECRETS_NAME WS_HUB_DEPLOYMENT_NAME
-            WS_HUB_CONTAINER_NAME DEPLOYMENT_URL GATEWAY_HEALTH_URL
+            APPLICATION_SECRETS_NAME APPLICATION_EXTERNAL_SECRET_NAME
+            DEPLOYMENT_URL CWV_EXPORT_OIDC_SUBJECT FRONTEND_HOST API_HOST
+            TLS_SECRET_NAME CERT_MANAGER_ISSUER_NAME ELASTICSEARCH_URL FLAGD_HOST
+            OTLP_ENDPOINT MINIO_ENDPOINT TEMPORAL_HOST GATEWAY_HEALTH_URL
             WS_HUB_HEALTH_URL BACKEND_HEALTH_URL FRONTEND_HEALTH_URL
             DEPLOY_VERSION BACKEND_IMAGE_DIGEST FRONTEND_IMAGE_DIGEST
-            WS_HUB_IMAGE_DIGEST GATEWAY_IMAGE_DIGEST
-            FILE_PROCESSOR_IMAGE_DIGEST
+            WS_HUB_IMAGE_DIGEST GATEWAY_IMAGE_DIGEST CADDY_IMAGE_DIGEST
+            FILE_PROCESSOR_IMAGE_DIGEST IMAGE_MANIFEST_SHA256 REDIS_IMAGE_DIGEST
+            REDIS_METRICS_IMAGE_DIGEST REVOCATION_REDIS_IMAGE_DIGEST
+            REVOCATION_REDIS_METRICS_IMAGE_DIGEST NATS_IMAGE_DIGEST
           )
           for name in "${required[@]}"; do
             if [[ -z "${!name:-}" ]]; then
@@ -247,6 +507,27 @@ jobs:
               exit 1
             fi
           done
+
+          if [[ "$ROTATE_MFA_KEYS" == "true" ]]; then
+            rotation_required=(
+              MFA_OVERLAP_SMOKE_SCRIPT MFA_SMOKE_BASE_URL MFA_SMOKE_MAILBOX_URL
+              MFA_SMOKE_EMAIL MFA_SMOKE_PASSWORD MFA_SMOKE_MAILBOX_TOKEN
+            )
+            for name in "${rotation_required[@]}"; do
+              if [[ -z "${!name:-}" ]]; then
+                echo "::error::Required MFA rotation setting '$name' is not configured for the selected GitHub Environment."
+                exit 1
+              fi
+            done
+            for name in MFA_SMOKE_BASE_URL MFA_SMOKE_MAILBOX_URL; do
+              if [[ ! "${!name}" =~ ^https://[^[:space:]]+$ ]]; then
+                echo "::error::$name must be a non-empty HTTPS URL."
+                exit 1
+              fi
+            done
+            python3 .github/scripts/validate_mfa_smoke_path.py \
+              "$MFA_OVERLAP_SMOKE_SCRIPT" >/dev/null
+          fi
 
           if [[ ! "$AWS_REGION" =~ ^[a-z]{2}(-gov)?-[a-z]+-[0-9]+$ ]]; then
             echo "::error::AWS_REGION is not a valid AWS region identifier."
@@ -256,7 +537,7 @@ jobs:
             echo "::error::EKS_CLUSTER_NAME is not a valid EKS cluster name."
             exit 1
           fi
-          for name in K8S_NAMESPACE HELM_RELEASE_NAME CONNECTIONS_SECRET_NAME APPLICATION_SECRETS_NAME WS_HUB_DEPLOYMENT_NAME WS_HUB_CONTAINER_NAME; do
+          for name in K8S_NAMESPACE HELM_RELEASE_NAME CONNECTIONS_SECRET_NAME APPLICATION_SECRETS_NAME APPLICATION_EXTERNAL_SECRET_NAME TLS_SECRET_NAME CERT_MANAGER_ISSUER_NAME; do
             value="${!name}"
             if [[ "${#value}" -gt 63 || ! "$value" =~ ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$ ]]; then
               echo "::error::$name must be a lowercase Kubernetes DNS label."
@@ -267,15 +548,36 @@ jobs:
             echo "::error::DEPLOY_VERSION must be the immutable 40-character commit SHA."
             exit 1
           fi
-          for name in BACKEND_IMAGE_DIGEST FRONTEND_IMAGE_DIGEST WS_HUB_IMAGE_DIGEST GATEWAY_IMAGE_DIGEST FILE_PROCESSOR_IMAGE_DIGEST; do
+          for name in BACKEND_IMAGE_DIGEST FRONTEND_IMAGE_DIGEST WS_HUB_IMAGE_DIGEST GATEWAY_IMAGE_DIGEST FILE_PROCESSOR_IMAGE_DIGEST CADDY_IMAGE_DIGEST REDIS_IMAGE_DIGEST REDIS_METRICS_IMAGE_DIGEST REVOCATION_REDIS_IMAGE_DIGEST REVOCATION_REDIS_METRICS_IMAGE_DIGEST NATS_IMAGE_DIGEST; do
             if [[ ! "${!name}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
               echo "::error::$name is not an immutable sha256 image digest."
               exit 1
             fi
           done
+          [[ "$IMAGE_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]]
           for name in DEPLOYMENT_URL GATEWAY_HEALTH_URL WS_HUB_HEALTH_URL BACKEND_HEALTH_URL FRONTEND_HEALTH_URL; do
             if [[ ! "${!name}" =~ ^https://[^[:space:]]+$ ]]; then
               echo "::error::$name must be a non-empty HTTPS URL."
+              exit 1
+            fi
+          done
+          for name in FRONTEND_HOST API_HOST FLAGD_HOST; do
+            if [[ ! "${!name}" =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]]; then
+              echo "::error::$name must be a valid DNS host name."
+              exit 1
+            fi
+          done
+          if [[ "$DEPLOYMENT_URL" != "https://$FRONTEND_HOST" ]]; then
+            echo "::error::DEPLOYMENT_URL must exactly match the HTTPS frontend host."
+            exit 1
+          fi
+          if [[ ! "$ELASTICSEARCH_URL" =~ ^https://[^[:space:]]+$ ]]; then
+            echo "::error::ELASTICSEARCH_URL must be a non-empty HTTPS URL."
+            exit 1
+          fi
+          for name in OTLP_ENDPOINT MINIO_ENDPOINT TEMPORAL_HOST; do
+            if [[ ! "${!name}" =~ ^[^[:space:]:]+:[0-9]{1,5}$ ]]; then
+              echo "::error::$name must be a host:port endpoint."
               exit 1
             fi
           done
@@ -329,17 +631,595 @@ jobs:
           kubectl cluster-info
 
           if ! kubectl get namespace "$K8S_NAMESPACE" >/dev/null 2>&1; then
+            kubectl auth can-i create namespaces | grep -Fxq yes
             kubectl create namespace "$K8S_NAMESPACE"
           fi
+          kubectl label namespace "$K8S_NAMESPACE" \
+            pod-security.kubernetes.io/enforce=restricted \
+            pod-security.kubernetes.io/audit=restricted \
+            pod-security.kubernetes.io/warn=restricted \
+            --overwrite
+          for mode in enforce audit warn; do
+            test "$(kubectl get namespace "$K8S_NAMESPACE" \
+              --output "jsonpath={.metadata.labels.pod-security\\.kubernetes\\.io/${mode}}")" = restricted
+          done
           kubectl auth can-i get deployments --namespace "$K8S_NAMESPACE" | grep -Fxq yes
-          kubectl auth can-i create secrets --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+          kubectl auth can-i list deployments --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+          kubectl auth can-i watch deployments --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+          kubectl auth can-i patch deployments --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+          for resource in statefulsets pods endpointslices.discovery.k8s.io; do
+            for verb in get list watch; do
+              kubectl auth can-i "$verb" "$resource" --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+            done
+          done
+          kubectl auth can-i get configmaps --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+          helm_secret_verbs=(get list watch create update patch delete)
+          for verb in "${helm_secret_verbs[@]}"; do
+            kubectl auth can-i "$verb" secrets --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+          done
+          kubectl auth can-i get externalsecrets.external-secrets.io --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+          kubectl auth can-i patch externalsecrets.external-secrets.io --namespace "$K8S_NAMESPACE" | grep -Fxq yes
 
-      - name: Verify externally managed Kubernetes secrets
+      - name: Build Helm dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          chart="charts/university-ecosystem"
+          test -s "$chart/Chart.lock"
+          lock_digest_before="$(sha256sum "$chart/Chart.lock" | awk '{print $1}')"
+          for attempt in 1 2 3; do
+            if helm dependency build --skip-refresh "$chart"; then
+              break
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "Helm dependency build failed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
+          lock_digest_after="$(sha256sum "$chart/Chart.lock" | awk '{print $1}')"
+          test "$lock_digest_after" = "$lock_digest_before"
+          git diff --exit-code -- "$chart/Chart.yaml" "$chart/Chart.lock"
+          dependency_status="$(helm dependency list "$chart")"
+          actual_dependencies="$(awk 'NR > 1 && NF {print $1 "|" $3 "|" $4}' <<< "$dependency_status")"
+          expected_dependencies=$'redis|oci://registry-1.docker.io/bitnamicharts|ok\nnats|oci://registry-1.docker.io/bitnamicharts|ok'
+          if [[ "$actual_dependencies" != "$expected_dependencies" ]]; then
+            echo "::error::Helm dependencies do not match the reviewed Chart.lock contract."
+            printf '%s\n' "$dependency_status" >&2
+            exit 1
+          fi
+
+      - name: Verify vendored revocation-store dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash .github/scripts/deploy-revocation-store.sh verify-vendor
+
+      - name: Verify rendered Helm resource RBAC
+        shell: bash
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          HELM_VALUES_FILE: ${{ vars.HELM_VALUES_FILE }}
+          CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
+          APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.frontend-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.ws-hub-digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.gateway-digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.file-processor-digest }}
+          DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
+          DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
+          CWV_EXPORT_OIDC_SUBJECT: ${{ vars.CWV_EXPORT_OIDC_SUBJECT }}
+          FRONTEND_HOST: ${{ vars.FRONTEND_HOST }}
+          API_HOST: ${{ vars.API_HOST }}
+          TLS_SECRET_NAME: ${{ vars.TLS_SECRET_NAME }}
+          CERT_MANAGER_ISSUER_NAME: ${{ vars.CERT_MANAGER_ISSUER_NAME }}
+          ELASTICSEARCH_URL: ${{ vars.ELASTICSEARCH_URL }}
+          FLAGD_HOST: ${{ vars.FLAGD_HOST }}
+          OTLP_ENDPOINT: ${{ vars.OTLP_ENDPOINT }}
+          MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}
+          TEMPORAL_HOST: ${{ vars.TEMPORAL_HOST }}
+          REDIS_IMAGE_DIGEST: ${{ vars.REDIS_IMAGE_DIGEST }}
+          REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REDIS_METRICS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+          NATS_IMAGE_DIGEST: ${{ vars.NATS_IMAGE_DIGEST }}
+        run: |
+          set -euo pipefail
+          rendered="$(mktemp "$RUNNER_TEMP/rendered-release.XXXXXX.yaml")"
+          trap 'rm -f -- "$rendered"' EXIT
+          bash .github/scripts/deploy-helm.sh render > "$rendered"
+          mapfile -t rendered_resources < <(
+            kubectl create --dry-run=client --validate=false \
+              --filename "$rendered" --output name | cut -d/ -f1 | sort -u
+          )
+          if [[ "${#rendered_resources[@]}" -eq 0 ]]; then
+            echo "::error::The selected Helm values rendered no Kubernetes resources."
+            exit 1
+          fi
+          rendered_resource_verbs=(get list watch create update patch delete)
+          for resource in "${rendered_resources[@]}"; do
+            if [[ ! "$resource" =~ ^[a-z0-9.-]+$ ]]; then
+              echo "::error::Rendered an invalid Kubernetes resource identity."
+              exit 1
+            fi
+            for verb in "${rendered_resource_verbs[@]}"; do
+              kubectl auth can-i "$verb" "$resource" \
+                --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+            done
+          done
+
+      - name: Capture pre-rotation MFA key metadata
+        if: ${{ inputs.rotate-mfa-keys }}
+        shell: bash
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          HELM_VALUES_FILE: ${{ vars.HELM_VALUES_FILE }}
+          CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
+          APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.frontend-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.ws-hub-digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.gateway-digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.file-processor-digest }}
+          DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
+          DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
+          CWV_EXPORT_OIDC_SUBJECT: ${{ vars.CWV_EXPORT_OIDC_SUBJECT }}
+          FRONTEND_HOST: ${{ vars.FRONTEND_HOST }}
+          API_HOST: ${{ vars.API_HOST }}
+          TLS_SECRET_NAME: ${{ vars.TLS_SECRET_NAME }}
+          CERT_MANAGER_ISSUER_NAME: ${{ vars.CERT_MANAGER_ISSUER_NAME }}
+          ELASTICSEARCH_URL: ${{ vars.ELASTICSEARCH_URL }}
+          FLAGD_HOST: ${{ vars.FLAGD_HOST }}
+          OTLP_ENDPOINT: ${{ vars.OTLP_ENDPOINT }}
+          MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}
+          TEMPORAL_HOST: ${{ vars.TEMPORAL_HOST }}
+          REDIS_IMAGE_DIGEST: ${{ vars.REDIS_IMAGE_DIGEST }}
+          REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REDIS_METRICS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+          NATS_IMAGE_DIGEST: ${{ vars.NATS_IMAGE_DIGEST }}
+          MFA_SMOKE_STATE_DIR: ${{ runner.temp }}/mfa-overlap-smoke
+        run: |
+          set -euo pipefail
+          umask 077
+          contract="$(bash .github/scripts/deploy-helm.sh render-secret-contract)"
+          contract_literal() {
+            local key="$1"
+            local values
+            values="$(sed -n "s/^[[:space:]]*${key}: //p" <<< "$contract")"
+            if [[ "$(wc -l <<< "$values")" -ne 1 || -z "$values" ]]; then
+              echo "::error::Rendered deployment contract has no unique '$key'."
+              exit 1
+            fi
+            printf '%s' "$values"
+          }
+          application_secret_name="$(contract_literal application-secret-name | jq --raw-output '.')"
+          if [[ "$application_secret_name" != "$APPLICATION_SECRETS_NAME" ]]; then
+            echo "::error::Rendered application Secret name does not match the selected environment."
+            exit 1
+          fi
+          contract_file="$(mktemp "$RUNNER_TEMP/mfa-key-contract.XXXXXX.json")"
+          trap 'rm -f -- "$contract_file"' EXIT
+          contract_literal mfa-key-contract.json | jq --raw-output '.' > "$contract_file"
+          kubectl get secret "$APPLICATION_SECRETS_NAME" \
+            --namespace "$K8S_NAMESPACE" --output json | \
+            python3 .github/scripts/verify_mfa_key_rotation.py capture-pre \
+              --state-dir "$MFA_SMOKE_STATE_DIR" \
+              --contract-file "$contract_file" \
+              --expected-secret-name "$APPLICATION_SECRETS_NAME"
+          mv -- "$contract_file" "$MFA_SMOKE_STATE_DIR/mfa-key-contract.json"
+
+      - name: Prepare queued MFA overlap challenge
+        if: ${{ inputs.rotate-mfa-keys }}
         shell: bash
         env:
           K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          MFA_OVERLAP_SMOKE_SCRIPT: ${{ vars.MFA_OVERLAP_SMOKE_SCRIPT }}
+          MFA_SMOKE_BASE_URL: ${{ vars.MFA_SMOKE_BASE_URL }}
+          MFA_SMOKE_MAILBOX_URL: ${{ vars.MFA_SMOKE_MAILBOX_URL }}
+          MFA_SMOKE_EMAIL: ${{ secrets.MFA_SMOKE_EMAIL }}
+          MFA_SMOKE_PASSWORD: ${{ secrets.MFA_SMOKE_PASSWORD }}
+          MFA_SMOKE_MAILBOX_TOKEN: ${{ secrets.MFA_SMOKE_MAILBOX_TOKEN }}
+          MFA_SMOKE_STATE_DIR: ${{ runner.temp }}/mfa-overlap-smoke
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          smoke_script="$(python3 .github/scripts/validate_mfa_smoke_path.py \
+            "$MFA_OVERLAP_SMOKE_SCRIPT")"
+          state_dir="$MFA_SMOKE_STATE_DIR"
+          if [[ ! -d "$state_dir" || \
+                ! -s "$state_dir/pre-key-metadata.json" || \
+                ! -s "$state_dir/mfa-key-contract.json" || \
+                -e "$state_dir/old-challenge.json" ]]; then
+            echo "::error::Prepared MFA key metadata is missing or stale."
+            exit 1
+          fi
+          chmod 700 "$state_dir"
+
+          selector="app.kubernetes.io/instance=$HELM_RELEASE_NAME,app.kubernetes.io/component=outbox-worker"
+          deployments="$(kubectl get deployments --namespace "$K8S_NAMESPACE" \
+            --selector "$selector" --output json)"
+          deployment_name="$(jq --raw-output \
+            'if (.items | length) == 1 then .items[0].metadata.name else empty end' \
+            <<< "$deployments")"
+          replicas="$(jq --raw-output \
+            'if (.items | length) == 1 then (.items[0].spec.replicas // 1) else empty end' \
+            <<< "$deployments")"
+          if [[ -z "$deployment_name" || ! "$replicas" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::Expected exactly one running outbox-worker Deployment."
+            exit 1
+          fi
+          printf '%s' "$deployment_name" > "$state_dir/outbox-deployment"
+          printf '%s' "$replicas" > "$state_dir/outbox-replicas"
+
+          restore_on_error() {
+            kubectl scale "deployment/$deployment_name" --namespace "$K8S_NAMESPACE" \
+              --replicas="$replicas" >/dev/null || true
+          }
+          trap restore_on_error ERR
+          kubectl scale "deployment/$deployment_name" --namespace "$K8S_NAMESPACE" \
+            --replicas=0
+          kubectl rollout status "deployment/$deployment_name" \
+            --namespace "$K8S_NAMESPACE" --timeout=5m
+          bash "$smoke_script" prepare
+          trap - ERR
+
+      - name: Reconcile application ExternalSecret
+        id: mfa_secret_reconcile
+        if: ${{ inputs.rotate-mfa-keys }}
+        timeout-minutes: 2
+        shell: bash
+        env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
+          APPLICATION_EXTERNAL_SECRET_NAME: ${{ vars.APPLICATION_EXTERNAL_SECRET_NAME }}
+        run: |
+          set -euo pipefail
+          external_secret_json="$(kubectl get externalsecret "$APPLICATION_EXTERNAL_SECRET_NAME" \
+            --namespace "$K8S_NAMESPACE" --output json)"
+          target_name="$(jq --raw-output '.spec.target.name // empty' \
+            <<< "$external_secret_json")"
+          if [[ "$target_name" != "$APPLICATION_SECRETS_NAME" ]]; then
+            echo "::error::ExternalSecret target '$target_name' does not match APPLICATION_SECRETS_NAME."
+            exit 1
+          fi
+          previous_refresh_time="$(jq --raw-output '.status.refreshTime // empty' \
+            <<< "$external_secret_json")"
+          previous_resource_version="$(kubectl get secret "$APPLICATION_SECRETS_NAME" \
+            --namespace "$K8S_NAMESPACE" --output json 2>/dev/null | \
+            jq --raw-output '.metadata.resourceVersion // empty' || true)"
+
+          kubectl annotate externalsecret "$APPLICATION_EXTERNAL_SECRET_NAME" \
+            --namespace "$K8S_NAMESPACE" \
+            force-sync="$(date +%s%N)" --overwrite
+
+          condition_type="Ready"
+          deadline=$((SECONDS + 90))
+          while (( SECONDS < deadline )); do
+            external_secret_json="$(kubectl get externalsecret \
+              "$APPLICATION_EXTERNAL_SECRET_NAME" --namespace "$K8S_NAMESPACE" \
+              --output json)"
+            ready="$(jq --arg condition_type "$condition_type" \
+              'any(.status.conditions[]?;
+                .type == $condition_type and .status == "True")' \
+              <<< "$external_secret_json")"
+            new_refresh_time="$(jq --raw-output '.status.refreshTime // empty' \
+              <<< "$external_secret_json")"
+            new_resource_version="$(kubectl get secret "$APPLICATION_SECRETS_NAME" \
+              --namespace "$K8S_NAMESPACE" --output json 2>/dev/null | \
+              jq --raw-output '.metadata.resourceVersion // empty' || true)"
+            if [[ "$ready" == "true" && -n "$new_refresh_time" && \
+                  "$new_refresh_time" != "$previous_refresh_time" && \
+                  -n "$new_resource_version" && \
+                  "$new_resource_version" != "$previous_resource_version" ]]; then
+              break
+            fi
+            sleep 5
+          done
+          if [[ "${ready:-false}" != "true" || -z "${new_refresh_time:-}" || \
+                "$new_refresh_time" == "$previous_refresh_time" || \
+                -z "${new_resource_version:-}" || \
+                "$new_resource_version" == "$previous_resource_version" ]]; then
+            echo "::error::ExternalSecret did not publish a fresh Ready Secret within 90 seconds."
+            exit 1
+          fi
+
+      - name: Verify rotated MFA key metadata
+        id: mfa_key_metadata
+        if: ${{ inputs.rotate-mfa-keys }}
+        timeout-minutes: 1
+        shell: bash
+        env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
+          MFA_SMOKE_STATE_DIR: ${{ runner.temp }}/mfa-overlap-smoke
+        run: |
+          set -euo pipefail
+          kubectl get secret "$APPLICATION_SECRETS_NAME" \
+            --namespace "$K8S_NAMESPACE" --output json | \
+            python3 .github/scripts/verify_mfa_key_rotation.py verify-post \
+              --state-dir "$MFA_SMOKE_STATE_DIR" \
+              --contract-file "$MFA_SMOKE_STATE_DIR/mfa-key-contract.json" \
+              --expected-secret-name "$APPLICATION_SECRETS_NAME"
+
+      - name: Restore outbox after MFA Secret reconciliation
+        if: ${{ always() && inputs.rotate-mfa-keys }}
+        shell: bash
+        env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          MFA_SMOKE_STATE_DIR: ${{ runner.temp }}/mfa-overlap-smoke
+          RECONCILE_OUTCOME: ${{ steps.mfa_secret_reconcile.outcome }}
+          ROTATION_METADATA_OUTCOME: ${{ steps.mfa_key_metadata.outcome }}
+        run: |
+          set -euo pipefail
+          deployment_file="$MFA_SMOKE_STATE_DIR/outbox-deployment"
+          replicas_file="$MFA_SMOKE_STATE_DIR/outbox-replicas"
+          if [[ ! -s "$deployment_file" || ! -s "$replicas_file" ]]; then
+            exit 0
+          fi
+          deployment_name="$(<"$deployment_file")"
+          replicas="$(<"$replicas_file")"
+          [[ "$replicas" =~ ^[1-9][0-9]*$ ]]
+          kubectl scale "deployment/$deployment_name" --namespace "$K8S_NAMESPACE" \
+            --replicas="$replicas"
+          if [[ "$RECONCILE_OUTCOME" != "success" || \
+                "$ROTATION_METADATA_OUTCOME" != "success" ]]; then
+            kubectl rollout status "deployment/$deployment_name" \
+              --namespace "$K8S_NAMESPACE" --timeout=3m
+          fi
+
+      - name: Load rotated MFA Secret into consumers
+        if: ${{ inputs.rotate-mfa-keys }}
+        timeout-minutes: 2
+        shell: bash
+        env:
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+        run: |
+          set -euo pipefail
+          resolve_component() {
+            local component="$1"
+            local selector="app.kubernetes.io/instance=$HELM_RELEASE_NAME,app.kubernetes.io/component=$component"
+            local deployments
+            deployments="$(kubectl get deployments --namespace "$K8S_NAMESPACE" \
+              --selector "$selector" --output json)"
+            jq --exit-status --raw-output \
+              'if (.items | length) == 1 then .items[0].metadata.name else empty end' \
+              <<< "$deployments"
+          }
+          verify_available() {
+            local component="$1"
+            local deployment_name="$2"
+            local deployment
+            deployment="$(kubectl get "deployment/$deployment_name" \
+              --namespace "$K8S_NAMESPACE" --output json)"
+            desired_replicas="$(jq '.spec.replicas // 1' <<< "$deployment")"
+            availableReplicas="$(jq '.status.availableReplicas // 0' <<< "$deployment")"
+            if [[ "$availableReplicas" -ne "$desired_replicas" ]]; then
+              echo "::error::$component has $availableReplicas/$desired_replicas available replicas."
+              exit 1
+            fi
+          }
+
+          backend_deployment="$(resolve_component backend)"
+          outbox_deployment="$(resolve_component outbox-worker)"
+          kubectl rollout restart "deployment/$backend_deployment" \
+            --namespace "$K8S_NAMESPACE"
+          kubectl rollout status "deployment/$backend_deployment" \
+            --namespace "$K8S_NAMESPACE" --timeout=90s &
+          backend_rollout_pid=$!
+          kubectl rollout status "deployment/$outbox_deployment" \
+            --namespace "$K8S_NAMESPACE" --timeout=90s &
+          outbox_rollout_pid=$!
+          rollout_failed=0
+          wait "$backend_rollout_pid" || rollout_failed=1
+          wait "$outbox_rollout_pid" || rollout_failed=1
+          if [[ "$rollout_failed" -ne 0 ]]; then
+            echo "::error::MFA consumers did not load the rotated Secret within 90 seconds."
+            exit 1
+          fi
+          verify_available backend "$backend_deployment"
+          verify_available outbox-worker "$outbox_deployment"
+
+      - name: Verify old MFA key-overlap behavior
+        if: ${{ inputs.rotate-mfa-keys }}
+        timeout-minutes: 4
+        shell: bash
+        env:
+          MFA_OVERLAP_SMOKE_SCRIPT: ${{ vars.MFA_OVERLAP_SMOKE_SCRIPT }}
+          MFA_SMOKE_BASE_URL: ${{ vars.MFA_SMOKE_BASE_URL }}
+          MFA_SMOKE_MAILBOX_URL: ${{ vars.MFA_SMOKE_MAILBOX_URL }}
+          MFA_SMOKE_EMAIL: ${{ secrets.MFA_SMOKE_EMAIL }}
+          MFA_SMOKE_PASSWORD: ${{ secrets.MFA_SMOKE_PASSWORD }}
+          MFA_SMOKE_MAILBOX_TOKEN: ${{ secrets.MFA_SMOKE_MAILBOX_TOKEN }}
+          MFA_SMOKE_STATE_DIR: ${{ runner.temp }}/mfa-overlap-smoke
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          smoke_script="$(python3 .github/scripts/validate_mfa_smoke_path.py \
+            "$MFA_OVERLAP_SMOKE_SCRIPT")"
+          bash "$smoke_script" verify-old
+
+      - name: Verify rendered revocation-store resource RBAC
+        shell: bash
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+        run: |
+          set -euo pipefail
+          rendered="$(mktemp "$RUNNER_TEMP/rendered-revocation-store.XXXXXX.yaml")"
+          trap 'rm -f -- "$rendered"' EXIT
+          bash .github/scripts/deploy-revocation-store.sh render > "$rendered"
+          mapfile -t rendered_resources < <(
+            kubectl create --dry-run=client --validate=false \
+              --filename "$rendered" --output name | cut -d/ -f1 | sort -u
+          )
+          if [[ "${#rendered_resources[@]}" -eq 0 ]]; then
+            echo "::error::The revocation-store chart rendered no Kubernetes resources."
+            exit 1
+          fi
+          rendered_resource_verbs=(get list watch create update patch delete)
+          for resource in "${rendered_resources[@]}"; do
+            if [[ ! "$resource" =~ ^[a-z0-9.-]+$ ]]; then
+              echo "::error::Rendered an invalid revocation-store Kubernetes resource identity."
+              exit 1
+            fi
+            for verb in "${rendered_resource_verbs[@]}"; do
+              kubectl auth can-i "$verb" "$resource" \
+                --namespace "$K8S_NAMESPACE" | grep -Fxq yes
+            done
+          done
+
+      - name: Bootstrap durable revocation store
+        shell: bash
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+        run: |
+          set -euo pipefail
+          bash .github/scripts/deploy-revocation-store.sh lint
+          bash .github/scripts/deploy-revocation-store.sh upgrade
+
+      - name: Verify durable revocation store readiness
+        shell: bash
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+        run: |
+          set -euo pipefail
+          contract="$(bash .github/scripts/deploy-revocation-store.sh render-contract)"
+          contract_literal() {
+            local key="$1"
+            local values
+            values="$(sed -n "s/^[[:space:]]*${key}: //p" <<< "$contract")"
+            if [[ "$(wc -l <<< "$values")" -ne 1 || -z "$values" ]]; then
+              echo "::error::Rendered revocation-store contract has no unique '$key'."
+              exit 1
+            fi
+            printf '%s' "$values"
+          }
+
+          service_host="$(contract_literal master-service-host | jq --raw-output '.')"
+          statefulset_name="$(contract_literal master-statefulset-name | jq --raw-output '.')"
+          binding_label="$(contract_literal binding-label | jq --raw-output '.')"
+          binding_value="$(contract_literal binding-value | jq --raw-output '.')"
+          # The credential identity is immutable deployment policy, not
+          # runtime data.  Keep secret names out of the ConfigMap so the
+          # metadata object cannot be mistaken for a credential container.
+          redis_secret_name="revocation-redis-credentials" # pragma: allowlist secret -- identifier only
+          redis_secret_key="revocation-redis-password" # pragma: allowlist secret -- key identifier only
+          expected_service_host="${HELM_RELEASE_NAME}-revocation-redis-master"
+          if [[ "$service_host" != "$expected_service_host" || \
+                "$statefulset_name" != "$expected_service_host" || \
+                "$binding_label" != "university-ecosystem.io/revocation-store-for" || \
+                "$binding_value" != "$HELM_RELEASE_NAME" ]]; then
+            echo "::error::The rendered revocation-store identity is not bound to this application release."
+            exit 1
+          fi
+
+          if ! kubectl get secret "$redis_secret_name" --namespace "$K8S_NAMESPACE" --output json \
+            | jq --exit-status --arg key "$redis_secret_key" \
+                '.data[$key] | type == "string" and length > 0' >/dev/null; then
+            echo "::error::The durable revocation-store credential Secret is missing its required key."
+            exit 1
+          fi
+          kubectl rollout status "statefulset/$statefulset_name" \
+            --namespace "$K8S_NAMESPACE" --timeout=5m
+          ready_endpoint_count="$(kubectl get endpointslice --namespace "$K8S_NAMESPACE" \
+            --selector "kubernetes.io/service-name=$service_host" --output json \
+            | jq '[.items[].endpoints[]? | select(.conditions.ready == true)] | length')"
+          if [[ ! "$ready_endpoint_count" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::The durable revocation-store service has no ready endpoint."
+            exit 1
+          fi
+          pod_json="$(kubectl get pods --namespace "$K8S_NAMESPACE" --output json \
+            --selector "app.kubernetes.io/name=revocation-redis,app.kubernetes.io/component=master,$binding_label=$binding_value")"
+          pod_count="$(jq '.items | length' <<< "$pod_json")"
+          if [[ "$pod_count" != "1" ]]; then
+            echo "::error::The durable revocation-store must resolve to exactly one master pod."
+            exit 1
+          fi
+          configuration_name="${statefulset_name}-configuration"
+          statefulset_json="$(kubectl get "statefulset/$statefulset_name" \
+            --namespace "$K8S_NAMESPACE" --output json)"
+          if ! jq --exit-status --arg configuration_name "$configuration_name" '
+            [.spec.template.spec.volumes[]?
+             | select(.configMap.name? == $configuration_name)]
+            | length == 1
+          ' <<< "$statefulset_json" >/dev/null; then
+            echo "::error::The ready revocation-store StatefulSet is not bound to its rendered configuration ConfigMap."
+            exit 1
+          fi
+          master_configuration="$(kubectl get "configmap/$configuration_name" \
+            --namespace "$K8S_NAMESPACE" --output json \
+            | jq --raw-output '.data["master.conf"] // empty')"
+          for required_directive in \
+            'maxmemory-policy noeviction' \
+            'appendonly yes' \
+            'appendfsync everysec' \
+            'rename-command ACL ""' \
+            'rename-command CONFIG ""' \
+            'rename-command FLUSHDB ""' \
+            'rename-command FLUSHALL ""' \
+            'rename-command FUNCTION ""' \
+            'rename-command MIGRATE ""' \
+            'rename-command MODULE ""' \
+            'rename-command MONITOR ""' \
+            'rename-command REPLICAOF ""' \
+            'rename-command SLAVEOF ""' \
+            'rename-command SHUTDOWN ""'; do
+            if ! grep -Fxq "$required_directive" <<< "$master_configuration"; then
+              echo "::error::The rendered revocation-store configuration is missing $required_directive."
+              exit 1
+            fi
+          done
+
+      - name: Verify effective Secret contract
+        shell: bash
+        env:
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+          HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          HELM_VALUES_FILE: ${{ vars.HELM_VALUES_FILE }}
           CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
           APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.frontend-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.ws-hub-digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.gateway-digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.file-processor-digest }}
+          DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
+          DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
+          CWV_EXPORT_OIDC_SUBJECT: ${{ vars.CWV_EXPORT_OIDC_SUBJECT }}
+          FRONTEND_HOST: ${{ vars.FRONTEND_HOST }}
+          API_HOST: ${{ vars.API_HOST }}
+          TLS_SECRET_NAME: ${{ vars.TLS_SECRET_NAME }}
+          CERT_MANAGER_ISSUER_NAME: ${{ vars.CERT_MANAGER_ISSUER_NAME }}
+          ELASTICSEARCH_URL: ${{ vars.ELASTICSEARCH_URL }}
+          FLAGD_HOST: ${{ vars.FLAGD_HOST }}
+          OTLP_ENDPOINT: ${{ vars.OTLP_ENDPOINT }}
+          MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}
+          TEMPORAL_HOST: ${{ vars.TEMPORAL_HOST }}
+          REDIS_IMAGE_DIGEST: ${{ vars.REDIS_IMAGE_DIGEST }}
+          REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REDIS_METRICS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+          NATS_IMAGE_DIGEST: ${{ vars.NATS_IMAGE_DIGEST }}
         run: |
           set -euo pipefail
 
@@ -358,15 +1238,132 @@ jobs:
             done
           }
 
-          require_secret_keys "$CONNECTIONS_SECRET_NAME" \
-            database-url redis-backend-url redis-gateway-url \
-            redis-revocation-url nats-url nats-auth-token
-          require_secret_keys "$APPLICATION_SECRETS_NAME" \
-            jwt-secret jwt-rsa-private-key jwt-rsa-public-key \
-            internal-hmac-secret ws-hub-internal-secret csrf-hmac-secret \
-            spotify-token-secret elasticsearch-password spicedb-preshared-key \
-            audit-log-secret idempotency-hmac-secret minio-access-key \
-            minio-secret-key temporal-api-key
+          contract="$(bash .github/scripts/deploy-helm.sh render-secret-contract)"
+          contract_literal() {
+            local key="$1"
+            local values
+            values="$(sed -n "s/^[[:space:]]*${key}: //p" <<< "$contract")"
+            if [[ "$(wc -l <<< "$values")" -ne 1 || -z "$values" ]]; then
+              echo "::error::Rendered deployment contract has no unique '$key'."
+              exit 1
+            fi
+            printf '%s' "$values"
+          }
+
+          application_secret_name="$(contract_literal application-secret-name | jq --raw-output '.')"
+          connection_secret_name="$(contract_literal connection-secret-name | jq --raw-output '.')"
+          if [[ "$application_secret_name" != "$APPLICATION_SECRETS_NAME" || \
+                "$connection_secret_name" != "$CONNECTIONS_SECRET_NAME" ]]; then
+            echo "::error::Rendered Secret names do not match the selected environment."
+            exit 1
+          fi
+          mapfile -t application_secret_keys < <(
+            contract_literal application-secret-keys.json | jq --raw-output 'fromjson[]'
+          )
+          mapfile -t connection_secret_keys < <(
+            contract_literal connection-secret-keys.json | jq --raw-output 'fromjson[]'
+          )
+          revocation_redis_url_key="$(contract_literal revocation-redis-url-key | jq --raw-output '.')"
+          revocation_redis_service_host="$(contract_literal revocation-redis-service-host | jq --raw-output '.')"
+          redis_secret_name="$(contract_literal redis-secret-name | jq --raw-output '.')"
+          nats_config_secret_name="$(contract_literal nats-config-secret-name | jq --raw-output '.')"
+          mapfile -t redis_secret_keys < <(
+            contract_literal redis-secret-keys.json | jq --raw-output 'fromjson[]'
+          )
+          mapfile -t nats_config_secret_keys < <(
+            contract_literal nats-config-secret-keys.json | jq --raw-output 'fromjson[]'
+          )
+          dependency_images="$(contract_literal dependency-images.json | jq --raw-output '.')"
+          jq --exit-status \
+            --arg redis "docker.io/bitnami/redis@$REDIS_IMAGE_DIGEST" \
+            --arg redis_metrics "docker.io/bitnami/redis-exporter@$REDIS_METRICS_IMAGE_DIGEST" \
+            --arg nats "docker.io/bitnami/nats@$NATS_IMAGE_DIGEST" \
+            '. == {"redis": $redis, "redis.metrics": $redis_metrics,
+                   "nats": $nats}' <<< "$dependency_images" >/dev/null
+          dependency_chart_versions="$(contract_literal dependency-chart-versions.json | jq --raw-output '.')"
+          jq --exit-status \
+            '. == {"redis": "20.13.4", "nats": "8.5.4"}' \
+            <<< "$dependency_chart_versions" >/dev/null
+          grpc_gateway_client_secret_name="$(contract_literal internal-grpc-gateway-client-secret-name | jq --raw-output '.')"
+          grpc_file_processor_server_secret_name="$(contract_literal internal-grpc-file-processor-server-secret-name | jq --raw-output '.')"
+          mapfile -t grpc_gateway_client_secret_keys < <(
+            contract_literal internal-grpc-gateway-client-secret-keys.json | jq --raw-output 'fromjson[]'
+          )
+          mapfile -t grpc_file_processor_server_secret_keys < <(
+            contract_literal internal-grpc-file-processor-server-secret-keys.json | jq --raw-output 'fromjson[]'
+          )
+          if [[ "${#application_secret_keys[@]}" -eq 0 || \
+                "${#connection_secret_keys[@]}" -eq 0 || \
+                "${#redis_secret_keys[@]}" -eq 0 || \
+                "${#nats_config_secret_keys[@]}" -eq 0 || \
+                "${#grpc_gateway_client_secret_keys[@]}" -eq 0 || \
+                "${#grpc_file_processor_server_secret_keys[@]}" -eq 0 ]]; then
+            echo "::error::Rendered Secret key contract is empty."
+            exit 1
+          fi
+          require_secret_keys "$application_secret_name" "${application_secret_keys[@]}"
+          require_secret_keys "$connection_secret_name" "${connection_secret_keys[@]}"
+          require_secret_keys "$redis_secret_name" "${redis_secret_keys[@]}"
+          require_secret_keys "$nats_config_secret_name" "${nats_config_secret_keys[@]}"
+          require_secret_keys "$grpc_gateway_client_secret_name" "${grpc_gateway_client_secret_keys[@]}"
+          require_secret_keys "$grpc_file_processor_server_secret_name" "${grpc_file_processor_server_secret_keys[@]}"
+
+          # Separate Secret identities are necessary but not sufficient: a
+          # misconfigured ExternalSecret backend could still populate both
+          # targets with the same bytes. Compare the Kubernetes API's encoded
+          # data in memory only; never decode or print either password.
+          if [[ "${#redis_secret_keys[@]}" -ne 1 ]]; then
+            echo "::error::Cache Redis credential contract must expose exactly one password key."
+            exit 1
+          fi
+          cache_redis_password_key="${redis_secret_keys[0]}"
+          revocation_redis_secret_name="revocation-redis-credentials"
+          revocation_redis_password_key="revocation-redis-password"
+          if [[ "$redis_secret_name" == "$revocation_redis_secret_name" && \
+                "$cache_redis_password_key" == "$revocation_redis_password_key" ]]; then
+            echo "::error::Revocation Redis credential identity must be distinct from cache Redis."
+            exit 1
+          fi
+          cache_redis_password_b64="$(kubectl get secret "$redis_secret_name" \
+            --namespace "$K8S_NAMESPACE" --output json \
+            | jq --raw-output --arg key "$cache_redis_password_key" '.data[$key] // empty')"
+          revocation_redis_password_b64="$(kubectl get secret "$revocation_redis_secret_name" \
+            --namespace "$K8S_NAMESPACE" --output json \
+            | jq --raw-output --arg key "$revocation_redis_password_key" '.data[$key] // empty')"
+          if [[ -z "$cache_redis_password_b64" || \
+                -z "$revocation_redis_password_b64" || \
+                "$cache_redis_password_b64" == "$revocation_redis_password_b64" ]]; then
+            echo "::error::Revocation Redis credential must be non-empty and must differ from the cache Redis password."
+            exit 1
+          fi
+
+          # Decode only through stdin and never echo the URL: migration and
+          # runtime revocation must point at the rendered durable Redis master,
+          # not the volatile cache Redis service.
+          if ! kubectl get secret "$connection_secret_name" --namespace "$K8S_NAMESPACE" --output json \
+            | jq --raw-output --exit-status --arg key "$revocation_redis_url_key" \
+                '.data[$key] | select(type == "string" and length > 0)' \
+            | base64 --decode \
+            | python3 -c '
+          from sys import argv, stdin
+          from urllib.parse import urlsplit
+
+          expected_host = argv[1]
+          try:
+              parsed = urlsplit(stdin.read().strip())
+              valid = (
+                  parsed.scheme in {"redis", "rediss"}
+                  and parsed.hostname == expected_host
+                  and parsed.port == 6379
+                  and parsed.path == "/0"
+              )
+          except ValueError:
+              valid = False
+          raise SystemExit(0 if valid else 1)
+          ' "$revocation_redis_service_host"; then
+            echo "::error::The revocation Redis URL must target the rendered dedicated master service."
+            exit 1
+          fi
 
       - name: Capture rollback state
         id: rollback_state
@@ -374,8 +1371,6 @@ jobs:
         env:
           K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
           HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
-          WS_HUB_DEPLOYMENT_NAME: ${{ vars.WS_HUB_DEPLOYMENT_NAME }}
-          WS_HUB_CONTAINER_NAME: ${{ vars.WS_HUB_CONTAINER_NAME }}
         run: |
           set -euo pipefail
           releases="$(helm list --namespace "$K8S_NAMESPACE" \
@@ -392,18 +1387,13 @@ jobs:
             exit 1
           fi
 
-          ws_hub_image="$(kubectl get deployment "$WS_HUB_DEPLOYMENT_NAME" \
-            --namespace "$K8S_NAMESPACE" --output json | \
-            jq --raw-output --arg name "$WS_HUB_CONTAINER_NAME" \
-              '[.spec.template.spec.containers[] |
-                select(.name == $name) | .image] |
-               if length == 1 then .[0] else empty end')"
-          if [[ -z "$ws_hub_image" ]]; then
-            echo "::error::Unable to capture exactly one WS Hub container image."
-            exit 1
-          fi
           echo "helm_revision=$previous_revision" >> "$GITHUB_OUTPUT"
-          echo "ws_hub_image=$ws_hub_image" >> "$GITHUB_OUTPUT"
+
+      - name: Capture field-evidence timestamp
+        id: field-evidence-time
+        if: ${{ inputs.environment == 'staging' }}
+        shell: bash
+        run: echo "timestamp=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
 
       - name: Deploy Helm release atomically
         id: helm_deploy
@@ -415,88 +1405,44 @@ jobs:
           HELM_VALUES_FILE: ${{ vars.HELM_VALUES_FILE }}
           CONNECTIONS_SECRET_NAME: ${{ vars.CONNECTIONS_SECRET_NAME }}
           APPLICATION_SECRETS_NAME: ${{ vars.APPLICATION_SECRETS_NAME }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.frontend-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.ws-hub-digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.gateway-digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.file-processor-digest }}
           DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
+          DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
+          CWV_DEPLOYED_AT: ${{ steps.field-evidence-time.outputs.timestamp }}
+          CWV_EXPORT_OIDC_SUBJECT: ${{ vars.CWV_EXPORT_OIDC_SUBJECT }}
+          FRONTEND_HOST: ${{ vars.FRONTEND_HOST }}
+          API_HOST: ${{ vars.API_HOST }}
+          TLS_SECRET_NAME: ${{ vars.TLS_SECRET_NAME }}
+          CERT_MANAGER_ISSUER_NAME: ${{ vars.CERT_MANAGER_ISSUER_NAME }}
+          ELASTICSEARCH_URL: ${{ vars.ELASTICSEARCH_URL }}
+          FLAGD_HOST: ${{ vars.FLAGD_HOST }}
+          OTLP_ENDPOINT: ${{ vars.OTLP_ENDPOINT }}
+          MINIO_ENDPOINT: ${{ vars.MINIO_ENDPOINT }}
+          TEMPORAL_HOST: ${{ vars.TEMPORAL_HOST }}
+          REDIS_IMAGE_DIGEST: ${{ vars.REDIS_IMAGE_DIGEST }}
+          REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REDIS_METRICS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_IMAGE_DIGEST }}
+          REVOCATION_REDIS_METRICS_IMAGE_DIGEST: ${{ vars.REVOCATION_REDIS_METRICS_IMAGE_DIGEST }}
+          NATS_IMAGE_DIGEST: ${{ vars.NATS_IMAGE_DIGEST }}
         run: |
           set -euo pipefail
-          for attempt in 1 2 3; do
-            if helm dependency build charts/university-ecosystem; then
-              break
-            fi
-            if [[ "$attempt" -eq 3 ]]; then
-              echo "Helm dependency build failed after 3 attempts." >&2
-              exit 1
-            fi
-            sleep $((attempt * 15))
-          done
-          helm lint --strict charts/university-ecosystem \
-            --values "$HELM_VALUES_FILE" \
-            --set-string global.environment="$DEPLOY_ENVIRONMENT" \
-            --set-string global.imageRegistry="$REGISTRY" \
-            --set-string global.imageTag="$DEPLOY_VERSION" \
-            --set-string backend.image.repository="$GITHUB_REPOSITORY/backend" \
-            --set-string frontend.image.repository="$GITHUB_REPOSITORY/frontend" \
-            --set-string gateway.image.repository="$GITHUB_REPOSITORY/gateway" \
-            --set-string fileProcessor.image.repository="$GITHUB_REPOSITORY/file-processor" \
-            --set-string outboxWorker.image.repository="$GITHUB_REPOSITORY/backend" \
-            --set-string connections.existingSecret="$CONNECTIONS_SECRET_NAME" \
-            --set-string applicationSecrets.existingSecret="$APPLICATION_SECRETS_NAME" \
-            --set fileProcessor.enabled=true \
-            --set outboxWorker.enabled=true
-
-          helm upgrade --install "$HELM_RELEASE_NAME" charts/university-ecosystem \
-            --namespace "$K8S_NAMESPACE" \
-            --values "$HELM_VALUES_FILE" \
-            --set-string global.environment="$DEPLOY_ENVIRONMENT" \
-            --set-string global.imageRegistry="$REGISTRY" \
-            --set-string global.imageTag="$DEPLOY_VERSION" \
-            --set-string backend.image.repository="$GITHUB_REPOSITORY/backend" \
-            --set-string frontend.image.repository="$GITHUB_REPOSITORY/frontend" \
-            --set-string gateway.image.repository="$GITHUB_REPOSITORY/gateway" \
-            --set-string fileProcessor.image.repository="$GITHUB_REPOSITORY/file-processor" \
-            --set-string outboxWorker.image.repository="$GITHUB_REPOSITORY/backend" \
-            --set-string connections.existingSecret="$CONNECTIONS_SECRET_NAME" \
-            --set-string applicationSecrets.existingSecret="$APPLICATION_SECRETS_NAME" \
-            --set fileProcessor.enabled=true \
-            --set outboxWorker.enabled=true \
-            --atomic \
-            --wait \
-            --wait-for-jobs \
-            --timeout 15m \
-            --history-max 10
-
-      - name: Deploy WS Hub image
-        id: ws_hub_deploy
-        shell: bash
-        env:
-          K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
-          WS_HUB_DEPLOYMENT_NAME: ${{ vars.WS_HUB_DEPLOYMENT_NAME }}
-          WS_HUB_CONTAINER_NAME: ${{ vars.WS_HUB_CONTAINER_NAME }}
-          DEPLOY_VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          set -euo pipefail
-          image="$REGISTRY/$GITHUB_REPOSITORY/ws-hub:$DEPLOY_VERSION"
-          kubectl get deployment "$WS_HUB_DEPLOYMENT_NAME" \
-            --namespace "$K8S_NAMESPACE" >/dev/null
-          kubectl set image "deployment/$WS_HUB_DEPLOYMENT_NAME" \
-            "$WS_HUB_CONTAINER_NAME=$image" \
-            --namespace "$K8S_NAMESPACE"
-          kubectl rollout status "deployment/$WS_HUB_DEPLOYMENT_NAME" \
-            --namespace "$K8S_NAMESPACE" \
-            --timeout=5m
-          actual="$(kubectl get deployment "$WS_HUB_DEPLOYMENT_NAME" \
-            --namespace "$K8S_NAMESPACE" --output json | \
-            jq --raw-output --arg name "$WS_HUB_CONTAINER_NAME" \
-              '.spec.template.spec.containers[] | select(.name == $name) | .image')"
-          if [[ "$actual" != "$image" ]]; then
-            echo "::error::WS Hub rollout uses '$actual' instead of '$image'."
-            exit 1
-          fi
+          bash .github/scripts/deploy-helm.sh lint
+          bash .github/scripts/deploy-helm.sh upgrade
 
       - name: Verify Helm-managed rollouts
         shell: bash
         env:
           K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
           HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.frontend-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.ws-hub-digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.gateway-digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.file-processor-digest }}
         run: |
           set -euo pipefail
           helm status "$HELM_RELEASE_NAME" --namespace "$K8S_NAMESPACE"
@@ -527,11 +1473,12 @@ jobs:
           }
 
           image_prefix="$REGISTRY/$GITHUB_REPOSITORY"
-          verify_image backend backend "$image_prefix/backend:$GITHUB_SHA"
-          verify_image frontend frontend "$image_prefix/frontend:$GITHUB_SHA"
-          verify_image gateway gateway "$image_prefix/gateway:$GITHUB_SHA"
-          verify_image file-processor file-processor "$image_prefix/file-processor:$GITHUB_SHA"
-          verify_image outbox-worker outbox-worker "$image_prefix/backend:$GITHUB_SHA"
+          verify_image backend backend "$image_prefix/backend@$BACKEND_IMAGE_DIGEST"
+          verify_image frontend frontend "$image_prefix/frontend@$FRONTEND_IMAGE_DIGEST"
+          verify_image ws-hub ws-hub "$image_prefix/ws-hub@$WS_HUB_IMAGE_DIGEST"
+          verify_image gateway gateway "$image_prefix/gateway@$GATEWAY_IMAGE_DIGEST"
+          verify_image file-processor file-processor "$image_prefix/file-processor@$FILE_PROCESSOR_IMAGE_DIGEST"
+          verify_image outbox-worker outbox-worker "$image_prefix/backend@$BACKEND_IMAGE_DIGEST"
 
       - name: Setup Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -551,6 +1498,24 @@ jobs:
           BACKEND_URL: ${{ vars.BACKEND_HEALTH_URL }}
           FRONTEND_URL: ${{ vars.FRONTEND_HEALTH_URL }}
 
+      - name: Verify new MFA key-overlap behavior
+        if: ${{ inputs.rotate-mfa-keys }}
+        shell: bash
+        env:
+          MFA_OVERLAP_SMOKE_SCRIPT: ${{ vars.MFA_OVERLAP_SMOKE_SCRIPT }}
+          MFA_SMOKE_BASE_URL: ${{ vars.MFA_SMOKE_BASE_URL }}
+          MFA_SMOKE_MAILBOX_URL: ${{ vars.MFA_SMOKE_MAILBOX_URL }}
+          MFA_SMOKE_EMAIL: ${{ secrets.MFA_SMOKE_EMAIL }}
+          MFA_SMOKE_PASSWORD: ${{ secrets.MFA_SMOKE_PASSWORD }}
+          MFA_SMOKE_MAILBOX_TOKEN: ${{ secrets.MFA_SMOKE_MAILBOX_TOKEN }}
+          MFA_SMOKE_STATE_DIR: ${{ runner.temp }}/mfa-overlap-smoke
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          smoke_script="$(python3 .github/scripts/validate_mfa_smoke_path.py \
+            "$MFA_OVERLAP_SMOKE_SCRIPT")"
+          bash "$smoke_script" verify-new
+
       - name: Verify Kyverno policy compliance (MOD-14-02)
         shell: bash
         env:
@@ -568,13 +1533,15 @@ jobs:
             require-always-pull-policy
             disallow-latest-tag
           )
-          policies="$(kubectl get clusterpolicies.kyverno.io --output json)"
+          policies="$(kubectl get validatingpolicies.policies.kyverno.io --output json)"
           for policy in "${expected_policies[@]}"; do
             if ! jq --exit-status --arg name "$policy" \
               '.items[] | select(.metadata.name == $name) |
-               .spec.validationFailureAction == "Enforce"' \
+               (.status.conditionStatus.ready == true) and
+               ((.spec.validationActions // []) | index("Deny") != null) and
+               ((.spec.validationActions // []) | index("Audit") != null)' \
               <<< "$policies" >/dev/null; then
-              echo "::error::Kyverno policy '$policy' is missing or is not in Enforce mode."
+              echo "::error::Kyverno policy '$policy' is missing, not Ready, or does not enforce Deny+Audit."
               exit 1
             fi
           done
@@ -590,16 +1557,101 @@ jobs:
           fi
           echo "Kyverno: all required policies enforce and no violations are reported."
 
+      - name: Create staging field-evidence metadata
+        if: ${{ inputs.environment == 'staging' }}
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          FRONTEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.frontend-digest }}
+          IMAGE_MANIFEST_SHA256: ${{ needs.resolve-images.outputs.manifest-sha256 }}
+          IMAGE_BUILD_RUN_ID: ${{ inputs.image-build-run-id }}
+          IMAGE_BUILD_RUN_ATTEMPT: ${{ inputs.image-build-run-attempt }}
+          BACKEND_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.backend-digest }}
+          CADDY_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.caddy-digest }}
+          WS_HUB_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.ws-hub-digest }}
+          GATEWAY_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.gateway-digest }}
+          FILE_PROCESSOR_IMAGE_DIGEST: ${{ needs.resolve-images.outputs.file-processor-digest }}
+          DEPLOYMENT_URL: ${{ vars.DEPLOYMENT_URL }}
+          DEPLOYED_AT: ${{ steps.field-evidence-time.outputs.timestamp }}
+          DEPLOY_RUN_ID: ${{ github.run_id }}
+          DEPLOY_RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/cwv
+          jq --null-input \
+            --arg release_sha "$RELEASE_SHA" \
+            --arg frontend_image_digest "$FRONTEND_IMAGE_DIGEST" \
+            --arg image_manifest_sha256 "$IMAGE_MANIFEST_SHA256" \
+            --arg backend_image_digest "$BACKEND_IMAGE_DIGEST" \
+            --arg caddy_image_digest "$CADDY_IMAGE_DIGEST" \
+            --arg ws_hub_image_digest "$WS_HUB_IMAGE_DIGEST" \
+            --arg gateway_image_digest "$GATEWAY_IMAGE_DIGEST" \
+            --arg file_processor_image_digest "$FILE_PROCESSOR_IMAGE_DIGEST" \
+            --arg deployment_url "$DEPLOYMENT_URL" \
+            --arg deployed_at "$DEPLOYED_AT" \
+            --argjson workflow_run_id "$DEPLOY_RUN_ID" \
+            --argjson workflow_run_attempt "$DEPLOY_RUN_ATTEMPT" \
+            --argjson image_build_run_id "$IMAGE_BUILD_RUN_ID" \
+            --argjson image_build_run_attempt "$IMAGE_BUILD_RUN_ATTEMPT" \
+            '{
+              schema_version: 2,
+              environment: "staging",
+              release_sha: $release_sha,
+              frontend_image_digest: $frontend_image_digest,
+              image_manifest_sha256: $image_manifest_sha256,
+              image_build_run_id: $image_build_run_id,
+              image_build_run_attempt: $image_build_run_attempt,
+              images: {
+                backend: $backend_image_digest,
+                caddy: $caddy_image_digest,
+                frontend: $frontend_image_digest,
+                "ws-hub": $ws_hub_image_digest,
+                gateway: $gateway_image_digest,
+                "file-processor": $file_processor_image_digest
+              },
+              deployment_url: $deployment_url,
+              deployed_at: $deployed_at,
+              workflow_run_id: $workflow_run_id,
+              workflow_run_attempt: $workflow_run_attempt
+            }' > artifacts/cwv/staging-deployment.json
+          jq --exit-status \
+            --arg sha "$RELEASE_SHA" \
+            --arg digest "$FRONTEND_IMAGE_DIGEST" \
+            --argjson run_id "$DEPLOY_RUN_ID" \
+            --argjson run_attempt "$DEPLOY_RUN_ATTEMPT" \
+            --arg manifest_sha256 "$IMAGE_MANIFEST_SHA256" \
+            --argjson build_run_id "$IMAGE_BUILD_RUN_ID" \
+            --argjson build_run_attempt "$IMAGE_BUILD_RUN_ATTEMPT" \
+            '.schema_version == 2 and .environment == "staging" and
+             .release_sha == $sha and .frontend_image_digest == $digest and
+             .image_manifest_sha256 == $manifest_sha256 and
+             .image_build_run_id == $build_run_id and
+             .image_build_run_attempt == $build_run_attempt and
+             (.images | length) == 6 and .images.frontend == $digest and
+             .workflow_run_id == $run_id and
+             .workflow_run_attempt == $run_attempt' \
+            artifacts/cwv/staging-deployment.json >/dev/null
+          (cd artifacts/cwv && \
+            sha256sum staging-deployment.json > staging-deployment.json.sha256)
+
+      - name: Upload staging field-evidence metadata
+        if: ${{ inputs.environment == 'staging' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: staging-deployment-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}
+          path: |
+            artifacts/cwv/staging-deployment.json
+            artifacts/cwv/staging-deployment.json.sha256
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Roll back a deployment that failed verification
-        if: ${{ failure() && steps.rollback_state.outcome == 'success' }}
+        if: ${{ (failure() || cancelled()) && steps.rollback_state.outcome == 'success' }}
         shell: bash
         env:
           K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
           HELM_RELEASE_NAME: ${{ vars.HELM_RELEASE_NAME }}
-          WS_HUB_DEPLOYMENT_NAME: ${{ vars.WS_HUB_DEPLOYMENT_NAME }}
-          WS_HUB_CONTAINER_NAME: ${{ vars.WS_HUB_CONTAINER_NAME }}
           PREVIOUS_HELM_REVISION: ${{ steps.rollback_state.outputs.helm_revision }}
-          PREVIOUS_WS_HUB_IMAGE: ${{ steps.rollback_state.outputs.ws_hub_image }}
           HELM_DEPLOY_OUTCOME: ${{ steps.helm_deploy.outcome }}
         run: |
           set -uo pipefail
@@ -619,17 +1671,6 @@ jobs:
               echo "::error::Unable to roll Helm back to revision $PREVIOUS_HELM_REVISION."
               rollback_failed=1
             fi
-          fi
-
-          if ! kubectl set image "deployment/$WS_HUB_DEPLOYMENT_NAME" \
-            "$WS_HUB_CONTAINER_NAME=$PREVIOUS_WS_HUB_IMAGE" \
-            --namespace "$K8S_NAMESPACE"; then
-            echo "::error::Unable to restore the previous WS Hub image."
-            rollback_failed=1
-          elif ! kubectl rollout status "deployment/$WS_HUB_DEPLOYMENT_NAME" \
-            --namespace "$K8S_NAMESPACE" --timeout=5m; then
-            echo "::error::The restored WS Hub deployment did not become ready."
-            rollback_failed=1
           fi
 
           if [[ "$rollback_failed" -ne 0 ]]; then
@@ -675,6 +1716,7 @@ jobs:
   rollback:
     name: Database rollback capability test
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     needs: [deploy]
     if: ${{ inputs.environment == 'staging' }}
     services:
@@ -694,7 +1736,20 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Verify trusted release checkout
+        shell: bash
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          test "$(git rev-parse origin/main)" = "$RELEASE_SHA"
 
       - name: Setup Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -726,7 +1781,8 @@ jobs:
   notify:
     name: Notify deployment status
     runs-on: ubuntu-24.04
-    needs: [prepare, build-backend, deploy, rollback]
+    timeout-minutes: 5
+    needs: [prepare, resolve-images, deploy, rollback]
     if: always()
     steps:
       - name: Deployment summary

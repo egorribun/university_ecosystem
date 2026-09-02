@@ -56,7 +56,6 @@ def _configure_csrf_middleware(app: FastAPI, settings: Settings) -> None:
             "/internal",
             "/api/v1/csp-report",
             "/api/v2/auth/token",
-            "/api/v2/auth/webauthn",
         ),
         cookie_secure=settings.cookie_secure,
         cookie_samesite=settings.cookie_samesite,

@@ -1,12 +1,92 @@
 import { describe, it, expect } from "vitest"
 
-import { parseWsMessage } from "./wsMessage"
+import * as v from "valibot"
+
+import { parseWsMessage, WsServerMessageSchema } from "./wsMessage"
 
 const CHAT_ID = "11111111-1111-1111-1111-111111111111"
 const USER_ID = "22222222-2222-2222-2222-222222222222"
 const MSG_ID = "33333333-3333-3333-3333-333333333333"
 const SENDER_ID = "44444444-4444-4444-4444-444444444444"
 const READ_AT = "2026-05-30T14:32:00+00:00"
+const MESSAGE_LIMIT = 32_768
+
+function messageWithContent(content: string) {
+  return {
+    id: MSG_ID,
+    chat_id: CHAT_ID,
+    sender_id: SENDER_ID,
+    content,
+    created_at: "2026-05-30T14:30:00+00:00",
+    read_status: false,
+  }
+}
+
+describe("parseWsMessage — canonical message content boundary", () => {
+  it.each([MESSAGE_LIMIT - 1, MESSAGE_LIMIT])(
+    "accepts a new_message with %s Unicode code points",
+    (size) => {
+      const content = "😀".repeat(size)
+      const frame = parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          chat_id: CHAT_ID,
+          message: messageWithContent(content),
+        })
+      )
+
+      expect(frame).not.toBeNull()
+    }
+  )
+
+  it("rejects content above the canonical limit without truncating it", () => {
+    const content = "x".repeat(MESSAGE_LIMIT + 1)
+
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          chat_id: CHAT_ID,
+          message: messageWithContent(content),
+        })
+      )
+    ).toBeNull()
+  })
+})
+
+describe("parseWsMessage — edited message content boundary", () => {
+  it.each([MESSAGE_LIMIT - 1, MESSAGE_LIMIT])(
+    "accepts message_edited content with %s Unicode code points",
+    (size) => {
+      const frame = parseWsMessage(
+        JSON.stringify({
+          type: "message_edited",
+          chat_id: CHAT_ID,
+          message_id: MSG_ID,
+          content: "😀".repeat(size),
+          edited_at: READ_AT,
+        })
+      )
+
+      expect(frame).not.toBeNull()
+      expect(frame?.type).toBe("message_edited")
+    }
+  )
+
+  it("rejects message_edited content above the canonical limit", () => {
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "message_edited",
+          chat_id: CHAT_ID,
+          message_id: MSG_ID,
+          content: "x".repeat(MESSAGE_LIMIT + 1),
+          edited_at: READ_AT,
+        })
+      )
+    ).toBeNull()
+  })
+})
 
 describe("parseWsMessage — read frame (Wave 203 SW5 chat-level)", () => {
   it("accepts a chat-level read frame with read_at", () => {
@@ -88,6 +168,123 @@ describe("parseWsMessage — new_message MessageSchema.read_at (Wave 203 SW5)", 
       expect(frame.message.read_at).toBeNull()
     }
   })
+
+  it("rejects a new_message with a malformed created_at timestamp", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "new_message",
+        chat_id: CHAT_ID,
+        message: { ...baseMessage, created_at: "not-a-timestamp" },
+      })
+    )
+
+    expect(frame).toBeNull()
+  })
+
+  it("exposes a validated JetStream sequence from the ws-hub envelope", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "new_message",
+        room: CHAT_ID,
+        payload: { type: "new_message", chat_id: CHAT_ID, message: baseMessage },
+        seq: 42,
+        resume_token: "signed-resume-token-42",
+        replayed: true,
+      })
+    ) as ReturnType<typeof parseWsMessage> & {
+      stream_seq?: number
+      replayed?: boolean
+    }
+
+    expect(frame).not.toBeNull()
+    expect(frame?.stream_seq).toBe(42)
+    expect(frame?.replayed).toBe(true)
+  })
+
+  it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, "42"])(
+    "rejects an unsafe JetStream sequence %s instead of silently ignoring it",
+    (seq) => {
+      expect(
+        parseWsMessage(
+          JSON.stringify({
+            type: "new_message",
+            room: CHAT_ID,
+            payload: { type: "new_message", chat_id: CHAT_ID, message: baseMessage },
+            seq,
+            resume_token: "signed-resume-token",
+          })
+        )
+      ).toBeNull()
+    }
+  )
+
+  it("rejects a sequenced envelope whose authorized room disagrees with the payload chat", () => {
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          room: USER_ID,
+          payload: { type: "new_message", chat_id: CHAT_ID, message: baseMessage },
+          seq: 42,
+          resume_token: "signed-resume-token-42",
+        })
+      )
+    ).toBeNull()
+  })
+
+  it("rejects a flat frame that tries to forge a durable stream sequence", () => {
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          chat_id: CHAT_ID,
+          message: baseMessage,
+          room: CHAT_ID,
+          seq: 42,
+          resume_token: "signed-resume-token-42",
+        })
+      )
+    ).toBeNull()
+  })
+
+  it("rejects replay metadata without its mandatory durable sequence", () => {
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          room: CHAT_ID,
+          payload: { type: "new_message", chat_id: CHAT_ID, message: baseMessage },
+          replayed: true,
+        })
+      )
+    ).toBeNull()
+  })
+
+  it("rejects a durable sequence without its signed resume token", () => {
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          room: CHAT_ID,
+          payload: { type: "new_message", chat_id: CHAT_ID, message: baseMessage },
+          seq: 42,
+        })
+      )
+    ).toBeNull()
+  })
+
+  it("rejects a resume token without its durable sequence", () => {
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          room: CHAT_ID,
+          payload: { type: "new_message", chat_id: CHAT_ID, message: baseMessage },
+          resume_token: "signed-resume-token",
+        })
+      )
+    ).toBeNull()
+  })
 })
 
 describe("parseWsMessage — Wave 204 SW3 ws-hub envelope unwrap + control frames", () => {
@@ -152,6 +349,11 @@ describe("parseWsMessage — Wave 204 SW3 ws-hub envelope unwrap + control frame
     expect(frame?.type).toBe("error")
   })
 
+  it("preserves the backend direct-route error message field", () => {
+    const frame = parseWsMessage(JSON.stringify({ type: "error", message: "Access denied" }))
+    expect(frame).toEqual({ type: "error", message: "Access denied" })
+  })
+
   it("accepts a flat rate_limit_exceeded control frame", () => {
     const frame = parseWsMessage(JSON.stringify({ type: "rate_limit_exceeded" }))
     expect(frame).not.toBeNull()
@@ -165,6 +367,27 @@ describe("parseWsMessage — Wave 204 SW3 ws-hub envelope unwrap + control frame
     expect(frame).toBeNull()
   })
 
+  it("accepts an enveloped replay checkpoint for a terminal poison event", () => {
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "replay_checkpoint",
+        room: CHAT_ID,
+        seq: 42,
+        resume_token: "signed-resume-token-42",
+        replayed: true,
+        payload: { type: "replay_checkpoint", chat_id: CHAT_ID },
+      })
+    )
+
+    expect(frame).toEqual({
+      type: "replay_checkpoint",
+      chat_id: CHAT_ID,
+      stream_seq: 42,
+      replayed: true,
+      resume_token: "signed-resume-token-42",
+    })
+  })
+
   it("returns null for a non-object payload envelope (validates outer, which fails)", () => {
     const frame = parseWsMessage(
       JSON.stringify({ type: "new_message", room: CHAT_ID, payload: "not-an-object" })
@@ -174,6 +397,60 @@ describe("parseWsMessage — Wave 204 SW3 ws-hub envelope unwrap + control frame
 
   it("returns null on JSON garbage", () => {
     expect(parseWsMessage("{not json")).toBeNull()
+  })
+
+  it("rejects JSON primitives before envelope validation", () => {
+    expect(() => parseWsMessage("42")).not.toThrow()
+    expect(parseWsMessage("42")).toBeNull()
+    expect(() => parseWsMessage("null")).not.toThrow()
+    expect(parseWsMessage("null")).toBeNull()
+  })
+
+  it.each(["legacy-extra", null])(
+    "keeps flat control frames valid when an unrelated payload key is %s",
+    (payload) => {
+      expect(parseWsMessage(JSON.stringify({ type: "pong", payload }))).toStrictEqual({
+        type: "pong",
+      })
+    }
+  )
+
+  it.each([
+    ["replayed", "yes"],
+    ["resume_token", ""],
+  ])("rejects invalid %s stream metadata", (field, value) => {
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "read",
+          room: CHAT_ID,
+          seq: 42,
+          resume_token: "signed-resume-token-42",
+          replayed: true,
+          payload: {
+            type: "read",
+            chat_id: CHAT_ID,
+            user_id: USER_ID,
+            read_at: READ_AT,
+          },
+          [field]: value,
+        })
+      )
+    ).toBeNull()
+  })
+
+  it("rejects sequenced envelopes whose payload has no chat identity", () => {
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "rate_limit_exceeded",
+          room: CHAT_ID,
+          seq: 42,
+          resume_token: "signed-resume-token-42",
+          payload: { type: "rate_limit_exceeded" },
+        })
+      )
+    ).toBeNull()
   })
 })
 
@@ -355,5 +632,185 @@ describe("parseWsMessage — new_message with forwarded_from_name (Wave 211)", (
     if (frame?.type === "new_message") {
       expect(frame.message.forwarded_from_name).toBeNull()
     }
+  })
+})
+
+describe("parseWsMessage — remaining server frame variants and contracts", () => {
+  const baseMessage = {
+    ...messageWithContent("hello"),
+    read_at: null,
+  }
+
+  it("accepts presence, online, online_list, typing, pong, and reaction frames", () => {
+    expect(parseWsMessage(JSON.stringify({ type: "pong" }))).toStrictEqual({ type: "pong" })
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "typing",
+          chat_id: CHAT_ID,
+          user_id: USER_ID,
+          user_name: "Alex",
+        })
+      )
+    ).toEqual({ type: "typing", chat_id: CHAT_ID, user_id: USER_ID, user_name: "Alex" })
+    expect(
+      parseWsMessage(JSON.stringify({ type: "online", user_id: USER_ID, status: true }))
+    ).toEqual({ type: "online", user_id: USER_ID, status: true })
+    expect(
+      parseWsMessage(JSON.stringify({ type: "online_list", users: [USER_ID, SENDER_ID] }))
+    ).toEqual({ type: "online_list", users: [USER_ID, SENDER_ID] })
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "presence",
+          user_id: USER_ID,
+          active: false,
+          last_seen: null,
+        })
+      )
+    ).toEqual({ type: "presence", user_id: USER_ID, active: false, last_seen: null })
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "reaction_changed",
+          chat_id: CHAT_ID,
+          message_id: MSG_ID,
+          user_id: USER_ID,
+          emoji: "👍",
+          action: "removed",
+        })
+      )
+    ).toEqual({
+      type: "reaction_changed",
+      chat_id: CHAT_ID,
+      message_id: MSG_ID,
+      user_id: USER_ID,
+      emoji: "👍",
+      action: "removed",
+    })
+  })
+
+  it("rejects malformed variant payloads instead of silently broadening schemas", () => {
+    expect(parseWsMessage(JSON.stringify({ type: "pong", extra: true }))).toStrictEqual({
+      type: "pong",
+    })
+    expect(
+      parseWsMessage(JSON.stringify({ type: "online_list", users: ["not-a-uuid"] }))
+    ).toBeNull()
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "reaction_changed",
+          chat_id: CHAT_ID,
+          message_id: MSG_ID,
+          user_id: USER_ID,
+          emoji: "👍",
+          action: "changed",
+        })
+      )
+    ).toBeNull()
+    expect(
+      parseWsMessage(
+        JSON.stringify({ type: "typing", chat_id: CHAT_ID, user_id: USER_ID, user_name: "" })
+      )
+    ).toBeNull()
+  })
+
+  it("preserves and validates a reply preview on new messages", () => {
+    const reply = {
+      id: MSG_ID,
+      sender_id: SENDER_ID,
+      sender_name: "Alex",
+      content: "quoted text",
+      deleted_at: null,
+    }
+    const frame = parseWsMessage(
+      JSON.stringify({
+        type: "new_message",
+        chat_id: CHAT_ID,
+        message: { ...baseMessage, reply_to: reply },
+      })
+    )
+    expect(frame).not.toBeNull()
+    if (frame?.type === "new_message") {
+      expect(frame.message.reply_to).toEqual(reply)
+    }
+
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          chat_id: CHAT_ID,
+          message: { ...baseMessage, reply_to: { sender_name: "missing id" } },
+        })
+      )
+    ).toBeNull()
+  })
+
+  it("keeps the custom content-limit issue actionable for direct schema consumers", () => {
+    const invalid = {
+      type: "new_message",
+      chat_id: CHAT_ID,
+      message: messageWithContent("x".repeat(MESSAGE_LIMIT + 1)),
+    }
+    const result = v.safeParse(WsServerMessageSchema, invalid)
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.issues.some((issue) => issue.message.includes("Unicode code points"))).toBe(
+        true
+      )
+    }
+  })
+
+  it("unwraps payloads by presence and enforces complete stream metadata binding", () => {
+    const inner = { type: "new_message", chat_id: CHAT_ID, message: baseMessage }
+    expect(
+      parseWsMessage(JSON.stringify({ type: "notifications", room: CHAT_ID, payload: inner }))
+    ).toMatchObject({ type: "new_message", chat_id: CHAT_ID })
+
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          room: "not-a-uuid",
+          payload: inner,
+          seq: 7,
+          resume_token: "token",
+        })
+      )
+    ).toBeNull()
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          room: CHAT_ID,
+          payload: inner,
+          seq: 7,
+          resume_token: "token",
+          replayed: false,
+        })
+      )
+    ).toMatchObject({ stream_seq: 7, replayed: false, resume_token: "token" })
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          room: CHAT_ID,
+          payload: inner,
+          seq: 7,
+          replayed: false,
+        })
+      )
+    ).toBeNull()
+    expect(
+      parseWsMessage(
+        JSON.stringify({
+          type: "new_message",
+          room: CHAT_ID,
+          payload: inner,
+          resume_token: "token",
+        })
+      )
+    ).toBeNull()
   })
 })

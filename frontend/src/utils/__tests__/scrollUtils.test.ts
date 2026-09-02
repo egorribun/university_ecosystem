@@ -12,9 +12,22 @@ describe("scrollUtils", () => {
     it("returns element with [data-scroll-root] if present", () => {
       const div = document.createElement("div")
       div.setAttribute("data-scroll-root", "")
+      div.style.overflowY = "auto"
+      Object.defineProperties(div, {
+        clientHeight: { value: 100, configurable: true },
+        scrollHeight: { value: 200, configurable: true },
+      })
       document.body.appendChild(div)
 
       expect(getScrollRoot()).toBe(div)
+    })
+
+    it("ignores a non-scrolling layout marker", () => {
+      const marker = document.createElement("div")
+      marker.setAttribute("data-scroll-root", "")
+      document.body.appendChild(marker)
+
+      expect(getScrollRoot()).toBe(document.scrollingElement || document.documentElement)
     })
 
     it("evaluates candidates and returns the first scrollable candidate", () => {
@@ -86,11 +99,27 @@ describe("scrollUtils", () => {
         }
       }
     })
+
+    it("jumps immediately without RAF when reduced motion requests auto behavior", () => {
+      const el = document.createElement("div")
+      el.scrollTop = 100
+      el.scrollTo = vi.fn(() => {
+        throw new Error("unsupported")
+      })
+      const raf = vi.spyOn(window, "requestAnimationFrame")
+
+      smoothToTop(el, "auto")
+
+      expect(el.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "auto" })
+      expect(el.scrollTop).toBe(0)
+      expect(raf).not.toHaveBeenCalled()
+    })
   })
 
   describe("markIfFromBottom", () => {
     it("sets __scrollTopNext in sessionStorage if scrolled near bottom", () => {
       const mockEl = document.createElement("div")
+      mockEl.style.overflowY = "auto"
       Object.defineProperties(mockEl, {
         scrollTop: { value: 180, configurable: true },
         clientHeight: { value: 100, configurable: true },
@@ -109,6 +138,7 @@ describe("scrollUtils", () => {
 
     it("does not set __scrollTopNext if not near bottom", () => {
       const mockEl = document.createElement("div")
+      mockEl.style.overflowY = "auto"
       Object.defineProperties(mockEl, {
         scrollTop: { value: 50, configurable: true },
         clientHeight: { value: 100, configurable: true },

@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/AuthContext"
 import { useEventRegistration } from "@/hooks/useEventRegistration"
 import { useSpotlight } from "@/components/ui/Spotlight"
 import type { Event, EventEditDraft } from "@/types/Event"
+import { captureActiveTelemetryContext } from "@/utils/telemetryContext"
 
 // dayjs extensions removed
 
@@ -121,14 +122,18 @@ export function useEventCardLogic({
 
   // -- Handlers --
   const handleEdit = async () => {
+    const telemetryContext = captureActiveTelemetryContext()
     setLoading(true)
     try {
       let imgUrl = editData.image_url
-      if (newImage) {
+      const image = newImage
+      if (image) {
         setImageLoading(true)
         const data = new FormData()
-        data.append("file", newImage)
-        const uploadRes = await api.post<{ url: string }>(`/events/upload_image`, data)
+        data.append("file", image)
+        const uploadRes = await telemetryContext.run(() =>
+          api.post<{ url: string }>(`/events/upload_image`, data)
+        )
         imgUrl = uploadRes.data.url
         setImageLoading(false)
       }
@@ -138,9 +143,9 @@ export function useEventCardLogic({
         ends_at: parseDate(editData.ends_at).toISOString(),
         image_url: imgUrl,
       }
-      await api.patch(`/events/${id}`, payload)
+      await telemetryContext.run(() => api.patch(`/events/${id}`, payload))
       setEditOpen(false)
-      onChange?.()
+      telemetryContext.run(() => onChange?.())
       setSnackbar(t("events:card.messages.saveSuccess"))
     } catch {
       setSnackbar(t("events:card.messages.saveFailure"))
@@ -150,11 +155,12 @@ export function useEventCardLogic({
   }
 
   const handleDelete = async () => {
+    const telemetryContext = captureActiveTelemetryContext()
     setLoading(true)
     try {
-      await api.delete(`/events/${id}`)
+      await telemetryContext.run(() => api.delete(`/events/${id}`))
       setConfirmDeleteOpen(false)
-      onChange?.()
+      telemetryContext.run(() => onChange?.())
       setSnackbar(t("events:card.messages.deleteSuccess"))
     } catch {
       setSnackbar(t("events:card.messages.deleteFailure"))

@@ -546,8 +546,8 @@
 }
 
 .map-poi-pin {
-  width: 28px;
-  height: 28px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--_poi-color, #94a3b8);
   border: 2px solid var(--text-inverse, white);
@@ -858,8 +858,8 @@
 }
 
 .map-control-btn {
-  min-height: 40px;
-  min-width: 40px;
+  min-height: 44px;
+  min-width: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -911,7 +911,7 @@
 }
 
 /* ── Mobile (≤640px): horizontal bottom strip, centered for thumb reach ── */
-/* Budget: 7 btns × 36px + 2 dividers × 5px + padding 6px = ~264px — fits 320px+ */
+/* Six 44px controls plus dividers fit the supported 360px minimum viewport. */
 @media (max-width: 640px) {
   .map-control-panel {
     flex-direction: row;
@@ -920,8 +920,8 @@
     border-radius: 22px;
   }
   .map-control-btn {
-    min-height: 36px;
-    min-width: 36px;
+    min-height: 44px;
+    min-width: 44px;
     border-radius: 50%;
   }
   .map-control-divider {
@@ -938,8 +938,8 @@
     border-radius: 18px;
   }
   .map-control-btn {
-    min-height: 32px;
-    min-width: 32px;
+    min-height: 44px;
+    min-width: 44px;
   }
   .map-control-divider {
     height: 12px;
@@ -956,8 +956,8 @@
     border-radius: 18px;
   }
   .map-control-btn {
-    min-height: 32px;
-    min-width: 32px;
+    min-height: 44px;
+    min-width: 44px;
     border-radius: 50%;
   }
   .map-control-divider {

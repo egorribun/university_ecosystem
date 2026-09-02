@@ -1,6 +1,7 @@
 import asyncio
 import re
 from collections.abc import Callable, Coroutine
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import text
@@ -15,12 +16,100 @@ logger = get_logger(__name__)
 # RZ-20-05 (audit 2026-03-24): Whitelist for partition/table identifiers.
 # Prevents DDL injection through crafted names returned by rust_ext.
 _SAFE_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,62}$")
+_RANGE_PARTITION_BOUND_RE = re.compile(
+    r"^FOR VALUES FROM \('([^']+)'\) TO \('([^']+)'\)$"
+)
 
 PARTITIONED_TABLES = [
     ("notifications", "created_at"),
     ("notification_deliveries", "attempted_at"),
     ("data_access_logs", "created_at"),
 ]
+
+
+def _normalise_partition_timestamp(value: object) -> datetime | None:
+    """Return a comparable UTC timestamp from PostgreSQL/Rust text values."""
+
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _partition_bound_matches(
+    bound: object,
+    start_date_iso: object,
+    end_date_iso: object,
+) -> bool:
+    """Whether one catalog RANGE bound covers exactly the requested month."""
+
+    if not isinstance(bound, str):
+        return False
+    match = _RANGE_PARTITION_BOUND_RE.fullmatch(bound.strip())
+    if match is None:
+        return False
+
+    existing_start = _normalise_partition_timestamp(match.group(1))
+    existing_end = _normalise_partition_timestamp(match.group(2))
+    requested_start = _normalise_partition_timestamp(start_date_iso)
+    requested_end = _normalise_partition_timestamp(end_date_iso)
+    return (
+        existing_start is not None
+        and existing_end is not None
+        and requested_start is not None
+        and requested_end is not None
+        and existing_start == requested_start
+        and existing_end == requested_end
+    )
+
+
+async def _range_partition_exists(
+    conn: Any,
+    table: str,
+    start_date_iso: object,
+    end_date_iso: object,
+) -> bool:
+    """Detect a monthly partition by bounds instead of its implementation name.
+
+    Historical migrations use ``notifications_YYYY_MM`` while the runtime
+    partition worker uses ``notifications_yYYYYmMM``. PostgreSQL rejects a
+    second name for the same range, so catalog bounds—not a generated name—are
+    the idempotency contract.
+    """
+
+    result = await conn.execute(
+        text(
+            """
+            SELECT pg_get_expr(child.relpartbound, child.oid)
+            FROM pg_inherits
+            JOIN pg_class AS child ON pg_inherits.inhrelid = child.oid
+            JOIN pg_class AS parent ON pg_inherits.inhparent = parent.oid
+            JOIN pg_namespace AS parent_ns ON parent.relnamespace = parent_ns.oid
+            WHERE parent.relname = :table_name
+              AND parent_ns.nspname = current_schema()
+              AND child.relispartition
+            """
+        ),
+        {"table_name": table},
+    )
+    return any(
+        _partition_bound_matches(bound, start_date_iso, end_date_iso)
+        for bound in result.scalars().all()
+    )
+
+
+async def _lock_partition_ddl(conn: Any, table: str) -> None:
+    """Serialize range creation per parent table across application nodes."""
+
+    await conn.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:table_name))"),
+        {"table_name": table},
+    )
 
 
 async def ensure_partitions_exist() -> None:
@@ -55,6 +144,7 @@ async def ensure_partitions_exist() -> None:
             safe_table = preparer.quote(table)
             safe_default = preparer.quote(f"{table}_default")
             try:
+                await _lock_partition_ddl(conn, table)
                 await conn.exec_driver_sql(
                     f"CREATE TABLE IF NOT EXISTS {safe_default} "
                     f"PARTITION OF {safe_table} DEFAULT"
@@ -66,6 +156,7 @@ async def ensure_partitions_exist() -> None:
                 SAOperationalError,
                 SAProgrammingError,
             ) as e:
+                await conn.rollback()
                 logger.error("Failed to ensure default partition for %s: %s", table, e)
 
         # 1b. Ensure future partitions exist
@@ -107,8 +198,6 @@ async def ensure_partitions_exist() -> None:
                     safe_table = preparer.quote(table)
 
                     # Strict ISO-8601 validation to prevent date injection.
-                    from datetime import datetime
-
                     datetime.fromisoformat(str(start_date_iso).replace("Z", "+00:00"))
                     datetime.fromisoformat(str(end_date_iso).replace("Z", "+00:00"))
 
@@ -119,8 +208,17 @@ async def ensure_partitions_exist() -> None:
                     # "the server expects 0 arguments".
                     safe_start = str(start_date_iso).replace("'", "''")
                     safe_end = str(end_date_iso).replace("'", "''")
+                    await _lock_partition_ddl(conn, table)
+                    if await _range_partition_exists(
+                        conn,
+                        table,
+                        start_date_iso,
+                        end_date_iso,
+                    ):
+                        await conn.commit()
+                        continue
                     await conn.exec_driver_sql(
-                        f"CREATE TABLE IF NOT EXISTS {safe_partition} "
+                        f"CREATE TABLE {safe_partition} "
                         f"PARTITION OF {safe_table} "
                         f"FOR VALUES FROM ('{safe_start}') TO ('{safe_end}')"
                     )
@@ -133,6 +231,7 @@ async def ensure_partitions_exist() -> None:
                     RuntimeError,
                     ImportError,
                 ) as e:
+                    await conn.rollback()
                     # RZ-20-04 + RZ-33-03: Broadened — DDL errors, rust_ext import,
                     # and asyncpg interface errors.
                     logger.error(

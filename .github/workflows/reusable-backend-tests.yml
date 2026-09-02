@@ -96,6 +96,11 @@ jobs:
             SECRET_KEY: ${{ secrets.SECRET_KEY || 'dummy_secret_key_for_ci_tests_at_least_32_chars' }}
             ENVIRONMENT: testing
             OTEL_SDK_DISABLED: "true"
+            # Authentication-capable unit tests exercise the revocation-aware
+            # session path.  Keep the URL explicit even when the suite mocks
+            # the Redis transport; the fail-closed client must never silently
+            # fall back to the development default.
+            REVOCATION_REDIS_URL: redis://localhost:6380/0
             PYTHON_GIL: ${{ inputs.python-gil }}  # MOD-24-03: free-threading support
         services:
             redis:
@@ -243,14 +248,62 @@ jobs:
                   path: |
                       coverage-*.xml
                       artifacts/coverage/python/coverage-*.json
+                  if-no-files-found: error
+
+            - name: Write backend shard coverage provenance
+              if: ${{ inputs.num-shards > 1 }}
+              shell: bash
+              env:
+                  SHARD_ID: ${{ inputs.shard-id }}
+                  ARTIFACT_NAME: backend-coverage-data-${{ inputs.test-group-name }}-attempt-${{ github.run_attempt }}
+                  EXPECTED_SHA: ${{ github.sha }}
+                  WORKFLOW_REPOSITORY: ${{ github.repository }}
+                  WORKFLOW_REF: ${{ github.workflow_ref }}
+                  WORKFLOW_SHA: ${{ github.workflow_sha }}
+                  RUN_ID: ${{ github.run_id }}
+                  RUN_ATTEMPT: ${{ github.run_attempt }}
+                  WORKFLOW_EVENT: ${{ github.event_name }}
+              run: |
+                  set -euo pipefail
+                  source_report=".coverage.$SHARD_ID"
+                  producer_root="artifacts/coverage/python/producer"
+                  staged_report="$producer_root/.coverage.shard-$SHARD_ID"
+                  metadata="$producer_root/coverage-provenance-shard-$SHARD_ID.json"
+                  test -s "$source_report"
+                  rm -rf -- "$producer_root"
+                  mkdir -p "$producer_root"
+                  cp "$source_report" "$staged_report"
+                  python_version="$(python3 -c 'import platform; print(platform.python_version())')"
+                  coverage_version="$(uv run coverage --version | awk 'NR == 1 {print $2}')"
+                  python3 scripts/quality/coverage_provenance.py write \
+                    --repository-root "$GITHUB_WORKSPACE" \
+                    --output "$metadata" \
+                    --expected-sha "$EXPECTED_SHA" \
+                    --identity-provider github-actions \
+                    --repository "$WORKFLOW_REPOSITORY" \
+                    --workflow-ref "$WORKFLOW_REF" \
+                    --workflow-sha "$WORKFLOW_SHA" \
+                    --run-id "$RUN_ID" \
+                    --run-attempt "$RUN_ATTEMPT" \
+                    --event "$WORKFLOW_EVENT" \
+                    --job "$GITHUB_JOB" \
+                    --artifact "$ARTIFACT_NAME" \
+                    --collected-at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+                    --tool-version "python=$python_version" \
+                    --tool-version "coverage.py=$coverage_version" \
+                    --tool-version quality-provenance=2.0.0 \
+                    --report "python-shard|coverage-py-data|$staged_report|artifacts/coverage/python/shards/.coverage.shard-$SHARD_ID"
 
             - name: Upload raw coverage data for aggregation
               if: ${{ inputs.num-shards > 1 }}
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
               with:
-                  name: backend-coverage-data-${{ inputs.test-group-name }}
-                  path: .coverage.${{ inputs.shard-id }}
+                  name: backend-coverage-data-${{ inputs.test-group-name }}-attempt-${{ github.run_attempt }}
+                  path: |
+                      artifacts/coverage/python/producer/.coverage.shard-${{ inputs.shard-id }}
+                      artifacts/coverage/python/producer/coverage-provenance-shard-${{ inputs.shard-id }}.json
                   include-hidden-files: true
+                  if-no-files-found: error
 
             - name: Upload pytest report
               uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -260,7 +313,12 @@ jobs:
                   if-no-files-found: warn
 
             - name: Update historical test durations
-              if: always() && hashFiles('pytest-report.xml') != ''
+              # A failed collection can leave a syntactically valid but
+              # incomplete JUnit document (for example, an error testcase
+              # without file/classname). Historical timing is advisory and
+              # must not mask the primary pytest failure with a second parser
+              # failure; only update it after the test step succeeds.
+              if: success() && hashFiles('pytest-report.xml') != ''
               shell: pwsh
               env:
                 TEST_GROUP_NAME: ${{ inputs.test-group-name }}
@@ -279,6 +337,7 @@ jobs:
             ENVIRONMENT: testing
             OTEL_SDK_DISABLED: "true"
             DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test
+            UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
             REDIS_URL: redis://localhost:6379
             REVOCATION_REDIS_URL: redis://localhost:6380/0
             RUN_INTEGRATION_TESTS: "1"

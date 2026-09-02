@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useEffect, type FormEvent } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { isAxiosError } from "axios"
@@ -12,6 +12,10 @@ import { createNews, uploadNewsImage } from "@/api/news"
 import { resetEtagCache } from "@/api/client"
 import { cn } from "@/utils/cn"
 import { newsFormSchema, type NewsFormValues } from "@/features/news/schema"
+import {
+  captureActiveTelemetryContext,
+  type CapturedTelemetryContext,
+} from "@/utils/telemetryContext"
 
 const inputClass =
   "w-full rounded-md border border-glass-border bg-(--bg-surface)/(--opacity-medium) px-4 py-2.5 text-input text-text-primary shadow-sm focus:border-brand focus:outline-none transition placeholder:text-(--text-secondary)/(--opacity-medium)"
@@ -120,31 +124,39 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
     [t]
   )
 
-  const onSubmit = async (data: NewsFormValues) => {
+  const onSubmit = async (data: NewsFormValues, telemetryContext: CapturedTelemetryContext) => {
     setSubmitError(null)
     try {
       let image_url = ""
-      if (data.image) {
-        const uploadedUrl = await uploadNewsImage(data.image)
+      const image = data.image
+      if (image) {
+        const uploadedUrl = await telemetryContext.run(() => uploadNewsImage(image))
         image_url = uploadedUrl || ""
       }
 
-      await createNews({
-        title: data.title,
-        content: data.content,
-        image_url,
-        title_en: data.title_en || undefined,
-        content_en: data.content_en || undefined,
-      })
+      await telemetryContext.run(() =>
+        createNews({
+          title: data.title,
+          content: data.content,
+          image_url,
+          title_en: data.title_en || undefined,
+          content_en: data.content_en || undefined,
+        })
+      )
 
       resetEtagCache()
-      void queryClient.invalidateQueries({ queryKey: ["news", "list"] })
+      void telemetryContext.run(() => queryClient.invalidateQueries({ queryKey: ["news", "list"] }))
 
-      if (onSuccess) onSuccess()
+      if (onSuccess) telemetryContext.run(onSuccess)
       onClose()
     } catch (error) {
       setSubmitError(resolveCreateError(error))
     }
+  }
+
+  const handleTelemetrySubmit = (event: FormEvent<HTMLFormElement>) => {
+    const telemetryContext = captureActiveTelemetryContext()
+    return handleSubmit((data) => onSubmit(data, telemetryContext))(event)
   }
 
   return (
@@ -154,7 +166,7 @@ export const NewsFormDialog = ({ open, onClose, onSuccess }: NewsFormDialogProps
         <form
           id="news-form"
           className="grid grid-cols-1 md:grid-cols-2 gap-6"
-          onSubmit={handleSubmit(onSubmit)}
+          onSubmit={handleTelemetrySubmit}
         >
           <div className="space-y-4">
             {submitError ? <Alert severity="error">{submitError}</Alert> : null}

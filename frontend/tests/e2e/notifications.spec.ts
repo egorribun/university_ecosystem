@@ -77,6 +77,14 @@ async function setupMockServiceWorker(page: Page) {
       startMessages: () => {},
     } as unknown as ServiceWorkerContainer
 
+    // Let the shared API fixture distinguish this intentional test double
+    // from a browser-native service-worker container on Firefox/WebKit.
+    Object.defineProperty(serviceWorkerContainer, "__e2eMockServiceWorker", {
+      configurable: false,
+      enumerable: false,
+      value: true,
+    })
+
     Object.defineProperty(navigator, "serviceWorker", {
       configurable: true,
       value: serviceWorkerContainer,
@@ -245,6 +253,13 @@ async function setupMockServiceWorker(page: Page) {
   })
 }
 
+async function expectPathname(page: Page, pathname: string): Promise<void> {
+  // History-based router transitions can complete before waitForURL attaches
+  // in WebKit. Poll the canonical pathname so both already-completed and
+  // in-flight navigations share the same deterministic contract.
+  await expect.poll(() => new URL(page.url()).pathname).toBe(pathname)
+}
+
 declare global {
   interface Window {
     __mockPush?: (payload: unknown) => void
@@ -293,7 +308,7 @@ test.describe("Push notifications", () => {
     expect(notificationCalls).toBeGreaterThan(0)
 
     await Promise.all([
-      page.waitForURL(/\/news$/),
+      expectPathname(page, "/news"),
       page.evaluate(() => {
         window.__mockNotificationClick?.("open-news")
       }),
@@ -306,7 +321,7 @@ test.describe("Push notifications", () => {
     // double. Seed the same notification before exercising its second action.
     await page.evaluate(({ payload }) => window.__mockPush?.(payload), { payload })
     await Promise.all([
-      page.waitForURL(/\/schedule$/),
+      expectPathname(page, "/schedule"),
       page.evaluate(() => {
         window.__mockNotificationClick?.("open-schedule")
       }),
@@ -353,8 +368,13 @@ test.describe("Push notifications", () => {
 
     await page.getByRole("button", { name: /^(Open|Открыть)$/i }).click()
 
-    await page.waitForURL(/\/news$/)
-    const heading = page.getByRole("heading", { level: 1 })
+    await expectPathname(page, "/news")
+    // Assert the canonical News route heading. A loading/offline fallback can
+    // legitimately render its own h1 during a navigation race, so querying
+    // every level-one heading is ambiguous even inside the main landmark.
+    const heading = page
+      .locator("#main-content")
+      .getByRole("heading", { name: /Новости университета|University news/i })
     // Use unicode for robustness against mojibake
     await expect(heading).toContainText(/News|\u041d\u043e\u0432\u043e\u0441\u0442/i)
   })

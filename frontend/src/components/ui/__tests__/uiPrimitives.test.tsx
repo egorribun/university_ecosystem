@@ -1,4 +1,7 @@
+import { createHash } from "node:crypto"
+
 import { LazyMotion, domAnimation } from "framer-motion"
+import { createRef } from "react"
 import { describe, expect, it, vi } from "vitest"
 import { fireEvent, render, screen } from "@testing-library/react"
 
@@ -12,6 +15,8 @@ import { Tooltip } from "@/components/ui/Tooltip"
 // framer-motion `m.*` components require a LazyMotion ancestor with features.
 const renderMotion = (ui: React.ReactElement) =>
   render(<LazyMotion features={domAnimation}>{ui}</LazyMotion>)
+
+const expectedDigest = (...chunks: readonly string[]) => chunks.join("").replaceAll("_", "")
 
 // --------------------------------------------------------------------------- #
 // Badge — label/children, icons, polymorphic `as`, variant/tone combos        #
@@ -127,7 +132,7 @@ describe("ProgressBar", () => {
 // --------------------------------------------------------------------------- #
 
 describe("Tooltip", () => {
-  it("applies title + data-tooltip + aria-describedby for string content", () => {
+  it("renders the element referenced by aria-describedby for string content", () => {
     render(
       <Tooltip content="Help text">
         <button>act</button>
@@ -136,9 +141,9 @@ describe("Tooltip", () => {
     const btn = screen.getByRole("button", { name: "act" })
     expect(btn).toHaveAttribute("title", "Help text")
     expect(btn).toHaveAttribute("data-tooltip", "Help text")
-    expect(btn).toHaveAttribute("aria-describedby")
-    // String content uses the native title, not a separate sr-only region.
-    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
+    const tooltip = screen.getByRole("tooltip")
+    expect(btn).toHaveAttribute("aria-describedby", tooltip.id)
+    expect(tooltip).toHaveTextContent("Help text")
   })
 
   it("renders an sr-only tooltip region for node content (no title attr)", () => {
@@ -157,6 +162,15 @@ describe("Tooltip", () => {
 // --------------------------------------------------------------------------- #
 
 describe("Checkbox", () => {
+  it("provides a 44px target and exposes the native indeterminate state", () => {
+    const { container } = renderMotion(<Checkbox checked="indeterminate" />)
+    const checkbox = screen.getByRole("checkbox") as HTMLInputElement
+    expect(checkbox.closest("label")).toHaveClass("min-h-11", "min-w-11")
+    expect(checkbox.indeterminate).toBe(true)
+    expect(checkbox).toHaveAttribute("aria-checked", "mixed")
+    expect(container.querySelector(".lucide-minus")).toBeInTheDocument()
+  })
+
   it("shows the check glyph when checked and fires onCheckedChange on click", () => {
     const onChange = vi.fn()
     const { container } = renderMotion(<Checkbox checked={false} onCheckedChange={onChange} />)
@@ -175,6 +189,18 @@ describe("Checkbox", () => {
     const { container } = renderMotion(<Checkbox checked />)
     expect(container.querySelector(".lucide-check")).toBeInTheDocument()
   })
+
+  it("forwards the native input ref and renders the disabled contract", () => {
+    const ref = createRef<HTMLInputElement>()
+    const { container } = renderMotion(<Checkbox ref={ref} disabled className="custom-checkbox" />)
+
+    expect(ref.current).toBe(screen.getByRole("checkbox"))
+    expect(ref.current).toBeDisabled()
+    expect(container.querySelector(".custom-checkbox")).toHaveStyle({
+      opacity: "var(--opacity-medium)",
+    })
+    fireEvent.click(ref.current!)
+  })
 })
 
 // --------------------------------------------------------------------------- #
@@ -182,20 +208,55 @@ describe("Checkbox", () => {
 // --------------------------------------------------------------------------- #
 
 describe("Switch", () => {
+  it("keeps its accessible visual DOM stable across interaction states", () => {
+    const digest = (markup: string) => createHash("sha256").update(markup).digest("hex")
+    const baseline = renderMotion(<Switch checked={false} aria-label="baseline" />)
+    const baselineDigest = digest(baseline.container.innerHTML)
+    const baselineInput = screen.getByRole("switch", { name: "baseline" })
+    fireEvent.focus(baselineInput)
+    fireEvent.mouseEnter(baselineInput.parentElement!)
+    const interactiveDigest = digest(baseline.container.innerHTML)
+    baseline.unmount()
+
+    const checked = renderMotion(<Switch checked aria-label="checked" />)
+    const checkedDigest = digest(checked.container.innerHTML)
+    checked.unmount()
+
+    const disabled = renderMotion(<Switch checked={false} disabled aria-label="disabled" />)
+    const disabledDigest = digest(disabled.container.innerHTML)
+    disabled.unmount()
+
+    expect({ baselineDigest, interactiveDigest, checkedDigest, disabledDigest }).toEqual({
+      baselineDigest: expectedDigest(
+        "c049_96b1_cc0a_a735_7c87_b55c_adcf_6c7b_4aa5_1d45_d491_a116_df52_66a3_afde_4cbd"
+      ),
+      interactiveDigest: expectedDigest(
+        "93b6_f3b7_08d4_b19d_f5f3_eb90_44ae_f3b0_6a3a_7286_72fc_b087_4453_3c3a_6f9f_1b81"
+      ),
+      checkedDigest: expectedDigest(
+        "67e7_ec53_6a5c_2ffd_e8be_5daf_5ab4_06f2_8f0f_82aa_ace1_cd35_98d1_f9ce_daf0_db1e"
+      ),
+      disabledDigest: expectedDigest(
+        "984e_0dc5_debe_1af4_cc79_c659_f379_bd74_908d_18cf_78a0_a6d2_761e_0ecf_5dca_67b8"
+      ),
+    })
+  })
+
   it("fires onCheckedChange and tracks focus/blur", () => {
     const onChange = vi.fn()
     renderMotion(<Switch checked={false} onCheckedChange={onChange} />)
-    const input = screen.getByRole("checkbox")
+    const input = screen.getByRole("switch")
 
     fireEvent.focus(input)
     fireEvent.click(input)
     fireEvent.blur(input)
 
     expect(onChange).toHaveBeenCalledWith(true)
+    expect(input.closest("span")).toHaveClass("min-h-11")
   })
 
   it("renders disabled without crashing", () => {
     renderMotion(<Switch checked disabled />)
-    expect(screen.getByRole("checkbox")).toBeDisabled()
+    expect(screen.getByRole("switch")).toBeDisabled()
   })
 })

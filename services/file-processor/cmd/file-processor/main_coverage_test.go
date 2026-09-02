@@ -344,14 +344,17 @@ func TestStartNatsSubscriber_FailGracefully(t *testing.T) {
 	})
 }
 
+func useRepositoryGraphQLSchema(t *testing.T) {
+	t.Helper()
+	schemaPath, err := filepath.Abs("../../schema.graphql")
+	require.NoError(t, err)
+	_, err = os.Stat(schemaPath)
+	require.NoError(t, err)
+	t.Setenv("FP_SCHEMA_PATH", schemaPath)
+}
+
 func TestSetupGraphQLServer(t *testing.T) {
-	content, err := os.ReadFile("../../schema.graphql")
-	if err == nil {
-		require.NoError(t, os.WriteFile("schema.graphql", content, 0600)) // #nosec G703 -- test-only fixed schema path.
-		t.Cleanup(func() {
-			require.NoError(t, os.Remove("schema.graphql"))
-		})
-	}
+	useRepositoryGraphQLSchema(t)
 
 	cfg := &config.Config{
 		GraphQLPort: "0",
@@ -370,6 +373,23 @@ func TestSetupGraphQLServer_ParentSchemaFallback(t *testing.T) {
 	tempDir := t.TempDir()
 	parentSchema := filepath.Join(tempDir, "..", "schema.graphql")
 	require.NoError(t, os.WriteFile(parentSchema, content, 0600)) // #nosec G703 -- test-only temp path.
+	t.Chdir(tempDir)
+	t.Setenv("FP_SCHEMA_PATH", "")
+
+	srv, err := setupGraphQLServer(context.Background(), &config.Config{
+		GraphQLPort: "0",
+		MinioBucket: "test-bucket",
+		JWTSecret:   "test-secret",
+	}, nil, nil, discardLogger())
+	require.NoError(t, err)
+	assert.NotNil(t, srv)
+}
+
+func TestSetupGraphQLServer_BundledSchemaFromWorkingDirectory(t *testing.T) {
+	content, err := os.ReadFile("../../schema.graphql")
+	require.NoError(t, err)
+	tempDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "schema.graphql"), content, 0600)) // #nosec G306 -- test-only schema.
 	t.Chdir(tempDir)
 	t.Setenv("FP_SCHEMA_PATH", "")
 
@@ -411,13 +431,7 @@ func TestSetupGraphQLServer_ConvertsSchemaParserPanicToError(t *testing.T) {
 }
 
 func TestRunServers_CleanShutdown(t *testing.T) {
-	content, err := os.ReadFile("../../schema.graphql")
-	if err == nil {
-		require.NoError(t, os.WriteFile("schema.graphql", content, 0600)) // #nosec G703 -- test-only fixed schema path.
-		t.Cleanup(func() {
-			require.NoError(t, os.Remove("schema.graphql"))
-		})
-	}
+	useRepositoryGraphQLSchema(t)
 
 	cfg := &config.Config{
 		GRPCPort:    "0",
@@ -619,6 +633,28 @@ func TestSetupGraphQLServer_NoSchemaFile(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestSetupGraphQLServer_RejectsSchemaPathTraversal(t *testing.T) {
+	t.Setenv("FP_SCHEMA_PATH", "../schema.graphql")
+
+	_, err := setupGraphQLServer(context.Background(), &config.Config{
+		GraphQLPort: "0",
+		MinioBucket: "test-bucket",
+		JWTSecret:   "test-secret",
+	}, nil, nil, discardLogger())
+	require.ErrorContains(t, err, "invalid GraphQL schema path")
+}
+
+func TestSetupGraphQLServer_ConfiguredSchemaMissing(t *testing.T) {
+	t.Setenv("FP_SCHEMA_PATH", filepath.Join(t.TempDir(), "schema.graphql"))
+
+	_, err := setupGraphQLServer(context.Background(), &config.Config{
+		GraphQLPort: "0",
+		MinioBucket: "test-bucket",
+		JWTSecret:   "test-secret",
+	}, nil, nil, discardLogger())
+	require.Error(t, err)
+}
+
 func TestRunServers_GRPCListenFailure(t *testing.T) {
 	if os.Getenv("BE_CRASHER") == "1" {
 		cfg := &config.Config{
@@ -642,13 +678,7 @@ func TestRunServers_GRPCListenFailure(t *testing.T) {
 }
 
 func TestSetupGraphQLServer_RestrictIntrospection(t *testing.T) {
-	content, err := os.ReadFile("../../schema.graphql")
-	if err == nil {
-		require.NoError(t, os.WriteFile("schema.graphql", content, 0600)) // #nosec
-		t.Cleanup(func() {
-			require.NoError(t, os.Remove("schema.graphql"))
-		})
-	}
+	useRepositoryGraphQLSchema(t)
 	cfg := &config.Config{
 		GraphQLPort: "0",
 		MinioBucket: "test-bucket",
@@ -829,15 +859,7 @@ func TestMain_SuccessLifecycle(t *testing.T) {
 	require.NoError(t, os.Setenv("FP_JWT_SECRET", "my-secret-key-12345"))
 	require.NoError(t, os.Setenv("FP_NATS_URL", "nats://127.0.0.1:1"))
 
-	content, err := os.ReadFile("../../schema.graphql")
-	if err == nil {
-		require.NoError(t, os.WriteFile("schema.graphql", content, 0600)) // #nosec
-		t.Cleanup(func() {
-			if err := os.Remove("schema.graphql"); err != nil {
-				t.Log(err)
-			}
-		})
-	}
+	useRepositoryGraphQLSchema(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})

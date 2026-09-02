@@ -24,6 +24,10 @@ final_check.txt
 *_logs_*.txt
 *_log.txt
 smoke_*_logs.txt
+.root*
+**/.root*
+\$*
+**/$*
 
 # Go coverage output
 cover.out
@@ -75,6 +79,7 @@ web_modules/
 .stylelintcache
 .node_repl_history
 *.tgz
+!charts/revocation-store/charts/redis-20.13.4.tgz
 .yarn-integrity
 .env
 .env.*
@@ -355,7 +360,6 @@ test_repro.py
 AUDIT_2026_03_06_WAVE3.md
 AUDIT_2026_03_07_FINAL.md
 rustup-init.exe
-/frontend/openapi.json
 
 # Worktrees
 .worktrees/

@@ -1,20 +1,66 @@
 import { screen } from "@testing-library/react"
 import LoadingState from "@/components/feedback/LoadingState"
 import { renderWithA11y } from "@/tests/axeTest"
+import { beforeEach, describe, expect, test, vi } from "vitest"
+
+const i18nMocks = vi.hoisted(() => ({
+  useTranslation: vi.fn(),
+}))
+
+vi.mock("react-i18next", () => ({
+  useTranslation: i18nMocks.useTranslation,
+}))
+
+beforeEach(() => {
+  i18nMocks.useTranslation.mockReset().mockImplementation(() => ({
+    t: (key: string) => key,
+    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+  }))
+})
 
 describe("LoadingState", () => {
   test("renders an accessible busy status with page landmarks", async () => {
     const { container } = await renderWithA11y(<LoadingState />)
 
     const status = screen.getByRole("status")
+    expect(i18nMocks.useTranslation).toHaveBeenCalledWith("common")
     expect(status).toHaveAttribute("aria-busy", "true")
     expect(status).toHaveAttribute("aria-live", "polite")
     expect(screen.getAllByText(/loading/i)[0]).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: /loading/i })).toHaveClass("sr-only")
     // Wave 120 SW3 (a11y): Layout.tsx switched from `<main id="main">` to
     // `<div data-scroll-root>` to fix duplicate main landmark — MainLayout
     // already provides the page-level main. Test now checks the data
     // attribute that stayed on the wrapper.
     expect(container.querySelector("[data-scroll-root]")).not.toBeNull()
     expect(container.querySelector("header")).not.toBeNull()
+    const skeleton = container.querySelector("header .h-8") as HTMLElement
+    expect(skeleton).toHaveClass("max-w-(--w-label-lg)", "h-8", "sm:h-9", "rounded-xl")
+    expect(skeleton).toHaveStyle({
+      width: "clamp(44%, 53vw, 62%)",
+    })
+  })
+
+  test("uses a caller-provided label for both the hidden heading and status content", async () => {
+    const { container } = await renderWithA11y(<LoadingState label="Loading profile" />)
+
+    expect(screen.getByRole("heading", { name: "Loading profile" })).toHaveClass("sr-only")
+    expect(screen.getByRole("status")).toHaveTextContent("Loading profile")
+    expect(screen.getByRole("status")).toHaveClass(
+      "flex",
+      "flex-col",
+      "items-center",
+      "justify-center",
+      "min-h-60dvh",
+      "text-center"
+    )
+    expect(container.querySelector(".animate-spin")).toHaveClass(
+      "h-12",
+      "w-12",
+      "rounded-full",
+      "border-4",
+      "border-t-brand"
+    )
+    expect(container.querySelector(".animate-pulse")).toBeInTheDocument()
   })
 })

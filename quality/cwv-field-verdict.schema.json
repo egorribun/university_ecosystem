@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://university-ecosystem.local/schemas/cwv-field-verdict.schema.json",
+  "title": "University Ecosystem field Core Web Vitals certification verdict",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "valid",
+    "release_sha",
+    "frontend_image_digest",
+    "image_manifest_sha256",
+    "image_build_run_id",
+    "image_build_run_attempt",
+    "environment",
+    "deployment_workflow_run_id",
+    "deployment_workflow_run_attempt",
+    "report_sha256",
+    "deployment_metadata_sha256",
+    "policy_sha256",
+    "generated_at",
+    "window",
+    "segments",
+    "route_segments"
+  ],
+  "properties": {
+    "schema_version": { "const": 2 },
+    "valid": { "const": true },
+    "release_sha": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "frontend_image_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "image_manifest_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "image_build_run_id": { "type": "integer", "minimum": 1 },
+    "image_build_run_attempt": { "type": "integer", "minimum": 1 },
+    "environment": { "const": "staging" },
+    "deployment_workflow_run_id": { "type": "integer", "minimum": 1 },
+    "deployment_workflow_run_attempt": { "type": "integer", "minimum": 1 },
+    "report_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "deployment_metadata_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "policy_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "generated_at": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "window": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "end": { "type": "string", "format": "date-time", "pattern": "Z$" }
+      }
+    },
+    "segments": { "$ref": "#/$defs/segmentMap" },
+    "route_segments": { "$ref": "#/$defs/routeSegmentMap" }
+  },
+  "$defs": {
+    "segment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observations", "p75", "maximum", "unit"],
+      "properties": {
+        "observations": { "type": "integer", "minimum": 1 },
+        "p75": { "type": "number", "minimum": 0 },
+        "maximum": { "type": "number", "minimum": 0 },
+        "unit": { "enum": ["ms", "score"] }
+      }
+    },
+    "routeSegment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "observations",
+        "navigations",
+        "sessions",
+        "collectors",
+        "p75",
+        "maximum",
+        "unit"
+      ],
+      "properties": {
+        "observations": { "type": "integer", "minimum": 1 },
+        "navigations": { "type": "integer", "minimum": 1 },
+        "sessions": { "type": "integer", "minimum": 1 },
+        "collectors": { "type": "integer", "minimum": 1 },
+        "p75": { "type": "number", "minimum": 0 },
+        "maximum": { "type": "number", "minimum": 0 },
+        "unit": { "enum": ["ms", "score"] }
+      }
+    },
+    "segmentMap": {
+      "type": "object",
+      "minProperties": 6,
+      "additionalProperties": { "$ref": "#/$defs/segment" }
+    },
+    "routeSegmentMap": {
+      "type": "object",
+      "minProperties": 24,
+      "additionalProperties": { "$ref": "#/$defs/routeSegment" }
+    }
+  }
+}

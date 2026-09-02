@@ -7,9 +7,17 @@ on:
 
 permissions: read-all
 
+# Cleanup mutates shared retention state; never allow scheduled and manually
+# dispatched runs to overlap, and retain the active run if a newer invocation
+# arrives so the earlier operation can finish atomically.
+concurrency:
+  group: weekly-cleanup
+  cancel-in-progress: false
+
 jobs:
   cleanup:
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     env:
       OTEL_SDK_DISABLED: "true"
       DATABASE_URL: ${{ secrets.DATABASE_URL }}

@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
+import scripts.run_mutmut_with_stats as run_module
 from scripts.mutmut_stats_shard import _stats_selection_args
 from scripts.run_mutmut_with_stats import run_mutmut_from_stats
 
@@ -209,3 +210,77 @@ def test_run_mutmut_from_stats_rejects_a_missing_stats_artifact(
         run_mutmut_from_stats(
             mutant_names=(), max_children=2, mutmut_cli=SimpleNamespace()
         )
+
+
+def test_run_mutmut_from_stats_reuses_validated_universe_and_restores_hooks_on_error(
+    tmp_path, monkeypatch
+) -> None:
+    """Reuse must bypass generation, load hashes, and restore every hook on failure."""
+
+    _write_complete_stats(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    observed: dict[str, object] = {}
+    loaded_stats = object()
+
+    def validate(cli: object) -> None:
+        observed["validated_cli"] = cli
+
+    def load_stats(cli: object) -> object:
+        observed["loaded_cli"] = cli
+        return loaded_stats
+
+    monkeypatch.setattr(run_module, "validate_universe_manifest", validate)
+    monkeypatch.setattr(run_module, "load_reused_generation_stats", load_stats)
+
+    class _Runner:
+        def list_all_tests(self) -> str:
+            return "unexpected pytest collection"
+
+        def run_forced_fail(self) -> int:
+            return 1
+
+    def original_copy() -> None:
+        observed["copied"] = True
+
+    def original_copy_also() -> None:
+        observed["copied_also"] = True
+
+    def original_create(max_children: int) -> object:
+        observed["generated_max_children"] = max_children
+        return object()
+
+    def _run(_mutant_names: tuple[str, ...], max_children: int) -> None:
+        observed["reuse_copy_result"] = fake_cli.copy_src_dir()
+        observed["reuse_copy_also_result"] = fake_cli.copy_also_copy_files()
+        observed["reuse_stats"] = fake_cli.create_mutants(max_children)
+        raise RuntimeError("synthetic mutation failure")
+
+    fake_cli = SimpleNamespace(
+        PytestRunner=_Runner,
+        ListAllTestsResult=_FakeListAllTestsResult,
+        collected_test_names=lambda: {"tests/test_fn.py::test_fn"},
+        _run=_run,
+        copy_src_dir=original_copy,
+        copy_also_copy_files=original_copy_also,
+        create_mutants=original_create,
+    )
+
+    with pytest.raises(RuntimeError, match="synthetic mutation failure"):
+        run_mutmut_from_stats(
+            mutant_names=("app.fn__mutmut_1",),
+            max_children=3,
+            mutmut_cli=fake_cli,
+            reuse_generated_universe=True,
+        )
+
+    assert observed["validated_cli"] is fake_cli
+    assert observed["loaded_cli"] is fake_cli
+    assert observed["reuse_stats"] is loaded_stats
+    assert observed["reuse_copy_result"] is None
+    assert observed["reuse_copy_also_result"] is None
+    assert "copied" not in observed
+    assert "copied_also" not in observed
+    assert "generated_max_children" not in observed
+    assert fake_cli.copy_src_dir is original_copy
+    assert fake_cli.copy_also_copy_files is original_copy_also
+    assert fake_cli.create_mutants is original_create

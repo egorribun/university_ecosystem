@@ -95,6 +95,22 @@ async def test_get_revocation_redis_client_requires_configured_url() -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_revocation_redis_client_fails_closed_for_disabled_worker_role() -> (
+    None
+):
+    with patch(
+        "app.core.config.settings",
+        SimpleNamespace(
+            app_process_role="outbox-worker",
+            revocation_redis_access_enabled=False,
+            revocation_redis_url="redis://revocation.internal:6379/0",
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="disabled for this process role"):
+            await get_revocation_redis_client()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("redis_ttl", [0, -1, -2])
 async def test_revoke_with_tombstone_fallback_covers_missing_or_unbounded_key(
     redis_ttl: int,

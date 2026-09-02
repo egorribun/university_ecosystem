@@ -3,16 +3,50 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { createRef } from "react"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+
+const mocks = vi.hoisted(() => ({
+  captureException: vi.fn(),
+  logError: vi.fn(),
+  logWarning: vi.fn(),
+}))
+const translationMock = vi.hoisted(() => {
+  const t = vi.fn((key: string, options?: { feature?: string }) => {
+    if (key === "common:errors.featureUnavailable") {
+      return `${options?.feature ?? "Feature"} unavailable`
+    }
+    if (key === "common:statuses.error") return "Something went wrong"
+    if (key === "common:statuses.tryAgain") return "Try again"
+    return key
+  })
+  return {
+    t,
+    useTranslation: vi.fn((..._namespaces: unknown[]) => ({
+      t,
+      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+    })),
+  }
+})
+
+vi.mock("react-i18next", () => ({
+  useTranslation: translationMock.useTranslation,
+}))
 
 import { FeatureErrorBoundary } from "../FeatureErrorBoundary"
 import { WidgetErrorBoundary } from "../WidgetErrorBoundary"
 
 // Mock Sentry
 vi.mock("@sentry/react", () => ({
-  captureException: vi.fn(),
+  captureException: mocks.captureException,
 }))
+vi.mock("@/app/logger", () => ({
+  logError: mocks.logError,
+  logWarning: mocks.logWarning,
+}))
+
+import * as Sentry from "@sentry/react"
 
 // Suppress console errors during tests
 let consoleError: ReturnType<typeof vi.spyOn>
@@ -21,6 +55,7 @@ let consoleWarn: ReturnType<typeof vi.spyOn>
 beforeEach(() => {
   consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
   consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {})
+  vi.clearAllMocks()
 })
 
 afterEach(() => {
@@ -38,6 +73,17 @@ function BrokenComponent({ shouldThrow = true }: { shouldThrow?: boolean }) {
 }
 
 describe("FeatureErrorBoundary", () => {
+  it("starts with an explicit clean state", () => {
+    const ref = createRef<FeatureErrorBoundary>()
+    render(
+      <FeatureErrorBoundary ref={ref}>
+        <div>Ready</div>
+      </FeatureErrorBoundary>
+    )
+
+    expect(ref.current?.state).toEqual({ hasError: false, error: null })
+  })
+
   it("renders children when no error", () => {
     render(
       <FeatureErrorBoundary>
@@ -57,6 +103,24 @@ describe("FeatureErrorBoundary", () => {
 
     expect(screen.getByText("Schedule unavailable")).toBeInTheDocument()
     expect(screen.getByText("Try again")).toBeInTheDocument()
+    expect(translationMock.useTranslation).toHaveBeenCalledWith(["common"])
+    expect(screen.getByText("Something went wrong")).toHaveClass("text-xs")
+    expect(screen.getByText("Try again")).toHaveClass("text-xs", "font-black")
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        contexts: expect.objectContaining({
+          react: expect.objectContaining({ componentStack: expect.any(String) }),
+          feature: { name: "Schedule" },
+        }),
+        tags: { errorBoundary: "feature", feature: "Schedule" },
+        level: "warning",
+      })
+    )
+    expect(mocks.logError).toHaveBeenCalledWith(
+      "[FeatureErrorBoundary]",
+      expect.objectContaining({ feature: "Schedule" })
+    )
   })
 
   it("renders custom fallback on error", () => {
@@ -115,10 +179,45 @@ describe("FeatureErrorBoundary", () => {
     )
 
     expect(screen.getByRole("alert")).toBeInTheDocument()
+    expect(screen.getByText("Feature unavailable")).toBeInTheDocument()
+    expect(Sentry.captureException).not.toHaveBeenCalled()
+    expect(mocks.logError).not.toHaveBeenCalled()
+  })
+
+  it("successfully recovers when retrying after a transient child error", async () => {
+    const user = userEvent.setup()
+    let shouldThrow = true
+    function FlakyComponent() {
+      if (shouldThrow) throw new Error("transient")
+      return <div>Recovered feature</div>
+    }
+
+    render(
+      <FeatureErrorBoundary featureName="Transient feature">
+        <FlakyComponent />
+      </FeatureErrorBoundary>
+    )
+    expect(screen.getByText("Transient feature unavailable")).toBeInTheDocument()
+
+    shouldThrow = false
+    await user.click(screen.getByText("Try again"))
+    expect(screen.getByText("Recovered feature")).toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   })
 })
 
 describe("WidgetErrorBoundary", () => {
+  it("starts with an explicit clean state", () => {
+    const ref = createRef<WidgetErrorBoundary>()
+    render(
+      <WidgetErrorBoundary ref={ref}>
+        <div>Ready</div>
+      </WidgetErrorBoundary>
+    )
+
+    expect(ref.current?.state).toEqual({ hasError: false })
+  })
+
   it("renders children when no error", () => {
     render(
       <WidgetErrorBoundary>
@@ -172,6 +271,37 @@ describe("WidgetErrorBoundary", () => {
 
     expect(onError).toHaveBeenCalledTimes(1)
     expect(onError.mock.calls[0]![0]).toBeInstanceOf(Error)
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        contexts: expect.objectContaining({
+          react: expect.objectContaining({ componentStack: expect.any(String) }),
+          widget: { name: undefined },
+        }),
+        tags: { errorBoundary: "widget", widget: undefined },
+        level: "info",
+      })
+    )
+  })
+
+  it("reports the widget context and development diagnostic", () => {
+    render(
+      <WidgetErrorBoundary widgetName="Weather">
+        <BrokenComponent />
+      </WidgetErrorBoundary>
+    )
+
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        contexts: expect.objectContaining({ widget: { name: "Weather" } }),
+        tags: { errorBoundary: "widget", widget: "Weather" },
+      })
+    )
+    expect(mocks.logWarning).toHaveBeenCalledWith(
+      "[WidgetErrorBoundary]",
+      expect.objectContaining({ widget: "Weather", error: expect.any(Error) })
+    )
   })
 
   it("keeps the silent fallback in production without development logging", () => {
@@ -179,6 +309,17 @@ describe("WidgetErrorBoundary", () => {
 
     const { container } = render(
       <WidgetErrorBoundary>
+        <BrokenComponent />
+      </WidgetErrorBoundary>
+    )
+
+    expect(container.firstChild).toBeNull()
+    expect(mocks.logWarning).not.toHaveBeenCalled()
+  })
+
+  it("honours an explicit showFallback=false value", () => {
+    const { container } = render(
+      <WidgetErrorBoundary showFallback={false}>
         <BrokenComponent />
       </WidgetErrorBoundary>
     )

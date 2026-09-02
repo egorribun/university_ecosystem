@@ -7,12 +7,16 @@ const { dashboardNewsMock, prefetchDashboardNewsMock, queryClient } = vi.hoisted
   prefetchDashboardNewsMock: vi.fn(),
   queryClient: { id: "dashboard-query-client" },
 }))
-
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
+const useTranslationMock = vi.hoisted(() =>
+  vi.fn((namespaces: string[]) => ({
     t: (key: string) => key,
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+    namespaces,
+  }))
+)
+
+vi.mock("react-i18next", () => ({
+  useTranslation: useTranslationMock,
 }))
 
 vi.mock("@/contexts/LanguageContext", () => ({
@@ -72,7 +76,7 @@ vi.mock("@/components/dashboard/NewsCardBackground", () => ({
   NewsCardBackground: () => <div data-testid="dashboard-news-background" />,
 }))
 
-import { NewsCard } from "../NewsCard"
+import { NewsCard, prepareOnKey } from "../NewsCard"
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -84,8 +88,26 @@ describe("dashboard NewsCard closure paths", () => {
     render(<NewsCard locale="en-US" className="custom" data-fade="in" />)
 
     const viewAll = screen.getByRole("link", { name: "dashboard:aria.viewAllNews" })
-    expect(screen.getByTestId("dashboard-news-card")).toHaveAttribute("aria-busy", "true")
+    const card = screen.getByTestId("dashboard-news-card")
+    expect(useTranslationMock).toHaveBeenCalledWith(["dashboard", "common"])
+    expect(card).toHaveClass(
+      "group",
+      "glass-noise",
+      "refetch-shimmer",
+      "dash-border-shimmer",
+      "transition-all",
+      "duration-base",
+      "ease-back-out",
+      "p-6",
+      "md:p-7",
+      "motion-reduce:hover:transform-none",
+      "dash-panel-news",
+      "custom"
+    )
+    expect(card).toHaveAttribute("aria-busy", "true")
     expect(screen.getByTestId("dashboard-news-list")).toHaveAttribute("data-loading", "true")
+    expect(screen.getByText("dashboard:viewAll")).toBeInTheDocument()
+    expect(screen.getByRole("heading")).toHaveTextContent("dashboard:news.heading")
 
     fireEvent.pointerDown(viewAll)
     fireEvent.keyDown(viewAll, { key: "Enter" })
@@ -113,6 +135,25 @@ describe("dashboard NewsCard closure paths", () => {
     expect(card).toHaveStyle({ opacity: "0.8" })
     expect(screen.getByTestId("dashboard-news-list")).toHaveAttribute("data-count", "1")
     expect(screen.getByTestId("dashboard-news-list")).toHaveTextContent("ru-RU")
+    expect(screen.getByRole("heading")).toHaveAttribute(
+      "style",
+      expect.stringContaining("font-size: clamp(1.35rem, 2.5vw, 1.75rem)")
+    )
+  })
+
+  it("keeps cached news visible while loading and does not mark it refetching", () => {
+    dashboardNewsMock.mockReturnValue({
+      data: [{ id: "cached-news" }],
+      isLoading: true,
+      isFetching: true,
+    })
+
+    render(<NewsCard locale="en-US" />)
+
+    expect(screen.getByTestId("dashboard-news-card")).toHaveAttribute("aria-busy", "false")
+    expect(screen.getByTestId("dashboard-news-card")).toHaveAttribute("data-refetching", "false")
+    expect(screen.getByTestId("dashboard-news-list")).toHaveAttribute("data-loading", "false")
+    expect(screen.getByTestId("dashboard-news-list")).toHaveAttribute("data-count", "1")
   })
 
   it("absorbs a rejected route warmup while still prefetching dashboard data", async () => {
@@ -123,5 +164,14 @@ describe("dashboard NewsCard closure paths", () => {
 
     fireEvent.pointerDown(screen.getByRole("link", { name: "dashboard:aria.viewAllNews" }))
     await vi.waitFor(() => expect(prefetchDashboardNewsMock).toHaveBeenCalledOnce())
+  })
+
+  it("supports the legacy Spacebar key and ignores unrelated keys", () => {
+    const callback = vi.fn()
+
+    prepareOnKey(new KeyboardEvent("keydown", { key: "Spacebar" }), callback)
+    prepareOnKey(new KeyboardEvent("keydown", { key: "Escape" }), callback)
+
+    expect(callback).toHaveBeenCalledOnce()
   })
 })

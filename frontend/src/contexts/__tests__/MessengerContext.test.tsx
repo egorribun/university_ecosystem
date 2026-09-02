@@ -14,7 +14,7 @@ import type { ReactNode } from "react"
  *  - unreadCount falls back to 0 when no chats data.
  *  - presenceMap starts empty.
  *  - isConnected reflects WS connection state from useChatWebSocket.
- *  - getTypingUsersForChat / sendTyping / sendRead delegate to
+ *  - getTypingUsersForChat / sendTyping delegate to
  *    useChatWebSocket and return their values.
  *
  * Mocking strategy:
@@ -60,11 +60,11 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  vi.unstubAllEnvs()
   mocks.useAuth.mockReturnValue({ isAuth: true, user: undefined })
   mocks.useChatWebSocket.mockReturnValue({
     isConnected: true,
     sendTyping: vi.fn(),
-    sendRead: vi.fn(),
     sendJoin: vi.fn(),
     sendLeave: vi.fn(),
     getTypingUsersForChat: vi.fn().mockReturnValue([]),
@@ -105,7 +105,6 @@ describe("MessengerContext", () => {
         presenceMap: expect.any(Object),
         isConnected: expect.any(Boolean),
         sendTyping: expect.any(Function),
-        sendRead: expect.any(Function),
         sendJoin: expect.any(Function),
         sendLeave: expect.any(Function),
         getTypingUsersForChat: expect.any(Function),
@@ -156,6 +155,24 @@ describe("MessengerContext", () => {
         expect(result.current.unreadCount).toBe(5)
       })
     })
+
+    it("fails closed when a truthy chat items payload is not an array", async () => {
+      const malformedResponse = {
+        items: {},
+        has_more: false,
+        next_cursor: null,
+      }
+      mocks.chatApi.getChats.mockResolvedValue(malformedResponse)
+
+      const { result } = renderHook(() => useMessenger(), { wrapper })
+
+      await waitFor(() => expect(mocks.chatApi.getChats).toHaveBeenCalledTimes(1))
+      await waitFor(() =>
+        expect(currentQueryClient!.getQueryData(["chats"])).toEqual(malformedResponse)
+      )
+      await waitFor(() => expect(result.current.unreadCount).toBe(0))
+      expect(result.current.presenceMap).toEqual({})
+    })
   })
 
   describe("isAuth gating", () => {
@@ -179,6 +196,40 @@ describe("MessengerContext", () => {
         expect.objectContaining({ enabled: true })
       )
     })
+
+    it("keeps the messenger context mounted but defers realtime bootstrap during LHCI", async () => {
+      vi.stubEnv("VITE_LHCI", "true")
+      mocks.useAuth.mockReturnValue({ isAuth: true, user: { id: "current-user" } })
+
+      const { result } = renderHook(() => useMessenger(), { wrapper })
+
+      expect(mocks.useChatWebSocket).toHaveBeenCalledWith(
+        expect.objectContaining({ enabled: false, currentUserId: "current-user" })
+      )
+      await waitFor(() => expect(mocks.chatApi.getChats).not.toHaveBeenCalled())
+      expect(result.current).toMatchObject({
+        unreadCount: 0,
+        presenceMap: {},
+        isConnected: true,
+        sendTyping: expect.any(Function),
+        sendJoin: expect.any(Function),
+        sendLeave: expect.any(Function),
+        getTypingUsersForChat: expect.any(Function),
+      })
+    })
+
+    it("allows URL-state chat E2E to opt realtime bootstrap back in", async () => {
+      vi.stubEnv("VITE_LHCI", "true")
+      vi.stubEnv("VITE_LHCI_ENABLE_MESSENGER", "true")
+      mocks.useAuth.mockReturnValue({ isAuth: true, user: { id: "current-user" } })
+
+      renderHook(() => useMessenger(), { wrapper })
+
+      expect(mocks.useChatWebSocket).toHaveBeenCalledWith(
+        expect.objectContaining({ enabled: true, currentUserId: "current-user" })
+      )
+      await waitFor(() => expect(mocks.chatApi.getChats).toHaveBeenCalledOnce())
+    })
   })
 
   describe("delegation to useChatWebSocket", () => {
@@ -186,7 +237,6 @@ describe("MessengerContext", () => {
       mocks.useChatWebSocket.mockReturnValue({
         isConnected: false,
         sendTyping: vi.fn(),
-        sendRead: vi.fn(),
         sendJoin: vi.fn(),
         sendLeave: vi.fn(),
         getTypingUsersForChat: vi.fn(() => []),
@@ -201,7 +251,6 @@ describe("MessengerContext", () => {
       mocks.useChatWebSocket.mockReturnValue({
         isConnected: true,
         sendTyping: sendTypingSpy,
-        sendRead: vi.fn(),
         sendJoin: vi.fn(),
         sendLeave: vi.fn(),
         getTypingUsersForChat: vi.fn(() => []),
@@ -217,7 +266,6 @@ describe("MessengerContext", () => {
       mocks.useChatWebSocket.mockReturnValue({
         isConnected: true,
         sendTyping: vi.fn(),
-        sendRead: vi.fn(),
         sendJoin: vi.fn(),
         sendLeave: vi.fn(),
         getTypingUsersForChat: vi.fn(() => typing),
@@ -227,25 +275,21 @@ describe("MessengerContext", () => {
       expect(result.current.getTypingUsersForChat("chat-1")).toEqual(typing)
     })
 
-    it("delegates read and room lifecycle actions", () => {
-      const sendRead = vi.fn()
+    it("delegates room lifecycle actions", () => {
       const sendJoin = vi.fn()
       const sendLeave = vi.fn()
       mocks.useChatWebSocket.mockReturnValue({
         isConnected: true,
         sendTyping: vi.fn(),
-        sendRead,
         sendJoin,
         sendLeave,
         getTypingUsersForChat: vi.fn(() => []),
       })
 
       const { result } = renderHook(() => useMessenger(), { wrapper })
-      result.current.sendRead("chat-1")
       result.current.sendJoin("chat-1")
       result.current.sendLeave("chat-1")
 
-      expect(sendRead).toHaveBeenCalledWith("chat-1")
       expect(sendJoin).toHaveBeenCalledWith("chat-1")
       expect(sendLeave).toHaveBeenCalledWith("chat-1")
     })

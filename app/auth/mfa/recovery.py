@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete, func, select
@@ -23,13 +23,30 @@ def _utcnow() -> datetime:
     return datetime.now(UTC)
 
 
-async def generate_recovery_codes(db: AsyncSession, *, user: User) -> list[str]:
+async def generate_recovery_codes(
+    db: AsyncSession,
+    *,
+    user: User,
+    fresh_mfa_verified_at: datetime | None = None,
+) -> list[str]:
     """Generate a new set of recovery codes for the user.
 
     Existing codes are invalidated.  All 10 Argon2id hashes are computed
     sequentially to avoid starving the Argon2 semaphore (PERF-W8-01).
     Each code uses 8 bytes of entropy (64 bits, MOD-W8-02).
     """
+    # Freshness is session-bound.  The denormalized user timestamp may have
+    # been written by a different browser and must never authorize regeneration.
+    verified_at = fresh_mfa_verified_at
+    now = _utcnow()
+    if verified_at is None:
+        raise PermissionError("fresh MFA verification required")
+    if verified_at.tzinfo is None:
+        verified_at = verified_at.replace(tzinfo=UTC)
+    if verified_at < now - timedelta(minutes=5):
+        raise PermissionError("fresh MFA verification required")
+
+    await db.execute(select(User.id).where(User.id == user.id).with_for_update())
     await db.execute(delete(RecoveryCode).where(RecoveryCode.user_id == user.id))
 
     plain_codes: list[str] = []
@@ -87,6 +104,7 @@ async def verify_recovery_code(db: AsyncSession, *, user: User, code: str) -> bo
         select(RecoveryCode)
         .where(RecoveryCode.user_id == user.id)
         .where(RecoveryCode.is_used.is_(False))
+        .with_for_update(nowait=False)
     )
     result = await db.execute(stmt)
     available_codes = result.scalars().all()

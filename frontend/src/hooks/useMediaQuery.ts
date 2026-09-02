@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useMemo, useSyncExternalStore } from "react"
 
 type MediaQueryCallback = (event: MediaQueryListEvent | MediaQueryList) => void
 
@@ -24,44 +24,56 @@ const toMediaQueryList = (query: string): MediaQueryList | null => {
   }
 }
 
+class MediaQueryStore {
+  private current: boolean
+
+  constructor(initialValue: boolean) {
+    this.current = initialValue
+  }
+
+  readonly getSnapshot = (): boolean => this.current
+
+  update(nextValue: boolean): void {
+    this.current = nextValue
+  }
+}
+
 export default function useMediaQuery(
   query: string,
   { defaultValue = false }: UseMediaQueryOptions = {}
 ): boolean {
-  const getMatch = useCallback(() => {
-    const mql = toMediaQueryList(query)
-    return mql ? mql.matches : defaultValue
-  }, [defaultValue, query])
+  const mediaQueryList = useMemo(() => toMediaQueryList(query), [query])
+  const store = useMemo(
+    () => new MediaQueryStore(mediaQueryList?.matches ?? defaultValue),
+    [defaultValue, mediaQueryList]
+  )
 
-  const [matches, setMatches] = useState<boolean>(() => getMatch())
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      if (!mediaQueryList) return () => undefined
 
-  useEffect(() => {
-    const mql = toMediaQueryList(query)
-    if (!mql) {
-      setMatches(defaultValue)
-      return
-    }
-
-    const handleChange: MediaQueryCallback = (event) => {
-      setMatches(event.matches)
-    }
-
-    if (typeof mql.addEventListener === "function") {
-      mql.addEventListener("change", handleChange)
-    } else if (typeof mql.addListener === "function") {
-      mql.addListener(handleChange)
-    }
-
-    setMatches(mql.matches)
-
-    return () => {
-      if (typeof mql.removeEventListener === "function") {
-        mql.removeEventListener("change", handleChange)
-      } else if (typeof mql.removeListener === "function") {
-        mql.removeListener(handleChange)
+      const handleChange: MediaQueryCallback = (event) => {
+        store.update(event.matches)
+        onStoreChange()
       }
-    }
-  }, [defaultValue, query])
+      if (typeof mediaQueryList.addEventListener === "function") {
+        mediaQueryList.addEventListener("change", handleChange)
+      } else if (typeof mediaQueryList.addListener === "function") {
+        mediaQueryList.addListener(handleChange)
+      }
 
-  return useMemo(() => matches, [matches])
+      return () => {
+        if (typeof mediaQueryList.removeEventListener === "function") {
+          mediaQueryList.removeEventListener("change", handleChange)
+        } else if (typeof mediaQueryList.removeListener === "function") {
+          mediaQueryList.removeListener(handleChange)
+        }
+      }
+    },
+    [mediaQueryList, store]
+  )
+
+  const getServerSnapshot = useCallback(() => defaultValue, [defaultValue])
+
+  return useSyncExternalStore(subscribe, store.getSnapshot, getServerSnapshot)
 }

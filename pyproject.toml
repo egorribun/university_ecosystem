@@ -82,7 +82,6 @@ dependencies = [
   "urllib3>=2.6.3,<2.8",                              # PY-P1-01 (audit Wave 10): tight minor bound — urllib3 v3 breaks transport API; update via Renovate
   "uvicorn[standard]>=0.44.0",
   "uvloop>=0.22.1 ; sys_platform != 'win32'",
-  "webauthn>=2.7.1",
   "zxcvbn>=4.5.0",
   "authzed>=1.24.4",
   "grpcio-health-checking>=1.81.0,<1.84",  # stable line compatible with protobuf 6
@@ -234,7 +233,6 @@ module = [
   "pillow_avif",
   "jwt",
   "argon2",
-  "webauthn.*",
   "nats.*",
   "psutil",
   "uvloop",
@@ -371,6 +369,15 @@ output = "coverage.xml"
 output = "artifacts/coverage/python/coverage.json"
 
 [dependency-groups]
+release-certification = [
+  # This isolated group is installed from uv.lock before the HMAC key enters
+  # the environment; secret-bearing steps execute its interpreter with no sync.
+  "jsonschema==4.25.1",
+]
+ci-precommit-runner = [
+  # CI installs this minimal, hash-verified closure without synchronizing dev.
+  "pre-commit==4.6.0",
+]
 dev = [
   "asgi-lifespan>=2.1.0",
   "fakeredis>=2.35.1",
@@ -378,6 +385,9 @@ dev = [
   # prevents its deprecated httpx compatibility shim from hiding API drift.
   "httpx2>=2.9.1,<3",
   "hypothesis>=6.151.12",
+  # Quality evidence manifests are validated against the closed v2 schema
+  # before any semantic or filesystem evidence is trusted.
+  "jsonschema>=4.25.1,<5",
   "maturin>=1.13.1,<2",
   "mypy>=1.20.1,<2.4",
   "pyright>=1.1.408",
@@ -403,11 +413,17 @@ dev = [
   "types-requests>=2.33.0.20260408",
   "types-pyyaml>=6.0.12.20260408",
   "types-redis>=4.6.0.20241004",
+  "types-jsonschema==4.25.1.20251008",
   # MOD-07 (audit 2026-03-16 Wave 10): Consumer-driven contract tests for the
   # Python backend → ws-hub NATS message boundary.  pact-python v2 wraps the
   # Pact Rust FFI and exposes the pact.v3 API used in tests/contracts/.
   "pact-python==3.4.0",
   "diff-cover>=9.2.0",
+  # The deterministic OSV adapter imports pip-audit's frozen dependency
+  # parser and service contracts in its backend regression tests. Keep the
+  # exact security pin in the shared dev group so every pytest shard has the
+  # same runtime rather than failing during collection.
+  "pip-audit==2.10.1",
   # The incremental planner uses mutmut's 3.7 publicized 3.x orchestration
   # interfaces; pin the tested release to keep CI mutation semantics stable.
   "mutmut==3.7.0",
@@ -459,6 +475,9 @@ override-dependencies = [
     "click>=8.2.1",
     "tomli>=2.2.1",
     "mcp>=1.28.1,<2",
+    # PYSEC-2026-3721: pip 26.2+ contains the security fix; enforce the
+    # patched resolver transitively through pip-api/pip-audit in every group.
+    "pip>=26.2.0",
 ]
 
 [tool.uv.sources]
@@ -537,37 +556,72 @@ pytest_add_cli_args_test_selection = [
 # in the isolated tree so stats collection can complete. Keep the small,
 # source-controlled roots below in sync with the paths asserted by those tests:
 #   - test_migrations_runtime.py  → alembic/ ScriptDirectory (head convergence)
+#   - test_mfa_email_otp_migrations → alembic.ini (offline migration config)
 #   - test_caddy_routing           → infrastructure/Caddyfile  (routing contract)
 #   - test_ws_hub_environment      → docker-compose.full.yml   (ws-hub env contract)
 #   - test_backend_dockerfile      → backend.Dockerfile         (uv image pin)
+#   - test_helm_staging_contract   → charts/university-ecosystem and
+#                                      charts/revocation-store (Helm values contracts)
 #   - test_quality_configuration   → .dockerignore and Dockerfile.test.dockerignore
 #                                      plus .gitignore (test-image and xdist contracts)
 #                                      plus the canonical AGENTS/CLAUDE/TESTING
 #                                      instruction and quality documents
+#   - test_husky_fail_closed        → .husky/pre-commit (hook policy)
+#   - test_secrets_baseline_paths   → .secrets.baseline (detect-secrets
+#                                      wrapper integration contract)
 # Copy the repository-contract paths into the isolated tree so the full nightly
 # run can measure them without a false collection failure. The mutation-score
 # parser contract imports `scripts/check_mutation_score.py`; copying its parent
 # directory prevents that test from breaking mutmut's clean-test baseline. The
 # isolated-performance tool test also reads its trusted Rust Dockerfile.
 also_copy = [
+    "pyproject.toml",
     "AGENTS.md",
     "CLAUDE.md",
     "TESTING.md",
+    "SECURITY.md",
     ".github",
+    ".husky",
+    # The stop-quality-gate contract lives below tests/contracts and imports
+    # this hook from the isolated mutmut checkout.  Copy the parent directory
+    # before the exact module so mutmut's file copier always has a destination
+    # for both the hook and its shared helpers.
+    ".agents/hooks",
+    ".agents/hooks/stop_quality_gate.py",
     ".gitignore",
     ".dockerignore",
     ".lighthouserc.js",
     ".trivyignore.yaml",
     "quality",
+    # The directory creates the destination parent before the exact allowlist
+    # file is copied below; mutmut's copy2 path does not create parents.
+    "security",
+    "security/audit-allowlist.yaml",
+    ".secrets.baseline",
+    "charts/university-ecosystem",
+    "charts/revocation-store",
     "infrastructure",
     "infra/oss-fuzz",
     "alembic",
+    "alembic.ini",
     "scripts",
     "Dockerfile.test",
     "Dockerfile.test.dockerignore",
     "Dockerfile.protogen",
     "backend.Dockerfile",
+    "start-docker.ps1",
+    # Docker resource-limit contract reads every supported Compose variant in
+    # the isolated mutmut tree. Keep these authored assets alongside the full
+    # stack so the baseline/stats pass cannot fail on a missing input path.
+    "docker-compose.yml",
     "docker-compose.full.yml",
+    "docker-compose.infra.yml",
+    "docker-compose.go.yml",
+    "docker-compose.ci-loadtest.yml",
+    "docker-compose.observability.yml",
+    "docker-compose.prod.yml",
+    "docker-compose.sandbox.yml",
+    "docker-compose.test.yml",
     "codecov.yml",
     "renovate.json",
     "uv.lock",
@@ -589,6 +643,19 @@ also_copy = [
     "services",
     "crates/pyo3-sanitizer/src",
     "frontend/scripts",
+    "frontend/openapi.json",
+    # Generated SDK/types and MSW handlers are asserted by auth contract tests
+    # during mutmut's isolated baseline run; include their exact source roots
+    # so the test cannot silently disappear from mutation inventory.
+    "frontend/src/api",
+    "frontend/src/api/generated",
+    # The WebSocket contract reads the frontend transport hook from the
+    # isolated mutmut checkout; copy its parent before the exact module so
+    # mutmut's file copier has a destination for the nested path.
+    "frontend/src/hooks",
+    "frontend/src/hooks/useChatWebSocket.ts",
+    "frontend/src/tests/mocks",
+    "frontend/src/tests/mocks/generated",
     "frontend/tests/e2e/utils",
     "frontend/package.json",
     "frontend/stryker.config.mjs",

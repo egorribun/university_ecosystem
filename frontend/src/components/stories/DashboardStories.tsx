@@ -31,11 +31,14 @@ export default function DashboardStories({
 
   const [openIndex, setOpenIndex] = useState<number | null>(null)
   const [progress, setProgress] = useState(0)
-  const [isPaused, setIsPaused] = useState(false)
+  const [isInteractionPaused, setIsInteractionPaused] = useState(false)
+  const [isDocumentHidden, setIsDocumentHidden] = useState(false)
   const rafRef = useRef<number | null>(null)
   const autoStartRef = useRef<number>(0)
   /** Wave 54: Track elapsed time when pausing to avoid timer drift on resume (FIX-54-08) */
   const pausedElapsedRef = useRef<number>(0)
+  const pauseStartedRef = useRef(false)
+  const isPaused = isInteractionPaused || isDocumentHidden
 
   useEffect(() => {
     return () => {
@@ -49,8 +52,9 @@ export default function DashboardStories({
   const closeViewer = useCallback(() => {
     setOpenIndex(null)
     setProgress(0)
-    setIsPaused(false)
+    setIsInteractionPaused(false)
     pausedElapsedRef.current = 0
+    pauseStartedRef.current = false
   }, [])
 
   const goToIndex = useCallback(
@@ -93,6 +97,8 @@ export default function DashboardStories({
     }
     setProgress(0)
     autoStartRef.current = performance.now()
+    pausedElapsedRef.current = 0
+    pauseStartedRef.current = document.visibilityState === "hidden"
   }, [openIndex])
 
   useEffect(() => {
@@ -152,16 +158,44 @@ export default function DashboardStories({
     [onStoryOpen]
   )
 
-  const handlePause = useCallback(() => {
-    // Wave 54: Save elapsed time so resume can continue from the right point (FIX-54-08)
+  const pausePlayback = useCallback(() => {
+    if (pauseStartedRef.current) return
     pausedElapsedRef.current = performance.now() - autoStartRef.current
-    setIsPaused(true)
+    pauseStartedRef.current = true
   }, [])
-  const handleResume = useCallback(() => {
-    // Wave 54: Restore start ref so progress continues from where it paused (FIX-54-08)
+
+  const resumePlayback = useCallback(() => {
     autoStartRef.current = performance.now() - pausedElapsedRef.current
-    setIsPaused(false)
+    pauseStartedRef.current = false
   }, [])
+
+  const handlePause = useCallback(() => {
+    pausePlayback()
+    setIsInteractionPaused(true)
+  }, [pausePlayback])
+
+  const handleResume = useCallback(() => {
+    setIsInteractionPaused(false)
+    if (!isDocumentHidden) resumePlayback()
+  }, [isDocumentHidden, resumePlayback])
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const hidden = document.visibilityState === "hidden"
+      if (hidden) {
+        pausePlayback()
+        setIsDocumentHidden(true)
+        return
+      }
+
+      setIsDocumentHidden(false)
+      if (!isInteractionPaused) resumePlayback()
+    }
+
+    handleVisibilityChange()
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
+  }, [isInteractionPaused, pausePlayback, resumePlayback])
 
   return (
     <>

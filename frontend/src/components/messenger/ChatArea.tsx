@@ -63,6 +63,10 @@ interface ChatAreaProps {
    * error empty state.
    */
   onRetryMessages?: () => void
+  hasMoreMessages?: boolean
+  isLoadingOlderMessages?: boolean
+  olderMessagesError?: boolean
+  onLoadOlderMessages?: () => void | Promise<void>
   showSearchInChat: boolean
   setShowSearchInChat: Dispatch<SetStateAction<boolean>>
   searchQuery: string
@@ -73,6 +77,8 @@ interface ChatAreaProps {
   handleViewProfile: () => void
   handleClearChat: () => void
   handleDeleteChat: () => void
+  /** Capability resolved from the authenticated user's canonical role. */
+  canManageChat?: boolean
   getOtherParticipant: ReturnType<typeof useMessengerController>["getOtherParticipant"]
   presenceMap: ReturnType<typeof useMessengerController>["presenceMap"]
   /**
@@ -120,6 +126,10 @@ export const ChatArea = memo(function ChatArea({
   messagesLoading = false,
   messagesError = false,
   onRetryMessages,
+  hasMoreMessages = false,
+  isLoadingOlderMessages = false,
+  olderMessagesError = false,
+  onLoadOlderMessages,
   showSearchInChat,
   setShowSearchInChat,
   searchQuery,
@@ -130,6 +140,7 @@ export const ChatArea = memo(function ChatArea({
   handleViewProfile,
   handleClearChat,
   handleDeleteChat,
+  canManageChat = false,
   getOtherParticipant,
   presenceMap,
   editingMessageId,
@@ -155,6 +166,33 @@ export const ChatArea = memo(function ChatArea({
   const { getTypingUsersForChat, sendTyping } = useMessenger()
   const typingUsers = selectedChatId ? getTypingUsersForChat(selectedChatId) : []
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
+  const chatMenuItems = [
+    {
+      id: "view-profile",
+      icon: User,
+      label: t("messenger:viewProfile"),
+      color: "text-primary-main",
+      action: handleViewProfile,
+    },
+    ...(canManageChat
+      ? [
+          {
+            id: "clear-chat",
+            icon: MessageCircleOff,
+            label: t("messenger:clearChat"),
+            color: "text-warning-text",
+            action: handleClearChat,
+          },
+          {
+            id: "delete-chat",
+            icon: Trash2,
+            label: t("messenger:deleteChat"),
+            color: "text-error-text",
+            action: handleDeleteChat,
+          },
+        ]
+      : []),
+  ]
 
   // Wave 183 SW3 — cancel rAF on unmount/re-fire to prevent focus attempts
   // on a detached DOM node (memory leak + console error potential when the
@@ -195,11 +233,13 @@ export const ChatArea = memo(function ChatArea({
                 <div className="flex items-center gap-3">
                   {isMobile && (
                     <m.button
+                      type="button"
                       whileTap={prefersReducedMotion ? undefined : { scale: 0.9 }}
-                      onClick={() => navigate({ to: "/messenger" })}
-                      className="-ml-1 rounded-full p-1.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                      onClick={() => navigate({ to: "/messenger", replace: true })}
+                      aria-label={t("messenger:backToChats")}
+                      className="-ml-1 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                     >
-                      <ChevronLeft className="h-5 w-5" strokeWidth={2.5} />
+                      <ChevronLeft className="h-5 w-5" strokeWidth={2.5} aria-hidden="true" />
                     </m.button>
                   )}
                   <m.button
@@ -281,7 +321,7 @@ export const ChatArea = memo(function ChatArea({
                     whileHover={prefersReducedMotion ? undefined : { scale: 1.05 }}
                     whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
                     onClick={() => setShowSearchInChat(true)}
-                    className="rounded-full p-2.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium)"
+                    className="min-h-[44px] min-w-[44px] rounded-full p-2.5 transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)"
                   >
                     <Search className="h-5 w-5 text-text-secondary" strokeWidth={2} />
                   </m.button>
@@ -293,7 +333,7 @@ export const ChatArea = memo(function ChatArea({
                       whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
                       onClick={() => setShowChatMenu(!showChatMenu)}
                       className={cn(
-                        "rounded-full p-2.5 transition-colors",
+                        "min-h-[44px] min-w-[44px] rounded-full p-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-violet-500)",
                         showChatMenu
                           ? "bg-(--bg-surface-hover)"
                           : "hover:bg-(--bg-surface-hover)/(--opacity-medium)"
@@ -315,35 +355,13 @@ export const ChatArea = memo(function ChatArea({
                           }
                           className="card-glass z-navbar absolute right-0 top-full mt-2 min-w-sidebar overflow-hidden rounded-md py-2"
                         >
-                          {[
-                            {
-                              id: "view-profile",
-                              icon: User,
-                              label: t("messenger:viewProfile"),
-                              color: "text-primary-main",
-                              action: handleViewProfile,
-                            },
-                            {
-                              id: "clear-chat",
-                              icon: MessageCircleOff,
-                              label: t("messenger:clearChat"),
-                              color: "text-warning-text",
-                              action: handleClearChat,
-                            },
-                            {
-                              id: "delete-chat",
-                              icon: Trash2,
-                              label: t("messenger:deleteChat"),
-                              color: "text-error-text",
-                              action: handleDeleteChat,
-                            },
-                          ].map((item) => (
+                          {chatMenuItems.map((item) => (
                             <button
                               id={`chat-action-${item.id}`}
                               key={item.id}
                               type="button"
                               onClick={item.action}
-                              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-text-primary transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--color-violet-500)"
+                              className="flex min-h-[44px] min-w-[44px] w-full items-center gap-3 px-4 py-2.5 text-left text-text-primary transition-colors hover:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:outline-none focus-visible:bg-(--bg-surface-hover)/(--opacity-medium) focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-(--color-violet-500)"
                             >
                               <item.icon className={`h-5 w-5 ${item.color}`} aria-hidden="true" />
                               <span className="text-sm font-medium">{item.label}</span>
@@ -407,6 +425,10 @@ export const ChatArea = memo(function ChatArea({
             isLoading={messagesLoading}
             isError={messagesError}
             onRetry={onRetryMessages}
+            hasMore={hasMoreMessages}
+            isLoadingOlder={isLoadingOlderMessages}
+            olderMessagesError={olderMessagesError}
+            onLoadOlder={onLoadOlderMessages}
             searchQuery={showSearchInChat ? searchQuery : ""}
             onClearSearch={() => setSearchQuery("")}
             editingMessageId={editingMessageId}

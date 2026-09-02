@@ -17,6 +17,7 @@ import (
 	pb "github.com/university-ecosystem/core/gen/go/file_processor/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	grpc_health_v1 "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
@@ -91,6 +92,30 @@ func ProxyHandler(proxy *httputil.ReverseProxy, internalSecret []byte) gin.Handl
 // HealthHandler returns a simple OK status to indicate the gateway is running.
 func HealthHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "healthy", "service": "gateway"})
+}
+
+type fileProcessorHealthChecker interface {
+	Check(context.Context, *grpc_health_v1.HealthCheckRequest, ...grpc.CallOption) (*grpc_health_v1.HealthCheckResponse, error)
+}
+
+// ReadinessHandler proves that the gateway's real gRPC transport can complete
+// an authenticated file-processor health RPC. The request context owns the
+// bounded child context, so cancellation never leaves a probe goroutine behind.
+func ReadinessHandler(client fileProcessorHealthChecker, timeout time.Duration) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if client == nil || timeout <= 0 {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not_ready", "service": "gateway"})
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), timeout)
+		defer cancel()
+		response, err := client.Check(ctx, &grpc_health_v1.HealthCheckRequest{Service: "file_processor.v1.FileProcessingService"})
+		if err != nil || response.GetStatus() != grpc_health_v1.HealthCheckResponse_SERVING {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not_ready", "service": "gateway"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ready", "service": "gateway"})
+	}
 }
 
 // ProxyOrFileHandler routes /v1/files/process/sync to gRPC file-processor,

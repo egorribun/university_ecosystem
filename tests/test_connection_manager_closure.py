@@ -34,6 +34,8 @@ async def test_lazy_semaphores_reuse_and_cleanup_stale_rooms() -> None:
 
     module._room_semaphores.clear()
     module._room_semaphores_lock = None
+    room_lock = module._get_room_semaphores_lock()
+    assert module._get_room_semaphores_lock() is room_lock
     first = await module._get_room_semaphore("room-a")
     assert await module._get_room_semaphore("room-a") is first
 

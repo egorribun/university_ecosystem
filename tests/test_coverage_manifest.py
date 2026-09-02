@@ -1,14 +1,25 @@
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 import os
+import re
+import shutil
+import stat
 import subprocess
 import sys
+import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 from jsonschema import Draft202012Validator, ValidationError
+
+from tests.quality_normalizer_v2_testkit import (
+    TOOL_VERSION_ARGUMENTS,
+    write_complete_evidence,
+)
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = REPOSITORY_ROOT / "tests" / "fixtures" / "quality"
@@ -27,6 +38,88 @@ COMMIT_SHA = "a1b2c3d"
 GENERATED_AT = "2026-07-17T00:00:00Z"
 MAX_COVERAGE_COUNTER = (1 << 63) - 1
 DEEP_JSON_DEPTH = 15_000
+GIT_EXECUTABLE = shutil.which("git")
+if GIT_EXECUTABLE is None:
+    raise RuntimeError("git executable is required for coverage normalizer tests")
+
+
+def _remove_readonly_and_retry(
+    operation: Callable[[str], object],
+    path: str,
+    error: BaseException,
+) -> None:
+    if not isinstance(error, PermissionError):
+        raise error
+    os.chmod(path, stat.S_IWRITE)
+    operation(path)
+
+
+def _sync_go_source_fixture(root: Path, component: str, report_path: str) -> None:
+    component_roots = {
+        "go-gateway": ("services/gateway",),
+        "go-ws-hub": ("services/ws-hub",),
+        "go-file-processor": ("services/file-processor",),
+        "go-shared": (
+            "services/cmd/uni-cli",
+            "services/pkg/spiffe",
+            "services/pkg/spicedb",
+        ),
+    }[component]
+    try:
+        lines = (root / report_path).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return
+    sources: set[str] = set()
+    for line in lines[1:]:
+        match = re.match(r"^(?P<source>.+):[0-9]+\.[0-9]+,", line)
+        if match is None:
+            continue
+        source = match.group("source").replace("\\", "/")
+        if (
+            ".." not in source.split("/")
+            and source.endswith(".go")
+            and any(
+                source.startswith(f"{component_root}/")
+                for component_root in component_roots
+            )
+        ):
+            sources.add(source)
+    if not sources:
+        return
+    for component_root in component_roots:
+        root_path = root / component_root
+        if root_path.is_dir():
+            for source in root_path.rglob("*.go"):
+                source.unlink()
+    for source in sources:
+        target = root / source
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("package fixture\n", encoding="utf-8")
+
+
+def _sync_frontend_source_fixture(root: Path, report_path: str) -> None:
+    try:
+        lines = (root / report_path).read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return
+    sources = {
+        line.removeprefix("SF:").replace("\\", "/")
+        for line in lines
+        if line.startswith("SF:frontend/src/")
+        and ".." not in line.removeprefix("SF:").split("/")
+        and line.removeprefix("SF:").endswith((".ts", ".tsx"))
+    }
+    if not sources:
+        return
+    frontend_root = root / "frontend/src"
+    if frontend_root.is_dir():
+        for pattern in ("*.ts", "*.tsx"):
+            for source in frontend_root.rglob(pattern):
+                source.unlink()
+    for source in sources:
+        target = root / source
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text("export const fixture = 1\n", encoding="utf-8")
 
 
 def _write_test_contract(path: Path) -> None:
@@ -186,34 +279,266 @@ def _run_normalizer(
     commit_sha: str = COMMIT_SHA,
     generated_at: str = GENERATED_AT,
 ) -> subprocess.CompletedProcess[str]:
-    extra_args = []
-    if "--contract" not in arguments:
-        contract_path = output.parent / "quality-contract.json"
-        _write_test_contract(contract_path)
-        extra_args = ["--contract", str(contract_path)]
+    del cwd  # v2 report paths are always resolved from the repository root.
+    temp_parent = Path(tempfile.gettempdir()).resolve()
+    evidence_root = Path(
+        tempfile.mkdtemp(prefix=f"quality-evidence-{output.stem}-", dir=temp_parent)
+    ).resolve()
+    if evidence_root.parent != temp_parent:
+        raise RuntimeError("isolated evidence repository escaped the temporary root")
+    try:
+        return _run_normalizer_in_isolated_repo(
+            evidence_root,
+            output,
+            *arguments,
+            commit_sha=commit_sha,
+            generated_at=generated_at,
+        )
+    finally:
+        if evidence_root.parent != temp_parent:
+            raise RuntimeError("refusing to clean an unexpected evidence repository")
+        shutil.rmtree(evidence_root, onexc=_remove_readonly_and_retry)
 
+
+def _run_normalizer_in_isolated_repo(
+    evidence_root: Path,
+    output: Path,
+    *arguments: str,
+    commit_sha: str,
+    generated_at: str,
+) -> subprocess.CompletedProcess[str]:
+    subprocess.run(  # noqa: S603
+        [GIT_EXECUTABLE, "init", "-q"], cwd=evidence_root, check=True
+    )
+    git_environment = {
+        **os.environ,
+        "GIT_AUTHOR_DATE": "2026-01-01T00:00:00Z",
+        "GIT_COMMITTER_DATE": "2026-01-01T00:00:00Z",
+    }
+    write_complete_evidence(evidence_root)
+    quality_root = evidence_root / "quality"
+    quality_root.mkdir(parents=True, exist_ok=True)
+    (quality_root / "coverage-manifest.schema.json").write_bytes(
+        QUALITY_MANIFEST_SCHEMA_PATH.read_bytes()
+    )
+    (quality_root / "ownership-mapping.json").write_bytes(
+        (REPOSITORY_ROOT / "quality" / "ownership-mapping.json").read_bytes()
+    )
+    (quality_root / "coverage-source-policy.json").write_bytes(
+        (REPOSITORY_ROOT / "quality" / "coverage-source-policy.json").read_bytes()
+    )
+
+    source_contract: Path | None = None
+    rewritten_arguments: list[str] = []
+    output_aliases_input = False
+    output_aliases_contract = False
+    source_cwd = REPOSITORY_ROOT
+    report_options = {
+        "--python-xml": (None, "coverage.xml"),
+        "--python-json": (None, "artifacts/coverage/python/coverage.json"),
+        "--frontend-lcov": (None, "frontend/coverage/lcov.info"),
+        "--frontend-json": (None, "frontend/coverage/coverage-final.json"),
+    }
+    component_report_options = {
+        "--go-report": {
+            "go-gateway": "artifacts/coverage/go/gateway/coverage.out",
+            "go-ws-hub": "artifacts/coverage/go/ws-hub/coverage.out",
+            "go-file-processor": "artifacts/coverage/go/file-processor/coverage.out",
+            "go-shared": "artifacts/coverage/go/shared/coverage.out",
+        },
+        "--rust-report": {
+            "rust-native": "artifacts/coverage/rust/rust-native/llvm.json",
+            "rust-pyo3-sanitizer": (
+                "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json"
+            ),
+            "rust-wasm-sanitizer": (
+                "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json"
+            ),
+            "rust-crypto": "artifacts/coverage/rust/rust-crypto/llvm.json",
+        },
+        "--rust-branch-report": {
+            "rust-native": "artifacts/coverage/rust/rust-native/branch-llvm.json",
+            "rust-pyo3-sanitizer": (
+                "artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json"
+            ),
+            "rust-wasm-sanitizer": (
+                "artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json"
+            ),
+            "rust-crypto": "artifacts/coverage/rust/rust-crypto/branch-llvm.json",
+        },
+    }
+
+    def copy_report(source_value: str, canonical_path: str) -> None:
+        nonlocal output_aliases_input
+        source = Path(source_value)
+        if not source.is_absolute():
+            source = source_cwd / source
+        if source.resolve(strict=False) == output.resolve(strict=False):
+            output_aliases_input = True
+        target = evidence_root / canonical_path
+        if not source.is_file():
+            target.unlink(missing_ok=True)
+            return
+        raw = source.read_bytes()
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            target.write_bytes(raw)
+            return
+        replacements = {
+            str(REPOSITORY_ROOT): str(evidence_root),
+            str(REPOSITORY_ROOT).replace("\\", "\\\\"): str(evidence_root).replace(
+                "\\", "\\\\"
+            ),
+            REPOSITORY_ROOT.as_posix(): evidence_root.as_posix(),
+        }
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+        target.write_bytes(text.encode("utf-8"))
+
+    index = 0
+    while index < len(arguments):
+        option = arguments[index]
+        if option == "--contract":
+            source_contract = Path(arguments[index + 1])
+            if not source_contract.is_absolute():
+                source_contract = source_cwd / source_contract
+            output_aliases_contract = source_contract.resolve(
+                strict=False
+            ) == output.resolve(strict=False)
+            index += 2
+            continue
+        if option in report_options:
+            source_value = arguments[index + 1]
+            canonical_path = report_options[option][1]
+            copy_report(source_value, canonical_path)
+            rewritten_arguments.extend((option, canonical_path))
+            index += 2
+            continue
+        if option in component_report_options:
+            component, separator, source_value = arguments[index + 1].partition("=")
+            canonical_path = component_report_options[option].get(component)
+            if separator and canonical_path is not None:
+                copy_report(source_value, canonical_path)
+                rewritten_arguments.extend((option, f"{component}={canonical_path}"))
+            else:
+                rewritten_arguments.extend((option, arguments[index + 1]))
+            index += 2
+            continue
+        rewritten_arguments.append(option)
+        index += 1
+
+    contract_target = quality_root / "quality-contract.json"
+    if source_contract is None:
+        contract_target.write_bytes(QUALITY_CONTRACT_PATH.read_bytes())
+    else:
+        source_contract_bytes = source_contract.read_bytes()
+        try:
+            legacy_contract = json.loads(source_contract_bytes)
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
+            contract_target.write_bytes(source_contract_bytes)
+        else:
+            if (
+                isinstance(legacy_contract, dict)
+                and legacy_contract.get("version") == 1
+            ):
+                migrated_contract = json.loads(
+                    QUALITY_CONTRACT_PATH.read_text(encoding="utf-8")
+                )
+                for field in (
+                    "policy",
+                    "coverage_minimums",
+                    "components",
+                    "tier0",
+                    "exclusions",
+                    "quarantines",
+                ):
+                    if field in legacy_contract:
+                        migrated_contract[field] = legacy_contract[field]
+                contract_target.write_text(
+                    json.dumps(migrated_contract), encoding="utf-8"
+                )
+            else:
+                contract_target.write_bytes(source_contract_bytes)
+    for component, report_path in component_report_options["--go-report"].items():
+        if any(
+            option == "--go-report" and value.startswith(f"{component}=")
+            for option, value in itertools.pairwise(rewritten_arguments)
+        ):
+            _sync_go_source_fixture(evidence_root, component, report_path)
+    has_frontend_lcov = "--frontend-lcov" in rewritten_arguments
+    has_frontend_json = "--frontend-json" in rewritten_arguments
+    if has_frontend_lcov and has_frontend_json:
+        _sync_frontend_source_fixture(
+            evidence_root, report_options["--frontend-lcov"][1]
+        )
+    subprocess.run(  # noqa: S603
+        [GIT_EXECUTABLE, "add", "--all"], cwd=evidence_root, check=True
+    )
+    subprocess.run(  # noqa: S603
+        [
+            GIT_EXECUTABLE,
+            "-c",
+            "user.email=test@example.invalid",
+            "-c",
+            "user.name=Quality Test",
+            "commit",
+            "-qm",
+            "fixture",
+        ],
+        cwd=evidence_root,
+        env=git_environment,
+        check=True,
+    )
+    canonical_output = (
+        evidence_root / "coverage.xml"
+        if output_aliases_input
+        else contract_target
+        if output_aliases_contract
+        else evidence_root / "artifacts/coverage/quality-manifest.json"
+    )
+    resolved_commit = (
+        subprocess.check_output(  # noqa: S603
+            [GIT_EXECUTABLE, "rev-parse", "HEAD"], cwd=evidence_root, text=True
+        ).strip()
+        if commit_sha == COMMIT_SHA
+        else commit_sha
+    )
     command = [
         sys.executable,
         str(NORMALIZER_PATH),
+        "--repository-root",
+        str(evidence_root),
+        "--contract",
+        str(contract_target),
         "--commit-sha",
-        commit_sha,
+        resolved_commit,
         "--generated-at",
         generated_at,
         "--output",
-        str(output),
-        *extra_args,
-        *arguments,
+        str(canonical_output),
+        "--provenance-mode",
+        "local",
+        *TOOL_VERSION_ARGUMENTS,
+        *rewritten_arguments,
     ]
 
-    # The executable and normalizer path are test-controlled absolute paths.
-    return subprocess.run(  # noqa: S603
+    result = subprocess.run(  # noqa: S603
         command,
         capture_output=True,
         check=False,
-        cwd=cwd,
+        cwd=evidence_root,
         encoding="utf-8",
+        errors="replace",
         text=True,
     )
+    if (
+        canonical_output.is_file()
+        and not output_aliases_input
+        and not output_aliases_contract
+    ):
+        shutil.copyfile(canonical_output, output)
+    return result
 
 
 def _normalizer_module() -> object:
@@ -420,7 +745,7 @@ def test_contract_declares_all_canonical_raw_coverage_artifacts() -> None:
         pytest.skip("Quality contract file does not exist (e.g., under mutmut)")
     contract = json.loads(QUALITY_CONTRACT_PATH.read_text(encoding="utf-8"))
 
-    assert {
+    expected_reports = {
         "coverage.xml",
         "artifacts/coverage/python/coverage.json",
         "frontend/coverage/lcov.info",
@@ -430,11 +755,18 @@ def test_contract_declares_all_canonical_raw_coverage_artifacts() -> None:
         "artifacts/coverage/go/file-processor/coverage.out",
         "artifacts/coverage/go/shared/coverage.out",
         "artifacts/coverage/rust/rust-native/llvm.json",
+        "artifacts/coverage/rust/rust-native/branch-llvm.json",
         "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
+        "artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json",
         "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
+        "artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json",
         "artifacts/coverage/rust/rust-crypto/llvm.json",
-        "artifacts/coverage/quality-manifest.json",
-    }.issubset(contract["required_artifacts"])
+        "artifacts/coverage/rust/rust-crypto/branch-llvm.json",
+    }
+    assert expected_reports == {
+        report["path"] for report in contract["coverage_reports"]
+    }
+    assert contract["manifest_path"] == "artifacts/coverage/quality-manifest.json"
 
 
 def test_normalizes_native_reports_with_provenance_and_honest_metadata(
@@ -447,9 +779,10 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
     assert result.returncode == 1
     assert all(line.startswith("ERROR:") for line in result.stderr.splitlines())
     manifest = json.loads(output.read_text(encoding="utf-8"))
-    assert manifest["schema_version"] == 1
-    assert manifest["commit_sha"] == COMMIT_SHA
+    assert manifest["schema_version"] == 3
+    assert len(manifest["commit_sha"]) == 40
     assert manifest["generated_at"] == GENERATED_AT
+    assert manifest["manifest_path"] == "artifacts/coverage/quality-manifest.json"
     assert manifest["source_roots"] == {
         "frontend": ["frontend/src"],
         "go-file-processor": ["services/file-processor"],
@@ -461,7 +794,7 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
         ],
         "go-ws-hub": ["services/ws-hub"],
         "infrastructure": ["infra", "infrastructure", "k8s", "charts"],
-        "python": ["app"],
+        "python": ["app", "alembic/versions"],
         "rust-native": ["native/rust_ext"],
         "rust-pyo3-sanitizer": ["crates/pyo3-sanitizer"],
         "rust-wasm-sanitizer": ["frontend/wasm-sanitizer"],
@@ -561,20 +894,25 @@ def test_normalizes_native_reports_with_provenance_and_honest_metadata(
     python_report = next(
         report for report in reports if report["component"] == "python"
     )
-    assert python_report == {
-        "component": "python",
-        "format": "cobertura-xml",
-        "path": "tests/fixtures/quality/python-valid.xml",
-        "sha256": hashlib.sha256(
-            (FIXTURES / "python-valid.xml").read_bytes()
-        ).hexdigest(),
+    assert python_report["format"] == "cobertura-xml"
+    assert python_report["path"] == "coverage.xml"
+    assert (
+        python_report["sha256"]
+        == hashlib.sha256((FIXTURES / "python-valid.xml").read_bytes()).hexdigest()
+    )
+    assert python_report["size_bytes"] == (FIXTURES / "python-valid.xml").stat().st_size
+    assert manifest["generation"] == {
+        "command": "scripts/quality/normalize_coverage_reports.py",
+        "normalizer_version": "3.0.0",
     }
+    assert manifest["provenance"]["mode"] == "local"
+    assert manifest["tool_versions"]["quality-normalizer"] == "3.0.0"
     assert manifest["components"]["python"]["status"] == "failed"
-    assert manifest["components"]["infrastructure"]["status"] == "missing"
+    assert manifest["components"]["infrastructure"]["status"] == "not_applicable"
     assert manifest["validation"]["valid"] is False
 
 
-def test_tier0_measurement_contains_matched_file_evidence_before_enforcement(
+def test_tier0_missing_evidence_is_fail_closed_before_enforcement(
     tmp_path: Path,
 ) -> None:
     output = tmp_path / "quality-manifest.json"
@@ -589,46 +927,17 @@ def test_tier0_measurement_contains_matched_file_evidence_before_enforcement(
     assert result.returncode == 1
     manifest = json.loads(output.read_text(encoding="utf-8"))
     tier0 = manifest["tier0"]
-    assert tier0["status"] == "measurement_only"
-    assert tier0["files"] == [
-        {
-            "component": "python",
-            "metrics": {
-                "branches": {
-                    "covered": 1,
-                    "percent": 50.0,
-                    "status": "native",
-                    "total": 2,
-                },
-                "functions": {
-                    "covered": 0,
-                    "derivation": (
-                        "AST function entries covered when the first executable "
-                        "body line is reported as executed"
-                    ),
-                    "percent": 0.0,
-                    "status": "derived",
-                    "total": 15,
-                },
-                "lines": {
-                    "covered": 1,
-                    "percent": 50.0,
-                    "status": "native",
-                    "total": 2,
-                },
-                "statements": {
-                    "covered": None,
-                    "percent": None,
-                    "reason_code": "coverage_xml_has_no_statement_counter",
-                    "status": "unsupported",
-                    "total": None,
-                },
-            },
-            "path": "app/services/auth/lockout.py",
-        }
-    ]
-    assert tier0["coverage"]["lines"]["percent"] == 50.0
-    assert not any("functions" in error for error in tier0["errors"])
+    assert tier0["status"] == "failed"
+    assert tier0["files"][0]["path"] == "services/pkg/spicedb/client.go"
+    assert tier0["files"][0]["component"] == "go-shared"
+    assert all(
+        metric["status"] == "missing"
+        for metric in tier0["files"][0]["metrics"].values()
+    )
+    assert (
+        "Tier0 source inventory is missing evidence for services/pkg/spicedb/client.go"
+        in tier0["errors"]
+    )
 
 
 def test_ast_derived_metrics_ignore_mutmut_generated_functions(
@@ -790,6 +1099,14 @@ def test_rust_crypto_function_floor_ignores_wasm_bindgen_generated_wrappers(
                                 "filenames": [source_path],
                                 "regions": [[17, 1, 17, 2, 0, 0, 0, 0]],
                             },
+                            {
+                                "name": "proptest::sugar::external_dependency",
+                                "count": 1,
+                                "filenames": [
+                                    "/home/runner/.cargo/registry/src/proptest-1.11.0/src/sugar.rs"
+                                ],
+                                "regions": [[3, 1, 3, 2, 1, 0, 0, 0]],
+                            },
                         ],
                     }
                 ]
@@ -925,6 +1242,10 @@ def test_canonical_source_identity_rejects_every_root_directory_itself(
             "services/pkg/spiffe/spiffe.go",
         ),
         (
+            "github.com/university-ecosystem/services/pkg/spicedb/client.go",
+            "services/pkg/spicedb/client.go",
+        ),
+        (
             "university-ecosystem/services/pkg/spicedb/client.go",
             "services/pkg/spicedb/client.go",
         ),
@@ -937,6 +1258,222 @@ def test_go_shared_normalizes_every_module_prefix(
     normalizer = _normalizer_module()
 
     assert normalizer._canonical_source_identity("go-shared", raw_path) == expected
+
+
+def test_python_source_identity_maps_coverage_source_app_aliases() -> None:
+    normalizer = _normalizer_module()
+    normalizer._configure_repository_root(str(REPOSITORY_ROOT))
+
+    assert (
+        normalizer._canonical_source_identity("python", "scripts/backfill_uuids.py")
+        == "app/scripts/backfill_uuids.py"
+    )
+    assert (
+        normalizer._canonical_source_identity("python", "core/nats_broker.py")
+        == "app/core/nats_broker.py"
+    )
+    with pytest.raises(normalizer._InputError, match="configured roots"):
+        normalizer._canonical_source_identity("python", "scripts/not-a-module.py")
+
+
+def test_python_coverage_json_accepts_omitted_excluded_branch_arcs() -> None:
+    normalizer = _normalizer_module()
+    normalizer._configure_repository_root(str(REPOSITORY_ROOT))
+    report = json.dumps(
+        {
+            "meta": {"version": "7.0.0"},
+            "files": {
+                "app/api/validation.py": {
+                    "executed_lines": [1],
+                    "missing_lines": [],
+                    "excluded_lines": [18, 19],
+                    "executed_branches": [[1, 2]],
+                    "missing_branches": [],
+                    "summary": {
+                        "covered_lines": 1,
+                        "num_statements": 1,
+                        "covered_branches": 2,
+                        "num_branches": 2,
+                    },
+                }
+            },
+            "totals": {
+                "covered_lines": 1,
+                "num_statements": 1,
+                "covered_branches": 2,
+                "num_branches": 2,
+            },
+        }
+    ).encode()
+
+    metrics, _ = normalizer._parse_python_coverage_json(report, "python")
+
+    assert metrics["branches"] == {
+        "covered": 2,
+        "total": 2,
+        "percent": 100.0,
+        "status": "native",
+    }
+
+
+def test_python_coverage_json_represents_zero_unit_metrics_as_vacuous() -> None:
+    normalizer = _normalizer_module()
+
+    metric = normalizer._coverage_py_summary_metric(
+        {"covered_lines": 0, "num_statements": 0},
+        covered_key="covered_lines",
+        total_key="num_statements",
+        field="fixture.summary",
+    )
+
+    assert metric == {
+        "covered": 0,
+        "total": 0,
+        "percent": 100.0,
+        "status": "derived",
+        "derivation": "coverage.py JSON contains no num_statements units",
+    }
+    assert normalizer._metric_from_counters([], "statement") == {
+        "covered": 0,
+        "total": 0,
+        "percent": 100.0,
+        "status": "derived",
+        "derivation": "Istanbul JSON contains no statement units",
+    }
+
+
+def test_python_function_derivation_ignores_ellipsis_protocol_stubs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    normalizer = _normalizer_module()
+    source_path = tmp_path / "app" / "protocol_fixture.py"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text(
+        "from typing import Protocol\n"
+        "\n"
+        "class Sender(Protocol):\n"
+        "    def send(self) -> None: ...\n"
+        "\n"
+        "def concrete() -> None:\n"
+        "    return None\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(normalizer, "REPOSITORY_ROOT", tmp_path)
+
+    metric = normalizer._derive_python_function_metric(
+        "app/protocol_fixture.py",
+        {7: True},
+    )
+
+    assert metric is not None
+    assert metric["covered"] == metric["total"] == 1
+    assert metric["percent"] == 100.0
+
+
+def test_python_branch_derivation_matches_coverage_py_try_semantics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    normalizer = _normalizer_module()
+    source_path = tmp_path / "app" / "try_fixture.py"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text(
+        "def load() -> int:\n"
+        "    try:\n"
+        "        return 1\n"
+        "    except ValueError:\n"
+        "        return 2\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(normalizer, "REPOSITORY_ROOT", tmp_path)
+
+    metric = normalizer._derive_python_branch_metric("app/try_fixture.py")
+
+    assert metric == {
+        "covered": 0,
+        "total": 0,
+        "percent": 100.0,
+        "status": "derived",
+        "derivation": "AST source contains no branch construct",
+    }
+
+
+def test_python_branch_derivation_matches_coverage_py_expression_semantics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    normalizer = _normalizer_module()
+    source_path = tmp_path / "app" / "expression_fixture.py"
+    source_path.parent.mkdir(parents=True)
+    source_path.write_text(
+        "def choose(value: int) -> int:\n"
+        "    fallback = value if value else 1\n"
+        "    return fallback and value\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(normalizer, "REPOSITORY_ROOT", tmp_path)
+
+    metric = normalizer._derive_python_branch_metric("app/expression_fixture.py")
+
+    assert metric == {
+        "covered": 0,
+        "total": 0,
+        "percent": 100.0,
+        "status": "derived",
+        "derivation": "AST source contains no branch construct",
+    }
+
+
+def test_python_coverage_json_rejects_forged_excluded_branch_arcs() -> None:
+    normalizer = _normalizer_module()
+    normalizer._configure_repository_root(str(REPOSITORY_ROOT))
+    report = json.dumps(
+        {
+            "meta": {"version": "7.0.0"},
+            "files": {
+                "app/main.py": {
+                    "executed_lines": [1],
+                    "missing_lines": [],
+                    # A non-empty report field cannot authorize omitted arcs;
+                    # the checked-out source must contain a coverage pragma.
+                    "excluded_lines": [1],
+                    "executed_branches": [[1, 2]],
+                    "missing_branches": [],
+                    "summary": {
+                        "covered_lines": 1,
+                        "num_statements": 1,
+                        "covered_branches": 2,
+                        "num_branches": 2,
+                    },
+                }
+            },
+            "totals": {
+                "covered_lines": 1,
+                "num_statements": 1,
+                "covered_branches": 2,
+                "num_branches": 2,
+            },
+        }
+    ).encode()
+
+    with pytest.raises(normalizer._InputError, match="branch summary disagrees"):
+        normalizer._parse_python_coverage_json(report, "python")
+
+
+def test_rust_coverage_inventory_excludes_non_production_targets() -> None:
+    normalizer = _normalizer_module()
+
+    assert normalizer._tracked_source_is_coverable(
+        "rust-native", "native/rust_ext/src/lib.rs"
+    )
+    for relative_path in (
+        "native/rust_ext/src/tests.rs",
+        "native/rust_ext/benches/bench.rs",
+        "native/rust_ext/fuzz/fuzz_target.rs",
+        "native/rust_ext/target/debug/generated.rs",
+    ):
+        assert not normalizer._tracked_source_is_coverable("rust-native", relative_path)
 
 
 def test_xml_root_only_source_path_is_a_structural_evidence_error(
@@ -1542,7 +2079,7 @@ def test_missing_expected_report_writes_failed_manifest(tmp_path: Path) -> None:
     missing_paths = {
         entry["path"] for entry in manifest["missing_reports"] if "path" in entry
     }
-    assert "frontend/coverage/coverage-final.json" not in missing_paths
+    assert "frontend/coverage/coverage-final.json" in missing_paths
     assert "artifacts/coverage/quality-manifest.json" not in missing_paths
     assert manifest["validation"]["valid"] is False
 
@@ -1584,7 +2121,7 @@ def test_below_threshold_native_measurement_is_a_quality_failure(
     assert "python.lines is below required coverage floor 100" in validation["errors"]
 
 
-def test_derived_go_line_metric_cannot_satisfy_the_strict_v1_floor(
+def test_derived_go_line_metric_must_satisfy_the_strict_v2_floor(
     tmp_path: Path,
 ) -> None:
     output = tmp_path / "quality-manifest.json"
@@ -1688,7 +2225,7 @@ def test_derived_go_line_metric_cannot_satisfy_the_strict_v1_floor(
     assert result.returncode == 1
     manifest = json.loads(output.read_text(encoding="utf-8"))
     assert (
-        "go-gateway.lines is derived and cannot satisfy strict coverage floor"
+        "go-gateway.lines trusted derivation is below 100%"
         in manifest["validation"]["errors"]
     )
 
@@ -1709,9 +2246,9 @@ def test_duplicate_component_input_is_an_honest_evidence_failure(
 
     assert result.returncode == 1
     manifest = json.loads(output.read_text(encoding="utf-8"))
-    assert (
-        "duplicate report input for component go-gateway"
-        in manifest["validation"]["errors"]
+    assert any(
+        "report input must be supplied exactly once for go-gateway" in error
+        for error in manifest["validation"]["errors"]
     )
 
 
@@ -1727,11 +2264,17 @@ def test_frontend_lcov_enriches_statements_from_adjacent_istanbul_json(
         json.dumps(
             {
                 "frontend/src/one.ts": {
+                    "statementMap": {"0": {}, "1": {}},
+                    "branchMap": {"0": {}},
+                    "fnMap": {"0": {}},
                     "s": {"0": 1, "1": 0},
                     "b": {"0": [1, 0]},
                     "f": {"0": 1},
                 },
                 "frontend/src/two.ts": {
+                    "statementMap": {"0": {}},
+                    "branchMap": {"0": {}},
+                    "fnMap": {"0": {}, "1": {}},
                     "s": {"0": 1},
                     "b": {"0": [1]},
                     "f": {"0": 1, "1": 0},
@@ -1742,7 +2285,13 @@ def test_frontend_lcov_enriches_statements_from_adjacent_istanbul_json(
     )
 
     output = tmp_path / "quality-manifest.json"
-    result = _run_normalizer(output, "--frontend-lcov", str(lcov_path))
+    result = _run_normalizer(
+        output,
+        "--frontend-lcov",
+        str(lcov_path),
+        "--frontend-json",
+        str(json_path),
+    )
 
     assert result.returncode == 1
     manifest = json.loads(output.read_text(encoding="utf-8"))
@@ -1804,7 +2353,8 @@ def test_unreadable_report_replaces_writable_output_with_failed_manifest(
     Draft202012Validator(schema).validate(manifest)
     assert manifest["validation"]["valid"] is False
     assert any(
-        "unable to read report" in error for error in manifest["validation"]["errors"]
+        "report is missing or unreadable" in error
+        for error in manifest["validation"]["errors"]
     )
     assert manifest["components"]["python"]["status"] == "failed"
     assert manifest["reports"] == []
@@ -1902,31 +2452,37 @@ def test_coverage_evidence_lifecycle_is_fail_closed(
     assert manifest["components"][expected_component]["status"] == expected_status
 
     if case_name == "readable-malformed":
-        assert manifest["reports"] == [
-            {
-                "component": "python",
-                "format": "cobertura-xml",
-                "path": "tests/fixtures/quality/python-malformed.xml",
-                "sha256": hashlib.sha256(
-                    (FIXTURES / "python-malformed.xml").read_bytes()
-                ).hexdigest(),
-            }
-        ]
+        report = manifest["reports"][0]
+        assert report["component"] == "python"
+        assert report["format"] == "cobertura-xml"
+        assert report["path"] == "coverage.xml"
+        assert (
+            report["sha256"]
+            == hashlib.sha256(
+                (FIXTURES / "python-malformed.xml").read_bytes()
+            ).hexdigest()
+        )
+        assert (
+            report["size_bytes"] == (FIXTURES / "python-malformed.xml").stat().st_size
+        )
     if case_name == "mixed-unreadable-readable":
-        assert manifest["reports"] == [
-            {
-                "component": "frontend",
-                "format": "lcov",
-                "path": "tests/fixtures/quality/frontend-valid.lcov",
-                "sha256": hashlib.sha256(
-                    (FIXTURES / "frontend-valid.lcov").read_bytes()
-                ).hexdigest(),
-            }
-        ]
+        report = manifest["reports"][0]
+        assert report["component"] == "frontend"
+        assert report["format"] == "lcov"
+        assert report["path"] == "frontend/coverage/lcov.info"
+        assert (
+            report["sha256"]
+            == hashlib.sha256(
+                (FIXTURES / "frontend-valid.lcov").read_bytes()
+            ).hexdigest()
+        )
+        assert report["size_bytes"] == (FIXTURES / "frontend-valid.lcov").stat().st_size
     if case_name == "duplicate-component":
-        for metric in manifest["components"]["go-gateway"]["metrics"].values():
-            assert isinstance(metric, dict)
-            assert metric["status"] == "missing"
+        metrics = manifest["components"]["go-gateway"]["metrics"]
+        assert metrics["statements"]["status"] == "native"
+        assert metrics["lines"]["status"] == "derived"
+        assert metrics["branches"]["status"] == "unsupported"
+        assert metrics["functions"]["status"] == "unsupported"
 
 
 def test_malformed_contract_returns_two(tmp_path: Path) -> None:
@@ -1972,7 +2528,13 @@ def test_coverage_manifest_schema_is_closed_and_versioned() -> None:
     schema = json.loads(QUALITY_MANIFEST_SCHEMA_PATH.read_text(encoding="utf-8"))
 
     assert schema["$schema"] == "https://json-schema.org/draft/2020-12/schema"
-    assert schema["properties"]["schema_version"]["const"] == 1
+    assert schema["properties"]["schema_version"]["const"] == 3
+    assert {
+        "manifest_path",
+        "tool_versions",
+        "provenance",
+        "generation",
+    } <= set(schema["required"])
     assert "tier0" in schema["required"]
     assert schema["properties"]["tier0"]["$ref"] == "#/$defs/tier0"
     assert schema["additionalProperties"] is False
@@ -2103,12 +2665,13 @@ def test_relative_report_path_is_resolved_from_repository_root(tmp_path: Path) -
     report = next(
         entry for entry in manifest["reports"] if entry["component"] == "python"
     )
-    assert report["path"] == "tests/fixtures/quality/python-valid.xml"
+    assert report["path"] == "coverage.xml"
 
 
 def test_output_cannot_alias_an_input_or_the_contract(tmp_path: Path) -> None:
     input_path = FIXTURES / "python-valid.xml"
     contract_bytes = QUALITY_CONTRACT_PATH.read_bytes()
+    contract_hash = hashlib.sha256(contract_bytes).hexdigest()
     input_bytes = input_path.read_bytes()
 
     input_alias = _run_normalizer(
@@ -2128,6 +2691,9 @@ def test_output_cannot_alias_an_input_or_the_contract(tmp_path: Path) -> None:
         assert result.stderr.startswith("ERROR:")
     assert input_path.read_bytes() == input_bytes
     assert QUALITY_CONTRACT_PATH.read_bytes() == contract_bytes
+    assert (
+        hashlib.sha256(QUALITY_CONTRACT_PATH.read_bytes()).hexdigest() == contract_hash
+    )
 
 
 def test_contract_expiry_uses_the_caller_supplied_generated_at_date(
@@ -2390,7 +2956,7 @@ def test_parser_hardening_preserves_go_nonnegative_profile_positions(
         json.loads(output.read_text(encoding="utf-8"))["components"]["go-gateway"][
             "status"
         ]
-        == "failed"
+        == "passed"
     )
 
 

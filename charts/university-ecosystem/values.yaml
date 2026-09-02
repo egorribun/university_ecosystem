@@ -1,4 +1,6 @@
 # Global settings
+fullnameOverride: ""
+
 global:
   environment: "development"
   # Leave empty so dependency charts can use their own verified registries.
@@ -24,8 +26,12 @@ connections:
   databaseURLKey: "database-url"
   redisBackendURLKey: "redis-backend-url"
   redisGatewayURLKey: "redis-gateway-url"
-  # Session revocation is security state and must use the dedicated durable,
-  # non-evicting datastore configured by revocationRedis below.
+  # Session revocation is security state and must use the separately bootstrapped
+  # durable, non-evicting revocation-store release. It is intentionally not an
+  # application-chart dependency: migrations are Helm pre-hooks and must only
+  # run after the store is healthy.  The URL's password comes from the separate
+  # revocation-redis-credentials/revocation-redis-password ExternalSecret,
+  # never from the general cache Redis Secret.
   redisRevocationURLKey: "redis-revocation-url"
   natsURLKey: "nats-url"
   natsAuthTokenKey: "nats-auth-token"
@@ -37,10 +43,68 @@ connections:
 # Required keys: jwt-secret, jwt-rsa-private-key, jwt-rsa-public-key,
 # internal-hmac-secret, ws-hub-internal-secret, csrf-hmac-secret,
 # spotify-token-secret, elasticsearch-password, spicedb-preshared-key,
-# audit-log-secret, idempotency-hmac-secret, minio-access-key,
-# minio-secret-key, temporal-api-key.
+# audit-log-secret, idempotency-hmac-secret, all keys configured under
+# applicationSecrets.keys, minio-access-key, minio-secret-key, temporal-api-key.
+# An ExternalSecret may own this Secret; keep its refreshInterval at 1m so both
+# backend and outbox-worker receive overlapping key rings during rotation.
 applicationSecrets:
   existingSecret: ""
+  # Parameterized key names allow an existing Secret/ExternalSecret target to
+  # follow the operator's naming convention without copying secret material
+  # into Helm values or Helm release state.
+  keys:
+    mfaEmailOtpHMACKeys: "mfa-email-otp-hmac-keys"
+    mfaEmailOtpActiveHMACKeyId: "mfa-email-otp-active-hmac-key-id"
+    mfaEmailDeliveryKEKs: "mfa-email-delivery-keks"
+    mfaEmailDeliveryActiveKEKId: "mfa-email-delivery-active-kek-id"
+    mfaTrustedDeviceHMACKeys: "mfa-trusted-device-hmac-keys"
+    mfaTrustedDeviceActiveHMACKeyId: "mfa-trusted-device-active-hmac-key-id"
+    cwvManualTesterUserIds: "cwv-manual-tester-user-ids"
+
+# Internal render-only contract used by the deployment workflow to discover
+# the exact Secret names and keys after merging the environment values file.
+# Keep disabled for every installed release.
+deploymentContract:
+  enabled: false
+
+# Typed Core Web Vitals release binding. These values are rendered explicitly
+# into the backend Deployment so workflow overrides cannot collide with the
+# free-form backend.env map.
+cwv:
+  rumEnabled: false
+  releaseSHA: "0000000000000000000000000000000000000000"
+  frontendImageDigest: "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  deploymentRunID: 1
+  deploymentRunAttempt: 1
+  deploymentURL: "https://disabled.invalid"
+  deployedAt: "1970-01-01T00:00:00Z"
+  allowedOrigins:
+    - "https://disabled.invalid"
+  exportOIDC:
+    enabled: false
+    repository: "disabled/disabled"
+    workflowRef: "disabled/disabled/.github/workflows/cwv-field-certification.yml@refs/heads/main"
+    subject: "disabled"
+
+# Conventional certificate-backed mTLS for the gateway -> file-processor gRPC
+# boundary. Secrets are created by cert-manager/ExternalSecrets and never by
+# this chart. Development keeps this disabled and uses NetworkPolicy-isolated
+# plaintext; staging/production validation requires it.
+internalGrpcMTLS:
+  enabled: false
+  serverName: ""
+  gatewayIdentityURI: ""
+  allowedClientURIs: []
+  gatewayClient:
+    existingSecret: ""
+    certKey: "tls.crt"
+    privateKeyKey: "tls.key" # pragma: allowlist secret
+    caKey: "ca.crt"
+  fileProcessorServer:
+    existingSecret: ""
+    certKey: "tls.crt"
+    privateKeyKey: "tls.key" # pragma: allowlist secret
+    clientCAKey: "ca.crt"
 
 # Database backup is opt-in because it requires reachable PostgreSQL and MinIO
 # services plus the Secret keys documented above. The init container produces a
@@ -59,7 +123,9 @@ backup:
 
 # Schema migrations run as a blocking Helm pre-install/pre-upgrade hook before
 # application workloads are rolled out. connections.existingSecret must exist
-# before `helm install` because it contains the migration database URL.
+# before `helm install` because it contains both the migration database URL and
+# the dedicated REVOCATION_REDIS_URL used to deny legacy bearer JTIs before
+# their database rows are changed.
 migrations:
   enabled: true
   activeDeadlineSeconds: 900
@@ -79,6 +145,7 @@ backend:
   image:
     repository: university-backend
     pullPolicy: Always
+    digest: ""  # sha256:... takes precedence over tag for immutable deployment
     tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
@@ -111,6 +178,15 @@ backend:
     spicedbPresharedKey: ""
     auditLogSecret: ""
     idempotencyHMACSecret: ""
+    # Development-only key-ring material used when existingSecret is empty.
+    # Format: "key-id:base64url-key[,previous-id:base64url-key]". Never set
+    # these values in staging/production; use applicationSecrets.existingSecret.
+    mfaEmailOtpHMACKeys: ""
+    mfaEmailOtpActiveHMACKeyId: ""
+    mfaEmailDeliveryKEKs: ""
+    mfaEmailDeliveryActiveKEKId: ""
+    mfaTrustedDeviceHMACKeys: ""
+    mfaTrustedDeviceActiveHMACKeyId: ""
     # Empty disables the Elasticsearch integration. Production URLs must use
     # HTTPS; the application validates this at startup.
     elasticsearchURL: ""
@@ -126,6 +202,7 @@ frontend:
   image:
     repository: university-frontend
     pullPolicy: Always
+    digest: ""
     tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
@@ -144,6 +221,7 @@ gateway:
   image:
     repository: university-gateway
     pullPolicy: Always
+    digest: ""
     tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
@@ -168,6 +246,55 @@ gateway:
     # operators intentionally expose UDP and mount a trusted certificate.
     h3Enabled: false
 
+# WebSocket Hub (Go). The release owns this component atomically alongside the
+# gateway/backend; do not patch its image with an out-of-band kubectl rollout.
+wsHub:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: university-ws-hub
+    pullPolicy: Always
+    digest: ""
+    tag: ""
+  service:
+    type: ClusterIP
+    port: 8081
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  config:
+    allowedOrigins:
+      - "http://localhost:3000"
+      - "http://localhost:5173"
+    trustedProxies:
+      - "127.0.0.1"
+      - "::1"
+    sendBufferSize: 256
+    broadcastBufferSize: 4096
+    broadcastWorkers: 8
+    maxClients: 10000
+    clientMessageRateLimit: 10
+    clientMessageBurst: 20
+    ticketTTLSeconds: 15
+    otelEndpoint: "otel-collector:4317"
+    otelInsecure: true
+    jetstream:
+      enabled: true
+      chatStream: "CHAT_EVENTS"
+      notificationsStream: "NOTIFICATIONS_EVENTS"
+      chatDurable: "ws-hub-chat"
+      notificationsDurable: "ws-hub-notifications"
+
 # File Processor (Go)
 fileProcessor:
   enabled: true
@@ -175,6 +302,7 @@ fileProcessor:
   image:
     repository: university-file-processor
     pullPolicy: Always
+    digest: ""
     tag: ""  # RZ-33-26: empty = Chart.AppVersion; "latest" rejected by Kyverno
   service:
     type: ClusterIP
@@ -210,6 +338,7 @@ outboxWorker:
   image:
     repository: university-backend
     pullPolicy: Always
+    digest: ""
     tag: ""
   resources:
     requests:
@@ -233,7 +362,9 @@ ingress:
     nginx.ingress.kubernetes.io/limit-rps: "50"
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
     nginx.ingress.kubernetes.io/limit-connections: "20"
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  issuer:
+    kind: ClusterIssuer
+    name: letsencrypt-prod
   hosts:
     - host: university.example.com
       paths:
@@ -242,6 +373,12 @@ ingress:
           service: frontend
     - host: api.university.example.com
       paths:
+        - path: /ws/ticket
+          pathType: Exact
+          service: gateway
+        - path: /ws/chat
+          pathType: Exact
+          service: ws-hub
         - path: /
           pathType: Prefix
           # Keep authentication, rate limiting, and gRPC dispatch at the edge.
@@ -292,6 +429,10 @@ postgresql:
 # Docs: https://github.com/bitnami/charts/tree/main/bitnami/redis
 redis:
   enabled: true
+  networkPolicy:
+    enabled: true
+    allowExternal: false
+    allowExternalEgress: false
   architecture: standalone  # standalone for dev; replication for prod
   auth:
     enabled: true
@@ -334,57 +475,27 @@ redis:
         cpu: 100m
         memory: 64Mi
 
-# Dedicated security-state datastore. Revocation tombstones outlive cache
-# churn and pod restarts, and noeviction prevents revoked tokens resurrecting.
-revocationRedis:
-  enabled: true
-  architecture: standalone
-  auth:
-    enabled: true
-    existingSecret: "redis-credentials" #checkov:skip=CKV_SECRET_6:references a Kubernetes Secret name, not a credential value
-    existingSecretPasswordKey: "redis-password" #checkov:skip=CKV_SECRET_6:references a Secret key name, not a credential value
-  master:
-    resources:
-      requests:
-        cpu: 100m
-        memory: 128Mi
-      limits:
-        cpu: 500m
-        memory: 512Mi
-    persistence:
-      enabled: true
-      size: 2Gi
-    podSecurityContext:
-      runAsNonRoot: true
-      seccompProfile:
-        type: RuntimeDefault
-    containerSecurityContext:
-      allowPrivilegeEscalation: false
-      readOnlyRootFilesystem: true
-      capabilities:
-        drop: ["ALL"]
-  commonConfiguration: |-
-    maxmemory 384mb
-    maxmemory-policy noeviction
-    save 60 1
-    appendonly yes
-    appendfsync everysec
-  metrics:
-    enabled: true
-    resources:
-      requests:
-        cpu: 25m
-        memory: 24Mi
-      limits:
-        cpu: 100m
-        memory: 64Mi
-
 # bitnami/nats subchart configuration.
 # Docs: https://github.com/bitnami/charts/tree/main/bitnami/nats
 nats:
   enabled: true
+  networkPolicy:
+    enabled: true
+    allowExternal: false
+    allowExternalEgress: false
   resourceType: statefulset
   replicaCount: 1  # standalone for dev; 3 for prod cluster
+  # Development runs without client/cluster auth. Staging supplies a complete,
+  # authenticated nats-server.conf through nats.existingSecret so credentials
+  # never enter Helm release state.
+  existingSecret: ""
+  auth:
+    enabled: false
+  cluster:
+    auth:
+      enabled: false
+  image:
+    pullPolicy: Always
   resources:
     requests:
       cpu: 100m
@@ -392,15 +503,15 @@ nats:
     limits:
       cpu: 500m
       memory: 512Mi
-  nats:
-    jetstream:
-      enabled: true
-      memStorage:
-        enabled: true
-        size: 512Mi
-      fileStorage:
-        enabled: true
-        size: 10Gi
+  # Bitnami NATS 8.x consumes jetstream and persistence at the subchart root.
+  # Keep these paths aligned with Chart.lock; a nested `nats.jetstream` object is
+  # silently ignored by Helm and starts a non-durable Core NATS server.
+  jetstream:
+    enabled: true
+    maxMemory: 512Mi
+  persistence:
+    enabled: true
+    size: 10Gi
   # Pod security hardening
   podSecurityContext:
     runAsNonRoot: true

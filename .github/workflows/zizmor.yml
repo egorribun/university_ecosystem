@@ -9,10 +9,15 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   zizmor:
     name: Zizmor Actions Scan
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       security-events: write
       contents: read
@@ -25,5 +30,3 @@ jobs:
         with:
           # Enable code scanning integration
           advanced-security: true
-
-

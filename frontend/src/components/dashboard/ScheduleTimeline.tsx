@@ -15,13 +15,34 @@ interface ScheduleTimelineProps {
 /** Timeline range: 8:00 (480min) to 20:00 (1200min) = 720 minutes */
 const RANGE_START = 480
 const RANGE_END = 1200
-const RANGE_SPAN = RANGE_END - RANGE_START
+const MOUNT_ONLY_TOKEN = Symbol("schedule-timeline-mount")
 
-/** Hour markers to display */
-const HOUR_MARKERS = [8, 10, 12, 14, 16, 18, 20]
+/** Keep the mount-only effect dependency contract stable and directly testable. */
+export function getInitialEffectDeps(): readonly [symbol] {
+  return [MOUNT_ONLY_TOKEN]
+}
+
+/** Normalize parsed lesson endpoints before any geometry or coercion occurs. */
+export function normalizeLessonRange(
+  startMin: number | null,
+  endMin: number | null
+): readonly [number, number] | null {
+  if (startMin == null) return null
+  if (endMin == null) return null
+  return [startMin, endMin]
+}
+
+/** Keep derived geometry and marker data evaluated with the rendered timeline. */
+function getTimelineRangeSpan(): number {
+  return RANGE_END - RANGE_START
+}
+
+function getHourMarkers(): readonly number[] {
+  return [8, 10, 12, 14, 16, 18, 20]
+}
 
 function minutesToPercent(minutes: number): number {
-  return ((minutes - RANGE_START) / RANGE_SPAN) * 100
+  return ((minutes - RANGE_START) / getTimelineRangeSpan()) * 100
 }
 
 /**
@@ -39,6 +60,9 @@ export const ScheduleTimeline = memo(function ScheduleTimeline({
   const scrollRef = useRef<HTMLDivElement>(null)
   const nowRef = useRef<HTMLDivElement>(null)
   const [hoveredId, setHoveredId] = useState<string | number | null>(null)
+  // A state-backed sentinel keeps the mount-only dependency explicit to the
+  // hooks linter without making the effect react to changing schedule props.
+  const [mountOnlyToken] = useState<symbol>(() => getInitialEffectDeps()[0])
 
   // Auto-scroll to "now" indicator on mount only — don't fight user scroll
   useEffect(() => {
@@ -57,35 +81,42 @@ export const ScheduleTimeline = memo(function ScheduleTimeline({
       }
     }, 100)
     return () => clearTimeout(timer)
-  }, [])
+  }, [mountOnlyToken])
 
   // Position lessons on the timeline
   const positionedLessons = useMemo(() => {
-    return lessons
-      .map((l) => {
-        const startMin = parseMinutes(l.start_time)
-        const endMin = parseMinutes(l.end_time)
+    return lessons.flatMap((l) => {
+      const parsedRange = normalizeLessonRange(parseMinutes(l.start_time), parseMinutes(l.end_time))
 
-        // Skip lessons with unparseable times (M-3 fix)
-        if (startMin == null || endMin == null) return null
+      // Reject malformed lessons before doing any numeric/coercive geometry.
+      // Keeping this guard as the first return makes invalid input impossible
+      // to leak into the rendered timeline (and avoids NaN CSS values).
+      if (parsedRange === null) return []
+      const [startMin, endMin] = parsedRange
 
-        const left = minutesToPercent(Math.max(startMin, RANGE_START))
-        const width = minutesToPercent(Math.min(endMin, RANGE_END)) - left
+      // A lesson must have positive duration. Reversed or zero-length ranges
+      // cannot be represented faithfully on the horizontal timeline and must
+      // not degrade into a misleading minimum-width block.
+      if (endMin <= startMin) return []
 
-        return {
+      // Lessons wholly outside the visible axis do not need a DOM node.
+      if (endMin <= RANGE_START || startMin >= RANGE_END) return []
+
+      const left = minutesToPercent(Math.max(startMin, RANGE_START))
+      const endPercent = minutesToPercent(Math.min(endMin, RANGE_END))
+
+      return [
+        {
           ...l,
           startMin,
           endMin,
           left: Math.max(0, left),
-          width: Math.max(2, Math.min(width, 100 - left)),
+          width: Math.max(2, endPercent - left),
           isCurrent: currentLesson?.id === l.id,
           isNext: nextLesson?.id === l.id,
-        }
-      })
-      .filter(
-        (l): l is NonNullable<typeof l> =>
-          l != null && l.endMin > RANGE_START && l.startMin < RANGE_END
-      )
+        },
+      ]
+    })
   }, [lessons, currentLesson, nextLesson])
 
   const nowPercent = minutesToPercent(Math.max(RANGE_START, Math.min(minutesNow, RANGE_END)))
@@ -103,7 +134,7 @@ export const ScheduleTimeline = memo(function ScheduleTimeline({
           />
 
           {/* Hour markers */}
-          {HOUR_MARKERS.map((hour) => {
+          {getHourMarkers().map((hour) => {
             const percent = minutesToPercent(hour * 60)
             return (
               <div

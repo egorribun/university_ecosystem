@@ -365,6 +365,29 @@ async def test_delete_chat_permissions(async_client, user_factory, db_session):
 
 
 @pytest.mark.asyncio
+async def test_participant_non_admin_cannot_clear_or_delete_chat(
+    async_client, user_factory, db_session
+):
+    """UI capability hiding never replaces the backend authorization guard."""
+    password = "TestPassword123!"
+    user = await user_factory(hashed_password=await get_password_hash(password))
+    other = await user_factory()
+    headers = await _login(async_client, user.email, password)
+
+    chat = Chat()
+    chat.participants.extend([user, other])
+    db_session.add(chat)
+    await db_session.commit()
+    await db_session.refresh(chat)
+
+    delete_response = await async_client.delete(f"/chats/{chat.id}", headers=headers)
+    clear_response = await async_client.post(f"/chats/{chat.id}/clear", headers=headers)
+
+    assert delete_response.status_code == 403
+    assert clear_response.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_messaging_flow_success(async_client, user_factory, db_session):
     password = "TestPassword123!"
     user = await user_factory(hashed_password=await get_password_hash(password))

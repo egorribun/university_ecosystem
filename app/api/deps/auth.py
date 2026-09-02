@@ -194,12 +194,15 @@ async def get_current_user(
             fingerprint=fp,
             mfa_verified_at=session.mfa_verified_at,
             session_id=session.id,
+            mfa_epoch=session.mfa_epoch,
         )
 
     # 4. Security Lifecycle Validation
     if session is None:
         raise_unauthorized(locale, "errors.auth.credentials_invalid")
     assert session is not None  # noqa: S101
+    if session.mfa_epoch != int(user.mfa_epoch):
+        raise_unauthorized(locale, "errors.auth.credentials_invalid")
 
     security_service = AuthSecurityService(db, locale)
     security_service.validate_session_expiry(session)
@@ -342,6 +345,12 @@ async def require_fresh_mfa(
     db: Annotated[AsyncDatabaseSession, Depends(get_db)],
 ) -> None:
     await ensure_mfa_relationships_loaded(db, user)
-    if not mfa.user_has_confirmed_interactive_factor(user):
+    # Treat PostgreSQL as authoritative at this authorization boundary.  A
+    # ``lazy="noload"`` collection can legitimately be empty in the identity
+    # map even when a confirmed enrollment exists; relying only on that cached
+    # collection allowed destructive endpoints to skip step-up enforcement.
+    has_totp = await mfa.has_totp_enabled(db, user)
+    has_email_otp = user.email_mfa_enabled_at is not None
+    if not has_totp and not has_email_otp:
         return
     _enforce_fresh_mfa(request)

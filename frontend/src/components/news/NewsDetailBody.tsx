@@ -32,7 +32,6 @@ const articleMarked = new Marked({
 function hasMarkdownSyntax(text: string): boolean {
   return (
     /^#{1,6}\s/m.test(text) ||
-    /\*\*[^*]+\*\*/m.test(text) ||
     /\*[^*]+\*/m.test(text) ||
     /^[-*+]\s/m.test(text) ||
     /^\d+\.\s/m.test(text) ||
@@ -51,12 +50,12 @@ function renderPlainText(content: string): string {
   const chunks = content.split(/\n{2,}/)
   const parts: string[] = []
 
-  for (let i = 0; i < chunks.length; i++) {
-    const text = chunks[i]?.trim()
+  for (const chunk of chunks) {
+    const text = chunk.trim()
     if (!text) continue
 
     if (text.startsWith(">")) {
-      const quote = text.replace(/^>\s*/, "")
+      const quote = text.slice(1).trimStart()
       parts.push(`<blockquote class="news-pullquote">${escapeHtml(quote)}</blockquote>`)
       continue
     }
@@ -64,7 +63,7 @@ function renderPlainText(content: string): string {
     parts.push(`<p>${escapeHtml(text)}</p>`)
   }
 
-  return parts.join("\n")
+  return parts.join("")
 }
 
 function escapeHtml(text: string): string {
@@ -81,8 +80,6 @@ export function NewsDetailBody({ content }: NewsDetailBodyProps) {
   const showToc = headings.length >= 3
 
   const html = useMemo(() => {
-    if (!content?.trim()) return ""
-
     if (hasMarkdownSyntax(content)) {
       const raw = articleMarked.parse(content) as string
       return sanitizeArticleHtml(raw)

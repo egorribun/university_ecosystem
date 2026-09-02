@@ -1,6 +1,7 @@
 import { useAuth } from "@/contexts/AuthContext"
 import { useEffect, useId, useState, useRef, useCallback } from "react"
 import { useNavigate, useSearch } from "@tanstack/react-router"
+import "@/styles/tokens/profile.css"
 import api from "@/api/client"
 import type { User } from "@/types/User"
 import profileBg from "@/assets/background.jpg"
@@ -163,7 +164,6 @@ export default function Profile() {
     try {
       const response = await api.put<User>("/users/me", {
         full_name: fullName,
-        email,
         profile_detail: {
           about,
           status,
@@ -227,7 +227,7 @@ export default function Profile() {
 
   return (
     <Layout className="bg-transparent!">
-      <SEO title={t("profile:pageTitle", "My Profile")} />
+      <SEO title={t("profile:pageTitle")} />
       <div className="fixed inset-0 z-hide pointer-events-none overflow-hidden" aria-hidden>
         <div
           className="absolute inset-0 bg-repeat mix-blend-soft-light translate-z-0"

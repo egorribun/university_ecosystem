@@ -253,38 +253,6 @@ class AuthRepository(
             .values(used=True)
         )
 
-    # WebAuthn Credential Methods
-
-    async def get_webauthn_credential(
-        self, user_id: uuid.UUID | str, credential_id: str
-    ) -> models.WebAuthnCredential | None:
-        """Get a specific WebAuthn credential for a user."""
-        stmt = select(models.WebAuthnCredential).where(
-            models.WebAuthnCredential.user_id == user_id,
-            models.WebAuthnCredential.credential_id == credential_id,
-        )
-        result = await self.db.execute(stmt)
-        return result.scalar_one_or_none()
-
-    async def list_user_webauthn_credentials(
-        self, user_id: uuid.UUID | str
-    ) -> list[models.WebAuthnCredential]:
-        """List all WebAuthn credentials for a user."""
-        stmt = select(models.WebAuthnCredential).where(
-            models.WebAuthnCredential.user_id == user_id
-        )
-        result = await self.db.execute(stmt)
-        return list(result.scalars().all())
-
-    async def create_webauthn_credential(
-        self, **kwargs: Any
-    ) -> models.WebAuthnCredential:
-        """Create a new WebAuthn credential."""
-        record = models.WebAuthnCredential(**kwargs)
-        self.db.add(record)
-        await self.db.flush()
-        return record
-
     # Login and MFA Methods
 
     async def record_login_history(self, **kwargs: Any) -> models.LoginHistory:
@@ -311,17 +279,14 @@ class AuthRepository(
         result = await self.db.execute(totp_stmt)
         totp_exists = bool(result.scalars().first())
 
-        webauthn_stmt = (
-            select(mfa.WebAuthnCredential.id)
-            .where(mfa.WebAuthnCredential.user_id == user_id)
-            .limit(1)
+        user = await self.db.get(models.User, user_id)
+        email_otp_available = bool(
+            user is not None and user.email_mfa_enabled_at is not None
         )
-        result = await self.db.execute(webauthn_stmt)
-        webauthn_exists = bool(result.scalars().first())
 
         return {
             mfa.MFA_METHOD_TOTP: totp_exists,
-            mfa.MFA_METHOD_WEBAUTHN: webauthn_exists,
+            mfa.MFA_METHOD_EMAIL_OTP: email_otp_available,
         }
 
     async def has_active_mfa(self, user_id: uuid.UUID | str) -> bool:

@@ -58,14 +58,6 @@ class UserProfileService:
         """Update current user profile (self-update)."""
         payload = data.model_dump(exclude_unset=True)
 
-        if "email" in payload and payload["email"] is not None:
-            from app.services.user.logic import validate_user_email
-
-            user_identity = extract_user_id(user)
-            payload["email"] = await validate_user_email(
-                self.repo, payload["email"], exclude_user_id=user_identity
-            )
-
         # Fetch ORM user WITH child relations eager-loaded + row-locked. The
         # eager-load is required: update_user_attributes() decides INSERT-vs-
         # UPDATE on profile/preferences/education_path via `if not user.<child>`,
@@ -146,29 +138,33 @@ class UserProfileService:
 
         self.repo.add(db_user)
         await self.uow.flush()
-        updated_user = self.repo._to_dto(db_user)
+        reset_stats = None
 
         if reset_requested:
-            # reset_user_mfa takes a session and either a user object or ID.
-            # I should make sure it doesn't need to mutate the user object I have.
-            # It likely mutates the DB via session.
-            await mfa.reset_user_mfa(self.repo.db, user_id=user_id)
+            reset_stats = await mfa.reset_user_mfa(self.repo.db, user=db_user)
+
+        # Build the response only after reset_user_mfa has synchronized the ORM
+        # object, otherwise the admin receives the pre-reset MFA fields.
+        updated_user = self.repo._to_dto(db_user)
 
         async with self.uow:
+            if reset_requested:
+                target_locale = resolve_locale(request=request, user=updated_user)
+                title = translate("notifications.mfa.reset.title", locale=target_locale)
+                body = translate("notifications.mfa.reset.body", locale=target_locale)
+                await self.notifications.send_security_notification(
+                    user_ids=[updated_user.id],
+                    title=title,
+                    body=body,
+                )
             await self.uow.commit()
+
+        if reset_stats is not None:
+            await mfa.publish_mfa_session_revocations(reset_stats.session_revocations)
 
         if reset_requested:
             log_id = uuid.UUID(str(user_id)) if isinstance(user_id, str) else user_id
             self.audit.log(
                 "users.mfa.reset", request, user_id=log_id, reason="admin_reset"
-            )
-            # We need to send notification, so we need the DTO (which we have)
-            target_locale = resolve_locale(request=request, user=updated_user)
-            title = translate("notifications.mfa.reset.title", locale=target_locale)
-            body = translate("notifications.mfa.reset.body", locale=target_locale)
-            await self.notifications.send_security_notification(
-                user_ids=[updated_user.id],
-                title=title,
-                body=body,
             )
         return updated_user

@@ -53,6 +53,7 @@ FRONTEND_WORKFLOW_PATH = (
 )
 E2E_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "reusable-e2e-tests.yml"
 GO_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "reusable-go-tests.yml"
+GO_LINT_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "go-lint.yml"
 BUILD_ORCHESTRATED_LINUX_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "build-orchestrated-linux.yml"
 )
@@ -61,6 +62,27 @@ SECURITY_WORKFLOW_PATH = (
 )
 CHECKOV_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "checkov.yml"
 PACT_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "contract-tests.yml"
+PR_RUN_CANCELLATION_WORKFLOWS = (
+    "benchmark.yml",
+    "cargo-deny.yml",
+    "checkov.yml",
+    "codeql.yml",
+    "db-perf-gate.yml",
+    "dependency-review.yml",
+    "generate-openapi.yml",
+    "gitleaks.yml",
+    "go-fuzz.yml",
+    "go-lint.yml",
+    "nilaway.yml",
+    "python-fuzz.yml",
+    "renovate-config-validation.yml",
+    "rust-fuzz.yml",
+    "semantic-pr.yml",
+    "sonar.yml",
+    "sqlmap.yml",
+    "trufflehog.yml",
+    "zizmor.yml",
+)
 QUALITY_HISTORY_WORKFLOW_PATH = (
     REPOSITORY_ROOT / ".github" / "workflows" / "quality-history.yml"
 )
@@ -71,6 +93,7 @@ SBOM_WORKFLOW_PATH = REPOSITORY_ROOT / ".github" / "workflows" / "sbom.yml"
 DEPENDENCY_AUDIT_VALIDATOR_PATH = (
     REPOSITORY_ROOT / "scripts" / "check_dependency_audit_report.py"
 )
+OSV_BATCH_AUDIT_PATH = REPOSITORY_ROOT / "scripts" / "osv_batch_audit.py"
 RUST_AUDIT_CONFIG_PATH = (
     REPOSITORY_ROOT / "native" / "rust_ext" / ".cargo" / "audit.toml"
 )
@@ -208,6 +231,43 @@ def test_ci_triggers_when_draft_pull_request_becomes_ready() -> None:
         "reopened",
         "ready_for_review",
     }
+
+
+def test_pr_branch_push_does_not_duplicate_contract_workflows() -> None:
+    """Push validation is reserved for main; PRs use the pull_request event."""
+
+    renovate = yaml.safe_load(
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "renovate-config-validation.yml"
+        ).read_text(encoding="utf-8")
+    )
+    contract = yaml.safe_load(PACT_WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+    for workflow in (renovate, contract):
+        triggers = _workflow_triggers(workflow)
+        push = triggers.get("push")
+        assert isinstance(push, dict)
+        assert push.get("branches") == ["main"]
+        assert "pull_request" in triggers
+
+
+def test_pr_workflows_cancel_superseded_runs_without_cancelling_main() -> None:
+    """Stale PR runs must release scarce hosted runners for the newest SHA."""
+
+    expected_group = (
+        "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
+    )
+    expected_cancel = "${{ github.event_name == 'pull_request' }}"
+    for filename in PR_RUN_CANCELLATION_WORKFLOWS:
+        workflow = yaml.safe_load(
+            (REPOSITORY_ROOT / ".github" / "workflows" / filename).read_text(
+                encoding="utf-8"
+            )
+        )
+        concurrency = workflow.get("concurrency")
+        assert isinstance(concurrency, dict), filename
+        assert concurrency.get("group") == expected_group, filename
+        assert concurrency.get("cancel-in-progress") == expected_cancel, filename
 
 
 def test_dockerfile_lint_excludes_companion_dockerignore_files() -> None:
@@ -407,11 +467,18 @@ def test_quality_policy_gate_is_properly_wired_in_ci() -> None:
     # Assert included in the results array of ci-success step
     steps = ci_success.get("steps", [])
     assert len(steps) > 0
-    run_script = steps[0].get("run", "")
+    finalizer_step = steps[0]
+    run_script = finalizer_step.get("run", "")
+    finalizer_env = str(finalizer_step.get("env", {}))
     expected_result_check = f"${{{{ needs.{policy_job_name}.result }}}}"
-    assert expected_result_check in run_script, (
-        f"ci-success must assert the result of {policy_job_name}"
-    )
+    # The finalizer may carry the expression through a job-level environment
+    # variable before evaluating it in a shell array.  Keep the trust-boundary
+    # assertion strict while accepting either equivalent representation.
+    assert (
+        expected_result_check in run_script
+        or expected_result_check in finalizer_env
+        or (f"{policy_job_name}|$" in run_script)
+    ), f"ci-success must assert the result of {policy_job_name}"
 
     # Assert quality-manifest.json is uploaded as an artifact
     has_upload = False
@@ -486,7 +553,8 @@ def test_kyverno_matrix_covers_every_policy_with_positive_and_negative_cases() -
             KYVERNO_POLICY_PATH.read_text(encoding="utf-8")
         )
         if isinstance(document, dict)
-        and document.get("kind") == "ClusterPolicy"
+        and document.get("apiVersion") == "policies.kyverno.io/v1"
+        and document.get("kind") == "ValidatingPolicy"
         and isinstance(document.get("metadata"), dict)
     }
     suites = {
@@ -495,9 +563,9 @@ def test_kyverno_matrix_covers_every_policy_with_positive_and_negative_cases() -
         if path.is_dir() and (path / "kyverno-test.yaml").is_file()
     }
 
-    assert policies, "Kyverno policy file must declare at least one ClusterPolicy"
+    assert policies, "Kyverno policy file must declare at least one ValidatingPolicy"
     assert suites == policies, (
-        "Every ClusterPolicy must have exactly one executable test suite; "
+        "Every ValidatingPolicy must have exactly one executable test suite; "
         f"missing={sorted(policies - suites)}, extra={sorted(suites - policies)}"
     )
 
@@ -554,6 +622,31 @@ def test_pact_workflow_replays_every_cross_process_boundary() -> None:
     assert "go test -tags contract" in message_provider_text
     assert "scripts/quality/verify_pact_provider.py" in http_provider_text
     assert "uvicorn app.main:app" in http_provider_text
+
+
+def test_pact_privileged_install_preserves_configured_go_toolchain() -> None:
+    """The Pact installer must not fall back to the runner's system Go under sudo.
+
+    ``actions/setup-go`` prepends the selected toolchain to ``PATH``.  A plain
+    ``sudo go`` invocation uses sudo's secure_path instead, which can launch an
+    older system Go and trigger an unbounded toolchain download.  The workflow
+    therefore has to pass the configured PATH and local toolchain mode
+    explicitly into the privileged command.
+    """
+
+    workflow = yaml.safe_load(PACT_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["message-provider-verify"]["steps"]
+    setup_go = next(step for step in steps if step.get("name") == "Set up Go")
+    install = next(
+        step for step in steps if step.get("name") == "Install Pact FFI library"
+    )
+
+    assert setup_go["with"]["go-version-file"] == "services/ws-hub/go.mod"
+    command = str(install["run"])
+    assert "sudo env" in command
+    assert 'PATH="$PATH"' in command
+    assert "GOTOOLCHAIN=local" in command
+    assert "sudo go run" not in command
 
 
 def test_cross_browser_e2e_is_advisory_during_stabilization() -> None:
@@ -615,6 +708,7 @@ def test_trivy_sarif_categories_preserve_main_configuration_keys() -> None:
     assert categories_by_sarif == {
         "trivy-fs.sarif": ".github/workflows/ci.yml:docker-security",
         "trivy-config.sarif": "trivy-config",
+        "trivy-revocation-config.sarif": "trivy-revocation-config",
     }
 
     trivy_steps = [
@@ -635,6 +729,115 @@ def test_trivy_sarif_categories_preserve_main_configuration_keys() -> None:
         if step.get("uses", "").startswith("aquasecurity/trivy-action@")
     )
     assert image_scan["with"]["limit-severities-for-sarif"] is True
+    assert image_scan["env"]["TRIVY_DB_REPOSITORY"] == "ghcr.io/aquasecurity/trivy-db:2"
+
+    image_scan_steps = [
+        step
+        for step in ci_workflow["jobs"]["docker-security-scan"]["steps"]
+        if step.get("uses", "").startswith("aquasecurity/trivy-action@")
+    ]
+    assert len(image_scan_steps) == 2
+    assert image_scan_steps[1]["id"] == "trivy_scan_retry"
+    assert "steps.trivy_scan.outcome == 'failure'" in image_scan_steps[1]["if"]
+    preserve_step = next(
+        step
+        for step in ci_workflow["jobs"]["docker-security-scan"]["steps"]
+        if step.get("name") == "Preserve first Trivy scan evidence"
+    )
+    assert "hashFiles('trivy-results.sarif') != ''" in preserve_step["if"]
+    reassert_step = next(
+        step
+        for step in ci_workflow["jobs"]["docker-security-scan"]["steps"]
+        if step.get("name") == "Re-assert Trivy vulnerability gate"
+    )
+    assert reassert_step["if"] == "always()"
+    assert "trivy-results-first.sarif" in reassert_step["run"]
+    assert "jq -e" in reassert_step["run"]
+
+
+def test_reusable_trivy_materializes_and_validates_each_helm_chart() -> None:
+    security_workflow = yaml.safe_load(
+        SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    steps = security_workflow["jobs"]["docker-security"]["steps"]
+
+    helm_setup = next(step for step in steps if step.get("name") == "Set up Helm")
+    assert helm_setup["uses"] == (
+        "azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310"
+    )
+    assert helm_setup["with"]["version"] == "3.17.0"
+
+    dependency_build = next(
+        step
+        for step in steps
+        if step.get("name") == "Build Helm dependencies for Trivy"
+    )
+    dependency_script = dependency_build["run"]
+    assert "helm dependency build charts/university-ecosystem/" in dependency_script
+    assert "Helm dependency build failed after 3 attempts." in dependency_script
+
+    preflight = next(
+        step
+        for step in steps
+        if step.get("name") == "Validate Helm charts before Trivy configuration scan"
+    )
+    preflight_script = preflight["run"]
+    assert "charts/revocation-store" in preflight_script
+    assert "charts/university-ecosystem" in preflight_script
+    assert "--helm-values security/trivy-revocation-values.yaml" in preflight_script
+    assert "Skipping chart" in preflight_script
+    assert "pipefail" in preflight_script
+
+    configuration = next(
+        step
+        for step in steps
+        if step.get("name") == "Run Trivy configuration scanner (IaC)"
+    )
+    assert configuration["with"]["trivy-config"] == (
+        "security/trivy-university-config.yaml"
+    )
+    assert configuration["with"]["skip-dirs"] == "charts/revocation-store"
+
+    revocation = next(
+        step
+        for step in steps
+        if step.get("name") == "Run Trivy revocation-store configuration scanner"
+    )
+    assert revocation["id"] == "trivy_revocation"
+    assert revocation["continue-on-error"] is True
+    assert revocation["with"]["scan-ref"] == "charts/revocation-store"
+    assert revocation["with"]["trivy-config"] == (
+        "security/trivy-revocation-config.yaml"
+    )
+    assert revocation["with"]["exit-code"] == "1"
+
+    assert yaml.safe_load(
+        (REPOSITORY_ROOT / "security" / "trivy-revocation-config.yaml").read_text(
+            encoding="utf-8"
+        )
+    )["misconfiguration"]["helm"]["values"] == ["security/trivy-revocation-values.yaml"]
+    scan_values = yaml.safe_load(
+        (REPOSITORY_ROOT / "security" / "trivy-revocation-values.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert scan_values["applicationReleaseName"] == "trivy-scan"
+    assert scan_values["redis"]["fullnameOverride"] == "trivy-scan-revocation-redis"
+    assert scan_values["redis"]["image"]["digest"].startswith("sha256:")
+    assert scan_values["redis"]["metrics"]["image"]["digest"].startswith("sha256:")
+    assert all(
+        not isinstance(value, str) or "password" not in value.lower()
+        for value in scan_values["redis"].values()
+        if not isinstance(value, dict)
+    )
+    university_config = yaml.safe_load(
+        (REPOSITORY_ROOT / "security" / "trivy-university-config.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert university_config["misconfiguration"]["helm"]["set"] == [
+        "applicationSecrets.existingSecret=trivy-scan-application"
+    ]
 
 
 def test_iac_scan_exceptions_use_supported_scoped_syntax() -> None:
@@ -929,12 +1132,24 @@ def test_dependency_audit_scanners_and_rust_policy_are_exactly_pinned() -> None:
         dependency.startswith("pip-audit") and dependency != "pip-audit==2.10.1"
         for dependency in security_dependencies
     )
+    dev_dependencies = project["dependency-groups"]["dev"]
+    assert "pip-audit==2.10.1" in dev_dependencies
+    assert not any(
+        dependency.startswith("pip-audit") and dependency != "pip-audit==2.10.1"
+        for dependency in dev_dependencies
+    )
+    uv_overrides = project["tool"]["uv"]["override-dependencies"]
+    assert "pip>=26.2.0" in uv_overrides
 
     lock = tomllib.loads((REPOSITORY_ROOT / "uv.lock").read_text(encoding="utf-8"))
     pip_audit_packages = [
         package for package in lock["package"] if package.get("name") == "pip-audit"
     ]
     assert [package["version"] for package in pip_audit_packages] == ["2.10.1"]
+    pip_packages = [
+        package for package in lock["package"] if package.get("name") == "pip"
+    ]
+    assert [package["version"] for package in pip_packages] == ["26.2.1"]
 
     sbom_text = SBOM_WORKFLOW_PATH.read_text(encoding="utf-8")
     install_command = "cargo install cargo-audit --version 0.22.2 --locked"
@@ -947,6 +1162,7 @@ def test_dependency_audit_scanners_and_rust_policy_are_exactly_pinned() -> None:
         "severity_threshold": "high",
     }
     assert DEPENDENCY_AUDIT_VALIDATOR_PATH.is_file()
+    assert OSV_BATCH_AUDIT_PATH.is_file()
 
 
 def test_sbom_python_and_rust_audits_capture_then_validate_reports() -> None:
@@ -970,20 +1186,16 @@ def test_sbom_python_and_rust_audits_capture_then_validate_reports() -> None:
     python_script = next(
         step["run"] for step in gate_steps if step.get("name") == python_name
     )
-    assert python_script.count("uv run --frozen --no-sync pip-audit ") == 1
-    assert "--strict" in python_script
-    assert "--no-deps" in python_script
-    assert "--disable-pip" in python_script
-    assert "--format json" in python_script
+    assert (
+        "uv run --frozen --no-sync python scripts/osv_batch_audit.py" in python_script
+    )
+    assert "--requirement /tmp/requirements.txt" in python_script
+    assert "--timeout 30" in python_script
+    assert "--attempts 4" in python_script
+    assert "--batch-size 100" in python_script
     assert "--output /tmp/pip-audit.json" in python_script
     assert "pip_audit_status=$?" in python_script
     assert "set +e" in python_script and "set -e" in python_script
-    assert "for attempt in 1 2 3; do" in python_script
-    assert (
-        'if [[ "$pip_audit_status" -eq 0 || -s /tmp/pip-audit.json ]]; then'
-        in python_script
-    )
-    assert "sleep $((attempt * 15))" in python_script
     assert python_script.index("set +e") < python_script.index("pip_audit_status=$?")
     assert python_script.index("pip_audit_status=$?") < python_script.index("set -e")
     assert (
@@ -1080,18 +1292,14 @@ def test_reusable_python_audit_uses_the_same_fail_closed_validator() -> None:
     step_name = "Run Python known-vulnerability allowlist gate"
     assert step_name in {step.get("name") for step in steps}
     script = next(step["run"] for step in steps if step.get("name") == step_name)
-    assert script.count("uv run --frozen --no-sync pip-audit ") == 1
-    assert "--strict" in script
-    assert "--no-deps" in script
-    assert "--disable-pip" in script
-    assert "--format json" in script
+    assert "uv run --frozen --no-sync python scripts/osv_batch_audit.py" in script
+    assert "--requirement /tmp/requirements.txt" in script
+    assert "--timeout 30" in script
+    assert "--attempts 4" in script
+    assert "--batch-size 100" in script
+    assert "--output /tmp/pip-audit.json" in script
     assert "pip_audit_status=$?" in script
     assert "set +e" in script and "set -e" in script
-    assert "for attempt in 1 2 3; do" in script
-    assert (
-        'if [[ "$pip_audit_status" -eq 0 || -s /tmp/pip-audit.json ]]; then' in script
-    )
-    assert "sleep $((attempt * 15))" in script
     assert (
         "uv run --frozen --no-sync python scripts/check_dependency_audit_report.py pip"
     ) in script
@@ -1248,6 +1456,16 @@ def test_e2e_linux_build_memory_budget_keeps_both_limits_bounded() -> None:
     assert env["FRONTEND_BUILD_MAX_OLD_SPACE_MB"] == "1536"
 
 
+def test_frontend_build_memory_budget_keeps_native_headroom_bounded() -> None:
+    workflow = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    env = workflow["jobs"]["build"]["env"]
+
+    # RSS includes Rolldown's native worker pool in addition to V8's bounded
+    # heap, so the process ceiling must retain finite native-memory headroom.
+    assert env["FRONTEND_BUILD_MAX_RSS_MB"] == "2048"
+    assert env["FRONTEND_BUILD_MAX_OLD_SPACE_MB"] == "1536"
+
+
 def test_linux_build_reproducibility_gate_canonicalizes_known_metadata() -> None:
     workflow = yaml.safe_load(
         BUILD_ORCHESTRATED_LINUX_WORKFLOW_PATH.read_text(encoding="utf-8")
@@ -1363,10 +1581,12 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
         for step in job["steps"]
         if step.get("name") == "Run incremental mutmut (blocking, stats-derived budget)"
     )
-    assert job["strategy"]["matrix"]["shard"] == list(range(1, 65))
+    assert job["strategy"]["matrix"] == (
+        "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
+    )
     assert job["timeout-minutes"] == 360
     assert "scripts/mutmut_shard_budget.py" in run_step["run"]
-    assert "--max-timeout-seconds 20000" in run_step["run"]
+    assert "--max-timeout-seconds 20970" in run_step["run"]
     assert "--control-cycle-reserve-seconds 5" in run_step["run"]
     assert '"${MUTMUT_TIMEOUT_SECONDS}s"' in run_step["run"]
     assert (
@@ -1385,34 +1605,147 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
     )
     assert "grep -E '^app/.*\\.py$'" in job_text
     assert "matrix.shard" in job_text
-    assert "scripts/plan_mutmut_shards.py" in job_text
-    assert "--changed-files /tmp/changed_py.txt" in job_text
-    assert "--changed-diff /tmp/changed_py.diff" in job_text
-    assert "--num-shards 64" in job_text
+    assert "scripts/plan_mutmut_shards.py" not in job_text
+    assert "mutants/mutmut-incremental-plan/shard-" in job_text
+    assert 'cp "$shard_plan" /tmp/mutmut-shard.txt' in job_text
     assert '"${MUTANT_NAMES[@]}"' in job_text
     assert "awk -v shard" not in job_text
     assert "grep '^app/core/tenant\\.py$'" not in job_text
+
+
+def test_mutation_jobs_never_persist_the_workflow_token() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+    for job_name in (
+        "mutation-scope",
+        "mutation-tests-stats",
+        "mutation-tests-universe",
+        "mutation-tests-incremental",
+    ):
+        checkout = next(
+            step
+            for step in workflow["jobs"][job_name]["steps"]
+            if str(step.get("uses", "")).startswith("actions/checkout@")
+        )
+        assert checkout["with"]["persist-credentials"] is False
+
+
+def test_pr_code_execution_never_receives_repository_ci_secret() -> None:
+    workflow_text = CI_WORKFLOW_PATH.read_text(encoding="utf-8")
+    workflow = yaml.safe_load(workflow_text)
+
+    assert workflow["env"]["SECRET_KEY"] == ""
+    assert "secrets.CI_TEST_SECRET_KEY" not in workflow_text
 
 
 def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     jobs = workflow["jobs"]
     stats_job = jobs["mutation-tests-stats"]
+    base_job = jobs["mutation-tests-universe-base"]
+    universe_job = jobs["mutation-tests-universe"]
     mutation_job = jobs["mutation-tests-incremental"]
 
     assert "workflow_dispatch" not in _workflow_triggers(workflow)
     assert workflow["concurrency"]["group"] == "ci-matrix-${{ github.ref }}"
     assert jobs["ci-success"]["name"] == "CI Success"
 
-    assert stats_job["strategy"]["matrix"]["stats_shard"] == list(range(8))
+    assert base_job["timeout-minutes"] == 20
+    assert base_job["needs"] == [
+        "mutation-scope",
+        "pre-commit-check",
+        "pre-commit-security-and-types",
+        "backend-tests",
+        "backend-type-check",
+        "coverage-policy-gate",
+    ]
+    base_text = "\n".join(
+        step.get("run", "") for step in base_job["steps"] if isinstance(step, dict)
+    )
+    assert "scripts/mutmut_stats_shard.py" in base_text
+    assert "--prepare-only" in base_text
+    assert "mutmut-generation.json" in base_text
+    base_upload = next(
+        step
+        for step in base_job["steps"]
+        if step.get("name") == "Upload mutmut generation base"
+    )
+    assert base_upload["with"]["name"] == (
+        "mutmut-generation-base-${{ github.run_id }}-${{ github.run_attempt }}"
+    )
+    base_envelope = next(
+        step
+        for step in base_job["steps"]
+        if step.get("name") == "Create retry-scoped mutmut generation envelope"
+    )
+    assert "--mode generation" in base_envelope["run"]
+    assert "mutmut-universe-artifact.json" in base_envelope["run"]
+
+    assert stats_job["strategy"]["matrix"] == (
+        "${{ fromJSON(needs.mutation-scope.outputs.stats_matrix) }}"
+    )
     assert stats_job["timeout-minutes"] == 25
-    assert "pre-commit-check" in stats_job["needs"]
+    assert stats_job["needs"] == [
+        "mutation-scope",
+        "mutation-tests-universe-base",
+        "pre-commit-check",
+        "pre-commit-security-and-types",
+        "backend-tests",
+        "backend-type-check",
+        "coverage-policy-gate",
+    ]
+    for job in (stats_job, universe_job, mutation_job):
+        assert job["env"]["REVOCATION_REDIS_URL"] == ("redis://localhost:6380/0")
+    assert universe_job["timeout-minutes"] == 35
+    assert universe_job["needs"] == [
+        "pre-commit-check",
+        "pre-commit-security-and-types",
+        "mutation-tests-universe-base",
+        "mutation-tests-stats",
+        "coverage-policy-gate",
+    ]
+    assert mutation_job["strategy"]["fail-fast"] is False
+    assert 1 <= mutation_job["strategy"]["max-parallel"] <= 20
+    assert mutation_job["strategy"]["max-parallel"] == 12
+    assert mutation_job["strategy"]["matrix"] == (
+        "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
+    )
     stats_text = "\n".join(
         step.get("run", "") for step in stats_job["steps"] if isinstance(step, dict)
     )
     assert "scripts/mutmut_stats_shard.py" in stats_text
     assert "--shard-id" in stats_text
     assert "--num-shards 8" in stats_text
+    assert "--reuse-generated-universe" in stats_text
+    stats_generation_selector = next(
+        step
+        for step in stats_job["steps"]
+        if step.get("name") == "Select retry-safe mutmut generation base"
+    )
+    assert "--expected-mode generation" in stats_generation_selector["run"]
+    assert "mutmut-generation-selection.json" in stats_generation_selector["run"]
+    stats_generation_remote_selector = next(
+        step
+        for step in stats_job["steps"]
+        if step.get("name") == "Select immutable same-run mutmut generation base"
+    )
+    stats_step_names = [
+        step.get("name") for step in stats_job["steps"] if isinstance(step, dict)
+    ]
+    setup_python_index = stats_step_names.index(
+        "Set up Python for artifact provenance selection"
+    )
+    selector_index = stats_step_names.index(
+        "Select immutable same-run mutmut generation base"
+    )
+    assert setup_python_index < selector_index
+    setup_python = stats_job["steps"][setup_python_index]
+    assert setup_python["uses"] == SETUP_PYTHON_ACTION_PIN
+    assert setup_python["with"]["python-version"] == "3.14"
+    assert (
+        '--artifact-prefix "mutmut-generation-base-"'
+        in stats_generation_remote_selector["run"]
+    )
     helper_text = (REPOSITORY_ROOT / "scripts/mutmut_stats_shard.py").read_text(
         encoding="utf-8"
     )
@@ -1420,6 +1753,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     assert "mutmut.config" not in helper_text
 
     assert "mutation-tests-stats" in mutation_job["needs"]
+    assert "mutation-tests-universe" in mutation_job["needs"]
     for job in (stats_job, mutation_job):
         mutation_scope = next(
             step
@@ -1450,16 +1784,357 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
         assert "for attempt in 1 2 3; do" in helm_step["run"]
         assert "sleep $((attempt * 15))" in helm_step["run"]
         assert "Helm dependency build failed after 3 attempts." in helm_step["run"]
+    universe_selector = next(
+        step
+        for step in mutation_job["steps"]
+        if step.get("name") == "Select immutable same-run mutmut universe candidate"
+    )
+    assert universe_selector["id"] == "select_mutmut_universe"
+    assert universe_selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
+    assert "scripts/quality/select_same_run_artifact_cli.py" in universe_selector["run"]
+    assert '--artifact-prefix "mutmut-universe-"' in universe_selector["run"]
+    assert '--artifact-prefix "mutmut-generation-base-"' not in universe_selector["run"]
     download_step = next(
         step
         for step in mutation_job["steps"]
-        if step.get("uses", "").startswith("actions/download-artifact")
+        if step.get("name") == "Download selected same-run mutmut universe candidate"
     )
-    assert download_step["with"]["pattern"] == "mutmut-stats-*"
-    assert "scripts/merge_mutmut_stats.py" in mutation_text
+    assert download_step["with"] == {
+        "artifact-ids": "${{ steps.select_mutmut_universe.outputs.artifact_id }}",
+        "repository": "${{ github.repository }}",
+        "run-id": "${{ github.run_id }}",
+        "github-token": "${{ github.token }}",
+        "path": (
+            "mutmut-universe-candidates/"
+            "${{ steps.select_mutmut_universe.outputs.artifact_name }}"
+        ),
+    }
+    assert "pattern" not in download_step["with"]
+    assert "if-no-artifact-found" not in download_step["with"]
+    stats_upload = next(
+        step
+        for step in stats_job["steps"]
+        if step.get("name") == "Upload mutmut stats shard"
+    )
+    stats_stage = next(
+        step
+        for step in stats_job["steps"]
+        if step.get("name") == "Stage isolated mutmut stats artifact"
+    )
+    assert "mutmut-stats-upload/mutmut-stats.json" in stats_stage["run"]
+    assert "mutmut-stats-upload/mutmut-stats-artifact.json" in stats_stage["run"]
+    assert stats_upload["with"]["name"] == (
+        "mutmut-stats-shard-${{ matrix.stats_shard }}-attempt-${{ github.run_attempt }}"
+    )
+    assert stats_upload["with"]["path"] == "mutmut-stats-upload"
+    assert stats_upload["with"]["retention-days"] == 30
+    exact_upload = next(
+        step
+        for step in mutation_job["steps"]
+        if step.get("name") == "Upload incremental mutation evidence"
+    )
+    assert exact_upload["with"]["name"] == (
+        "mutmut-exact-evidence-${{ github.run_id }}-${{ github.run_attempt }}-"
+        "${{ matrix.shard }}"
+    )
+    assert "scripts/merge_mutmut_stats.py" not in mutation_text
     assert "mutants/mutmut-stats.json" in mutation_text
+    assert "mutants/mutmut-incremental-plan/shard-" in mutation_text
+    assert "python -m scripts.mutmut_retry_artifacts select-universe" in mutation_text
+    producer_text = "\n".join(
+        step.get("run", "") for step in universe_job["steps"] if isinstance(step, dict)
+    )
+    assert "scripts/merge_mutmut_stats.py" in producer_text
+    assert "scripts/plan_mutmut_shards.py" in producer_text
+    assert "--allow-empty-shards" in producer_text
+    assert "python -m scripts.mutmut_retry_artifacts select-stats" in producer_text
+    assert "python -m scripts.mutmut_retry_artifacts create-universe" in producer_text
+    assert "--reuse-generated-universe" in producer_text
+    universe_generation_selector = next(
+        step
+        for step in universe_job["steps"]
+        if step.get("name") == "Select retry-safe mutmut generation base"
+    )
+    assert "--expected-mode generation" in universe_generation_selector["run"]
+    assert "mutmut-generation-selection.json" in universe_generation_selector["run"]
+    universe_generation_remote_selector = next(
+        step
+        for step in universe_job["steps"]
+        if step.get("name") == "Select immutable same-run mutmut generation base"
+    )
+    assert (
+        '--artifact-prefix "mutmut-generation-base-"'
+        in universe_generation_remote_selector["run"]
+    )
+    assert 'SOURCE_REVISION="$(git rev-parse HEAD)"' in producer_text
+    assert 'SOURCE_REVISION="$(git rev-parse HEAD)"' in mutation_text
+    assert 'test "$SOURCE_REVISION" = "$COMMIT_SHA"' in producer_text
+    assert 'test "$SOURCE_REVISION" = "$COMMIT_SHA"' in mutation_text
+    universe_upload = next(
+        step
+        for step in universe_job["steps"]
+        if step.get("name") == "Upload central mutmut universe"
+    )
+    assert universe_upload["with"]["name"] == (
+        "mutmut-universe-${{ github.run_id }}-${{ github.run_attempt }}"
+    )
+    assert "mutmut-universe-artifact.json" in universe_upload["with"]["path"]
+    assert universe_upload["with"]["include-hidden-files"] is True
+    assert universe_upload["with"]["retention-days"] == 30
     assert "mutation-tests-stats" in jobs["ci-success"]["needs"]
+    assert "mutation-tests-universe-base" in jobs["ci-success"]["needs"]
+    assert "mutation-tests-universe" in jobs["ci-success"]["needs"]
     assert "needs.mutation-tests-stats.result" in jobs["ci-success"]["steps"][0]["run"]
+    assert (
+        "needs.mutation-tests-universe.result" in jobs["ci-success"]["steps"][0]["run"]
+    )
+
+
+def test_mutation_stats_wait_for_the_foundational_coverage_gate() -> None:
+    """Start stats only after foundational coverage is green.
+
+    Stats uses its own read-only checkout and its result is still required by
+    both the universe producer and ``ci-success``.  It consumes no output or
+    credentials from pre-commit; the dedicated scope job only determines
+    whether eight real legs or one explicit sentinel should be expanded, while
+    the base producer supplies the immutable mutmut source/metadata tree.  The
+    coverage gate is a phase barrier so expensive mutation work is not started
+    for a commit that cannot pass its foundational quality contract.
+    """
+
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    stats_job = workflow["jobs"]["mutation-tests-stats"]
+    universe_job = workflow["jobs"]["mutation-tests-universe"]
+    mutation_job = workflow["jobs"]["mutation-tests-incremental"]
+    ci_success = workflow["jobs"]["ci-success"]
+
+    assert stats_job["needs"] == [
+        "mutation-scope",
+        "mutation-tests-universe-base",
+        "pre-commit-check",
+        "pre-commit-security-and-types",
+        "backend-tests",
+        "backend-type-check",
+        "coverage-policy-gate",
+    ]
+    assert workflow["permissions"] == "read-all"
+    assert "secrets" not in stats_job
+    assert universe_job["needs"] == [
+        "pre-commit-check",
+        "pre-commit-security-and-types",
+        "mutation-tests-universe-base",
+        "mutation-tests-stats",
+        "coverage-policy-gate",
+    ]
+    assert mutation_job["needs"] == [
+        "pre-commit-check",
+        "pre-commit-security-and-types",
+        "mutation-tests-stats",
+        "mutation-tests-universe",
+        "coverage-policy-gate",
+    ]
+    assert "mutation-tests-stats" in ci_success["needs"]
+    assert "needs.mutation-tests-stats.result" in ci_success["steps"][0]["run"]
+
+
+def test_mutation_lanes_are_readiness_gated_and_use_the_runner_budget() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+
+    assert "needs" not in jobs["frontend-tests"]
+    assert jobs["stryker-preflight"]["needs"] == [
+        "pre-commit-check",
+        "frontend-tests",
+        "coverage-policy-gate",
+    ]
+    assert jobs["stryker-shards"]["strategy"]["max-parallel"] == 8
+    assert jobs["mutation-tests-stats"]["strategy"]["max-parallel"] == 8
+    assert jobs["mutation-tests-stats"]["needs"] == [
+        "mutation-scope",
+        "mutation-tests-universe-base",
+        "pre-commit-check",
+        "pre-commit-security-and-types",
+        "backend-tests",
+        "backend-type-check",
+        "coverage-policy-gate",
+    ]
+    assert jobs["mutation-tests-incremental"]["strategy"]["max-parallel"] == 12
+
+
+def test_mutation_stats_scope_is_resolved_before_matrix_fanout() -> None:
+    """Avoid booting eight stats runners for a frontend-only change.
+
+    The scope resolver must be a direct dependency of the dynamic stats
+    matrix.  A false Python scope still emits one explicit sentinel entry so
+    the required job concludes successfully and the downstream universe can
+    publish its empty, fail-closed envelope.
+    """
+
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+    scope = jobs["mutation-scope"]
+    stats = jobs["mutation-tests-stats"]
+
+    assert scope["outputs"] == {
+        "has_python": "${{ steps.scope.outputs.has_python }}",
+        "stats_matrix": "${{ steps.scope.outputs.stats_matrix }}",
+    }
+    assert scope["timeout-minutes"] == 5
+    assert stats["needs"] == [
+        "mutation-scope",
+        "mutation-tests-universe-base",
+        "pre-commit-check",
+        "pre-commit-security-and-types",
+        "backend-tests",
+        "backend-type-check",
+        "coverage-policy-gate",
+    ]
+    assert stats["strategy"]["matrix"] == (
+        "${{ fromJSON(needs.mutation-scope.outputs.stats_matrix) }}"
+    )
+    assert stats["strategy"]["fail-fast"] is False
+    scope_step = _step_named(scope, "Resolve changed Python scope")
+    scope_text = scope_step["run"]
+    assert scope_step["id"] == "scope"
+    assert "scripts/resolve_mutation_base.py" in scope_text
+    assert 'git diff --name-only "$COMPARE_BASE...HEAD"' in scope_text
+    assert "grep -E '^app/.*\\.py$'" in scope_text
+    assert "stats_matrix" in scope_text
+
+    stats_scope = _step_named(stats, "Detect changed Python source")
+    assert stats_scope["env"]["MATRIX_HAS_PYTHON"] == "${{ matrix.has_python }}"
+    assert "Mutation matrix Python scope disagrees" in stats_scope["run"]
+    ci_success = jobs["ci-success"]
+    assert "mutation-scope" in ci_success["needs"]
+    assert "needs.mutation-scope.result" in ci_success["steps"][0]["run"]
+
+
+def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards() -> (
+    None
+):
+    """Do not occupy scarce runners with plan entries proven empty.
+
+    The universe producer owns the attempt-bound complete 128-shard plan.  It
+    must validate that plan before emitting a dynamic matrix, and each consumer
+    must independently reject an output that disagrees with its local source
+    scope or plan.  This preserves exact mutation proof while avoiding a full
+    Python/Helm bootstrap for every empty fixed-matrix assignment.
+    """
+
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    universe_job = workflow["jobs"]["mutation-tests-universe"]
+    mutation_job = workflow["jobs"]["mutation-tests-incremental"]
+
+    assert universe_job["outputs"] == {
+        "mutation_matrix": "${{ steps.mutation_matrix.outputs.matrix }}",
+        "mutation_descriptor_count": (
+            "${{ steps.mutation_matrix.outputs.descriptor_count }}"
+        ),
+    }
+    matrix_step = _step_named(universe_job, "Build validated mutmut execution matrix")
+    assert matrix_step["id"] == "mutation_matrix"
+    assert "scripts/mutmut_shard_matrix.py" in matrix_step["run"]
+    assert "--expected-shards 128" in matrix_step["run"]
+    assert '"include"' in matrix_step["run"]
+    assert "has_python" in matrix_step["run"]
+    assert "has_mutants" in matrix_step["run"]
+    assert "descriptor_count=" in matrix_step["run"]
+    assert '"$descriptor_count" -gt 128' in matrix_step["run"]
+    assert "Mutation matrix capacity" in matrix_step["run"]
+    assert (
+        'matrix_summary="Fully validated fixed plan assignments: 128"'
+        in matrix_step["run"]
+    )
+    assert (
+        'matrix_summary="No-Python sentinel: one explicit non-mutant descriptor '
+        '(not a 128-assignment plan)"' in matrix_step["run"]
+    )
+    assert (
+        'if [ "${{ steps.mutation_scope.outputs.has_python }}" = "false" ] '
+        '&& [ "$descriptor_count" -ne 1 ]; then' in matrix_step["run"]
+    )
+    assert 'echo "- $matrix_summary"' in matrix_step["run"]
+    assert 'echo "- $descriptor_summary"' in matrix_step["run"]
+    assert "coverage phase barrier" in matrix_step["run"]
+
+    assert mutation_job["strategy"]["matrix"] == (
+        "${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}"
+    )
+    assert 1 <= mutation_job["strategy"]["max-parallel"] <= 20
+    assert mutation_job["strategy"]["max-parallel"] == 12
+
+    selection_step = _step_named(
+        mutation_job, "Validate selected mutmut execution matrix entry"
+    )
+    assert selection_step["id"] == "mutation_shard"
+    selection_text = selection_step["run"]
+    assert "scripts/mutmut_shard_matrix.py" in selection_text
+    assert "--expected-shards 128" in selection_text
+    assert selection_step["env"] == {
+        "LOCAL_HAS_PYTHON": "${{ steps.mutation_scope.outputs.has_python }}",
+        "MATRIX_HAS_PYTHON": "${{ matrix.has_python }}",
+        "MATRIX_HAS_MUTANTS": "${{ matrix.has_mutants }}",
+        "MATRIX_SHARD": "${{ matrix.shard }}",
+    }
+    assert '"$MATRIX_SHARD"' in selection_text
+    assert '"$MATRIX_HAS_PYTHON"' in selection_text
+    assert '"$MATRIX_HAS_MUTANTS"' in selection_text
+    assert "disagrees with local mutation scope" in selection_text
+
+    required_nonempty = (
+        "steps.mutation_scope.outputs.has_python == 'true' && "
+        "steps.mutation_shard.outputs.has_mutants == 'true'"
+    )
+    for name in (
+        "Set up Python",
+        "Install uv",
+        "Install dependencies",
+        "Set up Helm",
+        "Resolve Helm chart dependencies",
+        "Run incremental mutmut (blocking, stats-derived budget)",
+    ):
+        assert _step_named(mutation_job, name)["if"] == required_nonempty
+
+
+def test_mutation_jobs_cache_only_lock_bound_uv_packages() -> None:
+    """Mutation fan-out must reuse immutable packages, never execution evidence.
+
+    A PR mutation run starts up to eight stats workers and permits up to twenty
+    exact-mutant workers per execution family; GitHub's global hosted-runner cap
+    owns aggregate admission when families overlap.  The package cache is keyed
+    by the locked dependency graph; the per-run mutmut universe and execution
+    proofs remain attempt-scoped artifacts and are deliberately not part of that
+    cache.
+    """
+
+    workflows_and_jobs = (
+        (
+            CI_WORKFLOW_PATH,
+            (
+                "mutation-tests-stats",
+                "mutation-tests-universe",
+                "mutation-tests-incremental",
+            ),
+        ),
+        (
+            MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH,
+            ("manual-mutation-stats", "manual-mutation-tests"),
+        ),
+    )
+
+    expected_cache = {
+        "enable-cache": True,
+        "cache-dependency-glob": "uv.lock",
+    }
+    for workflow_path, job_names in workflows_and_jobs:
+        jobs = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))["jobs"]
+        for job_name in job_names:
+            install_uv = next(
+                step
+                for step in jobs[job_name]["steps"]
+                if step.get("name") == "Install uv"
+            )
+            assert install_uv["with"] == expected_cache
 
 
 def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> None:
@@ -1497,6 +2172,17 @@ def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> Non
     )
     assert {job["name"] for job in jobs.values()}.isdisjoint(REQUIRED_CI_CONTEXTS)
 
+    stats_job = jobs["manual-mutation-stats"]
+    stats_upload = next(
+        step
+        for step in stats_job["steps"]
+        if step.get("name") == "Upload manual mutmut stats shard"
+    )
+    assert stats_upload["with"]["name"] == (
+        "manual-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-"
+        "${{ matrix.stats_shard }}"
+    )
+
     for job_name in ("manual-mutation-stats", "manual-mutation-tests"):
         mutation_scope = next(
             step
@@ -1512,15 +2198,17 @@ def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> Non
         assert '--manual-base-sha "$MANUAL_BASE_SHA"' in scope_script
 
     manual_mutation_job = jobs["manual-mutation-tests"]
-    assert manual_mutation_job["strategy"]["matrix"]["shard"] == list(range(1, 65))
+    assert manual_mutation_job["strategy"]["matrix"]["shard"] == list(range(1, 129))
+    assert manual_mutation_job["strategy"]["max-parallel"] == 20
     assert manual_mutation_job["timeout-minutes"] == 360
     manual_mutation_text = "\n".join(
         step.get("run", "")
         for step in manual_mutation_job["steps"]
         if isinstance(step, dict)
     )
+    assert "--num-shards 128" in manual_mutation_text
     assert "scripts/mutmut_shard_budget.py" in manual_mutation_text
-    assert "--max-timeout-seconds 20000" in manual_mutation_text
+    assert "--max-timeout-seconds 20970" in manual_mutation_text
     assert '--prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"' in (
         manual_mutation_text
     )
@@ -1532,7 +2220,29 @@ def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> Non
         for step in manual_mutation_job["steps"]
         if step.get("name") == "Upload manual mutation evidence"
     )
+    assert manual_upload["with"]["name"] == (
+        "manual-mutation-evidence-${{ github.run_id }}-${{ github.run_attempt }}-"
+        "${{ matrix.shard }}"
+    )
     assert "mutants/mutmut-exact-evidence/" in manual_upload["with"]["path"]
+
+    stats_download = next(
+        step
+        for step in manual_mutation_job["steps"]
+        if step.get("name") == "Download manual mutmut stats shards"
+    )
+    assert stats_download["with"]["pattern"] == (
+        "manual-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-*"
+    )
+    assert "if-no-artifact-found" not in stats_download["with"]
+    require_stats = next(
+        step
+        for step in manual_mutation_job["steps"]
+        if step.get("name") == "Require all manual mutmut stats shards"
+    )
+    assert "expected=8" in require_stats["run"]
+    assert "find mutmut-stats -type f -name 'mutmut-stats.json'" in require_stats["run"]
+    assert "seq 0 7" in require_stats["run"]
 
 
 def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() -> None:
@@ -1551,7 +2261,7 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
     assert 'MUTMUT_JOB_DEADLINE_EPOCH="$((MUTMUT_JOB_STARTED_EPOCH + 21600))"' in (
         pr_deadline
     )
-    assert "--max-timeout-seconds 20000" in pr_run_step["run"]
+    assert "--max-timeout-seconds 20970" in pr_run_step["run"]
     assert "--control-cycle-reserve-seconds 5" in pr_run_step["run"]
     assert "MUTMUT_POST_RUN_UPLOAD_RESERVE_SECONDS=600" in pr_run_step["run"]
     assert (
@@ -1559,7 +2269,14 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
         in pr_run_step["run"]
     )
     assert "MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30" in pr_run_step["run"]
-    assert 360 * 60 - 20_000 - 30 == 1570
+    assert 360 * 60 - 20_970 - 30 == 600
+
+    # The configured cap is derived, not an arbitrary increase: the exact
+    # six-hour envelope reserves 600 seconds for post-run evidence after
+    # timeout's 30-second KILL grace. The live deadline check starts before
+    # setup and refuses to truncate evidence when setup consumes headroom.
+    assert "20,970" in pr_run_step["run"]
+    assert "21,600 - 600 - 30" in pr_run_step["run"]
 
     workflows = (
         (
@@ -1569,7 +2286,7 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
             "Upload incremental mutation evidence",
             360,
             21600,
-            20000,
+            20970,
             600,
         ),
         (
@@ -1579,7 +2296,7 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
             "Upload manual mutation evidence",
             360,
             21600,
-            20000,
+            20970,
             600,
         ),
     )
@@ -1608,6 +2325,11 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
             deadline_script
         )
         assert '>> "$GITHUB_ENV"' in deadline_script
+        run_script = next(
+            step["run"] for step in job["steps"] if step.get("name") == run_step_name
+        )
+        assert "--max-timeout-seconds 20970" in run_script
+        assert "live deadline check" in run_script
 
         run_step = next(
             step for step in job["steps"] if step.get("name") == run_step_name
@@ -1646,7 +2368,8 @@ def test_incremental_mutation_workflows_preserve_headroom_and_full_evidence() ->
         assert "refusing to run incomplete mutation evidence" in run_script
         assert (
             'timeout --kill-after=30s "${MUTMUT_TIMEOUT_SECONDS}s" '
-            "uv run python scripts/run_mutmut_with_stats.py --max-children 2 "
+            "uv run python scripts/run_mutmut_with_stats.py --max-children 3 "
+            "--reuse-generated-universe "
             '"${MUTANT_NAMES[@]}" 2>&1 '
             '| tee "$MUTMUT_EVIDENCE_DIR/mutmut-run.log"'
         ) in run_script
@@ -1753,14 +2476,30 @@ def test_incremental_mutation_workflows_allow_empty_shards_and_validate_failures
 
         assert run_step["id"] == run_step_id
         empty_shard_index = run_script.index('if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then')
-        empty_output_index = run_script.index(
-            'echo "has_mutants=false" >> "$GITHUB_OUTPUT"', empty_shard_index
-        )
-        assert (
-            empty_shard_index
-            < empty_output_index
-            < run_script.index("exit 0", empty_output_index)
-        )
+        if workflow_path == CI_WORKFLOW_PATH:
+            # The dynamically selected PR entry was independently proven
+            # nonempty before any toolchain install. A later empty plan is a
+            # provenance violation, not a legitimate no-op.
+            assert (
+                "Validated nonempty mutation matrix entry became empty."
+                in run_script[empty_shard_index:]
+            )
+            assert "exit 1" in run_script[empty_shard_index:]
+            selection_step = _step_named(
+                job, "Validate selected mutmut execution matrix entry"
+            )
+            assert selection_step["id"] == "mutation_shard"
+        else:
+            # The manual workflow still creates its fixed matrix directly, so
+            # each empty assignment is a valid no-op after local planning.
+            empty_output_index = run_script.index(
+                'echo "has_mutants=false" >> "$GITHUB_OUTPUT"', empty_shard_index
+            )
+            assert (
+                empty_shard_index
+                < empty_output_index
+                < run_script.index("exit 0", empty_output_index)
+            )
         assert 'echo "has_mutants=true" >> "$GITHUB_OUTPUT"' in run_script
 
         assert "trap on_mutation_step_exit EXIT" in run_script
@@ -1961,6 +2700,12 @@ def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() ->
         if step.get("name") == "Run integration tests"
     )
     integration_job = backend_workflow["jobs"]["integration-tests"]
+    unit_job = backend_workflow["jobs"]["unit-tests"]
+    # Unit authentication paths still construct the revocation-aware session
+    # service.  An explicit non-development URL keeps failures deterministic
+    # and prevents the fail-closed client from raising a configuration error
+    # before the test's transport mocks are reached.
+    assert unit_job["env"]["REVOCATION_REDIS_URL"] == ("redis://localhost:6380/0")
     assert integration_job["env"]["RUN_INTEGRATION_TESTS"] == "1"
     assert integration_job["env"]["REVOCATION_REDIS_URL"] == (
         "redis://localhost:6380/0"
@@ -2056,6 +2801,8 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
     ]
     assert lighthouse_shards["env"]["LHCI_URLS"] == "${{ matrix.urls }}"
     assert lighthouse_shards["env"]["SKIP_BUILD"] == "1"
+    assert lighthouse_shards["env"]["LHCI_USE_SSR_PREVIEW"] == "1"
+    assert lighthouse_shards["env"]["LHCI_SSR_PREVIEW_PORT"] == "4175"
     assert lighthouse_shards["env"]["LHCI_SKIP_SYSTEM_DEPS"] == "1"
     lighthouse_bundle = next(
         step
@@ -2081,7 +2828,10 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
         if step.get("name") == "Upload Lighthouse shard reports"
     )
     assert shard_upload["with"]["include-hidden-files"] is True
-    assert shard_upload["with"]["name"] == "lighthouse-reports-${{ matrix.shard }}"
+    assert shard_upload["with"]["name"] == (
+        "lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}"
+    )
+    assert shard_upload["with"]["if-no-files-found"] == "error"
     assert not any(
         step.get("name") == "Install wasm-pack" for step in lighthouse_shards["steps"]
     )
@@ -2089,6 +2839,7 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
     lighthouse_aggregate = frontend["jobs"]["lighthouse"]
     assert lighthouse_aggregate["needs"] == "lighthouse-shards"
     assert "always()" in lighthouse_aggregate["if"]
+    assert "!cancelled()" in lighthouse_aggregate["if"]
     assert lighthouse_aggregate["name"] == "Lighthouse Audit"
     shard_guard = next(
         step
@@ -2101,14 +2852,36 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
         for step in lighthouse_aggregate["steps"]
         if isinstance(step, dict)
     )
-    assert "lhr-${counter}.json" in merge_text
+    assert 'printf -v report_name "lhr-%02d.json" "$index"' in merge_text
+    assert "expected_shards=(core content realtime fallback)" in merge_text
+    assert '"$total" -ne 30' in merge_text
+    download_shards = next(
+        step
+        for step in lighthouse_aggregate["steps"]
+        if step.get("name") == "Download Lighthouse shard reports"
+    )
+    assert download_shards["with"]["pattern"] == (
+        "lighthouse-reports-${{ github.run_id }}-${{ github.run_attempt }}-*"
+    )
+    assert "if-no-artifact-found" not in download_shards["with"]
     merged_upload = next(
         step
         for step in lighthouse_aggregate["steps"]
-        if step.get("name") == "Upload merged Lighthouse reports"
+        if step.get("name") == "Upload Lighthouse retry evidence"
     )
-    assert merged_upload["with"]["name"] == "lighthouse-reports"
+    assert merged_upload["with"]["name"] == (
+        "lighthouse-reports-attempt-${{ github.run_attempt }}"
+    )
     assert merged_upload["with"]["include-hidden-files"] is True
+
+    go_lint_workflow = yaml.safe_load(GO_LINT_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    go_lint_job_action = next(
+        step
+        for step in go_lint_workflow["jobs"]["golangci-lint"]["steps"]
+        if step.get("uses", "").startswith("golangci/golangci-lint-action@")
+    )
+    assert go_lint_job_action["with"]["install-mode"] == "binary"
+    assert go_lint_job_action["with"]["version"] == "v2.13.2"
 
     go = yaml.safe_load(GO_WORKFLOW_PATH.read_text(encoding="utf-8"))
     assert go["jobs"]["test"]["timeout-minutes"] == 120
@@ -2119,6 +2892,8 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
         if step.get("uses", "").startswith("golangci/golangci-lint-action@")
     )
     assert go_lint_action["with"]["verify"] is False
+    assert go_lint_action["with"]["install-mode"] == "binary"
+    assert go_lint_action["with"]["version"] == "v2.13.2"
 
     security = yaml.safe_load(SECURITY_WORKFLOW_PATH.read_text(encoding="utf-8"))
     assert {
@@ -2150,6 +2925,7 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
     assert (
         "semgrep scan --config auto --baseline-commit origin/main" in semgrep_run_text
     )
+    assert "--error" in semgrep_run_text
     assert "--sarif --sarif-output=semgrep.sarif" in semgrep_run_text
     assert "SEMGREP_SCAN_STATUS" in semgrep_run_text
     assert any(
@@ -2157,6 +2933,14 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
         and step.get("if") == "always()"
         for step in semgrep_steps
     )
+    semgrep_gate = next(
+        step
+        for step in semgrep_steps
+        if step.get("name") == "Fail if Semgrep reported findings or scan errors"
+    )
+    assert "validate_semgrep_sarif.py" in semgrep_gate["run"]
+    assert "security/semgrep-suppression-policy.json" in semgrep_gate["run"]
+    assert '--scanner-status "$scan_status"' in semgrep_gate["run"]
     semgrep_upload = next(
         step
         for step in semgrep_steps
@@ -2189,6 +2973,15 @@ def test_frontend_coverage_is_merged_after_all_vitest_shards() -> None:
         if step.get("uses", "").startswith("actions/checkout@")
     )
     assert aggregate_checkout["with"]["fetch-depth"] == 0
+    failed_shard_guard = next(
+        step
+        for step in aggregate_steps
+        if step.get("name") == "Fail if a test shard failed"
+    )
+    assert failed_shard_guard["working-directory"] == "${{ github.workspace }}"
+    assert aggregate_steps.index(failed_shard_guard) < aggregate_steps.index(
+        aggregate_checkout
+    )
     merge_step = next(
         step
         for step in aggregate_steps
@@ -2202,12 +2995,14 @@ def test_frontend_coverage_is_merged_after_all_vitest_shards() -> None:
     assert "--output=coverage" in merge_step["run"]
     assert "--expected-shards=4" in merge_step["run"]
     assert any(
-        step.get("with", {}).get("pattern") == "frontend-coverage-shard-*"
+        step.get("with", {}).get("pattern")
+        == "frontend-coverage-shard-*-attempt-${{ github.run_attempt }}"
         for step in aggregate_steps
         if isinstance(step, dict)
     )
     assert any(
-        step.get("with", {}).get("name") == "frontend-coverage"
+        step.get("with", {}).get("name")
+        == "frontend-coverage-attempt-${{ github.run_attempt }}"
         for step in aggregate_steps
         if isinstance(step, dict)
     )
@@ -2256,7 +3051,7 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         if step.get("name") == "Merge and gate full mutation evidence"
     )
     assert "scripts/merge_mutmut_cicd_stats.py" in export_step["run"]
-    assert "--expected-shards 64" in export_step["run"]
+    assert "--expected-shards 128" in export_step["run"]
     assert "scripts/check_mutation_score.py --min-score 100" in export_step["run"]
     assert "mutmut export-cicd-stats" not in export_step["run"]
     assert jobs["go-integration"]["strategy"]["matrix"]["service-directory"] == [
@@ -2299,6 +3094,7 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         "contents": "read",
         "issues": "write",
     }
+    assert jobs["notify-failure"]["timeout-minutes"] == 5
     assert jobs["kyverno-test"]["timeout-minutes"] == 15
     assert jobs["miri"]["env"]["PROPTEST_DISABLE_FAILURE_PERSISTENCE"] == "1"
     assert jobs["miri"]["env"]["MIRIFLAGS"] == (
@@ -2312,15 +3108,90 @@ def test_nightly_full_gate_contains_the_long_running_quality_suites() -> None:
         if isinstance(step, dict)
     )
     assert "Prepare full chaos compose environment" in chaos_steps
-    assert "Start the full chaos compose stack" in chaos_steps
+    assert "Start the chaos dependency closure" in chaos_steps
     assert "docker-compose.ci-loadtest.yml" in chaos_steps
-    assert "54321/ecosystem" in chaos_steps
+    assert "54321/test_ecosystem" in chaos_steps
     assert "Tear down full chaos compose stack" in chaos_steps
     pyo3_source = (
         REPOSITORY_ROOT / "crates" / "pyo3-sanitizer" / "src" / "lib.rs"
     ).read_text(encoding="utf-8")
     assert "#[cfg(miri)]" in pyo3_source
     assert "failure_persistence: None" in pyo3_source
+
+
+def test_nightly_chaos_starts_only_its_declared_compose_dependency_closure() -> None:
+    """Keep the nightly chaos runner bounded to services the suite exercises.
+
+    Compose follows ``depends_on`` recursively for targeted services.  Derive
+    that graph from the same four layered manifests used by the workflow and
+    pin the roots/closure so a future test or dependency change cannot silently
+    start the 27-service production-like stack (or omit a required dependency).
+    Optional ToxiProxy/real-MinIO chaos remains disabled in this workflow, as it
+    has no corresponding service or endpoint configuration here.
+    """
+
+    nightly = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = nightly["jobs"]["load-and-chaos"]
+    start_step = _provenance_step(job, "Start the chaos dependency closure")
+    run_text = str(start_step["run"])
+    assert (
+        'docker compose "${CF[@]}" up -d --build backend gateway ws-hub outbox-worker'
+    ) in run_text
+
+    dependency_map: dict[str, set[str]] = {}
+    for relative_path in (
+        "docker-compose.yml",
+        "docker-compose.infra.yml",
+        "docker-compose.go.yml",
+        "docker-compose.ci-loadtest.yml",
+    ):
+        compose = yaml.safe_load(
+            (REPOSITORY_ROOT / relative_path)
+            .read_text(encoding="utf-8")
+            .replace("!override", "")
+        )
+        for service_name, service in compose["services"].items():
+            depends_on = service.get("depends_on") or {}
+            dependency_names = (
+                depends_on.keys() if isinstance(depends_on, dict) else depends_on
+            )
+            dependency_map.setdefault(service_name, set()).update(dependency_names)
+
+    roots = {"backend", "gateway", "ws-hub", "outbox-worker"}
+    expected_closure = {
+        "backend",
+        "gateway",
+        "ws-hub",
+        "outbox-worker",
+        "migrations",
+        "minio-init",
+        "nats",
+        "revocation-valkey",
+        "valkey",
+        "postgres",
+        "minio",
+    }
+    closure: set[str] = set()
+    pending = list(roots)
+    while pending:
+        service_name = pending.pop()
+        if service_name in closure:
+            continue
+        assert service_name in dependency_map, service_name
+        closure.add(service_name)
+        pending.extend(dependency_map[service_name])
+
+    assert closure == expected_closure
+    assert roots <= closure
+
+    run_env = next(
+        step.get("env", {})
+        for step in job["steps"]
+        if step.get("name") == "Run chaos and resilience tests"
+    )
+    assert "TOXIPROXY_URL" not in run_env
+    assert "MINIO_PROXY_ENDPOINT" not in run_env
+    assert "MINIO_DIRECT_ENDPOINT" not in run_env
 
 
 def test_go_service_dockerfiles_package_local_spiffe_replacement() -> None:
@@ -2350,7 +3221,7 @@ def test_go_fuzz_workflow_executes_all_service_fuzz_targets() -> None:
         if line.strip().startswith("go test") and "-fuzz=" in line
     ]
     assert len(fuzz_commands) == 4
-    assert all("-fuzztime=35s" in command for command in fuzz_commands)
+    assert all("-fuzztime=30s" in command for command in fuzz_commands)
     assert all("-parallel=1" in command for command in fuzz_commands)
 
 
@@ -2463,7 +3334,7 @@ def test_incremental_mutation_gate_is_blocking_and_fails_on_timeout() -> None:
         step.get("run", "") for step in mutation_job["steps"] if isinstance(step, dict)
     )
     assert "exceeded its stats-derived budget" in mutation_text
-    assert "--max-timeout-seconds 20000" in mutation_text
+    assert "--max-timeout-seconds 20970" in mutation_text
     assert "MUTMUT_TIMEOUT_KILL_GRACE_SECONDS=30" in mutation_text
     assert "Skipping score verification" not in mutation_text
     assert (
@@ -2508,7 +3379,7 @@ def test_full_mutation_gate_uses_the_fail_closed_exporter() -> None:
     export_index = mutation_text.index("scripts/merge_mutmut_cicd_stats.py")
     gate_index = mutation_text.index("scripts/check_mutation_score.py")
     assert export_index < gate_index
-    assert "--expected-shards 64" in mutation_text
+    assert "--expected-shards 128" in mutation_text
     assert "uv run mutmut export-cicd-stats" not in mutation_text
     assert "test -s mutants/mutmut-cicd-stats.json" in mutation_text
 
@@ -2529,7 +3400,11 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert plan_job["needs"] == "mutation-tests-full-stats"
     assert nightly_workflow["jobs"]["mutation-tests-full"]["strategy"]["matrix"][
         "shard"
-    ] == list(range(1, 65))
+    ] == list(range(1, 129))
+    assert (
+        nightly_workflow["jobs"]["mutation-tests-full"]["strategy"]["max-parallel"]
+        == 20
+    )
     assert stats_job["strategy"]["matrix"]["stats_shard"] == list(range(8))
     stats_steps = stats_job["steps"]
     stats_step = next(
@@ -2570,20 +3445,55 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     assert '--shard-id "${{ matrix.stats_shard }}"' in stats_script
     assert "--num-shards 8" in stats_script
     assert "--max-children 2" in stats_script
-    assert (
-        "nightly-mutmut-stats-${{ github.run_id }}-${{ matrix.stats_shard }}"
-        in upload_step["with"]["name"]
+    assert upload_step["with"]["name"] == (
+        "nightly-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-"
+        "${{ matrix.stats_shard }}"
     )
     assert download_step["with"]["pattern"] == (
-        "nightly-mutmut-stats-${{ github.run_id }}-*"
+        "nightly-mutmut-stats-${{ github.run_id }}-${{ github.run_attempt }}-*"
+    )
+    assert "if-no-artifact-found" not in download_step["with"]
+    require_stats = next(
+        step
+        for step in plan_steps
+        if step.get("name") == "Require all full mutmut stats shards"
+    )
+    assert "expected=8" in require_stats["run"]
+    assert "find mutmut-stats -type f -name 'mutmut-stats.json'" in require_stats["run"]
+    assert "seq 0 7" in require_stats["run"]
+    plan_upload = next(
+        step
+        for step in plan_steps
+        if step.get("name") == "Upload preflighted full mutation plan"
+    )
+    assert plan_upload["with"]["name"] == (
+        "nightly-mutmut-plan-${{ github.run_id }}-${{ github.run_attempt }}"
+    )
+    plan_download = next(
+        step
+        for step in mutation_steps
+        if step.get("name") == "Download preflighted full mutation plan"
+    )
+    assert plan_download["with"]["name"] == (
+        "nightly-mutmut-plan-${{ github.run_id }}-${{ github.run_attempt }}"
+    )
+    assert "if-no-artifact-found" not in plan_download["with"]
+    shard_upload = next(
+        step
+        for step in mutation_steps
+        if step.get("name") == "Upload full mutation shard evidence"
+    )
+    assert shard_upload["with"]["name"] == (
+        "nightly-mutmut-shard-${{ github.run_id }}-${{ github.run_attempt }}-"
+        "${{ matrix.shard }}"
     )
     assert "scripts/merge_mutmut_stats.py" in merge_step["run"]
     assert "--input-root mutmut-stats" in merge_step["run"]
     assert "--output-directory mutants/mutmut-full-plan" in preflight_step["run"]
-    assert "for shard in $(seq 1 64)" in preflight_step["run"]
+    assert "for shard in $(seq 1 128)" in preflight_step["run"]
     assert "scripts/mutmut_shard_budget.py" in preflight_step["run"]
     assert "scripts/plan_mutmut_shards.py" in run_script
-    assert "--num-shards 64" in run_script
+    assert "--num-shards 128" in run_script
     assert "cmp --silent" in run_script
     assert "scripts/run_mutmut_with_stats.py --max-children 8" in run_script
     assert "scripts/run_mutmut_with_stats.py --max-children 2" in run_script
@@ -2594,8 +3504,36 @@ def test_full_mutation_gate_isolates_stats_and_clean_pytest_invocations() -> Non
     aggregate_text = "\n".join(
         step.get("run", "") for step in aggregate_job["steps"] if isinstance(step, dict)
     )
+    aggregate_download = next(
+        step
+        for step in aggregate_job["steps"]
+        if step.get("name") == "Download full mutation shard evidence"
+    )
+    assert aggregate_download["with"]["pattern"] == (
+        "nightly-mutmut-shard-${{ github.run_id }}-${{ github.run_attempt }}-*"
+    )
+    assert "if-no-artifact-found" not in aggregate_download["with"]
+    require_shards = next(
+        step
+        for step in aggregate_job["steps"]
+        if step.get("name") == "Require all full mutmut execution shards"
+    )
+    assert "expected=128" in require_shards["run"]
+    assert (
+        "find mutmut-shards -type f -name 'mutmut-cicd-stats.json'"
+        in require_shards["run"]
+    )
+    assert "seq 1 128" in require_shards["run"]
+    aggregate_upload = next(
+        step
+        for step in aggregate_job["steps"]
+        if step.get("name") == "Upload aggregate mutation evidence"
+    )
+    assert aggregate_upload["with"]["name"] == (
+        "nightly-mutmut-${{ github.run_id }}-${{ github.run_attempt }}"
+    )
     assert "scripts/merge_mutmut_cicd_stats.py" in aggregate_text
-    assert "--expected-shards 64" in aggregate_text
+    assert "--expected-shards 128" in aggregate_text
 
 
 def test_pr_quality_gates_enforce_contract_policy_values() -> None:
@@ -2659,6 +3597,52 @@ def test_pr_quality_gates_enforce_contract_policy_values() -> None:
 def test_performance_gate_asserts_downloaded_lighthouse_without_rebuilding() -> None:
     ci_workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
     performance_job = ci_workflow["jobs"]["performance-gate"]
+    selector_step = next(
+        step
+        for step in performance_job["steps"]
+        if step.get("name") == "Select immutable same-run Lighthouse evidence candidate"
+    )
+    assert selector_step["id"] == "select_lighthouse_results"
+    assert selector_step["env"] == {"GH_TOKEN": "${{ github.token }}"}
+    selector_run = selector_step["run"]
+    for invariant in (
+        "set -euo pipefail",
+        "scripts/quality/select_same_run_artifact_cli.py",
+        '--artifact-prefix "lighthouse-reports-attempt-"',
+        '--artifact-suffix ""',
+        "--artifact-name-layout attempt",
+        "--attempt-policy current-or-earlier",
+    ):
+        assert invariant in selector_run
+    download_step = next(
+        step
+        for step in performance_job["steps"]
+        if step.get("name") == "Download selected Lighthouse results"
+    )
+    assert download_step["with"] == {
+        "artifact-ids": "${{ steps.select_lighthouse_results.outputs.artifact_id }}",
+        "repository": "${{ github.repository }}",
+        "run-id": "${{ github.run_id }}",
+        "github-token": "${{ github.token }}",
+        "path": (
+            "artifacts/lighthouse/candidates/"
+            "${{ steps.select_lighthouse_results.outputs.artifact_name }}"
+        ),
+    }
+    assert "pattern" not in download_step["with"]
+    assert "continue-on-error" not in download_step
+    lighthouse_selection = "\n".join(
+        step.get("run", "")
+        for step in performance_job["steps"]
+        if isinstance(step, dict)
+    )
+    assert "scripts/quality/select_lighthouse_artifacts_cli.py" in lighthouse_selection
+    assert "--candidate-root" in lighthouse_selection
+    assert "--destination-root" in lighthouse_selection
+    assert (
+        "--config-input .github/workflows/reusable-frontend-tests.yml"
+        in lighthouse_selection
+    )
     threshold_step = next(
         step
         for step in performance_job["steps"]
@@ -2677,23 +3661,72 @@ def test_lighthouse_config_uses_supported_budget_path_and_audit() -> None:
     assert "budgetPath:" in lighthouse_config
     assert "budgetsPath:" not in lighthouse_config
     assert "budgets:" not in lighthouse_config
+    assert "assertMatrix:" in lighthouse_config
     assert '"total-blocking-time": [' in lighthouse_config
-    assert '"categories:performance": ["warn"' in lighthouse_config
+    assert (
+        '"categories:performance": ["error", { minScore: 0.95 }]' in lighthouse_config
+    )
+    assert (
+        '"categories:accessibility": ["error", { minScore: 0.95 }]' in lighthouse_config
+    )
+    assert re.search(r'"largest-contentful-paint":\s*\[\s*"error"', lighthouse_config)
+    assert re.search(r'"total-blocking-time":\s*\[\s*"error"', lighthouse_config)
+    assert "publicSeoUrlPattern" in lighthouse_config
+    assert "INP is a field metric" in lighthouse_config
+    assert "--disable-gpu" not in lighthouse_config
 
 
 def test_lhci_collection_uses_lighthouse_budget_path_inside_settings() -> None:
     lhci_script = LHCI_SCRIPT_PATH.read_text(encoding="utf-8")
 
-    assert 'budgetPath: path.resolve(frontendRoot, "../../budget.json")' in lhci_script
+    assert 'budgetPath: path.resolve(frontendRoot, "../budget.json")' in lhci_script
     assert "budgetsPath:" not in lhci_script
+    assert '"categories:performance": ["error", { minScore: 0.95 }]' in lhci_script
+    assert '"categories:accessibility": ["error", { minScore: 0.95 }]' in lhci_script
+    assert "INP is a field metric" in lhci_script
+    assert "--disable-gpu" not in lhci_script
+
+
+def test_lhci_collection_scores_the_real_404_document_without_rewriting_status() -> (
+    None
+):
+    lhci_script = LHCI_SCRIPT_PATH.read_text(encoding="utf-8")
+
+    assert "ignoreStatusCode: true" in lhci_script
+
+
+def test_bundle_analysis_uses_portable_fail_closed_analyzer_and_real_report() -> None:
+    workflow = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    analysis_job = workflow["jobs"]["bundle-analysis"]
+    test_step = next(
+        step
+        for step in analysis_job["steps"]
+        if step.get("name") == "Test bundle analyzer"
+    )
+    analyze_step = next(
+        step
+        for step in analysis_job["steps"]
+        if step.get("name") == "Analyze bundle size"
+    )
+
+    assert test_step["run"] == "node --test scripts/check-bundle-budget.test.mjs"
+    assert analyze_step["run"] == "node scripts/check-bundle-budget.mjs"
+    assert not analyze_step.get("continue-on-error", False)
+    assert "echo '{}'" not in FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8")
 
 
 def test_lhci_command_runner_uses_shell_free_platform_resolution() -> None:
     lhci_script = LHCI_SCRIPT_PATH.read_text(encoding="utf-8")
+    command_script = (LHCI_SCRIPT_PATH.parent / "lhci-command.mjs").read_text(
+        encoding="utf-8"
+    )
 
     assert "shell: false" in lhci_script
     assert "shell: true" not in lhci_script
-    assert '"/d", "/s", "/c", `${command}.cmd`' in lhci_script
+    assert "buildSafeCommandInvocation" in lhci_script
+    assert '"npm-cli.js"' in command_script
+    assert "args: [cliPath, ...args]" in command_script
+    assert '"exec", "--yes",' in lhci_script
 
 
 def test_lhci_system_dependency_bootstrap_is_explicitly_skippable() -> None:
@@ -2701,6 +3734,30 @@ def test_lhci_system_dependency_bootstrap_is_explicitly_skippable() -> None:
 
     assert "LHCI_SKIP_SYSTEM_DEPS" in lhci_script
     assert "playwright install-deps chromium" in lhci_script
+
+
+def test_lhci_ci_uses_route_specific_ssr_preview_without_lowering_budgets() -> None:
+    workflow = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    lighthouse_shards = workflow["jobs"]["lighthouse-shards"]
+    assert lighthouse_shards["env"]["LHCI_USE_SSR_PREVIEW"] == "1"
+
+    mode_script = (LHCI_SCRIPT_PATH.parent / "lhci-preview-mode.mjs").read_text(
+        encoding="utf-8"
+    )
+    assert (
+        'return { kind: "ssr", base: `http://127.0.0.1:${port}`, port }' in mode_script
+    )
+    assert 'return "node scripts/server-prod.mjs"' in mode_script
+    assert 'return "server-prod: listening"' in mode_script
+    ssr_response_script = (LHCI_SCRIPT_PATH.parent / "lhci-ssr-response.mjs").read_text(
+        encoding="utf-8"
+    )
+    assert "stripLhciEntryScript" in ssr_response_script
+    assert "pathForLhciPreview" in LHCI_SCRIPT_PATH.read_text(encoding="utf-8")
+    assert (
+        'collect.staticDistDir = path.resolve(frontendRoot, "dist", "client")'
+        in LHCI_SCRIPT_PATH.read_text(encoding="utf-8")
+    )
 
 
 def test_chaos_job_provisions_real_minio_through_toxiproxy() -> None:
@@ -2741,23 +3798,496 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     manual_workflow = yaml.safe_load(
         MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH.read_text(encoding="utf-8")
     )
+    nightly_workflow = yaml.safe_load(
+        NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
     jobs = ci_workflow["jobs"]
-    mutation_job = jobs["stryker-incremental"]
-    mutation_condition = mutation_job["if"]
+    mutation_preflight = jobs["stryker-preflight"]
+    assert mutation_preflight["needs"] == [
+        "pre-commit-check",
+        "frontend-tests",
+        "coverage-policy-gate",
+    ]
+    assert "github.event_name == 'pull_request'" in mutation_preflight["if"]
+    assert mutation_preflight["permissions"] == {
+        "contents": "read",
+        "actions": "read",
+    }
+    assert mutation_preflight["env"] == {
+        "STRYKER_SHARD_COUNT": "64",
+        "STRYKER_PREFLIGHT_MODE": "generate",
+        "STRYKER_SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "STRYKER_BASE_SHA": "${{ github.event.pull_request.base.sha || github.sha }}",
+        "STRYKER_BASE_REF": "${{ github.event.pull_request.base.ref || github.ref_name }}",
+    }
+    preflight_checkout = next(
+        step for step in mutation_preflight["steps"] if step.get("name") == "Checkout"
+    )
+    assert preflight_checkout["with"]["persist-credentials"] is False
+    preflight_run = next(
+        step["run"]
+        for step in mutation_preflight["steps"]
+        if step.get("name") == "Generate canonical immutable Stryker preflight"
+    )
+    assert preflight_run == "npm run test:mutation"
+    preflight_node_setup = next(
+        step
+        for step in mutation_preflight["steps"]
+        if step.get("name") == "Setup Node.js"
+    )
+    assert preflight_node_setup["with"]["node-version"] == "24.15.0"
+    preflight_upload = next(
+        step
+        for step in mutation_preflight["steps"]
+        if step.get("name") == "Upload immutable Stryker preflight"
+    )
+    assert preflight_upload["with"]["name"] == (
+        "frontend-mutation-preflight-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}"
+    )
+    assert preflight_upload["with"]["path"] == (
+        "frontend/reports/mutation/preflight-artifact/PREFLIGHT_ARTIFACT.json"
+    )
+    assert preflight_upload["with"]["overwrite"] is False
+
+    mutation_shards = jobs["stryker-shards"]
+    mutation_condition = mutation_shards["if"]
     assert "github.event_name == 'pull_request'" in mutation_condition
     assert "workflow_dispatch" not in mutation_condition
-    assert "stryker-incremental" in jobs["ci-success"]["needs"]
-    result_check = jobs["ci-success"]["steps"][0]["run"]
-    assert "needs.stryker-incremental.result" in result_check
-
-    manual_stryker = manual_workflow["jobs"]["manual-frontend-mutation-tests"]
-    assert manual_stryker["name"] == "Manual Mutation Evidence (frontend Stryker)"
-    manual_stryker_run = next(
-        step["run"]
-        for step in manual_stryker["steps"]
-        if step.get("name") == "Run manual incremental Stryker gate"
+    assert mutation_shards["name"].endswith("/64")
+    assert mutation_shards["strategy"]["fail-fast"] is False
+    assert 1 <= mutation_shards["strategy"]["max-parallel"] <= 20
+    assert mutation_shards["strategy"]["max-parallel"] == 8
+    assert mutation_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
+    assert mutation_shards["timeout-minutes"] == 120
+    assert mutation_shards["needs"] == "stryker-preflight"
+    assert "pre-commit-check" in jobs["ci-success"]["needs"]
+    assert "stryker-preflight" in jobs["ci-success"]["needs"]
+    assert mutation_shards["env"] == {
+        "STRYKER_SHARD_COUNT": "64",
+        "STRYKER_SHARD_INDEX": "${{ matrix.shard-index }}",
+        "STRYKER_CONCURRENCY": "4",
+        "STRYKER_PREFLIGHT_ARTIFACT": "required",
+        "STRYKER_SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "STRYKER_BASE_SHA": "${{ github.event.pull_request.base.sha || github.sha }}",
+        "STRYKER_BASE_REF": "${{ github.event.pull_request.base.ref || github.ref_name }}",
+    }
+    preflight_selector = next(
+        step
+        for step in mutation_shards["steps"]
+        if step.get("name") == "Select immutable same-run Stryker preflight candidate"
     )
-    assert "npm run test:mutation -- --incremental" in manual_stryker_run
+    assert preflight_selector["id"] == "select_stryker_preflight"
+    assert preflight_selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
+    assert (
+        "scripts/quality/select_same_run_artifact_cli.py" in preflight_selector["run"]
+    )
+    assert (
+        '--artifact-prefix "frontend-mutation-preflight-"' in preflight_selector["run"]
+    )
+    preflight_download = next(
+        step
+        for step in mutation_shards["steps"]
+        if step.get("name") == "Download selected Stryker preflight candidate"
+    )
+    assert preflight_download["with"] == {
+        "artifact-ids": "${{ steps.select_stryker_preflight.outputs.artifact_id }}",
+        "repository": "${{ github.repository }}",
+        "run-id": "${{ github.run_id }}",
+        "github-token": "${{ github.token }}",
+        "path": (
+            "frontend/reports/mutation/preflight-candidates/"
+            "${{ steps.select_stryker_preflight.outputs.artifact_name }}"
+        ),
+    }
+    assert "pattern" not in preflight_download["with"]
+    shard_checkout = next(
+        step for step in mutation_shards["steps"] if step.get("name") == "Checkout"
+    )
+    assert shard_checkout["with"]["persist-credentials"] is False
+    preflight_validation = next(
+        step
+        for step in mutation_shards["steps"]
+        if step.get("name") == "Validate immutable Stryker preflight before execution"
+    )
+    assert preflight_validation["working-directory"] == "frontend"
+    assert preflight_validation["env"] == {"STRYKER_PREFLIGHT_MODE": "validate"}
+    assert preflight_validation["run"] == "npm run test:mutation"
+    shard_node_setup = next(
+        step for step in mutation_shards["steps"] if step.get("name") == "Setup Node.js"
+    )
+    assert shard_node_setup["with"]["node-version"] == "24.15.0"
+    fresh_shard_step = next(
+        step
+        for step in mutation_shards["steps"]
+        if step.get("name") == "Run fresh Stryker shard"
+    )
+    shard_run = fresh_shard_step["run"]
+    assert shard_run == "npm run test:mutation"
+    assert (
+        mutation_shards["steps"].index(preflight_download)
+        < mutation_shards["steps"].index(preflight_validation)
+        < mutation_shards["steps"].index(fresh_shard_step)
+    )
+
+    assert "stryker-shard-replay" not in jobs
+    mutation_aggregate = jobs["stryker-aggregate"]
+    assert mutation_aggregate["needs"] == ["stryker-preflight", "stryker-shards"]
+    assert mutation_aggregate["if"] == (
+        "${{ always() && !cancelled() && github.event_name == 'pull_request' "
+        "&& needs.stryker-preflight.result != 'skipped' }}"
+    )
+    assert mutation_aggregate["env"]["STRYKER_AGGREGATE_ROOT"] == (
+        "reports/mutation/external"
+    )
+    assert mutation_aggregate["env"]["STRYKER_PREFLIGHT_ARTIFACT"] == "required"
+    aggregate_node_setup = next(
+        step
+        for step in mutation_aggregate["steps"]
+        if step.get("name") == "Setup Node.js"
+    )
+    assert aggregate_node_setup["with"]["node-version"] == "24.15.0"
+    aggregate_selector = next(
+        step
+        for step in mutation_aggregate["steps"]
+        if step.get("name") == "Select immutable same-run Stryker preflight candidate"
+    )
+    assert aggregate_selector["id"] == "select_stryker_preflight"
+    aggregate_preflight_download = next(
+        step
+        for step in mutation_aggregate["steps"]
+        if step.get("name") == "Download selected Stryker preflight candidate"
+    )
+    assert aggregate_preflight_download["with"] == preflight_download["with"]
+    aggregate_shard_download = next(
+        step
+        for step in mutation_aggregate["steps"]
+        if step.get("name") == "Download all same-run Stryker shard candidates"
+    )
+    assert aggregate_shard_download["with"] == {
+        "pattern": "frontend-mutation-shard-${{ github.run_id }}-*",
+        "path": "frontend/reports/mutation/external",
+        "merge-multiple": False,
+    }
+    assert "name" not in aggregate_shard_download["with"]
+    aggregate_checkout = next(
+        step for step in mutation_aggregate["steps"] if step.get("name") == "Checkout"
+    )
+    assert aggregate_checkout["with"]["persist-credentials"] is False
+    aggregate_run = next(
+        step["run"]
+        for step in mutation_aggregate["steps"]
+        if step.get("name") == "Aggregate and verify fresh frontend mutation evidence"
+    )
+    assert aggregate_run.splitlines() == [
+        "npm run test:mutation",
+        "npm run test:mutation:verify",
+    ]
+    assert "stryker-aggregate" in jobs["ci-success"]["needs"]
+    result_check = jobs["ci-success"]["steps"][0]["run"]
+    assert "needs.stryker-aggregate.result" in result_check
+    mutation_roundtrip = jobs["stryker-evidence-roundtrip"]
+    assert mutation_roundtrip["needs"] == "stryker-aggregate"
+    roundtrip_checkout = next(
+        step for step in mutation_roundtrip["steps"] if step.get("name") == "Checkout"
+    )
+    assert roundtrip_checkout["with"]["persist-credentials"] is False
+    roundtrip_node_setup = next(
+        step
+        for step in mutation_roundtrip["steps"]
+        if step.get("name") == "Setup Node.js"
+    )
+    assert roundtrip_node_setup["with"]["node-version"] == "24.15.0"
+    assert mutation_roundtrip["env"] == {
+        "STRYKER_VALIDATED_CANDIDATE_ROOT": "reports/mutation/validated-candidates",
+        "STRYKER_SOURCE_HEAD_SHA": "${{ github.event.pull_request.head.sha || github.sha }}",
+        "STRYKER_BASE_SHA": "${{ github.event.pull_request.base.sha || github.sha }}",
+        "STRYKER_BASE_REF": "${{ github.event.pull_request.base.ref || github.ref_name }}",
+    }
+    roundtrip_selector = next(
+        step
+        for step in mutation_roundtrip["steps"]
+        if step.get("name")
+        == "Select immutable same-run validated Stryker evidence candidate"
+    )
+    assert roundtrip_selector["id"] == "select_stryker_validated"
+    assert roundtrip_selector["env"] == {"GH_TOKEN": "${{ github.token }}"}
+    assert (
+        "scripts/quality/select_same_run_artifact_cli.py" in roundtrip_selector["run"]
+    )
+    roundtrip_download = next(
+        step
+        for step in mutation_roundtrip["steps"]
+        if step.get("name") == "Download selected immutable Stryker evidence candidate"
+    )
+    assert roundtrip_download["with"] == {
+        "artifact-ids": "${{ steps.select_stryker_validated.outputs.artifact_id }}",
+        "repository": "${{ github.repository }}",
+        "run-id": "${{ github.run_id }}",
+        "github-token": "${{ github.token }}",
+        "path": (
+            "frontend/reports/mutation/validated-candidates/"
+            "${{ steps.select_stryker_validated.outputs.artifact_name }}"
+        ),
+    }
+    assert "pattern" not in roundtrip_download["with"]
+    assert "stryker-evidence-roundtrip" in jobs["ci-success"]["needs"]
+    assert "needs.stryker-evidence-roundtrip.result" in result_check
+
+    manual_jobs = manual_workflow["jobs"]
+    manual_preflight = manual_jobs["manual-frontend-mutation-preflight"]
+    assert "needs" not in manual_preflight
+    assert manual_preflight["timeout-minutes"] == 30
+    assert manual_preflight["env"] == {
+        "STRYKER_SHARD_COUNT": "64",
+        "STRYKER_PREFLIGHT_MODE": "generate",
+    }
+    assert manual_preflight["permissions"] == {"contents": "read"}
+    manual_preflight_upload = next(
+        step
+        for step in manual_preflight["steps"]
+        if step.get("name") == "Upload immutable Stryker preflight"
+    )
+    assert manual_preflight_upload["with"] == {
+        "name": (
+            "frontend-mutation-preflight-${{ github.run_id }}-"
+            "${{ github.run_attempt }}-${{ github.sha }}"
+        ),
+        "path": (
+            "frontend/reports/mutation/preflight-artifact/PREFLIGHT_ARTIFACT.json"
+        ),
+        "if-no-files-found": "error",
+        "overwrite": False,
+        "retention-days": 30,
+    }
+
+    manual_shards = manual_jobs["manual-frontend-mutation-shards"]
+    assert manual_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
+    assert manual_shards["name"].endswith("/64)")
+    assert manual_shards["strategy"]["max-parallel"] == 20
+    assert manual_shards["timeout-minutes"] == 120
+    assert manual_shards["needs"] == "manual-frontend-mutation-preflight"
+    assert manual_shards["env"] == {
+        "STRYKER_SHARD_COUNT": "64",
+        "STRYKER_SHARD_INDEX": "${{ matrix.shard-index }}",
+        "STRYKER_CONCURRENCY": "4",
+        "STRYKER_PREFLIGHT_ARTIFACT": "required",
+    }
+    assert manual_shards["permissions"] == {"contents": "read", "actions": "read"}
+    assert "manual-frontend-mutation-shard-replay" not in manual_jobs
+    manual_aggregate = manual_jobs["manual-frontend-mutation-aggregate"]
+    assert manual_aggregate["needs"] == [
+        "manual-frontend-mutation-preflight",
+        "manual-frontend-mutation-shards",
+    ]
+    assert manual_aggregate["if"] == "${{ always() && !cancelled() }}"
+    assert manual_aggregate["env"] == {
+        "STRYKER_SHARD_COUNT": "64",
+        "STRYKER_AGGREGATE_ROOT": "reports/mutation/external",
+        "STRYKER_CONCURRENCY": "4",
+        "STRYKER_PREFLIGHT_ARTIFACT": "required",
+    }
+    assert (
+        manual_aggregate["name"] == "Manual Mutation Evidence (frontend Stryker 100%)"
+    )
+
+    nightly_jobs = nightly_workflow["jobs"]
+    nightly_preflight = nightly_jobs["frontend-mutation-preflight"]
+    assert "needs" not in nightly_preflight
+    assert nightly_preflight["timeout-minutes"] == 30
+    assert nightly_preflight["env"] == {
+        "STRYKER_SHARD_COUNT": "64",
+        "STRYKER_PREFLIGHT_MODE": "generate",
+    }
+    assert nightly_preflight["permissions"] == {"contents": "read"}
+    nightly_preflight_upload = next(
+        step
+        for step in nightly_preflight["steps"]
+        if step.get("name") == "Upload immutable Stryker preflight"
+    )
+    assert nightly_preflight_upload["with"] == manual_preflight_upload["with"]
+
+    nightly_shards = nightly_jobs["frontend-mutation-shards"]
+    assert nightly_shards["strategy"]["matrix"]["shard-index"] == list(range(64))
+    assert nightly_shards["name"].endswith("/64")
+    assert nightly_shards["strategy"]["max-parallel"] == 20
+    assert nightly_shards["timeout-minutes"] == 120
+    assert nightly_shards["needs"] == "frontend-mutation-preflight"
+    assert nightly_shards["env"] == manual_shards["env"]
+    assert nightly_shards["permissions"] == {"contents": "read", "actions": "read"}
+    assert "frontend-mutation-shard-replay" not in nightly_jobs
+    nightly_aggregate = nightly_jobs["frontend-mutation-tests-full"]
+    assert nightly_aggregate["needs"] == [
+        "frontend-mutation-preflight",
+        "frontend-mutation-shards",
+    ]
+    assert nightly_aggregate["if"] == "${{ always() && !cancelled() }}"
+    assert nightly_aggregate["env"] == manual_aggregate["env"]
+    manual_roundtrip = manual_jobs["manual-frontend-mutation-roundtrip"]
+    assert manual_roundtrip["needs"] == "manual-frontend-mutation-aggregate"
+    nightly_roundtrip = nightly_jobs["frontend-mutation-roundtrip"]
+    assert nightly_roundtrip["needs"] == "frontend-mutation-tests-full"
+    nightly_failure_needs = nightly_jobs["notify-failure"]["needs"]
+    assert "frontend-mutation-preflight" in nightly_failure_needs
+    assert "frontend-mutation-shards" in nightly_failure_needs
+    assert "frontend-mutation-shard-replay" not in nightly_failure_needs
+    assert "frontend-mutation-tests-full" in nightly_failure_needs
+    assert "frontend-mutation-roundtrip" in nightly_failure_needs
+
+    for roundtrip_job in (manual_roundtrip, nightly_roundtrip):
+        selector = next(
+            step
+            for step in roundtrip_job["steps"]
+            if step.get("name")
+            == "Select immutable same-run validated Stryker evidence candidate"
+        )
+        assert '--artifact-prefix "frontend-mutation-validated-"' in selector["run"]
+        assert "--attempt-policy current-or-earlier" in selector["run"]
+        download = next(
+            step
+            for step in roundtrip_job["steps"]
+            if "Download validated" in step.get("name", "")
+        )
+        assert download["with"] == {
+            "artifact-ids": "${{ steps.select_stryker_validated.outputs.artifact_id }}",
+            "repository": "${{ github.repository }}",
+            "run-id": "${{ github.run_id }}",
+            "github-token": "${{ github.token }}",
+            "path": (
+                "frontend/reports/mutation/validated-candidates/"
+                "${{ steps.select_stryker_validated.outputs.artifact_name }}"
+            ),
+        }
+        assert roundtrip_job["permissions"] == {
+            "contents": "read",
+            "actions": "read",
+        }
+        assert roundtrip_job["env"] == {
+            "STRYKER_VALIDATED_CANDIDATE_ROOT": (
+                "reports/mutation/validated-candidates"
+            )
+        }
+        verification = next(
+            step["run"]
+            for step in roundtrip_job["steps"]
+            if "Re-verify" in step.get("name", "")
+        )
+        assert verification == "npm run test:mutation:verify"
+
+    for aggregate_job in (
+        mutation_aggregate,
+        manual_aggregate,
+        nightly_aggregate,
+    ):
+        validated_upload = next(
+            step
+            for step in aggregate_job["steps"]
+            if step.get("name", "").startswith("Upload validated")
+        )
+        uploaded_paths = validated_upload["with"]["path"]
+        assert "frontend/reports/mutation/external/**/mutation.json" in uploaded_paths
+        assert (
+            "frontend/reports/mutation/external/**/SHARD_EVIDENCE.json"
+            in uploaded_paths
+        )
+        assert validated_upload["with"]["if-no-files-found"] == "error"
+        assert "success()" in validated_upload["if"]
+        assert "github.run_attempt" in validated_upload["with"]["name"]
+
+    for workflow_path in (
+        CI_WORKFLOW_PATH,
+        MANUAL_MUTATION_EVIDENCE_WORKFLOW_PATH,
+        NIGHTLY_FULL_WORKFLOW_PATH,
+    ):
+        workflow_text = workflow_path.read_text(encoding="utf-8")
+        assert "npm run test:mutation --" not in workflow_text
+        assert "npm run test:mutation:verify" in workflow_text
+
+    manual_download = next(
+        step
+        for step in manual_aggregate["steps"]
+        if "Download all manual frontend mutation shards" in step.get("name", "")
+    )
+    assert manual_download["with"] == {
+        "pattern": "manual-frontend-mutation-shard-${{ github.run_id }}-*",
+        "path": "frontend/reports/mutation/external",
+        "merge-multiple": False,
+    }
+    nightly_download = next(
+        step
+        for step in nightly_aggregate["steps"]
+        if "Download all nightly frontend mutation shards" in step.get("name", "")
+    )
+    assert nightly_download["with"] == {
+        "pattern": "nightly-frontend-mutation-shard-${{ github.run_id }}-*",
+        "path": "frontend/reports/mutation/external",
+        "merge-multiple": False,
+    }
+
+    for workflow_path, shard_job, aggregate_job in (
+        (
+            ".github/workflows/manual-mutation-evidence.yml",
+            manual_shards,
+            manual_aggregate,
+        ),
+        (".github/workflows/nightly-full-gate.yml", nightly_shards, nightly_aggregate),
+    ):
+        for job in (shard_job, aggregate_job):
+            selector = next(
+                step
+                for step in job["steps"]
+                if step.get("name")
+                == "Select immutable same-run Stryker preflight candidate"
+            )
+            assert f'--workflow-path "{workflow_path}"' in selector["run"]
+            assert '--artifact-prefix "frontend-mutation-preflight-"' in selector["run"]
+            assert "--attempt-policy current-or-earlier" in selector["run"]
+            validation = next(
+                step
+                for step in job["steps"]
+                if step.get("name") == "Verify selected Stryker preflight payload"
+            )
+            assert "set -euo pipefail" in validation["run"]
+
+        immutable_validation = next(
+            step
+            for step in shard_job["steps"]
+            if step.get("name")
+            == "Validate immutable Stryker preflight before execution"
+        )
+        assert immutable_validation["env"] == {"STRYKER_PREFLIGHT_MODE": "validate"}
+        assert immutable_validation["run"] == "npm run test:mutation"
+
+    for shard_job in (mutation_shards, manual_shards, nightly_shards):
+        shard_cache = next(
+            step
+            for step in shard_job["steps"]
+            if "Cache successful" in step.get("name", "")
+        )
+        assert shard_cache["uses"].startswith("actions/cache/save@")
+        assert shard_cache["with"]["path"] == "frontend/reports/mutation/shards"
+        assert "github.run_id" in shard_cache["with"]["key"]
+        assert "github.sha" in shard_cache["with"]["key"]
+        assert "github.run_attempt" not in shard_cache["with"]["key"]
+
+    for shard_job in (mutation_shards, manual_shards, nightly_shards):
+        restore = next(
+            step
+            for step in shard_job["steps"]
+            if step.get("name") == "Restore exact successful shard"
+        )
+        assert restore["uses"].startswith("actions/cache/restore@")
+        assert restore["with"]["fail-on-cache-miss"] is False
+        assert "github.run_id" in restore["with"]["key"]
+        assert "github.sha" in restore["with"]["key"]
+        assert "github.run_attempt" not in restore["with"]["key"]
+        producer_upload = next(
+            step
+            for step in shard_job["steps"]
+            if "Upload current-attempt shard evidence" in step.get("name", "")
+        )
+        assert producer_upload["if"] == "${{ always() }}"
+        assert "github.run_id" in producer_upload["with"]["name"]
+        assert "github.run_attempt" in producer_upload["with"]["name"]
 
     frontend_workflow = yaml.safe_load(
         (
@@ -2774,7 +4304,9 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
     coverage_step = next(
         step for step in unit_steps if step.get("name") == "Upload coverage artifacts"
     )
-    assert "frontend-coverage" == coverage_step["with"]["name"]
+    assert coverage_step["with"]["name"] == (
+        "frontend-coverage-attempt-${{ github.run_attempt }}"
+    )
 
     ci_coverage_gate = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))[
         "jobs"
@@ -2785,6 +4317,53 @@ def test_frontend_mutation_gate_is_blocking_and_reproducible() -> None:
         if step.get("name") == "Stage trusted Codecov reports"
     )
     assert "frontend/coverage/lcov.info" in staging_step["run"]
+
+
+def test_frontend_mutation_required_context_is_fail_closed() -> None:
+    """Keep the legacy ruleset context bound to both validated artifacts."""
+
+    jobs = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))["jobs"]
+    context_job = jobs["frontend-mutation-required-context"]
+
+    assert context_job["name"] == "Incremental Mutation Tests (frontend)"
+    assert context_job["needs"] == [
+        "stryker-aggregate",
+        "stryker-evidence-roundtrip",
+    ]
+    assert context_job["if"] == (
+        "${{ always() && !cancelled() && github.event_name == 'pull_request' "
+        "&& needs.stryker-aggregate.result != 'skipped' }}"
+    )
+    assert context_job["permissions"] == {}
+    assert context_job["timeout-minutes"] == 5
+
+    assert len(context_job["steps"]) == 1
+    gate = context_job["steps"][0]
+    assert gate["name"] == "Require validated frontend mutation evidence"
+    assert gate["shell"] == "bash"
+    assert gate["run"].splitlines() == [
+        "set -euo pipefail",
+        'aggregate_result="${{ needs.stryker-aggregate.result }}"',
+        'roundtrip_result="${{ needs.stryker-evidence-roundtrip.result }}"',
+        'if [[ "$aggregate_result" != "success" || "$roundtrip_result" != "success" ]]; then',
+        '  echo "::error::Frontend mutation evidence is not fully validated " \\',
+        '    "(aggregate=$aggregate_result, roundtrip=$roundtrip_result)."',
+        "  exit 1",
+        "fi",
+        'echo "Frontend mutation evidence is complete and round-trip verified."',
+    ]
+
+    ci_success = jobs["ci-success"]
+    assert "frontend-mutation-required-context" in ci_success["needs"]
+    ci_gate = ci_success["steps"][0]["run"]
+    assert (
+        'assert_event_result "frontend-mutation-required-context" '
+        '"${{ needs.frontend-mutation-required-context.result }}" "success"' in ci_gate
+    )
+    assert (
+        'assert_event_result "frontend-mutation-required-context" '
+        '"${{ needs.frontend-mutation-required-context.result }}" "skipped"' in ci_gate
+    )
 
 
 def test_quality_promotion_workflow_uses_fail_closed_stabilization_checker() -> None:
@@ -3987,6 +5566,49 @@ def test_performance_history_is_main_only_and_advisory() -> None:
         assert "${{" not in str(job["runs-on"])
 
 
+@pytest.mark.parametrize(
+    "workflow_path",
+    [
+        REPOSITORY_ROOT / ".github" / "workflows" / "benchmark.yml",
+        MANUAL_PERFORMANCE_EVIDENCE_WORKFLOW_PATH,
+    ],
+)
+def test_gateway_hash_ring_budget_uses_uninstrumented_benchmark_evidence(
+    workflow_path: Path,
+) -> None:
+    """The 250k lookup budget belongs to a repeated benchmark, not test coverage."""
+
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["benchmark"]["steps"]
+    budget_step = next(
+        step
+        for step in steps
+        if step.get("name") == "Enforce gateway HashRing lookup budget"
+    )
+    assert budget_step == {
+        "name": "Enforce gateway HashRing lookup budget",
+        "shell": "bash",
+        "run": """\
+set -euo pipefail
+(
+  cd services/gateway
+  go test -run=^$ -bench=^BenchmarkHashRingLookup$ -benchtime=1s -count=5 .
+) 2>&1 | tee artifacts/performance/advisory/go/gateway-hashring-budget.txt
+python3 scripts/quality/check_go_benchmark_budget.py \\
+  artifacts/performance/advisory/go/gateway-hashring-budget.txt \\
+  --benchmark BenchmarkHashRingLookup \\
+  --metric ns/op \\
+  --exclusive-maximum 4000 \\
+  --expected-samples 5
+""",
+    }
+    command = budget_step["run"]
+    _assert_fail_closed_shell_mode(command)
+    _assert_no_shell_indirection_or_option_control(command)
+    assert "-race" not in command
+    assert "-cover" not in command
+
+
 def test_manual_performance_evidence_uses_distinct_read_only_paired_contexts() -> None:
     """Manual evidence has explicit revisions and cannot satisfy required PR checks."""
 
@@ -4107,3 +5729,1035 @@ def test_sqlmap_openapi_scan_is_pinned_local_and_bounded() -> None:
     for step in (capability, readiness, scan):
         assert step.get("continue-on-error", False) is False
         assert "|| true" not in step["run"]
+
+
+def _provenance_step(job: dict[str, object], name: str) -> dict[str, object]:
+    steps = job.get("steps")
+    assert isinstance(steps, list)
+    matches = [
+        step for step in steps if isinstance(step, dict) and step.get("name") == name
+    ]
+    assert len(matches) == 1, f"expected exactly one workflow step named {name!r}"
+    return matches[0]
+
+
+def _run_text(job: dict[str, object]) -> str:
+    steps = job.get("steps")
+    assert isinstance(steps, list)
+    return "\n".join(
+        str(step.get("run", "")) for step in steps if isinstance(step, dict)
+    )
+
+
+def _assert_current_run_download(step: dict[str, object]) -> None:
+    uses = str(step.get("uses", ""))
+    assert uses.startswith("actions/download-artifact@")
+    options = step.get("with", {})
+    assert isinstance(options, dict)
+    assert "run-id" not in options
+    assert "github-token" not in options
+    assert "repository" not in options
+
+
+def test_coverage_producers_publish_closed_v2_sidecars() -> None:
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    frontend = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    go = yaml.safe_load(GO_WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+    frontend_job = frontend["jobs"]["unit-tests"]
+    frontend_steps = frontend_job["steps"]
+    cleanup = _provenance_step(frontend_job, "Clean merged frontend coverage outputs")
+    download = _provenance_step(frontend_job, "Download frontend coverage shards")
+    assert frontend_steps.index(cleanup) < frontend_steps.index(download)
+    _assert_current_run_download(download)
+    provenance = _provenance_step(frontend_job, "Write frontend coverage provenance")
+    provenance_run = str(provenance["run"])
+    assert "scripts/quality/coverage_provenance.py write" in provenance_run
+    assert (
+        "frontend|lcov|frontend/coverage/lcov.info|frontend/coverage/lcov.info"
+        in provenance_run
+    )
+    assert (
+        "frontend|istanbul-json|frontend/coverage/coverage-final.json|frontend/coverage/coverage-final.json"
+        in provenance_run
+    )
+    assert "test -s frontend/coverage/lcov.info" in provenance_run
+    assert "test -s frontend/coverage/coverage-final.json" in provenance_run
+    frontend_upload = _provenance_step(frontend_job, "Upload coverage artifacts")
+    assert frontend_upload["with"]["if-no-files-found"] == "error"
+    assert set(str(frontend_upload["with"]["path"]).splitlines()) == {
+        "frontend/coverage/lcov.info",
+        "frontend/coverage/coverage-final.json",
+        "frontend/coverage/coverage-provenance.json",
+    }
+
+    go_job = go["jobs"]["test"]
+    go_text = _run_text(go_job)
+    assert "coverage-component" in _workflow_triggers(go)["workflow_call"]["inputs"]
+    assert "Clean Go coverage outputs" in {
+        str(step.get("name", "")) for step in go_job["steps"]
+    }
+    assert "scripts/quality/coverage_provenance.py write" in go_text
+    assert "$COVERAGE_COMPONENT|go-coverprofile" in go_text
+    go_upload = _provenance_step(go_job, "Upload coverage artifacts")
+    assert go_upload["if"] == "${{ success() }}"
+    assert go_upload["with"]["if-no-files-found"] == "error"
+    assert "coverage-provenance.json" in str(go_upload["with"]["path"])
+
+    rust_job = ci["jobs"]["rust-tests"]
+    rust_steps = rust_job["steps"]
+    rust_cleanup = _provenance_step(rust_job, "Clean Rust coverage outputs")
+    rust_create = _provenance_step(rust_job, "Create coverage output directories")
+    assert rust_steps.index(rust_cleanup) < rust_steps.index(rust_create)
+    rust_provenance = _provenance_step(rust_job, "Write Rust coverage provenance")
+    rust_run = str(rust_provenance["run"])
+    assert rust_run.count("|llvm-cov-json|") == 4
+    assert rust_run.count("|llvm-cov-branch-json|") == 4
+    assert (
+        "test \"$(find artifacts/coverage/rust -name 'llvm.json' -type f | wc -l)\" -eq 4"
+        in rust_run
+    )
+    assert (
+        "test \"$(find artifacts/coverage/rust -name 'branch-llvm.json' -type f | wc -l)\" -eq 4"
+        in rust_run
+    )
+    rust_upload = _provenance_step(rust_job, "Upload Rust coverage artifacts")
+    assert rust_upload["with"]["if-no-files-found"] == "error"
+    assert "artifacts/coverage/rust/coverage-provenance.json" in str(
+        rust_upload["with"]["path"]
+    )
+
+
+def test_coverage_aggregate_uses_scoped_current_run_artifacts_only() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["coverage-policy-gate"]
+    steps = job["steps"]
+    head_guard = _provenance_step(job, "Verify aggregate checkout SHA")
+    cleanup = _provenance_step(job, "Clean aggregate coverage destinations")
+    downloads = [
+        step
+        for step in steps
+        if isinstance(step, dict)
+        and str(step.get("uses", "")).startswith("actions/download-artifact@")
+    ]
+    assert downloads
+    assert (
+        steps.index(head_guard)
+        < steps.index(cleanup)
+        < min(steps.index(step) for step in downloads)
+    )
+    assert 'test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"' in str(head_guard["run"])
+    assert head_guard["env"]["EXPECTED_SHA"] == "${{ github.sha }}"
+    cleanup_run = str(cleanup["run"])
+    assert "rm -rf -- artifacts/coverage/python/shards" in cleanup_run
+    assert "rm -rf -- frontend/coverage" in cleanup_run
+    assert "rm -rf -- artifacts/coverage/go" in cleanup_run
+    assert "rm -rf -- artifacts/coverage/rust" in cleanup_run
+    assert "rm -rf -- artifacts/coverage" not in {
+        line.strip() for line in cleanup_run.splitlines()
+    }
+    for download in downloads:
+        _assert_current_run_download(download)
+
+    verify = _provenance_step(job, "Verify downloaded coverage artifacts")
+    verify_run = str(verify["run"])
+    assert "coverage_provenance.py verify" in verify_run
+    assert '--expected-sha "$EXPECTED_SHA"' in verify_run
+    assert '--expected-run-id "$RUN_ID"' in verify_run
+    assert '--expected-run-attempt "$RUN_ATTEMPT"' in verify_run
+    backend_verify = _provenance_step(job, "Verify backend shard provenance")
+    assert (
+        "test \"$(find artifacts/coverage/python/shards -name '.coverage.shard-*' -type f | wc -l)\" -eq 4"
+        in str(backend_verify["run"])
+    )
+    assert (
+        "test \"$(find artifacts/coverage/go/shared-inputs -name 'coverage.out' -type f | wc -l)\" -eq 3"
+        in verify_run
+    )
+
+
+def test_quality_gate_supplies_all_v2_reports_and_current_run_identity() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["coverage-policy-gate"]
+    normalize = _provenance_step(job, "Normalize coverage evidence")
+    normalize_run = str(normalize["run"])
+
+    assert normalize["env"]["SOURCE_HEAD_SHA"] == (
+        "${{ github.event.pull_request.head.sha || github.sha }}"
+    )
+    assert normalize["env"]["BASE_SHA"] == (
+        "${{ github.event.pull_request.base.sha || github.sha }}"
+    )
+    assert normalize["env"]["BASE_REF"] == (
+        "${{ github.event.pull_request.base.ref || github.ref_name }}"
+    )
+
+    # The coverage gate installs the locked development environment with uv.
+    # Running the normalizer through the runner's system Python bypasses that
+    # environment (and its jsonschema dependency), making the gate fail before
+    # it can validate the manifest. Keep the interpreter provenance-bound.
+    assert (
+        "uv run python scripts/quality/normalize_coverage_reports.py" in normalize_run
+    )
+    assert "python scripts/quality/normalize_coverage_reports.py" not in {
+        line.strip() for line in normalize_run.splitlines()
+    }
+
+    for required in (
+        '--repository-root "$GITHUB_WORKSPACE"',
+        '--commit-sha "$EXPECTED_SHA"',
+        '--source-head-sha "$SOURCE_HEAD_SHA"',
+        '--base-sha "$BASE_SHA"',
+        '--base-ref "$BASE_REF"',
+        "--provenance-mode github-actions",
+        '--workflow-run-id "$RUN_ID"',
+        '--workflow-run-attempt "$RUN_ATTEMPT"',
+        '--workflow-event "$WORKFLOW_EVENT"',
+        '--workflow-repository "$WORKFLOW_REPOSITORY"',
+        '--workflow-ref "$WORKFLOW_REF"',
+        "--workflow-job coverage-policy-gate",
+        "--python-xml coverage.xml",
+        "--python-json artifacts/coverage/python/coverage.json",
+        "--frontend-lcov frontend/coverage/lcov.info",
+        "--frontend-json frontend/coverage/coverage-final.json",
+    ):
+        assert required in normalize_run
+    assert normalize_run.count("--go-report ") == 4
+    assert normalize_run.count("--rust-report ") == 4
+    assert normalize_run.count("--rust-branch-report ") == 4
+    assert "ignore-outside" not in normalize_run
+    assert normalize_run.count("--tool-version ") >= 7
+
+    combine = _provenance_step(job, "Combine Python shard coverage")
+    combine_run = str(combine["run"])
+    assert (
+        "coverage_version=\"$(uv run python -c 'import coverage; print(coverage.__version__)')\""
+        in combine_run
+    )
+    assert "coverage --version | awk" not in combine_run
+    assert '[[ ! "$coverage_version" =~' in combine_run
+
+    merge = _provenance_step(job, "Merge canonical coverage provenance")
+    merge_run = str(merge["run"])
+    assert "coverage_provenance.py merge" in merge_run
+    assert merge_run.count("--metadata ") == 7
+    assert "--contract quality/quality-contract.json" in merge_run
+    assert "quality-evidence-${{ github.sha }}" in merge_run
+
+    validator = _provenance_step(
+        job, "Validate quality policy, mutation registry, and Tier0 manifest"
+    )
+    validator_run = str(validator["run"])
+    assert "uv run python scripts/quality/validate_quality_contract.py" in validator_run
+    assert "python scripts/quality/validate_quality_contract.py" not in {
+        line.strip() for line in validator_run.splitlines()
+    }
+    for required in (
+        "--schema quality/coverage-manifest.schema.json",
+        '--artifact-root "$GITHUB_WORKSPACE"',
+        '--expected-commit-sha "$EXPECTED_SHA"',
+        '--expected-source-head-sha "$SOURCE_HEAD_SHA"',
+        '--expected-tested-commit-sha "$EXPECTED_SHA"',
+        '--expected-base-sha "$BASE_SHA"',
+        '--expected-base-ref "$BASE_REF"',
+        '--expected-workflow-run-id "$RUN_ID"',
+        '--expected-workflow-run-attempt "$RUN_ATTEMPT"',
+        '--expected-workflow-event "$WORKFLOW_EVENT"',
+        '--expected-workflow-repository "$WORKFLOW_REPOSITORY"',
+        '--expected-workflow-ref "$WORKFLOW_REF"',
+        "--expected-workflow-job coverage-policy-gate",
+    ):
+        assert required in validator_run
+
+
+def test_quality_evidence_bundle_is_hashed_after_validation_and_required() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["coverage-policy-gate"]
+    steps = job["steps"]
+    validator = _provenance_step(
+        job, "Validate quality policy, mutation registry, and Tier0 manifest"
+    )
+    hash_step = _provenance_step(job, "Hash validated quality manifest")
+    upload = _provenance_step(job, "Upload canonical quality evidence")
+    assert steps.index(validator) < steps.index(hash_step) < steps.index(upload)
+    hash_run = str(hash_step["run"])
+    assert "sha256sum artifacts/coverage/quality-manifest.json" in hash_run
+    assert "quality-manifest.json.sha256" in hash_run
+    assert "sha256sum --check" in hash_run
+    assert upload["with"]["name"] == "quality-evidence-${{ github.sha }}"
+    assert upload["with"]["if-no-files-found"] == "error"
+    upload_paths = str(upload["with"]["path"])
+    for required in (
+        "coverage.xml",
+        "artifacts/coverage/python/coverage.json",
+        "frontend/coverage/lcov.info",
+        "frontend/coverage/coverage-final.json",
+        "artifacts/coverage/go/gateway/coverage.out",
+        "artifacts/coverage/go/ws-hub/coverage.out",
+        "artifacts/coverage/go/file-processor/coverage.out",
+        "artifacts/coverage/go/shared/coverage.out",
+        "artifacts/coverage/rust/",
+        "artifacts/coverage/quality-manifest.json",
+        "artifacts/coverage/quality-manifest.json.sha256",
+        "artifacts/coverage/provenance/aggregate.json",
+    ):
+        assert required in upload_paths
+
+    for workflow_path in (
+        BACKEND_WORKFLOW_PATH,
+        FRONTEND_WORKFLOW_PATH,
+        GO_WORKFLOW_PATH,
+        CI_WORKFLOW_PATH,
+    ):
+        current = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        for job_config in current.get("jobs", {}).values():
+            for step in job_config.get("steps", []):
+                if not isinstance(step, dict):
+                    continue
+                if not str(step.get("uses", "")).startswith("actions/upload-artifact@"):
+                    continue
+                name = str(step.get("with", {}).get("name", "")).casefold()
+                path = str(step.get("with", {}).get("path", "")).casefold()
+                if any(
+                    token in name + path
+                    for token in ("coverage", "manifest", "provenance")
+                ):
+                    assert step["with"].get("if-no-files-found") == "error"
+
+
+def test_release_and_deploy_require_the_same_sha_bound_quality_bundle() -> None:
+    producer_path = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "build-release-images.yml"
+    )
+    release_path = REPOSITORY_ROOT / ".github" / "workflows" / "release.yml"
+    deploy_path = REPOSITORY_ROOT / ".github" / "workflows" / "deploy.yml"
+    for workflow_path in (producer_path, deploy_path):
+        workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+        dispatch = _workflow_triggers(workflow)["workflow_dispatch"]
+        inputs = dispatch["inputs"]
+        assert inputs["release-sha"]["required"] is True
+        assert inputs["quality-run-id"]["required"] is True
+        gate = workflow["jobs"][
+            "certify" if workflow_path == producer_path else "validate"
+        ]
+        text = _run_text(gate)
+        assert "quality-evidence-$RELEASE_SHA" in text
+        assert "quality-manifest.json.sha256" in text
+        assert "sha256sum --check" in text
+        assert 'test "$(git rev-parse HEAD)" = "$RELEASE_SHA"' in text
+        assert "head_sha" in text and "conclusion" in text and "ci.yml" in text
+        assert "gh run list" not in text
+        assert "find " not in text
+
+        download = _provenance_step(gate, "Download SHA-bound quality evidence")
+        assert download["with"]["name"] == "quality-evidence-${{ inputs.release-sha }}"
+        assert download["with"]["run-id"] == "${{ inputs.quality-run-id }}"
+        assert download["with"]["github-token"] == "${{ github.token }}"
+        assert download["with"]["path"] == "."
+
+        validate = _provenance_step(gate, "Validate SHA-bound quality evidence")
+        validate_run = str(validate["run"])
+        assert "validate_quality_contract.py" in validate_run
+        assert '--expected-commit-sha "$RELEASE_SHA"' in validate_run
+        assert '--expected-workflow-run-id "$QUALITY_RUN_ID"' in validate_run
+        assert '--expected-workflow-run-attempt "$QUALITY_RUN_ATTEMPT"' in validate_run
+
+    release = yaml.safe_load(release_path.read_text(encoding="utf-8"))
+    assert "reusable-build-and-sign.yml" not in release_path.read_text(encoding="utf-8")
+    assert release["jobs"]["publish"]["needs"] == ["resolve-images"]
+
+
+def test_release_uses_actual_image_digest_provenance_after_build() -> None:
+    obsolete = REPOSITORY_ROOT / ".github" / "workflows" / "slsa-provenance.yml"
+    assert not obsolete.exists(), (
+        "release-published provenance cannot run before release images exist"
+    )
+
+    reusable_path = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "reusable-build-and-sign.yml"
+    )
+    reusable = yaml.safe_load(reusable_path.read_text(encoding="utf-8"))
+    steps = reusable["jobs"]["build"]["steps"]
+    build = _provenance_step(
+        reusable["jobs"]["build"], "Build local image for security scan"
+    )
+    provenance = _provenance_step(
+        reusable["jobs"]["build"],
+        "Attest build provenance for the published digest",
+    )
+    attest = _provenance_step(
+        reusable["jobs"]["build"], "Attest SBOM for the built image"
+    )
+    sign = _provenance_step(reusable["jobs"]["build"], "Sign image (Keyless)")
+
+    assert build["with"]["push"] is False
+    assert build["with"]["load"] is True
+    assert build["with"]["platforms"] == "linux/amd64"
+    assert provenance["with"]["subject-digest"] == (
+        "${{ steps.publish.outputs.digest }}"
+    )
+    assert provenance["with"]["push-to-registry"] is True
+    assert str(attest["uses"]).startswith("actions/attest-sbom@")
+    assert attest["with"]["subject-digest"] == "${{ steps.publish.outputs.digest }}"
+    assert attest["with"]["sbom-path"] == "sbom.json"
+    assert "github.sha" not in str(attest)
+    assert steps.index(build) < steps.index(attest) < steps.index(sign)
+
+
+def test_release_installs_checksum_pinned_trivy_before_registry_login() -> None:
+    reusable_path = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "reusable-build-and-sign.yml"
+    )
+    reusable = yaml.safe_load(reusable_path.read_text(encoding="utf-8"))
+    job = reusable["jobs"]["build"]
+    steps = job["steps"]
+    install = _provenance_step(job, "Install checksum-pinned Trivy")
+    login = _provenance_step(job, "Login to GHCR after local security gates")
+    scan = _provenance_step(job, "Scan local image before registry access (Trivy)")
+
+    assert steps.index(install) < steps.index(login)
+    assert install["env"]["TRIVY_VERSION"] == "0.73.0"
+    assert re.fullmatch(r"[0-9a-f]{64}", install["env"]["TRIVY_ARCHIVE_SHA256"])
+    install_run = str(install["run"])
+    assert "releases/download/v${TRIVY_VERSION}/" in install_run
+    assert "sha256sum --check" in install_run
+    assert "apt-get" not in install_run
+    assert "trivy-repo" not in install_run
+    assert scan["with"]["skip-setup-trivy"] is True
+
+
+def test_canonical_producer_builds_the_validated_source_sha() -> None:
+    reusable_path = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "reusable-build-and-sign.yml"
+    )
+    reusable = yaml.safe_load(reusable_path.read_text(encoding="utf-8"))
+    source_sha = _workflow_triggers(reusable)["workflow_call"]["inputs"]["source-sha"]
+    assert source_sha["required"] is True
+    job = reusable["jobs"]["build"]
+    checkout = _provenance_step(job, "Checkout")
+    assert checkout["with"]["ref"] == "${{ github.sha }}"
+    assert checkout["with"]["persist-credentials"] is False
+    assert job["if"] == "${{ github.ref == 'refs/heads/main' }}"
+    verify = _provenance_step(job, "Verify source checkout")
+    verify_run = str(verify["run"])
+    assert verify["env"]["SOURCE_SHA"] == "${{ inputs.source-sha }}"
+    for fragment in (
+        '[[ "$SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]',
+        'test "$GITHUB_REF" = "refs/heads/main"',
+        'test "$SOURCE_SHA" = "$GITHUB_SHA"',
+        'test "$SOURCE_SHA" = "$GITHUB_WORKFLOW_SHA"',
+        'test "$(git rev-parse HEAD)" = "$SOURCE_SHA"',
+        "git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1",
+        'test "$(git rev-parse origin/main)" = "$SOURCE_SHA"',
+    ):
+        assert fragment in verify_run
+    assert job["steps"].index(verify) == job["steps"].index(checkout) + 1
+
+    producer = yaml.safe_load(
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "build-release-images.yml"
+        ).read_text(encoding="utf-8")
+    )
+    assert producer["jobs"]["build"]["with"]["source-sha"] == (
+        "${{ inputs.release-sha }}"
+    )
+
+    for consumer_name in ("deploy.yml", "release.yml"):
+        consumer = yaml.safe_load(
+            (REPOSITORY_ROOT / ".github" / "workflows" / consumer_name).read_text(
+                encoding="utf-8"
+            )
+        )
+        assert "reusable-build-and-sign.yml" not in str(consumer)
+
+
+def test_canonical_producer_matrix_uses_repository_root_docker_build_context() -> None:
+    producer = yaml.safe_load(
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "build-release-images.yml"
+        ).read_text(encoding="utf-8")
+    )
+    include = producer["jobs"]["build"]["strategy"]["matrix"]["include"]
+    matrix = {entry["image_name"]: entry for entry in include}
+
+    assert set(matrix) == {
+        "backend",
+        "caddy",
+        "frontend",
+        "ws-hub",
+        "gateway",
+        "file-processor",
+    }
+    # Every app Dockerfile copies repository-root inputs. In particular, each Go
+    # service copies the shared root module, generated clients and shared SPIFFE
+    # package before its own source, so a service-directory context cannot build.
+    assert {entry["context"] for name, entry in matrix.items() if name != "caddy"} == {
+        "."
+    }
+    assert matrix["caddy"] == {
+        "image_name": "caddy",
+        "file": "services/caddy/Dockerfile",
+        "context": "services/caddy",
+    }
+    assert matrix["gateway"]["file"] == "services/gateway/Dockerfile"
+    assert matrix["ws-hub"]["file"] == "services/ws-hub/Dockerfile"
+    assert matrix["file-processor"]["file"] == ("services/file-processor/Dockerfile")
+
+    assert producer["jobs"]["build"]["with"]["canonical_frontend"] == (
+        "${{ matrix.image_name == 'frontend' }}"
+    )
+
+    reusable = yaml.safe_load(
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "reusable-build-and-sign.yml"
+        ).read_text(encoding="utf-8")
+    )
+    build = _provenance_step(
+        reusable["jobs"]["build"], "Build local image for security scan"
+    )
+    build_args = str(build["with"]["build-args"])
+    assert "VITE_APP_RELEASE={0}" in build_args
+    assert "VITE_ENABLE_WEB_VITALS=true" in build_args
+    assert "VITE_CWV_TRUSTED_RUM=true" in build_args
+    assert "VITE_WEB_VITALS_ENDPOINT=/api/v1/cwv" in build_args
+    labels = str(build["with"]["labels"]).splitlines()
+    assert labels == [
+        "org.opencontainers.image.source=https://github.com/${{ github.repository }}",
+        "org.opencontainers.image.revision=${{ inputs.source-sha }}",
+    ]
+
+
+def test_canonical_producer_publishes_only_the_immutable_sha_tag() -> None:
+    producer = yaml.safe_load(
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "build-release-images.yml"
+        ).read_text(encoding="utf-8")
+    )
+
+    build = producer["jobs"]["build"]
+    assert build["permissions"] == {
+        "contents": "read",
+        "packages": "write",
+        "id-token": "write",
+        "attestations": "write",
+    }
+    tags = str(build["with"]["tags"]).splitlines()
+    assert tags == [
+        "ghcr.io/${{ github.repository }}/${{ matrix.image_name }}:${{ inputs.release-sha }}"
+    ]
+    assert not any(tag.endswith(":latest") for tag in tags)
+
+    release = yaml.safe_load(
+        (REPOSITORY_ROOT / ".github" / "workflows" / "release.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    publish = release["jobs"]["publish"]
+    release_step = _provenance_step(publish, "Release")
+    release_run = str(release_step["run"])
+    assert "git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1" in (
+        release_run
+    )
+    assert 'test "$(git rev-parse origin/main)" = "$RELEASE_SHA"' in release_run
+
+
+def test_release_scans_local_image_before_any_registry_publication() -> None:
+    reusable_path = (
+        REPOSITORY_ROOT / ".github" / "workflows" / "reusable-build-and-sign.yml"
+    )
+    reusable = yaml.safe_load(reusable_path.read_text(encoding="utf-8"))
+    job = reusable["jobs"]["build"]
+    steps = job["steps"]
+    build = _provenance_step(job, "Build local image for security scan")
+    scan = _provenance_step(job, "Scan local image before registry access (Trivy)")
+    sbom = _provenance_step(job, "Generate SBOM (CycloneDX)")
+    login = _provenance_step(job, "Login to GHCR after local security gates")
+    publish = _provenance_step(job, "Publish or reuse scanned immutable image")
+    attest = _provenance_step(job, "Attest SBOM for the built image")
+    sign = _provenance_step(job, "Sign image (Keyless)")
+    verify = _provenance_step(job, "Verify final signature and attestation")
+
+    assert build["with"]["push"] is False
+    assert build["with"]["load"] is True
+    assert scan["with"]["image-ref"] == "${{ steps.references.outputs.local_ref }}"
+    assert "quarantine" not in reusable_path.read_text(encoding="utf-8").lower()
+    assert steps.index(build) < steps.index(scan) < steps.index(sbom)
+    assert steps.index(sbom) < steps.index(login)
+    assert steps.index(login) < steps.index(publish) < steps.index(attest)
+    assert steps.index(attest) < steps.index(sign) < steps.index(verify)
+    publish_run = str(publish["run"])
+    assert "publish_immutable_image.py" in publish_run
+    assert '--final-ref "$FINAL_REF"' in publish_run
+    assert '--local-ref "$LOCAL_REF"' in publish_run
+    assert '--subject-name "$SUBJECT_NAME"' in publish_run
+    assert "steps.publish.outputs.digest" in str(attest)
+
+
+def test_release_keeps_global_serialization_for_immutable_tag_creation() -> None:
+    release = yaml.safe_load(
+        (REPOSITORY_ROOT / ".github" / "workflows" / "release.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert release["concurrency"] == {
+        "group": "release-main",
+        "cancel-in-progress": False,
+    }
+
+
+def test_canonical_producer_aggregates_exact_digest_inventory() -> None:
+    producer = yaml.safe_load(
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "build-release-images.yml"
+        ).read_text(encoding="utf-8")
+    )
+
+    aggregate = producer["jobs"]["aggregate-image-provenance"]
+    assert aggregate["needs"] == ["certify", "build"]
+    select_cohort = _provenance_step(
+        aggregate, "Select retry-safe release artifact cohort"
+    )
+    download_images = _provenance_step(
+        aggregate, "Download selected verified image digest evidence"
+    )
+    download_certification = _provenance_step(
+        aggregate, "Download selected signed certification"
+    )
+    verify_certification = _provenance_step(
+        aggregate, "Verify selected signed certification"
+    )
+    aggregate_inventory = _provenance_step(
+        aggregate, "Aggregate selected release image inventory"
+    )
+    install_cosign = _provenance_step(aggregate, "Install cosign")
+    registry_login = _provenance_step(
+        aggregate, "Login to GHCR for private image verification"
+    )
+    reverify = _provenance_step(aggregate, "Reverify every immutable image subject")
+    aggregate_steps = aggregate["steps"]
+    assert aggregate_steps.index(select_cohort) < aggregate_steps.index(download_images)
+    assert aggregate_steps.index(download_images) < aggregate_steps.index(
+        download_certification
+    )
+    assert aggregate_steps.index(download_certification) < aggregate_steps.index(
+        verify_certification
+    )
+    assert aggregate_steps.index(verify_certification) < aggregate_steps.index(
+        aggregate_inventory
+    )
+    assert aggregate_steps.index(aggregate_inventory) < aggregate_steps.index(
+        install_cosign
+    )
+    assert aggregate_steps.index(install_cosign) < aggregate_steps.index(registry_login)
+    assert aggregate_steps.index(registry_login) < aggregate_steps.index(reverify)
+    select_cohort_run = str(select_cohort["run"])
+    assert "--select-release-cohort" in select_cohort_run
+    assert "--consumer-run-attempt" in select_cohort_run
+    assert "selected-release-artifact-cohort.json" in select_cohort_run
+    assert download_images["with"]["artifact-ids"] == (
+        "${{ steps.select-artifact-cohort.outputs.image-artifact-ids }}"
+    )
+    assert download_certification["with"]["artifact-ids"] == (
+        "${{ steps.select-artifact-cohort.outputs.certification-artifact-id }}"
+    )
+    assert (
+        "--cohort artifacts/image-evidence-provenance/selected-release-artifact-cohort.json"
+        in str(aggregate_inventory["run"])
+    )
+    assert str(registry_login["uses"]).startswith("docker/login-action@")
+    assert registry_login["with"] == {
+        "registry": "ghcr.io",
+        "username": "${{ github.actor }}",
+        "password": "${{ github.token }}",
+    }
+    steps_after_login = aggregate_steps[aggregate_steps.index(registry_login) + 1 :]
+    assert [step["name"] for step in steps_after_login] == [
+        "Reverify every immutable image subject",
+        "Attest canonical image digest manifest",
+        "Upload canonical image provenance",
+    ]
+    aggregate_text = _run_text(aggregate)
+    assert "aggregate_release_image_evidence.py" in aggregate_text
+    assert "cosign verify" in aggregate_text
+    assert "gh attestation verify" in aggregate_text
+    assert "sha256sum --check" in aggregate_text
+    assert any(
+        str(step.get("uses", "")).startswith("actions/attest-build-provenance@")
+        for step in aggregate["steps"]
+    )
+    assert any(
+        str(step.get("uses", "")).startswith("actions/upload-artifact@")
+        and step.get("with", {}).get("name")
+        == "release-image-provenance-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}"
+        for step in aggregate["steps"]
+    )
+
+    release = yaml.safe_load(
+        (REPOSITORY_ROOT / ".github" / "workflows" / "release.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    publish = release["jobs"]["publish"]
+    assert publish["needs"] == ["resolve-images"]
+    publish_text = _run_text(publish)
+    assert "release-image-manifest.json.sha256" in publish_text
+    assert "gh attestation verify" in publish_text
+
+
+def test_deploy_never_checks_out_untrusted_release_input() -> None:
+    workflow = yaml.safe_load(
+        (REPOSITORY_ROOT / ".github" / "workflows" / "deploy.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    for job_name in ("validate", "deploy", "rollback"):
+        steps = workflow["jobs"][job_name]["steps"]
+        checkout_index = next(
+            index
+            for index, step in enumerate(steps)
+            if str(step.get("uses", "")).startswith("actions/checkout@")
+        )
+        checkout = steps[checkout_index]
+        assert checkout["with"]["ref"] == "${{ github.sha }}"
+        assert checkout["with"]["persist-credentials"] is False
+        assert "inputs.release-sha" not in str(checkout)
+
+        verify = steps[checkout_index + 1]
+        assert verify["name"].startswith("Verify trusted release checkout")
+        assert verify["env"]["RELEASE_SHA"] == "${{ inputs.release-sha }}"
+        run = str(verify["run"])
+        assert '[[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]' in run
+        assert 'test "$(git rev-parse HEAD)" = "$RELEASE_SHA"' in run
+        assert (
+            "git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1" in run
+        )
+        assert 'test "$(git rev-parse origin/main)" = "$RELEASE_SHA"' in run
+
+
+def test_contract_drift_serializes_openapi_deterministically() -> None:
+    workflow = yaml.safe_load(
+        CONTRACT_VALIDATION_WORKFLOW_PATH.read_text(encoding="utf-8")
+    )
+    step = _provenance_step(
+        workflow["jobs"]["openapi-typescript-drift"],
+        "Generate current OpenAPI spec",
+    )
+
+    assert "json.dumps(spec, indent=2, sort_keys=True) + '\\n'" in str(step["run"])
+
+
+def test_hosted_browser_smokes_bound_frontend_build_memory() -> None:
+    workflow_jobs = (
+        ("unauthenticated-routes-smoke.yml", "unauthed-smoke"),
+        ("admin-smoke-monitoring.yml", "admin-smoke"),
+        ("visual-audit.yml", "visual-audit"),
+    )
+
+    for workflow_name, job_name in workflow_jobs:
+        workflow = yaml.safe_load(
+            (REPOSITORY_ROOT / ".github" / "workflows" / workflow_name).read_text(
+                encoding="utf-8"
+            )
+        )
+        build = next(
+            step
+            for step in workflow["jobs"][job_name]["steps"]
+            if str(step.get("name", "")).startswith("Build frontend")
+        )
+        assert build["env"]["FRONTEND_BUILD_MAX_RSS_MB"] == "2048"
+        assert build["env"]["FRONTEND_BUILD_MAX_OLD_SPACE_MB"] == "1536"
+
+
+def test_frontend_provenance_version_queries_are_shell_safe() -> None:
+    source = FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8")
+    safe_query = (
+        'vitest_version="$(node -p '
+        '\'require("./frontend/node_modules/vitest/package.json").version\')"'
+    )
+
+    assert source.count(safe_query) == 2
+    assert 'node -p \\"require(' not in source
+
+
+def test_backend_shards_publish_and_aggregate_current_attempt_lineage() -> None:
+    backend = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    unit_job = backend["jobs"]["unit-tests"]
+    provenance = _provenance_step(unit_job, "Write backend shard coverage provenance")
+    provenance_run = str(provenance["run"])
+    assert "coverage_provenance.py write" in provenance_run
+    assert "coverage-provenance-shard-$SHARD_ID.json" in provenance_run
+    assert provenance["env"]["ARTIFACT_NAME"].endswith(
+        "-attempt-${{ github.run_attempt }}"
+    )
+    assert "python-shard|coverage-py-data" in provenance_run
+    upload = _provenance_step(unit_job, "Upload raw coverage data for aggregation")
+    assert upload["with"]["name"].endswith("-attempt-${{ github.run_attempt }}")
+    assert set(str(upload["with"]["path"]).splitlines()) == {
+        "artifacts/coverage/python/producer/.coverage.shard-${{ inputs.shard-id }}",
+        "artifacts/coverage/python/producer/coverage-provenance-shard-${{ inputs.shard-id }}.json",
+    }
+
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    aggregate = ci["jobs"]["coverage-policy-gate"]
+    download = _provenance_step(aggregate, "Download Python shard coverage data")
+    assert download["with"]["pattern"].endswith("-attempt-${{ github.run_attempt }}")
+    verify = _provenance_step(aggregate, "Verify backend shard provenance")
+    verify_run = str(verify["run"])
+    assert "for shard in 0 1 2 3" in verify_run
+    assert "coverage_provenance.py verify" in verify_run
+    assert "--expected-job unit-tests" in verify_run
+    assert '--expected-artifact "$artifact"' in verify_run
+    assert "coverage-provenance-shard-${shard}.json" in verify_run
+    assert (
+        "find artifacts/coverage/python/shards -name '.coverage.shard-*'" in verify_run
+    )
+
+
+def test_frontend_shards_are_verified_before_coverage_merge() -> None:
+    frontend = yaml.safe_load(FRONTEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    shard_job = frontend["jobs"]["unit-tests-shard"]
+    provenance = _provenance_step(shard_job, "Write frontend shard provenance")
+    provenance_run = str(provenance["run"])
+    assert "coverage_provenance.py write" in provenance_run
+    assert "frontend-shard|istanbul-json" in provenance_run
+    assert provenance["env"]["ARTIFACT_NAME"] == (
+        "frontend-coverage-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}"
+    )
+    upload = _provenance_step(shard_job, "Upload frontend coverage shard")
+    assert upload["with"]["name"].endswith("-attempt-${{ github.run_attempt }}")
+    assert "coverage-provenance.json" in str(upload["with"]["path"])
+
+    merge_job = frontend["jobs"]["unit-tests"]
+    download = _provenance_step(merge_job, "Download frontend coverage shards")
+    assert download["with"]["pattern"].endswith("-attempt-${{ github.run_attempt }}")
+    verify = _provenance_step(merge_job, "Verify frontend shard provenance")
+    verify_run = str(verify["run"])
+    assert "for shard in 1 2 3 4" in verify_run
+    assert "coverage_provenance.py verify" in verify_run
+    assert "--expected-job unit-tests-shard" in verify_run
+    assert '--expected-artifact "$artifact"' in verify_run
+    merge = _provenance_step(merge_job, "Merge frontend coverage shards")
+    assert merge_job["steps"].index(verify) < merge_job["steps"].index(merge)
+    merged_upload = _provenance_step(merge_job, "Upload coverage artifacts")
+    assert merged_upload["with"]["name"] == (
+        "frontend-coverage-attempt-${{ github.run_attempt }}"
+    )
+
+
+def test_quality_history_revalidates_exact_sha_bound_run_evidence() -> None:
+    workflow = yaml.safe_load(QUALITY_HISTORY_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["archive"]
+    collect = _provenance_step(job, "Collect latest successful CI quality manifest")
+    text = str(collect["run"])
+    assert (
+        "gh run list --workflow ci.yml --branch main --event push --status success"
+        in text
+    )
+    for field in (
+        "head_sha",
+        "conclusion",
+        "event",
+        "head_branch",
+        "path",
+        "run_attempt",
+    ):
+        assert f".{field}" in text
+    assert "actions/runs/$run_id" in text
+    assert "actions/runs/$run_id/artifacts?per_page=100" in text
+    assert "--paginate --slurp" in text
+    assert "quality-evidence-$head_sha" in text
+    assert ".expired == false" in text
+    assert "[.[].artifacts[]" in text
+    assert "| length'" in text
+    assert "git worktree add --detach" in text
+    assert "validate_quality_contract.py" in text
+    for required in (
+        '--artifact-root "$evidence_root"',
+        '--schema "$evidence_root/quality/coverage-manifest.schema.json"',
+        '--expected-commit-sha "$head_sha"',
+        '--expected-workflow-run-id "$run_id"',
+        '--expected-workflow-run-attempt "$run_attempt"',
+        "--expected-workflow-event push",
+        '--expected-workflow-repository "$GITHUB_REPOSITORY"',
+        '--expected-workflow-ref "$GITHUB_REPOSITORY/.github/workflows/ci.yml@refs/heads/main"',
+        "--expected-workflow-job coverage-policy-gate",
+    ):
+        assert required in text
+
+
+def test_rust_branch_reports_bind_the_nightly_rustc_version() -> None:
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    rust_job = workflow["jobs"]["rust-tests"]
+    provenance = _provenance_step(rust_job, "Write Rust coverage provenance")
+    provenance_run = str(provenance["run"])
+    assert "rustc +nightly --version" in provenance_run
+    assert '--tool-version "rustc-nightly=$rustc_nightly_version"' in provenance_run
+    normalize = _provenance_step(
+        workflow["jobs"]["coverage-policy-gate"], "Normalize coverage evidence"
+    )
+    normalize_run = str(normalize["run"])
+    assert 'rustc_nightly_version="$(read_tool rustc-nightly)"' in normalize_run
+    assert '--tool-version "rustc-nightly=$rustc_nightly_version"' in normalize_run
+
+
+def test_deploy_uses_build_digests_for_all_cluster_image_references() -> None:
+    deploy_path = REPOSITORY_ROOT / ".github" / "workflows" / "deploy.yml"
+    workflow = yaml.safe_load(deploy_path.read_text(encoding="utf-8"))
+    deploy = workflow["jobs"]["deploy"]
+    helm = _provenance_step(deploy, "Deploy Helm release atomically")
+    helm_run = (REPOSITORY_ROOT / ".github" / "scripts" / "deploy-helm.sh").read_text(
+        encoding="utf-8"
+    )
+    assert "bash .github/scripts/deploy-helm.sh upgrade" in str(helm["run"])
+    for setting in (
+        "backend.image.digest=$BACKEND_IMAGE_DIGEST",
+        "frontend.image.digest=$FRONTEND_IMAGE_DIGEST",
+        "wsHub.image.digest=$WS_HUB_IMAGE_DIGEST",
+        "gateway.image.digest=$GATEWAY_IMAGE_DIGEST",
+        "fileProcessor.image.digest=$FILE_PROCESSOR_IMAGE_DIGEST",
+        "outboxWorker.image.digest=$BACKEND_IMAGE_DIGEST",
+    ):
+        assert setting in helm_run
+    assert "global.imageTag=$DEPLOY_VERSION" in helm_run
+    assert not any(
+        step.get("name") == "Deploy WS Hub image" for step in deploy["steps"]
+    )
+    verify = _provenance_step(deploy, "Verify Helm-managed rollouts")
+    verify_run = str(verify["run"])
+    assert "$image_prefix/backend@$BACKEND_IMAGE_DIGEST" in verify_run
+    assert "$image_prefix/frontend@$FRONTEND_IMAGE_DIGEST" in verify_run
+    assert "$image_prefix/ws-hub@$WS_HUB_IMAGE_DIGEST" in verify_run
+    assert "$image_prefix/gateway@$GATEWAY_IMAGE_DIGEST" in verify_run
+    assert "$image_prefix/file-processor@$FILE_PROCESSOR_IMAGE_DIGEST" in verify_run
+    assert "$image_prefix/backend:$DEPLOY_VERSION" not in verify_run
+
+    reusable = yaml.safe_load(
+        (
+            REPOSITORY_ROOT / ".github" / "workflows" / "reusable-build-and-sign.yml"
+        ).read_text(encoding="utf-8")
+    )
+    readback = _provenance_step(reusable["jobs"]["build"], "Verify source checkout")
+    assert 'test "$(git rev-parse HEAD)" = "$SOURCE_SHA"' in str(readback["run"])
+
+    values = yaml.safe_load(
+        (REPOSITORY_ROOT / "charts" / "university-ecosystem" / "values.yaml").read_text(
+            encoding="utf-8"
+        )
+    )
+    for component in (
+        "backend",
+        "frontend",
+        "gateway",
+        "fileProcessor",
+        "outboxWorker",
+    ):
+        assert values[component]["image"]["digest"] == ""
+    helpers = (
+        REPOSITORY_ROOT
+        / "charts"
+        / "university-ecosystem"
+        / "templates"
+        / "_helpers.tpl"
+    ).read_text(encoding="utf-8")
+    assert 'define "university-ecosystem.image"' in helpers
+    assert 'printf "%s/%s@%s"' in helpers
+
+
+def test_nightly_chaos_database_is_explicitly_test_owned() -> None:
+    workflow = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    job = workflow["jobs"]["load-and-chaos"]
+    assert job["env"]["POSTGRES_DB"] == "test_ecosystem"
+    assert str(job["env"]["DATABASE_URL"]).endswith("/test_ecosystem")
+
+    prepare = _provenance_step(job, "Prepare full chaos compose environment")
+    assert "localhost:54321/test_ecosystem" in str(prepare["run"])
+    chaos = _provenance_step(job, "Run chaos and resilience tests")
+    assert str(chaos["env"]["DATABASE_URL"]).endswith("/test_ecosystem")
+
+
+def test_persistent_pytest_reset_jobs_use_explicit_narrow_opt_in() -> None:
+    marker = "UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"
+    reusable = yaml.safe_load(BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert reusable["jobs"]["integration-tests"]["env"][marker] == "1"
+
+    db_perf = yaml.safe_load(
+        (REPOSITORY_ROOT / ".github" / "workflows" / "db-perf-gate.yml").read_text(
+            encoding="utf-8"
+        )
+    )
+    pytest_step = _provenance_step(
+        db_perf["jobs"]["explain-check"], "Run Pytest to capture query logs"
+    )
+    assert pytest_step["env"][marker] == "1"
+
+    ci = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    schemathesis = _provenance_step(
+        ci["jobs"]["schemathesis-api-tests-shard"],
+        "Run Schemathesis conformance tests",
+    )
+    chaos = _provenance_step(ci["jobs"]["chaos-tests"], "Run chaos tests")
+    asan = _provenance_step(
+        ci["jobs"]["rust-ffi-asan"], "Run FFI tests under ASan / LSan"
+    )
+    tsan = _provenance_step(ci["jobs"]["rust-ffi-tsan"], "Run FFI tests under TSan")
+    assert schemathesis["env"][marker] == "1"
+    assert schemathesis["env"]["REVOCATION_REDIS_URL"] == ("redis://localhost:6380/0")
+    assert chaos["env"][marker] == "1"
+    assert asan["env"][marker] == "1"
+    assert tsan["env"][marker] == "1"
+
+    nightly = yaml.safe_load(NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    assert nightly["jobs"]["container-integration-cells"]["env"][marker] == "1"
+    nightly_chaos = _provenance_step(
+        nightly["jobs"]["load-and-chaos"], "Run chaos and resilience tests"
+    )
+    assert nightly_chaos["env"][marker] == "1"
+
+    assert CI_WORKFLOW_PATH.read_text(encoding="utf-8").count(marker) == 4
+    assert NIGHTLY_FULL_WORKFLOW_PATH.read_text(encoding="utf-8").count(marker) == 2
+    assert BACKEND_WORKFLOW_PATH.read_text(encoding="utf-8").count(marker) == 1
+    db_perf_path = REPOSITORY_ROOT / ".github" / "workflows" / "db-perf-gate.yml"
+    assert db_perf_path.read_text(encoding="utf-8").count(marker) == 1
+
+    contract_tests = REPOSITORY_ROOT / ".github" / "workflows" / "contract-tests.yml"
+    assert marker not in contract_tests.read_text(encoding="utf-8")
+
+    deploy = REPOSITORY_ROOT / ".github" / "workflows" / "deploy.yml"
+    assert marker not in deploy.read_text(encoding="utf-8")
+
+
+def test_local_infra_sandbox_scopes_database_reset_opt_in_to_pytest() -> None:
+    marker = "UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET"
+    script = (REPOSITORY_ROOT / "scripts" / "run-test-sandbox.ps1").read_text(
+        encoding="utf-8"
+    )
+    backend = script.split('Invoke-Step "Backend pytest + coverage"', maxsplit=1)[1]
+    backend = backend.split('if ($Filter -in @("all", "rust"))', maxsplit=1)[0]
+    assert "$previousDatabaseResetOptIn = $env:" + marker in backend
+    assert "if ($useInfra)" in backend
+    assert "$env:" + marker + ' = "1"' in backend
+    assert "uv run pytest tests/" in backend
+    assert "finally" in backend
+    assert "Remove-Item Env:\\" + marker in backend
+    assert "$env:" + marker + " = $previousDatabaseResetOptIn" in backend
+
+
+def test_frontend_npm_installs_require_node_24_and_npm_11() -> None:
+    workflow_sources = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted((REPOSITORY_ROOT / ".github" / "workflows").glob("*.yml"))
+    )
+    package = json.loads(
+        (REPOSITORY_ROOT / "frontend" / "package.json").read_text(encoding="utf-8")
+    )
+    npmrc = (REPOSITORY_ROOT / "frontend" / ".npmrc").read_text(encoding="utf-8")
+
+    assert 'node-version: "22"' not in workflow_sources
+    assert 'default: "20"' not in workflow_sources
+    assert 'default: "22"' not in workflow_sources
+    assert package["engines"] == {"node": ">=24.0.0", "npm": ">=11.0.0"}
+    assert package["packageManager"] == "npm@11.17.0"
+    assert "engine-strict=true" in npmrc.splitlines()
+    assert "strict-allow-scripts=true" in npmrc.splitlines()

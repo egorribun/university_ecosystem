@@ -49,17 +49,20 @@ export const TextField = React.forwardRef<
       trailingIcon,
       leadingIcon,
       size = "md",
+      id,
       ...props
     },
     ref
   ) => {
     const helperId = useId()
+    const generatedControlId = useId()
+    const controlId = id ?? generatedControlId
 
     return (
       <div className={cn("flex flex-col gap-1.5", fullWidth && "w-full", className)}>
         {label && (
           <label
-            htmlFor={props.id}
+            htmlFor={controlId}
             className="mb-0.5 block px-1 text-xs font-bold uppercase tracking-widest text-(--text-secondary)"
           >
             {label}
@@ -84,6 +87,7 @@ export const TextField = React.forwardRef<
               disabled={disabled}
               placeholder={placeholder}
               rows={rows}
+              id={controlId}
               aria-describedby={helperText ? helperId : undefined}
               aria-invalid={error || undefined}
               className={cn(
@@ -107,6 +111,7 @@ export const TextField = React.forwardRef<
               error={error}
               size={size}
               fullWidth={fullWidth}
+              id={controlId}
               aria-describedby={helperText ? helperId : undefined}
               className={cn(
                 leadingIcon ? "pl-11" : "",

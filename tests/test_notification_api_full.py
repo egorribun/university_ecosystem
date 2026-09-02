@@ -302,6 +302,9 @@ class TestListNotifications:
         data = resp.json()
         assert len(data["items"]) == 2
         assert data["unread_count"] == 1
+        for item in data["items"]:
+            assert item["metadata"]["notificationId"] == item["id"]
+            assert item["metadata"]["url"] == (item.get("url") or "/")
 
 
 # ---------------------------------------------------------------------------

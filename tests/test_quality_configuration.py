@@ -172,6 +172,20 @@ def _read_text(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
+def test_deploy_docs_do_not_embed_credential_like_examples() -> None:
+    """Deployment docs must keep credential material outside shell history."""
+
+    credential_url = re.compile(
+        r"(?i)(?:redis|postgresql(?:\+asyncpg)?|mysql)://[^\s:$]+:[^\s@]+@"
+    )
+    for relative_path in ("docs/DEPLOY.md", "docs/DEPLOY.en.md"):
+        document = _read_text(relative_path)
+        assert credential_url.search(document) is None
+        assert (
+            re.search(r"[A-Z][A-Z0-9_]*_SECRET=\"new_key,old_key\"", document) is None
+        )
+
+
 def _dockerignore_patterns(relative_path: str) -> tuple[str, ...]:
     return tuple(
         line.strip()
@@ -245,6 +259,7 @@ def test_governance_quality_configuration_matches_contract() -> None:
     assert "@security-team" not in codeowners
     assert "@devops-team" not in codeowners
     for protected_path in (
+        "scripts/quality/check_go_benchmark_budget.py",
         "scripts/quality/compare_paired_benchmarks.py",
         "scripts/quality/capture_isolated_benchmarks.py",
         "containers/quality/Dockerfile.performance-rust",
@@ -428,6 +443,8 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
         ".gitignore",
         ".dockerignore",
         "quality",
+        "charts/university-ecosystem",
+        "charts/revocation-store",
         "scripts",
         "Dockerfile.test",
         "Dockerfile.test.dockerignore",
@@ -444,6 +461,8 @@ def test_mutmut_uses_the_unit_population_instead_of_a_single_probe_file() -> Non
         "crates/pyo3-sanitizer/src",
         "frontend/scripts",
         "frontend/package.json",
+        "frontend/src/hooks",
+        "frontend/src/hooks/useChatWebSocket.ts",
         "frontend/stryker.config.mjs",
         "frontend/vitest.config.ts",
         "sonar-project.properties",
@@ -584,6 +603,9 @@ def test_mypy_excludes_are_valid_regular_expressions() -> None:
 def test_frontend_coverage_policy_and_source_universe_match_quality_contract() -> None:
     contract = _read_contract()
     coverage = _extract_object_body(_read_text("frontend/vitest.config.ts"), "coverage")
+    source_policy = json.loads(_read_text("quality/coverage-source-policy.json"))[
+        "frontend"
+    ]
 
     assert _extract_string_array(coverage, "reporter") == (
         "text",
@@ -596,14 +618,19 @@ def test_frontend_coverage_policy_and_source_universe_match_quality_contract() -
     )
     assert reports_directory is not None, "missing reportsDirectory"
     assert reports_directory.group("value") == "coverage"
-    # AST-aware remapping is required for stable statement/branch maps across
-    # Vitest shards.  Its known negative synthetic counters are normalised to
-    # zero by the aggregate merger, preserving a fail-closed 100% gate.
-    assert re.search(r"\bexperimentalAstAwareRemapping\s*:\s*true\b", coverage)
+    # Vitest 4 removed the experimental AST-remapping option. Its known
+    # negative synthetic counters are normalised by the aggregate merger,
+    # preserving a fail-closed 100% gate without an unsupported config key.
     merger = _read_text("frontend/scripts/merge-vitest-coverage.mjs")
     assert "normaliseNegativeHitCounts" in merger
-    assert _extract_string_array(coverage, "include") == EXPECTED_VITEST_INCLUDE
-    assert _extract_string_array(coverage, "exclude") == EXPECTED_VITEST_EXCLUSIONS
+    assert source_policy["include"] == list(EXPECTED_VITEST_INCLUDE)
+    assert source_policy["exclude"] == list(EXPECTED_VITEST_EXCLUSIONS)
+    assert re.search(
+        r"\binclude\s*:\s*coverageSourcePolicy\.frontend\.include", coverage
+    )
+    assert re.search(
+        r"\bexclude\s*:\s*coverageSourcePolicy\.frontend\.exclude", coverage
+    )
 
     thresholds = _extract_object_body(coverage, "thresholds")
     for metric in ("statements", "branches", "functions", "lines"):
@@ -612,7 +639,7 @@ def test_frontend_coverage_policy_and_source_universe_match_quality_contract() -
         assert match is not None, f"missing {metric} coverage threshold"
         assert int(match.group(1)) == value
 
-    exclusions = _extract_string_array(coverage, "exclude")
+    exclusions = source_policy["exclude"]
     for forbidden_exclusion in FORBIDDEN_VITEST_EXCLUSIONS:
         assert forbidden_exclusion.removeprefix('"').removesuffix('"') not in exclusions
 
@@ -626,19 +653,47 @@ def test_vitest_does_not_discover_stryker_sandbox_tests() -> None:
 
 def test_stryker_does_not_copy_generated_caches_or_sandboxes() -> None:
     config = _read_text("frontend/stryker.config.mjs")
+    runner = _read_text("frontend/scripts/run-stryker.mjs")
 
-    assert (
-        'const strykerTempRoot = path.join(os.tmpdir(), "university-ecosystem-stryker")'
-        in config
-    )
+    assert "process.env.STRYKER_TEMP_DIR ?? path.join(os.tmpdir()" in config
+    assert '"university-ecosystem-stryker-unscoped"' in config
     assert "tempDirName: strykerTempRoot" in config
     assert 'cleanTempDir: "always"' in config
+    assert '"university-ecosystem-stryker-runs"' in runner
+    assert "assertOwnedTemporaryDirectory(temporaryRoot, runId)" in runner
+    assert "STRYKER_TEMP_DIR: shardTemp" in runner
     for fragment in (
         '"**/.codex_*/**"',
         '"**/target/**"',
         '"/reports/**"',
+        '"/storybook-static/**"',
+        '"/test-results/**"',
+        '"/coverage-*/**"',
     ):
         assert fragment in config
+
+
+def test_stryker_speed_optimisations_preserve_the_complete_viable_gate() -> None:
+    """Keep the related-test speed path fail-closed and mutation-complete.
+
+    Stryker's Vitest related mode and runner reuse are the safe performance
+    levers for this repository: they reduce redundant test discovery and
+    process startup without changing the source denominator.  This contract
+    deliberately rejects static-mutant suppression, incremental evidence, or
+    a non-per-test coverage mode, all of which could make a fast run look
+    green while omitting viable mutations from the release gate.
+    """
+
+    config = _read_text("frontend/stryker.config.mjs")
+
+    assert "related: true" in config
+    assert 'coverageAnalysis: "perTest"' in config
+    assert "incremental: false" in config
+    assert "excludedMutations: []" in config
+    assert "ignorers: []" in config
+    assert "ignoreStatic" not in config
+    assert "STRYKER_MAX_TEST_RUNNER_REUSE" in config
+    assert 'cleanTempDir: "always"' in config
 
 
 def test_coverage_commands_and_sonar_paths_match_quality_contract() -> None:

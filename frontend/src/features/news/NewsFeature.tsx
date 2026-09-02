@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react"
+import { useState, useCallback, useEffect, useMemo } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { useAuth } from "@/contexts/AuthContext"
 import { useLanguage } from "@/contexts/LanguageContext"
@@ -95,6 +95,27 @@ export const NewsFeature = () => {
     return list
   }, [rawNewsList, debouncedSearch, activeCategory, sortMode, bookmarks])
 
+  const requiresCompleteDataset =
+    debouncedSearch.trim().length > 0 || activeCategory !== "all" || sortMode === "popular"
+  useEffect(() => {
+    if (
+      requiresCompleteDataset &&
+      hasNextPage &&
+      !isInitialLoading &&
+      !isFetchingNextPage &&
+      isOnline
+    ) {
+      void fetchNextPage()
+    }
+  }, [
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isInitialLoading,
+    isOnline,
+    requiresCompleteDataset,
+  ])
+
   /* ── Keyboard navigation ── */
   const { activeIndex, registerRef } = useNewsKeyboardNav(filteredNews)
 
@@ -118,7 +139,7 @@ export const NewsFeature = () => {
         isInitialLoading={isInitialLoading}
         isFetching={isFetching}
         isFetchingNextPage={isFetchingNextPage}
-        hasNextPage={hasNextPage && activeCategory === "all" && !debouncedSearch.trim()}
+        hasNextPage={Boolean(hasNextPage)}
         fetchNextPage={fetchNextPage}
         refreshNews={refreshNews}
         onAddClick={() => setAddOpen(true)}
@@ -128,7 +149,7 @@ export const NewsFeature = () => {
         registerCardRef={registerRef}
       />
 
-      <NewsFormDialog open={addOpen} onClose={() => setAddOpen(false)} onSuccess={refreshNews} />
+      <NewsFormDialog open={addOpen} onClose={() => setAddOpen(false)} />
 
       <NewsShortcutsOverlay />
     </div>

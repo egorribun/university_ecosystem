@@ -57,18 +57,20 @@ def upgrade() -> None:
 
     # Drop legacy index from the previous migration (wrong table "message").
     # IF NOT EXISTS / IF EXISTS guard makes this idempotent.
-    conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_OLD_IDX_WRONG_TABLE}"))
+    with op.get_context().autocommit_block():
+        conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_OLD_IDX_WRONG_TABLE}"))
 
     # Create the new covering index on the correct table "messages".
-    conn.execute(
-        text(
-            f"""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS {_NEW_IDX}
-            ON messages (chat_id, created_at DESC, id DESC)
-            INCLUDE (sender_id, read_status)
-            """
+    with op.get_context().autocommit_block():
+        conn.execute(
+            text(
+                f"""
+                CREATE INDEX CONCURRENTLY IF NOT EXISTS {_NEW_IDX}
+                ON messages (chat_id, created_at DESC, id DESC)
+                INCLUDE (sender_id, read_status)
+                """
+            )
         )
-    )
 
 
 def downgrade() -> None:
@@ -77,14 +79,16 @@ def downgrade() -> None:
 
     conn = op.get_bind()
     # conn.execute(text("COMMIT"))
-    conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_NEW_IDX}"))
+    with op.get_context().autocommit_block():
+        conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_NEW_IDX}"))
 
     # Restore the original index (correct table name, no INCLUDE).
-    conn.execute(
-        text(
-            f"""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS {_OLD_IDX_WRONG_TABLE}
-            ON messages (chat_id, created_at DESC, id DESC)
-            """
+    with op.get_context().autocommit_block():
+        conn.execute(
+            text(
+                f"""
+                CREATE INDEX CONCURRENTLY IF NOT EXISTS {_OLD_IDX_WRONG_TABLE}
+                ON messages (chat_id, created_at DESC, id DESC)
+                """
+            )
         )
-    )

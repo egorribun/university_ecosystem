@@ -4,6 +4,20 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { APP_HYDRATED_EVENT } from "@/app/hydration"
 
+const hydration = vi.hoisted(() => {
+  const markAppHydrated = vi.fn(() => {
+    if (window.__APP_HYDRATED) return
+    window.__APP_HYDRATED = true
+    window.dispatchEvent(new Event("ue:app-hydrated"))
+  })
+  return { markAppHydrated }
+})
+
+vi.mock("@/app/hydration", () => ({
+  APP_HYDRATED_EVENT: "ue:app-hydrated",
+  markAppHydrated: hydration.markAppHydrated,
+}))
+
 const provider = (name: string) => {
   const TestProvider = ({ children }: { children?: ReactNode }) => (
     <div data-provider={name}>{children}</div>
@@ -42,6 +56,9 @@ vi.mock("@/hooks/useChatWebSocket", () => ({
 vi.mock("@/contexts/MessengerContext", () => ({
   MessengerProvider: provider("messenger"),
 }))
+vi.mock("@/contexts/MessengerShellProvider", () => ({
+  MessengerShellProvider: provider("messenger-shell"),
+}))
 vi.mock("@/contexts/LanguageContext", () => ({
   LanguageProvider: provider("language"),
 }))
@@ -49,7 +66,17 @@ vi.mock("@/components/ui/GlobalHapticsListener", () => ({
   GlobalHapticsListener: () => <span data-testid="global-haptics" />,
 }))
 vi.mock("@/db/RxDBContext", () => ({
-  RxDBProvider: provider("rxdb"),
+  RxDBProvider: ({
+    children,
+    autoInitialize,
+  }: {
+    children?: ReactNode
+    autoInitialize?: boolean
+  }) => (
+    <div data-provider="rxdb" data-auto-initialize={String(autoInitialize)}>
+      {children}
+    </div>
+  ),
 }))
 
 const loadProviders = async (lhci: string) => {
@@ -60,10 +87,24 @@ const loadProviders = async (lhci: string) => {
 
 beforeEach(() => {
   delete window.__APP_HYDRATED
+  hydration.markAppHydrated.mockClear()
   vi.unstubAllEnvs()
 })
 
 describe("AppProviders closure", () => {
+  it("publishes hydration through an idempotent guard and stable snapshot", async () => {
+    const { getAppProvidersSnapshot, publishHydrationOnce } = await import("@/AppProviders")
+    expect(getAppProvidersSnapshot()).toBeNull()
+
+    const published = { current: false }
+    const publish = vi.fn()
+    publishHydrationOnce(published, publish)
+    publishHydrationOnce(published, publish)
+
+    expect(published.current).toBe(true)
+    expect(publish).toHaveBeenCalledTimes(1)
+  })
+
   it("composes every provider and marks the client as hydrated in normal mode", async () => {
     const AppProviders = await loadProviders("false")
 
@@ -82,11 +123,14 @@ describe("AppProviders closure", () => {
       "live-region",
       "app-shell",
       "auth",
-      "websocket",
-      "messenger",
+      "messenger-shell",
     ]) {
       expect(document.querySelector(`[data-provider="${name}"]`)).toBeInTheDocument()
     }
+    expect(document.querySelector('[data-provider="rxdb"]')).toHaveAttribute(
+      "data-auto-initialize",
+      "false"
+    )
     await waitFor(() => expect(window.__APP_HYDRATED).toBe(true))
   })
 
@@ -101,6 +145,10 @@ describe("AppProviders closure", () => {
 
     expect(screen.getByText("lhci child")).toBeInTheDocument()
     expect(screen.getByTestId("motion-config")).toHaveAttribute("data-reduced-motion", "always")
+    expect(document.querySelector('[data-provider="rxdb"]')).toHaveAttribute(
+      "data-auto-initialize",
+      "false"
+    )
     await waitFor(() => expect(window.__APP_HYDRATED).toBe(true))
   })
 
@@ -120,5 +168,25 @@ describe("AppProviders closure", () => {
     await waitFor(() => expect(window.__APP_HYDRATED).toBe(true))
     expect(onHydrated).toHaveBeenCalledTimes(1)
     window.removeEventListener(APP_HYDRATED_EVENT, onHydrated)
+  })
+
+  it("does not rerun the hydration effect when provider children update", async () => {
+    const AppProviders = await loadProviders("false")
+
+    const { rerender } = render(
+      <AppProviders>
+        <span>first child</span>
+      </AppProviders>
+    )
+    await waitFor(() => expect(window.__APP_HYDRATED).toBe(true))
+    const initialCalls = hydration.markAppHydrated.mock.calls.length
+
+    rerender(
+      <AppProviders>
+        <span>second child</span>
+      </AppProviders>
+    )
+
+    expect(hydration.markAppHydrated).toHaveBeenCalledTimes(initialCalls)
   })
 })

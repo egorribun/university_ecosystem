@@ -27,6 +27,15 @@ except (ImportError, ValueError):
     from common import find_executable, find_repo_root, run_process
 
 
+# Go's package analyzer compiles a substantial dependency graph for every
+# workspace module.  Running all modules at once can make those independent
+# processes contend for the same compiler/cache resources and hit the
+# per-module timeout even though each module is healthy when run on its own.
+# Keep bounded parallelism so the stop gate remains both fast and deterministic
+# on developer workstations and CI runners.
+GO_VET_MAX_WORKERS = 2
+
+
 def check_python_subsystem(repo_root: Path) -> tuple[bool, str]:
     """Run Ruff linter and py_compile check across Python codebase."""
     app_dir = repo_root / "app"
@@ -118,7 +127,7 @@ def check_services_subsystem(repo_root: Path) -> tuple[bool, str]:
 
     errors: list[str] = []
     with concurrent.futures.ThreadPoolExecutor(
-        max_workers=min(len(go_mod_dirs), 4)
+        max_workers=min(len(go_mod_dirs), GO_VET_MAX_WORKERS)
     ) as executor:
         futures = [
             executor.submit(_check_single_go_module, mod_dir, repo_root)

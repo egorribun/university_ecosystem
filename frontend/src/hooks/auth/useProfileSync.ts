@@ -24,8 +24,8 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
 import { isAxiosError, isCancel } from "axios"
-import { hmac } from "@noble/hashes/hmac"
-import { sha256 } from "@noble/hashes/sha256"
+import { hmac } from "@noble/hashes/hmac.js"
+import { sha256 } from "@noble/hashes/sha2.js"
 
 import api, { resetEtagCache, type ApiRequestConfig } from "@/api/client"
 import { clearCachesOnLogout } from "@/api/interceptors/etagCache"
@@ -143,7 +143,6 @@ const createOptimisticUser = (snapshot: CachedUserSnapshot): User => ({
   mfa_default_method: snapshot.mfa_default_method ?? null,
   mfa_last_verified_at: snapshot.mfa_last_verified_at ?? null,
   totp_enrollments: snapshot.totp_enrollments ?? [],
-  mfa_challenges: [],
   recovery_codes_left: 0,
   avatar_url_optimized: null,
   cover_url_optimized: null,
@@ -408,15 +407,13 @@ const readCachedUserAsync = async (signingKey: string | null): Promise<User | un
     return undefined
   }
 
-  let snapshotData: CachedUserSnapshot | null = null
-  if (typeof candidate.data === "string") {
-    snapshotData = await decryptData(candidate.data, signingKey)
-  } else if (candidate.data && typeof candidate.data === "object") {
-    // Legacy V3 support for unencrypted object data
-    snapshotData = candidate.data as CachedUserSnapshot
-  } else {
-    snapshotData = null
-  }
+  const snapshotData: CachedUserSnapshot | null =
+    typeof candidate.data === "string"
+      ? await decryptData(candidate.data, signingKey)
+      : candidate.data && typeof candidate.data === "object"
+        ? // Legacy V3 support for unencrypted object data
+          (candidate.data as CachedUserSnapshot)
+        : null
 
   if (!snapshotData || typeof snapshotData.id !== "string") {
     clearProfileCacheStorage("invalid_data")
@@ -626,7 +623,34 @@ export const buildSsrStubUser = (role: string): User => ({
   mfa_default_method: null,
   mfa_last_verified_at: null,
   totp_enrollments: [],
-  mfa_challenges: [],
+  recovery_codes_left: 0,
+  avatar_url_optimized: null,
+  cover_url_optimized: null,
+})
+
+/**
+ * Build the deterministic identity used by Lighthouse's authenticated
+ * preview.  Keeping this in the shared state bootstrap (rather than only in
+ * an effect) makes the first client render agree with the SSR response and
+ * prevents the audit from measuring an anonymous/skeleton frame first.
+ */
+export const buildLhciMockUser = (): User => ({
+  id: "lhci-mock-user",
+  email: "",
+  full_name: "LHCI Test User",
+  role: "student",
+  group_id: null,
+  avatar_url: null,
+  cover_url: null,
+  spotify_connected: false,
+  profile_detail: undefined,
+  education_path: undefined,
+  preferences: null,
+  is_active: true,
+  mfa_required: false,
+  mfa_default_method: null,
+  mfa_last_verified_at: null,
+  totp_enrollments: [],
   recovery_codes_left: 0,
   avatar_url_optimized: null,
   cover_url_optimized: null,
@@ -664,6 +688,9 @@ export const useProfileSync = (
 ) => {
   const queryClient = useQueryClient()
   const [userState, setUserState] = useState<UserState>(() => {
+    if (import.meta.env.VITE_LHCI === "true") {
+      return buildLhciMockUser()
+    }
     if (typeof window === "undefined") {
       // Wave 128 SW1 Strategy A — see resolveSsrInitialUserState helper.
       // Returns role-only stub when ssrAuthHint indicates authenticated
@@ -671,6 +698,12 @@ export const useProfileSync = (
       // Full user hydrates from /users/me cache or client-side useEffect.
       return resolveSsrInitialUserState(ssrAuthHint)
     }
+    // RootShell carries a non-sensitive role marker from the SSR request.
+    // Prefer the same role-only stub during hydration so an authenticated
+    // server tree is not reconciled against a cold anonymous skeleton. The
+    // normal /users/me fetch below replaces it with the full profile.
+    const ssrUser = resolveSsrInitialUserState(ssrAuthHint)
+    if (ssrUser !== null) return ssrUser
     const signingKey = sessionSigningKeyRef.current
     if (!signingKey) return null
     const candidate = readCachedEnvelope()
@@ -714,7 +747,6 @@ export const useProfileSync = (
         mfa_default_method: null,
         mfa_last_verified_at: null,
         totp_enrollments: [],
-        mfa_challenges: [],
         recovery_codes_left: 0,
         avatar_url_optimized: null,
         cover_url_optimized: null,
@@ -727,15 +759,19 @@ export const useProfileSync = (
   const userStateRef = useRef<UserState>(userState)
   const pendingMfaRef = useRef<PendingMfaState | null>(pendingMfaState)
   const [initializing, setInitializing] = useState<boolean>(() => {
+    if (import.meta.env.VITE_LHCI === "true") return false
     if (typeof window === "undefined") {
       // Wave 128 SW1 — see resolveSsrInitialInitializing helper.
       return resolveSsrInitialInitializing(ssrAuthHint)
     }
     if (userState !== null) return false
-    const hasKey = !!sessionSigningKeyRef.current
-    const hasCache = !!readCachedEnvelope()
-    // If we have a potential session or cache, we must wait for verification
-    return hasKey || hasCache
+    // A browser render with no synchronous profile is not authenticated yet,
+    // but it still needs one asynchronous /users/me decision.  Keep the
+    // provider in its loading state for that first render so route guards do
+    // not redirect before the fetch effect can resolve a cookie-backed session.
+    // The initialization effect and the fetch `finally` below always settle
+    // this flag, including a fast 401 for a genuinely anonymous visitor.
+    return true
   })
   const [authOperation, setAuthOperation] = useState(false)
   // Wave 135 SW1 — `activeRequestRef` (AbortController for the /users/me
@@ -763,15 +799,21 @@ export const useProfileSync = (
 
       // Read from the ref for initialization
       const signingKey = sessionSigningKeyRef.current
+      let restoredProfile = false
       if (signingKey) {
         const cached = await readCachedUserAsync(signingKey)
         if (mounted && cached) {
           setUserState(cached)
+          restoredProfile = true
         }
       }
-      // If we didn't have a cache, initializing was already true, now we set it to false
-      // If we DID have a cache, initializing was already false, setting it to false is fine
-      if (mounted) setInitializing(false)
+      // A cold browser has no synchronous signing key, so the auto-fetch
+      // effect owns the loading transition and must be allowed to settle it
+      // after `/users/me` resolves (including a fast 401).  Only a genuinely
+      // restored, verified cache can finish initialization here; otherwise
+      // clearing the flag would expose a transient unauthenticated state to
+      // route guards before the cookie-backed request runs.
+      if (mounted && restoredProfile) setInitializing(false)
     }
     init()
     return () => {
@@ -899,6 +941,11 @@ export const useProfileSync = (
   }, [queryClient])
 
   useEffect(() => {
+    // The LHCI identity is synthetic and must not be cleared by the normal
+    // cross-tab cache synchronizer.  No browser cache is created for this
+    // audit user, so running syncFromCache here would race the auth bootstrap
+    // and replace the immediately-renderable user with null.
+    if (import.meta.env.VITE_LHCI === "true") return
     if (!isProfileSyncBrowserRuntime()) return
 
     const syncFromCache = async () => {
@@ -996,28 +1043,7 @@ export const useProfileSync = (
     // populate the store with a synthetic user so _auth.tsx beforeLoad
     // sees isAuth=true. Tree-shakes in prod (CI builds without the flag).
     if (import.meta.env.VITE_LHCI === "true") {
-      setUser({
-        id: "lhci-mock-user",
-        email: "",
-        full_name: "LHCI Test User",
-        role: "student",
-        group_id: null,
-        avatar_url: null,
-        cover_url: null,
-        spotify_connected: false,
-        profile_detail: undefined,
-        education_path: undefined,
-        preferences: null,
-        is_active: true,
-        mfa_required: false,
-        mfa_default_method: null,
-        mfa_last_verified_at: null,
-        totp_enrollments: [],
-        mfa_challenges: [],
-        recovery_codes_left: 0,
-        avatar_url_optimized: null,
-        cover_url_optimized: null,
-      } as User)
+      if (userStateRef.current?.id !== "lhci-mock-user") setUser(buildLhciMockUser())
       setInitializing(false)
       return
     }
@@ -1052,6 +1078,11 @@ export const useProfileSync = (
       // Already tried or have data, nothing to do
       return
     }
+    // Mark every fetch invocation, including the cold-start path that enters
+    // while `initializing` is already true.  Without this assignment that
+    // path remains indistinguishable from an unattempted fetch and a later
+    // dependency-only rerender can issue a second `/users/me` request.
+    autoFetchAttemptedRef.current = true
     ;(async () => {
       try {
         // Wave 134 SW1 — Bridge: route through queryClient.fetchQuery so the

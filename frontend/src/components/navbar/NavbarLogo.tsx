@@ -1,6 +1,9 @@
 import { Link } from "@tanstack/react-router"
 import { type TFunction } from "i18next"
-import guuLogo from "@/assets/guu_logo.png"
+// Force a cacheable URL for the shared logo. The default import is inlined by
+// Vite and is repeated in every SSR src/srcset entry; `?url` avoids that HTML
+// duplication while preserving the same image and responsive behavior.
+import guuLogo from "@/assets/guu_logo.png?url&no-inline"
 import SmartImage from "@/components/media/SmartImage"
 import { cn } from "@/utils/cn"
 import { breakpoints } from "@/theme/tokens"
@@ -39,7 +42,7 @@ export const NavbarLogo = ({
       aria-label={t("navigation:aria.homeLink")}
       className={cn(
         "inline-flex min-w-0 items-center rounded-2xl no-underline group",
-        "transition-[gap,padding]",
+        "transition-[transform,opacity]",
         dur,
         ease,
         "hover:bg-(--bg-surface-hover)/(--opacity-soft)",
@@ -59,7 +62,7 @@ export const NavbarLogo = ({
         className={cn(
           "flex items-center justify-center shrink-0 rounded-full",
           "bg-(--bg-surface-raised) dark:bg-(--bg-surface-hover) shadow-sm border border-border-subtle",
-          "transition-[width,height,transform,box-shadow]",
+          "transition-[transform,opacity]",
           dur,
           ease,
           isCompact
@@ -67,19 +70,9 @@ export const NavbarLogo = ({
             : isPhone
               ? "w-(--nav-action-size) h-(--nav-action-size)"
               : "w-11 h-11",
-          "hover:scale-105 hover:shadow-[var(--nav-link-hover-glow)] active:scale-95",
-          !prefersReducedMotion && "hover:transition-transform hover:duration-200",
-          !prefersReducedMotion && "animate-logo-shimmer"
+          !prefersReducedMotion &&
+            "hover:scale-105 active:scale-95 hover:transition-transform hover:duration-200"
         )}
-        style={
-          !prefersReducedMotion
-            ? {
-                backgroundImage:
-                  "linear-gradient(90deg, transparent 30%, color-mix(in srgb, white 20%, transparent) 50%, transparent 70%)",
-                backgroundSize: "200% 100%",
-              }
-            : undefined
-        }
       >
         <SmartImage
           srcRaw={guuLogo}
@@ -96,7 +89,7 @@ export const NavbarLogo = ({
       {/* Brand text — instant hide/show, pill morph handles the visual transition */}
       <div
         className={cn(
-          "overflow-hidden",
+          "navbar-brand-name overflow-hidden",
           isCompact || isPhone ? "max-w-0 opacity-0" : "max-w-40 opacity-100"
         )}
       >

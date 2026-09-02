@@ -30,7 +30,7 @@ const findLinkByHref = (container: HTMLElement, hrefStartsWith: string): HTMLAnc
 
 describe("Footer", () => {
   it("renders with role=contentinfo and brand block", async () => {
-    const { container } = await renderWithRouter({ ui: Footer, path: "/" })
+    const { container } = await renderWithRouter({ ui: Footer, path: "/", authProvider: false })
 
     const footer = container.querySelector("footer[role='contentinfo']")
     expect(footer).toBeTruthy()
@@ -41,7 +41,7 @@ describe("Footer", () => {
   })
 
   it("renders all 7 footer navigation links with footer-link-premium class", async () => {
-    const { container } = await renderWithRouter({ ui: Footer, path: "/" })
+    const { container } = await renderWithRouter({ ui: Footer, path: "/", authProvider: false })
 
     const links = container.querySelectorAll("a.footer-link-premium")
     // Navigation column: dashboard + news + schedule + events + map (5)
@@ -60,7 +60,7 @@ describe("Footer", () => {
   })
 
   it("renders copyright with the current year", async () => {
-    const { container } = await renderWithRouter({ ui: Footer, path: "/" })
+    const { container } = await renderWithRouter({ ui: Footer, path: "/", authProvider: false })
 
     const currentYear = new Date().getFullYear()
     const copyright = Array.from(container.querySelectorAll("p")).find((p) =>
@@ -70,38 +70,55 @@ describe("Footer", () => {
   })
 
   it("renders 2 social buttons (Telegram + Email) with aria-labels + security attrs", async () => {
-    const { container } = await renderWithRouter({ ui: Footer, path: "/" })
+    const { container } = await renderWithRouter({ ui: Footer, path: "/", authProvider: false })
 
     const socials = container.querySelectorAll("a.footer-social-btn")
     expect(socials.length).toBe(2)
 
-    // Each social link must have aria-label, target=_blank, rel="noopener noreferrer"
-    for (const a of Array.from(socials)) {
-      expect(a.getAttribute("aria-label")?.length ?? 0).toBeGreaterThan(0)
-      expect(a.getAttribute("target")).toBe("_blank")
-      expect(a.getAttribute("rel")).toContain("noopener")
-      expect(a.getAttribute("rel")).toContain("noreferrer")
-    }
+    const telegram = Array.from(socials).find((link) =>
+      link.getAttribute("href")?.startsWith("https://t.me/")
+    )
+    const email = Array.from(socials).find(
+      (link) => link.getAttribute("href") === "mailto:inf@guu.ru"
+    )
 
-    // Confirm hrefs target Telegram + Gmail
-    const hosts = Array.from(socials).map((a) => new URL((a as HTMLAnchorElement).href).hostname)
-    expect(hosts).toContain("t.me")
-    expect(hosts).toContain("mail.google.com")
+    expect(telegram).toHaveAttribute("target", "_blank")
+    expect(telegram).toHaveAttribute("rel", expect.stringContaining("noopener"))
+    expect(telegram).toHaveAccessibleName(/opens in a new tab|новой вкладке/i)
+    expect(telegram?.querySelector("svg[data-icon='telegram']")).toBeInTheDocument()
+
+    expect(email).toBeInTheDocument()
+    expect(email).not.toHaveAttribute("target")
+    expect(email).toHaveAccessibleName(/send an email|отправить письмо/i)
+
+    for (const link of Array.from(socials)) {
+      expect(link).toHaveClass("min-h-11", "min-w-11")
+    }
   })
 
-  it("marks decorative layers (FooterBackdrop, accent stripe) aria-hidden", async () => {
-    const { container } = await renderWithRouter({ ui: Footer, path: "/" })
+  it("uses a filled four-track grid without media-query-driven glow", async () => {
+    const { container } = await renderWithRouter({ ui: Footer, path: "/", authProvider: false })
 
-    // FooterBackdrop is a div with aria-hidden="true" containing 3 orbs
-    const ariaHiddenDivs = container.querySelectorAll(
-      "footer > div[aria-hidden='true'], footer > .footer-accent-stripe[aria-hidden='true']"
+    expect(container.querySelector(".grid")).toHaveClass("@lg:grid-cols-4")
+    expect(container.querySelector("[style*='radial-gradient']")).not.toBeInTheDocument()
+    expect(container.querySelector(".footer-stagger-item")).not.toBeInTheDocument()
+  })
+
+  it("marks the static accent divider as decorative", async () => {
+    const { container } = await renderWithRouter({ ui: Footer, path: "/", authProvider: false })
+
+    expect(container.querySelector("footer > .footer-accent-stripe")).toHaveAttribute(
+      "aria-hidden",
+      "true"
     )
-    // Should find at least FooterBackdrop wrapper + accent stripe
-    expect(ariaHiddenDivs.length).toBeGreaterThanOrEqual(2)
   })
 
   it("applies data-status='active' to /dashboard link when mounted on /dashboard", async () => {
-    const { container } = await renderWithRouter({ ui: Footer, path: "/dashboard" })
+    const { container } = await renderWithRouter({
+      ui: Footer,
+      path: "/dashboard",
+      authProvider: false,
+    })
 
     const link = findLinkByHref(container, "/dashboard")
     expect(link.dataset.status).toBe("active")
@@ -113,6 +130,7 @@ describe("Footer", () => {
       ui: Footer,
       path: "/news/$slug",
       initialPath: "/news/sample-article",
+      authProvider: false,
     })
 
     const link = findLinkByHref(container, "/news")
@@ -120,7 +138,11 @@ describe("Footer", () => {
   })
 
   it("does NOT mark inactive links with data-status='active'", async () => {
-    const { container } = await renderWithRouter({ ui: Footer, path: "/dashboard" })
+    const { container } = await renderWithRouter({
+      ui: Footer,
+      path: "/dashboard",
+      authProvider: false,
+    })
 
     // /events link should NOT have data-status="active" when on /dashboard
     const events = findLinkByHref(container, "/events")

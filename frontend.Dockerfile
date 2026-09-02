@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.12
 
 # Stage 1: Base
-FROM node:24-alpine@sha256:01743339035a5c3c11a373cd7c83aeab6ed1457b55da6a69e014a95ac4e4700b AS base
+FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS base
 WORKDIR /app
 
 # Stage 2: WASM — build Rust WASM packages (rust-crypto + wasm-sanitizer)
@@ -15,7 +15,7 @@ RUN wasm-pack build rust-crypto --target web \
 
 # Stage 3: Dependencies
 FROM base AS deps
-COPY frontend/package.json frontend/package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 COPY frontend/scripts ./scripts/
 # Copy built WASM packages so local file: dependencies exist and satisfy ensure-wasm preinstall check
 COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg
@@ -37,6 +37,14 @@ FROM base AS builder
 ENV SKIP_WASM_BUILD=1
 ARG VITE_BACKEND_ORIGIN=""
 ENV VITE_BACKEND_ORIGIN=$VITE_BACKEND_ORIGIN
+ARG VITE_APP_RELEASE=""
+ENV VITE_APP_RELEASE=$VITE_APP_RELEASE
+ARG VITE_ENABLE_WEB_VITALS="false"
+ENV VITE_ENABLE_WEB_VITALS=$VITE_ENABLE_WEB_VITALS
+ARG VITE_CWV_TRUSTED_RUM="false"
+ENV VITE_CWV_TRUSTED_RUM=$VITE_CWV_TRUSTED_RUM
+ARG VITE_WEB_VITALS_ENDPOINT="/api/v1/cwv"
+ENV VITE_WEB_VITALS_ENDPOINT=$VITE_WEB_VITALS_ENDPOINT
 # W153 SW1 — opt-in unminified bundle + linked source maps so the wedged
 # renderer error becomes readable in Chrome DevTools via stack traces.
 # Defaults to empty (production minified) so CI / prod deploys are
@@ -72,7 +80,7 @@ RUN rm -rf dist && npm run build
 # `dist/server/server.js` imports external runtime deps (react, @tanstack/*,
 # h3-v2, seroval, jose, ...) that must be resolvable at runtime.
 FROM base AS prod-deps
-COPY frontend/package.json frontend/package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
 COPY frontend/scripts ./scripts/
 # Copy built WASM packages so local file: dependencies exist and satisfy ensure-wasm preinstall check
 COPY --from=wasm-builder /wasm/rust-crypto/pkg ./rust-crypto/pkg
@@ -107,7 +115,7 @@ RUN --mount=type=cache,target=/root/.npm \
 #
 # The obsolete nginx runtime and `frontend/nginx.conf` were removed after the
 # SSR rollout. Edge routing is owned by `services/caddy/Caddyfile`.
-FROM node:24-alpine@sha256:01743339035a5c3c11a373cd7c83aeab6ed1457b55da6a69e014a95ac4e4700b AS runtime
+FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS runtime
 
 WORKDIR /app
 
@@ -139,6 +147,12 @@ COPY --from=wasm-builder --chown=node:node /wasm/wasm-sanitizer/pkg ./wasm-sanit
 # doesn't need them.
 COPY --chown=node:node frontend/scripts/server-prod.mjs ./scripts/server-prod.mjs
 COPY --chown=node:node frontend/scripts/contentTypes.mjs ./scripts/contentTypes.mjs
+COPY --chown=node:node frontend/scripts/not-found-response.mjs ./scripts/not-found-response.mjs
+COPY --chown=node:node frontend/scripts/lhci-ssr-response.mjs ./scripts/lhci-ssr-response.mjs
+COPY --chown=node:node frontend/scripts/lhci-preview-mode.mjs ./scripts/lhci-preview-mode.mjs
+COPY --chown=node:node frontend/scripts/server-response-stream.mjs ./scripts/server-response-stream.mjs
+COPY --chown=node:node frontend/scripts/server-readiness.mjs ./scripts/server-readiness.mjs
+COPY --chown=node:node frontend/scripts/server-request-log.mjs ./scripts/server-request-log.mjs
 
 # Build artifacts:
 #   dist/client/_shell.html + dist/client/index.html (mirror) + dist/client/assets/

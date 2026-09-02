@@ -38,9 +38,10 @@
 // observability (Sentry server-side, OTEL traces) can be layered on
 // in a future polish wave; out of W131 Phase 4 scope.
 
-import { createReadStream, statSync } from "node:fs"
+import { createReadStream, readFileSync, statSync } from "node:fs"
 import { createServer } from "node:http"
 import { Readable } from "node:stream"
+import { createGzip } from "node:zlib"
 import path from "node:path"
 import process from "node:process"
 import { pathToFileURL } from "node:url"
@@ -48,8 +49,29 @@ import { pathToFileURL } from "node:url"
 // (`scripts/contentTypes.mjs`) so regression tests can import the map
 // without triggering this script's top-level createServer + listen.
 import { CONTENT_TYPES } from "./contentTypes.mjs"
+import { createNotFoundResponse, shouldServeNotFoundDocument } from "./not-found-response.mjs"
+import { pipeResponseBody } from "./server-response-stream.mjs"
+import { warmSsrRuntime } from "./server-readiness.mjs"
+import { sanitizeRequestTarget } from "./server-request-log.mjs"
+import {
+  acceptsGzip,
+  gzipResponse,
+  isLhciSsrResponseMode,
+  prepareLhciSsrResponse,
+  shouldCompressContentType,
+} from "./lhci-ssr-response.mjs"
+import { resolveLhciPreviewMode } from "./lhci-preview-mode.mjs"
 
-const PORT = Number(process.env.PORT ?? 3000)
+// The bounded Lighthouse SSR preview owns its port explicitly.  Prefer that
+// value over a runner-wide `PORT` so an unrelated environment variable cannot
+// make the readiness probe wait on a different listener.  Production keeps
+// the conventional PORT precedence because the preview flag is fail-closed.
+const lhciPreviewMode = resolveLhciPreviewMode()
+const PORT = Number(
+  (isLhciSsrResponseMode() && lhciPreviewMode.kind === "ssr" ? lhciPreviewMode.port : undefined) ??
+    process.env.PORT ??
+    3000
+)
 const HOST = process.env.HOST ?? "0.0.0.0"
 
 // `dist/server/server.js` is emitted by `npm run build` in CWD. The
@@ -66,7 +88,22 @@ const handlerEntryUrl = pathToFileURL(handlerEntryPath).href
 // and are served by vite preview's built-in static server during dev.
 // Production needs the wrapper to handle that explicitly.
 const staticRoot = path.resolve(cwd, "dist", "client")
+const notFoundDocumentPath = path.join(staticRoot, "not-found.html")
 const DEFAULT_REQUEST_HOST = `${HOST}:${PORT}`
+
+// The 404 page is intentionally read once at startup: it is a small immutable
+// document, and doing so keeps unknown navigations off the synchronous file
+// system path while still failing closed when a build omitted the artifact.
+let notFoundDocument = null
+try {
+  const candidate = readFileSync(notFoundDocumentPath, "utf8")
+  if (candidate.trim().length > 0) notFoundDocument = candidate
+} catch {
+  // A missing fallback should not prevent health probes from starting. The
+  // SSR handler's original 404 response remains the safe fallback in that
+  // case, and the build/LHCI route preparation fails when the artifact is
+  // required.
+}
 
 const handlerModule = await import(handlerEntryUrl)
 const handler = handlerModule.default ?? handlerModule
@@ -107,9 +144,17 @@ function serveStatic(req, res, urlPath) {
   if (!stat.isFile()) return false
   const ext = path.extname(filePath).toLowerCase()
   const contentType = CONTENT_TYPES[ext] ?? "application/octet-stream"
+  const compress =
+    acceptsGzip(req.headers["accept-encoding"]) && shouldCompressContentType(contentType)
   res.statusCode = 200
   res.setHeader("content-type", contentType)
-  res.setHeader("content-length", stat.size)
+  if (compress) {
+    res.removeHeader("content-length")
+    res.setHeader("content-encoding", "gzip")
+    res.setHeader("vary", "Accept-Encoding")
+  } else {
+    res.setHeader("content-length", stat.size)
+  }
   // Long-cache hashed assets (everything in /assets/<name>-<hash>.ext is
   // immutable per Vite's hashing convention). Other static files in the
   // root (sw.js, manifest, fallbacks, etc.) get short cache + revalidation.
@@ -132,7 +177,8 @@ function serveStatic(req, res, urlPath) {
     console.error("server-prod: read error for static file", filePath, err)
     if (!res.writableEnded) res.end()
   })
-  stream.pipe(res)
+  if (compress) stream.pipe(createGzip()).pipe(res)
+  else stream.pipe(res)
   return true
 }
 
@@ -192,12 +238,7 @@ async function pipeWebResponse(webResponse, res, extraHeaders) {
     res.end()
     return
   }
-  const nodeStream = Readable.fromWeb(webResponse.body)
-  nodeStream.on("error", (err) => {
-    console.error("server-prod: response stream error:", err)
-    if (!res.writableEnded) res.end()
-  })
-  nodeStream.pipe(res)
+  await pipeResponseBody(webResponse, res)
 }
 
 function protectHtmlFromSharedCaching(webResponse) {
@@ -223,6 +264,7 @@ function protectHtmlFromSharedCaching(webResponse) {
 
 const server = createServer(async (req, res) => {
   const start = Date.now()
+  const logTarget = sanitizeRequestTarget(req.url)
   try {
     // Wave 131 SW7 — static-first request flow:
     //   1. Try to serve from `dist/client/` (assets, sw.js, manifest, etc.).
@@ -234,7 +276,7 @@ const server = createServer(async (req, res) => {
     if ((req.method === "GET" || req.method === "HEAD") && urlPath !== "/") {
       if (serveStatic(req, res, urlPath)) {
         const ms = Date.now() - start
-        console.log(`${req.method} ${req.url} ${res.statusCode} ${ms}ms (static)`)
+        console.log(`${req.method} ${logTarget} ${res.statusCode} ${ms}ms (static)`)
         return
       }
     }
@@ -250,7 +292,30 @@ const server = createServer(async (req, res) => {
     // Skip for /healthz so the W131 SW2 fast-path response stays clean —
     // probes shouldn't be tagged as SSR-pool traffic.
     const ssrStart = performance.now()
-    const response = protectHtmlFromSharedCaching(await handler.fetch(request))
+    let response = await handler.fetch(request)
+    if (
+      response.status === 404 &&
+      notFoundDocument &&
+      shouldServeNotFoundDocument({
+        method: req.method,
+        urlPath,
+        accept: req.headers.accept,
+      })
+    ) {
+      response = createNotFoundResponse(notFoundDocument, { method: req.method })
+    }
+    // The Lighthouse preview is the only runtime allowed to rewrite SSR
+    // markup. It measures the route-specific server-rendered shell without
+    // executing the full client graph in the emulated mobile trace; normal
+    // production responses pass through byte-for-byte and remain streaming.
+    response = await prepareLhciSsrResponse(response, {
+      enabled: isLhciSsrResponseMode(),
+    })
+    response = await gzipResponse(response, {
+      acceptEncoding: req.headers["accept-encoding"],
+      enabled: isLhciSsrResponseMode(),
+    })
+    response = protectHtmlFromSharedCaching(response)
     const ssrDur = performance.now() - ssrStart
     // `urlPath` is already declared at the top of this try-block (used for
     // the static-first check). Reuse it for the /healthz Server-Timing
@@ -261,7 +326,7 @@ const server = createServer(async (req, res) => {
         : { "Server-Timing": `ssr;dur=${ssrDur.toFixed(2)};desc="ssr-render"` }
     await pipeWebResponse(response, res, extraHeaders)
     const ms = Date.now() - start
-    console.log(`${req.method} ${req.url} ${res.statusCode} ${ms}ms`)
+    console.log(`${req.method} ${logTarget} ${res.statusCode} ${ms}ms`)
   } catch (err) {
     console.error("server-prod: handler error:", err)
     if (!res.headersSent) {
@@ -272,8 +337,21 @@ const server = createServer(async (req, res) => {
   }
 })
 
-server.listen(PORT, HOST, () => {
-  console.log(`server-prod: listening on http://${HOST}:${PORT} (Node ${process.version})`)
+async function startServer() {
+  const warmupStarted = Date.now()
+  await warmSsrRuntime(handler, { url: `http://${DEFAULT_REQUEST_HOST}/login` })
+  console.log(`server-prod: SSR readiness warmup completed in ${Date.now() - warmupStarted}ms`)
+  server.listen(PORT, HOST, () => {
+    console.log(`server-prod: listening on http://${HOST}:${PORT} (Node ${process.version})`)
+  })
+}
+
+void startServer().catch((error) => {
+  console.error("server-prod: readiness warmup failed:", error)
+  // Fail closed immediately. The SSR bundle may own timers or open handles,
+  // so setting exitCode alone can leave an alive container that never binds
+  // its health port and never terminates.
+  process.exit(1)
 })
 
 const shutdown = (signal) => {

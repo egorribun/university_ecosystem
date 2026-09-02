@@ -70,7 +70,7 @@ describe("ProfileEditor", () => {
     expect(screen.getAllByRole("textbox")).toHaveLength(3)
   })
 
-  it("fires the base-field setters and the action callbacks", () => {
+  it("keeps email read-only and fires the editable base-field setters", () => {
     const props = makeProps()
     render(<ProfileEditor {...props} />)
     const boxes = screen.getAllByRole("textbox")
@@ -78,7 +78,10 @@ describe("ProfileEditor", () => {
     fireEvent.change(boxes[1]!, { target: { value: "grace@example.com" } })
     fireEvent.change(boxes[2]!, { target: { value: "@grace" } })
     expect(props.setFullName).toHaveBeenCalledWith("Grace")
-    expect(props.setEmail).toHaveBeenCalledWith("grace@example.com")
+    expect(boxes[1]).toHaveValue("ada@example.com")
+    expect(boxes[1]).toHaveAttribute("readonly")
+    expect(boxes[1]).toHaveAccessibleDescription("profile:form.emailHint")
+    expect(props.setEmail).not.toHaveBeenCalled()
     expect(props.setTelegram).toHaveBeenCalledWith("@grace")
     fireEvent.click(screen.getByText("profile:form.save"))
     fireEvent.click(screen.getByText("profile:form.cancel"))

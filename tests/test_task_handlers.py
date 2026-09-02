@@ -198,12 +198,18 @@ class TestCleanupPrivacyArtifactsTask:
             patch(
                 "app.tasks.cleanups.cleanup_privacy_artifacts", new_callable=AsyncMock
             ) as mock_cleanup,
+            patch(
+                "app.tasks.cleanups.cleanup_stale_cwv_observations",
+                new_callable=AsyncMock,
+            ) as mock_cwv_cleanup,
         ):
             mock_settings.session_retention_days = 30
             mock_settings.mfa_retention_days = 90
             mock_settings.failed_login_retention_days = 14
             mock_settings.access_log_retention_days = 365
             mock_settings.privacy_cleanup_interval_seconds = 3600
+            mock_settings.cwv_rum_enabled = True
+            mock_settings.cwv_retention_days = 30
             inner = getattr(
                 cleanups.cleanup_privacy_artifacts_task,
                 "__wrapped__",
@@ -212,6 +218,7 @@ class TestCleanupPrivacyArtifactsTask:
             if callable(inner):
                 await inner()
             mock_cleanup.assert_called_once()
+            mock_cwv_cleanup.assert_awaited_once_with(retention_days=30)
 
 
 class TestManagePartitionsTask:

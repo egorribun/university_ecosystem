@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -112,6 +112,17 @@ describe("settings layout primitives", () => {
     expect(expandedButton.nextElementSibling).toHaveStyle({ maxHeight: "2000px" })
   })
 
+  it("does not create an empty subtitle element", () => {
+    render(
+      <AccordionSection title="No subtitle" subtitle="">
+        <span>Body</span>
+      </AccordionSection>
+    )
+
+    const button = screen.getByRole("button", { name: "No subtitle" })
+    expect(button.querySelector("p")).toBeNull()
+  })
+
   it("supports tab clicks, roving focus, and all ARIA keyboard directions", async () => {
     const user = userEvent.setup()
     const onChange = vi.fn()
@@ -198,8 +209,28 @@ describe("settings layout primitives", () => {
       </Tabs>
     )
     const tablist = view.container.querySelector('[role="tablist"]')!
-    fireEvent.keyDown(tablist, { key: "ArrowRight" })
+    await act(async () => {
+      fireEvent.keyDown(tablist, { key: "ArrowRight" })
+      view.unmount()
+      await new Promise<void>((resolve) => queueMicrotask(resolve))
+    })
+  })
+
+  it("safely ignores deferred focus when the target tab is absent", async () => {
+    const view = render(
+      <Tabs value={0} onChange={vi.fn()} panelId="missing-target">
+        <Tab label="Present" />
+        {null}
+      </Tabs>
+    )
+    const tablist = view.container.querySelector('[role="tablist"]')!
+
+    await act(async () => {
+      fireEvent.keyDown(tablist, { key: "ArrowRight" })
+      await new Promise<void>((resolve) => queueMicrotask(resolve))
+    })
+
+    expect(screen.getByRole("tab", { name: "Present" })).toBeInTheDocument()
     view.unmount()
-    await Promise.resolve()
   })
 })

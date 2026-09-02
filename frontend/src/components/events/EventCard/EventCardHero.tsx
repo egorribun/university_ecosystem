@@ -4,7 +4,7 @@
  * Pattern source: components/news/NewsCardHero.tsx
  */
 
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { memo, useEffect, useLayoutEffect, useRef, useState } from "react"
 import SmartImage from "@/components/media/SmartImage"
 import { useOnlineStatus } from "@/hooks/useOnlineStatus"
 import { cn } from "@/utils/cn"
@@ -33,19 +33,17 @@ const EventCardHero = ({
   title,
   startsAt,
   endsAt: _endsAt,
-  timeStatus = "none",
+  timeStatus,
   transitioning,
   priority,
 }: EventCardHeroProps) => {
   const { t, i18n } = useTranslation(["events", "common"])
   const isOnline = useOnlineStatus()
-  const [ready, setReady] = useState(!imageUrl)
+  const [loadedSource, setLoadedSource] = useState<string | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  const src = useMemo(() => imageUrl || "", [imageUrl])
-  useEffect(() => {
-    setReady(!src)
-  }, [src])
+  const src = imageUrl || ""
+  const ready = !src || loadedSource === src
 
   /* ── Back-nav view transition: set VT name via DOM ref in layout phase ──
      Same pattern as NewsCardHero — useLayoutEffect fires synchronously
@@ -60,36 +58,29 @@ const EventCardHero = ({
     clearEventsHeroId()
 
     const cleanup = setTimeout(() => {
-      el.style.viewTransitionName = ""
+      el.style.removeProperty("view-transition-name")
     }, 0)
     return () => {
       clearTimeout(cleanup)
-      el.style.viewTransitionName = ""
+      el.style.removeProperty("view-transition-name")
     }
   }, [id])
 
-  const onLoad = useCallback(() => setReady(true), [])
+  const onLoad = () => setLoadedSource(src)
 
   /* ── Date formatting ── */
   const locale = i18n.language === "ru" ? "ru-RU" : "en-US"
-  const dateLabel = useMemo(
-    () =>
-      startsAt
-        ? formatDate(startsAt, {
-            day: "numeric",
-            month: "short",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          })
-        : "",
-    [startsAt]
-  )
-  const relativeLabel = useMemo(
-    () => (startsAt ? formatRelativeTime(startsAt, locale) : ""),
-    [startsAt, locale]
-  )
-  const isoDate = useMemo(() => (startsAt ? new Date(startsAt).toISOString() : ""), [startsAt])
+  const dateLabel = startsAt
+    ? formatDate(startsAt, {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
+    : undefined
+  const relativeLabel = startsAt ? formatRelativeTime(startsAt, locale) : undefined
+  const isoDate = startsAt ? new Date(startsAt).toISOString() : undefined
 
   /* ── Parallax on scroll — image shifts 8% vertically ── */
   useEffect(() => {

@@ -83,7 +83,6 @@ class CorsSettingsMixin:
         _extend(self.frontend_origins)
         _extend(self.frontend_origin)
         _extend(self.app_base_url)
-        _extend(getattr(self, "webauthn_origin", None))
 
         if getattr(self, "is_development", False):
             raw.extend(["http://localhost:5173", "http://127.0.0.1:5173"])

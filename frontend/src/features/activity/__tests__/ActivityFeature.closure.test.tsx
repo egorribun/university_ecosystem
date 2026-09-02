@@ -81,6 +81,12 @@ const activityData = vi.hoisted(() => ({
   attendanceTrendData: [{ date: "2026-08-01", value: 100 }],
   gradesBySubject: [{ label: "Math", value: 5, max: 5 }],
   heatmapData: new Map([["2026-08-01", 3]]),
+  hasAnyData: true,
+  isError: false,
+  error: null,
+  refetch: vi.fn(),
+  availability: { attendance: true, grades: true, participation: true },
+  isPartial: false,
 }))
 
 vi.mock("@/hooks/useActivityData", () => ({
@@ -123,6 +129,11 @@ vi.mock("@/features/activity/components/ParticipationCard", () => ({
     <div data-testid="participation-card">{ringSize}</div>
   ),
 }))
+vi.mock("@/features/activity/components/ActivityUnavailableCard", () => ({
+  ActivityUnavailableCard: ({ title }: { title: string }) => (
+    <div data-testid="activity-unavailable-card">{title}</div>
+  ),
+}))
 vi.mock("@/features/activity/components/ActivityTrendChart", () => ({
   ActivityTrendChart: () => <div data-testid="activity-trend-chart" />,
 }))
@@ -152,6 +163,11 @@ beforeEach(() => {
   state.indicator = null
   state.comparativeHasData = true
   state.setPeriod.mockReset()
+  activityData.hasAnyData = true
+  activityData.isError = false
+  activityData.refetch.mockReset()
+  activityData.availability = { attendance: true, grades: true, participation: true }
+  activityData.isPartial = false
 })
 
 describe("ActivityFeature closure", () => {
@@ -200,5 +216,50 @@ describe("ActivityFeature closure", () => {
     state.comparativeHasData = false
     rerender(<ActivityFeature />)
     expect(screen.queryByTestId("activity-comparative-card")).not.toBeInTheDocument()
+  })
+
+  it("centers the shared period control and exposes empty and retry states", () => {
+    const { rerender } = render(<ActivityFeature />)
+    expect(screen.getByRole("radiogroup")).toHaveClass("mx-auto")
+
+    activityData.hasAnyData = false
+    rerender(<ActivityFeature />)
+    expect(screen.getByText("activity:empty.title")).toBeInTheDocument()
+
+    activityData.isError = true
+    rerender(<ActivityFeature />)
+    expect(screen.getByRole("alert")).toHaveTextContent("activity:error.title")
+    fireEvent.click(screen.getByRole("button", { name: "activity:error.retry" }))
+    expect(activityData.refetch).toHaveBeenCalled()
+  })
+
+  it("renders an honest unavailable card and retry warning for a partial response", () => {
+    activityData.attendance = null as never
+    activityData.availability = { attendance: false, grades: true, participation: true }
+    activityData.isPartial = true
+    render(<ActivityFeature />)
+
+    expect(screen.getByRole("status")).toHaveTextContent("activity:partial.title")
+    expect(screen.getAllByTestId("activity-unavailable-card")).toHaveLength(2)
+    expect(screen.getByText("activity:sections.attendance.title")).toBeInTheDocument()
+    expect(screen.getByText("activity:charts.attendanceTrend")).toBeInTheDocument()
+    expect(screen.queryByTestId("attendance-card")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "activity:partial.retry" }))
+    expect(activityData.refetch).toHaveBeenCalledOnce()
+  })
+
+  it("renders skeleton cards and every unavailable participation/chart branch", () => {
+    activityData.hasInitiallyLoaded = false
+    const { rerender } = render(<ActivityFeature />)
+    expect(screen.getByTestId("participation-card")).toBeInTheDocument()
+
+    activityData.hasInitiallyLoaded = true
+    activityData.availability = { attendance: true, grades: false, participation: false }
+    rerender(<ActivityFeature />)
+
+    expect(screen.queryByTestId("grades-card")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("participation-card")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("activity-bar-chart")).not.toBeInTheDocument()
+    expect(screen.getAllByTestId("activity-unavailable-card").length).toBeGreaterThanOrEqual(3)
   })
 })

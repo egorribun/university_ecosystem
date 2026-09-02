@@ -1,5 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { act, render, screen } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 const { mockGetDatabase } = vi.hoisted(() => ({ mockGetDatabase: vi.fn() }))
 
@@ -16,10 +16,66 @@ beforeEach(() => {
   mockGetDatabase.mockReset()
 })
 
+afterEach(() => {
+  vi.unstubAllGlobals()
+})
+
+function captureInitializationTimer() {
+  let timerCallback: (() => void) | undefined
+  const requestIdleSpy = vi.fn(() => 19)
+  vi.stubGlobal("requestIdleCallback", requestIdleSpy)
+  vi.stubGlobal("cancelIdleCallback", vi.fn())
+  const setTimeoutSpy = vi.spyOn(window, "setTimeout").mockImplementation(((
+    callback: TimerHandler,
+    delay?: number
+  ) => {
+    if (delay === 10_000) timerCallback = callback as () => void
+    return 73
+  }) as typeof window.setTimeout)
+  return { setTimeoutSpy, requestIdleSpy, timerCallback: () => timerCallback?.() }
+}
+
 describe("RxDBContext closure", () => {
+  it("does not schedule offline initialization when explicitly opted out", () => {
+    const { setTimeoutSpy, requestIdleSpy } = captureInitializationTimer()
+
+    render(
+      <RxDBProvider autoInitialize={false}>
+        <Consumer />
+      </RxDBProvider>
+    )
+
+    expect(screen.getByTestId("db-state")).toHaveTextContent("empty")
+    expect(setTimeoutSpy).not.toHaveBeenCalled()
+    expect(requestIdleSpy).not.toHaveBeenCalled()
+    expect(mockGetDatabase).not.toHaveBeenCalled()
+  })
+
+  it("defers the offline database behind a deterministic ten-second timer", async () => {
+    const database = { schedule: {} }
+    mockGetDatabase.mockResolvedValue(database)
+    const { setTimeoutSpy, requestIdleSpy, timerCallback } = captureInitializationTimer()
+
+    render(
+      <RxDBProvider autoInitialize>
+        <Consumer />
+      </RxDBProvider>
+    )
+
+    expect(mockGetDatabase).not.toHaveBeenCalled()
+    expect(requestIdleSpy).not.toHaveBeenCalled()
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 10_000)
+    await act(async () => {
+      timerCallback()
+      await Promise.resolve()
+    })
+    expect(screen.getByTestId("db-state")).toHaveTextContent("ready")
+  })
+
   it("publishes the initialized database through the provider", async () => {
     const database = { schedule: {} }
     mockGetDatabase.mockResolvedValue(database)
+    const { timerCallback } = captureInitializationTimer()
 
     render(
       <RxDBProvider>
@@ -27,12 +83,17 @@ describe("RxDBContext closure", () => {
       </RxDBProvider>
     )
 
-    await waitFor(() => expect(screen.getByTestId("db-state")).toHaveTextContent("ready"))
+    await act(async () => {
+      timerCallback()
+      await Promise.resolve()
+    })
+    expect(screen.getByTestId("db-state")).toHaveTextContent("ready")
   })
 
   it("keeps the context empty and logs initialization failures", async () => {
     const error = new Error("database unavailable")
     mockGetDatabase.mockRejectedValue(error)
+    const { timerCallback } = captureInitializationTimer()
     const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined)
 
     render(
@@ -41,28 +102,28 @@ describe("RxDBContext closure", () => {
       </RxDBProvider>
     )
 
-    await waitFor(() =>
-      expect(consoleError).toHaveBeenCalledWith("[RxDB] Initialization failed:", error)
-    )
+    await act(async () => {
+      timerCallback()
+      await Promise.resolve()
+    })
+    expect(consoleError).toHaveBeenCalledWith("[RxDB] Initialization failed:", error)
     expect(screen.getByTestId("db-state")).toHaveTextContent("empty")
     consoleError.mockRestore()
   })
 
-  it("does not publish a resolved database after the provider unmounts", async () => {
-    let resolveDatabase: (database: unknown) => void = () => undefined
-    mockGetDatabase.mockReturnValue(
-      new Promise((resolve) => {
-        resolveDatabase = resolve
-      })
-    )
+  it("cancels deferred initialization when the provider unmounts", async () => {
+    const timerHandle = 41 as unknown as ReturnType<typeof window.setTimeout>
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout").mockReturnValue(timerHandle)
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout").mockImplementation(() => undefined)
     const { unmount } = render(
       <RxDBProvider>
         <Consumer />
       </RxDBProvider>
     )
     unmount()
-    resolveDatabase({ schedule: {} })
-    await Promise.resolve()
-    expect(mockGetDatabase).toHaveBeenCalledOnce()
+
+    expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 10_000)
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(timerHandle)
+    expect(mockGetDatabase).not.toHaveBeenCalled()
   })
 })

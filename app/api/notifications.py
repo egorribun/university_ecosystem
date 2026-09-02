@@ -27,6 +27,10 @@ from app.core.database import get_db, get_read_db
 from app.core.localization import localized_text, resolve_locale, translate
 from app.core.logging import get_logger
 from app.core.middleware import _ensure_vary_header as ensure_vary_header
+from app.core.notification_contract import (
+    build_notification_metadata,
+    infer_notification_topic,
+)
 from app.core.protocols import AsyncDatabaseSession
 from app.models import Notification, Schedule, User
 from app.schemas.schemas import (
@@ -335,6 +339,13 @@ def _serialize_notification(
     if isinstance(identifier, str):
         identifier = identifier.strip()
 
+    topic = infer_notification_topic(type_raw)
+    metadata = build_notification_metadata(
+        notification_id=identifier,
+        topic=topic,
+        notification_type=str(type_raw) if type_raw is not None else None,
+        url=str(url_raw) if url_raw is not None else None,
+    )
     data = {
         "id": identifier,
         "title": _localized_notification_field(
@@ -352,6 +363,8 @@ def _serialize_notification(
         "body_en": getter("body_en", None),
         "type": type_raw,
         "url": url_raw,
+        "topic": topic,
+        "metadata": metadata,
         "created_at": created_at,
         "read": _coerce_bool(getter("read", False)),
         "read_at": read_at,

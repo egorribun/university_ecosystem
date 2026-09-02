@@ -5,9 +5,8 @@ const mocks = vi.hoisted(() => ({
   auth: { user: { id: "user-1" } as { id: string } | null },
   email: {} as Record<string, unknown>,
   password: {} as Record<string, unknown>,
-  sessions: {} as Record<string, unknown>,
   totp: {} as Record<string, unknown>,
-  webauthn: {} as Record<string, unknown>,
+  emailMfa: {} as Record<string, unknown>,
 }))
 
 vi.mock("react-i18next", () => ({
@@ -23,9 +22,8 @@ vi.mock("@/contexts/AuthContext", () => ({
 vi.mock("@/pages/settings/hooks", () => ({
   useEmailChange: () => mocks.email,
   usePasswordChange: () => mocks.password,
-  useSessionManagement: () => mocks.sessions,
   useTotpEnrollment: () => mocks.totp,
-  useWebAuthn: () => mocks.webauthn,
+  useEmailMfa: () => mocks.emailMfa,
 }))
 
 vi.mock("@/pages/settings/sections", () => ({
@@ -40,25 +38,6 @@ vi.mock("@/pages/settings/sections", () => ({
     <section data-testid="password-section">
       <button type="button" onClick={onSubmit}>
         password-submit
-      </button>
-    </section>
-  ),
-  SessionsSection: ({
-    sessionsErrorMessage,
-    onRevokeSession,
-    onRevokeAllSessions,
-  }: {
-    sessionsErrorMessage: string | null
-    onRevokeSession: (id: string) => void
-    onRevokeAllSessions: () => void
-  }) => (
-    <section data-testid="sessions-section">
-      <div data-testid="sessions-error">{sessionsErrorMessage}</div>
-      <button type="button" onClick={() => onRevokeSession("session-1")}>
-        revoke-session
-      </button>
-      <button type="button" onClick={onRevokeAllSessions}>
-        revoke-all
       </button>
     </section>
   ),
@@ -157,19 +136,6 @@ const makePasswordState = () => ({
   handlePasswordSubmit: vi.fn(),
 })
 
-const makeSessionsState = () => ({
-  sessions: [],
-  sortedSessions: [],
-  sessionsFetching: false,
-  sessionsIsError: false,
-  sessionsError: null,
-  handleRevokeSession: vi.fn(),
-  handleRevokeAllSessions: vi.fn(),
-  revokeSessionBusy: false,
-  revokeAllSessionsBusy: false,
-  formatSessionTimestamp: vi.fn(() => "formatted-date"),
-})
-
 const makeTotpState = () => ({
   totpDraft: null,
   totpBusy: false,
@@ -182,12 +148,17 @@ const makeTotpState = () => ({
   formatDateTime: vi.fn(() => "formatted-date"),
 })
 
-const makeWebAuthnState = () => ({
-  credentials: [],
-  busy: false,
-  supported: false,
-  handleRegister: vi.fn(),
-  handleDelete: vi.fn(),
+const makeEmailMfaState = () => ({
+  emailChallenge: null,
+  emailMfaBusy: false,
+  emailMfaError: null,
+  emailMfaEnabled: false,
+  emailVerified: true,
+  handleStartEmailMfa: vi.fn(),
+  handleConfirmEmailMfa: vi.fn(),
+  handleResendEmailMfa: vi.fn(),
+  handleCancelEmailMfa: vi.fn(),
+  handleDisableEmailMfa: vi.fn(),
 })
 
 const renderSecurity = (isActive = true) =>
@@ -197,29 +168,25 @@ beforeEach(() => {
   mocks.auth = { user: { id: "user-1" } }
   mocks.email = makeEmailState()
   mocks.password = makePasswordState()
-  mocks.sessions = makeSessionsState()
   mocks.totp = makeTotpState()
-  mocks.webauthn = makeWebAuthnState()
+  mocks.emailMfa = makeEmailMfaState()
 })
 
 describe("SettingsSecurity", () => {
-  it("renders delegated sections and forwards email/password/session actions", () => {
+  it("renders delegated sections and forwards email/password actions", () => {
     renderSecurity()
 
     expect(screen.getByTestId("email-section")).toBeInTheDocument()
     expect(screen.getByTestId("password-section")).toBeInTheDocument()
-    expect(screen.getByTestId("sessions-section")).toBeInTheDocument()
-    expect(screen.getByRole("status")).toHaveTextContent("settings:security.webauthn.notSupported")
+    expect(
+      screen.getByRole("button", { name: "settings:security.emailMfa.enable" })
+    ).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole("button", { name: "email-submit" }))
     fireEvent.click(screen.getByRole("button", { name: "password-submit" }))
-    fireEvent.click(screen.getByRole("button", { name: "revoke-session" }))
-    fireEvent.click(screen.getByRole("button", { name: "revoke-all" }))
 
     expect(mocks.email.handleEmailSubmit).toHaveBeenCalledTimes(1)
     expect(mocks.password.handlePasswordSubmit).toHaveBeenCalledTimes(1)
-    expect(mocks.sessions.handleRevokeSession).toHaveBeenCalledWith("session-1")
-    expect(mocks.sessions.handleRevokeAllSessions).toHaveBeenCalledTimes(1)
   })
 
   it("covers TOTP add, draft confirmation/cancel, active removal, and limit states", () => {
@@ -257,58 +224,60 @@ describe("SettingsSecurity", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Too many attempts")
   })
 
-  it("covers supported WebAuthn credentials, registration, deletion, and busy controls", () => {
+  it("covers email MFA enable, challenge, resend, confirm, cancel, and disable states", () => {
     const { rerender } = renderSecurity()
-    mocks.webauthn = {
-      ...makeWebAuthnState(),
-      supported: true,
-      credentials: [{ id: "credential-1", label: "", created_at: "2026-01-01T00:00:00Z" }],
-    }
-    rerender(<SettingsSecurity setSnackbar={vi.fn()} openStepUpFor={vi.fn()} isActive />)
-    expect(screen.getByText("settings:security.webauthn.defaultLabel")).toBeInTheDocument()
-    const iconButton = screen.getAllByRole("button").find((button) => button.querySelector("svg"))
-    expect(iconButton).toBeDefined()
-    fireEvent.click(iconButton!)
-    fireEvent.click(screen.getByRole("button", { name: "settings:security.webauthn.add" }))
-    expect(mocks.webauthn.handleDelete).toHaveBeenCalledWith("credential-1")
-    expect(mocks.webauthn.handleRegister).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole("button", { name: "settings:security.emailMfa.enable" }))
+    expect(mocks.emailMfa.handleStartEmailMfa).toHaveBeenCalledTimes(1)
 
-    mocks.webauthn = {
-      ...mocks.webauthn,
-      busy: true,
+    mocks.emailMfa = {
+      ...makeEmailMfaState(),
+      emailMfaError: "Email delivery failed",
+      emailChallenge: {
+        method: "email_otp",
+        challenge_token: "challenge-token",
+        challenge_expires_at: "2026-08-25T16:00:00Z",
+        delivery_hint: "u***@example.com",
+      },
     }
     rerender(<SettingsSecurity setSnackbar={vi.fn()} openStepUpFor={vi.fn()} isActive />)
-    expect(screen.getByRole("button", { name: "settings:security.webauthn.add" })).toBeDisabled()
+    expect(screen.getByRole("alert")).toHaveTextContent("Email delivery failed")
+    expect(screen.getByText("settings:security.emailMfa.sentTo")).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "otp-submit" }))
+    fireEvent.click(screen.getByRole("button", { name: "settings:security.emailMfa.resend" }))
+    fireEvent.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+    expect(mocks.emailMfa.handleConfirmEmailMfa).toHaveBeenCalledWith("123456")
+    expect(mocks.emailMfa.handleResendEmailMfa).toHaveBeenCalledTimes(1)
+    expect(mocks.emailMfa.handleCancelEmailMfa).toHaveBeenCalledTimes(1)
+
+    mocks.emailMfa = {
+      ...makeEmailMfaState(),
+      emailMfaEnabled: true,
+    }
+    rerender(<SettingsSecurity setSnackbar={vi.fn()} openStepUpFor={vi.fn()} isActive />)
+    fireEvent.click(screen.getByRole("button", { name: "settings:security.emailMfa.disable" }))
+    expect(mocks.emailMfa.handleDisableEmailMfa).toHaveBeenCalledTimes(1)
   })
 
-  it("normalizes session error details, Error messages, and translation fallback", () => {
-    const { rerender } = renderSecurity(false)
-    mocks.sessions = {
-      ...makeSessionsState(),
-      sessionsIsError: true,
-      sessionsError: { response: { data: { detail: ["expired", "reauthenticate"] } } },
+  it("covers email delivery fallbacks and the unverified-account action", () => {
+    mocks.auth = { user: { id: "user-1", email: "user@example.com" } as never }
+    mocks.emailMfa = {
+      ...makeEmailMfaState(),
+      emailChallenge: {
+        method: "email_otp",
+        challenge_token: "challenge-token",
+        challenge_expires_at: "2026-08-25T16:00:00Z",
+      },
     }
-    rerender(<SettingsSecurity setSnackbar={vi.fn()} openStepUpFor={vi.fn()} isActive={false} />)
-    expect(screen.getByTestId("sessions-error")).toHaveTextContent("expired,reauthenticate")
-
-    mocks.sessions = {
-      ...makeSessionsState(),
-      sessionsIsError: true,
-      sessionsError: new Error("Sessions offline"),
-    }
-    rerender(<SettingsSecurity setSnackbar={vi.fn()} openStepUpFor={vi.fn()} isActive={false} />)
-    expect(screen.getByTestId("sessions-error")).toHaveTextContent("Sessions offline")
-
-    mocks.sessions = {
-      ...makeSessionsState(),
-      sessionsIsError: true,
-      sessionsError: {},
-    }
-    rerender(<SettingsSecurity setSnackbar={vi.fn()} openStepUpFor={vi.fn()} isActive={false} />)
-    expect(screen.getByTestId("sessions-error")).toHaveTextContent("settings:sessions.error")
+    const { rerender } = renderSecurity()
+    expect(screen.getByText("settings:security.emailMfa.sentTo")).toBeInTheDocument()
 
     mocks.auth = { user: null }
-    rerender(<SettingsSecurity setSnackbar={vi.fn()} openStepUpFor={vi.fn()} isActive={false} />)
-    expect(screen.getByTestId("sessions-error")).toHaveTextContent("settings:sessions.error")
+    rerender(<SettingsSecurity setSnackbar={vi.fn()} openStepUpFor={vi.fn()} isActive />)
+    expect(screen.getByText("settings:security.emailMfa.sentTo")).toBeInTheDocument()
+
+    mocks.emailMfa = { ...makeEmailMfaState(), emailVerified: false }
+    rerender(<SettingsSecurity setSnackbar={vi.fn()} openStepUpFor={vi.fn()} isActive />)
+    fireEvent.click(screen.getByRole("button", { name: "settings:security.emailMfa.verifyEmail" }))
+    expect(mocks.emailMfa.handleStartEmailMfa).toHaveBeenCalledOnce()
   })
 })

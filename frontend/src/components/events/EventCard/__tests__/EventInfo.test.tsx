@@ -1,11 +1,19 @@
 import { render, screen } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
 
+const { useTranslationMock, translationMock } = vi.hoisted(() => {
+  const translationMock = vi.fn((key: string) => key)
+  return {
+    useTranslationMock: vi.fn(() => ({
+      t: translationMock,
+      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+    })),
+    translationMock,
+  }
+})
+
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  useTranslation: useTranslationMock,
 }))
 
 import { EventInfo } from "@/components/events/EventCard/EventInfo"
@@ -52,6 +60,9 @@ describe("EventInfo", () => {
     expect(container.querySelector('[title="events:form.location"]')).toBeInTheDocument()
     expect(container.querySelector('[data-tooltip="events:form.dates"]')).toBeInTheDocument()
     expect(container.querySelector('[data-tooltip="events:form.location"]')).toBeInTheDocument()
+    expect(useTranslationMock).toHaveBeenCalledWith(["events"])
+    expect(translationMock).toHaveBeenCalledWith("events:form.dates")
+    expect(translationMock).toHaveBeenCalledWith("events:form.location")
   })
 
   it("renders both start and end timestamps as <time> elements", () => {

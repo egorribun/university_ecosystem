@@ -1,9 +1,11 @@
 {
   "pageTitle": "University news",
+  "pageDescription": "Latest news and updates from the university ecosystem.",
   "states": {
     "empty": "No news yet",
     "loadError": "Failed to load the news.",
-    "noComments": "No comments yet. Be the first!"
+    "noComments": "No comments yet. Be the first!",
+    "checkLater": "Check back later for updates"
   },
   "sections": {
     "comments": "Comments"
@@ -96,7 +98,8 @@
     "hero": "News cover image {{title}}",
     "heroFallback": "News cover image",
     "preview": "Preview of the news image",
-    "newCover": "Preview of the new cover"
+    "newCover": "Preview of the new cover",
+    "editPreview": "Preview of the edited news image"
   },
   "categories": {
     "all": "All",
@@ -122,9 +125,15 @@
   "keyboard": {
     "hint": "J/K — navigate",
     "overlayTitle": "Keyboard shortcuts",
-    "pressToClose": "Press ? or Esc to close"
+    "pressToClose": "Press ? or Esc to close",
+    "next": "Next news item",
+    "prev": "Previous news item",
+    "open": "Open news item",
+    "deselect": "Deselect",
+    "toggleHelp": "Toggle shortcuts"
   },
   "aria": {
+    "categoryFilter": "Filter news by category",
     "cardActions": "News actions",
     "editNews": "Edit news",
     "deleteNews": "Delete news",

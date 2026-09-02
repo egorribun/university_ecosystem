@@ -19,6 +19,14 @@ export interface OfflineStrings {
   footer: string;
 }
 
+export interface NotFoundStrings {
+  pageTitle: string;
+  title: string;
+  description: string;
+  home: string;
+  login: string;
+}
+
 export interface ManifestShortcutStrings {
   name: string;
   description?: string;
@@ -34,6 +42,7 @@ export interface ManifestStrings {
 export interface TranslationBundle {
   meta?: MetaStrings;
   offline?: OfflineStrings;
+  notFound?: NotFoundStrings;
   manifest: ManifestStrings;
 }
 
@@ -56,3 +65,4 @@ export function getManifestPath(language: string | undefined): string;
 export function applyDocumentLanguage(doc: Document | undefined, language: string | undefined): void;
 export function applyMetaTranslations(doc: Document | undefined, language: string | undefined): void;
 export function applyOfflineTranslations(doc: Document | undefined, language: string | undefined): void;
+export function applyNotFoundTranslations(doc: Document | undefined, language: string | undefined): void;

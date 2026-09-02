@@ -268,6 +268,25 @@ afterEach(() => {
 })
 
 describe("Dashboard closure behavior", () => {
+  it("keeps loaded cards content-sized without tilt or scroll-driven transforms", () => {
+    window.sessionStorage.setItem("dash-cascade-done", "1")
+    const addEventListener = vi.spyOn(window, "addEventListener")
+
+    render(<Dashboard />)
+
+    expect(state.tiltDisabled).toEqual([])
+    expect(
+      addEventListener.mock.calls.filter(([eventName]) => String(eventName) === "scroll")
+    ).toHaveLength(0)
+
+    for (const card of document.querySelectorAll(
+      ".vt-dash-schedule, .vt-dash-news, .vt-dash-events"
+    )) {
+      expect(card).not.toHaveClass("min-h-[400px]")
+      expect((card as HTMLElement).style.transform).toBe("")
+    }
+  })
+
   it("shows the auth loading shell before rendering dashboard content", () => {
     state.authLoading = true
 
@@ -277,7 +296,7 @@ describe("Dashboard closure behavior", () => {
     expect(screen.queryByTestId("dashboard-hero")).not.toBeInTheDocument()
   })
 
-  it("renders an honest stories loading state, loading widgets, cascade reveal, and scroll parallax", () => {
+  it("renders an honest stories loading state, stable widgets, and a restrained cascade reveal", () => {
     vi.useFakeTimers()
     state.scheduleQuery = { isLoading: true }
     state.newsQuery = { isLoading: true }
@@ -328,26 +347,25 @@ describe("Dashboard closure behavior", () => {
     expect(screen.getAllByTestId("motion-card")).toHaveLength(3)
     expect(screen.getAllByTestId("motion-card").at(0)).toHaveAttribute("data-cascade", "active")
     expect(screen.getAllByTestId("skeleton").length).toBeGreaterThan(0)
-    expect(state.tiltDisabled).toEqual(e2eMode ? [true, true, true] : [false, false, false])
+    expect(state.tiltDisabled).toEqual([])
     expect(window.sessionStorage.getItem("dash-cascade-done")).toBe("1")
 
     if (!e2eMode) {
       fireEvent.mouseEnter(screen.getByRole("button", { name: "prefetch stories" }))
       expect(screen.queryByRole("button", { name: "open story" })).not.toBeInTheDocument()
-      expect(state.prefetch).toHaveBeenCalledOnce()
+      expect(state.prefetch).not.toHaveBeenCalled()
     }
 
     window.dispatchEvent(new Event("scroll"))
     window.dispatchEvent(new Event("scroll"))
-    expect(requestAnimationFrame).toHaveBeenCalledTimes(2)
-    expect(callbacks).toHaveLength(2)
-    callbacks.forEach((callback) => callback(0))
+    expect(requestAnimationFrame).not.toHaveBeenCalled()
+    expect(callbacks).toHaveLength(0)
     const aurora = document.querySelector(".aurora-mesh")!
     const backdrop = aurora.children[0] as HTMLElement
     const grid = document.querySelector(".vt-dash-schedule")!.parentElement!.parentElement!
-    expect(backdrop.style.getPropertyValue("--dashboard-backdrop-y")).toBe("7.5%")
-    expect(grid.style.getPropertyValue("--dashboard-grid-scale")).not.toBe("")
-    expect(grid.style.getPropertyValue("--dashboard-grid-opacity")).not.toBe("")
+    expect(backdrop.style.getPropertyValue("--dashboard-backdrop-y")).toBe("")
+    expect(grid.style.getPropertyValue("--dashboard-grid-scale")).toBe("")
+    expect(grid.style.getPropertyValue("--dashboard-grid-opacity")).toBe("")
 
     act(() => {
       vi.advanceTimersByTime(1000)
@@ -356,7 +374,7 @@ describe("Dashboard closure behavior", () => {
 
     window.dispatchEvent(new Event("scroll"))
     unmount()
-    expect(cancelAnimationFrame).toHaveBeenCalledWith(3)
+    expect(cancelAnimationFrame).not.toHaveBeenCalled()
   })
 
   it("renders real stories below the hero and falls back to no weather animation", () => {
@@ -386,7 +404,7 @@ describe("Dashboard closure behavior", () => {
     expect(screen.getByTestId("schedule-card")).toBeInTheDocument()
     expect(screen.getByTestId("news-card")).toBeInTheDocument()
     expect(screen.getByTestId("events-card")).toBeInTheDocument()
-    expect(state.tiltDisabled).toEqual(e2eMode ? [true, true, true] : [false, false, false])
+    expect(state.tiltDisabled).toEqual([])
   })
 
   it("disables motion for narrow reduced-motion users and tolerates missing sessionStorage", () => {
@@ -409,7 +427,7 @@ describe("Dashboard closure behavior", () => {
       expect(screen.getByTestId("weather-ambient")).toHaveAttribute("data-disabled", "true")
     }
     expect(screen.queryByTestId("skeleton")).not.toBeInTheDocument()
-    expect(state.tiltDisabled).toEqual([true, true, true])
+    expect(state.tiltDisabled).toEqual([])
     expect(requestAnimationFrame).not.toHaveBeenCalled()
 
     const backdrop = document.querySelector(".aurora-mesh")!.children[0] as HTMLElement
@@ -417,6 +435,18 @@ describe("Dashboard closure behavior", () => {
     expect(backdrop.style.transform).toBe("")
     expect(grid.style.transform).toBe("")
     expect(grid.style.opacity).toBe("")
+  })
+
+  it("disables ambient particles on narrow devices even without reduced motion", () => {
+    state.narrow = true
+    state.reduced = false
+    state.weatherAnimation = "storm"
+
+    render(<Dashboard />)
+
+    if (!e2eMode) {
+      expect(screen.getByTestId("weather-ambient")).toHaveAttribute("data-disabled", "true")
+    }
   })
 
   it("renders the lightweight compile-time E2E stubs", async () => {
@@ -431,6 +461,18 @@ describe("Dashboard closure behavior", () => {
     expect(document.querySelector('[data-e2e-stub="dashboard-stories"]')).toBeInTheDocument()
     expect(screen.queryByTestId("dashboard-hero")).not.toBeInTheDocument()
     expect(screen.queryByTestId("weather-ambient")).not.toBeInTheDocument()
+    unmount()
+  })
+
+  it("keeps the first viewport paint-ready during Lighthouse SSR audits", async () => {
+    vi.stubEnv("VITE_LHCI", "true")
+    vi.resetModules()
+
+    const { default: LhciDashboard } = await import("../Dashboard")
+    const { unmount } = render(<LhciDashboard />)
+
+    expect(screen.getAllByTestId("motion-card").at(0)).toHaveAttribute("data-cascade", "idle")
+    expect(window.sessionStorage.getItem("dash-cascade-done")).toBeNull()
     unmount()
   })
 })

@@ -20,7 +20,6 @@ import (
 	"github.com/quic-go/webtransport-go"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/university-ecosystem/ws-hub/pkg/config"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // PERF-W15-03 (audit 2026-03-23 Wave 15): Rate-limit forced JWKS refreshes.
@@ -45,6 +44,12 @@ type contextKey string
 
 const tenantIDKey contextKey = "tenant_id"
 
+type upgradeTicketIdentity struct {
+	UserID     string
+	TenantID   string
+	SessionJTI string
+}
+
 const (
 	// wsTicketKeyPrefix matches the Python backend's TICKET_KEY_PREFIX in app/api/ws/ticket.py.
 	// Both services must use the same prefix — see contracts/redis-keys.md.
@@ -62,10 +67,10 @@ var (
 		WriteBufferSize: 1024,
 		CheckOrigin:     isUpgradeOriginAllowed,
 	}
-	upgradeWTFunc              = upgradeWT
-	newWebTransportSessionFunc = func(sess *webtransport.Session) Session { return NewWebTransportSession(sess) }
-	validateUpgradeTicketFunc  = func(h *Hub, ctx context.Context, ticket string) (string, string, error) {
-		return h.validateUpgradeTicket(ctx, ticket)
+	upgradeWTFunc                     = upgradeWT
+	newWebTransportSessionFunc        = func(sess *webtransport.Session) Session { return NewWebTransportSession(sess) }
+	validateUpgradeTicketIdentityFunc = func(h *Hub, ctx context.Context, ticket string) (upgradeTicketIdentity, error) {
+		return h.validateUpgradeTicketIdentity(ctx, ticket)
 	}
 )
 
@@ -122,12 +127,10 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 	//   If the client stalls, the upgrade is aborted cleanly within 5 seconds
 	//   rather than holding a goroutine open indefinitely.
 	//
-	// Phase 2 — clientCtx: detached from r.Context() via context.Background()
-	//   so that the long-lived WebSocket connection is not cancelled when the
-	//   HTTP handler returns (which happens immediately after upgrader.Upgrade).
-	//   The OTel span from the originating HTTP request is carried forward via
-	//   trace.ContextWithSpan so that ReadPump/WritePump activity remains
-	//   correlated with the upgrade request in distributed traces.
+	// Phase 2 — clientCtx: context.WithoutCancel preserves request-scoped values,
+	//   including the OTel span, while detaching the long-lived connection from
+	//   request cancellation when the HTTP handler returns. The explicit cancel
+	//   remains owned by the client lifecycle.
 	setupCtx, setupCancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer setupCancel()
 
@@ -178,7 +181,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 		return
 	}
 
-	userID, tenantID, err := validateUpgradeTicketFunc(h, setupCtx, ticket)
+	identity, err := validateUpgradeTicketIdentityFunc(h, setupCtx, ticket)
 	if err != nil {
 		h.Logger.WarnContext(setupCtx, "WebSocket upgrade ticket invalid", "err", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -187,7 +190,7 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 
 	// RZ-W14-07 (audit 2026-03-23 Wave 14): reject empty sub rather than
 	// generating a predictable nanosecond-timestamp fallback clientID.
-	if userID == "" {
+	if identity.UserID == "" || identity.SessionJTI == "" {
 		h.Logger.WarnContext(setupCtx, "WebSocket rejected: JWT sub claim is empty after validation")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -204,27 +207,27 @@ func (h *Hub) HandleWebSocket(w http.ResponseWriter, r *http.Request, cfg *confi
 
 	// Phase 2: long-lived client context, detached from the HTTP request
 	// but with the OTel span propagated for distributed trace correlation.
-	clientCtx, clientCancel := context.WithCancel(context.Background())
-	clientCtx = trace.ContextWithSpan(clientCtx, trace.SpanFromContext(r.Context()))
-	if tenantID != "" {
-		clientCtx = context.WithValue(clientCtx, tenantIDKey, tenantID)
+	clientCtx, clientCancel := context.WithCancel(context.WithoutCancel(r.Context()))
+	if identity.TenantID != "" {
+		clientCtx = context.WithValue(clientCtx, tenantIDKey, identity.TenantID)
 	}
 
 	client := &Client{
-		ID:       newConnectionID(),
-		UserID:   userID,
-		Identity: &ClientIdentity{TenantID: tenantID},
-		Conn:     NewWebSocketSession(conn),
-		Rooms:    make(map[string]bool),
-		Send:     make(chan []byte, cfg.SendBufferSize),
-		Hub:      h,
-		ctx:      clientCtx,
-		cancel:   clientCancel,
+		ID:         newConnectionID(),
+		UserID:     identity.UserID,
+		SessionJTI: identity.SessionJTI,
+		Identity:   &ClientIdentity{TenantID: identity.TenantID},
+		Conn:       NewWebSocketSession(conn),
+		Rooms:      make(map[string]bool),
+		Send:       make(chan []byte, cfg.SendBufferSize),
+		Hub:        h,
+		ctx:        clientCtx,
+		cancel:     clientCancel,
 	}
 
 	h.Register <- client
-	go client.WritePump()
-	go client.ReadPump()
+	StartTrackedGoroutine(client.WritePump)
+	StartTrackedGoroutine(func() { client.ReadPump(clientCtx) })
 }
 
 // HandleWebTransport upgrades HTTP/3 connections to WebTransport and registers clients.
@@ -263,14 +266,14 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 		return
 	}
 
-	userID, tenantID, err := validateUpgradeTicketFunc(h, setupCtx, ticket)
+	identity, err := validateUpgradeTicketIdentityFunc(h, setupCtx, ticket)
 	if err != nil {
 		h.Logger.WarnContext(setupCtx, "WebTransport upgrade ticket invalid", "err", err)
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	if userID == "" {
+	if identity.UserID == "" || identity.SessionJTI == "" {
 		h.Logger.WarnContext(setupCtx, "WebTransport rejected: empty user_id")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
@@ -282,32 +285,33 @@ func (h *Hub) HandleWebTransport(w http.ResponseWriter, r *http.Request, cfg *co
 		return
 	}
 
-	clientCtx, clientCancel := context.WithCancel(context.Background())
-	clientCtx = trace.ContextWithSpan(clientCtx, trace.SpanFromContext(r.Context()))
-	if tenantID != "" {
-		clientCtx = context.WithValue(clientCtx, tenantIDKey, tenantID)
+	clientCtx, clientCancel := context.WithCancel(context.WithoutCancel(r.Context()))
+	if identity.TenantID != "" {
+		clientCtx = context.WithValue(clientCtx, tenantIDKey, identity.TenantID)
 	}
 
 	client := &Client{
-		ID:       newConnectionID(),
-		UserID:   userID,
-		Identity: &ClientIdentity{TenantID: tenantID},
-		Conn:     newWebTransportSessionFunc(sess),
-		Rooms:    make(map[string]bool),
-		Send:     make(chan []byte, cfg.SendBufferSize),
-		Hub:      h,
-		ctx:      clientCtx,
-		cancel:   clientCancel,
+		ID:         newConnectionID(),
+		UserID:     identity.UserID,
+		SessionJTI: identity.SessionJTI,
+		Identity:   &ClientIdentity{TenantID: identity.TenantID},
+		Conn:       newWebTransportSessionFunc(sess),
+		Rooms:      make(map[string]bool),
+		Send:       make(chan []byte, cfg.SendBufferSize),
+		Hub:        h,
+		ctx:        clientCtx,
+		cancel:     clientCancel,
 	}
 
 	h.Register <- client
-	go client.WritePump()
-	go client.ReadPump()
+	StartTrackedGoroutine(client.WritePump)
+	StartTrackedGoroutine(func() { client.ReadPump(clientCtx) })
 }
 
 // validateUpgradeTicket atomically consumes a one-time WS upgrade ticket from
 // Redis and returns the associated userID. The tenantID result is currently
-// empty by contract and retained only to avoid widening the handler refactor.
+// empty by contract and retained for older callers. Handlers use
+// validateUpgradeTicketIdentity so SessionJTI is retained after the upgrade.
 //
 // The ticket was issued by the Python backend (POST /ws/ticket) and stored as:
 //
@@ -356,31 +360,46 @@ func (h *Hub) checkJTINotRevoked(ctx context.Context, jti string) error {
 	return nil
 }
 
-func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string, string, error) {
+func (h *Hub) validateUpgradeTicketIdentity(ctx context.Context, ticket string) (upgradeTicketIdentity, error) {
 	if h.redisClient == nil {
-		return "", "", fmt.Errorf("redis not available for ticket validation")
+		return upgradeTicketIdentity{}, fmt.Errorf("redis not available for ticket validation")
 	}
 	if err := validateTicketFormat(ticket); err != nil {
-		return "", "", err
+		return upgradeTicketIdentity{}, err
 	}
 
 	key := wsTicketKeyPrefix + ticket
 	raw, err := h.redisClient.GetDel(ctx, key).Result()
 	if err == goredis.Nil {
-		return "", "", fmt.Errorf("ticket not found or already used")
+		return upgradeTicketIdentity{}, fmt.Errorf("ticket not found or already used")
 	}
 	if err != nil {
-		return "", "", fmt.Errorf("redis error during ticket validation: %w", err)
+		return upgradeTicketIdentity{}, fmt.Errorf("redis error during ticket validation: %w", err)
 	}
 
 	userID, jti, err := parseTicketPayload(raw)
 	if err != nil {
-		return "", "", err
+		return upgradeTicketIdentity{}, err
+	}
+	// Access-token JTIs are UUIDs. Reject malformed Redis ticket data before
+	// accepting a transport: Pub/Sub intentionally ignores malformed events,
+	// so treating such a JTI as valid could otherwise create a connection that
+	// no canonical revocation publisher can target.
+	if !isValidSessionRevocationJTI(jti) {
+		return upgradeTicketIdentity{}, fmt.Errorf("invalid session JTI in ticket payload")
 	}
 	if err := h.checkJTINotRevoked(ctx, jti); err != nil {
+		return upgradeTicketIdentity{}, err
+	}
+	return upgradeTicketIdentity{UserID: userID, SessionJTI: jti}, nil
+}
+
+func (h *Hub) validateUpgradeTicket(ctx context.Context, ticket string) (string, string, error) {
+	identity, err := h.validateUpgradeTicketIdentity(ctx, ticket)
+	if err != nil {
 		return "", "", err
 	}
-	return userID, "", nil
+	return identity.UserID, identity.TenantID, nil
 }
 
 // extractAlgFromHeader reads the "alg" field from a JWT's base64url-encoded

@@ -38,6 +38,12 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     # Max length: 97 bytes encoded (hex base64). Use 256 chars for safety margin.
     hashed_password: Mapped[str] = mapped_column(String(256), nullable=False)
     pending_email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    email_verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    email_mfa_enabled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
 
     __table_args__ = (Index("ix_users_email_lower", func.lower(email), unique=True),)
 
@@ -66,8 +72,8 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
     mfa_last_verified_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
-    webauthn_id: Mapped[str | None] = mapped_column(
-        String(128), unique=True, index=True, nullable=True
+    mfa_epoch: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
@@ -196,14 +202,6 @@ class User(Base, EventEmitterMixin, UUID7PrimaryKeyMixin):
         back_populates="user",
         cascade="all, delete-orphan",
         passive_deletes=True,
-        lazy="noload",
-    )
-    webauthn_credentials = relationship(
-        "WebAuthnCredential",
-        back_populates="user",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-        # RZ-W19-15: changed from selectin to noload — same rationale as totp_enrollments
         lazy="noload",
     )
     recovery_codes = relationship(

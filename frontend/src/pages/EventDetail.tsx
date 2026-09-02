@@ -9,6 +9,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import { useParams, useNavigate } from "@tanstack/react-router"
 import { Info as InfoIcon, ArrowLeft as ArrowBackIcon } from "lucide-react"
+import "@/styles/tokens/events.css"
 import { useAuth } from "@/contexts/AuthContext"
 import { useTranslation } from "react-i18next"
 import { Button, ConfirmDialog } from "@/components/ui"
@@ -94,10 +95,12 @@ export default function EventDetail() {
   const progressRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     let ticking = false
+    let pendingFrame: number | null = null
     const onScroll = () => {
       if (ticking) return
       ticking = true
-      requestAnimationFrame(() => {
+      pendingFrame = requestAnimationFrame(() => {
+        pendingFrame = null
         if (progressRef.current) {
           const max = document.documentElement.scrollHeight - window.innerHeight
           const pct = max > 0 ? Math.min(window.scrollY / max, 1) : 0
@@ -107,7 +110,10 @@ export default function EventDetail() {
       })
     }
     window.addEventListener("scroll", onScroll, { passive: true })
-    return () => window.removeEventListener("scroll", onScroll)
+    return () => {
+      window.removeEventListener("scroll", onScroll)
+      if (pendingFrame !== null) cancelAnimationFrame(pendingFrame)
+    }
   }, [])
 
   /* ── Actions ── */

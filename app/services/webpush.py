@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
@@ -20,7 +20,7 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pywebpush import WebPushException, webpush
-from sqlalchemy import create_engine, delete, update
+from sqlalchemy import and_, create_engine, delete, or_, update
 from sqlalchemy.engine import URL, Engine, make_url
 from sqlalchemy.orm import sessionmaker
 
@@ -745,23 +745,119 @@ async def _send_push_async(
             )
 
 
-async def process_push_results(results: list[WebPushResult]) -> None:
-    gone_ids = [r.subscription_id for r in results if r.status == "gone"]
-    sent_ids = [r.subscription_id for r in results if r.status == "sent"]
+def coalesce_push_results(results: Sequence[object]) -> list[WebPushResult]:
+    """Return one deterministic result per subscription.
 
-    if not gone_ids and not sent_ids:
+    A retry, overlapping broadcast, or a provider adapter can report the same
+    subscription more than once.  Cleanup is idempotent at the database level,
+    but collapsing here keeps response aggregates and metrics truthful and
+    prevents a later ``sent`` result from reviving a terminal ``gone`` result.
+    ``gone`` wins over ``sent``, which wins over transient ``error``.
+    """
+
+    priority = {"error": 0, "sent": 1, "gone": 2}
+    selected: dict[uuid.UUID, WebPushResult] = {}
+    order: list[uuid.UUID] = []
+    for result in results:
+        if not isinstance(result, WebPushResult):
+            continue
+        # Keep the runtime boundary defensive: provider adapters and tests may
+        # deserialize UUIDs as strings even though the typed dataclass carries
+        # ``uuid.UUID``.  Widen before validation so strict mypy does not mark
+        # the defensive branch unreachable while production callers retain the
+        # strongly typed contract.
+        raw_subscription_id: object = result.subscription_id
+        subscription_id = raw_subscription_id
+        if not isinstance(subscription_id, uuid.UUID):
+            try:
+                subscription_id = uuid.UUID(str(subscription_id))
+            except (AttributeError, TypeError, ValueError):
+                continue
+        # Runtime data may come from third-party adapters, so avoid trusting an
+        # invalid status even though the dataclass annotation is Literal-based.
+        raw_status = result.status
+        status = (
+            raw_status
+            if isinstance(raw_status, str) and raw_status in priority
+            else "error"
+        )
+        if status != raw_status:
+            result = WebPushResult(
+                subscription_id=subscription_id,
+                endpoint=result.endpoint,
+                user_id=result.user_id,
+                status="error",
+                status_code=result.status_code,
+                error=result.error or "invalid push result status",
+            )
+        elif result.subscription_id != subscription_id:
+            result = WebPushResult(
+                subscription_id=subscription_id,
+                endpoint=result.endpoint,
+                user_id=result.user_id,
+                status=result.status,
+                status_code=result.status_code,
+                error=result.error,
+            )
+        previous = selected.get(subscription_id)
+        if previous is None:
+            order.append(subscription_id)
+            selected[subscription_id] = result
+            continue
+        previous_raw_status = previous.status
+        previous_status = (
+            previous_raw_status
+            if isinstance(previous_raw_status, str) and previous_raw_status in priority
+            else "error"
+        )
+        if priority[status] > priority[previous_status]:
+            selected[subscription_id] = result
+    return [selected[subscription_id] for subscription_id in order]
+
+
+async def process_push_results(results: list[WebPushResult]) -> None:
+    canonical_results = coalesce_push_results(results)
+    gone_results = [r for r in canonical_results if r.status == "gone"]
+    sent_results = [r for r in canonical_results if r.status == "sent"]
+
+    if not gone_results and not sent_results:
         return
 
     await _ensure_async_sessionmaker()
     async with async_session() as session:
-        if gone_ids:
+        if gone_results:
+            # Bind terminal cleanup to the endpoint observed by the provider.
+            # A concurrent re-subscribe may reuse the row id while rotating
+            # credentials; an old 404/410 must not delete that replacement.
             await session.execute(
-                delete(PushSubscription).where(PushSubscription.id.in_(gone_ids))
+                delete(PushSubscription).where(
+                    or_(
+                        *(
+                            and_(
+                                PushSubscription.id == result.subscription_id,
+                                PushSubscription.endpoint == result.endpoint,
+                            )
+                            for result in gone_results
+                        )
+                    )
+                )
             )
-        if sent_ids:
+        if sent_results:
+            # The same binding prevents a late success from touching a row that
+            # now represents a different endpoint after a concurrent update.
             await session.execute(
                 update(PushSubscription)
-                .where(PushSubscription.id.in_(sent_ids))
+                .where(
+                    or_(
+                        *(
+                            and_(
+                                PushSubscription.id == result.subscription_id,
+                                PushSubscription.endpoint == result.endpoint,
+                            )
+                            for result in sent_results
+                        )
+                    )
+                )
                 .values(last_seen_at=datetime.now(UTC))
             )
         await session.commit()

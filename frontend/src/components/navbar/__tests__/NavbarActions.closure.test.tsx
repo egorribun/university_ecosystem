@@ -8,6 +8,20 @@ vi.mock("framer-motion", () => ({
     div: ({ children, className }: { children?: ReactNode; className?: string }) => (
       <div className={className}>{children}</div>
     ),
+    button: ({
+      children,
+      className,
+      whileTap: _whileTap,
+      transition: _transition,
+      ...props
+    }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+      whileTap?: unknown
+      transition?: unknown
+    }) => (
+      <button className={className} {...props}>
+        {children}
+      </button>
+    ),
   },
 }))
 
@@ -25,10 +39,8 @@ vi.mock("@/components/layout/MessengerButton", () => ({
 }))
 
 vi.mock("@/components/media/SmartImage", () => ({
-  default: ({ alt, onClick }: { alt: string; onClick?: () => void }) => (
-    <button type="button" aria-label={alt} onClick={onClick}>
-      avatar
-    </button>
+  default: ({ alt, className }: { alt: string; className?: string }) => (
+    <img alt={alt} className={className} />
   ),
 }))
 
@@ -107,8 +119,9 @@ describe("NavbarActions closure paths", () => {
 
     expect(screen.getByTestId("messenger-button")).toBeInTheDocument()
     expect(screen.getByTestId("notifications-bell")).toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "Profile" }))
+    await user.click(screen.getByRole("button", { name: "Open profile" }))
     expect(go).toHaveBeenCalledWith("/profile")
+    expect(screen.getByRole("button", { name: "Open profile" })).toHaveClass("size-11")
 
     const menuButton = screen.getByRole("button", { name: "navigation:aria.openMenu" })
     expect(menuButton).toHaveAttribute("aria-expanded", "false")
@@ -152,7 +165,7 @@ describe("NavbarActions closure paths", () => {
       />
     )
 
-    expect(screen.getByRole("button", { name: "Profile" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Open profile" })).toBeInTheDocument()
   })
 
   it("renders desktop navigation with and without overflow items", () => {

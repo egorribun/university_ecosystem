@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next"
+import "@/styles/tokens/activity.css"
 import { PageLayout } from "@/components/layout/PageLayout"
 import { FeatureErrorBoundary } from "@/components/error/FeatureErrorBoundary"
 import { ActivityFeature } from "@/features/activity"

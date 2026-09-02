@@ -148,28 +148,34 @@ vi.mock("@/pages/settings/SettingsIntegrations", () => ({
   SettingsIntegrations: () => <h2>integrations panel</h2>,
 }))
 
+vi.mock("@/pages/settings/SettingsNotifications", () => ({
+  SettingsNotifications: () => <h2>notifications panel</h2>,
+}))
+
+vi.mock("@/pages/settings/SettingsSessions", () => ({
+  SettingsSessions: ({ isActive }: { isActive: boolean }) =>
+    isActive ? <h2>sessions panel</h2> : null,
+}))
+
 vi.mock("@/pages/settings/SettingsSecurity", () => ({
   SettingsSecurity: ({
     openStepUpFor,
-    isActive,
   }: {
     openStepUpFor: (action: () => Promise<void>) => void
-    isActive: boolean
-  }) =>
-    isActive ? (
-      <div>
-        <h2>security panel</h2>
-        <button type="button" onClick={() => openStepUpFor(mocks.action)}>
-          open step up
-        </button>
-        <button
-          type="button"
-          onClick={() => openStepUpFor(undefined as unknown as () => Promise<void>)}
-        >
-          open empty step up
-        </button>
-      </div>
-    ) : null,
+  }) => (
+    <div>
+      <h2>security panel</h2>
+      <button type="button" onClick={() => openStepUpFor(mocks.action)}>
+        open step up
+      </button>
+      <button
+        type="button"
+        onClick={() => openStepUpFor(undefined as unknown as () => Promise<void>)}
+      >
+        open empty step up
+      </button>
+    </div>
+  ),
 }))
 
 import Settings from "@/pages/Settings"
@@ -217,6 +223,12 @@ describe("Settings container closure", () => {
 
     await user.click(screen.getByRole("tab", { name: "settings:tabs.integrations" }))
     expect(await screen.findByRole("heading", { name: "integrations panel" })).toBeInTheDocument()
+
+    await user.click(screen.getByRole("tab", { name: "settings:tabs.notifications" }))
+    expect(await screen.findByRole("heading", { name: "notifications panel" })).toBeInTheDocument()
+
+    await user.click(screen.getByRole("tab", { name: "settings:tabs.sessions" }))
+    expect(await screen.findByRole("heading", { name: "sessions panel" })).toBeInTheDocument()
 
     await user.click(screen.getByRole("tab", { name: "settings:tabs.general" }))
     const generalNavigation = mocks.navigate.mock.calls.at(-1)?.[0] as {

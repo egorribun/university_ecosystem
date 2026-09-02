@@ -150,16 +150,13 @@ export function useSyncStatus(): SyncStatusResult {
   const totalPendingCount = pendingMutationsCount + idbPendingCount
 
   // 4. Derive high-level sync state
-  let syncState: SyncState = "idle"
-  if (!isOnline) {
-    syncState = "offline"
-  } else if (isFetchingCount > 0 || totalPendingCount > 0) {
-    syncState = "syncing"
-  } else if (justSynced) {
-    syncState = "synced"
-  } else {
-    syncState = "idle"
-  }
+  const syncState: SyncState = !isOnline
+    ? "offline"
+    : isFetchingCount > 0 || totalPendingCount > 0
+      ? "syncing"
+      : justSynced
+        ? "synced"
+        : "idle"
 
   // Transient "synced" status transition
   useEffect(() => {

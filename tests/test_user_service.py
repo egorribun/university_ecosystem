@@ -18,7 +18,6 @@ import pytest
 
 from app.core.exceptions.domain import (
     BusinessRuleViolation,
-    EntityAlreadyExists,
     EntityNotFound,
     PermissionDenied,
 )
@@ -290,35 +289,27 @@ async def test_update_user_profile_success(service, mock_db, mock_user, mock_req
 
 
 @pytest.mark.asyncio
-async def test_update_user_profile_invalid_email(
-    service, mock_db, mock_user, mock_request
-):
-    """Test profile update with invalid email."""
-    service.repo.get.return_value = mock_user
-    data = MagicMock()
-    data.model_dump.return_value = {"email": "not-an-email"}
-
-    with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
-        with pytest.raises(EntityAlreadyExists):
-            await service.update_user_profile(mock_user, data, mock_request)
+async def test_update_user_profile_schema_rejects_email() -> None:
+    """The generic profile contract rejects email before service dispatch."""
+    with pytest.raises(ValueError, match="use /users/me/email"):
+        schemas.UserProfileUpdate.model_validate({"email": "not-an-email"})
 
 
 @pytest.mark.asyncio
-async def test_update_user_profile_email_in_use(
+async def test_update_user_profile_does_not_query_email_uniqueness(
     service, mock_db, mock_user, mock_request
 ):
-    """Test profile update when email is already in use."""
+    """Ordinary profile fields do not enter the controlled email-change path."""
     service.repo.get.return_value = mock_user
     data = MagicMock()
-    data.model_dump.return_value = {"email": "existing@example.com"}
-
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = 2  # Another user has this email
-    service.repo.db.execute.return_value = mock_result  # Changed from mock_db.execute
+    data.model_dump.return_value = {"full_name": "Updated Name"}
+    service.repo._get_orm.return_value = mock_user
+    service.repo._to_dto.return_value = mock_user
 
     with patch("app.services.user.profile_service.resolve_locale", return_value="en"):
-        with pytest.raises(EntityAlreadyExists):
-            await service.update_user_profile(mock_user, data, mock_request)
+        await service.update_user_profile(mock_user, data, mock_request)
+
+    service.repo.check_email_exists.assert_not_awaited()
 
 
 @pytest.mark.asyncio

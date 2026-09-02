@@ -55,11 +55,17 @@ def test_webpush_subject_rejects_invalid_values(subject: str, message: str) -> N
 
 def test_notification_topics_are_normalized_deduplicated_and_cached() -> None:
     settings = _settings(notifications_allowed_push_topics=" News, events,news, ")
-    assert settings.notifications_allowed_push_topics == ["news", "events"]
+    assert settings.notifications_allowed_push_topics == [
+        "news.published",
+        "events.published",
+    ]
     assert settings.notifications_allowed_push_topics_set == frozenset(
-        {"news", "events"}
+        {"news.published", "events.published"}
     )
-    assert settings.notifications_allowed_push_topics_list == ["news", "events"]
+    assert settings.notifications_allowed_push_topics_list == [
+        "news.published",
+        "events.published",
+    ]
 
 
 def test_notification_topics_must_not_be_empty() -> None:
@@ -109,6 +115,35 @@ def test_smtp_user_security_validator_covers_dev_and_production_paths() -> None:
         )
         == "user"
     )
+
+
+def test_production_smtp_host_requires_transport_encryption_without_auth(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    with pytest.raises(
+        ValidationError,
+        match="SMTP_SECURITY must be starttls or ssl when SMTP_HOST is configured",
+    ):
+        _settings(
+            smtp_host="relay.internal.example",
+            smtp_security="none",
+            smtp_user="",
+        )
+
+
+@pytest.mark.parametrize("environment", ["development", "testing", "local"])
+def test_plaintext_smtp_remains_available_only_in_development_environments(
+    environment: str, monkeypatch
+) -> None:
+    monkeypatch.setenv("ENVIRONMENT", environment)
+    configured = _settings(
+        smtp_host="localhost",
+        smtp_security="none",
+        smtp_user="",
+    )
+
+    assert configured.smtp_security == "none"
 
 
 def test_notification_secret_file_validators_and_cached_keys(

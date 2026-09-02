@@ -50,6 +50,7 @@ class LoginSessionManager:
     ) -> schemas.TokenWithProfile:
         client_ip, user_agent = self.extract_client_info(request)
         fingerprint = extract_fingerprint(request)
+        mfa_epoch = int(getattr(user, "mfa_epoch", 0) or 0)
 
         metadata: dict[str, Any] = {
             "ip_address": client_ip,
@@ -57,6 +58,7 @@ class LoginSessionManager:
             "accept_language": fingerprint.accept_language,
             "fingerprint_hash": fingerprint.fingerprint_hash,
             "mfa_method": method if mfa_completed else None,
+            "mfa_epoch": mfa_epoch,
         }
         if mfa_completed:
             now_val = datetime.now(UTC)
@@ -92,6 +94,7 @@ class LoginSessionManager:
             extra_claims={
                 "is_active": bool(user.is_active),
                 "role": user.role.value,
+                "mfa_epoch": mfa_epoch,
             },
         )
 
@@ -120,6 +123,8 @@ class LoginSessionManager:
             user_id=user.id,
             fingerprint=fp,
             mfa_verified_at=session.mfa_verified_at,
+            mfa_epoch=mfa_epoch,
+            session_id=getattr(session, "id", None),
         )
 
         self.audit.log(
@@ -154,11 +159,73 @@ class LoginSessionManager:
         if isinstance(signing_key, str) and signing_key:
             session_payload = SessionSigningKeyOut(signing_key=signing_key)
 
+        public_user_input: Any = user
+        if hasattr(user, "model_dump"):
+            public_user_input = user.model_dump(
+                include=set(UserOut.model_fields),
+                mode="python",
+            )
+
         return schemas.TokenWithProfile(
             access_token=token if include_token else None,
-            user=UserOut.model_validate(user),
+            user=UserOut.model_validate(public_user_input),
             session=session_payload,
         )
+
+    async def complete_step_up(
+        self,
+        *,
+        user: User,
+        session: ActiveSession,
+        request: Request,
+        db_session: Any,
+        method: str,
+    ) -> schemas.TokenWithProfile:
+        """Elevate the existing authenticated session without minting another one."""
+        from app.auth.mfa import record_mfa_success
+
+        await record_mfa_success(
+            db_session,
+            user=user,
+            session=session,
+            method=method,
+        )
+        session.mfa_epoch = int(user.mfa_epoch)
+        return await self.build_token_response(
+            user,
+            "",
+            session,
+            db_session,
+            include_token=False,
+        )
+
+    async def publish_completed_step_up(
+        self,
+        *,
+        user: User,
+        session: ActiveSession,
+        request: Request,
+    ) -> None:
+        """Publish fresh-MFA cache state only after the DB boundary commits."""
+        from app.core.csrf import signal_csrf_rotation
+
+        client_ip, user_agent = self.extract_client_info(request)
+        fingerprint = extract_fingerprint(request)
+        redis_fingerprint = SessionFingerprint(
+            user_agent=user_agent or "",
+            ip_address=client_ip or "",
+            accept_language=fingerprint.accept_language or "",
+            fingerprint_hash=fingerprint.fingerprint_hash or "",
+        )
+        await self.redis_session.create_session(
+            jti=str(session.jti),
+            user_id=user.id,
+            fingerprint=redis_fingerprint,
+            mfa_verified_at=session.mfa_verified_at,
+            mfa_epoch=int(user.mfa_epoch),
+            session_id=session.id,
+        )
+        signal_csrf_rotation(request)
 
     def extract_client_info(self, request: Request) -> tuple[str | None, str | None]:
         from app.core.ratelimit import resolve_client_ip

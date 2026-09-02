@@ -31,11 +31,9 @@ export function Tooltip({ content, children, className, id }: TooltipProps) {
   return (
     <span className={cn("inline-flex", className)} data-tooltip-id={tooltipId}>
       {cloneElement(children, clonedProps)}
-      {typeof content === "string" ? null : (
-        <span id={tooltipId} role="tooltip" className="sr-only">
-          {content}
-        </span>
-      )}
+      <span id={tooltipId} role="tooltip" className="sr-only">
+        {content}
+      </span>
     </span>
   )
 }

@@ -9,12 +9,10 @@ resources:
   - bad.yaml
 results:
   - policy: require-readonly-root-filesystem
-    rule: check-readOnlyRootFilesystem
     resources: [university-ecosystem/compliant-pod]
     kind: Pod
     result: pass
   - policy: require-readonly-root-filesystem
-    rule: check-readOnlyRootFilesystem
     resources: [university-ecosystem/writable-root-pod]
     kind: Pod
     result: fail

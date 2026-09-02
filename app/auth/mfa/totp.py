@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import hmac
 import time
 from collections.abc import MutableMapping
@@ -14,7 +13,7 @@ import pyotp
 from fastapi import status
 from opentelemetry import trace
 from opentelemetry.trace import Status, StatusCode
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 
 from app.api.validation import raise_http_error, raise_validation_error
 from app.auth.constants import (
@@ -25,18 +24,28 @@ from app.auth.mfa.challenge import (
     _ensure_challenge_not_locked,
     _extract_attempt_limit,
     _register_failed_attempt,
-    consume_challenge,
     get_challenge,
     issue_challenge,
 )
+from app.auth.mfa.lifecycle import (
+    MfaSessionRevocation,
+    collect_mfa_session_revocations,
+)
 from app.core.config import settings
 from app.core.logging import get_logger
-from app.models import ActiveSession, MfaChallenge, MfaTotpEnrollment, User
-from app.services.session_cleanup import revoke_sessions_matching
+from app.models import (
+    ActiveSession,
+    ChallengeState,
+    MfaChallenge,
+    MfaTotpEnrollment,
+    TrustedDevice,
+    User,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from app.auth.mfa.challenge import IssuedChallenge
     from app.schemas.dtos import UserAuthDTO, UserDTO
 
 logger = get_logger(__name__)
@@ -112,19 +121,28 @@ def _ct_verify_totp(secret: str, code: str, *, valid_window: int | None = None) 
     short-circuiting on a match, eliminating the timing oracle that lets
     attackers distinguish which enrollment slot or window matched.
     """
+    return _ct_match_totp_timecode(secret, code, valid_window=valid_window) is not None
+
+
+def _ct_match_totp_timecode(
+    secret: str, code: str, *, valid_window: int | None = None
+) -> int | None:
+    """Return the matching RFC 6238 counter after evaluating every skew window."""
     window = _TOTP_VALID_WINDOW if valid_window is None else valid_window
     normalized = "".join(ch for ch in code if ch.isdigit())
     if len(normalized) != _TOTP_DIGITS:
-        return False
+        return None
     totp_obj = pyotp.TOTP(secret, digits=_TOTP_DIGITS)
     now = time.time()
-    matched = False
+    current_timecode = int(now) // int(totp_obj.interval)
+    matched_timecodes: list[int] = []
     # Always evaluate all windows — no short-circuit via `or`
     for offset in range(-window, window + 1):
-        candidate = totp_obj.at(int(now) + offset * 30)
+        timecode = current_timecode + offset
+        candidate = totp_obj.at(timecode * int(totp_obj.interval))
         if hmac.compare_digest(normalized, candidate):
-            matched = True
-    return matched
+            matched_timecodes.append(timecode)
+    return max(matched_timecodes, default=None)
 
 
 async def start_totp_enrollment(
@@ -198,7 +216,29 @@ async def complete_totp_enrollment(
 ) -> MfaTotpEnrollment:
     with _tracer.start_as_current_span("mfa.totp.enroll.complete") as span:
         span.set_attribute("mfa.method", "totp")
-        if getattr(enrollment, "secret", None) is None:
+        locked_user = (
+            await db.execute(
+                select(User)
+                .where(User.id == enrollment.user_id)
+                .with_for_update(nowait=False)
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one()
+        locked_enrollment = (
+            (
+                await db.execute(
+                    select(MfaTotpEnrollment)
+                    .where(MfaTotpEnrollment.id == enrollment.id)
+                    .with_for_update(nowait=False)
+                    .execution_options(populate_existing=True)
+                )
+            )
+            .scalars()
+            .first()
+        )
+        if locked_enrollment is None:
+            raise_validation_error("errors.mfa.no_enrollment", "en")
+        if getattr(locked_enrollment, "secret", None) is None:
             logger.warning(
                 "Cannot complete TOTP enrollment: decryption failed",
                 extra={
@@ -209,18 +249,22 @@ async def complete_totp_enrollment(
             span.set_attribute("mfa.result", "invalid_code")
             span.set_status(Status(StatusCode.ERROR))
             raise_validation_error("errors.mfa.invalid_code", "en")
-        if not verify_totp(str(enrollment.secret), code):
+        if not verify_totp(str(locked_enrollment.secret), code):
             span.set_attribute("mfa.result", "invalid_code")
             span.set_status(Status(StatusCode.ERROR))
             raise_validation_error("errors.mfa.invalid_code", "en")
         now = _utcnow()
-        enrollment.confirmed_at = now
-        enrollment.revoked_at = None
-        enrollment.is_active = True
+        locked_enrollment.confirmed_at = now
+        locked_enrollment.revoked_at = None
+        locked_enrollment.is_active = True
+        locked_user.mfa_epoch = int(locked_user.mfa_epoch or 0) + 1
+        await db.execute(
+            delete(TrustedDevice).where(TrustedDevice.user_id == locked_user.id)
+        )
         await db.flush()
         span.set_attribute("mfa.result", "success")
         span.set_status(Status(StatusCode.OK))
-        return enrollment
+        return locked_enrollment
 
 
 async def disable_totp(
@@ -228,12 +272,18 @@ async def disable_totp(
     *,
     user: User,
     enrollment_id: UUID | None = None,
-) -> int:
+) -> tuple[int, list[MfaSessionRevocation]]:
+    locked_user = (
+        await db.execute(
+            select(User).where(User.id == user.id).with_for_update(nowait=False)
+        )
+    ).scalar_one()
     stmt = select(MfaTotpEnrollment).where(MfaTotpEnrollment.user_id == user.id)
     if enrollment_id is not None:
         stmt = stmt.where(MfaTotpEnrollment.id == enrollment_id)
     result = await db.execute(stmt)
     count = 0
+    pending: list[MfaSessionRevocation] = []
     now = _utcnow()
     for record in result.scalars():
         if record.is_active:
@@ -242,12 +292,15 @@ async def disable_totp(
             count += 1
 
     if count > 0:
-        await revoke_sessions_matching(
-            db=db,
-            whereclause=(ActiveSession.user_id == user.id),
+        locked_user.mfa_epoch = int(locked_user.mfa_epoch or 0) + 1
+        user.mfa_epoch = locked_user.mfa_epoch
+        await db.execute(delete(TrustedDevice).where(TrustedDevice.user_id == user.id))
+        pending = await collect_mfa_session_revocations(
+            db,
+            user_id=user.id,
         )
     await db.flush()
-    return count
+    return count, pending
 
 
 async def start_totp_verification(
@@ -257,7 +310,10 @@ async def start_totp_verification(
     session: ActiveSession | None = None,
     locale: str | None = None,
     payload: MutableMapping[str, Any] | None = None,
-) -> MfaChallenge:
+    flow: str,
+    session_identifier: str,
+    client_fingerprint: str,
+) -> IssuedChallenge:
     with _tracer.start_as_current_span("mfa.totp.challenge.issue"):
         challenge = await issue_challenge(
             db,
@@ -267,6 +323,10 @@ async def start_totp_verification(
             locale=locale,
             payload=dict(payload or {}),
             attempt_limit=settings.mfa_totp_attempt_limit,
+            flow=flow,
+            session_identifier=session_identifier,
+            client_fingerprint=client_fingerprint,
+            method=MFA_METHOD_TOTP,
         )
         return challenge
 
@@ -279,12 +339,19 @@ async def verify_totp_for_user(
     challenge_token: str | None = None,
     challenge: MfaChallenge | None = None,
     session_id: UUID | None = None,
+    client_fingerprint: str | None = None,
+    login_session_identifier: str | None = None,
+    active_session_identifier: str | None = None,
     locale: str | None = None,
 ) -> tuple[MfaTotpEnrollment, MfaChallenge | None]:
     with _tracer.start_as_current_span("mfa.totp.verify") as span:
         span.set_attribute("user.id", str(user.id))
         span.set_attribute("mfa.method", "totp")
         try:
+            # Serialize every MFA state transition for one account before
+            # touching enrollment or challenge rows.  This preserves the
+            # repository-wide User -> enrollment/challenge lock order.
+            await db.execute(select(User).where(User.id == user.id).with_for_update())
             # RZ-W8-05: Require a challenge to enable per-code invalidation via
             # consume_challenge(). Without a challenge the same TOTP code can be
             # replayed for the full ±30s window (up to 90 seconds total) because
@@ -324,8 +391,18 @@ async def verify_totp_for_user(
                     user_id=user.id,
                     session_id=session_id,
                     locale=locale or "en",
+                    for_update=True,
                 )
             if loaded_challenge is not None:
+                from app.auth.mfa.challenge import validate_challenge_binding
+
+                validate_challenge_binding(
+                    loaded_challenge,
+                    client_fingerprint=client_fingerprint,
+                    login_session_identifier=login_session_identifier,
+                    active_session_identifier=active_session_identifier,
+                    locale=locale or "en",
+                )
                 if loaded_challenge.challenge_type != CHALLENGE_TYPE_TOTP_VERIFY:
                     span.set_attribute("mfa.result", "invalid_code")
                     span.set_status(Status(StatusCode.ERROR))
@@ -359,6 +436,7 @@ async def verify_totp_for_user(
             # This eliminates the timing oracle where returning on the first match leaks
             # which enrollment position held a valid code.
             matched_enrollment: MfaTotpEnrollment | None = None
+            matched_timecode: int | None = None
             for enrollment in enrollments:
                 if getattr(enrollment, "secret", None) is None:
                     logger.warning(
@@ -371,64 +449,57 @@ async def verify_totp_for_user(
                     )
                     continue
                 # Use constant-time comparison — record match but keep iterating
-                if (
-                    _ct_verify_totp(str(enrollment.secret), code)
-                    and matched_enrollment is None
-                ):
-                    matched_enrollment = enrollment
-
-            if matched_enrollment is not None:
-                # RZ-W9-01: Acquire a row-level lock on the enrollment BEFORE reading
-                # last_used_code_hash.  Without SELECT FOR UPDATE, two concurrent requests
-                # carrying the same TOTP code both see hash=NULL and both pass the replay
-                # check before either commits the updated hash, granting double login.
-                # nowait=False (blocking) ensures the second request waits for the first to
-                # commit, then sees the updated hash and raises code_already_used.
-                locked_result = await db.execute(
-                    select(MfaTotpEnrollment)
-                    .where(MfaTotpEnrollment.id == matched_enrollment.id)
-                    .with_for_update(nowait=False)
+                enrollment_timecode = _ct_match_totp_timecode(
+                    str(enrollment.secret), code
                 )
-                locked_enrollment = locked_result.scalars().first()
-                if locked_enrollment is None:
-                    # Enrollment disappeared between the initial read and the lock — treat
-                    # as invalid code rather than letting the request proceed unauthenticated.
-                    span.set_attribute("mfa.result", "invalid_code")
-                    span.set_status(Status(StatusCode.ERROR))
-                    raise_validation_error("errors.mfa.invalid_code", locale or "en")
+                if enrollment_timecode is not None and matched_enrollment is None:
+                    matched_enrollment = enrollment
+                    matched_timecode = enrollment_timecode
 
-                # MOD-W8-06: Belt-and-suspenders replay prevention (now serialized by lock).
-                # Even if the challenge token was consumed by a concurrent request (clock-skew
-                # edge case), reject the identical code within the same TOTP window by
-                # comparing its SHA-256 hash against the last successfully used code hash.
-                code_hash = hashlib.sha256(code.encode()).hexdigest()
-                if (
-                    locked_enrollment.last_used_code_hash is not None
-                    and hmac.compare_digest(
-                        locked_enrollment.last_used_code_hash, code_hash
+            if matched_enrollment is not None and matched_timecode is not None:
+                code_hash = hmac.new(
+                    settings.secret_key.encode("utf-8"),
+                    (
+                        f"mfa-totp-replay-v1\x1f{user.id}\x1f"
+                        f"{matched_enrollment.id}\x1f{code}"
+                    ).encode(),
+                    "sha256",
+                ).hexdigest()
+                # One conditional UPDATE is the replay decision.  It remains
+                # correct even when an ORM identity-map object was loaded before
+                # a concurrent transaction committed, and it provides the same
+                # compare-and-set guarantee on PostgreSQL and SQLite.
+                accepted = await db.execute(
+                    update(MfaTotpEnrollment)
+                    .where(MfaTotpEnrollment.id == matched_enrollment.id)
+                    .where(
+                        (MfaTotpEnrollment.last_used_timecode.is_(None))
+                        | (MfaTotpEnrollment.last_used_timecode < matched_timecode)
                     )
-                ):
+                    .values(
+                        last_used_timecode=matched_timecode,
+                        last_used_code_hash=code_hash,
+                        last_used_at=_utcnow(),
+                    )
+                    .returning(MfaTotpEnrollment)
+                    .execution_options(populate_existing=True)
+                )
+                locked_enrollment = accepted.scalars().first()
+                if locked_enrollment is None:
                     span.set_attribute("mfa.result", "code_already_used")
                     span.set_status(Status(StatusCode.ERROR))
                     raise_validation_error(
                         "errors.mfa.code_already_used", locale or "en"
                     )
 
-                locked_enrollment.last_used_code_hash = code_hash
-                locked_enrollment.last_used_at = _utcnow()
                 matched_enrollment = (
                     locked_enrollment  # use the locked row for consume_challenge
                 )
 
                 if loaded_challenge is not None:
-                    await consume_challenge(
-                        db,
-                        challenge_token=str(loaded_challenge.token),
-                        challenge_type=CHALLENGE_TYPE_TOTP_VERIFY,
-                        provided_code=code,
-                        provided_method=MFA_METHOD_TOTP,
-                        locale=locale or "en",
-                    )
+                    loaded_challenge.consumed_at = _utcnow()
+                    loaded_challenge.state = ChallengeState.CONSUMED
+                    await db.flush()
                 span.set_attribute("mfa.result", "success")
                 span.set_status(Status(StatusCode.OK))
                 return matched_enrollment, loaded_challenge

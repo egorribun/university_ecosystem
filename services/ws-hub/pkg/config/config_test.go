@@ -19,7 +19,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	// `require.NoError`. The test still verifies defaults (section 1) so a
 	// non-empty value bleeding from the developer's shell would be caught.
 	envVars := []string{
-		"WS_HUB_PORT", "NATS_URL", "NATS_USER", "NATS_PASSWORD",
+		"WS_HUB_PORT", "NATS_URL", "NATS_USER", "NATS_PASSWORD", "NATS_AUTH_TOKEN",
 		"JWT_SECRETS", "JWT_SECRET", "SENTRY_DSN", "VITE_ENVIRONMENT",
 		"ALLOWED_ORIGINS", "TRUSTED_PROXIES", "BACKEND_INTERNAL_URL",
 		"JWKS_URL", "WS_SEND_BUFFER_SIZE", "WS_BROADCAST_BUFFER_SIZE",
@@ -38,6 +38,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	require.Equal(t, "nats://nats:4222", cfg.NatsURL)
 	require.Equal(t, "", cfg.NatsUser)
 	require.Equal(t, "", cfg.NatsPassword)
+	require.Equal(t, "", cfg.NatsAuthToken)
 	require.Nil(t, cfg.JWTSecrets)
 	require.Equal(t, "", cfg.SentryDSN)
 	require.Equal(t, "development", cfg.Environment)
@@ -64,6 +65,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	t.Setenv("NATS_URL", "nats://localhost:4222")
 	t.Setenv("NATS_USER", "testuser")
 	t.Setenv("NATS_PASSWORD", "testpass")
+	t.Setenv("NATS_AUTH_TOKEN", "testtoken")
 	t.Setenv("JWT_SECRETS", "secret-a, secret-b")
 	t.Setenv("SENTRY_DSN", "https://sentry")
 	t.Setenv("VITE_ENVIRONMENT", "production")
@@ -88,6 +90,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	require.Equal(t, "nats://localhost:4222", cfg.NatsURL)
 	require.Equal(t, "testuser", cfg.NatsUser)
 	require.Equal(t, "testpass", cfg.NatsPassword)
+	require.Equal(t, "testtoken", cfg.NatsAuthToken)
 	require.Equal(t, []string{"secret-a", "secret-b"}, cfg.JWTSecrets)
 	require.Equal(t, "https://sentry", cfg.SentryDSN)
 	require.Equal(t, "production", cfg.Environment)

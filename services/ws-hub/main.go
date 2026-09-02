@@ -9,8 +9,11 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -74,6 +77,10 @@ func run() error {
 		logger.ErrorContext(context.Background(), "WS_HUB_INTERNAL_SECRET is not set — generate with: openssl rand -hex 32")
 		return errors.New("WS_HUB_INTERNAL_SECRET is not set")
 	}
+	if err := validateListenPorts(cfg); err != nil {
+		logger.ErrorContext(context.Background(), "Listen port configuration is invalid", "err", err)
+		return err
+	}
 
 	if err := telemetry.InitSentry(cfg); err != nil {
 		logger.ErrorContext(context.Background(), "Sentry initialization failed", "err", err)
@@ -113,6 +120,22 @@ func run() error {
 	mux := http.NewServeMux()
 	setupHandlers(mux, h, cfg, logger, nc, rdb, revocationRDB)
 	return runServerFunc(cfg, logger, h, mux)
+}
+
+func validateListenPorts(cfg *config.Config) error {
+	for _, listen := range []struct {
+		name  string
+		value string
+	}{
+		{name: "WebSocket", value: cfg.Port},
+		{name: "WebTransport", value: cfg.WebTransportPort},
+	} {
+		port, err := strconv.Atoi(listen.value)
+		if err != nil || port < 0 || port > 65535 {
+			return fmt.Errorf("%s invalid port: listen port must be between 0 and 65535", listen.name)
+		}
+	}
+	return nil
 }
 
 func initializeTracerShutdown(ctx context.Context, cfg *config.Config, logger *slog.Logger) func() {
@@ -199,12 +222,18 @@ func getInitNats() func(context.Context, *config.Config, *slog.Logger) (*nats.Co
 }
 
 func defaultInitNats(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*nats.Conn, error) {
+	if err := validateNATSAuthentication(cfg); err != nil {
+		return nil, err
+	}
+
 	natsOpts := []nats.Option{
 		nats.RetryOnFailedConnect(true),
 		nats.MaxReconnects(-1),
 		nats.ReconnectWait(2 * time.Second),
 	}
-	if cfg.NatsUser != "" || cfg.NatsPassword != "" {
+	if cfg.NatsAuthToken != "" {
+		natsOpts = append(natsOpts, nats.Token(cfg.NatsAuthToken))
+	} else if cfg.NatsUser != "" || cfg.NatsPassword != "" {
 		natsOpts = append(natsOpts, nats.UserInfo(cfg.NatsUser, cfg.NatsPassword))
 	}
 	nc, err := nats.Connect(cfg.NatsURL, natsOpts...)
@@ -215,12 +244,52 @@ func defaultInitNats(ctx context.Context, cfg *config.Config, logger *slog.Logge
 	return nc, nil
 }
 
-func initRedis(ctx context.Context, cfg *config.Config, logger *slog.Logger) *redis.Client {
-	rdb := redis.NewClient(&redis.Options{
+func validateNATSAuthentication(cfg *config.Config) error {
+	if cfg.NatsAuthToken != "" && (cfg.NatsUser != "" || cfg.NatsPassword != "") {
+		return errors.New("NATS_AUTH_TOKEN is mutually exclusive with NATS_USER and NATS_PASSWORD")
+	}
+	if cfg.NatsAuthToken == "" && cfg.NatsUser == "" && cfg.NatsPassword == "" {
+		return nil
+	}
+
+	for _, serverURL := range strings.Split(cfg.NatsURL, ",") {
+		parsed, err := url.Parse(strings.TrimSpace(serverURL))
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			return errors.New("NATS_URL is invalid for explicit authentication")
+		}
+		if parsed.User != nil {
+			return errors.New("NATS_URL must not contain credentials when explicit NATS authentication is configured")
+		}
+	}
+	return nil
+}
+
+func redisOptions(cfg *config.Config) (*redis.Options, error) {
+	if strings.HasPrefix(cfg.RedisURL, "redis://") || strings.HasPrefix(cfg.RedisURL, "rediss://") {
+		options, err := redis.ParseURL(cfg.RedisURL)
+		if err != nil {
+			return nil, errors.New("REDIS_URL is invalid")
+		}
+		if options.TLSConfig != nil && options.TLSConfig.InsecureSkipVerify {
+			return nil, errors.New("REDIS_URL must not disable TLS certificate verification")
+		}
+		return options, nil
+	}
+
+	return &redis.Options{
 		Addr:     cfg.RedisURL,
 		Password: cfg.RedisPassword,
 		DB:       cfg.RedisDB,
-	})
+	}, nil
+}
+
+func initRedis(ctx context.Context, cfg *config.Config, logger *slog.Logger) *redis.Client {
+	options, err := redisOptions(cfg)
+	if err != nil {
+		logger.WarnContext(ctx, "Redis configuration is invalid, continuing without L2 cache", "err", err)
+		return nil
+	}
+	rdb := redis.NewClient(options)
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		logger.WarnContext(ctx, "Redis connection failed, continuing without L2 cache", "err", err)
 		if closeErr := closeRedisFunc(rdb); closeErr != nil {
@@ -228,17 +297,29 @@ func initRedis(ctx context.Context, cfg *config.Config, logger *slog.Logger) *re
 		}
 		return nil
 	}
-	logger.InfoContext(ctx, "Redis connected (L2 Cache enabled)", "addr", cfg.RedisURL)
+	logger.InfoContext(ctx, "Redis connected (L2 Cache enabled)", "addr", options.Addr)
 	return rdb
+}
+
+func revocationRedisOptions(rawURL string) (*redis.Options, error) {
+	options, err := redis.ParseURL(rawURL)
+	if err != nil {
+		// net/url parse errors can echo the complete input, including userinfo.
+		return nil, errors.New("REVOCATION_REDIS_URL is invalid")
+	}
+	if options.TLSConfig != nil && options.TLSConfig.InsecureSkipVerify {
+		return nil, errors.New("REVOCATION_REDIS_URL must not disable TLS certificate verification")
+	}
+	return options, nil
 }
 
 func initRevocationRedis(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*redis.Client, error) {
 	if cfg.RevocationRedisURL == "" {
 		return nil, errors.New("REVOCATION_REDIS_URL is not set")
 	}
-	options, err := redis.ParseURL(cfg.RevocationRedisURL)
+	options, err := revocationRedisOptions(cfg.RevocationRedisURL)
 	if err != nil {
-		return nil, fmt.Errorf("parse REVOCATION_REDIS_URL: %w", err)
+		return nil, err
 	}
 	client := redis.NewClient(options)
 	pingCtx, pingCancel := context.WithTimeout(ctx, 5*time.Second)
@@ -254,7 +335,11 @@ func initRevocationRedis(ctx context.Context, cfg *config.Config, logger *slog.L
 }
 
 func setupHub(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb *redis.Client, spiffeClients ...*spiffe.Client) (*hub.Hub, error) {
-	return setupHubWithRevocation(ctx, cfg, logger, nc, rdb, rdb, spiffeClients...)
+	// Compatibility helper used by isolated tests. Production startup calls
+	// setupHubWithRevocation with the separate durable security Redis obtained
+	// by initRevocationRedis; an L2/cache Redis must never be treated as that
+	// revocation authority.
+	return setupHubWithRevocation(ctx, cfg, logger, nc, rdb, nil, spiffeClients...)
 }
 
 func setupHubWithRevocation(ctx context.Context, cfg *config.Config, logger *slog.Logger, nc *nats.Conn, rdb, revocationRDB *redis.Client, spiffeClients ...*spiffe.Client) (*hub.Hub, error) {
@@ -274,6 +359,16 @@ func setupHubWithRevocation(ctx context.Context, cfg *config.Config, logger *slo
 	// RZ-W14-01: pass rdb so the Hub can validate one-time WS upgrade tickets
 	//nolint:contextcheck
 	h := hub.NewHub(nc, logger, authClient, cfg, rdb, revocationRDB)
+	// A real service bootstrap always has a dedicated revocation Redis: run()
+	// fails before reaching this point when it cannot initialise one. Keep the
+	// nil guard for isolated health/unit fixtures, whose action path is never
+	// exposed and whose Hub checker is fail-closed by default.
+	if revocationRDB != nil {
+		if err := h.StartSessionRevocationListener(ctx); err != nil {
+			h.Stop() //nolint:contextcheck // Hub.Stop cancels its own lifecycle context.
+			return nil, fmt.Errorf("start session revocation listener: %w", err)
+		}
+	}
 
 	if cfg.JWKSURL != "" {
 		if err := setupJWKSFunc(h, ctx, cfg.JWKSURL); err != nil {
@@ -284,7 +379,7 @@ func setupHubWithRevocation(ctx context.Context, cfg *config.Config, logger *slo
 	}
 
 	h.StartLimiterCleanup(ctx)
-	go h.Run(ctx)
+	hub.StartTrackedGoroutine(func() { h.Run(ctx) })
 	if nc != nil {
 		if err := subscribeNATSFunc(h, ctx); err != nil {
 			h.Stop() //nolint:contextcheck // Hub.Stop cancels its own lifecycle context.
@@ -355,9 +450,11 @@ func setupHandlers(mux *http.ServeMux, h *hub.Hub, cfg *config.Config, logger *s
 	if len(revocationClients) > 0 {
 		revocationRDB = revocationClients[0]
 	}
-	mux.Handle("/ws", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	websocketHandler := otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.HandleWebSocket(w, r, cfg)
-	}), "websocket_upgrade"))
+	}), "websocket_upgrade")
+	mux.Handle("/ws", websocketHandler)
+	mux.Handle("/ws/chat", websocketHandler)
 
 	mux.Handle("/wt", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.HandleWebTransport(w, r, cfg)
@@ -522,23 +619,23 @@ func runServer(cfg *config.Config, logger *slog.Logger, h *hub.Hub, mux *http.Se
 	// goroutine — ensures deferred cleanup (NATS close, Redis close, tracer
 	// shutdown) always executes. Matches gateway pattern (RZ-31-01).
 	errChan := make(chan error, 2)
-	go func() {
+	hub.StartTrackedGoroutine(func() {
 		logger.InfoContext(context.Background(), "Starting WebSocket Hub (TCP)", "port", cfg.Port)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			errChan <- err
 		}
-	}()
+	})
 
 	wtReady := make(chan struct{})
 	wtDone := make(chan struct{})
-	go func() {
+	hub.StartTrackedGoroutine(func() {
 		defer close(wtDone)
 		logger.InfoContext(context.Background(), "Starting WebTransport Hub (UDP HTTP/3)", "port", wtPort)
 		err := serveWebTransport(wtServer, wtPort, cfg, logger, wtReady)
 		if err != nil && err != http.ErrServerClosed {
 			logger.WarnContext(context.Background(), "WebTransport HTTP/3 listener stopped", "err", err)
 		}
-	}()
+	})
 
 	runErr, shutdownRequested := waitForWebTransportStartup(quit, wtReady, wtDone, errChan, logger)
 	if !shutdownRequested {

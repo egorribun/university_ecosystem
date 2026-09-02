@@ -3,13 +3,18 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, it, expect, vi } from "vitest"
 
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
+const { mockUseTranslation, mockUseMediaQuery } = vi.hoisted(() => ({
+  mockUseTranslation: vi.fn(() => ({
     t: (key: string) => key,
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  })),
+  mockUseMediaQuery: vi.fn(() => false),
 }))
-vi.mock("@/hooks/useMediaQuery", () => ({ default: () => false }))
+
+vi.mock("react-i18next", () => ({
+  useTranslation: mockUseTranslation,
+}))
+vi.mock("@/hooks/useMediaQuery", () => ({ default: mockUseMediaQuery }))
 
 import { MapControls } from "@/components/map/MapControls"
 import type { MapRef } from "react-map-gl/maplibre"
@@ -34,6 +39,32 @@ describe("MapControls", () => {
     await user.click(screen.getByRole("button", { name: "zoom.in" }))
     await user.click(screen.getByRole("button", { name: "zoom.out" }))
     expect(screen.getByRole("button", { name: "zoom.in" })).toBeInTheDocument()
+  })
+
+  it("keeps every map action safe when the map instance is unavailable", async () => {
+    const user = userEvent.setup()
+    const ref = {
+      current: { getMap: vi.fn(() => null) },
+    } as unknown as MutableRefObject<MapRef | null>
+    render(<MapControls mapRef={ref} />)
+
+    await user.click(screen.getByRole("button", { name: "zoom.in" }))
+    await user.click(screen.getByRole("button", { name: "zoom.out" }))
+    await user.click(screen.getByRole("button", { name: "controls.compass" }))
+    await user.click(screen.getByRole("button", { name: "controls.pitchToggle" }))
+    await user.click(screen.getByRole("button", { name: "zoom.reset" }))
+
+    expect(ref.current?.getMap).toHaveBeenCalledTimes(5)
+  })
+
+  it("uses the map namespace and responsive media-query contracts", () => {
+    mockUseTranslation.mockClear()
+    mockUseMediaQuery.mockClear()
+    render(<MapControls mapRef={nullMapRef} />)
+
+    expect(mockUseTranslation).toHaveBeenCalledWith("map")
+    expect(mockUseMediaQuery).toHaveBeenNthCalledWith(1, "(max-width: 640px)")
+    expect(mockUseMediaQuery).toHaveBeenNthCalledWith(2, "(max-width: 380px), (max-height: 500px)")
   })
 
   it("toggles pitch, recenter, and fullscreen without crashing on a null map", async () => {

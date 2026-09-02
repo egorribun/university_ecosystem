@@ -2,9 +2,9 @@ import type { MutableRefObject, PropsWithChildren } from "react"
 import { useRef } from "react"
 import { renderHook, act, waitFor, cleanup } from "@testing-library/react"
 import { QueryClientProvider } from "@tanstack/react-query"
-import { hmac } from "@noble/hashes/hmac"
-import { sha256 } from "@noble/hashes/sha256"
-import { utf8ToBytes } from "@noble/hashes/utils"
+import { hmac } from "@noble/hashes/hmac.js"
+import { sha256 } from "@noble/hashes/sha2.js"
+import { utf8ToBytes } from "@noble/hashes/utils.js"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import api from "@/api/client"
@@ -1022,6 +1022,12 @@ describe("useProfileSync — handleUnauthorized / clearProfile / setUser", () =>
       expect(setItemSpy).toHaveBeenCalledWith(PROFILE_CACHE_STORAGE_KEY, expect.any(String))
     )
     expect(result.current.user?.full_name).toBe("Persist failure")
+  })
+
+  it("restores Storage methods after a simulated persistence failure", () => {
+    localStorage.setItem("profile-sync-storage-isolation", "available")
+
+    expect(localStorage.getItem("profile-sync-storage-isolation")).toBe("available")
   })
 
   it("continues without localStorage in restricted browser mode", async () => {

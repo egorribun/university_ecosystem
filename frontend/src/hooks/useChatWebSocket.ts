@@ -19,12 +19,11 @@ import {
 import { logError } from "@/app/logger"
 import { parseWsMessage } from "@/api/schemas/wsMessage"
 import api from "@/api/client"
-import { getDatabase } from "@/db"
+import { getDatabaseLazily } from "@/db/lazy"
 
 // Reconnection configuration
 const RECONNECT_BASE_DELAY_MS = 1000 // 1 second
 const RECONNECT_MAX_DELAY_MS = 30000 // 30 seconds
-const PING_INTERVAL_MS = 30000 // Heartbeat every 30 seconds
 // Wave 183 SW3 — Cap reconnection attempts to prevent runaway retry loops
 // when backend is unreachable for extended periods. Before the cap, each
 // failed attempt logged ~2 console errors (WS handshake fail + onerror
@@ -41,13 +40,258 @@ const MAX_RECONNECT_ATTEMPTS = 10
 // convention). Typing indicator clears 3s after the last typing event from
 // a peer; if peer continues typing, the next event resets the timeout.
 const TYPING_INDICATOR_TIMEOUT_MS = 3000
+export const LIVE_MESSAGE_CACHE_LIMIT = 200
+// Retain the 4096 most-recently-seen composite chat/message IDs. This is wide
+// enough to bridge ordinary reconnect replay windows while keeping hook memory
+// strictly bounded; LRU refresh protects IDs that are actively replayed.
+const LIVE_MESSAGE_DEDUP_LIMIT = 4096
+const REPLAY_CHECKPOINT_PREFIX = "university.chat.replay.v2:"
+const REPLAY_CHECKPOINT_LIMIT = 256
+const REPLAY_CHECKPOINT_USER_LIMIT = 16
+const REPLAY_CHECKPOINT_STORAGE_LIMIT = 65_536
+type ReplayCheckpoint = { sequence: number; resumeToken: string }
+const replayCheckpointMemory = new Map<string, Map<string, ReplayCheckpoint>>()
+const replayCheckpointMounts = new Map<string, number>()
+
+function replayCheckpointKey(userId: string): string {
+  return `${REPLAY_CHECKPOINT_PREFIX}${encodeURIComponent(userId)}`
+}
+
+function persistReplayCheckpoints(userId: string, registry: Map<string, ReplayCheckpoint>): void {
+  try {
+    window.sessionStorage.setItem(
+      replayCheckpointKey(userId),
+      JSON.stringify({
+        entries: [...registry.entries()].map(([chatId, checkpoint]) => [
+          chatId,
+          checkpoint.sequence,
+          checkpoint.resumeToken,
+        ]),
+      })
+    )
+  } catch {
+    // The in-memory registry still protects this mounted browser session.
+  }
+}
+
+function replayCheckpointRegistry(userId: string): Map<string, ReplayCheckpoint> {
+  const cached = replayCheckpointMemory.get(userId)
+  if (cached) {
+    replayCheckpointMemory.delete(userId)
+    replayCheckpointMemory.set(userId, cached)
+    return cached
+  }
+
+  const registry = new Map<string, ReplayCheckpoint>()
+  replayCheckpointMemory.set(userId, registry)
+  while (replayCheckpointMemory.size > REPLAY_CHECKPOINT_USER_LIMIT) {
+    // size > limit proves the iterator has a first key.
+    const oldestUserId = replayCheckpointMemory.keys().next().value!
+    replayCheckpointMemory.delete(oldestUserId)
+  }
+  try {
+    const key = replayCheckpointKey(userId)
+    const stored = window.sessionStorage.getItem(key)
+    if (stored === null) return registry
+    if (stored.length > REPLAY_CHECKPOINT_STORAGE_LIMIT)
+      throw new Error("checkpoint registry too large")
+    const parsed = JSON.parse(stored) as { entries?: unknown }
+    if (!Array.isArray(parsed.entries)) throw new Error("invalid checkpoint registry")
+    for (const entry of parsed.entries.slice(-REPLAY_CHECKPOINT_LIMIT)) {
+      if (
+        !Array.isArray(entry) ||
+        entry.length !== 3 ||
+        typeof entry[0] !== "string" ||
+        entry[0].length === 0 ||
+        entry[0].length > 512 ||
+        typeof entry[1] !== "number" ||
+        !Number.isSafeInteger(entry[1]) ||
+        entry[1] < 1 ||
+        typeof entry[2] !== "string" ||
+        entry[2].length === 0 ||
+        entry[2].length > 4096
+      ) {
+        throw new Error("invalid checkpoint entry")
+      }
+      registry.delete(entry[0])
+      registry.set(entry[0], { sequence: entry[1], resumeToken: entry[2] })
+    }
+  } catch {
+    registry.clear()
+    try {
+      window.sessionStorage.removeItem(replayCheckpointKey(userId))
+    } catch {
+      // Storage can be disabled; the in-memory registry is already fail-closed.
+    }
+  }
+  return registry
+}
+
+function readAndTouchReplayCheckpoint(
+  userId: string | undefined,
+  chatId: string
+): ReplayCheckpoint | undefined {
+  if (!userId) return undefined
+  const registry = replayCheckpointRegistry(userId)
+  const checkpoint = registry.get(chatId)
+  if (checkpoint === undefined) return undefined
+  registry.delete(chatId)
+  registry.set(chatId, checkpoint)
+  persistReplayCheckpoints(userId, registry)
+  return checkpoint
+}
+
+function peekReplayCheckpoint(
+  userId: string | undefined,
+  chatId: string
+): ReplayCheckpoint | undefined {
+  if (!userId) return undefined
+  return replayCheckpointRegistry(userId).get(chatId)
+}
+
+function writeReplayCheckpoint(
+  userId: string | undefined,
+  chatId: string,
+  sequence: number,
+  resumeToken: string,
+  protectedChatId: string | null
+): void {
+  if (!userId) return
+  const registry = replayCheckpointRegistry(userId)
+  registry.delete(chatId)
+  registry.set(chatId, { sequence, resumeToken })
+  while (registry.size > REPLAY_CHECKPOINT_LIMIT) {
+    const evictionCandidate = [...registry.keys()].find(
+      (candidate) => candidate !== protectedChatId && candidate !== chatId
+    )
+    // A registry over the limit contains more entries than the two protected
+    // ids, so a candidate necessarily exists.
+    registry.delete(evictionCandidate!)
+  }
+  persistReplayCheckpoints(userId, registry)
+}
+
+function clearReplayCheckpoints(userId: string): void {
+  replayCheckpointMemory.delete(userId)
+  try {
+    window.sessionStorage.removeItem(replayCheckpointKey(userId))
+  } catch {
+    // Storage can be disabled; the in-memory state was already cleared.
+  }
+}
+
+function removeReplayCheckpoint(userId: string | undefined, chatId: string): void {
+  if (!userId) return
+  const registry = replayCheckpointRegistry(userId)
+  if (!registry.delete(chatId)) return
+  persistReplayCheckpoints(userId, registry)
+}
+
+function joinFrame(userId: string | undefined, chatId: string) {
+  const checkpoint = readAndTouchReplayCheckpoint(userId, chatId)
+  return checkpoint === undefined
+    ? { type: "join", room: chatId }
+    : { type: "join", room: chatId, resume_token: checkpoint.resumeToken }
+}
+
+export function rememberLiveMessage(
+  seenMessageIds: Map<string, true>,
+  chatId: string,
+  messageId: string
+): boolean {
+  const key = `${chatId}\u0000${messageId}`
+  if (seenMessageIds.has(key)) {
+    // Refresh duplicate entries so frequently replayed frames remain protected
+    // when the bounded window evicts its least-recently-seen member.
+    seenMessageIds.delete(key)
+    seenMessageIds.set(key, true)
+    return false
+  }
+
+  seenMessageIds.set(key, true)
+  if (seenMessageIds.size > LIVE_MESSAGE_DEDUP_LIMIT) {
+    seenMessageIds.delete(seenMessageIds.keys().next().value!)
+  }
+  return true
+}
+
+function messageEpochMicroseconds(createdAt: string): bigint | null {
+  const epochMilliseconds = Date.parse(createdAt)
+  if (!Number.isFinite(epochMilliseconds)) return null
+
+  // Date.parse keeps only millisecond precision. Preserve the final three
+  // fractional digits so the cursor exactly matches the backend's integer
+  // microsecond keyset contract.
+  const fractional = /\.(\d{1,6})(?:Z|[+-]\d{2}:\d{2})$/u.exec(createdAt)?.[1] ?? ""
+  const subMillisecondDigits = fractional.padEnd(6, "0").slice(3, 6)
+  return BigInt(epochMilliseconds) * 1000n + BigInt(subMillisecondDigits)
+}
+
+function compareMessageOrder(left: Message, right: Message): number | null {
+  const leftEpoch = messageEpochMicroseconds(left.created_at)
+  const rightEpoch = messageEpochMicroseconds(right.created_at)
+  if (leftEpoch === null || rightEpoch === null) return null
+  if (leftEpoch < rightEpoch) return -1
+  if (leftEpoch > rightEpoch) return 1
+
+  const leftId = String(left.id)
+  const rightId = String(right.id)
+  if (leftId < rightId) return -1
+  if (leftId > rightId) return 1
+  return 0
+}
+
+function messageHistoryCursor(message: Message): string {
+  return `${messageEpochMicroseconds(message.created_at)!}:${message.id}`
+}
 
 // MOD-W10-05: Per-message-type minimum interval (ms) for outgoing WS messages.
 // Prevents a runaway component from flooding the server with typing events
 const OUTGOING_RATE_LIMITS: Readonly<Record<string, number>> = {
   typing: 500, // at most one "typing" event per 500 ms
-  read: 200, // at most one "read" receipt per 200 ms per chat
 } as const
+
+export function appendLiveMessageToCache(
+  cached: MessagesListResponse,
+  message: Message
+): MessagesListResponse {
+  const unorderedItems = [...cached.items, message]
+  // An invalid timestamp makes ordering and a lossless recovery edge
+  // unknowable. Preserve deterministic arrival order, but never relax the hard
+  // memory bound; the hook forces an active history refetch to repair this
+  // legacy/corrupt cache path. Wire frames are rejected earlier by Valibot.
+  if (unorderedItems.some((item) => messageEpochMicroseconds(item.created_at) === null)) {
+    if (unorderedItems.length <= LIVE_MESSAGE_CACHE_LIMIT) {
+      return { ...cached, items: unorderedItems }
+    }
+    return {
+      ...cached,
+      items: unorderedItems.slice(-LIVE_MESSAGE_CACHE_LIMIT),
+      has_more: true,
+    }
+  }
+
+  // Backend history is ascending by (created_at, id). Insert a delayed live
+  // frame at the same deterministic position without re-sorting existing items
+  // or changing their object identity, preserving virtualizer scroll anchors.
+  const insertionIndex = cached.items.findIndex(
+    (cachedMessage) => compareMessageOrder(message, cachedMessage)! < 0
+  )
+  const items =
+    insertionIndex < 0
+      ? unorderedItems
+      : [...cached.items.slice(0, insertionIndex), message, ...cached.items.slice(insertionIndex)]
+  if (items.length <= LIVE_MESSAGE_CACHE_LIMIT) return { ...cached, items }
+
+  const boundedItems = items.slice(-LIVE_MESSAGE_CACHE_LIMIT)
+  const recoveryCursor = messageHistoryCursor(boundedItems[0]!)
+  return {
+    ...cached,
+    items: boundedItems,
+    has_more: true,
+    next_cursor: recoveryCursor,
+  }
+}
 
 /**
  * Calculate reconnection delay with full-jitter exponential backoff.
@@ -159,17 +403,19 @@ export function applyReactionChangedFrame(
 
 // WebSocket message types
 export type WebSocketMessageType =
-  | "ping"
   | "pong"
   | "typing"
   | "read"
   | "new_message"
   | "online"
+  | "online_list"
   | "presence"
   | "error"
+  | "rate_limit_exceeded"
   | "message_edited"
   | "message_deleted"
   | "reaction_changed"
+  | "replay_checkpoint"
 
 export interface WebSocketMessage {
   type: WebSocketMessageType
@@ -267,8 +513,12 @@ export function useChatWebSocket({
 
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const reconnectAttemptRef = useRef(0)
+  const connectionGenerationRef = useRef(0)
+  const ticketRequestRef = useRef<{
+    generation: number
+    controller: AbortController
+  } | null>(null)
 
   // MOD-11: Subscribe to external store for connection state
   // W127 SW1: 3rd arg getServerSnapshot returns `false` — no WS connection
@@ -297,8 +547,20 @@ export function useChatWebSocket({
   // ws-hub room membership is per-connection).
   const currentUserIdRef = useRef(currentUserId)
   const activeRoomRef = useRef<string | null>(null)
+  // At-least-once delivery can replay a message after it has left the smaller
+  // render cache. Keep transport deduplication independent and bounded for the
+  // complete authenticated hook session, including reconnects.
+  const seenMessageIdsRef = useRef<Map<string, true>>(new Map())
+  const seenMessageSessionRef = useRef(currentUserId)
 
   useEffect(() => {
+    if (seenMessageSessionRef.current !== currentUserId) {
+      if (seenMessageSessionRef.current) {
+        clearReplayCheckpoints(seenMessageSessionRef.current)
+      }
+      seenMessageIdsRef.current.clear()
+      seenMessageSessionRef.current = currentUserId
+    }
     onNewMessageRef.current = onNewMessage
     onTypingRef.current = onTyping
     onReadRef.current = onRead
@@ -308,11 +570,29 @@ export function useChatWebSocket({
     currentUserIdRef.current = currentUserId
   })
 
-  const cleanup = useCallback(() => {
-    if (pingIntervalRef.current) {
-      clearInterval(pingIntervalRef.current)
-      pingIntervalRef.current = null
+  useEffect(
+    () => () => {
+      seenMessageIdsRef.current.clear()
+    },
+    []
+  )
+
+  useEffect(() => {
+    if (!currentUserId) return
+    replayCheckpointMounts.set(currentUserId, (replayCheckpointMounts.get(currentUserId) ?? 0) + 1)
+    return () => {
+      // This cleanup exists only after the setup increment above.
+      const remaining = replayCheckpointMounts.get(currentUserId)! - 1
+      if (remaining > 0) {
+        replayCheckpointMounts.set(currentUserId, remaining)
+        return
+      }
+      replayCheckpointMounts.delete(currentUserId)
+      replayCheckpointMemory.delete(currentUserId)
     }
+  }, [currentUserId])
+
+  const cleanup = useCallback(() => {
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current)
       reconnectTimeoutRef.current = null
@@ -324,11 +604,17 @@ export function useChatWebSocket({
   }, [])
 
   const connect = useCallback(() => {
-    if (!enabled) return
+    if (!enabled || !mountedRef.current || navigator.onLine === false) return
 
-    if (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED) {
+    if (
+      ticketRequestRef.current ||
+      (wsRef.current && wsRef.current.readyState !== WebSocket.CLOSED)
+    ) {
       return
     }
+    const requestGeneration = ++connectionGenerationRef.current
+    const ticketController = new AbortController()
+    ticketRequestRef.current = { generation: requestGeneration, controller: ticketController }
 
     // RZ-W14-01 (audit 2026-03-23 Wave 14): fetch a short-lived upgrade ticket
     // before opening the WebSocket.  This eliminates the JWT from the URL and
@@ -352,7 +638,6 @@ export function useChatWebSocket({
       // does NOT accept cookie-only upgrades since Wave 14.
       let ticket: string
       // TD-26-02: AbortController for cleanup on unmount; TD-26-03: 5s timeout
-      const ticketController = new AbortController()
       const ticketTimeout = setTimeout(() => ticketController.abort(), 5000)
       try {
         // FIX-44-02: Use axios instead of fetch so CSRF header (X-CSRF-Token)
@@ -366,6 +651,7 @@ export function useChatWebSocket({
         )
         ticket = resp.data.ticket
       } catch (e: unknown) {
+        if (ticketController.signal.aborted || !mountedRef.current) return
         const axiosErr = e as { response?: { status: number } }
         const status = axiosErr?.response?.status
         if (status === 401 || status === 403) {
@@ -374,6 +660,13 @@ export function useChatWebSocket({
           onAuthErrorRef.current?.()
         } else {
           // Transient server/network error — schedule backoff reconnect.
+          if (navigator.onLine === false) return
+          if (reconnectAttemptRef.current >= MAX_RECONNECT_ATTEMPTS) {
+            logError("[WebSocket] Ticket retry limit reached.", {
+              attempts: reconnectAttemptRef.current,
+            })
+            return
+          }
           logError("[WebSocket] Ticket fetch failed; will retry.", e)
           const delay = calculateReconnectDelay(reconnectAttemptRef.current)
           reconnectAttemptRef.current += 1
@@ -382,7 +675,18 @@ export function useChatWebSocket({
         return
       } finally {
         clearTimeout(ticketTimeout) // TD-26-03: clean up timeout
+        if (ticketRequestRef.current?.generation === requestGeneration) {
+          ticketRequestRef.current = null
+        }
       }
+
+      if (
+        !mountedRef.current ||
+        ticketController.signal.aborted ||
+        !enabled ||
+        connectionGenerationRef.current !== requestGeneration
+      )
+        return
 
       try {
         const ws = new WebSocket(`${baseWsUrl}?ticket=${encodeURIComponent(ticket)}`)
@@ -398,18 +702,16 @@ export function useChatWebSocket({
           // nothing after a reconnect until the next chat-select.
           if (activeRoomRef.current) {
             try {
-              ws.send(JSON.stringify({ type: "join", room: activeRoomRef.current }))
+              ws.send(JSON.stringify(joinFrame(currentUserIdRef.current, activeRoomRef.current)))
             } catch {
               /* WS closed between open and send — the next connect re-joins */
             }
           }
 
-          if (pingIntervalRef.current) clearInterval(pingIntervalRef.current)
-          pingIntervalRef.current = setInterval(() => {
-            if (ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: "ping" }))
-            }
-          }, PING_INTERVAL_MS)
+          // ws-hub owns the transport heartbeat and sends WebSocket control
+          // ping frames. Browsers answer those automatically; an application
+          // JSON `{"type":"ping"}` is not a valid client command and would
+          // only be rejected at the hub's protocol boundary.
         }
 
         ws.onmessage = (event) => {
@@ -426,18 +728,85 @@ export function useChatWebSocket({
               return
             }
 
+            const sequencedChatId = "chat_id" in validated ? validated.chat_id : undefined
+            // An event without a stream sequence cannot be older than a durable
+            // checkpoint. Normalizing that absence to an explicit upper sentinel
+            // keeps the comparison total and avoids a redundant undefined guard.
+            const incomingSequence = validated.stream_seq ?? Number.POSITIVE_INFINITY
+            if (
+              sequencedChatId !== undefined &&
+              incomingSequence <=
+                (peekReplayCheckpoint(currentUserIdRef.current, sequencedChatId)?.sequence ?? 0)
+            ) {
+              return
+            }
+
             switch (validated.type) {
               case "new_message": {
-                // W204 SW4 — self-echo guard. The NATS→ws-hub→room fan-out has
-                // no per-recipient exclusion (it delivers to ALL room members
-                // incl. the sender), so the sender receives its own message
-                // back. Skip it: the sender already has the message (optimistic
-                // insert + sendMessage onSuccess), and processing the echo would
-                // wrongly +1 the sender's OWN unread_count in the chats cache.
-                if (validated.message.sender_id === currentUserIdRef.current) break
+                // A self-authored live echo is usually already present from the
+                // optimistic mutation. A replay can arrive after that optimistic
+                // cache entry was lost, though, so cache presence—not authorship—
+                // decides whether reconciliation may be skipped.
+                const selfAuthored = validated.message.sender_id === currentUserIdRef.current
+                const cachedMessages = queryClient.getQueryData<MessagesListResponse>([
+                  "messages",
+                  validated.chat_id,
+                ])
+                const selfMessageAlreadyPresent =
+                  selfAuthored &&
+                  cachedMessages?.items.some((message) => message.id === validated.message.id)
+                if (selfMessageAlreadyPresent) {
+                  rememberLiveMessage(
+                    seenMessageIdsRef.current,
+                    validated.chat_id,
+                    validated.message.id
+                  )
+                  break
+                }
+                if (
+                  !rememberLiveMessage(
+                    seenMessageIdsRef.current,
+                    validated.chat_id,
+                    validated.message.id
+                  ) &&
+                  !selfAuthored
+                )
+                  break
 
-                // Persist message to RxDB
-                getDatabase()
+                // Wave 202 SW2 — `validated.message` is the Valibot `ParsedMessage`
+                // (attachments/sender validated shape-only as Record<string,unknown>);
+                // the cache stores `@/api/chat` `Message` (typed Attachment[]/User).
+                // `Message` is assignable to `ParsedMessage`, so the two are comparable
+                // → a single `as Message` is valid (collapsed from the prior, redundant
+                // `as unknown as Message` double-cast; the `unknown` hop was never needed).
+                // Do NOT delete the cast — `ParsedMessage` is NOT structurally `Message`.
+                let inserted = false
+                let requiresHistoryRecovery =
+                  messageEpochMicroseconds(validated.message.created_at) === null
+                queryClient.setQueryData<MessagesListResponse>(
+                  ["messages", validated.chat_id],
+                  (old) => {
+                    if (!old) {
+                      inserted = true
+                      return {
+                        items: [validated.message as Message],
+                        has_more: false,
+                        next_cursor: null,
+                      }
+                    }
+                    if (old.items.some((m) => m.id === validated.message.id)) return old
+                    requiresHistoryRecovery ||= old.items.some(
+                      (message) => messageEpochMicroseconds(message.created_at) === null
+                    )
+                    inserted = true
+                    return appendLiveMessageToCache(old, validated.message as Message)
+                  }
+                )
+                if (!inserted) break
+
+                // Persist only newly accepted frames to RxDB. A repeated delivery
+                // is idempotent across the in-memory cache, unread count and callbacks.
+                getDatabaseLazily()
                   .then((db) => {
                     const msg = validated.message as Message
                     db.messages
@@ -458,57 +827,34 @@ export function useChatWebSocket({
                       .catch(() => {})
                   })
                   .catch(() => {})
-
-                // Wave 202 SW2 — `validated.message` is the Valibot `ParsedMessage`
-                // (attachments/sender validated shape-only as Record<string,unknown>);
-                // the cache stores `@/api/chat` `Message` (typed Attachment[]/User).
-                // `Message` is assignable to `ParsedMessage`, so the two are comparable
-                // → a single `as Message` is valid (collapsed from the prior, redundant
-                // `as unknown as Message` double-cast; the `unknown` hop was never needed).
-                // Do NOT delete the cast — `ParsedMessage` is NOT structurally `Message`.
-                queryClient.setQueryData<MessagesListResponse>(
-                  ["messages", validated.chat_id],
-                  (old) => {
-                    if (!old)
-                      return {
-                        items: [validated.message as Message],
-                        has_more: false,
-                        next_cursor: null,
-                      }
-                    if (old.items.some((m) => m.id === validated.message.id)) return old
-                    // RZ-004: Sliding window prevents V8 heap exhaustion in long-lived sessions.
-                    // Cap in-memory buffer at 200 messages — older messages are re-fetched
-                    // via cursor-based pagination when the user scrolls up.
-                    const MAX_BUFFERED_MESSAGES = 200
-                    const appended = [...old.items, validated.message as Message]
-                    const trimmed =
-                      appended.length > MAX_BUFFERED_MESSAGES
-                        ? appended.slice(appended.length - MAX_BUFFERED_MESSAGES)
-                        : appended
-                    return { ...old, items: trimmed }
-                  }
-                )
                 queryClient.invalidateQueries({
                   queryKey: ["messages", validated.chat_id],
-                  refetchType: "none",
+                  refetchType: requiresHistoryRecovery ? "active" : "none",
                 })
                 queryClient.setQueryData<ChatsListResponse>(["chats"], (old) => {
                   if (!old) return old
+                  const incomingMessage = validated.message as Message
                   return {
                     ...old,
                     items: old.items.map((chat) =>
                       chat.id === validated.chat_id
                         ? {
                             ...chat,
-                            last_message: validated.message as Message,
-                            unread_count: chat.unread_count + 1,
+                            last_message:
+                              !chat.last_message ||
+                              (compareMessageOrder(incomingMessage, chat.last_message) ?? -1) > 0
+                                ? incomingMessage
+                                : chat.last_message,
+                            unread_count: selfAuthored ? chat.unread_count : chat.unread_count + 1,
                           }
                         : chat
                     ),
                   }
                 })
                 queryClient.invalidateQueries({ queryKey: ["chats"], refetchType: "none" })
-                onNewMessageRef.current?.(validated.message as Message, validated.chat_id)
+                if (!selfAuthored) {
+                  onNewMessageRef.current?.(validated.message as Message, validated.chat_id)
+                }
                 break
               }
 
@@ -635,9 +981,39 @@ export function useChatWebSocket({
                 break
               }
 
+              case "replay_checkpoint":
+                // The server terminated a permanently malformed replay event.
+                // Advancing the durable sequence below prevents that poison event
+                // from being requested again on every reconnect.
+                break
+
               case "error":
+                if (validated.code === "invalid_resume_token" && validated.room !== undefined) {
+                  removeReplayCheckpoint(currentUserIdRef.current, validated.room)
+                  void queryClient.invalidateQueries({
+                    queryKey: ["messages", validated.room],
+                    refetchType: "all",
+                  })
+                  void queryClient.invalidateQueries({
+                    queryKey: ["chats"],
+                    refetchType: "all",
+                  })
+                }
                 logError("[WebSocket] Server error:", validated)
                 break
+            }
+            if (
+              validated.stream_seq !== undefined &&
+              validated.resume_token !== undefined &&
+              sequencedChatId !== undefined
+            ) {
+              writeReplayCheckpoint(
+                currentUserIdRef.current,
+                sequencedChatId,
+                validated.stream_seq,
+                validated.resume_token,
+                activeRoomRef.current
+              )
             }
           } catch (e) {
             logError("[WebSocket] Failed to parse message:", e)
@@ -645,6 +1021,10 @@ export function useChatWebSocket({
         }
 
         ws.onclose = (event) => {
+          // A late close from a superseded transport must not tear down the
+          // connection state or timers belonging to the newer socket.
+          if (wsRef.current !== ws) return
+          wsRef.current = null
           wsStore.setConnected(false)
           cleanup()
 
@@ -685,6 +1065,9 @@ export function useChatWebSocket({
 
   const disconnect = useCallback(() => {
     cleanup()
+    connectionGenerationRef.current += 1
+    ticketRequestRef.current?.controller.abort()
+    ticketRequestRef.current = null
     if (wsRef.current) {
       wsRef.current.close(1000)
       wsRef.current = null
@@ -706,6 +1089,21 @@ export function useChatWebSocket({
     }
   }, [enabled, connect, disconnect])
 
+  useEffect(() => {
+    if (!enabled) return
+    const onOnline = () => {
+      reconnectAttemptRef.current = 0
+      connectRef.current()
+    }
+    const onOffline = () => disconnect()
+    window.addEventListener("online", onOnline)
+    window.addEventListener("offline", onOffline)
+    return () => {
+      window.removeEventListener("online", onOnline)
+      window.removeEventListener("offline", onOffline)
+    }
+  }, [disconnect, enabled])
+
   // Wave 207 — typing is broadcast via REST (POST /chats/{id}/typing), NOT over the
   // WS: the frontend connects to ws-hub, whose allowedMessageTypes drops "typing" at
   // its parse boundary, so the pre-W207 wsRef.send({type:"typing"}) went nowhere. The
@@ -725,21 +1123,6 @@ export function useChatWebSocket({
     })
   }, [])
 
-  const sendRead = useCallback((chatId: string) => {
-    if (wsRef.current?.readyState !== WebSocket.OPEN) return
-    const key = `read:${chatId}`
-    const now = Date.now()
-    if (now - (lastSentRef.current.get(key) ?? 0) < OUTGOING_RATE_LIMITS.read!) return
-    lastSentRef.current.set(key, now)
-    try {
-      // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send.
-      // Wave 203 SW5 — chat-level read frame (no message_id).
-      wsRef.current.send(JSON.stringify({ type: "read", chat_id: chatId }))
-    } catch {
-      /* WS closed between readyState check and send — safe to ignore */
-    }
-  }, [])
-
   // W204 SW4 — join/leave a ws-hub room (room == chat_id). A client must JOIN
   // to RECEIVE chat.{room} fan-out: ws-hub's collectRecipients returns nil for
   // an empty Rooms[room]. ws-hub authorizes the join via
@@ -751,7 +1134,7 @@ export function useChatWebSocket({
     if (wsRef.current?.readyState !== WebSocket.OPEN) return
     try {
       // RZ-26-07: guard TOCTOU race — WS may close between readyState check and send.
-      wsRef.current.send(JSON.stringify({ type: "join", room: roomId }))
+      wsRef.current.send(JSON.stringify(joinFrame(currentUserIdRef.current, roomId)))
     } catch {
       /* WS closed between readyState check and send — onopen re-joins activeRoomRef */
     }
@@ -783,7 +1166,6 @@ export function useChatWebSocket({
   return {
     isConnected,
     sendTyping,
-    sendRead,
     sendJoin,
     sendLeave,
     getTypingUsersForChat,

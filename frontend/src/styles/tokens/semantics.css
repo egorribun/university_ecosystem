@@ -1,5 +1,10 @@
 @layer base {
   :root {
+    /* Compatibility alias: new work uses --primary-main directly. */
+    --brand-main: var(--primary-main);
+    --accent: var(--primary-main);
+    --primary-dark: var(--primary-hover);
+    --error-border: var(--error-text);
     /* Semantic Blurs (always px — blur must not scale with font-size) */
     --blur-none: 0px;
     --blur-xs: 4px;
@@ -52,6 +57,12 @@
     --event-media-border: color-mix(in srgb, var(--primary-main) 12%, transparent 88%);
     --event-media-pulse: color-mix(in srgb, var(--primary-main) 15%, var(--bg-surface) 85%);
     --event-divider: color-mix(in srgb, var(--primary-main) 20%, transparent 80%);
+    --grad-story-fade: linear-gradient(
+      180deg,
+      transparent 0%,
+      var(--primary-subtle-bg) 55%,
+      var(--bg-page) 100%
+    );
   }
 
   /*
@@ -62,6 +73,7 @@
     --bg-page: var(--color-slate-50);
     --bg-surface: var(--color-white);
     --bg-surface-hover: var(--color-slate-100);
+    --bg-surface-active: var(--bg-surface-hover);
     --bg-surface-raised: var(--color-white);
     --bg-surface-tint: color-mix(in srgb, var(--primary-main) var(--opacity-faint), transparent);
     --bg-panel: color-mix(in srgb, white var(--opacity-strong), transparent);
@@ -86,6 +98,9 @@
     /* Composite Surfaces */
     --bg-surface-mix: color-mix(in srgb, var(--bg-surface) 96%, var(--color-slate-900) 4%);
     --bg-input-mix: color-mix(in srgb, var(--bg-surface) 94%, white 6%);
+    --input-bg: var(--bg-input-mix);
+    --input-border: var(--border-subtle);
+    --input-placeholder: var(--text-tertiary);
 
     /* Brand / Primary */
     --primary-main: var(--color-blue-600);
@@ -140,6 +155,7 @@
     --raw-shadow-inner-premium: inset 0 1px 0
       color-mix(in srgb, white var(--opacity-subtle), transparent);
     --raw-shadow-focus: 0 0 0 2px var(--bg-page), 0 0 0 4px var(--primary-main);
+    --nav-link-hover-glow: var(--raw-shadow-sm);
 
     /* Semantic Glows */
     --shadow-glow-primary: 0 0 12px

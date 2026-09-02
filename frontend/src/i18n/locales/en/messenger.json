@@ -6,6 +6,7 @@
   "selectChat": "Select a chat to start messaging",
   "selectChatDesc": "Connect with anyone across the university ecosystem.",
   "newChat": "New Chat",
+  "backToChats": "Back to conversations",
   "typeMessage": "Message",
   "searchUsers": "Search users",
   "noUsersFound": "No users found matching your search",
@@ -68,6 +69,11 @@
     "contacts": "Loading conversations…",
     "messages": "Loading messages…",
     "users": "Loading users…"
+  },
+  "history": {
+    "loadOlder": "Load older messages",
+    "loadingOlder": "Loading older messages…",
+    "loadOlderError": "Couldn't load older messages. Try again."
   },
   "error": {
     "failedToLoadChats": "Couldn't load conversations",

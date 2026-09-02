@@ -26,7 +26,7 @@ func TestEmpirical_MaxClientsPreCheck(t *testing.T) {
 	// Seed ticket in Redis
 	validTicket := "1122334455667788990011223344556677889900112233445566778899001122" // pragma: allowlist secret
 	ticketKey := wsTicketKeyPrefix + validTicket
-	require.NoError(t, rdb.Set(ctx, ticketKey, "user-maxclient-test:jti-123", 15*time.Second).Err())
+	require.NoError(t, rdb.Set(ctx, ticketKey, "user-maxclient-test:"+validSessionJTI, 15*time.Second).Err())
 
 	h := setupEmpiricalHub(t, rdb)
 	h.maxClients = 2
@@ -60,7 +60,7 @@ func TestEmpirical_MaxClientsPreCheck(t *testing.T) {
 	t.Run("Allows upgrade when hub capacity is not reached", func(t *testing.T) {
 		// Seed fresh ticket
 		ticket2 := "9988776655443322110099887766554433221100998877665544332211009988" // pragma: allowlist secret
-		require.NoError(t, rdb.Set(ctx, wsTicketKeyPrefix+ticket2, "user-maxclient-test2:jti-456", 15*time.Second).Err())
+		require.NoError(t, rdb.Set(ctx, wsTicketKeyPrefix+ticket2, "user-maxclient-test2:"+validSessionJTI, 15*time.Second).Err())
 
 		// Remove 1 dummy client so len(Clients) = 1 < maxClients (2)
 		h.mu.Lock()

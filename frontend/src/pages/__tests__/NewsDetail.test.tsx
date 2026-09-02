@@ -277,11 +277,21 @@ describe("NewsDetail", () => {
 
   it("renders the loading skeleton without attempting the article layout", () => {
     mocks.query = { isLoading: true, isError: false, data: undefined }
+    let frame: FrameRequestCallback | undefined
+    const requestAnimationFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        frame = callback
+        return 1
+      })
 
     render(<NewsDetail />)
 
     expect(screen.getByTestId("news-detail-skeleton")).toBeInTheDocument()
     expect(screen.queryByRole("heading")).not.toBeInTheDocument()
+    window.dispatchEvent(new Event("scroll"))
+    expect(() => frame?.(0)).not.toThrow()
+    requestAnimationFrame.mockRestore()
   })
 
   it("renders a recoverable error state when the article is absent", () => {
@@ -387,14 +397,16 @@ describe("NewsDetail", () => {
         animationFrames.push(callback)
         return animationFrames.length
       })
+    const cancelAnimationFrame = vi.spyOn(window, "cancelAnimationFrame")
 
     const view = render(<NewsDetail />)
     window.dispatchEvent(new Event("scroll"))
     view.unmount()
-    animationFrames[0]?.(0)
 
     expect(requestAnimationFrame).toHaveBeenCalledOnce()
+    expect(cancelAnimationFrame).toHaveBeenCalledWith(1)
     requestAnimationFrame.mockRestore()
+    cancelAnimationFrame.mockRestore()
   })
 
   it("dismisses transient notifications after the toast timeout", () => {

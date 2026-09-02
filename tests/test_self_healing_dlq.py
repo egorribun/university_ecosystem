@@ -146,7 +146,7 @@ async def test_in_memory_dlq_thundering_herd_prevention() -> None:
 @pytest.mark.asyncio
 async def test_in_memory_dlq_circuit_breaker_listener_trigger() -> None:
     """Test that circuit breaker state transition triggers automated DLQ replay."""
-    cb = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=0.05)
+    cb = RedisCircuitBreaker(failure_threshold=1, recovery_timeout=10.0)
     dlq = InMemoryDLQ()
     mock_bus = AsyncMock()
 
@@ -157,8 +157,9 @@ async def test_in_memory_dlq_circuit_breaker_listener_trigger() -> None:
     cb.record_failure()
     assert cb.state == CircuitState.OPEN
 
-    # Wait for recovery timeout, then access state to trigger OPEN -> HALF_OPEN transition
-    await asyncio.sleep(0.08)
+    # Advance the instance's monotonic checkpoint deterministically. A tiny
+    # wall-clock timeout makes this assertion flaky on a contended CI worker.
+    cb._last_failure_time -= 11.0
     _ = cb.state
     assert cb.state == CircuitState.HALF_OPEN
     await asyncio.sleep(0.05)  # Allow background replay task to run

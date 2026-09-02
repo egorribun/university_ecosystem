@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Annotated, Literal, cast
 from uuid import UUID
 
 from dishka.integrations.fastapi import FromDishka, inject
@@ -19,23 +19,23 @@ from app.api.deps import (
     require_fresh_mfa,
 )
 from app.api.validation import raise_http_error
-from app.auth import constants, mfa
+from app.auth import mfa
 from app.auth import schemas as auth_schemas
 from app.auth.schemas import (
     TotpEnrollmentConfirmIn,
     TotpEnrollmentStartIn,
     TotpEnrollmentStartOut,
 )
-from app.core.fingerprint import store_mfa_challenge_fingerprints
+from app.core.database import get_db
+from app.core.fingerprint import extract_request_fingerprint
 from app.core.protocols import AsyncDatabaseSession
+from app.core.ratelimit import RateLimitExceeded
 from app.models import User
 from app.models.auth import MfaTotpEnrollment
 from app.schemas.schemas import (
     MfaFactorStatusOut,
     MfaTotpEnrollmentOut,
     RecoveryCodesGenerateOut,
-    WebAuthnRegistrationOptionsOut,
-    WebAuthnRegistrationVerifyIn,
 )
 from app.services.audit_service import AuditService
 from app.services.auth.login_service import LoginService
@@ -48,6 +48,142 @@ logger = logging.getLogger("app.auth.mfa")
 router = APIRouter(tags=["mfa"])
 
 
+async def _commit_and_publish_mfa_revocations(
+    db: AsyncDatabaseSession,
+    pending: list[mfa.MfaSessionRevocation],
+) -> None:
+    try:
+        await db.commit()
+    except Exception:  # RZ-22-01-JUSTIFIED: transaction cleanup before re-raise
+        await db.rollback()
+        raise
+    await mfa.publish_mfa_session_revocations(pending)
+
+
+def _mfa_rate_limit_error(exc: RateLimitExceeded) -> HTTPException:
+    retry_after = max(0, int(exc.info.retry_after))
+    return HTTPException(
+        status.HTTP_429_TOO_MANY_REQUESTS,
+        "MFA request rejected",
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
+async def _issue_email_challenge_for_session(
+    *,
+    flow: str,
+    request: Request,
+    db: AsyncDatabaseSession,
+    login_service: LoginService,
+    user: User,
+) -> auth_schemas.MfaMethodChallengeOut:
+    from app.auth.mfa.email_otp import MfaOtpRejected, MfaSecurityUnavailable
+    from app.core.localization import resolve_locale
+    from app.core.ratelimit import resolve_client_ip
+
+    session = getattr(request.state, "active_session", None)
+    if session is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "MFA request rejected")
+    try:
+        issued = await login_service.get_email_otp_service().issue(
+            db,
+            user_id=user.id,
+            flow=flow,
+            session_identifier=str(session.id),
+            client_fingerprint=extract_request_fingerprint(request),
+            client_ip=resolve_client_ip(request) or "unknown",
+            locale=resolve_locale(request=request, user=user),
+        )
+        await db.commit()
+    except RateLimitExceeded as exc:
+        await db.rollback()
+        raise _mfa_rate_limit_error(exc) from exc
+    except MfaSecurityUnavailable as exc:
+        await db.rollback()
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "MFA service unavailable"
+        ) from exc
+    except MfaOtpRejected as exc:
+        await db.rollback()
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, "MFA request rejected"
+        ) from exc
+    return auth_schemas.MfaMethodChallengeOut(
+        method=mfa.MFA_METHOD_EMAIL_OTP,
+        challenge_token=issued.challenge_token,
+        challenge_expires_at=issued.expires_at,
+        attempt_count=0,
+        attempt_limit=5,
+        remaining_attempts=5,
+        delivery_hint=issued.delivery_hint,
+        resend_available_at=issued.resend_available_at,
+        revision=issued.revision,
+    )
+
+
+@router.post(
+    "/mfa/email/verification/start",
+    response_model=auth_schemas.MfaMethodChallengeOut,
+)
+@inject
+async def start_email_verification(
+    request: Request,
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    login_service: FromDishka[LoginService],
+    user: User = Depends(get_current_user),
+) -> auth_schemas.MfaMethodChallengeOut:
+    return await _issue_email_challenge_for_session(
+        flow="email_verification",
+        request=request,
+        db=db,
+        login_service=login_service,
+        user=user,
+    )
+
+
+@router.post(
+    "/mfa/email/enable",
+    response_model=auth_schemas.MfaMethodChallengeOut,
+    dependencies=[Depends(require_fresh_mfa)],
+)
+@inject
+async def start_email_mfa_enablement(
+    request: Request,
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    login_service: FromDishka[LoginService],
+    user: User = Depends(get_current_user),
+) -> auth_schemas.MfaMethodChallengeOut:
+    return await _issue_email_challenge_for_session(
+        flow="email_mfa_enablement",
+        request=request,
+        db=db,
+        login_service=login_service,
+        user=user,
+    )
+
+
+@router.delete(
+    "/mfa/email",
+    response_model=MfaFactorStatusOut,
+    dependencies=[Depends(require_fresh_mfa)],
+)
+@inject
+async def disable_email_mfa_endpoint(
+    request: Request,
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
+    audit: FromDishka[AuditService],
+    user: User = Depends(get_current_user),
+) -> MfaFactorStatusOut:
+    pending = await mfa.disable_email_mfa(db, user=user)
+    await _commit_and_publish_mfa_revocations(db, pending)
+    audit.log("auth.mfa.email.disabled", request, user_id=user.id, reason="revoked")
+    return MfaFactorStatusOut(
+        disabled=True,
+        mfa_default_method=user.mfa_default_method,
+        mfa_required=bool(user.mfa_required),
+    )
+
+
 @router.post(
     "/mfa/totp/start",
     response_model=TotpEnrollmentStartOut,
@@ -56,7 +192,7 @@ router = APIRouter(tags=["mfa"])
 @inject
 async def start_totp_enrollment_endpoint(
     request: Request,
-    db: FromDishka[AsyncDatabaseSession],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
     audit: FromDishka[AuditService],
     payload: TotpEnrollmentStartIn | None = None,
     user: User = Depends(get_current_user),
@@ -102,13 +238,12 @@ async def start_totp_enrollment_endpoint(
 async def confirm_totp_enrollment(
     payload: TotpEnrollmentConfirmIn,
     request: Request,
-    db: FromDishka[AsyncDatabaseSession],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
     audit: FromDishka[AuditService],
     user: User = Depends(get_current_user),
 ) -> MfaTotpEnrollmentOut:
-    enrollment = await db.get(
-        MfaTotpEnrollment, payload.enrollment_id, with_for_update=True
-    )
+    # complete_totp_enrollment owns the User -> enrollment lock order.
+    enrollment = await db.get(MfaTotpEnrollment, payload.enrollment_id)
     if not enrollment or enrollment.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Enrollment not found")
 
@@ -128,13 +263,28 @@ async def confirm_totp_enrollment(
 
     await mfa.refresh_user_mfa_preferences(db, user=user)
     session: ActiveSession | None = getattr(request.state, "active_session", None)
-    await mfa.record_mfa_success(
-        db,
-        user=user,
-        session=session,
-        method=mfa.MFA_METHOD_TOTP,
-    )
-    await db.commit()
+    if session is None:
+        await db.rollback()
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "MFA verification failed")
+    try:
+        pending_revocations = await mfa.revoke_sibling_sessions_for_factor_change(
+            db,
+            user_id=user.id,
+            current_session_id=session.id,
+        )
+        await mfa.record_mfa_success(
+            db,
+            user=user,
+            session=session,
+            method=mfa.MFA_METHOD_TOTP,
+        )
+        await db.commit()
+    except (
+        Exception
+    ):  # RZ-22-01-JUSTIFIED: transaction boundary rolls back then re-raises
+        await db.rollback()
+        raise
+    await mfa.publish_mfa_session_revocations(pending_revocations)
     await db.refresh(updated)
 
     audit.log(
@@ -158,8 +308,8 @@ async def confirm_totp_enrollment(
 @router.get("/mfa/totp", response_model=list[MfaTotpEnrollmentOut])
 @inject
 async def list_totp_enrollments(
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
     user: User = Depends(get_current_user),
-    db: FromDishka[AsyncDatabaseSession] = Depends(),
 ) -> list[MfaTotpEnrollmentOut]:
     stmt = (
         select(MfaTotpEnrollment)
@@ -178,7 +328,7 @@ async def list_totp_enrollments(
 async def delete_pending_totp_enrollment(
     enrollment_id: UUID,
     request: Request,
-    db: FromDishka[AsyncDatabaseSession],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
     audit: FromDishka[AuditService],
     user: User = Depends(get_current_user),
 ) -> None:
@@ -205,19 +355,21 @@ async def delete_pending_totp_enrollment(
 async def delete_totp_enrollment(
     enrollment_id: UUID,
     request: Request,
-    db: FromDishka[AsyncDatabaseSession],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
     audit: FromDishka[AuditService],
     _: None = Depends(require_fresh_mfa),
     user: User = Depends(get_current_user),
 ) -> MfaFactorStatusOut:
-    disabled_count = await mfa.disable_totp(db, user=user, enrollment_id=enrollment_id)
+    disabled_count, pending = await mfa.disable_totp(
+        db, user=user, enrollment_id=enrollment_id
+    )
     await mfa.refresh_user_mfa_preferences(db, user=user)
     payload = MfaFactorStatusOut(
         disabled=bool(disabled_count),
         mfa_default_method=user.mfa_default_method,
         mfa_required=bool(user.mfa_required),
     )
-    await db.commit()
+    await _commit_and_publish_mfa_revocations(db, pending)
 
     audit.log(
         "auth.mfa.totp.disabled",
@@ -234,179 +386,21 @@ async def delete_totp_enrollment(
     return payload
 
 
-@router.post(
-    "/mfa/webauthn/register/start",
-    response_model=WebAuthnRegistrationOptionsOut,
-    dependencies=[Depends(require_fresh_mfa)],
-)
-@inject
-async def start_webauthn_registration(
-    request: Request,
-    db: FromDishka[AsyncDatabaseSession],
-    audit: FromDishka[AuditService],
-    user: User = Depends(get_current_user),
-) -> WebAuthnRegistrationOptionsOut:
-    from app.services.webauthn import WebAuthnService
-
-    service = WebAuthnService(db)
-    options = await service.get_registration_options(user)
-
-    challenge = await mfa.issue_challenge(
-        db,
-        user_id=user.id,
-        challenge_type=constants.CHALLENGE_TYPE_WEBAUTHN_REG,
-        payload={"options": options},
-    )
-    await db.commit()
-
-    audit.log(
-        "auth.mfa.webauthn.enroll_start",
-        request,
-        user_id=user.id,
-        reason="issued",
-        extra={"challenge_id": challenge.id},
-    )
-
-    return WebAuthnRegistrationOptionsOut(
-        publicKey=options,
-        challenge_token=challenge.token,
-    )
-
-
-@router.post(
-    "/mfa/webauthn/register/confirm",
-    response_model=MfaFactorStatusOut,
-    dependencies=[Depends(require_fresh_mfa)],
-)
-@inject
-async def confirm_webauthn_registration(
-    payload: WebAuthnRegistrationVerifyIn,
-    request: Request,
-    db: FromDishka[AsyncDatabaseSession],
-    audit: FromDishka[AuditService],
-    user: User = Depends(get_current_user),
-) -> MfaFactorStatusOut:
-    challenge = await mfa.get_challenge(
-        db,
-        token=payload.challenge,
-        challenge_type=constants.CHALLENGE_TYPE_WEBAUTHN_REG,
-        consume=True,
-    )
-
-    from app.services.webauthn import WebAuthnService
-
-    service = WebAuthnService(db)
-
-    if challenge.payload is None:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid challenge payload")
-    payload_dict = challenge.payload
-
-    try:
-        await service.verify_registration(
-            user,
-            str(payload_dict.get("options", {}).get("challenge", "")),
-            payload.response,
-            label=payload.label,
-        )
-    except Exception as e:  # RZ-22-01-JUSTIFIED: convert-to-domain — converts WebAuthn errors to HTTP 400 (reviewed TD-27-04)
-        logger.warning(
-            "Passkey registration verification failed for user %s: %s",
-            user.id,
-            type(e).__name__,  # RZ-W10-04: log exception type only, not details
-        )
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, "Passkey verification failed"
-        ) from e
-
-    await mfa.refresh_user_mfa_preferences(db, user=user)
-    session: ActiveSession | None = getattr(request.state, "active_session", None)
-    await mfa.record_mfa_success(
-        db,
-        user=user,
-        session=session,
-        method=mfa.MFA_METHOD_WEBAUTHN,
-    )
-    await db.commit()
-
-    audit.log(
-        "auth.mfa.webauthn.enroll_complete",
-        request,
-        user_id=user.id,
-        reason="confirmed",
-    )
-
-    return MfaFactorStatusOut(
-        disabled=False,
-        mfa_default_method=user.mfa_default_method,
-        mfa_required=bool(user.mfa_required),
-    )
-
-
-@router.get("/mfa/webauthn", response_model=list[dict[str, Any]])
-@inject
-async def list_webauthn_credentials(
-    user: User = Depends(get_current_user),
-    db: FromDishka[AsyncDatabaseSession] = Depends(),
-) -> list[dict[str, Any]]:
-    from app.models import WebAuthnCredential
-
-    stmt = select(WebAuthnCredential).where(WebAuthnCredential.user_id == user.id)
-    result = await db.execute(stmt)
-    return [
-        {
-            "id": c.id,
-            "label": c.label,
-            "created_at": c.created_at,
-            "last_used_at": c.last_used_at,
-        }
-        for c in result.scalars()
-    ]
-
-
-@router.delete("/mfa/webauthn/{credential_id}", response_model=MfaFactorStatusOut)
-@inject
-async def delete_webauthn_credential(
-    credential_id: UUID,
-    request: Request,
-    db: FromDishka[AsyncDatabaseSession],
-    audit: FromDishka[AuditService],
-    _: None = Depends(require_fresh_mfa),
-    user: User = Depends(get_current_user),
-) -> MfaFactorStatusOut:
-    from app.models import WebAuthnCredential
-
-    cred = await db.get(WebAuthnCredential, credential_id, with_for_update=True)
-    if not cred or cred.user_id != user.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Credential not found")
-
-    await db.delete(cred)
-    await mfa.refresh_user_mfa_preferences(db, user=user)
-    await db.commit()
-
-    audit.log(
-        "auth.mfa.webauthn.revoked",
-        request,
-        user_id=user.id,
-        reason="revoked",
-        extra={"credential_id": credential_id},
-    )
-
-    return MfaFactorStatusOut(
-        disabled=True,
-        mfa_default_method=user.mfa_default_method,
-        mfa_required=bool(user.mfa_required),
-    )
-
-
 @router.post("/mfa/recovery-codes", response_model=RecoveryCodesGenerateOut)
 @inject
 async def generate_recovery_codes_endpoint(
     request: Request,
-    db: FromDishka[AsyncDatabaseSession],
+    db: Annotated[AsyncDatabaseSession, Depends(get_db)],
     audit: FromDishka[AuditService],
+    _: None = Depends(require_fresh_mfa),
     user: User = Depends(get_current_user),
 ) -> RecoveryCodesGenerateOut:
-    codes = await mfa.generate_recovery_codes(db, user=user)
+    session: ActiveSession | None = getattr(request.state, "active_session", None)
+    codes = await mfa.generate_recovery_codes(
+        db,
+        user=user,
+        fresh_mfa_verified_at=session.mfa_verified_at if session else None,
+    )
     await db.commit()
 
     audit.log(
@@ -444,19 +438,40 @@ async def request_step_up(
 
     capabilities = await login_service._resolve_mfa_capabilities(user)
 
-    from app.models.user_loaders import ensure_mfa_relationships_loaded
-
-    await ensure_mfa_relationships_loaded(db, user)
-
-    if not mfa.user_has_confirmed_interactive_factor(user):
+    # Capabilities are resolved from the authoritative MFA repository.  Do not
+    # use the request's ``lazy="noload"`` relationship collection here: an
+    # empty identity-map value is not proof that the account has no factor.
+    if not capabilities.get(mfa.MFA_METHOD_TOTP, False) and not capabilities.get(
+        mfa.MFA_METHOD_EMAIL_OTP, False
+    ):
         raise_http_error(
             status.HTTP_400_BAD_REQUEST,
             "errors.auth.mfa_totp_missing",
             locale,
         )
 
-    methods = await login_service._collect_mfa_challenges(
-        user, locale, capabilities, session
+    try:
+        methods = await login_service._collect_mfa_challenges(
+            user,
+            locale,
+            capabilities,
+            session,
+            request=request,
+            flow="step_up",
+        )
+    except RateLimitExceeded as exc:
+        await db.rollback()
+        raise _mfa_rate_limit_error(exc) from exc
+    preferred = str(user.mfa_default_method or "")
+    default_method = (
+        preferred
+        if preferred in {mfa.MFA_METHOD_TOTP, mfa.MFA_METHOD_EMAIL_OTP}
+        and capabilities.get(preferred, False)
+        else (
+            mfa.MFA_METHOD_TOTP
+            if capabilities.get(mfa.MFA_METHOD_TOTP, False)
+            else mfa.MFA_METHOD_EMAIL_OTP
+        )
     )
     await db.commit()
 
@@ -470,12 +485,9 @@ async def request_step_up(
         user_id=user.id,
         session_id=session.id if session else None,
         default_method=cast(
-            "Literal['totp', 'webauthn'] | None",
-            user.mfa_default_method or mfa.MFA_METHOD_TOTP,
+            "Literal['totp', 'email_otp'] | None",
+            default_method,
         ),
         methods=methods,
     )
-    # RED-03: bind every challenge token to the originating request context so
-    # that a captured step-up token cannot be replayed from a different client.
-    await store_mfa_challenge_fingerprints(request, pending.methods)
     return pending

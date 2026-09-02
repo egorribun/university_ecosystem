@@ -176,8 +176,8 @@ export function ActivityTrendChart({
         <caption>{ariaLabel}</caption>
         <thead>
           <tr>
-            <th scope="col">{t("activity:charts.tableHeaders.date")}</th>
-            <th scope="col">{t("activity:charts.tableHeaders.value")}</th>
+            <th scope="col">{t("activity:chartTableHeaders.date")}</th>
+            <th scope="col">{t("activity:chartTableHeaders.value")}</th>
           </tr>
         </thead>
         <tbody>

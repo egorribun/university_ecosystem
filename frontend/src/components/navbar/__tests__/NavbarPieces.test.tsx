@@ -57,10 +57,18 @@ describe("DesktopNav", () => {
     })
     expect(screen.getByText("News")).toBeInTheDocument()
     expect(screen.getByText("Events")).toBeInTheDocument()
+    expect(document.querySelector(".navbar-desktop-nav")).toBeInTheDocument()
+    expect(document.querySelector(".navbar-desktop-nav")).toHaveClass("ml-(--space-8)", "gap-1")
     // active entry carries data-active.
     const newsLink = document.getElementById("navbar-link-news")
     expect(newsLink).toHaveAttribute("data-active")
     expect(document.getElementById("navbar-link-home")).toBeInTheDocument()
+    expect(screen.getByText("News").previousElementSibling).toHaveClass(
+      "absolute",
+      "inset-0",
+      "opacity-0",
+      "pointer-events-none"
+    )
     await userEvent.click(screen.getByText("Home"))
     expect(scrollToTop).not.toHaveBeenCalled()
   })
@@ -81,6 +89,17 @@ describe("DesktopNav", () => {
       ),
       authProvider: false,
     })
+    expect(document.querySelector(".navbar-desktop-nav")).toHaveClass("ml-(--space-4)", "gap-0.5")
+    const compactNews = screen.getByText("News")
+    expect(compactNews).toHaveClass(
+      "absolute",
+      "inset-0",
+      "flex",
+      "items-center",
+      "justify-center",
+      "opacity-0",
+      "pointer-events-none"
+    )
     await userEvent.click(screen.getByText("News"))
     expect(scrollToTop).toHaveBeenCalledWith("auto")
   })
@@ -127,6 +146,9 @@ describe("NavbarLogo", () => {
     const link = document.getElementById("navbar-logo-link")
     expect(link).toHaveAttribute("href", "/dashboard")
     expect(screen.getByText("navigation:brandName")).toBeInTheDocument()
+    expect(document.querySelector(".navbar-brand-name")).toBeInTheDocument()
+    const logoSurface = screen.getByRole("img").parentElement
+    expect(logoSurface).not.toHaveClass("hover:scale-105", "active:scale-95")
   })
 
   it("renders the tablet-mobile spacing variant", async () => {
@@ -158,7 +180,11 @@ describe("MobileDrawerProfile", () => {
     })
     expect(screen.getByText(testUser.full_name as string)).toBeInTheDocument()
     expect(screen.getByText("navigation:role.student")).toBeInTheDocument()
-    await userEvent.click(screen.getByRole("button"))
+    const profileButton = screen.getByRole("button", { name: "navigation:aria.openProfile" })
+    expect(profileButton).toHaveStyle({
+      background: "linear-gradient(135deg, var(--quick-action-icon-bg), transparent 60%)",
+    })
+    await userEvent.click(profileButton)
     expect(onProfileClick).toHaveBeenCalledOnce()
   })
 
@@ -172,7 +198,22 @@ describe("MobileDrawerProfile", () => {
     expect(screen.getByText("navigation:role.admin")).toBeInTheDocument()
   })
 
+  it("shows the teacher role label for teaching staff", async () => {
+    await renderWithRouter({
+      ui: () => (
+        <MobileDrawerProfile
+          user={{ ...testUser, role: "teacher" }}
+          onProfileClick={vi.fn()}
+          t={t}
+        />
+      ),
+      authProvider: false,
+    })
+    expect(screen.getByText("navigation:role.teacher")).toBeInTheDocument()
+  })
+
   it("uses an avatar URL and the translated alt fallback when the name is empty", async () => {
+    const firstAvatar = "2026-08-04T12:00:00Z"
     await renderWithRouter({
       ui: () => (
         <MobileDrawerProfile
@@ -181,7 +222,7 @@ describe("MobileDrawerProfile", () => {
             full_name: "",
             role: undefined,
             avatar_url: "https://example.test/avatar.png",
-            avatar_updated_at: "2026-08-04T12:00:00Z",
+            avatar_updated_at: firstAvatar,
           }}
           onProfileClick={vi.fn()}
           t={t}
@@ -189,7 +230,51 @@ describe("MobileDrawerProfile", () => {
       ),
       authProvider: false,
     })
-    expect(screen.getByAltText("navigation:aria.profileAvatar")).toBeInTheDocument()
+    const image = screen.getByAltText("navigation:aria.profileAvatar")
+    expect(image).toHaveAttribute("src", expect.stringContaining(`_v=${Date.parse(firstAvatar)}`))
+    expect(image.previousElementSibling).toHaveStyle({
+      background: "var(--drawer-accent-gradient)",
+    })
+  })
+
+  it("updates avatar cache metadata when user timestamps change", async () => {
+    const firstVersion = "2026-08-04T12:00:00Z"
+    const secondVersion = 42
+    const view = await renderWithRouter({
+      ui: () => (
+        <MobileDrawerProfile
+          user={{
+            ...testUser,
+            avatar_url: "https://example.test/avatar.png",
+            avatar_updated_at: firstVersion,
+          }}
+          onProfileClick={vi.fn()}
+          t={t}
+        />
+      ),
+      authProvider: false,
+    })
+    expect(screen.getByRole("img")).toHaveAttribute(
+      "src",
+      expect.stringContaining(`_v=${Date.parse(firstVersion)}`)
+    )
+
+    view.rerender(
+      <MobileDrawerProfile
+        user={{
+          ...testUser,
+          avatar_url: "https://example.test/avatar.png",
+          avatar_updated_at: undefined,
+          avatar_version: secondVersion,
+        }}
+        onProfileClick={vi.fn()}
+        t={t}
+      />
+    )
+    expect(screen.getByRole("img")).toHaveAttribute(
+      "src",
+      expect.stringContaining(`_v=${secondVersion}`)
+    )
   })
 })
 
@@ -210,12 +295,52 @@ describe("MobileDrawerQuickActions", () => {
       ),
       authProvider: false,
     })
-    await userEvent.click(screen.getByRole("button", { name: "navigation:menu.search" }))
-    await userEvent.click(screen.getByRole("button", { name: "navigation:menu.notifications" }))
-    await userEvent.click(screen.getByRole("button", { name: "navigation:menu.settings" }))
+    const searchButton = screen.getByRole("button", { name: "navigation:menu.search" })
+    const notificationButton = screen.getByRole("button", {
+      name: "navigation:menu.notifications",
+    })
+    const settingsButton = screen.getByRole("button", { name: "navigation:menu.settings" })
+    for (const button of [searchButton, notificationButton, settingsButton]) {
+      expect(button).toHaveClass(
+        "flex",
+        "flex-col",
+        "items-center",
+        "justify-center",
+        "gap-1",
+        "rounded-xl",
+        "cursor-pointer",
+        "duration-0"
+      )
+      expect(button.querySelector("span")).toHaveStyle({
+        backgroundColor: "var(--quick-action-icon-bg)",
+      })
+    }
+    await userEvent.click(searchButton)
+    await userEvent.click(notificationButton)
+    await userEvent.click(settingsButton)
     expect(onSearch).toHaveBeenCalledOnce()
     expect(onNotifications).toHaveBeenCalledOnce()
     expect(onSettings).toHaveBeenCalledOnce()
+  })
+
+  it("keeps the active press affordance when motion is enabled", async () => {
+    await renderWithRouter({
+      ui: () => (
+        <MobileDrawerQuickActions
+          onSearch={vi.fn()}
+          onNotifications={vi.fn()}
+          onSettings={vi.fn()}
+          prefersReducedMotion={false}
+          t={(key) => key}
+        />
+      ),
+      authProvider: false,
+    })
+    const buttons = screen.getAllByRole("button")
+    for (const button of buttons) {
+      expect(button).toHaveClass("duration-200", "active:scale-[0.97]")
+      expect(button).not.toHaveClass("duration-0")
+    }
   })
 })
 
@@ -232,10 +357,16 @@ describe("UserMenu", () => {
     await renderWithRouter({
       ui: () => <UserMenu user={testUser} isAuth loading={false} go={go} t={(key) => key} />,
     })
-    // The authed branch renders the profile avatar + button (both titled).
-    expect(screen.getAllByTitle("navigation:aria.openProfile").length).toBeGreaterThan(0)
-    await userEvent.click(screen.getByRole("button", { name: "navigation:aria.openProfile" }))
+    const avatarButton = screen.getByRole("button", { name: "navigation:aria.openProfile" })
+    const profileNameButton = screen.getByRole("button", {
+      name: `navigation:aria.openProfile: ${testUser.full_name}`,
+    })
+    expect(document.querySelector(".navbar-user-name")).toBeInTheDocument()
+    expect(avatarButton).toHaveClass("size-11")
+    await userEvent.click(avatarButton)
     expect(go).toHaveBeenCalledWith("/profile")
+    await userEvent.click(profileNameButton)
+    expect(go).toHaveBeenLastCalledWith("/profile")
     await userEvent.click(screen.getByAltText("navigation:aria.profileAvatarNamed"))
     expect(go).toHaveBeenLastCalledWith("/profile")
     await userEvent.click(screen.getByRole("button", { name: "navigation:menu.settings" }))
@@ -287,8 +418,7 @@ describe("UserMenu", () => {
 
     expect(screen.getByAltText("navigation:aria.profileAvatarNamed")).toHaveClass("h-7", "w-7")
     expect(screen.getByRole("button", { name: "navigation:menu.settings" })).toHaveClass(
-      "w-8",
-      "h-8",
+      "size-11",
       "duration-0"
     )
   })

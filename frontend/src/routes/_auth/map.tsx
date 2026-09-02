@@ -2,10 +2,18 @@ import { createFileRoute } from "@tanstack/react-router"
 import { lazy } from "react"
 import * as v from "valibot"
 import { mapSearchSchema } from "@/features/map/schema"
+import { loadMapLibre } from "@/features/map/loadMapLibre"
 
 const MapPage = lazy(() => import("@/pages/Map"))
 
 export const Route = createFileRoute("/_auth/map")({
+  beforeLoad: ({ cause }) =>
+    cause === "preload"
+      ? loadMapLibre().then(
+          () => undefined,
+          () => undefined
+        )
+      : undefined,
   // Wave 127 SW6 — explicit 'data-only' override. Currently SILENTLY IGNORED
   // because parent `_auth.tsx` is `ssr: false` (more restrictive); per
   // TanStack Start v1 SSR inheritance contract, a child can only make SSR

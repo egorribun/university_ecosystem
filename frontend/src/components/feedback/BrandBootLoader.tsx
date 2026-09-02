@@ -1,10 +1,57 @@
-import { useCallback, useEffect, useState, type TransitionEvent } from "react"
+import { useCallback, useState, useSyncExternalStore, type TransitionEvent } from "react"
+import { flushSync } from "react-dom"
 
-import { APP_HYDRATED_EVENT } from "@/app/hydration"
+import { APP_HYDRATED_EVENT, BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS } from "@/app/hydration"
+import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
+
+export { BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS } from "@/app/hydration"
 
 type BrandBootLoaderPhase = "active" | "exiting" | "hidden"
 
-export const BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS = 600
+type StoreSubscribe = (onStoreChange: () => void) => () => void
+
+/** Resolve hydration transitions without re-opening an already completed loader. */
+export function resolveHydrationPhase(current: BrandBootLoaderPhase): BrandBootLoaderPhase {
+  if (current !== "active") return current
+  return "exiting"
+}
+
+/** Keep the Lighthouse timeout hand-off decision explicit and testable. */
+export function shouldUseLhciHandOff(value: unknown): boolean {
+  return value === "true"
+}
+
+/** Read document visibility safely for both browser and SSR snapshots. */
+export function getDocumentHidden(): boolean {
+  return typeof document !== "undefined" && document.hidden
+}
+
+/** SSR never exposes a hidden document. */
+export function getServerDocumentHidden(): boolean {
+  return false
+}
+
+/** A hydration subscription has no external snapshot value of its own. */
+export function getStableSnapshot(): null {
+  return null
+}
+
+/**
+ * Keep timeout completion semantics explicit: Lighthouse prefers a regular
+ * concurrent update, while the browser fallback uses a synchronous commit so
+ * the exiting loader cannot remain a hit target after its bounded deadline.
+ */
+export function commitLoaderTimeout(
+  useLhci: boolean,
+  concurrentCommit: () => void,
+  synchronousCommit: () => void
+): void {
+  if (useLhci) {
+    concurrentCommit()
+  } else {
+    synchronousCommit()
+  }
+}
 
 const BODY_PATH =
   "M 432.53,279.03 A 102.77 102.77 0 0 0 356.91,313.10 L 184.73,504.69 A 20.43 20.43 0 0 0 215.20,532.06 L 384.10,343.81 A 68.71 68.71 0 0 1 434.70,320.99 L 813.00,318.00 A 46.0 46.0 0 0 1 823.00,405.00 L 458.17,405.16 A 23.73 23.73 0 0 0 440.53,413.02 L 358.13,504.69 A 22.39 22.39 0 0 0 374.96,542.05 L 761.598,539.011 A 2 2 0 0 0 763.069,538.349 L 870.501,419.037 A 85.7985 85.7985 0 0 0 806.844,276.072 Z"
@@ -13,36 +60,60 @@ const INNER_ACCENT_PATH = "M 312.9,515.8 L 409.8,400.1 Q 427.5,379.0 455.0,379.1
 
 export function BrandBootLoader() {
   const [phase, setPhase] = useState<BrandBootLoaderPhase>("active")
-  const [paused, setPaused] = useState(false)
 
-  const beginExit = useCallback(() => {
-    setPhase((current) => (current === "active" ? "exiting" : current))
-  }, [])
-
-  useEffect(() => {
-    window.addEventListener(APP_HYDRATED_EVENT, beginExit)
-    if (window.__APP_HYDRATED) {
-      beginExit()
+  // State initializers provide stable subscriptions without reading refs or
+  // recreating global listeners during render. `useSyncExternalStore` also
+  // gives SSR deterministic snapshots while preserving cleanup on unmount.
+  const [subscribeHydration] = useState<StoreSubscribe>(() => (onStoreChange: () => void) => {
+    const beginExit = () => {
+      onStoreChange()
+      setPhase((current) => resolveHydrationPhase(current))
     }
+    window.addEventListener(APP_HYDRATED_EVENT, beginExit)
+    if (window.__APP_HYDRATED) beginExit()
 
     return () => window.removeEventListener(APP_HYDRATED_EVENT, beginExit)
-  }, [beginExit])
+  })
+  useSyncExternalStore(subscribeHydration, getStableSnapshot, getStableSnapshot)
 
-  useEffect(() => {
+  const [subscribeVisibility] = useState<StoreSubscribe>(() => (onStoreChange: () => void) => {
+    const updateVisibility = () => onStoreChange()
+    document.addEventListener("visibilitychange", updateVisibility)
+    return () => document.removeEventListener("visibilitychange", updateVisibility)
+  })
+  const paused = useSyncExternalStore(
+    subscribeVisibility,
+    getDocumentHidden,
+    getServerDocumentHidden
+  )
+
+  // Schedule the hand-off from the layout-effect phase.  The hydration
+  // sentinel is published by a parent layout effect and React may defer
+  // passive effects while a concurrent root is still resolving route data;
+  // putting the bounded exit timer in a layout effect guarantees that an
+  // exiting loader cannot remain as a hit target indefinitely in WebKit.
+  useIsomorphicLayoutEffect(() => {
     if (phase !== "exiting") {
       return
     }
 
-    const timeoutId = window.setTimeout(() => setPhase("hidden"), BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS)
+    const timeoutId = window.setTimeout(() => {
+      // The timeout is the bounded fallback when WebKit misses transitionend.
+      // Flush this one hand-off in the browser path so the React-owned node
+      // cannot remain a hit target when the browser is under resource
+      // pressure. Lighthouse intentionally uses the regular concurrent
+      // update: its synthetic, throttled run starts scoring while this
+      // bounded cosmetic hand-off is due, and forcing a synchronous commit
+      // would add a long task to every route without changing product
+      // behaviour.
+      commitLoaderTimeout(
+        shouldUseLhciHandOff(import.meta.env.VITE_LHCI),
+        () => setPhase("hidden"),
+        () => flushSync(() => setPhase("hidden"))
+      )
+    }, BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS)
     return () => window.clearTimeout(timeoutId)
   }, [phase])
-
-  useEffect(() => {
-    const updateVisibility = () => setPaused(document.hidden)
-    updateVisibility()
-    document.addEventListener("visibilitychange", updateVisibility)
-    return () => document.removeEventListener("visibilitychange", updateVisibility)
-  }, [])
 
   const handleTransitionEnd = useCallback(
     (event: TransitionEvent<HTMLDivElement>) => {

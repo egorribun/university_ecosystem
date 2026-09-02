@@ -15,7 +15,7 @@ const inputVariants = cva(
         false: "w-auto",
       },
       size: {
-        sm: "px-3 py-2 text-sm min-h-9",
+        sm: "px-3 py-2 text-sm min-h-11",
         md: "px-4 py-3 text-base min-h-12",
         lg: "px-5 py-4 text-lg min-h-14",
       },

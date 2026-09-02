@@ -12,6 +12,7 @@ import { getNavigationConfig } from "@/config/navigation"
 import { parseCacheVersion } from "@/utils/cache"
 import { useScrollBehavior } from "@/hooks/ui/useScrollBehavior"
 import { AVATAR_PLACEHOLDER_URL } from "@/constants/placeholders"
+import type { NavbarViewport } from "./useNavbarMorph"
 
 export type NavbarLogicResult = ReturnType<typeof useNavbarLogic>
 
@@ -22,7 +23,6 @@ export const useNavbarLogic = () => {
   const { t } = useTranslation(["navigation"])
 
   const [mobileMenuStart, setMobileMenuStart] = useState(false)
-  // Scroll behavior
   const { isScrolled } = useScrollBehavior()
 
   // Wave 167 SW2 (Tier 1 Path B) — mounted-state pattern (W156 SW3
@@ -56,14 +56,31 @@ export const useNavbarLogic = () => {
   // admin-scoped per W165 SW3).
   const [mounted, setMounted] = useState(false)
   // Disable "scrolled" state on mobile to avoid layout shifts or too much blur
-  const rawIsMobile = useMediaQuery(`(max-width: ${breakpoints.wide})`)
+  const rawIsPhone = useMediaQuery(`(max-width: calc(${breakpoints.mobile} - 0.02px))`)
+  const rawIsTablet = useMediaQuery(
+    // The desktop navigation needs room for six labelled links, the user
+    // actions and the profile affordance without shrinking touch targets.
+    // Treat the 1280px browser envelope as tablet-sized so the overflow menu
+    // owns the lower-priority links.  `wide` is the first viewport at which
+    // the complete labelled navigation can fit without overlap (WCAG 2.5.8).
+    `(min-width: ${breakpoints.mobile}) and (max-width: calc(${breakpoints.wide} - 0.02px))`
+  )
   const rawPrefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
   useEffect(() => {
     setMounted(true)
   }, [])
   // Server + client initial render: pass defaults (mounted=false branch).
   // After hydration: useEffect → re-render with actual hook values.
-  const isMobile = mounted ? rawIsMobile : false
+  const viewport: NavbarViewport = mounted
+    ? rawIsPhone
+      ? "phone"
+      : rawIsTablet
+        ? "tablet"
+        : "desktop"
+    : "desktop"
+  const isMobile = viewport === "phone"
+  const isTablet = viewport === "tablet"
+  const isDesktop = viewport === "desktop"
   const prefersReducedMotion = mounted ? rawPrefersReducedMotion : false
   const { scrollToTop, markScrollFromBottom, isSamePath } = useScrollRestoration(pathname)
   const prevIsMobile = useRef(isMobile)
@@ -74,6 +91,7 @@ export const useNavbarLogic = () => {
   const drawerTrapRef = useFocusTrap<HTMLDivElement>({
     active: mobileMenuStart && isMobile,
     onDeactivate: () => setMobileMenuStart(false),
+    escapeDeactivates: false,
   })
 
   useEffect(() => {
@@ -108,7 +126,7 @@ export const useNavbarLogic = () => {
       if (to === "/dashboard") {
         return pathname === "/" || pathname === "/dashboard" || pathname.startsWith("/dashboard/")
       }
-      return pathname === to
+      return pathname === to || pathname.startsWith(`${to}/`)
     },
     [pathname]
   )
@@ -131,7 +149,10 @@ export const useNavbarLogic = () => {
     mobileMenu: mobileMenuStart,
     setMobileMenu: setMobileMenuStart,
     isScrolled,
+    viewport,
     isMobile,
+    isTablet,
+    isDesktop,
     prefersReducedMotion,
     scrollToTop,
     markScrollFromBottom,

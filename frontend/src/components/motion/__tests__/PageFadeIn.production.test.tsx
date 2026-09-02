@@ -82,7 +82,7 @@ describe("PageFadeIn — production scheduling and media-query fallbacks", () =>
     vi.stubGlobal("cancelAnimationFrame", cancelAnimationFrame)
 
     const query = createMediaQuery(false, "event")
-    vi.spyOn(window, "matchMedia").mockReturnValue(query)
+    const matchMedia = vi.spyOn(window, "matchMedia").mockReturnValue(query)
 
     const { rerender, unmount } = render(<PageFadeIn effect="soft-blur">content</PageFadeIn>)
     const root = screen.getByText("content").closest("[data-page-fade]")!
@@ -90,6 +90,8 @@ describe("PageFadeIn — production scheduling and media-query fallbacks", () =>
     expect(root).toHaveAttribute("data-ready", "false")
     expect(root).toHaveAttribute("data-effect", "soft-blur")
     expect(requestAnimationFrame).toHaveBeenCalledOnce()
+    expect(matchMedia).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
+    expect(query.addEventListener).toHaveBeenCalledWith("change", expect.any(Function))
 
     act(() => frameCallback?.(0))
     expect(root).toHaveAttribute("data-ready", "true")
@@ -105,7 +107,7 @@ describe("PageFadeIn — production scheduling and media-query fallbacks", () =>
 
     unmount()
     expect(cancelAnimationFrame).toHaveBeenCalledWith(17)
-    expect(query.removeEventListener).toHaveBeenCalledOnce()
+    expect(query.removeEventListener).toHaveBeenCalledWith("change", expect.any(Function))
   })
 
   it("falls back to a timeout and the legacy media-query listener", () => {
@@ -116,13 +118,15 @@ describe("PageFadeIn — production scheduling and media-query fallbacks", () =>
     })
     const clearTimeout = vi.spyOn(window, "clearTimeout")
     const query = createMediaQuery(false, "legacy")
-    vi.spyOn(window, "matchMedia").mockReturnValue(query)
+    const matchMedia = vi.spyOn(window, "matchMedia").mockReturnValue(query)
     vi.stubGlobal("requestAnimationFrame", undefined)
 
     const { unmount } = render(<PageFadeIn effect="soft-blur">legacy</PageFadeIn>)
     const root = screen.getByText("legacy").closest("[data-page-fade]")!
     expect(root).toHaveAttribute("data-ready", "false")
     expect(setTimeout).toHaveBeenCalledWith(expect.any(Function), 16)
+    expect(matchMedia).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
+    expect(query.addListener).toHaveBeenCalledWith(expect.any(Function))
 
     act(() => timeoutCallback?.())
     expect(root).toHaveAttribute("data-ready", "true")
@@ -133,7 +137,7 @@ describe("PageFadeIn — production scheduling and media-query fallbacks", () =>
 
     unmount()
     expect(clearTimeout).toHaveBeenCalledWith(23)
-    expect(query.removeListener).toHaveBeenCalledOnce()
+    expect(query.removeListener).toHaveBeenCalledWith(expect.any(Function))
   })
 
   it("does not install a media listener when neither API exists", () => {

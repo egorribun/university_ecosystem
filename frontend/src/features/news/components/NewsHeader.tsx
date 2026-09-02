@@ -83,15 +83,15 @@ export const NewsHeader = ({
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
             placeholder={t("news:search.placeholder")}
-            className="w-full rounded-xl matte-input pl-9 pr-9 py-2 text-sm text-text-primary placeholder:text-(--text-secondary)/(--opacity-medium) focus:outline-none transition-shadow"
+            className="w-full rounded-xl matte-input py-2 pl-9 pr-14 text-sm text-text-primary placeholder:text-(--text-secondary)/(--opacity-medium) focus:outline-none transition-shadow"
             aria-label={t("news:search.placeholder")}
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => onSearchChange("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-(--text-secondary) hover:text-text-primary transition-colors"
-              aria-label={t("common:buttons.clear", { defaultValue: "Clear" })}
+              className="absolute right-1 top-1/2 flex size-11 -translate-y-1/2 items-center justify-center rounded-full text-(--text-secondary) hover:text-text-primary transition-colors focus-visible:ring-2 focus-visible:ring-brand"
+              aria-label={t("common:buttons.clear")}
             >
               <X size={14} />
             </button>
@@ -120,6 +120,24 @@ export const NewsHeader = ({
         <FadeSection
           delay="100ms"
           className="flex items-center gap-2 sm:flex-wrap max-sm:flex-nowrap max-sm:overflow-x-auto max-sm:scrollbar-none max-sm:pb-1 max-sm:-mx-4 max-sm:px-4"
+          role="toolbar"
+          aria-label={t("news:aria.categoryFilter")}
+          onKeyDown={(event: React.KeyboardEvent) => {
+            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return
+            const buttons = Array.from(
+              event.currentTarget.querySelectorAll<HTMLButtonElement>("button")
+            )
+            const focusedIndex = buttons.indexOf(document.activeElement as HTMLButtonElement)
+            // A non-negative index already proves that the rendered toolbar
+            // contains at least one button.
+            if (focusedIndex < 0) return
+            event.preventDefault()
+            const nextIndex =
+              event.key === "ArrowRight"
+                ? (focusedIndex + 1) % buttons.length
+                : (focusedIndex - 1 + buttons.length) % buttons.length
+            buttons[nextIndex]?.focus()
+          }}
         >
           {/* "All" pill */}
           <button
@@ -127,7 +145,7 @@ export const NewsHeader = ({
             onClick={() => onCategoryChange("all")}
             aria-current={activeCategory === "all" ? "page" : undefined}
             className={cn(
-              "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast whitespace-nowrap",
+              "rounded-full px-3 py-2 min-h-[44px] text-xs font-semibold tracking-wide transition-all duration-fast whitespace-nowrap",
               activeCategory === "all"
                 ? "bg-brand text-[var(--text-inverse)] shadow-sm"
                 : "matte-chip text-(--text-secondary)"
@@ -144,7 +162,7 @@ export const NewsHeader = ({
               onClick={() => onCategoryChange(cat.id)}
               aria-current={activeCategory === cat.id ? "page" : undefined}
               className={cn(
-                "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast whitespace-nowrap",
+                "rounded-full px-3 py-2 min-h-[44px] text-xs font-semibold tracking-wide transition-all duration-fast whitespace-nowrap",
                 activeCategory === cat.id ? "shadow-sm" : "matte-chip text-(--text-secondary)"
               )}
               style={
@@ -156,7 +174,7 @@ export const NewsHeader = ({
                   : undefined
               }
             >
-              {t(cat.labelKey, { defaultValue: cat.id })}
+              {t(cat.labelKey)}
             </button>
           ))}
 
@@ -167,7 +185,7 @@ export const NewsHeader = ({
               onClick={() => onCategoryChange("saved")}
               aria-current={activeCategory === "saved" ? "page" : undefined}
               className={cn(
-                "rounded-full px-3 py-1.5 text-xs font-semibold tracking-wide transition-all duration-fast flex items-center gap-1.5 whitespace-nowrap",
+                "rounded-full px-3 py-2 min-h-[44px] text-xs font-semibold tracking-wide transition-all duration-fast flex items-center gap-1.5 whitespace-nowrap",
                 activeCategory === "saved"
                   ? "bg-brand text-white shadow-sm"
                   : "matte-chip text-(--text-secondary)"
@@ -190,7 +208,7 @@ export const NewsHeader = ({
               <button
                 type="button"
                 onClick={() => onSortChange(sortMode === "newest" ? "popular" : "newest")}
-                className="ml-auto flex items-center gap-1.5 rounded-full matte-chip px-3 py-1.5 text-xs font-semibold text-(--text-secondary) shrink-0"
+                className="ml-auto flex min-h-[44px] items-center gap-1.5 rounded-full matte-chip px-3 py-2 text-xs font-semibold text-(--text-secondary) shrink-0"
                 aria-label={`${sortPrefix}: ${currentSortLabel}`}
               >
                 <ArrowUpDown size={13} />

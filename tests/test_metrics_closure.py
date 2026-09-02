@@ -165,8 +165,8 @@ def test_metric_recorders_emit_positive_events_and_values() -> None:
     )
     exercise_labels(
         "_LOGIN_SUCCESS",
-        lambda: metrics.record_login_success("passkey"),
-        {"method": "passkey"},
+        lambda: metrics.record_login_success("email_otp"),
+        {"method": "email_otp"},
     )
     exercise_labels(
         "_LOGIN_FAILURE",

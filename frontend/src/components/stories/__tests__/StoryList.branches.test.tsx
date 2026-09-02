@@ -60,13 +60,14 @@ afterEach(() => {
 })
 
 describe("StoryList branches", () => {
-  it("renders the active-story boxShadow branch + cover image with LCP priority for index 0", () => {
+  it("renders the active-story outline and cover image with LCP priority for index 0", () => {
     render(<StoryList stories={storiesWithCover} onOpenStory={vi.fn()} activeStoryId="c1" />)
 
-    // Active story button carries data-active="true" (line 258) + the boxShadow style (262-266)
+    // Active story uses a crisp outline instead of a glow.
     const activeBtn = screen.getByLabelText("Story: Cover Story")
     expect(activeBtn).toHaveAttribute("data-active", "true")
-    expect((activeBtn as HTMLElement).style.boxShadow).not.toBe("")
+    expect((activeBtn as HTMLElement).style.outline).not.toBe("")
+    expect((activeBtn as HTMLElement).style.boxShadow).toBe("")
 
     // First story (index 0, cover_url set) → eager/fetchpriority LCP image (276-278)
     const firstImg = screen.getByAltText("Cover Story") as HTMLImageElement

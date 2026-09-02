@@ -15,6 +15,11 @@ interface EventMediaProps {
   onImageClick?: () => void
 }
 
+/** Keep the optional image action total when a stale click outlives its owner. */
+export function invokeImageClick(onImageClick?: () => void): void {
+  if (onImageClick) onImageClick()
+}
+
 export function EventMedia({
   imageUrl,
   alt,
@@ -41,7 +46,7 @@ export function EventMedia({
           className="block h-full w-full cursor-pointer p-0 border-0 bg-transparent"
           onClick={(e) => {
             e.stopPropagation()
-            onImageClick?.()
+            invokeImageClick(onImageClick)
           }}
           disabled={!onImageClick}
         >

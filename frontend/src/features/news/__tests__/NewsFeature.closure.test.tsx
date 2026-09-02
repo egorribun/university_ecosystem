@@ -112,10 +112,13 @@ vi.mock("@/features/news/components/NewsList", () => ({
 }))
 
 vi.mock("@/features/news/components/NewsFormDialog", () => ({
-  NewsFormDialog: (props: { open: boolean; onClose: () => void; onSuccess: () => void }) => (
-    <div data-testid="news-form" data-open={String(props.open)}>
+  NewsFormDialog: (props: { open: boolean; onClose: () => void; onSuccess?: () => void }) => (
+    <div
+      data-testid="news-form"
+      data-open={String(props.open)}
+      data-parent-refresh={String(Boolean(props.onSuccess))}
+    >
       <button data-testid="news-form-close" onClick={props.onClose} />
-      <button data-testid="news-form-success" onClick={props.onSuccess} />
     </div>
   ),
 }))
@@ -203,8 +206,8 @@ describe("NewsFeature closure", () => {
     expect(screen.getByTestId("news-form")).toHaveAttribute("data-open", "true")
     fireEvent.click(screen.getByTestId("news-form-close"))
     fireEvent.click(screen.getByTestId("news-list-add"))
-    fireEvent.click(screen.getByTestId("news-form-success"))
-    expect(mockResetEtagCache).toHaveBeenCalledTimes(2)
+    expect(screen.getByTestId("news-form")).toHaveAttribute("data-parent-refresh", "false")
+    expect(mockResetEtagCache).toHaveBeenCalledTimes(1)
     expect(screen.getByTestId("news-shortcuts")).toBeInTheDocument()
   })
 
@@ -221,7 +224,8 @@ describe("NewsFeature closure", () => {
     expect(screen.getByTestId("news-header")).toHaveAttribute("data-admin", "false")
     expect(screen.getByTestId("news-header")).toHaveAttribute("data-count", "1")
     expect(screen.getByTestId("news-list")).toHaveAttribute("data-count", "1")
-    expect(screen.getByTestId("news-list")).toHaveAttribute("data-next", "false")
+    expect(screen.getByTestId("news-list")).toHaveAttribute("data-next", "true")
+    expect(state.query.current.fetchNextPage).not.toHaveBeenCalled()
     expect(screen.getByText("Campus update")).toBeInTheDocument()
     expect(screen.queryByText("Lecture schedule")).not.toBeInTheDocument()
   })
@@ -233,6 +237,7 @@ describe("NewsFeature closure", () => {
 
     expect(screen.getByTestId("news-list")).toHaveAttribute("data-count", "1")
     expect(screen.getByText("Campus update")).toBeInTheDocument()
+    expect(state.query.current.fetchNextPage).toHaveBeenCalledOnce()
   })
 
   it("matches a query found only in the English content", () => {

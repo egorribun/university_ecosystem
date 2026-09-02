@@ -25,7 +25,7 @@ export const DesktopNav = ({
   return (
     <ul
       className={cn(
-        "flex flex-row items-center m-0 p-0 min-w-0 list-none",
+        "navbar-desktop-nav flex flex-row items-center m-0 p-0 min-w-0 list-none",
         isCompact ? "ml-(--space-4) gap-0.5" : "ml-(--space-8) gap-1"
       )}
     >

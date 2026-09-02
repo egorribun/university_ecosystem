@@ -8,13 +8,11 @@ resources:
   - resources.yaml
 results:
   - policy: require-run-as-non-root
-    rule: check-runAsNonRoot
     resources:
       - university-ecosystem/compliant-pod
     kind: Pod
     result: pass
   - policy: require-run-as-non-root
-    rule: check-runAsNonRoot
     resources:
       - university-ecosystem/root-pod
     kind: Pod

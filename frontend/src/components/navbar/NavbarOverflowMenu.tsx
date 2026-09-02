@@ -20,11 +20,16 @@ export function NavbarOverflowMenu({
   isActive,
   go,
   prefersReducedMotion,
-  isCompact,
 }: NavbarOverflowMenuProps) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (open) menuRef.current?.querySelector<HTMLElement>("[role='menuitem']")?.focus()
+  }, [open])
 
   // Close on outside click
   useEffect(() => {
@@ -40,7 +45,11 @@ export function NavbarOverflowMenu({
   useEffect(() => {
     if (!open) return
     const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false)
+      if (e.key === "Escape") {
+        e.preventDefault()
+        setOpen(false)
+        triggerRef.current?.focus()
+      }
     }
     document.addEventListener("keydown", handler)
     return () => document.removeEventListener("keydown", handler)
@@ -51,20 +60,22 @@ export function NavbarOverflowMenu({
   const hasActive = items.some((it) => isActive(it.to))
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="navbar-desktop-overflow relative">
       <m.button
+        ref={triggerRef}
         type="button"
         whileTap={prefersReducedMotion ? undefined : { scale: 0.95 }}
         transition={prefersReducedMotion ? { duration: 0 } : springSoft}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        aria-haspopup="true"
+        aria-haspopup="menu"
+        aria-controls="navbar-overflow-menu"
+        aria-label={t("navigation:aria.overflowMenu")}
         className={cn(
-          "flex items-center justify-center rounded-xl transition-all",
+          "flex size-11 items-center justify-center rounded-xl transition-[transform,opacity,background-color,color]",
           prefersReducedMotion ? "duration-0" : "duration-200",
-          isCompact ? "size-8" : "size-9",
           hasActive
-            ? "text-(--nav-active-color) bg-(--nav-active-glow)"
+            ? "nav-active text-(--nav-active-color) bg-(--bg-surface-hover)"
             : "text-(--text-secondary) hover:text-(--text-primary) hover:bg-(--bg-surface-hover)/(--opacity-soft)"
         )}
       >
@@ -74,6 +85,8 @@ export function NavbarOverflowMenu({
       <AnimatePresence>
         {open && (
           <m.div
+            id="navbar-overflow-menu"
+            ref={menuRef}
             initial={{ opacity: 0, scale: 0.95, y: -4 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: -4 }}
@@ -82,8 +95,24 @@ export function NavbarOverflowMenu({
             }
             role="menu"
             aria-label={t("navigation:aria.overflowMenu")}
-            className="absolute right-0 top-full mt-2 min-w-48 rounded-xl border border-(--glass-border) bg-(--pill-bg) p-1.5 shadow-glass backdrop-blur-xl z-dropdown"
-            style={{ boxShadow: "var(--pill-shadow), var(--pill-inner-glow)" }}
+            className="absolute right-0 top-full z-dropdown mt-2 min-w-48 rounded-xl border border-(--glass-border) bg-(--pill-bg) p-1.5 shadow-md"
+            onKeyDown={(event) => {
+              const menuItems = Array.from(
+                event.currentTarget.querySelectorAll<HTMLElement>("[role='menuitem']")
+              )
+              const currentIndex = menuItems.indexOf(document.activeElement as HTMLElement)
+              let nextIndex: number | undefined
+              if (event.key === "ArrowDown") nextIndex = (currentIndex + 1) % menuItems.length
+              if (event.key === "ArrowUp")
+                nextIndex = (currentIndex - 1 + menuItems.length) % menuItems.length
+              if (event.key === "Home") nextIndex = 0
+              if (event.key === "End") nextIndex = menuItems.length - 1
+              const nextItem = nextIndex === undefined ? undefined : menuItems[nextIndex]
+              if (nextItem) {
+                event.preventDefault()
+                nextItem.focus()
+              }
+            }}
           >
             {items.map((item) => {
               const Icon = item.icon
@@ -92,7 +121,10 @@ export function NavbarOverflowMenu({
                 <Link
                   key={item.to}
                   to={item.to}
-                  onClick={() => {
+                  role="menuitem"
+                  tabIndex={-1}
+                  onClick={(event) => {
+                    event.preventDefault()
                     setOpen(false)
                     go(item.to)
                   }}

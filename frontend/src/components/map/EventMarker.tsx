@@ -14,6 +14,8 @@ import { CalendarDays } from "lucide-react"
 import type { MapEvent } from "@/hooks/useMapEvents"
 import { logError } from "@/app/logger"
 import { useStripMaplibreMarkerChrome } from "@/utils/stripMaplibreMarkerChrome"
+import { MAP_INTERACTIVE_TARGET_PX } from "@/constants/campus"
+import type { MapMarkerOffset } from "@/features/map/markerCollisionLayout"
 
 /**
  * Event pin color — uses CSS token var(--map-event-color) in stylesheets.
@@ -21,6 +23,7 @@ import { useStripMaplibreMarkerChrome } from "@/utils/stripMaplibreMarkerChrome"
  * Matches --color-amber-500.
  */
 const EVENT_PIN_COLOR = "#f59e0b"
+const NOOP_POPUP_CALLBACK = () => undefined
 
 interface EventMarkerProps {
   event: MapEvent
@@ -28,6 +31,7 @@ interface EventMarkerProps {
   isPopupOpen?: boolean
   onPopupOpen?: () => void
   onPopupClose?: () => void
+  offset?: MapMarkerOffset
 }
 
 /**
@@ -50,7 +54,13 @@ function formatEventDate(isoString: string, locale: string): string {
   }
 }
 
-export function EventMarker({ event, isPopupOpen, onPopupOpen, onPopupClose }: EventMarkerProps) {
+export function EventMarker({
+  event,
+  isPopupOpen,
+  onPopupOpen = NOOP_POPUP_CALLBACK,
+  onPopupClose = NOOP_POPUP_CALLBACK,
+  offset,
+}: EventMarkerProps) {
   const { t, i18n } = useTranslation("map")
   const markerRef = useRef<MarkerInstance | null>(null)
   // Wave 116 polish — see BuildingMarker + utils/stripMaplibreMarkerChrome.ts.
@@ -73,20 +83,25 @@ export function EventMarker({ event, isPopupOpen, onPopupOpen, onPopupClose }: E
         longitude={event.geoCoords[1]}
         latitude={event.geoCoords[0]}
         anchor="bottom"
+        offset={offset}
       >
         <div
           role="button"
           tabIndex={0}
           aria-label={ariaLabel}
           className="map-event-pin"
+          style={{
+            minWidth: MAP_INTERACTIVE_TARGET_PX,
+            minHeight: MAP_INTERACTIVE_TARGET_PX,
+          }}
           onClick={(e) => {
             e.stopPropagation()
-            onPopupOpen?.()
+            onPopupOpen()
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault()
-              onPopupOpen?.()
+              onPopupOpen()
             }
           }}
         >
@@ -124,7 +139,7 @@ export function EventMarker({ event, isPopupOpen, onPopupOpen, onPopupClose }: E
           offset={48}
           closeButton
           closeOnClick={false}
-          onClose={() => onPopupClose?.()}
+          onClose={onPopupClose}
           className="map-popup-premium"
           maxWidth="260px"
         >
@@ -147,7 +162,7 @@ export function EventMarker({ event, isPopupOpen, onPopupOpen, onPopupClose }: E
             <p className="text-[10px] opacity-50 mb-1">{event.location}</p>
 
             {/* Participant count */}
-            {event.participantCount != null && event.participantCount > 0 && (
+            {typeof event.participantCount === "number" && event.participantCount > 0 && (
               <p className="text-[10px] opacity-50 mb-2">
                 {t("events.participants", {
                   count: event.participantCount,

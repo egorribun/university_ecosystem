@@ -22,7 +22,6 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -51,7 +50,6 @@ class TestCspDevelopmentConnectOverrides:
         monkeypatch.setenv("FRONTEND_ORIGINS", "https://app.example.com")
         monkeypatch.setenv("FRONTEND_ORIGIN", "")
         monkeypatch.setenv("APP_BASE_URL", "")
-        monkeypatch.setenv("WEBAUTHN_ORIGIN", "")
         from app.core.config import Settings
 
         s = Settings()
@@ -86,22 +84,9 @@ class TestCspDevelopmentConnectOverrides:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# app.core.fingerprint — store_mfa_challenge_fingerprints graceful degradation
+# app.core.fingerprint — request-bound digest generation
 # ─────────────────────────────────────────────────────────────────────────────
 class TestStoreMfaFingerprintsRedisError:
-    @pytest.mark.asyncio
-    async def test_redis_unavailable_degrades_without_raising(self, monkeypatch):
-        import app.deps.cache as cache_mod
-        from app.core import fingerprint as fp_mod
-
-        async def _raise() -> Any:
-            raise ConnectionError("redis down")
-
-        monkeypatch.setattr(cache_mod, "get_cache_client", _raise)
-        req = _FakeRequest({"X-Forwarded-For": "1.2.3.4", "user-agent": "UA"})
-        # Must return (not raise) — replay protection degrades gracefully.
-        await fp_mod.store_mfa_challenge_fingerprints(req, [])
-
     def test_extract_fingerprint_uses_client_host_without_forwarded(self):
         from app.core.fingerprint import extract_request_fingerprint
 

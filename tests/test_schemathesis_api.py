@@ -36,20 +36,49 @@ Run locally
 -----------
     uv run pytest tests/test_schemathesis_api.py -v -m schemathesis
 
-CI sets ``SCHEMATHESIS_SHARD_COUNT=4`` and
-``SCHEMATHESIS_SHARD_INDEX=0..3`` to distribute the same exhaustive operation
-set across four bounded jobs.
+CI sets ``SCHEMATHESIS_SHARD_COUNT=8`` and
+``SCHEMATHESIS_SHARD_INDEX=0..7`` to distribute the same exhaustive operation
+set across eight bounded jobs.  Each operation still receives the configured
+number of examples; only the process fan-out changes.
 """
 
 from __future__ import annotations
 
 import json
 import os
+from base64 import urlsafe_b64encode
 from uuid import uuid4
 
 import hypothesis
 import pytest
 import schemathesis
+
+# ---------------------------------------------------------------------------
+# Environment setup — must precede every app import, including auth helpers.
+# ---------------------------------------------------------------------------
+
+os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_schemathesis.db")
+os.environ.setdefault("ENVIRONMENT", "testing")
+# Logout revokes the generated bearer session through the isolated Redis
+# security datastore.  The application deliberately rejects its development
+# default URL (fail-closed), so the hermetic Schemathesis harness must provide
+# an explicit non-default endpoint.  ``tests/conftest.py`` redirects Redis
+# clients to fakeredis; no external service is required.
+os.environ.setdefault("REVOCATION_REDIS_URL", "redis://localhost:6380/0")
+os.environ.setdefault(
+    "SECRET_KEY",
+    "schemathesis-ci-placeholder-secret-key-minimum-32-chars-long",  # pragma: allowlist secret
+)
+os.environ.setdefault(
+    "MFA_EMAIL_OTP_HMAC_KEYS",
+    f"schemathesis-hmac:{urlsafe_b64encode(b'h' * 32).decode('ascii').rstrip('=')}",
+)
+os.environ.setdefault("MFA_EMAIL_OTP_ACTIVE_HMAC_KEY_ID", "schemathesis-hmac")
+os.environ.setdefault(
+    "MFA_EMAIL_DELIVERY_KEKS",
+    f"schemathesis-kek:{urlsafe_b64encode(b'k' * 32).decode('ascii').rstrip('=')}",
+)
+os.environ.setdefault("MFA_EMAIL_DELIVERY_ACTIVE_KEK_ID", "schemathesis-kek")
 
 # ---------------------------------------------------------------------------
 # Custom Schemathesis Conformance Check & Hooks
@@ -126,17 +155,6 @@ def conform_to_schema_except_auth(ctx, response, case) -> None:
     response_schema_conformance(ctx, response, case)
 
 
-# ---------------------------------------------------------------------------
-# Environment setup — must precede any app import
-# ---------------------------------------------------------------------------
-
-os.environ.setdefault("DATABASE_URL", "sqlite+aiosqlite:///./test_schemathesis.db")
-os.environ.setdefault("ENVIRONMENT", "testing")
-os.environ.setdefault(
-    "SECRET_KEY",
-    "schemathesis-ci-placeholder-secret-key-minimum-32-chars-long",  # pragma: allowlist secret
-)
-
 from app.main import app  # env vars must be set before this import
 
 # OpenAPI methods are the only keys that represent executable operations in a
@@ -207,6 +225,15 @@ def loaded_schema():
     exactly once per pytest session, not once per test case.
     """
     return schemathesis.openapi.from_asgi("/api/openapi.json", app=app)
+
+
+@pytest.mark.schemathesis
+def test_schemathesis_mfa_security_dependencies_are_configured() -> None:
+    """Fail immediately when the conformance environment cannot build MFA."""
+
+    from app.auth.mfa.email_otp import build_configured_email_otp_service
+
+    assert build_configured_email_otp_service() is not None
 
 
 # ---------------------------------------------------------------------------

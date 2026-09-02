@@ -1,6 +1,6 @@
 /*
  * THEME KERNEL
- * Aggregates all token layers into a single entry point.
+ * Aggregates the shell token layers into a single entry point.
  *
  * Architecture:
  * 1. Primitives: Raw values (hex, px, rem)
@@ -11,14 +11,9 @@
 @import "./tokens/primitives.css";
 @import "./tokens/semantics.css";
 @import "./tokens/components.css";
-@import "./tokens/dashboard.css";
-@import "./tokens/news.css";
-@import "./tokens/events.css";
-@import "./tokens/schedule.css";
-@import "./tokens/activity.css";
-@import "./tokens/map.css";
-@import "./tokens/admin.css";
-@import "./tokens/messenger.css";
-@import "./tokens/profile.css";
-@import "./tokens/settings.css";
-@import "./tokens/auth.css";
+
+/*
+ * Feature token layers belong to their lazy page entry modules. Keeping them
+ * out of the document shell prevents a first visit to one route from blocking
+ * first paint on CSS for every other feature.
+ */

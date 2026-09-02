@@ -48,7 +48,6 @@ const makeUser = (user: { id: string; email: string; full_name: string }) => ({
   mfa_last_verified_at: null,
   recovery_codes_left: 0,
   totp_enrollments: [],
-  mfa_challenges: [],
 })
 
 const CURRENT_USER = makeUser({

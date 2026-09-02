@@ -37,6 +37,7 @@ export function Skeleton({
   className,
   ariaLabel,
   style,
+  "aria-hidden": ariaHidden,
   ...rest
 }: SkeletonProps) {
   // Handle standard variants and custom CSS values for rounding
@@ -58,8 +59,11 @@ export function Skeleton({
 
   return (
     <div
-      role="status"
-      aria-live="polite"
+      {...rest}
+      role={ariaLabel ? "status" : undefined}
+      aria-live={ariaLabel ? "polite" : undefined}
+      aria-busy="true"
+      aria-hidden={ariaLabel ? undefined : (ariaHidden ?? true)}
       aria-label={ariaLabel}
       className={cn(skeletonVariants({ rounded: variantRounding }), className)}
       style={{
@@ -68,7 +72,6 @@ export function Skeleton({
         borderRadius: styleBorderRadius || customRounding,
         ...style,
       }}
-      {...rest}
     />
   )
 }

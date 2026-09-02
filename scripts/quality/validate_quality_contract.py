@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 import argparse
+import fnmatch
+import hashlib
 import json
 import math
 import re
+import shutil
+import subprocess
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date
+from decimal import ROUND_HALF_UP, Decimal, localcontext
 from pathlib import Path, PurePosixPath, PureWindowsPath
-from typing import NoReturn
+from typing import NoReturn, cast
+
+from jsonschema import Draft202012Validator
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 
@@ -26,6 +33,18 @@ COMPONENTS = (
     "infrastructure",
     "workflows",
     "scripts",
+)
+COVERAGE_COMPONENTS = (
+    "python",
+    "frontend",
+    "go-gateway",
+    "go-ws-hub",
+    "go-file-processor",
+    "go-shared",
+    "rust-native",
+    "rust-pyo3-sanitizer",
+    "rust-wasm-sanitizer",
+    "rust-crypto",
 )
 COMPONENT_FLOORS = (
     ("lines", 100),
@@ -53,12 +72,17 @@ TOP_LEVEL_KEYS = frozenset(
         "coverage_minimums",
         "components",
         "tier0",
-        "required_artifacts",
+        "source_roots",
+        "coverage_scope",
+        "coverage_reports",
+        "coverage_manifest",
+        "manifest_path",
         "exclusions",
         "quarantines",
     }
 )
 POLICY_KEYS = frozenset({"patch_coverage", "viable_mutant_score", "required_pr_matrix"})
+COVERAGE_MANIFEST_FIELDS = frozenset({"schema_version", "normalizer_version"})
 EXCLUSION_FIELDS = frozenset(
     {
         "id",
@@ -76,6 +100,122 @@ MUTATION_REGISTRY_FIELDS = frozenset({"version", "exclusions"})
 DATE_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
 WILDCARD_CHARACTERS = "*?[]"
 MAX_JSON_NESTING_DEPTH = 1_024
+SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
+METRICS = ("lines", "statements", "branches", "functions")
+NORMALIZER_VERSION = "3.0.0"
+REPORT_FORMATS = frozenset(
+    {
+        "cobertura-xml",
+        "coverage-py-json",
+        "lcov",
+        "istanbul-json",
+        "go-coverprofile",
+        "llvm-cov-json",
+        "llvm-cov-branch-json",
+    }
+)
+VERSION_PATTERN = re.compile(r"^[0-9]+(?:\.[0-9]+){1,3}(?:[-+][0-9A-Za-z.-]+)?$")
+REPORT_FORMAT_TO_TOOLS = {
+    "cobertura-xml": frozenset({"coverage.py", "python"}),
+    "coverage-py-json": frozenset({"coverage.py", "python"}),
+    "lcov": frozenset({"node", "vitest"}),
+    "istanbul-json": frozenset({"node", "vitest"}),
+    "go-coverprofile": frozenset({"go"}),
+    "llvm-cov-json": frozenset({"cargo-llvm-cov", "rustc"}),
+    "llvm-cov-branch-json": frozenset({"cargo-llvm-cov", "rustc-nightly"}),
+}
+TRUSTED_DERIVATIONS = frozenset(
+    {
+        "AST function entries covered when the first executable body line is reported as executed",
+        "AST source contains no branch construct",
+        "AST source contains no function definitions",
+        "Cobertura source contains no executable lines",
+        "coverage.py JSON contains no num_statements units",
+        "LCOV source contains no branch units",
+        "LCOV source contains no executable lines",
+        "LCOV source contains no function units",
+        "Istanbul JSON contains no statement units",
+        "LLVM source contains no executable line segments",
+        "Nightly LLVM report contains no branch units",
+        "Nightly LLVM source contains no branch sites",
+        "source branch sites deduplicated across LLVM generic instantiations; each outcome covered by any instantiation",
+        "sum of applicable Tier0 file metrics",
+        "unique source lines from non-gap LLVM segments; covered when any segment on the line is executed",
+        "unique source lines in coverprofile blocks; covered when any overlapping block has count greater than zero",
+    }
+)
+EXPECTED_COVERAGE_REPORTS = frozenset(
+    {
+        ("python", "cobertura-xml", "coverage.xml"),
+        (
+            "python",
+            "coverage-py-json",
+            "artifacts/coverage/python/coverage.json",
+        ),
+        ("frontend", "lcov", "frontend/coverage/lcov.info"),
+        ("frontend", "istanbul-json", "frontend/coverage/coverage-final.json"),
+        (
+            "go-gateway",
+            "go-coverprofile",
+            "artifacts/coverage/go/gateway/coverage.out",
+        ),
+        (
+            "go-ws-hub",
+            "go-coverprofile",
+            "artifacts/coverage/go/ws-hub/coverage.out",
+        ),
+        (
+            "go-file-processor",
+            "go-coverprofile",
+            "artifacts/coverage/go/file-processor/coverage.out",
+        ),
+        (
+            "go-shared",
+            "go-coverprofile",
+            "artifacts/coverage/go/shared/coverage.out",
+        ),
+        (
+            "rust-native",
+            "llvm-cov-json",
+            "artifacts/coverage/rust/rust-native/llvm.json",
+        ),
+        (
+            "rust-native",
+            "llvm-cov-branch-json",
+            "artifacts/coverage/rust/rust-native/branch-llvm.json",
+        ),
+        (
+            "rust-pyo3-sanitizer",
+            "llvm-cov-json",
+            "artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json",
+        ),
+        (
+            "rust-pyo3-sanitizer",
+            "llvm-cov-branch-json",
+            "artifacts/coverage/rust/rust-pyo3-sanitizer/branch-llvm.json",
+        ),
+        (
+            "rust-wasm-sanitizer",
+            "llvm-cov-json",
+            "artifacts/coverage/rust/rust-wasm-sanitizer/llvm.json",
+        ),
+        (
+            "rust-wasm-sanitizer",
+            "llvm-cov-branch-json",
+            "artifacts/coverage/rust/rust-wasm-sanitizer/branch-llvm.json",
+        ),
+        (
+            "rust-crypto",
+            "llvm-cov-json",
+            "artifacts/coverage/rust/rust-crypto/llvm.json",
+        ),
+        (
+            "rust-crypto",
+            "llvm-cov-branch-json",
+            "artifacts/coverage/rust/rust-crypto/branch-llvm.json",
+        ),
+    }
+)
 
 
 class _ArgumentParsingError(ValueError):
@@ -426,36 +566,153 @@ def _validate_register(
                 )
 
 
-def _validate_required_artifacts(value: object, errors: list[str]) -> None:
+def _validate_source_roots(value: object, errors: list[str]) -> None:
+    roots = _require_object(value, "source_roots", errors)
+    if roots is None:
+        return
+    _validate_exact_keys(roots, "source_roots", frozenset(COMPONENTS), errors)
+    for component in COMPONENTS:
+        if component not in roots:
+            continue
+        component_roots = roots[component]
+        if not isinstance(component_roots, list) or not component_roots:
+            errors.append(f"source_roots.{component} must be a non-empty array")
+            continue
+        seen: set[str] = set()
+        for index, root in enumerate(component_roots):
+            field = f"source_roots.{component}[{index}]"
+            path = _validate_repository_path(root, field, errors)
+            if path is None:
+                continue
+            if "\\" in path or PurePosixPath(path).as_posix() != path:
+                errors.append(f"{field} must use canonical POSIX separators")
+            if path in seen:
+                errors.append(f"{field} duplicates an earlier source root")
+            seen.add(path)
+
+
+def _validate_coverage_scope(
+    value: object,
+    source_roots_value: object,
+    errors: list[str],
+) -> None:
+    """Validate the toolchain-measured subset of each source root.
+
+    ``source_roots`` is the identity boundary for report paths.  A coverage
+    producer may intentionally measure a narrower, independently verified
+    subset: the Python producer uses ``--cov=app`` while Alembic revisions are
+    exercised by the dedicated PostgreSQL migration gate.  Keeping this scope
+    explicit prevents a filesystem walk from silently turning an unmeasured
+    structural source into a false coverage obligation.
+    """
+    scope = _require_object(value, "coverage_scope", errors)
+    if scope is None:
+        return
+    _validate_exact_keys(
+        scope, "coverage_scope", frozenset(COVERAGE_COMPONENTS), errors
+    )
+
+    source_roots = source_roots_value if isinstance(source_roots_value, dict) else {}
+    for component in COVERAGE_COMPONENTS:
+        if component not in scope:
+            continue
+        roots = scope[component]
+        if not isinstance(roots, list) or not roots:
+            errors.append(f"coverage_scope.{component} must be a non-empty array")
+            continue
+        seen: set[str] = set()
+        configured_source_roots = source_roots.get(component, ())
+        if not isinstance(configured_source_roots, list):
+            configured_source_roots = ()
+        for index, root in enumerate(roots):
+            field = f"coverage_scope.{component}[{index}]"
+            path = _validate_repository_path(root, field, errors)
+            if path is None:
+                continue
+            if "\\" in path or PurePosixPath(path).as_posix() != path:
+                errors.append(f"{field} must use canonical POSIX separators")
+            if path in seen:
+                errors.append(f"{field} duplicates an earlier coverage root")
+            seen.add(path)
+            if not any(
+                path == source_root or path.startswith(f"{source_root}/")
+                for source_root in configured_source_roots
+                if isinstance(source_root, str)
+            ):
+                errors.append(f"{field} must be contained by source_roots.{component}")
+
+
+def _validate_coverage_reports(value: object, errors: list[str]) -> None:
     if not isinstance(value, list):
-        errors.append("required_artifacts must be a list")
+        errors.append("coverage_reports must be a list")
         return
     if not value:
-        errors.append("required_artifacts must contain at least one path")
+        errors.append("coverage_reports must contain at least one declaration")
         return
 
     seen_paths: dict[str, int] = {}
-    for index, artifact in enumerate(value):
-        field = f"required_artifacts[{index}]"
-        path = _validate_repository_path(artifact, field, errors)
+    declarations: set[tuple[str, str, str]] = set()
+    for index, declaration_value in enumerate(value):
+        field = f"coverage_reports[{index}]"
+        declaration = _require_object(declaration_value, field, errors)
+        if declaration is None:
+            continue
+        _validate_exact_keys(
+            declaration,
+            field,
+            frozenset({"component", "format", "path"}),
+            errors,
+        )
+        component = _require_non_empty_string(
+            declaration.get("component"), f"{field}.component", errors
+        )
+        report_format = _require_non_empty_string(
+            declaration.get("format"), f"{field}.format", errors
+        )
+        path = _validate_repository_path(
+            declaration.get("path"), f"{field}.path", errors
+        )
+        if component is not None and component not in COMPONENTS:
+            errors.append(f"{field}.component is unsupported: {component}")
+        if report_format is not None and report_format not in REPORT_FORMATS:
+            errors.append(f"{field}.format is unsupported: {report_format}")
         if path is None:
             continue
+        if "\\" in path or PurePosixPath(path).as_posix() != path:
+            errors.append(f"{field}.path must use canonical POSIX separators")
         previous_path = seen_paths.get(path)
         if previous_path is None:
             seen_paths[path] = index
         else:
-            errors.append(f"{field} duplicates required_artifacts[{previous_path}]")
+            errors.append(
+                f"{field}.path duplicates coverage_reports[{previous_path}].path"
+            )
+        if component is not None and report_format is not None:
+            declarations.add((component, report_format, path))
+
+    missing = EXPECTED_COVERAGE_REPORTS - declarations
+    unexpected = declarations - EXPECTED_COVERAGE_REPORTS
+    if missing:
+        errors.append(
+            "coverage_reports is missing required declarations: "
+            + ", ".join(path for _, _, path in sorted(missing))
+        )
+    if unexpected:
+        errors.append(
+            "coverage_reports contains unexpected declarations: "
+            + ", ".join(path for _, _, path in sorted(unexpected))
+        )
 
 
 def validate_contract(contract: dict[str, object], *, today: date) -> list[str]:
-    """Return every policy violation found in a version 1 quality contract."""
+    """Return policy violations in the v2 contract and v3 manifest declaration."""
     errors: list[str] = []
     _validate_exact_keys(contract, "contract", TOP_LEVEL_KEYS, errors)
 
     if "version" in contract:
         version = contract["version"]
-        if not isinstance(version, int) or isinstance(version, bool) or version != 1:
-            errors.append("version must equal 1")
+        if not isinstance(version, int) or isinstance(version, bool) or version != 2:
+            errors.append("version must equal 2")
     if "policy" in contract:
         _validate_policy(contract["policy"], errors)
     if "coverage_minimums" in contract:
@@ -470,8 +727,56 @@ def validate_contract(contract: dict[str, object], *, today: date) -> list[str]:
         _validate_components(contract["components"], errors)
     if "tier0" in contract:
         _validate_tier0(contract["tier0"], errors)
-    if "required_artifacts" in contract:
-        _validate_required_artifacts(contract["required_artifacts"], errors)
+    if "source_roots" in contract:
+        _validate_source_roots(contract["source_roots"], errors)
+    if "coverage_scope" in contract:
+        _validate_coverage_scope(
+            contract["coverage_scope"],
+            contract.get("source_roots"),
+            errors,
+        )
+    if "coverage_reports" in contract:
+        _validate_coverage_reports(contract["coverage_reports"], errors)
+    if "coverage_manifest" in contract:
+        manifest_declaration = _require_object(
+            contract["coverage_manifest"], "coverage_manifest", errors
+        )
+        if manifest_declaration is not None:
+            _validate_exact_keys(
+                manifest_declaration,
+                "coverage_manifest",
+                COVERAGE_MANIFEST_FIELDS,
+                errors,
+            )
+            schema_version = manifest_declaration.get("schema_version")
+            if (
+                not isinstance(schema_version, int)
+                or isinstance(schema_version, bool)
+                or schema_version != 3
+            ):
+                errors.append("coverage_manifest.schema_version must equal 3")
+            normalizer_version = manifest_declaration.get("normalizer_version")
+            if (
+                not isinstance(normalizer_version, str)
+                or re.fullmatch(r"3\.[0-9]+\.[0-9]+", normalizer_version) is None
+            ):
+                errors.append("coverage_manifest.normalizer_version must match 3.x.y")
+    if "manifest_path" in contract:
+        manifest_path = _validate_repository_path(
+            contract["manifest_path"], "manifest_path", errors
+        )
+        if manifest_path is not None:
+            if (
+                "\\" in manifest_path
+                or PurePosixPath(manifest_path).as_posix() != manifest_path
+            ):
+                errors.append("manifest_path must use canonical POSIX separators")
+            coverage_reports = contract.get("coverage_reports")
+            if isinstance(coverage_reports, list) and any(
+                isinstance(report, dict) and report.get("path") == manifest_path
+                for report in coverage_reports
+            ):
+                errors.append("manifest_path must not be included in coverage_reports")
     if "exclusions" in contract:
         _validate_register(
             contract["exclusions"],
@@ -540,9 +845,21 @@ def _reject_json_constant(value: str) -> NoReturn:
 
 def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = _QualityArgumentParser(
-        description="Validate a version 1 quality contract."
+        description="Validate the v2 quality contract and its current v3 evidence."
     )
     parser.add_argument("--contract", type=Path, metavar="PATH")
+    parser.add_argument(
+        "--schema",
+        type=Path,
+        metavar="PATH",
+        help="explicit coverage manifest JSON schema",
+    )
+    parser.add_argument(
+        "--artifact-root",
+        type=Path,
+        metavar="PATH",
+        help="Git checkout root containing every canonical evidence path",
+    )
     parser.add_argument(
         "--manifest",
         type=Path,
@@ -559,6 +876,17 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
         default=REPOSITORY_ROOT / "quality" / "mutation-exclusions.json",
         help="validate the equivalent-mutant exclusion register",
     )
+    parser.add_argument("--expected-commit-sha", metavar="SHA")
+    parser.add_argument("--expected-source-head-sha", metavar="SHA")
+    parser.add_argument("--expected-tested-commit-sha", metavar="SHA")
+    parser.add_argument("--expected-base-sha", metavar="SHA")
+    parser.add_argument("--expected-base-ref", metavar="REF")
+    parser.add_argument("--expected-workflow-run-id", metavar="ID")
+    parser.add_argument("--expected-workflow-run-attempt", metavar="ATTEMPT")
+    parser.add_argument("--expected-workflow-event", metavar="EVENT")
+    parser.add_argument("--expected-workflow-repository", metavar="OWNER/REPO")
+    parser.add_argument("--expected-workflow-ref", metavar="REF")
+    parser.add_argument("--expected-workflow-job", metavar="JOB")
     return parser.parse_args(argv)
 
 
@@ -566,48 +894,904 @@ def _print_error(message: str) -> None:
     print(f"ERROR: {message}", file=sys.stderr)
 
 
-def _validate_tier0_manifest(manifest: object) -> list[str]:
-    """Validate the per-file Tier0 enforcement contract.
+def _git_head(repository_root: Path) -> str:
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        raise ValueError(
+            "unable to resolve current repository HEAD: git is unavailable"
+        )
+    try:
+        result = subprocess.run(  # noqa: S603
+            [git_executable, "rev-parse", "HEAD"],
+            cwd=repository_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise ValueError(
+            f"unable to resolve current repository HEAD: {error}"
+        ) from error
+    head = result.stdout.strip()
+    if SHA_PATTERN.fullmatch(head) is None:
+        raise ValueError("current repository HEAD is not a canonical 40-character SHA")
+    return head
 
-    The quality contract's aggregate Tier0 floor is necessary but not
-    sufficient: a single under-covered file can be hidden by another file's
-    surplus coverage. This check is enabled only when the manifest declares a
-    Tier0 section; once declared, every listed file must satisfy its own floor.
-    """
-    if not isinstance(manifest, dict):
-        return ["coverage manifest root must be an object"]
 
-    tier0 = manifest.get("tier0")
-    if not isinstance(tier0, dict):
-        return ["coverage manifest tier0 must be an object"]
+def _is_link_or_junction(path: Path) -> bool:
+    try:
+        if path.is_symlink():
+            return True
+        is_junction = getattr(path, "is_junction", None)
+        return bool(is_junction()) if callable(is_junction) else False
+    except OSError:
+        return True
 
-    files = tier0.get("files")
-    if not isinstance(files, list) or not files:
-        return ["coverage manifest tier0.files must be a non-empty array"]
 
+def _safe_repository_file(
+    repository_root: Path,
+    value: object,
+    field: str,
+    errors: list[str],
+) -> Path | None:
+    path = _validate_repository_path(value, field, errors)
+    if path is None:
+        return None
+    if "\\" in path or PurePosixPath(path).as_posix() != path:
+        errors.append(f"{field} must use canonical POSIX separators")
+        return None
+    root = repository_root.resolve(strict=True)
+    candidate = repository_root.joinpath(*PurePosixPath(path).parts)
+    current = repository_root
+    for part in PurePosixPath(path).parts:
+        current = current / part
+        if _is_link_or_junction(current):
+            errors.append(f"{field} resolves through a symlink or junction: {path}")
+            return None
+    try:
+        resolved = candidate.resolve(strict=True)
+    except OSError as error:
+        errors.append(f"{field} is missing or unreadable: {path} ({error})")
+        return None
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        errors.append(f"{field} resolves outside the repository: {path}")
+        return None
+    if not resolved.is_file():
+        errors.append(f"{field} must identify a regular file: {path}")
+        return None
+    return resolved
+
+
+def _schema_errors(manifest: object, schema_path: Path) -> list[str]:
+    try:
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
+        return [f"coverage manifest schema is unreadable: {error}"]
+    validator = Draft202012Validator(schema)
     errors: list[str] = []
-    for index, file_record in enumerate(files):
-        if not isinstance(file_record, dict):
-            errors.append(f"tier0.files[{index}] must be an object")
+    for violation in sorted(
+        validator.iter_errors(manifest), key=lambda item: list(item.path)
+    ):
+        path = ".".join(str(part) for part in violation.absolute_path) or "root"
+        errors.append(f"schema {path}: {violation.message}")
+    return errors
+
+
+def _contract_component_floors(
+    contract: dict[str, object], component: str
+) -> dict[str, int]:
+    components = cast(dict[str, object], contract["components"])
+    config = cast(dict[str, object], components[component])
+    coverage = cast(dict[str, object], config["coverage"])
+    return {metric: cast(int, coverage[metric]) for metric in METRICS}
+
+
+def _validate_metric_for_floor(
+    metric: dict[str, object],
+    *,
+    floor: int,
+    field: str,
+) -> list[str]:
+    status = metric["status"]
+    if status in {"missing", "experimental"}:
+        return [f"{field} is {status}; incomplete evidence is never acceptable"]
+    if status == "unsupported":
+        if floor != 0:
+            return [f"{field} is unsupported but its component floor is {floor}"]
+        return []
+    if status not in {"native", "derived"}:
+        return [f"{field} has unsupported status {status!r}"]
+    covered = cast(int, metric["covered"])
+    total = cast(int, metric["total"])
+    percent = metric["percent"]
+    metric_errors: list[str] = []
+    if status == "derived" and metric.get("derivation") not in TRUSTED_DERIVATIONS:
+        metric_errors.append(f"{field} uses an untrusted derived-metric algorithm")
+    if total == 0:
+        expected_percent = 100.0
+        if status != "derived" or covered != 0:
+            metric_errors.append(
+                f"{field} zero-unit evidence must be an explicit trusted derivation"
+            )
+    else:
+        with localcontext() as context:
+            context.prec = max(28, len(str(covered)) + len(str(total)) + 8)
+            expected_percent = float(
+                (Decimal(covered) * Decimal(100) / Decimal(total)).quantize(
+                    Decimal("0.000001"), rounding=ROUND_HALF_UP
+                )
+            )
+    if percent != expected_percent:
+        metric_errors.append(
+            f"{field}.percent does not match covered/total counters "
+            f"(expected {expected_percent}, got {percent!r})"
+        )
+    # A measured metric is applicable by definition. The platform-wide quality
+    # floor is 100 for every applicable measurement; component floor 0 means
+    # the toolchain may report explicit unsupported/N/A, not undercoverage.
+    if covered != total or percent != 100:
+        metric_errors.append(
+            f"{field} is applicable and must equal 100% "
+            f"(covered={covered}, total={total}, percent={percent!r})"
+        )
+    return metric_errors
+
+
+def _tier0_rule_matches(path: str, rule: str) -> bool:
+    return fnmatch.fnmatchcase(path, rule) or PurePosixPath(path).match(rule)
+
+
+def _source_suffixes(component: str) -> frozenset[str]:
+    if component == "python":
+        return frozenset({".py"})
+    if component == "frontend":
+        return frozenset({".ts", ".tsx"})
+    if component.startswith("go-"):
+        return frozenset({".go"})
+    if component.startswith("rust-"):
+        return frozenset({".rs"})
+    return frozenset()
+
+
+def _expand_source_policy_braces(pattern: str) -> tuple[str, ...]:
+    """Expand the small brace-pattern dialect used by the Vitest policy."""
+    match = re.search(r"\{([^{}]+)\}", pattern)
+    if match is None:
+        return (pattern,)
+    return tuple(
+        expanded
+        for alternative in match.group(1).split(",")
+        for expanded in _expand_source_policy_braces(
+            pattern[: match.start()] + alternative + pattern[match.end() :]
+        )
+    )
+
+
+def _source_policy_glob_matches(path: str, pattern: str) -> bool:
+    """Match a POSIX repository path with ``**`` also matching zero folders."""
+    candidates = {pattern}
+    pending = [pattern]
+    while pending:
+        candidate = pending.pop()
+        start = 0
+        while (index := candidate.find("/**/", start)) >= 0:
+            shortened = candidate[:index] + "/" + candidate[index + 4 :]
+            if shortened not in candidates:
+                candidates.add(shortened)
+                pending.append(shortened)
+            start = index + 1
+    return any(fnmatch.fnmatchcase(path, candidate) for candidate in candidates)
+
+
+def _path_is_under_root(path: str, root: str) -> bool:
+    normalized_path = path.replace("\\", "/")
+    normalized_root = root.replace("\\", "/").rstrip("/")
+    return normalized_path == normalized_root or normalized_path.startswith(
+        f"{normalized_root}/"
+    )
+
+
+def _tier0_source_requires_coverage(
+    component: str,
+    path: str,
+    coverage_scope: Mapping[str, object],
+) -> bool:
+    """Whether the active producer is expected to emit coverage for a file.
+
+    Applicability is deliberately contract-driven.  ``source_roots`` remains
+    the report identity boundary, while ``coverage_scope`` is the exact set of
+    roots instrumented by the producer (Python uses ``--cov=app``).  No
+    component-specific filename exception is allowed here: a future toolchain
+    change must update the contract and its producer together.
+    """
+    roots = coverage_scope.get(component)
+    return isinstance(roots, list) and any(
+        isinstance(root, str) and _path_is_under_root(path, root) for root in roots
+    )
+
+
+def _load_frontend_source_policy(
+    repository_root: Path,
+) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+    """Load the canonical frontend production-source policy.
+
+    A malformed or absent policy is represented as ``None``.  The caller then
+    falls back to conservative filename filters; any resulting manifest drift
+    is still rejected by the Tier0 inventory comparison.
+    """
+    path = repository_root / "quality" / "coverage-source-policy.json"
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+        frontend = document["frontend"]
+        include = frontend["include"]
+        exclude = frontend["exclude"]
+        if (
+            not isinstance(include, list)
+            or not isinstance(exclude, list)
+            or not include
+            or not exclude
+            or not all(isinstance(value, str) and value for value in include)
+            or not all(isinstance(value, str) and value for value in exclude)
+        ):
+            return None
+    except (OSError, UnicodeDecodeError, TypeError, KeyError, ValueError):
+        return None
+    return (
+        tuple(
+            expanded
+            for value in include
+            for expanded in _expand_source_policy_braces(f"frontend/{value}")
+        ),
+        tuple(
+            expanded
+            for value in exclude
+            for expanded in _expand_source_policy_braces(f"frontend/{value}")
+        ),
+    )
+
+
+def _is_production_source(
+    path: str,
+    component: str,
+    frontend_policy: tuple[tuple[str, ...], tuple[str, ...]] | None = None,
+) -> bool:
+    pure = PurePosixPath(path)
+    if pure.suffix not in _source_suffixes(component):
+        return False
+    lowered = pure.name.lower()
+    if component.startswith("go-") and lowered.endswith("_test.go"):
+        return False
+    if component == "frontend":
+        if frontend_policy is not None:
+            include, exclude = frontend_policy
+            return any(
+                _source_policy_glob_matches(path, pattern) for pattern in include
+            ) and not any(
+                _source_policy_glob_matches(path, pattern) for pattern in exclude
+            )
+        if (
+            ".test." in lowered
+            or ".spec." in lowered
+            or ".stories." in lowered
+            or "__tests__" in pure.parts
+            or "test" in pure.parts
+            or ("api" in pure.parts and "generated" in pure.parts)
+            or lowered in {"setuptests.ts", "routetree.gen.ts"}
+            or lowered.endswith(".d.ts")
+        ):
+            return False
+    if component.startswith("rust-"):
+        lowered_parts = {part.casefold() for part in pure.parts}
+        if lowered_parts.intersection({"tests", "benches", "fuzz", "target"}):
+            return False
+        if lowered in {"tests.rs", "test.rs"}:
+            return False
+    return True
+
+
+def _tracked_source_paths(
+    repository_root: Path,
+    roots: Sequence[str],
+) -> tuple[str, ...]:
+    """Read source paths from Git's index, never from mutable build output."""
+    git_executable = shutil.which("git")
+    if git_executable is None:
+        raise ValueError("unable to inventory tracked sources: git is unavailable")
+    try:
+        result = subprocess.run(  # noqa: S603
+            [git_executable, "ls-files", "-z", "--", *roots],
+            cwd=repository_root,
+            check=True,
+            capture_output=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise ValueError(
+            f"unable to inventory tracked sources with git ls-files: {error}"
+        ) from error
+    try:
+        return tuple(
+            sorted(path.decode("utf-8") for path in result.stdout.split(b"\0") if path)
+        )
+    except UnicodeDecodeError as error:
+        raise ValueError(
+            "unable to inventory tracked sources: Git path is not UTF-8"
+        ) from error
+
+
+def _expected_tier0_inventory(
+    repository_root: Path,
+    source_roots: dict[str, object],
+    rules: list[str],
+    coverage_scope: dict[str, object],
+) -> set[tuple[str, str]]:
+    """Return Tier0 files that the active coverage producers can measure.
+
+    ``source_roots`` remains the report identity boundary, while
+    ``coverage_scope`` is the explicit producer scope.  In particular, the
+    Python report is produced with ``--cov=app``; Alembic revisions remain
+    structurally validated by the migration job and are not fabricated as
+    Python coverage evidence.
+    """
+    inventory: set[tuple[str, str]] = set()
+    frontend_policy = _load_frontend_source_policy(repository_root)
+    scope = coverage_scope
+    for component in COMPONENTS:
+        if component not in COVERAGE_COMPONENTS or component not in scope:
             continue
-        path = file_record.get("path", f"tier0.files[{index}]")
-        metrics = file_record.get("metrics")
-        if not isinstance(metrics, dict):
-            errors.append(f"{path}.metrics must be an object")
-            continue
-        for metric_name in ("lines", "branches", "functions"):
-            metric = metrics.get(metric_name)
-            if not isinstance(metric, dict):
-                errors.append(f"{path}.{metric_name} is not measured")
+        roots = cast(list[object], scope[component])
+        root_values = [root for root in roots if isinstance(root, str)]
+        for relative in _tracked_source_paths(repository_root, root_values):
+            if not _is_production_source(relative, component, frontend_policy):
                 continue
-            status = metric.get("status")
-            percent = metric.get("percent")
-            if status not in {"native", "derived"} or percent != 100:
+            if not _tier0_source_requires_coverage(component, relative, scope):
+                continue
+            if any(_tier0_rule_matches(relative, rule) for rule in rules):
+                inventory.add((component, relative))
+    return inventory
+
+
+def _validate_reports(
+    manifest: dict[str, object],
+    contract: dict[str, object],
+    repository_root: Path,
+) -> list[str]:
+    errors: list[str] = []
+    declarations = cast(list[object], contract["coverage_reports"])
+    expected = {
+        (item["component"], item["format"], item["path"])
+        for item in declarations
+        if isinstance(item, dict)
+    }
+    reports = cast(list[object], manifest["reports"])
+    actual: list[tuple[object, object, object]] = [
+        (item["component"], item["format"], item["path"])
+        for item in reports
+        if isinstance(item, dict)
+    ]
+    actual_set = set(actual)
+    if len(actual) != len(actual_set):
+        errors.append("reports contains duplicate component/format/path evidence")
+    for missing in sorted(expected - actual_set):
+        errors.append(f"reports is missing required report: {missing[2]}")
+    for extra in sorted(actual_set - expected):
+        errors.append(f"reports contains unexpected report: {extra[2]}")
+    if len(reports) != len(expected):
+        errors.append(
+            f"reports cardinality must equal coverage_reports ({len(expected)}), got {len(reports)}"
+        )
+
+    seen_paths: set[str] = set()
+    for index, report in enumerate(reports):
+        report = cast(dict[str, object], report)
+        path_value = cast(str, report["path"])
+        if path_value in seen_paths:
+            errors.append(
+                f"reports[{index}].path duplicates another report: {path_value}"
+            )
+        seen_paths.add(path_value)
+        resolved = _safe_repository_file(
+            repository_root, path_value, f"reports[{index}].path", errors
+        )
+        if resolved is None:
+            continue
+        try:
+            raw = resolved.read_bytes()
+        except OSError as error:
+            errors.append(f"report {path_value} cannot be read: {error}")
+            continue
+        if not raw:
+            errors.append(f"report {path_value} must be non-empty")
+            continue
+        size = report["size_bytes"]
+        if size != len(raw):
+            errors.append(
+                f"report {path_value} size mismatch: manifest={size}, actual={len(raw)}"
+            )
+        digest = hashlib.sha256(raw).hexdigest()
+        if report["sha256"] != digest:
+            errors.append(f"report {path_value} sha256 mismatch")
+    return errors
+
+
+def _validate_components_manifest(
+    manifest: dict[str, object], contract: dict[str, object]
+) -> list[str]:
+    errors: list[str] = []
+    reports = cast(list[object], manifest["reports"])
+    components = cast(dict[str, object], manifest["components"])
+    report_components = {
+        report["component"] for report in reports if isinstance(report, dict)
+    }
+    for component in COMPONENTS:
+        entry = cast(dict[str, object], components[component])
+        expected_status = (
+            "passed" if component in report_components else "not_applicable"
+        )
+        if entry["status"] != expected_status:
+            errors.append(
+                f"components.{component}.status must be {expected_status!r}, "
+                f"got {entry['status']!r}"
+            )
+        if entry["errors"]:
+            errors.append(f"components.{component}.errors must be empty")
+        metrics = cast(dict[str, object], entry["metrics"])
+        floors = _contract_component_floors(contract, component)
+        for metric_name in METRICS:
+            metric = cast(dict[str, object], metrics[metric_name])
+            errors.extend(
+                _validate_metric_for_floor(
+                    metric,
+                    floor=floors[metric_name],
+                    field=f"components.{component}.{metric_name}",
+                )
+            )
+    return errors
+
+
+def _load_canonical_tier0_rules(repository_root: Path, errors: list[str]) -> list[str]:
+    path = _safe_repository_file(
+        repository_root,
+        "quality/ownership-mapping.json",
+        "canonical ownership-mapping",
+        errors,
+    )
+    if path is None:
+        return []
+    try:
+        text = path.read_text(encoding="utf-8")
+        _reject_excessive_json_nesting(text)
+        document = json.loads(
+            text,
+            object_pairs_hook=_duplicate_key_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (
+        OSError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        RecursionError,
+        ValueError,
+    ) as error:
+        errors.append(f"canonical ownership-mapping is invalid: {error}")
+        return []
+    if not isinstance(document, dict):
+        errors.append("canonical ownership-mapping root must be an object")
+        return []
+    rules = document.get("tier0_rules")
+    if (
+        not isinstance(rules, list)
+        or not rules
+        or not all(isinstance(rule, str) and rule.strip() for rule in rules)
+    ):
+        errors.append(
+            "canonical ownership-mapping tier0_rules must be a non-empty string array"
+        )
+        return []
+    normalized = [cast(str, rule).strip().replace("\\", "/") for rule in rules]
+    if len(normalized) != len(set(normalized)):
+        errors.append("canonical ownership-mapping tier0_rules contains duplicates")
+    return sorted(set(normalized))
+
+
+def _validate_tier0_manifest(
+    manifest: dict[str, object],
+    contract: dict[str, object],
+    repository_root: Path,
+) -> list[str]:
+    errors: list[str] = []
+    tier0 = cast(dict[str, object], manifest["tier0"])
+    if tier0["status"] != "ready":
+        errors.append(f"tier0.status must be 'ready', got {tier0['status']!r}")
+    if tier0["errors"]:
+        errors.append("tier0.errors must be empty")
+    manifest_rules = cast(list[str], tier0["rules"])
+    rules = _load_canonical_tier0_rules(repository_root, errors)
+    if manifest_rules != rules:
+        errors.append(
+            "tier0.rules must exactly equal canonical ownership-mapping tier0_rules"
+        )
+    files = cast(list[object], tier0["files"])
+    source_roots = cast(dict[str, object], manifest["source_roots"])
+    manifest_scope_value = manifest.get("coverage_scope")
+    contract_scope_value = contract.get("coverage_scope")
+    if manifest_scope_value != contract_scope_value:
+        errors.append("coverage_scope does not match the quality contract")
+    # Schema validation already requires an object.  Keep a fail-closed empty
+    # scope for malformed direct callers so no unscoped source can silently
+    # become an expected Tier0 obligation.
+    coverage_scope = (
+        cast(dict[str, object], manifest_scope_value)
+        if isinstance(manifest_scope_value, dict)
+        else {}
+    )
+    try:
+        expected_inventory = _expected_tier0_inventory(
+            repository_root,
+            source_roots,
+            rules,
+            coverage_scope,
+        )
+    except ValueError as error:
+        # A missing/failed Git inventory is not equivalent to an empty source
+        # tree.  Continue collecting schema/metric diagnostics, but fail
+        # closed with an explicit evidence error.
+        errors.append(str(error))
+        expected_inventory = set()
+    actual_inventory: set[tuple[str, str]] = set()
+    measured_by_metric: dict[str, list[dict[str, object]]] = {
+        metric: [] for metric in METRICS
+    }
+    not_applicable: dict[str, int] = {metric: 0 for metric in METRICS}
+    for index, record in enumerate(files):
+        record = cast(dict[str, object], record)
+        component = cast(str, record["component"])
+        path = cast(str, record["path"])
+        identity = (component, path)
+        if identity in actual_inventory:
+            errors.append(f"tier0.files[{index}] duplicates {component}:{path}")
+        actual_inventory.add(identity)
+        source = _safe_repository_file(
+            repository_root,
+            path,
+            f"tier0.files[{index}].path",
+            errors,
+        )
+        if source is None:
+            continue
+        component_roots = cast(list[object], source_roots[component])
+        if not any(
+            path == root or path.startswith(f"{root}/")
+            for root in component_roots
+            if isinstance(root, str)
+        ):
+            errors.append(f"tier0 file {path} is outside source_roots.{component}")
+        if not _tier0_source_requires_coverage(component, path, coverage_scope):
+            errors.append(f"tier0 file {path} is outside coverage_scope.{component}")
+        if not any(_tier0_rule_matches(path, rule) for rule in rules):
+            errors.append(f"tier0 file {path} does not match a declared Tier0 rule")
+        floors = _contract_component_floors(contract, component)
+        metrics = cast(dict[str, object], record["metrics"])
+        for metric_name in METRICS:
+            metric = cast(dict[str, object], metrics[metric_name])
+            errors.extend(
+                _validate_metric_for_floor(
+                    metric,
+                    floor=floors[metric_name],
+                    field=f"{path}.{metric_name}",
+                )
+            )
+            if metric["status"] in {"native", "derived"}:
+                measured_by_metric[metric_name].append(metric)
+            elif metric["status"] == "unsupported":
+                not_applicable[metric_name] += 1
+
+    for missing in sorted(expected_inventory - actual_inventory):
+        errors.append(f"Tier0 source inventory is missing evidence for {missing[1]}")
+    for component, extra_path in sorted(actual_inventory - expected_inventory):
+        if not _tier0_source_requires_coverage(component, extra_path, coverage_scope):
+            continue
+        errors.append(f"tier0.files contains unexpected source {extra_path}")
+
+    summaries = cast(dict[str, object], tier0["metric_summary"])
+    aggregate = cast(dict[str, object], tier0["coverage"])
+    for metric_name in METRICS:
+        entries = measured_by_metric[metric_name]
+        expected_summary = {
+            "applicable_files": len(entries),
+            "not_applicable_files": not_applicable[metric_name],
+        }
+        if summaries[metric_name] != expected_summary:
+            errors.append(
+                f"tier0.metric_summary.{metric_name} must equal {expected_summary!r}"
+            )
+        aggregate_metric = cast(dict[str, object], aggregate[metric_name])
+        if not entries:
+            if aggregate_metric["status"] != "unsupported":
                 errors.append(
-                    f"{path}.{metric_name} must equal 100% "
-                    f"(status={status!r}, percent={percent!r})"
+                    f"tier0.coverage.{metric_name} must be N/A when no files are applicable"
+                )
+            continue
+        errors.extend(
+            _validate_metric_for_floor(
+                aggregate_metric,
+                floor=100,
+                field=f"tier0.coverage.{metric_name}",
+            )
+        )
+        covered = sum(cast(int, entry["covered"]) for entry in entries)
+        total = sum(cast(int, entry["total"]) for entry in entries)
+        expected_status = (
+            "derived"
+            if any(entry["status"] == "derived" for entry in entries)
+            else "native"
+        )
+        if (
+            aggregate_metric["status"] != expected_status
+            or aggregate_metric["covered"] != covered
+            or aggregate_metric["total"] != total
+            or aggregate_metric["percent"] != 100
+        ):
+            errors.append(
+                f"tier0.coverage.{metric_name} does not equal the applicable-file aggregate"
+            )
+    return errors
+
+
+def _validate_provenance(
+    provenance: dict[str, object],
+    expected_provenance: dict[str, str] | None,
+) -> list[str]:
+    errors: list[str] = []
+    mode = provenance["mode"]
+    workflow_fields = (
+        "workflow_run_id",
+        "workflow_run_attempt",
+        "workflow_event",
+        "workflow_repository",
+        "workflow_ref",
+        "workflow_job",
+    )
+    if mode == "local":
+        for field in workflow_fields:
+            if provenance[field] != "local":
+                errors.append(f"provenance.{field} must equal 'local' in local mode")
+    else:
+        if not str(provenance["workflow_run_id"]).isdigit():
+            errors.append(
+                "provenance.workflow_run_id must be numeric in github-actions mode"
+            )
+        if not str(provenance["workflow_run_attempt"]).isdigit():
+            errors.append(
+                "provenance.workflow_run_attempt must be numeric in github-actions mode"
+            )
+        for field in workflow_fields[2:]:
+            if provenance[field] == "local":
+                errors.append(
+                    f"provenance.{field} must identify the current workflow run"
+                )
+    if expected_provenance is not None:
+        for field, expected in expected_provenance.items():
+            if provenance.get(field) != expected:
+                errors.append(
+                    f"provenance.{field} mismatch: expected {expected!r}, "
+                    f"got {provenance.get(field)!r}"
                 )
     return errors
+
+
+def _validate_manifest_identity(
+    manifest: Mapping[str, object],
+    *,
+    current_head: str,
+    expected_source_head_sha: str | None,
+    expected_tested_commit_sha: str | None,
+    expected_base_sha: str | None,
+    expected_base_ref: str | None,
+) -> list[str]:
+    """Validate the v3 source/test/base identity carried by a manifest.
+
+    ``commit_sha`` remains a deliberately boring compatibility alias for the
+    commit that was actually tested.  It is never treated as the PR source
+    head: on ``pull_request`` runs that value is supplied separately by
+    ``source_head_sha`` and the checkout is represented by
+    ``tested_commit_sha``.
+    """
+
+    errors: list[str] = []
+    fields = ("source_head_sha", "tested_commit_sha", "base_sha")
+    values: dict[str, str] = {}
+    for field in fields:
+        value = manifest.get(field)
+        if not isinstance(value, str) or SHA_PATTERN.fullmatch(value) is None:
+            errors.append(f"{field} must be a lowercase 40-character Git SHA")
+        else:
+            values[field] = value
+    base_ref = manifest.get("base_ref")
+    if not isinstance(base_ref, str) or not base_ref.strip():
+        errors.append("base_ref must be a non-empty workflow ref")
+    elif any(character in base_ref for character in "\x00\r\n"):
+        errors.append("base_ref contains forbidden control characters")
+
+    commit_sha = manifest.get("commit_sha")
+    tested_sha = values.get("tested_commit_sha")
+    if (
+        isinstance(commit_sha, str)
+        and tested_sha is not None
+        and commit_sha != tested_sha
+    ):
+        errors.append("commit_sha must equal tested_commit_sha")
+    if tested_sha is not None and tested_sha != current_head:
+        errors.append(
+            f"tested_commit_sha must equal current repository HEAD {current_head}, "
+            f"got {tested_sha}"
+        )
+
+    expected_values = {
+        "source_head_sha": expected_source_head_sha,
+        "tested_commit_sha": expected_tested_commit_sha,
+        "base_sha": expected_base_sha,
+        "base_ref": expected_base_ref,
+    }
+    for field, expected in expected_values.items():
+        if expected is not None and manifest.get(field) != expected:
+            errors.append(
+                f"{field} mismatch: expected {expected!r}, got {manifest.get(field)!r}"
+            )
+
+    provenance = manifest.get("provenance")
+    event = (
+        provenance.get("workflow_event") if isinstance(provenance, Mapping) else None
+    )
+    mode = provenance.get("mode") if isinstance(provenance, Mapping) else None
+    if mode == "local":
+        if values.get("source_head_sha") != current_head:
+            errors.append("local source_head_sha must equal current repository HEAD")
+        if values.get("base_sha") != current_head:
+            errors.append("local base_sha must equal current repository HEAD")
+        if base_ref != "local":
+            errors.append("local base_ref must equal 'local'")
+    elif mode == "github-actions":
+        if event == "pull_request":
+            if base_ref in {None, "local"}:
+                errors.append("pull_request base_ref must identify the target branch")
+        elif tested_sha is not None and values.get("source_head_sha") != tested_sha:
+            errors.append(
+                "non-pull_request source_head_sha must equal tested_commit_sha"
+            )
+        if base_ref == "local":
+            errors.append("github-actions base_ref must not be 'local'")
+    return errors
+
+
+def _validate_tool_versions(manifest: dict[str, object]) -> list[str]:
+    reports = cast(list[object], manifest["reports"])
+    required_tools = {"quality-normalizer"}
+    for report_value in reports:
+        report = cast(dict[str, object], report_value)
+        report_format = cast(str, report["format"])
+        required_tools.update(REPORT_FORMAT_TO_TOOLS[report_format])
+    tool_versions = cast(dict[str, object], manifest["tool_versions"])
+    actual_tools = set(tool_versions)
+    errors: list[str] = []
+    missing = required_tools - actual_tools
+    unexpected = actual_tools - required_tools
+    if missing:
+        errors.append(
+            "tool_versions is missing required tools: " + ", ".join(sorted(missing))
+        )
+    if unexpected:
+        errors.append(
+            "tool_versions contains unexpected tools: " + ", ".join(sorted(unexpected))
+        )
+    for tool, version_value in tool_versions.items():
+        if (
+            not isinstance(version_value, str)
+            or VERSION_PATTERN.fullmatch(version_value) is None
+        ):
+            errors.append(f"tool_versions.{tool} must be a concrete version-like value")
+    if tool_versions.get("quality-normalizer") != NORMALIZER_VERSION:
+        errors.append(
+            f"tool_versions.quality-normalizer must equal {NORMALIZER_VERSION}"
+        )
+    return errors
+
+
+def validate_manifest_evidence(
+    manifest: object,
+    *,
+    contract: dict[str, object],
+    manifest_path: Path,
+    repository_root: Path,
+    schema_path: Path,
+    expected_commit_sha: str | None = None,
+    expected_source_head_sha: str | None = None,
+    expected_tested_commit_sha: str | None = None,
+    expected_base_sha: str | None = None,
+    expected_base_ref: str | None = None,
+    expected_provenance: dict[str, str] | None = None,
+) -> list[str]:
+    """Validate a v3 manifest against current files, Git state, and provenance."""
+    schema_errors = _schema_errors(manifest, schema_path)
+    if schema_errors:
+        return schema_errors
+    manifest = cast(dict[str, object], manifest)
+    errors: list[str] = []
+    commit_sha = cast(str, manifest["commit_sha"])
+    if SHA_PATTERN.fullmatch(commit_sha) is None:
+        errors.append("commit_sha must be a lowercase 40-character Git SHA")
+    current_head: str | None = None
+    try:
+        current_head = _git_head(repository_root)
+    except ValueError as error:
+        errors.append(str(error))
+    else:
+        if commit_sha != current_head:
+            errors.append(
+                f"commit_sha must equal current repository HEAD {current_head}, got {commit_sha}"
+            )
+    if expected_commit_sha is not None and commit_sha != expected_commit_sha:
+        errors.append(
+            f"commit_sha mismatch: expected workflow checkout {expected_commit_sha}, got {commit_sha}"
+        )
+
+    manifest_relative = cast(str, manifest["manifest_path"])
+    if manifest_relative != contract["manifest_path"]:
+        errors.append("manifest_path does not match the quality contract")
+    try:
+        actual_manifest_relative = (
+            manifest_path.resolve(strict=False)
+            .relative_to(repository_root.resolve(strict=True))
+            .as_posix()
+        )
+    except (OSError, ValueError):
+        errors.append("manifest file is outside the repository")
+    else:
+        if actual_manifest_relative != manifest_relative:
+            errors.append(
+                f"manifest file path mismatch: expected {manifest_relative}, "
+                f"got {actual_manifest_relative}"
+            )
+
+    if manifest["source_roots"] != contract["source_roots"]:
+        errors.append("source_roots do not match the quality contract")
+    if manifest["coverage_scope"] != contract["coverage_scope"]:
+        errors.append("coverage_scope does not match the quality contract")
+    validation = cast(dict[str, object], manifest["validation"])
+    if validation["valid"] is not True:
+        errors.append("validation.valid must be true")
+    if validation["errors"]:
+        errors.append("validation.errors must be empty")
+    if manifest["missing_reports"]:
+        errors.append("missing_reports must be empty")
+    generation = cast(dict[str, object], manifest["generation"])
+    if generation["command"] != "scripts/quality/normalize_coverage_reports.py":
+        errors.append(
+            "generation.command must equal scripts/quality/normalize_coverage_reports.py"
+        )
+    if generation["normalizer_version"] != NORMALIZER_VERSION:
+        errors.append(f"generation.normalizer_version must equal {NORMALIZER_VERSION}")
+    provenance = cast(dict[str, object], manifest["provenance"])
+    errors.extend(_validate_provenance(provenance, expected_provenance))
+    if current_head is not None:
+        errors.extend(
+            _validate_manifest_identity(
+                manifest,
+                current_head=current_head,
+                expected_source_head_sha=expected_source_head_sha,
+                expected_tested_commit_sha=(
+                    expected_tested_commit_sha or expected_commit_sha
+                ),
+                expected_base_sha=expected_base_sha,
+                expected_base_ref=expected_base_ref,
+            )
+        )
+    errors.extend(_validate_tool_versions(manifest))
+    errors.extend(_validate_reports(manifest, contract, repository_root))
+    errors.extend(_validate_components_manifest(manifest, contract))
+    errors.extend(_validate_tier0_manifest(manifest, contract, repository_root))
+    return sorted(set(errors))
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -652,8 +1836,8 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     errors = validate_contract(contract, today=date.today())
     if errors:
-        for error in errors:
-            _print_error(error)
+        for violation in errors:
+            _print_error(violation)
         return 1
 
     try:
@@ -682,8 +1866,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         today=date.today(),
     )
     if registry_errors:
-        for error in registry_errors:
-            _print_error(error)
+        for violation in registry_errors:
+            _print_error(violation)
         return 1
 
     if arguments.manifest is not None:
@@ -708,10 +1892,32 @@ def main(argv: Sequence[str] | None = None) -> int:
             _print_error(f"invalid coverage manifest: {error}")
             return 1
 
-        manifest_errors = _validate_tier0_manifest(manifest)
+        expected_provenance = {
+            field.removeprefix("expected_"): value
+            for field, value in vars(arguments).items()
+            if field.startswith("expected_workflow_") and value is not None
+        }
+        artifact_root = arguments.artifact_root or REPOSITORY_ROOT
+        schema_path = (
+            arguments.schema
+            or REPOSITORY_ROOT / "quality" / "coverage-manifest.schema.json"
+        )
+        manifest_errors = validate_manifest_evidence(
+            manifest,
+            contract=contract,
+            manifest_path=arguments.manifest,
+            repository_root=artifact_root,
+            schema_path=schema_path,
+            expected_commit_sha=arguments.expected_commit_sha,
+            expected_source_head_sha=arguments.expected_source_head_sha,
+            expected_tested_commit_sha=arguments.expected_tested_commit_sha,
+            expected_base_sha=arguments.expected_base_sha,
+            expected_base_ref=arguments.expected_base_ref,
+            expected_provenance=expected_provenance or None,
+        )
         if manifest_errors:
-            for error in manifest_errors:
-                _print_error(error)
+            for violation in manifest_errors:
+                _print_error(violation)
             return 1
 
     print("Quality contract is valid.")

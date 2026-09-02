@@ -40,4 +40,49 @@ describe("ensureValidResponse", () => {
     expect(error.message).toBe("Invalid API response: Validation failed")
     expect(error.issues).toEqual([])
   })
+
+  it("prefers nested issue text and then falls back to the root summary", () => {
+    const nestedSchema = v.object({ user: v.object({ email: v.string() }) })
+    expect(() => ensureValidResponse(nestedSchema, { user: { email: 42 } }, "profile")).toThrow(
+      "Invalid API response for profile: Invalid type: Expected string but received 42"
+    )
+
+    const rootSchema = v.pipe(
+      v.string(),
+      v.check(() => false, "root contract failed")
+    )
+    expect(() => ensureValidResponse(rootSchema, "ok", "root")).toThrow(
+      "Invalid API response for root: root contract failed"
+    )
+  })
+
+  it("keeps comma separators between multiple nested and root issues", () => {
+    const nestedSchema = v.object({ first: v.string(), second: v.number() })
+    expect(() => ensureValidResponse(nestedSchema, { first: 1, second: "two" })).toThrow(
+      /Invalid API response: .*?, .*?/
+    )
+
+    const rootSchema = v.pipe(
+      v.string(),
+      v.check(() => false, "first root issue"),
+      v.check(() => false, "second root issue")
+    )
+    expect(() => ensureValidResponse(rootSchema, "ok")).toThrow(
+      "Invalid API response: first root issue, second root issue"
+    )
+  })
+
+  it("preserves structured validation issues for callers", () => {
+    let caught: unknown
+    try {
+      ensureValidResponse(v.object({ id: v.string() }), { id: 42 })
+    } catch (error) {
+      caught = error
+    }
+
+    expect(caught).toBeInstanceOf(ApiResponseValidationError)
+    expect((caught as ApiResponseValidationError).issues).toEqual(
+      expect.arrayContaining([expect.objectContaining({ path: expect.any(Array) })])
+    )
+  })
 })

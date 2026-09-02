@@ -9,17 +9,28 @@ created a complete, same-revision stats map in a separate process, so reuse
 its test IDs for that discovery check and leave the clean baseline as this
 process's first pytest invocation. For an exact shard, the forced-fail check
 is scoped to the same mapped test union mutmut uses for its clean baseline and
-mutation children. All mutation generation, watchdogs, exact selection, and
-result persistence remain mutmut's own pinned-3.7 implementation.
+mutation children. ``--reuse-generated-universe`` additionally validates the
+planner's content-addressed source/metadata snapshot and skips only mutmut's
+duplicate source-generation phase. Watchdogs, exact selection, and result
+persistence remain mutmut's own pinned-3.7 implementation.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections.abc import Sequence
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+
+if not __package__:  # pragma: no cover - direct CI script entry point
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from scripts.mutmut_universe import (
+    load_reused_generation_stats,
+    validate_universe_manifest,
+)
 
 _STATS_PATH = Path("mutants/mutmut-stats.json")
 _REQUIRED_STATS_KEYS = frozenset(
@@ -30,6 +41,11 @@ _REQUIRED_STATS_KEYS = frozenset(
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--max-children", type=int, default=2)
+    parser.add_argument(
+        "--reuse-generated-universe",
+        action="store_true",
+        help="reuse and validate the planner-created mutmut source universe",
+    )
     parser.add_argument("mutant_names", nargs="*")
     args = parser.parse_args()
     if args.max_children < 1:
@@ -83,6 +99,7 @@ def run_mutmut_from_stats(
     mutant_names: Sequence[str],
     max_children: int,
     mutmut_cli: Any | None = None,
+    reuse_generated_universe: bool = False,
 ) -> None:
     """Run an exact mutmut shard with reused stats and matching forced-fail scope."""
 
@@ -90,6 +107,37 @@ def run_mutmut_from_stats(
         raise ValueError("max_children must be positive")
     _require_precomputed_stats()
     cli = mutmut_cli or _load_mutmut_cli()
+
+    @contextmanager
+    def _reuse_universe() -> Any:
+        """Skip only mutmut's duplicate generation after fail-closed validation."""
+
+        if not reuse_generated_universe:
+            yield
+            return
+
+        validate_universe_manifest(cli)
+        originals = {
+            name: getattr(cli, name)
+            for name in ("copy_src_dir", "copy_also_copy_files", "create_mutants")
+        }
+
+        def _reuse_create_mutants(_max_children: int) -> Any:
+            return load_reused_generation_stats(cli)
+
+        def _skip_generation_copy() -> None:
+            return None
+
+        # ``mutmut._run`` resolves these names on its module, so replacing them
+        # for this bounded call avoids a second full source/metadata generation.
+        cli.copy_src_dir = _skip_generation_copy
+        cli.copy_also_copy_files = _skip_generation_copy
+        cli.create_mutants = _reuse_create_mutants
+        try:
+            yield
+        finally:
+            for name, original in originals.items():
+                setattr(cli, name, original)
 
     selected_mutants = tuple(mutant_names)
     original_list_all_tests = cli.PytestRunner.list_all_tests
@@ -110,7 +158,8 @@ def run_mutmut_from_stats(
         # `_run` is pinned with mutmut==3.7.0.  It still owns all mutation
         # phases. The temporary hooks reuse redundant collection and align
         # forced-fail with mutmut's exact clean/mutation test selection.
-        cli._run(selected_mutants, max_children=max_children)
+        with _reuse_universe():
+            cli._run(selected_mutants, max_children=max_children)
     finally:
         cli.PytestRunner.list_all_tests = original_list_all_tests
         cli.PytestRunner.run_forced_fail = original_run_forced_fail
@@ -121,6 +170,7 @@ def main() -> None:
     run_mutmut_from_stats(
         mutant_names=args.mutant_names,
         max_children=args.max_children,
+        reuse_generated_universe=args.reuse_generated_universe,
     )
 
 

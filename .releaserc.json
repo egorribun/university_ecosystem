@@ -13,6 +13,16 @@
     [
       "@semantic-release/github",
       {
+        "assets": [
+          {
+            "path": "artifacts/release-images/release-image-manifest.json",
+            "label": "Release image digest manifest"
+          },
+          {
+            "path": "artifacts/release-images/release-image-manifest.json.sha256",
+            "label": "Release image digest manifest checksum"
+          }
+        ],
         "successComment": false,
         "failTitle": false
       }

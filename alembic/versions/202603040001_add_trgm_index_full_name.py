@@ -54,16 +54,17 @@ def upgrade() -> None:
     conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
     # CONCURRENTLY requires running outside an explicit transaction block.
     # conn.execute(text("COMMIT"))
-    conn.execute(
-        text(
-            f"""
-            CREATE INDEX CONCURRENTLY IF NOT EXISTS {_GIN_INDEX_NAME}
-            ON {_TABLE_NAME}
-            USING gin (full_name gin_trgm_ops)
-            WHERE full_name IS NOT NULL
-            """
+    with op.get_context().autocommit_block():
+        conn.execute(
+            text(
+                f"""
+                CREATE INDEX CONCURRENTLY IF NOT EXISTS {_GIN_INDEX_NAME}
+                ON {_TABLE_NAME}
+                USING gin (full_name gin_trgm_ops)
+                WHERE full_name IS NOT NULL
+                """
+            )
         )
-    )
 
 
 def downgrade() -> None:
@@ -73,4 +74,5 @@ def downgrade() -> None:
 
     conn = op.get_bind()
     # conn.execute(text("COMMIT"))
-    conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_GIN_INDEX_NAME}"))
+    with op.get_context().autocommit_block():
+        conn.execute(text(f"DROP INDEX CONCURRENTLY IF EXISTS {_GIN_INDEX_NAME}"))

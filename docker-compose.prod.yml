@@ -215,6 +215,14 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    deploy:
+      resources:
+        limits:
+          # PgBouncer is an event-driven pooler; 128 MiB and 0.25 CPU leave
+          # room for the configured 1,000 client slots without an unbounded
+          # process when a client storm occurs.
+          cpus: '0.25'
+          memory: 128M
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U \"$$DB_USER\""]
       interval: 10s

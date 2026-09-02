@@ -16,7 +16,7 @@ import {
   getTimeStr,
 } from "@/components/schedule/scheduleUtils"
 import { detectConflicts } from "@/utils/scheduleConflicts"
-import { getDatabase, type ScheduleDoc } from "@/db"
+import { getDatabaseLazily, type ScheduleDoc } from "@/db/lazy"
 import { useScheduleConfig } from "./useScheduleConfig"
 import { useScheduleTime } from "./useScheduleTime"
 
@@ -52,7 +52,7 @@ export function useScheduleData() {
   // ── Persist Schedule to RxDB for Offline Access ─────
   useEffect(() => {
     if (activeGroupId && groupScheduleRaw.length > 0) {
-      getDatabase()
+      getDatabaseLazily()
         .then((db) => {
           const docs: ScheduleDoc[] = groupScheduleRaw.map((lesson: Record<string, unknown>) => ({
             id: String(lesson.id ?? ""),

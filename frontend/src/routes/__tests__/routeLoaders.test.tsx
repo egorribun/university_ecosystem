@@ -182,7 +182,7 @@ describe("Route Loaders & validateSearch validation", () => {
       expect(deps).toEqual({ tab: 2 })
     })
 
-    it("prefetches current user only when on non-security tab", async () => {
+    it("prefetches current user only when on a non-sessions tab", async () => {
       const loader = SettingsRoute.options.loader
       expect(loader).toBeTypeOf("function")
 
@@ -199,7 +199,7 @@ describe("Route Loaders & validateSearch validation", () => {
       )
     })
 
-    it("prefetches sessions list if tab is SECURITY and user has an active id", async () => {
+    it("prefetches sessions list if tab is SESSIONS and user has an active id", async () => {
       const loader = SettingsRoute.options.loader
       expect(loader).toBeTypeOf("function")
 
@@ -211,7 +211,7 @@ describe("Route Loaders & validateSearch validation", () => {
       })
 
       const context = { queryClient: mockQueryClient }
-      const deps = { tab: SETTINGS_TAB.SECURITY }
+      const deps = { tab: SETTINGS_TAB.SESSIONS }
 
       await (loader as any)({ context, deps })
 
@@ -228,13 +228,13 @@ describe("Route Loaders & validateSearch validation", () => {
       const context = { queryClient: mockQueryClient }
 
       mockQueryClient.ensureQueryData.mockRejectedValueOnce(new Error("user offline"))
-      await (loader as any)({ context, deps: { tab: SETTINGS_TAB.SECURITY } })
+      await (loader as any)({ context, deps: { tab: SETTINGS_TAB.SESSIONS } })
 
       mockQueryClient.ensureQueryData = vi.fn().mockImplementation((options: any) => {
         if (options.queryKey[0] === "user") return Promise.resolve({ id: "user-456" })
         return Promise.reject(new Error("sessions offline"))
       })
-      await (loader as any)({ context, deps: { tab: SETTINGS_TAB.SECURITY } })
+      await (loader as any)({ context, deps: { tab: SETTINGS_TAB.SESSIONS } })
 
       expect(mockQueryClient.ensureQueryData).toHaveBeenCalledWith(
         expect.objectContaining({ queryKey: ["sessions", "user-456"] })

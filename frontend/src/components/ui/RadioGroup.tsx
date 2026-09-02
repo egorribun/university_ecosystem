@@ -29,6 +29,7 @@ const RadioGroup = React.forwardRef<HTMLDivElement, RadioGroupProps>(
       <RadioGroupContext.Provider value={{ value, onChange: handleValueChange, disabled, name }}>
         <div
           ref={ref}
+          role="radiogroup"
           className={cn(row ? "flex flex-row flex-wrap gap-4" : "grid gap-2", className)}
           {...props}
         />
@@ -68,7 +69,7 @@ const RadioGroupItem = React.forwardRef<HTMLInputElement, RadioGroupItemProps>(
         <span
           aria-hidden="true"
           className={cn(
-            "relative inline-flex cursor-pointer items-center p-1",
+            "relative inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center",
             isDisabled && "cursor-not-allowed opacity-medium grayscale"
           )}
         >

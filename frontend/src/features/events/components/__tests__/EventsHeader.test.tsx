@@ -45,15 +45,24 @@ describe("EventsHeader", () => {
     vi.mocked(useSlidingIndicator).mockReturnValue(null)
 
     // Mock IntersectionObserver
-    const mockIntersectionObserver = vi.fn((callback: IntersectionObserverCallback) => {
-      intersectionCallback = callback
-      return {
-        observe: () => null,
-        unobserve: () => null,
-        disconnect: () => null,
+    class MockIntersectionObserver {
+      readonly root = null
+      readonly rootMargin = "0px"
+      readonly scrollMargin = "0px"
+      readonly thresholds: readonly number[] = []
+
+      constructor(callback: IntersectionObserverCallback) {
+        intersectionCallback = callback
       }
-    })
-    window.IntersectionObserver = mockIntersectionObserver as unknown as typeof IntersectionObserver
+
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords(): IntersectionObserverEntry[] {
+        return []
+      }
+    }
+    window.IntersectionObserver = MockIntersectionObserver
   })
 
   it("renders correctly", () => {
@@ -90,6 +99,7 @@ describe("EventsHeader", () => {
     rerender(<EventsHeader {...defaultProps} searchQuery="test" />)
     const clearBtn = screen.getByLabelText(/Clear search/i)
     expect(clearBtn).toBeInTheDocument()
+    expect(clearBtn).toHaveClass("size-11")
 
     fireEvent.click(clearBtn)
     expect(defaultProps.onSearchChange).toHaveBeenCalledWith("")
@@ -99,6 +109,85 @@ describe("EventsHeader", () => {
     render(<EventsHeader {...defaultProps} />)
     fireEvent.click(screen.getByText(/Past events/i))
     expect(defaultProps.onTabChange).toHaveBeenCalledWith("archive")
+  })
+
+  it("centers the status tablist across the available width", () => {
+    render(<EventsHeader {...defaultProps} />)
+
+    expect(screen.getByRole("tablist")).toHaveClass("flex", "justify-center", "w-full")
+    for (const tab of screen.getAllByRole("tab")) expect(tab).toHaveClass("min-h-11")
+  })
+
+  it("uses roving focus and arrow keys for the status tabs", () => {
+    render(<EventsHeader {...defaultProps} tab="active" />)
+    const tabs = screen.getAllByRole("tab")
+
+    expect(tabs[0]).toHaveAttribute("tabindex", "0")
+    expect(tabs[1]).toHaveAttribute("tabindex", "-1")
+    tabs[0]!.focus()
+    fireEvent.keyDown(screen.getByRole("tablist"), { key: "ArrowRight" })
+
+    expect(defaultProps.onTabChange).toHaveBeenCalledWith("archive")
+    expect(tabs[1]).toHaveFocus()
+  })
+
+  it("supports Home, End, left navigation, and active-tab fallback focus", () => {
+    render(<EventsHeader {...defaultProps} tab="archive" />)
+    const tablist = screen.getByRole("tablist")
+    const tabs = screen.getAllByRole("tab")
+
+    fireEvent.keyDown(tablist, { key: "Enter" })
+    expect(defaultProps.onTabChange).not.toHaveBeenCalled()
+
+    tabs[1]!.focus()
+    fireEvent.keyDown(tablist, { key: "ArrowLeft" })
+    expect(defaultProps.onTabChange).toHaveBeenLastCalledWith("active")
+    expect(tabs[0]).toHaveFocus()
+
+    fireEvent.keyDown(tablist, { key: "End" })
+    expect(defaultProps.onTabChange).toHaveBeenLastCalledWith("my")
+    expect(tabs[2]).toHaveFocus()
+
+    fireEvent.keyDown(tablist, { key: "Home" })
+    expect(defaultProps.onTabChange).toHaveBeenLastCalledWith("active")
+    expect(tabs[0]).toHaveFocus()
+
+    const outside = document.createElement("button")
+    document.body.appendChild(outside)
+    outside.focus()
+    fireEvent.keyDown(tablist, { key: "ArrowRight" })
+    expect(defaultProps.onTabChange).toHaveBeenLastCalledWith("my")
+    expect(tabs[2]).toHaveFocus()
+    outside.remove()
+  })
+
+  it("leaves focus unchanged when a tablist temporarily has no usable destination", () => {
+    render(<EventsHeader {...defaultProps} />)
+    const tablist = screen.getByRole("tablist")
+    const tabs = screen.getAllByRole("tab")
+
+    const querySelectorAllSpy = vi.spyOn(tablist, "querySelectorAll")
+    querySelectorAllSpy.mockReturnValueOnce([] as unknown as NodeListOf<HTMLButtonElement>)
+    fireEvent.keyDown(tablist, { key: "ArrowRight" })
+    expect(defaultProps.onTabChange).not.toHaveBeenCalled()
+
+    const extraButton = document.createElement("button")
+    tabs[2]!.focus()
+    querySelectorAllSpy.mockReturnValueOnce([
+      ...tabs,
+      extraButton,
+    ] as unknown as NodeListOf<HTMLButtonElement>)
+    fireEvent.keyDown(tablist, { key: "End" })
+    expect(defaultProps.onTabChange).not.toHaveBeenCalled()
+
+    tabs[0]!.focus()
+    querySelectorAllSpy.mockReturnValueOnce([
+      tabs[0],
+      undefined,
+      tabs[2],
+    ] as unknown as NodeListOf<HTMLButtonElement>)
+    fireEvent.keyDown(tablist, { key: "ArrowRight" })
+    expect(defaultProps.onTabChange).not.toHaveBeenCalled()
   })
 
   it("calls onCategoryChange when a category is clicked", () => {
@@ -129,7 +218,9 @@ describe("EventsHeader", () => {
 
   it("opens the filter popover, updates values, and resets them", () => {
     render(<EventsHeader {...defaultProps} />)
-    fireEvent.click(screen.getByRole("button", { name: /Open filters/i }))
+    const filterButton = screen.getByRole("button", { name: /Open filters/i })
+    expect(filterButton).toHaveClass("size-11")
+    fireEvent.click(filterButton)
 
     expect(screen.getByRole("dialog")).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: /This week/i }))

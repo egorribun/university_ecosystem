@@ -1,10 +1,14 @@
 import contextlib
 import os
+import re
 import warnings
 from collections.abc import AsyncIterator
+from pathlib import Path
 
+import pytest
 import pytest_asyncio
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.ext.compiler import compiles
 
@@ -18,10 +22,109 @@ def _compile_jsonb_sqlite(_element, _compiler, **_kwargs):
     return "TEXT"
 
 
+_TEST_DATABASE_NAME = re.compile(r"(?:^test|[-_]test(?:[-_]|$))", re.IGNORECASE)
+
+
+def _is_sqlite_memory_database(database_url: str) -> bool:
+    parsed = make_url(database_url)
+    return parsed.get_backend_name() == "sqlite" and parsed.database in {
+        None,
+        "",
+        ":memory:",
+    }
+
+
+def _explicit_reset_opted_in() -> bool:
+    return os.environ.get("UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET") == "1"
+
+
+def _has_test_database_name(database_url: str) -> bool:
+    parsed = make_url(database_url)
+    database_name = Path(parsed.database or "").stem
+    return bool(_TEST_DATABASE_NAME.search(database_name))
+
+
+def _explicit_sqlite_sentinel_exists(database_url: str) -> bool:
+    parsed = make_url(database_url)
+    if parsed.get_backend_name() != "sqlite" or not parsed.database:
+        return False
+    sentinel = Path(f"{parsed.database}.pytest-owned")
+    try:
+        return sentinel.read_text(encoding="utf-8") == "university-ecosystem-pytest\n"
+    except OSError:
+        return False
+
+
+def _require_safe_database_reset(database_url: str) -> None:
+    mode = os.environ.get("UNIVERSITY_ECOSYSTEM_PYTEST_DATABASE_MODE", "explicit")
+    external_database_url = os.environ.get(
+        "UNIVERSITY_ECOSYSTEM_PYTEST_EXTERNAL_DATABASE_URL"
+    )
+    reset_target = external_database_url or database_url
+    if (
+        external_database_url
+        and not _is_sqlite_memory_database(reset_target)
+        and not (
+            _explicit_reset_opted_in()
+            and (
+                _has_test_database_name(reset_target)
+                or _explicit_sqlite_sentinel_exists(reset_target)
+            )
+        )
+    ):
+        raise pytest.UsageError(
+            "Explicit database reset is not authorized. Use a test-only database "
+            "name (or the SQLite .pytest-owned sentinel) and explicitly opt in with "
+            "UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET=1."
+        )
+    if mode.startswith("harness-") or _is_sqlite_memory_database(database_url):
+        return
+    if _explicit_reset_opted_in() and (
+        _has_test_database_name(database_url)
+        or _explicit_sqlite_sentinel_exists(database_url)
+    ):
+        return
+    raise pytest.UsageError(
+        "Explicit database reset is not authorized. Use a test-only database "
+        "name (or the SQLite .pytest-owned sentinel) and explicitly opt in with "
+        "UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET=1."
+    )
+
+
+async def _clear_mapped_database_rows(*, is_postgresql: bool) -> None:
+    async with database.engine.begin() as conn:
+        if is_postgresql:
+            result = await conn.exec_driver_sql(
+                "SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = 'public'"
+            )
+            existing_tables = {row[0] for row in result.all()}
+            table_names = [
+                f'"{table.name}"'
+                for table in Base.metadata.sorted_tables
+                if table.name in existing_tables
+            ]
+            if table_names:
+                await conn.exec_driver_sql(
+                    f"TRUNCATE TABLE {', '.join(table_names)} CASCADE"
+                )
+            return
+
+        await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
+        for table in reversed(Base.metadata.sorted_tables):
+            with contextlib.suppress(Exception):
+                await conn.execute(table.delete())
+        await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+
+
 @pytest_asyncio.fixture(scope="session", autouse=True)
 async def prepare_database() -> AsyncIterator[None]:
     database_url = os.environ.get("DATABASE_URL", "")
     is_postgresql = database_url.startswith("postgresql")
+    _require_safe_database_reset(database_url)
+    is_harness_owned = os.environ.get("UNIVERSITY_ECOSYSTEM_PYTEST_DATABASE_MODE") in {
+        "harness-sqlite",
+        "harness-postgres",
+    }
 
     if is_postgresql:
         worker_id = os.environ.get("PYTEST_XDIST_WORKER")
@@ -40,9 +143,16 @@ async def prepare_database() -> AsyncIterator[None]:
                 exists = await conn.fetchval(
                     "SELECT 1 FROM pg_database WHERE datname = $1", worker_db
                 )
-                if not exists:
-                    # CREATE DATABASE must be executed outside a transaction block
-                    await conn.execute(f'CREATE DATABASE "{worker_db}"')
+                quoted_worker_db = worker_db.replace('"', '""')
+                if exists:
+                    await conn.execute(
+                        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                        "WHERE datname = $1 AND pid <> pg_backend_pid()",
+                        worker_db,
+                    )
+                    await conn.execute(f'DROP DATABASE "{quoted_worker_db}"')
+                # CREATE DATABASE must be executed outside a transaction block.
+                await conn.execute(f'CREATE DATABASE "{quoted_worker_db}"')
             finally:
                 await conn.close()
 
@@ -162,7 +272,10 @@ async def prepare_database() -> AsyncIterator[None]:
                     ),
                     {"t": tbl},
                 )
-                if rk_row.scalar() != "p":
+                relkind = rk_row.scalar()
+                if isinstance(relkind, bytes):
+                    relkind = relkind.decode("ascii")
+                if relkind != "p":
                     continue  # table absent or not range-partitioned
 
                 # DEFAULT partition — absorbs any out-of-range insert.
@@ -203,21 +316,52 @@ async def prepare_database() -> AsyncIterator[None]:
                         )
                     )
 
-        yield
+        if not is_harness_owned:
+            await _clear_mapped_database_rows(is_postgresql=True)
+
+        try:
+            yield
+        finally:
+            if database._engine is not None:
+                await database._engine.dispose()
+            if database._read_replica_engine is not None:
+                await database._read_replica_engine.dispose()
+            if worker_id:
+                from urllib.parse import urlparse, urlunparse
+
+                import asyncpg
+
+                parsed = urlparse(database_url)
+                worker_db = parsed.path.lstrip("/")
+                postgres_url = urlunparse(parsed._replace(path="/postgres"))
+                conn_url = postgres_url.replace(
+                    "postgresql+asyncpg://", "postgresql://"
+                )
+                conn = await asyncpg.connect(conn_url)
+                try:
+                    await conn.execute(
+                        "SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                        "WHERE datname = $1 AND pid <> pg_backend_pid()",
+                        worker_db,
+                    )
+                    quoted_worker_db = worker_db.replace('"', '""')
+                    await conn.execute(f'DROP DATABASE IF EXISTS "{quoted_worker_db}"')
+                finally:
+                    await conn.close()
         return
 
     # SQLite-specific cleanup and setup
-    db_path = database_url.replace("sqlite+aiosqlite:///./", "")
-    if os.path.exists(db_path):
+    db_path = Path(make_url(database_url).database or "")
+    if is_harness_owned and db_path.exists():
         with contextlib.suppress(OSError):
-            os.remove(db_path)
+            db_path.unlink()
 
     # Clean up journal and WAL files
-    for suffix in ("-journal", "-wal"):
-        path = f"{db_path}{suffix}"
-        if os.path.exists(path):
+    for suffix in ("-journal", "-wal", "-shm"):
+        path = Path(f"{db_path}{suffix}")
+        if is_harness_owned and path.exists():
             with contextlib.suppress(OSError):
-                os.remove(path)
+                path.unlink()
 
     # Tables with composite PKs or PostgreSQL-specific features
     # We exclude them from create_all and create them separately
@@ -452,9 +596,17 @@ async def prepare_database() -> AsyncIterator[None]:
         """
         )
 
+    if not is_harness_owned:
+        await _clear_mapped_database_rows(is_postgresql=False)
+
     yield
-    async with database.engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+    if is_harness_owned:
+        async with database.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
+    if database._engine is not None:
+        await database._engine.dispose()
+    if database._read_replica_engine is not None:
+        await database._read_replica_engine.dispose()
 
 
 @pytest_asyncio.fixture
@@ -492,30 +644,7 @@ async def clean_database(prepare_database: None) -> AsyncIterator[None]:
     delay = 0.1
     for attempt in range(1, attempts + 1):
         try:
-            async with database.engine.begin() as conn:
-                if is_postgresql:
-                    # Get existing tables to avoid UndefinedTableError
-                    result = await conn.exec_driver_sql(
-                        "SELECT tablename FROM pg_catalog.pg_tables "
-                        "WHERE schemaname = 'public'"
-                    )
-                    existing_tables = {row[0] for row in result.all()}
-
-                    table_names = [
-                        f'"{table.name}"'
-                        for table in Base.metadata.sorted_tables
-                        if table.name in existing_tables
-                    ]
-                    if table_names:
-                        await conn.exec_driver_sql(
-                            f"TRUNCATE TABLE {', '.join(table_names)} CASCADE"
-                        )
-                else:
-                    await conn.exec_driver_sql("PRAGMA foreign_keys=OFF")
-                    for table in reversed(Base.metadata.sorted_tables):
-                        with contextlib.suppress(Exception):
-                            await conn.execute(table.delete())
-                    await conn.exec_driver_sql("PRAGMA foreign_keys=ON")
+            await _clear_mapped_database_rows(is_postgresql=is_postgresql)
             break
         except OperationalError as exc:
             if "database is locked" not in str(exc).lower() or attempt == attempts:

@@ -1,3 +1,4 @@
+import "@/styles/tokens/admin.css"
 import Layout from "@/components/Layout"
 import { FeatureErrorBoundary } from "@/components/error/FeatureErrorBoundary"
 import { AdminAuditFeature } from "@/features/admin"

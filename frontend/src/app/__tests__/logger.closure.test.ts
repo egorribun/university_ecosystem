@@ -35,6 +35,7 @@ describe("logger closure paths", () => {
     const error = new Error("boom")
     const circular: Record<string, unknown> = {}
     circular.self = circular
+    circular.toString = () => "custom circular value"
 
     setTraceContext(" trace-123 ")
     logError(error, "message", 4, true, null, { safe: true }, circular, undefined, Symbol("x"))
@@ -45,6 +46,20 @@ describe("logger closure paths", () => {
     expect(captureException.mock.calls[0]?.[1]).toMatchObject({
       tags: { logger: "app", trace_id: " trace-123 ", level: "error" },
     })
+    const context = captureException.mock.calls[0]?.[1] as
+      { extra?: Record<string, unknown> } | undefined
+    const normalized = context?.extra?.logArgs as unknown[]
+    expect(normalized[0]).toMatchObject({ name: "Error", message: "boom" })
+    expect(normalized.slice(1)).toEqual([
+      "message",
+      4,
+      true,
+      null,
+      { safe: true },
+      "[object Object]",
+      "undefined",
+      "Symbol(x)",
+    ])
     expect(consoleError).toHaveBeenCalledOnce()
   })
 
@@ -58,18 +73,47 @@ describe("logger closure paths", () => {
     setTraceContext("   ")
     logError("plain error")
     logError(42)
+    logError("")
     logWarning("warning")
     logWarning(42)
     logInfo("info")
     logDebug("debug")
 
     expect(setTag).toHaveBeenCalledWith("trace_id", "")
+    expect(captureException).not.toHaveBeenCalled()
     expect(captureMessage).toHaveBeenCalledWith("plain error", "error")
+    expect(captureMessage).not.toHaveBeenCalledWith("", "error")
+    expect(captureMessage).not.toHaveBeenCalledWith(42, "error")
     expect(captureMessage).toHaveBeenCalledWith("warning", "warning")
-    expect(consoleError).toHaveBeenCalledTimes(2)
+    expect(consoleError).toHaveBeenCalledTimes(3)
     expect(consoleWarn).toHaveBeenCalledTimes(2)
     expect(consoleInfo).toHaveBeenCalledWith("info")
     expect(consoleLog).toHaveBeenCalledWith("debug")
+  })
+
+  it("falls back to message capture when an Error has no exception sink", () => {
+    resetLoggerMocks()
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const error = new Error("exception sink unavailable")
+    const captureExceptionUnavailable = undefined
+    setLoggerClient({
+      captureException: captureExceptionUnavailable,
+      captureMessage,
+    })
+
+    logError(error, "fallback message")
+    logError(error)
+    setLoggerClient({ captureException: undefined, captureMessage: undefined })
+    logError(error)
+
+    expect(captureMessage).toHaveBeenCalledWith("fallback message", "error")
+    expect(captureMessage).toHaveBeenCalledOnce()
+    expect(captureException).not.toHaveBeenCalled()
+    expect(consoleError).toHaveBeenCalledWith(error, "fallback message")
+    expect(consoleWarn).not.toHaveBeenCalled()
+    consoleError.mockRestore()
+    consoleWarn.mockRestore()
   })
 
   it("fails closed when Sentry forwarding throws", () => {
@@ -110,10 +154,23 @@ describe("logger closure paths", () => {
     expect(() => logError("still logged")).not.toThrow()
   })
 
+  it("normalizes non-string trace ids and keeps message fallback guards strict", () => {
+    resetLoggerMocks()
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+    setTraceContext(123 as unknown as string)
+    logError(42)
+
+    expect(setTag).toHaveBeenCalledWith("trace_id", "123")
+    expect(captureMessage).not.toHaveBeenCalled()
+    expect(consoleError).toHaveBeenCalledWith(42)
+  })
+
   it("continues safely when a console method and Sentry message capture are unavailable", () => {
     resetLoggerMocks()
     const originalInfo = Object.getOwnPropertyDescriptor(console, "info")
+    const originalError = Object.getOwnPropertyDescriptor(console, "error")
     Object.defineProperty(console, "info", { configurable: true, value: undefined })
+    Object.defineProperty(console, "error", { configurable: true, value: undefined })
     setLoggerClient({ captureMessage: undefined })
 
     try {
@@ -121,6 +178,7 @@ describe("logger closure paths", () => {
       expect(() => logError(42)).not.toThrow()
     } finally {
       if (originalInfo) Object.defineProperty(console, "info", originalInfo)
+      if (originalError) Object.defineProperty(console, "error", originalError)
       setLoggerClient({ captureMessage })
     }
   })
@@ -136,5 +194,44 @@ describe("logger closure paths", () => {
     } finally {
       vi.unstubAllEnvs()
     }
+  })
+
+  it("does not add a trace tag when the trace context is only whitespace", () => {
+    resetLoggerMocks()
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+    setTag.mockClear()
+    setTraceContext("   ")
+
+    logError(new Error("without trace"))
+
+    expect(setTag).toHaveBeenCalledWith("trace_id", "")
+    expect(captureException.mock.calls.at(-1)?.[1]).toMatchObject({
+      tags: { logger: "app", level: "error" },
+    })
+    expect(captureException.mock.calls.at(-1)?.[1]).not.toMatchObject({
+      tags: { trace_id: expect.anything() },
+    })
+    expect(captureException.mock.calls.at(-1)?.[1]).not.toHaveProperty("tags.trace_id")
+    expect(consoleError).toHaveBeenCalledOnce()
+  })
+
+  it("keeps logger fallbacks inert when optional Sentry methods are unavailable", () => {
+    resetLoggerMocks()
+    const consoleWarn = vi.spyOn(console, "warn").mockImplementation(() => {})
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {})
+    setLoggerClient({ captureException: undefined, captureMessage: undefined })
+
+    expect(() => logError("plain error")).not.toThrow()
+    expect(() => logWarning("plain warning")).not.toThrow()
+
+    expect(consoleWarn).not.toHaveBeenCalledWith(
+      "[logger] Failed to forward error to Sentry",
+      expect.anything()
+    )
+    expect(consoleWarn).not.toHaveBeenCalledWith(
+      "[logger] Failed to forward warning to Sentry",
+      expect.anything()
+    )
+    expect(consoleError).toHaveBeenCalledWith("plain error")
   })
 })

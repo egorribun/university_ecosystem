@@ -17,7 +17,7 @@ on:
                 description: "Node.js version"
                 required: false
                 type: string
-                default: "22"
+                default: "24"
             go-version:
                 description: "Go version"
                 required: false
@@ -35,6 +35,7 @@ jobs:
     cache:
         name: Warm Dependency Caches
         runs-on: ubuntu-24.04
+        timeout-minutes: 20
         outputs:
             python-cache-hit: ${{ steps.python-cache.outputs.cache-hit }}
             node-cache-hit: ${{ steps.node-cache.outputs.cache-hit }}

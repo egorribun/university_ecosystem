@@ -11,8 +11,13 @@
 # CI/CD workflow changes affect the entire security posture of the project.
 .github/workflows/ @egorribun
 
-# The paired performance tools decide required merge contexts; changes need the
+# Semgrep suppression entries are security policy, not a generic lint
+# configuration.  Keep ledger changes under the same owner review boundary.
+security/semgrep-suppression-policy.json @egorribun
+
+# Performance decision tools affect required merge contexts; changes need the
 # same owner review as the workflows that invoke them.
+scripts/quality/check_go_benchmark_budget.py @egorribun
 scripts/quality/compare_paired_benchmarks.py @egorribun
 scripts/quality/capture_isolated_benchmarks.py @egorribun
 containers/quality/Dockerfile.performance-rust @egorribun

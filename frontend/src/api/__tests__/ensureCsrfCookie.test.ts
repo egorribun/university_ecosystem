@@ -48,6 +48,7 @@ import { ensureCsrfCookie } from "../client"
 describe("W174 SW2 — ensureCsrfCookie SSR + test-env guards", () => {
   afterEach(() => {
     vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
   })
 
   it("returns immediately when the SSR runtime has no document", async () => {
@@ -71,6 +72,17 @@ describe("W174 SW2 — ensureCsrfCookie SSR + test-env guards", () => {
 
     expect(fetchSpy).not.toHaveBeenCalled()
     fetchSpy.mockRestore()
+  })
+
+  it("returns immediately for the side-effect-free Lighthouse preview", async () => {
+    vi.stubEnv("VITE_LHCI", "true")
+    vi.stubEnv("MODE", "production")
+    const fetchSpy = vi.spyOn(globalThis, "fetch")
+
+    document.cookie = ""
+    await ensureCsrfCookie()
+
+    expect(fetchSpy).not.toHaveBeenCalled()
   })
 })
 

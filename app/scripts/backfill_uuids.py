@@ -18,7 +18,6 @@ from app.models.auth import (
     PasswordResetToken,
     RecoveryCode,
     TrustedDevice,
-    WebAuthnCredential,
 )
 from app.models.domain_events import StoredEvent
 from app.models.events import Event, EventAttendance, EventFile
@@ -51,7 +50,6 @@ TABLES_OWN_ID = [
     (PasswordResetToken, "created_at"),
     (EmailChangeToken, "created_at"),
     (TrustedDevice, "created_at"),
-    (WebAuthnCredential, "created_at"),
     (RecoveryCode, "created_at"),
     (LoginHistory, "created_at"),
     (Event, "created_at"),
@@ -75,7 +73,6 @@ TABLES_USER_FK = [
     (PasswordResetToken, "user_id", "shadow_user_id"),
     (EmailChangeToken, "user_id", "shadow_user_id"),
     (TrustedDevice, "user_id", "shadow_user_id"),
-    (WebAuthnCredential, "user_id", "shadow_user_id"),
     (RecoveryCode, "user_id", "shadow_user_id"),
     (LoginHistory, "user_id", "shadow_user_id"),
     (EventAttendance, "user_id", "shadow_user_id"),

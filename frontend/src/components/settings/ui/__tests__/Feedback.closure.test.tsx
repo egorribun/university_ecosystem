@@ -4,8 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 vi.mock("@/components/media/SmartImage", () => ({
   default: ({
     srcRaw,
+    responsiveWidths: _responsiveWidths,
+    sizes: _sizes,
     ...props
-  }: { srcRaw: string } & React.ImgHTMLAttributes<HTMLImageElement>) => (
+  }: {
+    srcRaw: string
+    responsiveWidths?: number[]
+    sizes?: string
+  } & React.ImgHTMLAttributes<HTMLImageElement>) => (
     <img src={srcRaw} alt={props.alt ?? ""} {...props} />
   ),
 }))
@@ -70,8 +76,10 @@ describe("Feedback primitives", () => {
 
     const skeletons = Array.from(container.querySelectorAll(".animate-pulse"))
     expect(skeletons).toHaveLength(4)
-    expect(skeletons[0]).toHaveStyle({ width: "1rem", height: "1.5rem" })
-    expect(skeletons[1]).toHaveStyle({ width: "50%", height: "2rem" })
+    expect((skeletons[0] as HTMLElement).style.width).toBe("1rem")
+    expect((skeletons[0] as HTMLElement).style.height).toBe("1.5rem")
+    expect((skeletons[1] as HTMLElement).style.width).toBe("50%")
+    expect((skeletons[1] as HTMLElement).style.height).toBe("2rem")
     expect(skeletons[2]).toHaveStyle({ opacity: "0.5" })
   })
 

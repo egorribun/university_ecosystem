@@ -1,19 +1,23 @@
-import { Column } from "@tanstack/react-table"
+import type { RowData } from "@tanstack/react-table"
 import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react"
 
 import { cn } from "@/utils/cn"
 import { Button } from "@/components/ui/Button"
+import type { DataTableColumn } from "./dataTableFeatures"
 // We might need a DropdownMenu here, but sticking to basics first.
 // If DropdownMenu isn't available in components/ui, we'll simplify.
 // Checking listed files: DropdownMenu was not in the `list_dir` output of `components/ui`.
 // We will implement a simplified version for now using just click to sort.
 
-interface DataTableColumnHeaderProps<TData, TValue> extends React.HTMLAttributes<HTMLDivElement> {
-  column: Column<TData, TValue>
+interface DataTableColumnHeaderProps<
+  TData extends RowData,
+  TValue,
+> extends React.HTMLAttributes<HTMLDivElement> {
+  column: DataTableColumn<TData, TValue>
   title: string
 }
 
-export function DataTableColumnHeader<TData, TValue>({
+export function DataTableColumnHeader<TData extends RowData, TValue>({
   column,
   title,
   className,

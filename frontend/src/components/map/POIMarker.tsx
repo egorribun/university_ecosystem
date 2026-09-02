@@ -25,21 +25,38 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import type { CampusPOI, POIIconName } from "@/data/campusPOI"
+import { MAP_INTERACTIVE_TARGET_PX } from "@/constants/campus"
+import type { MapMarkerOffset } from "@/features/map/markerCollisionLayout"
 
-/* ── Icon lookup by lucide icon name ── */
-const ICON_MAP: Record<POIIconName, LucideIcon> = {
-  BookOpen,
-  TrainFront,
-  Bus,
-  UtensilsCrossed,
-  Coffee,
-  ShoppingCart,
-  ShoppingBag,
-  Pill,
-  Landmark,
-  ParkingCircle,
-  MapPin,
+/** Resolve a persisted POI icon name while keeping an explicit safe fallback. */
+export function getPoiIcon(icon: POIIconName): LucideIcon {
+  switch (icon) {
+    case "BookOpen":
+      return BookOpen
+    case "TrainFront":
+      return TrainFront
+    case "Bus":
+      return Bus
+    case "UtensilsCrossed":
+      return UtensilsCrossed
+    case "Coffee":
+      return Coffee
+    case "ShoppingCart":
+      return ShoppingCart
+    case "ShoppingBag":
+      return ShoppingBag
+    case "Pill":
+      return Pill
+    case "Landmark":
+      return Landmark
+    case "ParkingCircle":
+      return ParkingCircle
+    default:
+      return MapPin
+  }
 }
+
+const noop = () => undefined
 
 /** CSS token reference for POI category colors — defined in map.css */
 function poiColorVar(type: string): string {
@@ -53,9 +70,16 @@ interface POIMarkerProps {
   isPopupOpen?: boolean
   onPopupOpen?: () => void
   onPopupClose?: () => void
+  offset?: MapMarkerOffset
 }
 
-export function POIMarker({ poi, isPopupOpen, onPopupOpen, onPopupClose }: POIMarkerProps) {
+export function POIMarker({
+  poi,
+  isPopupOpen,
+  onPopupOpen = noop,
+  onPopupClose = noop,
+  offset,
+}: POIMarkerProps) {
   const { t } = useTranslation("map")
   const [isHovered, setIsHovered] = useState(false)
   const markerRef = useRef<MarkerInstance | null>(null)
@@ -63,7 +87,7 @@ export function POIMarker({ poi, isPopupOpen, onPopupOpen, onPopupClose }: POIMa
   useStripMaplibreMarkerChrome(markerRef)
 
   const colorVar = poiColorVar(poi.type)
-  const Icon = ICON_MAP[poi.icon] ?? MapPin
+  const Icon = getPoiIcon(poi.icon)
 
   const displayName = poi.i18nKey
     ? t(`poi.items.${poi.i18nKey}.name`)
@@ -73,7 +97,13 @@ export function POIMarker({ poi, isPopupOpen, onPopupOpen, onPopupClose }: POIMa
 
   return (
     <>
-      <Marker ref={markerRef} longitude={poi.coords[1]} latitude={poi.coords[0]} anchor="center">
+      <Marker
+        ref={markerRef}
+        longitude={poi.coords[1]}
+        latitude={poi.coords[0]}
+        anchor="center"
+        offset={offset}
+      >
         <div
           role="button"
           tabIndex={0}
@@ -82,18 +112,20 @@ export function POIMarker({ poi, isPopupOpen, onPopupOpen, onPopupClose }: POIMa
           style={
             {
               "--_poi-color": colorVar,
+              minWidth: MAP_INTERACTIVE_TARGET_PX,
+              minHeight: MAP_INTERACTIVE_TARGET_PX,
             } as React.CSSProperties
           }
           onPointerEnter={() => setIsHovered(true)}
           onPointerLeave={() => setIsHovered(false)}
           onClick={(e) => {
             e.stopPropagation()
-            onPopupOpen?.()
+            onPopupOpen()
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault()
-              onPopupOpen?.()
+              onPopupOpen()
             }
           }}
         >
@@ -125,7 +157,7 @@ export function POIMarker({ poi, isPopupOpen, onPopupOpen, onPopupClose }: POIMa
           offset={18}
           closeButton
           closeOnClick={false}
-          onClose={() => onPopupClose?.()}
+          onClose={onPopupClose}
           className="map-popup-premium"
           maxWidth="240px"
         >

@@ -103,11 +103,13 @@ describe("rateLimit interceptor — client queue slot acquire/release", () => {
     releaseClientQueueSlot(queued)
   })
 
-  it("throws synchronously when the config signal is already aborted before acquire", async () => {
+  it("rejects with AbortError when the config signal is already aborted before acquire", async () => {
     const controller = new AbortController()
     controller.abort()
     const config = makeConfig("get", controller.signal)
-    await expect(waitForClientQueueSlot(config)).rejects.toBeInstanceOf(DOMException)
+    await expect(waitForClientQueueSlot(config)).rejects.toMatchObject({
+      name: "AbortError",
+    })
     expect(config.__clientRateLimitAcquired).toBeUndefined()
   })
 
@@ -117,6 +119,16 @@ describe("rateLimit interceptor — client queue slot acquire/release", () => {
     controller.abort(reason)
     const config = makeConfig("get", controller.signal)
     await expect(waitForClientQueueSlot(config)).rejects.toBe(reason)
+  })
+
+  it("normalizes a primitive abort reason to an AbortError", async () => {
+    const controller = new AbortController()
+    controller.abort("navigation cancelled")
+    const { waitForClientQueueSlot } = await import("../rateLimit")
+
+    await expect(
+      waitForClientQueueSlot(makeConfig("get", controller.signal))
+    ).rejects.toMatchObject({ name: "AbortError" })
   })
 })
 

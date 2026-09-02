@@ -79,7 +79,6 @@ def test_csrf_contract_uses_exemptions_and_cookie_settings():
             "/internal",
             "/api/v1/csp-report",
             "/api/v2/auth/token",
-            "/api/v2/auth/webauthn",
         ),
         cookie_secure=True,
         cookie_samesite="strict",

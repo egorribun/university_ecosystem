@@ -145,11 +145,13 @@ def _build_delivery_row(
         "status": status,
         "attempted_at": attempt_ts,
         "delivered_at": attempt_ts if delivered else None,
+        # Keep every delivery mapping structurally identical.  PostgreSQL's
+        # multi-row INSERT compiler rejects heterogeneous mappings when a
+        # nullable column appears in only some rows (e.g. a successful result
+        # has a status code while a failed result has a diagnostic detail).
+        "status_code": int(status_code) if status_code is not None else None,
+        "detail": str(detail) if detail else None,
     }
-    if status_code is not None:
-        row["status_code"] = int(status_code)
-    if detail:
-        row["detail"] = str(detail)
     return row
 
 

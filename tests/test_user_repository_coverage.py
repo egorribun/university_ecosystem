@@ -178,8 +178,13 @@ async def test_get_user_related_data(user_repo, test_user, db_session):
     )
     challenge = models.MfaChallenge(
         user_id=test_user.id,
-        token="challenge_token",
         challenge_type="totp",
+        flow="login",
+        session_identifier="repository-coverage",
+        client_fingerprint="f" * 64,
+        method="totp",
+        token_digest="d" * 64,
+        token_key_id="test-key",
         expires_at=datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=5),
     )
     enrollment = models.MfaTotpEnrollment(
@@ -202,7 +207,7 @@ async def test_get_user_related_data(user_repo, test_user, db_session):
 
     challenges = await user_repo.get_user_mfa_challenges(test_user.id)
     assert len(challenges) >= 1
-    assert challenges[0].token == "challenge_token"
+    assert challenges[0].token_digest == "d" * 64
 
     enrollments = await user_repo.get_user_totp_enrollments(test_user.id)
     assert len(enrollments) >= 1

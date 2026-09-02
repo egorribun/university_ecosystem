@@ -237,4 +237,14 @@ describe("rateLimit interceptor — queue/window closure", () => {
     await thirdWait
     releaseClientQueueSlot(third)
   })
+
+  it("loads without registering browser listeners during SSR", async () => {
+    const browserWindow = globalThis.window
+    vi.stubGlobal("window", undefined)
+    try {
+      await expect(import("../rateLimit")).resolves.toBeDefined()
+    } finally {
+      vi.stubGlobal("window", browserWindow)
+    }
+  })
 })

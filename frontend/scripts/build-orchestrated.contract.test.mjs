@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { test } from "node:test"
+import { loadConfigFromFile } from "vite"
 import {
   enforcePrecacheBudget,
   enforcePrecacheBudgetForEnv,
@@ -14,6 +15,20 @@ import {
 
 const scriptPath = path.join(path.dirname(fileURLToPath(import.meta.url)), "build-orchestrated.mjs")
 const scriptSource = await readFile(scriptPath, "utf8")
+const viteConfigPath = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "vite.config.mts"
+)
+const viteConfigSource = await readFile(viteConfigPath, "utf8")
+const loadedViteConfig = await loadConfigFromFile(
+  { command: "build", mode: "production" },
+  viteConfigPath,
+  undefined,
+  "silent"
+)
+const resolveModulePreloadDependencies =
+  loadedViteConfig?.config?.build?.modulePreload?.resolveDependencies
 
 test("build orchestrator exposes bounded memory controls", () => {
   assert.match(scriptSource, /FRONTEND_BUILD_MAX_RSS_MB/)
@@ -41,6 +56,13 @@ test("build orchestrator accepts only complete, non-empty Vite artifacts", () =>
   assert.match(scriptSource, /hasClientAsset/)
 })
 
+test("Workbox inject stages into a distinct file before replacing the service worker", () => {
+  assert.match(scriptSource, /workboxTempPath/)
+  assert.match(scriptSource, /swDest: workboxTempPath/)
+  assert.match(scriptSource, /rename\(workboxTempPath, swPath\)/)
+  assert.doesNotMatch(scriptSource, /swSrc: swPath,\s*swDest: swPath/u)
+})
+
 test("PWA precache config excludes optional map chunks", () => {
   const ignores = PWA_INJECT_CONFIG.globIgnores ?? []
 
@@ -56,6 +78,62 @@ test("PWA precache config excludes optional map chunks", () => {
   }
 
   assert.ok(!ignores.some((pattern) => pattern.includes("offline.html")))
+})
+
+test("optional password-strength dictionaries have stable lazy chunk names and stay out of precache", () => {
+  const ignores = PWA_INJECT_CONFIG.globIgnores ?? []
+
+  for (const [dependency, chunkName] of [
+    ["@zxcvbn-ts/core", "vendor-password-strength-core"],
+    ["@zxcvbn-ts/language-common", "vendor-password-strength-common"],
+    ["@zxcvbn-ts/language-en", "vendor-password-strength-en"],
+    ["@zxcvbn-ts/language-ru", "vendor-password-strength-ru"],
+  ]) {
+    assert.ok(
+      viteConfigSource.includes(dependency),
+      `missing manual chunk dependency: ${dependency}`
+    )
+    assert.ok(viteConfigSource.includes(chunkName), `missing deterministic chunk: ${chunkName}`)
+  }
+
+  assert.ok(ignores.includes("**/vendor-password-strength-*.js"))
+  assert.equal(MAX_PRECACHE_BYTES, 4_800_000)
+})
+
+test("English and Russian password analyzers do not preload the opposite locale", () => {
+  assert.equal(typeof resolveModulePreloadDependencies, "function")
+
+  const sharedRuntimeDependency = "assets/rolldown-runtime-hash.js"
+  const commonDictionaryDependency = "assets/vendor-password-strength-common-hash.js"
+  const context = {
+    hostId: "assets/passwordStrength-hash.js",
+    hostType: "js",
+  }
+
+  assert.deepEqual(
+    resolveModulePreloadDependencies(
+      "assets/vendor-password-strength-en-hash.js",
+      [
+        "assets/vendor-password-strength-ru-hash.js",
+        commonDictionaryDependency,
+        sharedRuntimeDependency,
+      ],
+      context
+    ),
+    [sharedRuntimeDependency]
+  )
+  assert.deepEqual(
+    resolveModulePreloadDependencies(
+      "assets/vendor-password-strength-ru-hash.js",
+      [
+        "assets/vendor-password-strength-en-hash.js",
+        commonDictionaryDependency,
+        sharedRuntimeDependency,
+      ],
+      context
+    ),
+    [sharedRuntimeDependency]
+  )
 })
 
 test("PWA precache fails closed when the aggregate browser budget is exceeded", () => {

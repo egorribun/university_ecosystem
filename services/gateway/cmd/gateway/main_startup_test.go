@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -152,6 +153,21 @@ func TestInitGRPC_TLS(t *testing.T) {
 	if err := conn.Close(); err != nil {
 		t.Logf("gRPC conn close: %v", err)
 	}
+}
+
+func TestConventionalGRPCClientCredentialsRejectMissingFiles(t *testing.T) {
+	conn, client, err := initGRPC(&config.Config{
+		FileProcessorAddr:  "localhost:50051",
+		GrpcUseTLS:         true,
+		GRPCCAFile:         filepath.Join(t.TempDir(), "missing-ca.crt"),
+		GRPCClientCertFile: filepath.Join(t.TempDir(), "missing-client.crt"),
+		GRPCClientKeyFile:  filepath.Join(t.TempDir(), "missing-client.key"),
+		GRPCServerName:     "file-processor.university-ecosystem.svc",
+	}, initLogger())
+
+	assert.Nil(t, conn)
+	assert.Nil(t, client)
+	assert.ErrorContains(t, err, "gRPC client CA")
 }
 
 func TestInitGRPC_Insecure(t *testing.T) {

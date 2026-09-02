@@ -1,14 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { AxiosHeaders } from "axios"
 import type { AxiosResponse, InternalAxiosRequestConfig } from "axios"
 
-import api, {
-  API_UNAUTHORIZED_EVENT,
-  ensureCsrfCookie,
-  resetEtagCache,
-  SKIP_UNAUTHORIZED_HEADER,
-} from "@/api/client"
-import { registerSigningKeyAccessor } from "@/api/interceptors/etagCache"
+import { etagCache, registerSigningKeyAccessor, responseCache } from "@/api/interceptors/etagCache"
+import { allEventsApiV1EventsGet } from "@/api/generated/sdk.gen"
+
+type ClientModule = typeof import("@/api/client")
+type ApiClient = ClientModule["default"]
 
 type CapturedConfig = InternalAxiosRequestConfig & {
   etagCacheKey?: string
@@ -20,6 +18,7 @@ type CapturedConfig = InternalAxiosRequestConfig & {
  * contract validator). Returns the array of configs the adapter observed.
  */
 const installAdapter = (
+  api: ApiClient,
   respond: (config: InternalAxiosRequestConfig) => Partial<AxiosResponse> = () => ({})
 ): CapturedConfig[] => {
   const seen: CapturedConfig[] = []
@@ -38,29 +37,37 @@ const installAdapter = (
   return seen
 }
 
-beforeEach(() => {
-  resetEtagCache()
+const loadClient = async (): Promise<ClientModule> => {
+  const clientModule = await import("@/api/client")
+  clientModule.resetEtagCache()
   registerSigningKeyAccessor(() => "client-test-signing-key-0123456789")
-})
+  return clientModule
+}
 
 afterEach(() => {
   vi.unstubAllGlobals()
 })
 
 describe("api/client — module exports + instance config", () => {
-  it("exposes the documented public constants", () => {
+  it("exposes the documented public constants", async () => {
+    const { API_UNAUTHORIZED_EVENT, SKIP_UNAUTHORIZED_HEADER } = await loadClient()
+
     expect(API_UNAUTHORIZED_EVENT).toBe("auth:unauthorized")
     expect(SKIP_UNAUTHORIZED_HEADER).toBe("X-Client-Skip-Unauthorized")
   })
 
-  it("configures the axios instance with credentials + xsrf + json defaults", () => {
+  it("configures the axios instance with credentials + xsrf + json defaults", async () => {
+    const { default: api } = await loadClient()
+
     expect(api.defaults.withCredentials).toBe(true)
     expect(api.defaults.xsrfCookieName).toBe("csrf_token")
     expect(api.defaults.xsrfHeaderName).toBe("X-CSRF-Token")
     expect(api.defaults.headers.Accept).toBe("application/json")
   })
 
-  it("the default export is a callable axios instance with verb helpers", () => {
+  it("the default export is a callable axios instance with verb helpers", async () => {
+    const { default: api } = await loadClient()
+
     for (const verb of ["get", "post", "put", "patch", "delete", "request"] as const) {
       expect(typeof api[verb]).toBe("function")
     }
@@ -68,8 +75,20 @@ describe("api/client — module exports + instance config", () => {
 })
 
 describe("api/client — request interceptor: GET pass-through", () => {
+  it("keeps generated SDK requests same-origin instead of creating a protocol-relative host", async () => {
+    const { default: api } = await loadClient()
+    const seen = installAdapter(api)
+
+    await allEventsApiV1EventsGet({ query: { limit: 50 } })
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.url).toBe("/api/v1/events?limit=50")
+    expect(seen[0]!.url).not.toMatch(/^\/\//u)
+  })
+
   it("issues a GET and runs through the interceptors without mutating data", async () => {
-    const seen = installAdapter(() => ({ data: { items: [42] } }))
+    const { default: api } = await loadClient()
+    const seen = installAdapter(api, () => ({ data: { items: [42] } }))
     const res = await api.get("/news")
     expect(res.status).toBe(200)
     expect(res.data).toEqual({ items: [42] })
@@ -78,7 +97,8 @@ describe("api/client — request interceptor: GET pass-through", () => {
   })
 
   it("applies the If-None-Match header when an etagCacheKey + cached tag exist", async () => {
-    const seen = installAdapter(() => ({
+    const { default: api } = await loadClient()
+    const seen = installAdapter(api, () => ({
       data: { items: [] },
       headers: AxiosHeaders.from({ etag: '"abc"', "content-type": "application/json" }),
     }))
@@ -94,7 +114,8 @@ describe("api/client — request interceptor: GET pass-through", () => {
 
 describe("api/client — request interceptor: FormData", () => {
   it("removes the JSON Content-Type so the browser sets the multipart boundary", async () => {
-    const seen = installAdapter()
+    const { default: api } = await loadClient()
+    const seen = installAdapter(api)
     const fd = new FormData()
     fd.append("file", new Blob(["x"]), "x.txt")
     await api.post("/files/upload", fd, { skipRateLimitQueue: false } as never)
@@ -110,6 +131,8 @@ describe("api/client — request interceptor: FormData", () => {
 
 describe("api/client — request interceptor: idempotency dedup", () => {
   it("suppresses a duplicate in-flight mutation sharing the same Idempotency-Key", async () => {
+    const { default: api } = await loadClient()
+
     // Synchronously-resolved deferred gate: the `new Promise` executor runs
     // immediately, so `resolveFirst` is genuinely definite-assigned (closure
     // assignment inside the adapter callback is NOT seen by TS control-flow).
@@ -143,7 +166,10 @@ describe("api/client — request interceptor: idempotency dedup", () => {
 
 describe("api/client — response interceptor: 401 skip-unauthorized", () => {
   it("rejects 401 directly when the skip-unauthorized header is present", async () => {
+    const { default: api, SKIP_UNAUTHORIZED_HEADER } = await loadClient()
+    let rejectedConfig: InternalAxiosRequestConfig | undefined
     api.defaults.adapter = async (config): Promise<AxiosResponse> => {
+      rejectedConfig = config
       const err = Object.assign(new Error("Unauthorized"), {
         config,
         response: {
@@ -160,9 +186,12 @@ describe("api/client — response interceptor: 401 skip-unauthorized", () => {
     await expect(
       api.get("/users/me", { headers: { [SKIP_UNAUTHORIZED_HEADER]: "1" } } as never)
     ).rejects.toMatchObject({ response: { status: 401 } })
+    expect(AxiosHeaders.from(rejectedConfig?.headers).has(SKIP_UNAUTHORIZED_HEADER)).toBe(false)
   })
 
   it("propagates a normal 401 when no skip header is present", async () => {
+    const { default: api } = await loadClient()
+
     api.defaults.adapter = async (config): Promise<AxiosResponse> => {
       throw Object.assign(new Error("Unauthorized"), {
         config,
@@ -184,6 +213,7 @@ describe("api/client — response interceptor: 401 skip-unauthorized", () => {
 
 describe("api/client — defensive response cleanup", () => {
   it("invalidates a cached ETag after a failed response", async () => {
+    const { default: api } = await loadClient()
     const seen: CapturedConfig[] = []
     let calls = 0
     api.defaults.adapter = async (config): Promise<AxiosResponse> => {
@@ -233,6 +263,8 @@ describe("api/client — defensive response cleanup", () => {
   })
 
   it("tolerates a plain headers object in the response config cleanup path", async () => {
+    const { default: api } = await loadClient()
+
     api.defaults.adapter = async (config): Promise<AxiosResponse> => {
       const responseConfig = { ...config, headers: { Accept: "application/json" } }
       return {
@@ -251,8 +283,9 @@ describe("api/client — defensive response cleanup", () => {
 
 describe("api/client — rate-limit bypass guard", () => {
   it("demotes a non-allowlisted bypass request back to the client queue", async () => {
+    const { default: api } = await loadClient()
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined)
-    const seen = installAdapter()
+    const seen = installAdapter(api)
 
     await api.get("/news", { skipRateLimitQueue: true } as never)
 
@@ -266,6 +299,7 @@ describe("api/client — rate-limit bypass guard", () => {
 
 describe("api/client — ensureCsrfCookie", () => {
   it("resolves immediately in the test environment without fetching", async () => {
+    const { ensureCsrfCookie } = await loadClient()
     const fetchSpy = vi.fn()
     vi.stubGlobal("fetch", fetchSpy)
     await expect(ensureCsrfCookie()).resolves.toBeUndefined()
@@ -276,21 +310,24 @@ describe("api/client — ensureCsrfCookie", () => {
 
 describe("api/client — prefix normalization", () => {
   it("normalizes relative doubled prefix", async () => {
-    const seen = installAdapter()
+    const { default: api } = await loadClient()
+    const seen = installAdapter(api)
     await api.get("/api/v1/api/v1/news")
     expect(seen).toHaveLength(1)
     expect(seen[0]!.url).toBe("/api/v1/news")
   })
 
   it("normalizes absolute doubled prefix during SSR", async () => {
-    const seen = installAdapter()
+    const { default: api } = await loadClient()
+    const seen = installAdapter(api)
     await api.get("http://localhost:8000/api/v1/api/v1/news")
     expect(seen).toHaveLength(1)
     expect(seen[0]!.url).toBe("http://localhost:8000/api/v1/news")
   })
 
   it("normalizes absolute single prefix if baseURL matches prefix", async () => {
-    const seen = installAdapter()
+    const { default: api } = await loadClient()
+    const seen = installAdapter(api)
     api.defaults.baseURL = "/api/v1"
     await api.get("http://localhost:8000/api/v1/news")
     expect(seen).toHaveLength(1)
@@ -299,9 +336,31 @@ describe("api/client — prefix normalization", () => {
   })
 
   it("keeps the request alive when an absolute URL cannot be parsed", async () => {
-    const seen = installAdapter()
+    const { default: api } = await loadClient()
+    const seen = installAdapter(api)
 
     await expect(api.get("http://%")).resolves.toMatchObject({ status: 200 })
     expect(seen).toHaveLength(1)
+  })
+})
+
+describe.sequential("global API cache cleanup", () => {
+  const cacheKey = "setup-tests:after-each"
+
+  it("seeds both API caches before the global afterEach contract runs", () => {
+    etagCache.set(cacheKey, '"stale-etag"')
+    responseCache.set(cacheKey, {
+      data: { stale: true },
+      hmac: "stale-hmac",
+      ts: Date.now(),
+    })
+
+    expect(etagCache.get(cacheKey)).toBe('"stale-etag"')
+    expect(responseCache.get(cacheKey)?.data).toEqual({ stale: true })
+  })
+
+  it("observes both API caches cleared by the global afterEach contract", () => {
+    expect(etagCache.get(cacheKey)).toBeUndefined()
+    expect(responseCache.get(cacheKey)).toBeUndefined()
   })
 })

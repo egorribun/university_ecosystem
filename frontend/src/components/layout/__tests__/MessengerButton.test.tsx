@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({ navigate: vi.fn(), unreadCount: 0, t: (key: st
 
 vi.mock("@tanstack/react-router", () => ({ useNavigate: () => mocks.navigate }))
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: mocks.t }) }))
-vi.mock("@/contexts/MessengerContext", () => ({
+vi.mock("@/contexts/MessengerContextCore", () => ({
   useMessenger: () => ({ unreadCount: mocks.unreadCount }),
 }))
 

@@ -28,6 +28,40 @@ describe("settings Form compatibility wrappers", () => {
     expect(screen.getByRole("button", { name: "text" })).toBeInTheDocument()
   })
 
+  it("preserves legacy variant classes and gives explicit icons precedence", () => {
+    render(
+      <div>
+        <Button variant="contained" size="small" startIcon={<span data-testid="start" />}>
+          contained
+        </Button>
+        <Button variant="outlined" size="medium" endIcon={<span data-testid="end" />}>
+          outlined
+        </Button>
+        <Button
+          variant="text"
+          size="large"
+          leadingIcon={<span data-testid="leading" />}
+          startIcon={<span data-testid="ignored-start" />}
+          trailingIcon={<span data-testid="trailing" />}
+          endIcon={<span data-testid="ignored-end" />}
+        >
+          text
+        </Button>
+      </div>
+    )
+
+    const [contained, outlined, text] = screen.getAllByRole("button")
+    expect(contained).toHaveClass("bg-linear-brand", "min-h-11")
+    expect(outlined).toHaveClass("border", "min-h-12")
+    expect(text).toHaveClass("bg-transparent", "min-h-14")
+    expect(screen.getByTestId("start")).toBeInTheDocument()
+    expect(screen.getByTestId("end")).toBeInTheDocument()
+    expect(screen.getByTestId("leading")).toBeInTheDocument()
+    expect(screen.getByTestId("trailing")).toBeInTheDocument()
+    expect(screen.queryByTestId("ignored-start")).not.toBeInTheDocument()
+    expect(screen.queryByTestId("ignored-end")).not.toBeInTheDocument()
+  })
+
   it("clones element controls and preserves non-element controls", () => {
     render(
       <div>

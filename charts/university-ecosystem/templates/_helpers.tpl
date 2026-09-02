@@ -5,6 +5,19 @@ Expand the name of the chart.
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
+{{/* Render a first-party image by immutable digest when one is supplied. */}}
+{{- define "university-ecosystem.image" -}}
+{{- $root := .root -}}
+{{- $image := .image -}}
+{{- $registry := $root.Values.global.imageRegistry -}}
+{{- if $image.digest -}}
+{{- printf "%s/%s@%s" $registry $image.repository $image.digest | trimPrefix "/" -}}
+{{- else -}}
+{{- $tag := $image.tag | default $root.Values.global.imageTag | default $root.Chart.AppVersion -}}
+{{- printf "%s/%s:%s" $registry $image.repository $tag | trimPrefix "/" -}}
+{{- end -}}
+{{- end }}
+
 {{/* Name of the Secret containing application credentials and JWT keys. */}}
 {{- define "university-ecosystem.applicationSecretName" -}}
 {{- default (printf "%s-secrets" .Release.Name) .Values.applicationSecrets.existingSecret -}}

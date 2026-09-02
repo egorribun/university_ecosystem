@@ -113,8 +113,10 @@ def test_build_delivery_row_minimal():
     assert row["notification_id"] == nid
     assert row["status"] == "skipped"
     assert row["delivered_at"] is None
-    assert "status_code" not in row
-    assert "detail" not in row
+    # Delivery rows intentionally keep a uniform INSERT shape across
+    # PostgreSQL batches; absent response metadata is represented as NULL.
+    assert row["status_code"] is None
+    assert row["detail"] is None
 
 
 def test_build_delivery_row_full():

@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import FastAPI, HTTPException, Response
 from sqlalchemy.exc import IntegrityError, NoSuchTableError, SQLAlchemyError
+from starlette.websockets import WebSocketDisconnect
 
-import app.api.auth.mfa as mfa_api
 import app.api.notifications as notifications_api
 import app.api.spotify as spotify_api
 import app.api.users as users_api
@@ -22,7 +22,6 @@ import app.core.observability as observability_core
 import app.routers.notifications as push_router
 from app.models import PushSubscription, UserPushTopic
 from app.models.enums import UserRole
-from app.schemas.schemas import WebAuthnRegistrationVerifyIn
 
 
 # Helper to mock Dishka container on request
@@ -246,7 +245,7 @@ async def test_get_push_topics_with_record():
 
     res = await push_router.get_push_topics(db, user)
     assert res.has_preferences is True
-    assert "system" in res.topics
+    assert "system.release" in res.topics
 
 
 @pytest.mark.asyncio
@@ -505,7 +504,7 @@ async def test_admin_get_user_topics_success():
         res = await push_router.admin_get_user_topics(target_user.id, request, db, user)
         assert res.user_id == target_user.id
         assert res.email == target_user.email
-        assert "system" in res.topics
+        assert "system.release" in res.topics
 
 
 @pytest.mark.asyncio
@@ -583,7 +582,7 @@ async def test_admin_update_user_topics_success():
             target_user.id, payload, request, db, user
         )
         assert res.user_id == target_user.id
-        assert "system" in res.topics
+        assert "system.release" in res.topics
 
 
 @pytest.mark.asyncio
@@ -983,6 +982,28 @@ def test_configure_observability():
             assert app.state.observability_configured is True
 
 
+def test_configure_observability_does_not_reinstrument_existing_app():
+    app = FastAPI()
+    app.state.observability_configured = False
+    app.state.otel_instrumented = True
+    tracer_provider = MagicMock()
+
+    with (
+        patch("app.core.observability.settings") as mock_settings,
+        patch("app.core.observability._configure_logging"),
+        patch("app.core.observability._configure_otel", return_value=tracer_provider),
+        patch("app.core.observability._configure_sentry"),
+        patch(
+            "app.core.observability.FastAPIInstrumentor.instrument_app"
+        ) as instrument_app,
+    ):
+        mock_settings.enable_otel = True
+        observability_core.configure_observability(app, engine=MagicMock())
+
+    instrument_app.assert_not_called()
+    assert app.state.observability_configured is True
+
+
 def test_shutdown_observability():
     from opentelemetry.sdk.metrics import MeterProvider
     from opentelemetry.sdk.trace import TracerProvider
@@ -1002,133 +1023,22 @@ def test_shutdown_observability():
             pass
 
     with (
-        patch(
-            "app.core.observability.trace.get_tracer_provider"
-        ) as mock_trace_provider,
-        patch(
-            "app.core.observability.metrics.get_meter_provider"
-        ) as mock_meter_provider,
         patch("app.core.observability._otel_logging_handler"),
         patch("app.core.observability._otel_logger_provider"),
     ):
         dummy_trace = DummyTracerProvider()
         dummy_trace.shutdown = MagicMock()
-        mock_trace_provider.return_value = dummy_trace
 
         dummy_meter = DummyMeterProvider()
         dummy_meter.shutdown = MagicMock()
-        mock_meter_provider.return_value = dummy_meter
+        # Teardown is deliberately ownership based: process-global providers may
+        # belong to another in-process SDK user and must never be shut down here.
+        observability_core._otel_tracer_provider = dummy_trace
+        observability_core._otel_meter_provider = dummy_meter
 
         observability_core.shutdown_observability()
         dummy_trace.shutdown.assert_called_once()
         dummy_meter.shutdown.assert_called_once()
-
-
-# =========================================================================
-# 5. app/api/auth/mfa.py
-# =========================================================================
-
-
-@pytest.mark.asyncio
-async def test_complete_passkey_enrollment_invalid_payload():
-    request = MagicMock()
-    request.state = MagicMock()
-    db = AsyncMock()
-    user = MagicMock()
-    user.id = uuid.uuid4()
-    setup_dishka_mock(request, db)
-
-    mock_challenge = MagicMock()
-    mock_challenge.payload = None
-
-    payload = WebAuthnRegistrationVerifyIn(
-        challenge="token",
-        response={"clientDataJSON": "", "attestationObject": "", "transports": []},
-        label="my key",
-    )
-
-    with patch(
-        "app.api.auth.mfa.mfa.get_challenge", AsyncMock(return_value=mock_challenge)
-    ):
-        with pytest.raises(HTTPException) as exc:
-            await mfa_api.confirm_webauthn_registration(
-                payload=payload, request=request, user=user
-            )
-        assert exc.value.status_code == 400
-
-
-@pytest.mark.asyncio
-async def test_complete_passkey_enrollment_verification_fails():
-    request = MagicMock()
-    request.state = MagicMock()
-    db = AsyncMock()
-    user = MagicMock()
-    user.id = uuid.uuid4()
-    setup_dishka_mock(request, db)
-
-    mock_challenge = MagicMock()
-    mock_challenge.payload = {"options": {"challenge": "challenge_str"}}
-
-    payload = WebAuthnRegistrationVerifyIn(
-        challenge="token",
-        response={"clientDataJSON": "", "attestationObject": "", "transports": []},
-        label="my key",
-    )
-
-    with (
-        patch(
-            "app.api.auth.mfa.mfa.get_challenge", AsyncMock(return_value=mock_challenge)
-        ),
-        patch(
-            "app.services.webauthn.WebAuthnService.verify_registration",
-            AsyncMock(side_effect=ValueError("invalid signature")),
-        ),
-        patch("app.api.auth.mfa.logger"),
-    ):
-        with pytest.raises(HTTPException) as exc:
-            await mfa_api.confirm_webauthn_registration(
-                payload=payload, request=request, user=user
-            )
-        assert exc.value.status_code == 400
-
-
-@pytest.mark.asyncio
-async def test_complete_passkey_enrollment_success():
-    request = MagicMock()
-    request.state = MagicMock()
-    db = AsyncMock()
-    user = MagicMock()
-    user.id = uuid.uuid4()
-    user.mfa_default_method = "webauthn"
-    user.mfa_required = True
-
-    mock_challenge = MagicMock()
-    mock_challenge.payload = {"options": {"challenge": "challenge_str"}}
-
-    payload = WebAuthnRegistrationVerifyIn(
-        challenge="token",
-        response={"clientDataJSON": "", "attestationObject": "", "transports": []},
-        label="my key",
-    )
-
-    with (
-        patch(
-            "app.api.auth.mfa.mfa.get_challenge", AsyncMock(return_value=mock_challenge)
-        ),
-        patch("app.services.webauthn.WebAuthnService.verify_registration", AsyncMock()),
-        patch("app.api.auth.mfa.mfa.refresh_user_mfa_preferences", AsyncMock()),
-        patch("app.api.auth.mfa.mfa.record_mfa_success", AsyncMock()),
-        patch("app.api.auth.mfa.AuditService") as mock_audit,
-    ):
-        mock_audit_inst = MagicMock()
-        mock_audit.return_value = mock_audit_inst
-        setup_dishka_mock(request, db, mock_audit_inst)
-
-        res = await mfa_api.confirm_webauthn_registration(
-            payload=payload, request=request, user=user
-        )
-        assert res.mfa_required is True
-        assert res.disabled is False
 
 
 # =========================================================================
@@ -1334,6 +1244,43 @@ async def test_websocket_chat_payload_too_large():
         mock_manager.check_rate_limit.return_value = True
         await websocket_api.websocket_chat(websocket)
         websocket.close.assert_called_with(code=1009, reason="Payload too large")
+
+
+@pytest.mark.asyncio
+async def test_websocket_chat_rejects_utf8_oversized_frame_before_json_dispatch():
+    """A frame can fit the code-point cap while exceeding the transport byte cap."""
+    websocket = AsyncMock()
+    # 16k astral code points are valid text, but encode to ~64 KiB before the
+    # small JSON envelope overhead.  The route must reject this before parsing
+    # or dispatching it, matching ws-hub's 60 KiB ingress guard.
+    large_utf8_content = "😀" * 16_000
+    frame = json.dumps(
+        {"type": "message", "content": large_utf8_content}, ensure_ascii=False
+    )
+    assert len(frame) <= 32_768
+    assert len(frame.encode("utf-8")) > 60 * 1024
+    websocket.receive_text = AsyncMock(
+        side_effect=[frame, WebSocketDisconnect(code=1000)]
+    )
+    websocket.close = AsyncMock()
+
+    mock_user = MagicMock()
+    mock_user.id = uuid.uuid4()
+
+    with (
+        patch(
+            "app.api.ws.authenticator.authenticator.authenticate_upgrade",
+            AsyncMock(return_value=(mock_user, "jti", "subprotocol")),
+        ),
+        patch("app.api.websocket.manager") as mock_manager,
+    ):
+        mock_manager.connect = AsyncMock(return_value=True)
+        mock_manager.broadcast_presence = AsyncMock()
+        mock_manager.disconnect = AsyncMock()
+        mock_manager.check_rate_limit.return_value = True
+        await websocket_api.websocket_chat(websocket)
+
+    websocket.close.assert_called_with(code=1009, reason="Payload too large")
 
 
 @pytest.mark.asyncio

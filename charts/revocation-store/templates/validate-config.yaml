@@ -1,0 +1,429 @@
+{{- include "revocation-store.validate" . -}}
+{{- $plaintextAclUsers := dig "auth" "acl" "users" (list) .Values.redis -}}
+{{- $globalPassword := dig "global" "redis" "password" "" .Values.redis -}}
+{{- if or .Values.redis.auth.password $plaintextAclUsers $globalPassword -}}
+  {{- fail "revocation-store secret material must use the configured Kubernetes Secret, never Helm values" -}}
+{{- end -}}
+{{- /*
+The JSON schema validates direct chart input.  Helm's --skip-schema-validation
+mode still coalesces the vendored Bitnami defaults, so the template repeats the
+security-critical contract against those effective values.  These allowlists
+also make an unknown --set fail closed instead of being silently ignored by the
+subchart.
+*/ -}}
+{{- $allowedRedisKeys := dict
+  "architecture" true "auth" true "clusterDomain" true "common" true
+  "commonAnnotations" true "commonConfiguration" true "commonLabels" true
+  "configmapChecksumAnnotations" true "diagnosticMode" true "enabled" true
+  "existingConfigmap" true "extraDeploy" true "fullnameOverride" true "global" true
+  "image" true "kubeVersion" true "kubectl" true "master" true "metrics" true
+  "nameOverride" true "nameResolutionThreshold" true "nameResolutionTimeout" true
+  "namespaceOverride" true "networkPolicy" true "pdb" true "podSecurityPolicy" true
+  "rbac" true "replica" true "secretAnnotations" true "secretChecksumAnnotations" true
+  "sentinel" true "serviceAccount" true "serviceBindings" true "sysctl" true
+  "tls" true "useExternalDNS" true "useHostnames" true "volumePermissions" true
+-}}
+{{- range $key, $_ := .Values.redis -}}
+  {{- if not (hasKey $allowedRedisKeys $key) -}}
+    {{- fail (printf "revocation-store rejects unreviewed redis override %q" $key) -}}
+  {{- end -}}
+{{- end -}}
+{{- $allowedMasterKeys := dict
+  "affinity" true "annotations" true "args" true "automountServiceAccountToken" true
+  "command" true "configuration" true "containerPorts" true "containerSecurityContext" true
+  "count" true "customLivenessProbe" true "customReadinessProbe" true "customStartupProbe" true
+  "disableCommands" true "dnsConfig" true "dnsPolicy" true "enableServiceLinks" true
+  "extraEnvVars" true "extraEnvVarsCM" true "extraEnvVarsSecret" true "extraFlags" true
+  "extraPodSpec" true "extraVolumeMounts" true "extraVolumes" true "hostAliases" true
+  "initContainers" true "kind" true "lifecycleHooks" true "livenessProbe" true
+  "minReadySeconds" true "nodeAffinityPreset" true "nodeSelector" true "pdb" true
+  "persistence" true "persistentVolumeClaimRetentionPolicy" true "podAffinityPreset" true
+  "podAnnotations" true "podAntiAffinityPreset" true "podLabels" true "podSecurityContext" true
+  "preExecCmds" true "priorityClassName" true "readinessProbe" true "resources" true
+  "resourcesPreset" true "revisionHistoryLimit" true "schedulerName" true "service" true
+  "serviceAccount" true "shareProcessNamespace" true "sidecars" true "startupProbe" true
+  "terminationGracePeriodSeconds" true "tolerations" true "topologySpreadConstraints" true
+  "updateStrategy" true
+-}}
+{{- range $key, $_ := .Values.redis.master -}}
+  {{- if not (hasKey $allowedMasterKeys $key) -}}
+    {{- fail (printf "revocation-store rejects unreviewed master override %q" $key) -}}
+  {{- end -}}
+{{- end -}}
+{{- $allowedMetricsKeys := dict
+  "command" true "containerPorts" true "containerSecurityContext" true
+  "customLivenessProbe" true "customReadinessProbe" true "customStartupProbe" true
+  "enabled" true "extraArgs" true "extraEnvVars" true "extraVolumeMounts" true
+  "extraVolumes" true "image" true "livenessProbe" true "podAnnotations" true
+  "podLabels" true "podMonitor" true "prometheusRule" true "readinessProbe" true
+  "redisTargetHost" true "resources" true "resourcesPreset" true "service" true
+  "serviceMonitor" true "startupProbe" true
+-}}
+{{- range $key, $_ := .Values.redis.metrics -}}
+  {{- if not (hasKey $allowedMetricsKeys $key) -}}
+    {{- fail (printf "revocation-store rejects unreviewed metrics override %q" $key) -}}
+  {{- end -}}
+{{- end -}}
+{{- $expectedCommonLabels := dict
+  "university-ecosystem.io/revocation-store-for" .Values.applicationReleaseName
+  "app.kubernetes.io/instance" .Values.applicationReleaseName
+-}}
+{{- $expectedMasterUpdateStrategy := dict "type" "RollingUpdate" -}}
+{{- $expectedMasterLivenessProbe := dict
+  "enabled" true "initialDelaySeconds" 20 "periodSeconds" 5
+  "timeoutSeconds" 5 "successThreshold" 1 "failureThreshold" 5
+-}}
+{{- $expectedMasterReadinessProbe := dict
+  "enabled" true "initialDelaySeconds" 20 "periodSeconds" 5
+  "timeoutSeconds" 1 "successThreshold" 1 "failureThreshold" 5
+-}}
+{{- $expectedMasterStartupProbe := dict
+  "enabled" false "initialDelaySeconds" 20 "periodSeconds" 5
+  "timeoutSeconds" 5 "successThreshold" 1 "failureThreshold" 5
+-}}
+{{- $expectedMetricsLivenessProbe := dict
+  "enabled" true "initialDelaySeconds" 10 "periodSeconds" 10
+  "timeoutSeconds" 5 "successThreshold" 1 "failureThreshold" 5
+-}}
+{{- $expectedMetricsReadinessProbe := dict
+  "enabled" true "initialDelaySeconds" 5 "periodSeconds" 10
+  "timeoutSeconds" 1 "successThreshold" 1 "failureThreshold" 3
+-}}
+{{- $expectedMetricsStartupProbe := dict
+  "enabled" false "initialDelaySeconds" 10 "periodSeconds" 10
+  "timeoutSeconds" 5 "successThreshold" 1 "failureThreshold" 5
+-}}
+{{- $expectedCommonConfiguration := "maxmemory 384mb\nmaxmemory-policy noeviction\nsave 60 1\nappendonly yes\nappendfsync everysec" -}}
+{{- $expectedMasterResources := dict
+  "requests" (dict "cpu" "100m" "memory" "128Mi")
+  "limits" (dict "cpu" "500m" "memory" "512Mi")
+-}}
+{{- $expectedMetricsResources := dict
+  "requests" (dict "cpu" "25m" "memory" "24Mi")
+  "limits" (dict "cpu" "100m" "memory" "64Mi")
+-}}
+{{- if or
+  (ne .Values.redis.enabled true)
+  (ne .Values.redis.architecture "standalone")
+  (ne .Values.redis.nameOverride "revocation-redis")
+  (ne (toJson .Values.redis.commonLabels) (toJson $expectedCommonLabels))
+  (ne .Values.redis.commonConfiguration $expectedCommonConfiguration)
+  (ne (dig "networkPolicy" "enabled" false .Values.redis) true)
+  (ne (dig "networkPolicy" "allowExternal" true .Values.redis) false)
+  (ne (dig "networkPolicy" "allowExternalEgress" true .Values.redis) false)
+  (ne (dig "auth" "enabled" false .Values.redis) true)
+  (ne (dig "auth" "existingSecret" "" .Values.redis) "revocation-redis-credentials")
+  (ne (toJson (dig "master" "count" 0 .Values.redis)) "1")
+  (ne (toJson (dig "master" "revisionHistoryLimit" 0 .Values.redis)) "10")
+  (ne (toJson (dig "master" "minReadySeconds" 0 .Values.redis)) "0")
+  (ne (toJson (dig "master" "updateStrategy" (dict) .Values.redis)) (toJson $expectedMasterUpdateStrategy))
+  (ne (toJson (dig "master" "resources" (dict) .Values.redis)) (toJson $expectedMasterResources))
+  (ne (toJson (dig "master" "livenessProbe" (dict) .Values.redis)) (toJson $expectedMasterLivenessProbe))
+  (ne (toJson (dig "master" "readinessProbe" (dict) .Values.redis)) (toJson $expectedMasterReadinessProbe))
+  (ne (toJson (dig "master" "startupProbe" (dict) .Values.redis)) (toJson $expectedMasterStartupProbe))
+  (ne (dig "metrics" "enabled" false .Values.redis) true)
+  (ne (toJson (dig "metrics" "resources" (dict) .Values.redis)) (toJson $expectedMetricsResources))
+  (ne (toJson (dig "metrics" "livenessProbe" (dict) .Values.redis)) (toJson $expectedMetricsLivenessProbe))
+  (ne (toJson (dig "metrics" "readinessProbe" (dict) .Values.redis)) (toJson $expectedMetricsReadinessProbe))
+  (ne (toJson (dig "metrics" "startupProbe" (dict) .Values.redis)) (toJson $expectedMetricsStartupProbe))
+  (ne (dig "clusterDomain" "" .Values.redis) "cluster.local")
+  (ne (dig "useHostnames" false .Values.redis) true)
+  (ne (dig "configmapChecksumAnnotations" false .Values.redis) true)
+  (ne (dig "secretChecksumAnnotations" false .Values.redis) true)
+  (ne (dig "global" "defaultStorageClass" "" .Values.redis) "")
+  (ne (dig "global" "storageClass" "" .Values.redis) "")
+  (dig "global" "security" "allowInsecureImages" false .Values.redis)
+  (ne (dig "kubeVersion" "" .Values.redis) "")
+  (ne (toJson (dig "nameResolutionThreshold" 0 .Values.redis)) "5")
+  (ne (toJson (dig "nameResolutionTimeout" 0 .Values.redis)) "5")
+-}}
+  {{- fail "revocation-store requires the reviewed standalone, durable, and network-isolated deployment contract" -}}
+{{- end -}}
+{{- $redisImageDigest := toString (dig "image" "digest" "" .Values.redis) -}}
+{{- $metricsImageDigest := toString (dig "metrics" "image" "digest" "" .Values.redis) -}}
+{{- if or
+  (ne (dig "image" "registry" "" .Values.redis) "docker.io")
+  (ne (dig "image" "repository" "" .Values.redis) "bitnami/redis")
+  (ne (dig "image" "pullPolicy" "" .Values.redis) "Always")
+  (dig "image" "debug" false .Values.redis)
+  (not (regexMatch "^sha256:[0-9a-f]{64}$" $redisImageDigest))
+  (ne (dig "metrics" "image" "registry" "" .Values.redis) "docker.io")
+  (ne (dig "metrics" "image" "repository" "" .Values.redis) "bitnami/redis-exporter")
+  (ne (dig "metrics" "image" "pullPolicy" "" .Values.redis) "Always")
+  (not (regexMatch "^sha256:[0-9a-f]{64}$" $metricsImageDigest))
+-}}
+  {{- fail "revocation-store requires reviewed digest-pinned Redis and exporter images" -}}
+{{- end -}}
+{{- $unsafeExtensions := list
+  (dig "extraDeploy" (list) .Values.redis)
+  (dig "existingConfigmap" "" .Values.redis)
+  (dig "secretAnnotations" (dict) .Values.redis)
+  (dig "master" "extraEnvVars" (list) .Values.redis)
+  (dig "master" "extraEnvVarsCM" "" .Values.redis)
+  (dig "master" "extraEnvVarsSecret" "" .Values.redis)
+  (dig "master" "sidecars" (list) .Values.redis)
+  (dig "master" "initContainers" (list) .Values.redis)
+  (dig "master" "extraVolumes" (list) .Values.redis)
+  (dig "master" "extraVolumeMounts" (list) .Values.redis)
+  (dig "master" "extraPodSpec" (dict) .Values.redis)
+  (dig "master" "configuration" "" .Values.redis)
+  (dig "master" "command" (list) .Values.redis)
+  (dig "master" "args" (list) .Values.redis)
+  (dig "master" "extraFlags" (list) .Values.redis)
+  (dig "master" "preExecCmds" (list) .Values.redis)
+  (dig "master" "customStartupProbe" (dict) .Values.redis)
+  (dig "master" "customLivenessProbe" (dict) .Values.redis)
+  (dig "master" "customReadinessProbe" (dict) .Values.redis)
+  (dig "master" "lifecycleHooks" (dict) .Values.redis)
+  (dig "master" "podLabels" (dict) .Values.redis)
+  (dig "master" "podAnnotations" (dict) .Values.redis)
+  (dig "master" "annotations" (dict) .Values.redis)
+  (dig "master" "affinity" (dict) .Values.redis)
+  (dig "master" "nodeSelector" (dict) .Values.redis)
+  (dig "master" "tolerations" (list) .Values.redis)
+  (dig "master" "hostAliases" (list) .Values.redis)
+  (dig "master" "dnsConfig" (dict) .Values.redis)
+  (dig "metrics" "extraEnvVars" (list) .Values.redis)
+  (dig "metrics" "extraVolumes" (list) .Values.redis)
+  (dig "metrics" "extraVolumeMounts" (list) .Values.redis)
+  (dig "metrics" "extraArgs" (dict) .Values.redis)
+  (dig "metrics" "command" (list) .Values.redis)
+  (dig "metrics" "customStartupProbe" (dict) .Values.redis)
+  (dig "metrics" "customLivenessProbe" (dict) .Values.redis)
+  (dig "metrics" "customReadinessProbe" (dict) .Values.redis)
+  (dig "metrics" "podLabels" (dict) .Values.redis)
+  (dig "networkPolicy" "extraIngress" (list) .Values.redis)
+  (dig "networkPolicy" "extraEgress" (list) .Values.redis)
+  (dig "networkPolicy" "ingressNSMatchLabels" (dict) .Values.redis)
+  (dig "networkPolicy" "ingressNSPodMatchLabels" (dict) .Values.redis)
+-}}
+{{- range $extension := $unsafeExtensions -}}
+  {{- if $extension -}}
+    {{- fail "revocation-store forbids injected containers, volumes, environment, hooks, and permissive network extensions" -}}
+  {{- end -}}
+{{- end -}}
+{{- if or
+  (ne (dig "auth" "existingSecretPasswordKey" "" .Values.redis) "revocation-redis-password")
+  (ne (dig "auth" "usePasswordFiles" false .Values.redis) true)
+  (ne (dig "auth" "usePasswordFileFromSecret" false .Values.redis) true)
+  (dig "auth" "acl" "enabled" false .Values.redis)
+  (dig "auth" "acl" "userSecret" "" .Values.redis)
+  (dig "volumePermissions" "enabled" false .Values.redis)
+  (dig "sysctl" "enabled" false .Values.redis)
+  (dig "diagnosticMode" "enabled" false .Values.redis)
+-}}
+  {{- fail "revocation-store forbids helper containers that are outside the immutable image contract" -}}
+{{- end -}}
+{{- if or
+  (ne (dig "master" "kind" "" .Values.redis) "StatefulSet")
+  (ne (dig "master" "configuration" "" .Values.redis) "")
+  (ne (dig "master" "enableServiceLinks" true .Values.redis) false)
+  (ne (int (dig "master" "containerPorts" "redis" 0 .Values.redis)) 6379)
+  (ne (dig "master" "schedulerName" "" .Values.redis) "")
+  (ne (dig "master" "priorityClassName" "" .Values.redis) "")
+  (ne (dig "master" "automountServiceAccountToken" true .Values.redis) false)
+  (ne (dig "master" "shareProcessNamespace" true .Values.redis) false)
+  (ne (dig "master" "podAffinityPreset" "" .Values.redis) "")
+  (ne (dig "master" "podAntiAffinityPreset" "" .Values.redis) "soft")
+  (dig "master" "nodeAffinityPreset" "type" "" .Values.redis)
+  (dig "master" "nodeAffinityPreset" "key" "" .Values.redis)
+  (dig "master" "nodeAffinityPreset" "values" (list) .Values.redis)
+  (dig "master" "topologySpreadConstraints" (list) .Values.redis)
+  (dig "master" "dnsPolicy" "" .Values.redis)
+-}}
+  {{- fail "revocation-store forbids unreviewed workload kind, service-account, probe, scheduling, or DNS changes" -}}
+{{- end -}}
+{{- if or
+  (not (deepEqual
+    (dig "master" "disableCommands" (list) .Values.redis)
+    (list "ACL" "CONFIG" "FLUSHDB" "FLUSHALL" "FUNCTION" "MIGRATE" "MODULE" "MONITOR" "REPLICAOF" "SLAVEOF" "SHUTDOWN")
+  ))
+  (ne (int (dig "master" "terminationGracePeriodSeconds" 0 .Values.redis)) 30)
+-}}
+  {{- fail "revocation-store requires the exact administrative-command tombstone and a 30-second graceful durable shutdown" -}}
+{{- end -}}
+{{- if or
+  (ne (dig "networkPolicy" "metrics" "allowExternal" true .Values.redis) false)
+  (not (deepEqual
+    (dig "networkPolicy" "metrics" "ingressNSMatchLabels" (dict) .Values.redis)
+    (dict "kubernetes.io/metadata.name" "monitoring")
+  ))
+  (not (deepEqual
+    (dig "networkPolicy" "metrics" "ingressNSPodMatchLabels" (dict) .Values.redis)
+    (dict)
+  ))
+-}}
+  {{- fail "revocation-store restricts metrics ingress to the monitoring namespace" -}}
+{{- end -}}
+{{- $masterSecurity := .Values.redis.master.containerSecurityContext -}}
+{{- $masterPodSecurity := .Values.redis.master.podSecurityContext -}}
+{{- $metricsSecurity := .Values.redis.metrics.containerSecurityContext -}}
+{{- $expectedMasterSecurity := dict
+  "allowPrivilegeEscalation" false
+  "capabilities" (dict "add" (list) "drop" (list "ALL"))
+  "enabled" true
+  "privileged" false
+  "procMount" "Default"
+  "readOnlyRootFilesystem" true
+  "runAsGroup" 1001
+  "runAsNonRoot" true
+  "runAsUser" 1001
+  "seLinuxOptions" (dict)
+  "seccompProfile" (dict "type" "RuntimeDefault")
+-}}
+{{- $expectedMasterPodSecurity := dict
+  "enabled" true
+  "fsGroup" 1001
+  "fsGroupChangePolicy" "OnRootMismatch"
+  "runAsGroup" 1001
+  "runAsNonRoot" true
+  "runAsUser" 1001
+  "seccompProfile" (dict "type" "RuntimeDefault")
+  "supplementalGroups" (list)
+  "sysctls" (list)
+-}}
+{{- $expectedMetricsSecurity := $expectedMasterSecurity -}}
+{{- if or
+  (ne (toJson $masterSecurity) (toJson $expectedMasterSecurity))
+  (ne (toJson $masterPodSecurity) (toJson $expectedMasterPodSecurity))
+  (ne (toJson $metricsSecurity) (toJson $expectedMetricsSecurity))
+-}}
+  {{- fail "revocation-store requires exact restricted master and metrics security contexts" -}}
+{{- end -}}
+{{- $expectedMasterPersistence := dict
+  "accessModes" (list "ReadWriteOnce")
+  "annotations" (dict)
+  "dataSource" (dict)
+  "enabled" true
+  "existingClaim" ""
+  "labels" (dict)
+  "medium" ""
+  "path" "/data"
+  "selector" (dict)
+  "size" "2Gi"
+  "sizeLimit" ""
+  "storageClass" ""
+  "subPath" ""
+  "subPathExpr" ""
+-}}
+{{- $expectedMasterRetention := dict
+  "enabled" true
+  "whenDeleted" "Retain"
+  "whenScaled" "Retain"
+-}}
+{{- $expectedMasterPDB := dict "create" true "maxUnavailable" "" "minAvailable" 1 -}}
+{{- $expectedMasterService := dict
+  "annotations" (dict)
+  "clusterIP" ""
+  "externalIPs" (list)
+  "externalTrafficPolicy" "Cluster"
+  "extraPorts" (list)
+  "internalTrafficPolicy" "Cluster"
+  "loadBalancerClass" ""
+  "loadBalancerIP" ""
+  "loadBalancerSourceRanges" (list)
+  "nodePorts" (dict "redis" "")
+  "portNames" (dict "redis" "tcp-redis")
+  "ports" (dict "redis" 6379)
+  "sessionAffinity" "None"
+  "sessionAffinityConfig" (dict)
+  "type" "ClusterIP"
+-}}
+{{- $expectedMetricsService := dict
+  "annotations" (dict)
+  "clusterIP" ""
+  "enabled" true
+  "externalTrafficPolicy" "Cluster"
+  "extraPorts" (list)
+  "loadBalancerClass" ""
+  "loadBalancerIP" ""
+  "loadBalancerSourceRanges" (list)
+  "ports" (dict "http" 9121)
+  "type" "ClusterIP"
+-}}
+{{- if or
+  (ne (toJson (dig "master" "persistence" (dict) .Values.redis)) (toJson $expectedMasterPersistence))
+  (ne (toJson (dig "master" "persistentVolumeClaimRetentionPolicy" (dict) .Values.redis)) (toJson $expectedMasterRetention))
+  (ne (toJson (dig "master" "pdb" (dict) .Values.redis)) (toJson $expectedMasterPDB))
+  (ne (toJson (dig "master" "service" (dict) .Values.redis)) (toJson $expectedMasterService))
+  (ne (toJson (dig "metrics" "service" (dict) .Values.redis)) (toJson $expectedMetricsService))
+  (dig "master" "hostNetwork" false .Values.redis)
+  (dig "master" "hostPID" false .Values.redis)
+  (dig "master" "hostIPC" false .Values.redis)
+-}}
+  {{- fail "revocation-store requires immutable persistent storage and internal service contracts" -}}
+{{- end -}}
+{{- if or
+  (dig "metrics" "serviceMonitor" "enabled" false .Values.redis)
+  (dig "metrics" "podMonitor" "enabled" false .Values.redis)
+  (dig "metrics" "prometheusRule" "enabled" false .Values.redis)
+  (dig "useExternalDNS" "enabled" false .Values.redis)
+-}}
+  {{- fail "revocation-store forbids monitor CRs and external DNS for the isolated store" -}}
+{{- end -}}
+{{- if or
+  (ne (dig "metrics" "redisTargetHost" "" .Values.redis) "localhost")
+  (ne (int (dig "metrics" "containerPorts" "http" 0 .Values.redis)) 9121)
+  (dig "image" "pullSecrets" (list) .Values.redis)
+  (dig "metrics" "image" "pullSecrets" (list) .Values.redis)
+  (ne (dig "global" "imageRegistry" "" .Values.redis) "")
+  (dig "global" "imagePullSecrets" (list) .Values.redis)
+  (ne (dig "global" "compatibility" "openshift" "adaptSecurityContext" "" .Values.redis) "disabled")
+  (dig "namespaceOverride" "" .Values.redis)
+  (dig "serviceBindings" "enabled" false .Values.redis)
+  (dig "podSecurityPolicy" "create" false .Values.redis)
+  (dig "podSecurityPolicy" "enabled" false .Values.redis)
+  (dig "rbac" "create" false .Values.redis)
+  (dig "rbac" "rules" (list) .Values.redis)
+-}}
+  {{- fail "revocation-store forbids image, namespace, metrics-target, and platform-context substitution" -}}
+{{- end -}}
+{{- if or
+  (not (dig "serviceAccount" "create" false .Values.redis))
+  (dig "serviceAccount" "name" "" .Values.redis)
+  (dig "serviceAccount" "annotations" (dict) .Values.redis)
+  (dig "serviceAccount" "automountServiceAccountToken" true .Values.redis)
+  (not (dig "master" "serviceAccount" "create" false .Values.redis))
+  (dig "master" "serviceAccount" "name" "" .Values.redis)
+  (dig "master" "serviceAccount" "annotations" (dict) .Values.redis)
+  (dig "master" "serviceAccount" "automountServiceAccountToken" true .Values.redis)
+  (dig "commonAnnotations" (dict) .Values.redis)
+-}}
+  {{- fail "revocation-store forbids service-account substitution and unreviewed pod or resource annotations" -}}
+{{- end -}}
+{{- if or
+  (ne (dig "master" "service" "type" "" .Values.redis) "ClusterIP")
+  (ne (int (dig "master" "service" "ports" "redis" 0 .Values.redis)) 6379)
+  (dig "master" "service" "annotations" (dict) .Values.redis)
+  (dig "master" "service" "extraPorts" (list) .Values.redis)
+  (dig "master" "service" "externalIPs" (list) .Values.redis)
+  (dig "master" "service" "loadBalancerIP" "" .Values.redis)
+  (dig "master" "service" "loadBalancerClass" "" .Values.redis)
+  (dig "master" "service" "loadBalancerSourceRanges" (list) .Values.redis)
+  (ne (dig "metrics" "service" "type" "" .Values.redis) "ClusterIP")
+  (ne (int (dig "metrics" "service" "ports" "http" 0 .Values.redis)) 9121)
+  (dig "metrics" "service" "annotations" (dict) .Values.redis)
+  (dig "metrics" "service" "extraPorts" (list) .Values.redis)
+  (not (deepEqual
+    (dig "metrics" "podAnnotations" (dict) .Values.redis)
+    (dict "prometheus.io/scrape" "true" "prometheus.io/port" "9121")
+  ))
+-}}
+  {{- fail "revocation-store services must remain internal and expose only reviewed ports" -}}
+{{- end -}}
+{{- if or
+  (dig "tls" "enabled" false .Values.redis)
+  (dig "sentinel" "enabled" false .Values.redis)
+-}}
+  {{- fail "revocation-store uses exactly one standalone master without unreviewed TLS, sentinel, or replica topology" -}}
+{{- end -}}
+{{- if or
+  (ne .Values.redis.image.registry "docker.io")
+  (ne .Values.redis.image.repository "bitnami/redis")
+  (ne .Values.redis.image.pullPolicy "Always")
+  (ne .Values.redis.metrics.image.registry "docker.io")
+  (ne .Values.redis.metrics.image.repository "bitnami/redis-exporter")
+  (ne .Values.redis.metrics.image.pullPolicy "Always")
+-}}
+  {{- fail "revocation-store images must remain pinned to the reviewed Bitnami repositories" -}}
+{{- end -}}

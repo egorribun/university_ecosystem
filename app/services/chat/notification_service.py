@@ -131,7 +131,7 @@ class ChatNotificationService:
                     url=f"/messenger/{message.chat_id}",
                     tag=f"chat:{message.chat_id}",
                     user_ids=other_participants,
-                    topic="chat",
+                    topic="chat.message.created",
                     payload_data={
                         # HIGH-W19: wrap UUID fields with str() to avoid JSON
                         # serialization errors — UUID is not natively JSON-serialisable.
@@ -156,7 +156,7 @@ class ChatNotificationService:
                     tag=f"chat-reply:{replied.id}",
                     dedupe_key=f"chat-reply:{message.id}",
                     user_ids=[replied.sender_id],
-                    topic="chat",
+                    topic="chat.message.created",
                     payload_data={
                         "chatId": str(message.chat_id),
                         "repliedToMessageId": str(replied.id),

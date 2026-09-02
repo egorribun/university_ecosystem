@@ -37,7 +37,7 @@ interface PageErrorBoundaryState {
 }
 
 /** Fallback UI for page errors */
-function PageErrorFallback({
+export function PageErrorFallback({
   error,
   onRetry,
   onGoHome,
@@ -62,12 +62,8 @@ function PageErrorFallback({
       className="flex min-h-(--h-hero-sm) flex-col items-center justify-center gap-6 p-8 text-center"
     >
       <div className="max-w-[28rem]">
-        <h1 className="mb-2 text-2xl font-bold text-text-primary">
-          {t("system:pageError.title", "Page Error")}
-        </h1>
-        <p className="text-text-primary/(--opacity-strong)">
-          {t("system:pageError.description", "Something went wrong loading this page.")}
-        </p>
+        <h1 className="mb-2 text-2xl font-bold text-text-primary">{t("system:pageError.title")}</h1>
+        <p className="text-text-primary/(--opacity-strong)">{t("system:pageError.description")}</p>
         {import.meta.env.DEV && error && (
           <details className="mt-4 text-left">
             <summary className="cursor-pointer text-sm text-text-primary/(--opacity-medium)">
@@ -113,14 +109,14 @@ function PageErrorFallback({
           onClick={onRetry}
           className="rounded-full bg-(--primary-main) px-6 py-2 font-medium text-white transition-opacity hover:opacity-strong"
         >
-          {t("system:pageError.retry", "Try Again")}
+          {t("system:pageError.retry")}
         </button>
         <button
           type="button"
           onClick={onGoHome}
           className="rounded-full border border-(--text-primary)/(--opacity-soft) px-6 py-2 font-medium text-text-primary transition-colors hover:bg-(--glass-bg)"
         >
-          {t("system:pageError.home", "Go Home")}
+          {t("system:pageError.home")}
         </button>
       </div>
     </div>
@@ -151,7 +147,7 @@ interface PageErrorBoundaryClassProps extends PageErrorBoundaryProps {
 }
 
 /** Class component for error catching */
-class PageErrorBoundaryClass extends Component<
+export class PageErrorBoundaryClass extends Component<
   PageErrorBoundaryClassProps,
   PageErrorBoundaryState
 > {

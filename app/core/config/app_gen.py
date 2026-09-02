@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import cached_property
+from typing import Literal, cast
 
 from pydantic import ValidationInfo, field_validator
 
@@ -12,9 +13,26 @@ _VALID_ENVIRONMENTS: frozenset[str] = frozenset(
     _DEVELOPMENT_ENVIRONMENTS | frozenset({"staging", "production"})
 )
 
+# A process may only opt out of the security-state Redis capability when it is
+# one of the explicitly reviewed, non-authentication workers.  Keeping this
+# allowlist here (rather than treating a missing URL as an implicit opt-out)
+# makes production configuration fail closed for the API and migration paths.
+AppProcessRole = Literal["api", "outbox-worker", "notifications-worker"]
+REVOCATION_REDIS_DISABLED_PROCESS_ROLES: frozenset[str] = frozenset(
+    {"outbox-worker", "notifications-worker"}
+)
+_VALID_APP_PROCESS_ROLES: frozenset[str] = frozenset(
+    {"api", *REVOCATION_REDIS_DISABLED_PROCESS_ROLES}
+)
+
 
 class AppGeneralSettings(BaseAppSettings):
     environment: str = "development"
+    # The deployment manifests set these explicitly for background workers.
+    # API/migration processes retain the secure defaults and therefore cannot
+    # start with the revocation capability silently disabled.
+    app_process_role: AppProcessRole = "api"
+    revocation_redis_access_enabled: bool = True
     auto_create_schema: bool | None = None
     attendance_token_secret: str = ""
     attendance_token_ttl_seconds: int = 300
@@ -90,6 +108,19 @@ class AppGeneralSettings(BaseAppSettings):
                 f"Accepted values: {sorted(_VALID_ENVIRONMENTS)}"
             )
         return normalized
+
+    @field_validator("app_process_role", mode="before")
+    @classmethod
+    def _validate_app_process_role(cls, value: object) -> AppProcessRole:
+        """Normalize the closed process-role allowlist before model validation."""
+
+        normalized = str(value).strip().lower()
+        if normalized not in _VALID_APP_PROCESS_ROLES:
+            raise ValueError(
+                "APP_PROCESS_ROLE must be one of: "
+                f"{', '.join(sorted(_VALID_APP_PROCESS_ROLES))}"
+            )
+        return cast(AppProcessRole, normalized)
 
     @field_validator("auto_create_schema", mode="before")
     @classmethod

@@ -1,10 +1,10 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { http, HttpResponse } from "msw"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { axe } from "jest-axe"
 
-import Register from "../Register"
+import Register, { resolveRegistrationEmailErrorKey } from "../Register"
 import api from "@/api/client"
 import { server } from "@/tests/mocks/server"
 import i18n from "../../i18n/config"
@@ -16,17 +16,34 @@ const matchText = (text: string) => (content: string) => content.startsWith(text
 const passwordAnalysis = vi.hoisted(() => ({
   mode: "normal" as "normal" | "throw" | "unknown",
   calls: 0,
+  constructors: 0,
+  deferred: false,
+  pending: [] as Array<{
+    password: string
+    resolve: (result: { score: number }) => void
+    reject: (error: unknown) => void
+  }>,
 }))
 
 vi.mock("@zxcvbn-ts/core", () => ({
-  zxcvbnOptions: { setOptions: vi.fn() },
-  zxcvbn: () => {
-    passwordAnalysis.calls += 1
-    if (passwordAnalysis.mode === "throw") throw new Error("analysis unavailable")
-    return { score: passwordAnalysis.mode === "unknown" ? 99 : 3 }
+  ZxcvbnFactory: class {
+    constructor() {
+      passwordAnalysis.constructors += 1
+    }
+
+    check(password: string) {
+      passwordAnalysis.calls += 1
+      if (passwordAnalysis.mode === "throw") throw new Error("analysis unavailable")
+      if (passwordAnalysis.deferred) {
+        return new Promise<{ score: number }>((resolve, reject) => {
+          passwordAnalysis.pending.push({ password, resolve, reject })
+        })
+      }
+      return { score: passwordAnalysis.mode === "unknown" ? 99 : 3 }
+    }
   },
 }))
-vi.mock("@zxcvbn-ts/language-common", () => ({}))
+vi.mock("@zxcvbn-ts/language-common", () => ({ adjacencyGraphs: {}, dictionary: {} }))
 
 const renderRegister = () =>
   renderWithRouter({
@@ -40,6 +57,52 @@ describe("Register page", () => {
   beforeEach(() => {
     passwordAnalysis.mode = "normal"
     passwordAnalysis.calls = 0
+    passwordAnalysis.constructors = 0
+    passwordAnalysis.deferred = false
+    passwordAnalysis.pending = []
+  })
+
+  it("uses the i18n language when no resolved language is available", async () => {
+    const resolvedLanguage = i18n.resolvedLanguage
+    i18n.resolvedLanguage = undefined
+    try {
+      await renderRegister()
+      expect(screen.getByRole("button", { name: tAuth("actions.signUp") })).toBeInTheDocument()
+    } finally {
+      i18n.resolvedLanguage = resolvedLanguage
+    }
+  })
+
+  it("provides a stable fallback key for missing email validation messages", () => {
+    expect(resolveRegistrationEmailErrorKey(undefined)).toBe("auth:messages.invalidFormat")
+    expect(resolveRegistrationEmailErrorKey("")).toBe("auth:messages.invalidFormat")
+    expect(resolveRegistrationEmailErrorKey("custom.message")).toBe("custom.message")
+  })
+
+  it("does not translate the form entrance when reduced motion is requested", async () => {
+    const matchMedia = vi.spyOn(window, "matchMedia").mockImplementation(
+      (query) =>
+        ({
+          matches: query === "(prefers-reduced-motion: reduce)",
+          media: query,
+          onchange: null,
+          addEventListener: vi.fn(),
+          removeEventListener: vi.fn(),
+          addListener: vi.fn(),
+          removeListener: vi.fn(),
+          dispatchEvent: vi.fn(),
+        }) as unknown as MediaQueryList
+    )
+
+    try {
+      await renderRegister()
+      const entrance = screen
+        .getByRole("button", { name: tAuth("actions.signUp") })
+        .closest("form")?.parentElement
+      expect(entrance?.getAttribute("style") ?? "").not.toMatch(/translate/i)
+    } finally {
+      matchMedia.mockRestore()
+    }
   })
 
   it("surfaces API error messages", async () => {
@@ -155,9 +218,16 @@ describe("Register page", () => {
     })
 
     for (const button of revealButtons) {
-      fireEvent.mouseDown(button)
-      fireEvent.mouseUp(button)
-      fireEvent.mouseLeave(button)
+      expect(button).toHaveClass("min-h-11", "min-w-11")
+    }
+
+    await user.click(revealButtons[0]!)
+    expect(
+      screen.getByRole("button", { name: tAuth("actions.hideCredential") })
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: tAuth("actions.hideCredential") }))
+
+    for (const button of revealButtons) {
       fireEvent.click(button)
       fireEvent.click(button)
     }
@@ -184,6 +254,67 @@ describe("Register page", () => {
     await waitFor(() => {
       expect(document.querySelector('[style*="width"]')).toBeInTheDocument()
     })
+  })
+
+  it("reuses the password analyzer across password changes", async () => {
+    await renderRegister()
+    const passwordInput = screen.getByLabelText(matchText(tAuth("fields.password")))
+
+    fireEvent.change(passwordInput, { target: { value: "first-password" } })
+    await waitFor(() => expect(passwordAnalysis.calls).toBeGreaterThan(0))
+    fireEvent.change(passwordInput, { target: { value: "second-password" } })
+    await waitFor(() => expect(passwordAnalysis.calls).toBeGreaterThan(1))
+
+    expect(passwordAnalysis.constructors).toBeLessThanOrEqual(1)
+  })
+
+  it("keeps the newest password score when an older analysis resolves last", async () => {
+    passwordAnalysis.deferred = true
+    await renderRegister()
+    const passwordInput = screen.getByLabelText(matchText(tAuth("fields.password")))
+    const olderInputValue = "older-input-value"
+    const newerInputValue = "newer-input-value"
+
+    fireEvent.change(passwordInput, { target: { value: olderInputValue } })
+    await waitFor(() =>
+      expect(passwordAnalysis.pending.some(({ password }) => password === olderInputValue)).toBe(
+        true
+      )
+    )
+    fireEvent.change(passwordInput, { target: { value: newerInputValue } })
+    await waitFor(() =>
+      expect(passwordAnalysis.pending.some(({ password }) => password === newerInputValue)).toBe(
+        true
+      )
+    )
+
+    const older = passwordAnalysis.pending.find(({ password }) => password === olderInputValue)!
+    const newer = passwordAnalysis.pending.find(({ password }) => password === newerInputValue)!
+    await act(async () => newer.resolve({ score: 4 }))
+    expect(screen.getByText(tAuth("register.passwordStrengthLevel.excellent"))).toBeInTheDocument()
+
+    await act(async () => older.resolve({ score: 0 }))
+    expect(screen.getByText(tAuth("register.passwordStrengthLevel.excellent"))).toBeInTheDocument()
+    expect(
+      screen.queryByText(tAuth("register.passwordStrengthLevel.veryWeak"))
+    ).not.toBeInTheDocument()
+  })
+
+  it("keeps the newest password score when an older analysis rejects last", async () => {
+    passwordAnalysis.deferred = true
+    await renderRegister()
+    const passwordInput = screen.getByLabelText(matchText(tAuth("fields.password")))
+
+    fireEvent.change(passwordInput, { target: { value: "older-input-value" } })
+    await waitFor(() => expect(passwordAnalysis.pending).toHaveLength(1))
+    fireEvent.change(passwordInput, { target: { value: "newer-input-value" } })
+    await waitFor(() => expect(passwordAnalysis.pending).toHaveLength(2))
+
+    await act(async () => passwordAnalysis.pending[1]!.resolve({ score: 4 }))
+    expect(screen.getByText(tAuth("register.passwordStrengthLevel.excellent"))).toBeInTheDocument()
+    await act(async () => passwordAnalysis.pending[0]!.reject(new Error("stale analysis")))
+
+    expect(screen.getByText(tAuth("register.passwordStrengthLevel.excellent"))).toBeInTheDocument()
   })
 
   it("hides password strength when analysis fails", async () => {
@@ -221,13 +352,16 @@ describe("Register page", () => {
 
   it("omits optional password labels when translations are unavailable", async () => {
     const translationSpy = vi.spyOn(i18n, "t").mockReturnValue(undefined as never)
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined)
 
     try {
       await renderRegister()
 
       expect(document.querySelectorAll("button[aria-label]")).toHaveLength(0)
       expect(document.querySelectorAll("button[title]")).toHaveLength(0)
+      expect(consoleError).not.toHaveBeenCalled()
     } finally {
+      consoleError.mockRestore()
       translationSpy.mockRestore()
     }
   })
@@ -296,10 +430,24 @@ describe("Register page", () => {
 
     await user.click(screen.getByRole("button", { name: tAuth("actions.signUp") }))
 
-    expect(await screen.findByText("Name must be at least 2 characters")).toBeInTheDocument()
-    expect(screen.getByText("Invalid email address")).toBeInTheDocument()
-    expect(screen.getByText("Password must be at least 8 characters")).toBeInTheDocument()
-    expect(screen.getByText("Please confirm your password")).toBeInTheDocument()
+    const nameError = await screen.findByText("Name must be at least 2 characters")
+    const emailError = screen.getByText("Invalid email address")
+    const passwordError = screen.getByText("Password must be at least 8 characters")
+    const confirmError = screen.getByText("Please confirm your password")
+
+    const name = screen.getByLabelText(matchText(tAuth("fields.name")))
+    const email = screen.getByLabelText(matchText(tAuth("fields.email")))
+    const password = screen.getByLabelText(matchText(tAuth("fields.password")))
+    const confirm = screen.getByLabelText(matchText(tAuth("fields.confirmPassword")))
+
+    expect(name.closest("form")).toHaveAttribute("autocomplete", "on")
+    expect(name).toHaveAttribute("aria-describedby", nameError.id)
+    expect(email).toHaveAttribute("aria-describedby", emailError.id)
+    expect(password).toHaveAttribute("aria-describedby", expect.stringContaining(passwordError.id))
+    expect(confirm).toHaveAttribute("aria-describedby", confirmError.id)
+    for (const error of [nameError, emailError, passwordError, confirmError]) {
+      expect(error).toHaveAttribute("role", "alert")
+    }
   })
 
   it("passes automated accessibility checks", async () => {

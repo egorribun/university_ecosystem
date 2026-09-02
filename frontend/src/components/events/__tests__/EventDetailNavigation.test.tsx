@@ -2,11 +2,15 @@ import type { ReactNode } from "react"
 import { render, screen } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
 
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
+const { useTranslationMock } = vi.hoisted(() => ({
+  useTranslationMock: vi.fn(() => ({
     t: (key: string) => key,
     i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  })),
+}))
+
+vi.mock("react-i18next", () => ({
+  useTranslation: useTranslationMock,
 }))
 vi.mock("@tanstack/react-router", () => ({
   Link: ({
@@ -50,6 +54,7 @@ describe("EventDetailNavigation", () => {
     expect(links).toHaveLength(2)
     expect(links[0]!).toHaveAttribute("href", "/events/$id/prev-1")
     expect(links[1]!).toHaveAttribute("href", "/events/$id/next-1")
+    expect(useTranslationMock).toHaveBeenCalledWith(["events"])
   })
 
   it("renders only the prev link when nextId is null", () => {

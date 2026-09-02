@@ -130,13 +130,10 @@
     --sched-empty-bg: color-mix(in srgb, var(--color-slate-200) 20%, transparent);
     --sched-empty-border: color-mix(in srgb, var(--color-slate-300) 20%, transparent);
 
-    /* ── On-accent text — theme-aware (Wave 116 polish): white on bg-brand
-         in LIGHT (blue-600 → 4.56:1) but dark-mode bg-brand is sky-400
-         (#38bdf8) and white there produces 2.14:1 (fails WCAG AA). Use the
-         global --text-inverse which flips to slate-950 in dark → 9.9:1 on
-         sky-400. Supersedes the original FIX-67-03 "intentional white"
-         note: the intent was contrast on colored bg, which this preserves. */
-    --sched-on-accent: var(--text-inverse);
+    /* ── On-accent text — the solid blue-600 brand surface is shared by
+         light and dark themes. White provides 5.17:1 contrast for badges,
+         controls, and the current-day marker in both modes. */
+    --sched-on-accent: white;
 
     /* ── Heat map tokens (FIX-72-03: tokenized for reuse, was inline in class rules) ── */
     --sched-heat-light-bg: color-mix(in srgb, var(--color-emerald-400) 5%, transparent);
@@ -213,10 +210,11 @@
     --sched-empty-bg: color-mix(in srgb, var(--color-slate-700) 15%, transparent);
     --sched-empty-border: color-mix(in srgb, var(--color-slate-600) 15%, transparent);
 
-    /* Wave 116 polish — theme-aware (see light-mode block above at :root scope).
-       Dark-mode bg-brand is sky-400 (#38bdf8), so white (2.14:1) fails WCAG AA.
-       --text-inverse in dark mode resolves to slate-950 → 9.9:1 on sky-400. */
-    --sched-on-accent: var(--text-inverse);
+    /* Keep the foreground explicit: dark mode's brand surface is still the
+       blue-600 token in the rendered schedule shell (WCAG AA 5.17:1). Using
+       --text-inverse here would resolve to slate-950 and regress Lighthouse
+       color-contrast on the today badge. */
+    --sched-on-accent: white;
 
     /* FIX-72-03: dark heat map tokens — increased opacity for visibility */
     --sched-heat-light-bg: color-mix(in srgb, var(--color-emerald-400) 8%, transparent);
@@ -1347,12 +1345,12 @@
 
 /* Urgency mode — last 5 minutes: red glow + colon bounce (FIX-68-17) */
 .sched-flip-countdown[data-urgent] .sched-flip-digit {
-  box-shadow: 0 0 12px color-mix(in srgb, var(--color-error) 40%, transparent);
-  border-color: color-mix(in srgb, var(--color-error) 30%, var(--glass-border));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--error-text) 40%, transparent);
+  border-color: color-mix(in srgb, var(--error-text) 30%, var(--glass-border));
 }
 
 .sched-flip-countdown[data-urgent] .sched-flip-colon {
-  color: var(--color-error);
+  color: var(--error-text);
   animation: sched-colon-bounce 0.6s ease-in-out infinite;
 }
 

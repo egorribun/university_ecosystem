@@ -73,6 +73,7 @@
     "imageSelected": "Image selected",
     "start": "Start",
     "end": "End",
+    "dates": "Event dates",
     "errors": {
       "titleRequired": "Title is required",
       "startRequired": "Start time is required",

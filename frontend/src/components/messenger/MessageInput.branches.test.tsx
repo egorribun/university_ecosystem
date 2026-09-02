@@ -34,8 +34,8 @@ vi.mock("react-i18next", () => ({
 }))
 
 vi.mock("@/components/media/SmartImage", () => ({
-  default: ({ alt, className }: { alt?: string; className?: string }) => (
-    <img alt={alt} className={className} />
+  default: ({ alt, className, srcRaw }: { alt?: string; className?: string; srcRaw?: string }) => (
+    <img alt={alt} className={className} src={srcRaw} />
   ),
 }))
 
@@ -178,6 +178,12 @@ describe("MessageInput branch coverage", () => {
       const img = new File(["<svg xmlns='http://www.w3.org/2000/svg'></svg>"], "tricky.png", {
         type: "image/png",
       })
+      const unreadablePrefix = new Blob([])
+      Object.defineProperty(unreadablePrefix, "text", {
+        configurable: true,
+        value: vi.fn().mockRejectedValue(new Error("unreadable image prefix")),
+      })
+      vi.spyOn(img, "slice").mockReturnValue(unreadablePrefix)
       setFiles(fileInput, [img])
 
       await act(async () => {
@@ -342,6 +348,130 @@ describe("MessageInput branch coverage", () => {
 
       act(() => resetAlert?.())
       expect(screen.queryByRole("alert")).toBeNull()
+    })
+  })
+
+  describe("composer contract boundaries", () => {
+    it("keeps the send action disabled for whitespace-only text", () => {
+      const onSend = vi.fn()
+      render(<MessageInput onSend={onSend} />)
+      const textarea = screen.getByRole("textbox", { name: "messenger:typeMessage" })
+      const sendButton = screen.getByRole("button", { name: "messenger:aria.sendMessage" })
+
+      fireEvent.change(textarea, { target: { value: "   \n  " } })
+      expect(sendButton).toBeDisabled()
+      fireEvent.click(sendButton)
+      expect(onSend).not.toHaveBeenCalled()
+    })
+
+    it("sends an attachment without text and clears the attachment state", async () => {
+      const onSend = vi.fn()
+      const { container } = render(<MessageInput onSend={onSend} />)
+      const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+      const pdf = new File(["%PDF-1.4"], "document.pdf", { type: "application/pdf" })
+      setFiles(fileInput, [pdf])
+
+      await act(async () => {
+        fireEvent.change(fileInput)
+      })
+
+      const sendButton = screen.getByRole("button", { name: "messenger:aria.sendMessage" })
+      expect(sendButton).not.toBeDisabled()
+      fireEvent.click(sendButton)
+
+      expect(onSend).toHaveBeenCalledWith("", [pdf])
+      expect(screen.queryByRole("button", { name: "messenger:aria.removeAttachment" })).toBeNull()
+      expect(sendButton).toBeDisabled()
+      expect(revokeObjectURLSpy).toHaveBeenCalledWith("blob:mock-1")
+    })
+
+    it("assigns stable IDs to duplicate files so removing one keeps the other", async () => {
+      const { container } = render(<MessageInput onSend={() => {}} />)
+      const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+      const duplicateA = new File(["same"], "duplicate.png", { type: "image/png" })
+      const duplicateB = new File(["same"], "duplicate.png", { type: "image/png" })
+      setFiles(fileInput, [duplicateA, duplicateB])
+
+      await act(async () => {
+        fireEvent.change(fileInput)
+      })
+      const removeButtons = screen.getAllByRole("button", {
+        name: "messenger:aria.removeAttachment",
+      })
+      expect(removeButtons).toHaveLength(2)
+
+      fireEvent.click(removeButtons[0]!)
+      expect(
+        screen.getAllByRole("button", { name: "messenger:aria.removeAttachment" })
+      ).toHaveLength(1)
+      expect(revokeObjectURLSpy).toHaveBeenCalledTimes(1)
+    })
+
+    it("rejects SVG markup without an XML declaration during image content sniffing", async () => {
+      const { container } = render(<MessageInput onSend={() => {}} />)
+      const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+      const image = new File(["not-used"], "vector.png", { type: "image/png" })
+      const sniffBlob = new Blob([])
+      Object.defineProperty(sniffBlob, "text", {
+        configurable: true,
+        value: vi.fn().mockResolvedValue('\n <svg viewBox="0 0 1 1">'),
+      })
+      vi.spyOn(image, "slice").mockReturnValue(sniffBlob)
+      setFiles(fileInput, [image])
+
+      await act(async () => {
+        fireEvent.change(fileInput)
+      })
+
+      expect(screen.getByRole("alert")).toHaveTextContent("messenger:svgNotAllowed")
+      expect(createObjectURLSpy).not.toHaveBeenCalled()
+    })
+
+    it("accepts ordinary image text when SVG markup is not at the beginning", async () => {
+      const { container } = render(<MessageInput onSend={() => {}} />)
+      const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+      const image = new File(["not-used"], "raster.png", { type: "image/png" })
+      const sniffBlob = new Blob([])
+      Object.defineProperty(sniffBlob, "text", {
+        configurable: true,
+        value: vi.fn().mockResolvedValue('PNG header bytes <svg viewBox="0 0 1 1">'),
+      })
+      vi.spyOn(image, "slice").mockReturnValue(sniffBlob)
+      setFiles(fileInput, [image])
+
+      await act(async () => {
+        fireEvent.change(fileInput)
+      })
+
+      expect(screen.queryByRole("alert")).toBeNull()
+      expect(createObjectURLSpy).toHaveBeenCalledWith(image)
+    })
+
+    it("does not call onTyping or alter the value when the code-point limit is exceeded", () => {
+      const onTyping = vi.fn()
+      render(<MessageInput onSend={() => {}} onTyping={onTyping} />)
+      const textarea = screen.getByRole("textbox", {
+        name: "messenger:typeMessage",
+      }) as HTMLTextAreaElement
+      const limit = "😀".repeat(32_768)
+
+      fireEvent.change(textarea, { target: { value: limit } })
+      fireEvent.change(textarea, { target: { value: `${limit}😀` } })
+
+      expect(textarea.value).toBe(limit)
+      expect(onTyping).toHaveBeenCalledTimes(1)
+    })
+
+    it("allows the reply cancel control to be clicked when no callback is supplied", () => {
+      render(
+        <MessageInput
+          onSend={() => {}}
+          replyingTo={{ senderName: "Alice", isMe: false, text: "quoted" }}
+        />
+      )
+      expect(() =>
+        fireEvent.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+      ).not.toThrow()
     })
   })
 })

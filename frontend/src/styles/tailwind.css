@@ -180,9 +180,6 @@
   --color-notif-badge: var(--notif-badge);
 
   /* Animations — Wave 51 */
-  --animate-pill-breathe: pill-breathe 6s ease-in-out infinite;
-  --animate-logo-shimmer: logo-shimmer 1.5s ease-in-out 1;
-  --animate-nav-glow-pulse: nav-link-glow-pulse 4s ease-in-out infinite;
   --animate-nav-bar-enter: nav-bar-enter 0.4s var(--ease-premium) both;
   --animate-nav-dot-enter: nav-dot-enter 0.3s var(--ease-premium) both;
 
@@ -458,39 +455,6 @@
   }
 }
 
-/* Wave 51: Morphing Navbar keyframes */
-@keyframes pill-breathe {
-  0%,
-  100% {
-    box-shadow: var(--pill-shadow), var(--pill-inner-glow);
-  }
-
-  50% {
-    box-shadow: var(--pill-shadow-breathe), var(--pill-inner-glow);
-  }
-}
-
-@keyframes logo-shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-
-  100% {
-    background-position: 200% 0;
-  }
-}
-
-@keyframes nav-link-glow-pulse {
-  0%,
-  100% {
-    box-shadow: 0 0 8px var(--nav-active-glow);
-  }
-
-  50% {
-    box-shadow: 0 0 16px var(--nav-active-glow);
-  }
-}
-
 @keyframes nav-bar-enter {
   0% {
     transform: scaleX(0);
@@ -516,9 +480,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-pill-breathe,
-  .animate-logo-shimmer,
-  .animate-nav-glow-pulse,
   .animate-nav-bar-enter,
   .animate-nav-dot-enter {
     animation: none !important;
@@ -541,13 +502,11 @@
   transition:
     background 200ms var(--ease-premium),
     border-color 200ms var(--ease-premium),
-    box-shadow 200ms var(--ease-premium),
     transform 200ms var(--ease-premium);
 }
 .nav-action-btn:hover {
   background: color-mix(in srgb, var(--bg-surface-hover) var(--opacity-dim), transparent);
   border-color: color-mix(in srgb, var(--brand-main) var(--opacity-soft), transparent);
-  box-shadow: var(--shadow-sm);
 }
 .nav-action-btn:active {
   transform: scale(0.93);
@@ -567,37 +526,10 @@
   height: calc(var(--nav-action-icon) * 1.12);
 }
 
-/* Unread state — subtle brand glow on the button itself */
+/* Unread state — persistent, non-animated brand cue. */
 .nav-action-btn[data-unread] {
   border-color: color-mix(in srgb, var(--brand-main) var(--opacity-soft), transparent);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--brand-main) var(--opacity-faint), transparent),
-    var(--shadow-xs);
-}
-
-/* Bell wiggle on hover — playful micro-interaction */
-@keyframes bell-wiggle {
-  0% {
-    transform: rotate(0deg);
-  }
-  20% {
-    transform: rotate(12deg);
-  }
-  40% {
-    transform: rotate(-10deg);
-  }
-  60% {
-    transform: rotate(6deg);
-  }
-  80% {
-    transform: rotate(-3deg);
-  }
-  100% {
-    transform: rotate(0deg);
-  }
-}
-.nav-action-btn:hover .bell-wiggle {
-  animation: bell-wiggle 0.5s ease-in-out;
+  background: color-mix(in srgb, var(--brand-main) var(--opacity-faint), transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -606,9 +538,6 @@
   .nav-action-btn:active {
     transition-duration: 0ms;
     transform: none;
-  }
-  .nav-action-btn:hover .bell-wiggle {
-    animation: none;
   }
 }
 
@@ -630,7 +559,6 @@
     color 0.25s,
     background 0.25s,
     border-color 0.25s,
-    box-shadow 0.25s,
     transform 0.15s;
 }
 
@@ -646,34 +574,27 @@
 
 .nav-link-premium[data-active] {
   color: var(--text-primary);
-  background-image: var(--nav-capsule-bg);
-  border-top-color: var(--nav-capsule-border-top);
-  border-left-color: var(--nav-capsule-border-side);
-  border-right-color: var(--nav-capsule-border-side);
-  border-bottom-color: var(--nav-capsule-border-bottom);
-  box-shadow: var(--nav-capsule-shadow);
-}
-
-/* Specular highlight — top-edge radial glare like iOS glass */
-.nav-link-premium[data-active]::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--nav-capsule-specular);
-  pointer-events: none;
-  z-index: 1;
-}
-
-@supports (backdrop-filter: blur(1px)) {
-  .nav-link-premium[data-active] {
-    backdrop-filter: blur(16px) saturate(1.5);
-    -webkit-backdrop-filter: blur(16px) saturate(1.5);
-  }
+  background: var(--nav-hover-bg);
+  border-color: var(--nav-hover-border);
 }
 
 .nav-link-premium[data-active]:hover {
   transform: none;
+}
+
+/*
+ * The SSR navbar intentionally renders the desktop branch before the client
+ * knows the viewport. At phone widths, hide only those desktop-only pieces so
+ * the unhydrated shell cannot overlap its 44px touch targets. Hydration then
+ * replaces them with the mobile actions/drawer branch.
+ */
+@media (max-width: 767px) {
+  .vt-navbar .navbar-desktop-nav,
+  .vt-navbar .navbar-brand-name,
+  .vt-navbar .navbar-user-name,
+  .vt-navbar .navbar-desktop-overflow {
+    display: none;
+  }
 }
 
 /* Wave 51: Mobile drawer nav link */
@@ -688,7 +609,11 @@
   letter-spacing: -0.025em;
   color: var(--text-secondary);
   text-decoration: none;
-  transition: all 0.2s;
+  transition:
+    color 0.2s,
+    background-color 0.2s,
+    border-color 0.2s,
+    transform 0.15s;
 }
 
 .mobile-nav-link:hover {
@@ -699,20 +624,8 @@
 .mobile-nav-link[data-active] {
   position: relative;
   color: var(--text-primary);
-  background-image: var(--nav-capsule-bg);
-  border: 1px solid var(--nav-capsule-border-side);
-  border-top-color: var(--nav-capsule-border-top);
-  border-bottom-color: var(--nav-capsule-border-bottom);
-  box-shadow: var(--nav-capsule-shadow);
-}
-
-.mobile-nav-link[data-active]::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: var(--nav-capsule-specular);
-  pointer-events: none;
+  background: var(--nav-hover-bg);
+  border: 1px solid var(--nav-hover-border);
 }
 
 .mobile-nav-link-icon {
@@ -748,23 +661,6 @@
 
   .dark & {
     background: var(--bg-nav-dark);
-  }
-}
-
-/* Wave 51: Navbar pill glass surface (premium) */
-@utility navbar-pill-glass {
-  background: var(--pill-bg);
-  border: 1px solid var(--pill-border);
-  box-shadow: var(--pill-shadow), var(--pill-inner-glow);
-  animation: pill-breathe 6s ease-in-out infinite;
-
-  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
-    backdrop-filter: blur(24px) saturate(1.4);
-    -webkit-backdrop-filter: blur(24px) saturate(1.4);
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    animation: none;
   }
 }
 

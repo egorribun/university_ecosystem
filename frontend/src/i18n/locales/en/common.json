@@ -8,6 +8,51 @@
   "ariaCurrentLessonProgress": "Progress of the current lesson",
   "active": "Active",
   "inactive": "Inactive",
+  "loading": "Loading…",
+  "prev": "Previous",
+  "today": "Today",
+  "next": "Next",
+  "sync": {
+    "offline": "Offline ({{count}} queued)",
+    "online": "All synced"
+  },
+  "time": {
+    "minuteShort": "min"
+  },
+  "search": {
+    "title": "Search",
+    "placeholder": "Search…",
+    "inputLabel": "Search the application",
+    "clear": "Clear search",
+    "recent": "Recent searches",
+    "noResults": "No matching results",
+    "hint": "Use the arrow keys to navigate",
+    "navigate": "Navigate",
+    "select": "Select"
+  },
+  "ai": {
+    "summaryBadge": "AI summary",
+    "showLess": "Show less",
+    "readMore": "Read more"
+  },
+  "theme": {
+    "switchToLight": "Switch to light theme",
+    "switchToDark": "Switch to dark theme"
+  },
+  "strength": {
+    "very_weak": "Very weak",
+    "weak": "Weak",
+    "medium": "Medium",
+    "strong": "Strong",
+    "very_strong": "Very strong"
+  },
+  "notifications": {
+    "relevance": {
+      "high": "High relevance",
+      "medium": "Medium relevance",
+      "low": "Low relevance"
+    }
+  },
   "buttons": {
     "save": "Save",
     "cancel": "Cancel",
@@ -25,7 +70,9 @@
     "changePhoto": "Change photo",
     "loadMore": "Load more",
     "backToTop": "Back to top",
-    "close": "Close"
+    "close": "Close",
+    "saving": "Saving…",
+    "submit": "Submit"
   },
   "statuses": {
     "loading": "Loading…",
@@ -65,7 +112,15 @@
     "removeBookmark": "Remove bookmark",
     "loadingProfile": "Loading profile",
     "loadingSchedule": "Loading schedule",
-    "loadingUserMenu": "Loading user menu"
+    "loadingUserMenu": "Loading user menu",
+    "loadingGreeting": "Loading greeting",
+    "loadingTime": "Loading time",
+    "loadingWeather": "Loading weather",
+    "loadingDate": "Loading date",
+    "loadingStory": "Loading story",
+    "loadingAvatar": "Loading avatar",
+    "loadingName": "Loading name",
+    "loadingSubject": "Loading subject"
   },
   "cta": {
     "learnMore": "Learn more"

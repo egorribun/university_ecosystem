@@ -5,6 +5,7 @@ import { Button } from "@/components/ui"
 import { cn } from "@/utils/cn"
 import api from "@/api/client"
 import { logError } from "@/app/logger"
+import { captureActiveTelemetryContext } from "@/utils/telemetryContext"
 import type { Event } from "@/types/Event"
 
 interface EventAboutEditorProps {
@@ -28,15 +29,17 @@ export function EventAboutEditor({
   onSuccess,
 }: EventAboutEditorProps) {
   const { t } = useTranslation(["events", "common"])
-  const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState("")
-  const [saving, setSaving] = useState(false)
-  const sectionRef = useRef<HTMLHeadingElement | null>(null)
-
   const baseline = useMemo(
     () => (language === "en" ? (event.about_en ?? "") : (event.about ?? "")),
     [language, event.about_en, event.about]
   )
+  const [editing, setEditing] = useState(false)
+  // Initialise the draft from the current localized value.  Editing still
+  // refreshes it from `baseline`, but deriving the initial value avoids an
+  // unreachable magic placeholder and keeps state safe for the first render.
+  const [draft, setDraft] = useState(baseline)
+  const [saving, setSaving] = useState(false)
+  const sectionRef = useRef<HTMLHeadingElement | null>(null)
 
   const handleEdit = () => {
     setDraft(baseline)
@@ -49,14 +52,21 @@ export function EventAboutEditor({
   }
 
   const handleSave = async () => {
+    const telemetryContext = captureActiveTelemetryContext()
     setSaving(true)
     try {
       const payloadKey = language === "en" ? "about_en" : "about"
-      await api.patch(`/events/${event.id}`, { [payloadKey]: draft.trim() })
+      await telemetryContext.run(() =>
+        api.patch(`/events/${event.id}`, { [payloadKey]: draft.trim() })
+      )
       setEditing(false)
       onSuccess(t("events:detail.messages.aboutUpdated"))
-      await onUpdate()
-      setTimeout(() => sectionRef.current?.focus?.(), 0)
+      await telemetryContext.run(onUpdate)
+      setTimeout(() => {
+        const heading = sectionRef.current
+        if (heading === null) return
+        heading.focus()
+      }, 0)
     } catch (err) {
       logError("[EventAboutEditor] Save failed:", err)
       onError(t("events:detail.messages.aboutUpdateFailed"))

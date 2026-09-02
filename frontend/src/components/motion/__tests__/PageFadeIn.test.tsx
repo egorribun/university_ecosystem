@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 
 import PageFadeIn from "@/components/motion/PageFadeIn"
 
@@ -28,5 +28,15 @@ describe("PageFadeIn", () => {
     const root = screen.getByText("blurred content").parentElement!
     expect(root).toHaveAttribute("data-effect", "soft-blur")
     expect(root).toHaveStyle({ "--page-fade-delay": "425ms" })
+  })
+
+  it("does not install production scheduling or media listeners in test mode", () => {
+    const requestAnimationFrame = vi.spyOn(window, "requestAnimationFrame")
+    const matchMedia = vi.spyOn(window, "matchMedia")
+
+    render(<PageFadeIn>test-mode</PageFadeIn>)
+
+    expect(requestAnimationFrame).not.toHaveBeenCalled()
+    expect(matchMedia).not.toHaveBeenCalled()
   })
 })

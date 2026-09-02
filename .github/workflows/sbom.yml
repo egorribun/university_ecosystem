@@ -20,6 +20,12 @@ on:
 permissions:
   contents: read  # required for checkout
 
+concurrency:
+  # A newer main push supersedes an older inventory. Operator-dispatched
+  # evidence runs stay unique and are never cancelled.
+  group: ${{ github.workflow }}-${{ github.event_name == 'push' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 env:
   # Canonical inventory for the RustSec gate. Fuzz lockfiles are included
   # deliberately: they execute untrusted generated inputs in CI and must not
@@ -269,34 +275,19 @@ jobs:
           echo "Exported $(wc -l < /tmp/requirements.txt) requirements"
 
       - name: Python — known-vulnerability allowlist gate
-        # pip-audit has no severity gate: every known advisory must be approved or fixed.
+        # Every complete advisory inventory must be approved or fixed. The
+        # batch adapter keeps this gate fail-closed during OSV per-package
+        # endpoint outages and emits the same validator input as pip-audit.
         run: |
           set +e
-          pip_audit_status=1
-          for attempt in 1 2 3; do
-            rm -f /tmp/pip-audit.json
-            uv run --frozen --no-sync pip-audit \
-              --strict \
-              --no-deps \
-              --disable-pip \
-              --requirement /tmp/requirements.txt \
-              --format json \
-              --aliases on \
-              --desc off \
-              --progress-spinner off \
-              --vulnerability-service osv \
-              --output /tmp/pip-audit.json
-            pip_audit_status=$?
-            # Retry only when an upstream OSV outage prevents a report from
-            # being written; valid reports remain fail-closed below.
-            if [[ "$pip_audit_status" -eq 0 || -s /tmp/pip-audit.json ]]; then
-              break
-            fi
-            echo "::warning::pip-audit produced no report (attempt $attempt/3); retrying OSV query"
-            if [[ "$attempt" -lt 3 ]]; then
-              sleep $((attempt * 15))
-            fi
-          done
+          rm -f /tmp/pip-audit.json
+          uv run --frozen --no-sync python scripts/osv_batch_audit.py \
+            --requirement /tmp/requirements.txt \
+            --output /tmp/pip-audit.json \
+            --timeout 30 \
+            --attempts 4 \
+            --batch-size 100
+          pip_audit_status=$?
           set -e
           uv run --frozen --no-sync python scripts/check_dependency_audit_report.py pip \
             --report /tmp/pip-audit.json \

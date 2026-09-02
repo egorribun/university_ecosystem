@@ -46,7 +46,7 @@ async def test_refresh_topics_recovers_from_integrity_race_for_update_and_delete
 
     await notifications._refresh_user_topic_preferences(db, user_id=user_id)
 
-    assert existing.topics == ["news"]
+    assert existing.topics == ["news.published"]
     db.flush.assert_awaited()
 
     existing.topics = ["old"]

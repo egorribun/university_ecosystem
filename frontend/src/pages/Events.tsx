@@ -1,5 +1,6 @@
 import { PageLayout } from "@/components/layout/PageLayout"
 import { useTranslation } from "react-i18next"
+import "@/styles/tokens/events.css"
 import { EventsFeature } from "@/features/events"
 
 const Events = () => {

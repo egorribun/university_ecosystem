@@ -13,15 +13,25 @@ import { Button } from "@/components/settings"
 import { ShieldAlert } from "lucide-react"
 
 type OtpEntryProps = {
+  method?: "totp" | "email_otp"
   loading?: boolean
   error?: string | null
   helperText?: string | null
   onSubmit: (code: string) => Promise<void> | void
 }
 
-export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps) => {
+const OTP_LENGTH = 6
+const EMPTY_DIGITS = (): string[] => Array.from({ length: OTP_LENGTH }, () => "")
+
+export const OtpEntry = ({
+  method = "totp",
+  loading,
+  error,
+  helperText,
+  onSubmit,
+}: OtpEntryProps) => {
   const { t } = useTranslation("auth")
-  const [digits, setDigits] = useState<string[]>(["", "", "", "", "", ""])
+  const [digits, setDigits] = useState<string[]>(EMPTY_DIGITS)
   const [localError, setLocalError] = useState<string | null>(null)
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
   const inputRefs = useRef<(HTMLInputElement | null)[]>([])
@@ -29,8 +39,13 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
   const errorId = useId()
   const code = digits.join("")
 
+  const focusInput = useCallback((index: number) => {
+    const input = inputRefs.current[index]
+    if (input) input.focus()
+  }, [])
+
   const submitCode = useCallback(async () => {
-    if (loading || code.length !== 6) {
+    if (loading || code.length !== OTP_LENGTH) {
       setLocalError(t("mfa.otp.validation.required"))
       return
     }
@@ -57,20 +72,24 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
         return next
       })
 
-      if (index < 5) {
-        inputRefs.current[index + 1]?.focus()
+      if (index < OTP_LENGTH - 1) {
+        focusInput(index + 1)
       }
     } else {
       setDigits((prev) => {
         const next = [...prev]
-        for (let i = 0; i < sanitized.length && index + i < 6; i++) {
-          next[index + i] = sanitized[i]!
-        }
+        const available = OTP_LENGTH - index
+        sanitized
+          .slice(0, available)
+          .split("")
+          .forEach((digit, offset) => {
+            next[index + offset] = digit
+          })
         return next
       })
 
-      const lastIndex = Math.min(index + sanitized.length, 5)
-      inputRefs.current[lastIndex]?.focus()
+      const lastIndex = Math.min(index + sanitized.length, OTP_LENGTH - 1)
+      focusInput(lastIndex)
     }
   }
 
@@ -79,33 +98,27 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
       if (digits[index] === "") {
         if (index > 0) {
           event.preventDefault()
-          inputRefs.current[index - 1]?.focus()
+          focusInput(index - 1)
         }
       }
     } else if (event.key === "ArrowLeft" && index > 0) {
       event.preventDefault()
-      inputRefs.current[index - 1]?.focus()
-    } else if (event.key === "ArrowRight" && index < 5) {
+      focusInput(index - 1)
+    } else if (event.key === "ArrowRight" && index < OTP_LENGTH - 1) {
       event.preventDefault()
-      inputRefs.current[index + 1]?.focus()
+      focusInput(index + 1)
     }
   }
 
   const handlePaste = (event: ClipboardEvent<HTMLInputElement>) => {
     event.preventDefault()
     const pastedData = event.clipboardData.getData("text")
-    const sanitized = pastedData.replace(/\D/g, "").slice(0, 6)
+    const sanitized = pastedData.replace(/\D/g, "").slice(0, OTP_LENGTH)
 
     if (sanitized.length > 0) {
-      setDigits((prev) => {
-        const next = [...prev]
-        for (let i = 0; i < 6; i++) {
-          next[i] = sanitized[i] || ""
-        }
-        return next
-      })
-      const lastIndex = Math.min(sanitized.length - 1, 5)
-      inputRefs.current[lastIndex]?.focus()
+      setDigits(Array.from({ length: OTP_LENGTH }, (_, offset) => sanitized.charAt(offset)))
+      const lastIndex = Math.min(sanitized.length - 1, OTP_LENGTH - 1)
+      focusInput(lastIndex)
     }
   }
 
@@ -115,12 +128,12 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
 
   useEffect(() => {
     if (!error) return
-    setDigits(["", "", "", "", "", ""])
-    inputRefs.current[0]?.focus()
-  }, [error])
+    setDigits(EMPTY_DIGITS)
+    focusInput(0)
+  }, [error, focusInput])
 
   useEffect(() => {
-    if (code.length === 6 && !loading && !localError && !error) {
+    if (code.length === OTP_LENGTH && !loading && !localError && !error) {
       void onSubmit(code)
     }
   }, [code, loading, onSubmit, localError, error])
@@ -128,20 +141,20 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
   useEffect(() => {
     // Auto-focus the first input on initial render
     if (digits.every((d) => d === "")) {
-      inputRefs.current[0]?.focus()
+      focusInput(0)
     }
     // We only want this on mount for the "fresh" state
-  }, [digits])
+  }, [digits, focusInput])
 
   return (
     <div className="w-full">
       <div className="flex flex-col gap-6 items-stretch">
         <h3 className="text-lg font-black tracking-tight text-center text-text-primary">
-          {t("mfa.otp.methods.totp")}
+          {t(`mfa.otp.methods.${method}`)}
         </h3>
 
         <p className="text-sm text-center text-(--text-secondary) font-medium leading-relaxed">
-          {t("mfa.otp.descriptions.totp")}
+          {t(`mfa.otp.descriptions.${method}`)}
         </p>
 
         <div
@@ -162,7 +175,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
               // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus={index === 0}
               disabled={Boolean(loading)}
-              aria-label={t("mfa.otp.methods.totp") + " - digit " + (index + 1)}
+              aria-label={t(`mfa.otp.methods.${method}`) + " - digit " + (index + 1)}
               onChange={(e) => handleChange(index, e.target.value)}
               onKeyDown={(e) => handleKeyDown(index, e)}
               onPaste={index === 0 ? handlePaste : undefined}
@@ -212,7 +225,7 @@ export const OtpEntry = ({ loading, error, helperText, onSubmit }: OtpEntryProps
           <Button
             variant="solid"
             onClick={() => void submitCode()}
-            disabled={loading || code.length !== 6}
+            disabled={loading || code.length !== OTP_LENGTH}
             className="w-full max-w-xs h-14 rounded-2xl font-black shadow-lg shadow-(--brand-main)/(--opacity-dim)"
             loading={loading}
           >

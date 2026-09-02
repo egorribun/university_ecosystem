@@ -12,8 +12,19 @@ test.describe("Admin notification queue", () => {
     // The explicit E2E SSR marker intentionally models a student. Enter the
     // admin route through the hydrated router so this scenario exercises the
     // admin profile returned by the hermetic API fixture.
-    await page.getByRole("button", { name: /Открыть меню|Open menu/i }).click()
-    await page.getByRole("link", { name: /Очередь уведомлений|Notification queue/i }).click()
+    await page
+      .getByRole("button", {
+        name: /Дополнительная навигация|Открыть меню|Additional navigation|Open menu/i,
+      })
+      .click()
+    // Desktop overflow uses an ARIA `menuitem`, while the mobile drawer is a
+    // navigation list of links. Both are the same accessible destination; use
+    // the visible semantic contract without coupling the journey to a viewport.
+    const notificationQueue = page
+      .getByRole("menuitem", { name: /Очередь уведомлений|Notification queue/i })
+      .or(page.getByRole("link", { name: /Очередь уведомлений|Notification queue/i }))
+      .first()
+    await notificationQueue.click()
     await page.waitForURL(/\/admin\/notifications$/)
 
     await expect(
@@ -22,7 +33,7 @@ test.describe("Admin notification queue", () => {
       timeout: 15000,
     })
     const firstCheckbox = page.getByRole("checkbox", {
-      name: /Выбрать задачу uuid-1|Select job uuid-1/i,
+      name: /Выбрать задачу 33333333-3333-4333-8333-333333333331|Select job 33333333-3333-4333-8333-333333333331/i,
     })
     await firstCheckbox.check()
 
@@ -31,7 +42,7 @@ test.describe("Admin notification queue", () => {
     await expect(page.getByText(/Всего задач: 1|Total jobs: 1/i)).toBeVisible()
 
     const secondCheckbox = page.getByRole("checkbox", {
-      name: /Выбрать задачу uuid-2|Select job uuid-2/i,
+      name: /Выбрать задачу 33333333-3333-4333-8333-333333333332|Select job 33333333-3333-4333-8333-333333333332/i,
     })
     await secondCheckbox.check()
     await page.getByRole("button", { name: /Удалить выбранные|Delete selected/i }).click()

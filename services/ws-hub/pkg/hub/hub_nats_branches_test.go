@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
@@ -17,7 +18,12 @@ import (
 
 type scriptedJetStream struct {
 	nats.JetStreamContext
-	subscribe func(string, nats.MsgHandler, ...nats.SubOpt) (*nats.Subscription, error)
+	subscribe  func(string, nats.MsgHandler, ...nats.SubOpt) (*nats.Subscription, error)
+	streamInfo func(string, ...nats.JSOpt) (*nats.StreamInfo, error)
+}
+
+func (s *scriptedJetStream) StreamInfo(name string, opts ...nats.JSOpt) (*nats.StreamInfo, error) {
+	return s.streamInfo(name, opts...)
 }
 
 func (s *scriptedJetStream) Subscribe(subject string, handler nats.MsgHandler, opts ...nats.SubOpt) (*nats.Subscription, error) {
@@ -95,7 +101,7 @@ func TestSubscribeToNATS_ChatSubscriptionFailure(t *testing.T) {
 	assert.Empty(t, h.subs)
 }
 
-func TestSubscribeToNATS_JetStreamFallbacksToCoreNATS(t *testing.T) {
+func TestSubscribeToNATS_JetStreamFailureDoesNotSilentlyFallback(t *testing.T) {
 	server := newMockNatsServer(t)
 	nc, err := nats.Connect(server.Addr())
 	require.NoError(t, err)
@@ -104,16 +110,21 @@ func TestSubscribeToNATS_JetStreamFallbacksToCoreNATS(t *testing.T) {
 	h := setupTestHub()
 	h.Nats = nc
 	h.enableJetStream = true
+	h.internalSecret = "replay-signing-secret" // pragma: allowlist secret -- inert unit-test fixture
 	calledSubjects := make([]string, 0, 2)
 	h.js = &scriptedJetStream{
 		subscribe: func(subject string, _ nats.MsgHandler, _ ...nats.SubOpt) (*nats.Subscription, error) {
 			calledSubjects = append(calledSubjects, subject)
 			return nil, errors.New("scripted JetStream subscription failure")
 		},
+		streamInfo: func(string, ...nats.JSOpt) (*nats.StreamInfo, error) {
+			return &nats.StreamInfo{Created: time.Now()}, nil
+		},
 	}
 	t.Cleanup(h.Stop)
 
-	require.NoError(t, h.SubscribeToNATS(context.Background()))
-	assert.Equal(t, []string{"chat.*", "notifications.*"}, calledSubjects)
-	assert.Len(t, h.subs, 5, "core fallback must still register all subscriptions")
+	err = h.SubscribeToNATS(context.Background())
+	require.Error(t, err)
+	assert.Equal(t, []string{"chat.*"}, calledSubjects)
+	assert.Empty(t, h.subs, "failed replay startup must not expose a partially initialized hub")
 }

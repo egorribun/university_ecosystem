@@ -1,15 +1,16 @@
 import { describe, expect, it, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import type { Table } from "@tanstack/react-table"
-
 import { DataTablePagination } from "./DataTablePagination"
+import type { DataTableInstance } from "./dataTableFeatures"
 
-function makeTable(): Table<unknown> {
+type TestRow = Record<string, never>
+
+function makeTable(): DataTableInstance<TestRow> {
   return {
     getFilteredSelectedRowModel: () => ({ rows: [{}] }),
     getFilteredRowModel: () => ({ rows: [{}, {}, {}, {}] }),
-    getState: () => ({ pagination: { pageIndex: 1, pageSize: 20 } }),
+    state: { pagination: { pageIndex: 1, pageSize: 20 } },
     getPageCount: () => 3,
     getCanPreviousPage: () => true,
     getCanNextPage: () => true,
@@ -17,7 +18,7 @@ function makeTable(): Table<unknown> {
     setPageIndex: vi.fn(),
     previousPage: vi.fn(),
     nextPage: vi.fn(),
-  } as unknown as Table<unknown>
+  } as unknown as DataTableInstance<TestRow>
 }
 
 describe("DataTablePagination", () => {

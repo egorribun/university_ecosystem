@@ -1,5 +1,7 @@
 import asyncio
 import datetime as dt
+import hashlib
+import hmac
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
@@ -91,8 +93,10 @@ async def _complete_step_up(
     )
     assert verify.status_code == status.HTTP_200_OK, verify.text
     token = verify.cookies.get("access_token_v2")
-    assert token is not None, "access_token_v2 cookie missing after MFA verify"
-    headers["Authorization"] = f"Bearer {token}"
+    # Step-up elevates the existing authenticated session and deliberately does
+    # not mint a replacement access token.  Login MFA remains responsible for
+    # issuing the initial token.
+    assert token is None
     return cast(dict[Any, Any], payload)
 
 
@@ -313,7 +317,7 @@ async def test_logout_removes_session_immediately(
 
 
 @pytest.mark.asyncio
-async def test_revoke_session_requires_step_up(
+async def test_revoke_session_requires_step_up_via_signed_gateway_headers(
     async_client: AsyncClient,
     user_factory,
     db_session,
@@ -349,6 +353,23 @@ async def test_revoke_session_requires_step_up(
     assert current_session is not None
     current_session_id = current_session.id
 
+    internal_hmac_secret = (
+        "signed-gateway-step-up-test-secret"  # pragma: allowlist secret
+    )
+    monkeypatch.setattr(settings, "internal_hmac_secret", internal_hmac_secret)
+    gateway_signature = hmac.new(
+        internal_hmac_secret.encode(),
+        f"{user.id}:{current_session.jti}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    gateway_headers = {
+        "X-User-ID": str(user.id),
+        "X-Session-ID": str(current_session.jti),
+        "X-Internal-Signature": gateway_signature,
+        "User-Agent": headers["User-Agent"],
+        "X-Query-Budget": "15",
+    }
+
     # Expire the mfa_verified_at via a SEPARATE session to avoid contaminating
     # the shared db_session identity map. If we mutate through db_session and
     # commit, the User object becomes detached and causes SQLA InvalidRequestError
@@ -372,7 +393,7 @@ async def test_revoke_session_requires_step_up(
         await isolated_db.commit()
 
     blocked = await async_client.delete(
-        f"/auth/sessions/{other_session.id}", headers=headers
+        f"/auth/sessions/{other_session.id}", headers=gateway_headers
     )
     assert blocked.status_code == status.HTTP_428_PRECONDITION_REQUIRED
     detail = blocked.json()["detail"]
@@ -383,11 +404,11 @@ async def test_revoke_session_requires_step_up(
     # prevents the rate-limit middleware from grouping the requests under the
     # same identifier when everything happens within a single second.
     await asyncio.sleep(1.1)
-    payload = await _complete_step_up(async_client, headers, secret)
+    payload = await _complete_step_up(async_client, gateway_headers, secret)
     assert payload["session_id"] == str(current_session_id)
 
     success = await async_client.delete(
-        f"/auth/sessions/{other_session.id}", headers=headers
+        f"/auth/sessions/{other_session.id}", headers=gateway_headers
     )
     assert success.status_code == 200
     assert success.json()["revoked_at"] is not None

@@ -1,4 +1,5 @@
 import { expect, test } from "./test"
+import { gotoWithTransientRetry } from "./utils/navigation"
 import { useMockApi } from "./utils/mockApi"
 
 test.describe("React Hydration Verification", () => {
@@ -45,8 +46,14 @@ test.describe("React Hydration Verification", () => {
     const protectedUrls = ["/dashboard", "/events", "/news", "/schedule", "/settings"]
 
     for (const url of protectedUrls) {
-      await page.goto(url, { waitUntil: "commit", timeout: 30_000 })
-      await page.waitForTimeout(250)
+      await gotoWithTransientRetry(page, url, { waitUntil: "commit", timeout: 30_000 })
+      // Wait for the route's client tree to publish the hydration sentinel
+      // instead of sleeping for an arbitrary interval.  This keeps the
+      // assertion deterministic on slower WebKit/Firefox workers while still
+      // bounding the wait when hydration is genuinely broken.
+      await page.waitForFunction(() => window.__APP_HYDRATED === true, null, {
+        timeout: 15_000,
+      })
       // Assert no hydration-specific errors or mismatches
       const hydrationSpecific = hydrationErrors.filter(
         (err) =>

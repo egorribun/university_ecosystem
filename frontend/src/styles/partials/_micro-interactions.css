@@ -135,15 +135,13 @@
 
   .skeleton-morph-content {
     opacity: 0;
-    filter: blur(4px);
-    transition:
-      opacity var(--motion-duration-base) var(--ease-premium) 0.1s,
-      filter var(--motion-duration-base) var(--ease-premium) 0.1s;
+    /* Keep the reveal compositor-safe: WebKit can lose the hit target while
+       a filtered layer is being promoted during the dashboard's first paint. */
+    transition: opacity var(--motion-duration-base) var(--ease-premium) 0.1s;
   }
 
   .skeleton-morph-content[data-loaded="true"] {
     opacity: 1;
-    filter: blur(0);
   }
 
   /* ── Theme Transition Enhancement ────────────────────────── */

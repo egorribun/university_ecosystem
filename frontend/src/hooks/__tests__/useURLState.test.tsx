@@ -52,7 +52,7 @@ describe("useURLState", () => {
   // ---------------------------------------------------------------------------
   // setParam — single key update
   // ---------------------------------------------------------------------------
-  it("calls navigate with replace:true and viewTransition:false on setParam", () => {
+  it("keeps the viewport while updating a same-route search param", () => {
     const { result } = renderHook(() => useURLState<TestSearch>())
 
     act(() => {
@@ -60,7 +60,7 @@ describe("useURLState", () => {
     })
 
     expect(mockNavigateFn).toHaveBeenCalledWith(
-      expect.objectContaining({ replace: true, viewTransition: false })
+      expect.objectContaining({ replace: true, viewTransition: false, resetScroll: false })
     )
   })
 
@@ -167,7 +167,7 @@ describe("useURLState", () => {
     expect(updatedSearch).not.toHaveProperty("q")
   })
 
-  it("uses replace:true and viewTransition:false on setParams", () => {
+  it("keeps the viewport while updating same-route search params in a batch", () => {
     const { result } = renderHook(() => useURLState<TestSearch>())
 
     act(() => {
@@ -175,7 +175,7 @@ describe("useURLState", () => {
     })
 
     expect(mockNavigateFn).toHaveBeenCalledWith(
-      expect.objectContaining({ replace: true, viewTransition: false })
+      expect.objectContaining({ replace: true, viewTransition: false, resetScroll: false })
     )
   })
 
@@ -215,6 +215,7 @@ describe("useURLState", () => {
         expect(navigateArg.search(previous)).toEqual(expected)
         expect(navigateArg.replace).toBe(true)
         expect(navigateArg.viewTransition).toBe(false)
+        expect(navigateArg.resetScroll).toBe(false)
       })
     )
   })

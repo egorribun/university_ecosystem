@@ -3,6 +3,7 @@
  * Follows scheduleExport.ts pattern (Wave 66). Dynamic imports only.
  */
 import { logError } from "@/app/logger"
+import i18n from "@/i18n/config"
 
 export interface ExportResult {
   success: boolean
@@ -55,7 +56,7 @@ export async function exportActivityAsPng(
 
 export async function exportActivityAsPdf(
   element: HTMLElement,
-  title = "Activity",
+  title = i18n.t("activity:title"),
   filename = "activity.pdf"
 ): Promise<ExportResult> {
   try {

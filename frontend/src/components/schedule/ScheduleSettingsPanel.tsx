@@ -118,7 +118,7 @@ export function ScheduleSettingsPanel({
               {/* ── Week navigation ── */}
               <section>
                 <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-text-secondary">
-                  {t("schedule:toolbar.weekNavLabel", { defaultValue: "Week" })}
+                  {t("schedule:toolbar.weekNavLabel")}
                 </h3>
                 <div className="flex items-center gap-2">
                   <button
@@ -171,7 +171,7 @@ export function ScheduleSettingsPanel({
               {/* ── Parity selector ── */}
               <section>
                 <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-text-secondary">
-                  {t("schedule:parity.label", { defaultValue: "Week parity" })}
+                  {t("schedule:parity.label")}
                 </h3>
                 <div className="flex gap-2">
                   {(["odd", "even"] as const).map((p) => (

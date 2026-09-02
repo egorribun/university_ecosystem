@@ -1,9 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router"
-import { lazy } from "react"
+import Dashboard from "@/pages/Dashboard"
 import { createDashboardEventsQueryOptions } from "@/hooks/useDashboardEvents"
 import { createDashboardStoriesQueryOptions } from "@/hooks/useDashboardStories"
-
-const Dashboard = lazy(() => import("@/pages/Dashboard"))
 
 export const Route = createFileRoute("/_auth/dashboard")({
   // Wave 128 SW3 — first per-route SSR enable on the Phase 5 foundation.

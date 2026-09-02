@@ -1,0 +1,200 @@
+# Canonical production-like staging overlay.
+#
+# This file intentionally does not render until the deployment pipeline replaces
+# every REQUIRED_* marker. Secret values must be supplied by the named existing
+# Kubernetes Secrets and must never be passed through Helm values or --set.
+fullnameOverride: university-ecosystem
+
+global:
+  environment: staging
+  # First-party repositories are set explicitly by deploy-helm.sh. Keeping the
+  # global registry empty preserves the reviewed upstream dependency identity.
+  imageRegistry: ""
+  imageTag: REQUIRED_GIT_SHA
+  imagePullSecrets:
+    - ghcr-pull
+  security:
+    allowInsecureImages: false
+
+connections:
+  existingSecret: university-connections # pragma: allowlist secret
+
+applicationSecrets:
+  existingSecret: university-application # pragma: allowlist secret
+
+deploymentContract:
+  enabled: false
+
+cwv:
+  rumEnabled: true
+  releaseSHA: REQUIRED_GIT_SHA
+  frontendImageDigest: REQUIRED_SHA256_DIGEST
+  deploymentRunID: 0
+  deploymentRunAttempt: 0
+  deploymentURL: https://REQUIRED_FRONTEND_HOST
+  deployedAt: REQUIRED_DEPLOYED_AT
+  allowedOrigins:
+    - https://REQUIRED_FRONTEND_HOST
+  exportOIDC:
+    enabled: true
+    repository: REQUIRED_REPOSITORY
+    workflowRef: REQUIRED_WORKFLOW_REF
+    subject: REQUIRED_OIDC_SUBJECT
+
+internalGrpcMTLS:
+  enabled: true
+  serverName: university-ecosystem-file-processor.university-ecosystem.svc
+  gatewayIdentityURI: spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway
+  allowedClientURIs:
+    - spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway
+  gatewayClient:
+    existingSecret: university-internal-grpc-gateway-client # pragma: allowlist secret
+    certKey: tls.crt
+    privateKeyKey: tls.key # pragma: allowlist secret
+    caKey: ca.crt
+  fileProcessorServer:
+    existingSecret: university-internal-grpc-file-processor-server # pragma: allowlist secret
+    certKey: tls.crt
+    privateKeyKey: tls.key # pragma: allowlist secret
+    clientCAKey: ca.crt
+
+backend:
+  image:
+    repository: ghcr.io/REQUIRED_REPOSITORY/backend
+    digest: REQUIRED_SHA256_DIGEST
+    pullPolicy: Always
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  config:
+    minioSecure: true
+    elasticsearchURL: https://REQUIRED_ELASTICSEARCH_HOST
+    flagdHost: REQUIRED_FLAGD_HOST
+
+frontend:
+  image:
+    repository: ghcr.io/REQUIRED_REPOSITORY/frontend
+    digest: REQUIRED_SHA256_DIGEST
+    pullPolicy: Always
+
+gateway:
+  image:
+    repository: ghcr.io/REQUIRED_REPOSITORY/gateway
+    digest: REQUIRED_SHA256_DIGEST
+    pullPolicy: Always
+  config:
+    grpcUseTLS: true
+    otelEndpoint: REQUIRED_OTLP_ENDPOINT
+
+wsHub:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: ghcr.io/REQUIRED_REPOSITORY/ws-hub
+    digest: REQUIRED_SHA256_DIGEST
+    pullPolicy: Always
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  config:
+    allowedOrigins:
+      - https://REQUIRED_FRONTEND_HOST
+    trustedProxies:
+      - 10.0.0.0/8
+    otelEndpoint: REQUIRED_OTLP_ENDPOINT
+    otelInsecure: false
+
+fileProcessor:
+  image:
+    repository: ghcr.io/REQUIRED_REPOSITORY/file-processor
+    digest: REQUIRED_SHA256_DIGEST
+    pullPolicy: Always
+  config:
+    minioEndpoint: REQUIRED_MINIO_ENDPOINT
+    minioSecure: true
+    temporalHost: REQUIRED_TEMPORAL_HOST
+    temporalTLSDisabled: false
+    otlpEndpoint: REQUIRED_OTLP_ENDPOINT
+    otlpInsecure: false
+
+outboxWorker:
+  image:
+    repository: ghcr.io/REQUIRED_REPOSITORY/backend
+    digest: REQUIRED_SHA256_DIGEST
+    pullPolicy: Always
+
+ingress:
+  enabled: true
+  className: nginx
+  issuer:
+    kind: Issuer
+    name: university-staging-issuer
+  hosts:
+    - host: REQUIRED_FRONTEND_HOST
+      paths:
+        - path: /
+          pathType: Prefix
+          service: frontend
+    - host: REQUIRED_API_HOST
+      paths:
+        - path: /ws/ticket
+          pathType: Exact
+          service: gateway
+        - path: /ws/chat
+          pathType: Exact
+          service: ws-hub
+        - path: /
+          pathType: Prefix
+          service: gateway
+  tls:
+    - secretName: university-ecosystem-tls # pragma: allowlist secret
+      hosts:
+        - REQUIRED_FRONTEND_HOST
+        - REQUIRED_API_HOST
+
+redis:
+  networkPolicy:
+    enabled: true
+    allowExternal: false
+    allowExternalEgress: false
+  image:
+    registry: docker.io
+    repository: bitnami/redis
+    digest: REQUIRED_SHA256_DIGEST
+    pullPolicy: Always
+  metrics:
+    image:
+      registry: docker.io
+      repository: bitnami/redis-exporter
+      digest: REQUIRED_SHA256_DIGEST
+      pullPolicy: Always
+
+nats:
+  replicaCount: 3
+  networkPolicy:
+    enabled: true
+    allowExternal: false
+    allowExternalEgress: false
+  existingSecret: university-nats-config # pragma: allowlist secret
+  auth:
+    enabled: false
+  cluster:
+    auth:
+      enabled: false
+  image:
+    registry: docker.io
+    repository: bitnami/nats
+    digest: REQUIRED_SHA256_DIGEST
+    pullPolicy: Always
+  jetstream:
+    enabled: true
+    maxMemory: 512Mi
+  persistence:
+    enabled: true
+    size: 10Gi

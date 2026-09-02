@@ -10,8 +10,10 @@ import { VitePWA } from "vite-plugin-pwa"
 // Its plugin must remain before React's Vite plugin.
 import { tanstackStart } from "@tanstack/react-start/plugin/vite"
 import { visualizer } from "rollup-plugin-visualizer"
-import { MASKABLE_ICON_BASE64 } from "./pwa-maskable-icons"
+import { MASKABLE_ICON_BASE64 } from "./pwa-maskable-icons.ts"
 import { generateManifests } from "./scripts/generate-manifests.mjs"
+import { BUNDLE_BUDGETS } from "./scripts/check-bundle-budget.mjs"
+import { mapLibreWorkerAssets } from "./scripts/maplibre-worker-assets.mjs"
 // Shared with the Windows-safe standalone build orchestrator.
 import { PWA_INJECT_CONFIG } from "./scripts/workbox-config.mjs"
 
@@ -175,6 +177,7 @@ export default defineConfig(({ mode }) => {
   // retain production react-dom/server to avoid a jsx/jsxDEV runtime mismatch.
   const isReactDevMode =
     env.FRONTEND_REACT_DEV_MODE === "true" || process.env.FRONTEND_REACT_DEV_MODE === "true"
+  const isLhci = env.VITE_LHCI === "true" || process.env.VITE_LHCI === "true"
   const manifest = loadManifest()
 
   const mk = (rewrite = false) => ({
@@ -215,6 +218,7 @@ export default defineConfig(({ mode }) => {
     }),
     wasm(),
     withGeneratedManifests(),
+    mapLibreWorkerAssets(),
     react(),
     // MOD-W5-08: React Compiler via @rolldown/plugin-babel (plugin-react v6 uses Oxc,
     // no longer bundles Babel). Stable mode — compiler validates React rules and
@@ -373,7 +377,12 @@ export default defineConfig(({ mode }) => {
       // symbolication but does NOT add //# sourceMappingURL= to .js bundles,
       // so browsers and attackers cannot download the full TypeScript source.
       sourcemap: isUnminified ? true : mode === "production" ? "hidden" : true,
-      chunkSizeWarningLimit: 768,
+      // Vite applies one raw-size threshold to every chunk, including the
+      // intentionally lazy language dictionaries. The analyzer separately
+      // enforces the stricter 500 KiB main-chunk limit and compressed lazy
+      // budgets; this threshold is therefore the largest machine-enforced raw
+      // exception, not a relaxation of the initial-load contract.
+      chunkSizeWarningLimit: BUNDLE_BUDGETS.passwordDictionaryRawKb,
       // Vite auto-injects `<link rel="modulepreload">` for every
       // chunk reachable from the entry import graph — including chunks loaded
       // only via dynamic `await import()` at user click. PDF-export libs
@@ -387,7 +396,27 @@ export default defineConfig(({ mode }) => {
       modulePreload: {
         polyfill: false,
         resolveDependencies(_filename, deps, { hostType }) {
+          // Vite also emits preload helpers inside JS chunks for dynamic
+          // imports. Password-strength locale imports are selected at runtime;
+          // preloading their generated dependency graph can otherwise fetch the
+          // opposite locale dictionary. The import() target remains untouched
+          // and loads the selected analyzer normally.
+          if (hostType === "js") {
+            return deps.filter((dep) => !dep.includes("vendor-password-strength-"))
+          }
           if (hostType !== "html") return deps
+          // The LHCI bundle is served through the production SSR wrapper.  Its
+          // HTML already contains the route's meaningful content, so eager
+          // preloading every shared and feature chunk only competes with the
+          // critical stylesheet on the emulated mobile connection (the
+          // dashboard response otherwise advertises >1 MiB of JavaScript
+          // before first paint).  Keep the application entry discoverable and
+          // let its normal ESM imports schedule hydration dependencies after
+          // CSS/HTML have painted.  Production builds retain the complete
+          // route manifest preload policy.
+          if (isLhci) {
+            return deps.filter((dep) => /(?:^|[\\/])index-[^/]+\.js$/u.test(dep))
+          }
           return deps.filter(
             (dep) =>
               !dep.includes("jspdf") && !dep.includes("html2canvas") && !dep.includes("purify")
@@ -402,6 +431,18 @@ export default defineConfig(({ mode }) => {
         output: {
           // Vite 8: object-form manualChunks removed — use function form
           manualChunks(id: string) {
+            // Password strength is requested only from auth/password forms.
+            // Keep the engine, common data and each locale in deterministic
+            // independent chunks so opening an English form does not download
+            // the Russian dictionary (or vice versa). Workbox intentionally
+            // omits these optional chunks from install-time precaching.
+            if (id.includes("node_modules/@zxcvbn-ts/core")) return "vendor-password-strength-core"
+            if (id.includes("node_modules/@zxcvbn-ts/language-common"))
+              return "vendor-password-strength-common"
+            if (id.includes("node_modules/@zxcvbn-ts/language-en"))
+              return "vendor-password-strength-en"
+            if (id.includes("node_modules/@zxcvbn-ts/language-ru"))
+              return "vendor-password-strength-ru"
             // React and ReactDOM form the shared framework chunk.
             if (id.includes("node_modules/react-dom") || id.includes("node_modules/react/"))
               return "vendor-react"
@@ -427,12 +468,11 @@ export default defineConfig(({ mode }) => {
             )
               return "vendor-i18n"
             if (id.includes("node_modules/axios")) return "vendor-http"
-            if (id.includes("node_modules/@simplewebauthn/browser")) return "vendor-security"
             // Keep the offline database implementation out of the application
             // entry chunk. RxDB pulls Dexie, AJV and its query/storage helpers
-            // into the provider tree even though database access is lazy at
-            // runtime. The provider still loads this vendor chunk eagerly when
-            // the app starts; the split is only for the entry-size budget.
+            // into a feature-loaded vendor chunk; the application shell opts
+            // out of background initialization and offline-capable hooks load
+            // it on demand.
             if (id.includes("node_modules/rxdb") || id.includes("node_modules/dexie"))
               return "vendor-rxdb"
             // focus-trap is used by modal components but is imported through a

@@ -97,7 +97,7 @@ func TestHandleWebTransport_OriginAndUpgradeFailures(t *testing.T) {
 		SetAllowedOrigins([]string{"https://allowed.example"})
 		t.Cleanup(func() { SetAllowedOrigins(nil) })
 
-		h := hubWithWTTicketRedis(t, "user-origin:jti-origin")
+		h := hubWithWTTicketRedis(t, "user-origin:"+validSessionJTI)
 		req := httptest.NewRequest("GET", "/wt?ticket="+validWTTicket, nil)
 		req.Header.Set("Origin", "https://blocked.example")
 		rec := httptest.NewRecorder()
@@ -108,7 +108,7 @@ func TestHandleWebTransport_OriginAndUpgradeFailures(t *testing.T) {
 	})
 
 	t.Run("ordinary HTTP writer rejects WebTransport upgrade", func(t *testing.T) {
-		h := hubWithWTTicketRedis(t, "user-upgrade:jti-upgrade")
+		h := hubWithWTTicketRedis(t, "user-upgrade:"+validSessionJTI)
 		req := httptest.NewRequest("GET", "/wt?ticket="+validWTTicket, nil)
 		rec := httptest.NewRecorder()
 

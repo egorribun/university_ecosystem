@@ -18,6 +18,9 @@ const options = {
     "@storybook/addon-onboarding",
     "@storybook/addon-vitest",
     "@storybook/react-vite",
+    // Browser-mode runtime consumed by the Storybook Vitest addon rather than
+    // imported directly from application source.
+    "@vitest/browser",
     // Sentry integration
     "@sentry/vite-plugin",
     // CSS / Tailwind
@@ -30,6 +33,9 @@ const options = {
     "husky",
     "prettier-plugin-organize-imports",
     "@lhci/cli",
+    // Peer runtimes consumed by the active API mock generator and Lighthouse.
+    "openapi-types",
+    "proxy-agent",
     "@vitest/coverage-v8",
     "typescript",
     "typescript-eslint",
@@ -57,7 +63,6 @@ const options = {
     "babel-plugin-react-compiler",
     "fake-indexeddb",
     "jest-axe",
-    "openapi-typescript",
     "rollup-plugin-visualizer",
     "sharp",
     "vite-plugin-wasm",
@@ -68,10 +73,8 @@ const options = {
     "workbox-strategies",
     "web-vitals",
     "wasm-sanitizer",
-    "@hey-api/client-axios",
     "@types/*",
     "@types/qrcode",
-    "@types/qrcode.react",
     "@types/react",
     "@types/react-dom",
     "@types/node",
@@ -94,7 +97,6 @@ const options = {
     "jspdf",
     "qrcode",
     "depcheck",
-    "dexie",
     "@stryker-mutator/*",
   ],
   parsers: {
@@ -104,7 +106,11 @@ const options = {
     "**/*.ts": depcheck.parser.typescript,
     "**/*.tsx": depcheck.parser.typescript,
   },
-  detectors: [depcheck.detector.requireCallExpression, depcheck.detector.importDeclaration],
+  detectors: [
+    depcheck.detector.requireCallExpression,
+    depcheck.detector.importDeclaration,
+    depcheck.detector.importCallExpression,
+  ],
   specials: [
     depcheck.special.eslint,
     depcheck.special.webpack,

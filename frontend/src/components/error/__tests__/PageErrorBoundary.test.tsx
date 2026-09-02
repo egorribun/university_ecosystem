@@ -1,29 +1,60 @@
+import { createRef } from "react"
 import { render, screen, fireEvent } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
-const { routeState, navigateMock, translationState } = vi.hoisted(() => ({
-  routeState: { current: "/start" },
+const {
+  routeState,
+  navigateMock,
+  translationState,
+  captureExceptionMock,
+  logErrorMock,
+  useTranslationMock,
+} = vi.hoisted(() => ({
+  routeState: {
+    current: "/start",
+    selectors: [] as Array<((state: unknown) => unknown) | undefined>,
+  },
   navigateMock: vi.fn(),
   translationState: { ready: true },
+  captureExceptionMock: vi.fn(),
+  logErrorMock: vi.fn(),
+  useTranslationMock: vi.fn((..._namespaces: unknown[]) => ({
+    t: (key: string, fallback?: string) => {
+      const catalog: Record<string, string> = {
+        "system:pageError.title": "Page Error",
+        "system:pageError.description": "Something went wrong loading this page.",
+        "system:pageError.retry": "Try Again",
+        "system:pageError.home": "Go Home",
+      }
+      return catalog[key] ?? fallback ?? key
+    },
+    ready: translationState.ready,
+    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+  })),
 }))
 
 vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    ready: translationState.ready,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+  useTranslation: useTranslationMock,
 }))
 vi.mock("@tanstack/react-router", () => ({
-  useRouterState: (opts?: { select?: (s: unknown) => unknown }) =>
-    opts?.select ? opts.select({ location: { pathname: routeState.current } }) : routeState.current,
+  useRouterState: (opts?: { select?: (s: unknown) => unknown }) => {
+    routeState.selectors.push(opts?.select)
+    return opts?.select
+      ? opts.select({ location: { pathname: routeState.current } })
+      : routeState.current
+  },
   useNavigate: () => navigateMock,
 }))
-vi.mock("@sentry/react", () => ({ captureException: vi.fn() }))
-vi.mock("@/app/logger", () => ({ logError: vi.fn(), logDebug: vi.fn() }))
+vi.mock("@sentry/react", () => ({ captureException: captureExceptionMock }))
+vi.mock("@/app/logger", () => ({ logError: logErrorMock, logDebug: vi.fn() }))
 
 import * as Sentry from "@sentry/react"
-import { PageErrorBoundary } from "@/components/error/PageErrorBoundary"
+import {
+  PageErrorBoundary,
+  PageErrorBoundaryClass,
+  PageErrorFallback,
+} from "@/components/error/PageErrorBoundary"
+import { ApiResponseValidationError } from "@/api/validation"
 
 function Boom(): never {
   throw new Error("kaboom")
@@ -32,6 +63,7 @@ function Boom(): never {
 describe("PageErrorBoundary", () => {
   beforeEach(() => {
     routeState.current = "/start"
+    routeState.selectors = []
     translationState.ready = true
     vi.clearAllMocks()
     // React logs caught errors via console.error — silence to keep output clean.
@@ -51,6 +83,29 @@ describe("PageErrorBoundary", () => {
     expect(screen.getByText("safe content")).toBeInTheDocument()
   })
 
+  it("requests a pathname selector from the router state", () => {
+    render(
+      <PageErrorBoundary>
+        <div>selected content</div>
+      </PageErrorBoundary>
+    )
+
+    const selector = routeState.selectors[0]
+    expect(selector).toEqual(expect.any(Function))
+    expect(selector?.({ location: { pathname: "/selected" } })).toBe("/selected")
+  })
+
+  it("starts with a fully initialized class state", () => {
+    const ref = createRef<PageErrorBoundaryClass>()
+    render(
+      <PageErrorBoundaryClass ref={ref} locationKey="/start" onNavigateHome={navigateMock}>
+        <div>safe class content</div>
+      </PageErrorBoundaryClass>
+    )
+
+    expect(ref.current?.state).toEqual({ hasError: false, error: null, errorInfo: null })
+  })
+
   it("renders the fallback alert + reports to Sentry when a child throws", () => {
     render(
       <PageErrorBoundary pageName="events">
@@ -58,13 +113,36 @@ describe("PageErrorBoundary", () => {
       </PageErrorBoundary>
     )
     expect(screen.getByRole("alert")).toBeInTheDocument()
-    expect(screen.getByText("system:pageError.title")).toBeInTheDocument()
+    expect(screen.getByText("Page Error")).toBeInTheDocument()
+    expect(screen.getByText("Something went wrong loading this page.")).toBeInTheDocument()
+    expect(useTranslationMock).toHaveBeenCalledWith(["system"])
     // DEV error details branch (import.meta.env.DEV is true under vitest)
     expect(screen.getByText("Non-API Error")).toBeInTheDocument()
     expect(Sentry.captureException).toHaveBeenCalledWith(
       expect.any(Error),
-      expect.objectContaining({ contexts: expect.objectContaining({ page: { name: "events" } }) })
+      expect.objectContaining({
+        contexts: expect.objectContaining({
+          react: expect.objectContaining({ componentStack: expect.any(String) }),
+          page: { name: "events" },
+        }),
+        tags: { errorBoundary: "page", page: "events" },
+      })
     )
+    expect(logErrorMock).toHaveBeenCalledWith(
+      "[PageErrorBoundary]",
+      expect.objectContaining({ page: "events" })
+    )
+  })
+
+  it("records React error information on the class boundary", () => {
+    const ref = createRef<PageErrorBoundaryClass>()
+    render(
+      <PageErrorBoundaryClass ref={ref} locationKey="/start" onNavigateHome={navigateMock}>
+        <Boom />
+      </PageErrorBoundaryClass>
+    )
+
+    expect(ref.current?.state.errorInfo?.componentStack).toEqual(expect.any(String))
   })
 
   it("renders a custom fallback when provided", () => {
@@ -141,7 +219,7 @@ describe("PageErrorBoundary", () => {
         <Boom />
       </PageErrorBoundary>
     )
-    fireEvent.click(screen.getByText("system:pageError.home"))
+    fireEvent.click(screen.getByText("Go Home"))
     expect(navigateMock).toHaveBeenCalledWith({ to: "/" })
   })
 
@@ -151,7 +229,7 @@ describe("PageErrorBoundary", () => {
         <Boom />
       </PageErrorBoundary>
     )
-    fireEvent.click(screen.getByText("system:pageError.retry"))
+    fireEvent.click(screen.getByText("Try Again"))
     expect(screen.getByRole("alert")).toBeInTheDocument()
   })
 
@@ -182,6 +260,119 @@ describe("PageErrorBoundary", () => {
     )
 
     expect(screen.getByRole("alert")).toBeInTheDocument()
+    expect(screen.queryByText("Non-API Error")).not.toBeInTheDocument()
     expect(Sentry.captureException).toHaveBeenCalled()
+    expect(logErrorMock).not.toHaveBeenCalled()
+  })
+
+  it("keeps the fallback diagnostics behind the development flag", () => {
+    vi.stubEnv("DEV", false)
+
+    render(
+      <PageErrorFallback
+        error={new Error("direct production error")}
+        onRetry={vi.fn()}
+        onGoHome={vi.fn()}
+      />
+    )
+
+    expect(screen.getByRole("alert")).toBeInTheDocument()
+    expect(screen.queryByText("Non-API Error")).not.toBeInTheDocument()
+    expect(screen.queryByText("Error details")).not.toBeInTheDocument()
+  })
+
+  it("renders direct development diagnostics for non-API errors", () => {
+    render(
+      <PageErrorFallback
+        error={new Error("direct diagnostic error")}
+        onRetry={vi.fn()}
+        onGoHome={vi.fn()}
+      />
+    )
+
+    expect(screen.getByText("Non-API Error")).toBeInTheDocument()
+    expect(screen.getByText("direct diagnostic error")).toBeInTheDocument()
+  })
+
+  it("always returns fallback UI from the fallback component", () => {
+    const fallback = PageErrorFallback({
+      error: new Error("direct component invocation"),
+      onRetry: vi.fn(),
+      onGoHome: vi.fn(),
+    })
+
+    expect(fallback).toBeTruthy()
+  })
+
+  it("renders a positive API status in direct development diagnostics", () => {
+    const error = Object.assign(new Error("direct api error"), {
+      isAxiosError: true,
+      response: { status: 422, data: { detail: [] } },
+    })
+
+    render(<PageErrorFallback error={error} onRetry={vi.fn()} onGoHome={vi.fn()} />)
+
+    expect(screen.getByText("Status: 422")).toBeInTheDocument()
+  })
+
+  it("omits an empty API details list from the development diagnostics", () => {
+    const apiError = Object.assign(new Error("no field details"), {
+      isAxiosError: true,
+      response: {
+        status: 422,
+        data: { detail: [], trace_id: "trace-empty" },
+      },
+    })
+    function EmptyDetailsBoom(): never {
+      throw apiError
+    }
+
+    const { container } = render(
+      <PageErrorBoundary>
+        <EmptyDetailsBoom />
+      </PageErrorBoundary>
+    )
+
+    expect(screen.getByText("Status: 422")).toBeInTheDocument()
+    expect(container.querySelector("ul")).not.toBeInTheDocument()
+  })
+
+  it("keeps an explicitly empty validation issue list out of diagnostics", () => {
+    const error = new ApiResponseValidationError([])
+    function EmptyValidationBoom(): never {
+      throw error
+    }
+
+    const { container } = render(
+      <PageErrorBoundary>
+        <EmptyValidationBoom />
+      </PageErrorBoundary>
+    )
+
+    expect(screen.getByText("Status: 422")).toBeInTheDocument()
+    expect(container.querySelector("ul")).not.toBeInTheDocument()
+  })
+
+  it("labels detail entries without a field as Error", () => {
+    const apiError = Object.assign(new Error("detail failure"), {
+      isAxiosError: true,
+      response: {
+        status: 422,
+        data: {
+          detail: [{ type: "value_error", msg: "General failure", loc: [] }],
+        },
+      },
+    })
+    function UnfieldedBoom(): never {
+      throw apiError
+    }
+
+    render(
+      <PageErrorBoundary>
+        <UnfieldedBoom />
+      </PageErrorBoundary>
+    )
+
+    expect(screen.getByRole("listitem")).toHaveTextContent("Error: General failure")
   })
 })

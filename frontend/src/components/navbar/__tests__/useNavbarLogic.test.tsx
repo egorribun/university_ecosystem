@@ -12,14 +12,16 @@ type UserDouble = {
 
 const mocks = vi.hoisted(() => ({
   pathname: "/",
-  mobile: true,
+  viewport: "phone" as "phone" | "tablet" | "desktop",
   reducedMotion: false,
   user: null as UserDouble | null,
   navigate: vi.fn(),
   scrollToTop: vi.fn(),
   markScrollFromBottom: vi.fn(),
   isSamePath: vi.fn(),
-  focusOptions: undefined as { active: boolean; onDeactivate?: () => void } | undefined,
+  focusOptions: undefined as
+    { active: boolean; onDeactivate?: () => void; escapeDeactivates?: boolean } | undefined,
+  mediaQueries: [] as string[],
   getNavigationConfig: vi.fn(() => [{ to: "/dashboard" }]),
   parseCacheVersion: vi.fn(() => "cache-v"),
 }))
@@ -39,10 +41,20 @@ vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({ user: mocks.user, isAuth: Boolean(mocks.user), loading: false }),
 }))
 vi.mock("@/hooks/useMediaQuery", () => ({
-  default: (query: string) => (query.includes("max-width") ? mocks.mobile : mocks.reducedMotion),
+  default: (query: string) => {
+    mocks.mediaQueries.push(query)
+    if (query.includes("prefers-reduced-motion")) return mocks.reducedMotion
+    if (query.includes("min-width")) return mocks.viewport === "tablet"
+    if (query.includes("768") || query.includes("767")) return mocks.viewport === "phone"
+    return mocks.viewport !== "desktop"
+  },
 }))
 vi.mock("@/hooks/useFocusTrap", () => ({
-  default: (options: { active: boolean; onDeactivate?: () => void }) => {
+  default: (options: {
+    active: boolean
+    onDeactivate?: () => void
+    escapeDeactivates?: boolean
+  }) => {
     mocks.focusOptions = options
     return { current: null }
   },
@@ -65,7 +77,7 @@ import { useNavbarLogic } from "@/components/navbar/useNavbarLogic"
 describe("useNavbarLogic", () => {
   beforeEach(() => {
     mocks.pathname = "/"
-    mocks.mobile = true
+    mocks.viewport = "phone"
     mocks.reducedMotion = false
     mocks.user = null
     mocks.navigate.mockReset()
@@ -75,6 +87,7 @@ describe("useNavbarLogic", () => {
     mocks.getNavigationConfig.mockClear()
     mocks.parseCacheVersion.mockClear()
     mocks.focusOptions = undefined
+    mocks.mediaQueries = []
   })
 
   it("derives anonymous and authenticated presentation state", async () => {
@@ -84,7 +97,12 @@ describe("useNavbarLogic", () => {
     expect(result.current.profileAlt).toBe("navigation:aria.profileAvatar")
     expect(result.current.avatarSource).toBe("")
     expect(result.current.hasAvatar).toBe(false)
+    expect(mocks.focusOptions?.escapeDeactivates).toBe(false)
     expect(result.current.isAuth).toBe(false)
+    expect(result.current.viewport).toBe("phone")
+    expect(result.current.isMobile).toBe(true)
+    expect(result.current.isTablet).toBe(false)
+    expect(result.current.isDesktop).toBe(false)
 
     mocks.user = {
       role: "student",
@@ -114,6 +132,39 @@ describe("useNavbarLogic", () => {
     expect(mocks.parseCacheVersion).toHaveBeenLastCalledWith("2026-08-14T00:00:00Z")
   })
 
+  it("exposes mutually exclusive phone, tablet, and desktop states", async () => {
+    const { result, rerender } = renderHook(() => useNavbarLogic())
+    await waitFor(() => expect(result.current.viewport).toBe("phone"))
+
+    mocks.viewport = "tablet"
+    rerender()
+    await waitFor(() => expect(result.current.viewport).toBe("tablet"))
+    expect([result.current.isMobile, result.current.isTablet, result.current.isDesktop]).toEqual([
+      false,
+      true,
+      false,
+    ])
+
+    mocks.viewport = "desktop"
+    rerender()
+    await waitFor(() => expect(result.current.viewport).toBe("desktop"))
+    expect([result.current.isMobile, result.current.isTablet, result.current.isDesktop]).toEqual([
+      false,
+      false,
+      true,
+    ])
+  })
+
+  it("reserves the full labelled navigation for the wide desktop envelope", async () => {
+    renderHook(() => useNavbarLogic())
+
+    await waitFor(() =>
+      expect(mocks.mediaQueries).toContain(
+        "(min-width: 768px) and (max-width: calc(1350px - 0.02px))"
+      )
+    )
+  })
+
   it("recognizes dashboard descendants and exact non-dashboard routes", async () => {
     const { result, rerender } = renderHook(() => useNavbarLogic())
     await waitFor(() => expect(result.current.isMobile).toBe(true))
@@ -136,6 +187,11 @@ describe("useNavbarLogic", () => {
     mocks.pathname = "/news"
     rerender()
     expect(result.current.isActive("/news")).toBe(true)
+
+    mocks.pathname = "/news/article-1"
+    rerender()
+    expect(result.current.isActive("/news")).toBe(true)
+    expect(result.current.isActive("/new")).toBe(false)
   })
 
   it("scrolls same-route navigation and navigates to a different route", async () => {
@@ -167,11 +223,11 @@ describe("useNavbarLogic", () => {
     expect(result.current.mobileMenu).toBe(false)
 
     act(() => result.current.setMobileMenu(true))
-    mocks.mobile = false
+    mocks.viewport = "desktop"
     rerender()
     await waitFor(() => expect(result.current.mobileMenu).toBe(false))
 
-    mocks.mobile = true
+    mocks.viewport = "phone"
     rerender()
     await waitFor(() => expect(result.current.isMobile).toBe(true))
     act(() => result.current.setMobileMenu(true))

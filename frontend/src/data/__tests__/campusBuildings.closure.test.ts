@@ -1,4 +1,9 @@
+import { createHash } from "node:crypto"
+
 import { describe, expect, it } from "vitest"
+import { CAMPUS_STRUCTURE_ACADEMIC } from "@/data/campusBuildingsStructureAcademic"
+import { CAMPUS_STRUCTURE_ADMINISTRATIVE } from "@/data/campusBuildingsStructureAdministrative"
+import { CAMPUS_STRUCTURE_RESIDENTIAL } from "@/data/campusBuildingsStructureResidential"
 import {
   BUILDING_IDS,
   MAP_CATEGORIES,
@@ -8,7 +13,71 @@ import {
   getCampusBuildings,
 } from "@/data/campusBuildings"
 
+const toStructuralShape = (building: {
+  letter: string
+  structureId: string
+  tags: readonly string[]
+  geoCoords: readonly [number, number]
+  floors: ReadonlyArray<{
+    floor: number
+    rooms: ReadonlyArray<{
+      id: string
+      number: string
+      type: string
+      capacity?: number
+    }>
+  }>
+}) => ({
+  letter: building.letter,
+  structureId: building.structureId,
+  tags: [...building.tags],
+  geoCoords: [...building.geoCoords],
+  floors: building.floors.map((floor) => ({
+    floor: floor.floor,
+    rooms: floor.rooms.map(({ id, number, type, capacity }) => ({
+      id,
+      number,
+      type,
+      ...(capacity === undefined ? {} : { capacity }),
+    })),
+  })),
+})
+
 describe("campus building data helpers", () => {
+  it("keeps the canonical residential campus dataset byte-for-byte stable", () => {
+    const digest = createHash("sha256")
+      .update(JSON.stringify(CAMPUS_STRUCTURE_RESIDENTIAL))
+      .digest("hex")
+
+    // Keep the deterministic test vector readable while avoiding a false
+    // high-entropy secret finding on one long hexadecimal literal.
+    const expectedDigest = [
+      "0aa818e0",
+      "41c539ea",
+      "e2020bfa",
+      "21fe30fc",
+      "2a861abd",
+      "8bb56c69",
+      "049ef25d",
+      "cd2d2da9",
+    ].join("")
+
+    expect(digest).toBe(expectedDigest)
+  })
+
+  it("keeps the localized result identical to the decomposed structural data", () => {
+    const structuralData = [
+      ...CAMPUS_STRUCTURE_ACADEMIC,
+      ...CAMPUS_STRUCTURE_ADMINISTRATIVE,
+      ...CAMPUS_STRUCTURE_RESIDENTIAL,
+    ]
+
+    expect(structuralData.map((building) => building.letter)).toEqual(BUILDING_IDS)
+    expect(getCampusBuildings("en").map(toStructuralShape)).toEqual(
+      structuralData.map(toStructuralShape)
+    )
+  })
+
   it("builds localized structures and reuses the locale cache", () => {
     const buildings = getCampusBuildings("en")
     expect(buildings).toHaveLength(BUILDING_IDS.length)

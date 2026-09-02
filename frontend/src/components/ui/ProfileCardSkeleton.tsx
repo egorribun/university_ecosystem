@@ -38,13 +38,13 @@ function ProfileCardSkeletonInner({ showCover = true, className = "" }: ProfileC
             height={80}
             rounded="50%"
             className="border-4 border-(--bg-surface) sm:h-24 sm:w-24"
-            ariaLabel="Loading avatar"
+            ariaLabel={t("common:aria.loadingAvatar")}
           />
         </div>
 
         {/* Name and username */}
         <div className="space-y-2 mb-4">
-          <Skeleton width={180} height={24} ariaLabel="Loading name" />
+          <Skeleton width={180} height={24} ariaLabel={t("common:aria.loadingName")} />
           <Skeleton width={120} height={16} />
         </div>
 

@@ -1,4 +1,5 @@
 import { Suspense, lazy } from "react"
+import "@/styles/tokens/map.css"
 import Layout from "@/components/Layout"
 import PageFadeIn from "@/components/motion/PageFadeIn"
 import { Skeleton } from "@/components/ui"

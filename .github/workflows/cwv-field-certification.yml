@@ -1,0 +1,246 @@
+name: Field Core Web Vitals certification
+
+on:
+  workflow_dispatch: #checkov:skip=CKV_GHA_7:exact deployment inputs are required for manual certification
+    inputs:
+      deploy-run-id:
+        description: "Successful staging deploy workflow run ID"
+        required: true
+        type: string
+      deploy-run-attempt:
+        description: "Exact staging deploy workflow run attempt"
+        required: true
+        type: string
+      release-sha:
+        description: "Exact protected-main commit deployed to staging"
+        required: true
+        type: string
+      image-build-run-id:
+        description: "Canonical six-image producer workflow run ID"
+        required: true
+        type: string
+      image-build-run-attempt:
+        description: "Exact canonical image producer run attempt"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: cwv-field-certification-${{ inputs.release-sha }}
+  cancel-in-progress: false
+
+jobs:
+  certify:
+    name: Certify staging field Core Web Vitals
+    if: ${{ github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: staging
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          # A dispatch input binds certified artifacts only; it must not select
+          # the privileged workflow source before the guard below executes.
+          ref: ${{ github.sha }}
+
+      - name: Verify exact successful staging deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          DISPATCH_SHA: ${{ github.sha }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          DEPLOY_RUN_ID: ${{ inputs.deploy-run-id }}
+          DEPLOY_RUN_ATTEMPT: ${{ inputs.deploy-run-attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$DEPLOY_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$DEPLOY_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$WORKFLOW_SHA" = "$RELEASE_SHA"
+          test "$DISPATCH_SHA" = "$RELEASE_SHA"
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git fetch origin refs/heads/main:refs/remotes/origin/main --depth=1
+          test "$(git rev-parse refs/remotes/origin/main)" = "$RELEASE_SHA"
+
+          mkdir -p artifacts/cwv/provenance
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOY_RUN_ID" \
+            > artifacts/cwv/provenance/deploy-run.json
+          jq --exit-status \
+            --arg sha "$RELEASE_SHA" \
+            --argjson attempt "$DEPLOY_RUN_ATTEMPT" \
+            '.head_sha == $sha and .run_attempt == $attempt and
+             .conclusion == "success" and .event == "workflow_dispatch" and
+             .head_branch == "main" and
+             .path == ".github/workflows/deploy.yml"' \
+            artifacts/cwv/provenance/deploy-run.json >/dev/null
+
+          gh api --paginate --slurp \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$DEPLOY_RUN_ID/artifacts?per_page=100" \
+            > artifacts/cwv/provenance/deploy-artifact-pages.json
+          python scripts/quality/validate_release_artifact_evidence.py \
+            --pages artifacts/cwv/provenance/deploy-artifact-pages.json \
+            --expected-name "staging-deployment-$RELEASE_SHA-attempt-$DEPLOY_RUN_ATTEMPT"
+
+      - name: Download exact deployment metadata
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: staging-deployment-${{ inputs.release-sha }}-attempt-${{ inputs.deploy-run-attempt }}
+          run-id: ${{ inputs.deploy-run-id }}
+          github-token: ${{ github.token }}
+          path: artifacts/cwv/deployment
+
+      - name: Validate deployment metadata
+        id: deployment
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          DEPLOY_RUN_ID: ${{ inputs.deploy-run-id }}
+          DEPLOY_RUN_ATTEMPT: ${{ inputs.deploy-run-attempt }}
+          IMAGE_BUILD_RUN_ID: ${{ inputs.image-build-run-id }}
+          IMAGE_BUILD_RUN_ATTEMPT: ${{ inputs.image-build-run-attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$IMAGE_BUILD_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          [[ "$IMAGE_BUILD_RUN_ATTEMPT" =~ ^[1-9][0-9]*$ ]]
+          cd artifacts/cwv/deployment
+          test -s staging-deployment.json
+          test -s staging-deployment.json.sha256
+          sha256sum --check staging-deployment.json.sha256
+          frontend_image_digest="$(jq -er .frontend_image_digest staging-deployment.json)"
+          image_manifest_sha256="$(jq -er .image_manifest_sha256 staging-deployment.json)"
+          [[ "$frontend_image_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          [[ "$image_manifest_sha256" =~ ^[0-9a-f]{64}$ ]]
+          jq --exit-status \
+            --arg sha "$RELEASE_SHA" \
+            --arg digest "$frontend_image_digest" \
+            --argjson run_id "$DEPLOY_RUN_ID" \
+            --argjson run_attempt "$DEPLOY_RUN_ATTEMPT" \
+            --argjson build_run_id "$IMAGE_BUILD_RUN_ID" \
+            --argjson build_run_attempt "$IMAGE_BUILD_RUN_ATTEMPT" \
+            '.schema_version == 2 and .environment == "staging" and
+             .release_sha == $sha and .frontend_image_digest == $digest and
+             .image_build_run_id == $build_run_id and
+             .image_build_run_attempt == $build_run_attempt and
+             (.image_manifest_sha256 | test("^[0-9a-f]{64}$")) and
+             (.images | length) == 6 and .images.frontend == $digest and
+             .workflow_run_id == $run_id and
+             .workflow_run_attempt == $run_attempt and
+             (.deployment_url | type == "string" and length > 0) and
+             (.deployed_at | test("Z$"))' \
+            staging-deployment.json >/dev/null
+          {
+            echo "frontend-image-digest=$frontend_image_digest"
+            echo "image-manifest-sha256=$image_manifest_sha256"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Setup Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Install locked validation dependencies
+        run: uv sync --frozen
+
+      - name: Request exporter OIDC token
+        id: exporter-token
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const token = await core.getIDToken('university-cwv-exporter')
+            core.setSecret(token)
+            core.setOutput('token', token)
+
+      - name: Export immutable staging field report
+        env:
+          OIDC_TOKEN: ${{ steps.exporter-token.outputs.token }}
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          FRONTEND_IMAGE_DIGEST: ${{ steps.deployment.outputs.frontend-image-digest }}
+          DEPLOY_RUN_ID: ${{ inputs.deploy-run-id }}
+          DEPLOY_RUN_ATTEMPT: ${{ inputs.deploy-run-attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          deployment_url="$(jq -r '.deployment_url' \
+            artifacts/cwv/deployment/staging-deployment.json)"
+          [[ "$deployment_url" == https://* ]]
+          CWV_EXPORT_URL="${deployment_url%/}/api/v1/cwv/export"
+          mkdir -p artifacts/cwv/certificate
+          curl --fail-with-body --silent --show-error \
+            --proto '=https' --proto-redir '=https' --max-redirs 0 \
+            --tlsv1.2 --max-time 120 \
+            --header "Authorization: Bearer $OIDC_TOKEN" \
+            --get "$CWV_EXPORT_URL" \
+            --data-urlencode "release_sha=$RELEASE_SHA" \
+            --data-urlencode "frontend_image_digest=$FRONTEND_IMAGE_DIGEST" \
+            --data-urlencode "deployment_run_id=$DEPLOY_RUN_ID" \
+            --data-urlencode "deployment_run_attempt=$DEPLOY_RUN_ATTEMPT" \
+            --output artifacts/cwv/certificate/field-report.json
+          test -s artifacts/cwv/certificate/field-report.json
+          (cd artifacts/cwv/certificate && \
+            sha256sum field-report.json > field-report.json.sha256)
+
+      - name: Validate and certify field report
+        env:
+          RELEASE_SHA: ${{ inputs.release-sha }}
+          FRONTEND_IMAGE_DIGEST: ${{ steps.deployment.outputs.frontend-image-digest }}
+          DEPLOY_RUN_ID: ${{ inputs.deploy-run-id }}
+          DEPLOY_RUN_ATTEMPT: ${{ inputs.deploy-run-attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd artifacts/cwv/certificate && \
+            sha256sum --check field-report.json.sha256)
+          uv run python scripts/quality/evaluate_cwv_field.py \
+            --report artifacts/cwv/certificate/field-report.json \
+            --checksum artifacts/cwv/certificate/field-report.json.sha256 \
+            --schema quality/cwv-field-report.schema.json \
+            --deployment-metadata artifacts/cwv/deployment/staging-deployment.json \
+            --deployment-checksum artifacts/cwv/deployment/staging-deployment.json.sha256 \
+            --deployment-schema quality/cwv-deployment-metadata.schema.json \
+            --verdict-schema quality/cwv-field-verdict.schema.json \
+            --policy quality/cwv-field-policy.json \
+            --expected-commit-sha "$RELEASE_SHA" \
+            --expected-image-digest "$FRONTEND_IMAGE_DIGEST" \
+            --expected-environment staging \
+            --expected-deployment-run-id "$DEPLOY_RUN_ID" \
+            --expected-deployment-run-attempt "$DEPLOY_RUN_ATTEMPT" \
+            --output artifacts/cwv/certificate/field-verdict.json
+          (cd artifacts/cwv/certificate && \
+            sha256sum field-verdict.json > field-verdict.json.sha256)
+
+      - name: Upload field certification evidence
+        id: upload-certificate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cwv-field-certificate-${{ inputs.release-sha }}-attempt-${{ github.run_attempt }}
+          path: |
+            artifacts/cwv/certificate/**
+            artifacts/cwv/deployment/**
+            artifacts/cwv/provenance/**
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attest field certification evidence
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-path: artifacts/cwv/**

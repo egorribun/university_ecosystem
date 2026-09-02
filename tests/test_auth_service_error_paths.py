@@ -34,6 +34,7 @@ import app.auth.security as security_module
 import app.core.csrf as csrf_module
 import app.models as models
 import app.services.auth_service as auth_module
+from app.auth.constants import MFA_METHOD_EMAIL_OTP
 from app.core.exceptions.domain import EntityNotFound
 from app.schemas import schemas
 from app.services.auth_service import (
@@ -346,7 +347,7 @@ async def test_confirm_email_change_update_missing_user(auth_service, request_mo
 
     auth_service.auth_repo.get_valid_email_change_token = AsyncMock(return_value=record)
     auth_service.user_repo.check_email_exists = AsyncMock(return_value=False)
-    auth_service.user_repo.update = AsyncMock(return_value=None)
+    auth_service.user_repo._get_orm = AsyncMock(return_value=None)
 
     with pytest.raises(EntityNotFound):
         await auth_service.confirm_email_change(user, "token", request_mock)
@@ -364,25 +365,31 @@ async def test_confirm_email_change_success(auth_service, request_mock, monkeypa
 
     db_user = MagicMock(spec=models.User)
     db_user.id = user.id
+    db_user.mfa_epoch = 0
+    db_user.mfa_default_method = MFA_METHOD_EMAIL_OTP
 
     auth_service.auth_repo.get_valid_email_change_token = AsyncMock(return_value=record)
     auth_service.user_repo.check_email_exists = AsyncMock(return_value=False)
-    auth_service.user_repo.update = AsyncMock(return_value=db_user)
+    auth_service.user_repo._get_orm = AsyncMock(return_value=db_user)
     auth_service.auth_repo.mark_email_change_token_used = AsyncMock()
     auth_service.auth_repo.invalidate_other_email_change_tokens = AsyncMock()
+    auth_service.auth_repo.db = MagicMock()
+    auth_service.auth_repo.db.execute = AsyncMock()
 
     attach_mock = AsyncMock()
     monkeypatch.setattr(auth_module, "attach_pending_email", attach_mock)
     monkeypatch.setattr(auth_module, "ensure_mfa_relationships_loaded", AsyncMock())
+    monkeypatch.setattr(auth_module, "refresh_user_mfa_preferences", AsyncMock())
     csrf_mock = MagicMock()
     monkeypatch.setattr(csrf_module, "signal_csrf_rotation", csrf_mock)
 
     result = await auth_service.confirm_email_change(user, "token", request_mock)
 
     assert result is db_user
-    auth_service.user_repo.update.assert_awaited_once_with(
-        record.user_id, {"email": record.new_email}
-    )
+    assert db_user.email == record.new_email
+    assert db_user.email_verified_at <= datetime.now(UTC)
+    assert db_user.email_verified_at >= datetime.now(UTC) - timedelta(seconds=2)
+    assert db_user.mfa_default_method is None
     auth_service.auth_repo.mark_email_change_token_used.assert_awaited_once_with(12)
     # db_user is not the original user → second attach call fires (L359-360)
     assert attach_mock.await_count == 2

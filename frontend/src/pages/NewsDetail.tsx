@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useNavigate, useParams } from "@tanstack/react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { ArrowLeft as ArrowBackIcon, Copy as CopyIcon } from "lucide-react"
+import "@/styles/tokens/news.css"
 import {
   Alert,
   Dialog,
@@ -30,6 +31,7 @@ import { NewsDetailNavigation } from "@/components/news/NewsDetailNavigation"
 import { useBookmarks } from "@/hooks/useBookmarks"
 import { useRelatedNews } from "@/hooks/useRelatedNews"
 import { useArticleNavigation } from "@/hooks/useArticleNavigation"
+import { captureActiveTelemetryContext } from "@/utils/telemetryContext"
 import { useSwipe } from "@/hooks/useSwipe"
 import { inferCategory } from "@/features/news/categories"
 import { useAuth } from "@/contexts/AuthContext"
@@ -147,10 +149,12 @@ export default function NewsDetail() {
   const progressRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     let ticking = false
+    let pendingFrame: number | null = null
     const onScroll = () => {
       if (ticking) return
       ticking = true
-      requestAnimationFrame(() => {
+      pendingFrame = requestAnimationFrame(() => {
+        pendingFrame = null
         if (progressRef.current) {
           const max = document.documentElement.scrollHeight - window.innerHeight
           const pct = max > 0 ? Math.min(window.scrollY / max, 1) : 0
@@ -160,18 +164,24 @@ export default function NewsDetail() {
       })
     }
     window.addEventListener("scroll", onScroll, { passive: true })
-    return () => window.removeEventListener("scroll", onScroll)
+    return () => {
+      window.removeEventListener("scroll", onScroll)
+      if (pendingFrame !== null) cancelAnimationFrame(pendingFrame)
+    }
   }, [])
 
   /* ── Handlers ── */
   const handleDelete = async () => {
     if (!query.data) return
+    const telemetryContext = captureActiveTelemetryContext()
     setDeleting(true)
     try {
-      await deleteNews(query.data.id)
+      await telemetryContext.run(() => deleteNews(query.data.id))
       setSnackbar(t("news:notifications.deleted"))
       queryClient.removeQueries({ queryKey: ["news", id] })
-      await queryClient.invalidateQueries({ queryKey: ["news", "list"] })
+      await telemetryContext.run(() =>
+        queryClient.invalidateQueries({ queryKey: ["news", "list"] })
+      )
       if (window.history.length > 1) window.history.back()
       else void navigate({ to: "/news" })
     } catch {

@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -430,13 +431,32 @@ async def test_handle_notifications_requested_empty() -> None:
 
 @pytest.mark.asyncio
 async def test_handle_notifications_requested_with_ids() -> None:
-    from app.services.event_handlers import handle_notifications_requested
+    from app.services import event_handlers
 
     mock_event = MagicMock()
     mock_event.notification_ids = [uuid.uuid4(), uuid.uuid4()]
     mock_event.channel = "push"
+    db = MagicMock()
+    db.commit = AsyncMock()
+    session_context = MagicMock()
+    session_context.__aenter__ = AsyncMock(return_value=db)
+    session_context.__aexit__ = AsyncMock(return_value=False)
 
-    await handle_notifications_requested(mock_event)
+    with (
+        patch.object(event_handlers, "async_session", return_value=session_context),
+        patch(
+            "app.services.notifications.delivery.redeliver_notifications",
+            new=AsyncMock(return_value=SimpleNamespace(retryable_failures=0)),
+        ) as redeliver,
+    ):
+        await event_handlers.handle_notifications_requested(mock_event)
+
+    redeliver.assert_awaited_once_with(
+        db,
+        notification_ids=mock_event.notification_ids,
+        channel="push",
+    )
+    db.commit.assert_awaited_once()
 
 
 @pytest.mark.asyncio

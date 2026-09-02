@@ -66,8 +66,8 @@ export const NewsCardList = memo(function NewsCardList({
                 {n.title}
               </span>
               <span className="text-sm text-(--text-secondary) leading-relaxed line-clamp-2">
-                {(n.content || "").slice(0, 110)}
-                {(n.content || "").length > 110 ? "…" : ""}
+                {(n.content ?? String()).slice(0, 110)}
+                {(n.content ?? String()).length > 110 ? "…" : ""}
               </span>
             </div>
             <span

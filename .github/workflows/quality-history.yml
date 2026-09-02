@@ -31,6 +31,15 @@ jobs:
         with:
           python-version: "3.14"
 
+      - name: Install uv and quality validator dependencies
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Sync quality validator dependencies
+        run: uv sync --frozen
+
       - name: Collect latest successful CI quality manifest
         id: collect-manifest
         env:
@@ -38,36 +47,59 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          latest="$(gh run list --workflow ci.yml --branch main --status success --limit 1 --json databaseId,headSha --jq '.[0] // empty')"
-          if [[ -z "$latest" ]]; then
+          run_id="$(gh run list --workflow ci.yml --branch main --event push --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+          if ! [[ "$run_id" =~ ^[1-9][0-9]*$ ]]; then
             echo "::error::No successful main CI run is available for the quality-history archive."
             exit 1
           fi
-          run_id="$(jq -r '.databaseId' <<< "$latest")"
-          head_sha="$(jq -r '.headSha' <<< "$latest")"
+          run_metadata="$RUNNER_TEMP/quality-run.json"
+          artifact_metadata="$RUNNER_TEMP/quality-artifacts.json"
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" > "$run_metadata"
+          head_sha="$(jq -r '.head_sha' "$run_metadata")"
           if ! [[ "$head_sha" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::Latest successful CI run returned an invalid head SHA."
             exit 1
           fi
+          test "$(jq -r '.conclusion' "$run_metadata")" = success
+          test "$(jq -r '.event' "$run_metadata")" = push
+          test "$(jq -r '.head_branch' "$run_metadata")" = main
+          test "$(jq -r '.path' "$run_metadata")" = .github/workflows/ci.yml
+          run_attempt="$(jq -r '.run_attempt' "$run_metadata")"
+          [[ "$run_attempt" =~ ^[1-9][0-9]*$ ]]
+          gh api --paginate --slurp \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/artifacts?per_page=100" \
+            > "$artifact_metadata"
+          artifact_name="quality-evidence-$head_sha"
+          test "$(jq --arg name "$artifact_name" '[.[].artifacts[] | select(.name == $name and .expired == false)] | length' "$artifact_metadata")" -eq 1
           echo "head_sha=$head_sha" >> "$GITHUB_OUTPUT"
-          mkdir -p "$RUNNER_TEMP/quality-ci" docs/testing/quality-history
-          if ! gh run download "$run_id" --name quality-manifest --dir "$RUNNER_TEMP/quality-ci"; then
-            echo "::error::Successful CI run $run_id has no downloadable quality-manifest."
+          evidence_root="$RUNNER_TEMP/quality-source"
+          rm -rf -- "$evidence_root"
+          git worktree add --detach "$evidence_root" "$head_sha"
+          mkdir -p docs/testing/quality-history
+          if ! gh run download "$run_id" --name "$artifact_name" --dir "$evidence_root"; then
+            echo "::error::Successful CI run $run_id has no downloadable quality-manifest evidence bundle."
             exit 1
           fi
-          manifest_path="$(find "$RUNNER_TEMP/quality-ci" -name quality-manifest.json -print -quit)"
-          if [[ -z "$manifest_path" ]]; then
+          manifest_path="$evidence_root/artifacts/coverage/quality-manifest.json"
+          checksum_path="$evidence_root/artifacts/coverage/quality-manifest.json.sha256"
+          if [[ ! -s "$manifest_path" || ! -s "$checksum_path" ]]; then
             echo "::error::quality-manifest.json is missing from CI run $run_id."
             exit 1
           fi
-          if ! manifest_sha="$(jq -er '.commit_sha | select(type == "string")' "$manifest_path")"; then
-            echo "::error::quality-manifest.json has no valid commit_sha."
-            exit 1
-          fi
-          if [[ "$manifest_sha" != "$head_sha" ]]; then
-            echo "::error::Quality manifest commit $manifest_sha does not match CI run commit $head_sha."
-            exit 1
-          fi
+          (cd "$evidence_root" && sha256sum --check artifacts/coverage/quality-manifest.json.sha256)
+          uv run python "$evidence_root/scripts/quality/validate_quality_contract.py" \
+            --contract "$evidence_root/quality/quality-contract.json" \
+            --schema "$evidence_root/quality/coverage-manifest.schema.json" \
+            --artifact-root "$evidence_root" \
+            --mutation-registry "$evidence_root/quality/mutation-exclusions.json" \
+            --manifest "$manifest_path" \
+            --expected-commit-sha "$head_sha" \
+            --expected-workflow-run-id "$run_id" \
+            --expected-workflow-run-attempt "$run_attempt" \
+            --expected-workflow-event push \
+            --expected-workflow-repository "$GITHUB_REPOSITORY" \
+            --expected-workflow-ref "$GITHUB_REPOSITORY/.github/workflows/ci.yml@refs/heads/main" \
+            --expected-workflow-job coverage-policy-gate
           history_path="docs/testing/quality-history/${head_sha}.json"
           if [[ -e "$history_path" ]]; then
             if cmp --silent "$manifest_path" "$history_path"; then

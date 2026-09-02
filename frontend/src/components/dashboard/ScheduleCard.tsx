@@ -1,6 +1,6 @@
-import { memo, useMemo, useCallback, type KeyboardEvent, type CSSProperties } from "react"
+import { memo, useCallback, useMemo, type CSSProperties } from "react"
 
-import { Link } from "@tanstack/react-router"
+import { Link, useRouter } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Badge, Button, Card, ProgressBar, Skeleton } from "@/components/ui"
 import { cn } from "@/utils/cn"
@@ -17,6 +17,74 @@ interface ScheduleCardProps {
   "data-pop"?: string
 }
 
+type LessonBounds = { start: number; end: number }
+type LessonTimeFields = Pick<DashboardLesson, "start_time" | "end_time">
+
+const ENGLISH_WEEK_DAYS = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+]
+
+const readWeekdayArray = (value: unknown, fallback: string[]): string[] =>
+  Array.isArray(value) && value.length === 7 ? (value as string[]) : fallback
+
+/**
+ * Return a lesson's validated half-open interval.
+ *
+ * Dashboard payloads come from a remote API, so malformed or inverted times
+ * must never be treated as a current/next lesson (or used for progress math).
+ * Keep this guard local to the card because the card derives its own schedule
+ * view instead of using the full schedule page's time hook.
+ */
+const getLessonBounds = (lesson: LessonTimeFields | null): LessonBounds | null => {
+  // `parseMinutes` accepts optional values and treats missing fields as invalid.
+  // Passing the payload through preserves that contract without manufacturing a
+  // sentinel time string that could be mistaken for a real schedule value.
+  const start = parseMinutes(lesson?.start_time)
+  // Keep malformed end times as NaN so the strict comparison below rejects
+  // them without a redundant nullable guard (NaN is never greater than start).
+  const end = parseMinutes(lesson?.end_time) ?? Number.NaN
+  return start !== null && end > start ? { start, end } : null
+}
+
+const lessonStartsAfter = (lesson: LessonTimeFields, threshold: number): boolean =>
+  (getLessonBounds(lesson)?.start ?? Number.NaN) > threshold
+
+export function findNextLesson<T extends LessonTimeFields>(
+  todayLessons: readonly T[],
+  currentLesson: T | null,
+  minutesNow: number
+): T | null {
+  return (
+    todayLessons.find((lesson) =>
+      lessonStartsAfter(lesson, getLessonBounds(currentLesson)?.end ?? minutesNow)
+    ) ?? null
+  )
+}
+
+export function calculateLessonProgress(bounds: LessonBounds | null, minutesNow: number): number {
+  if (bounds === null) return 0
+  const span = bounds.end - bounds.start
+  const passed = Math.min(Math.max(0, minutesNow - bounds.start), span)
+  return Math.round((passed / span) * 100)
+}
+
+/**
+ * Keep the lesson list hidden while its initial query is loading and when the
+ * current day has no valid lessons.  This explicit predicate makes the two
+ * states independently testable instead of relying on an unreachable JSX
+ * short-circuit combination.
+ */
+export function shouldRenderLessonList(loading: boolean, lessonCount: number): boolean {
+  if (loading) return false
+  return lessonCount > 0
+}
+
 export const ScheduleCard = memo(function ScheduleCard({
   userRole,
   userGroupId,
@@ -26,6 +94,7 @@ export const ScheduleCard = memo(function ScheduleCard({
   ...props
 }: ScheduleCardProps) {
   const { t } = useTranslation(["dashboard", "common"])
+  const router = useRouter()
   const shouldLoadSchedule = userRole === "student" && Boolean(userGroupId)
   const dashboardScheduleQuery = useDashboardSchedule(
     (userRole as "student" | "teacher" | "admin" | null) ?? null,
@@ -44,21 +113,18 @@ export const ScheduleCard = memo(function ScheduleCard({
   const parity = nowParity()
   const todayIndex = time.getDay()
 
-  const weekDaysDisplay = useMemo(() => {
-    const result = t("dashboard:weekDays.display", { returnObjects: true }) as unknown
-    if (Array.isArray(result) && result.length === 7) {
-      return result as string[]
-    }
-    return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
-  }, [t])
+  // These arrays are tiny and are intentionally read on every render.  Keeping
+  // them derived from the current translator avoids stale weekday maps when a
+  // locale changes in-place (i18next may retain the same `t` function).
+  const weekDaysDisplay = readWeekdayArray(
+    t("dashboard:weekDays.display", { returnObjects: true }) as unknown,
+    ENGLISH_WEEK_DAYS
+  )
 
-  const weekDaysRaw = useMemo(() => {
-    const result = t("dashboard:weekDays.raw", { returnObjects: true }) as unknown
-    if (Array.isArray(result) && result.length === 7) {
-      return result as string[]
-    }
-    return weekDaysDisplay
-  }, [t, weekDaysDisplay])
+  const weekDaysRaw = readWeekdayArray(
+    t("dashboard:weekDays.raw", { returnObjects: true }) as unknown,
+    weekDaysDisplay
+  )
 
   const weekdayIndex = useMemo(() => {
     const map = new Map<string, number>()
@@ -70,66 +136,50 @@ export const ScheduleCard = memo(function ScheduleCard({
       map.set(name.toLowerCase(), index)
     })
     // English backend names — API returns weekday as "sunday", "monday", etc.
-    const englishDays = [
-      "sunday",
-      "monday",
-      "tuesday",
-      "wednesday",
-      "thursday",
-      "friday",
-      "saturday",
-    ]
+    const englishDays = ENGLISH_WEEK_DAYS.map((name) => name.toLowerCase())
     englishDays.forEach((name, index) => {
       map.set(name, index)
     })
     return map
   }, [weekDaysDisplay, weekDaysRaw])
 
-  const todayLessons = useMemo(() => {
-    return schedule
-      .filter((l) => {
-        const normalized = (l.weekday ?? "").toLowerCase()
-        const lessonIndex = weekdayIndex.get(normalized)
-        return (l.parity === "both" || l.parity === parity) && lessonIndex === todayIndex
-      })
-      .sort((a, b) => fmtTime(a.start_time).localeCompare(fmtTime(b.start_time)))
-  }, [schedule, parity, todayIndex, weekdayIndex])
+  const todayLessons = useMemo(
+    () =>
+      schedule
+        .filter((l) => {
+          const normalized = (l.weekday ?? "").toLowerCase()
+          const lessonIndex = weekdayIndex.get(normalized)
+          return (l.parity === "both" || l.parity === parity) && lessonIndex === todayIndex
+        })
+        .sort((a, b) => fmtTime(a.start_time).localeCompare(fmtTime(b.start_time))),
+    [schedule, parity, todayIndex, weekdayIndex]
+  )
 
   const minutesNow = useMemo(() => time.getHours() * 60 + time.getMinutes(), [time])
   const currentLesson = useMemo(() => {
     return (
       todayLessons.find((l) => {
-        const s = parseMinutes(l.start_time) ?? -1
-        const e = parseMinutes(l.end_time) ?? -1
-        return minutesNow >= s && minutesNow < e
+        const bounds = getLessonBounds(l)
+        return bounds !== null && minutesNow >= bounds.start && minutesNow < bounds.end
       }) || null
     )
   }, [todayLessons, minutesNow])
 
-  const nextLesson = useMemo(() => {
-    if (currentLesson) {
-      const endM = parseMinutes(currentLesson.end_time)!
-      return todayLessons.find((l) => (parseMinutes(l.start_time) ?? 0) > endM) || null
-    }
-    return todayLessons.find((l) => (parseMinutes(l.start_time) ?? 0) > minutesNow) || null
-  }, [todayLessons, currentLesson, minutesNow])
+  const nextLesson = useMemo(
+    () => findNextLesson(todayLessons, currentLesson, minutesNow),
+    [todayLessons, currentLesson, minutesNow]
+  )
 
-  const currentProgress = useMemo(() => {
-    if (!currentLesson) return 0
-    const s = parseMinutes(currentLesson.start_time)!
-    const e = parseMinutes(currentLesson.end_time)!
-    const span = Math.max(1, e - s)
-    const passed = Math.min(Math.max(0, minutesNow - s), span)
-    return Math.round((passed / span) * 100)
-  }, [currentLesson, minutesNow])
+  const currentProgress = useMemo(
+    () => calculateLessonProgress(getLessonBounds(currentLesson), minutesNow),
+    [currentLesson, minutesNow]
+  )
 
-  const warmSchedulePage = () => import("../../pages/Schedule").catch(() => {})
+  const nextLessonToDisplay = currentLesson === null ? nextLesson : null
 
-  const prepareOnKey = useCallback((event: KeyboardEvent, callback: () => void) => {
-    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
-      callback()
-    }
-  }, [])
+  const warmScheduleRoute = useCallback(() => {
+    void router.preloadRoute({ to: "/schedule" }).catch(() => undefined)
+  }, [router])
 
   return (
     <Card
@@ -156,8 +206,7 @@ export const ScheduleCard = memo(function ScheduleCard({
               variant="outline"
               className="btn-dash whitespace-nowrap px-5 transition-transform duration-base hover:-translate-y-0.5"
               aria-label={t("dashboard:aria.openFullSchedule")}
-              onPointerDown={warmSchedulePage}
-              onKeyDown={(event) => prepareOnKey(event, warmSchedulePage)}
+              onPointerDown={warmScheduleRoute}
             >
               {t("dashboard:fullSchedule")}
             </Button>
@@ -165,7 +214,7 @@ export const ScheduleCard = memo(function ScheduleCard({
         </div>
 
         {/* Current lesson — premium blue panel */}
-        {currentLesson && (
+        {currentLesson ? (
           <div className="list-item-blue rounded-xl p-4">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
@@ -184,9 +233,9 @@ export const ScheduleCard = memo(function ScheduleCard({
               ariaLabel={t("common:ariaCurrentLessonProgress")}
             />
           </div>
-        )}
+        ) : null}
 
-        {!currentLesson && nextLesson && (
+        {nextLessonToDisplay ? (
           <div className="list-item-blue flex items-center gap-3 rounded-xl p-4">
             <Badge
               size="sm"
@@ -196,13 +245,13 @@ export const ScheduleCard = memo(function ScheduleCard({
               label={t("dashboard:next")}
             />
             <span className="min-w-0 flex-1 text-base font-semibold leading-tight text-text-primary truncate">
-              {nextLesson.subject}
+              {nextLessonToDisplay.subject}
             </span>
             <span className="shrink-0 font-mono text-sm font-medium text-brand">
-              {fmtTime(nextLesson.start_time)}–{fmtTime(nextLesson.end_time)}
+              {fmtTime(nextLessonToDisplay.start_time)}–{fmtTime(nextLessonToDisplay.end_time)}
             </span>
           </div>
-        )}
+        ) : null}
 
         {loadingSched && (
           <div className="space-y-3" role="presentation">
@@ -226,7 +275,7 @@ export const ScheduleCard = memo(function ScheduleCard({
         )}
 
         {/* Wave 49: always list view on dashboard — timeline removed (too cramped for card width) */}
-        {!loadingSched && todayLessons.length > 0 && (
+        {shouldRenderLessonList(loadingSched, todayLessons.length) ? (
           <ul className="space-y-2.5">
             {todayLessons.map((l, idx) => (
               <li key={l.id} className="dash-list-item px-0 py-0">
@@ -256,20 +305,8 @@ export const ScheduleCard = memo(function ScheduleCard({
               </li>
             ))}
           </ul>
-        )}
+        ) : null}
       </div>
-
-      {/* Decorative orbs — visible accents (Wave 48: dash-orb-reactive) */}
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 z-hide dash-orb-reactive bg-(--grad-schedule-flare) mix-blend-soft-light opacity-medium transition-opacity duration-slow motion-reduce:!animate-none"
-        style={{ animation: "orb-breathe 5s ease-in-out infinite" }}
-      />
-      <span
-        aria-hidden="true"
-        className="pointer-events-none absolute -top-16 right-8 z-hide dash-orb-reactive h-32 w-32 rounded-full bg-(--flare-schedule-orb) blur-3xl mix-blend-soft-light opacity-medium transition-opacity duration-slower motion-reduce:!animate-none"
-        style={{ animation: "orb-pulse-opacity 5s ease-in-out infinite" }}
-      />
     </Card>
   )
 })

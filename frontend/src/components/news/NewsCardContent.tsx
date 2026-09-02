@@ -120,7 +120,7 @@ const NewsCardContent = ({
             <div className="flex items-center gap-1 text-(--text-secondary)">
               <ClockIcon size={14} />
               <span className="text-[11px] font-medium tabular-nums">
-                {readingTime} {t("common:time.minuteShort", { defaultValue: "min" })}
+                {readingTime} {t("common:time.minuteShort")}
               </span>
             </div>
           )}

@@ -117,4 +117,10 @@ describe("router.getRouter() — Wave 126 SSR auth context", { timeout: 60000 },
       },
     })
   })
+
+  it("uses history-entry scroll restoration while filter replacements opt out separately", () => {
+    const options = getRouter().options
+    expect(options.scrollRestoration).toBe(true)
+    expect(options.getScrollRestorationKey).toBeUndefined()
+  })
 })

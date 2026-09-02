@@ -1,0 +1,7 @@
+# Trivy configuration for the isolated revocation-store Helm scan.  The
+# values file supplies only schema-valid, non-secret release identity and
+# render-only digest placeholders; deployment digests remain CI variables.
+misconfiguration:
+  helm:
+    values:
+      - security/trivy-revocation-values.yaml

@@ -1,55 +1,143 @@
-"""MOD-W15-01 / Wave 18.1: WebSocket message schema contract tests.
+"""WebSocket message schema contract tests.
 
 Verifies that the Python backend sends WS messages in the format that the
-frontend ``parseWsMessage()`` (Zod v4 discriminated union) expects.
+frontend ``parseWsMessage()`` (Valibot discriminated union) expects.
 
 Cross-service invariant:
   Python ``connection_manager.py`` + ``dispatcher.py`` → ws frames →
-  Frontend ``wsMessage.ts`` parseWsMessage() Zod validation.
+  Frontend ``wsMessage.ts`` parseWsMessage() Valibot validation.
 
-Any new message type added in Python MUST be added to the frontend Zod schema,
+Any new message type added in Python MUST be added to the frontend Valibot schema,
 and vice versa. These tests catch schema drift at CI time.
 
-The authoritative schema is the TypeScript Zod definition in:
+The authoritative schema is the TypeScript Valibot definition in:
   ``frontend/src/api/schemas/wsMessage.ts``
 """
 
 from __future__ import annotations
 
+import ast
 import re
 import uuid
+from pathlib import Path
 
 import pytest
 
 # ---------------------------------------------------------------------------
-# Expected WS server→client message types (from frontend Zod schema)
+# Current WS protocol sources
 # ---------------------------------------------------------------------------
 
-# These must match the discriminated union in wsMessage.ts exactly.
-# If a type is added/removed in Python, this set must be updated too.
-WS_SERVER_MESSAGE_TYPES: frozenset[str] = frozenset(
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
+FRONTEND_WS_SCHEMA = REPOSITORY_ROOT / "frontend/src/api/schemas/wsMessage.ts"
+FRONTEND_WS_HOOK = REPOSITORY_ROOT / "frontend/src/hooks/useChatWebSocket.ts"
+WS_HUB_CLIENT_SOURCE = REPOSITORY_ROOT / "services/ws-hub/pkg/hub/client.go"
+
+
+def _frontend_server_message_types() -> frozenset[str]:
+    """Read the discriminated-union catalog from the Valibot source.
+
+    Keeping this derived from the runtime schema prevents the contract test from
+    becoming a second, stale registry whenever a frame is added or removed.
+    """
+    source = FRONTEND_WS_SCHEMA.read_text(encoding="utf-8")
+    return frozenset(re.findall(r"v\.literal\([\"']([a-z_]+)[\"']\)", source))
+
+
+def _ws_hub_client_message_types() -> frozenset[str]:
+    """Read ws-hub's client-to-hub command allowlist from Go source."""
+    source = WS_HUB_CLIENT_SOURCE.read_text(encoding="utf-8")
+    match = re.search(
+        r"var allowedMessageTypes = map\[string\]bool\{(?P<body>.*?)\n\}",
+        source,
+        flags=re.DOTALL,
+    )
+    assert match is not None, "ws-hub client command allowlist is missing"
+    return frozenset(re.findall(r'"([a-z_]+)"\s*:\s*true', match.group("body")))
+
+
+def _python_ws_output_types(path: Path) -> frozenset[str]:
+    """Extract literal ``type`` values from Python dict expressions.
+
+    AST inspection intentionally ignores docstrings/comments, where inbound
+    examples such as ``{"type": "ping"}`` are documentation rather than frames
+    emitted by the backend.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    types: set[str] = set()
+
+    class _OutputTypeVisitor(ast.NodeVisitor):
+        """Inspect source bodies while ignoring mutmut mutant variants.
+
+        During mutmut's stats pass the generated module contains the original
+        function and one sibling function per mutation.  The latter may hold
+        deliberately invalid string values (for example ``NEW_MESSAGE``), so
+        scanning those bodies would make the baseline fail before the mutant is
+        run.  Production modules do not use the ``__mutmut_`` naming convention;
+        their unknown protocol values remain visible below.
+        """
+
+        def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+            if "__mutmut_" in node.name and not node.name.endswith("__mutmut_orig"):
+                return
+            self.generic_visit(node)
+
+        visit_AsyncFunctionDef = visit_FunctionDef
+
+        def visit_Dict(self, node: ast.Dict) -> None:
+            for key, value in zip(node.keys, node.values, strict=False):
+                if (
+                    isinstance(key, ast.Constant)
+                    and key.value == "type"
+                    and isinstance(value, ast.Constant)
+                    and isinstance(value.value, str)
+                ):
+                    # mutmut replaces a string literal with an ``XX...XX``
+                    # sentinel while collecting baseline stats.  The sentinel
+                    # is not a product protocol value and must not make the
+                    # initial stats run fail before the mutant is exercised by
+                    # the actual tests.  Keep all other values visible.
+                    if not re.fullmatch(r"XX[a-z_]+XX", value.value):
+                        types.add(value.value)
+            self.generic_visit(node)
+
+    _OutputTypeVisitor().visit(tree)
+    return frozenset(types)
+
+
+# This is the current frontend output catalog, not a hand-maintained copy.
+WS_SERVER_MESSAGE_TYPES = _frontend_server_message_types()
+WS_HUB_CLIENT_MESSAGE_TYPES = _ws_hub_client_message_types()
+
+# Product events required by the messenger roadmap.  The complete catalog above
+# is generated from the frontend schema; this subset makes the contract fail if
+# one of the recently-added event families is accidentally removed.
+REQUIRED_MESSENGER_EVENTS = frozenset(
     {
-        "pong",
-        "error",
         "new_message",
-        "typing",
+        "message_edited",
+        "message_deleted",
+        "reaction_changed",
+        "replay_checkpoint",
         "read",
-        "online",
-        "online_list",
-        "presence",
+        "typing",
     }
 )
 
-# Required fields per message type (mirrors Zod schema field requirements)
+# Required fields per message type (mirrors Valibot schema field requirements)
 WS_MESSAGE_REQUIRED_FIELDS: dict[str, set[str]] = {
     "pong": {"type"},
     "error": {"type"},  # detail is optional
     "new_message": {"type", "chat_id", "message"},
     "typing": {"type", "chat_id", "user_id", "user_name"},
-    "read": {"type", "chat_id", "message_id", "user_id"},
+    "read": {"type", "chat_id", "user_id", "read_at"},
     "online": {"type", "user_id", "status"},
     "online_list": {"type", "users"},
-    "presence": {"type", "user_id", "active"},  # last_seen is optional
+    "presence": {"type", "user_id", "active", "last_seen"},
+    "message_edited": {"type", "chat_id", "message_id", "content", "edited_at"},
+    "message_deleted": {"type", "chat_id", "message_id", "deleted_at"},
+    "reaction_changed": {"type", "chat_id", "message_id", "user_id", "emoji", "action"},
+    "replay_checkpoint": {"type", "chat_id"},
+    "rate_limit_exceeded": {"type"},
 }
 
 
@@ -80,16 +168,17 @@ def test_typing_message_format():
 
 
 def test_read_message_format():
-    """Read receipts must include chat_id, message_id, user_id."""
+    """Read receipts are chat-level and carry read_at, not message_id."""
     msg = {
         "type": "read",
         "chat_id": str(uuid.uuid4()),
-        "message_id": str(uuid.uuid4()),
         "user_id": str(uuid.uuid4()),
+        "read_at": "2026-03-23T12:00:00+00:00",
     }
     required = WS_MESSAGE_REQUIRED_FIELDS["read"]
     missing = required - set(msg.keys())
     assert not missing, f"Read message missing required fields: {missing}"
+    assert "message_id" not in msg, "Read receipts are chat-level, not per-message"
 
 
 def test_presence_message_format():
@@ -144,47 +233,80 @@ def test_error_message_format():
 
 
 # ---------------------------------------------------------------------------
-# Tests: Backend sends only known types
+# Tests: backend output and ws-hub input directions
 # ---------------------------------------------------------------------------
 
 
-def test_backend_dispatcher_uses_known_types():
-    """Verify dispatcher.py only sends message types known to frontend Zod schema.
+def test_frontend_catalog_contains_all_messenger_event_families():
+    """The generated/current frontend union covers every messenger event."""
+    assert REQUIRED_MESSENGER_EVENTS <= WS_SERVER_MESSAGE_TYPES
 
-    Reads the Python source and extracts all ``"type": "..."`` string literals
-    to detect any new message types that haven't been registered in the
-    frontend Zod schema.
-    """
-    import inspect
 
-    from app.api.ws import dispatcher
+BACKEND_WS_PRODUCERS = (
+    "app/api/websocket.py",
+    "app/api/ws/dispatcher.py",
+    "app/api/ws/connection_manager.py",
+    "app/services/chat/command_service.py",
+    "app/services/chat/notification_service.py",
+)
 
-    source = inspect.getsource(dispatcher)
-    # Extract all "type": "..." patterns
-    type_literals = set(re.findall(r'"type":\s*"([a-z_]+)"', source))
+
+@pytest.mark.parametrize("relative_path", BACKEND_WS_PRODUCERS)
+def test_backend_ws_producers_use_frontend_catalog(relative_path: str):
+    """Every backend WS producer emits only schema-registered frame types."""
+    source_path = REPOSITORY_ROOT / relative_path
+    # Parse dictionaries instead of grepping source text: endpoint docstrings
+    # legitimately mention inbound commands (for example ``{"type": "ping"}`)
+    # that are not server-to-client frames and therefore are not in the output
+    # Valibot union.
+    type_literals = _python_ws_output_types(source_path)
 
     unknown = type_literals - WS_SERVER_MESSAGE_TYPES
     assert not unknown, (
-        f"Dispatcher sends unknown WS message type(s): {unknown}. "
-        f"Add them to frontend/src/api/schemas/wsMessage.ts Zod schema "
-        f"and to WS_SERVER_MESSAGE_TYPES in this test."
+        f"{relative_path} emits unknown WS message type(s): {unknown}. "
+        "Add the frame to frontend/src/api/schemas/wsMessage.ts first."
     )
 
 
-def test_backend_connection_manager_uses_known_types():
-    """Verify connection_manager.py only sends known message types."""
-    import inspect
+def test_backend_contract_ignores_mutmut_string_sentinel_only(tmp_path: Path):
+    """Mutation placeholders do not hide real unknown protocol tokens."""
+    source = tmp_path / "mutated_ws.py"
+    source.write_text(
+        "frames = [{'type': 'XXnew_messageXX'},{'type': 'NEW_MESSAGE'},]\n",
+        encoding="utf-8",
+    )
 
-    from app.api.ws import connection_manager
+    assert _python_ws_output_types(source) == frozenset({"NEW_MESSAGE"})
 
-    source = inspect.getsource(connection_manager)
-    type_literals = set(re.findall(r'"type":\s*"([a-z_]+)"', source))
 
-    unknown = type_literals - WS_SERVER_MESSAGE_TYPES
-    assert not unknown, (
-        f"ConnectionManager sends unknown WS message type(s): {unknown}. "
-        f"Add them to frontend/src/api/schemas/wsMessage.ts Zod schema "
-        f"and to WS_SERVER_MESSAGE_TYPES in this test."
+def test_backend_contract_ignores_generated_mutmut_variant_bodies(tmp_path: Path):
+    """Stats trees include mutant siblings that must not become protocol output."""
+    source = tmp_path / "mutated_ws.py"
+    source.write_text(
+        "def x_emit__mutmut_orig():\n"
+        "    return {'type': 'new_message'}\n"
+        "def x_emit__mutmut_1():\n"
+        "    return {'type': 'NEW_MESSAGE'}\n",
+        encoding="utf-8",
+    )
+
+    assert _python_ws_output_types(source) == frozenset({"new_message"})
+
+
+def test_ws_hub_inbound_allowlist_has_no_server_receipt_commands():
+    """ws-hub accepts transport commands only; REST owns read receipts."""
+    assert WS_HUB_CLIENT_MESSAGE_TYPES == frozenset({"join", "leave", "message"})
+    assert "read" not in WS_HUB_CLIENT_MESSAGE_TYPES
+    assert "typing" not in WS_HUB_CLIENT_MESSAGE_TYPES
+
+
+def test_transport_direction_is_explicitly_split():
+    """REST owns receipts/typing and ws-hub owns the control heartbeat."""
+    assert "read" in WS_SERVER_MESSAGE_TYPES
+    hook_source = FRONTEND_WS_HOOK.read_text(encoding="utf-8")
+    assert not re.search(r"sendRead|type\s*:\s*['\"]read['\"]", hook_source)
+    assert not re.search(
+        r"JSON\.stringify\(\{\s*type\s*:\s*['\"]ping['\"]", hook_source
     )
 
 

@@ -33,13 +33,14 @@ def upgrade() -> None:
     )
 
     if op.get_bind().dialect.name == "postgresql":
-        op.execute(
-            sa.text(
-                "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_stored_events_aggregate_uuid "
-                "ON stored_events (aggregate_id_uuid, sequence_number) "
-                "WHERE processed_at IS NULL AND aggregate_id_uuid IS NOT NULL"
+        with op.get_context().autocommit_block():
+            op.execute(
+                sa.text(
+                    "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_stored_events_aggregate_uuid "
+                    "ON stored_events (aggregate_id_uuid, sequence_number) "
+                    "WHERE processed_at IS NULL AND aggregate_id_uuid IS NOT NULL"
+                )
             )
-        )
     else:
         op.create_index(
             "ix_stored_events_aggregate_uuid",
@@ -50,9 +51,12 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     if op.get_bind().dialect.name == "postgresql":
-        op.execute(
-            sa.text("DROP INDEX CONCURRENTLY IF EXISTS ix_stored_events_aggregate_uuid")
-        )
+        with op.get_context().autocommit_block():
+            op.execute(
+                sa.text(
+                    "DROP INDEX CONCURRENTLY IF EXISTS ix_stored_events_aggregate_uuid"
+                )
+            )
     else:
         op.drop_index("ix_stored_events_aggregate_uuid", "stored_events")
     op.drop_column("stored_events", "sequence_number")

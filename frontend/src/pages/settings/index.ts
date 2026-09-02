@@ -11,5 +11,5 @@ export {
   SessionsSection,
   PasswordSection,
 } from "./sections"
-export { useAvatarUpload, useCoverUpload, useWebAuthn } from "./hooks"
+export { useAvatarUpload, useCoverUpload, useEmailMfa } from "./hooks"
 export type { SnackbarState, SetSnackbar, SettingsSectionProps } from "./types"

@@ -1,10 +1,14 @@
-import { FC, useState, useEffect, type ReactNode } from "react"
+import { FC, useState, useEffect, type FormEvent, type ReactNode } from "react"
 import { Camera as PhotoCamera } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useForm, Controller } from "react-hook-form"
 import { valibotResolver } from "@hookform/resolvers/valibot"
 import api from "@/api/client"
 import { logError } from "@/app/logger"
+import {
+  captureActiveTelemetryContext,
+  type CapturedTelemetryContext,
+} from "@/utils/telemetryContext"
 import { Button } from "@/components/ui"
 import Dialog from "@/components/ui/Dialog"
 import SmartImage from "@/components/media/SmartImage"
@@ -109,18 +113,21 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
     }
   }, [imageFile])
 
-  const onSubmit = async (data: NewsFormValues) => {
+  const onSubmit = async (data: NewsFormValues, telemetryContext: CapturedTelemetryContext) => {
     try {
       let imgUrl = initialData.image_url
 
       if (data.image instanceof File) {
+        const image = data.image
         setImageLoading(true)
         try {
           const formData = new FormData()
-          formData.append("file", data.image)
-          const res = await api.post<{ url: string }>(`/news/upload_image`, formData, {
-            headers: { "Content-Type": "multipart/form-data" },
-          })
+          formData.append("file", image)
+          const res = await telemetryContext.run(() =>
+            api.post<{ url: string }>(`/news/upload_image`, formData, {
+              headers: { "Content-Type": "multipart/form-data" },
+            })
+          )
           imgUrl = res.data.url
         } finally {
           setImageLoading(false)
@@ -135,12 +142,17 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
         image_url: imgUrl,
       }
 
-      await api.patch(`/news/${id}`, payload)
-      onSuccess?.()
+      await telemetryContext.run(() => api.patch(`/news/${id}`, payload))
+      telemetryContext.run(() => onSuccess?.())
       onClose()
     } catch (e) {
       logError(e)
     }
+  }
+
+  const handleTelemetrySubmit = (event: FormEvent<HTMLFormElement>) => {
+    const telemetryContext = captureActiveTelemetryContext()
+    return handleSubmit((data) => onSubmit(data, telemetryContext))(event)
   }
 
   // Determine which image to show: preview > existing > none
@@ -178,7 +190,7 @@ export const NewsCardEditDialog: FC<NewsCardEditDialogProps> = ({
         </>
       }
     >
-      <form id={`news-edit-form-${id}`} className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
+      <form id={`news-edit-form-${id}`} className="space-y-4" onSubmit={handleTelemetrySubmit}>
         <Field
           label={t("news:form.title") ?? ""}
           htmlFor={`news-edit-title-${id}`}

@@ -7,6 +7,15 @@ from pydantic import AliasChoices, Field, field_validator
 
 from .base import _PROJECT_ROOT, BaseAppSettings, _coerce_int_list, _coerce_str_list
 
+# Canonical message content limit shared by persistence, HTTP schemas and the
+# generated API contract.  Keep this in the backend-owned config module so a
+# boundary change has one source of truth instead of drifting per layer.
+CHAT_MAX_MESSAGE_LENGTH = 32_768
+# Transport guard shared by the Python fallback endpoint and ws-hub.  This is
+# intentionally independent from the content limit: JSON framing and UTF-8
+# encoding can make a valid message body larger on the wire.
+CHAT_MAX_WEBSOCKET_FRAME_BYTES = 60 * 1024
+
 
 class StorageSettings(BaseAppSettings):
     storage_backend: str = "static"
@@ -78,8 +87,13 @@ class StorageSettings(BaseAppSettings):
     chat_attachment_max_total_bytes: int = 30 * 1024 * 1024  # 30 MB
     # RZ-W10-10: Guard against storage DoS — huge message bodies bloat the DB,
     # slow down pagination queries, and can OOM during response serialisation.
-    # 10 000 chars ≈ ~6 A4 pages; adjust via CHAT_MAX_MESSAGE_LENGTH env var.
-    chat_max_message_length: int = 10_000
+    # The value is bounded to the database/API contract; deployments may lower
+    # it for a stricter policy but cannot widen it beyond the persisted column.
+    chat_max_message_length: int = Field(
+        default=CHAT_MAX_MESSAGE_LENGTH,
+        ge=1,
+        le=CHAT_MAX_MESSAGE_LENGTH,
+    )
     # Wave 209 G1 — group-chat size bounds (counted as creator + distinct
     # members). Min 3 keeps a 2-person chat a DM (avoids colliding with
     # find_existing_dm's ==2 participant lookup); max bounds the create fan-out

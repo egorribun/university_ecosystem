@@ -81,20 +81,24 @@ async def _reset_user_mfa(
         user = await _load_user(session, user_id=user_id, email=email)
         if user is None:
             raise ValueError("User not found")
-        stats = await mfa.reset_user_mfa(session, user=user)
-        await session.commit()
-
-        if notify and stats.changed:
-            locale = resolve_locale(user=user)
-            title = translate("notifications.mfa.reset.title", locale=locale)
-            body = translate("notifications.mfa.reset.body", locale=locale)
-            await create_notifications_for_users(
-                session,
-                title=title,
-                body=body,
-                type="security",
-                user_ids=[user.id],
-            )
+        try:
+            stats = await mfa.reset_user_mfa(session, user=user)
+            if notify and stats.changed:
+                locale = resolve_locale(user=user)
+                title = translate("notifications.mfa.reset.title", locale=locale)
+                body = translate("notifications.mfa.reset.body", locale=locale)
+                await create_notifications_for_users(
+                    session,
+                    title=title,
+                    body=body,
+                    type="security",
+                    user_ids=[user.id],
+                )
+            await session.commit()
+        except Exception:  # RZ-28-01-JUSTIFIED: transaction-boundary rollback
+            await session.rollback()
+            raise
+        await mfa.publish_mfa_session_revocations(stats.session_revocations)
         reason = "admin_reset" if stats.changed else "admin_reset_noop"
         _audit_cli(
             "users.mfa.reset",

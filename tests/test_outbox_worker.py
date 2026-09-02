@@ -289,7 +289,7 @@ async def test_outbox_worker_dispatch_exception(db_session, monkeypatch):
 
     async with async_session() as db:
         result = await db.get(StoredEvent, event_id)
-        assert result.error_count == 2
+        assert result.error_count == 1
         assert "Publish failed" in result.last_error
 
 

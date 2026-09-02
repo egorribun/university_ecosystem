@@ -114,11 +114,14 @@ describe("Milestone 1 — Adversarial Offline-First & Stress Test Suite", () => 
       const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 404 })
       vi.stubGlobal("fetch", fetchMock)
 
-      const channelMessages: any[] = []
-      const MockChannel = vi.fn().mockImplementation(() => ({
-        postMessage: (msg: any) => channelMessages.push(msg),
-        close: () => {},
-      }))
+      const channelMessages: unknown[] = []
+      class MockChannel {
+        postMessage(msg: unknown) {
+          channelMessages.push(msg)
+        }
+
+        close() {}
+      }
       vi.stubGlobal("BroadcastChannel", MockChannel)
 
       await processPendingMutations()
@@ -180,11 +183,14 @@ describe("Milestone 1 — Adversarial Offline-First & Stress Test Suite", () => 
       const fetchMock = vi.fn()
       vi.stubGlobal("fetch", fetchMock)
 
-      const channelMessages: any[] = []
-      const MockChannel = vi.fn().mockImplementation(() => ({
-        postMessage: (msg: any) => channelMessages.push(msg),
-        close: () => {},
-      }))
+      const channelMessages: unknown[] = []
+      class MockChannel {
+        postMessage(msg: unknown) {
+          channelMessages.push(msg)
+        }
+
+        close() {}
+      }
       vi.stubGlobal("BroadcastChannel", MockChannel)
 
       await processPendingMutations()

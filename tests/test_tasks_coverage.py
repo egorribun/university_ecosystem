@@ -192,16 +192,23 @@ class TestCleanupTasks:
             patch(
                 "app.tasks.cleanups.cleanup_privacy_artifacts", new_callable=AsyncMock
             ) as mock_cleanup,
+            patch(
+                "app.tasks.cleanups.cleanup_stale_cwv_observations",
+                new_callable=AsyncMock,
+            ) as mock_cwv_cleanup,
         ):
             mock_settings.session_retention_days = 90
             mock_settings.mfa_retention_days = 30
             mock_settings.failed_login_retention_days = 14
             mock_settings.access_log_retention_days = 180
             mock_settings.privacy_cleanup_interval_seconds = 3600
+            mock_settings.cwv_rum_enabled = True
+            mock_settings.cwv_retention_days = 30
             from app.tasks.cleanups import cleanup_privacy_artifacts_task
 
             await cleanup_privacy_artifacts_task()
             mock_cleanup.assert_awaited_once()
+            mock_cwv_cleanup.assert_awaited_once_with(retention_days=30)
 
     @pytest.mark.asyncio
     async def test_manage_partitions_task_enabled(self) -> None:

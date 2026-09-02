@@ -1,3 +1,4 @@
+import "@/styles/tokens/messenger.css"
 import { FeatureErrorBoundary } from "@/components/error/FeatureErrorBoundary"
 import { MessengerFeature } from "@/features/messenger"
 

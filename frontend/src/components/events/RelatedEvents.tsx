@@ -8,7 +8,6 @@ import SmartImage from "@/components/media/SmartImage"
 import { CalendarDays, ArrowRight } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useLanguage } from "@/contexts/LanguageContext"
-import { useMemo } from "react"
 import { EventCategoryBadge } from "./EventCategoryBadge"
 import { inferEventCategory } from "@/features/events/categories"
 import { localizeField } from "@/utils/localize"
@@ -19,8 +18,11 @@ interface RelatedEventsProps {
   items: Event[]
 }
 
+export const RELATED_EVENTS_TRANSLATION_NAMESPACES = ["events", "common"] as const
+export const RELATED_EVENT_CARD_TRANSLATION_NAMESPACES = ["events"] as const
+
 export function RelatedEvents({ items }: RelatedEventsProps) {
-  const { t } = useTranslation(["events", "common"])
+  const { t } = useTranslation([...RELATED_EVENTS_TRANSLATION_NAMESPACES])
   const { language } = useLanguage()
 
   if (items.length === 0) return null
@@ -45,22 +47,21 @@ export function RelatedEvents({ items }: RelatedEventsProps) {
 }
 
 function RelatedEventCard({ event, language }: { event: Event; language: "en" | "ru" }) {
-  const { t } = useTranslation(["events"])
+  const { t } = useTranslation([...RELATED_EVENT_CARD_TRANSLATION_NAMESPACES])
 
-  const localizedTitle = useMemo(
-    () => localizeField(event.title ?? "", event.title_en, language),
-    [event.title, event.title_en, language]
-  )
-
-  const category = useMemo(
-    () => inferEventCategory(event.event_type ?? event.event_type_en),
-    [event.event_type, event.event_type_en]
-  )
-
-  const dateLabel = useMemo(
-    () => (event.starts_at ? formatDate(event.starts_at, { day: "numeric", month: "short" }) : ""),
-    [event.starts_at]
-  )
+  // These values are deliberately computed inline: each is a small, pure
+  // presentation transform and keeping them as ordinary expressions makes
+  // their empty/locale fallback behavior observable in the rendered card.
+  const title = typeof event.title === "string" ? event.title : ""
+  const eventType =
+    event.event_type === null || event.event_type === undefined
+      ? event.event_type_en
+      : event.event_type
+  const localizedTitle = localizeField(title, event.title_en, language)
+  const category = inferEventCategory(eventType)
+  const dateLabel = event.starts_at
+    ? formatDate(event.starts_at, { day: "numeric", month: "short" })
+    : ""
 
   return (
     <Link

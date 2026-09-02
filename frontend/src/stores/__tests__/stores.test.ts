@@ -35,20 +35,21 @@ describe("notificationStore", () => {
     const { useNotificationStore } = await import("../notificationStore")
     const state = useNotificationStore.getState()
 
-    expect(state.topics.schedule).toBe(true)
-    expect(state.topics.news).toBe(true)
-    expect(state.topics.events).toBe(true)
-    expect(state.topics.system).toBe(true)
+    expect(state.topics["schedule.changed"]).toBe(true)
+    expect(state.topics["news.published"]).toBe(true)
+    expect(state.topics["events.published"]).toBe(true)
+    expect(state.topics["chat.message.created"]).toBe(true)
+    expect(state.topics["system.release"]).toBe(true)
   })
 
   it("should update topic preference", async () => {
     const { useNotificationStore } = await import("../notificationStore")
 
     act(() => {
-      useNotificationStore.getState().setTopic("schedule", false)
+      useNotificationStore.getState().setTopic("schedule.changed", false)
     })
 
-    expect(useNotificationStore.getState().topics.schedule).toBe(false)
+    expect(useNotificationStore.getState().topics["schedule.changed"]).toBe(false)
   })
 
   it("should add and remove toasts", async () => {
@@ -86,18 +87,58 @@ describe("notificationStore", () => {
     const { useNotificationStore } = await import("../notificationStore")
 
     act(() => {
-      useNotificationStore.getState().setTopic("schedule", false)
-      useNotificationStore.getState().setTopic("news", false)
+      useNotificationStore.getState().setTopic("schedule.changed", false)
+      useNotificationStore.getState().setTopic("news.published", false)
     })
 
-    expect(useNotificationStore.getState().topics.schedule).toBe(false)
+    expect(useNotificationStore.getState().topics["schedule.changed"]).toBe(false)
 
     act(() => {
       useNotificationStore.getState().resetTopics()
     })
 
-    expect(useNotificationStore.getState().topics.schedule).toBe(true)
-    expect(useNotificationStore.getState().topics.news).toBe(true)
+    expect(useNotificationStore.getState().topics["schedule.changed"]).toBe(true)
+    expect(useNotificationStore.getState().topics["news.published"]).toBe(true)
+  })
+
+  it.each([null, false, "legacy", {}, { topics: null }, { topics: "invalid" }])(
+    "keeps defaults when persisted notification preferences are malformed: %j",
+    async (persistedState) => {
+      const { useNotificationStore } = await import("../notificationStore")
+      const migrate = useNotificationStore.persist.getOptions().migrate
+
+      expect(migrate).toBeTypeOf("function")
+      const migrated = await migrate!(persistedState, 1)
+
+      expect(migrated).toEqual({})
+    }
+  )
+
+  it("migrates legacy topic aliases, ignores unknown topics, and keeps new defaults", async () => {
+    const { useNotificationStore } = await import("../notificationStore")
+    const migrate = useNotificationStore.persist.getOptions().migrate
+
+    const migrated = await migrate!(
+      {
+        topics: {
+          news: 0,
+          schedule: "enabled",
+          "events.published": false,
+          unknown: true,
+        },
+      },
+      1
+    )
+
+    expect(migrated).toEqual({
+      topics: {
+        "news.published": false,
+        "schedule.changed": true,
+        "events.published": false,
+        "chat.message.created": true,
+        "system.release": true,
+      },
+    })
   })
 })
 
@@ -371,13 +412,14 @@ describe("store selector hooks and remaining actions", () => {
 
     act(() => {
       useNotificationStore.getState().setAllTopics({
-        schedule: false,
-        news: false,
-        events: false,
-        system: false,
+        "news.published": false,
+        "schedule.changed": false,
+        "events.published": false,
+        "chat.message.created": false,
+        "system.release": false,
       })
     })
-    expect(useNotificationStore.getState().topics.schedule).toBe(false)
+    expect(useNotificationStore.getState().topics["schedule.changed"]).toBe(false)
 
     act(() => {
       useNotificationStore.getState().addToast("default toast")
@@ -396,7 +438,9 @@ describe("store selector hooks and remaining actions", () => {
   it("notification: selector hooks reflect store state", async () => {
     const mod = await import("../notificationStore")
 
-    expect(renderHook(() => mod.useNotificationTopics()).result.current.schedule).toBe(true)
+    expect(renderHook(() => mod.useNotificationTopics()).result.current["schedule.changed"]).toBe(
+      true
+    )
     expect(renderHook(() => mod.useNotificationPermission()).result.current).toBe("default")
     expect(renderHook(() => mod.useToasts()).result.current).toEqual([])
 

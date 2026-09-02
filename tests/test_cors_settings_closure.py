@@ -21,13 +21,11 @@ class TestCorsSettingsClosure:
             frontend_origins=[" https://A.example/ ", "", "https://a.example"],
             frontend_origin="",
             app_base_url="",
-            webauthn_origin="https://login.example/",
             is_development=True,
         )
 
         assert settings.frontend_origins_list == [
             "https://A.example",
-            "https://login.example",
             "http://localhost:5173",
             "http://127.0.0.1:5173",
         ]

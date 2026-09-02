@@ -49,9 +49,9 @@ def test_flagd_runtime_dependencies_are_explicit_and_compatible() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     dependencies = project["project"]["dependencies"]
 
-    assert "openfeature-provider-flagd>=0.5.0,<0.5.1" in dependencies
-    assert "protobuf>=6.33.6,<7" in dependencies
-    assert "grpcio>=1.81.0,<1.82" in dependencies
+    assert "openfeature-provider-flagd>=0.5.0,<0.5.3" in dependencies
+    assert "protobuf>=6.33.6,<8" in dependencies
+    assert "grpcio>=1.81.0,<1.84" in dependencies
 
 
 def test_flagd_settings_are_typed_and_validate_the_port() -> None:

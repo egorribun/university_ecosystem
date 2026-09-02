@@ -9,10 +9,15 @@ on:
 permissions:
   pull-requests: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   main:
     name: Validate PR Title
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - name: Semantic Pull Request Title check
         uses: amannn/action-semantic-pull-request@2c9480cf285c2ac02b52e26013f7d627b14a4f95 # v5.5.3

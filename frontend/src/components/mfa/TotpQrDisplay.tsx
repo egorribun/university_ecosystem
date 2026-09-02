@@ -40,7 +40,7 @@ export const TotpQrDisplay = ({ otpauthUrl, secret, label }: TotpQrDisplayProps)
       <div
         className="p-4 rounded-lg border border-glass-border bg-surface shadow-sm min-h-56 flex items-center justify-center"
         role="img"
-        aria-label={t("mfa.totp.qrAriaLabel", { defaultValue: "QR code for TOTP setup" })}
+        aria-label={t("mfa.totp.qrAriaLabel")}
       >
         <Suspense
           fallback={<div className="w-48 h-48 animate-pulse bg-(--border-subtle) rounded" />}

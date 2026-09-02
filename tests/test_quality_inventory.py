@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 try:
+    from scripts.quality import check_orphans_and_anti_patterns as checker
     from scripts.quality import generate_test_inventory as inventory
     from scripts.quality.check_orphans_and_anti_patterns import (
         check_anti_patterns,
         check_python_duplicates_and_imports,
+        find_python_repository_references,
         matches_source,
     )
     from scripts.quality.generate_test_inventory import (
@@ -18,13 +22,20 @@ try:
         should_prune_directory,
     )
 except ImportError:
-    import pytest
-
     # QUALITY-1207 @egorribun: Skip test when scripts module is not importable under mutmut isolation
     pytest.skip(
         "scripts module not available (e.g. under mutmut isolation)",
         allow_module_level=True,
     )
+
+
+def _write_repository_contract(tmp_path: Path, monkeypatch, content: str) -> Path:
+    repository = tmp_path / "repository"
+    test_path = repository / "tests" / "test_contract.py"
+    test_path.parent.mkdir(parents=True)
+    test_path.write_text(content, encoding="utf-8")
+    monkeypatch.setattr(checker, "REPOSITORY_ROOT", repository)
+    return test_path
 
 
 def test_resolve_owner() -> None:
@@ -97,6 +108,10 @@ def test_inventory_prunes_dependency_and_hidden_directories(
     (tmp_path / ".github" / "workflows" / "ci.yml").write_text(
         "name: ci", encoding="utf-8"
     )
+    (tmp_path / ".husky").mkdir()
+    (tmp_path / ".husky" / "pre-commit").write_text(
+        "npm --prefix frontend run lint-staged", encoding="utf-8"
+    )
 
     monkeypatch.setattr(inventory, "REPOSITORY_ROOT", tmp_path)
     records = scan_repository(
@@ -108,11 +123,16 @@ def test_inventory_prunes_dependency_and_hidden_directories(
     )
     paths = {str(record["path"]) for record in records}
 
-    assert paths == {".github/workflows/ci.yml", "app/visible.py"}
+    assert paths == {
+        ".github/workflows/ci.yml",
+        ".husky/pre-commit",
+        "app/visible.py",
+    }
     assert should_prune_directory("node_modules") is True
     assert should_prune_directory(".codex") is True
     assert should_prune_directory("stryker-tmp") is True
     assert should_prune_directory(".github") is False
+    assert should_prune_directory(".husky") is False
 
 
 def test_check_anti_patterns(tmp_path: Path) -> None:
@@ -265,3 +285,481 @@ def test_matches_source_normalizes_hyphenated_workflow_contract_names() -> None:
         )
         is True
     )
+
+
+def test_python_contract_paths_match_inventory_utilities(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        """
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+MIGRATIONS = ROOT / "alembic" / "versions"
+WORKFLOW = ROOT / ".github" / "workflows" / "deploy.yml"
+HOOK = Path(".husky/pre-commit")
+""",
+    )
+
+    references = find_python_repository_references(contract_test)
+
+    assert references == {
+        ".github/workflows/deploy.yml",
+        ".husky/pre-commit",
+        "alembic/versions",
+    }
+    assert matches_source(
+        "tests/test_contract.py",
+        set(),
+        [],
+        repository_references=references,
+        reference_paths={
+            ".github/workflows/deploy.yml",
+            ".husky/pre-commit",
+            "alembic/versions/202608250001_expand_email_otp_mfa.py",
+        },
+    )
+
+
+def test_python_contract_path_match_requires_a_real_inventory_target(
+    tmp_path: Path,
+) -> None:
+    contract_test = tmp_path / "test_contract.py"
+    contract_test.write_text(
+        'from pathlib import Path\nROOT = Path(__file__).parents[1]\nMISSING = ROOT / "missing"\n',
+        encoding="utf-8",
+    )
+
+    assert not matches_source(
+        "tests/test_contract.py",
+        set(),
+        [],
+        repository_references=find_python_repository_references(contract_test),
+        reference_paths={"quality/quality-contract.json"},
+    )
+
+
+def test_python_contract_path_does_not_fall_back_to_existing_parent(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        'from pathlib import Path\nROOT = Path(__file__).resolve().parents[1]\nTARGET = ROOT / "quality" / "missing.json"\n',
+    )
+
+    assert not matches_source(
+        "tests/test_contract.py",
+        set(),
+        [],
+        repository_references=find_python_repository_references(contract_test),
+        reference_paths={"quality/quality-contract.json"},
+    )
+
+
+def test_python_contract_rejects_root_name_with_non_repository_assignment(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        'from pathlib import Path\nROOT = Path("/tmp/not-repo")\nTARGET = ROOT / "quality" / "quality-contract.json"\n',
+    )
+
+    assert not matches_source(
+        "tests/test_contract.py",
+        set(),
+        [],
+        repository_references=find_python_repository_references(contract_test),
+        reference_paths={"quality/quality-contract.json"},
+    )
+
+
+def test_python_contract_rejects_non_root_file_expression(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        'from pathlib import Path\nTARGET = Path(__file__).name / "quality" / "quality-contract.json"\n',
+    )
+
+    assert not matches_source(
+        "tests/test_contract.py",
+        set(),
+        [],
+        repository_references=find_python_repository_references(contract_test),
+        reference_paths={"quality/quality-contract.json"},
+    )
+
+
+def test_python_contract_keeps_dynamic_repository_directory_prefix(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        'from pathlib import Path\nROOT = Path(__file__).resolve().parents[1]\nTARGET = ROOT / "alembic" / "versions" / migration_name\n',
+    )
+
+    assert matches_source(
+        "tests/test_contract.py",
+        set(),
+        [],
+        repository_references=find_python_repository_references(contract_test),
+        reference_paths={"alembic/versions/202608250001_expand.py"},
+    )
+
+
+def test_python_contract_rejects_canonical_root_rebound_later(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        'from pathlib import Path\nROOT = Path(__file__).resolve().parents[1]\nROOT = Path("/tmp/not-repo")\nTARGET = ROOT / "quality" / "quality-contract.json"\n',
+    )
+
+    assert find_python_repository_references(contract_test) == set()
+
+
+def test_python_contract_rejects_dotted_import_rebinding_canonical_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        "ROOT = Path(__file__).resolve().parents[1]\n"
+        "import ROOT.submodule\n"
+        'TARGET = ROOT / "quality" / "quality-contract.json"\n',
+    )
+
+    assert find_python_repository_references(contract_test) == set()
+
+
+def test_python_contract_rejects_wildcard_import_after_canonical_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        "ROOT = Path(__file__).resolve().parents[1]\n"
+        "from arbitrary_module import *\n"
+        'TARGET = ROOT / "quality" / "quality-contract.json"\n',
+    )
+
+    assert find_python_repository_references(contract_test) == set()
+
+
+@pytest.mark.parametrize(
+    "class_binding",
+    [
+        "ROOT = fallback",
+        "del ROOT",
+        "import arbitrary_module as ROOT",
+        "def ROOT():\n        pass",
+        "class ROOT:\n        pass",
+        "for ROOT in values:\n        pass",
+        "with manager() as ROOT:\n        pass",
+        "try:\n        raise RuntimeError\n    except RuntimeError as ROOT:\n        pass",
+        "match subject:\n        case ROOT:\n            pass",
+        "value = (ROOT := fallback)",
+        "def subject(value=(ROOT := fallback)):\n        pass",
+    ],
+)
+def test_python_contract_rejects_class_code_global_root_bindings(
+    tmp_path: Path, monkeypatch, class_binding: str
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        "ROOT = Path(__file__).resolve().parents[1]\n"
+        "class Container:\n"
+        "    global ROOT\n"
+        f"    {class_binding}\n"
+        'TARGET = ROOT / "quality" / "quality-contract.json"\n',
+    )
+    compile(contract_test.read_text(encoding="utf-8"), str(contract_test), "exec")
+
+    assert find_python_repository_references(contract_test) == set()
+
+
+def test_python_contract_keeps_class_global_out_of_nested_function_scope(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        "ROOT = Path(__file__).resolve().parents[1]\n"
+        "class Container:\n"
+        "    global ROOT\n"
+        "    def method():\n"
+        "        ROOT = fallback\n"
+        'TARGET = ROOT / "quality" / "quality-contract.json"\n',
+    )
+
+    assert find_python_repository_references(contract_test) == {
+        "quality/quality-contract.json"
+    }
+
+
+def test_python_contract_rejects_nested_class_own_global_binding(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        "ROOT = Path(__file__).resolve().parents[1]\n"
+        "class Outer:\n"
+        "    class Inner:\n"
+        "        global ROOT\n"
+        "        ROOT = fallback\n"
+        'TARGET = ROOT / "quality" / "quality-contract.json"\n',
+    )
+
+    assert find_python_repository_references(contract_test) == set()
+
+
+def test_python_contract_annotation_only_does_not_rebind_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        "ROOT = Path(__file__).resolve().parents[1]\n"
+        "ROOT: Path\n"
+        'TARGET = ROOT / "quality" / "quality-contract.json"\n',
+    )
+
+    assert find_python_repository_references(contract_test) == {
+        "quality/quality-contract.json"
+    }
+
+
+def test_python_contract_annotation_with_value_rebinds_root(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        "ROOT = Path(__file__).resolve().parents[1]\n"
+        "ROOT: Path = fallback\n"
+        'TARGET = ROOT / "quality" / "quality-contract.json"\n',
+    )
+
+    assert find_python_repository_references(contract_test) == set()
+
+
+@pytest.mark.parametrize(
+    "namespace_mutation",
+    [
+        "exec(source)",
+        "eval(source)",
+        'globals()["ROOT"] = fallback',
+        'del globals()["ROOT"]',
+        'globals().update({"ROOT": fallback})',
+        'globals().__ior__({"ROOT": fallback})',
+        'globals().__init__({"ROOT": fallback})',
+        'dict.__setitem__(globals(), "ROOT", fallback)',
+        'locals().setdefault("ROOT", fallback)',
+        'vars().__setitem__("ROOT", fallback)',
+        'module.__dict__["ROOT"] = fallback',
+        'module.__dict__.update({"ROOT": fallback})',
+    ],
+)
+def test_python_contract_rejects_direct_module_namespace_mutation(
+    tmp_path: Path, monkeypatch, namespace_mutation: str
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        "ROOT = Path(__file__).resolve().parents[1]\n"
+        f"{namespace_mutation}\n"
+        'TARGET = ROOT / "quality" / "quality-contract.json"\n',
+    )
+
+    assert find_python_repository_references(contract_test) == set()
+
+
+def test_python_contract_rejects_globals_mutation_in_executed_class_body(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        "ROOT = Path(__file__).resolve().parents[1]\n"
+        "class Container:\n"
+        '    globals()["ROOT"] = fallback\n'
+        'TARGET = ROOT / "quality" / "quality-contract.json"\n',
+    )
+
+    assert find_python_repository_references(contract_test) == set()
+
+
+def test_python_contract_does_not_descend_into_unexecuted_function_mutation(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        "ROOT = Path(__file__).resolve().parents[1]\n"
+        "def mutate_later():\n"
+        '    globals()["ROOT"] = fallback\n'
+        'TARGET = ROOT / "quality" / "quality-contract.json"\n',
+    )
+
+    assert find_python_repository_references(contract_test) == {
+        "quality/quality-contract.json"
+    }
+
+
+@pytest.mark.parametrize(
+    "module_binding",
+    [
+        "del ROOT",
+        "try:\n    raise RuntimeError\nexcept RuntimeError as ROOT:\n    pass",
+        "match subject:\n    case ROOT:\n        pass",
+        "match subject:\n    case [*ROOT]:\n        pass",
+        'match subject:\n    case {"key": _, **ROOT}:\n        pass',
+    ],
+)
+def test_python_contract_rejects_string_backed_module_root_rebindings(
+    tmp_path: Path, monkeypatch, module_binding: str
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        "ROOT = Path(__file__).resolve().parents[1]\n"
+        f"{module_binding}\n"
+        'TARGET = ROOT / "quality" / "quality-contract.json"\n',
+    )
+
+    assert find_python_repository_references(contract_test) == set()
+
+
+@pytest.mark.parametrize(
+    "module_evaluated_binding",
+    [
+        "def subject(value=(ROOT := fallback)):\n    pass",
+        "async def subject(value=(ROOT := fallback)):\n    pass",
+        "@(ROOT := decorator)\ndef subject():\n    pass",
+        "subject = lambda value=(ROOT := fallback): value",
+        "subject = [item for item in values if (ROOT := item)]",
+        "class Subject((ROOT := Base)):\n    pass",
+        "class Subject(metaclass=(ROOT := Meta)):\n    pass",
+    ],
+)
+def test_python_contract_rejects_bindings_in_module_evaluated_child_expressions(
+    tmp_path: Path, monkeypatch, module_evaluated_binding: str
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        "ROOT = Path(__file__).resolve().parents[1]\n"
+        f"{module_evaluated_binding}\n"
+        'TARGET = ROOT / "quality" / "quality-contract.json"\n',
+    )
+
+    assert find_python_repository_references(contract_test) == set()
+
+
+@pytest.mark.parametrize(
+    "child_scope_binding",
+    [
+        "def subject():\n    ROOT = fallback",
+        "class Subject:\n    ROOT = fallback",
+        "subject = lambda: (ROOT := fallback)",
+        "items = [ROOT for ROOT in values]",
+    ],
+)
+def test_python_contract_keeps_bindings_confined_to_child_scope(
+    tmp_path: Path, monkeypatch, child_scope_binding: str
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        "from pathlib import Path\n"
+        "ROOT = Path(__file__).resolve().parents[1]\n"
+        f"{child_scope_binding}\n"
+        'TARGET = ROOT / "quality" / "quality-contract.json"\n',
+    )
+
+    assert find_python_repository_references(contract_test) == {
+        "quality/quality-contract.json"
+    }
+
+
+def test_python_contract_rejects_nested_fake_root_binding(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        'from pathlib import Path\nROOT = Path("/tmp/not-repo")\ndef fake():\n    ROOT = Path(__file__).resolve().parents[1]\n    return ROOT / "quality" / "quality-contract.json"\nTARGET = ROOT / "quality" / "quality-contract.json"\n',
+    )
+
+    assert find_python_repository_references(contract_test) == set()
+
+
+def test_python_contract_rejects_root_reference_before_binding(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        'from pathlib import Path\nTARGET = ROOT / "quality" / "quality-contract.json"\nROOT = Path(__file__).resolve().parents[1]\n',
+    )
+
+    assert find_python_repository_references(contract_test) == set()
+
+
+def test_python_contract_rejects_wrong_repository_parent_index(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        'from pathlib import Path\nROOT = Path(__file__).resolve().parents[0]\nTARGET = ROOT / "quality" / "quality-contract.json"\n',
+    )
+
+    assert find_python_repository_references(contract_test) == set()
+
+
+def test_python_contract_rejects_static_segments_after_dynamic_segment(
+    tmp_path: Path, monkeypatch
+) -> None:
+    contract_test = _write_repository_contract(
+        tmp_path,
+        monkeypatch,
+        'from pathlib import Path\nROOT = Path(__file__).resolve().parents[1]\nTARGET = ROOT / dynamic / "quality" / "quality-contract.json"\n',
+    )
+
+    assert find_python_repository_references(contract_test) == set()
+
+
+def test_static_skip_condition_is_not_a_dynamic_skip(tmp_path: Path) -> None:
+    test_file = tmp_path / "test_platform.py"
+    test_file.write_text(
+        '@pytest.mark.skipif(not SYMLINKS_SUPPORTED, reason="requires symlinks")\n'
+        "def test_symlink_contract(): ...\n",
+        encoding="utf-8",
+    )
+    errors: list[str] = []
+
+    check_anti_patterns(test_file, errors, [], [])
+
+    assert errors == []

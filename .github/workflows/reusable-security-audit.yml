@@ -16,7 +16,7 @@ on:
         description: "Node.js version for npm audit"
         required: false
         type: string
-        default: "22"
+        default: "24"
       run-pip-audit:
         description: "Run pip-audit for Python dependencies"
         required: false
@@ -37,6 +37,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -58,33 +60,19 @@ jobs:
       - name: Run Python known-vulnerability allowlist gate
         shell: bash
         run: |
+          # OSV's batch endpoint avoids a flaky N+1 request pattern while the
+          # adapter preserves pip-audit's frozen requirement and report contract.
+          # Status 1 means complete findings; status 2 means operationally
+          # incomplete data. Both are validated fail-closed below.
           set +e
-          pip_audit_status=1
-          for attempt in 1 2 3; do
-            rm -f /tmp/pip-audit.json
-            uv run --frozen --no-sync pip-audit \
-              --strict \
-              --no-deps \
-              --disable-pip \
-              --requirement /tmp/requirements.txt \
-              --format json \
-              --aliases on \
-              --desc off \
-              --progress-spinner off \
-              --vulnerability-service osv \
-              --output /tmp/pip-audit.json
-            pip_audit_status=$?
-            # OSV outages can fail before pip-audit writes a report. Retry only
-            # that operationally incomplete case; a valid report always reaches
-            # the fail-closed allowlist validator, including real advisories.
-            if [[ "$pip_audit_status" -eq 0 || -s /tmp/pip-audit.json ]]; then
-              break
-            fi
-            echo "::warning::pip-audit produced no report (attempt $attempt/3); retrying OSV query"
-            if [[ "$attempt" -lt 3 ]]; then
-              sleep $((attempt * 15))
-            fi
-          done
+          rm -f /tmp/pip-audit.json
+          uv run --frozen --no-sync python scripts/osv_batch_audit.py \
+            --requirement /tmp/requirements.txt \
+            --output /tmp/pip-audit.json \
+            --timeout 30 \
+            --attempts 4 \
+            --batch-size 100
+          pip_audit_status=$?
           set -e
           uv run --frozen --no-sync python scripts/check_dependency_audit_report.py pip \
             --report /tmp/pip-audit.json \
@@ -102,6 +90,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -145,6 +135,30 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: "3.17.0"
+
+      - name: Build Helm dependencies for Trivy
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if helm dependency build charts/university-ecosystem/; then
+              test -s charts/university-ecosystem/charts/redis-20.13.4.tgz
+              test -s charts/university-ecosystem/charts/nats-8.5.4.tgz
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "Helm dependency build failed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 15))
+          done
 
       - name: Install Trivy (via apt repo)
         # GitHub-Releases downloads are unreliable on this runner;
@@ -185,6 +199,11 @@ jobs:
         with:
           scan-type: "config"
           scan-ref: "."
+          trivy-config: "security/trivy-university-config.yaml"
+          # The revocation chart is scanned separately with its required
+          # release identity; keeping it out of this aggregate scan prevents
+          # Helm's intentional empty defaults from being silently skipped.
+          skip-dirs: "charts/revocation-store"
           # Keep the OSS-Fuzz builder's documented root exception scoped to
           # that single Dockerfile; all other container user findings remain
           # blocking code-scanning alerts.
@@ -197,6 +216,63 @@ jobs:
           severity: "CRITICAL,HIGH"
           # Without this flag Trivy deliberately emits LOW/MEDIUM findings in
           # SARIF, which can block the zero-alert ruleset while the job is green.
+          limit-severities-for-sarif: true
+          skip-setup-trivy: true
+          exit-code: "1"
+
+      - name: Validate Helm charts before Trivy configuration scan
+        shell: bash
+        run: | # pragma: allowlist secret -- contains only a Kubernetes Secret name override
+          set -euo pipefail
+          trivy_application_secret_override="applicationSecrets.existingSecret=trivy-scan-application" # pragma: allowlist secret -- Secret name only; no credential material
+
+          helm template trivy-revocation charts/revocation-store \
+            --dependency-update=false \
+            --values security/trivy-revocation-values.yaml \
+            >/tmp/trivy-revocation-render.yaml
+          helm template trivy-university charts/university-ecosystem \
+            --dependency-update=false \
+            --set "$trivy_application_secret_override" \
+            >/tmp/trivy-university-render.yaml
+
+          scan_chart() {
+            local chart="$1"
+            local log_file="$2"
+            local output_file="/tmp/${chart##*/}-trivy-preflight.json"
+            shift 2
+            trivy config --misconfig-scanners helm \
+              --format json --output "$output_file" \
+              "$@" "$chart" 2>&1 | tee "$log_file"
+            if grep -Fqi "Skipping chart" "$log_file" || \
+              grep -Fqi "missing in charts/" "$log_file" || \
+              grep -Fqi "Failed to render Chart files" "$log_file"; then
+              echo "::error::Trivy skipped Helm chart $chart" >&2
+              return 1
+            fi
+            if ! jq -e '.Results | type == "array" and length > 0' \
+              "$output_file" >/dev/null; then
+              echo "::error::Trivy produced no rendered Helm results for $chart" >&2
+              return 1
+            fi
+          }
+
+          scan_chart charts/revocation-store /tmp/trivy-revocation-preflight.log \
+            --helm-values security/trivy-revocation-values.yaml
+          scan_chart charts/university-ecosystem /tmp/trivy-university-preflight.log \
+            --helm-set "$trivy_application_secret_override"
+
+      - name: Run Trivy revocation-store configuration scanner
+        id: trivy_revocation
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: "config"
+          scan-ref: "charts/revocation-store"
+          trivy-config: "security/trivy-revocation-config.yaml"
+          trivyignores: ".trivyignore.yaml"
+          format: "sarif"
+          output: "trivy-revocation-config.sarif"
+          severity: "CRITICAL,HIGH"
           limit-severities-for-sarif: true
           skip-setup-trivy: true
           exit-code: "1"
@@ -220,12 +296,21 @@ jobs:
           sarif_file: "trivy-config.sarif"
           category: "trivy-config"
 
+      - name: Upload Trivy revocation-store results
+        uses: github/codeql-action/upload-sarif@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: "trivy-revocation-config.sarif"
+          category: "trivy-revocation-config"
+
       - name: Re-assert Trivy filesystem and configuration gates
         if: always()
         shell: bash
         env:
           FILESYSTEM_OUTCOME: ${{ steps.trivy_fs.outcome }}
           CONFIGURATION_OUTCOME: ${{ steps.trivy_config.outcome }}
+          REVOCATION_OUTCOME: ${{ steps.trivy_revocation.outcome }}
         run: |
           set -euo pipefail
           failed=0
@@ -235,6 +320,10 @@ jobs:
           fi
           if [[ "$CONFIGURATION_OUTCOME" != "success" ]]; then
             echo "::error::Trivy configuration scan concluded '$CONFIGURATION_OUTCOME'."
+            failed=1
+          fi
+          if [[ "$REVOCATION_OUTCOME" != "success" ]]; then
+            echo "::error::Trivy revocation-store configuration scan concluded '$REVOCATION_OUTCOME'."
             failed=1
           fi
           exit "$failed"
@@ -247,6 +336,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -280,6 +371,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Install Syft
         uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
@@ -299,10 +392,11 @@ jobs:
 
   # ── detect-secrets baseline integrity ─────────────────────────────────────
   # AUDIT-INFRA-06: A contributor with push access can suppress new secrets by
-  # updating .secrets.baseline. This job re-scans the repo and fails if the
-  # committed baseline suppresses patterns not present in the current scan,
-  # catching newly added suppressions. Combined with CODEOWNERS this ensures
-  # that any baseline change requires security-team approval.
+  # updating .secrets.baseline. This job re-scans the repo and compares
+  # finding-level identities, catching both newly detected findings and
+  # suppressions added relative to the trusted pull-request base. Combined
+  # with CODEOWNERS this ensures that any baseline change requires
+  # security-team approval.
   detect-secrets-baseline:
     name: detect-secrets Baseline Integrity
     runs-on: ubuntu-24.04
@@ -310,6 +404,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -317,13 +413,50 @@ jobs:
           python-version: "3.14"
 
       - name: Install detect-secrets
-        run: pip install detect-secrets==1.5.0
+        run: >-
+          python -m pip install
+          --require-hashes
+          --only-binary=:all:
+          --disable-pip-version-check
+          --no-cache-dir
+          -r security/detect-secrets-requirements.txt
 
       - name: Scan repo (no baseline)
-        run: detect-secrets scan > /tmp/current_scan.json
+        # The baseline is scanner metadata, not application input. Scanning it
+        # would recursively flag every stored digest and keyword entry and
+        # make finding-level verification impossible.
+        run: detect-secrets scan --exclude-files '^\.secrets\.baseline$' > /tmp/current_scan.json
+
+      - name: Fetch trusted base baseline (pull requests)
+        if: ${{ github.event_name == 'pull_request' }}
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "ERROR: pull-request base SHA is not an immutable 40-hex commit" >&2
+            exit 1
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git show "$BASE_SHA:.secrets.baseline" > "$RUNNER_TEMP/trusted-base-baseline.json"
+          test -s "$RUNNER_TEMP/trusted-base-baseline.json"
 
       - name: Verify baseline has not regressed
-        run: python scripts/verify_secrets_baseline.py .secrets.baseline /tmp/current_scan.json
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TRUSTED_BASELINE_PATH: ${{ runner.temp }}/trusted-base-baseline.json
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            python scripts/verify_secrets_baseline.py \
+              .secrets.baseline /tmp/current_scan.json \
+              --trusted-base-baseline "$TRUSTED_BASELINE_PATH"
+          else
+            python scripts/verify_secrets_baseline.py \
+              .secrets.baseline /tmp/current_scan.json
+          fi
 
   # ── Semgrep SAST ───────────────────────────────────────────────────────────
   # Uses the official semgrep/semgrep Docker image so no binary installation
@@ -353,6 +486,7 @@ jobs:
         with:
           # The CE fallback uses --baseline-commit for diff-aware PR scans.
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Run Semgrep SAST
         # Keep the SARIF upload alive when findings make the scanner return 1;
@@ -365,10 +499,10 @@ jobs:
           set -u
           scan_status=0
           if [ -n "${SEMGREP_APP_TOKEN:-}" ]; then
-            semgrep ci --sarif --sarif-output=semgrep.sarif || scan_status=$?
+            semgrep ci --error --sarif --sarif-output=semgrep.sarif || scan_status=$?
           else
             semgrep scan --config auto --baseline-commit origin/main \
-              --sarif --sarif-output=semgrep.sarif || scan_status=$?
+              --error --sarif --sarif-output=semgrep.sarif || scan_status=$?
           fi
           if [ ! -s semgrep.sarif ]; then
             echo "::error::Semgrep completed without producing SARIF output"
@@ -387,8 +521,8 @@ jobs:
       - name: Fail if Semgrep reported findings or scan errors
         if: always()
         run: |
-          scan_status="${SEMGREP_SCAN_STATUS:-1}"
-          if [ "$scan_status" -ne 0 ]; then
-            echo "::error::Semgrep reported findings or a scan error (exit $scan_status)"
-            exit "$scan_status"
-          fi
+          scan_status="${SEMGREP_SCAN_STATUS:-2}"
+          python3 scripts/quality/validate_semgrep_sarif.py \
+            --report semgrep.sarif \
+            --policy security/semgrep-suppression-policy.json \
+            --scanner-status "$scan_status"

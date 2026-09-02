@@ -52,6 +52,7 @@ export function useURLState<T extends Record<string, unknown>>(): {
           return next
         },
         replace: true,
+        resetScroll: false,
         viewTransition: false,
       })
     },
@@ -74,6 +75,7 @@ export function useURLState<T extends Record<string, unknown>>(): {
           return next
         },
         replace: true,
+        resetScroll: false,
         viewTransition: false,
       })
     },

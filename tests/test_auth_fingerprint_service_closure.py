@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.auth.fingerprint import SessionFingerprint
+from app.auth.fingerprint import SessionFingerprint, _compute_fingerprint_hash
 from app.services.auth.fingerprint_service import AuthFingerprintService
 
 
@@ -29,9 +29,9 @@ def _context(fingerprint_hash: str):
     return AuthFingerprintService(request, "en"), user, session, db
 
 
-def _fingerprint(value: str) -> SessionFingerprint:
+def _fingerprint(value: str, *, user_agent: str = "UA") -> SessionFingerprint:
     return SessionFingerprint(
-        user_agent="UA",
+        user_agent=user_agent,
         accept_language="en",
         ip_address="127.0.0.1",
         fingerprint_hash=value,
@@ -66,6 +66,73 @@ async def test_validate_fingerprint_ignores_matching_hash():
 
 
 @pytest.mark.asyncio
+async def test_validate_fingerprint_accepts_matching_hash_without_stored_user_agent():
+    service, user, session, db = _context("same")
+    session.user_agent = ""
+    with (
+        patch(
+            "app.services.auth.fingerprint_service.extract_fingerprint",
+            return_value=_fingerprint("same", user_agent="new-agent"),
+        ),
+        patch(
+            "app.services.auth.fingerprint_service.get_suspicious_activity_detector"
+        ) as detector,
+    ):
+        await service.validate_fingerprint(user, session, db)
+
+    detector.assert_not_called()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_validate_fingerprint_accepts_legacy_language_variant_hash():
+    legacy_hash = _compute_fingerprint_hash("UA", "en-US,en;q=0.9", "127.0.0.1")
+    normalized_hash = _compute_fingerprint_hash("UA", "en", "127.0.0.1")
+    service, user, session, db = _context(legacy_hash)
+    session.accept_language = "en-US,en;q=0.9"
+    with (
+        patch(
+            "app.services.auth.fingerprint_service.extract_fingerprint",
+            return_value=_fingerprint(normalized_hash),
+        ),
+        patch(
+            "app.services.auth.fingerprint_service.get_suspicious_activity_detector"
+        ) as detector,
+    ):
+        await service.validate_fingerprint(user, session, db)
+
+    detector.assert_not_called()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_validate_fingerprint_does_not_revoke_for_language_only_change():
+    service, user, session, db = _context(
+        _compute_fingerprint_hash("UA", "", "127.0.0.1")
+    )
+    session.accept_language = ""
+    current_hash = _compute_fingerprint_hash("UA", "ru", "127.0.0.1")
+    with (
+        patch(
+            "app.services.auth.fingerprint_service.extract_fingerprint",
+            return_value=SessionFingerprint(
+                user_agent="UA",
+                accept_language="ru",
+                ip_address="127.0.0.1",
+                fingerprint_hash=current_hash,
+            ),
+        ),
+        patch(
+            "app.services.auth.fingerprint_service.get_suspicious_activity_detector"
+        ) as detector,
+    ):
+        await service.validate_fingerprint(user, session, db)
+
+    detector.assert_not_called()
+    db.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_validate_fingerprint_ignores_mismatch_without_detector_event():
     service, user, session, db = _context("stored")
     detector = MagicMock()
@@ -73,7 +140,7 @@ async def test_validate_fingerprint_ignores_mismatch_without_detector_event():
     with (
         patch(
             "app.services.auth.fingerprint_service.extract_fingerprint",
-            return_value=_fingerprint("current"),
+            return_value=_fingerprint("current", user_agent="UA2"),
         ),
         patch(
             "app.services.auth.fingerprint_service.get_suspicious_activity_detector",
@@ -95,7 +162,7 @@ async def test_validate_fingerprint_skips_revocation_in_development():
         patch.dict(os.environ, {"ENVIRONMENT": "development"}),
         patch(
             "app.services.auth.fingerprint_service.extract_fingerprint",
-            return_value=_fingerprint("current"),
+            return_value=_fingerprint("current", user_agent="UA2"),
         ),
         patch(
             "app.services.auth.fingerprint_service.get_suspicious_activity_detector",
@@ -119,7 +186,7 @@ async def test_validate_fingerprint_revokes_in_production_without_redis():
         patch.dict(os.environ, {"ENVIRONMENT": "production"}),
         patch(
             "app.services.auth.fingerprint_service.extract_fingerprint",
-            return_value=_fingerprint("current"),
+            return_value=_fingerprint("current", user_agent="UA2"),
         ),
         patch(
             "app.services.auth.fingerprint_service.get_suspicious_activity_detector",
@@ -155,7 +222,7 @@ async def test_validate_fingerprint_revokes_and_notifies_redis():
         patch.dict(os.environ, {"ENVIRONMENT": "production"}),
         patch(
             "app.services.auth.fingerprint_service.extract_fingerprint",
-            return_value=_fingerprint("current"),
+            return_value=_fingerprint("current", user_agent="UA2"),
         ),
         patch(
             "app.services.auth.fingerprint_service.get_suspicious_activity_detector",
@@ -182,7 +249,7 @@ async def test_validate_fingerprint_propagates_redis_failure():
         patch.dict(os.environ, {"ENVIRONMENT": "production"}),
         patch(
             "app.services.auth.fingerprint_service.extract_fingerprint",
-            return_value=_fingerprint("current"),
+            return_value=_fingerprint("current", user_agent="UA2"),
         ),
         patch(
             "app.services.auth.fingerprint_service.get_suspicious_activity_detector",

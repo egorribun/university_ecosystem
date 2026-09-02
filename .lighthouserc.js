@@ -2,6 +2,10 @@ const { execSync } = require("node:child_process");
 const path = require("node:path");
 
 const frontendDir = path.join(__dirname, "frontend");
+const {
+  publicSeoMinScore,
+  publicSeoUrlPattern,
+} = require("./frontend/scripts/lhci-route-policy-config.cjs");
 const chromePath = path.join(
   frontendDir,
   "node_modules",
@@ -13,6 +17,32 @@ const buildEnv = {
   FORCE_COLOR: "0",
   CI: "1",
   VITE_LHCI: "true",
+};
+
+// Keep SEO route-aware: public content/auth routes must remain indexable,
+// while authenticated routes are intentionally blocked by robots.txt. The
+// companion `lhci-route-policy.mjs` independently verifies that privacy
+// contract against every collected LHR.
+const commonAssertions = {
+  "categories:performance": ["error", { minScore: 0.95 }],
+  "categories:accessibility": ["error", { minScore: 0.95 }],
+  "categories:best-practices": ["error", { minScore: 0.95 }],
+  "largest-contentful-paint": [
+    "error",
+    { maxNumericValue: 2500, aggregationMethod: "median" },
+  ],
+  "total-blocking-time": [
+    "error",
+    { maxNumericValue: 200, aggregationMethod: "median" },
+  ],
+  "cumulative-layout-shift": [
+    "error",
+    { maxNumericValue: 0.05, aggregationMethod: "median" },
+  ],
+};
+
+const publicSeoAssertions = {
+  "categories:seo": ["error", { minScore: publicSeoMinScore }],
 };
 
 if (!process.env.LHCI_SKIP_PREPARE) {
@@ -44,7 +74,7 @@ module.exports = {
       settings: {
         budgetPath: path.join(__dirname, "budget.json"),
         chromeFlags:
-          "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --disable-gpu --headless=new",
+          "--no-sandbox --disable-dev-shm-usage --allow-insecure-localhost --ignore-certificate-errors --test-type --headless=new",
         chromePath,
         maxWaitForFcp: 45000,
         maxWaitForLoad: 60000,
@@ -53,29 +83,18 @@ module.exports = {
     upload: {
       target: "temporary-public-storage",
     },
-    // This assertion-only gate consumes LHRs collected by run-lhci.mjs.
-    // Keep its severity and thresholds aligned with that canonical Linux
-    // calibration: metric drift stays visible without turning the known
-    // runner baseline into a false blocking failure.
+    // This assertion-only gate consumes LHRs collected by run-lhci.mjs and
+    // intentionally duplicates its release-blocking lab contract. INP is a field metric;
+    // Lighthouse cannot establish field p75. Production LCP/INP/CLS aggregation remains a separate
+    // release-closure requirement and must not be inferred from these assertions.
     assert: {
-      assertions: {
-        "categories:performance": ["warn", { minScore: 0.4 }],
-        "categories:accessibility": ["error", { minScore: 0.95 }],
-        "categories:best-practices": ["error", { minScore: 0.95 }],
-        "categories:seo": ["error", { minScore: 0.9 }],
-        "largest-contentful-paint": [
-          "warn",
-          { maxNumericValue: 2500, aggregationMethod: "median" },
-        ],
-        "total-blocking-time": [
-          "warn",
-          { maxNumericValue: 200, aggregationMethod: "median" },
-        ],
-        "cumulative-layout-shift": [
-          "error",
-          { maxNumericValue: 0.05, aggregationMethod: "median" },
-        ],
-      },
+      assertMatrix: [
+        { matchingUrlPattern: ".*", assertions: commonAssertions },
+        {
+          matchingUrlPattern: publicSeoUrlPattern,
+          assertions: publicSeoAssertions,
+        },
+      ],
     },
   },
 };

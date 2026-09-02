@@ -55,7 +55,6 @@ const renderSettings = async () => {
       <AuthContext.Provider
         value={{
           login: vi.fn(),
-          loginWithPasskey: vi.fn(),
           logout: mockLogout,
           setUser: mockSetUser,
           refresh: vi.fn(),

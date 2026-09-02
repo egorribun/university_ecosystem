@@ -23,6 +23,7 @@ reports/
 # Wave 113 SW6 polish — local Playwright screenshots + LHCI reports (per-URL retries)
 .screenshots/
 .lighthouseci/
+bundle-report.json
 
 # Debug and temp files
 *_log.txt

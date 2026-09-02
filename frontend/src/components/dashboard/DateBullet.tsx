@@ -10,7 +10,7 @@ interface DateBulletProps {
   size?: "default" | "compact"
 }
 
-export function DateBullet({ date, locale, size = "default" }: DateBulletProps) {
+export function DateBullet({ date, locale, size }: DateBulletProps) {
   const { t } = useTranslation("common")
   const d = date ? new Date(date) : null
   const dd = d ? pad(d.getDate()) : "—"
@@ -46,8 +46,11 @@ export function DateBullet({ date, locale, size = "default" }: DateBulletProps) 
         {/* Day number */}
         <span
           className={cn(
-            "relative z-[1] font-black leading-none tracking-tight text-brand",
-            isCompact ? "text-sm" : "text-base"
+            "relative z-[1] font-black tracking-tight text-brand",
+            isCompact ? "text-sm" : "text-base",
+            // Keep line-height after the text-size utility so Tailwind's
+            // merge does not discard the explicit vertical rhythm.
+            "leading-none"
           )}
         >
           {dd}
@@ -55,8 +58,9 @@ export function DateBullet({ date, locale, size = "default" }: DateBulletProps) 
         {/* Month abbreviation */}
         <span
           className={cn(
-            "relative z-[1] font-bold uppercase leading-tight text-brand/(--opacity-strong)",
-            isCompact ? "text-[0.5rem]" : "text-[0.6rem]"
+            "relative z-[1] font-bold uppercase text-brand/(--opacity-strong)",
+            isCompact ? "text-[0.5rem]" : "text-[0.6rem]",
+            "leading-tight"
           )}
         >
           {mmLabel}

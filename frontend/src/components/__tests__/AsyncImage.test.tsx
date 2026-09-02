@@ -3,16 +3,22 @@ import { beforeAll, describe, expect, it, vi } from "vitest"
 
 import AsyncImage from "../media/AsyncImage"
 
+let lastObserverOptions: IntersectionObserverInit | undefined
+let observerConstructed = 0
+
 beforeAll(() => {
   // Mock IntersectionObserver to immediately trigger visibility
   class MockIntersectionObserver implements IntersectionObserver {
     root: Element | Document | null = null
     rootMargin: string = ""
+    readonly scrollMargin: string = ""
     thresholds: ReadonlyArray<number> = []
     callback: IntersectionObserverCallback
 
-    constructor(callback: IntersectionObserverCallback) {
+    constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
       this.callback = callback
+      lastObserverOptions = options
+      observerConstructed += 1
     }
 
     observe(target: Element): void {
@@ -45,6 +51,15 @@ beforeAll(() => {
 
 describe("AsyncImage", () => {
   const src = "https://example.com/image.png"
+
+  it("uses a valid pixel root margin and preserves the default image contract", () => {
+    const before = observerConstructed
+    render(<AsyncImage src={src} />)
+
+    expect(observerConstructed).toBeGreaterThan(before)
+    expect(lastObserverOptions).toEqual({ rootMargin: "200px", threshold: 0, root: null })
+    expect(screen.getByTestId("async-image-img")).toHaveAttribute("alt", "")
+  })
 
   it("renders skeleton while loading and hides it after load", () => {
     render(<AsyncImage src={src} alt="test" style={{ width: 200, height: 120 }} />)
@@ -87,9 +102,22 @@ describe("AsyncImage", () => {
     const image = screen.getByTestId("async-image-img") as HTMLImageElement
     fireEvent.load(image)
     expect(onLoad).toHaveBeenCalledOnce()
+    expect(
+      document.querySelector('img[src="https://example.com/thumb.png"]')
+    ).not.toBeInTheDocument()
 
     fireEvent.error(image)
     expect(onError).toHaveBeenCalledOnce()
+  })
+
+  it("handles load and error transitions without optional callbacks", () => {
+    render(<AsyncImage src={src} alt="without callbacks" />)
+    const image = screen.getByTestId("async-image-img") as HTMLImageElement
+
+    fireEvent.load(image)
+    expect(screen.queryByTestId("async-image-skeleton")).not.toBeInTheDocument()
+    fireEvent.error(image)
+    expect(screen.getByTestId("async-image-fallback")).toBeInTheDocument()
   })
 
   it("renders a fallback source when the primary source is absent", () => {

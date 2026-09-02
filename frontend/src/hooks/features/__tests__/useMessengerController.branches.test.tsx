@@ -36,6 +36,9 @@ const mocks = vi.hoisted(() => ({
   },
   navigate: vi.fn(),
   paramsRef: { current: {} as { chatId?: string } },
+  isConnectedRef: { current: true },
+  sendJoin: vi.fn(),
+  sendLeave: vi.fn(),
   presenceMap: {} as Record<string, { active?: boolean }>,
   testUser: {
     id: "current-user-id",
@@ -45,6 +48,7 @@ const mocks = vi.hoisted(() => ({
     is_active: true,
     role: "student",
   },
+  authUserRef: { current: null as Record<string, unknown> | null },
   apiClient: {
     get: vi.fn(),
   },
@@ -62,17 +66,16 @@ vi.mock("@tanstack/react-router", () => ({
 }))
 
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: mocks.testUser }),
+  useAuth: () => ({ user: mocks.authUserRef.current }),
 }))
 
 vi.mock("@/contexts/MessengerContext", () => ({
   useMessenger: () => ({
     presenceMap: mocks.presenceMap,
-    isConnected: true,
+    isConnected: mocks.isConnectedRef.current,
     sendTyping: vi.fn(),
-    sendRead: vi.fn(),
-    sendJoin: vi.fn(),
-    sendLeave: vi.fn(),
+    sendJoin: mocks.sendJoin,
+    sendLeave: mocks.sendLeave,
     getTypingUsersForChat: () => [],
     unreadCount: 0,
   }),
@@ -91,18 +94,28 @@ vi.mock("@/api/client", () => ({
 
 // ---------- Helpers ----------
 
-const wrapper = ({ children }: { children: ReactNode }) => {
-  const queryClient = new QueryClient({
+const createTestQueryClient = () =>
+  new QueryClient({
     defaultOptions: {
       queries: { retry: false, gcTime: 0 },
       mutations: { retry: false },
     },
   })
+
+const wrapper = ({ children }: { children: ReactNode }) => {
+  const queryClient = createTestQueryClient()
   return <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
 }
 
-// Import after mocks are registered.
-import { useMessengerController } from "../useMessengerController"
+const createQueryHarness = () => {
+  const queryClient = createTestQueryClient()
+  const HookWrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  )
+  return { queryClient, HookWrapper }
+}
+
+let useMessengerController: typeof import("../useMessengerController").useMessengerController
 
 const seedChat = (chatId = "chat-1", extra: Record<string, unknown> = {}) => {
   mocks.paramsRef.current = { chatId }
@@ -140,10 +153,15 @@ const seedGroup = (chatId = "group-1") => {
 
 // ---------- Setup ----------
 
-beforeEach(() => {
+beforeEach(async () => {
+  ;({ useMessengerController } = await import("../useMessengerController"))
   vi.clearAllMocks()
   mocks.paramsRef.current = {}
+  mocks.isConnectedRef.current = true
   mocks.presenceMap = {}
+  mocks.sendJoin.mockReset()
+  mocks.sendLeave.mockReset()
+  mocks.authUserRef.current = mocks.testUser
 
   mocks.createObjectURL.mockClear().mockReturnValue("blob:mock-url")
   mocks.revokeObjectURL.mockClear()
@@ -157,6 +175,7 @@ beforeEach(() => {
   })
 
   mocks.chatApi.getChats.mockResolvedValue({ items: [], has_more: false, next_cursor: null })
+  mocks.chatApi.getChat.mockResolvedValue(null)
   mocks.chatApi.getMessages.mockResolvedValue({ items: [], has_more: false, next_cursor: null })
   mocks.chatApi.sendMessage.mockResolvedValue({
     id: "server-msg-id",
@@ -198,6 +217,87 @@ afterEach(() => {
 // ---------- Tests ----------
 
 describe("useMessengerController — branch top-up", () => {
+  describe("active chat query and room lifecycle", () => {
+    it("hydrates a direct-link chat when it is not present in the chat list", async () => {
+      mocks.paramsRef.current = { chatId: "direct-chat" }
+      mocks.chatApi.getChats.mockResolvedValue({ items: [], has_more: false, next_cursor: null })
+      mocks.chatApi.getChat.mockResolvedValue({
+        id: "direct-chat",
+        participants: [{ id: "current-user-id" }, { id: "peer" }],
+        unread_count: 0,
+      })
+
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+
+      await waitFor(() => expect(result.current.activeChat?.id).toBe("direct-chat"))
+      expect(mocks.chatApi.getChat).toHaveBeenCalledWith("direct-chat", expect.any(AbortSignal))
+    })
+
+    it("prefers the listed chat over a concurrently resolving fallback", async () => {
+      mocks.paramsRef.current = { chatId: "listed-chat" }
+      mocks.chatApi.getChats.mockResolvedValue({
+        items: [
+          {
+            id: "listed-chat",
+            participants: [{ id: "current-user-id" }, { id: "peer" }],
+            name: "listed result",
+            unread_count: 0,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      mocks.chatApi.getChat.mockResolvedValue({
+        id: "listed-chat",
+        participants: [{ id: "current-user-id" }, { id: "peer" }],
+        name: "fallback result",
+        unread_count: 0,
+      })
+
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+
+      await waitFor(() => expect(result.current.activeChat?.name).toBe("listed result"))
+      expect(result.current.activeChat?.name).toBe("listed result")
+    })
+
+    it("joins the selected chat while connected and leaves each room exactly once", async () => {
+      seedChat("chat-1")
+      const { result, rerender, unmount } = renderHook(() => useMessengerController(), { wrapper })
+
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+      await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledWith("chat-1"))
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(1)
+      expect(mocks.sendLeave).not.toHaveBeenCalled()
+
+      mocks.paramsRef.current = { chatId: "chat-2" }
+      rerender()
+
+      await waitFor(() => expect(mocks.sendLeave).toHaveBeenCalledWith("chat-1"))
+      await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledWith("chat-2"))
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(2)
+      expect(mocks.sendLeave).toHaveBeenCalledTimes(1)
+
+      unmount()
+      expect(mocks.sendLeave).toHaveBeenCalledWith("chat-2")
+      expect(mocks.sendLeave).toHaveBeenCalledTimes(2)
+    })
+
+    it("waits for a reconnect before joining an open chat", async () => {
+      mocks.isConnectedRef.current = false
+      seedChat("offline-chat")
+      const { result, rerender } = renderHook(() => useMessengerController(), { wrapper })
+
+      await waitFor(() => expect(result.current.selectedChatId).toBe("offline-chat"))
+      expect(mocks.sendJoin).not.toHaveBeenCalled()
+
+      mocks.isConnectedRef.current = true
+      rerender()
+
+      await waitFor(() => expect(mocks.sendJoin).toHaveBeenCalledWith("offline-chat"))
+      expect(mocks.sendJoin).toHaveBeenCalledTimes(1)
+    })
+  })
+
   describe("createChat / createGroup mutations (386-403)", () => {
     it("handleCreateChat navigates to the new chat + closes the modal on success", async () => {
       const { result } = renderHook(() => useMessengerController(), { wrapper })
@@ -460,6 +560,116 @@ describe("useMessengerController — branch top-up", () => {
       // Reply context cleared once the send is dispatched.
       expect(result.current.replyingTo).toBeNull()
     })
+
+    it("publishes the exact optimistic message and revokes only its owned attachment URLs", async () => {
+      seedReplyTarget()
+      mocks.createObjectURL
+        .mockReturnValueOnce("blob:optimistic-image")
+        .mockReturnValueOnce("blob:optimistic-file")
+      type SendResponse = {
+        id: string
+        chat_id: string
+        sender_id: string
+        content: string
+        created_at: string
+        read_status: boolean
+        attachments: never[]
+      }
+      let resolveSend!: (value: SendResponse) => void
+      mocks.chatApi.sendMessage.mockReturnValue(
+        new Promise<SendResponse>((resolve) => {
+          resolveSend = resolve
+        })
+      )
+      const image = new File(["image"], "photo.png", { type: "image/png" })
+      const documentFile = new File(["document"], "notes.txt", { type: "text/plain" })
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() =>
+        expect(result.current.messages.find((message) => message.id === "msg-target")).toBeTruthy()
+      )
+      act(() => result.current.handleStartReply("msg-target"))
+
+      act(() => result.current.handleSendMessage("optimistic payload", [image, documentFile]))
+
+      let optimistic = result.current.messages.find(
+        (message) => message.text === "optimistic payload"
+      )
+      await waitFor(() => {
+        optimistic = result.current.messages.find(
+          (message) => message.text === "optimistic payload"
+        )
+        expect(optimistic).toBeDefined()
+      })
+      if (!optimistic) {
+        throw new Error("optimistic message was not published")
+      }
+      expect(optimistic).toMatchObject({
+        senderId: "current-user-id",
+        senderName: "Test User",
+        senderAvatar: "/avatar.png",
+        text: "optimistic payload",
+        timestamp: expect.any(String),
+        isMe: true,
+        status: "sent",
+        replyTo: {
+          id: "msg-target",
+          senderName: "Peer Name",
+          isMe: false,
+          text: "quote me",
+          deletedAt: null,
+        },
+      })
+      expect(optimistic.attachments).toEqual([
+        {
+          id: `${optimistic.id}-0`,
+          url: "blob:optimistic-image",
+          type: "image",
+          name: "photo.png",
+          size: image.size,
+        },
+        {
+          id: `${optimistic.id}-1`,
+          url: "blob:optimistic-file",
+          type: "file",
+          name: "notes.txt",
+          size: documentFile.size,
+        },
+      ])
+      expect(mocks.chatApi.sendMessage).toHaveBeenCalledWith(
+        "chat-1",
+        "optimistic payload",
+        [image, documentFile],
+        "msg-target"
+      )
+
+      await act(async () => {
+        resolveSend({
+          id: "server-optimistic-id",
+          chat_id: "chat-1",
+          sender_id: "current-user-id",
+          content: "optimistic payload",
+          created_at: new Date().toISOString(),
+          read_status: false,
+          attachments: [],
+        })
+      })
+      await waitFor(() =>
+        expect(mocks.revokeObjectURL.mock.calls).toEqual([
+          ["blob:optimistic-image"],
+          ["blob:optimistic-file"],
+        ])
+      )
+    })
+  })
+
+  it("does not construct or dispatch a message without a selected chat", () => {
+    const { result } = renderHook(() => useMessengerController(), { wrapper })
+
+    act(() => result.current.handleSendMessage("orphaned message", []))
+
+    expect(mocks.createObjectURL).not.toHaveBeenCalled()
+    expect(mocks.chatApi.sendMessage).not.toHaveBeenCalled()
+    expect(result.current.messages).toEqual([])
   })
 
   describe("forward (842-864, 444-460)", () => {
@@ -596,6 +806,106 @@ describe("useMessengerController — branch top-up", () => {
       expect(m?.attachments).toEqual([
         { id: "att-1", url: "/f.png", type: "image", name: "f.png", size: 123 },
       ])
+    })
+  })
+
+  describe("message transform contract", () => {
+    it("preserves sender, read/edit, attachment, reaction, reply, and forward metadata", async () => {
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      mocks.chatApi.getChats.mockResolvedValue({
+        items: [
+          {
+            id: "chat-1",
+            participants: [{ id: "current-user-id" }, { id: "peer" }],
+            unread_count: 0,
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      mocks.chatApi.getMessages.mockResolvedValue({
+        items: [
+          {
+            id: "rich-message",
+            chat_id: "chat-1",
+            sender_id: "current-user-id",
+            content: "rich body",
+            created_at: "2025-01-01T10:00:00.000Z",
+            read_status: true,
+            read_at: "2025-01-01T10:01:00.000Z",
+            edited_at: "2025-01-01T10:02:00.000Z",
+            attachments: [
+              { id: "file-1", url: "/doc.pdf", file_type: "file", filename: "doc.pdf", size: 42 },
+            ],
+            reactions: [{ emoji: "👍", count: 3, reacted_by_me: true }],
+            reply_to: {
+              id: "quoted-message",
+              sender_id: "peer",
+              sender_name: "Peer Name",
+              content: "quoted body",
+              deleted_at: "2025-01-01T09:59:00.000Z",
+            },
+            forwarded_from_name: "Forwarded Peer",
+          },
+          {
+            id: "plain-message",
+            chat_id: "chat-1",
+            sender_id: "peer",
+            content: "plain body",
+            created_at: "2025-01-01T10:03:00.000Z",
+            read_status: false,
+            deleted_at: "2025-01-01T10:04:00.000Z",
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+
+      const { result } = renderHook(() => useMessengerController(), { wrapper })
+      await waitFor(() => expect(result.current.messages).toHaveLength(2))
+
+      expect(result.current.messages[0]).toMatchObject({
+        id: "rich-message",
+        senderId: "current-user-id",
+        senderName: "Test User",
+        senderAvatar: "/avatar.png",
+        text: "rich body",
+        status: "read",
+        readAt: "2025-01-01T10:01:00.000Z",
+        readAtLabel: expect.any(String),
+        isLastRead: true,
+        editedAt: "2025-01-01T10:02:00.000Z",
+        editedAtLabel: expect.any(String),
+        deletedAt: null,
+        attachments: [{ id: "file-1", url: "/doc.pdf", type: "file", name: "doc.pdf", size: 42 }],
+        reactions: [{ emoji: "👍", count: 3, reactedByMe: true }],
+        replyTo: {
+          id: "quoted-message",
+          senderName: "Peer Name",
+          isMe: false,
+          text: "quoted body",
+          deletedAt: "2025-01-01T09:59:00.000Z",
+        },
+        forwardedFromName: "Forwarded Peer",
+      })
+      expect(result.current.messages[1]).toMatchObject({
+        id: "plain-message",
+        senderId: "peer",
+        senderName: "User",
+        senderAvatar: "",
+        text: "plain body",
+        status: "sent",
+        readAt: null,
+        isLastRead: false,
+        editedAt: null,
+        deletedAt: "2025-01-01T10:04:00.000Z",
+        replyTo: null,
+        forwardedFromName: null,
+      })
+      expect(result.current.messages[1]?.readAtLabel).toBeUndefined()
+      expect(result.current.messages[1]?.editedAtLabel).toBeUndefined()
+      expect(result.current.messages[1]?.attachments).toBeUndefined()
+      expect(result.current.messages[1]?.reactions).toBeUndefined()
     })
   })
 
@@ -835,6 +1145,16 @@ describe("useMessengerController — branch top-up", () => {
   })
 
   describe("markRead effects (693-743)", () => {
+    const message = (id: string, senderId: string, minute: number) => ({
+      id,
+      chat_id: "chat-1",
+      sender_id: senderId,
+      content: id,
+      created_at: `2026-08-25T12:${String(minute).padStart(2, "0")}:00Z`,
+      read_status: false,
+      attachments: [],
+    })
+
     it("marks the chat read on selection", async () => {
       seedChat()
       const { result } = renderHook(() => useMessengerController(), { wrapper })
@@ -868,6 +1188,147 @@ describe("useMessengerController — branch top-up", () => {
 
       // jsdom default visibilityState is "visible" → onVisible fires markAsRead.
       await waitFor(() => expect(mocks.chatApi.markRead).toHaveBeenCalledWith("chat-1"))
+    })
+
+    it("marks a visible open chat only when its message list grows with a peer message", async () => {
+      seedChat()
+      const { queryClient, HookWrapper } = createQueryHarness()
+      const { result } = renderHook(() => useMessengerController(), { wrapper: HookWrapper })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+      await waitFor(() => expect(result.current.messagesLoading).toBe(false))
+      await waitFor(() => expect(mocks.chatApi.markRead).toHaveBeenCalledWith("chat-1"))
+      mocks.chatApi.markRead.mockClear()
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        value: "visible",
+      })
+
+      await act(async () => {
+        queryClient.setQueryData(["messages", "chat-1"], {
+          items: [message("peer-1", "peer", 1)],
+          has_more: false,
+          next_cursor: null,
+        })
+      })
+
+      await waitFor(() => expect(mocks.chatApi.markRead).toHaveBeenCalledTimes(1))
+      expect(mocks.chatApi.markRead).toHaveBeenCalledWith("chat-1")
+    })
+
+    it("does not re-mark read for same-length updates or a newly sent own message", async () => {
+      seedChat()
+      const { queryClient, HookWrapper } = createQueryHarness()
+      const { result } = renderHook(() => useMessengerController(), { wrapper: HookWrapper })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+      await waitFor(() => expect(result.current.messagesLoading).toBe(false))
+      await waitFor(() => expect(mocks.chatApi.markRead).toHaveBeenCalled())
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        value: "visible",
+      })
+
+      await act(async () => {
+        queryClient.setQueryData(["messages", "chat-1"], {
+          items: [message("peer-1", "peer", 1)],
+          has_more: false,
+          next_cursor: null,
+        })
+      })
+      await waitFor(() => expect(mocks.chatApi.markRead).toHaveBeenCalledTimes(2))
+      mocks.chatApi.markRead.mockClear()
+
+      await act(async () => {
+        queryClient.setQueryData(["messages", "chat-1"], {
+          items: [message("peer-replaced", "peer", 2)],
+          has_more: false,
+          next_cursor: null,
+        })
+      })
+      await waitFor(() => expect(result.current.messages.at(-1)?.id).toBe("peer-replaced"))
+      expect(mocks.chatApi.markRead).not.toHaveBeenCalled()
+
+      await act(async () => {
+        queryClient.setQueryData(["messages", "chat-1"], {
+          items: [message("peer-replaced", "peer", 2), message("mine-1", "current-user-id", 3)],
+          has_more: false,
+          next_cursor: null,
+        })
+      })
+      await waitFor(() => expect(result.current.messages.at(-1)?.id).toBe("mine-1"))
+      expect(mocks.chatApi.markRead).not.toHaveBeenCalled()
+    })
+
+    it("does not re-mark a hidden chat when a peer message arrives", async () => {
+      seedChat()
+      const { queryClient, HookWrapper } = createQueryHarness()
+      const { result } = renderHook(() => useMessengerController(), { wrapper: HookWrapper })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+      await waitFor(() => expect(result.current.messagesLoading).toBe(false))
+      await waitFor(() => expect(mocks.chatApi.markRead).toHaveBeenCalled())
+      mocks.chatApi.markRead.mockClear()
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        value: "hidden",
+      })
+
+      await act(async () => {
+        queryClient.setQueryData(["messages", "chat-1"], {
+          items: [message("peer-hidden", "peer", 1)],
+          has_more: false,
+          next_cursor: null,
+        })
+      })
+
+      await waitFor(() => expect(result.current.messages.at(-1)?.id).toBe("peer-hidden"))
+      expect(mocks.chatApi.markRead).not.toHaveBeenCalled()
+    })
+
+    it("marks a peer message safely while auth context is between user snapshots", async () => {
+      seedChat()
+      mocks.authUserRef.current = null
+      const { queryClient, HookWrapper } = createQueryHarness()
+      const { result } = renderHook(() => useMessengerController(), { wrapper: HookWrapper })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+      await waitFor(() => expect(result.current.messagesLoading).toBe(false))
+      await waitFor(() => expect(mocks.chatApi.markRead).toHaveBeenCalledWith("chat-1"))
+      mocks.chatApi.markRead.mockClear()
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        value: "visible",
+      })
+
+      await act(async () => {
+        queryClient.setQueryData(["messages", "chat-1"], {
+          items: [message("peer-during-auth-refresh", "peer", 1)],
+          has_more: false,
+          next_cursor: null,
+        })
+      })
+
+      await waitFor(() => expect(mocks.chatApi.markRead).toHaveBeenCalledWith("chat-1"))
+    })
+
+    it("does not classify preloaded history as a new message when switching chats", async () => {
+      seedChat()
+      const { queryClient, HookWrapper } = createQueryHarness()
+      const { result, rerender } = renderHook(() => useMessengerController(), {
+        wrapper: HookWrapper,
+      })
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-1"))
+      await waitFor(() => expect(mocks.chatApi.markRead).toHaveBeenCalledWith("chat-1"))
+      queryClient.setQueryData(["messages", "chat-2"], {
+        items: [message("chat2-peer-1", "peer", 1), message("chat2-peer-2", "peer", 2)],
+        has_more: false,
+        next_cursor: null,
+      })
+      mocks.paramsRef.current = { chatId: "chat-2" }
+      mocks.chatApi.markRead.mockClear()
+
+      rerender()
+
+      await waitFor(() => expect(result.current.selectedChatId).toBe("chat-2"))
+      await waitFor(() => expect(result.current.messages.at(-1)?.id).toBe("chat2-peer-2"))
+      expect(mocks.chatApi.markRead.mock.calls).toEqual([["chat-2"]])
     })
   })
 

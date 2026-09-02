@@ -3,11 +3,14 @@
 npm:
   overrides:
     - package: glob
-      pinned_version: "11.1.0"
+      pinned_version: "13.0.6"
       owner: frontend@university.example
       expires: 2026-12-31
       reason: |
-        Tailwind CSS 3.x pulls in sucrase's glob CLI; pinning ensures we stay on the patched release until the Tailwind 4 upgrade.
+        Build tooling currently spans workbox-build (^11.0.1), Storybook
+        docgen (^13.0.1), and Sentry bundler plugins (^13.0.6). Pinning the
+        shared override to audited glob 13.0.6 avoids retaining an older
+        duplicate while all CI and production builds run on Node.js 24.
   advisories:
     - id: "1130129"
       package: fast-uri
@@ -274,135 +277,6 @@ npm:
       expires: 2026-09-16
       reason: |
         Transitive via reference cascade from advisory 1118053.
-    # tmp Path Traversal advisory (GHSA-ph9p-34f9-6g65) — published during
-    # W191 wave execution (between W190 polish-v1 baseline + W191 SW5 push).
-    # Affects tmp <0.2.6; cascades through transitive @lhci/cli (LHCI is
-    # dev/CI-only tooling per W120 SW1 + W160 SW2 lhci-windows-fallback —
-    # NOT in production runtime). All 4 IDs come from single advisory; npm
-    # audit cascades each `via` reference into its own allowlist requirement.
-    # `npm audit --omit=dev` returns 0 vulnerabilities — production bundle
-    # tree-shake invariant preserved (LHCI not import-reachable from src/main.tsx).
-    - id: "1119610"
-      package: "tmp"
-      owner: frontend@university.example
-      expires: 2026-08-31
-      reason: |
-        tmp Path Traversal advisory GHSA-ph9p-34f9-6g65.
-        Transitive via @lhci/cli (Lighthouse CI tooling); dev-only.
-        Not in production bundle (npm audit --omit=dev returns 0).
-        Allowing until @lhci/cli publishes a release with tmp>=0.2.6 OR
-        LHCI sunset migrates to alternative tooling.
-    - id: "tmp"
-      package: "tmp"
-      owner: frontend@university.example
-      expires: 2026-08-31
-      reason: |
-        Transitive via reference cascade from advisory 1119610.
-        Dev-only via @lhci/cli.
-    - id: "inquirer"
-      package: "inquirer"
-      owner: frontend@university.example
-      expires: 2026-08-31
-      reason: |
-        Transitive via reference cascade from advisory 1119610.
-        Dev-only via @lhci/cli → inquirer 3.0.0-8.2.6 || 9.0.0-9.3.7.
-    - id: "external-editor"
-      package: "external-editor"
-      owner: frontend@university.example
-      expires: 2026-08-31
-      reason: |
-        Transitive via reference cascade from advisory 1119610.
-        Dev-only via @lhci/cli → inquirer → external-editor.
-    # Vitest UI-server arbitrary file read/exec (GHSA-5xrq-8626-4rwp) — fresh
-    # disclosure published during the W209→W210 CI window (NOT introduced by W210,
-    # which changed zero frontend deps). vitest is a devDependency; the vulnerable
-    # `vitest --ui` server only runs in interactive local dev, never in CI/prod.
-    # `npm audit --omit=dev` returns 0 production vulnerabilities.
-    - id: "1120011"
-      package: "vitest"
-      owner: frontend@university.example
-      expires: 2026-08-31
-      reason: |
-        Vitest UI-server arbitrary file read/exec advisory GHSA-5xrq-8626-4rwp.
-        Dev/test-only — vitest UI server (`vitest --ui`) never runs in CI/prod;
-        npm audit --omit=dev returns 0. Revisit when vitest ships a patched UI.
-    - id: "1115806"
-      package: "lodash"
-      owner: frontend@university.example
-      expires: 2026-08-31
-      reason: |
-        Code Injection via _.template imports key names (GHSA-r5fr-rjxr-66jc).
-        Allowing temporarily to unblock CI.
-    - id: "1115810"
-      package: "lodash"
-      owner: frontend@university.example
-      expires: 2026-08-31
-      reason: |
-        Prototype Pollution via array path bypass in _.unset and _.omit (GHSA-f23m-r3pf-42rh).
-        Allowing temporarily to unblock CI.
-    - id: "lodash"
-      package: "lodash"
-      owner: frontend@university.example
-      expires: 2026-08-31
-      reason: |
-        Transitive via reference cascade from lodash advisories.
-    # Session 9 — fresh upstream disclosures since main's last green run (the
-    # frontend lockfile is UNCHANGED by this PR; npm audit --omit=dev still
-    # returns 0, so all of these are dev/build-tooling only). npm rotated the
-    # source ids of advisories already allowlisted at 1119610 (tmp) / 1120011
-    # (vitest); the new ids + the package-name "via" rollups need explicit
-    # entries. Revisit when esbuild/vite/vitest ship patched dev tooling.
-    - id: "1120126"
-      package: "vitest"
-      owner: frontend@university.example
-      expires: 2026-08-31
-      reason: |
-        Vitest UI server arbitrary file read/execute (GHSA-5xrq-8626-4rwp) —
-        rotated source id of the already-allowlisted 1120011. The UI server is a
-        dev-only tool; npm audit --omit=dev returns 0.
-    - id: "1120654"
-      package: "tmp"
-      owner: frontend@university.example
-      expires: 2026-08-31
-      reason: |
-        tmp path traversal via unsanitized prefix/postfix (GHSA-ph9p-34f9-6g65) —
-        rotated source id of the already-allowlisted 1119610. Dev/test transitive.
-    - id: "1120679"
-      package: "esbuild"
-      owner: frontend@university.example
-      expires: 2026-08-31
-      reason: |
-        esbuild missing binary integrity verification in the Deno module enables
-        RCE via NPM_CONFIG_REGISTRY (GHSA-gv7w-rqvm-qjhr). The Deno vector does not
-        apply to our npm/Vite build; esbuild is build-time tooling only.
-    - id: "1120680"
-      package: "esbuild"
-      owner: frontend@university.example
-      expires: 2026-08-31
-      reason: |
-        esbuild arbitrary file read when running the dev server on Windows
-        (GHSA-g7r4-m6w7-qqqr, low). Affects `esbuild serve` only, not prod builds.
-    - id: "esbuild"
-      package: "esbuild"
-      owner: frontend@university.example
-      expires: 2026-08-31
-      reason: |
-        Package-name rollup for the esbuild advisories above (the dev-server /
-        Deno-module vectors); build-time tooling only.
-    - id: "vite"
-      package: "vite"
-      owner: frontend@university.example
-      expires: 2026-08-31
-      reason: |
-        Transitive via reference cascade — vite is flagged solely because it
-        depends on the esbuild advisories above. Build-time tooling only.
-    - id: "vite-node"
-      package: "vite-node"
-      owner: frontend@university.example
-      expires: 2026-08-31
-      reason: |
-        Transitive via reference cascade — vite-node is flagged solely via its
-        esbuild/vite dependency. Test-time tooling only.
     # ── Session-12 (2026-06-16) fresh-disclosure batch ───────────────────────
     # 10 advisories + 2 package-name rollups published after #1139 merged, on an
     # UNCHANGED package-lock (the s12 PR added zero npm deps). 7 are dev/build

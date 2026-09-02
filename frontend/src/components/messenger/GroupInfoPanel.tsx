@@ -100,9 +100,12 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
     queryKey: ["users", debouncedSearch],
     queryFn: async () => {
       const response = await client.get<User[]>(
-        `/users?limit=${USERS_PAGE_LIMIT}&search=${debouncedSearch}`
+        `/users?limit=${USERS_PAGE_LIMIT}&search=${encodeURIComponent(debouncedSearch)}`
       )
-      return response.data
+      // TanStack Query requires query functions to resolve a defined value;
+      // treat a malformed/empty API payload as an empty result set instead of
+      // emitting a runtime warning and leaving the search state ambiguous.
+      return response.data ?? []
     },
     enabled: open && showAddSearch && debouncedSearch.length > MIN_SEARCH_LENGTH,
   })
@@ -338,7 +341,7 @@ export const GroupInfoPanel = memo(function GroupInfoPanel({
                               ? t("messenger:leaveGroup")
                               : t("messenger:removeMember", { name: member.full_name })
                           }
-                          className="flex size-9 shrink-0 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--error-text)/(--opacity-subtle) hover:text-(--error-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)"
+                          className="flex size-9 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full text-(--text-secondary) transition-colors hover:bg-(--error-text)/(--opacity-subtle) hover:text-(--error-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--error-text)"
                         >
                           {isSelf ? (
                             <LogOut className="size-4" strokeWidth={2} aria-hidden="true" />

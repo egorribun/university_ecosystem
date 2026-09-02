@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, type FormEvent } from "react"
 import { Link, useNavigate } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Eye, EyeOff, Sparkles, UsersRound, ShieldCheck, Crown } from "lucide-react"
 import { m } from "framer-motion"
-import { useForm, Controller, type SubmitHandler } from "react-hook-form"
+import { useForm, Controller } from "react-hook-form"
 import { valibotResolver } from "@hookform/resolvers/valibot"
+import "@/styles/tokens/auth.css"
 
 import ParticleAuthBackground from "@/components/ui/ParticleAuthBackground"
 import AuthBackdrop from "@/components/auth/AuthBackdrop"
@@ -16,9 +17,18 @@ import { Button } from "@/components/ui/Button"
 import { suggestEmailDomain } from "@/utils/authUtils"
 import { cn } from "@/utils/cn"
 import { registerSchema, type RegisterValues } from "@/features/auth/schemas"
+import { analyzePasswordStrength } from "@/utils/passwordStrength"
+import {
+  captureActiveTelemetryContext,
+  type CapturedTelemetryContext,
+} from "@/utils/telemetryContext"
+
+export const resolveRegistrationEmailErrorKey = (message?: string): string =>
+  message || "auth:messages.invalidFormat"
 
 const Register = () => {
-  const { t } = useTranslation(["auth"])
+  const { t, i18n } = useTranslation(["auth"])
+  const passwordStrengthLanguage = i18n.resolvedLanguage ?? i18n.language
   const navigate = useNavigate()
   // Wave 186 SW3 — useReducedMotion via project's useMediaQuery (jsdom-safe
   // per W184 SW6). Drops AuthBackdrop blur on mobile/reduced-motion.
@@ -77,30 +87,34 @@ const Register = () => {
       setStrength(null)
       return
     }
+    let active = true
 
     const checkStrength = async () => {
       try {
-        const { zxcvbn, zxcvbnOptions } = await import("@zxcvbn-ts/core")
-        const zxcvbnCommon = await import("@zxcvbn-ts/language-common")
-        zxcvbnOptions.setOptions(zxcvbnCommon)
-        const strengthScore = zxcvbn(password).score
-        setStrength(strengthScore)
+        const strengthScore = (await analyzePasswordStrength(password, passwordStrengthLanguage))
+          .score
+        if (active) setStrength(strengthScore)
       } catch {
-        setStrength(null)
+        if (active) setStrength(null)
       }
     }
     void checkStrength()
-  }, [password])
+    return () => {
+      active = false
+    }
+  }, [password, passwordStrengthLanguage])
 
-  const onSubmit: SubmitHandler<RegisterValues> = async (data) => {
+  const onSubmit = async (data: RegisterValues, telemetryContext: CapturedTelemetryContext) => {
     try {
-      await api.post("/auth/register", {
-        full_name: data.full_name,
-        email: data.email,
-        password: data.password,
-        role: data.role,
-        invite_code: data.invite_code,
-      })
+      await telemetryContext.run(() =>
+        api.post("/auth/register", {
+          full_name: data.full_name,
+          email: data.email,
+          password: data.password,
+          role: data.role,
+          invite_code: data.invite_code,
+        })
+      )
       navigate({ to: "/login" })
     } catch (error: unknown) {
       let errorMessage = t("auth:register.error")
@@ -112,6 +126,11 @@ const Register = () => {
       }
       setError("root", { message: errorMessage })
     }
+  }
+
+  const handleTelemetrySubmit = (event: FormEvent<HTMLFormElement>) => {
+    const telemetryContext = captureActiveTelemetryContext()
+    return handleSubmit((data) => onSubmit(data, telemetryContext))(event)
   }
 
   const passwordStrengthPercent = useMemo(() => {
@@ -132,16 +151,19 @@ const Register = () => {
 
   const heroPerks = [
     {
+      id: "community",
       icon: UsersRound,
       title: t("auth:register.hero.perks.community.title"),
       description: t("auth:register.hero.perks.community.description"),
     },
     {
+      id: "secure",
       icon: ShieldCheck,
       title: t("auth:register.hero.perks.secure.title"),
       description: t("auth:register.hero.perks.secure.description"),
     },
     {
+      id: "experience",
       icon: Sparkles,
       title: t("auth:register.hero.perks.experience.title"),
       description: t("auth:register.hero.perks.experience.description"),
@@ -159,9 +181,9 @@ const Register = () => {
       <div className="relative z-surface mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 items-stretch gap-10 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:px-8">
         {/* Left Column - Hero */}
         <m.div
-          initial={{ x: -200 }}
+          initial={prefersReducedMotion ? false : { x: -8 }}
           animate={{ x: 0 }}
-          transition={{ duration: 0.5, ease: "easeOut" }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
           className="auth-card-matte flex w-full min-w-0 flex-col justify-center border-glass-border-subtle p-8 lg:p-12"
         >
           <div className="flex items-center gap-3 text-sm font-semibold uppercase tracking-widest text-text-primary/(--opacity-strong)">
@@ -175,8 +197,8 @@ const Register = () => {
             {t("auth:register.hero.description")}
           </p>
           <div className="mt-8 grid gap-5 sm:grid-cols-2">
-            {heroPerks.map(({ icon: Icon, title, description }) => (
-              <div key={title} className="auth-perk-card group">
+            {heroPerks.map(({ id, icon: Icon, title, description }) => (
+              <div key={id} className="auth-perk-card group">
                 <div className="flex items-center gap-3">
                   <div className="flex size-12 items-center justify-center rounded-md bg-brand-subtle-bg text-brand">
                     <Icon className="h-5 w-5" aria-hidden="true" />
@@ -191,14 +213,14 @@ const Register = () => {
 
         {/* Right Column - Form */}
         <m.div
-          initial={{ y: 200 }}
+          initial={prefersReducedMotion ? false : { y: 8 }}
           animate={{ y: 0 }}
-          transition={{ duration: 0.5, ease: "easeOut", delay: 0.2 }}
+          transition={{ duration: 0.2, ease: "easeOut", delay: 0.05 }}
           className="auth-card-matte flex w-full min-w-0 flex-col justify-center border-glass-border-subtle bg-surface/(--opacity-hover) p-6 sm:p-10"
         >
           <form
-            onSubmit={handleSubmit(onSubmit)}
-            autoComplete="off"
+            onSubmit={handleTelemetrySubmit}
+            autoComplete="on"
             className="flex flex-col gap-6"
             noValidate
           >
@@ -213,10 +235,13 @@ const Register = () => {
                   autoComplete="name"
                   disabled={isSubmitting}
                   error={!!errors.full_name}
+                  aria-describedby={errors.full_name ? "register-name-error" : undefined}
                   placeholder={t("auth:register.namePlaceholder") ?? undefined}
                 />
                 {errors.full_name && (
-                  <p className="text-xs text-error-text">{errors.full_name.message}</p>
+                  <p id="register-name-error" role="alert" className="text-xs text-error-text">
+                    {errors.full_name.message}
+                  </p>
                 )}
               </div>
 
@@ -232,6 +257,7 @@ const Register = () => {
                       <Select
                         id="register-role"
                         aria-labelledby="register-role-label"
+                        aria-describedby="register-role-description"
                         value={field.value}
                         onValueChange={field.onChange}
                         options={[
@@ -244,7 +270,9 @@ const Register = () => {
                       />
                     )}
                   />
-                  <span className="text-text-muted-subtle text-sm">{inviteHint}</span>
+                  <span id="register-role-description" className="text-text-muted-subtle text-sm">
+                    {inviteHint}
+                  </span>
                 </div>
               </div>
             </div>
@@ -263,10 +291,15 @@ const Register = () => {
                 }}
                 disabled={isSubmitting}
                 error={!!errors.email}
+                aria-describedby={errors.email ? "register-email-error" : undefined}
                 placeholder="name@university.edu"
               />
-              <p className="text-text-secondary text-xs font-medium">
-                {errors.email ? t(errors.email.message || "auth:messages.invalidFormat") : " "}
+              <p
+                id="register-email-error"
+                role={errors.email ? "alert" : undefined}
+                className="text-text-secondary text-xs font-medium"
+              >
+                {errors.email ? t(resolveRegistrationEmailErrorKey(errors.email.message)) : " "}
               </p>
               {emailSuggestion ? (
                 <button
@@ -295,10 +328,13 @@ const Register = () => {
                   autoComplete="one-time-code"
                   disabled={isSubmitting}
                   error={!!errors.invite_code}
+                  aria-describedby={errors.invite_code ? "register-invite-error" : undefined}
                   placeholder="ABCD-1234"
                 />
                 {errors.invite_code && (
-                  <p className="text-xs text-error-text">{errors.invite_code.message}</p>
+                  <p id="register-invite-error" role="alert" className="text-xs text-error-text">
+                    {errors.invite_code.message}
+                  </p>
                 )}
               </div>
             ) : null}
@@ -321,16 +357,18 @@ const Register = () => {
                   autoComplete="new-password"
                   disabled={isSubmitting}
                   error={!!errors.password}
+                  className="pr-14"
+                  aria-describedby={`register-password-hint${errors.password ? " register-password-error" : ""}`}
                 />
                 <button
                   type="button"
-                  onMouseDown={() => setShowPass(true)}
-                  onMouseUp={() => setShowPass(false)}
-                  onMouseLeave={() => setShowPass(false)}
                   onClick={() => setShowPass((v) => !v)}
-                  className="absolute inset-y-0 right-4 flex items-center text-brand"
-                  aria-label={t("auth:actions.showPassword") ?? undefined}
-                  title={t("auth:actions.holdReveal") ?? undefined}
+                  className="absolute inset-y-0 right-1 flex min-h-11 min-w-11 items-center justify-center rounded-md text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                  aria-label={
+                    t(showPass ? "auth:actions.hideCredential" : "auth:actions.showPassword") ??
+                    undefined
+                  }
+                  aria-pressed={showPass}
                 >
                   {showPass ? (
                     <EyeOff className="h-5 w-5" aria-hidden="true" />
@@ -339,7 +377,9 @@ const Register = () => {
                   )}
                 </button>
               </div>
-              <p className="text-xs text-text-muted-subtle">{t("auth:register.passwordHint")}</p>
+              <p id="register-password-hint" className="text-xs text-text-muted-subtle">
+                {t("auth:register.passwordHint")}
+              </p>
               {passwordStrengthPercent !== null ? (
                 <div className="space-y-1">
                   <div className="h-3 w-full rounded-full bg-surface-hover">
@@ -383,7 +423,9 @@ const Register = () => {
                 </p>
               )}
               {errors.password && (
-                <p className="text-xs text-error-text">{errors.password.message}</p>
+                <p id="register-password-error" role="alert" className="text-xs text-error-text">
+                  {errors.password.message}
+                </p>
               )}
             </div>
 
@@ -405,16 +447,20 @@ const Register = () => {
                   autoComplete="new-password"
                   disabled={isSubmitting}
                   error={!!errors.confirmPassword}
+                  className="pr-14"
+                  aria-describedby={
+                    errors.confirmPassword ? "register-confirm-password-error" : undefined
+                  }
                 />
                 <button
                   type="button"
-                  onMouseDown={() => setShowConfirm(true)}
-                  onMouseUp={() => setShowConfirm(false)}
-                  onMouseLeave={() => setShowConfirm(false)}
                   onClick={() => setShowConfirm((v) => !v)}
-                  className="absolute inset-y-0 right-4 flex items-center text-brand"
-                  aria-label={t("auth:actions.showPassword") ?? undefined}
-                  title={t("auth:actions.holdReveal") ?? undefined}
+                  className="absolute inset-y-0 right-1 flex min-h-11 min-w-11 items-center justify-center rounded-md text-brand focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
+                  aria-label={
+                    t(showConfirm ? "auth:actions.hideCredential" : "auth:actions.showPassword") ??
+                    undefined
+                  }
+                  aria-pressed={showConfirm}
                 >
                   {showConfirm ? (
                     <EyeOff className="h-5 w-5" aria-hidden="true" />
@@ -429,12 +475,19 @@ const Register = () => {
                 </p>
               )}
               {errors.confirmPassword && (
-                <p className="text-xs text-error-text">{errors.confirmPassword.message}</p>
+                <p
+                  id="register-confirm-password-error"
+                  role="alert"
+                  className="text-xs text-error-text"
+                >
+                  {errors.confirmPassword.message}
+                </p>
               )}
             </div>
 
             {errors.root?.message && (
               <div
+                role="alert"
                 className="min-h-6 text-center text-sm font-semibold text-error-text"
                 aria-live="assertive"
               >

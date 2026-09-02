@@ -4,8 +4,45 @@ from unittest.mock import MagicMock
 import pytest
 from sqlalchemy import select
 
+from app.core.notification_contract import infer_notification_topic
 from app.models import PushSubscription, UserPushTopic
 from app.services import push_topics as pt
+
+
+def test_canonical_topic_catalog_and_legacy_aliases():
+    assert pt.CANONICAL_NOTIFICATION_TOPICS == (
+        "news.published",
+        "schedule.changed",
+        "events.published",
+        "chat.message.created",
+        "system.release",
+    )
+    assert pt.normalize_topics(
+        ["news", "schedule", "events", "chat", "system"],
+        allowed_topics=pt.CANONICAL_NOTIFICATION_TOPICS,
+    ) == list(pt.CANONICAL_NOTIFICATION_TOPICS)
+
+
+@pytest.mark.parametrize(
+    ("notification_type", "expected"),
+    [
+        ("news.new", "news.published"),
+        ("news", "news.published"),
+        ("schedule.reminder", "schedule.changed"),
+        ("schedule", "schedule.changed"),
+        ("events.new", "events.published"),
+        ("event", "events.published"),
+        ("event.updated", "events.published"),
+        ("chat.reply", "chat.message.created"),
+        ("chat", "chat.message.created"),
+        ("system.release", "system.release"),
+        ("system", "system.release"),
+        ("grade", None),
+        (None, None),
+    ],
+)
+def test_infer_notification_topic(notification_type, expected):
+    assert infer_notification_topic(notification_type) == expected
 
 
 def test_get_allowed_topics():
@@ -181,3 +218,27 @@ async def test_synchronize_user_topics(db_session, user_factory):
     # Verify subscriptions are updated
     assert sub1.topics == ["news", "alerts"]
     assert sub2.topics == ["news", "alerts"]
+
+
+@pytest.mark.asyncio
+async def test_filter_user_ids_by_topic_honors_preferences_and_defaults(
+    db_session, user_factory
+):
+    opted_in = await user_factory()
+    opted_out = await user_factory()
+    no_preferences = await user_factory()
+    db_session.add_all(
+        [
+            UserPushTopic(user_id=opted_in.id, topics=["events.published"]),
+            UserPushTopic(user_id=opted_out.id, topics=["news.published"]),
+        ]
+    )
+    await db_session.flush()
+
+    result = await pt.filter_user_ids_by_topic(
+        db_session,
+        user_ids=[opted_in.id, opted_out.id, no_preferences.id],
+        topic="events.published",
+    )
+
+    assert result == [opted_in.id, no_preferences.id]

@@ -7,7 +7,7 @@ import { NavbarPill } from "@/components/navbar/NavbarPill"
 // the branch ROI: gradient overlay (compact only) + duration / pill-breathe classes.
 
 describe("NavbarPill", () => {
-  it("toggles the gradient overlay + breathing animation between states", () => {
+  it("uses only transform and opacity transitions without glow or breathing", () => {
     const { container, rerender } = render(
       <NavbarPill isCompact={false} prefersReducedMotion={false}>
         <span>nav</span>
@@ -23,8 +23,10 @@ describe("NavbarPill", () => {
       </NavbarPill>
     )
     const outer = container.firstChild as HTMLElement
-    expect(outer.className).toContain("duration-500")
-    expect(outer.className).toContain("animate-pill-breathe")
+    expect(outer.className).toContain("transition-[transform,opacity]")
+    expect(outer.className).not.toContain("animate-pill-breathe")
+    expect(outer.className).not.toContain("box-shadow")
+    expect(outer.className).not.toContain("backdrop-filter")
     // Compact → gradient overlay present.
     expect(container.querySelector('[aria-hidden="true"]')).not.toBeNull()
   })

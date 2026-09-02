@@ -28,7 +28,7 @@ const next = (apiKey: string) => {
 
 export const handlers = [
   http.post(
-    `${baseURL}/api/v1/auth/mfa/webauthn/register/confirm`,
+    `${baseURL}/api/v1/auth/mfa/email/verification/start`,
     async ({ request }) => {
       const shouldEchoRequestBody = false;
       let requestJson = null;
@@ -42,19 +42,15 @@ export const handlers = [
 
       const resultArray = [
         [
-          await getConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPost200Response(),
+          await getStartEmailVerificationApiV1AuthMfaEmailVerificationStartPost200Response(),
           { status: 200 },
         ],
         [undefined, { status: 401 }],
-        [
-          await getConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPost422Response(),
-          { status: 422 },
-        ],
       ] as [any, { status: number }][];
 
       const [body, init] =
         resultArray[
-          next(`post /api/v1/auth/mfa/webauthn/register/confirm`) %
+          next(`post /api/v1/auth/mfa/email/verification/start`) %
             resultArray.length
         ];
       const responseJson =
@@ -64,111 +60,68 @@ export const handlers = [
       return HttpResponse.json(responseJson, init);
     },
   ),
-  http.post(
-    `${baseURL}/api/v1/auth/mfa/webauthn/register/start`,
-    async ({ request }) => {
-      const shouldEchoRequestBody = false;
-      let requestJson = null;
-      if (shouldEchoRequestBody && ["post", "put", "patch"].includes("post")) {
-        try {
-          requestJson = await request.clone().json();
-        } catch (e) {
-          requestJson = null;
-        }
+  http.post(`${baseURL}/api/v1/auth/mfa/email/enable`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("post")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
       }
+    }
 
-      const resultArray = [
-        [
-          await getStartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPost200Response(),
-          { status: 200 },
-        ],
-        [undefined, { status: 401 }],
-      ] as [any, { status: number }][];
+    const resultArray = [
+      [
+        await getStartEmailMfaEnablementApiV1AuthMfaEmailEnablePost200Response(),
+        { status: 200 },
+      ],
+      [undefined, { status: 401 }],
+    ] as [any, { status: number }][];
 
-      const [body, init] =
-        resultArray[
-          next(`post /api/v1/auth/mfa/webauthn/register/start`) %
-            resultArray.length
-        ];
-      const responseJson =
-        requestJson && body && typeof body === "object" && !Array.isArray(body)
-          ? { ...body, ...requestJson }
-          : body;
-      return HttpResponse.json(responseJson, init);
-    },
-  ),
-  http.post(
-    `${baseURL}/api/v1/auth/login/passkey/start`,
-    async ({ request }) => {
-      const shouldEchoRequestBody = false;
-      let requestJson = null;
-      if (shouldEchoRequestBody && ["post", "put", "patch"].includes("post")) {
-        try {
-          requestJson = await request.clone().json();
-        } catch (e) {
-          requestJson = null;
-        }
+    const [body, init] =
+      resultArray[
+        next(`post /api/v1/auth/mfa/email/enable`) % resultArray.length
+      ];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
+  http.post(`${baseURL}/api/v1/auth/mfa/email/resend`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("post")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
       }
+    }
 
-      const resultArray = [
-        [
-          await getLoginPasskeyStartApiV1AuthLoginPasskeyStartPost200Response(),
-          { status: 200 },
-        ],
-        [undefined, { status: 401 }],
-        [
-          await getLoginPasskeyStartApiV1AuthLoginPasskeyStartPost422Response(),
-          { status: 422 },
-        ],
-      ] as [any, { status: number }][];
+    const resultArray = [
+      [
+        await getResendEmailMfaChallengeApiV1AuthMfaEmailResendPost200Response(),
+        { status: 200 },
+      ],
+      [undefined, { status: 401 }],
+      [
+        await getResendEmailMfaChallengeApiV1AuthMfaEmailResendPost422Response(),
+        { status: 422 },
+      ],
+    ] as [any, { status: number }][];
 
-      const [body, init] =
-        resultArray[
-          next(`post /api/v1/auth/login/passkey/start`) % resultArray.length
-        ];
-      const responseJson =
-        requestJson && body && typeof body === "object" && !Array.isArray(body)
-          ? { ...body, ...requestJson }
-          : body;
-      return HttpResponse.json(responseJson, init);
-    },
-  ),
-  http.post(
-    `${baseURL}/api/v1/auth/login/passkey/verify`,
-    async ({ request }) => {
-      const shouldEchoRequestBody = false;
-      let requestJson = null;
-      if (shouldEchoRequestBody && ["post", "put", "patch"].includes("post")) {
-        try {
-          requestJson = await request.clone().json();
-        } catch (e) {
-          requestJson = null;
-        }
-      }
-
-      const resultArray = [
-        [
-          await getLoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPost200Response(),
-          { status: 200 },
-        ],
-        [undefined, { status: 401 }],
-        [
-          await getLoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPost422Response(),
-          { status: 422 },
-        ],
-      ] as [any, { status: number }][];
-
-      const [body, init] =
-        resultArray[
-          next(`post /api/v1/auth/login/passkey/verify`) % resultArray.length
-        ];
-      const responseJson =
-        requestJson && body && typeof body === "object" && !Array.isArray(body)
-          ? { ...body, ...requestJson }
-          : body;
-      return HttpResponse.json(responseJson, init);
-    },
-  ),
+    const [body, init] =
+      resultArray[
+        next(`post /api/v1/auth/mfa/email/resend`) % resultArray.length
+      ];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
   http.post(`${baseURL}/api/v1/auth/mfa/totp/confirm`, async ({ request }) => {
     const shouldEchoRequestBody = false;
     let requestJson = null;
@@ -235,6 +188,72 @@ export const handlers = [
         : body;
     return HttpResponse.json(responseJson, init);
   }),
+  http.post(
+    `${baseURL}/api/v1/notifications/admin/dead-letter/purge`,
+    async ({ request }) => {
+      const shouldEchoRequestBody = false;
+      let requestJson = null;
+      if (shouldEchoRequestBody && ["post", "put", "patch"].includes("post")) {
+        try {
+          requestJson = await request.clone().json();
+        } catch (e) {
+          requestJson = null;
+        }
+      }
+
+      const resultArray = [
+        [await getPurgeNotificationDeadLetters200Response(), { status: 200 }],
+        [undefined, { status: 401 }],
+        [undefined, { status: 403 }],
+        [undefined, { status: 409 }],
+        [await getPurgeNotificationDeadLetters422Response(), { status: 422 }],
+      ] as [any, { status: number }][];
+
+      const [body, init] =
+        resultArray[
+          next(`post /api/v1/notifications/admin/dead-letter/purge`) %
+            resultArray.length
+        ];
+      const responseJson =
+        requestJson && body && typeof body === "object" && !Array.isArray(body)
+          ? { ...body, ...requestJson }
+          : body;
+      return HttpResponse.json(responseJson, init);
+    },
+  ),
+  http.post(
+    `${baseURL}/api/v1/notifications/admin/dead-letter/retry`,
+    async ({ request }) => {
+      const shouldEchoRequestBody = false;
+      let requestJson = null;
+      if (shouldEchoRequestBody && ["post", "put", "patch"].includes("post")) {
+        try {
+          requestJson = await request.clone().json();
+        } catch (e) {
+          requestJson = null;
+        }
+      }
+
+      const resultArray = [
+        [await getRetryNotificationDeadLetters200Response(), { status: 200 }],
+        [undefined, { status: 401 }],
+        [undefined, { status: 403 }],
+        [undefined, { status: 409 }],
+        [await getRetryNotificationDeadLetters422Response(), { status: 422 }],
+      ] as [any, { status: number }][];
+
+      const [body, init] =
+        resultArray[
+          next(`post /api/v1/notifications/admin/dead-letter/retry`) %
+            resultArray.length
+        ];
+      const responseJson =
+        requestJson && body && typeof body === "object" && !Array.isArray(body)
+          ? { ...body, ...requestJson }
+          : body;
+      return HttpResponse.json(responseJson, init);
+    },
+  ),
   http.post(`${baseURL}/api/v1/users/me/email/confirm`, async ({ request }) => {
     const shouldEchoRequestBody = false;
     let requestJson = null;
@@ -261,6 +280,33 @@ export const handlers = [
       resultArray[
         next(`post /api/v1/users/me/email/confirm`) % resultArray.length
       ];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
+  http.delete(`${baseURL}/api/v1/auth/mfa/email`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("delete")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [
+        await getDisableEmailMfaEndpointApiV1AuthMfaEmailDelete200Response(),
+        { status: 200 },
+      ],
+      [undefined, { status: 401 }],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`delete /api/v1/auth/mfa/email`) % resultArray.length];
     const responseJson =
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
@@ -340,33 +386,6 @@ export const handlers = [
 
     const [body, init] =
       resultArray[next(`get /api/v1/auth/mfa/totp`) % resultArray.length];
-    const responseJson =
-      requestJson && body && typeof body === "object" && !Array.isArray(body)
-        ? { ...body, ...requestJson }
-        : body;
-    return HttpResponse.json(responseJson, init);
-  }),
-  http.get(`${baseURL}/api/v1/auth/mfa/webauthn`, async ({ request }) => {
-    const shouldEchoRequestBody = false;
-    let requestJson = null;
-    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
-      try {
-        requestJson = await request.clone().json();
-      } catch (e) {
-        requestJson = null;
-      }
-    }
-
-    const resultArray = [
-      [
-        await getListWebauthnCredentialsApiV1AuthMfaWebauthnGet200Response(),
-        { status: 200 },
-      ],
-      [undefined, { status: 401 }],
-    ] as [any, { status: number }][];
-
-    const [body, init] =
-      resultArray[next(`get /api/v1/auth/mfa/webauthn`) % resultArray.length];
     const responseJson =
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
@@ -469,6 +488,38 @@ export const handlers = [
         : body;
     return HttpResponse.json(responseJson, init);
   }),
+  http.get(
+    `${baseURL}/api/v1/notifications/admin/dead-letter`,
+    async ({ request }) => {
+      const shouldEchoRequestBody = false;
+      let requestJson = null;
+      if (shouldEchoRequestBody && ["post", "put", "patch"].includes("get")) {
+        try {
+          requestJson = await request.clone().json();
+        } catch (e) {
+          requestJson = null;
+        }
+      }
+
+      const resultArray = [
+        [await getListNotificationDeadLetters200Response(), { status: 200 }],
+        [undefined, { status: 401 }],
+        [undefined, { status: 403 }],
+        [await getListNotificationDeadLetters422Response(), { status: 422 }],
+      ] as [any, { status: number }][];
+
+      const [body, init] =
+        resultArray[
+          next(`get /api/v1/notifications/admin/dead-letter`) %
+            resultArray.length
+        ];
+      const responseJson =
+        requestJson && body && typeof body === "object" && !Array.isArray(body)
+          ? { ...body, ...requestJson }
+          : body;
+      return HttpResponse.json(responseJson, init);
+    },
+  ),
   http.get(`${baseURL}/api/v1/users/audit/export`, async ({ request }) => {
     const shouldEchoRequestBody = false;
     let requestJson = null;
@@ -1398,6 +1449,66 @@ export const handlers = [
 
     const [body, init] =
       resultArray[next(`post /api/v1/chats/groups`) % resultArray.length];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
+  http.post(`${baseURL}/api/v1/cwv/envelope`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("post")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [
+        await getCreateCwvEnvelopeApiV1CwvEnvelopePost200Response(),
+        { status: 200 },
+      ],
+      [
+        await getCreateCwvEnvelopeApiV1CwvEnvelopePost422Response(),
+        { status: 422 },
+      ],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`post /api/v1/cwv/envelope`) % resultArray.length];
+    const responseJson =
+      requestJson && body && typeof body === "object" && !Array.isArray(body)
+        ? { ...body, ...requestJson }
+        : body;
+    return HttpResponse.json(responseJson, init);
+  }),
+  http.post(`${baseURL}/api/v1/cwv/observations`, async ({ request }) => {
+    const shouldEchoRequestBody = false;
+    let requestJson = null;
+    if (shouldEchoRequestBody && ["post", "put", "patch"].includes("post")) {
+      try {
+        requestJson = await request.clone().json();
+      } catch (e) {
+        requestJson = null;
+      }
+    }
+
+    const resultArray = [
+      [
+        await getIngestCwvObservationApiV1CwvObservationsPost202Response(),
+        { status: 202 },
+      ],
+      [
+        await getIngestCwvObservationApiV1CwvObservationsPost422Response(),
+        { status: 422 },
+      ],
+    ] as [any, { status: number }][];
+
+    const [body, init] =
+      resultArray[next(`post /api/v1/cwv/observations`) % resultArray.length];
     const responseJson =
       requestJson && body && typeof body === "object" && !Array.isArray(body)
         ? { ...body, ...requestJson }
@@ -2472,46 +2583,6 @@ export const handlers = [
       const [body, init] =
         resultArray[
           next(`delete /api/v1/auth/mfa/totp/:enrollmentId`) %
-            resultArray.length
-        ];
-      const responseJson =
-        requestJson && body && typeof body === "object" && !Array.isArray(body)
-          ? { ...body, ...requestJson }
-          : body;
-      return HttpResponse.json(responseJson, init);
-    },
-  ),
-  http.delete(
-    `${baseURL}/api/v1/auth/mfa/webauthn/:credentialId`,
-    async ({ request }) => {
-      const shouldEchoRequestBody = false;
-      let requestJson = null;
-      if (
-        shouldEchoRequestBody &&
-        ["post", "put", "patch"].includes("delete")
-      ) {
-        try {
-          requestJson = await request.clone().json();
-        } catch (e) {
-          requestJson = null;
-        }
-      }
-
-      const resultArray = [
-        [
-          await getDeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDelete200Response(),
-          { status: 200 },
-        ],
-        [undefined, { status: 401 }],
-        [
-          await getDeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDelete422Response(),
-          { status: 422 },
-        ],
-      ] as [any, { status: number }][];
-
-      const [body, init] =
-        resultArray[
-          next(`delete /api/v1/auth/mfa/webauthn/:credentialId`) %
             resultArray.length
         ];
       const responseJson =
@@ -3869,342 +3940,38 @@ export function getGetRootGet200Response() {
   return null;
 }
 
-export function getLivenessHealthLiveGet200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
-}
-
-export function getHealthzHealthzGet200Response() {
-  return null;
-}
-
-export function getHealthzHealthzGet422Response() {
+export function getListAuditLogsAdminAuditGet200Response() {
   return {
-    detail: (() => {
+    items: (() => {
       const arrayMin = 1;
       const arrayMax = MAX_ARRAY_LENGTH;
       const safeMin = Math.min(arrayMin, arrayMax);
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getReadyHealthReadyGet200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
-}
-
-export function getReadyReadyGet200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
-}
-
-export function getLogoutApiV1AuthLogoutPost200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
-}
-
-export function getLoginPasskeyStartApiV1AuthLoginPasskeyStartPost200Response() {
-  return {
-    publicKey: {},
-    challenge_token: faker.lorem.words(),
-  };
-}
-
-export function getLoginPasskeyStartApiV1AuthLoginPasskeyStartPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getLoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPost200Response() {
-  return faker.helpers.arrayElement([
-    {
-      access_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      token_type: faker.lorem.words(),
-      user: {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        profile_department: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        dnd_enabled: faker.datatype.boolean(),
-        dnd_start: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        dnd_end: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        email: faker.internet.email(),
-        full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        role: faker.helpers.arrayElement([
-          "student",
-          "teacher",
-          "admin",
-          "superuser",
-          "anonymous",
-        ]),
-        group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-        avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        spotify_connected: faker.datatype.boolean(),
-        spotify_display_name: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        created_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
+        action: faker.lorem.words(),
+        actor_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        actor_user_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+        context: faker.helpers.arrayElement([{}, null]),
+        created_at: faker.date.anytime().toISOString(),
         id: faker.string.uuid(),
-        is_active: faker.datatype.boolean(),
-        pending_email: faker.helpers.arrayElement([
-          faker.internet.email(),
+        ip_address: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        is_valid: faker.datatype.boolean(),
+        resource_id: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        resource_type: faker.lorem.words(),
+        subject_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        subject_user_id: faker.helpers.arrayElement([
+          faker.string.uuid(),
           null,
         ]),
-        spotify_is_connected: faker.helpers.arrayElement([
-          faker.datatype.boolean(),
-          null,
-        ]),
-        mfa_required: faker.datatype.boolean(),
-        mfa_default_method: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        mfa_last_verified_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        totp_enrollments: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) => ({
-            created_at: faker.date.anytime().toISOString(),
-            id: faker.string.uuid(),
-            user_id: faker.string.uuid(),
-            label: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            is_active: faker.datatype.boolean(),
-            confirmed_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-            revoked_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-          }));
-        })(),
-        mfa_challenges: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) => ({
-            created_at: faker.date.anytime().toISOString(),
-            id: faker.string.uuid(),
-            user_id: faker.string.uuid(),
-            session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-            challenge_type: faker.lorem.words(),
-            token: faker.lorem.words(),
-            expires_at: faker.date.anytime().toISOString(),
-            consumed_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-            payload: faker.helpers.arrayElement([{}, null]),
-            attempt_count: faker.number.int(),
-            state: faker.helpers.arrayElement([
-              "pending",
-              "consumed",
-              "locked",
-              "expired",
-            ]),
-          }));
-        })(),
-        recovery_codes_left: faker.number.int(),
-        profile_detail: faker.helpers.arrayElement([
-          {
-            about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            achievements: faker.helpers.arrayElement([
-              faker.lorem.words(),
-              null,
-            ]),
-            department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          },
-          null,
-        ]),
-        preferences: faker.helpers.arrayElement([
-          {
-            created_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-            dnd_enabled: faker.helpers.arrayElement([
-              faker.datatype.boolean(),
-              null,
-            ]),
-            dnd_start: faker.helpers.arrayElement([
-              new Date().toISOString().substring(11, 16),
-              null,
-            ]),
-            dnd_end: faker.helpers.arrayElement([
-              new Date().toISOString().substring(11, 16),
-              null,
-            ]),
-            timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          },
-          null,
-        ]),
-        education_path: faker.helpers.arrayElement([
-          {
-            institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            education_level: faker.helpers.arrayElement([
-              faker.lorem.words(),
-              null,
-            ]),
-            track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            record_book_number: faker.helpers.arrayElement([
-              faker.lorem.words(),
-              null,
-            ]),
-          },
-          null,
-        ]),
-        avatar_url_optimized: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        cover_url_optimized: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-      },
-      session: faker.helpers.arrayElement([
-        {
-          signing_key: faker.lorem.words(),
-        },
-        null,
-      ]),
-    },
-    {
-      status: faker.lorem.words(),
-      user_id: faker.string.uuid(),
-      session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-      default_method: faker.helpers.arrayElement([
-        faker.helpers.arrayElement(["totp", "webauthn"]),
-        null,
-      ]),
-      methods: (() => {
-        const arrayMin = 1;
-        const arrayMax = MAX_ARRAY_LENGTH;
-        const safeMin = Math.min(arrayMin, arrayMax);
-        return [
-          ...new Array(
-            faker.number.int({ min: safeMin, max: arrayMax }),
-          ).keys(),
-        ].map((_) => ({
-          method: faker.helpers.arrayElement(["totp", "webauthn"]),
-          challenge_token: faker.lorem.words(),
-          challenge_expires_at: faker.date.anytime().toISOString(),
-          options: faker.helpers.arrayElement([{}, null]),
-          attempt_count: faker.helpers.arrayElement([faker.number.int(), null]),
-          attempt_limit: faker.helpers.arrayElement([faker.number.int(), null]),
-          remaining_attempts: faker.helpers.arrayElement([
-            faker.number.int(),
-            null,
-          ]),
-        }));
-      })(),
-    },
-  ]);
+        user_agent: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      }));
+    })(),
+    total: faker.number.int(),
+  };
 }
 
-export function getLoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPost422Response() {
+export function getListAuditLogsAdminAuditGet422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -4213,6 +3980,8 @@ export function getLoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPost422Response(
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -4230,64 +3999,108 @@ export function getLoginPasskeyVerifyApiV1AuthLoginPasskeyVerifyPost422Response(
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
+}
+
+export function getGetTimeTravelStateAdminAuditTimeTravelGet200Response() {
+  return {
+    aggregate_id: faker.string.uuid(),
+    aggregate_type: faker.lorem.words(),
+    chain_integrity_valid: faker.datatype.boolean(),
+    events_replayed: faker.number.int(),
+    state_at_timestamp: faker.helpers.arrayElement([{}, null]),
+    tampered_event_id: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    target_timestamp: faker.date.anytime().toISOString(),
+    version_at_timestamp: faker.helpers.arrayElement([
+      faker.number.int(),
+      null,
+    ]),
+  };
+}
+
+export function getGetTimeTravelStateAdminAuditTimeTravelGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getListFeatureFlagsAdminFeatureFlagsGet200Response() {
+  return (() => {
+    const arrayMin = 1;
+    const arrayMax = MAX_ARRAY_LENGTH;
+    const safeMin = Math.min(arrayMin, arrayMax);
+    return [
+      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+    ].map((_) => ({
+      config_path: faker.lorem.words(),
+      default: faker.datatype.boolean(),
+      description: faker.lorem.words(),
+      enabled: faker.datatype.boolean(),
+      evaluation_reason: faker.lorem.words(),
+      management: faker.lorem.words(),
+      name: faker.person.fullName(),
+      provider: faker.lorem.words(),
+    }));
+  })();
+}
+
+export function getGetCsrfCookieApiV1AuthCsrfCookieGet200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
 }
 
 export function getLoginApiV1AuthLoginPost200Response() {
   return faker.helpers.arrayElement([
     {
       access_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      session: faker.helpers.arrayElement([
+        {
+          signing_key: faker.lorem.words(),
+        },
+        null,
+      ]),
       token_type: faker.lorem.words(),
       user: {
         about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        profile_department: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
         achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        dnd_enabled: faker.datatype.boolean(),
-        dnd_start: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        dnd_end: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        email: faker.internet.email(),
-        full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        role: faker.helpers.arrayElement([
-          "student",
-          "teacher",
-          "admin",
-          "superuser",
-          "anonymous",
-        ]),
-        group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
         avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        avatar_url_optimized: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
         cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        spotify_connected: faker.datatype.boolean(),
-        spotify_display_name: faker.helpers.arrayElement([
+        cover_url_optimized: faker.helpers.arrayElement([
           faker.lorem.words(),
           null,
         ]),
@@ -4295,94 +4108,64 @@ export function getLoginApiV1AuthLoginPost200Response() {
           faker.date.anytime().toISOString(),
           null,
         ]),
-        id: faker.string.uuid(),
-        is_active: faker.datatype.boolean(),
-        pending_email: faker.helpers.arrayElement([
-          faker.internet.email(),
+        dnd_enabled: faker.datatype.boolean(),
+        dnd_end: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
           null,
         ]),
-        spotify_is_connected: faker.helpers.arrayElement([
-          faker.datatype.boolean(),
+        dnd_start: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
           null,
         ]),
-        mfa_required: faker.datatype.boolean(),
-        mfa_default_method: faker.helpers.arrayElement([
+        education_level: faker.helpers.arrayElement([
           faker.lorem.words(),
+          null,
+        ]),
+        education_path: faker.helpers.arrayElement([
+          {
+            course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            education_level: faker.helpers.arrayElement([
+              faker.lorem.words(),
+              null,
+            ]),
+            institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            record_book_number: faker.helpers.arrayElement([
+              faker.lorem.words(),
+              null,
+            ]),
+            track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          },
+          null,
+        ]),
+        email: faker.internet.email(),
+        email_mfa_enabled_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        email_verified_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+        id: faker.string.uuid(),
+        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        is_active: faker.datatype.boolean(),
+        mfa_default_method: faker.helpers.arrayElement([
+          faker.helpers.arrayElement(["totp", "email_otp"]),
           null,
         ]),
         mfa_last_verified_at: faker.helpers.arrayElement([
           faker.date.anytime().toISOString(),
           null,
         ]),
-        totp_enrollments: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) => ({
-            created_at: faker.date.anytime().toISOString(),
-            id: faker.string.uuid(),
-            user_id: faker.string.uuid(),
-            label: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            is_active: faker.datatype.boolean(),
-            confirmed_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-            revoked_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-          }));
-        })(),
-        mfa_challenges: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) => ({
-            created_at: faker.date.anytime().toISOString(),
-            id: faker.string.uuid(),
-            user_id: faker.string.uuid(),
-            session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-            challenge_type: faker.lorem.words(),
-            token: faker.lorem.words(),
-            expires_at: faker.date.anytime().toISOString(),
-            consumed_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-            payload: faker.helpers.arrayElement([{}, null]),
-            attempt_count: faker.number.int(),
-            state: faker.helpers.arrayElement([
-              "pending",
-              "consumed",
-              "locked",
-              "expired",
-            ]),
-          }));
-        })(),
-        recovery_codes_left: faker.number.int(),
-        profile_detail: faker.helpers.arrayElement([
-          {
-            about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            achievements: faker.helpers.arrayElement([
-              faker.lorem.words(),
-              null,
-            ]),
-            department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          },
+        mfa_required: faker.datatype.boolean(),
+        pending_email: faker.helpers.arrayElement([
+          faker.internet.email(),
           null,
         ]),
+        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
         preferences: faker.helpers.arrayElement([
           {
             created_at: faker.helpers.arrayElement([
@@ -4393,11 +4176,11 @@ export function getLoginApiV1AuthLoginPost200Response() {
               faker.datatype.boolean(),
               null,
             ]),
-            dnd_start: faker.helpers.arrayElement([
+            dnd_end: faker.helpers.arrayElement([
               new Date().toISOString().substring(11, 16),
               null,
             ]),
-            dnd_end: faker.helpers.arrayElement([
+            dnd_start: faker.helpers.arrayElement([
               new Date().toISOString().substring(11, 16),
               null,
             ]),
@@ -4405,45 +4188,79 @@ export function getLoginApiV1AuthLoginPost200Response() {
           },
           null,
         ]),
-        education_path: faker.helpers.arrayElement([
+        profile_department: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        profile_detail: faker.helpers.arrayElement([
           {
-            institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            education_level: faker.helpers.arrayElement([
+            about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            achievements: faker.helpers.arrayElement([
               faker.lorem.words(),
               null,
             ]),
-            track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            record_book_number: faker.helpers.arrayElement([
-              faker.lorem.words(),
-              null,
-            ]),
+            department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
           },
           null,
         ]),
-        avatar_url_optimized: faker.helpers.arrayElement([
+        profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        record_book_number: faker.helpers.arrayElement([
           faker.lorem.words(),
           null,
         ]),
-        cover_url_optimized: faker.helpers.arrayElement([
+        recovery_codes_left: faker.number.int(),
+        role: faker.helpers.arrayElement([
+          "student",
+          "teacher",
+          "admin",
+          "superuser",
+          "anonymous",
+        ]),
+        spotify_connected: faker.datatype.boolean(),
+        spotify_display_name: faker.helpers.arrayElement([
           faker.lorem.words(),
           null,
         ]),
+        spotify_is_connected: faker.helpers.arrayElement([
+          faker.datatype.boolean(),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        totp_enrollments: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => ({
+            confirmed_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+            created_at: faker.date.anytime().toISOString(),
+            id: faker.string.uuid(),
+            is_active: faker.datatype.boolean(),
+            label: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            revoked_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+            user_id: faker.string.uuid(),
+          }));
+        })(),
+        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
       },
-      session: faker.helpers.arrayElement([
-        {
-          signing_key: faker.lorem.words(),
-        },
-        null,
-      ]),
     },
     {
-      status: faker.lorem.words(),
-      user_id: faker.string.uuid(),
-      session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
       default_method: faker.helpers.arrayElement([
-        faker.helpers.arrayElement(["totp", "webauthn"]),
+        faker.helpers.arrayElement(["totp", "email_otp"]),
         null,
       ]),
       methods: (() => {
@@ -4455,18 +4272,29 @@ export function getLoginApiV1AuthLoginPost200Response() {
             faker.number.int({ min: safeMin, max: arrayMax }),
           ).keys(),
         ].map((_) => ({
-          method: faker.helpers.arrayElement(["totp", "webauthn"]),
-          challenge_token: faker.lorem.words(),
-          challenge_expires_at: faker.date.anytime().toISOString(),
-          options: faker.helpers.arrayElement([{}, null]),
           attempt_count: faker.helpers.arrayElement([faker.number.int(), null]),
           attempt_limit: faker.helpers.arrayElement([faker.number.int(), null]),
+          challenge_expires_at: faker.date.anytime().toISOString(),
+          challenge_token: faker.lorem.words(),
+          delivery_hint: faker.helpers.arrayElement([
+            faker.lorem.words(),
+            null,
+          ]),
+          method: faker.helpers.arrayElement(["totp", "email_otp"]),
           remaining_attempts: faker.helpers.arrayElement([
             faker.number.int(),
             null,
           ]),
+          resend_available_at: faker.helpers.arrayElement([
+            faker.date.anytime().toISOString(),
+            null,
+          ]),
+          revision: faker.number.int(),
         }));
       })(),
+      session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+      status: faker.lorem.words(),
+      user_id: faker.string.uuid(),
     },
   ]);
 }
@@ -4480,6 +4308,8 @@ export function getLoginApiV1AuthLoginPost422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -4497,8 +4327,6 @@ export function getLoginApiV1AuthLoginPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
@@ -4508,53 +4336,24 @@ export function getLoginJsonApiV1AuthLoginJsonPost200Response() {
   return faker.helpers.arrayElement([
     {
       access_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      session: faker.helpers.arrayElement([
+        {
+          signing_key: faker.lorem.words(),
+        },
+        null,
+      ]),
       token_type: faker.lorem.words(),
       user: {
         about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        profile_department: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
         achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        dnd_enabled: faker.datatype.boolean(),
-        dnd_start: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        dnd_end: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        email: faker.internet.email(),
-        full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        role: faker.helpers.arrayElement([
-          "student",
-          "teacher",
-          "admin",
-          "superuser",
-          "anonymous",
-        ]),
-        group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
         avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        avatar_url_optimized: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
         cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        spotify_connected: faker.datatype.boolean(),
-        spotify_display_name: faker.helpers.arrayElement([
+        cover_url_optimized: faker.helpers.arrayElement([
           faker.lorem.words(),
           null,
         ]),
@@ -4562,94 +4361,64 @@ export function getLoginJsonApiV1AuthLoginJsonPost200Response() {
           faker.date.anytime().toISOString(),
           null,
         ]),
-        id: faker.string.uuid(),
-        is_active: faker.datatype.boolean(),
-        pending_email: faker.helpers.arrayElement([
-          faker.internet.email(),
+        dnd_enabled: faker.datatype.boolean(),
+        dnd_end: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
           null,
         ]),
-        spotify_is_connected: faker.helpers.arrayElement([
-          faker.datatype.boolean(),
+        dnd_start: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
           null,
         ]),
-        mfa_required: faker.datatype.boolean(),
-        mfa_default_method: faker.helpers.arrayElement([
+        education_level: faker.helpers.arrayElement([
           faker.lorem.words(),
+          null,
+        ]),
+        education_path: faker.helpers.arrayElement([
+          {
+            course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            education_level: faker.helpers.arrayElement([
+              faker.lorem.words(),
+              null,
+            ]),
+            institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            record_book_number: faker.helpers.arrayElement([
+              faker.lorem.words(),
+              null,
+            ]),
+            track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          },
+          null,
+        ]),
+        email: faker.internet.email(),
+        email_mfa_enabled_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        email_verified_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+        id: faker.string.uuid(),
+        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        is_active: faker.datatype.boolean(),
+        mfa_default_method: faker.helpers.arrayElement([
+          faker.helpers.arrayElement(["totp", "email_otp"]),
           null,
         ]),
         mfa_last_verified_at: faker.helpers.arrayElement([
           faker.date.anytime().toISOString(),
           null,
         ]),
-        totp_enrollments: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) => ({
-            created_at: faker.date.anytime().toISOString(),
-            id: faker.string.uuid(),
-            user_id: faker.string.uuid(),
-            label: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            is_active: faker.datatype.boolean(),
-            confirmed_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-            revoked_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-          }));
-        })(),
-        mfa_challenges: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) => ({
-            created_at: faker.date.anytime().toISOString(),
-            id: faker.string.uuid(),
-            user_id: faker.string.uuid(),
-            session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-            challenge_type: faker.lorem.words(),
-            token: faker.lorem.words(),
-            expires_at: faker.date.anytime().toISOString(),
-            consumed_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-            payload: faker.helpers.arrayElement([{}, null]),
-            attempt_count: faker.number.int(),
-            state: faker.helpers.arrayElement([
-              "pending",
-              "consumed",
-              "locked",
-              "expired",
-            ]),
-          }));
-        })(),
-        recovery_codes_left: faker.number.int(),
-        profile_detail: faker.helpers.arrayElement([
-          {
-            about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            achievements: faker.helpers.arrayElement([
-              faker.lorem.words(),
-              null,
-            ]),
-            department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          },
+        mfa_required: faker.datatype.boolean(),
+        pending_email: faker.helpers.arrayElement([
+          faker.internet.email(),
           null,
         ]),
+        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
         preferences: faker.helpers.arrayElement([
           {
             created_at: faker.helpers.arrayElement([
@@ -4660,11 +4429,11 @@ export function getLoginJsonApiV1AuthLoginJsonPost200Response() {
               faker.datatype.boolean(),
               null,
             ]),
-            dnd_start: faker.helpers.arrayElement([
+            dnd_end: faker.helpers.arrayElement([
               new Date().toISOString().substring(11, 16),
               null,
             ]),
-            dnd_end: faker.helpers.arrayElement([
+            dnd_start: faker.helpers.arrayElement([
               new Date().toISOString().substring(11, 16),
               null,
             ]),
@@ -4672,45 +4441,79 @@ export function getLoginJsonApiV1AuthLoginJsonPost200Response() {
           },
           null,
         ]),
-        education_path: faker.helpers.arrayElement([
+        profile_department: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        profile_detail: faker.helpers.arrayElement([
           {
-            institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            education_level: faker.helpers.arrayElement([
+            about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            achievements: faker.helpers.arrayElement([
               faker.lorem.words(),
               null,
             ]),
-            track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            record_book_number: faker.helpers.arrayElement([
-              faker.lorem.words(),
-              null,
-            ]),
+            department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
           },
           null,
         ]),
-        avatar_url_optimized: faker.helpers.arrayElement([
+        profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        record_book_number: faker.helpers.arrayElement([
           faker.lorem.words(),
           null,
         ]),
-        cover_url_optimized: faker.helpers.arrayElement([
+        recovery_codes_left: faker.number.int(),
+        role: faker.helpers.arrayElement([
+          "student",
+          "teacher",
+          "admin",
+          "superuser",
+          "anonymous",
+        ]),
+        spotify_connected: faker.datatype.boolean(),
+        spotify_display_name: faker.helpers.arrayElement([
           faker.lorem.words(),
           null,
         ]),
+        spotify_is_connected: faker.helpers.arrayElement([
+          faker.datatype.boolean(),
+          null,
+        ]),
+        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        totp_enrollments: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => ({
+            confirmed_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+            created_at: faker.date.anytime().toISOString(),
+            id: faker.string.uuid(),
+            is_active: faker.datatype.boolean(),
+            label: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            revoked_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+            user_id: faker.string.uuid(),
+          }));
+        })(),
+        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
       },
-      session: faker.helpers.arrayElement([
-        {
-          signing_key: faker.lorem.words(),
-        },
-        null,
-      ]),
     },
     {
-      status: faker.lorem.words(),
-      user_id: faker.string.uuid(),
-      session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
       default_method: faker.helpers.arrayElement([
-        faker.helpers.arrayElement(["totp", "webauthn"]),
+        faker.helpers.arrayElement(["totp", "email_otp"]),
         null,
       ]),
       methods: (() => {
@@ -4722,18 +4525,29 @@ export function getLoginJsonApiV1AuthLoginJsonPost200Response() {
             faker.number.int({ min: safeMin, max: arrayMax }),
           ).keys(),
         ].map((_) => ({
-          method: faker.helpers.arrayElement(["totp", "webauthn"]),
-          challenge_token: faker.lorem.words(),
-          challenge_expires_at: faker.date.anytime().toISOString(),
-          options: faker.helpers.arrayElement([{}, null]),
           attempt_count: faker.helpers.arrayElement([faker.number.int(), null]),
           attempt_limit: faker.helpers.arrayElement([faker.number.int(), null]),
+          challenge_expires_at: faker.date.anytime().toISOString(),
+          challenge_token: faker.lorem.words(),
+          delivery_hint: faker.helpers.arrayElement([
+            faker.lorem.words(),
+            null,
+          ]),
+          method: faker.helpers.arrayElement(["totp", "email_otp"]),
           remaining_attempts: faker.helpers.arrayElement([
             faker.number.int(),
             null,
           ]),
+          resend_available_at: faker.helpers.arrayElement([
+            faker.date.anytime().toISOString(),
+            null,
+          ]),
+          revision: faker.number.int(),
         }));
       })(),
+      session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+      status: faker.lorem.words(),
+      user_id: faker.string.uuid(),
     },
   ]);
 }
@@ -4747,6 +4561,8 @@ export function getLoginJsonApiV1AuthLoginJsonPost422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -4764,509 +4580,63 @@ export function getLoginJsonApiV1AuthLoginJsonPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getVerifyMfaChallengeApiV1AuthMfaVerifyPost200Response() {
-  return {
-    access_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    token_type: faker.lorem.words(),
-    user: {
-      about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      profile_department: faker.helpers.arrayElement([
-        faker.lorem.words(),
-        null,
-      ]),
-      position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      record_book_number: faker.helpers.arrayElement([
-        faker.lorem.words(),
-        null,
-      ]),
-      timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      dnd_enabled: faker.datatype.boolean(),
-      dnd_start: faker.helpers.arrayElement([
-        new Date().toISOString().substring(11, 16),
-        null,
-      ]),
-      dnd_end: faker.helpers.arrayElement([
-        new Date().toISOString().substring(11, 16),
-        null,
-      ]),
-      email: faker.internet.email(),
-      full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      role: faker.helpers.arrayElement([
-        "student",
-        "teacher",
-        "admin",
-        "superuser",
-        "anonymous",
-      ]),
-      group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-      avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      spotify_connected: faker.datatype.boolean(),
-      spotify_display_name: faker.helpers.arrayElement([
-        faker.lorem.words(),
-        null,
-      ]),
-      created_at: faker.helpers.arrayElement([
-        faker.date.anytime().toISOString(),
-        null,
-      ]),
-      id: faker.string.uuid(),
-      is_active: faker.datatype.boolean(),
-      pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
-      spotify_is_connected: faker.helpers.arrayElement([
-        faker.datatype.boolean(),
-        null,
-      ]),
-      mfa_required: faker.datatype.boolean(),
-      mfa_default_method: faker.helpers.arrayElement([
-        faker.lorem.words(),
-        null,
-      ]),
-      mfa_last_verified_at: faker.helpers.arrayElement([
-        faker.date.anytime().toISOString(),
-        null,
-      ]),
-      totp_enrollments: (() => {
-        const arrayMin = 1;
-        const arrayMax = MAX_ARRAY_LENGTH;
-        const safeMin = Math.min(arrayMin, arrayMax);
-        return [
-          ...new Array(
-            faker.number.int({ min: safeMin, max: arrayMax }),
-          ).keys(),
-        ].map((_) => ({
-          created_at: faker.date.anytime().toISOString(),
-          id: faker.string.uuid(),
-          user_id: faker.string.uuid(),
-          label: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          is_active: faker.datatype.boolean(),
-          confirmed_at: faker.helpers.arrayElement([
-            faker.date.anytime().toISOString(),
-            null,
-          ]),
-          revoked_at: faker.helpers.arrayElement([
-            faker.date.anytime().toISOString(),
-            null,
-          ]),
-        }));
-      })(),
-      mfa_challenges: (() => {
-        const arrayMin = 1;
-        const arrayMax = MAX_ARRAY_LENGTH;
-        const safeMin = Math.min(arrayMin, arrayMax);
-        return [
-          ...new Array(
-            faker.number.int({ min: safeMin, max: arrayMax }),
-          ).keys(),
-        ].map((_) => ({
-          created_at: faker.date.anytime().toISOString(),
-          id: faker.string.uuid(),
-          user_id: faker.string.uuid(),
-          session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-          challenge_type: faker.lorem.words(),
-          token: faker.lorem.words(),
-          expires_at: faker.date.anytime().toISOString(),
-          consumed_at: faker.helpers.arrayElement([
-            faker.date.anytime().toISOString(),
-            null,
-          ]),
-          payload: faker.helpers.arrayElement([{}, null]),
-          attempt_count: faker.number.int(),
-          state: faker.helpers.arrayElement([
-            "pending",
-            "consumed",
-            "locked",
-            "expired",
-          ]),
-        }));
-      })(),
-      recovery_codes_left: faker.number.int(),
-      profile_detail: faker.helpers.arrayElement([
-        {
-          about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        },
-        null,
-      ]),
-      preferences: faker.helpers.arrayElement([
-        {
-          created_at: faker.helpers.arrayElement([
-            faker.date.anytime().toISOString(),
-            null,
-          ]),
-          dnd_enabled: faker.helpers.arrayElement([
-            faker.datatype.boolean(),
-            null,
-          ]),
-          dnd_start: faker.helpers.arrayElement([
-            new Date().toISOString().substring(11, 16),
-            null,
-          ]),
-          dnd_end: faker.helpers.arrayElement([
-            new Date().toISOString().substring(11, 16),
-            null,
-          ]),
-          timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        },
-        null,
-      ]),
-      education_path: faker.helpers.arrayElement([
-        {
-          institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          education_level: faker.helpers.arrayElement([
-            faker.lorem.words(),
-            null,
-          ]),
-          track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          record_book_number: faker.helpers.arrayElement([
-            faker.lorem.words(),
-            null,
-          ]),
-        },
-        null,
-      ]),
-      avatar_url_optimized: faker.helpers.arrayElement([
-        faker.lorem.words(),
-        null,
-      ]),
-      cover_url_optimized: faker.helpers.arrayElement([
-        faker.lorem.words(),
-        null,
-      ]),
-    },
-    session: faker.helpers.arrayElement([
-      {
-        signing_key: faker.lorem.words(),
-      },
-      null,
-    ]),
-  };
-}
-
-export function getVerifyMfaChallengeApiV1AuthMfaVerifyPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getGetCsrfCookieApiV1AuthCsrfCookieGet200Response() {
+export function getLogoutApiV1AuthLogoutPost200Response() {
   return [...new Array(5).keys()]
     .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
     .reduce((acc, next) => Object.assign(acc, next), {});
 }
 
-export function getRegisterApiV1AuthRegisterPost200Response() {
-  return {};
-}
-
-export function getRegisterApiV1AuthRegisterPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getGetSessionSigningKeyApiV1AuthSessionSigningKeyGet200Response() {
-  return {
-    signing_key: faker.lorem.words(),
-  };
-}
-
-export function getStartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPost200Response() {
-  return {
-    enrollment: {
-      created_at: faker.date.anytime().toISOString(),
-      id: faker.string.uuid(),
-      user_id: faker.string.uuid(),
-      label: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      is_active: faker.datatype.boolean(),
-      confirmed_at: faker.helpers.arrayElement([
-        faker.date.anytime().toISOString(),
-        null,
-      ]),
-      revoked_at: faker.helpers.arrayElement([
-        faker.date.anytime().toISOString(),
-        null,
-      ]),
-    },
-    secret: faker.lorem.words(),
-    otpauth_url: faker.internet.url(),
-  };
-}
-
-export function getStartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost200Response() {
-  return {
-    created_at: faker.date.anytime().toISOString(),
-    id: faker.string.uuid(),
-    user_id: faker.string.uuid(),
-    label: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    is_active: faker.datatype.boolean(),
-    confirmed_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    revoked_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-  };
-}
-
-export function getConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getListTotpEnrollmentsApiV1AuthMfaTotpGet200Response() {
-  return (() => {
-    const arrayMin = 1;
-    const arrayMax = MAX_ARRAY_LENGTH;
-    const safeMin = Math.min(arrayMin, arrayMax);
-    return [
-      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-    ].map((_) => ({
-      created_at: faker.date.anytime().toISOString(),
-      id: faker.string.uuid(),
-      user_id: faker.string.uuid(),
-      label: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      is_active: faker.datatype.boolean(),
-      confirmed_at: faker.helpers.arrayElement([
-        faker.date.anytime().toISOString(),
-        null,
-      ]),
-      revoked_at: faker.helpers.arrayElement([
-        faker.date.anytime().toISOString(),
-        null,
-      ]),
-    }));
-  })();
-}
-
-export function getDeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDelete422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getDeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDelete200Response() {
+export function getDisableEmailMfaEndpointApiV1AuthMfaEmailDelete200Response() {
   return {
     disabled: faker.datatype.boolean(),
-    mfa_default_method: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    mfa_default_method: faker.helpers.arrayElement([
+      faker.helpers.arrayElement(["totp", "email_otp"]),
+      null,
+    ]),
     mfa_required: faker.datatype.boolean(),
   };
 }
 
-export function getDeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDelete422Response() {
+export function getStartEmailMfaEnablementApiV1AuthMfaEmailEnablePost200Response() {
   return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getStartWebauthnRegistrationApiV1AuthMfaWebauthnRegisterStartPost200Response() {
-  return {
-    publicKey: {},
+    attempt_count: faker.helpers.arrayElement([faker.number.int(), null]),
+    attempt_limit: faker.helpers.arrayElement([faker.number.int(), null]),
+    challenge_expires_at: faker.date.anytime().toISOString(),
     challenge_token: faker.lorem.words(),
+    delivery_hint: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    method: faker.helpers.arrayElement(["totp", "email_otp"]),
+    remaining_attempts: faker.helpers.arrayElement([faker.number.int(), null]),
+    resend_available_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    revision: faker.number.int(),
   };
 }
 
-export function getConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPost200Response() {
+export function getResendEmailMfaChallengeApiV1AuthMfaEmailResendPost200Response() {
   return {
-    disabled: faker.datatype.boolean(),
-    mfa_default_method: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    mfa_required: faker.datatype.boolean(),
+    attempt_count: faker.helpers.arrayElement([faker.number.int(), null]),
+    attempt_limit: faker.helpers.arrayElement([faker.number.int(), null]),
+    challenge_expires_at: faker.date.anytime().toISOString(),
+    challenge_token: faker.lorem.words(),
+    delivery_hint: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    method: faker.helpers.arrayElement(["totp", "email_otp"]),
+    remaining_attempts: faker.helpers.arrayElement([faker.number.int(), null]),
+    resend_available_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    revision: faker.number.int(),
   };
 }
 
-export function getConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfirmPost422Response() {
+export function getResendEmailMfaChallengeApiV1AuthMfaEmailResendPost422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -5275,6 +4645,8 @@ export function getConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfir
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -5292,62 +4664,25 @@ export function getConfirmWebauthnRegistrationApiV1AuthMfaWebauthnRegisterConfir
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getListWebauthnCredentialsApiV1AuthMfaWebauthnGet200Response() {
-  return (() => {
-    const arrayMin = 1;
-    const arrayMax = MAX_ARRAY_LENGTH;
-    const safeMin = Math.min(arrayMin, arrayMax);
-    return [
-      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-    ].map((_) => ({}));
-  })();
-}
-
-export function getDeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDelete200Response() {
+export function getStartEmailVerificationApiV1AuthMfaEmailVerificationStartPost200Response() {
   return {
-    disabled: faker.datatype.boolean(),
-    mfa_default_method: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    mfa_required: faker.datatype.boolean(),
-  };
-}
-
-export function getDeleteWebauthnCredentialApiV1AuthMfaWebauthnCredentialIdDelete422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
+    attempt_count: faker.helpers.arrayElement([faker.number.int(), null]),
+    attempt_limit: faker.helpers.arrayElement([faker.number.int(), null]),
+    challenge_expires_at: faker.date.anytime().toISOString(),
+    challenge_token: faker.lorem.words(),
+    delivery_hint: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    method: faker.helpers.arrayElement(["totp", "email_otp"]),
+    remaining_attempts: faker.helpers.arrayElement([faker.number.int(), null]),
+    resend_available_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    revision: faker.number.int(),
   };
 }
 
@@ -5367,11 +4702,8 @@ export function getGenerateRecoveryCodesEndpointApiV1AuthMfaRecoveryCodesPost200
 
 export function getRequestStepUpApiV1AuthMfaStepUpPost202Response() {
   return {
-    status: faker.lorem.words(),
-    user_id: faker.string.uuid(),
-    session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
     default_method: faker.helpers.arrayElement([
-      faker.helpers.arrayElement(["totp", "webauthn"]),
+      faker.helpers.arrayElement(["totp", "email_otp"]),
       null,
     ]),
     methods: (() => {
@@ -5381,32 +4713,73 @@ export function getRequestStepUpApiV1AuthMfaStepUpPost202Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
-        method: faker.helpers.arrayElement(["totp", "webauthn"]),
-        challenge_token: faker.lorem.words(),
-        challenge_expires_at: faker.date.anytime().toISOString(),
-        options: faker.helpers.arrayElement([{}, null]),
         attempt_count: faker.helpers.arrayElement([faker.number.int(), null]),
         attempt_limit: faker.helpers.arrayElement([faker.number.int(), null]),
+        challenge_expires_at: faker.date.anytime().toISOString(),
+        challenge_token: faker.lorem.words(),
+        delivery_hint: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        method: faker.helpers.arrayElement(["totp", "email_otp"]),
         remaining_attempts: faker.helpers.arrayElement([
           faker.number.int(),
           null,
         ]),
+        resend_available_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        revision: faker.number.int(),
       }));
     })(),
+    session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    status: faker.lorem.words(),
+    user_id: faker.string.uuid(),
   };
 }
 
-export function getSpotifyAuthUrlApiV1SpotifyAuthUrlGet200Response() {
+export function getListTotpEnrollmentsApiV1AuthMfaTotpGet200Response() {
+  return (() => {
+    const arrayMin = 1;
+    const arrayMax = MAX_ARRAY_LENGTH;
+    const safeMin = Math.min(arrayMin, arrayMax);
+    return [
+      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+    ].map((_) => ({
+      confirmed_at: faker.helpers.arrayElement([
+        faker.date.anytime().toISOString(),
+        null,
+      ]),
+      created_at: faker.date.anytime().toISOString(),
+      id: faker.string.uuid(),
+      is_active: faker.datatype.boolean(),
+      label: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      revoked_at: faker.helpers.arrayElement([
+        faker.date.anytime().toISOString(),
+        null,
+      ]),
+      user_id: faker.string.uuid(),
+    }));
+  })();
+}
+
+export function getConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost200Response() {
   return {
-    url: faker.internet.url(),
+    confirmed_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    created_at: faker.date.anytime().toISOString(),
+    id: faker.string.uuid(),
+    is_active: faker.datatype.boolean(),
+    label: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    revoked_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    user_id: faker.string.uuid(),
   };
 }
 
-export function getSpotifyCallbackApiV1SpotifyCallbackGet200Response() {
-  return null;
-}
-
-export function getSpotifyCallbackApiV1SpotifyCallbackGet422Response() {
+export function getConfirmTotpEnrollmentApiV1AuthMfaTotpConfirmPost422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -5415,6 +4788,8 @@ export function getSpotifyCallbackApiV1SpotifyCallbackGet422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -5432,44 +4807,388 @@ export function getSpotifyCallbackApiV1SpotifyCallbackGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getNowPlayingApiV1SpotifyNowPlayingGet200Response() {
+export function getDeletePendingTotpEnrollmentApiV1AuthMfaTotpPendingEnrollmentIdDelete422Response() {
   return {
-    is_playing: faker.datatype.boolean(),
-    progress_ms: faker.helpers.arrayElement([faker.number.int(), null]),
-    duration_ms: faker.helpers.arrayElement([faker.number.int(), null]),
-    track_id: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    track_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    artists: (() => {
+    detail: (() => {
       const arrayMin = 1;
       const arrayMax = MAX_ARRAY_LENGTH;
       const safeMin = Math.min(arrayMin, arrayMax);
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => faker.lorem.words());
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
     })(),
-    album_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    album_image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    track_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    preview_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    fetched_at: faker.date.anytime().toISOString(),
   };
 }
 
-export function getDisconnectApiV1SpotifyDisconnectPost200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.datatype.boolean() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
+export function getStartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPost200Response() {
+  return {
+    enrollment: {
+      confirmed_at: faker.helpers.arrayElement([
+        faker.date.anytime().toISOString(),
+        null,
+      ]),
+      created_at: faker.date.anytime().toISOString(),
+      id: faker.string.uuid(),
+      is_active: faker.datatype.boolean(),
+      label: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      revoked_at: faker.helpers.arrayElement([
+        faker.date.anytime().toISOString(),
+        null,
+      ]),
+      user_id: faker.string.uuid(),
+    },
+    otpauth_url: faker.internet.url(),
+    secret: faker.lorem.words(),
+  };
 }
 
-export function getListPlaylistsApiV1SpotifyPlaylistsGet200Response() {
-  return null;
+export function getStartTotpEnrollmentEndpointApiV1AuthMfaTotpStartPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getDeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDelete200Response() {
+  return {
+    disabled: faker.datatype.boolean(),
+    mfa_default_method: faker.helpers.arrayElement([
+      faker.helpers.arrayElement(["totp", "email_otp"]),
+      null,
+    ]),
+    mfa_required: faker.datatype.boolean(),
+  };
+}
+
+export function getDeleteTotpEnrollmentApiV1AuthMfaTotpEnrollmentIdDelete422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getVerifyMfaChallengeApiV1AuthMfaVerifyPost200Response() {
+  return {
+    access_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    session: faker.helpers.arrayElement([
+      {
+        signing_key: faker.lorem.words(),
+      },
+      null,
+    ]),
+    token_type: faker.lorem.words(),
+    user: {
+      about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      avatar_url_optimized: faker.helpers.arrayElement([
+        faker.lorem.words(),
+        null,
+      ]),
+      course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      cover_url_optimized: faker.helpers.arrayElement([
+        faker.lorem.words(),
+        null,
+      ]),
+      created_at: faker.helpers.arrayElement([
+        faker.date.anytime().toISOString(),
+        null,
+      ]),
+      dnd_enabled: faker.datatype.boolean(),
+      dnd_end: faker.helpers.arrayElement([
+        new Date().toISOString().substring(11, 16),
+        null,
+      ]),
+      dnd_start: faker.helpers.arrayElement([
+        new Date().toISOString().substring(11, 16),
+        null,
+      ]),
+      education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      education_path: faker.helpers.arrayElement([
+        {
+          course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          education_level: faker.helpers.arrayElement([
+            faker.lorem.words(),
+            null,
+          ]),
+          institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          record_book_number: faker.helpers.arrayElement([
+            faker.lorem.words(),
+            null,
+          ]),
+          track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        },
+        null,
+      ]),
+      email: faker.internet.email(),
+      email_mfa_enabled_at: faker.helpers.arrayElement([
+        faker.date.anytime().toISOString(),
+        null,
+      ]),
+      email_verified_at: faker.helpers.arrayElement([
+        faker.date.anytime().toISOString(),
+        null,
+      ]),
+      full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+      id: faker.string.uuid(),
+      institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      is_active: faker.datatype.boolean(),
+      mfa_default_method: faker.helpers.arrayElement([
+        faker.helpers.arrayElement(["totp", "email_otp"]),
+        null,
+      ]),
+      mfa_last_verified_at: faker.helpers.arrayElement([
+        faker.date.anytime().toISOString(),
+        null,
+      ]),
+      mfa_required: faker.datatype.boolean(),
+      pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
+      position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      preferences: faker.helpers.arrayElement([
+        {
+          created_at: faker.helpers.arrayElement([
+            faker.date.anytime().toISOString(),
+            null,
+          ]),
+          dnd_enabled: faker.helpers.arrayElement([
+            faker.datatype.boolean(),
+            null,
+          ]),
+          dnd_end: faker.helpers.arrayElement([
+            new Date().toISOString().substring(11, 16),
+            null,
+          ]),
+          dnd_start: faker.helpers.arrayElement([
+            new Date().toISOString().substring(11, 16),
+            null,
+          ]),
+          timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        },
+        null,
+      ]),
+      profile_department: faker.helpers.arrayElement([
+        faker.lorem.words(),
+        null,
+      ]),
+      profile_detail: faker.helpers.arrayElement([
+        {
+          about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        },
+        null,
+      ]),
+      profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      record_book_number: faker.helpers.arrayElement([
+        faker.lorem.words(),
+        null,
+      ]),
+      recovery_codes_left: faker.number.int(),
+      role: faker.helpers.arrayElement([
+        "student",
+        "teacher",
+        "admin",
+        "superuser",
+        "anonymous",
+      ]),
+      spotify_connected: faker.datatype.boolean(),
+      spotify_display_name: faker.helpers.arrayElement([
+        faker.lorem.words(),
+        null,
+      ]),
+      spotify_is_connected: faker.helpers.arrayElement([
+        faker.datatype.boolean(),
+        null,
+      ]),
+      telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      totp_enrollments: (() => {
+        const arrayMin = 1;
+        const arrayMax = MAX_ARRAY_LENGTH;
+        const safeMin = Math.min(arrayMin, arrayMax);
+        return [
+          ...new Array(
+            faker.number.int({ min: safeMin, max: arrayMax }),
+          ).keys(),
+        ].map((_) => ({
+          confirmed_at: faker.helpers.arrayElement([
+            faker.date.anytime().toISOString(),
+            null,
+          ]),
+          created_at: faker.date.anytime().toISOString(),
+          id: faker.string.uuid(),
+          is_active: faker.datatype.boolean(),
+          label: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          revoked_at: faker.helpers.arrayElement([
+            faker.date.anytime().toISOString(),
+            null,
+          ]),
+          user_id: faker.string.uuid(),
+        }));
+      })(),
+      track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    },
+  };
+}
+
+export function getVerifyMfaChallengeApiV1AuthMfaVerifyPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getRegisterApiV1AuthRegisterPost200Response() {
+  return {};
+}
+
+export function getRegisterApiV1AuthRegisterPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getGetSessionSigningKeyApiV1AuthSessionSigningKeyGet200Response() {
+  return {
+    signing_key: faker.lorem.words(),
+  };
 }
 
 export function getListSessionsApiV1AuthSessionsGet200Response() {
@@ -5481,31 +5200,34 @@ export function getListSessionsApiV1AuthSessionsGet200Response() {
       ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
     ].map((_) => ({
       created_at: faker.date.anytime().toISOString(),
-      id: faker.string.uuid(),
-      user_id: faker.string.uuid(),
-      jti: faker.lorem.words(),
       expires_at: faker.date.anytime().toISOString(),
-      revoked_at: faker.helpers.arrayElement([
-        faker.date.anytime().toISOString(),
-        null,
-      ]),
+      id: faker.string.uuid(),
       ip_address: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      user_agent: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      is_current: faker.datatype.boolean(),
+      jti: faker.lorem.words(),
       last_seen_at: faker.helpers.arrayElement([
         faker.date.anytime().toISOString(),
         null,
       ]),
-      mfa_required: faker.datatype.boolean(),
       mfa_completed_at: faker.helpers.arrayElement([
         faker.date.anytime().toISOString(),
         null,
       ]),
-      mfa_method: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      mfa_method: faker.helpers.arrayElement([
+        faker.helpers.arrayElement(["totp", "email_otp", "recovery_code"]),
+        null,
+      ]),
+      mfa_required: faker.datatype.boolean(),
       mfa_verified_at: faker.helpers.arrayElement([
         faker.date.anytime().toISOString(),
         null,
       ]),
-      is_current: faker.datatype.boolean(),
+      revoked_at: faker.helpers.arrayElement([
+        faker.date.anytime().toISOString(),
+        null,
+      ]),
+      user_agent: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      user_id: faker.string.uuid(),
     }));
   })();
 }
@@ -5519,6 +5241,8 @@ export function getListSessionsApiV1AuthSessionsGet422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -5536,72 +5260,6 @@ export function getListSessionsApiV1AuthSessionsGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getRevokeSessionApiV1AuthSessionsSessionIdDelete200Response() {
-  return {
-    created_at: faker.date.anytime().toISOString(),
-    id: faker.string.uuid(),
-    user_id: faker.string.uuid(),
-    jti: faker.lorem.words(),
-    expires_at: faker.date.anytime().toISOString(),
-    revoked_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    ip_address: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    user_agent: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    last_seen_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    mfa_required: faker.datatype.boolean(),
-    mfa_completed_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    mfa_method: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    mfa_verified_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    is_current: faker.datatype.boolean(),
-  };
-}
-
-export function getRevokeSessionApiV1AuthSessionsSessionIdDelete422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
@@ -5622,6 +5280,8 @@ export function getRevokeOtherSessionsApiV1AuthSessionsRevokeOthersPost422Respon
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -5639,15 +5299,81 @@ export function getRevokeOtherSessionsApiV1AuthSessionsRevokeOthersPost422Respon
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getListNotificationsApiV1NotificationsGet200Response() {
+export function getRevokeSessionApiV1AuthSessionsSessionIdDelete200Response() {
   return {
+    created_at: faker.date.anytime().toISOString(),
+    expires_at: faker.date.anytime().toISOString(),
+    id: faker.string.uuid(),
+    ip_address: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    is_current: faker.datatype.boolean(),
+    jti: faker.lorem.words(),
+    last_seen_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    mfa_completed_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    mfa_method: faker.helpers.arrayElement([
+      faker.helpers.arrayElement(["totp", "email_otp", "recovery_code"]),
+      null,
+    ]),
+    mfa_required: faker.datatype.boolean(),
+    mfa_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    revoked_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    user_agent: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    user_id: faker.string.uuid(),
+  };
+}
+
+export function getRevokeSessionApiV1AuthSessionsSessionIdDelete422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getGetChatsApiV1ChatsGet200Response() {
+  return {
+    has_more: faker.datatype.boolean(),
     items: (() => {
       const arrayMin = 1;
       const arrayMax = MAX_ARRAY_LENGTH;
@@ -5655,24 +5381,3197 @@ export function getListNotificationsApiV1NotificationsGet200Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        chat_type: faker.lorem.words(),
+        created_at: faker.date.anytime().toISOString(),
+        created_by: faker.helpers.arrayElement([faker.string.uuid(), null]),
+        id: faker.string.uuid(),
+        last_message: faker.helpers.arrayElement([
+          {
+            attachments: (() => {
+              const arrayMin = 1;
+              const arrayMax = MAX_ARRAY_LENGTH;
+              const safeMin = Math.min(arrayMin, arrayMax);
+              return [
+                ...new Array(
+                  faker.number.int({ min: safeMin, max: arrayMax }),
+                ).keys(),
+              ].map((_) => ({
+                created_at: faker.helpers.arrayElement([
+                  faker.date.anytime().toISOString(),
+                  null,
+                ]),
+                file_type: faker.lorem.words(),
+                filename: faker.person.fullName(),
+                id: faker.string.uuid(),
+                message_id: faker.helpers.arrayElement([
+                  faker.string.uuid(),
+                  null,
+                ]),
+                size: faker.number.int(),
+                url: faker.internet.url(),
+              }));
+            })(),
+            chat_id: faker.string.uuid(),
+            content: faker.string.alpha({ length: { min: 0, max: 32768 } }),
+            created_at: faker.date.anytime().toISOString(),
+            deleted_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+            edited_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+            forwarded_from_name: faker.helpers.arrayElement([
+              faker.lorem.words(),
+              null,
+            ]),
+            id: faker.string.uuid(),
+            reactions: (() => {
+              const arrayMin = 1;
+              const arrayMax = MAX_ARRAY_LENGTH;
+              const safeMin = Math.min(arrayMin, arrayMax);
+              return [
+                ...new Array(
+                  faker.number.int({ min: safeMin, max: arrayMax }),
+                ).keys(),
+              ].map((_) => ({
+                count: faker.number.int(),
+                emoji: faker.lorem.words(),
+                reacted_by_me: faker.datatype.boolean(),
+              }));
+            })(),
+            read_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+            read_status: faker.datatype.boolean(),
+            reply_to: faker.helpers.arrayElement([
+              {
+                content: faker.lorem.words(),
+                deleted_at: faker.helpers.arrayElement([
+                  faker.date.anytime().toISOString(),
+                  null,
+                ]),
+                id: faker.string.uuid(),
+                sender_id: faker.string.uuid(),
+                sender_name: faker.helpers.arrayElement([
+                  faker.lorem.words(),
+                  null,
+                ]),
+              },
+              null,
+            ]),
+            sender: faker.helpers.arrayElement([
+              {
+                avatar_url: faker.helpers.arrayElement([
+                  faker.lorem.words(),
+                  null,
+                ]),
+                email: faker.internet.email(),
+                full_name: faker.helpers.arrayElement([
+                  faker.lorem.words(),
+                  null,
+                ]),
+                id: faker.string.uuid(),
+                is_active: faker.datatype.boolean(),
+              },
+              null,
+            ]),
+            sender_id: faker.string.uuid(),
+            sender_presence: faker.helpers.arrayElement([
+              {
+                active: faker.datatype.boolean(),
+                last_seen_at: faker.helpers.arrayElement([
+                  faker.date.anytime().toISOString(),
+                  null,
+                ]),
+              },
+              null,
+            ]),
+          },
+          null,
+        ]),
+        name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        participants: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => ({
+            avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            email: faker.internet.email(),
+            full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            id: faker.string.uuid(),
+            is_active: faker.datatype.boolean(),
+          }));
+        })(),
+        presence: faker.helpers.arrayElement([
+          [...new Array(5).keys()]
+            .map((_) => ({
+              [faker.lorem.word()]: {
+                active: faker.datatype.boolean(),
+                last_seen_at: faker.helpers.arrayElement([
+                  faker.date.anytime().toISOString(),
+                  null,
+                ]),
+              },
+            }))
+            .reduce((acc, next) => Object.assign(acc, next), {}),
+          null,
+        ]),
+        read_receipts: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => ({
+            last_read_at: faker.date.anytime().toISOString(),
+            user_id: faker.string.uuid(),
+          }));
+        })(),
+        unread_count: faker.number.int(),
+        updated_at: faker.date.anytime().toISOString(),
+      }));
+    })(),
+    next_cursor: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getGetChatsApiV1ChatsGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getCreateChatApiV1ChatsPost200Response() {
+  return {
+    chat_type: faker.lorem.words(),
+    created_at: faker.date.anytime().toISOString(),
+    created_by: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    id: faker.string.uuid(),
+    last_message: faker.helpers.arrayElement([
+      {
+        attachments: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => ({
+            created_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+            file_type: faker.lorem.words(),
+            filename: faker.person.fullName(),
+            id: faker.string.uuid(),
+            message_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+            size: faker.number.int(),
+            url: faker.internet.url(),
+          }));
+        })(),
+        chat_id: faker.string.uuid(),
+        content: faker.string.alpha({ length: { min: 0, max: 32768 } }),
+        created_at: faker.date.anytime().toISOString(),
+        deleted_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        edited_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        forwarded_from_name: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        id: faker.string.uuid(),
+        reactions: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => ({
+            count: faker.number.int(),
+            emoji: faker.lorem.words(),
+            reacted_by_me: faker.datatype.boolean(),
+          }));
+        })(),
+        read_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        read_status: faker.datatype.boolean(),
+        reply_to: faker.helpers.arrayElement([
+          {
+            content: faker.lorem.words(),
+            deleted_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+            id: faker.string.uuid(),
+            sender_id: faker.string.uuid(),
+            sender_name: faker.helpers.arrayElement([
+              faker.lorem.words(),
+              null,
+            ]),
+          },
+          null,
+        ]),
+        sender: faker.helpers.arrayElement([
+          {
+            avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            email: faker.internet.email(),
+            full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            id: faker.string.uuid(),
+            is_active: faker.datatype.boolean(),
+          },
+          null,
+        ]),
+        sender_id: faker.string.uuid(),
+        sender_presence: faker.helpers.arrayElement([
+          {
+            active: faker.datatype.boolean(),
+            last_seen_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+          },
+          null,
+        ]),
+      },
+      null,
+    ]),
+    name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    participants: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        email: faker.internet.email(),
+        full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        id: faker.string.uuid(),
+        is_active: faker.datatype.boolean(),
+      }));
+    })(),
+    presence: faker.helpers.arrayElement([
+      [...new Array(5).keys()]
+        .map((_) => ({
+          [faker.lorem.word()]: {
+            active: faker.datatype.boolean(),
+            last_seen_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+          },
+        }))
+        .reduce((acc, next) => Object.assign(acc, next), {}),
+      null,
+    ]),
+    read_receipts: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        last_read_at: faker.date.anytime().toISOString(),
+        user_id: faker.string.uuid(),
+      }));
+    })(),
+    unread_count: faker.number.int(),
+    updated_at: faker.date.anytime().toISOString(),
+  };
+}
+
+export function getCreateChatApiV1ChatsPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getCreateGroupApiV1ChatsGroupsPost200Response() {
+  return {
+    chat_type: faker.lorem.words(),
+    created_at: faker.date.anytime().toISOString(),
+    created_by: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    id: faker.string.uuid(),
+    last_message: faker.helpers.arrayElement([
+      {
+        attachments: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => ({
+            created_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+            file_type: faker.lorem.words(),
+            filename: faker.person.fullName(),
+            id: faker.string.uuid(),
+            message_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+            size: faker.number.int(),
+            url: faker.internet.url(),
+          }));
+        })(),
+        chat_id: faker.string.uuid(),
+        content: faker.string.alpha({ length: { min: 0, max: 32768 } }),
+        created_at: faker.date.anytime().toISOString(),
+        deleted_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        edited_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        forwarded_from_name: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        id: faker.string.uuid(),
+        reactions: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => ({
+            count: faker.number.int(),
+            emoji: faker.lorem.words(),
+            reacted_by_me: faker.datatype.boolean(),
+          }));
+        })(),
+        read_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        read_status: faker.datatype.boolean(),
+        reply_to: faker.helpers.arrayElement([
+          {
+            content: faker.lorem.words(),
+            deleted_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+            id: faker.string.uuid(),
+            sender_id: faker.string.uuid(),
+            sender_name: faker.helpers.arrayElement([
+              faker.lorem.words(),
+              null,
+            ]),
+          },
+          null,
+        ]),
+        sender: faker.helpers.arrayElement([
+          {
+            avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            email: faker.internet.email(),
+            full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            id: faker.string.uuid(),
+            is_active: faker.datatype.boolean(),
+          },
+          null,
+        ]),
+        sender_id: faker.string.uuid(),
+        sender_presence: faker.helpers.arrayElement([
+          {
+            active: faker.datatype.boolean(),
+            last_seen_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+          },
+          null,
+        ]),
+      },
+      null,
+    ]),
+    name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    participants: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        email: faker.internet.email(),
+        full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        id: faker.string.uuid(),
+        is_active: faker.datatype.boolean(),
+      }));
+    })(),
+    presence: faker.helpers.arrayElement([
+      [...new Array(5).keys()]
+        .map((_) => ({
+          [faker.lorem.word()]: {
+            active: faker.datatype.boolean(),
+            last_seen_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+          },
+        }))
+        .reduce((acc, next) => Object.assign(acc, next), {}),
+      null,
+    ]),
+    read_receipts: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        last_read_at: faker.date.anytime().toISOString(),
+        user_id: faker.string.uuid(),
+      }));
+    })(),
+    unread_count: faker.number.int(),
+    updated_at: faker.date.anytime().toISOString(),
+  };
+}
+
+export function getCreateGroupApiV1ChatsGroupsPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getDeleteChatApiV1ChatsChatIdDelete200Response() {
+  return {
+    chat_id: faker.string.uuid(),
+    deleted_attachments: faker.number.int(),
+    deleted_messages: faker.number.int(),
+    status: faker.lorem.words(),
+  };
+}
+
+export function getDeleteChatApiV1ChatsChatIdDelete422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getGetChatApiV1ChatsChatIdGet200Response() {
+  return {
+    chat_type: faker.lorem.words(),
+    created_at: faker.date.anytime().toISOString(),
+    created_by: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    id: faker.string.uuid(),
+    last_message: faker.helpers.arrayElement([
+      {
+        attachments: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => ({
+            created_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+            file_type: faker.lorem.words(),
+            filename: faker.person.fullName(),
+            id: faker.string.uuid(),
+            message_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+            size: faker.number.int(),
+            url: faker.internet.url(),
+          }));
+        })(),
+        chat_id: faker.string.uuid(),
+        content: faker.string.alpha({ length: { min: 0, max: 32768 } }),
+        created_at: faker.date.anytime().toISOString(),
+        deleted_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        edited_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        forwarded_from_name: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        id: faker.string.uuid(),
+        reactions: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => ({
+            count: faker.number.int(),
+            emoji: faker.lorem.words(),
+            reacted_by_me: faker.datatype.boolean(),
+          }));
+        })(),
+        read_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        read_status: faker.datatype.boolean(),
+        reply_to: faker.helpers.arrayElement([
+          {
+            content: faker.lorem.words(),
+            deleted_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+            id: faker.string.uuid(),
+            sender_id: faker.string.uuid(),
+            sender_name: faker.helpers.arrayElement([
+              faker.lorem.words(),
+              null,
+            ]),
+          },
+          null,
+        ]),
+        sender: faker.helpers.arrayElement([
+          {
+            avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            email: faker.internet.email(),
+            full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            id: faker.string.uuid(),
+            is_active: faker.datatype.boolean(),
+          },
+          null,
+        ]),
+        sender_id: faker.string.uuid(),
+        sender_presence: faker.helpers.arrayElement([
+          {
+            active: faker.datatype.boolean(),
+            last_seen_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+          },
+          null,
+        ]),
+      },
+      null,
+    ]),
+    name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    participants: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        email: faker.internet.email(),
+        full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        id: faker.string.uuid(),
+        is_active: faker.datatype.boolean(),
+      }));
+    })(),
+    presence: faker.helpers.arrayElement([
+      [...new Array(5).keys()]
+        .map((_) => ({
+          [faker.lorem.word()]: {
+            active: faker.datatype.boolean(),
+            last_seen_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+          },
+        }))
+        .reduce((acc, next) => Object.assign(acc, next), {}),
+      null,
+    ]),
+    read_receipts: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        last_read_at: faker.date.anytime().toISOString(),
+        user_id: faker.string.uuid(),
+      }));
+    })(),
+    unread_count: faker.number.int(),
+    updated_at: faker.date.anytime().toISOString(),
+  };
+}
+
+export function getGetChatApiV1ChatsChatIdGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getRenameChatApiV1ChatsChatIdPatch200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
+}
+
+export function getRenameChatApiV1ChatsChatIdPatch422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getClearChatHistoryApiV1ChatsChatIdClearPost200Response() {
+  return {
+    chat_id: faker.string.uuid(),
+    deleted_attachments: faker.number.int(),
+    deleted_messages: faker.number.int(),
+    status: faker.lorem.words(),
+  };
+}
+
+export function getClearChatHistoryApiV1ChatsChatIdClearPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getGetMessagesApiV1ChatsChatIdMessagesGet200Response() {
+  return {
+    has_more: faker.datatype.boolean(),
+    items: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        attachments: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => ({
+            created_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+            file_type: faker.lorem.words(),
+            filename: faker.person.fullName(),
+            id: faker.string.uuid(),
+            message_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+            size: faker.number.int(),
+            url: faker.internet.url(),
+          }));
+        })(),
+        chat_id: faker.string.uuid(),
+        content: faker.string.alpha({ length: { min: 0, max: 32768 } }),
+        created_at: faker.date.anytime().toISOString(),
+        deleted_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        edited_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        forwarded_from_name: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        id: faker.string.uuid(),
+        reactions: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => ({
+            count: faker.number.int(),
+            emoji: faker.lorem.words(),
+            reacted_by_me: faker.datatype.boolean(),
+          }));
+        })(),
+        read_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        read_status: faker.datatype.boolean(),
+        reply_to: faker.helpers.arrayElement([
+          {
+            content: faker.lorem.words(),
+            deleted_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+            id: faker.string.uuid(),
+            sender_id: faker.string.uuid(),
+            sender_name: faker.helpers.arrayElement([
+              faker.lorem.words(),
+              null,
+            ]),
+          },
+          null,
+        ]),
+        sender: faker.helpers.arrayElement([
+          {
+            avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            email: faker.internet.email(),
+            full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            id: faker.string.uuid(),
+            is_active: faker.datatype.boolean(),
+          },
+          null,
+        ]),
+        sender_id: faker.string.uuid(),
+        sender_presence: faker.helpers.arrayElement([
+          {
+            active: faker.datatype.boolean(),
+            last_seen_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+          },
+          null,
+        ]),
+      }));
+    })(),
+    next_cursor: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getGetMessagesApiV1ChatsChatIdMessagesGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getSendMessageApiV1ChatsChatIdMessagesPost200Response() {
+  return {
+    attachments: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        created_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        file_type: faker.lorem.words(),
+        filename: faker.person.fullName(),
+        id: faker.string.uuid(),
+        message_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+        size: faker.number.int(),
+        url: faker.internet.url(),
+      }));
+    })(),
+    chat_id: faker.string.uuid(),
+    content: faker.string.alpha({ length: { min: 0, max: 32768 } }),
+    created_at: faker.date.anytime().toISOString(),
+    deleted_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    edited_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    forwarded_from_name: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    id: faker.string.uuid(),
+    reactions: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        count: faker.number.int(),
+        emoji: faker.lorem.words(),
+        reacted_by_me: faker.datatype.boolean(),
+      }));
+    })(),
+    read_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    read_status: faker.datatype.boolean(),
+    reply_to: faker.helpers.arrayElement([
+      {
+        content: faker.lorem.words(),
+        deleted_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        id: faker.string.uuid(),
+        sender_id: faker.string.uuid(),
+        sender_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    sender: faker.helpers.arrayElement([
+      {
+        avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        email: faker.internet.email(),
+        full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        id: faker.string.uuid(),
+        is_active: faker.datatype.boolean(),
+      },
+      null,
+    ]),
+    sender_id: faker.string.uuid(),
+    sender_presence: faker.helpers.arrayElement([
+      {
+        active: faker.datatype.boolean(),
+        last_seen_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+      },
+      null,
+    ]),
+  };
+}
+
+export function getSendMessageApiV1ChatsChatIdMessagesPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getDeleteMessageApiV1ChatsChatIdMessagesMessageIdDelete200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
+}
+
+export function getDeleteMessageApiV1ChatsChatIdMessagesMessageIdDelete422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getEditMessageApiV1ChatsChatIdMessagesMessageIdPatch200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
+}
+
+export function getEditMessageApiV1ChatsChatIdMessagesMessageIdPatch422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getRemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDelete200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
+}
+
+export function getRemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDelete422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getGetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGet200Response() {
+  return (() => {
+    const arrayMin = 1;
+    const arrayMax = MAX_ARRAY_LENGTH;
+    const safeMin = Math.min(arrayMin, arrayMax);
+    return [
+      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+    ].map((_) => ({
+      avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      user_id: faker.string.uuid(),
+    }));
+  })();
+}
+
+export function getGetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getAddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPost200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
+}
+
+export function getAddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getAddParticipantApiV1ChatsChatIdParticipantsPost200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
+}
+
+export function getAddParticipantApiV1ChatsChatIdParticipantsPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getRemoveParticipantApiV1ChatsChatIdParticipantsUserIdDelete200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
+}
+
+export function getRemoveParticipantApiV1ChatsChatIdParticipantsUserIdDelete422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getMarkReadApiV1ChatsChatIdReadPost200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
+}
+
+export function getMarkReadApiV1ChatsChatIdReadPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getTypingIndicatorApiV1ChatsChatIdTypingPost200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
+}
+
+export function getTypingIndicatorApiV1ChatsChatIdTypingPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getForwardMessagesApiV1ChatsDestChatIdForwardPost200Response() {
+  return (() => {
+    const arrayMin = 1;
+    const arrayMax = MAX_ARRAY_LENGTH;
+    const safeMin = Math.min(arrayMin, arrayMax);
+    return [
+      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+    ].map((_) => ({
+      attachments: (() => {
+        const arrayMin = 1;
+        const arrayMax = MAX_ARRAY_LENGTH;
+        const safeMin = Math.min(arrayMin, arrayMax);
+        return [
+          ...new Array(
+            faker.number.int({ min: safeMin, max: arrayMax }),
+          ).keys(),
+        ].map((_) => ({
+          created_at: faker.helpers.arrayElement([
+            faker.date.anytime().toISOString(),
+            null,
+          ]),
+          file_type: faker.lorem.words(),
+          filename: faker.person.fullName(),
+          id: faker.string.uuid(),
+          message_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+          size: faker.number.int(),
+          url: faker.internet.url(),
+        }));
+      })(),
+      chat_id: faker.string.uuid(),
+      content: faker.string.alpha({ length: { min: 0, max: 32768 } }),
+      created_at: faker.date.anytime().toISOString(),
+      deleted_at: faker.helpers.arrayElement([
+        faker.date.anytime().toISOString(),
+        null,
+      ]),
+      edited_at: faker.helpers.arrayElement([
+        faker.date.anytime().toISOString(),
+        null,
+      ]),
+      forwarded_from_name: faker.helpers.arrayElement([
+        faker.lorem.words(),
+        null,
+      ]),
+      id: faker.string.uuid(),
+      reactions: (() => {
+        const arrayMin = 1;
+        const arrayMax = MAX_ARRAY_LENGTH;
+        const safeMin = Math.min(arrayMin, arrayMax);
+        return [
+          ...new Array(
+            faker.number.int({ min: safeMin, max: arrayMax }),
+          ).keys(),
+        ].map((_) => ({
+          count: faker.number.int(),
+          emoji: faker.lorem.words(),
+          reacted_by_me: faker.datatype.boolean(),
+        }));
+      })(),
+      read_at: faker.helpers.arrayElement([
+        faker.date.anytime().toISOString(),
+        null,
+      ]),
+      read_status: faker.datatype.boolean(),
+      reply_to: faker.helpers.arrayElement([
+        {
+          content: faker.lorem.words(),
+          deleted_at: faker.helpers.arrayElement([
+            faker.date.anytime().toISOString(),
+            null,
+          ]),
+          id: faker.string.uuid(),
+          sender_id: faker.string.uuid(),
+          sender_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        },
+        null,
+      ]),
+      sender: faker.helpers.arrayElement([
+        {
+          avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          email: faker.internet.email(),
+          full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          id: faker.string.uuid(),
+          is_active: faker.datatype.boolean(),
+        },
+        null,
+      ]),
+      sender_id: faker.string.uuid(),
+      sender_presence: faker.helpers.arrayElement([
+        {
+          active: faker.datatype.boolean(),
+          last_seen_at: faker.helpers.arrayElement([
+            faker.date.anytime().toISOString(),
+            null,
+          ]),
+        },
+        null,
+      ]),
+    }));
+  })();
+}
+
+export function getForwardMessagesApiV1ChatsDestChatIdForwardPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getCreateCwvEnvelopeApiV1CwvEnvelopePost200Response() {
+  return {
+    envelope: faker.string.alpha({ length: { min: 32, max: 4096 } }),
+    expires_at: faker.date.anytime().toISOString(),
+  };
+}
+
+export function getCreateCwvEnvelopeApiV1CwvEnvelopePost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getIngestCwvObservationApiV1CwvObservationsPost202Response() {
+  return {
+    accepted: faker.datatype.boolean(),
+    metric_id: faker.string.uuid(),
+  };
+}
+
+export function getIngestCwvObservationApiV1CwvObservationsPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getAllEventsApiV1EventsGet200Response() {
+  return {
+    cursor: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    has_more: faker.datatype.boolean(),
+    items: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        about_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        created_at: faker.date.anytime().toISOString(),
+        created_by: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        description: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        description_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        ends_at: faker.date.anytime().toISOString(),
+        event_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        event_type_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        files: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) => ({
+            created_at: faker.helpers.arrayElement([
+              faker.date.anytime().toISOString(),
+              null,
+            ]),
+            description: faker.helpers.arrayElement([
+              faker.lorem.words(),
+              null,
+            ]),
+            event_id: faker.string.uuid(),
+            file_url: faker.internet.url(),
+            id: faker.string.uuid(),
+          }));
+        })(),
+        id: faker.string.uuid(),
+        image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        image_url_optimized: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        is_active: faker.datatype.boolean(),
+        is_registered: faker.helpers.arrayElement([
+          faker.datatype.boolean(),
+          null,
+        ]),
+        location: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        location_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        my_qr_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        participant_count: faker.number.int(),
+        speaker: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        starts_at: faker.date.anytime().toISOString(),
+        title: faker.lorem.words(),
+        title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      }));
+    })(),
+    limit: faker.number.int(),
+    next_cursor: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    total: faker.helpers.arrayElement([faker.number.int(), null]),
+  };
+}
+
+export function getAllEventsApiV1EventsGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getCreateEventApiV1EventsPost200Response() {
+  return {
+    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    about_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    created_at: faker.date.anytime().toISOString(),
+    created_by: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    description: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    description_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    ends_at: faker.date.anytime().toISOString(),
+    event_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    event_type_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    files: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        created_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        description: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        event_id: faker.string.uuid(),
+        file_url: faker.internet.url(),
+        id: faker.string.uuid(),
+      }));
+    })(),
+    id: faker.string.uuid(),
+    image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    image_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    is_active: faker.datatype.boolean(),
+    is_registered: faker.helpers.arrayElement([faker.datatype.boolean(), null]),
+    location: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    location_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    my_qr_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    participant_count: faker.number.int(),
+    speaker: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    starts_at: faker.date.anytime().toISOString(),
+    title: faker.lorem.words(),
+    title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getCreateEventApiV1EventsPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getUnregisterEventApiV1EventsAttendanceDelete200Response() {
+  return {};
+}
+
+export function getUnregisterEventApiV1EventsAttendanceDelete422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getAttendApiV1EventsAttendancePost200Response() {
+  return {
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    event_id: faker.string.uuid(),
+    id: faker.string.uuid(),
+    qr_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    registered_at: faker.date.anytime().toISOString(),
+    user_id: faker.string.uuid(),
+  };
+}
+
+export function getAttendApiV1EventsAttendancePost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getDeleteEventFileApiV1EventsFileFileIdDelete200Response() {
+  return {};
+}
+
+export function getDeleteEventFileApiV1EventsFileFileIdDelete422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getMyEventsApiV1EventsMyGet200Response() {
+  return (() => {
+    const arrayMin = 1;
+    const arrayMax = MAX_ARRAY_LENGTH;
+    const safeMin = Math.min(arrayMin, arrayMax);
+    return [
+      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+    ].map((_) => ({
+      about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      about_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      created_at: faker.date.anytime().toISOString(),
+      created_by: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      description: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      description_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      ends_at: faker.date.anytime().toISOString(),
+      event_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      event_type_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      files: (() => {
+        const arrayMin = 1;
+        const arrayMax = MAX_ARRAY_LENGTH;
+        const safeMin = Math.min(arrayMin, arrayMax);
+        return [
+          ...new Array(
+            faker.number.int({ min: safeMin, max: arrayMax }),
+          ).keys(),
+        ].map((_) => ({
+          created_at: faker.helpers.arrayElement([
+            faker.date.anytime().toISOString(),
+            null,
+          ]),
+          description: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          event_id: faker.string.uuid(),
+          file_url: faker.internet.url(),
+          id: faker.string.uuid(),
+        }));
+      })(),
+      id: faker.string.uuid(),
+      image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      image_url_optimized: faker.helpers.arrayElement([
+        faker.lorem.words(),
+        null,
+      ]),
+      is_active: faker.datatype.boolean(),
+      is_registered: faker.helpers.arrayElement([
+        faker.datatype.boolean(),
+        null,
+      ]),
+      location: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      location_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      my_qr_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      participant_count: faker.number.int(),
+      speaker: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      starts_at: faker.date.anytime().toISOString(),
+      title: faker.lorem.words(),
+      title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    }));
+  })();
+}
+
+export function getMyEventsApiV1EventsMyGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getSemanticSearchApiV1EventsSearchSemanticGet200Response() {
+  return (() => {
+    const arrayMin = 1;
+    const arrayMax = MAX_ARRAY_LENGTH;
+    const safeMin = Math.min(arrayMin, arrayMax);
+    return [
+      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+    ].map((_) => ({
+      about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      about_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      created_at: faker.date.anytime().toISOString(),
+      created_by: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      description: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      description_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      ends_at: faker.date.anytime().toISOString(),
+      event_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      event_type_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      files: (() => {
+        const arrayMin = 1;
+        const arrayMax = MAX_ARRAY_LENGTH;
+        const safeMin = Math.min(arrayMin, arrayMax);
+        return [
+          ...new Array(
+            faker.number.int({ min: safeMin, max: arrayMax }),
+          ).keys(),
+        ].map((_) => ({
+          created_at: faker.helpers.arrayElement([
+            faker.date.anytime().toISOString(),
+            null,
+          ]),
+          description: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          event_id: faker.string.uuid(),
+          file_url: faker.internet.url(),
+          id: faker.string.uuid(),
+        }));
+      })(),
+      id: faker.string.uuid(),
+      image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      image_url_optimized: faker.helpers.arrayElement([
+        faker.lorem.words(),
+        null,
+      ]),
+      is_active: faker.datatype.boolean(),
+      is_registered: faker.helpers.arrayElement([
+        faker.datatype.boolean(),
+        null,
+      ]),
+      location: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      location_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      my_qr_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      participant_count: faker.number.int(),
+      speaker: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      starts_at: faker.date.anytime().toISOString(),
+      title: faker.lorem.words(),
+      title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    }));
+  })();
+}
+
+export function getSemanticSearchApiV1EventsSearchSemanticGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getUploadEventImageApiV1EventsUploadImagePost200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
+}
+
+export function getUploadEventImageApiV1EventsUploadImagePost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getDeleteEventApiV1EventsEventIdDelete200Response() {
+  return {};
+}
+
+export function getDeleteEventApiV1EventsEventIdDelete422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getGetEventApiV1EventsEventIdGet200Response() {
+  return {
+    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    about_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    created_at: faker.date.anytime().toISOString(),
+    created_by: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    description: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    description_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    ends_at: faker.date.anytime().toISOString(),
+    event_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    event_type_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    files: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        created_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        description: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        event_id: faker.string.uuid(),
+        file_url: faker.internet.url(),
+        id: faker.string.uuid(),
+      }));
+    })(),
+    id: faker.string.uuid(),
+    image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    image_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    is_active: faker.datatype.boolean(),
+    is_registered: faker.helpers.arrayElement([faker.datatype.boolean(), null]),
+    location: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    location_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    my_qr_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    participant_count: faker.number.int(),
+    speaker: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    starts_at: faker.date.anytime().toISOString(),
+    title: faker.lorem.words(),
+    title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getGetEventApiV1EventsEventIdGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getUpdateEventApiV1EventsEventIdPatch200Response() {
+  return {
+    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    about_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    created_at: faker.date.anytime().toISOString(),
+    created_by: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    description: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    description_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    ends_at: faker.date.anytime().toISOString(),
+    event_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    event_type_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    files: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        created_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        description: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        event_id: faker.string.uuid(),
+        file_url: faker.internet.url(),
+        id: faker.string.uuid(),
+      }));
+    })(),
+    id: faker.string.uuid(),
+    image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    image_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    is_active: faker.datatype.boolean(),
+    is_registered: faker.helpers.arrayElement([faker.datatype.boolean(), null]),
+    location: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    location_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    my_qr_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    participant_count: faker.number.int(),
+    speaker: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    starts_at: faker.date.anytime().toISOString(),
+    title: faker.lorem.words(),
+    title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getUpdateEventApiV1EventsEventIdPatch422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getGetEventFilesApiV1EventsEventIdFilesGet200Response() {
+  return (() => {
+    const arrayMin = 1;
+    const arrayMax = MAX_ARRAY_LENGTH;
+    const safeMin = Math.min(arrayMin, arrayMax);
+    return [
+      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+    ].map((_) => ({
+      created_at: faker.helpers.arrayElement([
+        faker.date.anytime().toISOString(),
+        null,
+      ]),
+      description: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      event_id: faker.string.uuid(),
+      file_url: faker.internet.url(),
+      id: faker.string.uuid(),
+    }));
+  })();
+}
+
+export function getGetEventFilesApiV1EventsEventIdFilesGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getUploadEventFileApiV1EventsEventIdUploadFilePost200Response() {
+  return {
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    description: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    event_id: faker.string.uuid(),
+    file_url: faker.internet.url(),
+    id: faker.string.uuid(),
+  };
+}
+
+export function getUploadEventFileApiV1EventsEventIdUploadFilePost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getGetGroupsApiV1GroupsGet200Response() {
+  return (() => {
+    const arrayMin = 1;
+    const arrayMax = MAX_ARRAY_LENGTH;
+    const safeMin = Math.min(arrayMin, arrayMax);
+    return [
+      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+    ].map((_) => ({
+      course: faker.helpers.arrayElement([faker.number.int(), null]),
+      created_at: faker.helpers.arrayElement([
+        faker.date.anytime().toISOString(),
+        null,
+      ]),
+      faculty: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      id: faker.string.uuid(),
+      name: faker.person.fullName(),
+    }));
+  })();
+}
+
+export function getProxyImageApiV1ImgPathGet200Response() {
+  return null;
+}
+
+export function getProxyImageApiV1ImgPathGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getNewsListApiV1NewsGet200Response() {
+  return {
+    has_more: faker.datatype.boolean(),
+    items: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        comments_count: faker.number.int(),
+        content: faker.lorem.words(),
+        content_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
         created_at: faker.date.anytime().toISOString(),
         id: faker.string.uuid(),
+        image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        image_url_optimized: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        is_liked: faker.datatype.boolean(),
+        likes_count: faker.number.int(),
         title: faker.lorem.words(),
-        body: faker.helpers.arrayElement([faker.lorem.words(), null]),
         title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      }));
+    })(),
+    next_cursor: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getNewsListApiV1NewsGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getCreateNewsApiV1NewsPost200Response() {
+  return {
+    comments_count: faker.number.int(),
+    content: faker.lorem.words(),
+    content_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    created_at: faker.date.anytime().toISOString(),
+    id: faker.string.uuid(),
+    image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    image_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    is_liked: faker.datatype.boolean(),
+    likes_count: faker.number.int(),
+    title: faker.lorem.words(),
+    title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getCreateNewsApiV1NewsPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getDeleteCommentApiV1NewsCommentsCommentIdDelete200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.datatype.boolean() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
+}
+
+export function getDeleteCommentApiV1NewsCommentsCommentIdDelete422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getUpdateCommentApiV1NewsCommentsCommentIdPatch200Response() {
+  return {
+    content: faker.lorem.words(),
+    created_at: faker.date.anytime().toISOString(),
+    id: faker.string.uuid(),
+    user_id: faker.string.uuid(),
+    user_name: faker.person.fullName(),
+  };
+}
+
+export function getUpdateCommentApiV1NewsCommentsCommentIdPatch422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getSemanticSearchApiV1NewsSearchSemanticGet200Response() {
+  return (() => {
+    const arrayMin = 1;
+    const arrayMax = MAX_ARRAY_LENGTH;
+    const safeMin = Math.min(arrayMin, arrayMax);
+    return [
+      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+    ].map((_) => ({
+      comments_count: faker.number.int(),
+      content: faker.lorem.words(),
+      content_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      created_at: faker.date.anytime().toISOString(),
+      id: faker.string.uuid(),
+      image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      image_url_optimized: faker.helpers.arrayElement([
+        faker.lorem.words(),
+        null,
+      ]),
+      is_liked: faker.datatype.boolean(),
+      likes_count: faker.number.int(),
+      title: faker.lorem.words(),
+      title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    }));
+  })();
+}
+
+export function getSemanticSearchApiV1NewsSearchSemanticGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getUploadNewsImageApiV1NewsUploadImagePost200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
+}
+
+export function getUploadNewsImageApiV1NewsUploadImagePost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getDeleteNewsApiV1NewsIdDelete200Response() {
+  return {};
+}
+
+export function getDeleteNewsApiV1NewsIdDelete422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getGetNewsApiV1NewsIdGet200Response() {
+  return {
+    comments_count: faker.number.int(),
+    content: faker.lorem.words(),
+    content_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    created_at: faker.date.anytime().toISOString(),
+    id: faker.string.uuid(),
+    image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    image_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    is_liked: faker.datatype.boolean(),
+    likes_count: faker.number.int(),
+    title: faker.lorem.words(),
+    title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getGetNewsApiV1NewsIdGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getUpdateNewsApiV1NewsIdPatch200Response() {
+  return {
+    comments_count: faker.number.int(),
+    content: faker.lorem.words(),
+    content_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    created_at: faker.date.anytime().toISOString(),
+    id: faker.string.uuid(),
+    image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    image_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    is_liked: faker.datatype.boolean(),
+    likes_count: faker.number.int(),
+    title: faker.lorem.words(),
+    title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getUpdateNewsApiV1NewsIdPatch422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getCommentOnNewsApiV1NewsIdCommentPost200Response() {
+  return {
+    content: faker.lorem.words(),
+    created_at: faker.date.anytime().toISOString(),
+    id: faker.string.uuid(),
+    user_id: faker.string.uuid(),
+    user_name: faker.person.fullName(),
+  };
+}
+
+export function getCommentOnNewsApiV1NewsIdCommentPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getGetNewsInteractApiV1NewsIdInteractionsGet200Response() {
+  return {
+    comments: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        content: faker.lorem.words(),
+        created_at: faker.date.anytime().toISOString(),
+        id: faker.string.uuid(),
+        user_id: faker.string.uuid(),
+        user_name: faker.person.fullName(),
+      }));
+    })(),
+    comments_count: faker.number.int(),
+    is_liked: faker.datatype.boolean(),
+    likes_count: faker.number.int(),
+  };
+}
+
+export function getGetNewsInteractApiV1NewsIdInteractionsGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getLikeNewsApiV1NewsIdLikePost200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.datatype.boolean() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
+}
+
+export function getLikeNewsApiV1NewsIdLikePost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getClearNotificationsApiV1NotificationsDelete200Response() {
+  return {};
+}
+
+export function getListNotificationsApiV1NotificationsGet200Response() {
+  return {
+    has_more: faker.datatype.boolean(),
+    items: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        body: faker.helpers.arrayElement([faker.lorem.words(), null]),
         body_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        type: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        created_at: faker.date.anytime().toISOString(),
+        id: faker.string.uuid(),
+        metadata: {},
         read: faker.datatype.boolean(),
         read_at: faker.helpers.arrayElement([
           faker.date.anytime().toISOString(),
           null,
         ]),
+        title: faker.lorem.words(),
+        title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        topic: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        type: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        url: faker.helpers.arrayElement([faker.lorem.words(), null]),
       }));
     })(),
-    unread_count: faker.number.int(),
-    has_more: faker.datatype.boolean(),
     next_cursor: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    unread_count: faker.number.int(),
   };
 }
 
@@ -5685,6 +8584,8 @@ export function getListNotificationsApiV1NotificationsGet422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -5702,24 +8603,42 @@ export function getListNotificationsApiV1NotificationsGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getClearNotificationsApiV1NotificationsDelete200Response() {
-  return {};
+export function getListNotificationDeadLetters200Response() {
+  return {
+    items: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        attempts: faker.number.int(),
+        claimed_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        enqueued_at: faker.date.anytime().toISOString(),
+        id: faker.string.uuid(),
+        kind: faker.lorem.words(),
+        last_error: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        locale: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        next_retry_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        record_id: faker.string.uuid(),
+      }));
+    })(),
+    total: faker.number.int(),
+  };
 }
 
-export function getMarkReadSingleApiV1NotificationsNotifIdReadPatch200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.datatype.boolean() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
-}
-
-export function getMarkReadSingleApiV1NotificationsNotifIdReadPatch422Response() {
+export function getListNotificationDeadLetters422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -5728,6 +8647,8 @@ export function getMarkReadSingleApiV1NotificationsNotifIdReadPatch422Response()
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -5745,8 +8666,167 @@ export function getMarkReadSingleApiV1NotificationsNotifIdReadPatch422Response()
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
+      }));
+    })(),
+  };
+}
+
+export function getPurgeNotificationDeadLetters200Response() {
+  return {
+    affected_count: faker.number.int({ min: 0 }),
+    job_ids: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => faker.string.uuid());
+    })(),
+    success: true,
+  };
+}
+
+export function getPurgeNotificationDeadLetters422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
         ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getRetryNotificationDeadLetters200Response() {
+  return {
+    affected_count: faker.number.int({ min: 0 }),
+    job_ids: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => faker.string.uuid());
+    })(),
+    success: true,
+  };
+}
+
+export function getRetryNotificationDeadLetters422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getCheckScheduleAndGenerateApiV1NotificationsCheckSchedulePost200Response() {
+  return {
+    has_more: faker.datatype.boolean(),
+    items: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        body: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        body_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        created_at: faker.date.anytime().toISOString(),
+        id: faker.string.uuid(),
+        metadata: {},
+        read: faker.datatype.boolean(),
+        read_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        title: faker.lorem.words(),
+        title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        topic: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        type: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      }));
+    })(),
+    next_cursor: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    unread_count: faker.number.int(),
+  };
+}
+
+export function getCheckScheduleAndGenerateApiV1NotificationsCheckSchedulePost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
       }));
     })(),
   };
@@ -5771,6 +8851,8 @@ export function getDeleteNotificationApiV1NotificationsNotifIdDelete422Response(
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -5788,216 +8870,18 @@ export function getDeleteNotificationApiV1NotificationsNotifIdDelete422Response(
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getCheckScheduleAndGenerateApiV1NotificationsCheckSchedulePost200Response() {
-  return {
-    items: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        title: faker.lorem.words(),
-        body: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        body_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        type: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        read: faker.datatype.boolean(),
-        read_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-      }));
-    })(),
-    unread_count: faker.number.int(),
-    has_more: faker.datatype.boolean(),
-    next_cursor: faker.helpers.arrayElement([faker.lorem.words(), null]),
-  };
-}
-
-export function getCheckScheduleAndGenerateApiV1NotificationsCheckSchedulePost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getGetVapidPublicKeyApiV1PushVapidPublicKeyGet200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({
-      [faker.lorem.word()]: faker.helpers.arrayElement([
-        faker.lorem.words(),
-        null,
-      ]),
-    }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
-}
-
-export function getSubscribeApiV1PushSubscribePost200Response() {
-  return {
-    id: faker.string.uuid(),
-    user_id: faker.string.uuid(),
-    endpoint: faker.lorem.words(),
-    p256dh: faker.lorem.words(),
-    auth: faker.lorem.words(),
-    created_at: faker.date.anytime().toISOString(),
-    user_agent: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    last_seen_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    updated_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    topics: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => faker.lorem.words());
-    })(),
-  };
-}
-
-export function getSubscribeApiV1PushSubscribePost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getUpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatch200Response() {
-  return {
-    id: faker.string.uuid(),
-    user_id: faker.string.uuid(),
-    endpoint: faker.lorem.words(),
-    p256dh: faker.lorem.words(),
-    auth: faker.lorem.words(),
-    created_at: faker.date.anytime().toISOString(),
-    user_agent: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    last_seen_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    updated_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    topics: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => faker.lorem.words());
-    })(),
-  };
-}
-
-export function getUpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatch422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getUnsubscribeApiV1PushUnsubscribePost200Response() {
+export function getMarkReadSingleApiV1NotificationsNotifIdReadPatch200Response() {
   return [...new Array(5).keys()]
     .map((_) => ({ [faker.lorem.word()]: faker.datatype.boolean() }))
     .reduce((acc, next) => Object.assign(acc, next), {});
 }
 
-export function getUnsubscribeApiV1PushUnsubscribePost422Response() {
+export function getMarkReadSingleApiV1NotificationsNotifIdReadPatch422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -6006,6 +8890,8 @@ export function getUnsubscribeApiV1PushUnsubscribePost422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -6023,50 +8909,18 @@ export function getUnsubscribeApiV1PushUnsubscribePost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getGetPushTopicsApiV1PushTopicsGet200Response() {
-  return {
-    allowed: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => faker.lorem.words());
-    })(),
-    topics: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => faker.lorem.words());
-    })(),
-    has_preferences: faker.datatype.boolean(),
-    updated_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-  };
+export function getForgotPasswordApiV1PasswordForgotPost200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.datatype.boolean() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
 }
 
-export function getSendTestApiV1PushTestPost200Response() {
-  return {
-    total: faker.number.int(),
-    sent: faker.number.int(),
-    removed: faker.number.int(),
-    failed: faker.number.int(),
-    detail: faker.helpers.arrayElement([faker.lorem.words(), null]),
-  };
-}
-
-export function getSendTestApiV1PushTestPost422Response() {
+export function getForgotPasswordApiV1PasswordForgotPost422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -6075,6 +8929,8 @@ export function getSendTestApiV1PushTestPost422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -6092,41 +8948,18 @@ export function getSendTestApiV1PushTestPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getAdminGetUserTopicsApiV1PushAdminTopicsUserIdGet200Response() {
-  return {
-    user_id: faker.string.uuid(),
-    email: faker.internet.email(),
-    topics: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => faker.lorem.words());
-    })(),
-    allowed_topics: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => faker.lorem.words());
-    })(),
-    updated_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-  };
+export function getResetPasswordApiV1PasswordResetPost200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.datatype.boolean() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
 }
 
-export function getAdminGetUserTopicsApiV1PushAdminTopicsUserIdGet422Response() {
+export function getResetPasswordApiV1PasswordResetPost422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -6135,6 +8968,8 @@ export function getAdminGetUserTopicsApiV1PushAdminTopicsUserIdGet422Response() 
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -6152,68 +8987,6 @@ export function getAdminGetUserTopicsApiV1PushAdminTopicsUserIdGet422Response() 
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getAdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut200Response() {
-  return {
-    user_id: faker.string.uuid(),
-    email: faker.internet.email(),
-    topics: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => faker.lorem.words());
-    })(),
-    allowed_topics: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => faker.lorem.words());
-    })(),
-    updated_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-  };
-}
-
-export function getAdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
@@ -6239,6 +9012,8 @@ export function getDisableUserPushApiV1PushAdminDisableUserPost422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -6256,8 +9031,126 @@ export function getDisableUserPushApiV1PushAdminDisableUserPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
+      }));
+    })(),
+  };
+}
+
+export function getAdminGetUserTopicsApiV1PushAdminTopicsUserIdGet200Response() {
+  return {
+    allowed_topics: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => faker.lorem.words());
+    })(),
+    email: faker.internet.email(),
+    topics: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => faker.lorem.words());
+    })(),
+    updated_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    user_id: faker.string.uuid(),
+  };
+}
+
+export function getAdminGetUserTopicsApiV1PushAdminTopicsUserIdGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
         ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getAdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut200Response() {
+  return {
+    allowed_topics: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => faker.lorem.words());
+    })(),
+    email: faker.internet.email(),
+    topics: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => faker.lorem.words());
+    })(),
+    updated_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    user_id: faker.string.uuid(),
+  };
+}
+
+export function getAdminUpdateUserTopicsApiV1PushAdminTopicsUserIdPut422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
       }));
     })(),
   };
@@ -6265,11 +9158,11 @@ export function getDisableUserPushApiV1PushAdminDisableUserPost422Response() {
 
 export function getBroadcastApiV1PushBroadcastPost200Response() {
   return {
-    total: faker.number.int(),
-    sent: faker.number.int(),
-    removed: faker.number.int(),
-    failed: faker.number.int(),
     detail: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    failed: faker.number.int(),
+    removed: faker.number.int(),
+    sent: faker.number.int(),
+    total: faker.number.int(),
   };
 }
 
@@ -6282,6 +9175,8 @@ export function getBroadcastApiV1PushBroadcastPost422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -6299,8 +9194,303 @@ export function getBroadcastApiV1PushBroadcastPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
+      }));
+    })(),
+  };
+}
+
+export function getSubscribeApiV1PushSubscribePost200Response() {
+  return {
+    auth: faker.lorem.words(),
+    created_at: faker.date.anytime().toISOString(),
+    endpoint: faker.lorem.words(),
+    id: faker.string.uuid(),
+    last_seen_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    p256dh: faker.lorem.words(),
+    topics: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => faker.lorem.words());
+    })(),
+    updated_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    user_agent: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    user_id: faker.string.uuid(),
+  };
+}
+
+export function getSubscribeApiV1PushSubscribePost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
         ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getUpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatch200Response() {
+  return {
+    auth: faker.lorem.words(),
+    created_at: faker.date.anytime().toISOString(),
+    endpoint: faker.lorem.words(),
+    id: faker.string.uuid(),
+    last_seen_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    p256dh: faker.lorem.words(),
+    topics: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => faker.lorem.words());
+    })(),
+    updated_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    user_agent: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    user_id: faker.string.uuid(),
+  };
+}
+
+export function getUpdateSubscriptionTopicsApiV1PushSubscribeTopicsPatch422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getSendTestApiV1PushTestPost200Response() {
+  return {
+    detail: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    failed: faker.number.int(),
+    removed: faker.number.int(),
+    sent: faker.number.int(),
+    total: faker.number.int(),
+  };
+}
+
+export function getSendTestApiV1PushTestPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getGetPushTopicsApiV1PushTopicsGet200Response() {
+  return {
+    allowed: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => faker.lorem.words());
+    })(),
+    has_preferences: faker.datatype.boolean(),
+    topics: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => faker.lorem.words());
+    })(),
+    updated_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+  };
+}
+
+export function getUnsubscribeApiV1PushUnsubscribePost200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.datatype.boolean() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
+}
+
+export function getUnsubscribeApiV1PushUnsubscribePost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getGetVapidPublicKeyApiV1PushVapidPublicKeyGet200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({
+      [faker.lorem.word()]: faker.helpers.arrayElement([
+        faker.lorem.words(),
+        null,
+      ]),
+    }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
+}
+
+export function getAddScheduleApiV1SchedulePost200Response() {
+  return {
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    end_time: faker.date.anytime().toISOString(),
+    group_id: faker.string.uuid(),
+    id: faker.string.uuid(),
+    lesson_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    lesson_type_display: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    parity: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    room: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    start_time: faker.date.anytime().toISOString(),
+    subject: faker.lorem.words(),
+    teacher: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    weekday: faker.lorem.words(),
+  };
+}
+
+export function getAddScheduleApiV1SchedulePost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
       }));
     })(),
   };
@@ -6315,6 +9505,8 @@ export function getDownloadScheduleIcsApiV1ScheduleIcsGet422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -6332,354 +9524,16 @@ export function getDownloadScheduleIcsApiV1ScheduleIcsGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getMeApiV1UsersMeGet200Response() {
-  return {
-    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    dnd_enabled: faker.datatype.boolean(),
-    dnd_start: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    dnd_end: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    email: faker.internet.email(),
-    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    role: faker.helpers.arrayElement([
-      "student",
-      "teacher",
-      "admin",
-      "superuser",
-      "anonymous",
-    ]),
-    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    spotify_connected: faker.datatype.boolean(),
-    spotify_display_name: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    created_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    id: faker.string.uuid(),
-    is_active: faker.datatype.boolean(),
-    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
-    spotify_is_connected: faker.helpers.arrayElement([
-      faker.datatype.boolean(),
-      null,
-    ]),
-    mfa_required: faker.datatype.boolean(),
-    mfa_default_method: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    mfa_last_verified_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    totp_enrollments: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        is_active: faker.datatype.boolean(),
-        confirmed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        revoked_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-      }));
-    })(),
-    mfa_challenges: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-        challenge_type: faker.lorem.words(),
-        token: faker.lorem.words(),
-        expires_at: faker.date.anytime().toISOString(),
-        consumed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        payload: faker.helpers.arrayElement([{}, null]),
-        attempt_count: faker.number.int(),
-        state: faker.helpers.arrayElement([
-          "pending",
-          "consumed",
-          "locked",
-          "expired",
-        ]),
-      }));
-    })(),
-    recovery_codes_left: faker.number.int(),
-    profile_detail: faker.helpers.arrayElement([
-      {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    preferences: faker.helpers.arrayElement([
-      {
-        created_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        dnd_enabled: faker.helpers.arrayElement([
-          faker.datatype.boolean(),
-          null,
-        ]),
-        dnd_start: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        dnd_end: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    education_path: faker.helpers.arrayElement([
-      {
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-      },
-      null,
-    ]),
-    avatar_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    cover_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
+export function getDeleteScheduleApiV1ScheduleIdDelete200Response() {
+  return {};
 }
 
-export function getUpdateMeApiV1UsersMePut200Response() {
-  return {
-    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    dnd_enabled: faker.datatype.boolean(),
-    dnd_start: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    dnd_end: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    email: faker.internet.email(),
-    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    role: faker.helpers.arrayElement([
-      "student",
-      "teacher",
-      "admin",
-      "superuser",
-      "anonymous",
-    ]),
-    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    spotify_connected: faker.datatype.boolean(),
-    spotify_display_name: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    created_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    id: faker.string.uuid(),
-    is_active: faker.datatype.boolean(),
-    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
-    spotify_is_connected: faker.helpers.arrayElement([
-      faker.datatype.boolean(),
-      null,
-    ]),
-    mfa_required: faker.datatype.boolean(),
-    mfa_default_method: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    mfa_last_verified_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    totp_enrollments: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        is_active: faker.datatype.boolean(),
-        confirmed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        revoked_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-      }));
-    })(),
-    mfa_challenges: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-        challenge_type: faker.lorem.words(),
-        token: faker.lorem.words(),
-        expires_at: faker.date.anytime().toISOString(),
-        consumed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        payload: faker.helpers.arrayElement([{}, null]),
-        attempt_count: faker.number.int(),
-        state: faker.helpers.arrayElement([
-          "pending",
-          "consumed",
-          "locked",
-          "expired",
-        ]),
-      }));
-    })(),
-    recovery_codes_left: faker.number.int(),
-    profile_detail: faker.helpers.arrayElement([
-      {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    preferences: faker.helpers.arrayElement([
-      {
-        created_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        dnd_enabled: faker.helpers.arrayElement([
-          faker.datatype.boolean(),
-          null,
-        ]),
-        dnd_start: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        dnd_end: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    education_path: faker.helpers.arrayElement([
-      {
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-      },
-      null,
-    ]),
-    avatar_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    cover_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
-}
-
-export function getUpdateMeApiV1UsersMePut422Response() {
+export function getDeleteScheduleApiV1ScheduleIdDelete422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -6688,6 +9542,8 @@ export function getUpdateMeApiV1UsersMePut422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -6705,1783 +9561,42 @@ export function getUpdateMeApiV1UsersMePut422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getChangeEmailApiV1UsersMeEmailPost200Response() {
-  return {
-    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    dnd_enabled: faker.datatype.boolean(),
-    dnd_start: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    dnd_end: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    email: faker.internet.email(),
-    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    role: faker.helpers.arrayElement([
-      "student",
-      "teacher",
-      "admin",
-      "superuser",
-      "anonymous",
-    ]),
-    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    spotify_connected: faker.datatype.boolean(),
-    spotify_display_name: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    created_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    id: faker.string.uuid(),
-    is_active: faker.datatype.boolean(),
-    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
-    spotify_is_connected: faker.helpers.arrayElement([
-      faker.datatype.boolean(),
-      null,
-    ]),
-    mfa_required: faker.datatype.boolean(),
-    mfa_default_method: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    mfa_last_verified_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    totp_enrollments: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        is_active: faker.datatype.boolean(),
-        confirmed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        revoked_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-      }));
-    })(),
-    mfa_challenges: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-        challenge_type: faker.lorem.words(),
-        token: faker.lorem.words(),
-        expires_at: faker.date.anytime().toISOString(),
-        consumed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        payload: faker.helpers.arrayElement([{}, null]),
-        attempt_count: faker.number.int(),
-        state: faker.helpers.arrayElement([
-          "pending",
-          "consumed",
-          "locked",
-          "expired",
-        ]),
-      }));
-    })(),
-    recovery_codes_left: faker.number.int(),
-    profile_detail: faker.helpers.arrayElement([
-      {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    preferences: faker.helpers.arrayElement([
-      {
-        created_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        dnd_enabled: faker.helpers.arrayElement([
-          faker.datatype.boolean(),
-          null,
-        ]),
-        dnd_start: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        dnd_end: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    education_path: faker.helpers.arrayElement([
-      {
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-      },
-      null,
-    ]),
-    avatar_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    cover_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
-}
-
-export function getChangeEmailApiV1UsersMeEmailPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getVerifyEmailChangeApiV1UsersMeEmailConfirmPost200Response() {
-  return {
-    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    dnd_enabled: faker.datatype.boolean(),
-    dnd_start: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    dnd_end: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    email: faker.internet.email(),
-    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    role: faker.helpers.arrayElement([
-      "student",
-      "teacher",
-      "admin",
-      "superuser",
-      "anonymous",
-    ]),
-    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    spotify_connected: faker.datatype.boolean(),
-    spotify_display_name: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    created_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    id: faker.string.uuid(),
-    is_active: faker.datatype.boolean(),
-    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
-    spotify_is_connected: faker.helpers.arrayElement([
-      faker.datatype.boolean(),
-      null,
-    ]),
-    mfa_required: faker.datatype.boolean(),
-    mfa_default_method: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    mfa_last_verified_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    totp_enrollments: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        is_active: faker.datatype.boolean(),
-        confirmed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        revoked_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-      }));
-    })(),
-    mfa_challenges: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-        challenge_type: faker.lorem.words(),
-        token: faker.lorem.words(),
-        expires_at: faker.date.anytime().toISOString(),
-        consumed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        payload: faker.helpers.arrayElement([{}, null]),
-        attempt_count: faker.number.int(),
-        state: faker.helpers.arrayElement([
-          "pending",
-          "consumed",
-          "locked",
-          "expired",
-        ]),
-      }));
-    })(),
-    recovery_codes_left: faker.number.int(),
-    profile_detail: faker.helpers.arrayElement([
-      {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    preferences: faker.helpers.arrayElement([
-      {
-        created_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        dnd_enabled: faker.helpers.arrayElement([
-          faker.datatype.boolean(),
-          null,
-        ]),
-        dnd_start: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        dnd_end: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    education_path: faker.helpers.arrayElement([
-      {
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-      },
-      null,
-    ]),
-    avatar_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    cover_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
-}
-
-export function getVerifyEmailChangeApiV1UsersMeEmailConfirmPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getChangePasswordApiV1UsersMePasswordPost200Response() {
-  return {
-    ok: faker.datatype.boolean(),
-    revoked_sessions: faker.number.int(),
-  };
-}
-
-export function getChangePasswordApiV1UsersMePasswordPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getExportCurrentUserDataApiV1UsersMeExportPost200Response() {
-  return {
-    profile: {},
-    sessions: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({}));
-    })(),
-    notifications: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({}));
-    })(),
-    mfa_challenges: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({}));
-    })(),
-    mfa_enrollments: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({}));
-    })(),
-    access_logs: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({}));
-    })(),
-  };
-}
-
-export function getDeleteCurrentUserAccountApiV1UsersMeDeletePost200Response() {
-  return {
-    deleted: faker.datatype.boolean(),
-    anonymized_email: faker.internet.email(),
-  };
-}
-
-export function getDeleteCurrentUserAccountApiV1UsersMeDeletePost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getUploadAvatarApiV1UsersMeAvatarPost200Response() {
-  return {
-    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    dnd_enabled: faker.datatype.boolean(),
-    dnd_start: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    dnd_end: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    email: faker.internet.email(),
-    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    role: faker.helpers.arrayElement([
-      "student",
-      "teacher",
-      "admin",
-      "superuser",
-      "anonymous",
-    ]),
-    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    spotify_connected: faker.datatype.boolean(),
-    spotify_display_name: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    created_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    id: faker.string.uuid(),
-    is_active: faker.datatype.boolean(),
-    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
-    spotify_is_connected: faker.helpers.arrayElement([
-      faker.datatype.boolean(),
-      null,
-    ]),
-    mfa_required: faker.datatype.boolean(),
-    mfa_default_method: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    mfa_last_verified_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    totp_enrollments: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        is_active: faker.datatype.boolean(),
-        confirmed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        revoked_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-      }));
-    })(),
-    mfa_challenges: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-        challenge_type: faker.lorem.words(),
-        token: faker.lorem.words(),
-        expires_at: faker.date.anytime().toISOString(),
-        consumed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        payload: faker.helpers.arrayElement([{}, null]),
-        attempt_count: faker.number.int(),
-        state: faker.helpers.arrayElement([
-          "pending",
-          "consumed",
-          "locked",
-          "expired",
-        ]),
-      }));
-    })(),
-    recovery_codes_left: faker.number.int(),
-    profile_detail: faker.helpers.arrayElement([
-      {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    preferences: faker.helpers.arrayElement([
-      {
-        created_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        dnd_enabled: faker.helpers.arrayElement([
-          faker.datatype.boolean(),
-          null,
-        ]),
-        dnd_start: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        dnd_end: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    education_path: faker.helpers.arrayElement([
-      {
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-      },
-      null,
-    ]),
-    avatar_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    cover_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
-}
-
-export function getUploadAvatarApiV1UsersMeAvatarPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getDeleteAvatarApiV1UsersMeAvatarDelete200Response() {
-  return {
-    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    dnd_enabled: faker.datatype.boolean(),
-    dnd_start: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    dnd_end: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    email: faker.internet.email(),
-    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    role: faker.helpers.arrayElement([
-      "student",
-      "teacher",
-      "admin",
-      "superuser",
-      "anonymous",
-    ]),
-    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    spotify_connected: faker.datatype.boolean(),
-    spotify_display_name: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    created_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    id: faker.string.uuid(),
-    is_active: faker.datatype.boolean(),
-    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
-    spotify_is_connected: faker.helpers.arrayElement([
-      faker.datatype.boolean(),
-      null,
-    ]),
-    mfa_required: faker.datatype.boolean(),
-    mfa_default_method: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    mfa_last_verified_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    totp_enrollments: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        is_active: faker.datatype.boolean(),
-        confirmed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        revoked_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-      }));
-    })(),
-    mfa_challenges: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-        challenge_type: faker.lorem.words(),
-        token: faker.lorem.words(),
-        expires_at: faker.date.anytime().toISOString(),
-        consumed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        payload: faker.helpers.arrayElement([{}, null]),
-        attempt_count: faker.number.int(),
-        state: faker.helpers.arrayElement([
-          "pending",
-          "consumed",
-          "locked",
-          "expired",
-        ]),
-      }));
-    })(),
-    recovery_codes_left: faker.number.int(),
-    profile_detail: faker.helpers.arrayElement([
-      {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    preferences: faker.helpers.arrayElement([
-      {
-        created_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        dnd_enabled: faker.helpers.arrayElement([
-          faker.datatype.boolean(),
-          null,
-        ]),
-        dnd_start: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        dnd_end: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    education_path: faker.helpers.arrayElement([
-      {
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-      },
-      null,
-    ]),
-    avatar_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    cover_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
-}
-
-export function getUploadCoverApiV1UsersMeCoverPost200Response() {
-  return {
-    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    dnd_enabled: faker.datatype.boolean(),
-    dnd_start: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    dnd_end: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    email: faker.internet.email(),
-    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    role: faker.helpers.arrayElement([
-      "student",
-      "teacher",
-      "admin",
-      "superuser",
-      "anonymous",
-    ]),
-    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    spotify_connected: faker.datatype.boolean(),
-    spotify_display_name: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    created_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    id: faker.string.uuid(),
-    is_active: faker.datatype.boolean(),
-    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
-    spotify_is_connected: faker.helpers.arrayElement([
-      faker.datatype.boolean(),
-      null,
-    ]),
-    mfa_required: faker.datatype.boolean(),
-    mfa_default_method: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    mfa_last_verified_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    totp_enrollments: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        is_active: faker.datatype.boolean(),
-        confirmed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        revoked_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-      }));
-    })(),
-    mfa_challenges: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-        challenge_type: faker.lorem.words(),
-        token: faker.lorem.words(),
-        expires_at: faker.date.anytime().toISOString(),
-        consumed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        payload: faker.helpers.arrayElement([{}, null]),
-        attempt_count: faker.number.int(),
-        state: faker.helpers.arrayElement([
-          "pending",
-          "consumed",
-          "locked",
-          "expired",
-        ]),
-      }));
-    })(),
-    recovery_codes_left: faker.number.int(),
-    profile_detail: faker.helpers.arrayElement([
-      {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    preferences: faker.helpers.arrayElement([
-      {
-        created_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        dnd_enabled: faker.helpers.arrayElement([
-          faker.datatype.boolean(),
-          null,
-        ]),
-        dnd_start: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        dnd_end: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    education_path: faker.helpers.arrayElement([
-      {
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-      },
-      null,
-    ]),
-    avatar_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    cover_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
-}
-
-export function getUploadCoverApiV1UsersMeCoverPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getDeleteCoverApiV1UsersMeCoverDelete200Response() {
-  return {
-    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    dnd_enabled: faker.datatype.boolean(),
-    dnd_start: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    dnd_end: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    email: faker.internet.email(),
-    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    role: faker.helpers.arrayElement([
-      "student",
-      "teacher",
-      "admin",
-      "superuser",
-      "anonymous",
-    ]),
-    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    spotify_connected: faker.datatype.boolean(),
-    spotify_display_name: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    created_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    id: faker.string.uuid(),
-    is_active: faker.datatype.boolean(),
-    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
-    spotify_is_connected: faker.helpers.arrayElement([
-      faker.datatype.boolean(),
-      null,
-    ]),
-    mfa_required: faker.datatype.boolean(),
-    mfa_default_method: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    mfa_last_verified_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    totp_enrollments: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        is_active: faker.datatype.boolean(),
-        confirmed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        revoked_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-      }));
-    })(),
-    mfa_challenges: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-        challenge_type: faker.lorem.words(),
-        token: faker.lorem.words(),
-        expires_at: faker.date.anytime().toISOString(),
-        consumed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        payload: faker.helpers.arrayElement([{}, null]),
-        attempt_count: faker.number.int(),
-        state: faker.helpers.arrayElement([
-          "pending",
-          "consumed",
-          "locked",
-          "expired",
-        ]),
-      }));
-    })(),
-    recovery_codes_left: faker.number.int(),
-    profile_detail: faker.helpers.arrayElement([
-      {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    preferences: faker.helpers.arrayElement([
-      {
-        created_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        dnd_enabled: faker.helpers.arrayElement([
-          faker.datatype.boolean(),
-          null,
-        ]),
-        dnd_start: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        dnd_end: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    education_path: faker.helpers.arrayElement([
-      {
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-      },
-      null,
-    ]),
-    avatar_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    cover_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
-}
-
-export function getCreateUserApiV1UsersPost200Response() {
-  return {
-    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    dnd_enabled: faker.datatype.boolean(),
-    dnd_start: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    dnd_end: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    email: faker.internet.email(),
-    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    role: faker.helpers.arrayElement([
-      "student",
-      "teacher",
-      "admin",
-      "superuser",
-      "anonymous",
-    ]),
-    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    spotify_connected: faker.datatype.boolean(),
-    spotify_display_name: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    created_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    id: faker.string.uuid(),
-    is_active: faker.datatype.boolean(),
-    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
-    spotify_is_connected: faker.helpers.arrayElement([
-      faker.datatype.boolean(),
-      null,
-    ]),
-    mfa_required: faker.datatype.boolean(),
-    mfa_default_method: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    mfa_last_verified_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    totp_enrollments: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        is_active: faker.datatype.boolean(),
-        confirmed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        revoked_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-      }));
-    })(),
-    mfa_challenges: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-        challenge_type: faker.lorem.words(),
-        token: faker.lorem.words(),
-        expires_at: faker.date.anytime().toISOString(),
-        consumed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        payload: faker.helpers.arrayElement([{}, null]),
-        attempt_count: faker.number.int(),
-        state: faker.helpers.arrayElement([
-          "pending",
-          "consumed",
-          "locked",
-          "expired",
-        ]),
-      }));
-    })(),
-    recovery_codes_left: faker.number.int(),
-    profile_detail: faker.helpers.arrayElement([
-      {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    preferences: faker.helpers.arrayElement([
-      {
-        created_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        dnd_enabled: faker.helpers.arrayElement([
-          faker.datatype.boolean(),
-          null,
-        ]),
-        dnd_start: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        dnd_end: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    education_path: faker.helpers.arrayElement([
-      {
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-      },
-      null,
-    ]),
-    avatar_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    cover_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
-}
-
-export function getCreateUserApiV1UsersPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getGetUsersApiV1UsersGet200Response() {
+export function getGetScheduleApiV1ScheduleIdGet200Response() {
   return (() => {
     const arrayMin = 1;
     const arrayMax = MAX_ARRAY_LENGTH;
     const safeMin = Math.min(arrayMin, arrayMax);
     return [
       ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-    ].map((_) =>
-      faker.helpers.arrayElement([
-        {
-          about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          profile_status: faker.helpers.arrayElement([
-            faker.lorem.words(),
-            null,
-          ]),
-          profile_department: faker.helpers.arrayElement([
-            faker.lorem.words(),
-            null,
-          ]),
-          position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          created_at: faker.helpers.arrayElement([
-            faker.date.anytime().toISOString(),
-            null,
-          ]),
-          id: faker.string.uuid(),
-          full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          role: faker.helpers.arrayElement([
-            "student",
-            "teacher",
-            "admin",
-            "superuser",
-            "anonymous",
-          ]),
-          group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-          avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          profile_detail: faker.helpers.arrayElement([
-            {
-              about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              achievements: faker.helpers.arrayElement([
-                faker.lorem.words(),
-                null,
-              ]),
-              department: faker.helpers.arrayElement([
-                faker.lorem.words(),
-                null,
-              ]),
-              position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            },
-            null,
-          ]),
-          education_path: faker.helpers.arrayElement([
-            {
-              institute: faker.helpers.arrayElement([
-                faker.lorem.words(),
-                null,
-              ]),
-              course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              education_level: faker.helpers.arrayElement([
-                faker.lorem.words(),
-                null,
-              ]),
-              track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              record_book_number: faker.helpers.arrayElement([
-                faker.lorem.words(),
-                null,
-              ]),
-            },
-            null,
-          ]),
-          is_active: faker.datatype.boolean(),
-          avatar_url_optimized: faker.helpers.arrayElement([
-            faker.lorem.words(),
-            null,
-          ]),
-        },
-        {
-          about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          profile_status: faker.helpers.arrayElement([
-            faker.lorem.words(),
-            null,
-          ]),
-          profile_department: faker.helpers.arrayElement([
-            faker.lorem.words(),
-            null,
-          ]),
-          position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          education_level: faker.helpers.arrayElement([
-            faker.lorem.words(),
-            null,
-          ]),
-          track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          record_book_number: faker.helpers.arrayElement([
-            faker.lorem.words(),
-            null,
-          ]),
-          timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          dnd_enabled: faker.datatype.boolean(),
-          dnd_start: faker.helpers.arrayElement([
-            new Date().toISOString().substring(11, 16),
-            null,
-          ]),
-          dnd_end: faker.helpers.arrayElement([
-            new Date().toISOString().substring(11, 16),
-            null,
-          ]),
-          email: faker.internet.email(),
-          full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          role: faker.helpers.arrayElement([
-            "student",
-            "teacher",
-            "admin",
-            "superuser",
-            "anonymous",
-          ]),
-          group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-          avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          spotify_connected: faker.datatype.boolean(),
-          spotify_display_name: faker.helpers.arrayElement([
-            faker.lorem.words(),
-            null,
-          ]),
-          created_at: faker.helpers.arrayElement([
-            faker.date.anytime().toISOString(),
-            null,
-          ]),
-          id: faker.string.uuid(),
-          is_active: faker.datatype.boolean(),
-          pending_email: faker.helpers.arrayElement([
-            faker.internet.email(),
-            null,
-          ]),
-          spotify_is_connected: faker.helpers.arrayElement([
-            faker.datatype.boolean(),
-            null,
-          ]),
-          mfa_required: faker.datatype.boolean(),
-          mfa_default_method: faker.helpers.arrayElement([
-            faker.lorem.words(),
-            null,
-          ]),
-          mfa_last_verified_at: faker.helpers.arrayElement([
-            faker.date.anytime().toISOString(),
-            null,
-          ]),
-          totp_enrollments: (() => {
-            const arrayMin = 1;
-            const arrayMax = MAX_ARRAY_LENGTH;
-            const safeMin = Math.min(arrayMin, arrayMax);
-            return [
-              ...new Array(
-                faker.number.int({ min: safeMin, max: arrayMax }),
-              ).keys(),
-            ].map((_) => ({
-              created_at: faker.date.anytime().toISOString(),
-              id: faker.string.uuid(),
-              user_id: faker.string.uuid(),
-              label: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              is_active: faker.datatype.boolean(),
-              confirmed_at: faker.helpers.arrayElement([
-                faker.date.anytime().toISOString(),
-                null,
-              ]),
-              revoked_at: faker.helpers.arrayElement([
-                faker.date.anytime().toISOString(),
-                null,
-              ]),
-            }));
-          })(),
-          mfa_challenges: (() => {
-            const arrayMin = 1;
-            const arrayMax = MAX_ARRAY_LENGTH;
-            const safeMin = Math.min(arrayMin, arrayMax);
-            return [
-              ...new Array(
-                faker.number.int({ min: safeMin, max: arrayMax }),
-              ).keys(),
-            ].map((_) => ({
-              created_at: faker.date.anytime().toISOString(),
-              id: faker.string.uuid(),
-              user_id: faker.string.uuid(),
-              session_id: faker.helpers.arrayElement([
-                faker.string.uuid(),
-                null,
-              ]),
-              challenge_type: faker.lorem.words(),
-              token: faker.lorem.words(),
-              expires_at: faker.date.anytime().toISOString(),
-              consumed_at: faker.helpers.arrayElement([
-                faker.date.anytime().toISOString(),
-                null,
-              ]),
-              payload: faker.helpers.arrayElement([{}, null]),
-              attempt_count: faker.number.int(),
-              state: faker.helpers.arrayElement([
-                "pending",
-                "consumed",
-                "locked",
-                "expired",
-              ]),
-            }));
-          })(),
-          recovery_codes_left: faker.number.int(),
-          profile_detail: faker.helpers.arrayElement([
-            {
-              about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              achievements: faker.helpers.arrayElement([
-                faker.lorem.words(),
-                null,
-              ]),
-              department: faker.helpers.arrayElement([
-                faker.lorem.words(),
-                null,
-              ]),
-              position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            },
-            null,
-          ]),
-          preferences: faker.helpers.arrayElement([
-            {
-              created_at: faker.helpers.arrayElement([
-                faker.date.anytime().toISOString(),
-                null,
-              ]),
-              dnd_enabled: faker.helpers.arrayElement([
-                faker.datatype.boolean(),
-                null,
-              ]),
-              dnd_start: faker.helpers.arrayElement([
-                new Date().toISOString().substring(11, 16),
-                null,
-              ]),
-              dnd_end: faker.helpers.arrayElement([
-                new Date().toISOString().substring(11, 16),
-                null,
-              ]),
-              timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            },
-            null,
-          ]),
-          education_path: faker.helpers.arrayElement([
-            {
-              institute: faker.helpers.arrayElement([
-                faker.lorem.words(),
-                null,
-              ]),
-              course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              education_level: faker.helpers.arrayElement([
-                faker.lorem.words(),
-                null,
-              ]),
-              track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-              record_book_number: faker.helpers.arrayElement([
-                faker.lorem.words(),
-                null,
-              ]),
-            },
-            null,
-          ]),
-          avatar_url_optimized: faker.helpers.arrayElement([
-            faker.lorem.words(),
-            null,
-          ]),
-          cover_url_optimized: faker.helpers.arrayElement([
-            faker.lorem.words(),
-            null,
-          ]),
-        },
+    ].map((_) => ({
+      created_at: faker.helpers.arrayElement([
+        faker.date.anytime().toISOString(),
+        null,
       ]),
-    );
+      end_time: faker.date.anytime().toISOString(),
+      group_id: faker.string.uuid(),
+      id: faker.string.uuid(),
+      lesson_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      lesson_type_display: faker.helpers.arrayElement([
+        faker.lorem.words(),
+        null,
+      ]),
+      parity: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      room: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      start_time: faker.date.anytime().toISOString(),
+      subject: faker.lorem.words(),
+      teacher: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      weekday: faker.lorem.words(),
+    }));
   })();
 }
 
-export function getGetUsersApiV1UsersGet422Response() {
+export function getGetScheduleApiV1ScheduleIdGet422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -8490,6 +9605,8 @@ export function getGetUsersApiV1UsersGet422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -8507,18 +9624,115 @@ export function getGetUsersApiV1UsersGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getExportAccessAuditApiV1UsersAuditExportGet200Response() {
+export function getUpdateScheduleApiV1ScheduleIdPatch200Response() {
+  return {
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    end_time: faker.date.anytime().toISOString(),
+    group_id: faker.string.uuid(),
+    id: faker.string.uuid(),
+    lesson_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    lesson_type_display: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    parity: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    room: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    start_time: faker.date.anytime().toISOString(),
+    subject: faker.lorem.words(),
+    teacher: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    weekday: faker.lorem.words(),
+  };
+}
+
+export function getUpdateScheduleApiV1ScheduleIdPatch422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getUnifiedSearchApiV1SearchGet200Response() {
+  return {};
+}
+
+export function getUnifiedSearchApiV1SearchGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getSpotifyAuthUrlApiV1SpotifyAuthUrlGet200Response() {
+  return {
+    url: faker.internet.url(),
+  };
+}
+
+export function getSpotifyCallbackApiV1SpotifyCallbackGet200Response() {
   return null;
 }
 
-export function getExportAccessAuditApiV1UsersAuditExportGet422Response() {
+export function getSpotifyCallbackApiV1SpotifyCallbackGet422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -8527,6 +9741,8 @@ export function getExportAccessAuditApiV1UsersAuditExportGet422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -8544,260 +9760,49 @@ export function getExportAccessAuditApiV1UsersAuditExportGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getUpdateUserAdminApiV1UsersUserIdPatch200Response() {
-  return {
-    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    dnd_enabled: faker.datatype.boolean(),
-    dnd_start: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    dnd_end: faker.helpers.arrayElement([
-      new Date().toISOString().substring(11, 16),
-      null,
-    ]),
-    email: faker.internet.email(),
-    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    role: faker.helpers.arrayElement([
-      "student",
-      "teacher",
-      "admin",
-      "superuser",
-      "anonymous",
-    ]),
-    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    spotify_connected: faker.datatype.boolean(),
-    spotify_display_name: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    created_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    id: faker.string.uuid(),
-    is_active: faker.datatype.boolean(),
-    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
-    spotify_is_connected: faker.helpers.arrayElement([
-      faker.datatype.boolean(),
-      null,
-    ]),
-    mfa_required: faker.datatype.boolean(),
-    mfa_default_method: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    mfa_last_verified_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    totp_enrollments: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        is_active: faker.datatype.boolean(),
-        confirmed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        revoked_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-      }));
-    })(),
-    mfa_challenges: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        user_id: faker.string.uuid(),
-        session_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-        challenge_type: faker.lorem.words(),
-        token: faker.lorem.words(),
-        expires_at: faker.date.anytime().toISOString(),
-        consumed_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        payload: faker.helpers.arrayElement([{}, null]),
-        attempt_count: faker.number.int(),
-        state: faker.helpers.arrayElement([
-          "pending",
-          "consumed",
-          "locked",
-          "expired",
-        ]),
-      }));
-    })(),
-    recovery_codes_left: faker.number.int(),
-    profile_detail: faker.helpers.arrayElement([
-      {
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    preferences: faker.helpers.arrayElement([
-      {
-        created_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        dnd_enabled: faker.helpers.arrayElement([
-          faker.datatype.boolean(),
-          null,
-        ]),
-        dnd_start: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        dnd_end: faker.helpers.arrayElement([
-          new Date().toISOString().substring(11, 16),
-          null,
-        ]),
-        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      },
-      null,
-    ]),
-    education_path: faker.helpers.arrayElement([
-      {
-        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        education_level: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        record_book_number: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-      },
-      null,
-    ]),
-    avatar_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-    cover_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
-}
-
-export function getUpdateUserAdminApiV1UsersUserIdPatch422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getDeleteUserAdminApiV1UsersUserIdDelete200Response() {
-  return {};
-}
-
-export function getDeleteUserAdminApiV1UsersUserIdDelete422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getForgotPasswordApiV1PasswordForgotPost200Response() {
+export function getDisconnectApiV1SpotifyDisconnectPost200Response() {
   return [...new Array(5).keys()]
     .map((_) => ({ [faker.lorem.word()]: faker.datatype.boolean() }))
     .reduce((acc, next) => Object.assign(acc, next), {});
 }
 
-export function getForgotPasswordApiV1PasswordForgotPost422Response() {
+export function getNowPlayingApiV1SpotifyNowPlayingGet200Response() {
+  return {
+    album_image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    album_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    artists: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => faker.lorem.words());
+    })(),
+    duration_ms: faker.helpers.arrayElement([faker.number.int(), null]),
+    fetched_at: faker.date.anytime().toISOString(),
+    is_playing: faker.datatype.boolean(),
+    preview_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    progress_ms: faker.helpers.arrayElement([faker.number.int(), null]),
+    track_id: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    track_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    track_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getListPlaylistsApiV1SpotifyPlaylistsGet200Response() {
+  return null;
+}
+
+export function getAttendanceSummaryApiV1StatsAttendanceGet200Response() {
+  return null;
+}
+
+export function getAttendanceSummaryApiV1StatsAttendanceGet422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -8806,6 +9811,8 @@ export function getForgotPasswordApiV1PasswordForgotPost422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -8823,20 +9830,16 @@ export function getForgotPasswordApiV1PasswordForgotPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getResetPasswordApiV1PasswordResetPost200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.datatype.boolean() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
+export function getGradeSummaryApiV1StatsGradesGet200Response() {
+  return null;
 }
 
-export function getResetPasswordApiV1PasswordResetPost422Response() {
+export function getGradeSummaryApiV1StatsGradesGet422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -8845,6 +9848,8 @@ export function getResetPasswordApiV1PasswordResetPost422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -8862,81 +9867,16 @@ export function getResetPasswordApiV1PasswordResetPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getGetGroupsApiV1GroupsGet200Response() {
-  return (() => {
-    const arrayMin = 1;
-    const arrayMax = MAX_ARRAY_LENGTH;
-    const safeMin = Math.min(arrayMin, arrayMax);
-    return [
-      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-    ].map((_) => ({
-      created_at: faker.helpers.arrayElement([
-        faker.date.anytime().toISOString(),
-        null,
-      ]),
-      id: faker.string.uuid(),
-      name: faker.person.fullName(),
-      course: faker.helpers.arrayElement([faker.number.int(), null]),
-      faculty: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    }));
-  })();
+export function getParticipationSummaryApiV1StatsParticipationGet200Response() {
+  return null;
 }
 
-export function getCreateEventApiV1EventsPost200Response() {
-  return {
-    created_at: faker.date.anytime().toISOString(),
-    id: faker.string.uuid(),
-    title: faker.lorem.words(),
-    description: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    description_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    location: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    location_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    event_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    event_type_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    starts_at: faker.date.anytime().toISOString(),
-    ends_at: faker.date.anytime().toISOString(),
-    created_by: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    is_active: faker.datatype.boolean(),
-    speaker: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    about_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    files: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        id: faker.string.uuid(),
-        event_id: faker.string.uuid(),
-        file_url: faker.internet.url(),
-        description: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      }));
-    })(),
-    participant_count: faker.number.int(),
-    is_registered: faker.helpers.arrayElement([faker.datatype.boolean(), null]),
-    my_qr_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    image_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
-}
-
-export function getCreateEventApiV1EventsPost422Response() {
+export function getParticipationSummaryApiV1StatsParticipationGet422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -8945,6 +9885,8 @@ export function getCreateEventApiV1EventsPost422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -8962,83 +9904,16 @@ export function getCreateEventApiV1EventsPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getAllEventsApiV1EventsGet200Response() {
-  return {
-    items: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        title: faker.lorem.words(),
-        description: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        description_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        location: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        location_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        event_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        event_type_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        starts_at: faker.date.anytime().toISOString(),
-        ends_at: faker.date.anytime().toISOString(),
-        created_by: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        is_active: faker.datatype.boolean(),
-        speaker: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        about_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        files: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) => ({
-            created_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-            id: faker.string.uuid(),
-            event_id: faker.string.uuid(),
-            file_url: faker.internet.url(),
-            description: faker.helpers.arrayElement([
-              faker.lorem.words(),
-              null,
-            ]),
-          }));
-        })(),
-        participant_count: faker.number.int(),
-        is_registered: faker.helpers.arrayElement([
-          faker.datatype.boolean(),
-          null,
-        ]),
-        my_qr_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        image_url_optimized: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-      }));
-    })(),
-    total: faker.helpers.arrayElement([faker.number.int(), null]),
-    limit: faker.number.int(),
-    cursor: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    next_cursor: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    has_more: faker.datatype.boolean(),
-  };
+export function getStatsSummaryApiV1StatsSummaryGet200Response() {
+  return null;
 }
 
-export function getAllEventsApiV1EventsGet422Response() {
+export function getStatsSummaryApiV1StatsSummaryGet422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -9047,6 +9922,8 @@ export function getAllEventsApiV1EventsGet422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -9064,1221 +9941,6 @@ export function getAllEventsApiV1EventsGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getAttendApiV1EventsAttendancePost200Response() {
-  return {
-    created_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    id: faker.string.uuid(),
-    user_id: faker.string.uuid(),
-    event_id: faker.string.uuid(),
-    registered_at: faker.date.anytime().toISOString(),
-    qr_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
-  };
-}
-
-export function getAttendApiV1EventsAttendancePost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getUnregisterEventApiV1EventsAttendanceDelete200Response() {
-  return {};
-}
-
-export function getUnregisterEventApiV1EventsAttendanceDelete422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getMyEventsApiV1EventsMyGet200Response() {
-  return (() => {
-    const arrayMin = 1;
-    const arrayMax = MAX_ARRAY_LENGTH;
-    const safeMin = Math.min(arrayMin, arrayMax);
-    return [
-      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-    ].map((_) => ({
-      created_at: faker.date.anytime().toISOString(),
-      id: faker.string.uuid(),
-      title: faker.lorem.words(),
-      description: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      description_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      location: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      location_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      event_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      event_type_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      starts_at: faker.date.anytime().toISOString(),
-      ends_at: faker.date.anytime().toISOString(),
-      created_by: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      is_active: faker.datatype.boolean(),
-      speaker: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      about_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      files: (() => {
-        const arrayMin = 1;
-        const arrayMax = MAX_ARRAY_LENGTH;
-        const safeMin = Math.min(arrayMin, arrayMax);
-        return [
-          ...new Array(
-            faker.number.int({ min: safeMin, max: arrayMax }),
-          ).keys(),
-        ].map((_) => ({
-          created_at: faker.helpers.arrayElement([
-            faker.date.anytime().toISOString(),
-            null,
-          ]),
-          id: faker.string.uuid(),
-          event_id: faker.string.uuid(),
-          file_url: faker.internet.url(),
-          description: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        }));
-      })(),
-      participant_count: faker.number.int(),
-      is_registered: faker.helpers.arrayElement([
-        faker.datatype.boolean(),
-        null,
-      ]),
-      my_qr_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      image_url_optimized: faker.helpers.arrayElement([
-        faker.lorem.words(),
-        null,
-      ]),
-    }));
-  })();
-}
-
-export function getMyEventsApiV1EventsMyGet422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getUploadEventFileApiV1EventsEventIdUploadFilePost200Response() {
-  return {
-    created_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    id: faker.string.uuid(),
-    event_id: faker.string.uuid(),
-    file_url: faker.internet.url(),
-    description: faker.helpers.arrayElement([faker.lorem.words(), null]),
-  };
-}
-
-export function getUploadEventFileApiV1EventsEventIdUploadFilePost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getGetEventFilesApiV1EventsEventIdFilesGet200Response() {
-  return (() => {
-    const arrayMin = 1;
-    const arrayMax = MAX_ARRAY_LENGTH;
-    const safeMin = Math.min(arrayMin, arrayMax);
-    return [
-      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-    ].map((_) => ({
-      created_at: faker.helpers.arrayElement([
-        faker.date.anytime().toISOString(),
-        null,
-      ]),
-      id: faker.string.uuid(),
-      event_id: faker.string.uuid(),
-      file_url: faker.internet.url(),
-      description: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    }));
-  })();
-}
-
-export function getGetEventFilesApiV1EventsEventIdFilesGet422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getUploadEventImageApiV1EventsUploadImagePost200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
-}
-
-export function getUploadEventImageApiV1EventsUploadImagePost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getUpdateEventApiV1EventsEventIdPatch200Response() {
-  return {
-    created_at: faker.date.anytime().toISOString(),
-    id: faker.string.uuid(),
-    title: faker.lorem.words(),
-    description: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    description_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    location: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    location_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    event_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    event_type_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    starts_at: faker.date.anytime().toISOString(),
-    ends_at: faker.date.anytime().toISOString(),
-    created_by: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    is_active: faker.datatype.boolean(),
-    speaker: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    about_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    files: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        id: faker.string.uuid(),
-        event_id: faker.string.uuid(),
-        file_url: faker.internet.url(),
-        description: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      }));
-    })(),
-    participant_count: faker.number.int(),
-    is_registered: faker.helpers.arrayElement([faker.datatype.boolean(), null]),
-    my_qr_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    image_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
-}
-
-export function getUpdateEventApiV1EventsEventIdPatch422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getDeleteEventApiV1EventsEventIdDelete200Response() {
-  return {};
-}
-
-export function getDeleteEventApiV1EventsEventIdDelete422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getGetEventApiV1EventsEventIdGet200Response() {
-  return {
-    created_at: faker.date.anytime().toISOString(),
-    id: faker.string.uuid(),
-    title: faker.lorem.words(),
-    description: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    description_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    location: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    location_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    event_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    event_type_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    starts_at: faker.date.anytime().toISOString(),
-    ends_at: faker.date.anytime().toISOString(),
-    created_by: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    is_active: faker.datatype.boolean(),
-    speaker: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    about_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    files: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        created_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        id: faker.string.uuid(),
-        event_id: faker.string.uuid(),
-        file_url: faker.internet.url(),
-        description: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      }));
-    })(),
-    participant_count: faker.number.int(),
-    is_registered: faker.helpers.arrayElement([faker.datatype.boolean(), null]),
-    my_qr_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    image_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
-}
-
-export function getGetEventApiV1EventsEventIdGet422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getDeleteEventFileApiV1EventsFileFileIdDelete200Response() {
-  return {};
-}
-
-export function getDeleteEventFileApiV1EventsFileFileIdDelete422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getSemanticSearchApiV1EventsSearchSemanticGet200Response() {
-  return (() => {
-    const arrayMin = 1;
-    const arrayMax = MAX_ARRAY_LENGTH;
-    const safeMin = Math.min(arrayMin, arrayMax);
-    return [
-      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-    ].map((_) => ({
-      created_at: faker.date.anytime().toISOString(),
-      id: faker.string.uuid(),
-      title: faker.lorem.words(),
-      description: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      description_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      location: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      location_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      event_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      event_type_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      starts_at: faker.date.anytime().toISOString(),
-      ends_at: faker.date.anytime().toISOString(),
-      created_by: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      is_active: faker.datatype.boolean(),
-      speaker: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      about: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      about_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      files: (() => {
-        const arrayMin = 1;
-        const arrayMax = MAX_ARRAY_LENGTH;
-        const safeMin = Math.min(arrayMin, arrayMax);
-        return [
-          ...new Array(
-            faker.number.int({ min: safeMin, max: arrayMax }),
-          ).keys(),
-        ].map((_) => ({
-          created_at: faker.helpers.arrayElement([
-            faker.date.anytime().toISOString(),
-            null,
-          ]),
-          id: faker.string.uuid(),
-          event_id: faker.string.uuid(),
-          file_url: faker.internet.url(),
-          description: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        }));
-      })(),
-      participant_count: faker.number.int(),
-      is_registered: faker.helpers.arrayElement([
-        faker.datatype.boolean(),
-        null,
-      ]),
-      my_qr_token: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      image_url_optimized: faker.helpers.arrayElement([
-        faker.lorem.words(),
-        null,
-      ]),
-    }));
-  })();
-}
-
-export function getSemanticSearchApiV1EventsSearchSemanticGet422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getCreateNewsApiV1NewsPost200Response() {
-  return {
-    title: faker.lorem.words(),
-    content: faker.lorem.words(),
-    title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    content_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    created_at: faker.date.anytime().toISOString(),
-    id: faker.string.uuid(),
-    likes_count: faker.number.int(),
-    comments_count: faker.number.int(),
-    is_liked: faker.datatype.boolean(),
-    image_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
-}
-
-export function getCreateNewsApiV1NewsPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getNewsListApiV1NewsGet200Response() {
-  return {
-    items: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        title: faker.lorem.words(),
-        content: faker.lorem.words(),
-        title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        content_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        created_at: faker.date.anytime().toISOString(),
-        id: faker.string.uuid(),
-        likes_count: faker.number.int(),
-        comments_count: faker.number.int(),
-        is_liked: faker.datatype.boolean(),
-        image_url_optimized: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-      }));
-    })(),
-    has_more: faker.datatype.boolean(),
-    next_cursor: faker.helpers.arrayElement([faker.lorem.words(), null]),
-  };
-}
-
-export function getNewsListApiV1NewsGet422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getGetNewsApiV1NewsIdGet200Response() {
-  return {
-    title: faker.lorem.words(),
-    content: faker.lorem.words(),
-    title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    content_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    created_at: faker.date.anytime().toISOString(),
-    id: faker.string.uuid(),
-    likes_count: faker.number.int(),
-    comments_count: faker.number.int(),
-    is_liked: faker.datatype.boolean(),
-    image_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
-}
-
-export function getGetNewsApiV1NewsIdGet422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getUpdateNewsApiV1NewsIdPatch200Response() {
-  return {
-    title: faker.lorem.words(),
-    content: faker.lorem.words(),
-    title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    content_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    created_at: faker.date.anytime().toISOString(),
-    id: faker.string.uuid(),
-    likes_count: faker.number.int(),
-    comments_count: faker.number.int(),
-    is_liked: faker.datatype.boolean(),
-    image_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
-}
-
-export function getUpdateNewsApiV1NewsIdPatch422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getDeleteNewsApiV1NewsIdDelete200Response() {
-  return {};
-}
-
-export function getDeleteNewsApiV1NewsIdDelete422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getLikeNewsApiV1NewsIdLikePost200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.datatype.boolean() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
-}
-
-export function getLikeNewsApiV1NewsIdLikePost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getCommentOnNewsApiV1NewsIdCommentPost200Response() {
-  return {
-    id: faker.string.uuid(),
-    content: faker.lorem.words(),
-    user_id: faker.string.uuid(),
-    user_name: faker.person.fullName(),
-    created_at: faker.date.anytime().toISOString(),
-  };
-}
-
-export function getCommentOnNewsApiV1NewsIdCommentPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getGetNewsInteractApiV1NewsIdInteractionsGet200Response() {
-  return {
-    likes_count: faker.number.int(),
-    is_liked: faker.datatype.boolean(),
-    comments: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        id: faker.string.uuid(),
-        content: faker.lorem.words(),
-        user_id: faker.string.uuid(),
-        user_name: faker.person.fullName(),
-        created_at: faker.date.anytime().toISOString(),
-      }));
-    })(),
-    comments_count: faker.number.int(),
-  };
-}
-
-export function getGetNewsInteractApiV1NewsIdInteractionsGet422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getUpdateCommentApiV1NewsCommentsCommentIdPatch200Response() {
-  return {
-    id: faker.string.uuid(),
-    content: faker.lorem.words(),
-    user_id: faker.string.uuid(),
-    user_name: faker.person.fullName(),
-    created_at: faker.date.anytime().toISOString(),
-  };
-}
-
-export function getUpdateCommentApiV1NewsCommentsCommentIdPatch422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getDeleteCommentApiV1NewsCommentsCommentIdDelete200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.datatype.boolean() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
-}
-
-export function getDeleteCommentApiV1NewsCommentsCommentIdDelete422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getUploadNewsImageApiV1NewsUploadImagePost200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
-}
-
-export function getUploadNewsImageApiV1NewsUploadImagePost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getSemanticSearchApiV1NewsSearchSemanticGet200Response() {
-  return (() => {
-    const arrayMin = 1;
-    const arrayMax = MAX_ARRAY_LENGTH;
-    const safeMin = Math.min(arrayMin, arrayMax);
-    return [
-      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-    ].map((_) => ({
-      title: faker.lorem.words(),
-      content: faker.lorem.words(),
-      title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      content_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      image_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      created_at: faker.date.anytime().toISOString(),
-      id: faker.string.uuid(),
-      likes_count: faker.number.int(),
-      comments_count: faker.number.int(),
-      is_liked: faker.datatype.boolean(),
-      image_url_optimized: faker.helpers.arrayElement([
-        faker.lorem.words(),
-        null,
-      ]),
-    }));
-  })();
-}
-
-export function getSemanticSearchApiV1NewsSearchSemanticGet422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
@@ -10292,22 +9954,22 @@ export function getListStoriesApiV1StoriesGet200Response() {
     return [
       ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
     ].map((_) => ({
-      created_at: faker.date.anytime().toISOString(),
-      id: faker.string.uuid(),
-      title: faker.lorem.words(),
-      title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      short_text: faker.lorem.words(),
-      short_text_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
       cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      cta_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      published_at: faker.date.anytime().toISOString(),
-      expires_at: faker.date.anytime().toISOString(),
-      is_active: faker.datatype.boolean(),
-      created_by: faker.helpers.arrayElement([faker.lorem.words(), null, null]),
       cover_url_optimized: faker.helpers.arrayElement([
         faker.lorem.words(),
         null,
       ]),
+      created_at: faker.date.anytime().toISOString(),
+      created_by: faker.helpers.arrayElement([faker.lorem.words(), null, null]),
+      cta_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      expires_at: faker.date.anytime().toISOString(),
+      id: faker.string.uuid(),
+      is_active: faker.datatype.boolean(),
+      published_at: faker.date.anytime().toISOString(),
+      short_text: faker.lorem.words(),
+      short_text_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      title: faker.lorem.words(),
+      title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
     }));
   })();
 }
@@ -10321,6 +9983,8 @@ export function getListStoriesApiV1StoriesGet422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -10338,8 +10002,6 @@ export function getListStoriesApiV1StoriesGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
@@ -10347,22 +10009,22 @@ export function getListStoriesApiV1StoriesGet422Response() {
 
 export function getCreateStoryApiV1StoriesPost200Response() {
   return {
-    created_at: faker.date.anytime().toISOString(),
-    id: faker.string.uuid(),
-    title: faker.lorem.words(),
-    title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    short_text: faker.lorem.words(),
-    short_text_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
     cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    cta_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    published_at: faker.date.anytime().toISOString(),
-    expires_at: faker.date.anytime().toISOString(),
-    is_active: faker.datatype.boolean(),
-    created_by: faker.helpers.arrayElement([faker.lorem.words(), null, null]),
     cover_url_optimized: faker.helpers.arrayElement([
       faker.lorem.words(),
       null,
     ]),
+    created_at: faker.date.anytime().toISOString(),
+    created_by: faker.helpers.arrayElement([faker.lorem.words(), null, null]),
+    cta_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    expires_at: faker.date.anytime().toISOString(),
+    id: faker.string.uuid(),
+    is_active: faker.datatype.boolean(),
+    published_at: faker.date.anytime().toISOString(),
+    short_text: faker.lorem.words(),
+    short_text_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    title: faker.lorem.words(),
+    title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
   };
 }
 
@@ -10375,6 +10037,8 @@ export function getCreateStoryApiV1StoriesPost422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -10392,99 +10056,6 @@ export function getCreateStoryApiV1StoriesPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getUpdateStoryApiV1StoriesStoryIdPatch200Response() {
-  return {
-    created_at: faker.date.anytime().toISOString(),
-    id: faker.string.uuid(),
-    title: faker.lorem.words(),
-    title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    short_text: faker.lorem.words(),
-    short_text_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    cta_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    published_at: faker.date.anytime().toISOString(),
-    expires_at: faker.date.anytime().toISOString(),
-    is_active: faker.datatype.boolean(),
-    created_by: faker.helpers.arrayElement([faker.lorem.words(), null, null]),
-    cover_url_optimized: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
-}
-
-export function getUpdateStoryApiV1StoriesStoryIdPatch422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getDeleteStoryApiV1StoriesStoryIdDelete200Response() {
-  return {};
-}
-
-export function getDeleteStoryApiV1StoriesStoryIdDelete422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
@@ -10505,6 +10076,8 @@ export function getUploadStoryCoverApiV1StoriesUploadCoverPost422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -10522,193 +10095,16 @@ export function getUploadStoryCoverApiV1StoriesUploadCoverPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getAddScheduleApiV1SchedulePost200Response() {
-  return {
-    group_id: faker.string.uuid(),
-    subject: faker.lorem.words(),
-    teacher: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    room: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    weekday: faker.lorem.words(),
-    start_time: faker.date.anytime().toISOString(),
-    end_time: faker.date.anytime().toISOString(),
-    parity: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    lesson_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    created_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    id: faker.string.uuid(),
-    lesson_type_display: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
-}
-
-export function getAddScheduleApiV1SchedulePost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getGetScheduleApiV1ScheduleIdGet200Response() {
-  return (() => {
-    const arrayMin = 1;
-    const arrayMax = MAX_ARRAY_LENGTH;
-    const safeMin = Math.min(arrayMin, arrayMax);
-    return [
-      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-    ].map((_) => ({
-      group_id: faker.string.uuid(),
-      subject: faker.lorem.words(),
-      teacher: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      room: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      weekday: faker.lorem.words(),
-      start_time: faker.date.anytime().toISOString(),
-      end_time: faker.date.anytime().toISOString(),
-      parity: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      lesson_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      created_at: faker.helpers.arrayElement([
-        faker.date.anytime().toISOString(),
-        null,
-      ]),
-      id: faker.string.uuid(),
-      lesson_type_display: faker.helpers.arrayElement([
-        faker.lorem.words(),
-        null,
-      ]),
-    }));
-  })();
-}
-
-export function getGetScheduleApiV1ScheduleIdGet422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getUpdateScheduleApiV1ScheduleIdPatch200Response() {
-  return {
-    group_id: faker.string.uuid(),
-    subject: faker.lorem.words(),
-    teacher: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    room: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    weekday: faker.lorem.words(),
-    start_time: faker.date.anytime().toISOString(),
-    end_time: faker.date.anytime().toISOString(),
-    parity: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    lesson_type: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    created_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    id: faker.string.uuid(),
-    lesson_type_display: faker.helpers.arrayElement([
-      faker.lorem.words(),
-      null,
-    ]),
-  };
-}
-
-export function getUpdateScheduleApiV1ScheduleIdPatch422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getDeleteScheduleApiV1ScheduleIdDelete200Response() {
+export function getDeleteStoryApiV1StoriesStoryIdDelete200Response() {
   return {};
 }
 
-export function getDeleteScheduleApiV1ScheduleIdDelete422Response() {
+export function getDeleteStoryApiV1StoriesStoryIdDelete422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -10717,6 +10113,8 @@ export function getDeleteScheduleApiV1ScheduleIdDelete422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -10734,1228 +10132,33 @@ export function getDeleteScheduleApiV1ScheduleIdDelete422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getAttendanceSummaryApiV1StatsAttendanceGet200Response() {
-  return null;
-}
-
-export function getAttendanceSummaryApiV1StatsAttendanceGet422Response() {
+export function getUpdateStoryApiV1StoriesStoryIdPatch200Response() {
   return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getGradeSummaryApiV1StatsGradesGet200Response() {
-  return null;
-}
-
-export function getGradeSummaryApiV1StatsGradesGet422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getParticipationSummaryApiV1StatsParticipationGet200Response() {
-  return null;
-}
-
-export function getParticipationSummaryApiV1StatsParticipationGet422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getStatsSummaryApiV1StatsSummaryGet200Response() {
-  return null;
-}
-
-export function getStatsSummaryApiV1StatsSummaryGet422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getGetChatsApiV1ChatsGet200Response() {
-  return {
-    items: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        id: faker.string.uuid(),
-        chat_type: faker.lorem.words(),
-        name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        created_by: faker.helpers.arrayElement([faker.string.uuid(), null]),
-        participants: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) => ({
-            id: faker.string.uuid(),
-            email: faker.internet.email(),
-            full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            is_active: faker.datatype.boolean(),
-          }));
-        })(),
-        last_message: faker.helpers.arrayElement([
-          {
-            content: faker.string.alpha({ length: { min: 0, max: 2000 } }),
-            id: faker.string.uuid(),
-            chat_id: faker.string.uuid(),
-            sender_id: faker.string.uuid(),
-            created_at: faker.date.anytime().toISOString(),
-            read_status: faker.datatype.boolean(),
-            read_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-            edited_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-            deleted_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-            sender: faker.helpers.arrayElement([
-              {
-                id: faker.string.uuid(),
-                email: faker.internet.email(),
-                full_name: faker.helpers.arrayElement([
-                  faker.lorem.words(),
-                  null,
-                ]),
-                avatar_url: faker.helpers.arrayElement([
-                  faker.lorem.words(),
-                  null,
-                ]),
-                is_active: faker.datatype.boolean(),
-              },
-              null,
-            ]),
-            sender_presence: faker.helpers.arrayElement([
-              {
-                active: faker.datatype.boolean(),
-                last_seen_at: faker.helpers.arrayElement([
-                  faker.date.anytime().toISOString(),
-                  null,
-                ]),
-              },
-              null,
-            ]),
-            attachments: (() => {
-              const arrayMin = 1;
-              const arrayMax = MAX_ARRAY_LENGTH;
-              const safeMin = Math.min(arrayMin, arrayMax);
-              return [
-                ...new Array(
-                  faker.number.int({ min: safeMin, max: arrayMax }),
-                ).keys(),
-              ].map((_) => ({
-                id: faker.string.uuid(),
-                url: faker.internet.url(),
-                file_type: faker.lorem.words(),
-                filename: faker.person.fullName(),
-                size: faker.number.int(),
-                created_at: faker.helpers.arrayElement([
-                  faker.date.anytime().toISOString(),
-                  null,
-                ]),
-                message_id: faker.helpers.arrayElement([
-                  faker.string.uuid(),
-                  null,
-                ]),
-              }));
-            })(),
-            reactions: (() => {
-              const arrayMin = 1;
-              const arrayMax = MAX_ARRAY_LENGTH;
-              const safeMin = Math.min(arrayMin, arrayMax);
-              return [
-                ...new Array(
-                  faker.number.int({ min: safeMin, max: arrayMax }),
-                ).keys(),
-              ].map((_) => ({
-                emoji: faker.lorem.words(),
-                count: faker.number.int(),
-                reacted_by_me: faker.datatype.boolean(),
-              }));
-            })(),
-            reply_to: faker.helpers.arrayElement([
-              {
-                id: faker.string.uuid(),
-                sender_id: faker.string.uuid(),
-                sender_name: faker.helpers.arrayElement([
-                  faker.lorem.words(),
-                  null,
-                ]),
-                content: faker.lorem.words(),
-                deleted_at: faker.helpers.arrayElement([
-                  faker.date.anytime().toISOString(),
-                  null,
-                ]),
-              },
-              null,
-            ]),
-            forwarded_from_name: faker.helpers.arrayElement([
-              faker.lorem.words(),
-              null,
-            ]),
-          },
-          null,
-        ]),
-        unread_count: faker.number.int(),
-        created_at: faker.date.anytime().toISOString(),
-        updated_at: faker.date.anytime().toISOString(),
-        presence: faker.helpers.arrayElement([
-          [...new Array(5).keys()]
-            .map((_) => ({
-              [faker.lorem.word()]: {
-                active: faker.datatype.boolean(),
-                last_seen_at: faker.helpers.arrayElement([
-                  faker.date.anytime().toISOString(),
-                  null,
-                ]),
-              },
-            }))
-            .reduce((acc, next) => Object.assign(acc, next), {}),
-          null,
-        ]),
-        read_receipts: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) => ({
-            user_id: faker.string.uuid(),
-            last_read_at: faker.date.anytime().toISOString(),
-          }));
-        })(),
-      }));
-    })(),
-    has_more: faker.datatype.boolean(),
-    next_cursor: faker.helpers.arrayElement([faker.lorem.words(), null]),
-  };
-}
-
-export function getGetChatsApiV1ChatsGet422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getCreateChatApiV1ChatsPost200Response() {
-  return {
-    id: faker.string.uuid(),
-    chat_type: faker.lorem.words(),
-    name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    created_by: faker.helpers.arrayElement([faker.string.uuid(), null]),
-    participants: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        id: faker.string.uuid(),
-        email: faker.internet.email(),
-        full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        is_active: faker.datatype.boolean(),
-      }));
-    })(),
-    last_message: faker.helpers.arrayElement([
-      {
-        content: faker.string.alpha({ length: { min: 0, max: 2000 } }),
-        id: faker.string.uuid(),
-        chat_id: faker.string.uuid(),
-        sender_id: faker.string.uuid(),
-        created_at: faker.date.anytime().toISOString(),
-        read_status: faker.datatype.boolean(),
-        read_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        edited_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        deleted_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        sender: faker.helpers.arrayElement([
-          {
-            id: faker.string.uuid(),
-            email: faker.internet.email(),
-            full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            is_active: faker.datatype.boolean(),
-          },
-          null,
-        ]),
-        sender_presence: faker.helpers.arrayElement([
-          {
-            active: faker.datatype.boolean(),
-            last_seen_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-          },
-          null,
-        ]),
-        attachments: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) => ({
-            id: faker.string.uuid(),
-            url: faker.internet.url(),
-            file_type: faker.lorem.words(),
-            filename: faker.person.fullName(),
-            size: faker.number.int(),
-            created_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-            message_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-          }));
-        })(),
-        reactions: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) => ({
-            emoji: faker.lorem.words(),
-            count: faker.number.int(),
-            reacted_by_me: faker.datatype.boolean(),
-          }));
-        })(),
-        reply_to: faker.helpers.arrayElement([
-          {
-            id: faker.string.uuid(),
-            sender_id: faker.string.uuid(),
-            sender_name: faker.helpers.arrayElement([
-              faker.lorem.words(),
-              null,
-            ]),
-            content: faker.lorem.words(),
-            deleted_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-          },
-          null,
-        ]),
-        forwarded_from_name: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-      },
-      null,
-    ]),
-    unread_count: faker.number.int(),
-    created_at: faker.date.anytime().toISOString(),
-    updated_at: faker.date.anytime().toISOString(),
-    presence: faker.helpers.arrayElement([
-      [...new Array(5).keys()]
-        .map((_) => ({
-          [faker.lorem.word()]: {
-            active: faker.datatype.boolean(),
-            last_seen_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-          },
-        }))
-        .reduce((acc, next) => Object.assign(acc, next), {}),
-      null,
-    ]),
-    read_receipts: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        user_id: faker.string.uuid(),
-        last_read_at: faker.date.anytime().toISOString(),
-      }));
-    })(),
-  };
-}
-
-export function getCreateChatApiV1ChatsPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getCreateGroupApiV1ChatsGroupsPost200Response() {
-  return {
-    id: faker.string.uuid(),
-    chat_type: faker.lorem.words(),
-    name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    created_by: faker.helpers.arrayElement([faker.string.uuid(), null]),
-    participants: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        id: faker.string.uuid(),
-        email: faker.internet.email(),
-        full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        is_active: faker.datatype.boolean(),
-      }));
-    })(),
-    last_message: faker.helpers.arrayElement([
-      {
-        content: faker.string.alpha({ length: { min: 0, max: 2000 } }),
-        id: faker.string.uuid(),
-        chat_id: faker.string.uuid(),
-        sender_id: faker.string.uuid(),
-        created_at: faker.date.anytime().toISOString(),
-        read_status: faker.datatype.boolean(),
-        read_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        edited_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        deleted_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        sender: faker.helpers.arrayElement([
-          {
-            id: faker.string.uuid(),
-            email: faker.internet.email(),
-            full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            is_active: faker.datatype.boolean(),
-          },
-          null,
-        ]),
-        sender_presence: faker.helpers.arrayElement([
-          {
-            active: faker.datatype.boolean(),
-            last_seen_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-          },
-          null,
-        ]),
-        attachments: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) => ({
-            id: faker.string.uuid(),
-            url: faker.internet.url(),
-            file_type: faker.lorem.words(),
-            filename: faker.person.fullName(),
-            size: faker.number.int(),
-            created_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-            message_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-          }));
-        })(),
-        reactions: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) => ({
-            emoji: faker.lorem.words(),
-            count: faker.number.int(),
-            reacted_by_me: faker.datatype.boolean(),
-          }));
-        })(),
-        reply_to: faker.helpers.arrayElement([
-          {
-            id: faker.string.uuid(),
-            sender_id: faker.string.uuid(),
-            sender_name: faker.helpers.arrayElement([
-              faker.lorem.words(),
-              null,
-            ]),
-            content: faker.lorem.words(),
-            deleted_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-          },
-          null,
-        ]),
-        forwarded_from_name: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-      },
-      null,
-    ]),
-    unread_count: faker.number.int(),
-    created_at: faker.date.anytime().toISOString(),
-    updated_at: faker.date.anytime().toISOString(),
-    presence: faker.helpers.arrayElement([
-      [...new Array(5).keys()]
-        .map((_) => ({
-          [faker.lorem.word()]: {
-            active: faker.datatype.boolean(),
-            last_seen_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-          },
-        }))
-        .reduce((acc, next) => Object.assign(acc, next), {}),
-      null,
-    ]),
-    read_receipts: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        user_id: faker.string.uuid(),
-        last_read_at: faker.date.anytime().toISOString(),
-      }));
-    })(),
-  };
-}
-
-export function getCreateGroupApiV1ChatsGroupsPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getGetChatApiV1ChatsChatIdGet200Response() {
-  return {
-    id: faker.string.uuid(),
-    chat_type: faker.lorem.words(),
-    name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    created_by: faker.helpers.arrayElement([faker.string.uuid(), null]),
-    participants: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        id: faker.string.uuid(),
-        email: faker.internet.email(),
-        full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        is_active: faker.datatype.boolean(),
-      }));
-    })(),
-    last_message: faker.helpers.arrayElement([
-      {
-        content: faker.string.alpha({ length: { min: 0, max: 2000 } }),
-        id: faker.string.uuid(),
-        chat_id: faker.string.uuid(),
-        sender_id: faker.string.uuid(),
-        created_at: faker.date.anytime().toISOString(),
-        read_status: faker.datatype.boolean(),
-        read_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        edited_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        deleted_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        sender: faker.helpers.arrayElement([
-          {
-            id: faker.string.uuid(),
-            email: faker.internet.email(),
-            full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            is_active: faker.datatype.boolean(),
-          },
-          null,
-        ]),
-        sender_presence: faker.helpers.arrayElement([
-          {
-            active: faker.datatype.boolean(),
-            last_seen_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-          },
-          null,
-        ]),
-        attachments: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) => ({
-            id: faker.string.uuid(),
-            url: faker.internet.url(),
-            file_type: faker.lorem.words(),
-            filename: faker.person.fullName(),
-            size: faker.number.int(),
-            created_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-            message_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-          }));
-        })(),
-        reactions: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) => ({
-            emoji: faker.lorem.words(),
-            count: faker.number.int(),
-            reacted_by_me: faker.datatype.boolean(),
-          }));
-        })(),
-        reply_to: faker.helpers.arrayElement([
-          {
-            id: faker.string.uuid(),
-            sender_id: faker.string.uuid(),
-            sender_name: faker.helpers.arrayElement([
-              faker.lorem.words(),
-              null,
-            ]),
-            content: faker.lorem.words(),
-            deleted_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-          },
-          null,
-        ]),
-        forwarded_from_name: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-      },
-      null,
-    ]),
-    unread_count: faker.number.int(),
-    created_at: faker.date.anytime().toISOString(),
-    updated_at: faker.date.anytime().toISOString(),
-    presence: faker.helpers.arrayElement([
-      [...new Array(5).keys()]
-        .map((_) => ({
-          [faker.lorem.word()]: {
-            active: faker.datatype.boolean(),
-            last_seen_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-          },
-        }))
-        .reduce((acc, next) => Object.assign(acc, next), {}),
-      null,
-    ]),
-    read_receipts: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        user_id: faker.string.uuid(),
-        last_read_at: faker.date.anytime().toISOString(),
-      }));
-    })(),
-  };
-}
-
-export function getGetChatApiV1ChatsChatIdGet422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getDeleteChatApiV1ChatsChatIdDelete200Response() {
-  return {
-    chat_id: faker.string.uuid(),
-    status: faker.lorem.words(),
-    deleted_messages: faker.number.int(),
-    deleted_attachments: faker.number.int(),
-  };
-}
-
-export function getDeleteChatApiV1ChatsChatIdDelete422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getRenameChatApiV1ChatsChatIdPatch200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
-}
-
-export function getRenameChatApiV1ChatsChatIdPatch422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getGetMessagesApiV1ChatsChatIdMessagesGet200Response() {
-  return {
-    items: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        content: faker.string.alpha({ length: { min: 0, max: 2000 } }),
-        id: faker.string.uuid(),
-        chat_id: faker.string.uuid(),
-        sender_id: faker.string.uuid(),
-        created_at: faker.date.anytime().toISOString(),
-        read_status: faker.datatype.boolean(),
-        read_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        edited_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        deleted_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        sender: faker.helpers.arrayElement([
-          {
-            id: faker.string.uuid(),
-            email: faker.internet.email(),
-            full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-            is_active: faker.datatype.boolean(),
-          },
-          null,
-        ]),
-        sender_presence: faker.helpers.arrayElement([
-          {
-            active: faker.datatype.boolean(),
-            last_seen_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-          },
-          null,
-        ]),
-        attachments: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) => ({
-            id: faker.string.uuid(),
-            url: faker.internet.url(),
-            file_type: faker.lorem.words(),
-            filename: faker.person.fullName(),
-            size: faker.number.int(),
-            created_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-            message_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-          }));
-        })(),
-        reactions: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) => ({
-            emoji: faker.lorem.words(),
-            count: faker.number.int(),
-            reacted_by_me: faker.datatype.boolean(),
-          }));
-        })(),
-        reply_to: faker.helpers.arrayElement([
-          {
-            id: faker.string.uuid(),
-            sender_id: faker.string.uuid(),
-            sender_name: faker.helpers.arrayElement([
-              faker.lorem.words(),
-              null,
-            ]),
-            content: faker.lorem.words(),
-            deleted_at: faker.helpers.arrayElement([
-              faker.date.anytime().toISOString(),
-              null,
-            ]),
-          },
-          null,
-        ]),
-        forwarded_from_name: faker.helpers.arrayElement([
-          faker.lorem.words(),
-          null,
-        ]),
-      }));
-    })(),
-    has_more: faker.datatype.boolean(),
-    next_cursor: faker.helpers.arrayElement([faker.lorem.words(), null]),
-  };
-}
-
-export function getGetMessagesApiV1ChatsChatIdMessagesGet422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getSendMessageApiV1ChatsChatIdMessagesPost200Response() {
-  return {
-    content: faker.string.alpha({ length: { min: 0, max: 2000 } }),
-    id: faker.string.uuid(),
-    chat_id: faker.string.uuid(),
-    sender_id: faker.string.uuid(),
-    created_at: faker.date.anytime().toISOString(),
-    read_status: faker.datatype.boolean(),
-    read_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    edited_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    deleted_at: faker.helpers.arrayElement([
-      faker.date.anytime().toISOString(),
-      null,
-    ]),
-    sender: faker.helpers.arrayElement([
-      {
-        id: faker.string.uuid(),
-        email: faker.internet.email(),
-        full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        is_active: faker.datatype.boolean(),
-      },
-      null,
-    ]),
-    sender_presence: faker.helpers.arrayElement([
-      {
-        active: faker.datatype.boolean(),
-        last_seen_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-      },
-      null,
-    ]),
-    attachments: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        id: faker.string.uuid(),
-        url: faker.internet.url(),
-        file_type: faker.lorem.words(),
-        filename: faker.person.fullName(),
-        size: faker.number.int(),
-        created_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-        message_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-      }));
-    })(),
-    reactions: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        emoji: faker.lorem.words(),
-        count: faker.number.int(),
-        reacted_by_me: faker.datatype.boolean(),
-      }));
-    })(),
-    reply_to: faker.helpers.arrayElement([
-      {
-        id: faker.string.uuid(),
-        sender_id: faker.string.uuid(),
-        sender_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        content: faker.lorem.words(),
-        deleted_at: faker.helpers.arrayElement([
-          faker.date.anytime().toISOString(),
-          null,
-        ]),
-      },
-      null,
-    ]),
-    forwarded_from_name: faker.helpers.arrayElement([
+    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url_optimized: faker.helpers.arrayElement([
       faker.lorem.words(),
       null,
     ]),
+    created_at: faker.date.anytime().toISOString(),
+    created_by: faker.helpers.arrayElement([faker.lorem.words(), null, null]),
+    cta_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    expires_at: faker.date.anytime().toISOString(),
+    id: faker.string.uuid(),
+    is_active: faker.datatype.boolean(),
+    published_at: faker.date.anytime().toISOString(),
+    short_text: faker.lorem.words(),
+    short_text_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    title: faker.lorem.words(),
+    title_en: faker.helpers.arrayElement([faker.lorem.words(), null]),
   };
 }
 
-export function getSendMessageApiV1ChatsChatIdMessagesPost422Response() {
+export function getUpdateStoryApiV1StoriesStoryIdPatch422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -11964,6 +10167,8 @@ export function getSendMessageApiV1ChatsChatIdMessagesPost422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -11981,116 +10186,275 @@ export function getSendMessageApiV1ChatsChatIdMessagesPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getForwardMessagesApiV1ChatsDestChatIdForwardPost200Response() {
+export function getGetUsersApiV1UsersGet200Response() {
   return (() => {
     const arrayMin = 1;
     const arrayMax = MAX_ARRAY_LENGTH;
     const safeMin = Math.min(arrayMin, arrayMax);
     return [
       ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-    ].map((_) => ({
-      content: faker.string.alpha({ length: { min: 0, max: 2000 } }),
-      id: faker.string.uuid(),
-      chat_id: faker.string.uuid(),
-      sender_id: faker.string.uuid(),
-      created_at: faker.date.anytime().toISOString(),
-      read_status: faker.datatype.boolean(),
-      read_at: faker.helpers.arrayElement([
-        faker.date.anytime().toISOString(),
-        null,
-      ]),
-      edited_at: faker.helpers.arrayElement([
-        faker.date.anytime().toISOString(),
-        null,
-      ]),
-      deleted_at: faker.helpers.arrayElement([
-        faker.date.anytime().toISOString(),
-        null,
-      ]),
-      sender: faker.helpers.arrayElement([
+    ].map((_) =>
+      faker.helpers.arrayElement([
         {
-          id: faker.string.uuid(),
-          email: faker.internet.email(),
-          full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          about: faker.helpers.arrayElement([faker.lorem.words(), null]),
           avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          is_active: faker.datatype.boolean(),
-        },
-        null,
-      ]),
-      sender_presence: faker.helpers.arrayElement([
-        {
-          active: faker.datatype.boolean(),
-          last_seen_at: faker.helpers.arrayElement([
-            faker.date.anytime().toISOString(),
+          avatar_url_optimized: faker.helpers.arrayElement([
+            faker.lorem.words(),
             null,
           ]),
-        },
-        null,
-      ]),
-      attachments: (() => {
-        const arrayMin = 1;
-        const arrayMax = MAX_ARRAY_LENGTH;
-        const safeMin = Math.min(arrayMin, arrayMax);
-        return [
-          ...new Array(
-            faker.number.int({ min: safeMin, max: arrayMax }),
-          ).keys(),
-        ].map((_) => ({
-          id: faker.string.uuid(),
-          url: faker.internet.url(),
-          file_type: faker.lorem.words(),
-          filename: faker.person.fullName(),
-          size: faker.number.int(),
+          course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
           created_at: faker.helpers.arrayElement([
             faker.date.anytime().toISOString(),
             null,
           ]),
-          message_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-        }));
-      })(),
-      reactions: (() => {
-        const arrayMin = 1;
-        const arrayMax = MAX_ARRAY_LENGTH;
-        const safeMin = Math.min(arrayMin, arrayMax);
-        return [
-          ...new Array(
-            faker.number.int({ min: safeMin, max: arrayMax }),
-          ).keys(),
-        ].map((_) => ({
-          emoji: faker.lorem.words(),
-          count: faker.number.int(),
-          reacted_by_me: faker.datatype.boolean(),
-        }));
-      })(),
-      reply_to: faker.helpers.arrayElement([
-        {
+          education_path: faker.helpers.arrayElement([
+            {
+              course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              education_level: faker.helpers.arrayElement([
+                faker.lorem.words(),
+                null,
+              ]),
+              institute: faker.helpers.arrayElement([
+                faker.lorem.words(),
+                null,
+              ]),
+              program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              record_book_number: faker.helpers.arrayElement([
+                faker.lorem.words(),
+                null,
+              ]),
+              track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            },
+            null,
+          ]),
+          full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
           id: faker.string.uuid(),
-          sender_id: faker.string.uuid(),
-          sender_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-          content: faker.lorem.words(),
-          deleted_at: faker.helpers.arrayElement([
+          institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          is_active: faker.datatype.boolean(),
+          position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          profile_department: faker.helpers.arrayElement([
+            faker.lorem.words(),
+            null,
+          ]),
+          profile_detail: faker.helpers.arrayElement([
+            {
+              about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              achievements: faker.helpers.arrayElement([
+                faker.lorem.words(),
+                null,
+              ]),
+              department: faker.helpers.arrayElement([
+                faker.lorem.words(),
+                null,
+              ]),
+              position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            },
+            null,
+          ]),
+          profile_status: faker.helpers.arrayElement([
+            faker.lorem.words(),
+            null,
+          ]),
+          role: faker.helpers.arrayElement([
+            "student",
+            "teacher",
+            "admin",
+            "superuser",
+            "anonymous",
+          ]),
+          telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        },
+        {
+          about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          avatar_url_optimized: faker.helpers.arrayElement([
+            faker.lorem.words(),
+            null,
+          ]),
+          course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          cover_url_optimized: faker.helpers.arrayElement([
+            faker.lorem.words(),
+            null,
+          ]),
+          created_at: faker.helpers.arrayElement([
             faker.date.anytime().toISOString(),
             null,
           ]),
+          dnd_enabled: faker.datatype.boolean(),
+          dnd_end: faker.helpers.arrayElement([
+            new Date().toISOString().substring(11, 16),
+            null,
+          ]),
+          dnd_start: faker.helpers.arrayElement([
+            new Date().toISOString().substring(11, 16),
+            null,
+          ]),
+          education_level: faker.helpers.arrayElement([
+            faker.lorem.words(),
+            null,
+          ]),
+          education_path: faker.helpers.arrayElement([
+            {
+              course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              education_level: faker.helpers.arrayElement([
+                faker.lorem.words(),
+                null,
+              ]),
+              institute: faker.helpers.arrayElement([
+                faker.lorem.words(),
+                null,
+              ]),
+              program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              record_book_number: faker.helpers.arrayElement([
+                faker.lorem.words(),
+                null,
+              ]),
+              track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            },
+            null,
+          ]),
+          email: faker.internet.email(),
+          email_mfa_enabled_at: faker.helpers.arrayElement([
+            faker.date.anytime().toISOString(),
+            null,
+          ]),
+          email_verified_at: faker.helpers.arrayElement([
+            faker.date.anytime().toISOString(),
+            null,
+          ]),
+          full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+          id: faker.string.uuid(),
+          institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          is_active: faker.datatype.boolean(),
+          mfa_default_method: faker.helpers.arrayElement([
+            faker.helpers.arrayElement(["totp", "email_otp"]),
+            null,
+          ]),
+          mfa_last_verified_at: faker.helpers.arrayElement([
+            faker.date.anytime().toISOString(),
+            null,
+          ]),
+          mfa_required: faker.datatype.boolean(),
+          pending_email: faker.helpers.arrayElement([
+            faker.internet.email(),
+            null,
+          ]),
+          position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          preferences: faker.helpers.arrayElement([
+            {
+              created_at: faker.helpers.arrayElement([
+                faker.date.anytime().toISOString(),
+                null,
+              ]),
+              dnd_enabled: faker.helpers.arrayElement([
+                faker.datatype.boolean(),
+                null,
+              ]),
+              dnd_end: faker.helpers.arrayElement([
+                new Date().toISOString().substring(11, 16),
+                null,
+              ]),
+              dnd_start: faker.helpers.arrayElement([
+                new Date().toISOString().substring(11, 16),
+                null,
+              ]),
+              timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            },
+            null,
+          ]),
+          profile_department: faker.helpers.arrayElement([
+            faker.lorem.words(),
+            null,
+          ]),
+          profile_detail: faker.helpers.arrayElement([
+            {
+              about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              achievements: faker.helpers.arrayElement([
+                faker.lorem.words(),
+                null,
+              ]),
+              department: faker.helpers.arrayElement([
+                faker.lorem.words(),
+                null,
+              ]),
+              position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+            },
+            null,
+          ]),
+          profile_status: faker.helpers.arrayElement([
+            faker.lorem.words(),
+            null,
+          ]),
+          program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          record_book_number: faker.helpers.arrayElement([
+            faker.lorem.words(),
+            null,
+          ]),
+          recovery_codes_left: faker.number.int(),
+          role: faker.helpers.arrayElement([
+            "student",
+            "teacher",
+            "admin",
+            "superuser",
+            "anonymous",
+          ]),
+          spotify_connected: faker.datatype.boolean(),
+          spotify_display_name: faker.helpers.arrayElement([
+            faker.lorem.words(),
+            null,
+          ]),
+          spotify_is_connected: faker.helpers.arrayElement([
+            faker.datatype.boolean(),
+            null,
+          ]),
+          telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+          totp_enrollments: (() => {
+            const arrayMin = 1;
+            const arrayMax = MAX_ARRAY_LENGTH;
+            const safeMin = Math.min(arrayMin, arrayMax);
+            return [
+              ...new Array(
+                faker.number.int({ min: safeMin, max: arrayMax }),
+              ).keys(),
+            ].map((_) => ({
+              confirmed_at: faker.helpers.arrayElement([
+                faker.date.anytime().toISOString(),
+                null,
+              ]),
+              created_at: faker.date.anytime().toISOString(),
+              id: faker.string.uuid(),
+              is_active: faker.datatype.boolean(),
+              label: faker.helpers.arrayElement([faker.lorem.words(), null]),
+              revoked_at: faker.helpers.arrayElement([
+                faker.date.anytime().toISOString(),
+                null,
+              ]),
+              user_id: faker.string.uuid(),
+            }));
+          })(),
+          track: faker.helpers.arrayElement([faker.lorem.words(), null]),
         },
-        null,
       ]),
-      forwarded_from_name: faker.helpers.arrayElement([
-        faker.lorem.words(),
-        null,
-      ]),
-    }));
+    );
   })();
 }
 
-export function getForwardMessagesApiV1ChatsDestChatIdForwardPost422Response() {
+export function getGetUsersApiV1UsersGet422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -12099,6 +10463,8 @@ export function getForwardMessagesApiV1ChatsDestChatIdForwardPost422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -12116,20 +10482,165 @@ export function getForwardMessagesApiV1ChatsDestChatIdForwardPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getMarkReadApiV1ChatsChatIdReadPost200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
+export function getCreateUserApiV1UsersPost200Response() {
+  return {
+    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    dnd_enabled: faker.datatype.boolean(),
+    dnd_end: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    dnd_start: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    education_path: faker.helpers.arrayElement([
+      {
+        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        education_level: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        record_book_number: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    email: faker.internet.email(),
+    email_mfa_enabled_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    email_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    id: faker.string.uuid(),
+    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    is_active: faker.datatype.boolean(),
+    mfa_default_method: faker.helpers.arrayElement([
+      faker.helpers.arrayElement(["totp", "email_otp"]),
+      null,
+    ]),
+    mfa_last_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    mfa_required: faker.datatype.boolean(),
+    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
+    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    preferences: faker.helpers.arrayElement([
+      {
+        created_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        dnd_enabled: faker.helpers.arrayElement([
+          faker.datatype.boolean(),
+          null,
+        ]),
+        dnd_end: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        dnd_start: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    profile_detail: faker.helpers.arrayElement([
+      {
+        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    recovery_codes_left: faker.number.int(),
+    role: faker.helpers.arrayElement([
+      "student",
+      "teacher",
+      "admin",
+      "superuser",
+      "anonymous",
+    ]),
+    spotify_connected: faker.datatype.boolean(),
+    spotify_display_name: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    spotify_is_connected: faker.helpers.arrayElement([
+      faker.datatype.boolean(),
+      null,
+    ]),
+    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    totp_enrollments: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        confirmed_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        created_at: faker.date.anytime().toISOString(),
+        id: faker.string.uuid(),
+        is_active: faker.datatype.boolean(),
+        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        revoked_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        user_id: faker.string.uuid(),
+      }));
+    })(),
+    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
 }
 
-export function getMarkReadApiV1ChatsChatIdReadPost422Response() {
+export function getCreateUserApiV1UsersPost422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -12138,6 +10649,8 @@ export function getMarkReadApiV1ChatsChatIdReadPost422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -12155,381 +10668,16 @@ export function getMarkReadApiV1ChatsChatIdReadPost422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getEditMessageApiV1ChatsChatIdMessagesMessageIdPatch200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
-}
-
-export function getEditMessageApiV1ChatsChatIdMessagesMessageIdPatch422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getDeleteMessageApiV1ChatsChatIdMessagesMessageIdDelete200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
-}
-
-export function getDeleteMessageApiV1ChatsChatIdMessagesMessageIdDelete422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getAddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPost200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
-}
-
-export function getAddReactionApiV1ChatsChatIdMessagesMessageIdReactionsPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getRemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDelete200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
-}
-
-export function getRemoveReactionApiV1ChatsChatIdMessagesMessageIdReactionsDelete422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getGetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGet200Response() {
-  return (() => {
-    const arrayMin = 1;
-    const arrayMax = MAX_ARRAY_LENGTH;
-    const safeMin = Math.min(arrayMin, arrayMax);
-    return [
-      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-    ].map((_) => ({
-      user_id: faker.string.uuid(),
-      name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-      avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
-    }));
-  })();
-}
-
-export function getGetReactorsApiV1ChatsChatIdMessagesMessageIdReactionsGet422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getTypingIndicatorApiV1ChatsChatIdTypingPost200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
-}
-
-export function getTypingIndicatorApiV1ChatsChatIdTypingPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getClearChatHistoryApiV1ChatsChatIdClearPost200Response() {
-  return {
-    chat_id: faker.string.uuid(),
-    status: faker.lorem.words(),
-    deleted_messages: faker.number.int(),
-    deleted_attachments: faker.number.int(),
-  };
-}
-
-export function getClearChatHistoryApiV1ChatsChatIdClearPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getAddParticipantApiV1ChatsChatIdParticipantsPost200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
-}
-
-export function getAddParticipantApiV1ChatsChatIdParticipantsPost422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getRemoveParticipantApiV1ChatsChatIdParticipantsUserIdDelete200Response() {
-  return [...new Array(5).keys()]
-    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
-    .reduce((acc, next) => Object.assign(acc, next), {});
-}
-
-export function getRemoveParticipantApiV1ChatsChatIdParticipantsUserIdDelete422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getProxyImageApiV1ImgPathGet200Response() {
+export function getExportAccessAuditApiV1UsersAuditExportGet200Response() {
   return null;
 }
 
-export function getProxyImageApiV1ImgPathGet422Response() {
+export function getExportAccessAuditApiV1UsersAuditExportGet422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -12538,6 +10686,8 @@ export function getProxyImageApiV1ImgPathGet422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -12555,18 +10705,1524 @@ export function getProxyImageApiV1ImgPathGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getUnifiedSearchApiV1SearchGet200Response() {
+export function getMeApiV1UsersMeGet200Response() {
+  return {
+    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    dnd_enabled: faker.datatype.boolean(),
+    dnd_end: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    dnd_start: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    education_path: faker.helpers.arrayElement([
+      {
+        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        education_level: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        record_book_number: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    email: faker.internet.email(),
+    email_mfa_enabled_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    email_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    id: faker.string.uuid(),
+    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    is_active: faker.datatype.boolean(),
+    mfa_default_method: faker.helpers.arrayElement([
+      faker.helpers.arrayElement(["totp", "email_otp"]),
+      null,
+    ]),
+    mfa_last_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    mfa_required: faker.datatype.boolean(),
+    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
+    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    preferences: faker.helpers.arrayElement([
+      {
+        created_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        dnd_enabled: faker.helpers.arrayElement([
+          faker.datatype.boolean(),
+          null,
+        ]),
+        dnd_end: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        dnd_start: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    profile_detail: faker.helpers.arrayElement([
+      {
+        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    recovery_codes_left: faker.number.int(),
+    role: faker.helpers.arrayElement([
+      "student",
+      "teacher",
+      "admin",
+      "superuser",
+      "anonymous",
+    ]),
+    spotify_connected: faker.datatype.boolean(),
+    spotify_display_name: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    spotify_is_connected: faker.helpers.arrayElement([
+      faker.datatype.boolean(),
+      null,
+    ]),
+    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    totp_enrollments: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        confirmed_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        created_at: faker.date.anytime().toISOString(),
+        id: faker.string.uuid(),
+        is_active: faker.datatype.boolean(),
+        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        revoked_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        user_id: faker.string.uuid(),
+      }));
+    })(),
+    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getUpdateMeApiV1UsersMePut200Response() {
+  return {
+    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    dnd_enabled: faker.datatype.boolean(),
+    dnd_end: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    dnd_start: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    education_path: faker.helpers.arrayElement([
+      {
+        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        education_level: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        record_book_number: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    email: faker.internet.email(),
+    email_mfa_enabled_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    email_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    id: faker.string.uuid(),
+    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    is_active: faker.datatype.boolean(),
+    mfa_default_method: faker.helpers.arrayElement([
+      faker.helpers.arrayElement(["totp", "email_otp"]),
+      null,
+    ]),
+    mfa_last_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    mfa_required: faker.datatype.boolean(),
+    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
+    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    preferences: faker.helpers.arrayElement([
+      {
+        created_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        dnd_enabled: faker.helpers.arrayElement([
+          faker.datatype.boolean(),
+          null,
+        ]),
+        dnd_end: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        dnd_start: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    profile_detail: faker.helpers.arrayElement([
+      {
+        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    recovery_codes_left: faker.number.int(),
+    role: faker.helpers.arrayElement([
+      "student",
+      "teacher",
+      "admin",
+      "superuser",
+      "anonymous",
+    ]),
+    spotify_connected: faker.datatype.boolean(),
+    spotify_display_name: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    spotify_is_connected: faker.helpers.arrayElement([
+      faker.datatype.boolean(),
+      null,
+    ]),
+    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    totp_enrollments: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        confirmed_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        created_at: faker.date.anytime().toISOString(),
+        id: faker.string.uuid(),
+        is_active: faker.datatype.boolean(),
+        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        revoked_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        user_id: faker.string.uuid(),
+      }));
+    })(),
+    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getUpdateMeApiV1UsersMePut422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getDeleteAvatarApiV1UsersMeAvatarDelete200Response() {
+  return {
+    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    dnd_enabled: faker.datatype.boolean(),
+    dnd_end: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    dnd_start: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    education_path: faker.helpers.arrayElement([
+      {
+        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        education_level: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        record_book_number: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    email: faker.internet.email(),
+    email_mfa_enabled_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    email_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    id: faker.string.uuid(),
+    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    is_active: faker.datatype.boolean(),
+    mfa_default_method: faker.helpers.arrayElement([
+      faker.helpers.arrayElement(["totp", "email_otp"]),
+      null,
+    ]),
+    mfa_last_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    mfa_required: faker.datatype.boolean(),
+    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
+    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    preferences: faker.helpers.arrayElement([
+      {
+        created_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        dnd_enabled: faker.helpers.arrayElement([
+          faker.datatype.boolean(),
+          null,
+        ]),
+        dnd_end: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        dnd_start: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    profile_detail: faker.helpers.arrayElement([
+      {
+        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    recovery_codes_left: faker.number.int(),
+    role: faker.helpers.arrayElement([
+      "student",
+      "teacher",
+      "admin",
+      "superuser",
+      "anonymous",
+    ]),
+    spotify_connected: faker.datatype.boolean(),
+    spotify_display_name: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    spotify_is_connected: faker.helpers.arrayElement([
+      faker.datatype.boolean(),
+      null,
+    ]),
+    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    totp_enrollments: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        confirmed_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        created_at: faker.date.anytime().toISOString(),
+        id: faker.string.uuid(),
+        is_active: faker.datatype.boolean(),
+        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        revoked_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        user_id: faker.string.uuid(),
+      }));
+    })(),
+    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getUploadAvatarApiV1UsersMeAvatarPost200Response() {
+  return {
+    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    dnd_enabled: faker.datatype.boolean(),
+    dnd_end: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    dnd_start: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    education_path: faker.helpers.arrayElement([
+      {
+        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        education_level: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        record_book_number: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    email: faker.internet.email(),
+    email_mfa_enabled_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    email_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    id: faker.string.uuid(),
+    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    is_active: faker.datatype.boolean(),
+    mfa_default_method: faker.helpers.arrayElement([
+      faker.helpers.arrayElement(["totp", "email_otp"]),
+      null,
+    ]),
+    mfa_last_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    mfa_required: faker.datatype.boolean(),
+    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
+    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    preferences: faker.helpers.arrayElement([
+      {
+        created_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        dnd_enabled: faker.helpers.arrayElement([
+          faker.datatype.boolean(),
+          null,
+        ]),
+        dnd_end: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        dnd_start: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    profile_detail: faker.helpers.arrayElement([
+      {
+        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    recovery_codes_left: faker.number.int(),
+    role: faker.helpers.arrayElement([
+      "student",
+      "teacher",
+      "admin",
+      "superuser",
+      "anonymous",
+    ]),
+    spotify_connected: faker.datatype.boolean(),
+    spotify_display_name: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    spotify_is_connected: faker.helpers.arrayElement([
+      faker.datatype.boolean(),
+      null,
+    ]),
+    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    totp_enrollments: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        confirmed_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        created_at: faker.date.anytime().toISOString(),
+        id: faker.string.uuid(),
+        is_active: faker.datatype.boolean(),
+        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        revoked_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        user_id: faker.string.uuid(),
+      }));
+    })(),
+    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getUploadAvatarApiV1UsersMeAvatarPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getDeleteCoverApiV1UsersMeCoverDelete200Response() {
+  return {
+    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    dnd_enabled: faker.datatype.boolean(),
+    dnd_end: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    dnd_start: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    education_path: faker.helpers.arrayElement([
+      {
+        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        education_level: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        record_book_number: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    email: faker.internet.email(),
+    email_mfa_enabled_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    email_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    id: faker.string.uuid(),
+    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    is_active: faker.datatype.boolean(),
+    mfa_default_method: faker.helpers.arrayElement([
+      faker.helpers.arrayElement(["totp", "email_otp"]),
+      null,
+    ]),
+    mfa_last_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    mfa_required: faker.datatype.boolean(),
+    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
+    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    preferences: faker.helpers.arrayElement([
+      {
+        created_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        dnd_enabled: faker.helpers.arrayElement([
+          faker.datatype.boolean(),
+          null,
+        ]),
+        dnd_end: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        dnd_start: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    profile_detail: faker.helpers.arrayElement([
+      {
+        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    recovery_codes_left: faker.number.int(),
+    role: faker.helpers.arrayElement([
+      "student",
+      "teacher",
+      "admin",
+      "superuser",
+      "anonymous",
+    ]),
+    spotify_connected: faker.datatype.boolean(),
+    spotify_display_name: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    spotify_is_connected: faker.helpers.arrayElement([
+      faker.datatype.boolean(),
+      null,
+    ]),
+    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    totp_enrollments: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        confirmed_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        created_at: faker.date.anytime().toISOString(),
+        id: faker.string.uuid(),
+        is_active: faker.datatype.boolean(),
+        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        revoked_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        user_id: faker.string.uuid(),
+      }));
+    })(),
+    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getUploadCoverApiV1UsersMeCoverPost200Response() {
+  return {
+    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    dnd_enabled: faker.datatype.boolean(),
+    dnd_end: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    dnd_start: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    education_path: faker.helpers.arrayElement([
+      {
+        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        education_level: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        record_book_number: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    email: faker.internet.email(),
+    email_mfa_enabled_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    email_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    id: faker.string.uuid(),
+    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    is_active: faker.datatype.boolean(),
+    mfa_default_method: faker.helpers.arrayElement([
+      faker.helpers.arrayElement(["totp", "email_otp"]),
+      null,
+    ]),
+    mfa_last_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    mfa_required: faker.datatype.boolean(),
+    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
+    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    preferences: faker.helpers.arrayElement([
+      {
+        created_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        dnd_enabled: faker.helpers.arrayElement([
+          faker.datatype.boolean(),
+          null,
+        ]),
+        dnd_end: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        dnd_start: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    profile_detail: faker.helpers.arrayElement([
+      {
+        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    recovery_codes_left: faker.number.int(),
+    role: faker.helpers.arrayElement([
+      "student",
+      "teacher",
+      "admin",
+      "superuser",
+      "anonymous",
+    ]),
+    spotify_connected: faker.datatype.boolean(),
+    spotify_display_name: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    spotify_is_connected: faker.helpers.arrayElement([
+      faker.datatype.boolean(),
+      null,
+    ]),
+    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    totp_enrollments: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        confirmed_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        created_at: faker.date.anytime().toISOString(),
+        id: faker.string.uuid(),
+        is_active: faker.datatype.boolean(),
+        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        revoked_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        user_id: faker.string.uuid(),
+      }));
+    })(),
+    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getUploadCoverApiV1UsersMeCoverPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getDeleteCurrentUserAccountApiV1UsersMeDeletePost200Response() {
+  return {
+    anonymized_email: faker.internet.email(),
+    deleted: faker.datatype.boolean(),
+  };
+}
+
+export function getDeleteCurrentUserAccountApiV1UsersMeDeletePost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getChangeEmailApiV1UsersMeEmailPost200Response() {
+  return {
+    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    dnd_enabled: faker.datatype.boolean(),
+    dnd_end: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    dnd_start: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    education_path: faker.helpers.arrayElement([
+      {
+        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        education_level: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        record_book_number: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    email: faker.internet.email(),
+    email_mfa_enabled_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    email_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    id: faker.string.uuid(),
+    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    is_active: faker.datatype.boolean(),
+    mfa_default_method: faker.helpers.arrayElement([
+      faker.helpers.arrayElement(["totp", "email_otp"]),
+      null,
+    ]),
+    mfa_last_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    mfa_required: faker.datatype.boolean(),
+    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
+    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    preferences: faker.helpers.arrayElement([
+      {
+        created_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        dnd_enabled: faker.helpers.arrayElement([
+          faker.datatype.boolean(),
+          null,
+        ]),
+        dnd_end: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        dnd_start: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    profile_detail: faker.helpers.arrayElement([
+      {
+        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    recovery_codes_left: faker.number.int(),
+    role: faker.helpers.arrayElement([
+      "student",
+      "teacher",
+      "admin",
+      "superuser",
+      "anonymous",
+    ]),
+    spotify_connected: faker.datatype.boolean(),
+    spotify_display_name: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    spotify_is_connected: faker.helpers.arrayElement([
+      faker.datatype.boolean(),
+      null,
+    ]),
+    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    totp_enrollments: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        confirmed_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        created_at: faker.date.anytime().toISOString(),
+        id: faker.string.uuid(),
+        is_active: faker.datatype.boolean(),
+        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        revoked_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        user_id: faker.string.uuid(),
+      }));
+    })(),
+    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getChangeEmailApiV1UsersMeEmailPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getVerifyEmailChangeApiV1UsersMeEmailConfirmPost200Response() {
+  return {
+    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    dnd_enabled: faker.datatype.boolean(),
+    dnd_end: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    dnd_start: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    education_path: faker.helpers.arrayElement([
+      {
+        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        education_level: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        record_book_number: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    email: faker.internet.email(),
+    email_mfa_enabled_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    email_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    id: faker.string.uuid(),
+    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    is_active: faker.datatype.boolean(),
+    mfa_default_method: faker.helpers.arrayElement([
+      faker.helpers.arrayElement(["totp", "email_otp"]),
+      null,
+    ]),
+    mfa_last_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    mfa_required: faker.datatype.boolean(),
+    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
+    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    preferences: faker.helpers.arrayElement([
+      {
+        created_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        dnd_enabled: faker.helpers.arrayElement([
+          faker.datatype.boolean(),
+          null,
+        ]),
+        dnd_end: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        dnd_start: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    profile_detail: faker.helpers.arrayElement([
+      {
+        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    recovery_codes_left: faker.number.int(),
+    role: faker.helpers.arrayElement([
+      "student",
+      "teacher",
+      "admin",
+      "superuser",
+      "anonymous",
+    ]),
+    spotify_connected: faker.datatype.boolean(),
+    spotify_display_name: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    spotify_is_connected: faker.helpers.arrayElement([
+      faker.datatype.boolean(),
+      null,
+    ]),
+    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    totp_enrollments: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        confirmed_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        created_at: faker.date.anytime().toISOString(),
+        id: faker.string.uuid(),
+        is_active: faker.datatype.boolean(),
+        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        revoked_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        user_id: faker.string.uuid(),
+      }));
+    })(),
+    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+  };
+}
+
+export function getVerifyEmailChangeApiV1UsersMeEmailConfirmPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getExportCurrentUserDataApiV1UsersMeExportPost200Response() {
+  return {
+    access_logs: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({}));
+    })(),
+    mfa_challenge_count: faker.number.int(),
+    mfa_enrollments: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({}));
+    })(),
+    notifications: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({}));
+    })(),
+    profile: {},
+    sessions: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({}));
+    })(),
+  };
+}
+
+export function getChangePasswordApiV1UsersMePasswordPost200Response() {
+  return {
+    ok: faker.datatype.boolean(),
+    revoked_sessions: faker.number.int(),
+  };
+}
+
+export function getChangePasswordApiV1UsersMePasswordPost422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getDeleteUserAdminApiV1UsersUserIdDelete200Response() {
   return {};
 }
 
-export function getUnifiedSearchApiV1SearchGet422Response() {
+export function getDeleteUserAdminApiV1UsersUserIdDelete422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -12575,6 +12231,8 @@ export function getUnifiedSearchApiV1SearchGet422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -12592,114 +12250,165 @@ export function getUnifiedSearchApiV1SearchGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
 }
 
-export function getListFeatureFlagsAdminFeatureFlagsGet200Response() {
-  return (() => {
-    const arrayMin = 1;
-    const arrayMax = MAX_ARRAY_LENGTH;
-    const safeMin = Math.min(arrayMin, arrayMax);
-    return [
-      ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-    ].map((_) => ({
-      name: faker.person.fullName(),
-      enabled: faker.datatype.boolean(),
-      default: faker.datatype.boolean(),
-      description: faker.lorem.words(),
-      provider: faker.lorem.words(),
-      evaluation_reason: faker.lorem.words(),
-      management: faker.lorem.words(),
-      config_path: faker.lorem.words(),
-    }));
-  })();
-}
-
-export function getListAuditLogsAdminAuditGet200Response() {
+export function getUpdateUserAdminApiV1UsersUserIdPatch200Response() {
   return {
-    items: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        id: faker.string.uuid(),
-        actor_user_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
-        actor_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        subject_user_id: faker.helpers.arrayElement([
-          faker.string.uuid(),
-          null,
-        ]),
-        subject_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        resource_type: faker.lorem.words(),
-        resource_id: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        action: faker.lorem.words(),
-        context: faker.helpers.arrayElement([{}, null]),
-        ip_address: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        user_agent: faker.helpers.arrayElement([faker.lorem.words(), null]),
-        created_at: faker.date.anytime().toISOString(),
-        is_valid: faker.datatype.boolean(),
-      }));
-    })(),
-    total: faker.number.int(),
-  };
-}
-
-export function getListAuditLogsAdminAuditGet422Response() {
-  return {
-    detail: (() => {
-      const arrayMin = 1;
-      const arrayMax = MAX_ARRAY_LENGTH;
-      const safeMin = Math.min(arrayMin, arrayMax);
-      return [
-        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
-      ].map((_) => ({
-        loc: (() => {
-          const arrayMin = 1;
-          const arrayMax = MAX_ARRAY_LENGTH;
-          const safeMin = Math.min(arrayMin, arrayMax);
-          return [
-            ...new Array(
-              faker.number.int({ min: safeMin, max: arrayMax }),
-            ).keys(),
-          ].map((_) =>
-            faker.helpers.arrayElement([
-              faker.lorem.words(),
-              faker.number.int(),
-            ]),
-          );
-        })(),
-        msg: faker.lorem.words(),
-        type: faker.lorem.words(),
-        input: null,
-        ctx: {},
-      }));
-    })(),
-  };
-}
-
-export function getGetTimeTravelStateAdminAuditTimeTravelGet200Response() {
-  return {
-    aggregate_type: faker.lorem.words(),
-    aggregate_id: faker.string.uuid(),
-    target_timestamp: faker.date.anytime().toISOString(),
-    state_at_timestamp: faker.helpers.arrayElement([{}, null]),
-    version_at_timestamp: faker.helpers.arrayElement([
-      faker.number.int(),
+    about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    avatar_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
       null,
     ]),
-    events_replayed: faker.number.int(),
-    chain_integrity_valid: faker.datatype.boolean(),
-    tampered_event_id: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    cover_url_optimized: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    created_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    dnd_enabled: faker.datatype.boolean(),
+    dnd_end: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    dnd_start: faker.helpers.arrayElement([
+      new Date().toISOString().substring(11, 16),
+      null,
+    ]),
+    education_level: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    education_path: faker.helpers.arrayElement([
+      {
+        course: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        education_level: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        record_book_number: faker.helpers.arrayElement([
+          faker.lorem.words(),
+          null,
+        ]),
+        track: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    email: faker.internet.email(),
+    email_mfa_enabled_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    email_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    full_name: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    group_id: faker.helpers.arrayElement([faker.string.uuid(), null]),
+    id: faker.string.uuid(),
+    institute: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    is_active: faker.datatype.boolean(),
+    mfa_default_method: faker.helpers.arrayElement([
+      faker.helpers.arrayElement(["totp", "email_otp"]),
+      null,
+    ]),
+    mfa_last_verified_at: faker.helpers.arrayElement([
+      faker.date.anytime().toISOString(),
+      null,
+    ]),
+    mfa_required: faker.datatype.boolean(),
+    pending_email: faker.helpers.arrayElement([faker.internet.email(), null]),
+    position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    preferences: faker.helpers.arrayElement([
+      {
+        created_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        dnd_enabled: faker.helpers.arrayElement([
+          faker.datatype.boolean(),
+          null,
+        ]),
+        dnd_end: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        dnd_start: faker.helpers.arrayElement([
+          new Date().toISOString().substring(11, 16),
+          null,
+        ]),
+        timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    profile_detail: faker.helpers.arrayElement([
+      {
+        about: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        achievements: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        department: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        position: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+      },
+      null,
+    ]),
+    profile_status: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    program: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    record_book_number: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    recovery_codes_left: faker.number.int(),
+    role: faker.helpers.arrayElement([
+      "student",
+      "teacher",
+      "admin",
+      "superuser",
+      "anonymous",
+    ]),
+    spotify_connected: faker.datatype.boolean(),
+    spotify_display_name: faker.helpers.arrayElement([
+      faker.lorem.words(),
+      null,
+    ]),
+    spotify_is_connected: faker.helpers.arrayElement([
+      faker.datatype.boolean(),
+      null,
+    ]),
+    telegram: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    timezone: faker.helpers.arrayElement([faker.lorem.words(), null]),
+    totp_enrollments: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        confirmed_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        created_at: faker.date.anytime().toISOString(),
+        id: faker.string.uuid(),
+        is_active: faker.datatype.boolean(),
+        label: faker.helpers.arrayElement([faker.lorem.words(), null]),
+        revoked_at: faker.helpers.arrayElement([
+          faker.date.anytime().toISOString(),
+          null,
+        ]),
+        user_id: faker.string.uuid(),
+      }));
+    })(),
+    track: faker.helpers.arrayElement([faker.lorem.words(), null]),
   };
 }
 
-export function getGetTimeTravelStateAdminAuditTimeTravelGet422Response() {
+export function getUpdateUserAdminApiV1UsersUserIdPatch422Response() {
   return {
     detail: (() => {
       const arrayMin = 1;
@@ -12708,6 +12417,8 @@ export function getGetTimeTravelStateAdminAuditTimeTravelGet422Response() {
       return [
         ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
       ].map((_) => ({
+        ctx: {},
+        input: null,
         loc: (() => {
           const arrayMin = 1;
           const arrayMax = MAX_ARRAY_LENGTH;
@@ -12725,16 +12436,69 @@ export function getGetTimeTravelStateAdminAuditTimeTravelGet422Response() {
         })(),
         msg: faker.lorem.words(),
         type: faker.lorem.words(),
-        input: null,
-        ctx: {},
       }));
     })(),
   };
+}
+
+export function getLivenessHealthLiveGet200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
+}
+
+export function getReadyHealthReadyGet200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
+}
+
+export function getHealthzHealthzGet200Response() {
+  return null;
+}
+
+export function getHealthzHealthzGet422Response() {
+  return {
+    detail: (() => {
+      const arrayMin = 1;
+      const arrayMax = MAX_ARRAY_LENGTH;
+      const safeMin = Math.min(arrayMin, arrayMax);
+      return [
+        ...new Array(faker.number.int({ min: safeMin, max: arrayMax })).keys(),
+      ].map((_) => ({
+        ctx: {},
+        input: null,
+        loc: (() => {
+          const arrayMin = 1;
+          const arrayMax = MAX_ARRAY_LENGTH;
+          const safeMin = Math.min(arrayMin, arrayMax);
+          return [
+            ...new Array(
+              faker.number.int({ min: safeMin, max: arrayMax }),
+            ).keys(),
+          ].map((_) =>
+            faker.helpers.arrayElement([
+              faker.lorem.words(),
+              faker.number.int(),
+            ]),
+          );
+        })(),
+        msg: faker.lorem.words(),
+        type: faker.lorem.words(),
+      }));
+    })(),
+  };
+}
+
+export function getReadyReadyGet200Response() {
+  return [...new Array(5).keys()]
+    .map((_) => ({ [faker.lorem.word()]: faker.lorem.words() }))
+    .reduce((acc, next) => Object.assign(acc, next), {});
 }
 
 export function getIssueWsUpgradeTicketWsTicketPost201Response() {
   return {
-    ticket: faker.lorem.words(),
     expires_in: faker.number.int(),
+    ticket: faker.lorem.words(),
   };
 }

@@ -12,7 +12,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { Map, Layer } from "react-map-gl/maplibre"
 import type { MapRef, LayerProps } from "react-map-gl/maplibre"
 import { useTranslation } from "react-i18next"
-import { CAMPUS_COORDINATES } from "@/constants/campus"
+import { CAMPUS_COORDINATES, CAMPUS_DETAIL_ZOOM } from "@/constants/campus"
 import { getCampusBuildings, type BuildingId, type MapCategory } from "@/data/campusBuildings"
 import { CAMPUS_POIS } from "@/data/campusPOI"
 import type { MapViewport } from "@/features/map/schema"
@@ -23,6 +23,13 @@ import { WeatherParticles } from "./WeatherParticles"
 import { EventMarker } from "./EventMarker"
 import type { WeatherCondition } from "@/utils/weatherCodes"
 import type { MapEvent } from "@/hooks/useMapEvents"
+import { isLowPowerDevice } from "@/utils/deviceCapabilities"
+import {
+  layoutMapMarkerOffsets,
+  layoutProjectedMapMarkerOffsets,
+  type MapMarkerCollisionItem,
+  type ScreenPoint,
+} from "@/features/map/markerCollisionLayout"
 import "maplibre-gl/dist/maplibre-gl.css"
 
 /* ── Tile styles ── */
@@ -83,15 +90,9 @@ const SKY_PRESETS: Record<TimePeriod, { sky: string; horizon: string; fog: strin
   night: { sky: "#0f172a", horizon: "#1e293b", fog: "#1e293b" }, // deep navy
 }
 
-const SKY_DARK: { sky: string; horizon: string; fog: string } = {
-  sky: "#0f172a",
-  horizon: "#1e293b",
-  fog: "#1e293b",
-}
-
 function getSkyConfig(isDark: boolean, period?: TimePeriod) {
   // Dark mode always uses deep navy regardless of period
-  const preset = isDark ? SKY_DARK : SKY_PRESETS[period ?? "afternoon"]
+  const preset = isDark ? SKY_PRESETS.night : SKY_PRESETS[period ?? "afternoon"]
   return {
     "sky-color": preset.sky,
     "sky-horizon-blend": 0.3,
@@ -135,7 +136,7 @@ export function MapLibreMapComponent({
   onSelectBuilding,
   onDeselectBuilding,
   mapRef,
-  isDark,
+  isDark = false,
   timePeriod,
   weatherCondition,
   mapEvents,
@@ -143,6 +144,11 @@ export function MapLibreMapComponent({
   onMapMoveEnd,
 }: MapLibreMapProps) {
   const { t, i18n } = useTranslation("map")
+  // The cinematic intro is decorative work on top of MapLibre's already
+  // expensive WebGL/style bootstrap. Respect the same explicit constrained
+  // device signals used by weather particles so low-power/Save-Data clients
+  // get an immediate usable viewport instead of a long-running camera tween.
+  const lowPowerDevice = isLowPowerDevice()
   const hasAnimatedIntro = useRef(false)
   const introTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   /** Single active popup — only one marker popup open at a time (FIX-109-07). */
@@ -154,6 +160,10 @@ export function MapLibreMapComponent({
    *  programmatic easeTo for building selection) sync to URL since they
    *  represent user intent. */
   const enableUrlSyncRef = useRef(!!urlInitialViewport)
+  const [projectedMarkerLayout, setProjectedMarkerLayout] = useState<{
+    markers: readonly MapMarkerCollisionItem[]
+    points: ReadonlyMap<string, ScreenPoint>
+  } | null>(null)
 
   const buildings = useMemo(
     () => getCampusBuildings(i18n.resolvedLanguage ?? i18n.language),
@@ -182,11 +192,63 @@ export function MapLibreMapComponent({
   /** Event counts per building — used for indicator badges on markers. */
   const eventCountByBuilding = useMemo(() => {
     const counts: Record<string, number> = {}
-    for (const evt of mapEvents ?? []) {
-      counts[evt.buildingId] = (counts[evt.buildingId] ?? 0) + 1
+    if (mapEvents) {
+      for (const evt of mapEvents) {
+        counts[evt.buildingId] = (counts[evt.buildingId] ?? 0) + 1
+      }
     }
     return counts
   }, [mapEvents])
+
+  const collisionMarkers = useMemo<readonly MapMarkerCollisionItem[]>(
+    () => [
+      ...buildings.map((building) => ({
+        id: `building-${building.letter}`,
+        latitude: building.geoCoords[0],
+        longitude: building.geoCoords[1],
+        width: 44,
+        height: 50,
+        anchor: "bottom" as const,
+      })),
+      ...CAMPUS_POIS.map((poi) => ({
+        id: `poi-${poi.id}`,
+        latitude: poi.coords[0],
+        longitude: poi.coords[1],
+        width: 44,
+        height: 44,
+        anchor: "center" as const,
+      })),
+      ...(mapEvents ?? []).map((event) => ({
+        id: `event-${event.id}`,
+        latitude: event.geoCoords[0],
+        longitude: event.geoCoords[1],
+        width: 44,
+        height: 45,
+        anchor: "bottom" as const,
+      })),
+    ],
+    [buildings, mapEvents]
+  )
+
+  const markerOffsets = useMemo(
+    () =>
+      projectedMarkerLayout?.markers === collisionMarkers
+        ? layoutProjectedMapMarkerOffsets(collisionMarkers, projectedMarkerLayout.points)
+        : layoutMapMarkerOffsets(collisionMarkers),
+    [collisionMarkers, projectedMarkerLayout]
+  )
+
+  const updateCollisionProjection = useCallback(
+    (map: ReturnType<MapRef["getMap"]>) => {
+      const nextPoints = new globalThis.Map<string, ScreenPoint>()
+      for (const marker of collisionMarkers) {
+        const point = map.project([marker.longitude, marker.latitude])
+        nextPoints.set(marker.id, { x: point.x, y: point.y })
+      }
+      setProjectedMarkerLayout({ markers: collisionMarkers, points: nextPoints })
+    },
+    [collisionMarkers]
+  )
 
   const mapStyle = isDark ? STYLE_DARK : STYLE_LIGHT
 
@@ -202,7 +264,10 @@ export function MapLibreMapComponent({
    * Handles all cases:
    * - Fresh load: polls ~1-3s until tiles ready → intro animation
    * - StrictMode remount: map already loaded from first mount → runs on first frame
-   * - Navigation back (reuseMaps): map at final position → flyTo is a no-op
+   * - Navigation back: a fresh, fully-owned instance restores the URL viewport
+   *
+   * The map is intentionally not placed in react-map-gl's global reuse pool:
+   * unmount must release WebGL workers/listeners instead of retaining them.
    */
   useEffect(() => {
     let raf: number
@@ -222,9 +287,10 @@ export function MapLibreMapComponent({
 
       // Canvas resize (FIX-109-01: fixes stale drag handlers after View Transition)
       map.resize()
+      updateCollisionProjection(map)
 
       // Sky/fog atmosphere
-      map.setSky(getSkyConfig(!!isDark, timePeriod))
+      map.setSky(getSkyConfig(isDark, timePeriod))
 
       // Cinematic intro — only once per component lifetime.
       // Wave 120 SW5: if URL provided a saved viewport, jumpTo it instead
@@ -233,7 +299,8 @@ export function MapLibreMapComponent({
       // tiles loaded slowly). Otherwise, run the intro as before.
       if (!hasAnimatedIntro.current) {
         hasAnimatedIntro.current = true
-        const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        const prefersReduced =
+          lowPowerDevice || window.matchMedia("(prefers-reduced-motion: reduce)").matches
 
         if (urlInitialViewport) {
           map.jumpTo({
@@ -245,7 +312,7 @@ export function MapLibreMapComponent({
         } else if (prefersReduced) {
           map.jumpTo({
             center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
-            zoom: 16,
+            zoom: CAMPUS_DETAIL_ZOOM,
             pitch: 45,
             bearing: 0,
           })
@@ -254,7 +321,7 @@ export function MapLibreMapComponent({
             if (cancelled) return
             map.flyTo({
               center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
-              zoom: 16,
+              zoom: CAMPUS_DETAIL_ZOOM,
               pitch: 45,
               bearing: 0,
               duration: 2500,
@@ -275,11 +342,25 @@ export function MapLibreMapComponent({
         introTimeoutRef.current = null
       }
     }
-  }, [mapRef, isDark, timePeriod, urlInitialViewport])
+  }, [mapRef, isDark, lowPowerDevice, timePeriod, urlInitialViewport, updateCollisionProjection])
+
+  useEffect(() => {
+    const map = mapRef?.current?.getMap()
+    if (map?.loaded()) updateCollisionProjection(map)
+  }, [mapRef, updateCollisionProjection])
 
   /* ── URL-sync onMoveEnd handler (Wave 120 SW5) ── */
   const handleMoveEnd = useCallback(
     (evt: { originalEvent?: unknown }) => {
+      const map = mapRef?.current?.getMap()
+      if (!map) return
+      const nextCamera = {
+        zoom: map.getZoom(),
+        pitch: map.getPitch(),
+        bearing: map.getBearing(),
+      }
+      updateCollisionProjection(map)
+
       // Skip programmatic moves until first user interaction (intro / sky setup).
       // After first user-initiated move, originalEvent is set on subsequent
       // user events; we latch enableUrlSyncRef so even programmatic easeTo
@@ -291,30 +372,29 @@ export function MapLibreMapComponent({
           return
         }
       }
-      const map = mapRef?.current?.getMap()
-      if (!map) return
       const center = map.getCenter()
       onMapMoveEnd?.({
-        zoom: map.getZoom(),
+        zoom: nextCamera.zoom,
         latitude: center.lat,
         longitude: center.lng,
-        pitch: map.getPitch(),
-        bearing: map.getBearing(),
+        pitch: nextCamera.pitch,
+        bearing: nextCamera.bearing,
       })
     },
-    [mapRef, onMapMoveEnd]
+    [mapRef, onMapMoveEnd, updateCollisionProjection]
   )
 
   /* ── Update sky on theme/time-of-day change ── */
   useEffect(() => {
     const map = mapRef?.current?.getMap()
     if (!map || !map.loaded()) return
-    map.setSky(getSkyConfig(!!isDark, timePeriod))
+    map.setSky(getSkyConfig(isDark, timePeriod))
   }, [isDark, timePeriod, mapRef])
 
   return (
     <div
       className="maplibre-map-wrapper relative h-full min-h-[inherit]"
+      style={{ overscrollBehavior: "contain" }}
       role="application"
       aria-label={t("a11y.mapContainer")}
       aria-roledescription={t("a11y.mapRoleDescription")}
@@ -340,14 +420,13 @@ export function MapLibreMapComponent({
             : {
                 longitude: CAMPUS_COORDINATES.lon,
                 latitude: CAMPUS_COORDINATES.lat,
-                zoom: 13,
+                zoom: CAMPUS_DETAIL_ZOOM,
                 pitch: 0,
                 bearing: -20,
               }
         }
         mapStyle={mapStyle}
         style={{ width: "100%", height: "100%", minHeight: "inherit", borderRadius: 12 }}
-        reuseMaps
         attributionControl={false}
         onClick={() => {
           onDeselectBuilding()
@@ -372,6 +451,7 @@ export function MapLibreMapComponent({
             onPopupOpen={() => setActivePopupId(`bldg-${building.letter}`)}
             onPopupClose={() => setActivePopupId(null)}
             eventCount={eventCountByBuilding[building.letter] ?? 0}
+            offset={markerOffsets.get(`building-${building.letter}`)}
           />
         ))}
 
@@ -386,6 +466,7 @@ export function MapLibreMapComponent({
               onDeselectBuilding()
             }}
             onPopupClose={() => setActivePopupId(null)}
+            offset={markerOffsets.get(`poi-${poi.id}`)}
           />
         ))}
 
@@ -400,12 +481,13 @@ export function MapLibreMapComponent({
               onDeselectBuilding()
             }}
             onPopupClose={() => setActivePopupId(null)}
+            offset={markerOffsets.get(`event-${event.id}`)}
           />
         ))}
       </Map>
 
       {/* Weather particle overlay — above map, below markers */}
-      {weatherCondition && <WeatherParticles condition={weatherCondition} isDark={!!isDark} />}
+      {weatherCondition && <WeatherParticles condition={weatherCondition} isDark={isDark} />}
 
       {/* Premium map controls — mobile: centered bottom strip, desktop: right column.
           Controls stay at bottom:12px — mobile bottom sheet (fixed z-50) overlays them naturally. */}

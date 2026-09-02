@@ -34,13 +34,13 @@ shares the Redis instance.
 |-------------|-----|---------------|---------|---------|
 | `session:{sid}` | JWT expiry | Python `app/auth/redis_session.py` | Python API | Active session data |
 | `session:v2:{sid}` | JWT expiry | Python `app/services/auth/redis_session.py` | Python API | Active session data (v2 schema) |
-| `revoked:jti:{jti}` | remaining JWT lifetime; safe 24h fallback when the session key is missing or unbounded | Python `app/auth/redis_session.py`, `app/services/auth/redis_session.py` via `app/auth/revocation.py` | Python API (`app/api/deps/auth.py`, `app/api/ws/auth.py`, `app/services/auth/graphql_token_validator.py`), Go gateway (`middleware/auth.go`), Go ws-hub (`pkg/hub/handlers.go`) | Revocation list for logged-out JWTs |
+| `revoked:jti:{jti}` | remaining JWT lifetime; safe 24h fallback when the session key is missing or unbounded | Python `app/auth/redis_session.py`, `app/services/auth/redis_session.py` via `app/auth/revocation.py`; irreversible MFA retirement migration `202608250002` | Python API (`app/api/deps/auth.py`, `app/api/ws/auth.py`, `app/services/auth/graphql_token_validator.py`), Go gateway (`middleware/auth.go`), Go ws-hub (`pkg/hub/handlers.go`) | Revocation list for logged-out JWTs and already-upgraded real-time sessions |
 
 **Pub/Sub channels:**
 
 | Channel | Publisher | Subscriber | Payload |
 |---------|-----------|------------|---------|
-| `session:revocations` | Python (`app/auth/redis_session.py`, `app/services/auth/redis_session.py`) | Go gateway (`middleware/auth.go`) | `{jti}` — raw JWT ID string |
+| `session:revocations` | Python (`app/auth/redis_session.py`, `app/services/auth/redis_session.py`); irreversible MFA retirement migration `202608250002` | Go gateway (`middleware/auth.go`), Go ws-hub (`pkg/hub/session_revocation.go`) | `{jti}` — raw JWT ID string |
 
 > **Cross-service invariant (tested in `tests/integration/test_redis_contract.py`):**
 > The gateway subscribes to `session:revocations` and derives the revocation key as
@@ -50,9 +50,14 @@ shares the Redis instance.
 > source session key has TTL `0`, `-1`, or `-2`, the producer MUST use the
 > authoritative session expiry or the 24-hour maximum accepted token age. A failed
 > tombstone write MUST fail the revoke operation and MUST NOT delete the session key.
-> The ws-hub MUST check this key after atomically consuming an upgrade ticket
-> and fail closed if the lookup errors, so a pre-logout ticket is rejected once
-> the revocation record exists. Every producer and consumer MUST use the same
+> The ws-hub MUST retain the JTI after atomically consuming an upgrade ticket,
+> check this key both at upgrade and before every incoming user action, and fail
+> closed if the lookup errors. It must also subscribe to this channel and close
+> only connections carrying the published JTI; Pub/Sub improves prompt teardown
+> but is not an authorization source. This protects already-upgraded WebSocket
+> and WebTransport sessions when a notification is missed. Upgrade-ticket JTIs
+> must be UUIDs; malformed identities are rejected before a transport is
+> accepted, rather than relying on the listener to interpret them. Every producer and consumer MUST use the same
 > dedicated `REVOCATION_REDIS_URL`. The shipped Compose and Helm topology
 > provisions this as a persistent, AOF-backed Redis/Valkey process with
 > `maxmemory-policy noeviction`. Backend `CACHE_REDIS_URL` and gateway/ws-hub
@@ -64,6 +69,21 @@ shares the Redis instance.
 > lookup and fail-closed authentication instead of reusing stale "not revoked"
 > state. The Pub/Sub listener also health-checks Redis and purges L1 before
 > reconnecting after a detected outage.
+>
+> The dedicated store disables Redis administrative and server-control commands
+> (`ACL`, `CONFIG`, `FLUSH*`, `FUNCTION`, `MIGRATE`, `MODULE`, `MONITOR`,
+> `REPLICAOF`/`SLAVEOF`, and `SHUTDOWN`). This is a bounded server-side
+> denylist, not per-client ACL isolation: a principal that holds the shared
+> write credential can still write arbitrary tombstones. Credential scope and
+> rotation therefore remain part of the Kubernetes Secret and workload-identity
+> boundary; no component may treat command disabling as authorization. The
+> dedicated credential is always
+> `revocation-redis-credentials` / `revocation-redis-password`, distinct from
+> the ordinary cache `redis-credentials` / `redis-password`. The
+> `university-connections` Secret distributes the resulting URL only to the
+> backend, migration Job, gateway, and ws-hub. Outbox and notification workers
+> receive neither that URL nor NetworkPolicy egress to the store, and their
+> explicit process role disables the Python revocation-client capability.
 
 ---
 

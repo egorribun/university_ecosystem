@@ -1,7 +1,7 @@
 """Unit tests for AuthRepository (app/repositories/auth_repository.py).
 
 Hermetic against the SQLite test DB (``db_session`` fixture; password_reset_tokens,
-email_change_tokens, failed_login_attempts, mfa_totp_enrollments + webauthn tables
+email_change_tokens, failed_login_attempts, and mfa_totp_enrollments
 are auto-created via create_all). Real users come from ``user_factory``. ``with_for_update``
 is a no-op on SQLite (no error), so the lock paths are exercised structurally.
 """
@@ -206,7 +206,7 @@ async def test_invalidate_other_email_change_tokens(repo, db_session, user_facto
     assert await repo.get_valid_email_change_token(_h("ec-drop")) is None
 
 
-# --- MFA capabilities + WebAuthn ---------------------------------------------
+# --- MFA capabilities --------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -215,13 +215,6 @@ async def test_has_active_mfa_false_for_user_without_factors(repo, user_factory)
     capabilities = await repo.get_user_mfa_capabilities(user.id)
     assert capabilities == {k: False for k in capabilities}
     assert await repo.has_active_mfa(user.id) is False
-
-
-@pytest.mark.asyncio
-async def test_webauthn_credential_lookups_empty(repo, user_factory):
-    user = await user_factory()
-    assert await repo.get_webauthn_credential(user.id, "no-such-cred") is None
-    assert await repo.list_user_webauthn_credentials(user.id) == []
 
 
 # --- Failed login attempts (lockout) -----------------------------------------

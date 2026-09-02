@@ -216,8 +216,14 @@ describe("ScheduleDesktopTable", () => {
   it("opens the add dialog for the selected weekday", async () => {
     await renderTable(baseProps({ user: { role: "admin" } as Props["user"] }))
 
-    const addButtons = screen.getAllByRole("button", { name: "actions.addLesson" })
+    // The real i18n instance is initialized to English in the shared test
+    // setup, so assert the translated accessible contract rather than the
+    // internal translation key.
+    const addButtons = screen.getAllByRole("button", { name: /^Add lesson for / })
     expect(addButtons).toHaveLength(WEEKDAYS.length)
+    expect(addButtons.map((button) => button.getAttribute("aria-label"))).toEqual(
+      WEEKDAY_LABELS.map((day) => `Add lesson for ${day}`)
+    )
     fireEvent.click(addButtons[0]!)
 
     expect(screen.getByTestId("schedule-context-probe")).toHaveTextContent("monday:add")
@@ -288,13 +294,13 @@ describe("ScheduleDesktopTable", () => {
     expect(within(grid).getByRole("columnheader", { name: /monday/ })).toBeInTheDocument()
   })
 
-  it("labels empty grid cells with the fallback 'Empty' aria-label", async () => {
+  it("labels empty grid cells with the translated 'No lesson' aria-label", async () => {
     // One Monday lesson → row 0 Monday filled, the other 5 day-columns empty.
     await renderTable(baseProps({ schedule: [LESSON_MON_1], rawSchedule: [LESSON_MON_1] }))
 
     const grid = screen.getByRole("grid", { name: "Schedule" })
-    // 1 row × 6 day columns = 6 gridcells; 1 lesson + 5 empty (aria-label "Empty").
-    expect(within(grid).getAllByRole("gridcell", { name: "Empty" })).toHaveLength(5)
+    // 1 row × 6 day columns = 6 gridcells; 1 lesson + 5 empty (aria-label "No lesson").
+    expect(within(grid).getAllByRole("gridcell", { name: "No lesson" })).toHaveLength(5)
     // The filled Monday cell carries the stable keyboard-nav id (W120 SW3).
     expect(grid.querySelector("#sched-cell-0-0")).not.toBeNull()
   })

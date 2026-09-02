@@ -12,11 +12,12 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 PRUNED_DIRECTORY_NAMES = frozenset(
     {"node_modules", "dist", "build", "__pycache__", "stryker-tmp", ".stryker-tmp"}
 )
+AUTHORED_HIDDEN_DIRECTORIES = frozenset({".github", ".husky"})
 
 
 def should_prune_directory(name: str) -> bool:
     """Return whether a directory can be skipped before walking into it."""
-    return (name.startswith(".") and name != ".github") or (
+    return (name.startswith(".") and name not in AUTHORED_HIDDEN_DIRECTORIES) or (
         name in PRUNED_DIRECTORY_NAMES
     )
 

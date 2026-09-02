@@ -1,6 +1,7 @@
 import asyncio
 import io
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from fastapi import UploadFile
@@ -38,13 +39,16 @@ async def _login(
 
 
 @pytest.mark.asyncio
-async def test_update_profile_email_normalizes(async_client, user_factory, db_session):
+async def test_update_profile_rejects_email_and_preserves_verified_email_state(
+    async_client, user_factory, db_session
+):
     password = "ChangeEmail123!"
     hashed = await get_password_hash(password)
     user = await user_factory(
         email="original@example.com",
         hashed_password=hashed,
         is_active=True,
+        email_verified_at=datetime.now(UTC),
     )
 
     headers = await _login(async_client, user.email, password)
@@ -55,18 +59,21 @@ async def test_update_profile_email_normalizes(async_client, user_factory, db_se
         headers=headers,
     )
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["email"] == "new.email@example.com"
+    assert response.status_code == 422
+    assert "use /users/me/email" in response.text
 
     user_id = user.id
     db_session.expire_all()
     user = await UserRepository(db_session).get(user_id)
-    assert user.email == "new.email@example.com"
+    assert user.email == "original@example.com"
+    assert user.email_verified_at is not None
+    assert user.email_mfa_enabled_at is None
 
 
 @pytest.mark.asyncio
-async def test_update_profile_email_duplicate(async_client, user_factory, db_session):
+async def test_controlled_email_change_rejects_duplicate_after_normalization(
+    async_client, user_factory, db_session
+):
     password = "DuplicateEmail123!"
     hashed = await get_password_hash(password)
     user = await user_factory(
@@ -78,17 +85,13 @@ async def test_update_profile_email_duplicate(async_client, user_factory, db_ses
 
     headers = await _login(async_client, user.email, password)
 
-    headers_ru = {**headers, "Accept-Language": "ru"}
-
-    response = await async_client.put(
-        "/users/me",
-        json={"email": "Existing@Example.com"},
-        headers=headers_ru,
+    response = await async_client.post(
+        "/users/me/email",
+        json={"email": "Existing@Example.com", "password": password},
+        headers=headers,
     )
 
-    assert response.status_code == 409
-    assert "Запись уже существует" in response.json()["detail"]
-    assert "existing@example.com" in response.json()["detail"]
+    assert response.status_code == 400
 
     user_id = user.id
     db_session.expire_all()
@@ -127,7 +130,7 @@ async def test_email_change_requires_confirmation(
 
     response = await async_client.post(
         "/users/me/email",
-        json={"email": "new.confirm@example.com", "password": password},
+        json={"email": "New.Confirm@Example.com", "password": password},
         headers=headers,
     )
 

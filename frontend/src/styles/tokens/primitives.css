@@ -22,14 +22,18 @@
 
     /* Semantic Primary Palette (Blue/Sky) */
     --color-blue-50: #eff6ff;
+    --color-blue-300: #93c5fd;
     --color-blue-400: #60a5fa;
     --color-blue-500: #3b82f6;
     --color-blue-600: #2563eb;
     --color-blue-700: #1d4ed8;
     --color-sky-100: #e0f2fe;
+    --color-sky-200: #bae6fd;
     --color-sky-300: #7dd3fc;
     --color-sky-400: #38bdf8;
     --color-sky-500: #0ea5e9;
+    --color-sky-600: #0284c7;
+    --color-sky-950: #082f49;
 
     /* Functional Palette */
     --color-emerald-50: #ecfdf5;
@@ -40,8 +44,11 @@
     --color-emerald-600: #059669;
     --color-emerald-700: #047857;
     --color-emerald-900: #064e3b;
+    --color-teal-50: #f0fdfa;
+    --color-teal-200: #99f6e4;
     --color-teal-400: #2dd4bf;
     --color-teal-500: #14b8a6;
+    --color-teal-900: #134e4a;
     --color-cyan-400: #22d3ee;
     --color-green-100: #dcfce7;
     --color-green-500: #22c55e;
@@ -50,20 +57,30 @@
     --color-amber-300: #fcd34d;
     --color-amber-400: #fbbf24;
     --color-amber-500: #f59e0b;
+    --color-amber-600: #d97706;
     --color-amber-700: #b45309;
     --color-orange-400: #fb923c;
+    --color-orange-500: #f97316;
     --color-yellow-400: #facc15;
     --color-red-400: #f87171;
+    --color-red-500: #ef4444;
     --color-red-600: #dc2626;
+    --color-indigo-100: #e0e7ff;
+    --color-indigo-200: #c7d2fe;
+    --color-indigo-300: #a5b4fc;
     --color-indigo-400: #818cf8;
     --color-indigo-500: #6366f1;
+    --color-indigo-700: #4338ca;
+    --color-indigo-900: #312e81;
 
     /* Extended Decorative Palette */
     --color-purple-400: #c084fc;
     --color-purple-500: #a855f7;
+    --color-purple-600: #9333ea;
     --color-violet-300: #c4b5fd;
     --color-violet-400: #a78bfa;
     --color-violet-500: #8b5cf6;
+    --color-violet-600: #7c3aed;
     --color-pink-300: #f9a8d4;
     --color-pink-400: #f472b6;
     /* Wave 184 SW5 (Path D) — rose palette additions for /profile theme.
@@ -116,6 +133,7 @@
     --space-8: 2rem;
     --space-9: 2.25rem;
     --space-10: 2.5rem;
+    --space-11: 2.75rem;
     --space-12: 3rem;
     --space-16: 4rem;
     --space-20: 5rem;
@@ -164,6 +182,7 @@
     --z-dropdown: 1100;
     --z-popover: 1200;
     --z-modal: 1300;
+    --z-dialog: var(--z-modal);
     --z-floating: 1400;
     --z-toast: 2000;
     --z-tooltip: 2100;
@@ -205,12 +224,16 @@
     --opacity-whisper: 0.07;
     --opacity-faint: 0.05;
     --opacity-subtle: 0.1;
+    --opacity-low: var(--opacity-subtle);
     --opacity-dim: 0.2;
     --opacity-soft: 0.3;
     --opacity-medium: 0.5;
     --opacity-strong: 0.7;
     --opacity-hover: 0.8;
     --opacity-heavy: 0.9;
+
+    /* Icon dimensions */
+    --size-icon-sm: 1rem;
 
     /*
      * Focus-ring primitives — Wave 121 SW5

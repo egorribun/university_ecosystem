@@ -124,7 +124,7 @@ export const ContactList = memo(function ContactList({
       >
         {Array.from({ length: SKELETON_ROW_COUNT }).map((_, idx) => (
           <div
-            key={`contact-skeleton-${idx}`}
+            key={idx}
             className="flex items-center gap-3 px-3 py-2.5 min-h-[60px]"
             aria-hidden="true"
           >
@@ -319,8 +319,10 @@ export const ContactList = memo(function ContactList({
                       : event.key === "Home"
                         ? 0
                         : contacts.length - 1
-                const target = contacts[targetIndex]!
-                document.getElementById(`messenger-contact-${target.id}`)?.focus()
+                const target = contacts[targetIndex] ?? contact
+                const targetElement =
+                  document.getElementById(`messenger-contact-${target.id}`) ?? event.currentTarget
+                targetElement.focus()
               }
             }}
             whileHover={hoverAnim}

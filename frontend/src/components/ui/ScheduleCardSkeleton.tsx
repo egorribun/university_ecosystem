@@ -23,7 +23,7 @@ function ScheduleCardSkeletonInner({ items = 3, className = "" }: ScheduleCardSk
     >
       {/* Header */}
       <div className="mb-4 flex items-center justify-between">
-        <Skeleton width={140} height={24} ariaLabel="Loading date" />
+        <Skeleton width={140} height={24} ariaLabel={t("common:aria.loadingDate")} />
         <Skeleton width={80} height={20} />
       </div>
 
@@ -45,7 +45,7 @@ function ScheduleCardSkeletonInner({ items = 3, className = "" }: ScheduleCardSk
 
             {/* Content */}
             <div className="flex flex-1 flex-col gap-2">
-              <Skeleton width="75%" height={16} ariaLabel="Loading subject" />
+              <Skeleton width="75%" height={16} ariaLabel={t("common:aria.loadingSubject")} />
               <div className="flex items-center gap-2">
                 <Skeleton width={12} height={12} rounded="50%" />
                 <Skeleton width="45%" height={12} />

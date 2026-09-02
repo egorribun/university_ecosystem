@@ -210,16 +210,53 @@ async def test_reset_user_mfa_not_found(mock_db_session) -> None:
 @pytest.mark.asyncio
 async def test_reset_user_mfa_success(mock_db_session) -> None:
     user = MagicMock()
+    target_user = user
     user.id = 1
     stats = MagicMock()
     stats.changed = True
     stats.totp_deleted = 1
     stats.challenges_revoked = 1
+    stats.session_revocations = [MagicMock()]
+    events: list[str] = []
+
+    async def reset(*_args, **_kwargs):
+        events.append("reset")
+        return stats
+
+    async def notify(*_args, **_kwargs):
+        events.append("notification")
+        return 1
+
+    async def commit():
+        events.append("commit")
+
+    async def publish(_pending):
+        events.append("publish")
+
+    mock_db_session.commit.side_effect = commit
 
     with (
         patch("app.management.reset_mfa.async_session", return_value=mock_db_session),
-        patch("app.management.reset_mfa.mfa.reset_user_mfa", return_value=stats),
-        patch("app.management.reset_mfa.create_notifications_for_users") as mock_notify,
+        patch(
+            "app.management.reset_mfa.mfa.reset_user_mfa",
+            new=AsyncMock(side_effect=reset),
+        ),
+        patch(
+            "app.management.reset_mfa.create_notifications_for_users",
+            new=AsyncMock(side_effect=notify),
+        ) as mock_notify,
+        patch(
+            "app.management.reset_mfa.resolve_locale",
+            side_effect=lambda *, user: "ru" if user is target_user else "en",
+        ) as resolve_locale_mock,
+        patch(
+            "app.management.reset_mfa.translate",
+            side_effect=lambda key, *, locale: f"{key}:{locale}",
+        ) as translate_mock,
+        patch(
+            "app.management.reset_mfa.mfa.publish_mfa_session_revocations",
+            new=AsyncMock(side_effect=publish),
+        ),
         patch("app.management.reset_mfa._audit_cli") as mock_audit,
     ):
         mock_db_session.get.return_value = user
@@ -228,7 +265,58 @@ async def test_reset_user_mfa_success(mock_db_session) -> None:
         assert res_user == user
         assert res_stats == stats
         mock_notify.assert_called_once()
+        # The notification is part of the same transaction as the MFA reset;
+        # keep both its session binding and security topic explicit so a
+        # mutation cannot silently publish through an unrelated session/type.
+        assert mock_notify.call_args.args[0] is mock_db_session
+        assert mock_notify.call_args.kwargs["type"] == "security"
+        assert (
+            mock_notify.call_args.kwargs["title"] == "notifications.mfa.reset.title:ru"
+        )
+        assert mock_notify.call_args.kwargs["body"] == "notifications.mfa.reset.body:ru"
+        resolve_locale_mock.assert_called_once_with(user=target_user)
+        assert [call.args[0] for call in translate_mock.call_args_list] == [
+            "notifications.mfa.reset.title",
+            "notifications.mfa.reset.body",
+        ]
+        assert [call.kwargs["locale"] for call in translate_mock.call_args_list] == [
+            "ru",
+            "ru",
+        ]
         mock_audit.assert_called_once()
+        assert events == ["reset", "notification", "commit", "publish"]
+
+
+@pytest.mark.asyncio
+async def test_reset_user_mfa_commit_failure_rolls_back_without_redis_publish(
+    mock_db_session,
+) -> None:
+    user = MagicMock(id=1)
+    stats = MagicMock(changed=True, session_revocations=[MagicMock()])
+    mock_db_session.get.return_value = user
+    mock_db_session.commit.side_effect = RuntimeError("commit failed")
+
+    with (
+        patch("app.management.reset_mfa.async_session", return_value=mock_db_session),
+        patch(
+            "app.management.reset_mfa.mfa.reset_user_mfa",
+            new=AsyncMock(return_value=stats),
+        ),
+        patch(
+            "app.management.reset_mfa.create_notifications_for_users",
+            new=AsyncMock(return_value=1),
+        ) as notify,
+        patch(
+            "app.management.reset_mfa.mfa.publish_mfa_session_revocations",
+            new=AsyncMock(),
+        ) as publish,
+        pytest.raises(RuntimeError, match="commit failed"),
+    ):
+        await _reset_user_mfa(user_id=1, email=None, notify=True)
+
+    notify.assert_awaited_once()
+    mock_db_session.rollback.assert_awaited_once()
+    publish.assert_not_awaited()
 
 
 @pytest.mark.asyncio

@@ -64,7 +64,7 @@ services:
       METRICS_ALLOWLIST: 127.0.0.1,::1
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/0
-      REVOCATION_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
+      REVOCATION_REDIS_URL: redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
       RATE_LIMIT_STORAGE_BACKEND: redis
       RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/1
       RATE_LIMIT_HEADERS_ENABLED: "true"
@@ -80,10 +80,10 @@ services:
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
       # Spotify
-      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
-      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
-      SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI}
-      SPOTIFY_SCOPES: ${SPOTIFY_SCOPES}
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
+      SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI:-}
+      SPOTIFY_SCOPES: ${SPOTIFY_SCOPES:-}
       # MOD-06 (audit 2026-03-11): Send OTLP traces to Tempo via gRPC.
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
     volumes:
@@ -121,6 +121,7 @@ services:
       - service_net
       - db_net
       - cache_net
+      - revocation_net
       - event_net
       - internal
       - public
@@ -209,7 +210,8 @@ services:
       NOTIFICATIONS_WORKER_METRICS_PORT: "9101"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/0
-      REVOCATION_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
+      APP_PROCESS_ROLE: notifications-worker
+      REVOCATION_REDIS_ACCESS_ENABLED: "false"
       RATE_LIMIT_STORAGE_BACKEND: redis
       RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/1
       NATS_URL: nats://nats:4222
@@ -221,14 +223,12 @@ services:
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
       # Spotify
-      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
-      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
-      SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI}
-      SPOTIFY_SCOPES: ${SPOTIFY_SCOPES}
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
+      SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI:-}
+      SPOTIFY_SCOPES: ${SPOTIFY_SCOPES:-}
     depends_on:
       valkey:
-        condition: service_healthy
-      revocation-valkey:
         condition: service_healthy
       nats:
         condition: service_healthy
@@ -275,7 +275,8 @@ services:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - set in .env file}
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@valkey:6379/0
-      REVOCATION_REDIS_URL: redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
+      APP_PROCESS_ROLE: outbox-worker
+      REVOCATION_REDIS_ACCESS_ENABLED: "false"
       NATS_URL: nats://nats:4222
       NATS_AUTH_TOKEN: ${NATS_PASSWORD:?NATS_PASSWORD is required - set in .env file}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
@@ -286,8 +287,6 @@ services:
       postgres:
         condition: service_healthy
       valkey:
-        condition: service_healthy
-      revocation-valkey:
         condition: service_healthy
       nats:
         condition: service_healthy
@@ -376,6 +375,14 @@ services:
     security_opt:
       - no-new-privileges:true
     restart: "no"
+    # One-shot database reconciliation only invokes a few psql commands. Keep
+    # the helper bounded so a stalled client cannot reserve an unconstrained
+    # Docker process while the long-lived PostgreSQL service remains healthy.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 64M
 
   valkey:
     ports:
@@ -469,7 +476,7 @@ services:
     command:
       - valkey-server
       - --requirepass
-      - "${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}"
+      - "${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - set in .env file}"
       - --maxmemory
       - "256mb"
       - --maxmemory-policy
@@ -487,7 +494,7 @@ services:
       - --loglevel
       - warning
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required - set in .env file}
+      REDIS_PASSWORD: ${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - set in .env file}
     volumes:
       - revocation_valkey_data:/data
     healthcheck:
@@ -496,8 +503,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - cache_net
-      - internal
+      - revocation_net
     deploy:
       resources:
         limits:
@@ -524,14 +530,20 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - set in .env file}
       SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required - set in .env file}
+      # The irreversible WebAuthn retirement migration tombstones active JTIs
+      # before changing their database rows. Keep this on security-state Valkey.
+      REVOCATION_REDIS_URL: redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - set in .env file}@revocation-valkey:6379/0
     # SECURITY: Migration scripts and models are baked into the image.
     # No host mounts needed — eliminates risk of running uncommitted local code.
     depends_on:
       postgres:
         condition: service_healthy
+      revocation-valkey:
+        condition: service_healthy
     restart: on-failure
     networks:
       - db_net
+      - revocation_net
     deploy:
       resources:
         limits:
@@ -579,7 +591,6 @@ services:
   # db_net/service_net topology of this compose.)
   temporal-admin-tools:
     image: temporalio/admin-tools:1.30.2@sha256:024c6473df113e4b220b3caf6056d30964582ffcae6f6e46a1074aa6c67968d3
-    container_name: temporal-admin-tools
     environment:
       SQL_PLUGIN: postgres12
       SQL_HOST: postgres
@@ -619,7 +630,6 @@ services:
     # Temporal actually boots (it had been crash-looping exit(1) since the
     # plain-server migration — net win for prod, not just the CI Load-and-Chaos job).
     image: temporalio/server:1.30.2@sha256:d5334ee3ddce1617efbe280a10afc85916cf8d81798415c98988dbda2b46773e
-    container_name: temporal
     ports:
       # RZ-8 (audit 2026-03-05): Bind to localhost only — Temporal gRPC has no
       # built-in auth. External access via SSH tunnel: ssh -L 7233:localhost:7233 host
@@ -675,7 +685,6 @@ services:
   # server's gRPC frontend is accepting traffic. `restart: "no"`.
   temporal-namespace-init:
     image: temporalio/admin-tools:1.30.2@sha256:024c6473df113e4b220b3caf6056d30964582ffcae6f6e46a1074aa6c67968d3
-    container_name: temporal-namespace-init
     environment:
       # W144 SW2 NEW (z) #20: set both the v1 (_CLI) and v2 env names + pass
       # --address explicitly to avoid env-var-precedence ambiguity.
@@ -728,7 +737,6 @@ services:
 
   temporal-ui:
     image: temporalio/ui:2.48.1@sha256:edb5dd1b3e0ddb35611939dde9b573533afd6fbafbbf077b73c7131a30ca91ff
-    container_name: temporal-ui
     ports:
       # MOD-9: Temporal UI is admin-only. Expose on localhost only to prevent
       # unauthenticated workflow access from external networks. Access via SSH
@@ -751,7 +759,6 @@ services:
 
   minio:
     image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
-    container_name: minio
     # Ports only exposed on internal network for security
     # Access via backend service or SSH tunnel for console
     expose:
@@ -842,7 +849,6 @@ services:
     ports:
       - "127.0.0.1:15052:50051"
     image: authzed/spicedb:v1.51.0@sha256:f2e6e77f89f8a0c087d9fd26b9ecd443ea601aa5422c92912f7ca95c412eb929
-    container_name: spicedb
     # P1-10 (audit 2026-03-06): Key removed from CLI args — `docker ps --no-trunc`
     # and `docker inspect` expose full command including secrets. The
     # SPICEDB_GRPC_PRESHARED_KEY env var (below) is read automatically by SpiceDB.
@@ -886,7 +892,6 @@ services:
 
   pyroscope:
     image: grafana/pyroscope:1.19.1@sha256:d5d38187f7593fdf5643ba29e67099206e8d4dee6207f78d028ea3fe621cc04d
-    container_name: pyroscope
     ports:
       # RZ-9 (audit 2026-03-05): Bind to localhost only — Pyroscope CPU flame graphs
       # expose critical operational intelligence. Access via SSH tunnel for remote.
@@ -904,7 +909,6 @@ services:
     # MOD-06 (audit 2026-03-11): Grafana Tempo for distributed tracing via OTLP.
     # Backend sends traces to tempo:4317 (gRPC) via OTEL_EXPORTER_OTLP_ENDPOINT.
     image: grafana/tempo:2.10.3@sha256:cac9de2ac9f6da8efca5b64b690a7cb8c786a0c49cac7b4517dd1b0089a6c703
-    container_name: tempo
     command: ["-config.file=/etc/tempo.yaml"]
     volumes:
       - ./infrastructure/observability/tempo.yaml:/etc/tempo.yaml:ro
@@ -914,6 +918,13 @@ services:
     networks:
       - internal
       - public
+    # Tempo is a long-lived telemetry service; mirror the full-stack budget so
+    # local tracing cannot grow without a cgroup ceiling.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
     restart: unless-stopped
 
   # Tempo's distroless image has no wget/curl. Probe its readiness endpoint
@@ -930,6 +941,14 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    # The probe sleeps and performs one tiny HTTP request per interval; a
+    # 32-MiB/0.05-CPU ceiling prevents an idle sidecar from becoming an
+    # unbounded resource consumer.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: 32M
     restart: unless-stopped
 
 networks:
@@ -939,6 +958,8 @@ networks:
   db_net:
     internal: true
   cache_net:
+    internal: true
+  revocation_net:
     internal: true
   event_net:
     internal: true

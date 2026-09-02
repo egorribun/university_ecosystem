@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 from collections.abc import MutableMapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
-import pyotp
 from fastapi import status
 from sqlalchemy import and_, case, delete, func, literal, or_, select, update
 
@@ -18,10 +20,14 @@ from app.auth.constants import (
     CHALLENGE_TYPE_RECOVERY_CODE,
     CHALLENGE_TYPE_TOTP_AUTH,
     CHALLENGE_TYPE_TOTP_VERIFY,
-    CHALLENGE_TYPE_WEBAUTHN_AUTH,
     MFA_METHOD_RECOVERY_CODE,
     MFA_METHOD_TOTP,
-    MFA_METHOD_WEBAUTHN,
+)
+from app.auth.mfa.email_otp import (
+    MfaOtpRejected,
+    _digest_message,
+    _generate_challenge_token,
+    _parse_challenge_id,
 )
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -30,14 +36,17 @@ from app.core.ratelimit import (
     enforce_rate_limit,
     get_default_strategy,
 )
-from app.models import ActiveSession, MfaChallenge, MfaTotpEnrollment, User
+from app.models import ActiveSession, MfaChallenge, User
 from app.models.auth import ChallengeState
+from app.utils.uuid_v7 import generate_uuid7
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 audit_logger = logging.getLogger("app.users.audit")
+_PENDING_DIGEST = "0" * 64
+_APP_DIGEST_KEY_LABEL = "app-primary"
 
 # Re-export so callers that do ``from app.auth.mfa import CHALLENGE_TYPE_TOTP_AUTH`` work.
 # (CHALLENGE_TYPE_TOTP_AUTH is already imported from app.auth.constants)
@@ -45,6 +54,28 @@ audit_logger = logging.getLogger("app.users.audit")
 
 def _utcnow() -> datetime:
     return datetime.now(UTC)
+
+
+@dataclass(frozen=True, slots=True)
+class IssuedChallenge:
+    challenge: MfaChallenge
+    challenge_token: str
+
+    @property
+    def id(self) -> UUID:
+        return self.challenge.id
+
+    @property
+    def expires_at(self) -> datetime:
+        return self.challenge.expires_at
+
+    @property
+    def attempt_count(self) -> int:
+        return self.challenge.attempt_count
+
+    @property
+    def payload(self) -> dict[str, Any] | None:
+        return self.challenge.payload
 
 
 async def _enforce_challenge_rate_limit(
@@ -107,6 +138,32 @@ def describe_challenge_attempts(
     return attempts, limit, remaining
 
 
+def validate_challenge_binding(
+    challenge: MfaChallenge,
+    *,
+    client_fingerprint: str | None,
+    login_session_identifier: str | None,
+    active_session_identifier: str | None,
+    locale: str = "en",
+) -> None:
+    expected_session_identifier = (
+        active_session_identifier
+        if challenge.flow in {"step_up", "email_verification", "email_mfa_enablement"}
+        else login_session_identifier
+    )
+    if (
+        client_fingerprint is None
+        or expected_session_identifier is None
+        or not hmac.compare_digest(client_fingerprint, challenge.client_fingerprint)
+        or not hmac.compare_digest(
+            expected_session_identifier, challenge.session_identifier
+        )
+    ):
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
+        )
+
+
 async def _lock_challenge(
     db: AsyncSession,
     challenge: MfaChallenge,
@@ -117,7 +174,9 @@ async def _lock_challenge(
     status_code: int = status.HTTP_429_TOO_MANY_REQUESTS,
 ) -> None:
     challenge.consumed_at = _utcnow()
-    await db.commit()
+    challenge.locked_at = challenge.consumed_at
+    challenge.state = ChallengeState.LOCKED
+    await db.flush()
     audit_logger.warning(
         json.dumps(
             {
@@ -220,7 +279,7 @@ async def _register_failed_attempt(
         .returning(MfaChallenge.attempt_count, MfaChallenge.locked_at)
     )
     row = (await db.execute(stmt)).one_or_none()
-    await db.commit()
+    await db.flush()
 
     if row is None:
         # Challenge was already consumed or locked by a concurrent request — no-op
@@ -246,13 +305,23 @@ async def issue_challenge(
     ttl_seconds: int | None = None,
     locale: str | None = None,
     attempt_limit: int | None = None,
-) -> MfaChallenge:
+    flow: str,
+    client_fingerprint: str,
+    method: str | None = None,
+    session_identifier: str,
+) -> IssuedChallenge:
+    if (
+        flow not in {"login", "step_up", "email_verification", "email_mfa_enablement"}
+        or not session_identifier
+        or len(session_identifier) > 128
+        or len(client_fingerprint) != 64
+    ):
+        raise ValueError("complete MFA challenge binding is required")
     await _enforce_challenge_rate_limit(
         user_id=user_id, challenge_type=challenge_type, locale=locale
     )
-    import secrets as _secrets
-
-    token = _secrets.token_urlsafe(48)
+    challenge_id = generate_uuid7()
+    token = _generate_challenge_token(challenge_id)
     now = _utcnow()
     ttl = (
         ttl_seconds
@@ -264,16 +333,46 @@ async def issue_challenge(
     if attempt_limit is not None and attempt_limit > 0:
         payload_data.setdefault("attempt_limit", attempt_limit)
     challenge = MfaChallenge(
+        id=challenge_id,
         user_id=user_id,
         session_id=session_id,
         challenge_type=challenge_type,
-        token=token,
+        flow=flow,
+        session_identifier=session_identifier,
+        client_fingerprint=client_fingerprint,
+        method=method
+        or (
+            MFA_METHOD_RECOVERY_CODE
+            if challenge_type == CHALLENGE_TYPE_RECOVERY_CODE
+            else MFA_METHOD_TOTP
+        ),
+        revision=1,
+        trust_device_requested=bool(payload_data.get("trust_device", False)),
+        token_digest=_PENDING_DIGEST,
+        token_key_id=_APP_DIGEST_KEY_LABEL,
+        otp_digest=None,
+        otp_key_id=None,
         expires_at=expires_at,
         payload=payload_data,
     )
+    challenge.token_digest = hmac.new(
+        settings.secret_key.encode("utf-8"),
+        _digest_message(
+            purpose="challenge-token",
+            user_id=user_id,
+            challenge_id=challenge_id,
+            flow=challenge.flow,
+            session_identifier=challenge.session_identifier,
+            client_fingerprint=challenge.client_fingerprint,
+            method=challenge.method,
+            revision=challenge.revision,
+            secret_value=token,
+        ),
+        hashlib.sha256,
+    ).hexdigest()
     db.add(challenge)
     await db.flush()
-    return challenge
+    return IssuedChallenge(challenge=challenge, challenge_token=token)
 
 
 async def issue_dummy_challenge(db: AsyncSession) -> None:
@@ -307,9 +406,19 @@ async def get_challenge(
     # requested).  Unconditional SELECT FOR UPDATE on read-only lookups causes
     # unnecessary lock contention on the MfaChallenge table.
     _for_update = for_update or consume
-    stmt = select(MfaChallenge).where(MfaChallenge.token == token)
+    try:
+        challenge_id = _parse_challenge_id(token)
+    except MfaOtpRejected:
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
+        )
+        raise ValueError("Invalid challenge") from None
+    stmt = select(MfaChallenge).where(MfaChallenge.id == challenge_id)
     if _for_update:
-        stmt = stmt.with_for_update()
+        # A pre-read may already have placed this row in the identity map.
+        # Refresh it after waiting for the lock so state such as consumed_at is
+        # never evaluated from a stale ORM object.
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     if isinstance(challenge_type, list):
         stmt = stmt.where(MfaChallenge.challenge_type.in_(challenge_type))
     else:
@@ -324,7 +433,25 @@ async def get_challenge(
         raise_http_error(
             status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
         )
-        raise ValueError("Invalid challenge")
+    expected_digest = hmac.new(
+        settings.secret_key.encode("utf-8"),
+        _digest_message(
+            purpose="challenge-token",
+            user_id=challenge.user_id,
+            challenge_id=challenge.id,
+            flow=challenge.flow,
+            session_identifier=challenge.session_identifier,
+            client_fingerprint=challenge.client_fingerprint,
+            method=challenge.method,
+            revision=challenge.revision,
+            secret_value=token,
+        ),
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected_digest, challenge.token_digest):
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
+        )
     now = _utcnow()
     expires_at = challenge.expires_at
     if expires_at is not None and expires_at.tzinfo is None:
@@ -351,9 +478,11 @@ async def consume_challenge(
     user_id: UUID | None = None,
     session_id: UUID | None = None,
     provided_code: str | None = None,
-    provided_webauthn_response: dict[str, Any] | None = None,
     provided_recovery_code: str | None = None,
     provided_method: str | None = None,
+    client_fingerprint: str | None = None,
+    login_session_identifier: str | None = None,
+    active_session_identifier: str | None = None,
     locale: str = "en",
 ) -> tuple[MfaChallenge, ActiveSession | None]:
     from app.auth.mfa.recovery import (
@@ -367,7 +496,42 @@ async def consume_challenge(
         user_id=user_id,
         session_id=session_id,
         consume=False,
-        for_update=True,  # TD-W5-01: Acquire lock to prevent race conditions
+        for_update=False,
+        locale=locale,
+    )
+
+    # Every MFA mutation for one account follows User -> challenge/credential.
+    # The pre-read above only discovers the bound account; it acquires no row
+    # lock and therefore cannot invert the lock order used by email OTP/TOTP.
+    locked_user = (
+        (
+            await db.execute(
+                select(User).where(User.id == challenge.user_id).with_for_update()
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if locked_user is None:
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
+        )
+    challenge = await get_challenge(
+        db,
+        token=challenge_token,
+        challenge_type=challenge_type,
+        user_id=user_id,
+        session_id=session_id,
+        consume=False,
+        for_update=True,
+        locale=locale,
+    )
+
+    validate_challenge_binding(
+        challenge,
+        client_fingerprint=client_fingerprint,
+        login_session_identifier=login_session_identifier,
+        active_session_identifier=active_session_identifier,
         locale=locale,
     )
 
@@ -397,8 +561,6 @@ async def consume_challenge(
             CHALLENGE_TYPE_TOTP_AUTH,
         ]:
             v_method = MFA_METHOD_TOTP
-        elif challenge.challenge_type == CHALLENGE_TYPE_WEBAUTHN_AUTH:
-            v_method = MFA_METHOD_WEBAUTHN
         elif challenge.challenge_type == CHALLENGE_TYPE_RECOVERY_CODE:
             v_method = MFA_METHOD_RECOVERY_CODE
 
@@ -408,53 +570,35 @@ async def consume_challenge(
                 status.HTTP_400_BAD_REQUEST, "errors.mfa.code_required", locale
             )
 
-        user = await db.get(User, challenge.user_id)
-        if not user:
-            raise_http_error(
-                status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
-            )
-            raise ValueError("Unreachable")
-        enrollments_stmt = select(MfaTotpEnrollment).where(
-            MfaTotpEnrollment.user_id == user.id,
-            MfaTotpEnrollment.is_active.is_(True),
-            MfaTotpEnrollment.revoked_at.is_(None),
+        from app.auth.mfa.totp import verify_totp_for_user
+
+        await verify_totp_for_user(
+            db,
+            user=locked_user,
+            code=str(provided_code),
+            challenge_token=challenge_token,
+            challenge=challenge,
+            session_id=session_id,
+            client_fingerprint=client_fingerprint,
+            login_session_identifier=login_session_identifier,
+            active_session_identifier=active_session_identifier,
+            locale=locale,
         )
-        result = await db.execute(enrollments_stmt)
-        enrollments = result.scalars().all()
-
-        valid = False
-        for enrollment in enrollments:
-            if not enrollment.secret:
-                continue
-            totp = pyotp.TOTP(str(enrollment.secret))
-            if totp.verify(str(provided_code), valid_window=1):
-                valid = True
-                break
-
-        if not valid:
-            await _register_failed_attempt(
-                db,
-                challenge,
-                method=MFA_METHOD_TOTP,
-                limit=settings.mfa_totp_attempt_limit,
-                locale=locale,
-            )
-            raise_http_error(
-                status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_code", locale
-            )
 
     elif v_method == MFA_METHOD_RECOVERY_CODE:
+        if challenge.flow not in {"login", "step_up"}:
+            raise_http_error(
+                status.HTTP_400_BAD_REQUEST,
+                "errors.mfa.invalid_challenge",
+                locale,
+            )
         if not provided_code:
             raise_http_error(
                 status.HTTP_400_BAD_REQUEST, "errors.mfa.code_required", locale
             )
-        user = await db.get(User, challenge.user_id)
-        if not user:
-            raise_http_error(
-                status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
-            )
-            raise ValueError("Unreachable")
-        if not await verify_recovery_code(db, user=user, code=str(provided_code)):
+        if not await verify_recovery_code(
+            db, user=locked_user, code=str(provided_code)
+        ):
             await _register_failed_attempt(
                 db,
                 challenge,
@@ -465,55 +609,18 @@ async def consume_challenge(
             raise_http_error(
                 status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_code", locale
             )
-
-    elif v_method == MFA_METHOD_WEBAUTHN:
-        from app.services.webauthn import WebAuthnService
-
-        if not provided_webauthn_response:
-            raise_http_error(
-                status.HTTP_400_BAD_REQUEST, "errors.mfa.code_required", locale
-            )
-
-        service = WebAuthnService(db)
-        user = await db.get(User, challenge.user_id)
-        if not user:
-            raise_http_error(
-                status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
-            )
-            raise ValueError("Unreachable")
-        try:
-            # P2-W5-20: Strict type checks on the DB-stored payload to prevent
-            # type confusion. A non-dict payload (or non-dict "options") would
-            # silently produce an empty challenge string, bypassing verification.
-            raw_payload = challenge.payload
-            if not isinstance(raw_payload, dict):
-                raise TypeError("WebAuthn challenge payload must be a dict")
-            options = raw_payload.get("options")
-            if not isinstance(options, dict):
-                raise TypeError("WebAuthn challenge options must be a dict")
-            challenge_str = options.get("challenge")
-            if not isinstance(challenge_str, str) or not challenge_str:
-                raise TypeError("WebAuthn challenge value must be a non-empty string")
-            await service.verify_authentication(
-                user,
-                challenge_str,
-                provided_webauthn_response,
-            )
-        except Exception:  # RZ-22-01-JUSTIFIED: handler-nak — registers failed attempt then raises HTTP error (reviewed TD-27-04)
-            await _register_failed_attempt(
-                db,
-                challenge,
-                method=MFA_METHOD_WEBAUTHN,
-                limit=settings.mfa_challenge_max_attempts,
-                locale=locale,
-            )
-            raise_http_error(
-                status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_code", locale
-            )
+    else:
+        # Generic challenge consumption is restricted to factors whose proof is
+        # verified in this function. Email OTP has its own opaque-token path;
+        # accepting any other value here would consume a challenge without
+        # authenticating the caller.
+        raise_http_error(
+            status.HTTP_400_BAD_REQUEST, "errors.mfa.invalid_challenge", locale
+        )
 
     challenge.consumed_at = _utcnow()
     challenge.state = ChallengeState.CONSUMED
-    await db.commit()
+    await db.flush()
 
     return challenge, mfa_session
 

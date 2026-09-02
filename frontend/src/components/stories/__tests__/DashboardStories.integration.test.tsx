@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
-import { act, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { ThemeProvider } from "@/contexts/ThemeContext"
 import type { ComponentProps, ReactNode } from "react"
@@ -137,6 +137,10 @@ describe("DashboardStories", () => {
   })
 
   afterEach(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    })
     vi.restoreAllMocks()
     vi.useRealTimers()
   })
@@ -159,6 +163,79 @@ describe("DashboardStories", () => {
 
     await user.click(screen.getByLabelText("Previous story"))
     expect(await screen.findByRole("heading", { name: "Orientation" })).toBeInTheDocument()
+  })
+
+  it("preloads only the immediate next story image", async () => {
+    const storiesWithCovers = stories.map((story, index) => ({
+      ...story,
+      cover_url: `https://cdn.example.com/story-${index + 1}.jpg`,
+    }))
+    const { user } = await renderStories({ stories: storiesWithCovers })
+
+    await user.click(await screen.findByRole("button", { name: "Story: Orientation" }))
+
+    const preloads = document.querySelectorAll('link[rel="preload"][as="image"]')
+    expect(preloads).toHaveLength(1)
+    expect(preloads[0]).toHaveAttribute("href", "https://cdn.example.com/story-2.jpg")
+    expect(document.head.innerHTML).not.toContain("story-1.jpg")
+
+    await user.click(screen.getByLabelText("Next story"))
+    await waitFor(() =>
+      expect(document.querySelectorAll('link[rel="preload"][as="image"]')).toHaveLength(0)
+    )
+  })
+
+  it("restores focus to the story circle after closing the viewer", async () => {
+    const { user } = await renderStories()
+    const trigger = await screen.findByRole("button", { name: "Story: Orientation" })
+
+    trigger.focus()
+    await user.click(trigger)
+    await user.click(await screen.findByLabelText("Close stories viewer"))
+
+    await waitFor(() => expect(trigger).toHaveFocus())
+  })
+
+  it("supports horizontal swipe navigation", async () => {
+    const { user } = await renderStories()
+    await user.click(await screen.findByRole("button", { name: "Story: Orientation" }))
+    const dialog = await screen.findByRole("dialog", { name: "Orientation" })
+    const stage = dialog.querySelector('[class*="aspect-9/16"]')!
+
+    fireEvent.pointerDown(stage, { clientX: 200, clientY: 100 })
+    fireEvent.pointerUp(stage, { clientX: 100, clientY: 100 })
+
+    expect(await screen.findByRole("heading", { name: "Clubs fair" })).toBeInTheDocument()
+  })
+
+  it("pauses automatic progress while the document is hidden and resumes when visible", async () => {
+    const requestAnimationFrame = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation(() => 17)
+    const cancelAnimationFrame = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation(() => undefined)
+    const { user } = await renderStories()
+
+    await user.click(await screen.findByRole("button", { name: "Story: Orientation" }))
+    await screen.findByRole("dialog")
+    const scheduledBeforeHide = requestAnimationFrame.mock.calls.length
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    })
+    document.dispatchEvent(new Event("visibilitychange"))
+    await waitFor(() => expect(cancelAnimationFrame).toHaveBeenCalledWith(17))
+
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    })
+    document.dispatchEvent(new Event("visibilitychange"))
+    await waitFor(() =>
+      expect(requestAnimationFrame.mock.calls.length).toBeGreaterThan(scheduledBeforeHide)
+    )
   })
 
   it("auto-advances stories after the progress completes", async () => {

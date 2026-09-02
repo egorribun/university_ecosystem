@@ -218,6 +218,21 @@ class MfaEnabled(DomainEvent):
         return cls(**{k: v for k, v in data.items() if k in known})
 
 
+@register_domain_event
+@dataclass
+class MfaEmailDeliveryRequested(DomainEvent):
+    """Requests send-time decryption of an MFA delivery envelope."""
+
+    EVENT_VERSION: ClassVar[int] = 1
+    delivery_id: UUID | None = None
+    EVENT_TYPE: ClassVar[str] = "auth.mfa_email.requested"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> MfaEmailDeliveryRequested:
+        data.pop("_schema_version", 1)
+        return cls(delivery_id=data.get("delivery_id"))
+
+
 # Schedule & Grade Domain Events (M4 / R4)
 @register_domain_event
 @dataclass
@@ -959,6 +974,7 @@ __all__ = [
     "EventRegistration",
     "EventUpdated",
     "MessageSent",
+    "MfaEmailDeliveryRequested",
     "MfaEnabled",
     "NewsCreated",
     "NewsUpdated",

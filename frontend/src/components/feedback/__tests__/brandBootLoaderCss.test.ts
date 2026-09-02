@@ -32,7 +32,7 @@ describe("BRAND_BOOT_LOADER_CSS", () => {
     expect(ruleBody("html:has(.brand-boot-loader)")).toContain(
       "animation: brand-boot-loader-scroll-unlock 1ms linear 12s forwards"
     )
-    expect(ruleBody(".brand-boot-loader ~ #root")).toContain("overflow-x: clip")
+    expect(ruleBody("#root:has(> .brand-boot-loader)")).toContain("overflow-x: clip")
   })
 
   it("fades both colors through the common mark and never cycles the status opacity", () => {

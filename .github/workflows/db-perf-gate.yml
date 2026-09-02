@@ -8,9 +8,14 @@ on:
 
 permissions: read-all
 
+concurrency:
+    group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+    cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
     explain-check:
         runs-on: ubuntu-24.04
+        timeout-minutes: 30
         services:
             postgres:
                 image: pgvector/pgvector:pg17@sha256:cf134a767f474095eeba57e0117be8e568e011a63f33fbf252f14c9b760f8e6f
@@ -108,6 +113,7 @@ jobs:
                   DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test # pragma: allowlist secret
                   SECRET_KEY: test-secret-key-for-ci-perf-gate-only  # pragma: allowlist secret
                   ENVIRONMENT: testing
+                  UNIVERSITY_ECOSYSTEM_PYTEST_ALLOW_DATABASE_RESET: "1"
               run: |
                   # Run only repository tests — this step exists solely to emit
                   # SQL query logs that db_explain_check.py will analyze.

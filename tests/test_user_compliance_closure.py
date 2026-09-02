@@ -151,7 +151,10 @@ async def test_export_user_data_serializes_all_sections_and_audits_access():
     enrollment_id = uuid4()
     access_log_id = uuid4()
     db_user = SimpleNamespace(
-        model_dump=lambda: {"id": user_id, "email": "student@example.com"},
+        model_dump=lambda **_kwargs: {
+            "id": user_id,
+            "email": "student@example.com",
+        },
         mfa_challenges=[
             SimpleNamespace(
                 id=challenge_id,
@@ -217,7 +220,7 @@ async def test_export_user_data_serializes_all_sections_and_audits_access():
     assert result.profile["email"] == "student@example.com"
     assert result.sessions[0]["id"] == session_id
     assert result.notifications[0]["id"] == notification_id
-    assert result.mfa_challenges[0]["type"] == "totp"
+    assert result.mfa_challenge_count == 1
     assert result.mfa_enrollments[0]["label"] == "phone"
     assert result.access_logs[0]["resource_type"] == "profile"
     repo.get_user_access_logs.assert_awaited_once_with(user_id, limit=2000)

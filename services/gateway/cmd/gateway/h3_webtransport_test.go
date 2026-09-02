@@ -6,10 +6,12 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/pem"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -172,6 +174,174 @@ func TestPrepareTLSConfig_RejectsInvalidCertificateFiles(t *testing.T) {
 	tlsCfg, err := prepareTLSConfig(&config.Config{TLSCertFile: certPath, TLSKeyFile: keyPath}, initLogger())
 	assert.Nil(t, tlsCfg)
 	assert.Error(t, err)
+}
+
+func writeGatewayMTLSMaterial(t *testing.T) (string, string, string, string) {
+	t.Helper()
+	now := time.Now()
+	caKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	caTemplate := &x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		Subject:               pkix.Name{CommonName: "test-ca"},
+		NotBefore:             now.Add(-time.Minute),
+		NotAfter:              now.Add(time.Hour),
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageCertSign,
+	}
+	caDER, err := x509.CreateCertificate(rand.Reader, caTemplate, caTemplate, &caKey.PublicKey, caKey)
+	require.NoError(t, err)
+	caCertificate, err := x509.ParseCertificate(caDER)
+	require.NoError(t, err)
+	clientKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	identity := "spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway"
+	identityURI, err := url.Parse(identity)
+	require.NoError(t, err)
+	clientTemplate := &x509.Certificate{SerialNumber: big.NewInt(2), Subject: pkix.Name{CommonName: "gateway-client"}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Hour), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}, URIs: []*url.URL{identityURI}}
+	clientDER, err := x509.CreateCertificate(rand.Reader, clientTemplate, caCertificate, &clientKey.PublicKey, caKey)
+	require.NoError(t, err)
+	directory := t.TempDir()
+	caPath := directory + string(os.PathSeparator) + "ca.crt"
+	certPath := directory + string(os.PathSeparator) + "client.crt"
+	keyPath := directory + string(os.PathSeparator) + "client.key"
+	require.NoError(t, os.WriteFile(caPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caDER}), 0o600))
+	require.NoError(t, os.WriteFile(certPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: clientDER}), 0o600))
+	require.NoError(t, os.WriteFile(keyPath, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(clientKey)}), 0o600))
+	return caPath, certPath, keyPath, identity
+}
+
+func TestConventionalGRPCClientCredentials(t *testing.T) {
+	caPath, certPath, keyPath, identity := writeGatewayMTLSMaterial(t)
+	cfg := &config.Config{
+		GRPCCAFile:            caPath,
+		GRPCClientCertFile:    certPath,
+		GRPCClientKeyFile:     keyPath,
+		GRPCServerName:        "file-processor.example.test",
+		GRPCClientIdentityURI: identity,
+	}
+
+	tlsConfig, err := conventionalGRPCClientTLSConfig(cfg)
+	require.NoError(t, err)
+	assert.Equal(t, "file-processor.example.test", tlsConfig.ServerName)
+
+	credentials, err := conventionalGRPCClientCredentials(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, credentials)
+	connection, client, err := initGRPC(&config.Config{
+		FileProcessorAddr:     "localhost:50051",
+		GrpcUseTLS:            true,
+		GRPCCAFile:            caPath,
+		GRPCClientCertFile:    certPath,
+		GRPCClientKeyFile:     keyPath,
+		GRPCServerName:        "file-processor.example.test",
+		GRPCClientIdentityURI: identity,
+	}, initLogger())
+	require.NoError(t, err)
+	require.NotNil(t, client)
+	require.NoError(t, connection.Close())
+
+	t.Run("invalid CA", func(t *testing.T) {
+		invalidCA := t.TempDir() + string(os.PathSeparator) + "ca.crt"
+		require.NoError(t, os.WriteFile(invalidCA, []byte("not a certificate"), 0o600))
+		_, err := conventionalGRPCClientCredentials(&config.Config{GRPCCAFile: invalidCA})
+		assert.ErrorContains(t, err, "parse gRPC client CA")
+	})
+
+	t.Run("invalid client keypair", func(t *testing.T) {
+		invalidCert := t.TempDir() + string(os.PathSeparator) + "client.crt"
+		invalidKey := t.TempDir() + string(os.PathSeparator) + "client.key"
+		require.NoError(t, os.WriteFile(invalidCert, []byte("not a certificate"), 0o600))
+		require.NoError(t, os.WriteFile(invalidKey, []byte("not a key"), 0o600))
+		_, err := conventionalGRPCClientCredentials(&config.Config{GRPCCAFile: caPath, GRPCClientCertFile: invalidCert, GRPCClientKeyFile: invalidKey})
+		assert.ErrorContains(t, err, "load gRPC client certificate")
+	})
+
+	t.Run("invalid client leaf contract", func(t *testing.T) {
+		badKey, keyErr := rsa.GenerateKey(rand.Reader, 2048)
+		require.NoError(t, keyErr)
+		badTemplate := &x509.Certificate{SerialNumber: big.NewInt(99), Subject: pkix.Name{CommonName: "not-a-client"}, NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
+		badDER, createErr := x509.CreateCertificate(rand.Reader, badTemplate, badTemplate, &badKey.PublicKey, badKey)
+		require.NoError(t, createErr)
+		badCertPath := t.TempDir() + string(os.PathSeparator) + "client.crt"
+		badKeyPath := t.TempDir() + string(os.PathSeparator) + "client.key"
+		require.NoError(t, os.WriteFile(badCertPath, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: badDER}), 0o600))
+		require.NoError(t, os.WriteFile(badKeyPath, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(badKey)}), 0o600))
+		_, credentialErr := conventionalGRPCClientCredentials(&config.Config{GRPCCAFile: caPath, GRPCClientCertFile: badCertPath, GRPCClientKeyFile: badKeyPath, GRPCClientIdentityURI: identity})
+		require.ErrorContains(t, credentialErr, "clientAuth-only")
+	})
+}
+
+func TestValidateConventionalClientCertificate(t *testing.T) {
+	now := time.Now()
+	identity := "spiffe://university.ecosystem/ns/university-ecosystem/sa/gateway"
+	identityURI, err := url.Parse(identity)
+	require.NoError(t, err)
+	makeCertificate := func(t *testing.T, template x509.Certificate) tls.Certificate {
+		t.Helper()
+		key, err := rsa.GenerateKey(rand.Reader, 2048)
+		require.NoError(t, err)
+		der, err := x509.CreateCertificate(rand.Reader, &template, &template, &key.PublicKey, key)
+		require.NoError(t, err)
+		return tls.Certificate{Certificate: [][]byte{der}, PrivateKey: key}
+	}
+	validTemplate := x509.Certificate{SerialNumber: big.NewInt(10), Subject: pkix.Name{CommonName: "gateway"}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(time.Hour), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}, URIs: []*url.URL{identityURI}}
+	require.NoError(t, validateConventionalClientCertificate(makeCertificate(t, validTemplate), identity, now))
+
+	for name, mutate := range map[string]func(*x509.Certificate){
+		"CA leaf": func(c *x509.Certificate) {
+			c.IsCA = true
+			c.BasicConstraintsValid = true
+			c.KeyUsage = x509.KeyUsageCertSign
+		},
+		"expired":       func(c *x509.Certificate) { c.NotAfter = now.Add(-time.Second) },
+		"not yet valid": func(c *x509.Certificate) { c.NotBefore = now.Add(time.Second) },
+		"missing EKU":   func(c *x509.Certificate) { c.ExtKeyUsage = nil },
+		"dual EKU": func(c *x509.Certificate) {
+			c.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth}
+		},
+		"any EKU":      func(c *x509.Certificate) { c.ExtKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageAny} },
+		"unknown EKU":  func(c *x509.Certificate) { c.UnknownExtKeyUsage = []asn1.ObjectIdentifier{{1, 2, 3, 4}} },
+		"missing URI":  func(c *x509.Certificate) { c.URIs = nil },
+		"multiple URI": func(c *x509.Certificate) { c.URIs = []*url.URL{identityURI, identityURI} },
+		"wrong URI": func(c *x509.Certificate) {
+			other, parseErr := url.Parse("spiffe://university.ecosystem/ns/university-ecosystem/sa/other")
+			require.NoError(t, parseErr)
+			c.URIs = []*url.URL{other}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			template := validTemplate
+			mutate(&template)
+			require.Error(t, validateConventionalClientCertificate(makeCertificate(t, template), identity, now))
+		})
+	}
+
+	t.Run("multiple leaf certificates", func(t *testing.T) {
+		certificate := makeCertificate(t, validTemplate)
+		certificate.Certificate = append(certificate.Certificate, certificate.Certificate[0])
+		require.Error(t, validateConventionalClientCertificate(certificate, identity, now))
+	})
+
+	t.Run("malformed certificate", func(t *testing.T) {
+		require.Error(t, validateConventionalClientCertificate(tls.Certificate{Certificate: [][]byte{[]byte("not-der")}}, identity, now))
+	})
+
+	t.Run("leaf after CA", func(t *testing.T) {
+		caTemplate := validTemplate
+		caTemplate.IsCA = true
+		caTemplate.BasicConstraintsValid = true
+		caTemplate.KeyUsage = x509.KeyUsageCertSign
+		caCertificate := makeCertificate(t, caTemplate)
+		leafCertificate := makeCertificate(t, validTemplate)
+		leafCertificate.Certificate = append(caCertificate.Certificate, leafCertificate.Certificate...)
+		require.Error(t, validateConventionalClientCertificate(leafCertificate, identity, now))
+	})
+
+	t.Run("invalid configured identity", func(t *testing.T) {
+		require.Error(t, validateConventionalClientCertificate(makeCertificate(t, validTemplate), "https://example.test/gateway", now))
+	})
 }
 
 func TestRunServer_H3PreparationAndShutdown(t *testing.T) {

@@ -16,9 +16,9 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext"
 import { testUser } from "@/tests/mocks/handlers"
 import api from "@/api/client"
 import i18n from "@/i18n/config"
-import { hmac } from "@noble/hashes/hmac"
-import { sha256 } from "@noble/hashes/sha256"
-import { utf8ToBytes } from "@noble/hashes/utils"
+import { hmac } from "@noble/hashes/hmac.js"
+import { sha256 } from "@noble/hashes/sha2.js"
+import { utf8ToBytes } from "@noble/hashes/utils.js"
 import * as logger from "@/app/logger"
 
 // cryptoWorker is mocked globally in setupTests.ts
@@ -343,6 +343,37 @@ describe("AuthProvider loading state", () => {
     queryClient.clear()
   })
 
+  it("keeps cold browser renders loading until the profile request settles", async () => {
+    let resolveProfile!: (value: unknown) => void
+    vi.spyOn(api, "get").mockImplementation((url) => {
+      if (url === "/users/me") {
+        return new Promise((resolve) => {
+          resolveProfile = resolve
+        })
+      }
+      if (url === "/auth/session/signing-key") {
+        return Promise.resolve({ data: { signing_key: mockSigningKey } })
+      }
+      throw new Error(`Unexpected url: ${url}`)
+    })
+
+    const { queryClient, wrapper } = setup()
+    const { result } = renderHook(() => useAuth(), { wrapper })
+
+    // The first client render must not expose `user=null, loading=false`:
+    // route guards would redirect before the cookie-backed request decides
+    // whether this is an authenticated or anonymous session.
+    expect(result.current.loading).toBe(true)
+
+    await act(async () => {
+      resolveProfile({ data: testUser })
+    })
+    await waitFor(() => expect(result.current.user?.id).toBe(testUser.id), { timeout: 15000 })
+    await waitFor(() => expect(result.current.loading).toBe(false), { timeout: 15000 })
+
+    queryClient.clear()
+  })
+
   it("toggles loading during refresh when no cached profile exists", async () => {
     const { queryClient, wrapper } = setup()
 
@@ -378,33 +409,25 @@ describe("AuthProvider loading state", () => {
     await waitFor(() => expect(result.current.user).toBeNull(), { timeout: 15000 })
 
     let refreshPromise!: Promise<void>
-    console.error("[Trace] Calling refresh()")
-    console.error("[Trace] result.current properties:", Object.keys(result.current))
     act(() => {
       refreshPromise = result.current.refresh()
     })
-    console.error("[Trace] refreshPromise created")
 
-    console.error("[Trace] Waiting for loading to be true")
     await waitFor(
       () => {
-        console.error("[Trace] Current loading state:", result.current.loading)
         expect(result.current.loading).toBe(true)
       },
       { timeout: 15000 }
     )
 
-    console.error("[Trace] Resolving user request")
     await act(async () => {
       resolveUserRequest?.({ data: testUser })
       resolveUserRequest = null
       await refreshPromise
     })
 
-    console.error("[Trace] Waiting for loading to be false")
     await waitFor(
       () => {
-        console.error("[Trace] Loading state final:", result.current.loading)
         expect(result.current.loading).toBe(false)
       },
       { timeout: 15000 }
@@ -593,7 +616,6 @@ describe("useAuth outside AuthProvider", () => {
       await result.current.refresh()
       await result.current.submitMfaChallenge({ code: "123456" })
       expect(await result.current.requireMfa()).toBeNull()
-      await result.current.loginWithPasskey("user@example.com")
     })
 
     expect(warningSpy).toHaveBeenCalledWith("AuthContext setUser called outside provider")

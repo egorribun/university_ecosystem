@@ -4,6 +4,7 @@ import { ForwardModal } from "../ForwardModal"
 import type { Contact } from "../types"
 
 const mediaQueryState = vi.hoisted(() => ({ reduced: false }))
+const focusTrapMock = vi.hoisted(() => vi.fn(() => ({ current: null })))
 
 vi.mock("@/hooks/useMediaQuery", () => ({
   default: () => mediaQueryState.reduced,
@@ -37,7 +38,7 @@ vi.mock("@/components/media/SmartImage", () => ({
 }))
 
 vi.mock("@/hooks/useFocusTrap", () => ({
-  default: () => ({ current: null }),
+  default: focusTrapMock,
 }))
 
 const mockContacts: Contact[] = [
@@ -62,6 +63,11 @@ const mockContacts: Contact[] = [
 ]
 
 describe("ForwardModal", () => {
+  beforeEach(() => {
+    focusTrapMock.mockClear()
+    mediaQueryState.reduced = false
+  })
+
   it("renders nothing when open=false", () => {
     const { container } = render(
       <ForwardModal open={false} onClose={() => {}} contacts={mockContacts} onSelect={() => {}} />
@@ -79,6 +85,23 @@ describe("ForwardModal", () => {
     expect(dialog.getAttribute("aria-modal")).toBe("true")
     expect(dialog.getAttribute("aria-labelledby")).toBeTruthy()
     expect(screen.getByRole("heading", { name: "messenger:forwardTo" })).toBeTruthy()
+    expect(focusTrapMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        active: true,
+        initialFocus: false,
+        returnFocus: true,
+        onDeactivate: expect.any(Function),
+      })
+    )
+  })
+
+  it("configures an inactive focus trap while the modal is closed", () => {
+    render(
+      <ForwardModal open={false} onClose={() => {}} contacts={mockContacts} onSelect={() => {}} />
+    )
+    expect(focusTrapMock).toHaveBeenCalledWith(
+      expect.objectContaining({ active: false, initialFocus: false, returnFocus: true })
+    )
   })
 
   it("close button has aria-label + 44x44 touch target", () => {
@@ -122,6 +145,24 @@ describe("ForwardModal", () => {
     expect(screen.getByText("messenger:forwardCurrentChat")).toBeTruthy()
   })
 
+  it("uses the avatar fallback and omits current/empty-message decorations when absent", () => {
+    render(
+      <ForwardModal
+        open={true}
+        onClose={() => {}}
+        contacts={[{ ...mockContacts[0]!, id: "fallback", avatar: "", lastMessage: "" }]}
+        onSelect={() => {}}
+      />
+    )
+
+    expect(screen.getByTestId("smart-image")).toHaveAttribute(
+      "src",
+      "/fallbacks/default_avatar.png"
+    )
+    expect(screen.queryByText("messenger:forwardCurrentChat")).not.toBeInTheDocument()
+    expect(screen.queryByText("Hey there!")).not.toBeInTheDocument()
+  })
+
   it("shows empty state when contacts list is empty", () => {
     render(<ForwardModal open={true} onClose={() => {}} contacts={[]} onSelect={() => {}} />)
 
@@ -151,6 +192,22 @@ describe("ForwardModal", () => {
     expect(onClose).not.toHaveBeenCalled()
     fireEvent.keyDown(document, { key: "Escape" })
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("removes the Escape listener when closed or unmounted", () => {
+    const add = vi.spyOn(document, "addEventListener")
+    const remove = vi.spyOn(document, "removeEventListener")
+    const onClose = vi.fn()
+    const view = render(
+      <ForwardModal open={true} onClose={onClose} contacts={mockContacts} onSelect={() => {}} />
+    )
+    const registration = add.mock.calls.find(([type]) => type === "keydown")
+    expect(registration).toBeDefined()
+    const handler = registration![1]
+    view.rerender(
+      <ForwardModal open={false} onClose={onClose} contacts={mockContacts} onSelect={() => {}} />
+    )
+    expect(remove).toHaveBeenCalledWith("keydown", handler)
   })
 
   it("backdrop click triggers onClose", () => {

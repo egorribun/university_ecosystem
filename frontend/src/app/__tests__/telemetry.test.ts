@@ -20,6 +20,9 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock("@opentelemetry/sdk-trace-web", () => ({
+  StackContextManager: class {
+    readonly kind = "stack"
+  },
   WebTracerProvider: class {
     register = vi.fn()
     getTracer = vi.fn((name: string) => ({ name }))
@@ -76,7 +79,6 @@ vi.mock("@opentelemetry/instrumentation-user-interaction", () => ({
     }
   },
 }))
-vi.mock("@opentelemetry/context-zone", () => ({ ZoneContextManager: class {} }))
 vi.mock("@opentelemetry/resources", () => ({
   resourceFromAttributes: mocks.resourceFromAttributes,
 }))
@@ -122,7 +124,15 @@ describe("frontend telemetry", () => {
       "service.name": "university-ecosystem-frontend",
       "service.version": "1.0.0",
     })
+    expect(mocks.providerOptions[0]).toEqual(
+      expect.objectContaining({
+        spanProcessors: [expect.any(Object)],
+      })
+    )
     expect(mocks.providers[0]?.register).toHaveBeenCalledOnce()
+    expect(mocks.providers[0]?.register).toHaveBeenCalledWith({
+      contextManager: { kind: "stack" },
+    })
     expect(mocks.registerInstrumentations).toHaveBeenCalledOnce()
 
     const filter = mocks.interactionOptions[0]?.shouldPreventSpanCreation
@@ -130,6 +140,9 @@ describe("frontend telemetry", () => {
     internal.setAttribute("data-no-trace", "true")
     expect(filter?.("click", internal)).toBe(true)
     expect(filter?.("submit", document.createElement("form"))).toBe(false)
+    expect(mocks.interactionOptions[0]).toEqual(
+      expect.objectContaining({ eventNames: ["click", "submit"] })
+    )
 
     expect(getTracer()).toEqual({ name: "frontend" })
     initTelemetry(env)
@@ -160,6 +173,36 @@ describe("frontend telemetry", () => {
     expect(originTarget?.test("https://api.example/api/users")).toBe(true)
     expect(originTarget?.test("https://apiXexample/api/users")).toBe(false)
     expect(originTarget?.test("https://api.example.evil/api/users")).toBe(false)
+    expect(
+      (mocks.xhrOptions[0] as { propagateTraceHeaderCorsUrls: RegExp[] })
+        .propagateTraceHeaderCorsUrls
+    ).toEqual(fetchTargets)
     expect(getTracer("checkout")).toEqual({ name: "checkout" })
+  })
+
+  it("keeps the same-origin API target when no backend origin is configured", async () => {
+    const { initTelemetry } = await loadTelemetry()
+    initTelemetry({ DEV: true } as ImportMetaEnv)
+
+    const targets = (mocks.fetchOptions[0] as { propagateTraceHeaderCorsUrls: RegExp[] })
+      .propagateTraceHeaderCorsUrls
+    expect(targets).toHaveLength(1)
+    expect(targets[0]?.test("/api/users")).toBe(true)
+    expect(targets[0]?.test("/prefix/api/users")).toBe(false)
+    expect(targets[0]?.test("/not-api/users")).toBe(false)
+  })
+
+  it("strips all trailing slashes before constructing an origin regex", async () => {
+    const { initTelemetry } = await loadTelemetry()
+    initTelemetry({
+      DEV: false,
+      VITE_OTEL_EXPORTER_OTLP_ENDPOINT: "https://otel.example/v1/traces",
+      VITE_BACKEND_ORIGIN: "https://api.example///",
+    } as ImportMetaEnv)
+
+    const targets = (mocks.fetchOptions[0] as { propagateTraceHeaderCorsUrls: RegExp[] })
+      .propagateTraceHeaderCorsUrls
+    expect(targets[0]?.test("https://api.example/api/users")).toBe(true)
+    expect(targets[0]?.test("https://api.example///api/users")).toBe(false)
   })
 })

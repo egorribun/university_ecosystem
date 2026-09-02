@@ -516,6 +516,17 @@ describe("subscribe", () => {
       expect(res).toBe(dummyReg)
     })
 
+    it("does not auto-register a worker in Lighthouse audit builds", async () => {
+      vi.stubEnv("VITE_LHCI", "true")
+      const { registerServiceWorker } = await import("../register-sw")
+      mockSWContainer.getRegistration.mockResolvedValue(null)
+      mockSWContainer.ready = new Promise(() => {})
+
+      await expect(mod.resolveServiceWorkerRegistration()).resolves.toBeNull()
+      expect(registerServiceWorker).not.toHaveBeenCalled()
+      expect(mockSWContainer.getRegistration).not.toHaveBeenCalled()
+    })
+
     it("falls back to auto-registration when lookup and ready both fail", async () => {
       const fallbackReg: any = { active: {} }
       const { registerServiceWorker } = await import("../register-sw")

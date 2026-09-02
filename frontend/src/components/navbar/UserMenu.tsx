@@ -43,6 +43,7 @@ export const UserMenu = ({
     ? t("navigation:aria.profileAvatarNamed")
     : t("navigation:aria.profileAvatar")
   const profileTitle = t("navigation:aria.openProfile")
+  const profileNameLabel = user?.full_name ? `${profileTitle}: ${user.full_name}` : profileTitle
 
   const dur = prefersReducedMotion ? "duration-0" : "duration-500"
   const ease = "ease-[var(--ease-premium)]"
@@ -67,7 +68,7 @@ export const UserMenu = ({
     <div
       className={cn(
         "ml-auto flex min-w-0 items-center whitespace-nowrap",
-        "transition-[gap]",
+        "transition-[transform,opacity]",
         dur,
         ease,
         isCompact ? "gap-2" : "gap-3"
@@ -79,45 +80,50 @@ export const UserMenu = ({
       <div
         className={cn(
           "flex items-center",
-          "transition-[gap,padding,height]",
+          "transition-[transform,opacity]",
           dur,
           ease,
           isCompact ? "gap-2 ml-1 h-8" : "gap-3 ml-3 h-10"
         )}
       >
-        {/* Avatar — premium ring glow on hover */}
-        <SmartImage
-          srcRaw={hasAvatar ? avatarSource : AVATAR_PLACEHOLDER_URL}
-          cacheV={hasAvatar ? avatarCacheV : undefined}
-          fallback={AVATAR_PLACEHOLDER_URL}
-          alt={profileAlt}
-          title={profileTitle}
+        <button
+          type="button"
           className={cn(
-            "block cursor-pointer rounded-full border bg-(--bg-surface-raised) object-cover",
-            "transition-[width,height,box-shadow,transform]",
+            "flex size-11 shrink-0 items-center justify-center rounded-full border-none bg-transparent p-0",
+            "transition-[transform,opacity]",
             dur,
             ease,
-            isCompact ? "h-7 w-7" : "h-9 w-9",
-            "border-(--border-subtle)",
-            "hover:shadow-[var(--avatar-ring-glow)]",
             !prefersReducedMotion && "hover:scale-105 active:scale-95"
           )}
           onClick={() => go("/profile")}
-        />
+          aria-label={profileTitle}
+          title={profileTitle}
+        >
+          <SmartImage
+            srcRaw={hasAvatar ? avatarSource : AVATAR_PLACEHOLDER_URL}
+            cacheV={hasAvatar ? avatarCacheV : undefined}
+            fallback={AVATAR_PLACEHOLDER_URL}
+            alt={profileAlt}
+            className={cn(
+              "pointer-events-none block rounded-full border border-(--border-subtle) bg-(--bg-surface-raised) object-cover",
+              isCompact ? "h-7 w-7" : "h-9 w-9"
+            )}
+          />
+        </button>
 
         {/* User name — instant hide/show, no visible fade */}
         <div
           className={cn(
-            "overflow-hidden",
+            "navbar-user-name overflow-hidden",
             isCompact ? "max-w-0 opacity-0" : "max-w-48 opacity-100"
           )}
         >
           <button
             type="button"
             onClick={() => go("/profile")}
-            aria-label={profileTitle}
+            aria-label={profileNameLabel}
             title={profileTitle}
-            className="cursor-pointer border-none bg-transparent p-0 m-0 font-bold text-text-primary tracking-tight text-base hover:text-brand transition-colors whitespace-nowrap"
+            className="m-0 min-h-11 cursor-pointer whitespace-nowrap border-none bg-transparent p-0 font-bold tracking-tight text-base text-text-primary transition-colors hover:text-brand"
           >
             {user.full_name}
           </button>
@@ -129,25 +135,18 @@ export const UserMenu = ({
           type="button"
           className={cn(
             "flex items-center justify-center rounded-2xl text-text-primary cursor-pointer border-none",
-            "transition-[width,height,transform,background]",
+            "size-11 transition-[transform,opacity,background-color]",
             dur,
             ease,
-            isCompact ? "w-8 h-8" : "w-10 h-10",
             "hover:bg-(--bg-surface-hover)/(--opacity-soft)",
-            !prefersReducedMotion && "hover:rotate-90 hover:scale-110 active:scale-90"
+            !prefersReducedMotion && "hover:scale-105 active:scale-95"
           )}
-          style={{ willChange: "transform" }}
           onClick={() => go("/settings")}
           aria-label={t("navigation:menu.settings")}
           title={t("navigation:menu.settings")}
         >
           <SettingsIcon
-            className={cn(
-              "transition-[width,height]",
-              dur,
-              ease,
-              isCompact ? "h-4 w-4" : "h-5 w-5"
-            )}
+            className={cn("transition-[transform,opacity]", isCompact ? "h-4 w-4" : "h-5 w-5")}
           />
         </button>
       </div>

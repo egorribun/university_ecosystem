@@ -1,18 +1,60 @@
 import { render, screen } from "@testing-library/react"
-import { afterEach, describe, it, expect, vi } from "vitest"
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
 
-vi.mock("framer-motion", async () =>
-  (await import("@/tests/helpers/framerMotionMock")).framerMotionMock()
-)
-const { reducedMotion } = vi.hoisted(() => ({ reducedMotion: vi.fn(() => false) }))
-
-vi.mock("@/hooks/useMediaQuery", () => ({ default: () => reducedMotion() }))
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string) => key,
-    i18n: { language: "en", changeLanguage: () => Promise.resolve() },
-  }),
+vi.mock("framer-motion", () => ({
+  m: {
+    div: ({
+      children,
+      initial,
+      animate,
+      exit,
+      transition,
+      ...props
+    }: {
+      children?: React.ReactNode
+      initial?: unknown
+      animate?: unknown
+      exit?: unknown
+      transition?: unknown
+      [key: string]: unknown
+    }) => (
+      <div
+        {...props}
+        data-motion-initial={JSON.stringify(initial)}
+        data-motion-animate={JSON.stringify(animate)}
+        data-motion-exit={JSON.stringify(exit)}
+        data-motion-transition={JSON.stringify(transition)}
+      >
+        {children}
+      </div>
+    ),
+  },
+  AnimatePresence: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }))
+const { reducedMotion, mediaQueryMock } = vi.hoisted(() => ({
+  reducedMotion: vi.fn(() => false),
+  mediaQueryMock: vi.fn(),
+}))
+const { useTranslationMock, translationMock, formatDateMock } = vi.hoisted(() => {
+  const translationMock = vi.fn((key: string) => key)
+  return {
+    useTranslationMock: vi.fn(() => ({
+      t: translationMock,
+      i18n: { language: "en", changeLanguage: () => Promise.resolve() },
+    })),
+    translationMock,
+    formatDateMock: vi.fn((value: string) => `date:${value}`),
+  }
+})
+
+vi.mock("@/hooks/useMediaQuery", () => ({
+  default: (query: string) => {
+    mediaQueryMock(query)
+    return reducedMotion()
+  },
+}))
+vi.mock("react-i18next", () => ({ useTranslation: useTranslationMock }))
+vi.mock("@/utils/date", () => ({ formatDate: formatDateMock }))
 
 import { EventQuickView } from "@/components/events/EventQuickView"
 
@@ -28,6 +70,10 @@ const baseProps = {
 }
 
 describe("EventQuickView", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   afterEach(() => {
     reducedMotion.mockReturnValue(false)
   })
@@ -39,6 +85,20 @@ describe("EventQuickView", () => {
     expect(screen.getByText("Auditorium 42")).toBeInTheDocument()
     expect(screen.getByText("137")).toBeInTheDocument()
     expect(screen.getByText("events:quickView.viewDetails")).toBeInTheDocument()
+    expect(useTranslationMock).toHaveBeenCalledWith(["events"])
+    // EventCategoryBadge also uses i18n; the first call is the QuickView
+    // namespace and therefore guards against silently dropping it.
+    expect(useTranslationMock.mock.calls[0]).toEqual([["events"]])
+    expect(mediaQueryMock).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
+    expect(translationMock).toHaveBeenCalledWith("events:quickView.viewDetails")
+    expect(formatDateMock).toHaveBeenCalledWith(baseProps.startsAt, {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+    expect(screen.getByText(`date:${baseProps.startsAt}`)).toBeInTheDocument()
     // category branch — badge renders the localized label key
     expect(screen.getByText("events:categories.lecture")).toBeInTheDocument()
   })
@@ -57,16 +117,37 @@ describe("EventQuickView", () => {
       screen.queryByText("An introductory survey of qubits and gates.")
     ).not.toBeInTheDocument()
     expect(screen.queryByText("Auditorium 42")).not.toBeInTheDocument()
+    expect(document.querySelector("svg.lucide-map-pin")).not.toBeInTheDocument()
+    expect(document.querySelector("p.line-clamp-3")).not.toBeInTheDocument()
     // participant count still rendered (0) + title present
     expect(screen.getByText("Quantum Computing Lecture")).toBeInTheDocument()
     expect(screen.getByText("0")).toBeInTheDocument()
   })
 
   it("renders the bottom-position variant and a different category branch", () => {
-    render(<EventQuickView {...baseProps} position="bottom" category="conference" startsAt="" />)
+    const { container } = render(
+      <EventQuickView {...baseProps} position="bottom" category="conference" startsAt="" />
+    )
     // bottom position still shows core content
     expect(screen.getByText("Quantum Computing Lecture")).toBeInTheDocument()
     expect(screen.getByText("events:categories.conference")).toBeInTheDocument()
+    expect(container.querySelector("[data-motion-initial]")).toHaveAttribute(
+      "data-motion-initial",
+      JSON.stringify({ opacity: 0, y: -8, scale: 0.96 })
+    )
+    expect(container.querySelector("[data-motion-exit]")).toHaveAttribute(
+      "data-motion-exit",
+      JSON.stringify({ opacity: 0, y: -4, scale: 0.98 })
+    )
+    expect(container.querySelector("[data-motion-animate]")).toHaveAttribute(
+      "data-motion-animate",
+      JSON.stringify({ opacity: 1, y: 0, scale: 1 })
+    )
+    expect(container.querySelector("[data-motion-transition]")).toHaveAttribute(
+      "data-motion-transition",
+      JSON.stringify({ duration: 0.18, ease: [0.16, 1, 0.3, 1] })
+    )
+    expect(container.querySelector("svg.lucide-calendar")).not.toBeInTheDocument()
   })
 
   it("uses reduced-motion transitions and tolerates an invalid date", () => {
@@ -85,5 +166,77 @@ describe("EventQuickView", () => {
     expect(
       screen.queryByText("An introductory survey of qubits and gates.")
     ).not.toBeInTheDocument()
+    const motion = document.querySelector("[data-motion-initial]")
+    expect(motion).toHaveAttribute("data-motion-initial", "false")
+    expect(document.querySelector("[data-motion-exit]")).toHaveAttribute(
+      "data-motion-exit",
+      JSON.stringify({ opacity: 0 })
+    )
+    expect(motion).toHaveAttribute("data-motion-transition", JSON.stringify({ duration: 0 }))
+  })
+
+  it("omits the date row when startsAt is empty and keeps the title visible", () => {
+    const { container } = render(<EventQuickView {...baseProps} startsAt="" />)
+    expect(screen.getByText(baseProps.title)).toBeInTheDocument()
+    expect(container.querySelector("svg.lucide-calendar")).not.toBeInTheDocument()
+  })
+
+  it("uses the default top position and preserves all stat labels", () => {
+    const { container } = render(<EventQuickView {...baseProps} position={undefined} />)
+    expect(container.querySelector("[data-motion-initial]")).toHaveAttribute(
+      "data-motion-initial",
+      JSON.stringify({ opacity: 0, y: 8, scale: 0.96 })
+    )
+    expect(container.querySelector("[data-motion-exit]")).toHaveAttribute(
+      "data-motion-exit",
+      JSON.stringify({ opacity: 0, y: 4, scale: 0.98 })
+    )
+    expect(container.querySelector("[data-motion-transition]")).toHaveAttribute(
+      "data-motion-transition",
+      JSON.stringify({ duration: 0.18, ease: [0.16, 1, 0.3, 1] })
+    )
+    expect(container.firstElementChild).toHaveClass(
+      "absolute",
+      "left-0",
+      "right-0",
+      "z-floating",
+      "pointer-events-none",
+      "bottom-full",
+      "mb-2"
+    )
+    expect(screen.getByText("events:quickView.viewDetails")).toBeInTheDocument()
+  })
+
+  it("uses the bottom placement classes and keeps date formatting options observable", () => {
+    const { container } = render(<EventQuickView {...baseProps} position="bottom" />)
+    expect(container.firstElementChild).toHaveClass(
+      "absolute",
+      "left-0",
+      "right-0",
+      "z-floating",
+      "pointer-events-none",
+      "top-full",
+      "mt-2"
+    )
+    expect(formatDateMock).toHaveBeenCalledWith(
+      baseProps.startsAt,
+      expect.objectContaining({
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
+    )
+  })
+
+  it("renders an empty date label when date formatting has no result", () => {
+    formatDateMock.mockReturnValueOnce("")
+
+    const { container } = render(<EventQuickView {...baseProps} />)
+
+    const calendar = container.querySelector("svg.lucide-calendar")
+    expect(calendar?.parentElement?.textContent).toBe("")
+    expect(screen.queryByText(`date:${baseProps.startsAt}`)).not.toBeInTheDocument()
   })
 })

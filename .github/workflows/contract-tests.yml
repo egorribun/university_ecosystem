@@ -17,6 +17,7 @@ name: Contract Tests — cross-process Pact boundaries
 
 on:
   push:
+    branches: [main]
     paths:
       - "app/services/ws_hub_client.py"
       - "app/api/health.py"
@@ -150,7 +151,11 @@ jobs:
         # places it in /usr/local/lib so the dynamic linker can find it.
         # Requires sudo to write to /usr/local/lib.
         run: |
-          sudo go run github.com/pact-foundation/pact-go/v2 -l DEBUG install \
+          # sudo uses a restricted secure_path by default.  Pass the
+          # actions/setup-go toolchain explicitly so this command cannot fall
+          # back to an older runner Go and trigger a network toolchain download.
+          sudo env PATH="$PATH" GOTOOLCHAIN=local \
+            go run github.com/pact-foundation/pact-go/v2 -l DEBUG install \
             --libDir /usr/local/lib
           sudo ldconfig
         working-directory: services/ws-hub

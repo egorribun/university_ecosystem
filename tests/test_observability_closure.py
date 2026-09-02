@@ -7,8 +7,10 @@ import builtins
 import logging
 import runpy
 import sys
+import threading
 from pathlib import Path
 from types import SimpleNamespace
+from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -26,6 +28,23 @@ def restore_notification_queue_metrics_state():
     previous = observability._notification_queue_metrics
     yield
     observability._notification_queue_metrics = previous
+
+
+@pytest.fixture(autouse=True)
+def reset_owned_otel_lifecycle() -> None:
+    from app.core import observability
+
+    observability.shutdown_observability()
+    observability._otel_shutdown = False
+    observability._otel_configured = False
+    observability._otel_tracer_provider = None
+    observability._otel_meter_provider = None
+    yield
+    observability.shutdown_observability()
+    observability._otel_shutdown = False
+    observability._otel_configured = False
+    observability._otel_tracer_provider = None
+    observability._otel_meter_provider = None
 
 
 def test_observability_header_and_logging_helpers(monkeypatch) -> None:
@@ -101,6 +120,27 @@ def test_observability_import_without_sentry_sdk_uses_optional_fallbacks() -> No
     assert namespace["SentrySpanProcessor"] is None
 
 
+def test_observability_import_without_prometheus_uses_fallback() -> None:
+    from app.core import observability
+
+    source_path = Path(observability.__file__)
+    real_import = builtins.__import__
+
+    def fail_prometheus_import(name, *args, **kwargs):
+        if name == "prometheus_client":
+            raise ImportError("optional prometheus-client unavailable")
+        return real_import(name, *args, **kwargs)
+
+    with patch.object(builtins, "__import__", side_effect=fail_prometheus_import):
+        namespace = runpy.run_path(
+            str(source_path),
+            run_name="observability_without_prometheus",
+        )
+    assert namespace["CollectorRegistry"] is None
+    with pytest.raises(RuntimeError, match="prometheus-client"):
+        namespace["generate_latest"]()
+
+
 def test_sentry_configuration_supports_noop_and_trace_processor(monkeypatch) -> None:
     from app.core import observability
     from app.core.config import settings
@@ -157,6 +197,9 @@ def _otel_settings(*, metrics: bool = False, logs: bool = False) -> MagicMock:
     settings.otel_exporter_otlp_endpoint = ""
     settings.otel_exporter_otlp_headers = ""
     settings.otel_trace_sampler_ratio = 0.5
+    settings.otel_service_name = "test-service"
+    settings.environment = "testing"
+    settings.service_version = ""
     return settings
 
 
@@ -165,6 +208,7 @@ def test_configure_otel_handles_disabled_optional_pipelines() -> None:
 
     observability._otel_configured = False
     observability._sqlalchemy_instrumented = False
+
     settings = _otel_settings(metrics=False, logs=False)
     provider = MagicMock()
     meter_provider = MagicMock()
@@ -183,6 +227,7 @@ def test_configure_otel_handles_disabled_optional_pipelines() -> None:
         result = observability._configure_otel(MagicMock())
     assert result is provider
     assert observability._otel_configured is True
+    assert observability._sqlalchemy_instrumented is True
     sqlalchemy.return_value.instrument.assert_called_once()
     observability._otel_configured = False
     observability._sqlalchemy_instrumented = True
@@ -204,6 +249,87 @@ def test_configure_otel_handles_disabled_optional_pipelines() -> None:
     observability._sqlalchemy_instrumented = False
 
 
+def test_configure_otel_existing_provider_marks_lifecycle_configured() -> None:
+    from app.core import observability
+
+    provider = MagicMock()
+    observability._otel_configured = False
+    observability._otel_tracer_provider = provider
+    with patch.object(observability, "settings", MagicMock(enable_otel=True)):
+        assert observability._configure_otel(MagicMock()) is provider
+    assert observability._otel_configured is True
+
+
+def test_configure_otel_uses_clamped_sampler_ratio_and_exact_span_processor() -> None:
+    from app.core import observability
+
+    settings = _otel_settings(metrics=False, logs=False)
+    settings.otel_trace_sampler_ratio = 1.5
+    tracer_provider = MagicMock()
+    meter_provider = MagicMock()
+    span_exporter = MagicMock()
+    batch_processor = MagicMock()
+    resource = MagicMock(name="otel-resource")
+    with (
+        patch.object(observability, "settings", settings),
+        patch.object(observability, "_create_otel_resource", return_value=resource),
+        patch.object(
+            observability, "TracerProvider", return_value=tracer_provider
+        ) as tracer_provider_factory,
+        patch.object(
+            observability, "MeterProvider", return_value=meter_provider
+        ) as meter_provider_factory,
+        patch.object(observability, "OTLPSpanExporter", return_value=span_exporter),
+        patch.object(
+            observability, "BatchSpanProcessor", return_value=batch_processor
+        ) as batch,
+        patch.object(observability, "TraceIdRatioBased") as ratio,
+        patch.object(observability, "ParentBased") as parent,
+        patch.object(observability, "trace"),
+        patch.object(observability, "metrics"),
+        patch.object(observability, "set_global_textmap"),
+        patch.object(observability, "SQLAlchemyInstrumentor"),
+        patch.object(observability, "RedisInstrumentor") as redis_instrumentor,
+        patch.object(observability, "HTTPXClientInstrumentor") as httpx_instrumentor,
+    ):
+        assert observability._configure_otel(MagicMock()) is tracer_provider
+
+    ratio.assert_called_once_with(1.0)
+    parent.assert_called_once_with(ratio.return_value)
+    tracer_provider_factory.assert_called_once_with(
+        resource=resource, sampler=parent.return_value
+    )
+    # Meter and trace providers must share the same resource identity.  This
+    # binds metrics to the configured service name/environment instead of
+    # silently falling back to the SDK's default resource.
+    meter_provider_factory.assert_called_once_with(resource=resource, metric_readers=[])
+    batch.assert_called_once_with(span_exporter)
+    tracer_provider.add_span_processor.assert_called_once_with(batch_processor)
+    redis_instrumentor.return_value.instrument.assert_called_once_with(
+        tracer_provider=tracer_provider
+    )
+    httpx_instrumentor.return_value.instrument.assert_called_once_with(
+        tracer_provider=tracer_provider
+    )
+
+
+def test_shutdown_otel_provider_passes_the_real_provider_to_any_cast() -> None:
+    from app.core import observability
+
+    provider = MagicMock()
+    seen_annotations: list[object] = []
+
+    def record_cast(annotation: object, value: object) -> object:
+        seen_annotations.append(annotation)
+        return value
+
+    with patch.object(observability, "cast", side_effect=record_cast):
+        observability._shutdown_otel_provider(provider)
+
+    assert seen_annotations == [observability.Any]
+    provider.shutdown.assert_called_once_with(timeout_millis=1200)
+
+
 def test_configure_otel_optional_pipelines_without_endpoint_or_headers() -> None:
     from app.core import observability
 
@@ -213,29 +339,52 @@ def test_configure_otel_optional_pipelines_without_endpoint_or_headers() -> None
     provider = MagicMock()
     meter_provider = MagicMock()
     logger_provider = MagicMock()
+    log_processor = MagicMock()
+    resource = MagicMock(name="otel-resource")
+    engine = MagicMock()
     with (
         patch.object(observability, "settings", settings),
+        patch.object(observability, "_create_otel_resource", return_value=resource),
         patch.object(observability, "TracerProvider", return_value=provider),
         patch.object(observability, "MeterProvider", return_value=meter_provider),
         patch.object(observability, "OTLPSpanExporter"),
         patch.object(observability, "OTLPMetricExporter") as metric_exporter,
         patch.object(observability, "OTLPLogExporter") as log_exporter,
         patch.object(observability, "PeriodicExportingMetricReader"),
-        patch.object(observability, "LoggerProvider", return_value=logger_provider),
-        patch.object(observability, "BatchLogRecordProcessor"),
+        patch.object(
+            observability, "LoggerProvider", return_value=logger_provider
+        ) as logger_provider_factory,
+        patch.object(
+            observability,
+            "BatchLogRecordProcessor",
+            return_value=log_processor,
+        ) as batch_log_processor,
         patch.object(observability, "LoggingHandler", return_value=MagicMock()),
         patch.object(observability.logging, "getLogger", return_value=MagicMock()),
         patch.object(observability, "trace"),
         patch.object(observability, "metrics"),
         patch.object(observability, "set_global_textmap"),
         patch.object(observability, "set_logger_provider"),
-        patch.object(observability, "SQLAlchemyInstrumentor"),
+        patch.object(
+            observability, "SQLAlchemyInstrumentor"
+        ) as sqlalchemy_instrumentor,
         patch.object(observability, "RedisInstrumentor"),
         patch.object(observability, "HTTPXClientInstrumentor"),
     ):
-        observability._configure_otel(MagicMock())
-    metric_exporter.assert_called_once_with()
-    log_exporter.assert_called_once_with()
+        observability._configure_otel(engine)
+    metric_exporter.assert_called_once_with(timeout=0.75)
+    log_exporter.assert_called_once_with(timeout=0.75)
+    logger_provider_factory.assert_called_once_with(resource=resource)
+    batch_log_processor.assert_called_once_with(log_exporter.return_value)
+    logger_provider.add_log_record_processor.assert_called_once_with(log_processor)
+    sqlalchemy_instrumentor.return_value.instrument.assert_called_once_with(
+        engine=engine.sync_engine,
+        tracer_provider=provider,
+        enable_metrics=True,
+        meter_provider=meter_provider,
+        enable_commenter=True,
+        commenter_options={"opentelemetry_values": True},
+    )
     observability._otel_configured = False
     observability._sqlalchemy_instrumented = False
 
@@ -248,6 +397,70 @@ def test_configure_otel_returns_none_when_disabled() -> None:
     with patch.object(observability, "settings", MagicMock(enable_otel=False)):
         assert observability._configure_otel(MagicMock()) is None
     assert observability._otel_configured is False
+
+
+@pytest.mark.parametrize("disabled_value", ["true", "TRUE", "1", "yes", " On "])
+def test_otel_sdk_disabled_env_skips_provider_construction(
+    monkeypatch: pytest.MonkeyPatch, disabled_value: str
+) -> None:
+    """The standard SDK kill switch must be fail-closed before any SDK factory."""
+    from app.core import observability
+
+    monkeypatch.setenv("OTEL_SDK_DISABLED", disabled_value)
+    settings = _otel_settings(metrics=True, logs=True)
+    with (
+        patch.object(observability, "settings", settings),
+        patch.object(observability, "TracerProvider") as tracer_provider,
+        patch.object(observability, "OTLPSpanExporter") as span_exporter,
+        patch.object(observability, "MeterProvider") as meter_provider,
+        patch.object(observability, "OTLPMetricExporter") as metric_exporter,
+        patch.object(observability, "OTLPLogExporter") as log_exporter,
+    ):
+        assert observability._otel_sdk_disabled() is True
+        assert observability._configure_otel(MagicMock()) is None
+
+    tracer_provider.assert_not_called()
+    span_exporter.assert_not_called()
+    meter_provider.assert_not_called()
+    metric_exporter.assert_not_called()
+    log_exporter.assert_not_called()
+    assert observability._otel_configured is False
+
+
+@pytest.mark.parametrize("disabled_value", [None, "", "false", "0", "no", "off", "  "])
+def test_otel_sdk_disabled_env_allows_enabled_provider_for_blank_or_false_values(
+    monkeypatch: pytest.MonkeyPatch, disabled_value: str | None
+) -> None:
+    """Unset/blank/false values must preserve the normal enabled OTel path."""
+    from app.core import observability
+
+    if disabled_value is None:
+        monkeypatch.delenv("OTEL_SDK_DISABLED", raising=False)
+    else:
+        monkeypatch.setenv("OTEL_SDK_DISABLED", disabled_value)
+
+    settings = _otel_settings(metrics=False, logs=False)
+    tracer_provider = MagicMock()
+    meter_provider = MagicMock()
+    resource = MagicMock(name="otel-resource")
+    with (
+        patch.object(observability, "settings", settings),
+        patch.object(observability, "_create_otel_resource", return_value=resource),
+        patch.object(observability, "TracerProvider", return_value=tracer_provider),
+        patch.object(observability, "MeterProvider", return_value=meter_provider),
+        patch.object(observability, "OTLPSpanExporter"),
+        patch.object(observability, "BatchSpanProcessor"),
+        patch.object(observability, "trace"),
+        patch.object(observability, "metrics"),
+        patch.object(observability, "set_global_textmap"),
+        patch.object(observability, "SQLAlchemyInstrumentor"),
+        patch.object(observability, "RedisInstrumentor"),
+        patch.object(observability, "HTTPXClientInstrumentor"),
+    ):
+        assert observability._otel_sdk_disabled() is False
+        assert observability._configure_otel(MagicMock()) is tracer_provider
+
+    assert observability._otel_configured is True
 
 
 def test_configure_observability_short_circuits_configured_app() -> None:
@@ -283,6 +496,89 @@ def test_configure_observability_without_otel_does_not_instrument() -> None:
     assert app.state.observability_configured is True
 
 
+def test_configure_observability_instruments_with_owned_providers() -> None:
+    from app.core import observability
+
+    app = MagicMock()
+    app.state.observability_configured = False
+    app.state.otel_instrumented = False
+    owned_tracer = MagicMock()
+    owned_meter = MagicMock()
+    foreign_tracer = MagicMock()
+    foreign_meter = MagicMock()
+    with (
+        patch.object(observability, "_configure_logging"),
+        patch.object(observability, "_configure_otel", return_value=owned_tracer),
+        patch.object(observability, "_configure_sentry"),
+        patch.object(observability, "_otel_meter_provider", owned_meter),
+        patch.object(
+            observability.trace,
+            "get_tracer_provider",
+            return_value=foreign_tracer,
+        ),
+        patch.object(
+            observability.metrics,
+            "get_meter_provider",
+            return_value=foreign_meter,
+        ),
+        patch.object(observability.FastAPIInstrumentor, "instrument_app") as instrument,
+    ):
+        observability.configure_observability(app, engine=MagicMock())
+
+    instrument.assert_called_once_with(
+        app,
+        tracer_provider=owned_tracer,
+        meter_provider=owned_meter,
+    )
+
+
+def test_configure_observability_missing_marker_uses_explicit_false_default() -> None:
+    from app.core import observability
+
+    app = FastAPI()
+    provider = MagicMock()
+    with (
+        patch.object(observability, "_configure_logging"),
+        patch.object(observability, "_configure_otel", return_value=provider),
+        patch.object(observability, "_configure_sentry"),
+        patch.object(observability.FastAPIInstrumentor, "instrument_app") as instrument,
+        patch.object(observability, "_otel_meter_provider", MagicMock()),
+    ):
+        observability.configure_observability(app, engine=MagicMock())
+
+    instrument.assert_called_once()
+
+
+def test_configure_observability_after_shutdown_does_not_reuse_dead_globals() -> None:
+    from app.core import observability
+
+    app = MagicMock()
+    app.state.observability_configured = False
+    app.state.otel_instrumented = False
+    observability._otel_configured = False
+    observability._otel_shutdown = True
+    observability._otel_tracer_provider = None
+    observability._otel_meter_provider = None
+    settings = MagicMock(enable_otel=True)
+    try:
+        with (
+            patch.object(observability, "settings", settings),
+            patch.object(observability, "_configure_logging"),
+            patch.object(observability, "_configure_sentry") as configure_sentry,
+            patch.object(
+                observability.FastAPIInstrumentor, "instrument_app"
+            ) as instrument,
+        ):
+            observability.configure_observability(app, engine=MagicMock())
+    finally:
+        observability._otel_shutdown = False
+
+    configure_sentry.assert_called_once_with(None)
+    instrument.assert_not_called()
+    assert app.state.otel_instrumented is False
+    assert app.state.observability_configured is True
+
+
 def test_shutdown_observability_shuts_down_registered_providers() -> None:
     from app.core import observability
 
@@ -296,6 +592,9 @@ def test_shutdown_observability_shuts_down_registered_providers() -> None:
         patch.object(observability.logging, "getLogger", return_value=MagicMock()),
         patch.object(observability, "_otel_logging_handler", handler),
         patch.object(observability, "_otel_logger_provider", logger_provider),
+        patch.object(observability, "_otel_tracer_provider", tracer),
+        patch.object(observability, "_otel_meter_provider", meter),
+        patch.object(observability, "_otel_shutdown", False),
     ):
         observability.shutdown_observability()
     assert observability._otel_configured is False
@@ -311,6 +610,219 @@ def test_shutdown_observability_shuts_down_registered_providers() -> None:
         patch.object(observability, "_otel_logger_provider", None),
     ):
         observability.shutdown_observability()
+
+
+def test_bounded_shutdown_logs_timeout_warning_for_hanging_provider() -> None:
+    """A provider that ignores its SDK timeout remains observable and bounded."""
+    from app.core import observability
+
+    release = threading.Event()
+    started = threading.Event()
+    finished = threading.Event()
+
+    class HangingProvider:
+        def shutdown(self, **_kwargs: object) -> None:
+            started.set()
+            release.wait()
+            finished.set()
+
+    logger = MagicMock()
+    with patch.object(observability.logging, "getLogger", return_value=logger):
+        observability._shutdown_otel_providers_bounded((HangingProvider(),))
+
+    try:
+        assert started.is_set()
+        logger.warning.assert_called_once_with(
+            "OpenTelemetry provider shutdown exceeded timeout; continuing without flush"
+        )
+    finally:
+        release.set()
+
+    assert finished.wait(timeout=1)
+
+
+def test_shutdown_observability_owns_providers_rejected_by_otel_globals() -> None:
+    """Locally created providers must not outlive a rejected global install."""
+    from app.core import observability
+
+    class TrackedProvider:
+        instances: ClassVar[list[TrackedProvider]] = []
+
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self.shutdown_calls = 0
+            self.shutdown_kwargs: list[dict[str, object]] = []
+            self.__class__.instances.append(self)
+
+        def add_span_processor(self, _processor: object) -> None:
+            return None
+
+        def shutdown(self, *args: object, **kwargs: object) -> None:
+            self.shutdown_calls += 1
+            self.shutdown_kwargs.append(kwargs)
+
+    foreign_tracer = TrackedProvider()
+    foreign_meter = TrackedProvider()
+    TrackedProvider.instances.clear()
+    settings = _otel_settings(metrics=False, logs=False)
+    observability._otel_configured = False
+    observability._otel_shutdown = False
+    observability._sqlalchemy_instrumented = True
+
+    with (
+        patch.object(observability, "settings", settings),
+        patch.object(observability, "TracerProvider", TrackedProvider),
+        patch.object(observability, "MeterProvider", TrackedProvider),
+        patch.object(observability, "OTLPSpanExporter"),
+        patch.object(observability, "BatchSpanProcessor"),
+        patch.object(observability, "_create_otel_resource", return_value=MagicMock()),
+        patch.object(observability.trace, "set_tracer_provider") as set_tracer_provider,
+        patch.object(observability.metrics, "set_meter_provider") as set_meter_provider,
+        patch.object(
+            observability.trace,
+            "get_tracer_provider",
+            return_value=foreign_tracer,
+        ),
+        patch.object(
+            observability.metrics,
+            "get_meter_provider",
+            return_value=foreign_meter,
+        ),
+        patch.object(observability, "set_global_textmap"),
+        patch.object(observability, "RedisInstrumentor"),
+        patch.object(observability, "HTTPXClientInstrumentor"),
+    ):
+        local_tracer = observability._configure_otel(MagicMock())
+        local_meter = TrackedProvider.instances[-1]
+        observability.shutdown_observability()
+        observability.shutdown_observability()
+        refused = observability._configure_otel(MagicMock())
+
+    assert local_tracer is TrackedProvider.instances[0]
+    assert local_tracer.shutdown_calls == 1
+    assert local_meter.shutdown_calls == 1
+    assert local_tracer.shutdown_kwargs == [{"timeout_millis": 1200}]
+    assert local_meter.shutdown_kwargs == [{"timeout_millis": 1200}]
+    assert foreign_tracer.shutdown_calls == 0
+    assert foreign_meter.shutdown_calls == 0
+    assert refused is None
+    assert len(TrackedProvider.instances) == 2
+    set_tracer_provider.assert_called_once_with(local_tracer)
+    set_meter_provider.assert_called_once_with(local_meter)
+
+
+def test_configure_otel_partial_failure_shuts_down_created_providers() -> None:
+    """A failed startup must not orphan exporter workers or permit a retry."""
+    from app.core import observability
+
+    tracer_provider = MagicMock()
+    meter_provider = MagicMock()
+    settings = _otel_settings(metrics=True, logs=False)
+    observability._otel_shutdown = False
+    observability._otel_configured = False
+    observability._otel_tracer_provider = None
+    observability._otel_meter_provider = None
+
+    with (
+        patch.object(observability, "settings", settings),
+        patch.object(observability, "TracerProvider", return_value=tracer_provider),
+        patch.object(observability, "MeterProvider", return_value=meter_provider),
+        patch.object(observability, "OTLPSpanExporter"),
+        patch.object(observability, "BatchSpanProcessor"),
+        patch.object(observability, "OTLPMetricExporter"),
+        patch.object(observability, "PeriodicExportingMetricReader"),
+        patch.object(observability, "_create_otel_resource", return_value=MagicMock()),
+        patch.object(observability.trace, "set_tracer_provider"),
+        patch.object(
+            observability.metrics,
+            "set_meter_provider",
+            side_effect=RuntimeError("global provider registration failed"),
+        ),
+        patch.object(observability, "set_global_textmap"),
+    ):
+        with pytest.raises(RuntimeError, match="global provider registration failed"):
+            observability._configure_otel(MagicMock())
+
+    tracer_provider.shutdown.assert_called_once_with(timeout_millis=1200)
+    meter_provider.shutdown.assert_called_once_with(timeout_millis=1200)
+    assert observability._otel_tracer_provider is None
+    assert observability._otel_meter_provider is None
+    assert observability._otel_configured is False
+    assert observability._otel_shutdown is True
+    observability._shutdown_otel_provider(None)
+
+
+def test_configure_otel_partial_failure_marks_uncreated_meter_as_none() -> None:
+    """Cleanup must not treat an uninitialised meter as an owned provider."""
+    from app.core import observability
+
+    settings = _otel_settings(metrics=False, logs=False)
+    shutdown = MagicMock()
+    root_logger = MagicMock()
+    with (
+        patch.object(observability, "settings", settings),
+        patch.object(
+            observability,
+            "TracerProvider",
+            side_effect=RuntimeError("tracer setup failed"),
+        ),
+        patch.object(observability, "OTLPSpanExporter"),
+        patch.object(observability.logging, "getLogger", return_value=root_logger),
+        patch.object(observability, "_shutdown_otel_providers_bounded", shutdown),
+        pytest.raises(RuntimeError, match=r"^tracer setup failed$"),
+    ):
+        observability._configure_otel(MagicMock())
+
+    shutdown.assert_called_once()
+    assert tuple(shutdown.call_args.args[0]) == (None, None, None)
+    root_logger.removeHandler.assert_not_called()
+
+
+def test_configure_otel_partial_failure_removes_logging_handler() -> None:
+    from app.core import observability
+
+    tracer_provider = MagicMock()
+    meter_provider = MagicMock()
+    logger_provider = MagicMock()
+    logging_handler = MagicMock()
+    settings = _otel_settings(metrics=False, logs=True)
+    observability._otel_shutdown = False
+    observability._otel_configured = False
+    observability._otel_tracer_provider = None
+    observability._otel_meter_provider = None
+    root_logger = MagicMock()
+    root_logger.removeHandler.side_effect = RuntimeError("cleanup failed")
+
+    with (
+        patch.object(observability, "settings", settings),
+        patch.object(observability, "TracerProvider", return_value=tracer_provider),
+        patch.object(observability, "MeterProvider", return_value=meter_provider),
+        patch.object(observability, "LoggerProvider", return_value=logger_provider),
+        patch.object(observability, "LoggingHandler", return_value=logging_handler),
+        patch.object(observability, "OTLPSpanExporter"),
+        patch.object(observability, "BatchSpanProcessor"),
+        patch.object(observability, "OTLPLogExporter"),
+        patch.object(observability, "BatchLogRecordProcessor"),
+        patch.object(observability, "_create_otel_resource", return_value=MagicMock()),
+        patch.object(observability.trace, "set_tracer_provider"),
+        patch.object(observability.metrics, "set_meter_provider"),
+        patch.object(observability, "set_logger_provider"),
+        patch.object(observability, "set_global_textmap"),
+        patch.object(observability.logging, "getLogger", return_value=root_logger),
+        patch.object(observability, "_sqlalchemy_instrumented", True),
+        patch.object(
+            observability.RedisInstrumentor,
+            "instrument",
+            side_effect=ValueError("instrumentation failed"),
+        ),
+    ):
+        with pytest.raises(ValueError, match="instrumentation failed"):
+            observability._configure_otel(MagicMock())
+
+    root_logger.addHandler.assert_called_once_with(logging_handler)
+    root_logger.removeHandler.assert_called_once_with(logging_handler)
+    logger_provider.shutdown.assert_called_once_with(timeout_millis=1200)
+    meter_provider.shutdown.assert_called_once_with(timeout_millis=1200)
+    tracer_provider.shutdown.assert_called_once_with(timeout_millis=1200)
 
 
 def test_worker_metrics_lifecycle_and_status() -> None:

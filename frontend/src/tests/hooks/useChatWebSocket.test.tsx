@@ -22,8 +22,8 @@ const mocks = vi.hoisted(() => ({
   getDatabase: vi.fn(),
 }))
 
-vi.mock("@/db", () => ({
-  getDatabase: mocks.getDatabase,
+vi.mock("@/db/lazy", () => ({
+  getDatabaseLazily: mocks.getDatabase,
 }))
 
 // Fixed valid-format UUIDs for frame fixtures (parseWsMessage validates v.uuid()).
@@ -696,37 +696,12 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
     sendTypingSpy.mockRestore()
   })
 
-  it("sends read receipts only while open and protects the TOCTOU send", async () => {
+  it("does not expose a read sender because REST owns receipts", async () => {
     const { socket, result, unmount } = await mountAndOpen({ enabled: true })
 
-    act(() => {
-      result.current.sendRead(CHAT_ID)
-      result.current.sendRead(CHAT_ID)
-    })
-    expect(socket.sentMessages).toEqual([
-      '{"type":"read","chat_id":"33333333-3333-4333-8333-333333333333"}',
-    ])
-
-    socket.send = () => {
-      throw new Error("socket closed between readyState check and send")
-    }
-    expect(() => {
-      act(() => result.current.sendRead("55555555-5555-4555-8555-555555555555"))
-    }).not.toThrow()
+    expect(result.current).not.toHaveProperty("sendRead")
+    expect(socket.sentMessages).not.toContain(expect.stringContaining('"type":"read"'))
     unmount()
-  })
-
-  it("ignores read receipts before the socket opens", () => {
-    const rendered = renderHook(() => useChatWebSocket({ enabled: false }), {
-      wrapper: ({ children }) => (
-        <QueryClientProvider client={new QueryClient()}>
-          <WebSocketProvider>{children}</WebSocketProvider>
-        </QueryClientProvider>
-      ),
-    })
-
-    expect(() => act(() => rendered.result.current.sendRead(CHAT_ID))).not.toThrow()
-    rendered.unmount()
   })
 
   it("queues a room join before open, rejoins on open, and leaves safely", async () => {
@@ -780,7 +755,7 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
     unmount()
   })
 
-  it("swallows join/leave races and emits the heartbeat", async () => {
+  it("swallows join/leave races without emitting an invalid application heartbeat", async () => {
     const queryClient = new QueryClient()
     const rendered = renderHook(() => useChatWebSocket({ enabled: true }), {
       wrapper: ({ children }) => (
@@ -802,7 +777,10 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
     socket.send = (data: string) => socket.sentMessages.push(data)
     act(() => socket.open())
     act(() => vi.advanceTimersByTime(30_000))
-    expect(socket.sentMessages).toContain('{"type":"ping"}')
+    // ws-hub owns the heartbeat with WebSocket control frames.  The browser
+    // must not send an application JSON ping, which is rejected by the hub's
+    // client-command allowlist.
+    expect(socket.sentMessages).not.toContain('{"type":"ping"}')
     const sentCount = socket.sentMessages.length
     socket.readyState = MockWebSocket.CLOSING
     act(() => vi.advanceTimersByTime(30_000))
@@ -962,7 +940,11 @@ describe("useChatWebSocket outgoing controls and lifecycle edges", () => {
         id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
       })
     )
-    queryClient.setQueryData(["messages", CHAT_ID], makeList(initial))
+    queryClient.setQueryData(["messages", CHAT_ID], {
+      ...makeList(initial),
+      has_more: true,
+      next_cursor: "recoverable-older-edge",
+    })
     queryClient.setQueryData(["chats"], {
       items: [
         { id: CHAT_ID, unread_count: 2 },

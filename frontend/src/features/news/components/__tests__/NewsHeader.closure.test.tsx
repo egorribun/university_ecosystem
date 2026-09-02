@@ -1,5 +1,5 @@
 import { act, screen } from "@testing-library/react"
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { afterEach, describe, expect, it, vi, type Mock } from "vitest"
 
 import { NewsHeader } from "@/features/news/components/NewsHeader"
 import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
@@ -7,12 +7,12 @@ import { renderWithRouter } from "@/tests/helpers/renderWithRouter"
 type Props = Parameters<typeof NewsHeader>[0]
 
 let intersectionCallback: IntersectionObserverCallback | undefined
-let disconnectMock: ReturnType<typeof vi.fn> | undefined
+let disconnectMock: Mock<() => void> | undefined
 
 class TestIntersectionObserver {
   constructor(callback: IntersectionObserverCallback) {
     intersectionCallback = callback
-    disconnectMock = vi.fn()
+    disconnectMock = vi.fn<() => void>()
   }
 
   observe() {}

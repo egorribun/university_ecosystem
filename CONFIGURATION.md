@@ -92,7 +92,7 @@ This document describes all environment variables used by the University Ecosyst
 | `STORAGE_S3_ENDPOINT_URL` | Custom S3 endpoint (for MinIO) | Empty |
 | `EVENT_FILE_SCANNER_ENABLED` | Enable ClamAV virus scanning | `false` |
 | `EVENT_FILE_MAX_SIZE_BYTES` | Max upload size (default 10MB) | `10485760` |
-| `CHAT_MAX_MESSAGE_LENGTH` | Max characters per message | `10000` |
+| `CHAT_MAX_MESSAGE_LENGTH` | Max characters per message | `32768` |
 
 ---
 

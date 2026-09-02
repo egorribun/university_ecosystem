@@ -86,7 +86,6 @@ const {
     mfa_last_verified_at: null,
     recovery_codes_left: 0,
     totp_enrollments: [],
-    mfa_challenges: [],
   }
 
   const scheduleGroups = [{ id: "uuid-101", name: "IU5-21" }]
@@ -293,7 +292,6 @@ const { weatherResult } = vi.hoisted(() => {
 const authState = {
   isAuth: true,
   login: vi.fn(),
-  loginWithPasskey: vi.fn(),
   logout: vi.fn(),
   refresh: vi.fn(),
   user: baseUser,
@@ -411,7 +409,7 @@ vi.mock("@/components/media/SmartImage", () => ({
 }))
 
 vi.mock("@/assets/background.jpg", () => ({ default: "profile-bg.jpg" }))
-vi.mock("@/assets/guu_logo.png", () => ({ default: "guu-logo.png" }))
+vi.mock("@/assets/guu_logo.png?url&no-inline", () => ({ default: "guu-logo.png" }))
 
 vi.mock("@/api/client", () => ({
   __esModule: true,

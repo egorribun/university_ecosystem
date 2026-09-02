@@ -1,0 +1,12 @@
+User-agent: *
+Disallow: /api/
+Disallow: /news
+Disallow: /admin/
+Disallow: /dashboard
+Disallow: /events
+Disallow: /activity
+Disallow: /map
+Disallow: /messenger
+Disallow: /profile
+Disallow: /schedule
+Disallow: /settings

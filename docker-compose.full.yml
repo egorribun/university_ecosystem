@@ -35,17 +35,17 @@ services:
       MAX_SESSIONS_PER_USER: "50"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/0"
-      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
+      REVOCATION_REDIS_URL: "redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
       RATE_LIMIT_STORAGE_BACKEND: redis
       RATE_LIMIT_STORAGE_URI: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/1"
       MINIO_ENDPOINT: minio:9000
       MINIO_BUCKET: uploads
       MINIO_SECURE: "false"
       VAPID_SUBJECT: ${VAPID_SUBJECT:-}
-      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
-      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
-      SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI}
-      SPOTIFY_SCOPES: ${SPOTIFY_SCOPES}
+      SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID:-}
+      SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET:-}
+      SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI:-}
+      SPOTIFY_SCOPES: ${SPOTIFY_SCOPES:-}
       AUTO_CREATE_SCHEMA: "false"
       NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD:?NATS_PASSWORD is required - run start-docker.ps1}@nats:4222"
       ELASTICSEARCH_URL: "http://elasticsearch:9200"
@@ -90,6 +90,7 @@ services:
     networks:
       - internal
       - public
+      - revocation_net
     # Wave 140 SW3-fix: override Dockerfile HEALTHCHECK (which uses /healthz Full
     # Check requiring ES/SpiceDB/Tempo all reachable) with /health/ready (Lean
     # readiness probe: just DB connectivity + not shutting down). Two reasons:
@@ -177,6 +178,11 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: 32M
     restart: unless-stopped
 
   frontend:
@@ -288,12 +294,15 @@ services:
       target: runtime
     command: python -m app.workers.notifications
     env_file:
-      - .env.docker
+      # start-docker.ps1 derives this from .env.docker after removing the
+      # revocation-state URL and password. Workers do not own auth state.
+      - .env.docker.workers
     environment:
       DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/0"
-      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
+      APP_PROCESS_ROLE: notifications-worker
+      REVOCATION_REDIS_ACCESS_ENABLED: "false"
       AUTO_CREATE_SCHEMA: "false"
       NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD:?NATS_PASSWORD is required - run start-docker.ps1}@nats:4222"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
@@ -303,8 +312,6 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      revocation-redis:
         condition: service_healthy
       nats:
         condition: service_healthy
@@ -338,12 +345,15 @@ services:
       target: runtime
     command: python -m app.workers.outbox
     env_file:
-      - .env.docker
+      # Use the same redacted environment as notifications-worker; do not
+      # leak a revocation credential merely through a broad env_file.
+      - .env.docker.workers
     environment:
       DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
       CACHE_ENABLED: "true"
       CACHE_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/0"
-      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
+      APP_PROCESS_ROLE: outbox-worker
+      REVOCATION_REDIS_ACCESS_ENABLED: "false"
       NATS_URL: "nats://${NATS_USER}:${NATS_PASSWORD:?NATS_PASSWORD is required - run start-docker.ps1}@nats:4222"
       AUTO_CREATE_SCHEMA: "false"
       OTEL_EXPORTER_OTLP_ENDPOINT: http://tempo:4317
@@ -353,8 +363,6 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_healthy
-      revocation-redis:
         condition: service_healthy
       nats:
         condition: service_healthy
@@ -451,6 +459,11 @@ services:
     security_opt:
       - no-new-privileges:true
     restart: "no"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 64M
 
   redis:
     # Switched from Redis 7.4 to Valkey 8 (Linux Foundation fork) — Redis 8.x
@@ -507,9 +520,9 @@ services:
       - "--maxmemory-policy"
       - "noeviction"
       - "--requirepass"
-      - "${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}"
+      - "${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}"
     environment:
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}
+      REDIS_PASSWORD: ${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}
     volumes:
       - revocation-redis-data:/data
     healthcheck:
@@ -518,7 +531,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - internal
+      - revocation_net
     deploy:
       resources:
         limits:
@@ -550,6 +563,11 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: 64M
     restart: unless-stopped
 
   # ── S3-compatible object storage (MinIO) ──────────────────────────────────
@@ -627,11 +645,17 @@ services:
       - .env.docker
     environment:
       DATABASE_URL: "postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required - run start-docker.ps1}@postgres:5432/university"
+      # The irreversible WebAuthn retirement migration tombstones active JTIs
+      # before it changes database state; it must use durable security Valkey.
+      REVOCATION_REDIS_URL: "redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
     depends_on:
       postgres:
         condition: service_healthy
+      revocation-redis:
+        condition: service_healthy
     networks:
       - internal
+      - revocation_net
     deploy:
       resources:
         limits:
@@ -686,7 +710,7 @@ services:
       GATEWAY_PORT: "8080"
       BACKEND_URL: http://backend:8000
       REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@redis:6379/3"
-      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
+      REVOCATION_REDIS_URL: "redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
       # JWT_SECRET kept for defense-in-depth: gateway falls back to HS256 if RS256
       # verify fails. Pre-W137 in-flight HS256 tokens decode via this until expiry.
       JWT_SECRET: ${SECRET_KEY:?SECRET_KEY is required - run start-docker.ps1}
@@ -714,6 +738,7 @@ services:
     networks:
       - public
       - internal
+      - revocation_net
     deploy:
       resources:
         limits:
@@ -748,7 +773,7 @@ services:
       REDIS_URL: "redis:6379"
       REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}
       REDIS_DB: "0"
-      REVOCATION_REDIS_URL: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
+      REVOCATION_REDIS_URL: "redis://:${REVOCATION_REDIS_PASSWORD:?REVOCATION_REDIS_PASSWORD is required - run start-docker.ps1}@revocation-redis:6379/0"
       # Wave 173 polish-v3: ws-hub default ALLOWED_ORIGINS per
       # `services/ws-hub/pkg/config/config.go:103` = ["http://localhost:3000",
       # "http://localhost:5173"] (Vite dev server ports). Production-like
@@ -781,6 +806,7 @@ services:
     networks:
       - internal
       - public
+      - revocation_net
     deploy:
       resources:
         limits:
@@ -1046,7 +1072,6 @@ services:
   # for clean exit before starting.
   temporal-admin-tools:
     image: temporalio/admin-tools:1.30.2@sha256:024c6473df113e4b220b3caf6056d30964582ffcae6f6e46a1074aa6c67968d3
-    container_name: temporal-admin-tools
     environment:
       SQL_PLUGIN: postgres12
       SQL_HOST: postgres
@@ -1125,7 +1150,6 @@ services:
     image: temporalio/server:1.30.2@sha256:d5334ee3ddce1617efbe280a10afc85916cf8d81798415c98988dbda2b46773e
     labels:
       com.university-ecosystem.config-revision: "${DOCKER_CONFIG_REVISION:-unmanaged}"
-    container_name: temporal
     ports:
       - "127.0.0.1:7233:7233"  # gRPC: localhost only; access via SSH tunnel
       - "127.0.0.1:7243:7243"  # frontend HTTP (Temporal Web UI etc)
@@ -1200,7 +1224,6 @@ services:
   # `--retention 1` — 1-day workflow history retention (dev-sized).
   temporal-namespace-init:
     image: temporalio/admin-tools:1.30.2@sha256:024c6473df113e4b220b3caf6056d30964582ffcae6f6e46a1074aa6c67968d3
-    container_name: temporal-namespace-init
     environment:
       # W144 SW2 NEW (z) #20: `TEMPORAL_CLI_ADDRESS` is the v1 CLI env name;
       # the v2 `temporal` CLI uses `TEMPORAL_ADDRESS` (no _CLI infix). Set
@@ -1425,6 +1448,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: 32M
     restart: unless-stopped
 
   loki:
@@ -1459,6 +1487,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.05"
+          memory: 32M
     restart: unless-stopped
 
   alloy:
@@ -1486,6 +1519,14 @@ services:
       - ALL
     cap_add:
       - DAC_OVERRIDE
+    # Docker discovery + Loki shipping is intentionally bounded for local
+    # observability. This leaves headroom for normal log bursts without
+    # allowing the collector to consume the host indefinitely.
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
     networks:
       - internal
       - public
@@ -1500,6 +1541,11 @@ services:
       - "127.0.0.1:4040:4040"
     volumes:
       - pyroscope-data:/data
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 512M
     networks:
       - internal
       - public
@@ -1539,6 +1585,8 @@ services:
 networks:
   public:
   internal:
+    internal: true
+  revocation_net:
     internal: true
 
 volumes:

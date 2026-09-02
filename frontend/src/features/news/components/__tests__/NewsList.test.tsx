@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react"
-import { describe, expect, it, vi, beforeEach } from "vitest"
+import { describe, expect, it, vi, beforeEach, type Mock } from "vitest"
 import { NewsList } from "../NewsList"
 
 // Mock NewsCard to avoid deep rendering issues and MSW dependencies for this specific component test
@@ -26,7 +26,7 @@ const mockNews: any[] = [
 
 describe("NewsList", () => {
   let intersectionCallback: IntersectionObserverCallback | undefined
-  let disconnectObserver: ReturnType<typeof vi.fn>
+  let disconnectObserver: Mock<() => void>
 
   const defaultProps = {
     newsList: mockNews,
@@ -44,20 +44,28 @@ describe("NewsList", () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    disconnectObserver = vi.fn()
-    const mockIntersectionObserver = vi.fn((callback: IntersectionObserverCallback) => {
-      intersectionCallback = callback
-      return {
-        root: null,
-        rootMargin: "",
-        thresholds: [],
-        takeRecords: vi.fn(() => []),
-        observe: vi.fn(),
-        unobserve: vi.fn(),
-        disconnect: disconnectObserver,
+    disconnectObserver = vi.fn<() => void>()
+    class MockIntersectionObserver implements IntersectionObserver {
+      readonly root = null
+      readonly rootMargin = ""
+      readonly scrollMargin = ""
+      readonly thresholds: ReadonlyArray<number> = []
+
+      constructor(callback: IntersectionObserverCallback) {
+        intersectionCallback = callback
       }
-    })
-    window.IntersectionObserver = mockIntersectionObserver
+
+      takeRecords(): IntersectionObserverEntry[] {
+        return []
+      }
+
+      observe(): void {}
+      unobserve(): void {}
+      disconnect(): void {
+        disconnectObserver()
+      }
+    }
+    window.IntersectionObserver = MockIntersectionObserver
   })
 
   it("renders skeletons when isInitialLoading is true", () => {
@@ -70,6 +78,18 @@ describe("NewsList", () => {
   it("renders empty state when list is empty", () => {
     render(<NewsList {...defaultProps} newsList={[]} />)
     expect(screen.getByText(/no news yet/i)).toBeInTheDocument()
+  })
+
+  it("continues pagination when the current filtered page has no matches", () => {
+    const fetchNextPage = vi.fn()
+    render(<NewsList {...defaultProps} newsList={[]} hasNextPage fetchNextPage={fetchNextPage} />)
+
+    expect(screen.queryByText(/no news yet/i)).not.toBeInTheDocument()
+    intersectionCallback?.(
+      [{ isIntersecting: true } as IntersectionObserverEntry],
+      {} as IntersectionObserver
+    )
+    expect(fetchNextPage).toHaveBeenCalledOnce()
   })
 
   it("renders offline fallback when list is empty and offline", () => {

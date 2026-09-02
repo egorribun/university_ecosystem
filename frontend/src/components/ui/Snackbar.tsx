@@ -31,7 +31,12 @@ function Snackbar({ open, message, onClose, duration = DEFAULT_DURATION }: Snack
   if (!open || !message) return null
 
   return (
-    <div className="fixed bottom-24 left-1/2 z-toast -translate-x-1/2 animate-in slide-in-from-bottom-4 fade-in">
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className="fixed bottom-24 left-1/2 z-toast -translate-x-1/2 animate-in slide-in-from-bottom-4 fade-in"
+    >
       <div className="glass-layer-floating flex items-center gap-2 rounded-xl px-5 py-3 text-sm font-black uppercase tracking-widest text-text-primary">
         {message}
       </div>

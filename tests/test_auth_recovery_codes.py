@@ -1,5 +1,5 @@
 import secrets
-from unittest.mock import MagicMock, patch
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import select
@@ -8,13 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import mfa
 from app.auth.security import get_password_hash
 from app.models import User
-
-# Mock WebAuthn to avoid import issues
-sys_modules_mock = MagicMock()
-with patch.dict(
-    "sys.modules", {"webauthn": sys_modules_mock, "webauthn.helpers": sys_modules_mock}
-):
-    pass
 
 
 @pytest.fixture
@@ -45,7 +38,11 @@ async def test_generate_recovery_codes_unit(
     db_session: AsyncSession, unit_user_mfa: User
 ):
     """Unit test for generating recovery codes."""
-    codes = await mfa.generate_recovery_codes(db_session, user=unit_user_mfa)
+    codes = await mfa.generate_recovery_codes(
+        db_session,
+        user=unit_user_mfa,
+        fresh_mfa_verified_at=datetime.now(UTC),
+    )
 
     assert len(codes) == 10
 
@@ -81,7 +78,11 @@ async def test_generate_recovery_codes_unit(
 
 async def test_verify_recovery_code_unit(db_session: AsyncSession, unit_user_mfa: User):
     """Unit test for verifying codes."""
-    codes = await mfa.generate_recovery_codes(db_session, user=unit_user_mfa)
+    codes = await mfa.generate_recovery_codes(
+        db_session,
+        user=unit_user_mfa,
+        fresh_mfa_verified_at=datetime.now(UTC),
+    )
     valid_code = codes[0]
 
     # Verify success
@@ -121,8 +122,13 @@ async def test_verify_recovery_code_unit(db_session: AsyncSession, unit_user_mfa
 
 async def test_invalidation_unit(db_session: AsyncSession, unit_user_mfa: User):
     """Unit test: generating new codes invalidates old ones."""
-    codes1 = await mfa.generate_recovery_codes(db_session, user=unit_user_mfa)
-    codes2 = await mfa.generate_recovery_codes(db_session, user=unit_user_mfa)
+    fresh = datetime.now(UTC)
+    codes1 = await mfa.generate_recovery_codes(
+        db_session, user=unit_user_mfa, fresh_mfa_verified_at=fresh
+    )
+    codes2 = await mfa.generate_recovery_codes(
+        db_session, user=unit_user_mfa, fresh_mfa_verified_at=fresh
+    )
 
     # Try verifying code from batch 1
     verified = await mfa.verify_recovery_code(
