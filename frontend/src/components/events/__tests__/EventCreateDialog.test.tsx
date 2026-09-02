@@ -49,7 +49,8 @@ function fieldByLabel(labelText: string): HTMLElement {
 
 describe("EventCreateDialog", () => {
   beforeEach(() => {
-    uploadEventImage.mockClear()
+    uploadEventImage.mockReset()
+    uploadEventImage.mockResolvedValue("https://cdn.example.com/uploaded.png")
   })
 
   it("renders nothing when open=false", () => {
@@ -64,6 +65,20 @@ describe("EventCreateDialog", () => {
     expect(screen.getByText("events:form.location")).toBeInTheDocument()
     expect(screen.getByText("events:form.start")).toBeInTheDocument()
     expect(screen.getByText("events:form.end")).toBeInTheDocument()
+    expect(screen.getByText("events:form.description")).toBeInTheDocument()
+    expect(screen.getByText("events:form.type")).toBeInTheDocument()
+    expect(screen.getByText("events:form.speaker")).toBeInTheDocument()
+    expect(screen.getByText("events:form.image")).toBeInTheDocument()
+    expect(screen.getByText("events:form.uploadImage")).toBeInTheDocument()
+    expect(useTranslationMock).toHaveBeenCalledWith(["events", "common"])
+    expect(fieldByLabel("events:form.title")).toHaveValue("")
+    expect(fieldByLabel("events:form.description")).toHaveValue("")
+    expect(fieldByLabel("events:form.type")).toHaveValue("")
+    expect(fieldByLabel("events:form.location")).toHaveValue("")
+    expect(fieldByLabel("events:form.speaker")).toHaveValue("")
+    expect(fieldByLabel("events:form.start")).toHaveValue("")
+    expect(fieldByLabel("events:form.end")).toHaveValue("")
+    expect(screen.queryByText("events:form.errors.endsBeforeStarts")).not.toBeInTheDocument()
     // Submit disabled until required fields are filled
     expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeDisabled()
   })
@@ -73,6 +88,7 @@ describe("EventCreateDialog", () => {
     expect(screen.getByText("events:form.title_en")).toBeInTheDocument()
     expect(screen.getByText("events:form.location_en")).toBeInTheDocument()
     expect(screen.getByText("events:form.description_en")).toBeInTheDocument()
+    expect(screen.getByText("events:form.type_en")).toBeInTheDocument()
   })
 
   it("updates optional description, type, and speaker fields", async () => {
@@ -276,9 +292,122 @@ describe("EventCreateDialog", () => {
       const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
 
       fireEvent.change(fileInput, { target: { files: [] } })
+      fireEvent.change(fileInput, { target: { files: null } })
 
       expect(createObjectURL).not.toHaveBeenCalled()
       expect(uploadEventImage).not.toHaveBeenCalled()
+    } finally {
+      urlCtor.createObjectURL = previousCreate
+      urlCtor.revokeObjectURL = previousRevoke
+    }
+  })
+
+  it("keeps an in-flight upload valid across ordinary draft edits", async () => {
+    let resolveUpload!: (url: string) => void
+    uploadEventImage.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveUpload = resolve
+        })
+    )
+
+    const urlCtor = URL as unknown as {
+      createObjectURL?: (obj: unknown) => string
+      revokeObjectURL?: (url: string) => void
+    }
+    const previousCreate = urlCtor.createObjectURL
+    const previousRevoke = urlCtor.revokeObjectURL
+    urlCtor.createObjectURL = vi.fn(() => "blob:editing")
+    urlCtor.revokeObjectURL = vi.fn()
+
+    try {
+      const user = userEvent.setup()
+      render(<EventCreateDialog {...baseProps} />)
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      await user.upload(input, new File(["x"], "editing.png", { type: "image/png" }))
+      await user.type(fieldByLabel("events:form.title"), "Draft edit")
+
+      resolveUpload("https://cdn.example.com/editing.png")
+      await waitFor(() => expect(screen.getByText("events:form.imageSelected")).toBeInTheDocument())
+      expect(screen.queryByText("common:statuses.uploading")).not.toBeInTheDocument()
+    } finally {
+      urlCtor.createObjectURL = previousCreate
+      urlCtor.revokeObjectURL = previousRevoke
+    }
+  })
+
+  it("does not let a stale upload clear a newer upload's pending state", async () => {
+    let resolveFirst!: (url: string) => void
+    const firstUpload = new Promise<string>((resolve) => {
+      resolveFirst = resolve
+    })
+    uploadEventImage
+      .mockImplementationOnce(() => firstUpload)
+      .mockImplementationOnce(() => new Promise<string>(() => undefined))
+
+    const urlCtor = URL as unknown as {
+      createObjectURL?: (obj: unknown) => string
+      revokeObjectURL?: (url: string) => void
+    }
+    const previousCreate = urlCtor.createObjectURL
+    const previousRevoke = urlCtor.revokeObjectURL
+    urlCtor.createObjectURL = vi
+      .fn<(obj: unknown) => string>()
+      .mockReturnValueOnce("blob:first")
+      .mockReturnValueOnce("blob:second")
+    urlCtor.revokeObjectURL = vi.fn()
+
+    try {
+      const user = userEvent.setup()
+      render(<EventCreateDialog {...baseProps} />)
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      await user.upload(input, new File(["a"], "first.png", { type: "image/png" }))
+      await user.upload(input, new File(["b"], "second.png", { type: "image/png" }))
+      expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument()
+
+      resolveFirst("https://cdn.example.com/stale.png")
+      await act(async () => {
+        await firstUpload
+      })
+      expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument()
+    } finally {
+      urlCtor.createObjectURL = previousCreate
+      urlCtor.revokeObjectURL = previousRevoke
+    }
+  })
+
+  it("revokes no preview when closing without an image", () => {
+    const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined)
+    const { unmount } = render(<EventCreateDialog {...baseProps} />)
+
+    unmount()
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+    revokeObjectURL.mockRestore()
+  })
+
+  it("clears upload state when the dialog is closed and reopened", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<EventCreateDialog {...baseProps} />)
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    const urlCtor = URL as unknown as {
+      createObjectURL?: (obj: unknown) => string
+      revokeObjectURL?: (url: string) => void
+    }
+    const previousCreate = urlCtor.createObjectURL
+    const previousRevoke = urlCtor.revokeObjectURL
+    urlCtor.createObjectURL = vi.fn(() => "blob:close")
+    urlCtor.revokeObjectURL = vi.fn()
+
+    try {
+      // Start a pending upload, then close while it is still in flight.
+      uploadEventImage.mockImplementationOnce(() => new Promise<string>(() => undefined))
+      await user.upload(input, new File(["x"], "close.png", { type: "image/png" }))
+      expect(screen.getByText("common:statuses.uploading")).toBeInTheDocument()
+      await user.click(screen.getByRole("button", { name: "common:buttons.cancel" }))
+
+      rerender(<EventCreateDialog {...baseProps} open />)
+      expect(screen.getByText("events:form.uploadImage")).toBeInTheDocument()
+      expect(document.querySelector<HTMLInputElement>('input[type="file"]')).not.toBeDisabled()
     } finally {
       urlCtor.createObjectURL = previousCreate
       urlCtor.revokeObjectURL = previousRevoke
@@ -391,5 +520,33 @@ describe("EventCreateDialog", () => {
     expect(onCreated).toHaveBeenCalledWith(
       expect.objectContaining({ title_en: "Only English", location_en: "English room" })
     )
+  })
+
+  it("also enables a Russian-only draft when English fallbacks are empty", async () => {
+    const user = userEvent.setup()
+    const onCreated = vi.fn()
+    render(<EventCreateDialog {...baseProps} language="ru" onCreated={onCreated} />)
+
+    await user.type(fieldByLabel("events:form.title"), "Русское название")
+    await user.type(fieldByLabel("events:form.location"), "Русский зал")
+    await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+    await user.type(fieldByLabel("events:form.end"), "2026-01-15T11:00")
+
+    expect(screen.getByRole("button", { name: "common:buttons.create" })).toBeEnabled()
+    await user.click(screen.getByRole("button", { name: "common:buttons.create" }))
+    expect(onCreated).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Русское название", location: "Русский зал" })
+    )
+  })
+
+  it("keeps date validation clear until both timestamps are present", async () => {
+    const user = userEvent.setup()
+    render(<EventCreateDialog {...baseProps} />)
+
+    await user.type(fieldByLabel("events:form.title"), "Partial dates")
+    await user.type(fieldByLabel("events:form.location"), "Hall F")
+    await user.type(fieldByLabel("events:form.start"), "2026-01-15T10:00")
+
+    expect(screen.queryByText("events:form.errors.endsBeforeStarts")).not.toBeInTheDocument()
   })
 })

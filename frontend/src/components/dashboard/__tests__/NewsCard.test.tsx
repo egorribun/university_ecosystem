@@ -76,7 +76,7 @@ vi.mock("@/components/dashboard/NewsCardBackground", () => ({
   NewsCardBackground: () => <div data-testid="dashboard-news-background" />,
 }))
 
-import { NewsCard } from "../NewsCard"
+import { NewsCard, prepareOnKey } from "../NewsCard"
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -107,6 +107,7 @@ describe("dashboard NewsCard closure paths", () => {
     expect(card).toHaveAttribute("aria-busy", "true")
     expect(screen.getByTestId("dashboard-news-list")).toHaveAttribute("data-loading", "true")
     expect(screen.getByText("dashboard:viewAll")).toBeInTheDocument()
+    expect(screen.getByRole("heading")).toHaveTextContent("dashboard:news.heading")
 
     fireEvent.pointerDown(viewAll)
     fireEvent.keyDown(viewAll, { key: "Enter" })
@@ -163,5 +164,14 @@ describe("dashboard NewsCard closure paths", () => {
 
     fireEvent.pointerDown(screen.getByRole("link", { name: "dashboard:aria.viewAllNews" }))
     await vi.waitFor(() => expect(prefetchDashboardNewsMock).toHaveBeenCalledOnce())
+  })
+
+  it("supports the legacy Spacebar key and ignores unrelated keys", () => {
+    const callback = vi.fn()
+
+    prepareOnKey(new KeyboardEvent("keydown", { key: "Spacebar" }), callback)
+    prepareOnKey(new KeyboardEvent("keydown", { key: "Escape" }), callback)
+
+    expect(callback).toHaveBeenCalledOnce()
   })
 })

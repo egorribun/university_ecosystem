@@ -186,9 +186,8 @@ describe("frontend telemetry", () => {
 
     const targets = (mocks.fetchOptions[0] as { propagateTraceHeaderCorsUrls: RegExp[] })
       .propagateTraceHeaderCorsUrls
-    expect(targets).toHaveLength(2)
+    expect(targets).toHaveLength(1)
     expect(targets[0]?.test("/api/users")).toBe(true)
-    expect(targets[1]?.test("/api/users")).toBe(true)
     expect(targets[0]?.test("/not-api/users")).toBe(false)
   })
 

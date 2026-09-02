@@ -128,6 +128,8 @@ describe("EventCard logic wrapper closure paths", () => {
     await waitFor(() => expect(screen.getByTestId("event-card-view")).toBeInTheDocument())
     expect(screen.getByText("Workshop")).toBeInTheDocument()
     expect(screen.getByTestId("event-card-admin")).toHaveTextContent("true")
+    expect(screen.getByTestId("event-card-location")).toHaveTextContent("Room 1")
+    expect(screen.getByTestId("event-card-loading")).toHaveTextContent("false")
     expect(useTranslationMock).toHaveBeenCalledWith(["events", "common"])
     expect(translationMock).toHaveBeenCalledWith("events:card.dialogs.delete.title")
     expect(translationMock).toHaveBeenCalledWith("events:card.dialogs.delete.description")
@@ -226,6 +228,26 @@ describe("EventCard logic wrapper closure paths", () => {
     expect(screen.getByTestId("event-card-delete-title")).toHaveTextContent(
       "events:card.dialogs.delete.title"
     )
+  })
+
+  it("normalizes an omitted start timestamp before handing it to the view", async () => {
+    useEventCardLogicMock.mockReturnValue({
+      ...makeLogic(),
+      registration: { participantCount: 0, isRegistered: false, isLoading: false },
+    })
+
+    render(
+      <EventCard
+        id="event-missing-start"
+        title="Untimed event"
+        starts_at={undefined}
+        location="Room 2"
+      />
+    )
+
+    await waitFor(() => expect(screen.getByTestId("event-card-view")).toBeInTheDocument())
+    expect(screen.getByTestId("event-card-starts")).toHaveTextContent("")
+    expect(screen.getByTestId("event-card-location")).toHaveTextContent("Room 2")
   })
 
   it("grants event administration controls to teachers", async () => {

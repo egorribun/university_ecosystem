@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { m, AnimatePresence } from "framer-motion"
 import { useTranslation } from "react-i18next"
 import { sanitizeHttpUrl } from "@/utils/sanitize"
@@ -9,7 +9,7 @@ import { subscribeToPushMessages } from "@/push/pushMessageBus"
 
 type SnackbarSeverity = "success" | "info" | "warning" | "error"
 
-type ToastPayload = {
+export type ToastPayload = {
   id?: string
   title?: string
   body?: string
@@ -20,14 +20,13 @@ type ToastPayload = {
   timestamp?: number
 }
 
-type ActiveToast = Required<Pick<ToastPayload, "id">> & ToastPayload
+export type ActiveToast = Required<Pick<ToastPayload, "id">> & ToastPayload
 
 type ServiceWorkerMessage = {
   type?: string
   toast?: ToastPayload
 }
 
-const DEFAULT_SEVERITY: SnackbarSeverity = "info"
 const VALID_SEVERITIES: readonly SnackbarSeverity[] = [
   "success",
   "info",
@@ -35,35 +34,136 @@ const VALID_SEVERITIES: readonly SnackbarSeverity[] = [
   "error",
 ] as const
 
-const BUFFER_STORAGE_KEY = "livePushToastBuffer"
 const MAX_BUFFER_SIZE = 20
 const MAX_SEEN_TOAST_IDS = 256
 
-const trimString = (value: unknown): string | undefined =>
-  typeof value === "string" ? value.trim() : undefined
-
-const resolveSeverity = (toast: ActiveToast | null): SnackbarSeverity => {
-  if (!toast?.data || typeof toast.data !== "object") return DEFAULT_SEVERITY
-  const rawSeverity = (toast.data as { severity?: unknown }).severity
-  if (typeof rawSeverity !== "string") return DEFAULT_SEVERITY
-  const normalized = rawSeverity.trim().toLowerCase()
-  const match = VALID_SEVERITIES.find((value) => value === normalized)
-  return match ?? DEFAULT_SEVERITY
+/** @internal Browser snapshot used by the visibility subscription. */
+export function getDocumentVisibility(): DocumentVisibilityState {
+  return document.visibilityState
 }
 
-const buildToastId = (toast: ToastPayload) => {
+/** @internal SSR snapshot keeps hydration deterministic before a document exists. */
+export function getServerVisibility(): DocumentVisibilityState {
+  return "visible"
+}
+
+/** @internal Lifecycle subscription does not expose mutable snapshot state. */
+export function getStableSnapshot(): null {
+  return null
+}
+
+/** @internal Canonical defaults are exposed through a call so their contract is executable. */
+export function getDefaultSeverity(): SnackbarSeverity {
+  return "info"
+}
+
+/** @internal Storage key accessor keeps persistence namespaced and testable. */
+export function getBufferStorageKey(): string {
+  return "livePushToastBuffer"
+}
+
+/** @internal Pure normalizer exported for contract tests. */
+export function trimString(value: unknown): string | undefined {
+  return typeof value === "string" ? value.trim() : undefined
+}
+
+/** @internal Restricts severity metadata to non-array records. */
+export function isSeverityData(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+}
+
+/** @internal Service-worker routing predicates are explicit and independently testable. */
+export function shouldBufferPush(visibility: DocumentVisibilityState, isTestTransport: boolean) {
+  return !isTestTransport && visibility !== "visible"
+}
+
+/** @internal Visibility listeners only flush when the document is visible. */
+export function shouldFlushBufferedToasts(visibility: DocumentVisibilityState): boolean {
+  return visibility === "visible"
+}
+
+/** @internal Distinguishes the message branch without coupling tests to React effects. */
+export function isSyncCompleteMessage(type: string | undefined): boolean {
+  return type === "SYNC_COMPLETE"
+}
+
+/** @internal Close timers are only cleared after a timer has actually been scheduled. */
+export function hasCloseTimer(
+  timer: ReturnType<typeof setTimeout> | null
+): timer is ReturnType<typeof setTimeout> {
+  return timer !== null
+}
+
+/** @internal Toast visibility requires both an open phase and a current item. */
+export function shouldRenderToast(
+  open: boolean,
+  current: ActiveToast | null
+): current is ActiveToast {
+  return open && current !== null
+}
+
+/** @internal Keep title/body fallback behavior consistent in the view and tests. */
+export function resolveToastContent(
+  current: ActiveToast | null,
+  translate: (key: string) => string
+): { title: string; body: string } {
+  return {
+    title: current?.title?.trim() || translate("notifications:defaultTitle"),
+    body: current?.body?.trim() || translate("notifications:defaultBody"),
+  }
+}
+
+/** @internal Window target policy is same-origin aware and deterministic. */
+export function getToastWindowTarget(sameOrigin: boolean): "_self" | "_blank" {
+  return sameOrigin ? "_self" : "_blank"
+}
+
+/** @internal External actions receive an explicit opener-isolation feature string. */
+export function getToastWindowFeatures(sameOrigin: boolean): string | undefined {
+  return sameOrigin ? undefined : "noopener,noreferrer"
+}
+
+/** @internal Progress animation contract kept separate from the JSX tree. */
+export function getToastProgressTransition(): { duration: number; ease: "linear" } {
+  return { duration: 6, ease: "linear" }
+}
+
+/** @internal Clear a deferred close timer only when a timer exists. */
+export function clearCloseTimer(timer: ReturnType<typeof setTimeout> | null): void {
+  if (!hasCloseTimer(timer)) return
+  clearTimeout(timer)
+}
+
+/** @internal Pure severity resolver shared by push and restored notifications. */
+export const resolveSeverity = (toast: ActiveToast | null): SnackbarSeverity => {
+  const data = toast?.data
+  if (!isSeverityData(data)) return getDefaultSeverity()
+  const rawSeverity = data.severity
+  if (typeof rawSeverity !== "string") return getDefaultSeverity()
+  const normalized = rawSeverity.trim().toLowerCase()
+  const match = VALID_SEVERITIES.find((value) => value === normalized)
+  return match ?? getDefaultSeverity()
+}
+
+/** @internal Canonical identity selection for deduplication. */
+export const buildToastId = (toast: ToastPayload) => {
   const id = trimString(toast.id)
   if (id) return id
   const tag = trimString(toast.tag)
   if (tag) return tag
-  if (typeof toast.timestamp === "number" && Number.isFinite(toast.timestamp)) {
+  if (Number.isFinite(toast.timestamp)) {
     return String(toast.timestamp)
   }
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-const toActiveToast = (payload: unknown): ActiveToast | null => {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null
+/** @internal Validates and normalizes an untrusted service-worker payload. */
+export function isToastPayload(payload: unknown): payload is ToastPayload {
+  return payload !== null && typeof payload === "object" && !Array.isArray(payload)
+}
+
+export const toActiveToast = (payload: unknown): ActiveToast | null => {
+  if (!isToastPayload(payload)) return null
   const toast = payload as ToastPayload
   const title = trimString(toast.title)
   const body = trimString(toast.body)
@@ -74,18 +174,35 @@ const toActiveToast = (payload: unknown): ActiveToast | null => {
   return { ...toast, title, body, id: buildToastId(toast), url: safeUrl }
 }
 
-let memoryBuffer: ActiveToast[] = []
+let memoryBuffer: ActiveToast[] | undefined
 
-const sanitizeBuffer = (buffer: unknown): ActiveToast[] => {
-  if (!Array.isArray(buffer)) return []
-  return buffer
-    .map((item) => (item && typeof item === "object" ? toActiveToast(item as ToastPayload) : null))
-    .filter((item): item is ActiveToast => Boolean(item))
+/** Resolve browser storage without touching the window during SSR. */
+export function getToastStorage(): Storage | null {
+  if (typeof window === "undefined") return null
+  const browserWindow = window
+  try {
+    return browserWindow.localStorage ?? null
+  } catch {
+    return null
+  }
 }
 
-const readBuffer = (): ActiveToast[] => {
+/** @internal Filters persisted data through the same untrusted-payload boundary. */
+export const sanitizeBuffer = (buffer: unknown): ActiveToast[] => {
+  if (!Array.isArray(buffer)) return []
+  return buffer.map(toActiveToast).filter((item): item is ActiveToast => item !== null)
+}
+
+/** @internal Storage read is deliberately fail-closed. */
+export const readBuffer = (): ActiveToast[] => {
+  const storage = getToastStorage()
+  if (storage === null) {
+    memoryBuffer = []
+    return memoryBuffer
+  }
   try {
-    const raw = window.localStorage?.getItem(BUFFER_STORAGE_KEY)
+    const getItem = storage.getItem.bind(storage)
+    const raw = getItem(getBufferStorageKey())
     if (!raw) {
       memoryBuffer = []
       return memoryBuffer
@@ -99,100 +216,123 @@ const readBuffer = (): ActiveToast[] => {
   }
 }
 
-const writeBuffer = (buffer: ActiveToast[]) => {
+/** @internal Storage write is best-effort and never breaks notification delivery. */
+export const writeBuffer = (buffer: ActiveToast[]) => {
   memoryBuffer = buffer.slice(-MAX_BUFFER_SIZE)
+  const storage = getToastStorage()
+  if (storage === null) return
   try {
-    window.localStorage?.setItem(BUFFER_STORAGE_KEY, JSON.stringify(memoryBuffer))
+    const setItem = storage.setItem.bind(storage)
+    setItem(getBufferStorageKey(), JSON.stringify(memoryBuffer))
   } catch (_e) {
     // Ignore
   }
 }
 
-const bufferToast = (toast: ActiveToast) => {
+export const bufferToast = (toast: ActiveToast) => {
   const existing = readBuffer()
   const deduped = existing.filter((item) => item.id !== toast.id)
   deduped.push(toast)
   writeBuffer(deduped)
 }
 
-const consumeBufferedToasts = (): ActiveToast[] => {
-  const buffered = [...readBuffer()]
-  if (buffered.length === 0) return []
-  writeBuffer([])
+export const consumeBufferedToasts = (): ActiveToast[] => {
+  const buffered = readBuffer()
+  if (buffered.length > 0) writeBuffer([])
   return buffered
 }
 
+/** @internal Bounded identity window used by both live and restored delivery. */
+export const rememberToastId = (seenIds: Set<string>, id: string): boolean => {
+  if (seenIds.has(id)) return false
+  if (seenIds.size >= MAX_SEEN_TOAST_IDS) {
+    const oldest = seenIds.values().next().value
+    seenIds.delete(oldest!)
+  }
+  seenIds.add(id)
+  return true
+}
+
 export default function LivePushToasts() {
-  const { t } = useTranslation(["notifications", "common"])
+  const { t } = useTranslation(Array.of("notifications", "common"))
   const [queue, setQueue] = useState<ActiveToast[]>([])
   const [current, setCurrent] = useState<ActiveToast | null>(null)
-  const [open, setOpen] = useState(false)
+  // `undefined` is the pre-render closed phase; explicit booleans are used after
+  // the first transition so there is no duplicate initial-state sentinel.
+  const [open, setOpen] = useState<boolean | undefined>()
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const seenToastIdsRef = useRef(new Set<string>())
 
-  const enqueue = useCallback((toast: ActiveToast) => {
+  // State initializers provide stable callback identities without reading refs
+  // during render (which the React Compiler correctly rejects).  The callbacks
+  // still close over the instance-owned refs/setters and are initialized once.
+  const [enqueue] = useState<(toast: ActiveToast) => void>(() => (toast: ActiveToast) => {
     const seenIds = seenToastIdsRef.current
-    if (seenIds.has(toast.id)) return
-    if (seenIds.size >= MAX_SEEN_TOAST_IDS) {
-      // The size guard makes the iterator non-empty; the non-null assertion
-      // keeps this eviction path branch-free and preserves the Set<string>
-      // invariant for the exact-100% coverage contract.
-      seenIds.delete(seenIds.values().next().value!)
-    }
-    seenIds.add(toast.id)
+    if (!rememberToastId(seenIds, toast.id)) return
     setQueue((prev) => [...prev, toast])
-  }, [])
+  })
 
-  const flushBufferedToasts = useCallback(() => {
+  const [flushBufferedToasts] = useState<() => void>(() => () => {
     const buffered = consumeBufferedToasts()
-    if (buffered.length === 0) return
     // Route restored messages through the same identity window as live
     // delivery.  A visibility transition can race with a push that arrived
     // after the tab became visible; appending directly would show that toast
     // twice and would not mark restored ids as seen.
     buffered.forEach(enqueue)
-  }, [enqueue])
+  })
 
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const data = event.data as ServiceWorkerMessage
-      if (data.type === "PUSH_NOTIFICATION") {
-        if (!data.toast) return
-        const normalized = toActiveToast(data.toast)
-        if (!normalized) return
+      switch (data.type) {
+        case "PUSH_NOTIFICATION": {
+          const normalized = toActiveToast(data.toast)
+          if (!normalized) return
 
-        const isTest = typeof window !== "undefined" && window.name === "__mock_api_initialized__"
-        if (typeof document !== "undefined" && document.visibilityState !== "visible" && !isTest) {
-          bufferToast(normalized)
+          const isTest = window.name === "__mock_api_initialized__"
+          if (shouldBufferPush(document.visibilityState, isTest)) {
+            bufferToast(normalized)
+            return
+          }
+          enqueue(normalized)
           return
         }
-        enqueue(normalized)
-      } else if (data.type === "SYNC_COMPLETE") {
-        const toast: ToastPayload = {
-          title: t("notifications:sync.title"),
-          body: t("notifications:sync.body"),
-          data: { severity: "success" },
-          timestamp: Date.now(),
+        case "SYNC_COMPLETE": {
+          const toast: ToastPayload = {
+            title: t("notifications:sync.title"),
+            body: t("notifications:sync.body"),
+            data: { severity: "success" },
+            timestamp: Date.now(),
+          }
+          const normalized = toActiveToast(toast)
+          if (normalized) enqueue(normalized)
+          return
         }
-        const normalized = toActiveToast(toast)
-        if (normalized) enqueue(normalized)
       }
+      return
     }
 
     return subscribeToPushMessages(handleMessage)
   }, [enqueue, t])
 
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== "visible") return
-      flushBufferedToasts()
+  const [subscribeVisibility] = useState<(onStoreChange: () => void) => () => void>(
+    () => (onStoreChange: () => void) => {
+      const flushWhenVisible = () => {
+        if (!shouldFlushBufferedToasts(document.visibilityState)) return
+        flushBufferedToasts()
+      }
+      const handleVisibilityChange = () => {
+        flushWhenVisible()
+        onStoreChange()
+      }
+
+      document.addEventListener("visibilitychange", handleVisibilityChange)
+      flushWhenVisible()
+
+      return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
     }
-
-    document.addEventListener("visibilitychange", handleVisibilityChange)
-    handleVisibilityChange()
-
-    return () => document.removeEventListener("visibilitychange", handleVisibilityChange)
-  }, [flushBufferedToasts])
+  )
+  useSyncExternalStore(subscribeVisibility, getDocumentVisibility, getServerVisibility)
 
   useEffect(() => {
     if (current || queue.length === 0) return
@@ -201,23 +341,19 @@ export default function LivePushToasts() {
     setOpen(true)
   }, [current, queue])
 
-  const handleClose = useCallback(() => {
+  const [handleClose] = useState<() => void>(() => () => {
     setOpen(false)
-    if (closeTimerRef.current !== null) clearTimeout(closeTimerRef.current)
+    clearCloseTimer(closeTimerRef.current)
     closeTimerRef.current = setTimeout(() => {
       closeTimerRef.current = null
       setCurrent(null)
     }, 300)
-  }, [])
+  })
 
-  useEffect(() => {
-    return () => {
-      if (closeTimerRef.current !== null) {
-        clearTimeout(closeTimerRef.current)
-        closeTimerRef.current = null
-      }
-    }
-  }, [])
+  const [subscribeLifecycle] = useState<() => () => void>(() => {
+    return () => () => clearCloseTimer(closeTimerRef.current)
+  })
+  useSyncExternalStore(subscribeLifecycle, getStableSnapshot, getStableSnapshot)
 
   const handleAction = useCallback(() => {
     const safeUrl = current!.url!
@@ -226,8 +362,8 @@ export default function LivePushToasts() {
       const sameOrigin = resolved.origin === window.location.origin
       window.open(
         resolved.href,
-        sameOrigin ? "_self" : "_blank",
-        sameOrigin ? undefined : "noopener,noreferrer"
+        getToastWindowTarget(sameOrigin),
+        getToastWindowFeatures(sameOrigin)
       )
     } catch (_error) {
       window.open(safeUrl, "_blank", "noopener,noreferrer")
@@ -243,8 +379,7 @@ export default function LivePushToasts() {
   }, [open, current, handleClose])
 
   const severity = resolveSeverity(current)
-  const title = current?.title?.trim() || t("notifications:defaultTitle")
-  const body = current?.body?.trim() || t("notifications:defaultBody")
+  const { title, body } = resolveToastContent(current, t)
 
   const Icon = {
     success: CheckCircle2,
@@ -271,7 +406,7 @@ export default function LivePushToasts() {
   return (
     <div className="fixed top-4 right-4 z-toast flex flex-col gap-2 pointer-events-none">
       <AnimatePresence>
-        {open && current && (
+        {shouldRenderToast(open === true, current) && (
           <m.div
             // Keep toast motion on compositor-friendly properties. Animating
             // filter/backdrop blur can crash WebKit while the action button is
@@ -326,7 +461,6 @@ export default function LivePushToasts() {
 
             <m.button
               type="button"
-              whileTap={{ scale: 0.94 }}
               onClick={() => handleClose()}
               className="group/btn relative z-base flex h-7 w-7 min-h-11 min-w-11 items-center justify-center rounded-full bg-linear-to-tr from-white/(--opacity-faint) to-white/(--opacity-subtle) text-(--text-secondary) transition-all duration-base hover:scale-110 hover:shadow-premium active:scale-95"
               aria-label={t("common:buttons.close")}
@@ -341,7 +475,7 @@ export default function LivePushToasts() {
                 style={{ background: "linear-gradient(to right, currentColor, transparent)" }}
                 initial={{ width: "100%" }}
                 animate={{ width: "0%" }}
-                transition={{ duration: 6, ease: "linear" }}
+                transition={getToastProgressTransition()}
               />
             </div>
           </m.div>

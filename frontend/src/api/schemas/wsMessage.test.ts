@@ -239,6 +239,7 @@ describe("parseWsMessage — new_message MessageSchema.read_at (Wave 203 SW5)", 
           type: "new_message",
           chat_id: CHAT_ID,
           message: baseMessage,
+          room: CHAT_ID,
           seq: 42,
           resume_token: "signed-resume-token-42",
         })
@@ -399,8 +400,20 @@ describe("parseWsMessage — Wave 204 SW3 ws-hub envelope unwrap + control frame
   })
 
   it("rejects JSON primitives before envelope validation", () => {
+    expect(() => parseWsMessage("42")).not.toThrow()
     expect(parseWsMessage("42")).toBeNull()
+    expect(() => parseWsMessage("null")).not.toThrow()
+    expect(parseWsMessage("null")).toBeNull()
   })
+
+  it.each(["legacy-extra", null])(
+    "keeps flat control frames valid when an unrelated payload key is %s",
+    (payload) => {
+      expect(parseWsMessage(JSON.stringify({ type: "pong", payload }))).toStrictEqual({
+        type: "pong",
+      })
+    }
+  )
 
   it.each([
     ["replayed", "yes"],
@@ -629,7 +642,7 @@ describe("parseWsMessage — remaining server frame variants and contracts", () 
   }
 
   it("accepts presence, online, online_list, typing, pong, and reaction frames", () => {
-    expect(parseWsMessage(JSON.stringify({ type: "pong" }))).toEqual({ type: "pong" })
+    expect(parseWsMessage(JSON.stringify({ type: "pong" }))).toStrictEqual({ type: "pong" })
     expect(
       parseWsMessage(
         JSON.stringify({
@@ -678,7 +691,9 @@ describe("parseWsMessage — remaining server frame variants and contracts", () 
   })
 
   it("rejects malformed variant payloads instead of silently broadening schemas", () => {
-    expect(parseWsMessage(JSON.stringify({ type: "pong", extra: true }))).toEqual({ type: "pong" })
+    expect(parseWsMessage(JSON.stringify({ type: "pong", extra: true }))).toStrictEqual({
+      type: "pong",
+    })
     expect(
       parseWsMessage(JSON.stringify({ type: "online_list", users: ["not-a-uuid"] }))
     ).toBeNull()

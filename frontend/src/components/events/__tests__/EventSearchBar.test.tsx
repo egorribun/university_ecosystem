@@ -47,7 +47,30 @@ describe("EventSearchBar", () => {
 
   it("renders the search input and filter button", () => {
     render(<EventSearchBar {...baseProps} />)
-    expect(screen.getByPlaceholderText("events:filters.search")).toBeInTheDocument()
+    const input = screen.getByPlaceholderText("events:filters.search")
+    expect(input).toBeInTheDocument()
+    expect(input).toHaveClass(
+      "w-full",
+      "rounded-md",
+      "px-4",
+      "py-3.5",
+      "pl-11",
+      "pr-20",
+      "text-base",
+      "text-text-primary",
+      "bg-(--bg-surface)/(--opacity-medium)",
+      "border",
+      "border-glass-border",
+      "shadow-glass",
+      "backdrop-blur-md",
+      "placeholder:text-(--text-secondary)/(--opacity-medium)",
+      "outline-none",
+      "transition-all",
+      "duration-fast",
+      "focus:border-brand/(--opacity-medium)",
+      "focus:ring-4",
+      "focus:ring-brand/(--opacity-subtle)"
+    )
     expect(screen.getByRole("button", { name: "events:aria.openFilters" })).toBeInTheDocument()
     expect(useTranslationMock).toHaveBeenCalledWith(["events"])
     expect(filterHookMock).toHaveBeenCalledWith({
@@ -67,7 +90,17 @@ describe("EventSearchBar", () => {
       screen.queryByRole("button", { name: "events:aria.clearSearch" })
     ).not.toBeInTheDocument()
     rerender(<EventSearchBar {...baseProps} search="react" onSearchChange={onSearchChange} />)
-    await user.click(screen.getByRole("button", { name: "events:aria.clearSearch" }))
+    const clear = screen.getByRole("button", { name: "events:aria.clearSearch" })
+    expect(clear).toHaveClass(
+      "rounded-full",
+      "p-2",
+      "text-(--text-secondary)",
+      "transition-all",
+      "duration-rapid",
+      "hover:bg-(--bg-surface)/(--opacity-dim)",
+      "active:scale-95"
+    )
+    await user.click(clear)
     expect(onSearchChange).toHaveBeenCalledWith("")
   })
 

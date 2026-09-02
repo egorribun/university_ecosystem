@@ -127,4 +127,19 @@ describe("queryClient — IDB persister", () => {
     const persister = createIDBPersister("errKey")
     await expect(persister.persistClient(makeClient())).rejects.toBe(boom)
   })
+
+  it("falls back to the default quota when storage estimation rejects", async () => {
+    // Import a fresh module after installing the rejecting browser API so the
+    // lazy quota resolver exercises its asynchronous catch contract directly.
+    vi.resetModules()
+    vi.stubGlobal("navigator", {
+      storage: { estimate: vi.fn().mockRejectedValue(new Error("storage unavailable")) },
+    })
+
+    const isolated = await import("@/app/queryClient")
+    await expect(
+      isolated.createIDBPersister("estimate-error").persistClient(makeClient())
+    ).resolves.toBeUndefined()
+    expect(idbSet).toHaveBeenCalledWith("estimate-error", expect.anything())
+  })
 })

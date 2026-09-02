@@ -24,14 +24,17 @@ interface EventQuickViewProps {
   position?: "top" | "bottom"
 }
 
-const formatShortDate = (s: string) =>
-  formatDate(s, {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }) || ""
+function formatShortDate(s: string): string {
+  return (
+    formatDate(s, {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }) || ""
+  )
+}
 
 export function EventQuickView({
   visible,

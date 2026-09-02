@@ -1,7 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { createEvent, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
-import type { ComponentProps } from "react"
+import type { ComponentProps, ReactNode } from "react"
 
 const { language } = vi.hoisted(() => ({ language: { current: "en" } }))
 const { useTranslationMock, translationMock } = vi.hoisted(() => {
@@ -23,11 +23,39 @@ vi.mock("react-i18next", () => ({
   useTranslation: useTranslationMock,
 }))
 
+vi.mock("@/components/ui/Dialog", () => {
+  const MockDialog = ({
+    open,
+    onClose,
+    title,
+    children,
+    footer,
+  }: {
+    open: boolean
+    onClose: () => void
+    title?: ReactNode
+    children: ReactNode
+    footer?: ReactNode
+  }) =>
+    open ? (
+      <div role="dialog" aria-label="Event edit dialog">
+        <div>{title}</div>
+        {children}
+        <div>{footer}</div>
+        <button type="button" onClick={onClose}>
+          Close
+        </button>
+      </div>
+    ) : null
+
+  return { Dialog: MockDialog, default: MockDialog }
+})
+
 vi.mock("@/components/media/SmartImage", () => ({
   default: ({ srcRaw, alt }: { srcRaw: string; alt: string }) => <img src={srcRaw} alt={alt} />,
 }))
 
-import { EventEditDialog } from "@/components/events/EventEditDialog"
+import { EventEditDialog, normalizeDatetimeLocal } from "@/components/events/EventEditDialog"
 import type { EventEditDraft } from "@/types/Event"
 
 const draft: EventEditDraft = {
@@ -79,7 +107,7 @@ describe("EventEditDialog", () => {
     const props = createProps()
     render(<EventEditDialog {...props} />)
 
-    const dialog = await screen.findByRole("dialog")
+    const dialog = screen.getByRole("dialog")
     expect(dialog).toBeInTheDocument()
     expect(screen.getByLabelText("events:form.title_en")).toHaveValue("Workshop")
     expect(screen.getByLabelText("events:form.description_en")).toHaveValue("Description")
@@ -94,9 +122,14 @@ describe("EventEditDialog", () => {
       "border",
       "focus:border-brand"
     )
+    expect(screen.getByLabelText("events:form.description_en")).toHaveClass(
+      "min-h-(--min-h-textarea)",
+      "resize-y"
+    )
     expect(screen.getByLabelText("events:form.end")).not.toHaveClass("border-error-border")
     expect(useTranslationMock).toHaveBeenCalledWith(["events", "common"])
     expect(translationMock).toHaveBeenCalledWith("events:card.dialogs.edit.title")
+    expect(screen.getByText("common:buttons.changePhoto")).toBeInTheDocument()
 
     await user.clear(screen.getByLabelText("events:form.title_en"))
     await user.type(screen.getByLabelText("events:form.title_en"), "Updated")
@@ -132,7 +165,7 @@ describe("EventEditDialog", () => {
     const props = createProps({ previewUrl: "blob:preview" })
     render(<EventEditDialog {...props} />)
 
-    await screen.findByRole("dialog")
+    screen.getByRole("dialog")
     expect(screen.getByLabelText("events:form.title")).toHaveValue("Мастер-класс")
     expect(screen.getByLabelText("events:form.description")).toHaveValue("Описание")
     expect(screen.getByLabelText("events:form.type")).toHaveValue("Семинар")
@@ -146,6 +179,25 @@ describe("EventEditDialog", () => {
       expect.objectContaining({ title: "Новое название" })
     )
 
+    fireEvent.change(screen.getByLabelText("events:form.description"), {
+      target: { value: "Новое описание" },
+    })
+    expect(props.setDraft).toHaveBeenLastCalledWith(
+      expect.objectContaining({ description: "Новое описание" })
+    )
+    fireEvent.change(screen.getByLabelText("events:form.type"), {
+      target: { value: "Лекция" },
+    })
+    expect(props.setDraft).toHaveBeenLastCalledWith(
+      expect.objectContaining({ event_type: "Лекция" })
+    )
+    fireEvent.change(screen.getByLabelText("events:form.location"), {
+      target: { value: "Аудитория 101" },
+    })
+    expect(props.setDraft).toHaveBeenLastCalledWith(
+      expect.objectContaining({ location: "Аудитория 101" })
+    )
+
     const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]')!
     fireEvent.change(fileInput, { target: { files: [] } })
     expect(props.setNewImage).not.toHaveBeenCalled()
@@ -156,7 +208,7 @@ describe("EventEditDialog", () => {
     const props = createProps({ imageLoading: true, dateError: true })
     const rendered = render(<EventEditDialog {...props} />)
 
-    await screen.findByRole("dialog")
+    screen.getByRole("dialog")
     expect(screen.getByText("events:form.errors.endsBeforeStarts")).toBeInTheDocument()
     expect(screen.getByLabelText("events:form.end")).toHaveClass("border-error-border")
     expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
@@ -170,10 +222,15 @@ describe("EventEditDialog", () => {
     await user.upload(fileInput, file)
     expect(props.setNewImage).toHaveBeenCalledWith(file)
 
+    const click = createEvent.click(fileInput)
+    const stopPropagation = vi.spyOn(click, "stopPropagation")
+    fireEvent(fileInput, click)
+    expect(stopPropagation).toHaveBeenCalledOnce()
+
     rendered.unmount()
     const loadingProps = createProps({ loading: true })
     const loadingView = render(<EventEditDialog {...loadingProps} />)
-    await waitFor(() => expect(screen.getByRole("dialog")).toBeInTheDocument())
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
     loadingView.unmount()
   })
@@ -198,7 +255,11 @@ describe("EventEditDialog", () => {
     })
     render(<EventEditDialog {...props} />)
 
-    await screen.findByRole("dialog")
+    screen.getByRole("dialog")
+    expect(screen.getByLabelText("events:form.title_en")).toHaveValue("")
+    expect(screen.getByLabelText("events:form.description_en")).toHaveValue("")
+    expect(screen.getByLabelText("events:form.type_en")).toHaveValue("")
+    expect(screen.getByLabelText("events:form.location_en")).toHaveValue("")
     expect(screen.getByLabelText("events:form.start")).toHaveValue("")
     expect(screen.getByLabelText("events:form.end")).toHaveValue("")
     expect(screen.getByLabelText("events:form.speaker")).toHaveValue("")
@@ -210,20 +271,102 @@ describe("EventEditDialog", () => {
     expect(props.setNewImage).not.toHaveBeenCalled()
   })
 
+  it("normalizes ISO datetimes to datetime-local precision", async () => {
+    render(
+      <EventEditDialog
+        {...createProps({
+          draft: {
+            ...draft,
+            starts_at: "2026-06-15T14:00:45.000Z",
+            ends_at: "2026-06-15T16:00:45.000Z",
+          },
+        })}
+      />
+    )
+
+    screen.getByRole("dialog")
+    expect(screen.getByLabelText("events:form.start")).toHaveValue("2026-06-15T14:00")
+    expect(screen.getByLabelText("events:form.end")).toHaveValue("2026-06-15T16:00")
+  })
+
+  it("returns a stable empty value for missing datetime inputs", () => {
+    expect(normalizeDatetimeLocal(undefined)).toBe("")
+    expect(normalizeDatetimeLocal(null)).toBe("")
+    expect(normalizeDatetimeLocal("")).toBe("")
+    expect(normalizeDatetimeLocal("2026-06-15T14:00:45.000Z")).toBe("2026-06-15T14:00")
+  })
+
+  it("preserves every localized edit callback and updates the preview when props change", async () => {
+    const props = createProps()
+    const { rerender } = render(<EventEditDialog {...props} />)
+
+    screen.getByRole("dialog")
+
+    fireEvent.change(screen.getByLabelText("events:form.description_en"), {
+      target: { value: "A precise description" },
+    })
+    expect(props.setDraft).toHaveBeenLastCalledWith(
+      expect.objectContaining({ description_en: "A precise description" })
+    )
+
+    fireEvent.change(screen.getByLabelText("events:form.type_en"), {
+      target: { value: "Seminar" },
+    })
+    expect(props.setDraft).toHaveBeenLastCalledWith(
+      expect.objectContaining({ event_type_en: "Seminar" })
+    )
+    fireEvent.change(screen.getByLabelText("events:form.start"), {
+      target: { value: "2026-06-17T09:30" },
+    })
+    expect(props.setDraft).toHaveBeenLastCalledWith(
+      expect.objectContaining({ starts_at: "2026-06-17T09:30" })
+    )
+    fireEvent.change(screen.getByLabelText("events:form.end"), {
+      target: { value: "2026-06-17T11:30" },
+    })
+    expect(props.setDraft).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ends_at: "2026-06-17T11:30" })
+    )
+
+    expect(screen.getByLabelText("events:form.start")).toHaveValue("2026-06-15T14:00")
+    expect(screen.getByLabelText("events:form.end")).toHaveValue("2026-06-15T16:00")
+
+    rerender(
+      <EventEditDialog
+        {...props}
+        draft={{ ...draft, image_url: "https://cdn.example/updated.png" }}
+        previewUrl={null}
+      />
+    )
+    expect(screen.getByAltText("events:alt.preview")).toHaveAttribute(
+      "src",
+      "https://cdn.example/updated.png"
+    )
+
+    rerender(
+      <EventEditDialog
+        {...props}
+        draft={{ ...draft, image_url: "https://cdn.example/updated.png" }}
+        previewUrl="blob:latest"
+      />
+    )
+    expect(screen.getByAltText("events:alt.preview")).toHaveAttribute("src", "blob:latest")
+  })
+
   it("disables saving when a normalized title or location is missing", async () => {
     const { unmount } = render(
       <EventEditDialog
         {...createProps({ normalizedTitle: "", normalizedLocation: "Main Building" })}
       />
     )
-    await screen.findByRole("dialog")
+    screen.getByRole("dialog")
     expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
     unmount()
 
     render(
       <EventEditDialog {...createProps({ normalizedTitle: "Workshop", normalizedLocation: "" })} />
     )
-    await screen.findByRole("dialog")
+    screen.getByRole("dialog")
     expect(screen.getByRole("button", { name: "common:buttons.save" })).toBeDisabled()
   })
 })

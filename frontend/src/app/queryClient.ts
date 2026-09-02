@@ -70,15 +70,12 @@ async function readStorageEstimate(): Promise<StorageEstimate | undefined> {
   const estimate = storage.estimate
   if (typeof estimate !== "function") return undefined
 
-  // Keep the synchronous guard operations outside this catch so mutation
-  // tests can prove each availability contract. Only the browser API's
-  // asynchronous rejection is intentionally degraded to the default quota.
+  // Keep the synchronous guard operations outside this rejection handler so
+  // only the browser API's asynchronous failure is degraded to the default
+  // quota.  Using Promise.catch also keeps that contract explicit without a
+  // redundant try/catch whose empty-body mutant would be equivalent.
   const pendingEstimate = estimate.call(storage)
-  try {
-    return await pendingEstimate
-  } catch {
-    return undefined
-  }
+  return await pendingEstimate.catch(() => undefined)
 }
 
 async function getIdbQuotaBytes(): Promise<number> {

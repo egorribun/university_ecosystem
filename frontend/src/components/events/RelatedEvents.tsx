@@ -8,7 +8,6 @@ import SmartImage from "@/components/media/SmartImage"
 import { CalendarDays, ArrowRight } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { useLanguage } from "@/contexts/LanguageContext"
-import { useMemo } from "react"
 import { EventCategoryBadge } from "./EventCategoryBadge"
 import { inferEventCategory } from "@/features/events/categories"
 import { localizeField } from "@/utils/localize"
@@ -47,20 +46,14 @@ export function RelatedEvents({ items }: RelatedEventsProps) {
 function RelatedEventCard({ event, language }: { event: Event; language: "en" | "ru" }) {
   const { t } = useTranslation(["events"])
 
-  const localizedTitle = useMemo(
-    () => localizeField(event.title ?? "", event.title_en, language),
-    [event.title, event.title_en, language]
-  )
-
-  const category = useMemo(
-    () => inferEventCategory(event.event_type ?? event.event_type_en),
-    [event.event_type, event.event_type_en]
-  )
-
-  const dateLabel = useMemo(
-    () => (event.starts_at ? formatDate(event.starts_at, { day: "numeric", month: "short" }) : ""),
-    [event.starts_at]
-  )
+  // These values are deliberately computed inline: each is a small, pure
+  // presentation transform and keeping them as ordinary expressions makes
+  // their empty/locale fallback behavior observable in the rendered card.
+  const localizedTitle = localizeField(event.title ?? "", event.title_en, language)
+  const category = inferEventCategory(event.event_type ?? event.event_type_en)
+  const dateLabel = event.starts_at
+    ? formatDate(event.starts_at, { day: "numeric", month: "short" })
+    : ""
 
   return (
     <Link

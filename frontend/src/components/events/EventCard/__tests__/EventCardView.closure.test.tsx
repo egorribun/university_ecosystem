@@ -254,6 +254,8 @@ describe("EventCardView closure paths", () => {
     const hero = screen.getByTestId("event-card-hero")
 
     expect(quickView).toHaveAttribute("data-visible", "false")
+    expect(quickView).toHaveAttribute("data-position", "top")
+    expect(card).toHaveClass("events-card-container", "cursor-pointer")
     fireEvent.mouseEnter(card)
     expect(quickView).toHaveAttribute("data-visible", "true")
     expect(quickView).toHaveAttribute("data-position", "bottom")
@@ -271,6 +273,8 @@ describe("EventCardView closure paths", () => {
   it("keeps hover and transition behavior disabled when requested", () => {
     render(<EventCardView {...makeProps({ hoveringDisabled: true })} />)
     const card = screen.getByTestId("event-card")
+
+    expect(card).toHaveClass("cursor-default")
 
     fireEvent.mouseEnter(card)
     fireEvent.pointerDown(card)

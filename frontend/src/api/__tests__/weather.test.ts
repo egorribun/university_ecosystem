@@ -645,6 +645,15 @@ describe("readWeatherCache", () => {
 
     expect(readWeatherCache({ lat: 18, lon: 19 })).toBeNull()
   })
+
+  it("fails closed when reading sessionStorage throws", () => {
+    vi.spyOn(window, "sessionStorage", "get").mockImplementation(() => {
+      throw new Error("storage unavailable")
+    })
+
+    expect(() => readWeatherCache({ lat: 19, lon: 20 })).not.toThrow()
+    expect(readWeatherCache({ lat: 19, lon: 20 })).toBeNull()
+  })
 })
 
 describe("WeatherFetchError", () => {

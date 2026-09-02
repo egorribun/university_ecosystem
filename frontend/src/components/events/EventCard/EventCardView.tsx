@@ -126,11 +126,12 @@ export const EventCardView: FC<EventCardViewProps> = ({
 
   const showQuickView = useCallback(() => {
     if (hoveringDisabled) return
-    const rect = articleRef.current?.getBoundingClientRect()
+    const article = articleRef.current
+    const rect = article ? article.getBoundingClientRect() : undefined
     setQuickViewPosition(rect && rect.top < 280 ? "bottom" : "top")
     setQuickViewVisible(true)
   }, [hoveringDisabled])
-  const hideQuickView = useCallback(() => setQuickViewVisible(false), [])
+  const hideQuickView = () => setQuickViewVisible(false)
 
   /* ── View Transition: mark hero for morphing on navigation ── */
   const [transitioning, setTransitioning] = useState(false)
@@ -140,7 +141,7 @@ export const EventCardView: FC<EventCardViewProps> = ({
       setTransitioning(true)
     }
   }, [hoveringDisabled])
-  const handleTransitionReset = useCallback(() => setTransitioning(false), [])
+  const handleTransitionReset = () => setTransitioning(false)
 
   return (
     <m.article

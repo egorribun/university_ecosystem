@@ -53,12 +53,19 @@ export function initTelemetry(env: ImportMetaEnv = import.meta.env) {
   provider.register({ contextManager: new StackContextManager() })
 
   const backendOrigin = (env.VITE_BACKEND_ORIGIN || "").replace(/\/+$/, "")
+  // Keep the relative API target as one canonical expression.  When an
+  // absolute backend origin is configured we still include this same-origin
+  // target for server-relative requests, but do not duplicate its literal in
+  // the fallback branch.
+  const sameOriginApiPattern = new RegExp("^/api/")
   const backendApiPattern = backendOrigin
     ? // Build-time origin is escaped so regex metacharacters stay literal.
       // eslint-disable-next-line security/detect-non-literal-regexp -- OpenTelemetry accepts only string or RegExp targets; the origin is escaped above and regression-tested.
       new RegExp(`^${escapeRegExp(backendOrigin)}/api/`) // nosemgrep: javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp
-    : /^\/api\//
-  const traceHeaderTargets = [backendApiPattern, /^\/api\//]
+    : sameOriginApiPattern
+  const traceHeaderTargets = backendOrigin
+    ? [backendApiPattern, sameOriginApiPattern]
+    : [backendApiPattern]
 
   registerInstrumentations({
     instrumentations: [

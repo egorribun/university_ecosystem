@@ -59,13 +59,13 @@ const readCacheEntry = (
 ): WeatherCacheEntry | null => {
   let raw: string | null
   try {
-    raw = window.sessionStorage.getItem(key)
+    raw = window.sessionStorage?.getItem(key) ?? null
   } catch {
     return null
   }
 
-  if (typeof raw !== "string" || raw.length === 0) return null
-  const parsedResult = parseCacheEntry(raw)
+  if (typeof raw !== "string") return null
+  const parsedResult = parseCacheEntry(raw.slice())
   if (parsedResult === null) return null
   const parsed = parsedResult.value
   if (Object.prototype.toString.call(parsed) === "[object Object]") {

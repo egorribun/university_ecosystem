@@ -3,7 +3,16 @@ import { act, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { APP_HYDRATED_EVENT } from "@/app/hydration"
-import { BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS, BrandBootLoader } from "../BrandBootLoader"
+import {
+  BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS,
+  BrandBootLoader,
+  commitLoaderTimeout,
+  getDocumentHidden,
+  getServerDocumentHidden,
+  getStableSnapshot,
+  resolveHydrationPhase,
+  shouldUseLhciHandOff,
+} from "../BrandBootLoader"
 
 describe("BrandBootLoader", () => {
   let hidden = false
@@ -17,7 +26,40 @@ describe("BrandBootLoader", () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
     vi.useRealTimers()
+  })
+
+  it("keeps hydration, Lighthouse, and visibility contracts explicit", () => {
+    expect(resolveHydrationPhase("active")).toBe("exiting")
+    expect(resolveHydrationPhase("exiting")).toBe("exiting")
+    expect(resolveHydrationPhase("hidden")).toBe("hidden")
+    expect(getStableSnapshot()).toBeNull()
+
+    hidden = false
+    expect(getDocumentHidden()).toBe(false)
+    hidden = true
+    expect(getDocumentHidden()).toBe(true)
+    expect(getServerDocumentHidden()).toBe(false)
+
+    expect(shouldUseLhciHandOff("true")).toBe(true)
+    expect(shouldUseLhciHandOff("false")).toBe(false)
+    expect(shouldUseLhciHandOff(undefined)).toBe(false)
+  })
+
+  it("keeps the SSR visibility guard and timeout commit strategy explicit", () => {
+    vi.stubGlobal("document", undefined)
+    expect(getDocumentHidden()).toBe(false)
+
+    const concurrentCommit = vi.fn()
+    const synchronousCommit = vi.fn()
+    commitLoaderTimeout(true, concurrentCommit, synchronousCommit)
+    expect(concurrentCommit).toHaveBeenCalledTimes(1)
+    expect(synchronousCommit).not.toHaveBeenCalled()
+
+    commitLoaderTimeout(false, concurrentCommit, synchronousCommit)
+    expect(concurrentCommit).toHaveBeenCalledTimes(1)
+    expect(synchronousCommit).toHaveBeenCalledTimes(1)
   })
 
   it("renders one accessible persistent status and decorative mark", () => {
@@ -29,6 +71,7 @@ describe("BrandBootLoader", () => {
     expect(loader).toHaveAttribute("aria-atomic", "true")
     expect(loader).toHaveAttribute("aria-busy", "true")
     expect(screen.getByText("Загрузка")).toBeVisible()
+    expect(loader).not.toHaveAttribute("data-paused")
     expect(loader.querySelector("svg")).toHaveAttribute("aria-hidden", "true")
     expect(loader.querySelector(".brand-boot-loader__dots")).toHaveAttribute("aria-hidden", "true")
     // jsdom 30 cannot match an equality selector against camel-cased SVG
@@ -90,6 +133,24 @@ describe("BrandBootLoader", () => {
     expect(screen.queryByRole("status", { name: "Загрузка" })).not.toBeInTheDocument()
   })
 
+  it("does not schedule an exit timeout before hydration", () => {
+    render(<BrandBootLoader />)
+
+    act(() => vi.advanceTimersByTime(BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS * 2))
+
+    expect(screen.getByRole("status", { name: "Загрузка" })).toHaveAttribute("data-state", "active")
+  })
+
+  it("keeps the active phase when hydration is dispatched more than once", () => {
+    render(<BrandBootLoader />)
+    act(() => window.dispatchEvent(new Event(APP_HYDRATED_EVENT)))
+    const loader = screen.getByRole("status", { name: "Загрузка" })
+
+    act(() => window.dispatchEvent(new Event(APP_HYDRATED_EVENT)))
+
+    expect(loader).toHaveAttribute("data-state", "exiting")
+  })
+
   it("commits the timeout fallback when the browser timer fires outside React act", () => {
     render(<BrandBootLoader />)
     act(() => window.dispatchEvent(new Event(APP_HYDRATED_EVENT)))
@@ -138,11 +199,54 @@ describe("BrandBootLoader", () => {
 
   it("removes the hydration listener when unmounted", () => {
     const removeEventListener = vi.spyOn(window, "removeEventListener")
+    const removeDocumentListener = vi.spyOn(document, "removeEventListener")
     const { unmount } = render(<BrandBootLoader />)
 
     unmount()
 
     expect(removeEventListener).toHaveBeenCalledWith(APP_HYDRATED_EVENT, expect.any(Function))
+    expect(removeDocumentListener).toHaveBeenCalledWith("visibilitychange", expect.any(Function))
+  })
+
+  it("keeps global listeners stable when unrelated renders occur", () => {
+    const addWindowListener = vi.spyOn(window, "addEventListener")
+    const addDocumentListener = vi.spyOn(document, "addEventListener")
+    const { rerender } = render(<BrandBootLoader />)
+
+    // Vitest preserves the overloaded DOM listener signature in `mock.calls`,
+    // which narrows the event name to DedicatedWorkerGlobalScope keys. The
+    // component subscribes through the generic Window API, so inspect the
+    // recorded calls as the runtime tuples they actually are.
+    const windowListenerCalls = addWindowListener.mock.calls as unknown as Array<
+      [
+        string,
+        EventListenerOrEventListenerObject | null | undefined,
+        AddEventListenerOptions | boolean | undefined,
+      ]
+    >
+    const documentListenerCalls = addDocumentListener.mock.calls as unknown as Array<
+      [
+        string,
+        EventListenerOrEventListenerObject | null | undefined,
+        AddEventListenerOptions | boolean | undefined,
+      ]
+    >
+
+    const hydrationSubscriptions = windowListenerCalls.filter(
+      ([eventName]) => eventName === APP_HYDRATED_EVENT
+    ).length
+    const visibilitySubscriptions = documentListenerCalls.filter(
+      ([eventName]) => eventName === "visibilitychange"
+    ).length
+
+    rerender(<BrandBootLoader />)
+
+    expect(
+      windowListenerCalls.filter(([eventName]) => eventName === APP_HYDRATED_EVENT)
+    ).toHaveLength(hydrationSubscriptions)
+    expect(
+      documentListenerCalls.filter(([eventName]) => eventName === "visibilitychange")
+    ).toHaveLength(visibilitySubscriptions)
   })
 
   it("remains idempotent under StrictMode and duplicate completion events", () => {

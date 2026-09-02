@@ -103,7 +103,10 @@ describe("RelatedEvents", () => {
     )
     expect(screen.queryByRole("img")).not.toBeInTheDocument()
     expect(link.querySelector("svg")).toHaveClass("h-8", "w-8", "text-brand/(--opacity-medium)")
-    expect(screen.getByRole("heading", { level: 3 })).toHaveTextContent("")
+    expect(screen.getByRole("heading", { level: 3 })).toBeEmptyDOMElement()
+    expect(
+      [...link.querySelectorAll("span")].filter((span) => span.className.includes("text-[11px]"))
+    ).toHaveLength(1)
     expect(screen.queryByText("View details")).toBeInTheDocument()
   })
 
@@ -115,5 +118,17 @@ describe("RelatedEvents", () => {
     expect(title).toHaveTextContent(ITEMS[0]!.title_en!)
     expect(screen.getByAltText(ITEMS[0]!.title_en!)).toBeInTheDocument()
     expect(link.querySelector(".absolute.top-2.left-2")).toBeInTheDocument()
+  })
+
+  it("keeps a present date visible and uses the fallback category when type is unknown", async () => {
+    const unknownType = { ...ITEMS[0]!, event_type: "miscellaneous" }
+    await renderWithRouter({ ui: () => <RelatedEvents items={[unknownType]} />, extraRoutes })
+
+    const link = screen.getByRole("link")
+    expect(screen.getByText("Jun 15")).toBeInTheDocument()
+    expect(screen.getByText("Other")).toBeInTheDocument()
+    expect(
+      [...link.querySelectorAll("span")].filter((span) => span.textContent === "Jun 15")
+    ).toHaveLength(1)
   })
 })

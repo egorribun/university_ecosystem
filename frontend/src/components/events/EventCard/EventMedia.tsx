@@ -41,7 +41,7 @@ export function EventMedia({
           className="block h-full w-full cursor-pointer p-0 border-0 bg-transparent"
           onClick={(e) => {
             e.stopPropagation()
-            onImageClick?.()
+            if (onImageClick) onImageClick()
           }}
           disabled={!onImageClick}
         >

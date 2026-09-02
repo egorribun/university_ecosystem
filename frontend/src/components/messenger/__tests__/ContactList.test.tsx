@@ -2,6 +2,7 @@ import { render, screen, fireEvent } from "@testing-library/react"
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
 
 import { ContactList } from "@/components/messenger/ContactList"
+import { GroupAvatar } from "@/components/messenger/GroupAvatar"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 
@@ -29,7 +30,9 @@ vi.mock("react-i18next", () => ({
 }))
 
 vi.mock("@/components/media/SmartImage", () => ({
-  default: ({ alt }: { alt?: string }) => <img alt={alt} />,
+  default: ({ alt, srcRaw, fallback }: { alt?: string; srcRaw?: string; fallback?: string }) => (
+    <img alt={alt} src={srcRaw} data-fallback={fallback} />
+  ),
 }))
 
 const { mockReducedMotion } = vi.hoisted(() => ({
@@ -492,5 +495,65 @@ describe("ContactList — populated contacts", () => {
     fireEvent.keyDown(row, { key: " " })
     expect(onSelect).toHaveBeenCalledTimes(2)
     expect(screen.queryByAltText("Bob")).toBeFalsy()
+  })
+
+  it("renders a theme-stable group avatar with custom sizing", () => {
+    const { container } = render(<GroupAvatar className="size-14" iconSize={28} />)
+
+    const avatar = container.firstElementChild
+    expect(avatar).toHaveClass("size-14", "rounded-full", "flex", "items-center")
+    expect(avatar).toHaveAttribute("aria-hidden", "true")
+    expect(avatar).toHaveStyle({ background: "var(--messenger-send-bg)" })
+    const icon = avatar?.querySelector("svg")
+    expect(icon).toHaveAttribute("width", "28")
+    expect(icon).toHaveAttribute("height", "28")
+    expect(icon).toHaveClass("text-(--color-white)")
+  })
+
+  it("uses the documented compact defaults for a standalone group avatar", () => {
+    const { container } = render(<GroupAvatar />)
+    const avatar = container.firstElementChild!
+    const icon = avatar.querySelector("svg")!
+    expect(avatar).toHaveClass("w-12", "h-12")
+    expect(icon).toHaveAttribute("width", "22")
+    expect(icon).toHaveAttribute("height", "22")
+  })
+
+  it("renders DM avatar fallback, presence, unread boundary and active styling", () => {
+    render(
+      <ContactList
+        contacts={[
+          { ...mockContacts[0]!, avatar: "alice.jpg", unread: 0, online: true },
+          { ...mockContacts[1]!, avatar: "", unread: 99, online: false },
+          { ...mockContacts[2]!, avatar: "", unread: 100, online: false },
+        ]}
+        selectedId="1"
+        onSelect={() => {}}
+      />,
+      { wrapper }
+    )
+
+    const alice = document.getElementById("messenger-contact-1")!
+    const bob = document.getElementById("messenger-contact-2")!
+    expect(alice).toHaveAttribute("aria-current", "true")
+    expect(alice).toHaveClass("messenger-active-chip")
+    expect(alice.querySelector("img")).toHaveAttribute("src", "alice.jpg")
+    expect(alice.querySelector(".messenger-online-indicator")).toBeInTheDocument()
+    expect(alice.querySelector('[aria-label*="unread"]')).not.toBeInTheDocument()
+
+    expect(bob.querySelector("img")).toHaveAttribute("src", "/fallbacks/default_avatar.png")
+    expect(bob.querySelector(".messenger-online-indicator")).not.toBeInTheDocument()
+    expect(screen.getByLabelText('messenger:aria.unread|{"count":99}')).toHaveTextContent("99")
+    expect(screen.getByLabelText('messenger:aria.unread|{"count":100}')).toHaveTextContent("99+")
+  })
+
+  it("uses the current row as a safe fallback when a keyboard target is missing", () => {
+    const contacts = [mockContacts[0]!, mockContacts[1]!]
+    render(<ContactList contacts={contacts} selectedId={null} onSelect={() => {}} />, { wrapper })
+    const firstRow = document.getElementById("messenger-contact-1")!
+    firstRow.focus()
+
+    fireEvent.keyDown(firstRow, { key: "ArrowUp" })
+    expect(document.activeElement).toBe(firstRow)
   })
 })

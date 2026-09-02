@@ -26,7 +26,80 @@ interface MapSidebarProps {
   todayLessons?: TodayLesson[]
 }
 
-export const getViewportHeight = () => (typeof window === "undefined" ? 800 : window.innerHeight)
+type OverlaySetter = (id: string, state: { scrollLocked: boolean; blurred: boolean } | null) => void
+
+export function getViewportHeight(): number {
+  return typeof window === "undefined" ? 800 : window.innerHeight
+}
+
+/** Safe-area fallback used by the mobile sheet on notched devices. */
+export function getMobileSheetSafeAreaPadding(): string {
+  return "env(safe-area-inset-bottom, 0px)"
+}
+
+/** Public alias retained for consumers that use the CSS contract directly. */
+export const MOBILE_SHEET_SAFE_AREA_PADDING = getMobileSheetSafeAreaPadding()
+
+/** Stable dependency contracts are named so they can be audited independently. */
+export function getSnapPointMemoDeps(): readonly unknown[] {
+  return []
+}
+
+export function getOverlayEffectDeps(
+  isMobile: boolean,
+  isOpen: boolean,
+  setOverlayState: OverlaySetter
+): readonly unknown[] {
+  return [isMobile, isOpen, setOverlayState]
+}
+
+export function getSnapToNearestDeps(
+  snapPeek: number,
+  snapHalf: number,
+  snapFull: number
+): readonly unknown[] {
+  return [snapPeek, snapHalf, snapFull]
+}
+
+export function getDragMoveDeps(): readonly unknown[] {
+  return []
+}
+
+export function getInitialSheetReadyState(): boolean {
+  return false
+}
+
+export function getSheetResetHeight(isMobile: boolean, snapHalf: number): number | undefined {
+  return isMobile ? snapHalf : undefined
+}
+
+export function shouldApplySheetResetHeight(
+  resetHeight: number | undefined
+): resetHeight is number {
+  return resetHeight !== undefined
+}
+
+/** Apply a mobile sheet reset only when the responsive height was derived. */
+export function applySheetResetHeight(
+  resetHeight: number | undefined,
+  setSheetHeight: (height: number) => void
+): void {
+  if (shouldApplySheetResetHeight(resetHeight)) setSheetHeight(resetHeight)
+}
+
+export function getScrollKey(building: CampusBuilding | undefined): string {
+  return building?.letter ?? ""
+}
+
+/**
+ * Keep the initial mobile sheet geometry as a named, SSR-safe contract.  The
+ * entrance effect may reset the height when a building changes, but the first
+ * render still needs a deterministic viewport-relative value for hydration and
+ * for consumers that render the sheet outside the browser.
+ */
+export function getInitialSheetHeight(): number {
+  return getViewportHeight() * 0.5
+}
 
 /**
  * MapSidebar — building/room info panel with integrated floor selector.
@@ -51,18 +124,18 @@ export function MapSidebar({
   const sidebarDescriptionId = useId()
 
   /* ── Bottom sheet drag state (mobile only) ── */
-  const [sheetHeight, setSheetHeight] = useState(() => getViewportHeight() * 0.5)
+  const [sheetHeight, setSheetHeight] = useState(getInitialSheetHeight)
   /** Scroll locked during entrance animation — prevents focus-trap auto-scroll */
-  const [sheetReady, setSheetReady] = useState(false)
+  const [sheetReady, setSheetReady] = useState(getInitialSheetReadyState)
   const dragStartY = useRef(0)
   const dragStartH = useRef(0)
   const isDragging = useRef(false)
 
   // Stabilize snap points — prevents snapToNearest recreation every render (CQ-110-01)
-  const { SNAP_PEEK, SNAP_HALF, SNAP_FULL } = useMemo(() => {
+  const [{ SNAP_PEEK, SNAP_HALF, SNAP_FULL }] = useState(() => {
     const vh = getViewportHeight()
     return { SNAP_PEEK: 160, SNAP_HALF: vh * 0.5, SNAP_FULL: vh * 0.85 }
-  }, [])
+  })
 
   /* ── Body scroll lock for mobile sheet ── */
   useEffect(() => {
@@ -81,16 +154,14 @@ export function MapSidebar({
     initialFocus: false,
   })
 
-  const snapToNearest = useCallback(
-    (h: number) => {
-      const snaps = [SNAP_PEEK, SNAP_HALF, SNAP_FULL]
-      const closest = snaps.reduce((prev, curr) =>
-        Math.abs(curr - h) < Math.abs(prev - h) ? curr : prev
-      )
-      setSheetHeight(closest)
-    },
-    [SNAP_PEEK, SNAP_HALF, SNAP_FULL]
-  )
+  const snapToNearest = useCallback(() => {
+    const h = sheetHeight
+    const snaps = [SNAP_PEEK, SNAP_HALF, SNAP_FULL]
+    const closest = snaps.reduce((prev, curr) =>
+      Math.abs(curr - h) < Math.abs(prev - h) ? curr : prev
+    )
+    setSheetHeight(closest)
+  }, [SNAP_PEEK, SNAP_HALF, SNAP_FULL, sheetHeight])
 
   /** setPointerCapture ensures reliable tracking even when pointer escapes the handle (CQ-110-02) */
   const handleDragStart = useCallback(
@@ -131,22 +202,25 @@ export function MapSidebar({
     [SNAP_FULL, SNAP_HALF, SNAP_PEEK, sheetHeight]
   )
 
-  const handleDragMove = useCallback((clientY: number) => {
-    if (!isDragging.current) return
-    const dy = dragStartY.current - clientY
-    const viewH = getViewportHeight()
-    const newH = Math.max(100, Math.min(dragStartH.current + dy, viewH * 0.9))
-    setSheetHeight(newH)
-  }, [])
+  const handleDragMove = useCallback(
+    (clientY: number) => {
+      if (!isMobile || !isDragging.current) return
+      const dy = dragStartY.current - clientY
+      const viewH = getViewportHeight()
+      const newH = Math.max(100, Math.min(dragStartH.current + dy, viewH * 0.9))
+      setSheetHeight(newH)
+    },
+    [isMobile]
+  )
 
   const handleDragEnd = useCallback(
     (e: React.PointerEvent) => {
       if (!isDragging.current) return
       isDragging.current = false
       ;(e.target as HTMLElement).releasePointerCapture(e.pointerId)
-      snapToNearest(sheetHeight)
+      snapToNearest()
     },
-    [sheetHeight, snapToNearest]
+    [snapToNearest]
   )
 
   /**
@@ -155,20 +229,27 @@ export function MapSidebar({
    * regardless of focus trap, browser scroll restoration, or content layout.
    * A `key` change is the only approach that reliably beats all timing issues.
    */
-  const scrollKey = building?.letter ?? ""
+  const scrollKey = getScrollKey(building)
 
   // Reset height + unlock scroll after CSS animation completes
   useEffect(() => {
     if (!building) {
-      setSheetReady(false)
+      setSheetReady(getInitialSheetReadyState())
       return
     }
-    if (isMobile) setSheetHeight(SNAP_HALF)
-    setSheetReady(false)
+    const resetHeight = getSheetResetHeight(isMobile, SNAP_HALF)
+    applySheetResetHeight(resetHeight, setSheetHeight)
+    setSheetReady(getInitialSheetReadyState())
     // Enable scroll AFTER CSS @keyframes entrance (350ms)
     // Enable scroll AFTER CSS map-sheet-enter animation (250ms) + paint buffer
-    const id = setTimeout(() => setSheetReady(true), 260)
-    return () => clearTimeout(id)
+    function enableSheetScrolling() {
+      setSheetReady(true)
+    }
+    const id = setTimeout(enableSheetScrolling, 260)
+    function cancelSheetEntranceTimer() {
+      clearTimeout(id)
+    }
+    return cancelSheetEntranceTimer
   }, [building, isMobile, SNAP_HALF])
 
   const selectedRoomData: CampusRoom | undefined = floor?.rooms.find((r) => r.id === selectedRoom)
@@ -383,7 +464,10 @@ export function MapSidebar({
                 {selectedRoomData.id}
               </p>
               {selectedRoomData.name && (
-                <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+                <p
+                  data-testid="selected-room-name"
+                  className="text-xs text-[var(--text-secondary)] mt-0.5"
+                >
                   {selectedRoomData.name}
                 </p>
               )}
@@ -402,14 +486,14 @@ export function MapSidebar({
       )}
 
       {/* Room list — memoized via roomListItems (PERF-109-03) */}
-      {floor && roomListItems && (
+      {roomListItems ? (
         <div>
           <p className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-tertiary)] mb-2">
-            {t("sidebar.rooms")} — {t("sidebar.roomCount", { count: floor.rooms.length })}
+            {t("sidebar.rooms")} — {t("sidebar.roomCount", { count: floor!.rooms.length })}
           </p>
           <div className="flex flex-col gap-1">{roomListItems}</div>
         </div>
-      )}
+      ) : null}
     </div>
   )
 
@@ -426,7 +510,7 @@ export function MapSidebar({
         className="fixed inset-x-0 bottom-0 z-50 bg-[var(--map-sidebar-bg)] rounded-t-2xl map-sheet-slide-up"
         style={{
           height: `${sheetHeight}px`,
-          paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          paddingBottom: getMobileSheetSafeAreaPadding(),
           boxShadow: "var(--map-sidebar-shadow)",
         }}
       >

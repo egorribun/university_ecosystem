@@ -25,7 +25,7 @@ vi.mock("@/utils/roomStatus", () => ({
   getRoomStatus: () => hooks.roomStatus,
 }))
 
-import { getViewportHeight, MapSidebar } from "@/components/map/MapSidebar"
+import { getInitialSheetHeight, getViewportHeight, MapSidebar } from "@/components/map/MapSidebar"
 import type { CampusBuilding, BuildingFloor } from "@/data/campusBuildings"
 
 const FLOOR_1: BuildingFloor = {
@@ -82,6 +82,12 @@ describe("MapSidebar branches", () => {
   it("uses the server viewport fallback without a window", () => {
     vi.stubGlobal("window", undefined)
     expect(getViewportHeight()).toBe(800)
+    expect(getInitialSheetHeight()).toBe(400)
+  })
+
+  it("derives the initial mobile sheet height from the current viewport", () => {
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 1000 })
+    expect(getInitialSheetHeight()).toBe(500)
   })
 
   it("renders the mobile bottom sheet branch (role=dialog, drag handle, sheetReady timer)", () => {

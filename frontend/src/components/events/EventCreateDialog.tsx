@@ -25,21 +25,24 @@ type EventDraft = {
   about_en: string
 }
 
+const EMPTY_DRAFT_VALUE = ""
+const TRANSLATION_NAMESPACES = ["events", "common"] as const
+
 const INITIAL_DRAFT: EventDraft = {
-  title: "",
-  title_en: "",
-  description: "",
-  description_en: "",
-  event_type: "",
-  event_type_en: "",
-  location: "",
-  location_en: "",
-  starts_at: "",
-  ends_at: "",
-  speaker: "",
-  image_url: "",
-  about: "",
-  about_en: "",
+  title: EMPTY_DRAFT_VALUE,
+  title_en: EMPTY_DRAFT_VALUE,
+  description: EMPTY_DRAFT_VALUE,
+  description_en: EMPTY_DRAFT_VALUE,
+  event_type: EMPTY_DRAFT_VALUE,
+  event_type_en: EMPTY_DRAFT_VALUE,
+  location: EMPTY_DRAFT_VALUE,
+  location_en: EMPTY_DRAFT_VALUE,
+  starts_at: EMPTY_DRAFT_VALUE,
+  ends_at: EMPTY_DRAFT_VALUE,
+  speaker: EMPTY_DRAFT_VALUE,
+  image_url: EMPTY_DRAFT_VALUE,
+  about: EMPTY_DRAFT_VALUE,
+  about_en: EMPTY_DRAFT_VALUE,
 }
 
 type EventCreateDialogProps = {
@@ -50,7 +53,7 @@ type EventCreateDialogProps = {
 }
 
 export function EventCreateDialog({ open, onClose, onCreated, language }: EventCreateDialogProps) {
-  const { t } = useTranslation(["events", "common"])
+  const { t } = useTranslation(TRANSLATION_NAMESPACES)
 
   const [draft, setDraft] = useState<EventDraft>(INITIAL_DRAFT)
   const [imageUploading, setImageUploading] = useState(false)
@@ -202,7 +205,10 @@ export function EventCreateDialog({ open, onClose, onCreated, language }: EventC
                   hidden
                   accept="image/*"
                   onChange={(event) => {
-                    const file = event.target.files?.[0]
+                    const file =
+                      event.target.files && event.target.files.length > 0
+                        ? event.target.files[0]
+                        : undefined
                     if (file) void handleImageUpload(file)
                   }}
                 />

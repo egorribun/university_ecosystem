@@ -1,5 +1,5 @@
 import { render, screen } from "@testing-library/react"
-import { afterEach, describe, it, expect, vi } from "vitest"
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest"
 
 vi.mock("framer-motion", () => ({
   m: {
@@ -31,7 +31,10 @@ vi.mock("framer-motion", () => ({
   },
   AnimatePresence: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }))
-const { reducedMotion } = vi.hoisted(() => ({ reducedMotion: vi.fn(() => false) }))
+const { reducedMotion, mediaQueryMock } = vi.hoisted(() => ({
+  reducedMotion: vi.fn(() => false),
+  mediaQueryMock: vi.fn(),
+}))
 const { useTranslationMock, translationMock, formatDateMock } = vi.hoisted(() => {
   const translationMock = vi.fn((key: string) => key)
   return {
@@ -44,7 +47,12 @@ const { useTranslationMock, translationMock, formatDateMock } = vi.hoisted(() =>
   }
 })
 
-vi.mock("@/hooks/useMediaQuery", () => ({ default: () => reducedMotion() }))
+vi.mock("@/hooks/useMediaQuery", () => ({
+  default: (query: string) => {
+    mediaQueryMock(query)
+    return reducedMotion()
+  },
+}))
 vi.mock("react-i18next", () => ({ useTranslation: useTranslationMock }))
 vi.mock("@/utils/date", () => ({ formatDate: formatDateMock }))
 
@@ -62,6 +70,10 @@ const baseProps = {
 }
 
 describe("EventQuickView", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   afterEach(() => {
     reducedMotion.mockReturnValue(false)
   })
@@ -74,11 +86,19 @@ describe("EventQuickView", () => {
     expect(screen.getByText("137")).toBeInTheDocument()
     expect(screen.getByText("events:quickView.viewDetails")).toBeInTheDocument()
     expect(useTranslationMock).toHaveBeenCalledWith(["events"])
+    // EventCategoryBadge also uses i18n; the first call is the QuickView
+    // namespace and therefore guards against silently dropping it.
+    expect(useTranslationMock.mock.calls[0]).toEqual([["events"]])
+    expect(mediaQueryMock).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
     expect(translationMock).toHaveBeenCalledWith("events:quickView.viewDetails")
-    expect(formatDateMock).toHaveBeenCalledWith(
-      baseProps.startsAt,
-      expect.objectContaining({ day: "numeric", month: "short", hour12: false })
-    )
+    expect(formatDateMock).toHaveBeenCalledWith(baseProps.startsAt, {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })
+    expect(screen.getByText(`date:${baseProps.startsAt}`)).toBeInTheDocument()
     // category branch — badge renders the localized label key
     expect(screen.getByText("events:categories.lecture")).toBeInTheDocument()
   })
@@ -97,6 +117,8 @@ describe("EventQuickView", () => {
       screen.queryByText("An introductory survey of qubits and gates.")
     ).not.toBeInTheDocument()
     expect(screen.queryByText("Auditorium 42")).not.toBeInTheDocument()
+    expect(document.querySelector("svg.lucide-map-pin")).not.toBeInTheDocument()
+    expect(document.querySelector("p.line-clamp-3")).not.toBeInTheDocument()
     // participant count still rendered (0) + title present
     expect(screen.getByText("Quantum Computing Lecture")).toBeInTheDocument()
     expect(screen.getByText("0")).toBeInTheDocument()
@@ -116,6 +138,10 @@ describe("EventQuickView", () => {
     expect(container.querySelector("[data-motion-exit]")).toHaveAttribute(
       "data-motion-exit",
       JSON.stringify({ opacity: 0, y: -4, scale: 0.98 })
+    )
+    expect(container.querySelector("[data-motion-animate]")).toHaveAttribute(
+      "data-motion-animate",
+      JSON.stringify({ opacity: 1, y: 0, scale: 1 })
     )
     expect(container.querySelector("[data-motion-transition]")).toHaveAttribute(
       "data-motion-transition",
@@ -142,6 +168,10 @@ describe("EventQuickView", () => {
     ).not.toBeInTheDocument()
     const motion = document.querySelector("[data-motion-initial]")
     expect(motion).toHaveAttribute("data-motion-initial", "false")
+    expect(document.querySelector("[data-motion-exit]")).toHaveAttribute(
+      "data-motion-exit",
+      JSON.stringify({ opacity: 0 })
+    )
     expect(motion).toHaveAttribute("data-motion-transition", JSON.stringify({ duration: 0 }))
   })
 
@@ -157,7 +187,47 @@ describe("EventQuickView", () => {
       "data-motion-initial",
       JSON.stringify({ opacity: 0, y: 8, scale: 0.96 })
     )
+    expect(container.querySelector("[data-motion-exit]")).toHaveAttribute(
+      "data-motion-exit",
+      JSON.stringify({ opacity: 0, y: 4, scale: 0.98 })
+    )
+    expect(container.querySelector("[data-motion-transition]")).toHaveAttribute(
+      "data-motion-transition",
+      JSON.stringify({ duration: 0.18, ease: [0.16, 1, 0.3, 1] })
+    )
+    expect(container.firstElementChild).toHaveClass(
+      "absolute",
+      "left-0",
+      "right-0",
+      "z-floating",
+      "pointer-events-none",
+      "bottom-full",
+      "mb-2"
+    )
     expect(screen.getByText("events:quickView.viewDetails")).toBeInTheDocument()
+  })
+
+  it("uses the bottom placement classes and keeps date formatting options observable", () => {
+    const { container } = render(<EventQuickView {...baseProps} position="bottom" />)
+    expect(container.firstElementChild).toHaveClass(
+      "absolute",
+      "left-0",
+      "right-0",
+      "z-floating",
+      "pointer-events-none",
+      "top-full",
+      "mt-2"
+    )
+    expect(formatDateMock).toHaveBeenCalledWith(
+      baseProps.startsAt,
+      expect.objectContaining({
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
+    )
   })
 
   it("renders an empty date label when date formatting has no result", () => {

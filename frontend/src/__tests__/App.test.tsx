@@ -26,4 +26,14 @@ describe("App", () => {
 
     expect(() => render(<App />)).toThrow("Bootstrap failed")
   })
+
+  it("keeps the client entry safe to evaluate during SSR without window", () => {
+    vi.stubGlobal("window", undefined)
+
+    try {
+      expect(() => App()).not.toThrow()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
 })

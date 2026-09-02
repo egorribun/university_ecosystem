@@ -70,7 +70,46 @@ describe("ErrorBoundary", () => {
 
     expect(screen.getByText("system:errorBoundary.title")).toBeInTheDocument()
     expect(screen.getByText("system:errorBoundary.description")).toBeInTheDocument()
+    expect(screen.getByText("system:errorBoundary.details")).toBeInTheDocument()
+    expect(screen.getByText("Error: Test Error")).toBeInTheDocument()
+    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual([
+      "system:errorBoundary.retry",
+      "system:errorBoundary.reload",
+      "system:errorBoundary.goHome",
+    ])
     expect(Sentry.captureException).toHaveBeenCalled()
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        contexts: expect.objectContaining({
+          react: expect.objectContaining({ componentStack: expect.any(String) }),
+        }),
+      })
+    )
+  })
+
+  it("preserves a recoverable boundary state when retrying", async () => {
+    const user = userEvent.setup()
+    let shouldThrow = true
+    function RecoverableChild() {
+      if (shouldThrow) throw new Error("recoverable")
+      return <div>Recovered content</div>
+    }
+
+    const { rerender } = render(
+      <ErrorBoundary>
+        <RecoverableChild />
+      </ErrorBoundary>
+    )
+    shouldThrow = false
+    await user.click(screen.getByText("system:errorBoundary.retry"))
+    rerender(
+      <ErrorBoundary>
+        <RecoverableChild />
+      </ErrorBoundary>
+    )
+
+    expect(screen.getByText("Recovered content")).toBeInTheDocument()
   })
 
   it("calls onError prop when an error occurs", () => {

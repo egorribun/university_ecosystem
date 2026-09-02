@@ -26,6 +26,8 @@ const DATE_OPTIONS: { value: EventDateRange; labelKey: string }[] = [
   { value: "month", labelKey: "events:filters.thisMonth" },
 ]
 
+export const DEFAULT_EVENT_FILTER_PLACEMENT: Placement = "bottom-end"
+
 type EventFilterPopoverProps = {
   dateRange: EventDateRange
   onDateRangeChange: (value: EventDateRange) => void
@@ -43,12 +45,13 @@ export function useEventFilterPopover({
   onDateRangeChange,
   location,
   onLocationChange,
-  placement = "bottom-end",
+  placement = DEFAULT_EVENT_FILTER_PLACEMENT,
 }: EventFilterPopoverProps) {
   const { t } = useTranslation(["events", "common"])
   const [isOpen, setIsOpen] = useState(false)
 
-  const filtersActive = Boolean(dateRange || location?.trim())
+  const normalizedLocation = typeof location === "string" ? location.trim() : ""
+  const filtersActive = Boolean(dateRange || normalizedLocation)
 
   const {
     refs: { setReference, setFloating },

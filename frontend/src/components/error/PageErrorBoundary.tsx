@@ -37,7 +37,7 @@ interface PageErrorBoundaryState {
 }
 
 /** Fallback UI for page errors */
-function PageErrorFallback({
+export function PageErrorFallback({
   error,
   onRetry,
   onGoHome,
@@ -147,7 +147,7 @@ interface PageErrorBoundaryClassProps extends PageErrorBoundaryProps {
 }
 
 /** Class component for error catching */
-class PageErrorBoundaryClass extends Component<
+export class PageErrorBoundaryClass extends Component<
   PageErrorBoundaryClassProps,
   PageErrorBoundaryState
 > {

@@ -18,7 +18,10 @@ vi.mock("react-i18next", () => ({
   useTranslation: useTranslationMock,
 }))
 
-import { useEventFilterPopover } from "@/components/events/EventFilterPopover"
+import {
+  DEFAULT_EVENT_FILTER_PLACEMENT,
+  useEventFilterPopover,
+} from "@/components/events/EventFilterPopover"
 import type { EventDateRange } from "@/features/events/types"
 
 /**
@@ -63,6 +66,10 @@ function Harness({
 }
 
 describe("useEventFilterPopover", () => {
+  it("keeps the documented default placement stable", () => {
+    expect(DEFAULT_EVENT_FILTER_PLACEMENT).toBe("bottom-end")
+  })
+
   it("opens the popover on trigger click and renders the date quick-buttons", async () => {
     const user = userEvent.setup()
     render(<Harness onDateRangeChange={vi.fn()} onLocationChange={vi.fn()} />)
@@ -77,6 +84,32 @@ describe("useEventFilterPopover", () => {
     expect(screen.getByText("events:filters.thisWeek")).toBeInTheDocument()
     expect(screen.getByText("events:filters.thisMonth")).toBeInTheDocument()
     expect(screen.getByText("events:filters.allDates")).toHaveClass("bg-brand")
+    const dialog = screen.getByRole("dialog")
+    expect(dialog).toHaveClass(
+      "z-modal",
+      "min-w-64",
+      "rounded-xl",
+      "border",
+      "border-glass-border",
+      "bg-(--bg-surface)/(--opacity-heavy)",
+      "p-4",
+      "shadow-glass",
+      "backdrop-blur-xl"
+    )
+    expect(screen.getByText("events:filters.allDates")).toHaveClass(
+      "rounded-full",
+      "px-3",
+      "py-1.5",
+      "text-xs",
+      "font-semibold",
+      "transition-colors",
+      "duration-fast",
+      "focus-visible:ring-2",
+      "focus-visible:ring-brand",
+      "bg-brand",
+      "text-[var(--text-inverse)]",
+      "shadow-sm"
+    )
     expect(useTranslationMock).toHaveBeenCalledWith(["events", "common"])
     expect(translationMock).toHaveBeenCalledWith("events:filters.dateRange")
   })
@@ -189,6 +222,16 @@ describe("useEventFilterPopover", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument()
 
     await user.keyboard("{Escape}")
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+  })
+
+  it("supports outside-press dismissal while keeping the trigger contract", async () => {
+    const user = userEvent.setup()
+    render(<Harness onDateRangeChange={vi.fn()} onLocationChange={vi.fn()} />)
+    await user.click(screen.getByText("open filters"))
+    expect(screen.getByRole("dialog")).toBeInTheDocument()
+
+    fireEvent.mouseDown(document.body)
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
   })
 })

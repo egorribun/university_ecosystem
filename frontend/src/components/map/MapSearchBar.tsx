@@ -28,6 +28,10 @@ type SearchResult =
       floor: number
     }
 
+type SelectionResult = SearchResult | { type: "none" }
+
+const NO_SELECTION: SelectionResult = { type: "none" }
+
 interface MapSearchBarProps {
   buildings: CampusBuilding[]
   onSelectBuilding: (letter: BuildingId) => void
@@ -52,8 +56,9 @@ export function MapSearchBar({
   const inputRef = useRef<HTMLInputElement>(null)
 
   const [query, setQuery] = useState("")
-  const [isOpen, setIsOpen] = useState(false)
-  const [activeIdx, setActiveIdx] = useState(-1)
+  const [isOpen, setIsOpen] = useState(() => query.length > 0)
+  // null represents "no active option" without relying on a magic sentinel.
+  const [activeIdx, setActiveIdx] = useState<number | null>(null)
 
   // Tracks the blur→close timeout so it can be cancelled on unmount or explicit
   // close events, preventing state updates into a torn-down environment.
@@ -110,21 +115,29 @@ export function MapSearchBar({
   }, [query, buildings, t])
 
   const handleSelect = useCallback(
-    (result: SearchResult) => {
+    (result: SelectionResult | undefined) => {
+      const selected = result ?? NO_SELECTION
+      switch (selected.type) {
+        case "building":
+          onSelectBuilding(selected.buildingLetter)
+          break
+        case "room":
+          onSelectRoom(selected.buildingLetter, selected.floor, selected.roomId)
+          break
+        default:
+          return
+      }
+
       // Cancel any pending blur→close timer so it doesn't race with this explicit close.
       if (blurTimeoutRef.current !== null) {
         clearTimeout(blurTimeoutRef.current)
         blurTimeoutRef.current = null
       }
-      if (result.type === "building") {
-        onSelectBuilding(result.buildingLetter)
-      } else {
-        onSelectRoom(result.buildingLetter, result.floor, result.roomId)
-      }
       setQuery("")
-      setIsOpen(false)
+      setActiveIdx(null)
       skipNextBlurCloseRef.current = true
-      inputRef.current?.blur()
+      const input = inputRef.current
+      if (input) input.blur()
     },
     [onSelectBuilding, onSelectRoom]
   )
@@ -136,22 +149,27 @@ export function MapSearchBar({
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault()
-          setActiveIdx((prev) => Math.min(prev + 1, results.length - 1))
+          setActiveIdx((prev) => Math.min((prev ?? -1) + 1, results.length - 1))
           break
         case "ArrowUp":
           e.preventDefault()
-          setActiveIdx((prev) => Math.max(prev - 1, 0))
+          setActiveIdx((prev) => Math.max((prev ?? 0) - 1, 0))
           break
-        case "Enter":
+        case "Enter": {
           e.preventDefault()
-          if (activeIdx >= 0 && activeIdx < results.length) {
-            handleSelect(results[activeIdx]!)
+          // Slicing at the active index yields either exactly one valid result
+          // or an empty iterable. It keeps Enter a total operation even when
+          // focus/async updates leave no active option.
+          const selectedIndex = activeIdx ?? results.length
+          for (const result of results.slice(selectedIndex, selectedIndex + 1)) {
+            handleSelect(result)
           }
           break
+        }
         case "Escape":
           e.preventDefault()
-          setIsOpen(false)
           setQuery("")
+          setActiveIdx(null)
           break
       }
     },
@@ -160,7 +178,13 @@ export function MapSearchBar({
 
   // useImperativeHandle runs after the input is committed, so the local DOM
   // ref is populated even though it is nullable during render.
-  useImperativeHandle(searchInputRef, () => inputRef.current!, [])
+  const imperativeHandleIdentity = useMemo(() => searchInputRef, [searchInputRef])
+  useImperativeHandle(searchInputRef, () => {
+    // Keep the handle tied to the current external ref identity when a
+    // parent swaps refs during a route transition.
+    void imperativeHandleIdentity
+    return inputRef.current!
+  }, [imperativeHandleIdentity])
 
   // Group results
   const buildingResults = results.filter((r) => r.type === "building")
@@ -176,16 +200,16 @@ export function MapSearchBar({
           role="combobox"
           aria-expanded={isOpen && results.length > 0}
           aria-controls={listboxId}
-          aria-activedescendant={activeIdx >= 0 ? `${baseId}-opt-${activeIdx}` : undefined}
+          aria-activedescendant={activeIdx !== null ? `${baseId}-opt-${activeIdx}` : undefined}
           aria-label={t("search.ariaLabel")}
           placeholder={t("search.placeholder")}
           value={query}
           onChange={(e) => {
             setQuery(e.target.value)
             setIsOpen(true)
-            setActiveIdx(-1)
+            setActiveIdx(null)
           }}
-          onFocus={() => query.trim() && setIsOpen(true)}
+          onFocus={() => results.length > 0 && setIsOpen(true)}
           onBlur={() => {
             if (skipNextBlurCloseRef.current) {
               skipNextBlurCloseRef.current = false
@@ -206,8 +230,9 @@ export function MapSearchBar({
                 blurTimeoutRef.current = null
               }
               setQuery("")
-              setIsOpen(false)
-              inputRef.current?.focus()
+              setActiveIdx(null)
+              const input = inputRef.current
+              if (input) input.focus()
             }}
             className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full hover:bg-[var(--bg-surface-hover)]"
             aria-label={t("search.clear")}
@@ -235,7 +260,7 @@ export function MapSearchBar({
             const globalIdx = i
             return (
               <button
-                key={`b-${r.buildingLetter}`}
+                key={r.buildingLetter}
                 id={`${baseId}-opt-${globalIdx}`}
                 role="option"
                 aria-selected={activeIdx === globalIdx}
@@ -268,7 +293,7 @@ export function MapSearchBar({
             const globalIdx = buildingResults.length + i
             return (
               <button
-                key={`r-${r.roomId}`}
+                key={r.roomId}
                 id={`${baseId}-opt-${globalIdx}`}
                 role="option"
                 aria-selected={activeIdx === globalIdx}

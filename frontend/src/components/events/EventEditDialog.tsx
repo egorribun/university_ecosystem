@@ -24,6 +24,11 @@ type EventEditDialogProps = {
   previewUrl: string | null
 }
 
+export function normalizeDatetimeLocal(value: string | null | undefined): string {
+  if (value === undefined || value === null) return ""
+  return value.slice(0, 16)
+}
+
 export function EventEditDialog({
   open,
   onClose,
@@ -65,7 +70,9 @@ export function EventEditDialog({
   }
 
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+    const files = e.target.files
+    const fileCollection = files ? files : []
+    const file = fileCollection[0]
     if (file) setNewImage(file)
   }
 
@@ -180,7 +187,7 @@ export function EventEditDialog({
           <input
             id={`${baseId}-start`}
             type="datetime-local"
-            value={draft.starts_at?.slice(0, 16) || ""}
+            value={normalizeDatetimeLocal(draft.starts_at)}
             onChange={(e) => setDraft({ ...draft, starts_at: e.target.value })}
             className={inputClass}
           />
@@ -195,7 +202,7 @@ export function EventEditDialog({
           <input
             id={`${baseId}-end`}
             type="datetime-local"
-            value={draft.ends_at?.slice(0, 16) || ""}
+            value={normalizeDatetimeLocal(draft.ends_at)}
             onChange={(e) => setDraft({ ...draft, ends_at: e.target.value })}
             className={cn(inputClass, dateError && "border-error-border")}
           />

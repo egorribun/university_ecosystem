@@ -235,6 +235,21 @@ describe("MapSearchBar", () => {
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument()
   })
 
+  it("selects the active option by its global index and blurs the input", () => {
+    const onSelectRoom = vi.fn()
+    render(<MapSearchBar {...baseProps} onSelectRoom={onSelectRoom} />)
+    const input = screen.getByRole("combobox")
+
+    fireEvent.change(input, { target: { value: "ГУК" } })
+    fireEvent.keyDown(input, { key: "ArrowDown" })
+    fireEvent.keyDown(input, { key: "ArrowDown" })
+    fireEvent.keyDown(input, { key: "Enter" })
+
+    expect(onSelectRoom).toHaveBeenCalledWith("ГУК", 1, "ГУК-101")
+    expect(input).not.toHaveFocus()
+    expect(input).toHaveValue("")
+  })
+
   it("moves the active option with bounded ArrowDown and ArrowUp navigation", () => {
     render(<MapSearchBar {...baseProps} buildings={CAMPUS_BUILDINGS} />)
     const input = screen.getByRole("combobox")
@@ -457,6 +472,18 @@ describe("MapSearchBar", () => {
     expect(searchInputRef.current).toBe(input)
     searchInputRef.current?.focus()
     expect(input).toHaveFocus()
+  })
+
+  it("rebinds the imperative handle when a parent swaps ref objects", () => {
+    const firstRef: { current: HTMLInputElement | null } = { current: null }
+    const secondRef: { current: HTMLInputElement | null } = { current: null }
+    const view = render(<MapSearchBar {...baseProps} searchInputRef={firstRef} />)
+    const input = screen.getByRole("combobox")
+
+    view.rerender(<MapSearchBar {...baseProps} searchInputRef={secondRef} />)
+
+    expect(firstRef.current).toBeNull()
+    expect(secondRef.current).toBe(input)
   })
 
   it("uses the latest selection callbacks after rerender", () => {

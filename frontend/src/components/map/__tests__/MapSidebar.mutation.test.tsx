@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, createEvent, fireEvent, render, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import type { CampusBuilding, BuildingFloor } from "@/data/campusBuildings"
@@ -26,7 +26,19 @@ vi.mock("@/utils/roomStatus", () => ({
   getRoomStatus: vi.fn(() => state.roomStatus),
 }))
 
-import { MapSidebar } from "@/components/map/MapSidebar"
+import {
+  getDragMoveDeps,
+  getInitialSheetReadyState,
+  getMobileSheetSafeAreaPadding,
+  getOverlayEffectDeps,
+  getScrollKey,
+  getSheetResetHeight,
+  getSnapPointMemoDeps,
+  getSnapToNearestDeps,
+  applySheetResetHeight,
+  shouldApplySheetResetHeight,
+  MapSidebar,
+} from "@/components/map/MapSidebar"
 
 const NAMED_ROOM = {
   id: "ГУК-101",
@@ -110,6 +122,41 @@ beforeEach(() => {
 })
 
 describe("MapSidebar mutation contracts", () => {
+  it("keeps the SSR, dependency, and sheet transition contracts explicit", () => {
+    const setOverlayState = vi.fn()
+
+    expect(getMobileSheetSafeAreaPadding()).toBe("env(safe-area-inset-bottom, 0px)")
+    expect(getSnapPointMemoDeps()).toEqual([])
+    expect(getOverlayEffectDeps(true, true, setOverlayState)).toEqual([true, true, setOverlayState])
+    expect(getSnapToNearestDeps(160, 400, 680)).toEqual([160, 400, 680])
+    expect(getDragMoveDeps()).toEqual([])
+    expect(getInitialSheetReadyState()).toBe(false)
+    expect(getSheetResetHeight(true, 400)).toBe(400)
+    expect(getSheetResetHeight(false, 400)).toBeUndefined()
+    expect(shouldApplySheetResetHeight(400)).toBe(true)
+    expect(shouldApplySheetResetHeight(undefined)).toBe(false)
+    const setSheetHeight = vi.fn()
+    applySheetResetHeight(400, setSheetHeight)
+    applySheetResetHeight(undefined, setSheetHeight)
+    expect(setSheetHeight).toHaveBeenCalledTimes(1)
+    expect(setSheetHeight).toHaveBeenCalledWith(400)
+    expect(getScrollKey(BUILDING)).toBe("ГУК")
+    expect(getScrollKey(undefined)).toBe("")
+  })
+
+  it("does not schedule an entrance timer without a building", () => {
+    vi.useFakeTimers()
+    const view = render(
+      <MapSidebar {...baseProps} isMobile building={undefined} floor={undefined} />
+    )
+    expect(vi.getTimerCount()).toBe(0)
+
+    view.rerender(<MapSidebar {...baseProps} isMobile />)
+    expect(vi.getTimerCount()).toBe(1)
+    act(() => vi.advanceTimersByTime(260))
+    expect(screen.getByRole("dialog").querySelector(".overflow-y-auto")).toBeInTheDocument()
+  })
+
   it("uses the map translation namespace and exposes the desktop shell contract", () => {
     render(<MapSidebar {...baseProps} />)
 
@@ -132,11 +179,14 @@ describe("MapSidebar mutation contracts", () => {
     expect(state.setOverlayState).not.toHaveBeenCalled()
     closed.unmount()
 
-    render(<MapSidebar {...baseProps} isMobile />)
+    const open = render(<MapSidebar {...baseProps} isMobile />)
     expect(state.setOverlayState).toHaveBeenCalledWith("map-sidebar", {
       scrollLocked: true,
       blurred: false,
     })
+
+    open.rerender(<MapSidebar {...baseProps} isMobile building={undefined} floor={undefined} />)
+    expect(state.setOverlayState).toHaveBeenLastCalledWith("map-sidebar", null)
   })
 
   it("passes the mobile focus-trap activation, close callback, and initial-focus policy", () => {
@@ -172,6 +222,7 @@ describe("MapSidebar mutation contracts", () => {
     const scrollArea = container.querySelector(".scrollbar-hide") as HTMLElement
 
     expect(dialog.style.height).toBe("400px")
+    expect(getMobileSheetSafeAreaPadding()).toBe("env(safe-area-inset-bottom, 0px)")
     expect(dialog.style.boxShadow).toBe("var(--map-sidebar-shadow)")
     expect(handle).toHaveAttribute("aria-valuemin", "100")
     expect(handle).toHaveAttribute("aria-valuemax", "720")
@@ -214,6 +265,28 @@ describe("MapSidebar mutation contracts", () => {
     unmount()
   })
 
+  it("refreshes the drag handler when the responsive mode changes", () => {
+    const view = render(<MapSidebar {...baseProps} isMobile={false} />)
+    view.rerender(<MapSidebar {...baseProps} isMobile />)
+    const handle = screen.getByRole("slider", { name: "sidebar.dragToResize" })
+    const setPointerCapture = vi.fn()
+    const releasePointerCapture = vi.fn()
+    Object.defineProperty(handle, "setPointerCapture", {
+      configurable: true,
+      value: setPointerCapture,
+    })
+    Object.defineProperty(handle, "releasePointerCapture", {
+      configurable: true,
+      value: releasePointerCapture,
+    })
+
+    fireEvent.pointerDown(handle, { pointerId: 9, clientY: 500 })
+    fireEvent.pointerMove(handle, { pointerId: 9, clientY: 600 })
+    expect(handle).toHaveAttribute("aria-valuenow", "300")
+    fireEvent.pointerUp(handle, { pointerId: 9, clientY: 600 })
+    expect(handle).toHaveAttribute("aria-valuenow", "400")
+  })
+
   it("snaps a drag to the lower point on a midpoint and keeps the nearest point arithmetic", () => {
     const { container } = render(<MapSidebar {...baseProps} isMobile />)
     const handle = screen.getByRole("slider", { name: "sidebar.dragToResize" })
@@ -250,6 +323,17 @@ describe("MapSidebar mutation contracts", () => {
     fireEvent.keyDown(handle, { key: "ArrowDown" })
     expect(handle).toHaveAttribute("aria-valuenow", "160")
     fireEvent.keyDown(handle, { key: "ArrowUp" })
+    expect(handle).toHaveAttribute("aria-valuenow", "400")
+    fireEvent.keyDown(handle, { key: "ArrowRight" })
+    expect(handle).toHaveAttribute("aria-valuenow", "680")
+    fireEvent.keyDown(handle, { key: "ArrowLeft" })
+    expect(handle).toHaveAttribute("aria-valuenow", "400")
+    // A second increase at the upper endpoint must remain bounded.
+    fireEvent.keyDown(handle, { key: "ArrowRight" })
+    expect(handle).toHaveAttribute("aria-valuenow", "680")
+    fireEvent.keyDown(handle, { key: "ArrowRight" })
+    expect(handle).toHaveAttribute("aria-valuenow", "680")
+    fireEvent.keyDown(handle, { key: "ArrowLeft" })
     expect(handle).toHaveAttribute("aria-valuenow", "400")
     fireEvent.keyDown(handle, { key: "ArrowLeft" })
     expect(handle).toHaveAttribute("aria-valuenow", "160")
@@ -293,8 +377,19 @@ describe("MapSidebar mutation contracts", () => {
     fireEvent.pointerUp(handle, { pointerId: 1, clientY: 620 })
   })
 
+  it("does not cancel endpoint keyboard events that cannot change the sheet", () => {
+    const handle = render(<MapSidebar {...baseProps} isMobile />).getByRole("slider", {
+      name: "sidebar.dragToResize",
+    })
+    fireEvent.keyDown(handle, { key: "End" })
+    const event = createEvent.keyDown(handle, { key: "End" })
+    fireEvent(handle, event)
+    expect(event.defaultPrevented).toBe(false)
+  })
+
   it("resets mobile height and sheet readiness for each building and cleans up timers", () => {
     vi.useFakeTimers()
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout")
     const { rerender } = render(<MapSidebar {...baseProps} isMobile />)
     const handle = screen.getByRole("slider", { name: "sidebar.dragToResize" })
     const setPointerCapture = vi.fn()
@@ -315,6 +410,7 @@ describe("MapSidebar mutation contracts", () => {
     expect(handle).toHaveAttribute("aria-valuenow", "160")
 
     rerender(<MapSidebar {...baseProps} isMobile building={OTHER_BUILDING} />)
+    expect(clearTimeoutSpy).toHaveBeenCalled()
     const dialog = screen.getByRole("dialog")
     const scrollArea = dialog.querySelector(".scrollbar-hide") as HTMLElement
     expect(dialog).toHaveAttribute("aria-labelledby")
@@ -383,6 +479,7 @@ describe("MapSidebar mutation contracts", () => {
     expect(detail).toBeInTheDocument()
     expect(within(detail).getByText("ГУК-101")).toHaveStyle({ color: "#3b82f6" })
     expect(within(detail).getByText("Большая аудитория")).toBeInTheDocument()
+    expect(within(detail).getByTestId("selected-room-name")).toHaveTextContent("Большая аудитория")
     expect(within(detail).getByText("roomTypes.lecture")).toBeInTheDocument()
     expect(within(detail).getByText("120")).toBeInTheDocument()
     expect(detail.querySelector("p.flex")).toHaveTextContent("120")
@@ -391,7 +488,27 @@ describe("MapSidebar mutation contracts", () => {
     const noOptionalDetail = document.querySelector(".map-card-matte.p-3") as HTMLElement
     expect(noOptionalDetail).toBeInTheDocument()
     expect(within(noOptionalDetail).queryByText("Большая аудитория")).not.toBeInTheDocument()
+    expect(within(noOptionalDetail).queryByTestId("selected-room-name")).not.toBeInTheDocument()
     expect(noOptionalDetail.querySelector("p.flex")).not.toBeInTheDocument()
+  })
+
+  it("keeps the room-list heading interpolation and action geometry explicit", () => {
+    render(<MapSidebar {...baseProps} />)
+
+    expect(screen.getByText('sidebar.rooms — sidebar.roomCount:{"count":2}')).toBeInTheDocument()
+    const roomButton = getRoomButton("ГУК-101")
+    expect(roomButton).toHaveClass(
+      "flex",
+      "items-center",
+      "justify-between",
+      "gap-2",
+      "px-3",
+      "py-2",
+      "rounded-lg",
+      "text-left",
+      "transition-colors",
+      "text-xs"
+    )
   })
 
   it("renders placeholder/header colors and both open and closed hour styles", () => {
@@ -437,6 +554,9 @@ describe("MapSidebar mutation contracts", () => {
 
     expect(floorOne).toHaveAttribute("aria-checked", "false")
     expect(floorOne).not.toHaveClass("map-accent-tint-medium")
+    expect(floorOne.className).toBe(
+      "min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-xs font-bold transition-colors"
+    )
     expect(floorOne).toHaveStyle({
       backgroundColor: "var(--bg-surface-hover)",
       color: "var(--text-secondary)",
@@ -444,6 +564,9 @@ describe("MapSidebar mutation contracts", () => {
     expect(floorOne).toHaveClass("min-h-[44px]", "min-w-[44px]")
     expect(floorTwo).toHaveAttribute("aria-checked", "true")
     expect(floorTwo).toHaveClass("map-accent-tint-medium")
+    expect(floorTwo.className).toBe(
+      "min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-xs font-bold transition-colors map-accent-tint-medium"
+    )
     expect(floorTwo).toHaveStyle({ color: "var(--_bldg-color)" })
   })
 

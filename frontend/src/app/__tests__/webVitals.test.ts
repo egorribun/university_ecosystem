@@ -57,6 +57,19 @@ describe("webVitals", () => {
     expect(onCLS).not.toHaveBeenCalled()
   })
 
+  it("keeps development mode disabled even when the production flag is enabled", () => {
+    expect(
+      initWebVitals(
+        enabledEnv({
+          DEV: true,
+          MODE: "development",
+          VITE_WEB_VITALS_ENDPOINT: "https://metrics.test/v",
+        })
+      )
+    ).toBe(false)
+    expect(onCLS).not.toHaveBeenCalled()
+  })
+
   it("returns false when the feature flag is not enabled", () => {
     expect(initWebVitals(PROD_BASE)).toBe(false)
     expect(initWebVitals({ ...PROD_BASE, VITE_ENABLE_WEB_VITALS: "nope" } as never)).toBe(false)
@@ -148,6 +161,26 @@ describe("webVitals", () => {
     reporter(sampleMetric() as never)
     await Promise.resolve()
 
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
+
+  it("does not construct a beacon when sendBeacon is not callable", async () => {
+    const BlobSpy = vi.fn(
+      class TestBlob {
+        constructor(readonly parts: string[]) {}
+      }
+    )
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(null, { status: 204 })))
+    vi.stubGlobal("navigator", { ...navigator, sendBeacon: undefined })
+    vi.stubGlobal("Blob", BlobSpy)
+    vi.stubGlobal("fetch", fetchMock)
+    initWebVitals(enabledEnv({ VITE_WEB_VITALS_ENDPOINT: "https://metrics.test/v" }))
+
+    const reporter = vi.mocked(onCLS).mock.calls[0]![0]
+    reporter(sampleMetric() as never)
+    await Promise.resolve()
+
+    expect(BlobSpy).not.toHaveBeenCalled()
     expect(fetchMock).toHaveBeenCalledOnce()
   })
 

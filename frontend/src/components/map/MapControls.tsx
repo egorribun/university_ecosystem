@@ -29,12 +29,35 @@ interface MapControlsProps {
   mapRef: React.MutableRefObject<MapRef | null>
 }
 
+type MapInstance = ReturnType<MapRef["getMap"]>
+
+/**
+ * Map controls are rendered before MapLibre has mounted (and can outlive it
+ * during route transitions).  Normalising the absent map to a no-op instance
+ * keeps every event handler total: a click during that short window is safe
+ * and does not need a branch that can drift away from the operation itself.
+ */
+const NOOP_FULLSCREEN_CONTAINER = {
+  requestFullscreen: () => Promise.resolve(),
+  closest: () => null,
+} as unknown as HTMLElement
+
+const NOOP_MAP_CONTAINER = {
+  closest: () => NOOP_FULLSCREEN_CONTAINER,
+} as unknown as HTMLElement
+
+const NOOP_MAP = {
+  zoomIn: () => undefined,
+  zoomOut: () => undefined,
+  easeTo: () => undefined,
+  flyTo: () => undefined,
+  getContainer: () => NOOP_MAP_CONTAINER,
+} as unknown as MapInstance
+
+const NOOP_MAP_REF = { getMap: () => NOOP_MAP } as unknown as MapRef
+
 function resolveMap(mapRef: React.MutableRefObject<MapRef | null>) {
-  const mapRefValue = mapRef.current
-  if (!mapRefValue) return null
-  const map = mapRefValue.getMap()
-  if (!map) return null
-  return map
+  return (mapRef.current ?? NOOP_MAP_REF).getMap() ?? NOOP_MAP
 }
 
 export function MapControls({ mapRef }: MapControlsProps) {
@@ -49,32 +72,27 @@ export function MapControls({ mapRef }: MapControlsProps) {
 
   const zoomIn = useCallback(() => {
     const map = resolveMap(mapRef)
-    if (!map) return
     map.zoomIn()
   }, [mapRef])
   const zoomOut = useCallback(() => {
     const map = resolveMap(mapRef)
-    if (!map) return
     map.zoomOut()
   }, [mapRef])
 
   const resetNorth = useCallback(() => {
     const map = resolveMap(mapRef)
-    if (!map) return
     map.easeTo({ bearing: 0, duration: 400 })
   }, [mapRef])
 
   const togglePitch = useCallback(() => {
     const newPitch = is3D ? 0 : 45
     const map = resolveMap(mapRef)
-    if (!map) return
     map.easeTo({ pitch: newPitch, duration: 400 })
     setIs3D(!is3D)
   }, [mapRef, is3D])
 
   const recenter = useCallback(() => {
     const map = resolveMap(mapRef)
-    if (!map) return
     map.flyTo({
       center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
       zoom: CAMPUS_DETAIL_ZOOM,
@@ -94,11 +112,8 @@ export function MapControls({ mapRef }: MapControlsProps) {
 
   const toggleFullscreen = useCallback(() => {
     const map = resolveMap(mapRef)
-    if (!map) return
-    const mapContainer = map.getContainer()
-    if (!mapContainer) return
-    const container = mapContainer.closest(".map-card-matte")
-    if (!container) return
+    const mapContainer = map.getContainer() ?? NOOP_MAP_CONTAINER
+    const container = mapContainer.closest(".map-card-matte") ?? NOOP_FULLSCREEN_CONTAINER
 
     if (!document.fullscreenElement) {
       container.requestFullscreen().catch(logError)

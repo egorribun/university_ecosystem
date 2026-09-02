@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { MapRef } from "react-map-gl/maplibre"
+import { CAMPUS_COORDINATES } from "@/constants/campus"
 
 const { mockLogError, mockUseMediaQuery } = vi.hoisted(() => ({
   mockLogError: vi.fn(),
@@ -135,7 +136,13 @@ describe("MapControls mutation contracts", () => {
     expect(second.map.easeTo).toHaveBeenCalledWith({ bearing: 0, duration: 400 })
     expect(second.map.easeTo).toHaveBeenCalledWith({ pitch: 0, duration: 400 })
     expect(second.map.flyTo).toHaveBeenCalledWith(
-      expect.objectContaining({ zoom: 17, pitch: 45, bearing: 0, duration: 800 })
+      expect.objectContaining({
+        center: [CAMPUS_COORDINATES.lon, CAMPUS_COORDINATES.lat],
+        zoom: 17,
+        pitch: 45,
+        bearing: 0,
+        duration: 800,
+      })
     )
     expect(second.requestFullscreen).toHaveBeenCalledOnce()
   })
@@ -144,7 +151,7 @@ describe("MapControls mutation contracts", () => {
     const addEventListener = vi.spyOn(document, "addEventListener")
     const removeEventListener = vi.spyOn(document, "removeEventListener")
     const { container, ref } = createMapFixture()
-    const { unmount } = render(<MapControls mapRef={ref} />)
+    const { unmount, rerender } = render(<MapControls mapRef={ref} />)
     const fullscreenButton = screen.getByRole("button", { name: "controls.fullscreen" })
 
     expect(fullscreenButton.querySelector("svg")).toHaveClass("lucide-maximize-2")
@@ -153,6 +160,11 @@ describe("MapControls mutation contracts", () => {
     expect(registration).toBeDefined()
     const handler = registration![1]
     expect(handler).toEqual(expect.any(Function))
+
+    rerender(<MapControls mapRef={ref} />)
+    expect(
+      addEventListener.mock.calls.filter(([type]) => type === "fullscreenchange")
+    ).toHaveLength(1)
 
     Object.defineProperty(document, "fullscreenElement", {
       configurable: true,

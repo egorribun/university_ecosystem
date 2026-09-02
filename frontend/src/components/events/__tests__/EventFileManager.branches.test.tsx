@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react"
+import { render, screen, fireEvent, act } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const mocks = vi.hoisted(() => {
@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => {
     telemetryState,
     run,
     capture: vi.fn(() => ({ run })),
+    logError: vi.fn(),
   }
 })
 
@@ -28,7 +29,7 @@ vi.mock("@/api/client", async (importOriginal) => {
     default: { post: mocks.post, delete: mocks.del },
   }
 })
-vi.mock("@/app/logger", () => ({ logError: vi.fn() }))
+vi.mock("@/app/logger", () => ({ logError: mocks.logError }))
 vi.mock("@/utils/telemetryContext", () => ({
   captureActiveTelemetryContext: mocks.capture,
 }))
@@ -39,7 +40,17 @@ vi.mock("react-i18next", () => ({
   }),
 }))
 
-import { EventFileManager } from "@/components/events/EventFileManager"
+import {
+  createRemoveFileAction,
+  createUploadErrorState,
+  createUploadSuccessState,
+  EventFileManager,
+  getPendingFileAttribute,
+  getSelectedFile,
+  getUploadSubmitLabelKey,
+  resetFileInputValue,
+  shouldResetUploadError,
+} from "@/components/events/EventFileManager"
 import type { Event, EventFile } from "@/types/Event"
 
 const baseEvent: Event = {
@@ -113,6 +124,15 @@ const submitForm = (): void => {
   fireEvent.submit(form!)
 }
 
+/** Flush React 19 form-action transitions without polling an unbounded promise. */
+const flushAction = async (): Promise<void> => {
+  await act(async () => {
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
+
 const withFormFile = async (file: File, run: () => Promise<void>): Promise<void> => {
   const NativeFormData = globalThis.FormData
   class FormDataWithFile extends NativeFormData {
@@ -138,6 +158,7 @@ describe("EventFileManager branches", () => {
     mocks.del.mockResolvedValue({ data: {} })
     mocks.capture.mockClear()
     mocks.run.mockClear()
+    mocks.logError.mockClear()
     mocks.telemetryState.active = false
   })
 
@@ -176,11 +197,58 @@ describe("EventFileManager branches", () => {
 
     submitForm()
 
-    await waitFor(() =>
-      expect(screen.getByText("events:detail.upload.errors.noFile")).toBeInTheDocument()
-    )
+    await flushAction()
+    expect(screen.getByText("events:detail.upload.errors.noFile")).toBeInTheDocument()
     expect(mocks.post).not.toHaveBeenCalled()
     expect(props.onUpdate).not.toHaveBeenCalled()
+  })
+
+  it("starts in the explicit idle upload state", () => {
+    render(<EventFileManager {...makeProps()} />)
+
+    expect(document.querySelector("form")).toHaveAttribute("data-upload-state", "idle")
+  })
+
+  it("constructs explicit success and error upload states", () => {
+    expect(createUploadSuccessState()).toEqual({ status: "success" })
+    expect(createUploadErrorState("upload failed")).toEqual({
+      status: "error",
+      error: "upload failed",
+    })
+  })
+
+  it("keeps file action and DOM serialization contracts pure", () => {
+    expect(createRemoveFileAction("file-42")).toEqual({ type: "remove", id: "file-42" })
+    expect(getUploadSubmitLabelKey(true)).toBe("events:detail.upload.submit.pending")
+    expect(getUploadSubmitLabelKey(false)).toBe("events:detail.upload.submit.label")
+    expect(getPendingFileAttribute(true)).toBe("true")
+    expect(getPendingFileAttribute(false)).toBe("false")
+
+    const file = makeFile("contract.pdf")
+    const files = {
+      0: file,
+      length: 1,
+      item: (index: number) => (index === 0 ? file : null),
+    } as unknown as FileList
+    expect(getSelectedFile(files)).toBe(file)
+    expect(getSelectedFile(null)).toBeNull()
+    expect(getSelectedFile(undefined)).toBeNull()
+    expect(shouldResetUploadError({ status: "error", error: "failed" }, false)).toBe(true)
+    expect(shouldResetUploadError({ status: "error", error: "failed" }, true)).toBe(false)
+    expect(shouldResetUploadError({ status: "idle" }, false)).toBe(false)
+    expect(shouldResetUploadError({ status: "success" }, false)).toBe(false)
+  })
+
+  it("resets only a mounted file input", () => {
+    const input = document.createElement("input")
+    input.type = "file"
+    const valueSetter = vi.spyOn(HTMLInputElement.prototype, "value", "set")
+
+    expect(() => resetFileInputValue(null)).not.toThrow()
+    resetFileInputValue(input)
+
+    expect(valueSetter).toHaveBeenCalledWith("")
+    valueSetter.mockRestore()
   })
 
   it("captures telemetry synchronously at the DOM submit boundary", () => {
@@ -195,20 +263,40 @@ describe("EventFileManager branches", () => {
     expect(mocks.post).not.toHaveBeenCalled()
   })
 
+  it("executes the upload request inside the captured telemetry context", async () => {
+    const props = makeProps()
+    const file = makeFile("telemetry.pdf")
+    render(<EventFileManager {...props} />)
+
+    await withFormFile(file, async () => {
+      selectFileViaInput(file)
+      const form = document.querySelector("form")
+      expect(form).not.toBeNull()
+
+      await act(async () => {
+        fireEvent.submit(form!)
+        await Promise.resolve()
+        await Promise.resolve()
+      })
+
+      expect(mocks.post).toHaveBeenCalledWith("/events/evt-1/upload_file", expect.any(FormData))
+      expect(mocks.run).toHaveBeenCalled()
+    })
+  })
+
   it("re-selecting a file after an error resets the inline error message", async () => {
     render(<EventFileManager {...makeProps()} />)
     submitForm()
 
-    await waitFor(() =>
-      expect(screen.getByText("events:detail.upload.errors.noFile")).toBeInTheDocument()
-    )
+    await flushAction()
+    expect(screen.getByText("events:detail.upload.errors.noFile")).toBeInTheDocument()
 
     // Re-select triggers the __upload_reset__ branch in handleFileChange,
     // dispatching the reset action that returns { status: "idle" }.
     selectFileViaInput(makeFile("second.pdf"))
-    await waitFor(() =>
-      expect(screen.queryByText("events:detail.upload.errors.noFile")).not.toBeInTheDocument()
-    )
+    await flushAction()
+    expect(screen.queryByText("events:detail.upload.errors.noFile")).not.toBeInTheDocument()
+    expect(document.querySelector("form")).toHaveAttribute("data-upload-state", "idle")
   })
 
   it("uploads a selected file, removes the optimistic row, and refreshes the event", async () => {
@@ -228,16 +316,18 @@ describe("EventFileManager branches", () => {
       selectFileViaInput(file)
       submitForm()
 
-      await waitFor(() => {
-        expect(mocks.post).toHaveBeenCalledWith("/events/evt-1/upload_file", expect.any(FormData))
-        expect(props.onSuccess).toHaveBeenCalledWith("events:detail.messages.fileAdded")
-        expect(props.onUpdate).toHaveBeenCalledTimes(1)
-      })
+      await flushAction()
+      expect(mocks.post).toHaveBeenCalledWith("/events/evt-1/upload_file", expect.any(FormData))
+      expect(props.onSuccess).toHaveBeenCalledWith("events:detail.messages.fileAdded")
+      expect(props.onUpdate).toHaveBeenCalledTimes(1)
     })
 
     expect(mocks.capture).toHaveBeenCalledTimes(1)
     expect(mocks.run).toHaveBeenCalledTimes(2)
     expect(screen.queryByText("slides.pdf")).not.toBeInTheDocument()
+    await flushAction()
+    expect(document.querySelector("form")).toHaveAttribute("data-upload-state", "success")
+    expect(document.querySelector("[data-file-id^='optimistic-']")).not.toBeInTheDocument()
   })
 
   it("completes an upload safely after the file input unmounts", async () => {
@@ -254,13 +344,50 @@ describe("EventFileManager branches", () => {
     await withFormFile(file, async () => {
       selectFileViaInput(file)
       submitForm()
-      await waitFor(() => expect(mocks.post).toHaveBeenCalledOnce())
+      await flushAction()
+      expect(mocks.post).toHaveBeenCalledOnce()
       view.unmount()
       resolveUpload({ data: {} })
-      await waitFor(() => expect(props.onSuccess).toHaveBeenCalled())
+      await flushAction()
+      expect(props.onSuccess).toHaveBeenCalled()
+      expect(props.onUpdate).toHaveBeenCalledOnce()
     })
 
+    expect(props.onError).not.toHaveBeenCalled()
     expect(screen.queryByText("late.pdf")).not.toBeInTheDocument()
+  })
+
+  it("removes the optimistic row before a slow refresh settles", async () => {
+    let resolveUpdate!: () => void
+    const onUpdate = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveUpdate = resolve
+        })
+    )
+    const props = makeProps({ onUpdate })
+    const file = makeFile("remove-before-refresh.pdf")
+    render(<EventFileManager {...props} />)
+
+    await withFormFile(file, async () => {
+      try {
+        selectFileViaInput(file)
+        submitForm()
+
+        await flushAction()
+        expect(mocks.post).toHaveBeenCalledOnce()
+        expect(onUpdate).toHaveBeenCalledOnce()
+        expect(document.querySelector("[data-file-id^='optimistic-']")).not.toBeInTheDocument()
+        resolveUpdate()
+        await flushAction()
+        expect(props.onSuccess).toHaveBeenCalledWith("events:detail.messages.fileAdded")
+        expect(document.querySelector("form")).toHaveAttribute("data-upload-state", "success")
+      } finally {
+        // If an injected mutation fails before onUpdate is observed, settle the
+        // deferred callback so the mutant test process cannot remain pending.
+        resolveUpdate?.()
+      }
+    })
   })
 
   it("uses an Axios detail when upload fails", async () => {
@@ -278,11 +405,17 @@ describe("EventFileManager branches", () => {
       selectFileViaInput(file)
       submitForm()
 
-      await waitFor(() => {
-        expect(props.onError).toHaveBeenCalledWith("File quota exceeded")
-      })
+      await flushAction()
+      expect(props.onError).toHaveBeenCalledWith("File quota exceeded")
     })
     expect(props.onSuccess).not.toHaveBeenCalled()
+    expect(document.querySelector("[data-file-id^='optimistic-']")).not.toBeInTheDocument()
+    await flushAction()
+    expect(document.querySelector("form")).toHaveAttribute("data-upload-state", "error")
+    expect(mocks.logError).toHaveBeenCalledWith(
+      "[EventFileManager] Upload failed:",
+      expect.anything()
+    )
   })
 
   it("uses the generic upload failure message for non-Axios errors", async () => {
@@ -295,10 +428,15 @@ describe("EventFileManager branches", () => {
       selectFileViaInput(file)
       submitForm()
 
-      await waitFor(() => {
-        expect(props.onError).toHaveBeenCalledWith("events:detail.messages.fileAddFailed")
-      })
+      await flushAction()
+      expect(props.onError).toHaveBeenCalledWith("events:detail.messages.fileAddFailed")
+      expect(screen.getByText("events:detail.upload.errors.failed")).toBeInTheDocument()
     })
+    expect(document.querySelector("[data-file-id^='optimistic-']")).not.toBeInTheDocument()
+    expect(mocks.logError).toHaveBeenCalledWith(
+      "[EventFileManager] Upload failed:",
+      expect.anything()
+    )
   })
 
   it("deletes a file: calls api.delete, onSuccess and onUpdate", async () => {
@@ -309,12 +447,12 @@ describe("EventFileManager branches", () => {
     })
     fireEvent.click(deleteButtons[0]!)
 
-    await waitFor(() => expect(mocks.del).toHaveBeenCalledTimes(1))
+    await flushAction()
+    expect(mocks.del).toHaveBeenCalledTimes(1)
     expect(mocks.del).toHaveBeenCalledWith("/events/file/f1")
-    await waitFor(() =>
-      expect(props.onSuccess).toHaveBeenCalledWith("events:detail.messages.fileDeleted")
-    )
-    await waitFor(() => expect(props.onUpdate).toHaveBeenCalled())
+    expect(props.onSuccess).toHaveBeenCalledWith("events:detail.messages.fileDeleted")
+    expect(props.onUpdate).toHaveBeenCalled()
+    expect(mocks.logError).not.toHaveBeenCalled()
   })
 
   it("delete failure: calls onError and still calls onUpdate in finally", async () => {
@@ -326,10 +464,13 @@ describe("EventFileManager branches", () => {
     })
     fireEvent.click(deleteButtons[0]!)
 
-    await waitFor(() =>
-      expect(props.onError).toHaveBeenCalledWith("events:detail.messages.fileDeleteFailed")
+    await flushAction()
+    expect(props.onError).toHaveBeenCalledWith("events:detail.messages.fileDeleteFailed")
+    expect(props.onUpdate).toHaveBeenCalled()
+    expect(mocks.logError).toHaveBeenCalledWith(
+      "[EventFileManager] Delete failed:",
+      expect.anything()
     )
-    await waitFor(() => expect(props.onUpdate).toHaveBeenCalled())
   })
 
   it("renders a pending file as plain text with a disabled delete button", () => {
@@ -411,5 +552,114 @@ describe("EventFileManager branches", () => {
     })
     fireEvent.click(deleteButton)
     expect(mocks.del).not.toHaveBeenCalled()
+  })
+
+  it("renders the optimistic row contract while an upload is pending", async () => {
+    let resolveUpload!: (value: { data: Record<string, never> }) => void
+    mocks.post.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveUpload = resolve
+      })
+    )
+    const file = makeFile("optimistic.pdf")
+    render(<EventFileManager {...makeProps()} />)
+
+    await withFormFile(file, async () => {
+      selectFileViaInput(file)
+      submitForm()
+
+      await flushAction()
+      const row = document.querySelector("[data-file-id^='optimistic-']")
+      expect(row).toHaveAttribute("data-file-url", "")
+      expect(row).toHaveAttribute("data-file-pending", "true")
+      resolveUpload({ data: {} })
+    })
+  })
+
+  it("serializes persisted files as non-pending rows", () => {
+    render(<EventFileManager {...makeProps()} />)
+    const rows = Array.from(document.querySelectorAll("[data-file-id]"))
+    expect(rows).toHaveLength(2)
+    expect(rows.map((row) => row.getAttribute("data-file-pending"))).toEqual(["false", "false"])
+  })
+
+  it("resets the file input value after a successful upload", async () => {
+    const valueSetter = vi.spyOn(HTMLInputElement.prototype, "value", "set")
+    const file = makeFile("reset.pdf")
+    render(<EventFileManager {...makeProps()} />)
+
+    await withFormFile(file, async () => {
+      selectFileViaInput(file)
+      submitForm()
+      await flushAction()
+      expect(mocks.post).toHaveBeenCalledOnce()
+      expect(mocks.post).toHaveBeenCalledWith("/events/evt-1/upload_file", expect.any(FormData))
+    })
+
+    expect(valueSetter).toHaveBeenCalledWith("")
+    valueSetter.mockRestore()
+  })
+
+  it("ignores a change event without a FileList", () => {
+    render(<EventFileManager {...makeProps()} />)
+    const input = getFileInput()
+
+    expect(() => fireEvent.change(input, { target: { files: undefined } })).not.toThrow()
+    expect(screen.getByRole("button", { name: "events:detail.upload.submit.label" })).toBeDisabled()
+  })
+
+  it("does not trust a detail field on a non-Axios error", async () => {
+    const props = makeProps()
+    const file = makeFile("spoofed.pdf")
+    mocks.post.mockRejectedValueOnce({ response: { data: { detail: "spoofed detail" } } })
+    render(<EventFileManager {...props} />)
+
+    await withFormFile(file, async () => {
+      selectFileViaInput(file)
+      submitForm()
+      await flushAction()
+      expect(props.onError).toHaveBeenCalled()
+    })
+
+    expect(props.onError).toHaveBeenCalledWith("events:detail.messages.fileAddFailed")
+  })
+
+  it("uses the generic message when an Axios error has no response data", async () => {
+    const props = makeProps()
+    const file = makeFile("missing-response.pdf")
+    mocks.post.mockRejectedValueOnce(
+      Object.assign(new Error("missing response"), { isAxiosError: true })
+    )
+    render(<EventFileManager {...props} />)
+
+    await withFormFile(file, async () => {
+      selectFileViaInput(file)
+      submitForm()
+      await flushAction()
+      expect(props.onError).toHaveBeenCalled()
+    })
+
+    expect(props.onError).toHaveBeenCalledWith("events:detail.messages.fileAddFailed")
+  })
+
+  it("uses the generic message when Axios response data has no detail", async () => {
+    const props = makeProps()
+    const file = makeFile("missing-detail.pdf")
+    mocks.post.mockRejectedValueOnce(
+      Object.assign(new Error("missing detail"), {
+        isAxiosError: true,
+        response: { data: undefined },
+      })
+    )
+    render(<EventFileManager {...props} />)
+
+    await withFormFile(file, async () => {
+      selectFileViaInput(file)
+      submitForm()
+      await flushAction()
+      expect(props.onError).toHaveBeenCalled()
+    })
+
+    expect(props.onError).toHaveBeenCalledWith("events:detail.messages.fileAddFailed")
   })
 })

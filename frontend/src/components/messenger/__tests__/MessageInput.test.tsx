@@ -189,6 +189,55 @@ describe("MessageInput", () => {
 
       expect(textarea.value).toBe("")
     })
+
+    it("does not send whitespace-only content and notifies typing on edits", () => {
+      const onSend = vi.fn()
+      const onTyping = vi.fn()
+      render(<MessageInput onSend={onSend} onTyping={onTyping} />)
+      const textarea = screen.getByRole("textbox", { name: "messenger:typeMessage" })
+
+      fireEvent.change(textarea, { target: { value: "   " } })
+      expect(onTyping).toHaveBeenCalledOnce()
+      expect(screen.getByRole("button", { name: "messenger:aria.sendMessage" })).toBeDisabled()
+      fireEvent.keyDown(textarea, { key: "Enter", shiftKey: false })
+      expect(onSend).not.toHaveBeenCalled()
+    })
+
+    it("allows sending attachments without text", async () => {
+      const onSend = vi.fn()
+      const { container } = render(<MessageInput onSend={onSend} />)
+      const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+      const file = new File(["pdf"], "notes.pdf", { type: "application/pdf" })
+      Object.defineProperty(fileInput, "files", { value: [file], writable: false })
+
+      await act(async () => {
+        fireEvent.change(fileInput)
+      })
+      fireEvent.click(screen.getByRole("button", { name: "messenger:aria.sendMessage" }))
+
+      expect(onSend).toHaveBeenCalledWith("", [file])
+    })
+
+    it("assigns the correct accept filter before opening each attachment picker", () => {
+      const { container } = render(<MessageInput onSend={() => {}} />)
+      const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+      const click = vi.spyOn(fileInput, "click")
+      const attach = screen.getByRole("button", { name: "messenger:aria.attachments" })
+
+      fireEvent.click(attach)
+      fireEvent.click(screen.getByRole("button", { name: "messenger:attachPhoto" }))
+      expect(fileInput.accept).toBe("image/png,image/jpeg,image/gif,image/webp")
+      expect(click).toHaveBeenCalledOnce()
+
+      fireEvent.click(attach)
+      fireEvent.click(screen.getByRole("button", { name: "messenger:attachDocument" }))
+      expect(fileInput.accept).toBe(".pdf,.doc,.docx,.txt")
+
+      fireEvent.click(attach)
+      fireEvent.click(screen.getByRole("button", { name: "messenger:attachFile" }))
+      expect(fileInput.accept).toBe("*")
+      expect(click).toHaveBeenCalledTimes(3)
+    })
   })
 
   describe("Blob URL lifecycle (W183 SW7 regression)", () => {

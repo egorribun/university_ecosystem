@@ -21,6 +21,9 @@ interface EventDetailEditDialogProps {
   onError: (msg: string) => void
 }
 
+const EMPTY_EDIT_VALUE = ""
+const EVENT_DIALOG_NAMESPACES = ["events", "common"] as const
+
 export function EventDetailEditDialog({
   open,
   onClose,
@@ -28,26 +31,26 @@ export function EventDetailEditDialog({
   onSuccess,
   onError,
 }: EventDetailEditDialogProps) {
-  const { t } = useTranslation(["events", "common"])
+  const { t } = useTranslation(EVENT_DIALOG_NAMESPACES)
   const queryClient = useQueryClient()
 
   const initialDraft: EventEditDraft = useMemo(
     () => ({
       id: event.id,
-      title: event.title ?? "",
-      title_en: event.title_en ?? "",
-      description: event.description ?? "",
-      description_en: event.description_en ?? "",
-      event_type: event.event_type ?? "",
-      event_type_en: event.event_type_en ?? "",
-      location: event.location ?? "",
-      location_en: event.location_en ?? "",
-      starts_at: event.starts_at ?? "",
-      ends_at: event.ends_at ?? "",
-      speaker: event.speaker ?? "",
-      image_url: event.image_url ?? "",
-      about: event.about ?? "",
-      about_en: event.about_en ?? "",
+      title: event.title ?? EMPTY_EDIT_VALUE,
+      title_en: event.title_en ?? EMPTY_EDIT_VALUE,
+      description: event.description ?? EMPTY_EDIT_VALUE,
+      description_en: event.description_en ?? EMPTY_EDIT_VALUE,
+      event_type: event.event_type ?? EMPTY_EDIT_VALUE,
+      event_type_en: event.event_type_en ?? EMPTY_EDIT_VALUE,
+      location: event.location ?? EMPTY_EDIT_VALUE,
+      location_en: event.location_en ?? EMPTY_EDIT_VALUE,
+      starts_at: event.starts_at ?? EMPTY_EDIT_VALUE,
+      ends_at: event.ends_at ?? EMPTY_EDIT_VALUE,
+      speaker: event.speaker ?? EMPTY_EDIT_VALUE,
+      image_url: event.image_url ?? EMPTY_EDIT_VALUE,
+      about: event.about ?? EMPTY_EDIT_VALUE,
+      about_en: event.about_en ?? EMPTY_EDIT_VALUE,
     }),
     [event]
   )

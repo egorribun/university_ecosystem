@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react"
+import { render, screen, fireEvent, act } from "@testing-library/react"
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
 const mocks = vi.hoisted(() => {
@@ -85,6 +85,15 @@ const submitForm = (): void => {
   const form = document.querySelector("form")
   expect(form).not.toBeNull()
   fireEvent.submit(form!)
+}
+
+/** Flush React 19 form-action transitions without polling an unbounded promise. */
+const flushAction = async (): Promise<void> => {
+  await act(async () => {
+    await Promise.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+  })
 }
 
 const withFormFile = async (file: File, run: () => Promise<void>): Promise<void> => {
@@ -181,17 +190,15 @@ describe("EventFileManager quality contract", () => {
       selectFile(file)
       submitForm()
 
-      await waitFor(() => {
-        expect(screen.getAllByText(file.name)).toHaveLength(2)
-        expect(
-          screen.getByRole("button", { name: "events:detail.upload.submit.pending" })
-        ).toBeDisabled()
-      })
+      await flushAction()
+      expect(screen.getAllByText(file.name)).toHaveLength(2)
+      expect(
+        screen.getByRole("button", { name: "events:detail.upload.submit.pending" })
+      ).toBeDisabled()
       expect(getFileInput()).toBeDisabled()
       resolveUpload({ data: {} })
-      await waitFor(() =>
-        expect(props.onSuccess).toHaveBeenCalledWith("events:detail.messages.fileAdded")
-      )
+      await flushAction()
+      expect(props.onSuccess).toHaveBeenCalledWith("events:detail.messages.fileAdded")
     })
 
     expect(mocks.post).toHaveBeenCalledWith("/events/evt-closure/upload_file", expect.any(FormData))
@@ -218,14 +225,14 @@ describe("EventFileManager quality contract", () => {
     })
 
     fireEvent.click(deleteButton)
-    await waitFor(() => expect(mocks.del).toHaveBeenCalledWith("/events/file/persisted-1"))
+    await flushAction()
+    expect(mocks.del).toHaveBeenCalledWith("/events/file/persisted-1")
     // The optimistic row is removed while the request is in flight; a
     // successful completion is reflected through callbacks and refresh.
-    await waitFor(() => expect(screen.queryByRole("link", { name: /readme\.pdf/ })).toBeNull())
+    expect(screen.queryByRole("link", { name: /readme\.pdf/ })).toBeNull()
     resolveDelete({ data: {} })
-    await waitFor(() =>
-      expect(props.onSuccess).toHaveBeenCalledWith("events:detail.messages.fileDeleted")
-    )
+    await flushAction()
+    expect(props.onSuccess).toHaveBeenCalledWith("events:detail.messages.fileDeleted")
     expect(props.onUpdate).toHaveBeenCalledOnce()
   })
 })

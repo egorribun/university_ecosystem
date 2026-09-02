@@ -64,6 +64,8 @@ const ATTACH_MENU_ITEMS = [
   },
 ] as const
 
+const NOOP_TYPING_HANDLER = () => undefined
+
 export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: MessageInputProps) {
   const { t } = useTranslation(["messenger", "common"])
   const [text, setText] = useState("")
@@ -99,6 +101,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
   const sendCanFire = text.trim().length > 0 || selectedFiles.length > 0
   const sendHoverAnim = prefersReducedMotion || !sendCanFire ? undefined : { scale: 1.08 }
   const sendTapAnim = prefersReducedMotion || !sendCanFire ? undefined : { scale: 0.92 }
+  const notifyTyping = onTyping ?? NOOP_TYPING_HANDLER
 
   const handleSend = () => {
     if (text.trim() || selectedFiles.length > 0) {
@@ -129,7 +132,7 @@ export function MessageInput({ onSend, replyingTo, onCancelReply, onTyping }: Me
     // lockstep with the backend/Pydantic and WS schema code-point contract.
     if ([...value].length > CHAT_MESSAGE_MAX_LENGTH) return
     setText(value)
-    onTyping?.()
+    notifyTyping()
   }
 
   const handleAttachmentClick = (type: "photo" | "file" | "document") => {

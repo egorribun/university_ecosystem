@@ -27,6 +27,44 @@ import {
   type UploadState,
 } from "./helpers"
 
+/** Keep upload state construction and input cleanup deterministic and directly testable. */
+export function createUploadSuccessState(): UploadState {
+  return { status: "success" }
+}
+
+export function createUploadErrorState(error: string): UploadState {
+  return { status: "error", error }
+}
+
+export function resetFileInputValue(input: HTMLInputElement | null): void {
+  if (input) input.value = ""
+}
+
+/** Keep the optimistic remove action's discriminant and identifier coupled. */
+export function createRemoveFileAction(fileId: string): FileOptimisticAction {
+  return { type: "remove", id: fileId }
+}
+
+/** Normalize browser file-list edge cases without relying on optional DOM fields. */
+export function getSelectedFile(files: FileList | null | undefined): File | null {
+  return files?.[0] ?? null
+}
+
+/** Decide whether selecting a new file should clear a settled upload error. */
+export function shouldResetUploadError(uploadState: UploadState, uploadPending: boolean): boolean {
+  return isUploadErrorState(uploadState) && !uploadPending
+}
+
+/** Stable translation contract for the upload submit button. */
+export function getUploadSubmitLabelKey(uploadPending: boolean): string {
+  return uploadPending ? "events:detail.upload.submit.pending" : "events:detail.upload.submit.label"
+}
+
+/** Serialize the pending state for stable DOM/test automation contracts. */
+export function getPendingFileAttribute(isPendingFile: boolean): "true" | "false" {
+  return isPendingFile ? "true" : "false"
+}
+
 interface EventFileManagerProps {
   event: Event
   canEdit: boolean
@@ -65,7 +103,7 @@ export function EventFileManager({
         return { status: "error", error: t("events:detail.upload.errors.noFile") }
       }
 
-      const optimisticId = `pending-${Date.now()}`
+      const optimisticId = `optimistic-${Date.now()}`
       mutateFiles({
         type: "add",
         file: {
@@ -81,31 +119,31 @@ export function EventFileManager({
         const data = new FormData()
         data.append("file", file)
         await telemetryContext.run(() => api.post(`/events/${event.id}/upload_file`, data))
-        mutateFiles({ type: "remove", id: optimisticId })
+        mutateFiles(createRemoveFileAction(optimisticId))
         onSuccess(t("events:detail.messages.fileAdded"))
         setSelectedFile(null)
-        if (fileInputRef.current) fileInputRef.current.value = ""
+        resetFileInputValue(fileInputRef.current)
         await telemetryContext.run(onUpdate)
-        return { status: "success" }
+        return createUploadSuccessState()
       } catch (err) {
         logError("[EventFileManager] Upload failed:", err)
-        mutateFiles({ type: "remove", id: optimisticId })
+        mutateFiles(createRemoveFileAction(optimisticId))
 
         let message = t("events:detail.messages.fileAddFailed")
         if (isAxiosError(err) && err.response?.data?.detail) {
           message = err.response.data.detail
         }
         onError(message)
-        return { status: "error", error: t("events:detail.upload.errors.failed") }
+        return createUploadErrorState(t("events:detail.upload.errors.failed"))
       }
     },
     { status: "idle" }
   )
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const nextFile = e.target.files?.[0] || null
+    const nextFile = getSelectedFile(e.target.files)
     setSelectedFile(nextFile)
-    if (isUploadErrorState(uploadState) && !uploadPending) {
+    if (shouldResetUploadError(uploadState, uploadPending)) {
       const marker = new FormData()
       marker.append("__upload_reset__", "1")
       startTransition(() => uploadAction(marker))
@@ -123,7 +161,7 @@ export function EventFileManager({
     // async operation inside that transition preserves the optimistic row
     // until the server response settles and avoids React warnings.
     startTransition(async () => {
-      mutateFiles({ type: "remove", id: fileId })
+      mutateFiles(createRemoveFileAction(fileId))
       try {
         await telemetryContext.run(() => api.delete(`/events/file/${fileId}`))
         onSuccess(t("events:detail.messages.fileDeleted"))
@@ -143,6 +181,7 @@ export function EventFileManager({
           <form
             action={uploadAction}
             onSubmit={handleUploadSubmit}
+            data-upload-state={uploadState.status}
             className="flex flex-wrap items-center gap-2"
           >
             <Button variant="solid" as="label" disabled={uploadPending}>
@@ -191,7 +230,13 @@ export function EventFileManager({
               const fallbackName = f.file_url.split("/").pop() || f.file_url
               const fileLabel = f.description || fallbackName
               return (
-                <div key={f.id} className="flex items-center gap-2">
+                <div
+                  key={f.id}
+                  data-file-id={f.id}
+                  data-file-url={f.file_url}
+                  data-file-pending={getPendingFileAttribute(isPendingFile)}
+                  className="flex items-center gap-2"
+                >
                   {isPendingFile ? (
                     <span className="flex-1 text-sm text-(--text-secondary)">
                       {f.description || t("events:detail.sections.files.pending")}

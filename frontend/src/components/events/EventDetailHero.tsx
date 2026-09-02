@@ -5,7 +5,7 @@
 
 import SmartImage from "@/components/media/SmartImage"
 import { ZoomIn, X } from "lucide-react"
-import { useState, useCallback, useEffect, useMemo, useRef, type SyntheticEvent } from "react"
+import { useState, useEffect, useMemo, useRef, type SyntheticEvent } from "react"
 import { useTranslation } from "react-i18next"
 import { cn } from "@/utils/cn"
 import useFocusTrap from "@/hooks/useFocusTrap"
@@ -16,12 +16,17 @@ interface EventDetailHeroProps {
 
 type AspectMode = "landscape" | "portrait" | "square"
 
+/** Focus the lightbox close control when it is still mounted. */
+export function focusCloseButton(button: HTMLButtonElement | null): void {
+  button?.focus()
+}
+
 export function EventDetailHero({ imageUrl }: EventDetailHeroProps) {
   const { t } = useTranslation(["events"])
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [aspectMode, setAspectMode] = useState<AspectMode>("landscape")
 
-  const handleImageLoad = useCallback((e: SyntheticEvent<HTMLImageElement>) => {
+  const handleImageLoad = (e: SyntheticEvent<HTMLImageElement>) => {
     const img = e.currentTarget
     const w = img.naturalWidth || 1
     const h = img.naturalHeight || 1
@@ -29,7 +34,7 @@ export function EventDetailHero({ imageUrl }: EventDetailHeroProps) {
     if (ratio < 0.85) setAspectMode("portrait")
     else if (ratio > 1.4) setAspectMode("landscape")
     else setAspectMode("square")
-  }, [])
+  }
 
   const closeButtonRef = useRef<HTMLButtonElement>(null)
   const lightboxRef = useFocusTrap<HTMLDivElement>({
@@ -41,7 +46,7 @@ export function EventDetailHero({ imageUrl }: EventDetailHeroProps) {
   // Focus close button when lightbox opens
   useEffect(() => {
     if (lightboxOpen) {
-      const timer = setTimeout(() => closeButtonRef.current?.focus(), 50)
+      const timer = setTimeout(() => focusCloseButton(closeButtonRef.current), 50)
       return () => clearTimeout(timer)
     }
   }, [lightboxOpen])
@@ -71,6 +76,7 @@ export function EventDetailHero({ imageUrl }: EventDetailHeroProps) {
     <>
       {/* Hero image container with view transition */}
       <div
+        data-aspect-mode={aspectMode}
         className={cn(
           "relative w-full overflow-hidden rounded-2xl glass-layer-elevated glass-noise border border-glass-border/(--opacity-soft)",
           containerClass
@@ -116,7 +122,10 @@ export function EventDetailHero({ imageUrl }: EventDetailHeroProps) {
           <button
             ref={closeButtonRef}
             type="button"
-            onClick={() => setLightboxOpen(false)}
+            onClick={(event) => {
+              event.stopPropagation()
+              setLightboxOpen(false)
+            }}
             className="absolute top-4 right-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-white/(--opacity-dim) text-[var(--text-inverse)] hover:bg-white/(--opacity-soft) transition-colors focus-visible:ring-2 focus-visible:ring-[var(--text-inverse)]"
             aria-label={t("common:buttons.close")}
           >

@@ -220,7 +220,7 @@ export type WsServerMessage = WsServerMessagePayload & {
 
 const StreamSequenceSchema = v.pipe(v.number(), v.safeInteger(), v.minValue(1))
 
-type JsonParseResult = { ok: true; value: unknown } | { ok: false }
+type JsonParseResult = { value: unknown } | null
 
 /**
  * Parse a raw WebSocket frame. Returns the typed message on success, or null
@@ -229,12 +229,12 @@ type JsonParseResult = { ok: true; value: unknown } | { ok: false }
 export function parseWsMessage(raw: string): WsServerMessage | null {
   const parseResult: JsonParseResult = (() => {
     try {
-      return { ok: true, value: JSON.parse(raw) }
+      return { value: JSON.parse(raw) }
     } catch {
-      return { ok: false }
+      return null
     }
   })()
-  if (!parseResult.ok) {
+  if (parseResult === null) {
     return null
   }
   const parsed = parseResult.value
@@ -287,11 +287,13 @@ export function parseWsMessage(raw: string): WsServerMessage | null {
   if ((streamMetadata === undefined) !== (resumeToken === undefined)) return null
 
   if (streamMetadata !== undefined) {
+    const payloadChatId =
+      "chat_id" in result.output ? result.output.chat_id : streamMetadata.source.room
     if (!("chat_id" in result.output)) return null
     // The guard above already rejects sequenced flat frames, so a sequenced
     // result is necessarily an envelope and its room must bind to chat_id.
     const roomResult = v.safeParse(UuidString, streamMetadata.source.room)
-    if (!roomResult.success || roomResult.output !== result.output.chat_id) return null
+    if (!roomResult.success || roomResult.output !== payloadChatId) return null
   }
 
   return {

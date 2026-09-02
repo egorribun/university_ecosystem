@@ -3,7 +3,11 @@ import userEvent from "@testing-library/user-event"
 import { renderToString } from "react-dom/server"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { useNotifications } from "@/hooks/useNotifications"
-import NotificationsBell from "../feedback/NotificationsBell"
+import NotificationsBell, {
+  canUpdateNotificationPosition,
+  focusNotificationTrigger,
+  shouldCloseNotificationDropdown,
+} from "../feedback/NotificationsBell"
 
 const useNotificationsMock = vi.fn()
 const motionState = vi.hoisted(() => ({ reducedMotion: false }))
@@ -148,6 +152,7 @@ describe("NotificationsBell", () => {
 
   it("starts closed and loads notification strings from the system namespace", () => {
     useNotificationsMock.mockReturnValue(baseState())
+    const addEventListener = vi.spyOn(window, "addEventListener")
     render(<NotificationsBell />)
 
     const trigger = screen.getByRole("button", { name: "Open notifications" })
@@ -157,6 +162,37 @@ describe("NotificationsBell", () => {
     expect(document.querySelector(".animate-ping")).not.toBeInTheDocument()
     expect(translationState.namespaces).toContainEqual(["system"])
     expect(mediaQueryState.queries).toContain("(prefers-reduced-motion: reduce)")
+    expect(addEventListener.mock.calls.some(([type]) => String(type) === "resize")).toBe(false)
+    addEventListener.mockRestore()
+  })
+
+  it("keeps positioning, focus, and outside-click guards total for missing nodes", () => {
+    const trigger = document.createElement("button")
+    const dropdown = document.createElement("div")
+    const outside = document.createElement("span")
+    document.body.append(trigger, dropdown, outside)
+    const focus = vi.spyOn(trigger, "focus")
+
+    expect(canUpdateNotificationPosition(false, null)).toBe(false)
+    expect(canUpdateNotificationPosition(false, trigger)).toBe(false)
+    expect(canUpdateNotificationPosition(true, null)).toBe(false)
+    expect(canUpdateNotificationPosition(true, trigger)).toBe(true)
+
+    focusNotificationTrigger(null)
+    expect(focus).not.toHaveBeenCalled()
+    focusNotificationTrigger(trigger)
+    expect(focus).toHaveBeenCalledTimes(1)
+
+    expect(shouldCloseNotificationDropdown(false, trigger, dropdown, outside)).toBe(false)
+    expect(shouldCloseNotificationDropdown(true, null, dropdown, outside)).toBe(false)
+    expect(shouldCloseNotificationDropdown(true, trigger, null, outside)).toBe(false)
+    expect(shouldCloseNotificationDropdown(true, trigger, dropdown, trigger)).toBe(false)
+    expect(shouldCloseNotificationDropdown(true, trigger, dropdown, dropdown)).toBe(false)
+    expect(shouldCloseNotificationDropdown(true, trigger, dropdown, outside)).toBe(true)
+
+    trigger.remove()
+    dropdown.remove()
+    outside.remove()
   })
 
   it("does not render an unread badge when the count is zero", async () => {
@@ -202,6 +238,16 @@ describe("NotificationsBell", () => {
     await user.click(trigger)
     expect(trigger).toHaveAttribute("aria-expanded", "true")
     expect(screen.getByRole("dialog", { name: "Notifications" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Mark all as read" })).toHaveAttribute(
+      "aria-label",
+      "Mark all as read"
+    )
+    expect(screen.getByRole("button", { name: "Mark all as read" })).toHaveAttribute(
+      "title",
+      "Mark all as read"
+    )
+    expect(screen.getByRole("button", { name: "Clear" })).toHaveAttribute("aria-label", "Clear")
+    expect(screen.getByRole("button", { name: "Clear" })).toHaveAttribute("title", "Clear")
 
     await user.keyboard("{Escape}")
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
@@ -504,6 +550,34 @@ describe("NotificationsBell", () => {
     expect(markRead).toHaveBeenCalledWith("chat-1")
   })
 
+  it("keeps linked notification clicks cancellable only when no destination exists", async () => {
+    const state = baseState()
+    state.data = [
+      {
+        id: "linked-click",
+        title: "Linked update",
+        body: "Open the destination",
+        created_at: "2024-01-01T00:00:00Z",
+        read: false,
+        link: "/news/linked-click",
+      },
+    ]
+    const markRead = vi.fn()
+    state.markRead = markRead
+    useNotificationsMock.mockReturnValue(state)
+
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+    await user.click(screen.getByRole("button", { name: "Open notifications" }))
+
+    const link = screen.getByRole("link", { name: /Linked update Open the destination/ })
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true })
+    fireEvent(link, click)
+
+    expect(click.defaultPrevented).toBe(false)
+    expect(markRead).toHaveBeenCalledWith("linked-click")
+  })
+
   it("uses the localized new-notifications label for the unread badge", async () => {
     const state = baseState()
     state.unreadCount = 2
@@ -643,7 +717,13 @@ describe("NotificationsBell", () => {
     const rendered = render(<NotificationsBell />)
     await user.click(screen.getByRole("button", { name: "Open notifications" }))
 
-    for (const field of ["isRefetching", "isMarkingAll", "isClearing"] as const) {
+    for (const field of [
+      "isLoading",
+      "isError",
+      "isRefetching",
+      "isMarkingAll",
+      "isClearing",
+    ] as const) {
       state[field] = true
       rendered.rerender(<NotificationsBell />)
       expect(screen.getByTitle("Mark all as read")).toBeDisabled()
@@ -693,6 +773,66 @@ describe("NotificationsBell", () => {
       "gap-3"
     )
     expect(screen.queryByTitle("Mark as read")).not.toBeInTheDocument()
+  })
+
+  it("keeps the panel and bulk-action touch targets on the shared surface contract", async () => {
+    const state = baseState()
+    state.data = [
+      {
+        id: "surface-contract",
+        title: "Surface contract",
+        body: "Verify controls",
+        created_at: "2024-01-01T00:00:00Z",
+        read: true,
+      },
+    ]
+    useNotificationsMock.mockReturnValue(state)
+    const user = userEvent.setup()
+    render(<NotificationsBell />)
+    await user.click(screen.getByRole("button", { name: "Open notifications" }))
+
+    expect(screen.getByRole("dialog", { name: "Notifications" })).toHaveClass(
+      "fixed",
+      "z-popover",
+      "origin-top-right",
+      "max-sm:left-1/2",
+      "sm:w-96",
+      "bg-glass",
+      "backdrop-blur-xl",
+      "border",
+      "border-glass-border",
+      "rounded-2xl",
+      "shadow-glass",
+      "overflow-hidden",
+      "ring-1",
+      "ring-black/(--opacity-faint)"
+    )
+    expect(screen.getByTitle("Mark all as read")).toHaveClass(
+      "min-h-11",
+      "min-w-11",
+      "p-2",
+      "text-(--text-secondary)",
+      "hover:text-text-primary",
+      "hover:bg-(--text-secondary)/(--opacity-faint)",
+      "rounded-lg",
+      "transition-colors",
+      "focus-ring-premium",
+      "disabled:opacity-soft",
+      "disabled:hover:bg-transparent"
+    )
+    expect(screen.getByTitle("Clear")).toHaveClass(
+      "min-h-11",
+      "min-w-11",
+      "p-2",
+      "text-(--text-secondary)",
+      "hover:text-error-text",
+      "hover:bg-error-bg/(--opacity-subtle)",
+      "rounded-lg",
+      "transition-colors",
+      "focus-ring-premium",
+      "disabled:opacity-soft",
+      "disabled:hover:bg-transparent"
+    )
   })
 
   it("exposes exact motion state and reduced-motion variants for the dropdown", async () => {
@@ -886,6 +1026,20 @@ describe("NotificationsBell", () => {
       fireEvent.mouseDown(openButton)
 
       expect(screen.getByRole("heading", { name: "Notifications" })).toBeInTheDocument()
+    })
+
+    it("removes the document listener on unmount", () => {
+      useNotificationsMock.mockReturnValue(baseState())
+      const addEventListener = vi.spyOn(document, "addEventListener")
+      const removeEventListener = vi.spyOn(document, "removeEventListener")
+      const rendered = render(<NotificationsBell />)
+      const registration = addEventListener.mock.calls.find(
+        ([type]) => String(type) === "mousedown"
+      )
+
+      expect(registration).toBeDefined()
+      rendered.unmount()
+      expect(removeEventListener).toHaveBeenCalledWith("mousedown", registration?.[1])
     })
   })
 

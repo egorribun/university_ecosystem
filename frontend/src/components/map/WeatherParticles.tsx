@@ -12,7 +12,7 @@ import { isLowPowerDevice } from "@/utils/deviceCapabilities"
 
 import type { WeatherCondition } from "@/utils/weatherCodes"
 
-interface Particle {
+export interface Particle {
   x: number
   y: number
   speed: number
@@ -30,7 +30,7 @@ interface WeatherParticlesProps {
 /*  Particle configuration per weather condition                       */
 /* ------------------------------------------------------------------ */
 
-interface ParticleConfig {
+export interface ParticleConfig {
   count: number
   color: (isDark: boolean) => string
   sizeRange: [number, number]
@@ -44,39 +44,53 @@ interface ParticleConfig {
  * CSS custom properties cannot be read at canvas paint time.
  * Token equivalents documented for design system traceability.
  */
-const CONFIGS: Record<string, ParticleConfig> = {
-  rain: {
-    count: 200,
-    color: (dark) => (dark ? "#93c5fd" : "#60a5fa"), // --color-blue-300 / --color-blue-400
-    sizeRange: [2, 4],
-    speedRange: [6, 12],
-    opacityRange: [0.3, 0.7],
-    driftRange: [-0.5, 0.5],
-  },
-  snow: {
-    count: 100,
-    color: (dark) => (dark ? "#e2e8f0" : "#f8fafc"), // --color-slate-200 / --color-slate-50
-    sizeRange: [1, 3],
-    speedRange: [0.5, 1.5],
-    opacityRange: [0.4, 0.8],
-    driftRange: [-0.8, 0.8],
-  },
-  storm: {
-    count: 250,
-    color: (dark) => (dark ? "#93c5fd" : "#60a5fa"), // --color-blue-300 / --color-blue-400
-    sizeRange: [2, 4],
-    speedRange: [8, 16],
-    opacityRange: [0.35, 0.75],
-    driftRange: [-1, 1],
-  },
-  fog: {
-    count: 50,
-    color: (dark) => (dark ? "#94a3b8" : "#cbd5e1"), // --color-slate-400 / --color-slate-300
-    sizeRange: [10, 20],
-    speedRange: [0.2, 0.6],
-    opacityRange: [0.04, 0.12],
-    driftRange: [-0.4, 0.4],
-  },
+/**
+ * Return the weather tuning at runtime instead of retaining a module-level
+ * object.  Besides keeping each config immutable from callers, this makes the
+ * configuration itself part of the exercised mutation surface (rather than a
+ * static literal that a test runner cannot associate with a test).
+ */
+export function getParticleConfig(condition: WeatherCondition): ParticleConfig | null {
+  switch (condition) {
+    case "rain":
+      return {
+        count: 200,
+        color: (dark) => (dark ? "#93c5fd" : "#60a5fa"), // --color-blue-300 / --color-blue-400
+        sizeRange: [2, 4],
+        speedRange: [6, 12],
+        opacityRange: [0.3, 0.7],
+        driftRange: [-0.5, 0.5],
+      }
+    case "snow":
+      return {
+        count: 100,
+        color: (dark) => (dark ? "#e2e8f0" : "#f8fafc"), // --color-slate-200 / --color-slate-50
+        sizeRange: [1, 3],
+        speedRange: [0.5, 1.5],
+        opacityRange: [0.4, 0.8],
+        driftRange: [-0.8, 0.8],
+      }
+    case "storm":
+      return {
+        count: 250,
+        color: (dark) => (dark ? "#93c5fd" : "#60a5fa"), // --color-blue-300 / --color-blue-400
+        sizeRange: [2, 4],
+        speedRange: [8, 16],
+        opacityRange: [0.35, 0.75],
+        driftRange: [-1, 1],
+      }
+    case "fog":
+      return {
+        count: 50,
+        color: (dark) => (dark ? "#94a3b8" : "#cbd5e1"), // --color-slate-400 / --color-slate-300
+        sizeRange: [10, 20],
+        speedRange: [0.2, 0.6],
+        opacityRange: [0.04, 0.12],
+        driftRange: [-0.4, 0.4],
+      }
+    default:
+      return null
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -98,13 +112,79 @@ function createParticle(config: ParticleConfig, width: number, height: number): 
   }
 }
 
-function recycleParticle(p: Particle, config: ParticleConfig, width: number): void {
+/**
+ * Build a complete particle buffer in one bounded operation.  Keeping the
+ * allocation separate from the resize effect makes the count contract
+ * deterministic and avoids an unbounded mutation-test loop in the canvas
+ * setup path.
+ */
+export function createParticlesForCondition(
+  condition: WeatherCondition,
+  width: number,
+  height: number
+): Particle[] {
+  const config = getParticleConfig(condition)
+  if (!config) return []
+  return Array.from({ length: config.count }, () => createParticle(config, width, height))
+}
+
+export function createEmptyParticleBuffer(): Particle[] {
+  return []
+}
+
+export function recycleParticle(p: Particle, config: ParticleConfig, width: number): void {
   p.x = Math.random() * width
-  p.y = -p.size - Math.random() * 20
+  p.y = getVerticalRecycleY(p.size, Math.random())
   p.speed = rand(config.speedRange[0], config.speedRange[1])
   p.size = rand(config.sizeRange[0], config.sizeRange[1])
   p.opacity = rand(config.opacityRange[0], config.opacityRange[1])
   p.drift = rand(config.driftRange[0], config.driftRange[1])
+}
+
+/** Deterministic spawn position for particles re-entering from above. */
+export function getVerticalRecycleY(size: number, randomValue: number): number {
+  return -size - randomValue * 20
+}
+
+/** Deterministic vertical position for fog particles re-entering the canvas. */
+export function getFogRecycleY(randomValue: number, height: number): number {
+  return randomValue * height
+}
+
+export function isStormCondition(condition: WeatherCondition): boolean {
+  return condition === "storm"
+}
+
+/** Keep edge tests explicit so particles are recycled only after crossing a boundary. */
+export function isParticleOutOfBounds(p: Particle, width: number, height: number): boolean {
+  return p.y > height + p.size || p.x < -p.size || p.x > width + p.size
+}
+
+/** Fog particles re-enter from the side opposite their drift direction. */
+export function getFogRecycleX(drift: number, size: number, width: number): number {
+  return drift > 0 ? -size : width + size
+}
+
+/** Storm flashes trigger at the exact zero boundary, but never while active. */
+export function shouldTriggerStormFlash(nextFlash: number, active: boolean): boolean {
+  return nextFlash <= 0 && !active
+}
+
+/** A flash is complete once its opacity reaches zero. */
+export function shouldEndStormFlash(opacity: number): boolean {
+  return opacity <= 0
+}
+
+export interface StormFlashState {
+  active: boolean
+  opacity: number
+  nextFlash: number
+}
+
+/** Initialize storm-only state without consuming random values for other weather. */
+export function createStormFlashState(isStorm: boolean): StormFlashState | null {
+  if (!isStorm) return null
+  return { active: false, opacity: 0, nextFlash: rand(3000, 8000) }
 }
 
 /* ------------------------------------------------------------------ */
@@ -117,16 +197,16 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
-  const particlesRef = useRef<Particle[]>([])
+  const particlesRef = useRef<Particle[]>(createEmptyParticleBuffer())
   const frameRef = useRef<number>(0)
   const pausedRef = useRef(false)
 
   // Storm flash state
-  const flashRef = useRef({ active: false, opacity: 0, nextFlash: 0 })
+  const flashRef = useRef<StormFlashState | null>(null)
 
   useEffect(() => {
     if (prefersReducedMotion || lowPowerDevice) return
-    const config = CONFIGS[condition]
+    const config = getParticleConfig(condition)
     if (!config) return
 
     const canvas = canvasRef.current!
@@ -137,7 +217,7 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
 
     let width = 0
     let height = 0
-    const isStorm = condition === "storm"
+    const isStorm = isStormCondition(condition)
     const isFog = condition === "fog"
     const isSnow = condition === "snow"
     const color = config.color(isDark)
@@ -150,12 +230,8 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
       canvas.width = width
       canvas.height = height
 
-      // Re-initialize particles to fill new dimensions
-      const particles: Particle[] = []
-      for (let i = 0; i < config.count; i++) {
-        particles.push(createParticle(config, width, height))
-      }
-      particlesRef.current = particles
+      // Re-initialize particles to fill new dimensions.
+      particlesRef.current = createParticlesForCondition(condition, width, height)
     }
 
     const resizeObserver = new ResizeObserver(() => {
@@ -181,9 +257,7 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
     }
     /* ---------- storm flash scheduling ---------- */
 
-    if (isStorm) {
-      flashRef.current = { active: false, opacity: 0, nextFlash: rand(3000, 8000) }
-    }
+    flashRef.current = createStormFlashState(isStorm)
 
     /* ---------- render loop ---------- */
 
@@ -205,9 +279,9 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
 
       /* -- storm flash -- */
       if (isStorm) {
-        const flash = flashRef.current
+        const flash = flashRef.current!
         flash.nextFlash -= dt
-        if (flash.nextFlash <= 0 && !flash.active) {
+        if (shouldTriggerStormFlash(flash.nextFlash, flash.active)) {
           flash.active = true
           flash.opacity = 0.08
           flash.nextFlash = rand(3000, 8000)
@@ -216,7 +290,7 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
           ctx.fillStyle = `rgba(255, 255, 255, ${flash.opacity})`
           ctx.fillRect(0, 0, width, height)
           flash.opacity -= 0.001 * dt // Fade over ~100ms
-          if (flash.opacity <= 0) {
+          if (shouldEndStormFlash(flash.opacity)) {
             flash.active = false
             flash.opacity = 0
           }
@@ -236,11 +310,11 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
         p.y += p.speed * dtFactor
 
         // Recycle when out of bounds
-        if (p.y > height + p.size || p.x < -p.size || p.x > width + p.size) {
+        if (isParticleOutOfBounds(p, width, height)) {
           if (isFog) {
             // Fog drifts horizontally — recycle on either side
-            p.x = p.drift > 0 ? -p.size : width + p.size
-            p.y = Math.random() * height
+            p.x = getFogRecycleX(p.drift, p.size, width)
+            p.y = getFogRecycleY(Math.random(), height)
             p.speed = rand(config.speedRange[0], config.speedRange[1])
           } else {
             recycleParticle(p, config, width)
@@ -293,13 +367,13 @@ export function WeatherParticles({ condition, isDark }: WeatherParticlesProps) {
     }
   }, [condition, isDark, lowPowerDevice, prefersReducedMotion])
 
-  // No particles for clear/cloudy, or when user prefers reduced motion
-  if (prefersReducedMotion || lowPowerDevice || condition === "clear" || condition === "cloudy") {
+  // No particles when motion is reduced or the condition has no particle config.
+  if (prefersReducedMotion || lowPowerDevice) {
     return null
   }
 
   // Early return if no config (defensive)
-  if (!CONFIGS[condition]) {
+  if (!getParticleConfig(condition)) {
     return null
   }
 

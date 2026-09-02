@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
   navigate: vi.fn(),
   t: vi.fn((key: string) => key),
   useTranslation: vi.fn(),
+  useMediaQuery: vi.fn(),
 }))
 
 vi.mock("react-i18next", () => ({
@@ -16,7 +17,7 @@ vi.mock("react-i18next", () => ({
 }))
 
 vi.mock("@/hooks/useMediaQuery", () => ({
-  default: () => state.reducedMotion,
+  default: state.useMediaQuery,
 }))
 
 vi.mock("lucide-react", () => {
@@ -80,7 +81,8 @@ vi.mock("framer-motion", () => {
   }
 })
 
-import { MapWeatherPanel } from "@/components/map/MapWeatherPanel"
+import { MapWeatherPanel, getConditionIcon } from "@/components/map/MapWeatherPanel"
+import { Cloud, CloudFog, CloudLightning, CloudRain, Moon, Snowflake, Sun } from "lucide-react"
 
 const WEATHER: MapWeatherData = {
   temperature: 5,
@@ -125,12 +127,25 @@ describe("MapWeatherPanel mutation contracts", () => {
     state.reducedMotion = true
     state.t.mockReset().mockImplementation((key: string) => key)
     state.useTranslation.mockReset().mockReturnValue({ t: state.t })
+    state.useMediaQuery.mockReset().mockImplementation(() => state.reducedMotion)
+  })
+
+  it("resolves every weather condition to its canonical icon and safely falls back", () => {
+    expect(getConditionIcon("clear")).toBe(Sun)
+    expect(getConditionIcon("cloudy")).toBe(Cloud)
+    expect(getConditionIcon("rain")).toBe(CloudRain)
+    expect(getConditionIcon("snow")).toBe(Snowflake)
+    expect(getConditionIcon("fog")).toBe(CloudFog)
+    expect(getConditionIcon("storm")).toBe(CloudLightning)
+    expect(getConditionIcon("unknown" as never)).toBe(Sun)
+    expect(Moon).not.toBe(Sun)
   })
 
   it("keeps translated stats, sign formatting, hourly condition icons, and accessibility", () => {
     renderPanel({ data: { ...WEATHER, isDay: false } })
 
     expect(state.useTranslation).toHaveBeenCalledWith("map")
+    expect(state.useMediaQuery).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
     expect(state.t).toHaveBeenCalledWith("weather.hourlyForecast")
     expect(state.t).toHaveBeenCalledWith("common:buttons.close")
     expect(state.t).toHaveBeenCalledWith("weather.feelsLike")
@@ -160,7 +175,13 @@ describe("MapWeatherPanel mutation contracts", () => {
     expect(screen.getByTestId("weather-icon-cloud")).toBeInTheDocument()
     expect(screen.getByTestId("weather-icon-cloud-rain")).toBeInTheDocument()
     expect(screen.getAllByTestId("weather-icon-sun")).toHaveLength(2)
-    expect(screen.getAllByText(/^[+-]?\d+°$/)).toHaveLength(5)
+    expect(screen.getAllByText(/^[+-]?\d+°$/).map((node) => node.textContent)).toEqual([
+      "0°",
+      "0°",
+      "-1°",
+      "+6°",
+      "+7°",
+    ])
   })
 
   it("passes the complete motion object only when reduced motion is disabled", () => {

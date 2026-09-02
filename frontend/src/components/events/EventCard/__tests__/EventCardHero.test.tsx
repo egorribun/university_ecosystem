@@ -70,6 +70,13 @@ describe("EventCardHero", () => {
     fireEvent.load(screen.getByAltText("events:alt.image"))
   })
 
+  it("defaults an omitted time status to the neutral state", () => {
+    render(<EventCardHero {...baseProps} timeStatus={undefined} />)
+
+    expect(screen.queryByText("events:card.statuses.live")).not.toBeInTheDocument()
+    expect(screen.queryByText("events:card.statuses.soon")).not.toBeInTheDocument()
+  })
+
   it("shows the LIVE badge for timeStatus='live'", () => {
     render(<EventCardHero {...baseProps} timeStatus="live" />)
     expect(screen.getByText("events:card.statuses.live")).toBeInTheDocument()
@@ -104,6 +111,10 @@ describe("EventCardHero", () => {
     expect(screen.queryByAltText("events:alt.image")).not.toBeInTheDocument()
     expect(container.querySelector("svg")).not.toBeNull()
     expect(container.querySelector("time")).not.toBeNull()
+    expect(container.querySelector(".animate-pulse")).toHaveClass(
+      "opacity-0",
+      "pointer-events-none"
+    )
   })
 
   it("omits the date badge when startsAt is empty", () => {
@@ -155,6 +166,18 @@ describe("EventCardHero", () => {
     expect(hero.style.viewTransitionName).toBe("")
   })
 
+  it("cleans the view-transition name when unmounted before the deferred cleanup", () => {
+    vi.useFakeTimers()
+    transitions.getEventsHeroId.mockReturnValue("evt-1")
+    const { container, unmount } = render(<EventCardHero {...baseProps} />)
+    const hero = container.firstElementChild as HTMLElement
+
+    expect(hero.style.viewTransitionName).toBe("events-hero")
+    unmount()
+    expect(hero.style.viewTransitionName).toBe("")
+    vi.runOnlyPendingTimers()
+  })
+
   it("updates the parallax transform from intersection changes", () => {
     let callback: IntersectionObserverCallback | undefined
     const observe = vi.fn()
@@ -187,11 +210,16 @@ describe("EventCardHero", () => {
   it("skips parallax work when reduced motion is requested", () => {
     const observer = vi.fn()
     vi.stubGlobal("IntersectionObserver", observer)
-    vi.spyOn(window, "matchMedia").mockReturnValue({ matches: true } as MediaQueryList)
+    const matchMedia = vi
+      .spyOn(window, "matchMedia")
+      .mockImplementation(
+        (query) => ({ matches: query === "(prefers-reduced-motion: reduce)" }) as MediaQueryList
+      )
 
     render(<EventCardHero {...baseProps} />)
 
     expect(observer).not.toHaveBeenCalled()
+    expect(matchMedia).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)")
   })
 
   it("uses an empty image alt when the event has no title", () => {
@@ -237,6 +265,42 @@ describe("EventCardHero", () => {
     expect(observers).toHaveLength(2)
     expect(observers[0]?.disconnect).toHaveBeenCalledOnce()
     expect(observers[1]?.observe).toHaveBeenCalledOnce()
+  })
+
+  it("passes the complete parallax threshold configuration to the observer", () => {
+    let observerOptions: IntersectionObserverInit | undefined
+    class MockIntersectionObserver {
+      observe = vi.fn()
+      disconnect = vi.fn()
+
+      constructor(_callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+        observerOptions = options
+      }
+    }
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver)
+    vi.spyOn(window, "matchMedia").mockReturnValue({ matches: false } as MediaQueryList)
+
+    render(<EventCardHero {...baseProps} />)
+
+    expect(observerOptions).toEqual({ threshold: [0, 0.25, 0.5, 0.75, 1] })
+  })
+
+  it("recomputes readiness when the image source changes", () => {
+    const { container, rerender } = render(<EventCardHero {...baseProps} />)
+    const image = screen.getByAltText("events:alt.image")
+    fireEvent.load(image)
+    expect(container.querySelector(".animate-pulse")).toHaveClass("opacity-0")
+
+    rerender(<EventCardHero {...baseProps} imageUrl="https://example.test/next.jpg" />)
+    expect(container.querySelector(".animate-pulse")).toHaveClass("opacity-100")
+  })
+
+  it("exposes the transition name on the transitioning hero container", () => {
+    const { container } = render(<EventCardHero {...baseProps} transitioning />)
+
+    expect((container.firstElementChild as HTMLElement).style.viewTransitionName).toBe(
+      "events-hero"
+    )
   })
 
   it("formats the relative date with the active Russian locale", () => {

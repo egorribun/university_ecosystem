@@ -79,6 +79,7 @@ describe("logger closure paths", () => {
     logDebug("debug")
 
     expect(setTag).toHaveBeenCalledWith("trace_id", "")
+    expect(captureException).not.toHaveBeenCalled()
     expect(captureMessage).toHaveBeenCalledWith("plain error", "error")
     expect(captureMessage).not.toHaveBeenCalledWith("", "error")
     expect(captureMessage).not.toHaveBeenCalledWith(42, "error")

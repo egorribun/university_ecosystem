@@ -25,13 +25,29 @@ import {
 import type { MapWeatherData, HourlyPoint } from "@/hooks/useMapWeather"
 import type { WeatherCondition } from "@/utils/weatherCodes"
 
-const CONDITION_ICONS: Record<WeatherCondition, LucideIcon> = {
-  clear: Sun,
-  cloudy: Cloud,
-  rain: CloudRain,
-  snow: Snowflake,
-  fog: CloudFog,
-  storm: CloudLightning,
+/**
+ * Resolve a weather condition to an icon at runtime.  Keeping the mapping in
+ * an exhaustive switch makes the fallback behaviour explicit for data coming
+ * from older API versions (or a future condition), and gives callers a small,
+ * deterministic contract they can verify independently of the panel DOM.
+ */
+export function getConditionIcon(condition: WeatherCondition): LucideIcon {
+  switch (condition) {
+    case "clear":
+      return Sun
+    case "cloudy":
+      return Cloud
+    case "rain":
+      return CloudRain
+    case "snow":
+      return Snowflake
+    case "fog":
+      return CloudFog
+    case "storm":
+      return CloudLightning
+    default:
+      return Sun
+  }
 }
 
 interface MapWeatherPanelProps {
@@ -162,8 +178,7 @@ function StatCard({
 
 /* ── Hourly column ── */
 function HourlyColumn({ point, isDay }: { point: HourlyPoint; isDay: boolean }) {
-  const Icon =
-    point.condition === "clear" && !isDay ? Moon : (CONDITION_ICONS[point.condition] ?? Sun)
+  const Icon = point.condition === "clear" && !isDay ? Moon : getConditionIcon(point.condition)
   return (
     <div className="map-weather-panel-hour">
       <span className="text-[9px] text-[var(--text-tertiary)]">

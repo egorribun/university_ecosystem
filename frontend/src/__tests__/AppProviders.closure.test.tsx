@@ -92,6 +92,19 @@ beforeEach(() => {
 })
 
 describe("AppProviders closure", () => {
+  it("publishes hydration through an idempotent guard and stable snapshot", async () => {
+    const { getAppProvidersSnapshot, publishHydrationOnce } = await import("@/AppProviders")
+    expect(getAppProvidersSnapshot()).toBeNull()
+
+    const published = { current: false }
+    const publish = vi.fn()
+    publishHydrationOnce(published, publish)
+    publishHydrationOnce(published, publish)
+
+    expect(published.current).toBe(true)
+    expect(publish).toHaveBeenCalledTimes(1)
+  })
+
   it("composes every provider and marks the client as hydrated in normal mode", async () => {
     const AppProviders = await loadProviders("false")
 

@@ -87,11 +87,27 @@ async function mountWithStub(buildOverrides: () => Partial<FormStub>): Promise<v
 describe("LoginCredentialForm — default render", () => {
   it("renders email + password inputs and the submit button", async () => {
     await mountWithStub(() => ({}))
-    expect(screen.getByLabelText(/email/i)).toBeInTheDocument()
+    const email = screen.getByLabelText(/email/i)
+    expect(email).toBeInTheDocument()
+    expect(email).not.toHaveClass("Stryker was here!")
     expect(screen.getByLabelText(/password/i, { selector: "input" })).toBeInTheDocument()
     const submit = screen.getByRole("button", { name: /^sign in$/i })
     expect(submit).toBeInTheDocument()
     expect(submit.querySelector("svg")).toBeInTheDocument()
+  })
+
+  it("keeps password and consent controls fully labelled for assistive technology", async () => {
+    await mountWithStub(() => ({}))
+
+    const reveal = screen.getByRole("button", { name: /show password/i })
+    expect(reveal).toHaveAttribute("title", expect.stringMatching(/show password/i))
+    expect(reveal).toHaveAttribute("aria-label", expect.stringMatching(/show password/i))
+    expect(reveal).toHaveTextContent(/show password/i)
+
+    const remember = screen.getByRole("checkbox", { name: /remember email/i })
+    expect(remember).toHaveAttribute("aria-label", expect.stringMatching(/remember email/i))
+    const trust = screen.getByRole("checkbox", { name: /trust this device/i })
+    expect(trust).toHaveAttribute("aria-label", expect.stringMatching(/trust this device/i))
   })
 
   it("separates email persistence from explicit trusted-device consent", async () => {
@@ -229,10 +245,11 @@ describe("LoginCredentialForm — show password", () => {
     await mountWithStub(() => ({ showPassword: true }))
     const input = screen.getByLabelText(/password/i, { selector: "input" })
     expect(input).toHaveAttribute("type", "text")
-    expect(screen.getByRole("button", { name: /hide password/i })).toHaveClass(
-      "min-h-11",
-      "min-w-11"
-    )
+    const hide = screen.getByRole("button", { name: /hide password/i })
+    expect(hide).toHaveClass("min-h-11", "min-w-11")
+    expect(hide).toHaveAttribute("title", expect.stringMatching(/hide password/i))
+    expect(hide).toHaveAttribute("aria-label", expect.stringMatching(/hide password/i))
+    expect(hide).toHaveTextContent(/hide password/i)
   })
 
   it("renders password input as type='password' when showPassword is false", async () => {
@@ -254,7 +271,7 @@ describe("LoginCredentialForm — show password", () => {
       fireEvent.keyDown(password)
       fireEvent.keyUp(password)
 
-      expect(modifierSpy).toHaveBeenCalledWith("CapsLock")
+      expect(modifierSpy.mock.calls).toEqual([["CapsLock"], ["CapsLock"]])
       expect(setCaps).toHaveBeenCalledWith(true)
     } finally {
       modifierSpy.mockRestore()

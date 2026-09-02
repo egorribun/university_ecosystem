@@ -56,6 +56,22 @@ describe("ensureValidResponse", () => {
     )
   })
 
+  it("keeps comma separators between multiple nested and root issues", () => {
+    const nestedSchema = v.object({ first: v.string(), second: v.number() })
+    expect(() => ensureValidResponse(nestedSchema, { first: 1, second: "two" })).toThrow(
+      /Invalid API response: .*?, .*?/
+    )
+
+    const rootSchema = v.pipe(
+      v.string(),
+      v.check(() => false, "first root issue"),
+      v.check(() => false, "second root issue")
+    )
+    expect(() => ensureValidResponse(rootSchema, "ok")).toThrow(
+      "Invalid API response: first root issue, second root issue"
+    )
+  })
+
   it("preserves structured validation issues for callers", () => {
     let caught: unknown
     try {

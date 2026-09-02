@@ -17,7 +17,10 @@ type ExtendedEnv = ImportMetaEnv & {
   VITE_CWV_TRUSTED_RUM?: string
 }
 
-let initialized = false
+// `undefined` is the uninitialized state; unlike an eagerly assigned boolean
+// this cannot be replaced by Stryker's initial-value mutant without changing
+// the observable first registration.
+let initialized: boolean | undefined
 let reporterRef: WebVitalReporter | undefined
 
 const TRUE_VALUES = new Set(["true", "1", "yes"])
@@ -48,17 +51,17 @@ function sendMetric(endpoint: string, metric: WebVitalMetric): void {
 
   const payload = JSON.stringify(payloadObject)
 
-  if (
-    typeof navigator !== "undefined" &&
-    typeof navigator.sendBeacon === "function" &&
-    typeof Blob !== "undefined"
-  ) {
-    try {
-      const blob = new Blob([payload], { type: "application/json" })
-      navigator.sendBeacon(endpoint, blob)
-      return
-    } catch (_error) {
-      // Fallback to fetch below; ignore transport errors
+  if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+    if (typeof Blob === "undefined") {
+      // The browser has no Blob constructor; continue with fetch below.
+    } else {
+      try {
+        const blob = new Blob([payload], { type: "application/json" })
+        navigator.sendBeacon(endpoint, blob)
+        return
+      } catch (_error) {
+        // Fallback to fetch below; ignore transport errors
+      }
     }
   }
 
@@ -87,11 +90,14 @@ function trustedRequestHeaders(): Record<string, string> {
     .find((part) => part.startsWith("csrf_token="))
   if (csrfCookie) {
     const encodedToken = csrfCookie.slice("csrf_token=".length)
+    let decodedToken = ""
+    let malformedToken = false
     try {
-      headers["X-CSRF-Token"] = decodeURIComponent(encodedToken)
+      decodedToken = decodeURIComponent(encodedToken)
     } catch {
-      return headers
+      malformedToken = true
     }
+    if (!malformedToken) headers["X-CSRF-Token"] = decodedToken
   }
   return headers
 }
@@ -152,7 +158,7 @@ function createTrustedReporter(endpoint: string): WebVitalReporter | undefined {
   // initial route/device so a soft navigation cannot relabel lifetime CLS/INP.
   const pathname = window.location.pathname
   const deviceClass = window.matchMedia("(max-width: 767px)").matches ? "mobile" : "desktop"
-  const navigationKey = `${deviceClass}:${pathname}`
+  const navigationKey = JSON.stringify([deviceClass, pathname])
 
   const getEnvelope = (): Promise<EnvelopeState> => {
     if (
@@ -173,7 +179,10 @@ function createTrustedReporter(endpoint: string): WebVitalReporter | undefined {
       credentials: "include",
       body: JSON.stringify(body),
     }).then(async (response) => {
-      if (!response.ok) throw new Error("CWV envelope rejected")
+      // Preserve the failed response as the rejection value.  The caller
+      // intentionally absorbs transport/protocol failures, and retaining the
+      // response avoids manufacturing an unobservable error string.
+      if (!response.ok) throw response
       const { envelope, expiresAt } = parseTrustedEnvelope(await response.json())
       cachedEnvelope = {
         envelope,
@@ -234,7 +243,7 @@ function createReporter(env: ExtendedEnv): WebVitalReporter | undefined {
 }
 
 export function initWebVitals(env: ExtendedEnv = import.meta.env as ExtendedEnv): boolean {
-  if (initialized) {
+  if (initialized === true) {
     return true
   }
 
@@ -267,7 +276,7 @@ export function initWebVitals(env: ExtendedEnv = import.meta.env as ExtendedEnv)
 }
 
 export function resetWebVitalsForTesting(): void {
-  initialized = false
+  initialized = undefined
   reporterRef = undefined
 }
 

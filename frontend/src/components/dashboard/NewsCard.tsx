@@ -1,4 +1,4 @@
-import { memo, type CSSProperties, type KeyboardEvent, useCallback } from "react"
+import { memo, type CSSProperties, type KeyboardEvent } from "react"
 import { Link } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 
@@ -19,6 +19,16 @@ interface NewsCardProps {
   "data-pop"?: string
 }
 
+export function prepareOnKey(event: Pick<KeyboardEvent, "key">, callback: () => void): void {
+  switch (event.key) {
+    case "Enter":
+    case " ":
+    case "Spacebar":
+      callback()
+      break
+  }
+}
+
 export const NewsCard = memo(function NewsCard({
   locale,
   className,
@@ -36,12 +46,6 @@ export const NewsCard = memo(function NewsCard({
   const prefetchNewsList = () => {
     void prefetchDashboardNews(queryClient, language)
   }
-
-  const prepareOnKey = useCallback((event: KeyboardEvent, callback: () => void) => {
-    if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
-      callback()
-    }
-  }, [])
 
   return (
     <Card

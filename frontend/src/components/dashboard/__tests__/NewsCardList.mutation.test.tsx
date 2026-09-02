@@ -56,8 +56,8 @@ describe("NewsCardList mutation contracts", () => {
     const button = screen.getByRole("button", { name: "dashboard:aria.newsItem:Long article" })
     const content = button.querySelector("span.text-sm.leading-relaxed")
     expect(content).not.toBeNull()
-    expect(content).toHaveTextContent(`${longContent.slice(0, 110)}…`)
-    expect(content).not.toHaveTextContent("Stryker was here!")
+    expect(content?.textContent).toBe(`${longContent.slice(0, 110)}…`)
+    expect(content?.textContent).not.toContain("Stryker was here!")
 
     button.click()
     expect(navigate).toHaveBeenCalledWith({ to: "/news/$id", params: { id: "news-1" } })

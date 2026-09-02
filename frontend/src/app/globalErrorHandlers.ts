@@ -11,7 +11,10 @@ const LOGGER_TAGS = {
 }
 
 function serializeReason(reason: unknown): unknown {
-  if (typeof reason === "object" && reason !== null) {
+  if (reason === null) {
+    return null
+  }
+  if (typeof reason === "object") {
     try {
       return JSON.parse(JSON.stringify(reason))
     } catch {
@@ -73,9 +76,5 @@ export function initGlobalErrorHandlers(target?: GlobalTarget): boolean {
 }
 
 export function resetGlobalErrorHandlersForTesting(): void {
-  if (teardown) {
-    teardown()
-  } else {
-    initialized = false
-  }
+  teardown?.()
 }

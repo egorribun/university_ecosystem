@@ -17,8 +17,16 @@ const { useTranslationMock, translationMock } = vi.hoisted(() => {
   }
 })
 
+const { formatDateMock } = vi.hoisted(() => ({
+  formatDateMock: vi.fn((value: string) => `formatted:${value}`),
+}))
+
 vi.mock("react-i18next", () => ({
   useTranslation: useTranslationMock,
+}))
+
+vi.mock("@/utils/date", () => ({
+  formatDate: formatDateMock,
 }))
 
 import { EventDetailHeader } from "@/components/events/EventDetailHeader"
@@ -44,13 +52,33 @@ const baseProps = {
 
 describe("EventDetailHeader", () => {
   it("renders title, meta pills, share and register actions", () => {
-    render(<EventDetailHeader {...baseProps} />)
+    const { container } = render(<EventDetailHeader {...baseProps} />)
     expect(screen.getByRole("heading", { level: 1, name: baseProps.title })).toBeInTheDocument()
     expect(screen.getByText("events:card.participants")).toBeInTheDocument()
     expect(screen.getByText("Main Auditorium")).toBeInTheDocument()
     expect(screen.getByText("Prof. A. Ivanova")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "events:detail.actions.share" })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "events:card.actions.register" })).toBeInTheDocument()
+    const date = container.querySelector("time")
+    expect(date).toHaveAttribute("dateTime", "2026-06-15T14:00:00.000Z")
+    expect(date).toHaveTextContent(
+      "formatted:2026-06-15T14:00:00Z — formatted:2026-06-15T18:00:00Z"
+    )
+    expect(formatDateMock).toHaveBeenCalledWith(
+      baseProps.startsAt,
+      expect.objectContaining({
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      })
+    )
+    expect(screen.getByRole("button", { name: "events:detail.actions.share" })).toHaveAttribute(
+      "aria-label",
+      "events:detail.actions.share"
+    )
     expect(useTranslationMock).toHaveBeenCalledWith(["events", "common"])
     expect(translationMock).toHaveBeenCalledWith("events:card.participants", { count: 248 })
   })
@@ -165,10 +193,38 @@ describe("EventDetailHeader", () => {
     expect(screen.getByText("events:card.statuses.ended")).toBeInTheDocument()
   })
 
+  it("does not create empty metadata chips when optional values are absent", () => {
+    const { container } = render(
+      <EventDetailHeader
+        {...baseProps}
+        startsAt={undefined}
+        endsAt={undefined}
+        location={undefined}
+        speaker={undefined}
+        isEnded
+      />
+    )
+
+    expect(container.querySelectorAll(".matte-chip")).toHaveLength(1)
+  })
+
+  it("keeps the end separator out when no end time is supplied", () => {
+    const { container } = render(<EventDetailHeader {...baseProps} endsAt={undefined} />)
+
+    expect(container.querySelector("time")).toHaveTextContent("formatted:2026-06-15T14:00:00Z")
+    expect(container.querySelector("time")).not.toHaveTextContent(" — ")
+  })
+
   it("announces a registered status before the ended status in the live region", () => {
     render(<EventDetailHeader {...baseProps} isRegistered isEnded />)
     const liveRegion = document.querySelector('[aria-live="polite"]')
     expect(liveRegion).toHaveTextContent("events:card.statuses.registered")
     expect(liveRegion).not.toHaveTextContent("events:card.statuses.ended")
+  })
+
+  it("keeps the registration live region empty for an open anonymous event", () => {
+    render(<EventDetailHeader {...baseProps} />)
+
+    expect(document.querySelector('[aria-live="polite"]')).toHaveTextContent("")
   })
 })

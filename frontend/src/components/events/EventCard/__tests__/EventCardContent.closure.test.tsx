@@ -63,15 +63,12 @@ describe("EventCardContent closure", () => {
       />
     )
 
-    expect(screen.getByRole("link", { name: "Campus lecture" })).toHaveAttribute(
-      "href",
-      "/events/$id"
-    )
-    expect(screen.getByRole("link", { name: "Campus lecture" })).toHaveAttribute(
-      "data-params",
-      '{"id":"event-1"}'
-    )
-    expect(screen.getByRole("link", { name: "Campus lecture" })).toHaveAttribute("tabindex", "-1")
+    const title = screen.getByRole("link", { name: "Campus lecture" })
+    expect(title).toHaveAttribute("href", "/events/$id")
+    expect(title).toHaveAttribute("data-params", '{"id":"event-1"}')
+    expect(title).toHaveAttribute("tabindex", "-1")
+    expect(title).toHaveClass("before:absolute", "before:inset-0", "outline-none")
+    expect(screen.getByRole("heading", { level: 3 })).toHaveAttribute("id", "event-title-event-1")
     expect(screen.getByText("Dr. Ada Lovelace")).toBeInTheDocument()
     expect(screen.getByText("Main hall")).toBeInTheDocument()
     expect(screen.getByText("A practical lecture")).toBeInTheDocument()
@@ -79,6 +76,10 @@ describe("EventCardContent closure", () => {
       screen.getByText("formatted:2026-08-04T10:00:00.000Z — formatted:2026-08-04T12:00:00.000Z")
     ).toBeInTheDocument()
     expect(screen.getByText("events:card.statuses.open")).toBeInTheDocument()
+    expect(
+      screen.getByText("formatted:2026-08-04T10:00:00.000Z — formatted:2026-08-04T12:00:00.000Z")
+        .parentElement
+    ).toHaveClass("text-xs")
     expect(useTranslationMock).toHaveBeenCalledWith(["events"])
     expect(formatDateMock).toHaveBeenCalledWith(
       baseProps.startsAt,
@@ -109,6 +110,16 @@ describe("EventCardContent closure", () => {
       "group-hover:text-brand"
     )
     expect(screen.getByText("events:card.statuses.ended")).toHaveClass("text-(--text-secondary)")
+  })
+
+  it("keeps the hover affordance enabled when editing is not active", () => {
+    render(<EventCardContent {...baseProps} hoveringDisabled={false} />)
+
+    expect(screen.getByRole("link", { name: "Campus lecture" })).toHaveClass(
+      "group-hover:text-brand",
+      "transition-colors",
+      "duration-fast"
+    )
   })
 
   it("renders no metadata rows for empty optional values and keeps date formatting exact", () => {

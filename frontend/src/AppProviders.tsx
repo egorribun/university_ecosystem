@@ -1,8 +1,7 @@
-import type { ReactNode } from "react"
+import { useRef, useState, useSyncExternalStore, type ReactNode } from "react"
 import { LazyMotion, MotionConfig, domAnimation } from "framer-motion"
 
 import { markAppHydrated } from "@/app/hydration"
-import { useIsomorphicLayoutEffect } from "@/hooks/useIsomorphicLayoutEffect"
 import ErrorBoundary from "@/components/feedback/ErrorBoundary"
 import { LiveRegionProvider } from "./components/ui/LiveRegionProvider"
 import { AppShellProvider } from "./contexts/AppShellContext"
@@ -14,6 +13,20 @@ import { RxDBProvider } from "./db/RxDBContext"
 
 interface AppProvidersProps {
   children: ReactNode
+}
+
+type StoreSubscribe = (onStoreChange: () => void) => () => void
+
+/** Keep the hydration publication guard independently executable and testable. */
+export function publishHydrationOnce(published: { current: boolean }, publish: () => void): void {
+  if (published.current) return
+  published.current = true
+  publish()
+}
+
+/** Provider hydration has no external snapshot state. */
+export function getAppProvidersSnapshot(): null {
+  return null
 }
 
 function ProvidersInner({ children }: AppProvidersProps) {
@@ -56,12 +69,16 @@ const LHCI_REDUCED_MOTION = import.meta.env.VITE_LHCI === "true" ? "always" : "u
 // `useReducedMotion`, `AnimatePresence`, `MotionConfig`, `motion.X` (now `m.X`)
 // initial/animate/exit/whileHover/whileTap/variants are all in domAnimation.
 export function AppProviders({ children }: AppProvidersProps) {
+  const hydrationPublished = useRef(false)
+
   // Publish the hydration sentinel after React commits the complete provider
   // tree. Playwright waits for this signal before interacting with hydrated UI;
   // markAppHydrated also completes the bootstrap loader idempotently.
-  useIsomorphicLayoutEffect(() => {
-    markAppHydrated()
-  }, [])
+  const [subscribeHydration] = useState<StoreSubscribe>(() => (_onStoreChange: () => void) => {
+    publishHydrationOnce(hydrationPublished, markAppHydrated)
+    return () => undefined
+  })
+  useSyncExternalStore(subscribeHydration, getAppProvidersSnapshot, getAppProvidersSnapshot)
 
   return (
     <LanguageProvider>

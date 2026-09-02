@@ -355,6 +355,32 @@ describe("trusted field CWV transport", () => {
       pathname: "/",
       device_class: "desktop",
     })
+    expect(window.matchMedia).toHaveBeenCalledWith("(max-width: 767px)")
+  })
+
+  it("does not accept a well-formed envelope from a non-success response", async () => {
+    const validBody = JSON.stringify({
+      envelope: "attacker-envelope",
+      expires_at: new Date(Date.now() + 300_000).toISOString(),
+    })
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(validBody, {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      })
+    )
+    vi.stubGlobal("fetch", fetchMock)
+
+    expect(initWebVitals(env)).toBe(true)
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledOnce())
+    // Let the rejected envelope's clear callback release the in-flight
+    // request before the metric asks for a retry.  This is one event-loop turn
+    // (not a product timeout) so the promise rejection chain is deterministic.
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+    vi.mocked(onLCP).mock.calls[0]![0]({ name: "LCP", value: 2400 } as never)
+
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+    expect(fetchMock.mock.calls.every(([url]) => url === "/api/v1/cwv/envelope")).toBe(true)
   })
 
   it.each([

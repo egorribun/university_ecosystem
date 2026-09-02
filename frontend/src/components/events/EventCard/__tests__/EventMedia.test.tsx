@@ -32,9 +32,27 @@ const baseProps = {
 
 describe("EventMedia", () => {
   it("renders the image button and the event type badge", () => {
-    render(<EventMedia {...baseProps} />)
+    const { container } = render(<EventMedia {...baseProps} />)
     expect(screen.getByText("Workshop")).toBeInTheDocument()
-    expect(screen.getByRole("button")).toBeEnabled()
+    const button = screen.getByRole("button")
+    expect(button).toBeEnabled()
+    expect(button).toHaveClass("block", "h-full", "w-full")
+    expect(screen.getByRole("img")).toHaveAttribute("draggable", "false")
+    const frame = container.querySelector(".aspect-video")
+    expect(frame).toHaveClass(
+      "relative",
+      "w-full",
+      "overflow-hidden",
+      "rounded-lg",
+      "aspect-video",
+      "max-h-50",
+      "bg-linear-to-br",
+      "from-event-media-tint-from",
+      "to-event-media-tint-to",
+      "border",
+      "border-event-media-border"
+    )
+    expect(container.querySelector(".bg-linear-to-t")).toBeInTheDocument()
     expect(useTranslationMock).toHaveBeenCalledWith(["events"])
   })
 
@@ -47,6 +65,13 @@ describe("EventMedia", () => {
     render(<EventMedia {...baseProps} timeStatus={{ status: "soon", timeText: "15m" }} />)
     expect(screen.getByText(/events:card.statuses.in/)).toBeInTheDocument()
     expect(translationMock).toHaveBeenCalledWith("events:card.statuses.in", { time: "15m" })
+  })
+
+  it("does not render a status indicator for a neutral event", () => {
+    render(<EventMedia {...baseProps} timeStatus={{ status: "none" }} />)
+
+    expect(screen.queryByText("common:statuses.live")).not.toBeInTheDocument()
+    expect(screen.queryByText(/events:card.statuses.in/)).not.toBeInTheDocument()
   })
 
   it("fires onImageClick when the image is clicked", async () => {
@@ -85,6 +110,7 @@ describe("EventMedia", () => {
   it("only shows the soon indicator when a countdown is supplied", () => {
     render(<EventMedia {...baseProps} timeStatus={{ status: "soon" }} />)
     expect(screen.queryByText(/events:card.statuses.in/)).not.toBeInTheDocument()
+    expect(screen.queryByText("common:statuses.live")).not.toBeInTheDocument()
   })
 
   it("reports both successful and failed image loads as ready", () => {

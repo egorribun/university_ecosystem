@@ -18,7 +18,10 @@ import { Controller } from "react-hook-form"
 // ... imports
 
 export function LoginCredentialForm({ form }: LoginCredentialFormProps) {
-  const { t } = useTranslation("auth")
+  // Translation keys are fully qualified (``auth:...``), so the component
+  // does not need to pin a default namespace.  This keeps the presentational
+  // form usable with lightweight i18n test adapters and SSR fallbacks.
+  const { t } = useTranslation()
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   const {

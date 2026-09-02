@@ -16,6 +16,30 @@ import { useNotifications } from "@/hooks/useNotifications"
 import { cn } from "@/utils/cn"
 import useMediaQuery from "@/hooks/useMediaQuery"
 
+/** @internal Positioning starts only for an open panel with a live trigger. */
+export function canUpdateNotificationPosition(
+  isOpen: boolean,
+  button: HTMLButtonElement | null
+): button is HTMLButtonElement {
+  return isOpen && button !== null
+}
+
+/** @internal Focus restoration is a no-op when the trigger was removed. */
+export const focusNotificationTrigger = (button: HTMLButtonElement | null): void => {
+  if (button !== null) button.focus()
+}
+
+/** @internal Outside-click policy kept pure for exhaustive interaction tests. */
+export const shouldCloseNotificationDropdown = (
+  isOpen: boolean,
+  button: Node | null,
+  dropdown: Node | null,
+  target: Node
+): boolean => {
+  if (!isOpen || button === null || dropdown === null) return false
+  return !button.contains(target) && !dropdown.contains(target)
+}
+
 export default function NotificationsBell() {
   const { t } = useTranslation(["system"])
   const {
@@ -40,26 +64,29 @@ export default function NotificationsBell() {
   const [isOpen, setIsOpen] = useState(false)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
-  const [coords, setCoords] = useState<{ top: number; right: number | null }>({ top: 0, right: 0 })
-  const [isMobile, setIsMobile] = useState(false)
+  // Coordinates are populated only while the panel is open. Keeping the
+  // closed state empty avoids carrying an object that can never be observed
+  // by users or assistive technology before the positioning effect runs.
+  const [coords, setCoords] = useState<{ top: number; right: number | null }>()
+  const [isMobile, setIsMobile] = useState<boolean | null>(null)
   const prefersReducedMotion = useMediaQuery("(prefers-reduced-motion: reduce)")
 
   // Update position when opening
   useEffect(() => {
-    if (isOpen && buttonRef.current) {
-      const updatePosition = () => {
-        const mobile = window.innerWidth < 640
-        setIsMobile(mobile)
-        const rect = buttonRef.current!.getBoundingClientRect()
-        setCoords({
-          top: rect.bottom + 12,
-          right: mobile ? null : window.innerWidth - rect.right,
-        })
-      }
-      updatePosition()
-      window.addEventListener("resize", updatePosition)
-      return () => window.removeEventListener("resize", updatePosition)
+    const button = buttonRef.current
+    if (!canUpdateNotificationPosition(isOpen, button)) return
+    const updatePosition = () => {
+      const mobile = window.innerWidth < 640
+      setIsMobile(mobile)
+      const rect = button.getBoundingClientRect()
+      setCoords({
+        top: rect.bottom + 12,
+        right: mobile ? null : window.innerWidth - rect.right,
+      })
     }
+    updatePosition()
+    window.addEventListener("resize", updatePosition)
+    return () => window.removeEventListener("resize", updatePosition)
   }, [isOpen])
 
   useEffect(() => {
@@ -67,7 +94,7 @@ export default function NotificationsBell() {
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return
       setIsOpen(false)
-      buttonRef.current?.focus()
+      focusNotificationTrigger(buttonRef.current)
     }
     document.addEventListener("keydown", handleEscape)
     return () => document.removeEventListener("keydown", handleEscape)
@@ -76,23 +103,19 @@ export default function NotificationsBell() {
   // Close when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (
-        isOpen &&
-        buttonRef.current &&
-        !buttonRef.current.contains(event.target as Node) &&
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target as Node)
-      ) {
-        setIsOpen(false)
-      }
+      const button = buttonRef.current
+      const dropdown = dropdownRef.current
+      const target = event.target as Node
+      if (shouldCloseNotificationDropdown(isOpen, button, dropdown, target)) setIsOpen(false)
     }
     document.addEventListener("mousedown", handleClickOutside)
     return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [isOpen])
 
   const hasNotifications = data.length > 0
-  const actionsDisabled =
+  const actionsDisabled = Boolean(
     isLoading || isError || isRefetching || !hasNotifications || isMarkingAll || isClearing
+  )
 
   const listVariants: Variants = {
     hidden: {
@@ -179,8 +202,8 @@ export default function NotificationsBell() {
                     "bg-glass backdrop-blur-xl border border-glass-border rounded-2xl shadow-glass overflow-hidden ring-1 ring-black/(--opacity-faint)"
                   )}
                   style={{
-                    top: coords.top,
-                    right: coords.right ?? undefined,
+                    top: coords?.top ?? 0,
+                    right: coords?.right ?? undefined,
                     width: isMobile ? "calc(100vw - 2rem)" : undefined,
                   }}
                   ref={dropdownRef}

@@ -117,6 +117,9 @@ describe("initGlobalErrorHandlers", () => {
       "[GlobalErrors] Promise rejected with a non-error value",
       expect.objectContaining({ self: cyclic })
     )
+    const serializedCyclic = logWarning.mock.calls.at(-1)?.[1] as { self?: unknown } | undefined
+    expect(serializedCyclic).not.toBeUndefined()
+    expect(serializedCyclic?.self).toBe(cyclic)
   })
 
   it("is idempotent and reports non-Error window events", async () => {
@@ -144,6 +147,7 @@ describe("initGlobalErrorHandlers", () => {
     const { initGlobalErrorHandlers, resetGlobalErrorHandlersForTesting } =
       await import("../globalErrorHandlers")
     vi.stubGlobal("window", undefined)
+    expect(() => initGlobalErrorHandlers()).not.toThrow()
     expect(initGlobalErrorHandlers()).toBe(false)
     resetGlobalErrorHandlersForTesting()
     vi.unstubAllGlobals()
@@ -170,6 +174,12 @@ describe("initGlobalErrorHandlers", () => {
 
     resetGlobalErrorHandlersForTesting()
     expect(removeEventListenerMock).toHaveBeenCalledTimes(2)
+    expect(removeEventListenerMock).toHaveBeenNthCalledWith(
+      1,
+      "unhandledrejection",
+      expect.any(Function)
+    )
+    expect(removeEventListenerMock).toHaveBeenNthCalledWith(2, "error", expect.any(Function))
     resetGlobalErrorHandlersForTesting()
 
     // Teardown clears the module guard, so an explicit re-initialization must

@@ -74,6 +74,7 @@ describe("initObservability", () => {
 
     expect(result).toBe(false)
     expect(Sentry.init).not.toHaveBeenCalled()
+    expect(logInfo).not.toHaveBeenCalled()
   })
 
   it("skips initialization in development", () => {
@@ -105,6 +106,7 @@ describe("initObservability", () => {
 
     expect(result).toBe(false)
     expect(Sentry.init).not.toHaveBeenCalled()
+    expect(logInfo).not.toHaveBeenCalled()
   })
 
   it("normalizes valid, invalid, and out-of-range sample rates", () => {

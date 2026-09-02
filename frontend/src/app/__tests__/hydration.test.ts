@@ -119,6 +119,7 @@ describe("hydration boundary", () => {
   it("does not schedule a second legacy cleanup while the first is queued", () => {
     const loader = appendLoader()
     const onHydrated = vi.fn()
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout")
     window.addEventListener(APP_HYDRATED_EVENT, onHydrated)
 
     markAppHydrated()
@@ -126,11 +127,22 @@ describe("hydration boundary", () => {
     markAppHydrated()
 
     expect(onHydrated).toHaveBeenCalledTimes(2)
+    expect(setTimeoutSpy).toHaveBeenCalledTimes(1)
     vi.advanceTimersByTime(0)
     vi.advanceTimersByTime(BRAND_BOOT_LOADER_EXIT_TIMEOUT_MS)
     expect(loader).not.toBeInTheDocument()
 
     window.removeEventListener(APP_HYDRATED_EVENT, onHydrated)
+  })
+
+  it("keeps hydration evaluation safe during SSR without window", () => {
+    vi.stubGlobal("window", undefined)
+
+    try {
+      expect(() => markAppHydrated()).not.toThrow()
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 
   it("does not publish or schedule anything when hydration is already complete", () => {

@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { createRef } from "react"
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 
@@ -72,6 +73,17 @@ function BrokenComponent({ shouldThrow = true }: { shouldThrow?: boolean }) {
 }
 
 describe("FeatureErrorBoundary", () => {
+  it("starts with an explicit clean state", () => {
+    const ref = createRef<FeatureErrorBoundary>()
+    render(
+      <FeatureErrorBoundary ref={ref}>
+        <div>Ready</div>
+      </FeatureErrorBoundary>
+    )
+
+    expect(ref.current?.state).toEqual({ hasError: false, error: null })
+  })
+
   it("renders children when no error", () => {
     render(
       <FeatureErrorBoundary>
@@ -167,6 +179,7 @@ describe("FeatureErrorBoundary", () => {
     )
 
     expect(screen.getByRole("alert")).toBeInTheDocument()
+    expect(screen.getByText("Feature unavailable")).toBeInTheDocument()
     expect(Sentry.captureException).not.toHaveBeenCalled()
     expect(mocks.logError).not.toHaveBeenCalled()
   })
@@ -194,6 +207,17 @@ describe("FeatureErrorBoundary", () => {
 })
 
 describe("WidgetErrorBoundary", () => {
+  it("starts with an explicit clean state", () => {
+    const ref = createRef<WidgetErrorBoundary>()
+    render(
+      <WidgetErrorBoundary ref={ref}>
+        <div>Ready</div>
+      </WidgetErrorBoundary>
+    )
+
+    expect(ref.current?.state).toEqual({ hasError: false })
+  })
+
   it("renders children when no error", () => {
     render(
       <WidgetErrorBoundary>
@@ -257,6 +281,26 @@ describe("WidgetErrorBoundary", () => {
         tags: { errorBoundary: "widget", widget: undefined },
         level: "info",
       })
+    )
+  })
+
+  it("reports the widget context and development diagnostic", () => {
+    render(
+      <WidgetErrorBoundary widgetName="Weather">
+        <BrokenComponent />
+      </WidgetErrorBoundary>
+    )
+
+    expect(Sentry.captureException).toHaveBeenCalledWith(
+      expect.any(Error),
+      expect.objectContaining({
+        contexts: expect.objectContaining({ widget: { name: "Weather" } }),
+        tags: { errorBoundary: "widget", widget: "Weather" },
+      })
+    )
+    expect(mocks.logWarning).toHaveBeenCalledWith(
+      "[WidgetErrorBoundary]",
+      expect.objectContaining({ widget: "Weather", error: expect.any(Error) })
     )
   })
 
