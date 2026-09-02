@@ -193,6 +193,7 @@ describe("OtpEntry", () => {
       "3",
       "",
     ])
+    expect(screen.getAllByRole("textbox")).toHaveLength(6)
     expect(document.activeElement).toBe(inputs[2])
 
     fireEvent.paste(inputs[0]!, { clipboardData: { getData: () => "---" } })

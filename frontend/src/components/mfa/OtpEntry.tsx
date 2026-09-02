@@ -116,7 +116,7 @@ export const OtpEntry = ({
     const sanitized = pastedData.replace(/\D/g, "").slice(0, OTP_LENGTH)
 
     if (sanitized.length > 0) {
-      setDigits(sanitized.padEnd(OTP_LENGTH, "").split(""))
+      setDigits(Array.from({ length: OTP_LENGTH }, (_, offset) => sanitized.charAt(offset)))
       const lastIndex = Math.min(sanitized.length - 1, OTP_LENGTH - 1)
       focusInput(lastIndex)
     }
