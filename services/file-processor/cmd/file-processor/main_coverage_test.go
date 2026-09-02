@@ -385,6 +385,23 @@ func TestSetupGraphQLServer_ParentSchemaFallback(t *testing.T) {
 	assert.NotNil(t, srv)
 }
 
+func TestSetupGraphQLServer_BundledSchemaFromWorkingDirectory(t *testing.T) {
+	content, err := os.ReadFile("../../schema.graphql")
+	require.NoError(t, err)
+	tempDir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(tempDir, "schema.graphql"), content, 0600)) // #nosec G306 -- test-only schema.
+	t.Chdir(tempDir)
+	t.Setenv("FP_SCHEMA_PATH", "")
+
+	srv, err := setupGraphQLServer(context.Background(), &config.Config{
+		GraphQLPort: "0",
+		MinioBucket: "test-bucket",
+		JWTSecret:   "test-secret",
+	}, nil, nil, discardLogger())
+	require.NoError(t, err)
+	assert.NotNil(t, srv)
+}
+
 func TestSetupGraphQLServer_InvalidSchemaReturnsParseError(t *testing.T) {
 	tempSchema := filepath.Join(t.TempDir(), "schema.graphql")
 	require.NoError(t, os.WriteFile(tempSchema, []byte("type Query {"), 0600)) // #nosec G703 -- test-only temp path.
@@ -613,6 +630,28 @@ func TestSetupGraphQLServer_NoSchemaFile(t *testing.T) {
 		JWTSecret:   "test-secret",
 	}
 	_, err := setupGraphQLServer(context.Background(), cfg, nil, nil, discardLogger())
+	require.Error(t, err)
+}
+
+func TestSetupGraphQLServer_RejectsSchemaPathTraversal(t *testing.T) {
+	t.Setenv("FP_SCHEMA_PATH", "../schema.graphql")
+
+	_, err := setupGraphQLServer(context.Background(), &config.Config{
+		GraphQLPort: "0",
+		MinioBucket: "test-bucket",
+		JWTSecret:   "test-secret",
+	}, nil, nil, discardLogger())
+	require.ErrorContains(t, err, "invalid GraphQL schema path")
+}
+
+func TestSetupGraphQLServer_ConfiguredSchemaMissing(t *testing.T) {
+	t.Setenv("FP_SCHEMA_PATH", filepath.Join(t.TempDir(), "schema.graphql"))
+
+	_, err := setupGraphQLServer(context.Background(), &config.Config{
+		GraphQLPort: "0",
+		MinioBucket: "test-bucket",
+		JWTSecret:   "test-secret",
+	}, nil, nil, discardLogger())
 	require.Error(t, err)
 }
 

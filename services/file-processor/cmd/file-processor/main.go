@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -62,8 +63,9 @@ import (
 type contextKey string
 
 const (
-	userIDKey   contextKey = "user_id"
-	tenantIDKey contextKey = "tenant_id"
+	userIDKey         contextKey = "user_id"
+	tenantIDKey       contextKey = "tenant_id"
+	graphqlSchemaName            = "schema.graphql"
 )
 
 var (
@@ -657,6 +659,47 @@ func validateConventionalServerCertificate(certificate tls.Certificate, now time
 	return nil
 }
 
+func schemaPathContainsParentSegment(path string) bool {
+	for _, segment := range strings.FieldsFunc(path, func(r rune) bool {
+		return r == '/' || r == '\\'
+	}) {
+		if segment == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+func readConfiguredGraphQLSchema(path string) ([]byte, error) {
+	cleanPath := filepath.Clean(path)
+	if cleanPath == "." || filepath.Base(cleanPath) != graphqlSchemaName || schemaPathContainsParentSegment(path) {
+		return nil, fmt.Errorf("invalid GraphQL schema path")
+	}
+
+	root, err := os.OpenRoot(filepath.Dir(cleanPath))
+	if err != nil {
+		return nil, fmt.Errorf("open GraphQL schema root: %w", err)
+	}
+	contents, readErr := root.ReadFile(filepath.Base(cleanPath))
+	closeErr := root.Close()
+	return contents, errors.Join(readErr, closeErr)
+}
+
+func readBundledGraphQLSchema() ([]byte, error) {
+	contents, err := os.ReadFile(graphqlSchemaName)
+	if err == nil {
+		return contents, nil
+	}
+	return os.ReadFile(filepath.Join("..", graphqlSchemaName))
+}
+
+func loadGraphQLSchema() ([]byte, error) {
+	if configuredPath := os.Getenv("FP_SCHEMA_PATH"); configuredPath != "" {
+		return readConfiguredGraphQLSchema(configuredPath)
+	}
+	return readBundledGraphQLSchema()
+}
+
 func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.PublicKey, c client.Client, logger *slog.Logger) (srv *http.Server, err error) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -665,14 +708,7 @@ func setupGraphQLServer(ctx context.Context, cfg *config.Config, rsaPub *rsa.Pub
 		}
 	}()
 
-	schemaPath := "schema.graphql"
-	if p := os.Getenv("FP_SCHEMA_PATH"); p != "" {
-		schemaPath = p
-	}
-	s, readErr := os.ReadFile(schemaPath)
-	if readErr != nil && schemaPath == "schema.graphql" {
-		s, readErr = os.ReadFile("../schema.graphql")
-	}
+	s, readErr := loadGraphQLSchema()
 	if readErr != nil {
 		logger.ErrorContext(ctx, "schema.graphql not found", "err", readErr)
 		return nil, readErr
