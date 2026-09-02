@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1788362604975,
+  "lastUpdate": 1788362607726,
   "repoUrl": "https://github.com/egorribun/university_ecosystem",
   "entries": {
     "Go Services Performance Benchmarks": [
@@ -10717,6 +10717,120 @@ window.BENCHMARK_DATA = {
             "name": "strip_html/large",
             "value": 78651,
             "range": "± 3679",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "49699333+dependabot[bot]@users.noreply.github.com",
+            "name": "dependabot[bot]",
+            "username": "dependabot[bot]"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "c42b1fd32e4834b6c645bc85a98702f308caf944",
+          "message": "build(deps): Bump google.golang.org/grpc (#1260)\n\nBumps the go-gateway group in /services/gateway with 1 update: [google.golang.org/grpc](https://github.com/grpc/grpc-go).\n\n\nUpdates `google.golang.org/grpc` from 1.83.0 to 1.83.1\n- [Release notes](https://github.com/grpc/grpc-go/releases)\n- [Commits](https://github.com/grpc/grpc-go/compare/v1.83.0...v1.83.1)\n\n---\nupdated-dependencies:\n- dependency-name: google.golang.org/grpc\n  dependency-version: 1.83.1\n  dependency-type: direct:production\n  update-type: version-update:semver-patch\n  dependency-group: go-gateway\n...\n\nSigned-off-by: dependabot[bot] <support@github.com>\nCo-authored-by: dependabot[bot] <49699333+dependabot[bot]@users.noreply.github.com>\nCo-authored-by: Egor <egorribun2005@gmail.com>",
+          "timestamp": "2026-09-02T19:15:20+05:00",
+          "tree_id": "66ce6a51be0d6baefc20d9310db3fc759cd699f5",
+          "url": "https://github.com/egorribun/university_ecosystem/commit/c42b1fd32e4834b6c645bc85a98702f308caf944"
+        },
+        "date": 1788362607061,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "sanitize_rich_text/empty",
+            "value": 6109,
+            "range": "± 203",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/plain_text",
+            "value": 7078,
+            "range": "± 55",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/simple_html",
+            "value": 10054,
+            "range": "± 141",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/xss_attempt",
+            "value": 10897,
+            "range": "± 43",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_rich_text/large",
+            "value": 99508,
+            "range": "± 670",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/empty",
+            "value": 5397,
+            "range": "± 21",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/plain_text",
+            "value": 6369,
+            "range": "± 24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/simple_html",
+            "value": 9110,
+            "range": "± 25",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/xss_attempt",
+            "value": 9529,
+            "range": "± 196",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "sanitize_html_basic/large",
+            "value": 91938,
+            "range": "± 564",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/empty",
+            "value": 5305,
+            "range": "± 272",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/plain_text",
+            "value": 6317,
+            "range": "± 36",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/simple_html",
+            "value": 8876,
+            "range": "± 24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/xss_attempt",
+            "value": 9330,
+            "range": "± 22",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "strip_html/large",
+            "value": 89878,
+            "range": "± 527",
             "unit": "ns/iter"
           }
         ]
