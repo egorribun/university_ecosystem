@@ -164,6 +164,15 @@ describe("ScheduleCard", () => {
     expect(screen.getByText("dashboard:noClasses")).toBeInTheDocument()
   })
 
+  it("renders the empty state when a loaded student schedule has no data", () => {
+    scheduleState.current = { data: undefined, isLoading: false, isFetching: false }
+
+    renderCard({ userRole: "student", userGroupId: "group-1" })
+
+    expect(screen.getByText("dashboard:noClasses")).toBeInTheDocument()
+    expect(screen.queryByRole("list")).not.toBeInTheDocument()
+  })
+
   it("keeps cached lessons visible while a student schedule refetches", () => {
     const time = new Date(2026, 6, 31, 10, 30)
     scheduleState.current = {

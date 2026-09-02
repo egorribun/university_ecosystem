@@ -29,7 +29,6 @@ const ENGLISH_WEEK_DAYS = [
   "Friday",
   "Saturday",
 ]
-const EMPTY_LESSONS: readonly DashboardLesson[] = []
 
 const readWeekdayArray = (value: unknown, fallback: string[]): string[] =>
   Array.isArray(value) && value.length === 7 ? (value as string[]) : fallback
@@ -144,16 +143,17 @@ export const ScheduleCard = memo(function ScheduleCard({
     return map
   }, [weekDaysDisplay, weekDaysRaw])
 
-  const todayLessons =
-    useMemo(() => {
-      return schedule
+  const todayLessons = useMemo(
+    () =>
+      schedule
         .filter((l) => {
           const normalized = (l.weekday ?? "").toLowerCase()
           const lessonIndex = weekdayIndex.get(normalized)
           return (l.parity === "both" || l.parity === parity) && lessonIndex === todayIndex
         })
-        .sort((a, b) => fmtTime(a.start_time).localeCompare(fmtTime(b.start_time)))
-    }, [schedule, parity, todayIndex, weekdayIndex]) ?? EMPTY_LESSONS
+        .sort((a, b) => fmtTime(a.start_time).localeCompare(fmtTime(b.start_time))),
+    [schedule, parity, todayIndex, weekdayIndex]
+  )
 
   const minutesNow = useMemo(() => time.getHours() * 60 + time.getMinutes(), [time])
   const currentLesson = useMemo(() => {
