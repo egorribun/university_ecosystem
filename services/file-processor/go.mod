@@ -7,7 +7,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/graph-gophers/graphql-go v1.10.2
-	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.3
+	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.4
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0
 	github.com/minio/minio-go/v7 v7.3.0
 	github.com/nats-io/nats.go v1.53.1
@@ -26,7 +26,7 @@ require (
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.45.0
 	go.opentelemetry.io/otel/sdk v1.45.0
 	go.temporal.io/api v1.63.5
-	go.temporal.io/sdk v1.47.0
+	go.temporal.io/sdk v1.48.0
 	go.uber.org/goleak v1.3.0
 	golang.org/x/image v0.45.0
 	google.golang.org/grpc v1.83.1
@@ -54,7 +54,7 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20260330125221-c963978e514e // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
-	github.com/moby/go-archive v0.3.0 // indirect
+	github.com/moby/go-archive v0.3.3 // indirect
 	github.com/moby/moby/api v1.55.0 // indirect
 	github.com/moby/moby/client v0.5.0 // indirect
 	github.com/moby/patternmatcher v0.6.1 // indirect
@@ -100,7 +100,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nats-io/nkeys v0.4.15 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect
-	github.com/nexus-rpc/sdk-go v0.6.0 // indirect
+	github.com/nexus-rpc/sdk-go v0.7.0 // indirect
 	github.com/pelletier/go-toml/v2 v2.4.3 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
