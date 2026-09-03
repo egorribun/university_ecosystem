@@ -2459,3 +2459,191 @@ real-device Safari/iOS/Android, chaos/rollback and production release remain
 outside local repository authority. The five P2 hardening records in §31.5 are
 code-complete but remain `FRESH-EVIDENCE-PENDING`; they must not be promoted to
 security-aggregate green until current workflow reports are complete.
+
+---
+
+## 33. Independent full-platform audit overlay (2026-09-03; authoritative)
+
+`docs/audits/AUDIT_PLATFORM_FULL.md` — это отдельный пользовательский
+read-only synthesis-аудит, а не сертификат production readiness. Он был
+проанализирован после snapshot из §32 и поэтому не должен переиспользовать
+старые SHA, coverage reports или CI runs. Сам файл остаётся пользовательским
+untracked-артефактом и не добавляется массовым `git add`; в этот план перенесён
+его полный triage, чтобы ни один finding не потерялся и чтобы status каждого
+finding был проверяемым.
+
+### 33.1 Identity и правила доказательств
+
+| Поле | Значение/правило |
+|---|---|
+| Audit ID/date | `AUDIT-PLATFORM-FULL-2026-09-03`; synthesis завершён, production не сертифицирован |
+| Рабочая ветка | `egorribun` |
+| Audited source snapshot | `36ff58509` (`fix: close MVP quality and security blockers`); этот commit содержит все проверенные code/CI/test/infra изменения из overlay |
+| Audit-plan state | План обновляется отдельным docs-only commit после source commit; его SHA не является audited source SHA |
+| User audit artifact | `docs/audits/AUDIT_PLATFORM_FULL.md`, сохранён отдельно; секретоподобные примеры не становятся baseline/exclusion |
+| Evidence class | локальные тесты и diff — class C; только свежий exact-SHA CI/registry/staging — release evidence |
+| Reuse policy | run `33681502277` (OtpEntry coverage barrier) и старые §32 runs не переиспользуются; после commit обязателен новый SHA-bound matrix |
+
+Каждая запись `CODE-FIXED / FRESH-EVIDENCE-PENDING` означает, что исправление
+видно в текущем diff и есть focused test, но соответствующий aggregate ещё не
+доказан. `BACKLOG / NON-BLOCKING` означает воспроизводимый P2/P3 или широкую
+архитектурную эволюцию, не являющуюся блокером текущего MVP; она не скрывается
+из аудита и получает owner/следующую проверку. `EXTERNAL-ONLY` нельзя закрыть
+локальным тестом.
+
+### 33.2 Backend findings (BE)
+
+| Finding | Current disposition | Evidence / follow-up |
+|---|---|---|
+| BE-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Migration 148642dd1207 больше не импортирует runtime encryption/config и использует native SQLAlchemy types; проверить `alembic upgrade/downgrade`, offline SQL и PostgreSQL в fresh CI. |
+| BE-02 | `BACKLOG / P2-P1 ARCHITECTURE` | Независимый аудит насчитал 92 columns без dual defaults. Не делать рискованный массовый rewrite: сначала детерминированный inventory с owners, затем phased migrations и regression tests; до этого finding остаётся открытым. |
+| BE-03 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | `User.chats` и `Chat.participants` получили явные `back_populates`/`lazy="noload"`; прогнать async serialization/MissingGreenlet suite. |
+| BE-04 | `BACKLOG / ARCHITECTURE` | Dishka и legacy `Depends` coexistence требует отдельного ADR и постепенной миграции, не меняется в quality-closure commit. |
+| BE-05 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Backend call sites используют central logger/ProcessorFormatter; совместимый stdlib bridge оставлен для AuditService. Проверить full log redaction и отсутствие PII в aggregate. |
+| BE-06 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | `_redact_nested` обходит dict/list/tuple/cycles и sensitive transport keys; focused logging tests green, повторить detect-secrets/logging aggregate. |
+| BE-07 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | NATS disconnect теперь warning + `nats_publish_core_skipped_total`; проверить reconnect/failure telemetry. |
+| BE-08 | `BACKLOG / ARCHITECTURE` | Orphan `CdcOutboxWorker` требует отдельного lifecycle/DI решения и integration test; не объявлять fixed по одному import. |
+| BE-09 | `FALSE POSITIVE / VERIFIED IN CODE` | Existing event gather/cancellation propagates task cancellation; сохранить regression test и не добавлять suppression. |
+| BE-10 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Loopback revocation URL разрешён только local/dev/testing, production fails closed; проверить settings matrix. |
+| BE-11 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Exception justification typo/comments исправлены; повторить AST gate. |
+| BE-12 | `BACKLOG / P3` | Monolithic schemas/config/docs — плановая декомпозиция, не блокирует текущие gates; завести reproducible backlog entries. |
+
+### 33.3 Frontend findings (FE)
+
+| Finding | Current disposition | Evidence / follow-up |
+|---|---|---|
+| FE-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | `server-static.mjs` и production wrapper fail closed на malformed URI/path boundary; node server tests green. |
+| FE-02 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Router получает shared QueryClient; typecheck/unit/SSR build green. |
+| FE-03 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Redirect helper rejects backslash/open redirect и сохраняет query/hash; focused tests green. |
+| FE-04 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | ClockWidget SSR placeholder устраняет hydration drift; component tests green. |
+| FE-05 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | wasm-pack/build failure обрабатывается детерминированно; build-wasm tests и orchestrated build green. |
+| FE-06 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Call sites используют canonical `leadingIcon`; compatibility mock принимает/удаляет legacy `startIcon`; lint/React console checks обязательны. |
+| FE-07 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | `useAuthStore` экспортирован из barrel и покрыт store tests. |
+| FE-08 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Duplicate Tailwind class удалён; lint/visual baseline обязателен. |
+| FE-09 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Sessions test mock больше не leaking DOM props; run full settings/E2E selectors. |
+
+### 33.4 Go findings (GO; duplicate aliases are intentionally retained)
+
+| Finding | Current disposition | Evidence / follow-up |
+|---|---|---|
+| GO-01 / FP-FP-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | File-processor rejects Unix/Windows absolute and traversal keys before workflow; normal Go tests pass, race/security tests required. |
+| GO-02 / GW-AUTH-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Gateway atomically indexes all RSA JWKS `kid`s, supports dual-key window and blocks HS confusion; dual-key tests pass. |
+| GO-03 / GW-RL-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | `/health/*` bypasses Redis rate limiter while application routes remain protected; tests pass. |
+| GO-04 / WSH-CFG-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | WS defaults include localhost and port 80 with explicit origin tests. |
+| GO-05 / CLI-REDIS-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | `uni-cli` uses cursor SCAN and bounded DEL batches; tests pass. |
+| GO-06 / DOC-AGENTS-01 | `BACKLOG / P3 DOCS` | `services/AGENTS.md` event claims need source-of-truth review; no runtime behavior change inferred. |
+| GO-07 / ENV-TOOL-01 | `EXTERNAL-ONLY / FRESH-EVIDENCE-PENDING` | Local Windows lacks CGO/GCC/golangci-lint; Linux runner must provide `go test -race`, vet/lint/SBOM evidence. |
+
+### 33.5 Rust findings
+
+| Finding | Current disposition | Evidence / follow-up |
+|---|---|---|
+| RUST-P1-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Native pointer paths fail closed; WASM uses checked arithmetic/bounds; all-target tests pass locally. |
+| RUST-P1-02 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | NUL/BOM sanitization is aligned across WASM/native paths; parity tests pass. |
+| RUST-P2-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Rayon conflict batch releases Python GIL through `py.detach`; native tests pass. |
+| RUST-P2-02 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | PBKDF2 iteration/key-size bounds and `Result` contract enforced; generated bindings regenerated and tested. |
+| RUST-P2-03 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Sensitive HMAC/scrypt/PBKDF2 buffers zeroized; dependency pinned and lock/pkg artifacts regenerated. |
+| RUST-P2-04 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Cargo-deny workflow now enumerates all four crates in a fail-closed matrix; no scan omission is hidden by an exclusion. Current Linux runner evidence remains required. |
+| RUST-P2-05 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Rust fuzz workflow now includes `crates/pyo3-sanitizer/fuzz` with bounded smoke; current runner artifact inventory remains required. |
+| RUST-P3-01 | `BACKLOG / P3` | Root workspace absence is tooling ergonomics, not a runtime defect; add workspace only with complete member inventory. |
+| RUST-P3-02 | `BACKLOG / P3` | Root fuzz target ownership needs ADR before move/delete. |
+| RUST-P3-03 | `BACKLOG / P3` | Hex→base64 worker allocation optimization is non-blocking; benchmark before changing. |
+| RUST-P3-04 | `BACKLOG / P3` | Unused deps/features require cargo-deny/clippy inventory and a dedicated cleanup commit. |
+
+### 33.6 Infrastructure findings (INFRA)
+
+| Finding | Current disposition | Evidence / follow-up |
+|---|---|---|
+| INFRA-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Standalone ExternalSecret/deployment now carries revocation/cache/HMAC/RSA material with explicit mounts/env refs; K8s contract tests pass. |
+| INFRA-02 | `BACKLOG / ARCHITECTURE` | Helm is canonical producer for Go workloads; standalone raw manifests require an intentional deployment-scope decision, not silent duplication. |
+| INFRA-03 | `FRESH-EVIDENCE-PENDING` | Deploy workflows validate SHA/digest image identity; current Kyverno/Helm render must prove no mutable `IMAGE_TAG`. |
+| INFRA-04 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Frontend HPA template, values/schema and staging validation added; Helm lint/template required. |
+| INFRA-05 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Frontend SSR memory request/limit raised to 128Mi/512Mi; verify rendered resources and budget rationale. |
+| INFRA-06 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Reusable backend workflow passes inputs through typed environment variables; actionlint/contract tests green. |
+| INFRA-07 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Backend Docker healthcheck uses `/health/ready`. |
+| INFRA-08 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | File-processor Compose probe uses `grpc_health_probe`. |
+| INFRA-09 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Observability override supplies pinned curl healthprobe sidecar; Compose merge must be validated. |
+| INFRA-10 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Gateway HPA template/values/schema added with KEDA ownership guard. |
+| INFRA-11 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Standalone issuer is envsubst-parameterized; render contract required. |
+| INFRA-12 | `BACKLOG / INTENTIONAL SCHEDULE GUARD` | Weekly cleanup intentionally fails closed without configured DB secret; document operator setup and test both guarded/valid paths. |
+
+### 33.7 Security and supply-chain findings (SEC)
+
+| Finding | Current disposition | Evidence / follow-up |
+|---|---|---|
+| SEC-01 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | GraphQL now verifies gateway `X-Internal-Signature` HMAC over bound identity/session/tenant and fails closed in production; focused tests pass. |
+| SEC-02 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Same dual-key JWKS implementation as GO-02; retain duplicate label for traceability. |
+| SEC-03 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Production rejects repository-known audit secret sentinel; scanner must verify no plaintext secret/PII enters logs or baseline. |
+| SEC-04 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Shared Go slog redacting handler is implemented and wired to gateway/ws-hub/file-processor with recursive key/value, URL and panic-safe redaction; package coverage is 100%. Require current service logging evidence. |
+| SEC-05 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Quality contract/normalizer/validator now use explicit metric applicability and machine-readable `N/A`; unsupported metrics cannot be silently converted to 100%. Require current aggregate manifest. |
+| SEC-06 | `BACKLOG / TOOLING REVIEW` | Verify gitleaks allowlist paths and branch guards against current workflow; no allowlist broadening is permitted. |
+| SEC-07 | `FRESH-EVIDENCE-PENDING` | Baseline finding identities/hashes must be revalidated by current detect-secrets; stale or unexplained entries fail closed. |
+| SEC-08 | `EXTERNAL-ONLY / TOOLING` | Bandit target/Windows encoding is runner/tooling hygiene; keep production scan scope explicit and reproduce on Linux. |
+| SEC-09 | `BACKLOG / SUPPLY-CHAIN POLICY` | Upper bounds for 19 Python dependencies require compatibility matrix and Renovate policy; do not pin arbitrarily in closure patch. |
+| SEC-10 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Same cursor-SCAN fix as GO-05. |
+| SEC-11 | `CODE-FIXED / FRESH-EVIDENCE-PENDING` | Same readiness healthcheck fix as INFRA-07. |
+| SEC-12 | `BACKLOG / TOOLING REVIEW` | Expand mypy hook only after measuring generated/model scope and preserving strict config; current CI mypy remains required. |
+
+### 33.8 Current local evidence and next required gates
+
+После overlay зафиксированы следующие воспроизводимые class-C результаты
+(audited source SHA `36ff58509`; плановый docs-only commit и внешний audit
+artifact не смешиваются с source evidence):
+
+- `uv run python verify_harness.py --repo-only`: `29/29`;
+- backend `ruff`, `mypy`, `compileall` и focused suites — green;
+- frontend `npm run typecheck`, `npm run lint`, `npm run i18n:check`,
+  `npm run build` и `npm run test:wasm`: `190/190` WASM tests green, i18n
+  scanner `2096` static/`68` dynamic references and `18/18` parity; build
+  завершает client+SSR/prerender;
+- Go обычные `go test ./...` для gateway/ws-hub/file-processor/uni-cli и Rust
+  all-target suites — green; shared Go logging package has `100.0%` statement
+  coverage;
+- quality/manifest/normalizer/coverage suite: `267 passed, 1 skipped`; the one
+  skip is the documented Windows case-sensitive-checkout limitation, not a
+  relaxed gate;
+- focused detect-secrets `1.5.0` scans of changed security/config/logging and
+  Kubernetes/Compose files contain no new findings and pass the committed
+  baseline verifier; the full all-files scan is delegated to the Linux CI
+  runner because Windows multiprocessing did not terminate deterministically;
+- actionlint and focused workflow/security contracts pass, including the
+  Semgrep push/no-diff regression: PRs retain diff baseline mode while default
+  branch pushes run a full scan and must emit real SARIF;
+- all supported merged Docker Compose matrices parse successfully, Docker
+  currently has zero running containers, and Squawk `v2.44.0` reports zero
+  migration issues for the target revision;
+- `git diff --check` — green;
+- source commit `36ff58509` прошёл локальные pre-commit hooks (ruff,
+  detect-secrets, gitleaks, Bandit, mypy, no-python2-except, actionlint,
+  Semgrep и frontend lint-staged); audit-plan commit будет зафиксирован
+  отдельно после этой записи;
+- Windows `go test -race` блокируется отсутствием CGO/GCC и остаётся
+  `EXTERNAL-ONLY`, а Windows full Vitest run ранее превысил практический
+  timeout при worker churn; это не основание ослаблять gates или добавлять
+  retries/suppressions.
+
+Обязательная последовательность после завершения SEC-04/SEC-05:
+
+1. Удалить только tool-generated coverage/temp files из новых shared Go
+   packages; пользовательские untracked files, включая внешний audit, не
+   трогать.
+2. Повторить focused logging/quality-contract tests, полный `ruff`/`mypy`,
+   frontend typecheck/lint/build/WASM и Go/Rust tests; выполнить actionlint,
+   detect-secrets, gitleaks, Semgrep, Helm/Compose contracts.
+3. Создать небольшие coherent commits без wave IDs и `Co-Authored-By`, затем
+   безопасно перенести их на актуальный `origin/egorribun` fast-forward-путём
+   без force-push и без изменения stash.
+4. Дождаться нового exact-SHA CI matrix: coverage gate должен пройти прежде
+   mutation lanes; затем собрать все 8 Schemathesis shards, full frontend
+   mutation inventory, Go race/security/load, Lighthouse/CWV, dark smoke и
+   provenance-bound manifest. Каждый failure разбирается по логу, а не
+   маскируется таймаутом.
+5. Только после terminal green CI обновить audit ledger; затем отдельно
+   зафиксировать внешние блокеры §29: merge/resulting-main rerun, canonical
+   exact-six immutable images, registry SBOM/provenance/attestations,
+   digest Docker smoke, Kubernetes staging/TLS/observability, real-device CWV,
+   chaos/restart/rollback и production release.
+
+Эта секция закрывает информационный пробел независимого аудита, но не меняет
+Definition-of-Done: пока отсутствуют current-SHA CI и внешние staging/release
+доказательства, цель остаётся активной и нельзя заявлять полное завершение.
