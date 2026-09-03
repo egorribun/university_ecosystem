@@ -2,9 +2,7 @@ use ammonia::Builder;
 use std::collections::{HashMap, HashSet};
 use wasm_bindgen::prelude::*;
 
-#[wasm_bindgen]
-pub fn sanitize_rich_text(html: &str) -> String {
-    let mut tags = HashSet::new();
+fn sanitize_rich_text_once(html: &str) -> String {
     let allowed_tags = [
         "p",
         "br",
@@ -28,47 +26,72 @@ pub fn sanitize_rich_text(html: &str) -> String {
         "blockquote",
         "code",
         "pre",
-    ];
-    for t in allowed_tags {
-        tags.insert(t);
-    }
+    ]
+    .into_iter()
+    .collect::<HashSet<_>>();
 
-    let mut attributes = HashMap::new();
-    let mut a_attrs = HashSet::new();
-    a_attrs.insert("href");
-    a_attrs.insert("title");
-    a_attrs.insert("target");
-    attributes.insert("a", a_attrs);
+    let attributes = HashMap::from([(
+        "a",
+        ["href", "title", "target"]
+            .into_iter()
+            .collect::<HashSet<_>>(),
+    )]);
 
-    let mut url_schemes = HashSet::new();
-    url_schemes.insert("http");
-    url_schemes.insert("https");
+    let url_schemes = ["http", "https"].into_iter().collect::<HashSet<_>>();
 
-    let sanitized = Builder::new()
-        .tags(tags)
+    Builder::new()
+        .tags(allowed_tags)
         .tag_attributes(attributes)
         .url_schemes(url_schemes)
-        // ammonia automatically handles rel="noopener noreferrer" for target="_blank"
+        // ammonia automatically handles rel="noopener noreferrer" for
+        // target="_blank".
         .link_rel(Some("noopener noreferrer"))
-        // We do not want to allow relative URLs for this strict sanitizer
-        // Or if we do, ammonia's default handles it. Let's strictly disallow data:/javascript:
         .clean(html)
-        .to_string();
-    strip_unsafe_markers(sanitized)
+        .to_string()
+}
+
+fn sanitize_html_basic_once(html: &str) -> String {
+    let allowed_tags = ["b", "i", "em", "strong"]
+        .into_iter()
+        .collect::<HashSet<_>>();
+    Builder::new().tags(allowed_tags).clean(html).to_string()
+}
+
+fn strip_html_once(html: &str) -> String {
+    Builder::new().tags(HashSet::new()).clean(html).to_string()
+}
+
+/// Keep sanitizer output stable when html5ever repairs malformed fragments
+/// across multiple parse/serialize cycles. The bound prevents hostile input
+/// from consuming unbounded CPU while retaining the restrictive ammonia policy
+/// on every pass.
+fn canonicalize(html: &str, clean_once: fn(&str) -> String) -> String {
+    const MAX_PASSES: usize = 8;
+
+    let mut current = strip_unsafe_markers(clean_once(html));
+    for _ in 1..MAX_PASSES {
+        let next = strip_unsafe_markers(clean_once(&current));
+        if next == current {
+            return current;
+        }
+        current = next;
+    }
+    current
+}
+
+#[wasm_bindgen]
+pub fn sanitize_rich_text(html: &str) -> String {
+    canonicalize(html, sanitize_rich_text_once)
 }
 
 #[wasm_bindgen]
 pub fn sanitize_html_basic(html: &str) -> String {
-    let mut tags = HashSet::new();
-    for t in ["b", "i", "em", "strong"] {
-        tags.insert(t);
-    }
-    strip_unsafe_markers(Builder::new().tags(tags).clean(html).to_string())
+    canonicalize(html, sanitize_html_basic_once)
 }
 
 #[wasm_bindgen]
 pub fn strip_html(html: &str) -> String {
-    strip_unsafe_markers(Builder::new().tags(HashSet::new()).clean(html).to_string())
+    canonicalize(html, strip_html_once)
 }
 
 /// Keep the browser WASM sanitizer byte-for-byte compatible with the backend
@@ -216,6 +239,22 @@ mod tests {
             !out.contains("<div"),
             "div is not in the rich-text allow list: {out}"
         );
+    }
+
+    #[test]
+    fn rich_text_malformed_fuzz_regression_is_idempotent() {
+        let input = "*zq**<h2>\u{18}nav**<h*<h2><h2><5>bdo";
+        let once = sanitize_rich_text(input);
+        assert_eq!(sanitize_rich_text(&once), once);
+    }
+
+    #[test]
+    fn canonicalization_is_bounded_for_non_converging_cleaner() {
+        fn append_marker(value: &str) -> String {
+            format!("{value}x")
+        }
+
+        assert_eq!(canonicalize("", append_marker), "xxxxxxxx");
     }
 
     #[test]

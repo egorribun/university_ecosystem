@@ -7,13 +7,17 @@
 use ammonia::Builder;
 use std::collections::{HashMap, HashSet};
 
-/// Remove dangerous HTML while preserving rich-text formatting.
+/// Remove parser markers that are not meaningful application content.
 ///
-/// Allowed elements: paragraphs, headings, lists, inline formatting,
-/// blockquotes, code/pre, and anchors (href/title/target only).
-/// All URLs must use http or https. Links automatically get
-/// `rel="noopener noreferrer"`.
-pub fn sanitize_rich_text(html: &str) -> String {
+/// html5ever (which powers ammonia) preserves NUL and BOM code points in text
+/// nodes. They can influence tokenization when a sanitized fragment is parsed
+/// again, so normalize them between canonicalization passes as well as before
+/// returning to the caller.
+fn strip_unsafe_markers(value: String) -> String {
+    value.replace(['\0', '\u{feff}'], "")
+}
+
+fn sanitize_rich_text_once(html: &str) -> String {
     let allowed_tags: HashSet<&str> = [
         "p",
         "br",
@@ -47,11 +51,6 @@ pub fn sanitize_rich_text(html: &str) -> String {
 
     let url_schemes: HashSet<&str> = ["http", "https"].iter().copied().collect();
 
-    // WHY: html5ever (used internally by ammonia) processes null bytes (\0)
-    // as part of text nodes rather than removing them outright. When \0
-    // precedes U+FEFF, the tokeniser leaves FEFF in the first-pass output but
-    // removes it on the second pass — breaking idempotency. Stripping both
-    // characters post-ammonia is the minimal correct fix.
     Builder::new()
         .tags(allowed_tags)
         .tag_attributes(attributes)
@@ -59,7 +58,52 @@ pub fn sanitize_rich_text(html: &str) -> String {
         .link_rel(Some("noopener noreferrer"))
         .clean(html)
         .to_string()
-        .replace(['\0', '\u{feff}'], "")
+}
+
+fn sanitize_html_basic_once(html: &str) -> String {
+    let allowed_tags: HashSet<&str> = ["b", "i", "em", "strong"].iter().copied().collect();
+    Builder::new().tags(allowed_tags).clean(html).to_string()
+}
+
+fn strip_html_once(html: &str) -> String {
+    Builder::new().tags(HashSet::new()).clean(html).to_string()
+}
+
+/// Canonicalize an ammonia fragment until another pass is a no-op.
+///
+/// html5ever may repair malformed fragments over more than one parse/serialize
+/// cycle. Keep the loop bounded so hostile input cannot consume unbounded CPU;
+/// in practice the parser reaches a fixed point well before this limit. Each
+/// pass uses the same restrictive sanitizer, and unsafe marker normalization is
+/// performed before comparing/returning the representation.
+fn canonicalize(html: &str, clean_once: fn(&str) -> String) -> String {
+    const MAX_PASSES: usize = 8;
+
+    let mut current = strip_unsafe_markers(clean_once(html));
+    for _ in 1..MAX_PASSES {
+        let next = strip_unsafe_markers(clean_once(&current));
+        if next == current {
+            return current;
+        }
+        current = next;
+    }
+    current
+}
+
+/// Remove dangerous HTML while preserving rich-text formatting.
+///
+/// Allowed elements: paragraphs, headings, lists, inline formatting,
+/// blockquotes, code/pre, and anchors (href/title/target only).
+/// All URLs must use http or https. Links automatically get
+/// `rel="noopener noreferrer"`.
+pub fn sanitize_rich_text(html: &str) -> String {
+    // WHY: html5ever's tree builder repairs malformed fragments (for example,
+    // an unclosed heading followed by another heading).  The first serialized
+    // representation can therefore still be reparsed into a different tree.
+    // Canonicalize that representation before returning it. Every pass uses
+    // the same restrictive allow-list and URL policy, so this cannot introduce
+    // markup that a single pass would have rejected.
+    canonicalize(html, sanitize_rich_text_once)
 }
 
 /// Strip all HTML except basic inline formatting (bold, italic, emphasis).
@@ -67,29 +111,34 @@ pub fn sanitize_rich_text(html: &str) -> String {
 /// Use this for short user-supplied strings (e.g. display names, titles)
 /// where rich formatting is unwanted.
 pub fn sanitize_html_basic(html: &str) -> String {
-    let allowed_tags: HashSet<&str> = ["b", "i", "em", "strong"].iter().copied().collect();
-    // WHY: same html5ever null-byte + BOM idempotency issue as strip_html.
-    Builder::new()
-        .tags(allowed_tags)
-        .clean(html)
-        .to_string()
-        .replace(['\0', '\u{feff}'], "")
+    canonicalize(html, sanitize_html_basic_once)
 }
 
 /// Remove all HTML tags, returning plain text.
 ///
 /// Use this when storing or indexing content where markup must be absent.
 pub fn strip_html(html: &str) -> String {
-    // Run ammonia's tag-stripping pass first.
-    let cleaned = Builder::new().tags(HashSet::new()).clean(html).to_string();
+    canonicalize(html, strip_html_once)
+}
 
-    // WHY: html5ever (used internally by ammonia) processes null bytes (\0)
-    // as part of text nodes rather than removing them outright. When \0
-    // precedes a BOM/ZWNBSP (U+FEFF), the presence of \0 changes how the HTML5
-    // tokeniser handles U+FEFF on the first call (leaving it in the output)
-    // while the second call (now without \0) removes it — breaking
-    // idempotency. Stripping both characters after ammonia runs is the
-    // minimal, correct fix that restores the invariant:
-    //   strip_html(strip_html(x)) == strip_html(x)  for all x.
-    cleaned.replace(['\0', '\u{feff}'], "")
+#[cfg(test)]
+mod regression_tests {
+    use super::{canonicalize, sanitize_rich_text};
+
+    #[test]
+    fn malformed_html_fuzz_regression_is_idempotent() {
+        let input = "*zq**<h2>\u{18}nav**<h*<h2><h2><5>bdo";
+        let once = sanitize_rich_text(input);
+        let twice = sanitize_rich_text(&once);
+        assert_eq!(once, twice);
+    }
+
+    #[test]
+    fn canonicalization_is_bounded_for_non_converging_cleaner() {
+        fn append_marker(value: &str) -> String {
+            format!("{value}x")
+        }
+
+        assert_eq!(canonicalize("", append_marker), "xxxxxxxx");
+    }
 }

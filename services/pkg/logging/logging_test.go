@@ -134,6 +134,14 @@ func TestRedactAttrHandlesGroupsLogValuesAndEmptyValues(t *testing.T) {
 	}
 }
 
+func TestAppendGroupCopiesEachAncestorOnce(t *testing.T) {
+	got := appendGroup([]string{"request", "identity"}, "email")
+	want := []string{"request", "identity", "email"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("appendGroup() = %#v, want %#v", got, want)
+	}
+}
+
 func TestRedactAnyHandlesCommonStructuredValues(t *testing.T) {
 	if got := redactAny(nil); got != nil {
 		t.Fatalf("nil value changed: %#v", got)

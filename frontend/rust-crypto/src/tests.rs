@@ -28,10 +28,12 @@ fn hmac_sha256_sign_is_deterministic_and_hex_encoded() {
 
 #[test]
 fn pbkdf2_rejects_zero_and_oversized_parameters() {
-    assert!(pbkdf2_derive("password", "salt", 0, 32).is_err());
-    assert!(pbkdf2_derive("password", "salt", 1_000_001, 32).is_err());
-    assert!(pbkdf2_derive("password", "salt", 1, 0).is_err());
-    assert!(pbkdf2_derive("password", "salt", 1, 1_025).is_err());
+    let password = fixture_text(8);
+    let salt = fixture_text(4);
+    assert!(pbkdf2_derive(&password, &salt, 0, 32).is_err());
+    assert!(pbkdf2_derive(&password, &salt, 1_000_001, 32).is_err());
+    assert!(pbkdf2_derive(&password, &salt, 1, 0).is_err());
+    assert!(pbkdf2_derive(&password, &salt, 1, 1_025).is_err());
 }
 
 #[test]

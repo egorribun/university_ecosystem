@@ -144,8 +144,11 @@ func appendGroup(groups []string, group string) []string {
 	if group == "" {
 		return groups
 	}
-	result := make([]string, 0, len(groups)+1)
-	result = append(result, groups...)
+	// Do not compute len(groups)+1 as an allocation hint: a caller-controlled
+	// group path could make that addition wrap on an integer boundary before
+	// the standard library has a chance to fail safely.  Let append perform its
+	// checked growth instead.
+	result := append([]string(nil), groups...)
 	return append(result, group)
 }
 

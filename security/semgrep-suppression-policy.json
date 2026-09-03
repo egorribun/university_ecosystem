@@ -2,6 +2,105 @@
   "version": 1,
   "entries": [
     {
+      "rule_id": "python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1",
+      "path": "app/auth/security.py",
+      "start_line": 145,
+      "end_line": 147,
+      "owner": "security@university.example",
+      "expires": "2026-12-31",
+      "reason": "HIBP k-anonymity requires a SHA-1 lookup prefix; the digest is never used for authentication, signatures, or password storage and hashlib is explicitly called with usedforsecurity=False."
+    },
+    {
+      "rule_id": "javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket",
+      "path": "app/core/config/mixins/csp_settings.py",
+      "start_line": 178,
+      "end_line": 178,
+      "owner": "security@university.example",
+      "expires": "2026-12-31",
+      "reason": "The insecure origin is a loopback-only Vite HMR development endpoint; production configuration never reaches this branch and maps HTTPS application origins to secure WebSocket transport."
+    },
+    {
+      "rule_id": "python.flask.security.audit.directly-returned-format-string.directly-returned-format-string",
+      "path": "app/core/ratelimit/middleware.py",
+      "start_line": 219,
+      "end_line": 219,
+      "owner": "security@university.example",
+      "expires": "2026-12-31",
+      "reason": "This is not a Flask route: it returns an internal rate-limit key containing only a SHA-256 digest of an HttpOnly cookie, never attacker-controlled HTML or a response body."
+    },
+    {
+      "rule_id": "python.lang.security.audit.formatted-sql-query.formatted-sql-query",
+      "path": "app/workers/cdc_outbox.py",
+      "start_line": 488,
+      "end_line": 490,
+      "owner": "security@university.example",
+      "expires": "2026-12-31",
+      "reason": "PostgreSQL publication names are identifiers and cannot be bound as asyncpg parameters; the value is reduced to alphanumeric characters/underscore before interpolation, with the source name fixed by trusted configuration and covered by provisioning tests."
+    },
+    {
+      "rule_id": "python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query",
+      "path": "app/workers/cdc_outbox.py",
+      "start_line": 488,
+      "end_line": 490,
+      "owner": "security@university.example",
+      "expires": "2026-12-31",
+      "reason": "This call uses an asyncpg replication connection rather than SQLAlchemy; the only interpolated token is the sanitized publication identifier, while all data-bearing queries use positional parameters."
+    },
+    {
+      "rule_id": "javascript.lang.security.audit.detect-non-literal-regexp.detect-non-literal-regexp",
+      "path": "frontend/src/app/telemetry.ts",
+      "start_line": 64,
+      "end_line": 64,
+      "owner": "security@university.example",
+      "expires": "2026-12-31",
+      "reason": "The build-time VITE_BACKEND_ORIGIN is escaped character-by-character before interpolation into a fixed /api/ prefix; it is not request data and regression tests cover metacharacter escaping and same-origin fallback."
+    },
+    {
+      "rule_id": "typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml",
+      "path": "frontend/src/components/news/NewsDetailBody.tsx",
+      "start_line": 94,
+      "end_line": 94,
+      "owner": "security@university.example",
+      "expires": "2026-12-31",
+      "reason": "Markdown and legacy article content are sanitized/HTML-escaped by sanitizeArticleHtml before rendering; the component has no raw HTML path and sanitizer regression tests cover script and event-handler payloads."
+    },
+    {
+      "rule_id": "typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml",
+      "path": "frontend/src/components/ui/SafeHtml.tsx",
+      "start_line": 46,
+      "end_line": 46,
+      "owner": "security@university.example",
+      "expires": "2026-12-31",
+      "reason": "The value is produced by the allowlist-based WASM/ammonia sanitizer and then checked for script and event-handler patterns; unsafe output falls back to plain text and dedicated tests cover bypass attempts."
+    },
+    {
+      "rule_id": "yaml.kubernetes.security.hostpid-pod.hostpid-pod",
+      "path": "k8s/spire/spire-agent.yaml",
+      "start_line": 60,
+      "end_line": 60,
+      "owner": "security@university.example",
+      "expires": "2026-12-31",
+      "reason": "SPIRE's Kubernetes workload attestor must resolve node/container PIDs; hostPID is an intentional documented trust boundary, while the pod is non-privileged, drops capabilities, and uses RuntimeDefault seccomp."
+    },
+    {
+      "rule_id": "yaml.kubernetes.security.hostnetwork-pod.hostnetwork-pod",
+      "path": "k8s/spire/spire-agent.yaml",
+      "start_line": 61,
+      "end_line": 61,
+      "owner": "security@university.example",
+      "expires": "2026-12-31",
+      "reason": "SPIRE's node-local agent socket and workload attestor require host networking; this is the documented agent trust boundary, restricted by service-account RBAC, non-privileged containers, and pinned images."
+    },
+    {
+      "rule_id": "python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected",
+      "path": "scripts/chaos/run_chaos_loadtest.py",
+      "start_line": 100,
+      "end_line": 100,
+      "owner": "security@university.example",
+      "expires": "2026-12-31",
+      "reason": "The load-test target is explicit operator input, restricted to http/https with no embedded credentials and a required hostname before urlopen; chaos tooling is not an application request path, and tests cover rejected schemes. HTTP fragments are not transmitted by the client."
+    },
+    {
       "rule_id": "python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected",
       "path": "scripts/quality/collect_release_check_evidence.py",
       "start_line": 166,
@@ -27,6 +126,15 @@
       "owner": "security@university.example",
       "expires": "2026-12-31",
       "reason": "The URL uses the fixed api.github.com origin and a strict current-run path allowlist; the request uses an explicit verified TLS context and bounded response reader."
+    },
+    {
+      "rule_id": "go.gorilla.security.audit.websocket-missing-origin-check.websocket-missing-origin-check",
+      "path": "services/ws-hub/pkg/hub/handlers.go",
+      "start_line": 202,
+      "end_line": 202,
+      "owner": "security@university.example",
+      "expires": "2026-12-31",
+      "reason": "The package-level gorilla Upgrader uses CheckOrigin=isUpgradeOriginAllowed; explicit WS_ALLOWED_ORIGINS allowlists reject unknown non-empty origins before ticket consumption/upgrade, while empty Origin is intentionally accepted only for native clients. handlers_edge_cases_test.go and handlers_unit_test.go cover allowed and rejected origins."
     }
   ]
 }

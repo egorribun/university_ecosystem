@@ -484,7 +484,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # The CE fallback uses --baseline-commit for diff-aware PR scans.
+          # The CE fallback performs a complete repository scan so the
+          # suppression ledger is observed and validated on every event.
           fetch-depth: 0
           persist-credentials: false
 
