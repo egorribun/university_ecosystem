@@ -114,14 +114,14 @@ func LoadConfig() *Config {
 		}
 	}
 	return &Config{
-		Port:                     getEnv("WS_HUB_PORT", "8081"),
-		NatsURL:                  getEnv("NATS_URL", "nats://nats:4222"),
-		NatsUser:                 os.Getenv("NATS_USER"),     // empty means no auth override
-		NatsPassword:             os.Getenv("NATS_PASSWORD"), // empty means no auth override
-		NatsAuthToken:            os.Getenv("NATS_AUTH_TOKEN"),
-		JWTSecrets:               loadJWTSecrets(),
-		SentryDSN:                getEnv("SENTRY_DSN", ""),
-		Environment:              getEnv("VITE_ENVIRONMENT", "development"),
+		Port:          getEnv("WS_HUB_PORT", "8081"),
+		NatsURL:       getEnv("NATS_URL", "nats://nats:4222"),
+		NatsUser:      os.Getenv("NATS_USER"),     // empty means no auth override
+		NatsPassword:  os.Getenv("NATS_PASSWORD"), // empty means no auth override
+		NatsAuthToken: os.Getenv("NATS_AUTH_TOKEN"),
+		JWTSecrets:    loadJWTSecrets(),
+		SentryDSN:     getEnv("SENTRY_DSN", ""),
+		Environment:   getEnv("VITE_ENVIRONMENT", "development"),
 		// Include the port-80 Caddy edge origin used by local compose.  Explicit
 		// origins configured through ALLOWED_ORIGINS still replace this safe local
 		// default entirely.

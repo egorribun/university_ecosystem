@@ -203,25 +203,19 @@ def test_detect_secrets_verification_is_finding_level_and_base_bound() -> None:
     assert "detect-secrets scan --exclude-files '^\\.secrets\\.baseline$'" in scan
 
 
-def test_semgrep_push_scan_does_not_use_an_empty_main_baseline() -> None:
-    """A default-branch push must still produce real Semgrep evidence.
+def test_semgrep_ce_scan_always_covers_the_suppression_ledger() -> None:
+    """The CE fallback must scan all sources on every event.
 
-    ``origin/main`` and ``HEAD`` are identical in the push workflow, so the
-    diff-aware CE scan has no targets and omits its SARIF output.  Keep the PR
-    path baseline-scoped, but require a full scan for pushes so the blocking
-    validator receives an actual invocation/report instead of a false failure.
+    A diff-aware baseline can hide an unchanged in-source suppression. The
+    blocking validator intentionally requires every reviewed ledger entry to
+    be observed, so the unauthenticated CE path must use a complete scan.
     """
 
     job = _workflow(SECURITY_AUDIT)["jobs"]["semgrep"]
     run = _step(job, "Run Semgrep SAST")["run"]
-    push_marker = 'elif [ "${GITHUB_EVENT_NAME:-}" = "push" ]; then'
     full_scan = (
         "semgrep scan --config auto \\\n"
         "    --error --sarif --sarif-output=semgrep.sarif"
     )
-    baseline_scan = "semgrep scan --config auto --baseline-commit origin/main"
-
-    assert push_marker in run
     assert full_scan in run
-    assert baseline_scan in run
-    assert run.index(push_marker) < run.index(full_scan) < run.index("else")
+    assert "--baseline-commit" not in run

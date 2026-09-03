@@ -379,6 +379,14 @@ func (m *JWTMiddleware) StartJWKSRefresher(ctx context.Context, endpoint string,
 // during dual-key rotation: tokens carrying either the retiring or current
 // “kid“ remain verifiable until the old key is removed by the issuer.
 func fetchJWKSKeySet(ctx context.Context, client *http.Client, endpoint string) (rsaKeySet, error) {
+	body, err := fetchJWKSBody(ctx, client, endpoint)
+	if err != nil {
+		return nil, err
+	}
+	return parseJWKSBody(body)
+}
+
+func fetchJWKSBody(ctx context.Context, client *http.Client, endpoint string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("jwks: create request: %w", err)
@@ -400,8 +408,12 @@ func fetchJWKSKeySet(ctx context.Context, client *http.Client, endpoint string) 
 	if err != nil {
 		return nil, fmt.Errorf("jwks: read body: %w", err)
 	}
+	return body, nil
+}
 
-	// Try standard JWKS format first.
+// parseJWKSBody decodes the standard JWKS representation and falls back to a
+// legacy raw PEM response for deployments that expose a single key directly.
+func parseJWKSBody(body []byte) (rsaKeySet, error) {
 	var jwks struct {
 		Keys []json.RawMessage `json:"keys"`
 	}
@@ -413,9 +425,12 @@ func fetchJWKSKeySet(ctx context.Context, client *http.Client, endpoint string) 
 		}
 		return rsaKeySet{"": key}, nil
 	}
+	return parseJWKSKeys(jwks.Keys)
+}
 
-	keys := make(rsaKeySet, len(jwks.Keys))
-	for _, keyJSON := range jwks.Keys {
+func parseJWKSKeys(rawKeys []json.RawMessage) (rsaKeySet, error) {
+	keys := make(rsaKeySet, len(rawKeys))
+	for _, keyJSON := range rawKeys {
 		var kty struct {
 			Kty string `json:"kty"`
 			N   string `json:"n"`

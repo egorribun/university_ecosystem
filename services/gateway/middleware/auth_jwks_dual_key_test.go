@@ -38,8 +38,18 @@ func TestFetchJWKSKeySetRetainsBothRotationKeys(t *testing.T) {
 	keys, err := fetchJWKSKeySet(context.Background(), server.Client(), server.URL)
 	require.NoError(t, err)
 	require.Len(t, keys, 2)
-	require.Equal(t, oldKey.N, keys["old"].N)
-	require.Equal(t, newKey.N, keys["new"].N)
+	oldPublic, oldOK := keys["old"]
+	require.True(t, oldOK)
+	if oldPublic == nil {
+		t.Fatal("old rotation key must not be nil")
+	}
+	newPublic, newOK := keys["new"]
+	require.True(t, newOK)
+	if newPublic == nil {
+		t.Fatal("new rotation key must not be nil")
+	}
+	require.Equal(t, oldKey.N, oldPublic.N)
+	require.Equal(t, newKey.N, newPublic.N)
 }
 
 func TestJWTMiddlewareKeyFuncSelectsJWKSKeyByKid(t *testing.T) {

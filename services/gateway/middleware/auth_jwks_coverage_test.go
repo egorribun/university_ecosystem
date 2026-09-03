@@ -63,6 +63,9 @@ func TestSelectJWKSRepresentativeCoversLegacyAndEmptySets(t *testing.T) {
 
 	legacy, err := selectJWKSRepresentative(rsaKeySet{"": &key.PublicKey})
 	require.NoError(t, err)
+	if legacy == nil {
+		t.Fatal("legacy JWKS representative must not be nil")
+	}
 	require.Equal(t, key.N, legacy.N)
 
 	_, err = selectJWKSRepresentative(rsaKeySet{})
@@ -92,6 +95,9 @@ func TestFetchJWKSPublicKeySelectsStableRepresentativeForMultipleKeys(t *testing
 
 	publicKey, err := fetchJWKSPublicKey(context.Background(), server.Client(), server.URL)
 	require.NoError(t, err)
+	if publicKey == nil {
+		t.Fatal("JWKS representative must not be nil")
+	}
 	require.Equal(t, first.N, publicKey.N)
 }
 

@@ -2941,9 +2941,8 @@ def test_reusable_quality_jobs_have_bounded_execution() -> None:
         step for step in semgrep_steps if step.get("name") == "Run Semgrep SAST"
     )
     semgrep_run_text = semgrep_run["run"]
-    assert (
-        "semgrep scan --config auto --baseline-commit origin/main" in semgrep_run_text
-    )
+    assert "semgrep scan --config auto \\\n" in semgrep_run_text
+    assert "--baseline-commit" not in semgrep_run_text
     assert "--error" in semgrep_run_text
     assert "--sarif --sarif-output=semgrep.sarif" in semgrep_run_text
     assert "SEMGREP_SCAN_STATUS" in semgrep_run_text
@@ -3290,6 +3289,32 @@ def test_rust_fuzz_workflow_caches_every_declared_target_workspace() -> None:
     assert "${{ matrix.name }}" in additional_key
     assert "matrix.parent_manifest" in additional_key
     assert "../Cargo.toml" not in additional_key
+
+
+def test_pyo3_fuzz_binaries_use_the_pure_sanitizer_module() -> None:
+    """Standalone fuzzers must not link the CPython extension crate."""
+
+    manifest_path = (
+        REPOSITORY_ROOT / "crates" / "pyo3-sanitizer" / "fuzz" / "Cargo.toml"
+    )
+    manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+    assert "pyo3-sanitizer" not in manifest["dependencies"]
+    assert manifest["dependencies"]["ammonia"] == "4.1.4"
+
+    for target in (
+        "fuzz_sanitize_rich_text.rs",
+        "fuzz_sanitize_html_basic.rs",
+        "fuzz_strip_html.rs",
+    ):
+        source = (
+            REPOSITORY_ROOT
+            / "crates"
+            / "pyo3-sanitizer"
+            / "fuzz"
+            / "fuzz_targets"
+            / target
+        ).read_text(encoding="utf-8")
+        assert '#[path = "../../src/sanitizer.rs"]' in source
 
 
 def test_cargo_deny_scans_all_release_rust_crates_in_parallel() -> None:

@@ -73,9 +73,7 @@ pub fn hmac_sha256_sign(key: &str, message: &str) -> String {
     // lifetime.  The short GenericArray returned by ``finalize`` is copied
     // immediately and never retained beyond this scope.
     let result = Zeroizing::new(digest.to_vec());
-    for byte in &mut digest {
-        *byte = 0;
-    }
+    digest.fill(0);
     hex::encode(result.as_slice())
 }
 

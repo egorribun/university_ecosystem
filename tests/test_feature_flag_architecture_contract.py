@@ -45,6 +45,15 @@ CURL_IMAGE = (
 )
 
 
+def _load_compose(path: Path) -> dict[str, object]:
+    """Parse Compose YAML without teaching PyYAML Docker's overlay tags."""
+
+    source = path.read_text(encoding="utf-8")
+    parsed = yaml.safe_load(source.replace("!override", ""))
+    assert isinstance(parsed, dict)
+    return parsed
+
+
 def test_flagd_runtime_dependencies_are_explicit_and_compatible() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     dependencies = project["project"]["dependencies"]
@@ -147,9 +156,7 @@ def test_application_registry_matches_version_controlled_flagd_definitions() -> 
 
 
 def test_full_compose_runs_flagd_and_waits_for_real_readiness() -> None:
-    compose = yaml.safe_load(
-        (ROOT / "docker-compose.full.yml").read_text(encoding="utf-8")
-    )
+    compose = _load_compose(ROOT / "docker-compose.full.yml")
     services = compose["services"]
     flagd = services["flagd"]
     probe = services["flagd-healthprobe"]
