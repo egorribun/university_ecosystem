@@ -144,6 +144,7 @@ def test_go_mutation_diagnostic_is_explicitly_scheduled_or_manual() -> None:
         "services/ws-hub",
         "services/cmd/uni-cli",
         "services/pkg/spiffe",
+        "services/pkg/logging",
         "services/pkg/spicedb",
     }
     assert diagnostic["with"]["run-mutation-diagnostic"] is True

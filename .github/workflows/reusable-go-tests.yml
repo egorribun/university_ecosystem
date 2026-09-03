@@ -59,6 +59,7 @@ jobs:
             services/gateway/go.sum
             services/file-processor/go.sum
             services/ws-hub/go.sum
+            services/pkg/logging/go.mod
             go.sum
 
       - name: Install dependencies
@@ -318,6 +319,7 @@ jobs:
             services/gateway/go.sum
             services/file-processor/go.sum
             services/ws-hub/go.sum
+            services/pkg/logging/go.mod
             go.sum
 
       - name: Generate mutation diagnostic artifact name
@@ -355,6 +357,7 @@ jobs:
             "$SERVICE_DIRECTORY/go.sum"
             services/pkg/spiffe/go.mod
             services/pkg/spiffe/go.sum
+            services/pkg/logging/go.mod
             gen/go/go.mod
             gen/go/go.sum
           )
@@ -660,7 +663,10 @@ jobs:
               printf '%s\n' failed > "$target_root/status.txt"
               return 1
             fi
-            for dependency in services/pkg/spiffe gen/go; do
+            for dependency in services/pkg/logging services/pkg/spiffe gen/go; do
+              if [ "$dependency" = "$SERVICE_DIRECTORY" ]; then
+                continue
+              fi
               local dependency_source="$GITHUB_WORKSPACE/$dependency"
               local dependency_destination="$isolated_root/$dependency"
               if [ ! -d "$dependency_source" ] || [ -L "$dependency_source" ]; then
@@ -923,6 +929,7 @@ jobs:
             services/cmd/uni-cli/go.sum
             services/pkg/spiffe/go.sum
             services/pkg/spicedb/go.sum
+            services/pkg/logging/go.mod
             go.sum
 
       - name: Run golangci-lint

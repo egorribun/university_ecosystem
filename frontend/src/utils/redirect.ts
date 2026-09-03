@@ -33,7 +33,7 @@ export function resolveRedirectPath(redirect: unknown, fallback = "/dashboard"):
   if (typeof redirect !== "string" || redirect.length === 0) return fallback
 
   // Relative path-only (e.g., "/events"); protocol-relative `//evil.com` excluded
-  if (redirect.startsWith("/") && !redirect.startsWith("//")) {
+  if (redirect.startsWith("/") && !redirect.startsWith("//") && !redirect.startsWith("/\\")) {
     return redirect
   }
 
@@ -43,7 +43,7 @@ export function resolveRedirectPath(redirect: unknown, fallback = "/dashboard"):
     if (typeof window !== "undefined" && url.origin !== window.location.origin) {
       return fallback
     }
-    return url.pathname
+    return `${url.pathname}${url.search}${url.hash}`
   } catch {
     return fallback
   }

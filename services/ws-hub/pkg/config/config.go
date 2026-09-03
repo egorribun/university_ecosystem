@@ -122,7 +122,10 @@ func LoadConfig() *Config {
 		JWTSecrets:               loadJWTSecrets(),
 		SentryDSN:                getEnv("SENTRY_DSN", ""),
 		Environment:              getEnv("VITE_ENVIRONMENT", "development"),
-		AllowedOrigins:           getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost:3000", "http://localhost:5173"}),
+		// Include the port-80 Caddy edge origin used by local compose.  Explicit
+		// origins configured through ALLOWED_ORIGINS still replace this safe local
+		// default entirely.
+		AllowedOrigins:           getEnvSlice("ALLOWED_ORIGINS", []string{"http://localhost", "http://localhost:80", "http://localhost:3000", "http://localhost:5173"}),
 		TrustedProxies:           trustedProxies,
 		TrustedProxiesSet:        trustedProxiesSet,
 		TrustedCIDRs:             trustedCIDRs,

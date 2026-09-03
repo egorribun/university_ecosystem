@@ -275,6 +275,7 @@ def test_governance_quality_configuration_matches_contract() -> None:
         "go-file-processor": ["services/file-processor/"],
         "go-shared": [
             "services/cmd/uni-cli/",
+            "services/pkg/logging/",
             "services/pkg/spiffe/",
             "services/pkg/spicedb/",
         ],

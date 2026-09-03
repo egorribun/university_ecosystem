@@ -157,18 +157,29 @@ jobs:
 
             - name: Run pytest
               shell: pwsh
-              run: |  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
+              env:
+                  TEST_PATTERN: ${{ inputs.test-pattern }}
+                  PARALLEL_WORKERS: ${{ inputs.parallel-workers }}
+                  FAIL_FAST: ${{ inputs.fail-fast }}
+                  SHARD_ID: ${{ inputs.shard-id }}
+                  NUM_SHARDS: ${{ inputs.num-shards }}
+                  COVERAGE_THRESHOLD: ${{ inputs.coverage-threshold }}
+              run: |
+                  # Keep all caller-controlled values in the step environment.
+                  # Interpolating them into PowerShell source would turn a
+                  # reusable-workflow input into executable runner code.
+                  $parallelWorkers = [int]$env:PARALLEL_WORKERS
                   $parallelArgs = @()
-                  if ("${{ inputs.parallel-workers }}" -ne "-1") {
-                    if ("${{ inputs.parallel-workers }}" -eq "0") {
+                  if ($parallelWorkers -ne -1) {
+                    if ($parallelWorkers -eq 0) {
                       $parallelArgs = @("-n", "auto")
                     } else {
-                      $parallelArgs = @("-n", "${{ inputs.parallel-workers }}")
+                      $parallelArgs = @("-n", [string]$parallelWorkers)
                     }
                   }
 
                   $failFastArgs = @()
-                  if ("${{ inputs.fail-fast }}" -eq "true") {
+                  if ([System.Convert]::ToBoolean($env:FAIL_FAST)) {
                     $failFastArgs = @("-x")
                   }
 
@@ -176,20 +187,22 @@ jobs:
                   $shardSuffix = "full"
                   $coverageXmlName = "coverage.xml"
                   $coverageJsonName = "coverage.json"
-                  if ("${{ inputs.num-shards }}" -gt "1") {
-                    if ("${{ inputs.shard-id }}" -lt "0" -or "${{ inputs.shard-id }}" -ge "${{ inputs.num-shards }}") {
+                  $shardId = [int]$env:SHARD_ID
+                  $numShards = [int]$env:NUM_SHARDS
+                  if ($numShards -gt 1) {
+                    if ($shardId -lt 0 -or $shardId -ge $numShards) {
                       throw "shard-id must be between 0 and num-shards - 1"
                     }
                     $shardArgs = @(
-                      "--shard-id=${{ inputs.shard-id }}",
-                      "--num-shards=${{ inputs.num-shards }}"
+                      "--shard-id=$shardId",
+                      "--num-shards=$numShards"
                     )
-                    $shardSuffix = "shard-${{ inputs.shard-id }}"
+                    $shardSuffix = "shard-$shardId"
                     $coverageXmlName = "coverage-$shardSuffix.xml"
                     $coverageJsonName = "coverage-$shardSuffix.json"
                   }
 
-                  $pytestArgs = @("${{ inputs.test-pattern }}")  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
+                  $pytestArgs = @($env:TEST_PATTERN)
                   $pytestArgs += $parallelArgs
                   $pytestArgs += $shardArgs
                   $pytestArgs += $failFastArgs
@@ -199,8 +212,8 @@ jobs:
                   # combines the raw data files below and enforces the floor
                   # once all shards are present.
                   $coverageDataFile = ".coverage"
-                  if ("${{ inputs.num-shards }}" -gt "1") {
-                    $coverageDataFile = ".coverage.${{ inputs.shard-id }}"
+                  if ($numShards -gt 1) {
+                    $coverageDataFile = ".coverage.$shardId"
                   }
                   $env:COVERAGE_FILE = $coverageDataFile
                   
@@ -217,8 +230,9 @@ jobs:
                     "--dist=loadgroup"
                   )
 
-                  if ("${{ inputs.num-shards }}" -le "1" -and "${{ inputs.coverage-threshold }}" -gt "0") {
-                    $pytestArgs += "--cov-fail-under=${{ inputs.coverage-threshold }}"  # nosemgrep: yaml.github-actions.security.run-shell-injection.run-shell-injection
+                  $coverageThreshold = [int]$env:COVERAGE_THRESHOLD
+                  if ($numShards -le 1 -and $coverageThreshold -gt 0) {
+                    $pytestArgs += "--cov-fail-under=$coverageThreshold"
                   } else {
                     $pytestArgs += "--cov-fail-under=0"
                   }

@@ -59,6 +59,15 @@ func validateProcessFileRequest(req *pb.ProcessFileRequest) error {
 	// RZ-27-04: Reject path traversal at gRPC boundary before Temporal workflow
 	// start. sanitizeMinIOKey in workflow.go catches this too (defense in depth).
 	for _, key := range []string{req.SourceKey, req.DestKey} {
+		// Object keys are always relative to the configured tenant prefix.  Check
+		// the raw value before path.Clean: Clean("/../../etc/passwd") yields
+		// "/etc/passwd", which no longer contains a detectable ".." segment.
+		// Reject both slash styles at the boundary so platform-specific input
+		// cannot escape the prefix when a key is later interpreted by another
+		// storage adapter.
+		if path.IsAbs(key) || strings.HasPrefix(key, "/") || strings.HasPrefix(key, "\\") {
+			return status.Errorf(codes.InvalidArgument, "absolute path is not allowed in key: %q", key)
+		}
 		cleaned := path.Clean(key)
 		if strings.HasPrefix(cleaned, "..") || strings.Contains(cleaned, "/../") {
 			return status.Errorf(codes.InvalidArgument, "path traversal in key: %q", key)

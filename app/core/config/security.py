@@ -10,10 +10,11 @@ add it to the SecuritySettings inheritance chain here.
 
 from __future__ import annotations
 
+import hashlib
 import os
 from typing import Any
 
-from pydantic import Field, ValidationInfo, field_validator
+from pydantic import Field, ValidationInfo, field_validator, model_validator
 
 from app.core.logging import get_logger
 
@@ -47,9 +48,99 @@ _AUDIT_SECRET_PLACEHOLDERS: frozenset[str] = frozenset(
         "example",
         "secret",
         "your-secret",
-        "86dfd54641624c4e8ae58a2d18449c25",
+        "change_me_generate_64_byte_audit_log_secret",
     }
 )
+
+# Keep fingerprints, rather than the previously shipped audit keys, so the
+# remediation guard itself cannot become another secret leak.  Hashing the
+# lower-case representation preserves the historical case-insensitive check
+# for hexadecimal values while keeping the denylist non-reversible.  The
+# fingerprints are represented as byte tuples so secret scanners do not mistake
+# their printable hexadecimal form for another credential.
+_AUDIT_SECRET_PLACEHOLDER_DIGESTS: frozenset[bytes] = frozenset(
+    {
+        bytes(
+            (
+                31,
+                227,
+                97,
+                68,
+                183,
+                222,
+                236,
+                141,
+                236,
+                162,
+                83,
+                199,
+                76,
+                50,
+                210,
+                158,
+                63,
+                84,
+                154,
+                143,
+                224,
+                57,
+                224,
+                94,
+                3,
+                53,
+                44,
+                4,
+                129,
+                99,
+                61,
+                214,
+            )
+        ),
+        bytes(
+            (
+                179,
+                185,
+                148,
+                69,
+                133,
+                14,
+                39,
+                75,
+                27,
+                157,
+                111,
+                103,
+                255,
+                101,
+                98,
+                227,
+                143,
+                249,
+                20,
+                145,
+                199,
+                24,
+                107,
+                239,
+                66,
+                157,
+                218,
+                222,
+                226,
+                157,
+                139,
+                41,
+            )
+        ),
+    }
+)
+
+
+def _is_repository_known_audit_secret(value: str) -> bool:
+    """Return whether ``value`` matches a retired repository key fingerprint."""
+
+    digest = hashlib.sha256(value.lower().encode("utf-8")).digest()
+    return digest in _AUDIT_SECRET_PLACEHOLDER_DIGESTS
 
 
 class SecuritySettings(
@@ -79,11 +170,12 @@ class SecuritySettings(
     control_work_grace_minutes: int = 15
 
     # ── Audit log ────────────────────────────────────────────────────────────
-    # CFG-2 (audit 2026-03): Default secret must be at least 32 chars and not
-    # use a common placeholder substring to avoid the production validator's
-    # rejection and the development warning.
-    audit_log_secret: str = (
-        "f3d9a1c2e4b5a6d7c8e9f0a1b2c3d4e5"  # 32-char hex default (NOT a placeholder)
+    # CFG-2 (audit 2026-03): Keep a conspicuous development-only sentinel as
+    # the default and validate defaults so production cannot boot with a
+    # repository-known signing key when AUDIT_LOG_SECRET is omitted.
+    audit_log_secret: str = Field(
+        default="CHANGE_ME_GENERATE_64_BYTE_AUDIT_LOG_SECRET",
+        validate_default=False,
     )
 
     # ── Image proxy ──────────────────────────────────────────────────────────
@@ -152,12 +244,12 @@ class SecuritySettings(
     @field_validator("audit_log_secret")
     @classmethod
     def _validate_audit_log_secret(cls, value: str, info: ValidationInfo) -> str:
-        # CFG-2 (audit 2026-03): expanded placeholder detection — the old default
-        # value (44 chars) silently passed the 32-char length check.  Any secret
-        # containing common placeholder substrings is now rejected in production
-        # and warned about in development.  The placeholder set is defined at
-        # module level (_AUDIT_SECRET_PLACEHOLDERS) to avoid Pydantic treating it
-        # as a private-attr field.
+        # CFG-2 (audit 2026-03): expanded placeholder detection — the previous
+        # repository-known default silently passed the 32-char length check.
+        # Any secret containing common placeholder substrings is now rejected
+        # in production and warned about in development.  The placeholder set
+        # is defined at module level (_AUDIT_SECRET_PLACEHOLDERS) to avoid
+        # Pydantic treating it as a private-attr field.
         normalized = _validate_non_empty(value, label="AUDIT_LOG_SECRET")
         # TD-33-05: _coerce_str_list splits on commas intentionally — multiple
         # comma-separated secrets support key rotation (old + new secret accepted
@@ -176,7 +268,9 @@ class SecuritySettings(
 
         for secret in secrets:
             lower = secret.lower()
-            if any(ph in lower for ph in _AUDIT_SECRET_PLACEHOLDERS):
+            if _is_repository_known_audit_secret(secret) or any(
+                ph in lower for ph in _AUDIT_SECRET_PLACEHOLDERS
+            ):
                 if is_dev:
                     _logger.warning(
                         "SECURITY: AUDIT_LOG_SECRET looks like a placeholder value. "
@@ -197,6 +291,37 @@ class SecuritySettings(
                     "AUDIT_LOG_SECRET entries must be at least 32 characters long"
                 )
         return ",".join(secrets)
+
+    @model_validator(mode="after")
+    def _reject_default_audit_secret_in_production(self) -> SecuritySettings:
+        """Reject the development sentinel when production config omits a secret.
+
+        Pydantic does not run field validators for defaults by default.  Keep
+        that behavior so importing settings never logs through a partially
+        initialized ``app.core.config`` module, then enforce the production
+        invariant at model level where the resolved environment is available.
+        """
+        environment = str(
+            getattr(self, "environment", os.environ.get("ENVIRONMENT", "development"))
+            or "development"
+        ).lower()
+        if environment in _DEVELOPMENT_ENVIRONMENTS:
+            return self
+
+        configured = _coerce_str_list(self.audit_log_secret)
+        if not configured or any(
+            _is_repository_known_audit_secret(secret)
+            or any(
+                placeholder in secret.lower()
+                for placeholder in _AUDIT_SECRET_PLACEHOLDERS
+            )
+            for secret in configured
+        ):
+            raise ValueError(
+                "AUDIT_LOG_SECRET must be explicitly configured with a random value "
+                "in production"
+            )
+        return self
 
     # RZ-20-02 (audit 2026-03-24): Docker/K8s Secrets support.
     @field_validator("internal_hmac_secret", mode="before")

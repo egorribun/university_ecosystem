@@ -389,13 +389,18 @@ pub fn batch_detect_conflicts(
 
 #[pyfunction(name = "batch_detect_conflicts")]
 fn batch_detect_conflicts_py(
+    py: Python<'_>,
     items: Bound<'_, PyAny>,
 ) -> PyResult<Vec<(ScheduleItem, ScheduleItem)>> {
     let _extract_guard = schedule_item_extract_guard()?;
     let items: Vec<ScheduleItem> = items.extract()?;
     drop(_extract_guard);
 
-    batch_detect_conflicts(items)
+    // Rayon performs CPU-intensive pairwise work on owned Rust values.  Detach
+    // from Python while it runs so concurrent asyncio/worker threads can make
+    // progress; all Python extraction and result conversion remains on the
+    // GIL-held side of this boundary.
+    py.detach(|| batch_detect_conflicts(items))
 }
 
 #[pyfunction(name = "find_optimal_slot")]

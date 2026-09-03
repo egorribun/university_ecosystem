@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -14,6 +13,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[3]
+_logger = get_logger(__name__)
 
 
 def _resolve_env_file(base_dir: Path) -> Path | None:
@@ -42,7 +42,7 @@ def _resolve_env_file(base_dir: Path) -> Path | None:
                     candidate_bytes = None
                 else:
                     if candidate_bytes == example_bytes:
-                        logging.getLogger(__name__).warning(
+                        _logger.warning(
                             "%s is identical to %s; update it with real secrets "
                             "before deploying.",
                             candidate,
@@ -62,7 +62,7 @@ def _resolve_env_file(base_dir: Path) -> Path | None:
                 candidate_bytes = None
             else:
                 if candidate_bytes == example_bytes:
-                    logging.getLogger(__name__).warning(
+                    _logger.warning(
                         "%s is identical to %s; update it with real secrets "
                         "before deploying.",
                         candidate,

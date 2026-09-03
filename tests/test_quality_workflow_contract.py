@@ -161,6 +161,7 @@ REQUIRED_CI_CONTEXTS = frozenset(
         "Go Tests (services/ws-hub) / Test Go Service (services/ws-hub)",
         "Go Tests (services/file-processor) / Test Go Service (services/file-processor)",
         "Go Tests (services/cmd/uni-cli) / Test Go Service (services/cmd/uni-cli)",
+        "Go Tests (services/pkg/logging) / Test Go Service (services/pkg/logging)",
         "Go Tests (services/pkg/spiffe) / Test Go Service (services/pkg/spiffe)",
         "Go Tests (services/pkg/spicedb) / Test Go Service (services/pkg/spicedb)",
         "Rust - cargo test (x3 crates) + wasm-pack + coverage",
@@ -1104,6 +1105,7 @@ def test_sbom_go_gate_uses_symbol_aware_reachable_vulnerability_analysis() -> No
         "./services/ws-hub/...",
         "./services/file-processor/...",
         "./services/cmd/uni-cli/...",
+        "./services/pkg/logging/...",
         "./services/pkg/spiffe/...",
         "./services/pkg/spicedb/...",
     )
@@ -1371,6 +1373,7 @@ def test_active_go_toolchain_pins_use_current_security_patch() -> None:
         "services/cmd/uni-cli/go.mod",
         "services/file-processor/go.mod",
         "services/gateway/go.mod",
+        "services/pkg/logging/go.mod",
         "services/pkg/spiffe/go.mod",
         "services/ws-hub/go.mod",
     )
@@ -2692,8 +2695,24 @@ def test_backend_ci_uses_historical_duration_shards_and_aggregates_coverage() ->
         for step in backend_workflow["jobs"]["unit-tests"]["steps"]
         if step.get("name") == "Run pytest"
     )
-    assert "--shard-id=${{ inputs.shard-id }}" in run_step["run"]
-    assert "--num-shards=${{ inputs.num-shards }}" in run_step["run"]
+    # Caller-controlled workflow inputs must cross the shell boundary through
+    # environment variables, never interpolation into PowerShell source.
+    assert "$env:TEST_PATTERN" in run_step["run"]
+    assert "$env:PARALLEL_WORKERS" in run_step["run"]
+    assert "$env:FAIL_FAST" in run_step["run"]
+    assert "$env:SHARD_ID" in run_step["run"]
+    assert "$env:NUM_SHARDS" in run_step["run"]
+    assert "$env:COVERAGE_THRESHOLD" in run_step["run"]
+    assert "${{ inputs.test-pattern }}" not in run_step["run"]
+    assert "${{ inputs.coverage-threshold }}" not in run_step["run"]
+    assert run_step["env"] == {
+        "TEST_PATTERN": "${{ inputs.test-pattern }}",
+        "PARALLEL_WORKERS": "${{ inputs.parallel-workers }}",
+        "FAIL_FAST": "${{ inputs.fail-fast }}",
+        "SHARD_ID": "${{ inputs.shard-id }}",
+        "NUM_SHARDS": "${{ inputs.num-shards }}",
+        "COVERAGE_THRESHOLD": "${{ inputs.coverage-threshold }}",
+    }
     integration_run_step = next(
         step
         for step in backend_workflow["jobs"]["integration-tests"]["steps"]
@@ -3200,6 +3219,7 @@ def test_go_service_dockerfiles_package_local_spiffe_replacement() -> None:
             encoding="utf-8"
         )
         assert "COPY services/pkg/spiffe ./services/pkg/spiffe" in dockerfile
+        assert "COPY services/pkg/logging ./services/pkg/logging" in dockerfile
 
 
 def test_go_fuzz_workflow_executes_all_service_fuzz_targets() -> None:
@@ -3246,6 +3266,7 @@ def test_rust_fuzz_workflow_caches_every_declared_target_workspace() -> None:
 
     for workspace in (
         "native/rust_ext/target/",
+        "crates/pyo3-sanitizer/fuzz/target/",
         "frontend/wasm-sanitizer/fuzz/target/",
         "frontend/rust-crypto/fuzz/target/",
     ):
@@ -3253,6 +3274,7 @@ def test_rust_fuzz_workflow_caches_every_declared_target_workspace() -> None:
 
     for manifest in (
         "native/rust_ext/Cargo.toml",
+        "crates/pyo3-sanitizer/fuzz/Cargo.toml",
         "frontend/wasm-sanitizer/fuzz/Cargo.toml",
         "frontend/rust-crypto/fuzz/Cargo.toml",
     ):
@@ -3268,6 +3290,70 @@ def test_rust_fuzz_workflow_caches_every_declared_target_workspace() -> None:
     assert "${{ matrix.name }}" in additional_key
     assert "matrix.parent_manifest" in additional_key
     assert "../Cargo.toml" not in additional_key
+
+
+def test_cargo_deny_scans_all_release_rust_crates_in_parallel() -> None:
+    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "cargo-deny.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    jobs = workflow["jobs"]
+
+    matrix_job = jobs["cargo-deny-crates"]
+    assert matrix_job["name"] == "Cargo Deny (${{ matrix.name }})"
+    assert matrix_job["strategy"]["fail-fast"] is False
+    assert matrix_job["strategy"]["max-parallel"] == 4
+    entries = matrix_job["strategy"]["matrix"]["include"]
+    assert {entry["manifest-path"] for entry in entries} == {
+        "native/rust_ext/Cargo.toml",
+        "crates/pyo3-sanitizer/Cargo.toml",
+        "frontend/wasm-sanitizer/Cargo.toml",
+        "frontend/rust-crypto/Cargo.toml",
+    }
+    assert all(entry["name"] for entry in entries)
+    assert {entry["config-path"] for entry in entries} == {"native/rust_ext/deny.toml"}
+
+    deny_step = next(
+        step for step in matrix_job["steps"] if step.get("name") == "Run Cargo Deny"
+    )
+    assert deny_step["with"]["manifest-path"] == "${{ matrix.manifest-path }}"
+    assert deny_step["with"]["command"] == "check"
+    assert (
+        deny_step["with"]["arguments"]
+        == "--config ${{ matrix.config-path }} --all-features"
+    )
+
+    aggregate = jobs["cargo-deny"]
+    assert aggregate["name"] == "Cargo Deny Scan"
+    assert aggregate["needs"] == ["cargo-deny-crates"]
+    assert aggregate["if"] == "${{ always() }}"
+    aggregate_run = aggregate["steps"][0]["run"]
+    assert "needs.cargo-deny-crates.result" in aggregate_run
+    assert '!= "success"' in aggregate_run
+
+
+def test_rust_fuzz_matrix_covers_every_fuzz_workspace() -> None:
+    workflow_path = REPOSITORY_ROOT / ".github" / "workflows" / "rust-fuzz.yml"
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    matrix = workflow["jobs"]["fuzz-additional-rust-crates"]["strategy"]["matrix"]
+    entries = matrix["include"]
+
+    by_directory = {entry["directory"]: entry for entry in entries}
+    assert set(by_directory) == {
+        "crates/pyo3-sanitizer/fuzz",
+        "frontend/wasm-sanitizer/fuzz",
+        "frontend/rust-crypto/fuzz",
+    }
+    pyo3_entry = by_directory["crates/pyo3-sanitizer/fuzz"]
+    assert pyo3_entry["parent_manifest"] == "crates/pyo3-sanitizer/Cargo.toml"
+    assert set(pyo3_entry["targets"].split()) == {
+        "fuzz_sanitize_rich_text",
+        "fuzz_sanitize_html_basic",
+        "fuzz_strip_html",
+    }
+
+    workflow_text = workflow_path.read_text(encoding="utf-8")
+    assert "crates/pyo3-sanitizer/fuzz/target/" in workflow_text
+    assert "crates/pyo3-sanitizer/fuzz/Cargo.toml" in workflow_text
+    assert "crates/pyo3-sanitizer/fuzz/Cargo.lock" in workflow_text
 
 
 def test_rust_fuzz_required_context_runs_when_its_workflow_changes() -> None:
@@ -5871,7 +5957,7 @@ def test_coverage_aggregate_uses_scoped_current_run_artifacts_only() -> None:
         in str(backend_verify["run"])
     )
     assert (
-        "test \"$(find artifacts/coverage/go/shared-inputs -name 'coverage.out' -type f | wc -l)\" -eq 3"
+        "test \"$(find artifacts/coverage/go/shared-inputs -name 'coverage.out' -type f | wc -l)\" -eq 4"
         in verify_run
     )
 

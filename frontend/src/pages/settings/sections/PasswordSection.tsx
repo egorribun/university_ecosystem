@@ -87,7 +87,7 @@ export function PasswordSection({
             type="submit"
             variant="solid"
             disabled={passwordBusy}
-            startIcon={passwordBusy ? <CircularProgress size={18} color="inherit" /> : undefined}
+            leadingIcon={passwordBusy ? <CircularProgress size={18} color="inherit" /> : undefined}
           >
             {passwordBusy
               ? t("settings:security.password.updating")

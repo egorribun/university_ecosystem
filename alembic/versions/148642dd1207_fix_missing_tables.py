@@ -14,7 +14,6 @@ from typing import Any
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-import app.utils.encryption
 from alembic import context, op
 
 # revision identifiers, used by Alembic.
@@ -733,6 +732,12 @@ def _postgresql_signing_key_check(inspector: Any) -> None:
         "ALTER TABLE active_sessions VALIDATE CONSTRAINT "
         f"{_ACTIVE_SESSION_SIGNING_KEY_CHECK}"
     )
+    # PostgreSQL first validates the additive check above, then promotes the
+    # column to the physical NOT NULL invariant.  Keeping these phases
+    # separate lets the deployment fail closed on existing NULLs while
+    # allowing PostgreSQL to prove the SET NOT NULL from the validated check
+    # without an unsafe, unbounded type/constraint rewrite.
+    op.execute("ALTER TABLE active_sessions ALTER COLUMN signing_key SET NOT NULL")
 
 
 def upgrade() -> None:
@@ -1275,12 +1280,13 @@ def upgrade() -> None:
         "spotify_integrations",
         sa.Column("user_id", sa.Integer(), nullable=False),
         sa.Column("spotify_user_id", sa.String(), nullable=True),
-        sa.Column(
-            "access_token", app.utils.encryption.EncryptedString(), nullable=True
-        ),
-        sa.Column(
-            "refresh_token", app.utils.encryption.EncryptedString(), nullable=True
-        ),
+        # Keep migrations independent from application settings.  EncryptedString
+        # is a runtime TypeDecorator that imports Settings() at module load time;
+        # using its native Text implementation here preserves the PostgreSQL
+        # column type while allowing offline commands (history/upgrade --sql) to
+        # run without production secrets.
+        sa.Column("access_token", sa.Text(), nullable=True),
+        sa.Column("refresh_token", sa.Text(), nullable=True),
         sa.Column("token_expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("scope", sa.String(), nullable=True),
         sa.Column("display_name", sa.String(), nullable=True),
@@ -2133,6 +2139,7 @@ def downgrade() -> None:
             f"ALTER TABLE active_sessions DROP CONSTRAINT IF EXISTS "
             f"{_ACTIVE_SESSION_SIGNING_KEY_CHECK}"
         )
+        op.execute("ALTER TABLE active_sessions ALTER COLUMN signing_key DROP NOT NULL")
 
     existing_active_sessions_constraints = {
         c["name"] for c in inspector.get_unique_constraints("active_sessions")

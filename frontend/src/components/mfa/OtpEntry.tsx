@@ -40,17 +40,20 @@ export const OtpEntry = ({
   const code = digits.join("")
 
   const focusInput = useCallback((index: number) => {
-    const input = inputRefs.current[index]
-    if (input) input.focus()
+    // All callers pass a bounded digit index and run after the corresponding
+    // input refs have been committed.  Keeping this invariant explicit avoids
+    // a silent no-op that could strand keyboard focus on a detached field.
+    inputRefs.current[index]!.focus()
   }, [])
 
   const submitCode = useCallback(async () => {
     if (loading || code.length !== OTP_LENGTH) {
       setLocalError(t("mfa.otp.validation.required"))
       return
+    } else {
+      setLocalError(null)
+      await onSubmit(code)
     }
-    setLocalError(null)
-    await onSubmit(code)
   }, [code, loading, onSubmit, t])
 
   const handleChange = (index: number, value: string) => {

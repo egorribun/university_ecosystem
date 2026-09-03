@@ -45,6 +45,7 @@ COMPONENTS = (
     "scripts",
 )
 METRICS = ("lines", "statements", "branches", "functions")
+METRIC_STATUSES = frozenset({"native", "derived", "unsupported"})
 COVERAGE_COMPONENTS = (
     "python",
     "frontend",
@@ -101,6 +102,7 @@ COVERAGE_SCOPE_ROOTS = {
     "go-file-processor": ("services/file-processor",),
     "go-shared": (
         "services/cmd/uni-cli",
+        "services/pkg/logging",
         "services/pkg/spiffe",
         "services/pkg/spicedb",
     ),
@@ -118,6 +120,7 @@ SOURCE_ROOTS = {
     "go-file-processor": ("services/file-processor",),
     "go-shared": (
         "services/cmd/uni-cli",
+        "services/pkg/logging",
         "services/pkg/spiffe",
         "services/pkg/spicedb",
     ),
@@ -263,6 +266,7 @@ class _PreparedInvocation:
     output_path: Path
     report_inputs: tuple[_ReportInput, ...]
     floors: dict[str, dict[str, int]]
+    metric_statuses: dict[str, dict[str, frozenset[str]]]
     expected_reports: frozenset[tuple[str, str, str]]
     manifest_path: str
     provenance: dict[str, str]
@@ -283,6 +287,7 @@ class _PreparedInvocation:
 @dataclass(frozen=True)
 class _ContractConfiguration:
     floors: dict[str, dict[str, int]]
+    metric_statuses: dict[str, dict[str, frozenset[str]]]
     source_roots: dict[str, tuple[str, ...]]
     coverage_scope: dict[str, tuple[str, ...]]
     expected_reports: frozenset[tuple[str, str, str]]
@@ -3229,6 +3234,34 @@ def _load_contract(path: Path, generated_at: datetime) -> _ContractConfiguration
                 )
             component_floors[metric] = value
         floors[component] = component_floors
+    raw_metric_statuses = contract["metric_statuses"]
+    if not isinstance(raw_metric_statuses, dict):
+        raise _InputError("malformed contract: metric_statuses must be an object")
+    metric_statuses: dict[str, dict[str, frozenset[str]]] = {}
+    for component in COMPONENTS:
+        component_statuses = raw_metric_statuses.get(component)
+        if not isinstance(component_statuses, dict):
+            raise _InputError(
+                f"malformed contract: metric_statuses.{component} must be an object"
+            )
+        metric_statuses[component] = {}
+        for metric in METRICS:
+            statuses = component_statuses.get(metric)
+            if (
+                not isinstance(statuses, list)
+                or not statuses
+                or not all(
+                    isinstance(status, str) and status in METRIC_STATUSES
+                    for status in statuses
+                )
+            ):
+                raise _InputError(
+                    f"malformed contract: metric_statuses.{component}.{metric} "
+                    "must be a non-empty status array"
+                )
+            metric_statuses[component][metric] = frozenset(
+                cast(str, status) for status in statuses
+            )
     raw_source_roots = contract["source_roots"]
     if not isinstance(raw_source_roots, dict):
         raise _InputError("malformed contract: source_roots must be an object")
@@ -3260,6 +3293,7 @@ def _load_contract(path: Path, generated_at: datetime) -> _ContractConfiguration
         raise _InputError("malformed contract: manifest_path must be a string")
     return _ContractConfiguration(
         floors=floors,
+        metric_statuses=metric_statuses,
         source_roots=source_roots,
         coverage_scope=coverage_scope,
         expected_reports=expected_reports,
@@ -3455,10 +3489,16 @@ def _missing_metrics() -> dict[str, dict[str, object]]:
     return {metric: _unmeasured_metric("missing") for metric in METRICS}
 
 
-def _metric_satisfies_floor(metric: dict[str, object], floor: int) -> bool:
+def _metric_satisfies_floor(
+    metric: dict[str, object],
+    floor: int,
+    allowed_statuses: frozenset[str] | None = None,
+) -> bool:
     status = metric["status"]
+    if allowed_statuses is not None and status not in allowed_statuses:
+        return False
     if status == "unsupported":
-        return floor == 0
+        return floor == 0 and bool(str(metric.get("reason_code", "")).strip())
     if status in {"missing", "experimental"}:
         return False
     covered = metric["covered"]
@@ -3487,10 +3527,19 @@ def _metric_failure(
     metric_name: str,
     metric: dict[str, object],
     floor: int,
+    allowed_statuses: frozenset[str] | None = None,
 ) -> str | None:
-    if _metric_satisfies_floor(metric, floor):
+    if _metric_satisfies_floor(metric, floor, allowed_statuses):
         return None
     status = metric["status"]
+    if allowed_statuses is not None and status not in allowed_statuses:
+        allowed = ", ".join(sorted(allowed_statuses)) or "none"
+        return (
+            f"{component}.{metric_name} status {status!r} is not allowed by "
+            f"the metric contract (allowed: {allowed})"
+        )
+    if status == "unsupported" and not str(metric.get("reason_code", "")).strip():
+        return f"{component}.{metric_name} unsupported metric is missing its N/A reason_code"
     if status == "derived":
         return f"{component}.{metric_name} trusted derivation is below 100%"
     if status != "native":
@@ -3502,6 +3551,7 @@ def _component_entry(
     component: str,
     reports: list[_ParsedReport],
     floors: dict[str, int],
+    metric_statuses: dict[str, frozenset[str]],
     supplied_count: int,
     required_count: int,
     evidence_errors: list[str],
@@ -3540,6 +3590,7 @@ def _component_entry(
                     metric_name,
                     metrics[metric_name],
                     floors[metric_name],
+                    metric_statuses[metric_name],
                 )
             )
             is not None
@@ -3781,6 +3832,7 @@ def _expected_tier0_sources(
 def _aggregate_tier0(
     reports_by_component: defaultdict[str, list[_ParsedReport]],
     floors: dict[str, dict[str, int]],
+    metric_statuses: dict[str, dict[str, frozenset[str]]],
     source_inventory: Mapping[str, Collection[str]] | None = None,
 ) -> dict[str, object]:
     rules, rules_error = _load_tier0_rules()
@@ -3823,11 +3875,26 @@ def _aggregate_tier0(
         for metric_name in METRICS:
             metric = metrics[metric_name]
             status = metric["status"]
+            allowed_statuses = metric_statuses[component][metric_name]
+            if status not in allowed_statuses:
+                errors.append(
+                    f"{path} ({component}).{metric_name} status {status!r} is "
+                    "not allowed by the metric contract"
+                )
+                continue
             if status in {"native", "derived"}:
                 measured_by_metric[metric_name].append(metric)
-                if not _metric_satisfies_floor(metric, 100):
+                if not _metric_satisfies_floor(
+                    metric,
+                    100,
+                    allowed_statuses,
+                ):
                     errors.append(f"{path} ({component}).{metric_name} is below 100%")
-            elif status == "unsupported" and floors[component][metric_name] == 0:
+            elif status == "unsupported" and _metric_satisfies_floor(
+                metric,
+                floors[component][metric_name],
+                allowed_statuses,
+            ):
                 not_applicable[metric_name] += 1
             elif status == "unsupported":
                 errors.append(
@@ -4040,6 +4107,7 @@ def _prepare_invocation(arguments: argparse.Namespace) -> _PreparedInvocation:
         output_path=output_path,
         report_inputs=tuple(report_inputs),
         floors=configuration.floors,
+        metric_statuses=configuration.metric_statuses,
         expected_reports=configuration.expected_reports,
         manifest_path=configuration.manifest_path,
         provenance=_build_provenance(arguments),
@@ -4237,6 +4305,7 @@ def _build_manifest(
             component,
             reports_by_component[component],
             floors[component],
+            invocation.metric_statuses[component],
             report_input_counts[component],
             required_count,
             evidence_errors_by_component[component],
@@ -4280,6 +4349,7 @@ def _build_manifest(
     tier0 = _aggregate_tier0(
         reports_by_component,
         floors,
+        invocation.metric_statuses,
         invocation.coverage_inventory,
     )
     tier0_errors = tier0["errors"]

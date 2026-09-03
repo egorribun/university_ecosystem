@@ -10,6 +10,7 @@ RUN apk add --no-cache git ca-certificates
 # Copy required dependencies for the replace directive
 COPY go.mod go.sum ./
 COPY gen/go ./gen/go
+COPY services/pkg/logging ./services/pkg/logging
 COPY services/pkg/spiffe ./services/pkg/spiffe
 COPY services/file-processor/go.mod services/file-processor/go.sum* ./services/file-processor/
 

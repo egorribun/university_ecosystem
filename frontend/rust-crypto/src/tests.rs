@@ -1,4 +1,4 @@
-use super::{fill_scrypt_output, hmac_sha256_sign, scrypt_derive, ScryptParams};
+use super::{fill_scrypt_output, hmac_sha256_sign, pbkdf2_derive, scrypt_derive, ScryptParams};
 
 // Generate private-helper fixtures from the OS CSPRNG rather than embedding
 // crypto-looking string or byte literals in the production source tree. The
@@ -24,6 +24,14 @@ fn hmac_sha256_sign_is_deterministic_and_hex_encoded() {
     assert_eq!(first, second);
     assert_eq!(first.len(), 64);
     assert!(first.chars().all(|character| character.is_ascii_hexdigit()));
+}
+
+#[test]
+fn pbkdf2_rejects_zero_and_oversized_parameters() {
+    assert!(pbkdf2_derive("password", "salt", 0, 32).is_err());
+    assert!(pbkdf2_derive("password", "salt", 1_000_001, 32).is_err());
+    assert!(pbkdf2_derive("password", "salt", 1, 0).is_err());
+    assert!(pbkdf2_derive("password", "salt", 1, 1_025).is_err());
 }
 
 #[test]

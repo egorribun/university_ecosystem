@@ -120,10 +120,22 @@ def _valid_manifest_fixture(
     components: dict[str, object] = {}
     for component, config in contract["components"].items():
         floors = config["coverage"]
-        metrics = {
-            metric: (_native() if floor == 100 else _unsupported())
-            for metric, floor in floors.items()
-        }
+        status_contract = contract["metric_statuses"][component]
+        metrics = {}
+        for metric, floor in floors.items():
+            allowed_statuses = status_contract[metric]
+            if floor == 100:
+                # Use a status declared by the producer contract.  Go line
+                # coverage is a trusted interval-derived metric, while the
+                # other measured fixtures can use the native shape.
+                metrics[metric] = (
+                    _derived()
+                    if "derived" in allowed_statuses
+                    and "native" not in allowed_statuses
+                    else _native()
+                )
+            else:
+                metrics[metric] = _unsupported()
         has_report = any(report["component"] == component for report in reports)
         components[component] = {
             "status": "passed" if has_report else "not_applicable",
@@ -258,6 +270,40 @@ def test_v2_manifest_accepts_go_tier0_na_only_for_zero_floor(
     assert (
         _validate(validator, manifest, contract, manifest_path, git_evidence_root) == []
     )
+
+
+def test_v2_manifest_rejects_na_for_a_metric_not_declared_unsupported(
+    git_evidence_root: Path,
+) -> None:
+    validator = _load_validator()
+    contract, manifest, manifest_path = _valid_manifest_fixture(git_evidence_root)
+    manifest["components"]["frontend"]["metrics"]["branches"] = _unsupported(
+        "forged_na"
+    )
+
+    errors = _validate(validator, manifest, contract, manifest_path, git_evidence_root)
+
+    assert any(
+        "components.frontend.branches" in error
+        and "not allowed by the metric contract" in error
+        for error in errors
+    )
+
+
+def test_v2_manifest_rejects_unsupported_metric_without_reason_code(
+    git_evidence_root: Path,
+) -> None:
+    validator = _load_validator()
+    contract, manifest, manifest_path = _valid_manifest_fixture(git_evidence_root)
+    metric = manifest["tier0"]["files"][0]["metrics"]["branches"]
+    assert isinstance(metric, dict)
+    metric.pop("reason_code")
+
+    errors = _validate(validator, manifest, contract, manifest_path, git_evidence_root)
+
+    # The manifest schema rejects an unsupported metric before semantic
+    # validation when its required machine-readable N/A reason is absent.
+    assert any("schema tier0.files.0.metrics.branches" in error for error in errors)
 
 
 def test_v2_manifest_rejects_coverage_scope_drift(

@@ -651,7 +651,10 @@ def test_go_mutation_diagnostic_never_converts_tool_failure_to_success() -> None
     assert 'local isolated_root="$MUTATION_ROOT/$safe_target/repository"' in mutation
     assert 'local workdir="$isolated_root/$SERVICE_DIRECTORY"' in mutation
     assert 'cp -a "$GITHUB_WORKSPACE/$SERVICE_DIRECTORY/." "$workdir/"' in mutation
-    assert "for dependency in services/pkg/spiffe gen/go; do" in mutation
+    assert (
+        "for dependency in services/pkg/logging services/pkg/spiffe gen/go; do"
+        in mutation
+    )
     assert 'local dependency_source="$GITHUB_WORKSPACE/$dependency"' in mutation
     assert 'local dependency_destination="$isolated_root/$dependency"' in mutation
     assert (

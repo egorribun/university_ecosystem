@@ -10,6 +10,14 @@
  */
 
 // Store exports
+export {
+  useAuthStore,
+  useAuthUser,
+  useAuthLoading,
+  useAuthPendingMfa,
+  useAuthOperation,
+  useAuthActions,
+} from "./useAuthStore"
 export { useNotificationStore } from "./notificationStore"
 export { useScheduleUIStore } from "./scheduleUIStore"
 export { useAppShellStore } from "./appShellStore"

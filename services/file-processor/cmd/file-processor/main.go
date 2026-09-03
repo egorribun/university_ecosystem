@@ -57,6 +57,7 @@ import (
 	"github.com/university-ecosystem/file-processor/internal/middleware"
 	"github.com/university-ecosystem/file-processor/internal/service"
 	"github.com/university-ecosystem/file-processor/internal/workflow"
+	"github.com/university-ecosystem/services/pkg/logging"
 	"github.com/university-ecosystem/services/pkg/spiffe"
 )
 
@@ -144,6 +145,9 @@ func main() {
 
 func runMain(ctx context.Context) error {
 	logger := initLogger()
+	// Keep fallback slog.Default call sites (for example gRPC setup) behind the
+	// same recursive redaction boundary as the explicitly injected logger.
+	slog.SetDefault(logger)
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -284,16 +288,7 @@ func initSpiffeClient(ctx context.Context, cfg *config.Config, logger *slog.Logg
 }
 
 func initLogger() *slog.Logger {
-	handler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.TimeKey {
-				a.Value = slog.StringValue(a.Value.Time().UTC().Format(time.RFC3339Nano))
-			}
-			return a
-		},
-	})
-	return slog.New(handler)
+	return logging.NewJSONLogger(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})
 }
 
 func initSentry(ctx context.Context, cfg *config.Config, logger *slog.Logger) {

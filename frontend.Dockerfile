@@ -153,6 +153,7 @@ COPY --chown=node:node frontend/scripts/lhci-preview-mode.mjs ./scripts/lhci-pre
 COPY --chown=node:node frontend/scripts/server-response-stream.mjs ./scripts/server-response-stream.mjs
 COPY --chown=node:node frontend/scripts/server-readiness.mjs ./scripts/server-readiness.mjs
 COPY --chown=node:node frontend/scripts/server-request-log.mjs ./scripts/server-request-log.mjs
+COPY --chown=node:node frontend/scripts/server-static.mjs ./scripts/server-static.mjs
 
 # Build artifacts:
 #   dist/client/_shell.html + dist/client/index.html (mirror) + dist/client/assets/

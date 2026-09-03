@@ -3,24 +3,9 @@ use pbkdf2::pbkdf2_hmac;
 use scrypt::{scrypt, Params as ScryptParams};
 use sha2::Sha256;
 use wasm_bindgen::prelude::*;
+use zeroize::Zeroizing;
 
 type HmacSha256 = Hmac<Sha256>;
-
-#[wasm_bindgen]
-pub fn pbkdf2_derive(password: &str, salt: &str, iterations: u32, key_size: usize) -> String {
-    let mut res = vec![0u8; key_size];
-    pbkdf2_hmac::<Sha256>(password.as_bytes(), salt.as_bytes(), iterations, &mut res);
-    hex::encode(res)
-}
-
-#[wasm_bindgen]
-pub fn hmac_sha256_sign(key: &str, message: &str) -> String {
-    let mut mac = HmacSha256::new_from_slice(key.as_bytes())
-        .expect("HMAC-SHA256 accepts arbitrary-length keys");
-    mac.update(message.as_bytes());
-    let result = mac.finalize();
-    hex::encode(result.into_bytes())
-}
 
 #[cfg(target_arch = "wasm32")]
 type ErrorType = JsValue;
@@ -36,6 +21,62 @@ fn make_err(msg: &str) -> JsValue {
 #[cfg(not(target_arch = "wasm32"))]
 fn make_err(msg: &str) -> String {
     msg.to_string()
+}
+
+const MIN_PBKDF2_ITERATIONS: u32 = 1;
+const MAX_PBKDF2_ITERATIONS: u32 = 1_000_000;
+const MIN_PBKDF2_KEY_SIZE: usize = 1;
+const MAX_PBKDF2_KEY_SIZE: usize = 1_024;
+
+#[wasm_bindgen]
+pub fn pbkdf2_derive(
+    password: &str,
+    salt: &str,
+    iterations: u32,
+    key_size: usize,
+) -> Result<String, ErrorType> {
+    if !(MIN_PBKDF2_ITERATIONS..=MAX_PBKDF2_ITERATIONS).contains(&iterations) {
+        return Err(make_err(
+            "PBKDF2 iterations must be between 1 and 1,000,000",
+        ));
+    }
+    if !(MIN_PBKDF2_KEY_SIZE..=MAX_PBKDF2_KEY_SIZE).contains(&key_size) {
+        return Err(make_err(
+            "PBKDF2 key size must be between 1 and 1,024 bytes",
+        ));
+    }
+
+    // Copy caller-provided secrets into zeroizing buffers so temporary Rust
+    // allocations are cleared as soon as this operation returns.
+    let password_bytes = Zeroizing::new(password.as_bytes().to_vec());
+    let salt_bytes = Zeroizing::new(salt.as_bytes().to_vec());
+    let mut result = Zeroizing::new(vec![0_u8; key_size]);
+    pbkdf2_hmac::<Sha256>(
+        password_bytes.as_slice(),
+        salt_bytes.as_slice(),
+        iterations,
+        result.as_mut_slice(),
+    );
+
+    Ok(hex::encode(result.as_slice()))
+}
+
+#[wasm_bindgen]
+pub fn hmac_sha256_sign(key: &str, message: &str) -> String {
+    let key_bytes = Zeroizing::new(key.as_bytes().to_vec());
+    let message_bytes = Zeroizing::new(message.as_bytes().to_vec());
+    let mut mac = HmacSha256::new_from_slice(key_bytes.as_slice())
+        .expect("HMAC-SHA256 accepts arbitrary-length keys");
+    mac.update(message_bytes.as_slice());
+    let mut digest = mac.finalize().into_bytes();
+    // Keep the heap-owned digest under a zeroizing guard for its entire
+    // lifetime.  The short GenericArray returned by ``finalize`` is copied
+    // immediately and never retained beyond this scope.
+    let result = Zeroizing::new(digest.to_vec());
+    for byte in &mut digest {
+        *byte = 0;
+    }
+    hex::encode(result.as_slice())
 }
 
 fn fill_scrypt_output(
@@ -62,8 +103,16 @@ pub fn scrypt_derive(
         .ok_or_else(|| make_err("Invalid scrypt params: N must be a non-zero power of two"))?;
     let params = ScryptParams::new(log_n as u8, r, p, dk_len)
         .map_err(|e| make_err(&format!("Invalid scrypt params: {:?}", e)))?;
-    let mut res = vec![0u8; dk_len];
-    fill_scrypt_output(password, salt, &params, &mut res).map(|_| res)
+    let password_bytes = Zeroizing::new(password.to_vec());
+    let salt_bytes = Zeroizing::new(salt.to_vec());
+    let mut result = Zeroizing::new(vec![0_u8; dk_len]);
+    fill_scrypt_output(
+        password_bytes.as_slice(),
+        salt_bytes.as_slice(),
+        &params,
+        result.as_mut_slice(),
+    )?;
+    Ok(result.to_vec())
 }
 
 // Keep private-helper coverage in a dedicated test-only module. Its fixtures

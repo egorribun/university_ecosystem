@@ -210,10 +210,19 @@ frontend:
   resources:
     requests:
       cpu: 50m
-      memory: 64Mi
+      memory: 128Mi
     limits:
       cpu: 200m
-      memory: 256Mi
+      # Node SSR can briefly retain rendered route data and Vite assets during
+      # concurrent navigations. Keep the chart limit aligned with the
+      # standalone manifest (512Mi) so HPA memory utilization is meaningful.
+      memory: 512Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
 
 # Gateway Service (Go)
 gateway:
@@ -234,6 +243,12 @@ gateway:
     limits:
       cpu: 500m
       memory: 512Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
   config:
     jwtSecret: "" # MUST be provided as --set gateway.config.jwtSecret=...
     jwtAudience: "university-ecosystem-api"

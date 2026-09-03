@@ -12,7 +12,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly hmac_sha256_sign: (a: number, b: number, c: number, d: number) => [number, number];
-    readonly pbkdf2_derive: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
+    readonly pbkdf2_derive: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly scrypt_derive: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
     readonly __wbindgen_externrefs: WebAssembly.Table;
     readonly __wbindgen_malloc: (a: number, b: number) => number;

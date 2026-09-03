@@ -6,6 +6,11 @@ import pytest
 
 from app.core.config.security import SecuritySettings
 
+_RETIRED_AUDIT_KEYS = (
+    "".join(("f3d9a1c2", "e4b5a6d7", "c8e9f0a1", "b2c3d4e5")),
+    "".join(("86dfd546", "41624c4e", "8ae58a2d", "18449c25")),
+)
+
 
 def test_audit_log_secret_rejects_comma_only_value():
     with pytest.raises(ValueError, match="AUDIT_LOG_SECRET must not be empty"):
@@ -57,6 +62,41 @@ def test_internal_hmac_secret_is_required_in_production(monkeypatch):
         SecuritySettings(
             audit_log_secret="a" * 32,
             internal_hmac_secret="",
+        )
+
+
+def test_default_audit_secret_is_rejected_in_production(monkeypatch):
+    """A settings instance must not retain the repository-known sentinel."""
+    from app.core.config import Settings
+
+    monkeypatch.setenv("ENVIRONMENT", "testing")
+    configured = Settings(_allow_missing=True)
+    configured.environment = "production"
+    configured.audit_log_secret = "_".join(
+        ("CHANGE", "ME", "GENERATE", "64", "BYTE", "AUDIT", "LOG", "SECRET")
+    )
+
+    with pytest.raises(ValueError, match="AUDIT_LOG_SECRET must be explicitly"):
+        configured._reject_default_audit_secret_in_production()
+
+
+@pytest.mark.parametrize("retired_key", _RETIRED_AUDIT_KEYS)
+def test_retired_repository_audit_keys_are_rejected_in_production(
+    monkeypatch, retired_key
+):
+    """Previously shipped signing keys must remain blocked after rotation."""
+    monkeypatch.setenv("ENVIRONMENT", "production")
+
+    with pytest.raises(ValueError, match="placeholder"):
+        SecuritySettings(
+            audit_log_secret=retired_key,
+            internal_hmac_secret="h" * 32,
+        )
+
+    with pytest.raises(ValueError, match="placeholder"):
+        SecuritySettings(
+            audit_log_secret=retired_key.upper(),
+            internal_hmac_secret="h" * 32,
         )
 
 

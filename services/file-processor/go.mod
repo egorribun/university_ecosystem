@@ -20,6 +20,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/nats v0.44.0
 	github.com/university-ecosystem/core/gen/go v0.0.0-00010101000000-000000000000
 	github.com/university-ecosystem/services/pkg/spiffe v0.0.0
+	github.com/university-ecosystem/services/pkg/logging v0.0.0
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.70.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0
 	go.opentelemetry.io/otel v1.45.0
@@ -136,3 +137,5 @@ require (
 replace github.com/university-ecosystem/core/gen/go => ../../gen/go
 
 replace github.com/university-ecosystem/services/pkg/spiffe => ../pkg/spiffe
+
+replace github.com/university-ecosystem/services/pkg/logging => ../pkg/logging

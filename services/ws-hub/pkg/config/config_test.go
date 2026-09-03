@@ -42,7 +42,7 @@ func TestLoadConfig_DefaultsAndOverrides(t *testing.T) {
 	require.Nil(t, cfg.JWTSecrets)
 	require.Equal(t, "", cfg.SentryDSN)
 	require.Equal(t, "development", cfg.Environment)
-	require.Equal(t, []string{"http://localhost:3000", "http://localhost:5173"}, cfg.AllowedOrigins)
+	require.Equal(t, []string{"http://localhost", "http://localhost:80", "http://localhost:3000", "http://localhost:5173"}, cfg.AllowedOrigins)
 	require.Equal(t, []string{"127.0.0.1", "::1"}, cfg.TrustedProxies)
 	require.Contains(t, cfg.TrustedProxiesSet, "127.0.0.1")
 	require.Contains(t, cfg.TrustedProxiesSet, "::1")

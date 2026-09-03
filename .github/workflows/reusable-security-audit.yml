@@ -493,13 +493,19 @@ jobs:
         # the follow-up gate fails the job after GitHub has received findings.
         # Without the AppSec token, use the documented CE command instead of
         # `semgrep ci`, which requires `semgrep login`. The baseline keeps the
-        # PR gate focused on newly introduced findings; scheduled/full scans
-        # remain responsible for existing repository debt.
+        # PR gate focused on newly introduced findings. A push to the default
+        # branch has no distinct ``origin/main`` diff (the baseline is HEAD),
+        # and Semgrep intentionally emits no SARIF file for that empty scope;
+        # run a complete scan on pushes so the required SARIF evidence remains
+        # real and the branch gate cannot fail on a transport sentinel.
         run: |
           set -u
           scan_status=0
           if [ -n "${SEMGREP_APP_TOKEN:-}" ]; then
             semgrep ci --error --sarif --sarif-output=semgrep.sarif || scan_status=$?
+          elif [ "${GITHUB_EVENT_NAME:-}" = "push" ]; then
+            semgrep scan --config auto \
+              --error --sarif --sarif-output=semgrep.sarif || scan_status=$?
           else
             semgrep scan --config auto --baseline-commit origin/main \
               --error --sarif --sarif-output=semgrep.sarif || scan_status=$?

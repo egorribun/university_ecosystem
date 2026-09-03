@@ -650,6 +650,10 @@ jobs:
             coverage-threshold: 100
             coverage-component: go-shared-fragment
             coverage-canonical-path: artifacts/coverage/go/shared-inputs/uni-cli/coverage.out
+          - service: services/pkg/logging
+            coverage-threshold: 100
+            coverage-component: go-shared-fragment
+            coverage-canonical-path: artifacts/coverage/go/shared-inputs/logging/coverage.out
           - service: services/pkg/spiffe
             coverage-threshold: 100
             coverage-component: go-shared-fragment
@@ -4247,6 +4251,12 @@ jobs:
           name: go-coverage-services-pkg-spiffe
           path: artifacts/coverage/go/shared-inputs/spiffe
 
+      - name: Download Go shared logging coverage artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: go-coverage-services-pkg-logging
+          path: artifacts/coverage/go/shared-inputs/logging
+
       - name: Download Go SpiceDB coverage artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -4316,9 +4326,9 @@ jobs:
           test -s frontend/coverage/lcov.info
           test -s frontend/coverage/coverage-final.json
           test "$(find frontend/coverage -maxdepth 1 -type f | wc -l)" -eq 3
-          test "$(find artifacts/coverage/go/shared-inputs -name 'coverage.out' -type f | wc -l)" -eq 3
-          test "$(find artifacts/coverage/go -name 'coverage.out' -type f | wc -l)" -eq 6
-          test "$(find artifacts/coverage/go -name 'coverage-provenance.json' -type f | wc -l)" -eq 6
+          test "$(find artifacts/coverage/go/shared-inputs -name 'coverage.out' -type f | wc -l)" -eq 4
+          test "$(find artifacts/coverage/go -name 'coverage.out' -type f | wc -l)" -eq 7
+          test "$(find artifacts/coverage/go -name 'coverage-provenance.json' -type f | wc -l)" -eq 7
           test "$(find artifacts/coverage/rust -name 'llvm.json' -type f | wc -l)" -eq 4
           test "$(find artifacts/coverage/rust -name 'branch-llvm.json' -type f | wc -l)" -eq 4
           test "$(find artifacts/coverage/rust -name 'codecov.json' -type f | wc -l)" -eq 4
@@ -4344,6 +4354,7 @@ jobs:
           verify_producer artifacts/coverage/go/ws-hub/coverage-provenance.json test go-coverage-services-ws-hub
           verify_producer artifacts/coverage/go/file-processor/coverage-provenance.json test go-coverage-services-file-processor
           verify_producer artifacts/coverage/go/shared-inputs/uni-cli/coverage-provenance.json test go-coverage-services-cmd-uni-cli
+          verify_producer artifacts/coverage/go/shared-inputs/logging/coverage-provenance.json test go-coverage-services-pkg-logging
           verify_producer artifacts/coverage/go/shared-inputs/spiffe/coverage-provenance.json test go-coverage-services-pkg-spiffe
           verify_producer artifacts/coverage/go/shared-inputs/spicedb/coverage-provenance.json test go-coverage-services-pkg-spicedb
           verify_producer artifacts/coverage/rust/coverage-provenance.json rust-tests rust-coverage
@@ -4422,6 +4433,7 @@ jobs:
           uv run python scripts/quality/merge_go_coverprofiles.py \
             --output artifacts/coverage/go/shared/coverage.out \
             artifacts/coverage/go/shared-inputs/uni-cli/coverage.out \
+            artifacts/coverage/go/shared-inputs/logging/coverage.out \
             artifacts/coverage/go/shared-inputs/spiffe/coverage.out \
             artifacts/coverage/go/shared-inputs/spicedb/coverage.out
           test -s artifacts/coverage/go/shared/coverage.out
@@ -4629,6 +4641,7 @@ jobs:
             artifacts/coverage/go/ws-hub/coverage.out
             artifacts/coverage/go/file-processor/coverage.out
             artifacts/coverage/go/shared/coverage.out
+            artifacts/coverage/go/shared-inputs/logging/coverage.out
             artifacts/coverage/rust/rust-native/llvm.json
             artifacts/coverage/rust/rust-native/branch-llvm.json
             artifacts/coverage/rust/rust-pyo3-sanitizer/llvm.json
@@ -4646,6 +4659,7 @@ jobs:
             artifacts/coverage/go/ws-hub/coverage-provenance.json
             artifacts/coverage/go/file-processor/coverage-provenance.json
             artifacts/coverage/go/shared-inputs/uni-cli/coverage-provenance.json
+            artifacts/coverage/go/shared-inputs/logging/coverage-provenance.json
             artifacts/coverage/go/shared-inputs/spiffe/coverage-provenance.json
             artifacts/coverage/go/shared-inputs/spicedb/coverage-provenance.json
             artifacts/coverage/quality-manifest.json

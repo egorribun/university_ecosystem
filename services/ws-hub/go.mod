@@ -20,6 +20,7 @@ require (
 	github.com/sony/gobreaker v1.0.0
 	github.com/spiffe/go-spiffe/v2 v2.7.0 // indirect
 	github.com/university-ecosystem/services/pkg/spiffe v0.0.0
+	github.com/university-ecosystem/services/pkg/logging v0.0.0
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.70.0
 	go.opentelemetry.io/otel v1.45.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.45.0
@@ -132,3 +133,5 @@ require (
 replace github.com/university-ecosystem/core/gen/go => ../../gen/go
 
 replace github.com/university-ecosystem/services/pkg/spiffe => ../pkg/spiffe
+
+replace github.com/university-ecosystem/services/pkg/logging => ../pkg/logging

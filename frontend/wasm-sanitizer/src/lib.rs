@@ -44,7 +44,7 @@ pub fn sanitize_rich_text(html: &str) -> String {
     url_schemes.insert("http");
     url_schemes.insert("https");
 
-    Builder::new()
+    let sanitized = Builder::new()
         .tags(tags)
         .tag_attributes(attributes)
         .url_schemes(url_schemes)
@@ -53,7 +53,8 @@ pub fn sanitize_rich_text(html: &str) -> String {
         // We do not want to allow relative URLs for this strict sanitizer
         // Or if we do, ammonia's default handles it. Let's strictly disallow data:/javascript:
         .clean(html)
-        .to_string()
+        .to_string();
+    strip_unsafe_markers(sanitized)
 }
 
 #[wasm_bindgen]
@@ -62,12 +63,19 @@ pub fn sanitize_html_basic(html: &str) -> String {
     for t in ["b", "i", "em", "strong"] {
         tags.insert(t);
     }
-    Builder::new().tags(tags).clean(html).to_string()
+    strip_unsafe_markers(Builder::new().tags(tags).clean(html).to_string())
 }
 
 #[wasm_bindgen]
 pub fn strip_html(html: &str) -> String {
-    Builder::new().tags(HashSet::new()).clean(html).to_string()
+    strip_unsafe_markers(Builder::new().tags(HashSet::new()).clean(html).to_string())
+}
+
+/// Keep the browser WASM sanitizer byte-for-byte compatible with the backend
+/// sanitizer. html5ever (used by ammonia) preserves NUL and BOM markers in
+/// text nodes, so strip them after every sanitization mode.
+fn strip_unsafe_markers(value: String) -> String {
+    value.replace(['\0', '\u{feff}'], "")
 }
 
 #[wasm_bindgen]
@@ -77,19 +85,41 @@ pub fn sanitize_rich_text_raw(ptr: *const u8, len: usize) -> Result<String, Stri
         return Err(String::from("Null pointer"));
     }
 
-    #[cfg(target_arch = "wasm32")]
+    // A raw pointer received by a native caller has no provenance or length
+    // metadata that Rust can validate safely.  Refuse native execution rather
+    // than creating an unchecked slice and risking undefined memory reads.
+    #[cfg(not(target_arch = "wasm32"))]
     {
-        let mem_size = core::arch::wasm32::memory_size::<0>() * 65536;
-        let start = ptr as usize;
-        if start > mem_size || len > mem_size || start.saturating_add(len) > mem_size {
-            return Err(String::from("Out of bounds pointer/length"));
-        }
+        let _ = (ptr, len);
+        return Err(String::from(
+            "Raw pointer sanitization is supported only on wasm32",
+        ));
     }
 
-    let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
-    let s = std::str::from_utf8(slice).map_err(|e| format!("Invalid UTF-8: {}", e))?;
+    #[cfg(target_arch = "wasm32")]
+    {
+        const WASM_PAGE_SIZE: usize = 65_536;
+        let mem_size = core::arch::wasm32::memory_size::<0>()
+            .checked_mul(WASM_PAGE_SIZE)
+            .ok_or_else(|| String::from("WASM memory size overflow"))?;
+        let start = ptr as usize;
+        let end = start
+            .checked_add(len)
+            .ok_or_else(|| String::from("Pointer/length overflow"))?;
+        if start > mem_size || end > mem_size {
+            return Err(String::from("Out of bounds pointer/length"));
+        }
 
-    Ok(sanitize_rich_text(s))
+        // The arithmetic checks above establish that the range lies inside
+        // the active linear memory before this one unavoidable FFI read.
+        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+        let s = std::str::from_utf8(slice).map_err(|e| format!("Invalid UTF-8: {}", e))?;
+
+        return Ok(sanitize_rich_text(s));
+    }
+
+    #[allow(unreachable_code)]
+    Err(String::from("Raw pointer sanitization is unavailable"))
 }
 
 // Native unit tests (testing session 9). #[wasm_bindgen] leaves the functions
@@ -250,7 +280,21 @@ mod tests {
 
         let valid_utf8 = b"<p>hello</p>";
         let res = sanitize_rich_text_raw(valid_utf8.as_ptr(), valid_utf8.len());
-        assert_eq!(res.unwrap(), "<p>hello</p>");
+        assert!(res.is_err(), "native raw-pointer calls must fail closed");
+    }
+
+    #[test]
+    fn sanitizers_strip_null_bytes_and_bom() {
+        let input = "\u{feff}<p>safe\0 text</p>";
+        for output in [
+            sanitize_rich_text(input),
+            sanitize_html_basic(input),
+            strip_html(input),
+        ] {
+            assert!(!output.contains('\0'));
+            assert!(!output.contains('\u{feff}'));
+            assert!(output.contains("safe"));
+        }
     }
 
     proptest! {

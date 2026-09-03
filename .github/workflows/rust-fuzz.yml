@@ -63,9 +63,10 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             native/rust_ext/target/
+            crates/pyo3-sanitizer/fuzz/target/
             frontend/wasm-sanitizer/fuzz/target/
             frontend/rust-crypto/fuzz/target/
-          key: ${{ runner.os }}-cargo-fuzz-${{ hashFiles('native/rust_ext/Cargo.toml', 'native/rust_ext/Cargo.lock', 'frontend/wasm-sanitizer/fuzz/Cargo.toml', 'frontend/wasm-sanitizer/fuzz/Cargo.lock', 'frontend/rust-crypto/fuzz/Cargo.toml', 'frontend/rust-crypto/fuzz/Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-fuzz-${{ hashFiles('native/rust_ext/Cargo.toml', 'native/rust_ext/Cargo.lock', 'crates/pyo3-sanitizer/Cargo.toml', 'crates/pyo3-sanitizer/fuzz/Cargo.toml', 'crates/pyo3-sanitizer/fuzz/Cargo.lock', 'frontend/wasm-sanitizer/Cargo.toml', 'frontend/wasm-sanitizer/fuzz/Cargo.toml', 'frontend/wasm-sanitizer/fuzz/Cargo.lock', 'frontend/rust-crypto/Cargo.toml', 'frontend/rust-crypto/fuzz/Cargo.toml', 'frontend/rust-crypto/fuzz/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-cargo-fuzz-
 
@@ -117,6 +118,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - directory: crates/pyo3-sanitizer/fuzz
+            name: pyo3-sanitizer-fuzz
+            parent_manifest: crates/pyo3-sanitizer/Cargo.toml
+            targets: "fuzz_sanitize_rich_text fuzz_sanitize_html_basic fuzz_strip_html"
           - directory: frontend/wasm-sanitizer/fuzz
             name: frontend-wasm-sanitizer-fuzz
             parent_manifest: frontend/wasm-sanitizer/Cargo.toml
