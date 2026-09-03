@@ -86,6 +86,32 @@ fn fill_scrypt_output(
     scrypt(password, salt, params, output).map_err(|e| make_err(&format!("Scrypt failed: {:?}", e)))
 }
 
+type ScryptOutputFn = fn(
+    password: &[u8],
+    salt: &[u8],
+    params: &ScryptParams,
+    output: &mut [u8],
+) -> Result<(), ErrorType>;
+
+// Keep the output-buffer operation injectable at this private boundary. The
+// public API always supplies `fill_scrypt_output`; the narrow function-pointer
+// seam lets native tests exercise the error propagation branch that the
+// scrypt crate cannot produce when its output length is validated by Params.
+fn derive_scrypt_output(
+    password: &[u8],
+    salt: &[u8],
+    params: &ScryptParams,
+    dk_len: usize,
+    fill: ScryptOutputFn,
+) -> Result<Vec<u8>, ErrorType> {
+    let mut result = Zeroizing::new(vec![0_u8; dk_len]);
+    match fill(password, salt, params, result.as_mut_slice()) {
+        Ok(()) => {}
+        Err(error) => return Err(error),
+    }
+    Ok(result.to_vec())
+}
+
 #[wasm_bindgen]
 pub fn scrypt_derive(
     password: &[u8],
@@ -103,14 +129,13 @@ pub fn scrypt_derive(
         .map_err(|e| make_err(&format!("Invalid scrypt params: {:?}", e)))?;
     let password_bytes = Zeroizing::new(password.to_vec());
     let salt_bytes = Zeroizing::new(salt.to_vec());
-    let mut result = Zeroizing::new(vec![0_u8; dk_len]);
-    fill_scrypt_output(
+    derive_scrypt_output(
         password_bytes.as_slice(),
         salt_bytes.as_slice(),
         &params,
-        result.as_mut_slice(),
-    )?;
-    Ok(result.to_vec())
+        dk_len,
+        fill_scrypt_output,
+    )
 }
 
 // Keep private-helper coverage in a dedicated test-only module. Its fixtures

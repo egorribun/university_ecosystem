@@ -1263,6 +1263,40 @@ def test_go_shared_normalizes_every_module_prefix(
     assert normalizer._canonical_source_identity("go-shared", raw_path) == expected
 
 
+def test_go_shared_coverprofile_preserves_all_module_sources() -> None:
+    """A merged profile must retain every shared module for Tier0 matching."""
+    normalizer = _normalizer_module()
+    records = (
+        "github.com/university-ecosystem/uni-cli/main.go:1.1,1.10 1 1",
+        "github.com/university-ecosystem/services/pkg/logging/logging.go:1.1,1.10 1 1",
+        "github.com/university-ecosystem/services/pkg/spiffe/spiffe.go:1.1,1.10 1 1",
+        "github.com/university-ecosystem/services/pkg/spicedb/client.go:1.1,1.10 1 1",
+    )
+    report = ("mode: atomic\n" + "\n".join(records) + "\n").encode()
+
+    metrics = normalizer._parse_go_coverprofile(report, "go-shared")
+    file_metrics = normalizer._parse_tier0_go_files(report, "go-shared")
+
+    assert metrics["statements"] == {
+        "covered": 4,
+        "percent": 100.0,
+        "status": "native",
+        "total": 4,
+    }
+    assert set(file_metrics) == {
+        "services/cmd/uni-cli/main.go",
+        "services/pkg/logging/logging.go",
+        "services/pkg/spiffe/spiffe.go",
+        "services/pkg/spicedb/client.go",
+    }
+    assert file_metrics["services/pkg/spicedb/client.go"]["statements"] == {
+        "covered": 1,
+        "percent": 100.0,
+        "status": "native",
+        "total": 1,
+    }
+
+
 def test_python_source_identity_maps_coverage_source_app_aliases() -> None:
     normalizer = _normalizer_module()
     normalizer._configure_repository_root(str(REPOSITORY_ROOT))

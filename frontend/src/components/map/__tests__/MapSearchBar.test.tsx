@@ -125,6 +125,31 @@ describe("MapSearchBar", () => {
     expect(onSelectionApplied).toHaveBeenCalledOnce()
   })
 
+  it("applies a valid selection when the completion callback is omitted", () => {
+    const onSelectBuilding = vi.fn()
+    const onSelectRoom = vi.fn()
+
+    expect(
+      applySearchSelection(
+        { type: "building", buildingLetter: "ГУК", label: "Main" },
+        onSelectBuilding,
+        onSelectRoom
+      )
+    ).toBe(true)
+    expect(onSelectBuilding).toHaveBeenCalledWith("ГУК")
+    expect(onSelectRoom).not.toHaveBeenCalled()
+  })
+
+  it("rejects stale result variants without invoking selection callbacks", () => {
+    const onSelectBuilding = vi.fn()
+    const onSelectRoom = vi.fn()
+    const staleResult = { type: "stale" } as unknown as Parameters<typeof applySearchSelection>[0]
+
+    expect(applySearchSelection(staleResult, onSelectBuilding, onSelectRoom)).toBe(false)
+    expect(onSelectBuilding).not.toHaveBeenCalled()
+    expect(onSelectRoom).not.toHaveBeenCalled()
+  })
+
   it("uses the map translation namespace and exposes the combobox contract", () => {
     render(<MapSearchBar {...baseProps} />)
 

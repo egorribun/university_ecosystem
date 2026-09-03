@@ -188,6 +188,69 @@ GO_COMPONENTS = frozenset({"go-gateway", "go-ws-hub", "go-file-processor", "go-s
 RUST_COMPONENTS = frozenset(
     {"rust-native", "rust-pyo3-sanitizer", "rust-wasm-sanitizer", "rust-crypto"}
 )
+# ``go test -coverprofile`` records import paths rather than repository paths.
+# Keep the accepted module-prefix map explicit and component-scoped so a report
+# cannot introduce an arbitrary path alias.  The shared component contains four
+# independent Go modules; all four must normalize before the profiles are merged
+# or a later Tier0 source (notably SpiceDB) is lost behind the first parse error.
+GO_MODULE_SOURCE_PREFIXES: dict[
+    str, tuple[tuple[tuple[str, ...], tuple[str, ...]], ...]
+] = {
+    "go-gateway": (
+        (
+            ("github.com", "university-ecosystem", "gateway"),
+            ("services", "gateway"),
+        ),
+    ),
+    "go-ws-hub": (
+        (
+            ("github.com", "university-ecosystem", "ws-hub"),
+            ("services", "ws-hub"),
+        ),
+    ),
+    "go-file-processor": (
+        (
+            ("github.com", "university-ecosystem", "file-processor"),
+            ("services", "file-processor"),
+        ),
+    ),
+    "go-shared": (
+        (
+            ("github.com", "university-ecosystem", "uni-cli"),
+            ("services", "cmd", "uni-cli"),
+        ),
+        (
+            (
+                "github.com",
+                "university-ecosystem",
+                "services",
+                "pkg",
+                "logging",
+            ),
+            ("services", "pkg", "logging"),
+        ),
+        (
+            (
+                "github.com",
+                "university-ecosystem",
+                "services",
+                "pkg",
+                "spiffe",
+            ),
+            ("services", "pkg", "spiffe"),
+        ),
+        (
+            (
+                "github.com",
+                "university-ecosystem",
+                "services",
+                "pkg",
+                "spicedb",
+            ),
+            ("services", "pkg", "spicedb"),
+        ),
+    ),
+}
 SHA_PATTERN = re.compile(r"^[0-9a-f]{40}$")
 TIMESTAMP_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 ASCII_DECIMAL_PATTERN = re.compile(r"^[0-9]+$")
@@ -524,6 +587,27 @@ def _source_path_is_component_root(
     )
 
 
+def _normalize_go_module_source(
+    component: str,
+    source_parts: tuple[str, ...],
+) -> tuple[str, ...]:
+    """Translate an approved Go module import path to a repository path.
+
+    Go coverprofiles identify files with the module path from ``go.mod``.  The
+    quality contract, however, inventories the checked-in repository layout.
+    Only exact, component-scoped module prefixes are translated; an unknown
+    import path is left untouched and is rejected by the configured-root check
+    below.  Keeping the prefix boundary segment-aware prevents aliases such as
+    ``.../logging-evil`` from being accepted accidentally.
+    """
+    for module_prefix, repository_prefix in GO_MODULE_SOURCE_PREFIXES.get(
+        component, ()
+    ):
+        if source_parts[: len(module_prefix)] == module_prefix:
+            return (*repository_prefix, *source_parts[len(module_prefix) :])
+    return source_parts
+
+
 def _canonical_source_identity(component: str, raw_path: str) -> str:
     """Validate and normalize one report-embedded source path for a component."""
     if not raw_path:
@@ -605,50 +689,8 @@ def _canonical_source_identity(component: str, raw_path: str) -> str:
                 app_alias = REPOSITORY_ROOT.joinpath("app", *source_parts)
                 if app_alias.is_file() and not _is_link_or_junction(app_alias):
                     source_parts = ("app", *source_parts)
-    elif component == "go-gateway":
-        if len(source_parts) >= 3 and source_parts[:3] == (
-            "github.com",
-            "university-ecosystem",
-            "gateway",
-        ):
-            source_parts = ("services", "gateway", *source_parts[3:])
-    elif component == "go-ws-hub":
-        if len(source_parts) >= 3 and source_parts[:3] == (
-            "github.com",
-            "university-ecosystem",
-            "ws-hub",
-        ):
-            source_parts = ("services", "ws-hub", *source_parts[3:])
-    elif component == "go-file-processor":
-        if len(source_parts) >= 3 and source_parts[:3] == (
-            "github.com",
-            "university-ecosystem",
-            "file-processor",
-        ):
-            source_parts = ("services", "file-processor", *source_parts[3:])
-    elif component == "go-shared":
-        if len(source_parts) >= 3 and source_parts[:3] == (
-            "github.com",
-            "university-ecosystem",
-            "uni-cli",
-        ):
-            source_parts = ("services", "cmd", "uni-cli", *source_parts[3:])
-        elif len(source_parts) >= 5 and source_parts[:5] == (
-            "github.com",
-            "university-ecosystem",
-            "services",
-            "pkg",
-            "spiffe",
-        ):
-            source_parts = ("services", "pkg", "spiffe", *source_parts[5:])
-        elif len(source_parts) >= 5 and source_parts[:5] == (
-            "github.com",
-            "university-ecosystem",
-            "services",
-            "pkg",
-            "spicedb",
-        ):
-            source_parts = ("services", "pkg", "spicedb", *source_parts[5:])
+    elif component in GO_COMPONENTS:
+        source_parts = _normalize_go_module_source(component, source_parts)
 
     _reject_source_symlink_parts(source_parts)
     if not _source_path_is_within_component_root(component, source_parts):

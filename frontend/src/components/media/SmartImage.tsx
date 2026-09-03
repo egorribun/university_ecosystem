@@ -46,7 +46,11 @@ export default function SmartImage({
   const computed = useMemo(() => {
     // We use proxy for all images that are not blobs
     if (isBlobUrl) {
-      return sanitizeUrl(srcRaw ?? "") ? resolveMediaUrl(srcRaw) : ""
+      // `isBlobUrl` is derived from a string type guard above, so the value is
+      // guaranteed to be present in this branch. Keeping that invariant
+      // explicit avoids a dead nullish arm that cannot occur at runtime.
+      const blobUrl = srcRaw as string
+      return sanitizeUrl(blobUrl) ? resolveMediaUrl(blobUrl) : ""
     }
 
     if (!sanitizeUrl(srcRaw || "")) return ""
