@@ -47,6 +47,22 @@ def test_redact_pii_walks_nested_mappings_and_lists_without_recursing_cycles():
     assert redacted["self"] == "[REDACTED]"
 
 
+def test_redact_pii_breaks_cycles_in_lists_and_tuples():
+    cyclic_list: list[object] = []
+    cyclic_list.append(cyclic_list)
+
+    tuple_cycle_list: list[object] = []
+    cyclic_tuple = (tuple_cycle_list,)
+    tuple_cycle_list.append(cyclic_tuple)
+
+    event = {"list": cyclic_list, "tuple": cyclic_tuple}
+
+    redacted = logging_mod._redact_pii(None, None, event)
+
+    assert redacted["list"][0] == "[REDACTED]"  # type: ignore[index]
+    assert redacted["tuple"] == (["[REDACTED]"],)
+
+
 def test_redact_pii_masks_sensitive_transport_headers_case_insensitively():
     event = {"Authorization": "Bearer secret-token", "access_token": "raw-token"}
 
