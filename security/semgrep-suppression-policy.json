@@ -4,8 +4,8 @@
     {
       "rule_id": "python.lang.security.insecure-hash-algorithms.insecure-hash-algorithm-sha1",
       "path": "app/auth/security.py",
-      "start_line": 145,
-      "end_line": 147,
+      "start_line": 127,
+      "end_line": 129,
       "owner": "security@university.example",
       "expires": "2026-12-31",
       "reason": "HIBP k-anonymity requires a SHA-1 lookup prefix; the digest is never used for authentication, signatures, or password storage and hashlib is explicitly called with usedforsecurity=False."
