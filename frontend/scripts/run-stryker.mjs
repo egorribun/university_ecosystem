@@ -431,20 +431,34 @@ export function normalizeStrykerRuntimeReport(report) {
 const largeMutationUniverseThreshold = 10_000
 const firstAttemptUnitSplitFactor = 16
 // These weights are the distinct test counts observed in the latest
-// provenance-bound Stryker mutation graph for the source ranges that completed
-// (run 33618615853).  They are intentionally checked in: a fresh run has no
-// historical timing model, but these API modules still fan out to materially
-// different related-test graphs.  A weight of one means that the regular
-// locality-aware count model remains in effect.
+// provenance-bound Stryker mutation graph for source files whose complete
+// preflight inventory was present in successful shards (run 33863748227,
+// source 3e54ca9b5a6ccc03ec887df188572cdcac2ac091).  They are intentionally
+// checked in: a first attempt has no historical timing model, but these
+// modules fan out to materially different related-test graphs.  A weight of
+// one means that the regular locality-aware count model remains in effect.
 const firstAttemptSourceCostWeights = new Map([
-  ["src/api/interceptors/etagCache.ts", 267], // 137 mutants / 267 tests
-  ["src/api/hooks/users.ts", 229], // 8 mutants / 229 tests
-  ["src/api/hooks/events.ts", 52], // 253 mutants / 52 tests
-  ["src/api/hooks/news.ts", 38], // 170 mutants / 38 tests
-  ["src/api/hooks/messenger.ts", 131], // 35 mutants / 131 tests
-  ["src/api/validation.ts", 46], // 20 mutants / 46 tests
-  ["src/api/weather.ts", 41], // 163 mutants / 41 tests
+  ["src/api/hooks/events.ts", 74], // 301 mutants / 74 tests
+  ["src/api/hooks/messenger.ts", 135], // 35 mutants / 135 tests
+  ["src/api/hooks/news.ts", 62], // 170 mutants / 62 tests
   ["src/api/hooks/schedule.ts", 33], // 23 mutants / 33 tests
+  ["src/api/hooks/users.ts", 235], // 8 mutants / 235 tests
+  ["src/api/interceptors/etagCache.ts", 2882], // 239 mutants / 2882 tests
+  ["src/api/interceptors/traceContext.ts", 285], // 16 mutants / 285 tests
+  ["src/api/validation.ts", 46], // 20 mutants / 46 tests
+  ["src/api/weather.ts", 101], // 174 mutants / 101 tests
+  ["src/app/logger.ts", 417], // 117 mutants / 417 tests
+  ["src/components/media/SmartImage.tsx", 169], // 89 mutants / 169 tests
+  ["src/components/schedule/scheduleUtils.ts", 173], // 169 mutants / 173 tests
+  ["src/components/settings/ui/Form.tsx", 164], // 26 mutants / 164 tests
+  ["src/components/ui/Tooltip.tsx", 42], // 11 mutants / 42 tests
+  ["src/contexts/AuthContext.tsx", 176], // 35 mutants / 176 tests
+  ["src/contexts/LanguageContext.tsx", 325], // 70 mutants / 325 tests
+  ["src/db/index.ts", 650], // 38 mutants / 650 tests
+  ["src/hooks/auth/legacyTokenCleanup.ts", 226], // 12 mutants / 226 tests
+  ["src/hooks/auth/ssrAuthHint.ts", 166], // 32 mutants / 166 tests
+  ["src/hooks/useFocusTrap.ts", 226], // 31 mutants / 226 tests
+  ["src/hooks/useMediaQuery.ts", 217], // 57 mutants / 217 tests
 ])
 const firstAttemptCostAwareShardCount = 8
 
@@ -501,7 +515,7 @@ function assignFirstAttemptMutationUnits(weightedUnits, shards) {
     assignWeightedMutationUnits(weightedUnits, shards)
     return
   }
-  // Keep the expensive API graph in a bounded group of dedicated shards.  The
+  // Keep the expensive related-test graphs in a bounded group of dedicated shards.  The
   // lower bound guarantees that the regular units can still seed every
   // remaining shard when the inventory is small or unusually fragmented.
   const minimumExpensiveShards = Math.max(1, shards.length - regularUnits.length)
