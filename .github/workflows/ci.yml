@@ -674,7 +674,8 @@ jobs:
       coverage-canonical-path: ${{ matrix.coverage-canonical-path }}
 
   # MOD-W15-06 (audit 2026-03-23 Wave 15): Go fuzz testing for ws-hub message parsing.
-  # Short 30s CI budget — finds quick panics and crashes.
+  # Bounded fuzz smoke — finds quick panics and crashes without an unbounded
+  # worker lifetime.
   # Crashes are stored in testdata/fuzz/ and replayed on subsequent runs automatically.
   go-fuzz:
     name: Go Fuzz Tests (ws-hub)
@@ -689,15 +690,15 @@ jobs:
           go-version: "1.26.6"
           cache-dependency-path: services/ws-hub/go.sum
 
-      # PERF-W18-04 (audit 2026-03-23 Wave 18): increased from 30s to 120s for
-      # meaningful coverage of JSON parsing and WebSocket message validation.
-      - name: Run fuzz tests (120s CI budget)
+      - name: Run fuzz tests (bounded smoke)
         run: |
           cd services/ws-hub
-          # Serialize fuzz workers to bound runner memory; fuzz duration and
-          # target coverage remain unchanged.
-          go test ./pkg/hub/ -fuzz=FuzzParseMessage -fuzztime=30s -parallel=1 -timeout=3m
-          go test ./pkg/hub/ -fuzz=FuzzExtractAlgFromHeader -fuzztime=30s -parallel=1 -timeout=3m
+          # Serialize fuzz workers to bound runner memory. Go 1.26.6 still
+          # has golang/go#75804, where an exact fuzztime deadline can escape
+          # as a false context-deadline failure, so retain a one-second
+          # shutdown margin for both targets.
+          go test ./pkg/hub/ -fuzz=FuzzParseMessage -fuzztime=29s -parallel=1 -timeout=3m
+          go test ./pkg/hub/ -fuzz=FuzzExtractAlgFromHeader -fuzztime=29s -parallel=1 -timeout=3m
 
       - name: Upload fuzz corpus on failure
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
