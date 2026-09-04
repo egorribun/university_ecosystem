@@ -89,10 +89,10 @@ const computeHmac = async (payload: string, key: string): Promise<string> => {
 /** Constant-time hex comparison to prevent timing attacks. */
 const timingSafeEqual = (a: string, b: string): boolean => {
   if (a.length !== b.length) return false
-  let result = 0
-  for (let i = 0; i < a.length; i++) {
-    result |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  }
+  const result = Array.from({ length: a.length }, (_, index) => index).reduce(
+    (accumulator, index) => accumulator | (a.charCodeAt(index) ^ b.charCodeAt(index)),
+    0
+  )
   return result === 0
 }
 
@@ -156,11 +156,14 @@ if (typeof document !== "undefined") {
 // and would grow unboundedly; this cleans them up once per page load.
 if (typeof window !== "undefined") {
   try {
-    for (let i = localStorage.length - 1; i >= 0; i--) {
-      const k = localStorage.key(i)
-      if (k && k.startsWith("ue:etag-cache") && k !== ETAG_CACHE_KEY) {
-        localStorage.removeItem(k)
-      }
+    const staleKeys = Array.from({ length: localStorage.length }, (_, index) =>
+      localStorage.key(index)
+    ).filter(
+      (key): key is string =>
+        typeof key === "string" && key.startsWith("ue:etag-cache") && key !== ETAG_CACHE_KEY
+    )
+    for (const key of staleKeys) {
+      localStorage.removeItem(key)
     }
   } catch {
     // Ignore quota/security errors during cleanup
@@ -178,7 +181,7 @@ function flushEtagCache(): void {
     if (err instanceof DOMException && err.name === "QuotaExceededError") {
       const entries = Array.from(_etagMap.entries()).sort((a, b) => a[1].lastUsed - b[1].lastUsed)
       const evictCount = Math.ceil(_etagMap.size / 2)
-      for (let i = 0; i < evictCount; i++) _etagMap.delete(entries[i]![0])
+      for (const [key] of entries.slice(0, evictCount)) _etagMap.delete(key)
       try {
         localStorage.setItem(ETAG_CACHE_KEY, JSON.stringify(Array.from(_etagMap.entries())))
       } catch {
@@ -194,8 +197,8 @@ function flushEtagCache(): void {
 function evictLruEtag(cache: Map<string, EtagEntry>): void {
   if (cache.size <= MAX_CACHE_ENTRIES) return
   const sorted = Array.from(cache.entries()).sort((a, b) => a[1].lastUsed - b[1].lastUsed)
-  for (let i = 0; i < sorted.length - MAX_CACHE_ENTRIES; i++) {
-    cache.delete(sorted[i]![0])
+  for (const [key] of sorted.slice(0, sorted.length - MAX_CACHE_ENTRIES)) {
+    cache.delete(key)
   }
 }
 
@@ -251,8 +254,8 @@ const _responseMap = new Map<string, SignedCacheEntry>()
 function evictLruResponse(): void {
   if (_responseMap.size <= MAX_CACHE_ENTRIES) return
   const sorted = Array.from(_responseMap.entries()).sort((a, b) => a[1].ts - b[1].ts)
-  for (let i = 0; i < sorted.length - MAX_CACHE_ENTRIES; i++) {
-    _responseMap.delete(sorted[i]![0])
+  for (const [key] of sorted.slice(0, sorted.length - MAX_CACHE_ENTRIES)) {
+    _responseMap.delete(key)
   }
 }
 

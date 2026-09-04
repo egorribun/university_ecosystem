@@ -84,6 +84,50 @@ describe("etagCache — in-memory etag map", () => {
     expect(etagCache.get("etag:1")).toBe('"tag-1"')
     expect(etagCache.get("etag:200")).toBe('"tag-200"')
   })
+
+  it("evicts only the overflow entries and retains the bounded tail", () => {
+    const entries = Array.from({ length: 205 }, (_, index) => index)
+    for (const index of entries) {
+      etagCache.set(`etag:bounded:${index}`, `"tag-${index}"`)
+    }
+
+    const evicted = entries.slice(0, 5)
+    const retained = entries.slice(5)
+    expect(evicted.every((index) => etagCache.get(`etag:bounded:${index}`) === undefined)).toBe(
+      true
+    )
+    expect(retained.every((index) => etagCache.get(`etag:bounded:${index}`) !== undefined)).toBe(
+      true
+    )
+    expect(
+      retained.filter((index) => etagCache.get(`etag:bounded:${index}`) !== undefined)
+    ).toHaveLength(200)
+  })
+
+  it("keeps a recently touched ETag while evicting the oldest untouched entry", () => {
+    const nowSpy = vi.spyOn(Date, "now")
+    try {
+      nowSpy.mockReturnValueOnce(1).mockReturnValueOnce(2).mockReturnValueOnce(3)
+      etagCache.set("etag:lru:a", '"a"')
+      etagCache.set("etag:lru:b", '"b"')
+      etagCache.set("etag:lru:c", '"c"')
+
+      nowSpy.mockReturnValue(4)
+      etagCache.get("etag:lru:a")
+      for (let index = 0; index < 197; index += 1) {
+        nowSpy.mockReturnValue(5 + index)
+        etagCache.set(`etag:lru:filler:${index}`, `"${index}"`)
+      }
+      nowSpy.mockReturnValue(500)
+      etagCache.set("etag:lru:overflow", '"overflow"')
+
+      expect(etagCache.get("etag:lru:a")).toBe('"a"')
+      expect(etagCache.get("etag:lru:b")).toBeUndefined()
+      expect(etagCache.get("etag:lru:c")).toBe('"c"')
+    } finally {
+      nowSpy.mockRestore()
+    }
+  })
 })
 
 describe("etagCache — in-memory response cache", () => {
@@ -117,6 +161,28 @@ describe("etagCache — in-memory response cache", () => {
     expect(responseCache.get("response:0")).toBeUndefined()
     expect(responseCache.get("response:1")).toBeDefined()
     expect(responseCache.get("response:200")).toBeDefined()
+  })
+
+  it("evicts exactly the response overflow and retains the newest bounded entries", () => {
+    const entries = Array.from({ length: 205 }, (_, index) => index)
+    for (const index of entries) {
+      responseCache.set(`response:bounded:${index}`, {
+        data: index,
+        hmac: `hmac-${index}`,
+        ts: index,
+      })
+    }
+
+    expect(
+      entries
+        .slice(0, 5)
+        .every((index) => responseCache.get(`response:bounded:${index}`) === undefined)
+    ).toBe(true)
+    expect(
+      entries
+        .slice(5)
+        .every((index) => responseCache.get(`response:bounded:${index}`) !== undefined)
+    ).toBe(true)
   })
 })
 
@@ -567,6 +633,21 @@ describe("etagCache — lazy hydration on first access (isolated module)", () =>
 
     expect(localStorage.getItem("ue:etag-cache")).toBeNull()
     expect(localStorage.getItem("ue:etag-cache:v0")).toBeNull()
+  })
+
+  it("removes every stale cache key from one startup snapshot", async () => {
+    const staleKeys = Array.from({ length: 9 }, (_, index) => `ue:etag-cache:v${index + 2}`)
+    for (const key of staleKeys) {
+      localStorage.setItem(key, "stale")
+    }
+    localStorage.setItem(KEY, "current")
+    localStorage.setItem("unrelated:key", "keep")
+
+    await import("../etagCache")
+
+    expect(staleKeys.every((key) => localStorage.getItem(key) === null)).toBe(true)
+    expect(localStorage.getItem(KEY)).toBe("current")
+    expect(localStorage.getItem("unrelated:key")).toBe("keep")
   })
 
   it("swallows storage inspection failures during module startup", async () => {
