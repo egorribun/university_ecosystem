@@ -30,10 +30,33 @@ class PlanValidationError(ValueError):
 class _ShardSelection:
     shard_id: int
     names: tuple[str, ...]
+    estimated_load_seconds: float
+
+
+@dataclass(frozen=True, slots=True)
+class _ValidatedPlan:
+    selections: tuple[_ShardSelection, ...]
+    universe_count: int
+    universe_sha256: str
 
 
 def _selection_digest(names: Iterable[str]) -> str:
     return hashlib.sha256("\n".join(sorted(names)).encode("utf-8")).hexdigest()
+
+
+def _group_digest(selections: Iterable[_ShardSelection]) -> str:
+    """Return a stable digest for a logical-shard grouping.
+
+    The digest binds the physical group to both its logical shard IDs and the
+    exact per-shard selections.  A consumer can therefore reject a descriptor
+    whose IDs are replayed with a different canonical plan.
+    """
+
+    canonical = "\n".join(
+        f"{selection.shard_id}\t{_selection_digest(selection.names)}"
+        for selection in selections
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _require_nonnegative_int(value: object, *, label: str) -> int:
@@ -73,7 +96,7 @@ def _read_selection(path: Path, *, label: str) -> tuple[str, ...]:
 
 def _load_validated_plan(
     plan_directory: Path, *, expected_shards: int
-) -> tuple[_ShardSelection, ...]:
+) -> _ValidatedPlan:
     if expected_shards < 1:
         raise PlanValidationError("expected shard count must be positive")
     if plan_directory.is_symlink() or not plan_directory.is_dir():
@@ -129,7 +152,13 @@ def _load_validated_plan(
             raise PlanValidationError(f"{label} selected count does not match file")
         if _selection_digest(names) != selection_digest:
             raise PlanValidationError(f"{label} selection digest does not match file")
-        selections.append(_ShardSelection(shard_id=expected_id, names=names))
+        selections.append(
+            _ShardSelection(
+                shard_id=expected_id,
+                names=names,
+                estimated_load_seconds=float(estimated_load),
+            )
+        )
         all_names.extend(names)
 
     if len(all_names) != len(set(all_names)):
@@ -138,7 +167,11 @@ def _load_validated_plan(
         raise PlanValidationError("plan universe count does not match selections")
     if _selection_digest(all_names) != universe_digest:
         raise PlanValidationError("plan universe digest does not match selections")
-    return tuple(selections)
+    return _ValidatedPlan(
+        selections=tuple(selections),
+        universe_count=universe_count,
+        universe_sha256=universe_digest,
+    )
 
 
 def build_execution_matrix(
@@ -146,7 +179,9 @@ def build_execution_matrix(
 ) -> dict[str, object]:
     """Return a GitHub matrix containing exactly the plan's nonempty entries."""
 
-    selections = _load_validated_plan(plan_directory, expected_shards=expected_shards)
+    selections = _load_validated_plan(
+        plan_directory, expected_shards=expected_shards
+    ).selections
     entries = [
         {"shard": selection.shard_id, "has_python": "true", "has_mutants": "true"}
         for selection in selections
@@ -155,6 +190,277 @@ def build_execution_matrix(
     if not entries:
         entries = [{"shard": 0, "has_python": "true", "has_mutants": "false"}]
     return {"include": entries}
+
+
+def build_execution_groups(
+    plan_directory: Path, *, expected_shards: int, target_groups: int = 64
+) -> dict[str, object]:
+    """Coalesce validated logical shards into bounded physical executions.
+
+    The fixed-width plan remains the source of truth: this function only
+    describes a deterministic execution topology over its nonempty entries.
+    Each group carries the logical shard IDs and their canonical file names so
+    a consumer can read the exact mutant names without re-planning or using a
+    glob.  Empty logical shards are not emitted and cannot hide a mutant.
+    """
+
+    if (
+        isinstance(target_groups, bool)
+        or not isinstance(target_groups, int)
+        or target_groups < 1
+    ):
+        raise PlanValidationError("target physical group count must be positive")
+
+    plan = _load_validated_plan(plan_directory, expected_shards=expected_shards)
+    nonempty = [selection for selection in plan.selections if selection.names]
+    if not nonempty:
+        groups: list[dict[str, object]] = []
+    else:
+        physical_count = min(target_groups, len(nonempty))
+        bins: list[list[_ShardSelection]] = [[] for _ in range(physical_count)]
+        loads = [0.0] * physical_count
+        # Place the most expensive logical shards first, then use the least
+        # loaded physical bin.  Stable IDs make every tie deterministic.
+        for selection in sorted(
+            nonempty,
+            key=lambda item: (-item.estimated_load_seconds, item.shard_id),
+        ):
+            bin_index = min(
+                range(physical_count), key=lambda index: (loads[index], index)
+            )
+            bins[bin_index].append(selection)
+            loads[bin_index] += selection.estimated_load_seconds
+
+        ordered_bins = sorted(
+            (
+                tuple(sorted(bin_items, key=lambda item: item.shard_id))
+                for bin_items in bins
+            ),
+            key=lambda items: items[0].shard_id,
+        )
+        groups = []
+        for group_id, selections in enumerate(ordered_bins, start=1):
+            names = tuple(name for selection in selections for name in selection.names)
+            groups.append(
+                {
+                    "group_id": group_id,
+                    "logical_shards": [selection.shard_id for selection in selections],
+                    "selection_files": [
+                        f"shard-{selection.shard_id:02d}.txt"
+                        for selection in selections
+                    ],
+                    "selected_count": len(names),
+                    "selection_sha256": _selection_digest(names),
+                    "group_sha256": _group_digest(selections),
+                    "estimated_load_seconds": sum(
+                        selection.estimated_load_seconds for selection in selections
+                    ),
+                }
+            )
+
+    return {
+        "schema_version": 1,
+        "expected_shards": expected_shards,
+        "target_groups": target_groups,
+        "group_count": len(groups),
+        "universe_count": plan.universe_count,
+        "universe_sha256": plan.universe_sha256,
+        "groups": groups,
+    }
+
+
+def build_execution_groups_matrix(
+    plan_directory: Path, *, expected_shards: int, target_groups: int = 64
+) -> dict[str, object]:
+    """Return a dynamic matrix over validated physical execution groups.
+
+    The returned descriptors intentionally carry the complete logical-group
+    metadata.  Consumers validate that descriptor against the fixed plan
+    before concatenating any mutant IDs, so the matrix is only a transport
+    optimization and never an alternate source of mutation scope.
+    """
+
+    topology = build_execution_groups(
+        plan_directory,
+        expected_shards=expected_shards,
+        target_groups=target_groups,
+    )
+    groups = topology["groups"]
+    if not isinstance(groups, list):  # pragma: no cover - internal contract
+        raise PlanValidationError("execution topology groups are invalid")
+    if not groups:
+        return {
+            "include": [
+                {
+                    "group_id": 0,
+                    "logical_shards": [],
+                    "selection_files": [],
+                    "selected_count": 0,
+                    "selection_sha256": "",
+                    "group_sha256": "",
+                    "estimated_load_seconds": 0.0,
+                    "has_python": "true",
+                    "has_mutants": "false",
+                }
+            ]
+        }
+    return {
+        "include": [
+            {
+                **group,
+                "has_python": "true",
+                "has_mutants": "true",
+            }
+            for group in groups
+        ]
+    }
+
+
+def resolve_execution_group(
+    plan_directory: Path,
+    *,
+    expected_shards: int,
+    group: Mapping[str, Any],
+) -> tuple[str, ...]:
+    """Validate one physical-group descriptor and return exact mutant IDs.
+
+    Consumers pass the JSON descriptor emitted by
+    :func:`build_execution_groups`.  The canonical plan is loaded and checked
+    again before IDs are resolved, so a stale or tampered matrix cannot broaden
+    the selected population.
+    """
+
+    if not isinstance(group, Mapping):
+        raise PlanValidationError("execution group descriptor must be an object")
+    group_id = group.get("group_id")
+    if isinstance(group_id, bool) or not isinstance(group_id, int) or group_id < 1:
+        raise PlanValidationError("execution group identifier is invalid")
+
+    logical_ids = group.get("logical_shards")
+    if not isinstance(logical_ids, list) or not logical_ids:
+        raise PlanValidationError("execution group logical shards are invalid")
+    if any(
+        isinstance(shard_id, bool)
+        or not isinstance(shard_id, int)
+        or shard_id < 1
+        or shard_id > expected_shards
+        for shard_id in logical_ids
+    ):
+        raise PlanValidationError("execution group logical shard ID is invalid")
+    if logical_ids != sorted(logical_ids) or len(logical_ids) != len(set(logical_ids)):
+        raise PlanValidationError(
+            "execution group logical shard IDs must be sorted and unique"
+        )
+
+    expected_files = [f"shard-{shard_id:02d}.txt" for shard_id in logical_ids]
+    if group.get("selection_files") != expected_files:
+        raise PlanValidationError("execution group selection files are invalid")
+
+    plan = _load_validated_plan(plan_directory, expected_shards=expected_shards)
+    by_id = {selection.shard_id: selection for selection in plan.selections}
+    selections = tuple(by_id[shard_id] for shard_id in logical_ids)
+    if any(not selection.names for selection in selections):
+        raise PlanValidationError("execution group contains an empty logical shard")
+    names = tuple(name for selection in selections for name in selection.names)
+
+    selected_count = group.get("selected_count")
+    if (
+        isinstance(selected_count, bool)
+        or not isinstance(selected_count, int)
+        or selected_count != len(names)
+        or selected_count < 1
+    ):
+        raise PlanValidationError("execution group selected count is invalid")
+
+    selection_digest = group.get("selection_sha256")
+    if not isinstance(selection_digest, str) or not _SHA256_PATTERN.fullmatch(
+        selection_digest
+    ):
+        raise PlanValidationError("execution group selection digest is invalid")
+    if _selection_digest(names) != selection_digest:
+        raise PlanValidationError("execution group selection digest does not match")
+
+    group_digest = group.get("group_sha256")
+    if not isinstance(group_digest, str) or not _SHA256_PATTERN.fullmatch(group_digest):
+        raise PlanValidationError("execution group digest is invalid")
+    if _group_digest(selections) != group_digest:
+        raise PlanValidationError("execution group digest does not match")
+
+    estimated_load = group.get("estimated_load_seconds")
+    if (
+        isinstance(estimated_load, bool)
+        or not isinstance(estimated_load, (int, float))
+        or not math.isfinite(float(estimated_load))
+        or float(estimated_load) < 0
+    ):
+        raise PlanValidationError("execution group estimated load is invalid")
+    expected_load = sum(selection.estimated_load_seconds for selection in selections)
+    if float(estimated_load) != expected_load:
+        raise PlanValidationError(
+            "execution group estimated load does not match logical shards"
+        )
+    return names
+
+
+def validate_execution_group_descriptor(
+    plan_directory: Path,
+    *,
+    expected_shards: int,
+    target_groups: int,
+    group_id: int,
+    logical_shards: str,
+    selected_count: int,
+    selection_sha256: str,
+    group_sha256: str,
+    estimated_load_seconds: float,
+) -> tuple[str, ...]:
+    """Validate a shell-transported matrix group and return exact mutant IDs."""
+
+    if not isinstance(logical_shards, str) or not logical_shards:
+        raise PlanValidationError("execution group logical shards are invalid")
+    raw_ids = logical_shards.split(",")
+    if any(not re.fullmatch(r"[1-9][0-9]*", value) for value in raw_ids):
+        raise PlanValidationError("execution group logical shards are invalid")
+    try:
+        logical_ids = [int(value) for value in raw_ids]
+    except ValueError as error:
+        raise PlanValidationError(
+            "execution group logical shards are invalid"
+        ) from error
+    if logical_ids != sorted(logical_ids) or len(logical_ids) != len(set(logical_ids)):
+        raise PlanValidationError("execution group logical shards are invalid")
+    descriptor = {
+        "group_id": group_id,
+        "logical_shards": logical_ids,
+        "selection_files": [f"shard-{shard_id:02d}.txt" for shard_id in logical_ids],
+        "selected_count": selected_count,
+        "selection_sha256": selection_sha256,
+        "group_sha256": group_sha256,
+        "estimated_load_seconds": estimated_load_seconds,
+    }
+    topology = build_execution_groups(
+        plan_directory,
+        expected_shards=expected_shards,
+        target_groups=target_groups,
+    )
+    groups = topology["groups"]
+    if not isinstance(groups, list):  # pragma: no cover - internal contract
+        raise PlanValidationError("execution topology groups are invalid")
+    expected = next(
+        (
+            group
+            for group in groups
+            if isinstance(group, dict) and group.get("group_id") == group_id
+        ),
+        None,
+    )
+    if expected != descriptor:
+        raise PlanValidationError("execution group membership or digest does not match")
+    return resolve_execution_group(
+        plan_directory,
+        expected_shards=expected_shards,
+        group=descriptor,
+    )
 
 
 def validate_matrix_entry(
@@ -169,7 +475,9 @@ def validate_matrix_entry(
 
     if not has_python:
         raise PlanValidationError("a mutmut plan entry must declare Python source")
-    selections = _load_validated_plan(plan_directory, expected_shards=expected_shards)
+    selections = _load_validated_plan(
+        plan_directory, expected_shards=expected_shards
+    ).selections
     nonempty_ids = {selection.shard_id for selection in selections if selection.names}
     if has_mutants:
         if shard_id not in nonempty_ids:
@@ -184,14 +492,24 @@ def validate_matrix_entry(
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    for command in ("matrix", "validate-entry"):
+    for command in ("matrix", "groups", "validate-entry", "validate-group"):
         command_parser = commands.add_parser(command)
         command_parser.add_argument("--plan-directory", type=Path, required=True)
         command_parser.add_argument("--expected-shards", type=int, required=True)
+        if command == "groups":
+            command_parser.add_argument("--target-groups", type=int, default=64)
     validate = commands.choices["validate-entry"]
     validate.add_argument("--shard-id", type=int, required=True)
     validate.add_argument("--has-python", choices=("true", "false"), required=True)
     validate.add_argument("--has-mutants", choices=("true", "false"), required=True)
+    group = commands.choices["validate-group"]
+    group.add_argument("--target-groups", type=int, required=True)
+    group.add_argument("--group-id", type=int, required=True)
+    group.add_argument("--logical-shards", required=True)
+    group.add_argument("--selected-count", type=int, required=True)
+    group.add_argument("--selection-sha256", required=True)
+    group.add_argument("--group-sha256", required=True)
+    group.add_argument("--estimated-load-seconds", type=float, required=True)
     return parser.parse_args()
 
 
@@ -207,6 +525,32 @@ def main() -> None:
                     separators=(",", ":"),
                     sort_keys=True,
                 )
+            )
+            return
+        if args.command == "groups":
+            print(
+                json.dumps(
+                    build_execution_groups_matrix(
+                        args.plan_directory,
+                        expected_shards=args.expected_shards,
+                        target_groups=args.target_groups,
+                    ),
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+            )
+            return
+        if args.command == "validate-group":
+            validate_execution_group_descriptor(
+                args.plan_directory,
+                expected_shards=args.expected_shards,
+                target_groups=args.target_groups,
+                group_id=args.group_id,
+                logical_shards=args.logical_shards,
+                selected_count=args.selected_count,
+                selection_sha256=args.selection_sha256,
+                group_sha256=args.group_sha256,
+                estimated_load_seconds=args.estimated_load_seconds,
             )
             return
         validate_matrix_entry(

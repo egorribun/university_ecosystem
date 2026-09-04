@@ -1607,10 +1607,12 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
         step.get("run", "") for step in job["steps"] if isinstance(step, dict)
     )
     assert "grep -E '^app/.*\\.py$'" in job_text
-    assert "matrix.shard" in job_text
+    assert "MATRIX_GROUP_ID" in job_text
+    assert "MATRIX_LOGICAL_SHARDS" in job_text
     assert "scripts/plan_mutmut_shards.py" not in job_text
     assert "mutants/mutmut-incremental-plan/shard-" in job_text
-    assert 'cp "$shard_plan" /tmp/mutmut-shard.txt' in job_text
+    assert 'cat "$shard_plan" >> /tmp/mutmut-shard.txt' in job_text
+    assert "MATRIX_SELECTED_COUNT" in job_text
     assert '"${MUTANT_NAMES[@]}"' in job_text
     assert "awk -v shard" not in job_text
     assert "grep '^app/core/tenant\\.py$'" not in job_text
@@ -1853,7 +1855,7 @@ def test_incremental_mutation_stats_are_sharded_and_merged_before_execution() ->
     )
     assert exact_upload["with"]["name"] == (
         "mutmut-exact-evidence-${{ github.run_id }}-${{ github.run_attempt }}-"
-        "${{ matrix.shard }}"
+        "group-${{ matrix.group_id }}"
     )
     assert "scripts/merge_mutmut_stats.py" not in mutation_text
     assert "mutants/mutmut-stats.json" in mutation_text
@@ -2052,7 +2054,9 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
     matrix_step = _step_named(universe_job, "Build validated mutmut execution matrix")
     assert matrix_step["id"] == "mutation_matrix"
     assert "scripts/mutmut_shard_matrix.py" in matrix_step["run"]
+    assert "mutmut_shard_matrix.py groups" in matrix_step["run"]
     assert "--expected-shards 128" in matrix_step["run"]
+    assert "--target-groups 64" in matrix_step["run"]
     assert '"include"' in matrix_step["run"]
     assert "has_python" in matrix_step["run"]
     assert "has_mutants" in matrix_step["run"]
@@ -2060,7 +2064,7 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
     assert '"$descriptor_count" -gt 128' in matrix_step["run"]
     assert "Mutation matrix capacity" in matrix_step["run"]
     assert (
-        'matrix_summary="Fully validated fixed plan assignments: 128"'
+        'matrix_summary="Fully validated fixed plan assignments: 128; coalesced physical execution groups"'
         in matrix_step["run"]
     )
     assert (
@@ -2092,11 +2096,21 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
         "LOCAL_HAS_PYTHON": "${{ steps.mutation_scope.outputs.has_python }}",
         "MATRIX_HAS_PYTHON": "${{ matrix.has_python }}",
         "MATRIX_HAS_MUTANTS": "${{ matrix.has_mutants }}",
-        "MATRIX_SHARD": "${{ matrix.shard }}",
+        "MATRIX_GROUP_ID": "${{ matrix.group_id }}",
+        "MATRIX_LOGICAL_SHARDS": "${{ join(matrix.logical_shards, ',') }}",
+        "MATRIX_SELECTED_COUNT": "${{ matrix.selected_count }}",
+        "MATRIX_SELECTION_SHA256": "${{ matrix.selection_sha256 }}",
+        "MATRIX_GROUP_SHA256": "${{ matrix.group_sha256 }}",
+        "MATRIX_ESTIMATED_LOAD_SECONDS": "${{ matrix.estimated_load_seconds }}",
+        "MUTMUT_TARGET_GROUPS": "64",
     }
-    assert '"$MATRIX_SHARD"' in selection_text
+    assert '"$MATRIX_GROUP_ID"' in selection_text
+    assert '"$MATRIX_LOGICAL_SHARDS"' in selection_text
+    assert "validate-group" in selection_text
+    assert "--target-groups" in selection_text
     assert '"$MATRIX_HAS_PYTHON"' in selection_text
     assert '"$MATRIX_HAS_MUTANTS"' in selection_text
+    assert "MATRIX_SELECTION_SHA256" in selection_text
     assert "disagrees with local mutation scope" in selection_text
 
     required_nonempty = (

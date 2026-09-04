@@ -10,7 +10,11 @@ import pytest
 
 from scripts.mutmut_shard_matrix import (
     PlanValidationError,
+    build_execution_groups,
+    build_execution_groups_matrix,
     build_execution_matrix,
+    resolve_execution_group,
+    validate_execution_group_descriptor,
     validate_matrix_entry,
 )
 
@@ -75,6 +79,176 @@ def test_matrix_contains_only_nonempty_validated_plan_shards(tmp_path: Path) -> 
             {"shard": 3, "has_python": "true", "has_mutants": "true"},
         ]
     }
+
+
+def test_execution_groups_coalesce_logical_shards_without_changing_selection(
+    tmp_path: Path,
+) -> None:
+    plan = _write_plan(
+        tmp_path,
+        {
+            1: ["app.a.one__mutmut_1"],
+            2: ["app.a.one__mutmut_2"],
+            3: ["app.b.two__mutmut_1", "app.b.two__mutmut_2"],
+            4: ["app.c.three__mutmut_1"],
+        },
+    )
+
+    groups = build_execution_groups(plan, expected_shards=4, target_groups=2)
+
+    assert groups == {
+        "group_count": 2,
+        "target_groups": 2,
+        "schema_version": 1,
+        "expected_shards": 4,
+        "universe_count": 5,
+        "universe_sha256": _digest(
+            [
+                "app.a.one__mutmut_1",
+                "app.a.one__mutmut_2",
+                "app.b.two__mutmut_1",
+                "app.b.two__mutmut_2",
+                "app.c.three__mutmut_1",
+            ]
+        ),
+        "groups": [
+            {
+                "group_id": 1,
+                "logical_shards": [1, 2],
+                "selection_files": ["shard-01.txt", "shard-02.txt"],
+                "selected_count": 2,
+                "selection_sha256": _digest(
+                    ["app.a.one__mutmut_1", "app.a.one__mutmut_2"]
+                ),
+                "group_sha256": groups["groups"][0]["group_sha256"],
+                "estimated_load_seconds": 2.0,
+            },
+            {
+                "group_id": 2,
+                "logical_shards": [3, 4],
+                "selection_files": ["shard-03.txt", "shard-04.txt"],
+                "selected_count": 3,
+                "selection_sha256": _digest(
+                    [
+                        "app.b.two__mutmut_1",
+                        "app.b.two__mutmut_2",
+                        "app.c.three__mutmut_1",
+                    ]
+                ),
+                "group_sha256": groups["groups"][1]["group_sha256"],
+                "estimated_load_seconds": 3.0,
+            },
+        ],
+    }
+    first_group = groups["groups"][0]
+    assert isinstance(first_group, dict)
+    assert resolve_execution_group(plan, expected_shards=4, group=first_group) == (
+        "app.a.one__mutmut_1",
+        "app.a.one__mutmut_2",
+    )
+
+
+def test_execution_groups_matrix_carries_complete_group_metadata(
+    tmp_path: Path,
+) -> None:
+    plan = _write_plan(
+        tmp_path,
+        {1: ["app.a.one__mutmut_1"], 3: ["app.b.two__mutmut_1"]},
+    )
+
+    matrix = build_execution_groups_matrix(plan, expected_shards=4, target_groups=1)
+    topology = build_execution_groups(plan, expected_shards=4, target_groups=1)
+    assert matrix == {
+        "include": [
+            {
+                **topology["groups"][0],
+                "has_python": "true",
+                "has_mutants": "true",
+            }
+        ]
+    }
+
+
+def test_execution_groups_matrix_emits_safe_empty_sentinel(tmp_path: Path) -> None:
+    plan = _write_plan(tmp_path, {})
+
+    assert build_execution_groups_matrix(plan, expected_shards=4, target_groups=2) == {
+        "include": [
+            {
+                "group_id": 0,
+                "logical_shards": [],
+                "selection_files": [],
+                "selected_count": 0,
+                "selection_sha256": "",
+                "group_sha256": "",
+                "estimated_load_seconds": 0.0,
+                "has_python": "true",
+                "has_mutants": "false",
+            }
+        ]
+    }
+
+
+@pytest.mark.parametrize("logical_shards", ["", "1,,2", "one", "1,1"])
+def test_execution_group_descriptor_rejects_invalid_logical_shard_text(
+    tmp_path: Path, logical_shards: str
+) -> None:
+    plan = _write_plan(
+        tmp_path,
+        {1: ["app.a.one__mutmut_1"], 2: ["app.a.one__mutmut_2"]},
+    )
+    group = build_execution_groups(plan, expected_shards=4, target_groups=1)["groups"][
+        0
+    ]
+    assert isinstance(group, dict)
+
+    with pytest.raises(PlanValidationError, match="logical shards"):
+        validate_execution_group_descriptor(
+            plan,
+            expected_shards=4,
+            target_groups=1,
+            group_id=group["group_id"],
+            logical_shards=logical_shards,
+            selected_count=group["selected_count"],
+            selection_sha256=group["selection_sha256"],
+            group_sha256=group["group_sha256"],
+            estimated_load_seconds=group["estimated_load_seconds"],
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("group_id", 2, "membership or digest"),
+        ("selected_count", 99, "membership or digest"),
+        ("selection_sha256", "0" * 64, "membership or digest"),
+        ("group_sha256", "0" * 64, "membership or digest"),
+        ("estimated_load_seconds", 99.0, "membership or digest"),
+    ],
+)
+def test_execution_group_descriptor_rejects_tampered_metadata(
+    tmp_path: Path, field: str, value: object, message: str
+) -> None:
+    plan = _write_plan(tmp_path, {1: ["app.a.one__mutmut_1"]})
+    group = build_execution_groups(plan, expected_shards=4, target_groups=1)["groups"][
+        0
+    ]
+    assert isinstance(group, dict)
+    descriptor = dict(group)
+    descriptor[field] = value
+
+    with pytest.raises(PlanValidationError, match=message):
+        validate_execution_group_descriptor(
+            plan,
+            expected_shards=4,
+            target_groups=1,
+            group_id=descriptor["group_id"],
+            logical_shards=",".join(str(item) for item in descriptor["logical_shards"]),
+            selected_count=descriptor["selected_count"],
+            selection_sha256=descriptor["selection_sha256"],
+            group_sha256=descriptor["group_sha256"],
+            estimated_load_seconds=descriptor["estimated_load_seconds"],
+        )
 
 
 def test_matrix_emits_one_explicit_sentinel_when_plan_has_no_mutants(
@@ -177,6 +351,75 @@ def test_command_line_entrypoint_emits_a_validated_matrix(
     assert json.loads(capsys.readouterr().out) == {
         "include": [{"shard": 4, "has_python": "true", "has_mutants": "true"}]
     }
+
+
+def test_command_line_groups_entrypoint_emits_physical_descriptors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    plan = _write_plan(tmp_path, {1: ["app.a.one__mutmut_1"]})
+    script = Path(__file__).parents[1] / "scripts" / "mutmut_shard_matrix.py"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(script),
+            "groups",
+            "--plan-directory",
+            str(plan),
+            "--expected-shards",
+            "4",
+            "--target-groups",
+            "2",
+        ],
+    )
+
+    runpy.run_path(str(script), run_name="__main__")
+
+    matrix = json.loads(capsys.readouterr().out)
+    assert len(matrix["include"]) == 1
+    descriptor = matrix["include"][0]
+    assert descriptor["group_id"] == 1
+    assert descriptor["logical_shards"] == [1]
+    assert descriptor["has_python"] == "true"
+    assert descriptor["has_mutants"] == "true"
+
+
+def test_command_line_validate_group_entrypoint_requires_exact_descriptor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plan = _write_plan(tmp_path, {1: ["app.a.one__mutmut_1"]})
+    topology = build_execution_groups(plan, expected_shards=4, target_groups=2)
+    group = topology["groups"][0]
+    assert isinstance(group, dict)
+    script = Path(__file__).parents[1] / "scripts" / "mutmut_shard_matrix.py"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            str(script),
+            "validate-group",
+            "--plan-directory",
+            str(plan),
+            "--expected-shards",
+            "4",
+            "--target-groups",
+            "2",
+            "--group-id",
+            str(group["group_id"]),
+            "--logical-shards",
+            ",".join(str(shard_id) for shard_id in group["logical_shards"]),
+            "--selected-count",
+            str(group["selected_count"]),
+            "--selection-sha256",
+            group["selection_sha256"],
+            "--group-sha256",
+            group["group_sha256"],
+            "--estimated-load-seconds",
+            str(group["estimated_load_seconds"]),
+        ],
+    )
+
+    runpy.run_path(str(script), run_name="__main__")
 
 
 def test_command_line_entrypoint_fails_closed_for_invalid_plan(

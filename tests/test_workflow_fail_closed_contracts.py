@@ -373,13 +373,15 @@ def test_mutation_matrix_publishes_bounded_capacity_telemetry() -> None:
     matrix_step = _step(universe, "Build validated mutmut execution matrix")
     assert "descriptor_count=" in matrix_step["run"]
     assert '"$descriptor_count" -gt 128' in matrix_step["run"]
+    assert "mutmut_shard_matrix.py groups" in matrix_step["run"]
+    assert "--target-groups 64" in matrix_step["run"]
     assert "Mutation matrix capacity" in matrix_step["run"]
     assert (
         'if [ "${{ steps.mutation_scope.outputs.has_python }}" = "true" ]; then'
         in matrix_step["run"]
     )
     assert (
-        'matrix_summary="Fully validated fixed plan assignments: 128"'
+        'matrix_summary="Fully validated fixed plan assignments: 128; coalesced physical execution groups"'
         in matrix_step["run"]
     )
     assert (

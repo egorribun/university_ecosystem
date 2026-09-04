@@ -3438,15 +3438,16 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ steps.mutation_scope.outputs.has_python }}" = "true" ]; then
-            matrix="$(python scripts/mutmut_shard_matrix.py matrix \
+            matrix="$(python scripts/mutmut_shard_matrix.py groups \
               --plan-directory mutants/mutmut-incremental-plan \
-              --expected-shards 128)"
-            matrix_summary="Fully validated fixed plan assignments: 128"
+              --expected-shards 128 \
+              --target-groups 64)"
+            matrix_summary="Fully validated fixed plan assignments: 128; coalesced physical execution groups"
           else
             # GitHub does not permit an empty dynamic matrix. A single explicit
             # no-Python sentinel validates the empty attempt envelope and exits
             # without installing a mutation toolchain.
-            matrix='{"include":[{"shard":0,"has_python":"false","has_mutants":"false"}]}'
+            matrix='{"include":[{"group_id":0,"logical_shards":[],"selection_files":[],"selected_count":0,"selection_sha256":"","group_sha256":"","estimated_load_seconds":0.0,"has_python":"false","has_mutants":"false"}]}'
             matrix_summary="No-Python sentinel: one explicit non-mutant descriptor (not a 128-assignment plan)"
           fi
           descriptor_count="$(printf '%s' "$matrix" | python -c 'import json, sys; entries = json.load(sys.stdin).get("include"); sys.exit("mutation matrix must contain a nonempty include list") if not isinstance(entries, list) or not entries else None; print(len(entries))')"
@@ -3526,7 +3527,7 @@ jobs:
           if-no-files-found: error
 
   mutation-tests-incremental:
-    name: Incremental Mutation Tests (mutmut) / shard ${{ matrix.shard }}/128
+    name: Incremental Mutation Tests (mutmut) / execution group ${{ matrix.group_id }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -3538,15 +3539,17 @@ jobs:
       # and the complete 128-assignment evidence plan remain unchanged.
       max-parallel: 12
       # The producer validates all 128 fixed assignments, then dynamically
-      # emits only exact nonempty entries. This preserves the full plan as
-      # evidence while preventing empty shards from consuming the scarce
-      # hosted-runner pool. A single explicit sentinel handles an empty scope.
+      # emits deterministic physical groups over their exact nonempty entries.
+      # This preserves the full plan as evidence while preventing empty logical
+      # shards and per-shard bootstrap overhead from consuming hosted runners.
+      # A single explicit sentinel handles an empty scope.
       matrix: ${{ fromJSON(needs.mutation-tests-universe.outputs.mutation_matrix) }}
-    # Exact shards can legitimately map to a large lifecycle test union. The
+    # Exact execution groups can legitimately map to a large lifecycle test union. The
     # pull-request gate therefore uses the same six-hour wall-clock envelope
     # as the manual evidence workflow. Three bounded workers avoid SQLite
     # contention in forked test processes while the fixed one-hundred-twenty-eight
-    # shard plan bounds the maximum fan-out without allowing an unbounded fork storm.
+    # logical plan and bounded physical groups cap fan-out without allowing an
+    # unbounded fork storm.
     # The dynamic inner timeout remains fail-closed and leaves ten minutes for
     # proof, score verification, upload, and a controlled exit.
     timeout-minutes: 360
@@ -3715,7 +3718,13 @@ jobs:
           LOCAL_HAS_PYTHON: ${{ steps.mutation_scope.outputs.has_python }}
           MATRIX_HAS_PYTHON: ${{ matrix.has_python }}
           MATRIX_HAS_MUTANTS: ${{ matrix.has_mutants }}
-          MATRIX_SHARD: ${{ matrix.shard }}
+          MATRIX_GROUP_ID: ${{ matrix.group_id }}
+          MATRIX_LOGICAL_SHARDS: ${{ join(matrix.logical_shards, ',') }}
+          MATRIX_SELECTED_COUNT: ${{ matrix.selected_count }}
+          MATRIX_SELECTION_SHA256: ${{ matrix.selection_sha256 }}
+          MATRIX_GROUP_SHA256: ${{ matrix.group_sha256 }}
+          MATRIX_ESTIMATED_LOAD_SECONDS: ${{ matrix.estimated_load_seconds }}
+          MUTMUT_TARGET_GROUPS: "64"
         run: |
           set -euo pipefail
           if [[ "$MATRIX_HAS_PYTHON" != "true" && "$MATRIX_HAS_PYTHON" != "false" ]]; then
@@ -3731,19 +3740,31 @@ jobs:
             exit 1
           fi
           if [ "$LOCAL_HAS_PYTHON" = "false" ]; then
-            if [ "$MATRIX_SHARD" != "0" ] || [ "$MATRIX_HAS_MUTANTS" != "false" ]; then
+            if [ "$MATRIX_GROUP_ID" != "0" ] || [ "$MATRIX_HAS_MUTANTS" != "false" ]; then
               echo "::error::Empty mutation scope must use the explicit non-mutant sentinel."
               exit 1
             fi
             echo "has_mutants=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          python scripts/mutmut_shard_matrix.py validate-entry \
+          if [ "$MATRIX_HAS_MUTANTS" != "true" ]; then
+            if [ "$MATRIX_GROUP_ID" != "0" ] || [ -n "$MATRIX_LOGICAL_SHARDS" ]; then
+              echo "::error::Empty mutation scope has an invalid group sentinel."
+              exit 1
+            fi
+            echo "has_mutants=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python scripts/mutmut_shard_matrix.py validate-group \
             --plan-directory mutants/mutmut-incremental-plan \
             --expected-shards 128 \
-            --shard-id "$MATRIX_SHARD" \
-            --has-python "$MATRIX_HAS_PYTHON" \
-            --has-mutants "$MATRIX_HAS_MUTANTS"
+            --target-groups "$MUTMUT_TARGET_GROUPS" \
+            --group-id "$MATRIX_GROUP_ID" \
+            --logical-shards "$MATRIX_LOGICAL_SHARDS" \
+            --selected-count "$MATRIX_SELECTED_COUNT" \
+            --selection-sha256 "$MATRIX_SELECTION_SHA256" \
+            --group-sha256 "$MATRIX_GROUP_SHA256" \
+            --estimated-load-seconds "$MATRIX_ESTIMATED_LOAD_SECONDS"
           printf 'has_mutants=%s\n' "$MATRIX_HAS_MUTANTS" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python
@@ -3796,19 +3817,50 @@ jobs:
           # Python diffs, while whole-file selection made a small edit replay
           # hundreds of unrelated mutants.
           # The central producer has already generated the complete source /
-          # metadata universe and a duration-balanced exact plan.  Selecting a
-          # precomputed file here avoids repeating mutmut's expensive source
-          # generation in all 128 consumer legs.
-          shard_plan="mutants/mutmut-incremental-plan/shard-$(printf '%02d' '${{ matrix.shard }}').txt"
-          test -f "$shard_plan"
-          cp "$shard_plan" /tmp/mutmut-shard.txt
+          # metadata universe and a duration-balanced exact plan. Selecting the
+          # validated logical files in this physical group avoids repeating
+          # mutmut's expensive source generation per logical shard.
+          test -n "$MATRIX_LOGICAL_SHARDS"
+          : > /tmp/mutmut-shard.txt
+          IFS=',' read -r -a logical_shards <<< "$MATRIX_LOGICAL_SHARDS"
+          for logical_shard in "${logical_shards[@]}"; do
+            if ! [[ "$logical_shard" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::Validated group contains an invalid logical shard ID."
+              exit 1
+            fi
+            shard_plan="mutants/mutmut-incremental-plan/shard-$(printf '%02d' "$logical_shard").txt"
+            test -f "$shard_plan" && test ! -L "$shard_plan"
+            cat "$shard_plan" >> /tmp/mutmut-shard.txt
+          done
           mapfile -t MUTANT_NAMES < /tmp/mutmut-shard.txt
           if [ "${#MUTANT_NAMES[@]}" -eq 0 ]; then
             echo "::error::Validated nonempty mutation matrix entry became empty."
             exit 1
           fi
           echo "has_mutants=true" >> "$GITHUB_OUTPUT"
-          echo "Mutating shard ${{ matrix.shard }}/128: ${#MUTANT_NAMES[@]} exact mutants"
+          if [ "${#MUTANT_NAMES[@]}" -ne "$MATRIX_SELECTED_COUNT" ]; then
+            echo "::error::Grouped mutation selection count changed after materialization."
+            exit 1
+          fi
+          duplicate_count="$(LC_ALL=C sort /tmp/mutmut-shard.txt | uniq -d | wc -l)"
+          if [ "$duplicate_count" -ne 0 ]; then
+            echo "::error::Grouped mutation selection contains duplicate mutant IDs."
+            exit 1
+          fi
+          actual_selection_sha256="$(python - /tmp/mutmut-shard.txt <<'PY'
+          import hashlib
+          import sys
+          from pathlib import Path
+
+          names = Path(sys.argv[1]).read_text(encoding="utf-8").splitlines()
+          print(hashlib.sha256("\n".join(sorted(names)).encode("utf-8")).hexdigest())
+          PY
+          )"
+          if [ "$actual_selection_sha256" != "$MATRIX_SELECTION_SHA256" ]; then
+            echo "::error::Grouped mutation selection digest changed after materialization."
+            exit 1
+          fi
+          echo "Mutating execution group $MATRIX_GROUP_ID (logical shards $MATRIX_LOGICAL_SHARDS): ${#MUTANT_NAMES[@]} exact mutants"
           MUTMUT_EVIDENCE_DIR=mutants/mutmut-exact-evidence
           mkdir -p "$MUTMUT_EVIDENCE_DIR"
           MUTMUT_EVIDENCE_FINALIZED=false
@@ -3988,7 +4040,7 @@ jobs:
         if: always() && steps.mutation_scope.outputs.has_python == 'true' && steps.run_incremental_mutmut.outputs.has_mutants == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: mutmut-exact-evidence-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.shard }}
+          name: mutmut-exact-evidence-${{ github.run_id }}-${{ github.run_attempt }}-group-${{ matrix.group_id }}
           path: |
             mutants/mutmut-cicd-stats.json
             mutants/mutmut-exact-evidence/
