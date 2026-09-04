@@ -13,18 +13,62 @@ from app.core.config import database
 
 def test_cgroup_cpu_count_prefers_affinity(monkeypatch):
     monkeypatch.setattr(
+        builtins,
+        "open",
+        lambda *args, **kwargs: (_ for _ in ()).throw(FileNotFoundError),
+    )
+    monkeypatch.setattr(
         database.os, "sched_getaffinity", lambda _: {1, 2, 3}, raising=False
     )
     assert database._cgroup_aware_cpu_count() == 3
+
+
+def test_cgroup_cpu_count_prefers_v2_quota_over_host_affinity(monkeypatch):
+    def fake_open(path, *args, **kwargs):
+        if path == "/sys/fs/cgroup/cpu.max":
+            return io.StringIO("200000 100000\n")
+        raise FileNotFoundError(path)
+
+    monkeypatch.setattr(builtins, "open", fake_open)
+    monkeypatch.setattr(
+        database.os,
+        "sched_getaffinity",
+        lambda _: set(range(64)),
+        raising=False,
+    )
+    assert database._cgroup_aware_cpu_count() == 2
+
+
+@pytest.mark.parametrize(
+    "cpu_max",
+    ("max 100000\n", "malformed\n", "100000 nope\n", "0 100000\n"),
+)
+def test_cgroup_cpu_count_v2_unlimited_or_invalid_uses_affinity(monkeypatch, cpu_max):
+    def fake_open(path, *args, **kwargs):
+        if path == "/sys/fs/cgroup/cpu.max":
+            return io.StringIO(cpu_max)
+        raise FileNotFoundError(path)
+
+    monkeypatch.setattr(builtins, "open", fake_open)
+    monkeypatch.setattr(
+        database.os, "sched_getaffinity", lambda _: {1, 2, 3, 4}, raising=False
+    )
+    assert database._cgroup_aware_cpu_count() == 4
 
 
 def test_cgroup_cpu_count_uses_positive_v1_quota(monkeypatch):
     def unavailable(_):
         raise NotImplementedError
 
-    values = iter((io.StringIO("8"), io.StringIO("2")))
+    def fake_open(path, *args, **kwargs):
+        if path.endswith("cpu.cfs_quota_us"):
+            return io.StringIO("8")
+        if path.endswith("cpu.cfs_period_us"):
+            return io.StringIO("2")
+        raise FileNotFoundError(path)
+
     monkeypatch.setattr(database.os, "sched_getaffinity", unavailable, raising=False)
-    monkeypatch.setattr(builtins, "open", lambda *args, **kwargs: next(values))
+    monkeypatch.setattr(builtins, "open", fake_open)
     assert database._cgroup_aware_cpu_count() == 4
 
 
@@ -35,8 +79,15 @@ def test_cgroup_cpu_count_caps_large_quota(monkeypatch):
         lambda _: (_ for _ in ()).throw(NotImplementedError),
         raising=False,
     )
-    values = iter((io.StringIO("128"), io.StringIO("1")))
-    monkeypatch.setattr(builtins, "open", lambda *args, **kwargs: next(values))
+
+    def fake_open(path, *args, **kwargs):
+        if path.endswith("cpu.cfs_quota_us"):
+            return io.StringIO("128")
+        if path.endswith("cpu.cfs_period_us"):
+            return io.StringIO("1")
+        raise FileNotFoundError(path)
+
+    monkeypatch.setattr(builtins, "open", fake_open)
     assert database._cgroup_aware_cpu_count() == 32
 
 
@@ -50,8 +101,14 @@ def test_cgroup_cpu_count_falls_back_after_invalid_or_unavailable_cgroup(monkeyp
     monkeypatch.setattr(database.os, "cpu_count", lambda: 7)
     assert database._cgroup_aware_cpu_count() == 7
 
-    values = iter((io.StringIO("0"), io.StringIO("1")))
-    monkeypatch.setattr(builtins, "open", lambda *args, **kwargs: next(values))
+    def fake_open_zero(path, *args, **kwargs):
+        if path.endswith("cpu.cfs_quota_us"):
+            return io.StringIO("0")
+        if path.endswith("cpu.cfs_period_us"):
+            return io.StringIO("1")
+        raise FileNotFoundError(path)
+
+    monkeypatch.setattr(builtins, "open", fake_open_zero)
     monkeypatch.setattr(database.os, "cpu_count", lambda: 5)
     assert database._cgroup_aware_cpu_count() == 5
 
