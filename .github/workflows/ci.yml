@@ -3438,16 +3438,54 @@ jobs:
         run: |
           set -euo pipefail
           if [ "${{ steps.mutation_scope.outputs.has_python }}" = "true" ]; then
+            # Preflight the exact execution budget before expanding runners.
+            # The consumer repeats this calculation, but doing it here avoids
+            # allocating any matrix leg when fresh stats no longer fit the
+            # six-hour envelope.  The 120-second reserve is restricted to the
+            # already-generated, immutable universe reuse path; it is greater
+            # than the measured 72-second maximum for that phase.  The live
+            # deadline check separately charges checkout/setup elapsed time;
+            # all selected-test and per-mutant watchdog costs remain fail-closed.
+            # Keep a 90-second pre-run setup envelope in the producer gate so
+            # a plan that would only fit before checkout/setup is rejected
+            # before any matrix runner is allocated: 21,600 - 630 - 90.
+            mapfile -t nonempty_plan_files < <(
+              find mutants/mutmut-incremental-plan -maxdepth 1 -type f \
+                -name 'shard-*.txt' -size +0c -print | sort
+            )
+            if [ "${#nonempty_plan_files[@]}" -eq 0 ]; then
+              # Keep the explicit non-mutant sentinel emitted by ``groups``
+              # for an already-validated empty plan (for example, a legacy
+              # retry artifact); the planner itself normally rejects an empty
+              # changed-Python mutation universe before writing a plan.
+              echo "Validated Python scope contains no nonempty mutation shards; emitting the non-mutant sentinel."
+            else
+              for shard_file in "${nonempty_plan_files[@]}"; do
+                uv run python scripts/mutmut_shard_budget.py \
+                  --selected-file "$shard_file" \
+                  --stats mutants/mutmut-stats.json \
+                  --max-children 3 \
+                  --control-cycle-reserve-seconds 5 \
+                  --metadata-startup-reserve-seconds 120 \
+                  --max-timeout-seconds 20880 \
+                  --output "/tmp/mutmut-budget-$(basename "$shard_file")" \
+                  >/dev/null
+              done
+            fi
             matrix="$(python scripts/mutmut_shard_matrix.py groups \
               --plan-directory mutants/mutmut-incremental-plan \
               --expected-shards 128 \
-              --target-groups 64)"
-            matrix_summary="Fully validated fixed plan assignments: 128; coalesced physical execution groups"
+              --target-groups 128)"
+            if [ "${#nonempty_plan_files[@]}" -eq 0 ]; then
+              matrix_summary="Validated Python scope has no mutants; one explicit non-mutant sentinel"
+            else
+              matrix_summary="Fully validated fixed plan assignments: 128; one budget-safe physical group per logical assignment"
+            fi
           else
             # GitHub does not permit an empty dynamic matrix. A single explicit
             # no-Python sentinel validates the empty attempt envelope and exits
             # without installing a mutation toolchain.
-            matrix='{"include":[{"group_id":0,"logical_shards":[],"selection_files":[],"selected_count":0,"selection_sha256":"","group_sha256":"","estimated_load_seconds":0.0,"has_python":"false","has_mutants":"false"}]}'
+            matrix='{"include":[{"group_id":0,"logical_shards":[],"selection_files":[],"selected_count":0,"selection_sha256":"","group_sha256":"","estimated_load_micros":0,"has_python":"false","has_mutants":"false"}]}'
             matrix_summary="No-Python sentinel: one explicit non-mutant descriptor (not a 128-assignment plan)"
           fi
           descriptor_count="$(printf '%s' "$matrix" | python -c 'import json, sys; entries = json.load(sys.stdin).get("include"); sys.exit("mutation matrix must contain a nonempty include list") if not isinstance(entries, list) or not entries else None; print(len(entries))')"
@@ -3723,8 +3761,8 @@ jobs:
           MATRIX_SELECTED_COUNT: ${{ matrix.selected_count }}
           MATRIX_SELECTION_SHA256: ${{ matrix.selection_sha256 }}
           MATRIX_GROUP_SHA256: ${{ matrix.group_sha256 }}
-          MATRIX_ESTIMATED_LOAD_SECONDS: ${{ matrix.estimated_load_seconds }}
-          MUTMUT_TARGET_GROUPS: "64"
+          MATRIX_ESTIMATED_LOAD_MICROS: ${{ matrix.estimated_load_micros }}
+          MUTMUT_TARGET_GROUPS: "128"
         run: |
           set -euo pipefail
           if [[ "$MATRIX_HAS_PYTHON" != "true" && "$MATRIX_HAS_PYTHON" != "false" ]]; then
@@ -3764,7 +3802,7 @@ jobs:
             --selected-count "$MATRIX_SELECTED_COUNT" \
             --selection-sha256 "$MATRIX_SELECTION_SHA256" \
             --group-sha256 "$MATRIX_GROUP_SHA256" \
-            --estimated-load-seconds "$MATRIX_ESTIMATED_LOAD_SECONDS"
+            --estimated-load-micros "$MATRIX_ESTIMATED_LOAD_MICROS"
           printf 'has_mutants=%s\n' "$MATRIX_HAS_MUTANTS" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python
@@ -3811,6 +3849,19 @@ jobs:
       - name: Run incremental mutmut (blocking, stats-derived budget)
         id: run_incremental_mutmut
         if: steps.mutation_scope.outputs.has_python == 'true' && steps.mutation_shard.outputs.has_mutants == 'true'
+        # GitHub Actions creates a fresh shell for every step.  Keep the
+        # validated matrix descriptor available to the execution step instead
+        # of relying on the validation step's process environment.  Without
+        # this explicit binding the runner reaches ``test -n
+        # "$MATRIX_LOGICAL_SHARDS"`` with an empty variable and exits before
+        # any selected mutant is executed or evidence is finalized.
+        env:
+          MATRIX_GROUP_ID: ${{ matrix.group_id }}
+          MATRIX_LOGICAL_SHARDS: ${{ join(matrix.logical_shards, ',') }}
+          MATRIX_SELECTED_COUNT: ${{ matrix.selected_count }}
+          MATRIX_SELECTION_SHA256: ${{ matrix.selection_sha256 }}
+          MATRIX_GROUP_SHA256: ${{ matrix.group_sha256 }}
+          MATRIX_ESTIMATED_LOAD_MICROS: ${{ matrix.estimated_load_micros }}
         run: |
           # Scope mutmut to every changed backend source line.  The old
           # tenant-only probe silently skipped mutation evidence for all other
@@ -3917,11 +3968,18 @@ jobs:
             --prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json" \
             --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR"
           MUTMUT_FAILURE_REASON="deriving the stats-based mutation budget"
+          # The immutable source/metadata universe was generated and
+          # validated by the producer.  Two minutes is an evidence-backed
+          # reserve for this reuse path (13 sampled successful jobs stayed
+          # below 90 seconds, with a 72-second maximum; the largest observed
+          # pre-run setup elapsed 89 seconds).  The selected-test and mutmut
+          # watchdog phases remain fully charged by the helper.
           MUTMUT_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
             --selected-file /tmp/mutmut-shard.txt \
             --stats mutants/mutmut-stats.json \
             --max-children 3 \
             --control-cycle-reserve-seconds 5 \
+            --metadata-startup-reserve-seconds 120 \
             --max-timeout-seconds 20970 \
             --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
           if ! [[ "$MUTMUT_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then

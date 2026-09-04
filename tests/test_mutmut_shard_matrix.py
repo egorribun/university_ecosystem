@@ -10,6 +10,7 @@ import pytest
 
 from scripts.mutmut_shard_matrix import (
     PlanValidationError,
+    _seconds_to_micros,
     build_execution_groups,
     build_execution_groups_matrix,
     build_execution_matrix,
@@ -17,6 +18,13 @@ from scripts.mutmut_shard_matrix import (
     validate_execution_group_descriptor,
     validate_matrix_entry,
 )
+
+
+def test_seconds_to_micros_rejects_unrepresentable_integer() -> None:
+    """Huge JSON integers must fail with the plan-domain error."""
+
+    with pytest.raises(PlanValidationError, match="estimated load is invalid"):
+        _seconds_to_micros(10**400, label="estimated load")
 
 
 def _digest(names: list[str]) -> str:
@@ -121,7 +129,7 @@ def test_execution_groups_coalesce_logical_shards_without_changing_selection(
                     ["app.a.one__mutmut_1", "app.a.one__mutmut_2"]
                 ),
                 "group_sha256": groups["groups"][0]["group_sha256"],
-                "estimated_load_seconds": 2.0,
+                "estimated_load_micros": 2_000_000,
             },
             {
                 "group_id": 2,
@@ -136,7 +144,7 @@ def test_execution_groups_coalesce_logical_shards_without_changing_selection(
                     ]
                 ),
                 "group_sha256": groups["groups"][1]["group_sha256"],
-                "estimated_load_seconds": 3.0,
+                "estimated_load_micros": 3_000_000,
             },
         ],
     }
@@ -169,6 +177,44 @@ def test_execution_groups_matrix_carries_complete_group_metadata(
     }
 
 
+def test_validate_group_uses_exact_integer_load_transport(
+    tmp_path: Path,
+) -> None:
+    plan = _write_plan(
+        tmp_path,
+        {
+            1: ["app.a.one__mutmut_1"],
+            2: ["app.a.one__mutmut_2"],
+        },
+    )
+    manifest_path = plan / "plan-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    # The source plan keeps a floating-point seconds estimate, but the matrix
+    # carries an integer microsecond total.  The integer is stable across
+    # GitHub expression interpolation and shell environment transport.
+    manifest["shards"][0]["estimated_load_seconds"] = 1211.4625996820007
+    manifest["shards"][1]["estimated_load_seconds"] = 1211.4625996820007
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    group = build_execution_groups(plan, expected_shards=4, target_groups=1)["groups"][
+        0
+    ]
+    assert isinstance(group, dict)
+    transported_load = group["estimated_load_micros"]
+
+    assert validate_execution_group_descriptor(
+        plan,
+        expected_shards=4,
+        target_groups=1,
+        group_id=group["group_id"],
+        logical_shards=",".join(str(shard_id) for shard_id in group["logical_shards"]),
+        selected_count=group["selected_count"],
+        selection_sha256=group["selection_sha256"],
+        group_sha256=group["group_sha256"],
+        estimated_load_micros=transported_load,
+    ) == ("app.a.one__mutmut_1", "app.a.one__mutmut_2")
+
+
 def test_execution_groups_matrix_emits_safe_empty_sentinel(tmp_path: Path) -> None:
     plan = _write_plan(tmp_path, {})
 
@@ -181,7 +227,7 @@ def test_execution_groups_matrix_emits_safe_empty_sentinel(tmp_path: Path) -> No
                 "selected_count": 0,
                 "selection_sha256": "",
                 "group_sha256": "",
-                "estimated_load_seconds": 0.0,
+                "estimated_load_micros": 0,
                 "has_python": "true",
                 "has_mutants": "false",
             }
@@ -212,7 +258,7 @@ def test_execution_group_descriptor_rejects_invalid_logical_shard_text(
             selected_count=group["selected_count"],
             selection_sha256=group["selection_sha256"],
             group_sha256=group["group_sha256"],
-            estimated_load_seconds=group["estimated_load_seconds"],
+            estimated_load_micros=group["estimated_load_micros"],
         )
 
 
@@ -223,7 +269,7 @@ def test_execution_group_descriptor_rejects_invalid_logical_shard_text(
         ("selected_count", 99, "membership or digest"),
         ("selection_sha256", "0" * 64, "membership or digest"),
         ("group_sha256", "0" * 64, "membership or digest"),
-        ("estimated_load_seconds", 99.0, "membership or digest"),
+        ("estimated_load_micros", 99, "membership or digest"),
     ],
 )
 def test_execution_group_descriptor_rejects_tampered_metadata(
@@ -247,7 +293,7 @@ def test_execution_group_descriptor_rejects_tampered_metadata(
             selected_count=descriptor["selected_count"],
             selection_sha256=descriptor["selection_sha256"],
             group_sha256=descriptor["group_sha256"],
-            estimated_load_seconds=descriptor["estimated_load_seconds"],
+            estimated_load_micros=descriptor["estimated_load_micros"],
         )
 
 
@@ -414,8 +460,8 @@ def test_command_line_validate_group_entrypoint_requires_exact_descriptor(
             group["selection_sha256"],
             "--group-sha256",
             group["group_sha256"],
-            "--estimated-load-seconds",
-            str(group["estimated_load_seconds"]),
+            "--estimated-load-micros",
+            str(group["estimated_load_micros"]),
         ],
     )
 

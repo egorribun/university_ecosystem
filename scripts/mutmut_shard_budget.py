@@ -58,6 +58,7 @@ class ShardBudget:
     selected_count: int
     max_children: int
     selected_test_union_seconds: int
+    metadata_and_startup_reserve_seconds: int
     pre_mutation_reserve_seconds: int
     watchdog_execution_cap_seconds: int
     control_cycle_count: int
@@ -74,6 +75,9 @@ class ShardBudget:
             "selected_count": self.selected_count,
             "max_children": self.max_children,
             "selected_test_union_seconds": self.selected_test_union_seconds,
+            "metadata_and_startup_reserve_seconds": (
+                self.metadata_and_startup_reserve_seconds
+            ),
             "pre_mutation_reserve_seconds": self.pre_mutation_reserve_seconds,
             "watchdog_execution_cap_seconds": self.watchdog_execution_cap_seconds,
             "control_cycle_count": self.control_cycle_count,
@@ -341,12 +345,19 @@ def calculate_shard_budget(
     *,
     max_children: int,
     control_cycle_reserve_seconds: int = CONTROL_CYCLE_RESERVE_SECONDS,
+    metadata_and_startup_reserve_seconds: int = METADATA_AND_STARTUP_RESERVE_SECONDS,
 ) -> ShardBudget:
     """Derive a conservative, stats-backed whole-process timeout."""
     if max_children < 1:
         raise ValueError("max_children must be positive")
     if control_cycle_reserve_seconds < 1:
         raise ValueError("control_cycle_reserve_seconds must be positive")
+    if (
+        isinstance(metadata_and_startup_reserve_seconds, bool)
+        or not isinstance(metadata_and_startup_reserve_seconds, int)
+        or metadata_and_startup_reserve_seconds < 0
+    ):
+        raise ValueError("metadata_and_startup_reserve_seconds must be non-negative")
     if not selected_mutants:
         raise ValueError("selected mutant names must not be empty")
     if len(selected_mutants) != len(set(selected_mutants)):
@@ -360,7 +371,7 @@ def calculate_shard_budget(
         selected_mutants, tests_by_function, validated_durations
     )
     pre_mutation_reserve = (
-        METADATA_AND_STARTUP_RESERVE_SECONDS
+        metadata_and_startup_reserve_seconds
         + SELECTED_TEST_PHASE_MULTIPLIER * selected_test_union_seconds
     )
     watchdog_execution_cap = _schedule_execution_caps(
@@ -377,6 +388,7 @@ def calculate_shard_budget(
         selected_count=len(selected_mutants),
         max_children=max_children,
         selected_test_union_seconds=selected_test_union_seconds,
+        metadata_and_startup_reserve_seconds=metadata_and_startup_reserve_seconds,
         pre_mutation_reserve_seconds=pre_mutation_reserve,
         watchdog_execution_cap_seconds=watchdog_execution_cap,
         control_cycle_count=control_cycle_count,
@@ -406,6 +418,15 @@ def _parse_args() -> argparse.Namespace:
         help="parent orchestration reserve charged for every selected child",
     )
     parser.add_argument(
+        "--metadata-startup-reserve-seconds",
+        type=int,
+        default=METADATA_AND_STARTUP_RESERVE_SECONDS,
+        help=(
+            "reserve for metadata/startup work outside the selected-test phase; "
+            "reuse-generated-universe callers may provide an evidence-backed value"
+        ),
+    )
+    parser.add_argument(
         "--max-timeout-seconds",
         type=int,
         default=DEFAULT_MAX_TIMEOUT_SECONDS,
@@ -417,6 +438,8 @@ def _parse_args() -> argparse.Namespace:
         parser.error("--max-children must be positive")
     if args.control_cycle_reserve_seconds < 1:
         parser.error("--control-cycle-reserve-seconds must be positive")
+    if args.metadata_startup_reserve_seconds < 0:
+        parser.error("--metadata-startup-reserve-seconds must be non-negative")
     if args.max_timeout_seconds < 1:
         parser.error("--max-timeout-seconds must be positive")
     return args
@@ -434,6 +457,7 @@ def main() -> None:
             durations,
             max_children=args.max_children,
             control_cycle_reserve_seconds=args.control_cycle_reserve_seconds,
+            metadata_and_startup_reserve_seconds=args.metadata_startup_reserve_seconds,
         )
         if budget.outer_timeout_seconds > args.max_timeout_seconds:
             raise ValueError(

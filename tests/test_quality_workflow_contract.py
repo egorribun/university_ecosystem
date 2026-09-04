@@ -1591,6 +1591,8 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
     assert "scripts/mutmut_shard_budget.py" in run_step["run"]
     assert "--max-timeout-seconds 20970" in run_step["run"]
     assert "--control-cycle-reserve-seconds 5" in run_step["run"]
+    assert "--metadata-startup-reserve-seconds 120" in run_step["run"]
+    assert "evidence-backed" in run_step["run"]
     assert '"${MUTMUT_TIMEOUT_SECONDS}s"' in run_step["run"]
     assert (
         '--prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"'
@@ -2056,20 +2058,35 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
     assert "scripts/mutmut_shard_matrix.py" in matrix_step["run"]
     assert "mutmut_shard_matrix.py groups" in matrix_step["run"]
     assert "--expected-shards 128" in matrix_step["run"]
-    assert "--target-groups 64" in matrix_step["run"]
+    assert "--target-groups 128" in matrix_step["run"]
     assert '"include"' in matrix_step["run"]
     assert "has_python" in matrix_step["run"]
     assert "has_mutants" in matrix_step["run"]
+    assert "Preflight the exact execution budget" in matrix_step["run"]
+    assert "find mutants/mutmut-incremental-plan" in matrix_step["run"]
+    assert "--metadata-startup-reserve-seconds 120" in matrix_step["run"]
+    assert "--control-cycle-reserve-seconds 5" in matrix_step["run"]
+    assert "--max-timeout-seconds 20880" in matrix_step["run"]
+    assert "21,600 - 630 - 90" in matrix_step["run"]
+    assert '"${#nonempty_plan_files[@]}" -eq 0' in matrix_step["run"]
     assert "descriptor_count=" in matrix_step["run"]
     assert '"$descriptor_count" -gt 128' in matrix_step["run"]
     assert "Mutation matrix capacity" in matrix_step["run"]
     assert (
-        'matrix_summary="Fully validated fixed plan assignments: 128; coalesced physical execution groups"'
+        'matrix_summary="Fully validated fixed plan assignments: 128; one budget-safe physical group per logical assignment"'
         in matrix_step["run"]
     )
     assert (
         'matrix_summary="No-Python sentinel: one explicit non-mutant descriptor '
         '(not a 128-assignment plan)"' in matrix_step["run"]
+    )
+    assert (
+        'echo "Validated Python scope contains no nonempty mutation shards; '
+        'emitting the non-mutant sentinel."' in matrix_step["run"]
+    )
+    assert (
+        'matrix_summary="Validated Python scope has no mutants; one explicit '
+        'non-mutant sentinel"' in matrix_step["run"]
     )
     assert (
         'if [ "${{ steps.mutation_scope.outputs.has_python }}" = "false" ] '
@@ -2101,8 +2118,8 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
         "MATRIX_SELECTED_COUNT": "${{ matrix.selected_count }}",
         "MATRIX_SELECTION_SHA256": "${{ matrix.selection_sha256 }}",
         "MATRIX_GROUP_SHA256": "${{ matrix.group_sha256 }}",
-        "MATRIX_ESTIMATED_LOAD_SECONDS": "${{ matrix.estimated_load_seconds }}",
-        "MUTMUT_TARGET_GROUPS": "64",
+        "MATRIX_ESTIMATED_LOAD_MICROS": "${{ matrix.estimated_load_micros }}",
+        "MUTMUT_TARGET_GROUPS": "128",
     }
     assert '"$MATRIX_GROUP_ID"' in selection_text
     assert '"$MATRIX_LOGICAL_SHARDS"' in selection_text
@@ -2112,6 +2129,21 @@ def test_incremental_mutation_matrix_dispatches_only_validated_nonempty_shards()
     assert '"$MATRIX_HAS_MUTANTS"' in selection_text
     assert "MATRIX_SELECTION_SHA256" in selection_text
     assert "disagrees with local mutation scope" in selection_text
+
+    execution_step = _step_named(
+        mutation_job, "Run incremental mutmut (blocking, stats-derived budget)"
+    )
+    assert execution_step["env"] == {
+        "MATRIX_GROUP_ID": "${{ matrix.group_id }}",
+        "MATRIX_LOGICAL_SHARDS": "${{ join(matrix.logical_shards, ',') }}",
+        "MATRIX_SELECTED_COUNT": "${{ matrix.selected_count }}",
+        "MATRIX_SELECTION_SHA256": "${{ matrix.selection_sha256 }}",
+        "MATRIX_GROUP_SHA256": "${{ matrix.group_sha256 }}",
+        "MATRIX_ESTIMATED_LOAD_MICROS": "${{ matrix.estimated_load_micros }}",
+    }
+    assert 'test -n "$MATRIX_LOGICAL_SHARDS"' in execution_step["run"]
+    assert '"$MATRIX_SELECTED_COUNT"' in execution_step["run"]
+    assert '"$MATRIX_SELECTION_SHA256"' in execution_step["run"]
 
     required_nonempty = (
         "steps.mutation_scope.outputs.has_python == 'true' && "

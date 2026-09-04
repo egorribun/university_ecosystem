@@ -153,6 +153,82 @@ def test_calculate_shard_budget_supports_an_explicit_fail_closed_control_reserve
     )
 
 
+def test_calculate_shard_budget_records_reused_universe_startup_reserve() -> None:
+    """Reusable-universe callers can prove a smaller setup envelope explicitly."""
+
+    budget = calculate_shard_budget(
+        ["app.module.x__mutmut_1"],
+        {"app.module.x": ["tests/test_x.py::test_x"]},
+        {"tests/test_x.py::test_x": 1.0},
+        max_children=1,
+        metadata_and_startup_reserve_seconds=240,
+    )
+
+    assert budget.metadata_and_startup_reserve_seconds == 240
+    assert budget.pre_mutation_reserve_seconds == 242
+    assert (
+        budget.as_json(max_timeout_seconds=20_970)[
+            "metadata_and_startup_reserve_seconds"
+        ]
+        == 240
+    )
+
+
+def test_calculate_shard_budget_rejects_negative_startup_reserve() -> None:
+    with pytest.raises(ValueError, match="metadata_and_startup_reserve_seconds"):
+        calculate_shard_budget(
+            ["app.module.x__mutmut_1"],
+            {"app.module.x": ["tests/test_x.py::test_x"]},
+            {"tests/test_x.py::test_x": 1.0},
+            max_children=1,
+            metadata_and_startup_reserve_seconds=-1,
+        )
+
+
+def test_budget_cli_rejects_negative_startup_reserve(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    selected_file = tmp_path / "selected-mutants.txt"
+    stats_file = tmp_path / "mutmut-stats.json"
+    output_file = tmp_path / "budget.json"
+    selected_file.write_text("app.module.x__mutmut_1\n", encoding="utf-8")
+    stats_file.write_text(
+        json.dumps(
+            {
+                "tests_by_mangled_function_name": {
+                    "app.module.x": ["tests/test_x.py::test_x"]
+                },
+                "duration_by_test": {"tests/test_x.py::test_x": 1.0},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "mutmut_shard_budget.py",
+            "--selected-file",
+            str(selected_file),
+            "--stats",
+            str(stats_file),
+            "--max-children",
+            "1",
+            "--metadata-startup-reserve-seconds",
+            "-1",
+            "--max-timeout-seconds",
+            "20970",
+            "--output",
+            str(output_file),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as error:
+        main()
+    assert error.value.code == 2
+    assert not output_file.exists()
+
+
 def test_calculate_shard_budget_rounds_a_positive_sub_ulp_duration_up_in_both_paths() -> (
     None
 ):

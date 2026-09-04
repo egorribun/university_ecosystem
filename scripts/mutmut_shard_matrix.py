@@ -16,10 +16,12 @@ import math
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
 _SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+_LOAD_SCALE = 1_000_000
 
 
 class PlanValidationError(ValueError):
@@ -31,6 +33,7 @@ class _ShardSelection:
     shard_id: int
     names: tuple[str, ...]
     estimated_load_seconds: float
+    estimated_load_micros: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,6 +66,39 @@ def _require_nonnegative_int(value: object, *, label: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value < 0:
         raise PlanValidationError(f"{label} must be a non-negative integer")
     return value
+
+
+def _seconds_to_micros(value: object, *, label: str) -> int:
+    """Convert a finite JSON duration to a transport-safe integer.
+
+    GitHub expression interpolation serializes matrix numbers through a
+    decimal representation before exposing them to the shell.  Comparing the
+    original binary float therefore made an otherwise intact descriptor fail
+    closed.  The plan still keeps its human-readable seconds estimate, but the
+    matrix contract uses rounded microseconds so every producer/consumer sees
+    the same exact integer and no tolerance can broaden the selection.
+    """
+
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise PlanValidationError(f"{label} is invalid")
+    # ``float(10**400)`` raises ``OverflowError`` instead of returning an
+    # infinity.  Keep that parser/validation boundary fail-closed by mapping
+    # every non-finite or unrepresentable numeric input to the domain error
+    # rather than leaking a builtin conversion exception to callers.
+    try:
+        numeric_value = float(value)
+    except (OverflowError, TypeError, ValueError) as error:
+        raise PlanValidationError(f"{label} is invalid") from error
+    if not math.isfinite(numeric_value) or numeric_value < 0:
+        raise PlanValidationError(f"{label} is invalid")
+    try:
+        scaled = Decimal(str(value)) * _LOAD_SCALE
+        micros = int(scaled.to_integral_value(rounding=ROUND_HALF_UP))
+    except (InvalidOperation, ValueError, OverflowError) as error:
+        raise PlanValidationError(f"{label} is invalid") from error
+    if micros < 0:
+        raise PlanValidationError(f"{label} is invalid")
+    return micros
 
 
 def _read_manifest(path: Path) -> Mapping[str, Any]:
@@ -139,13 +175,9 @@ def _load_validated_plan(
         ):
             raise PlanValidationError(f"{label} selection digest is invalid")
         estimated_load = descriptor.get("estimated_load_seconds")
-        if (
-            isinstance(estimated_load, bool)
-            or not isinstance(estimated_load, (int, float))
-            or not math.isfinite(float(estimated_load))
-            or float(estimated_load) < 0
-        ):
-            raise PlanValidationError(f"{label} estimated load is invalid")
+        estimated_load_micros = _seconds_to_micros(
+            estimated_load, label=f"{label} estimated load"
+        )
 
         names = _read_selection(plan_directory / filename, label=label)
         if len(names) != selected_count:
@@ -157,6 +189,7 @@ def _load_validated_plan(
                 shard_id=expected_id,
                 names=names,
                 estimated_load_seconds=float(estimated_load),
+                estimated_load_micros=estimated_load_micros,
             )
         )
         all_names.extend(names)
@@ -218,18 +251,18 @@ def build_execution_groups(
     else:
         physical_count = min(target_groups, len(nonempty))
         bins: list[list[_ShardSelection]] = [[] for _ in range(physical_count)]
-        loads = [0.0] * physical_count
+        loads = [0] * physical_count
         # Place the most expensive logical shards first, then use the least
         # loaded physical bin.  Stable IDs make every tie deterministic.
         for selection in sorted(
             nonempty,
-            key=lambda item: (-item.estimated_load_seconds, item.shard_id),
+            key=lambda item: (-item.estimated_load_micros, item.shard_id),
         ):
             bin_index = min(
                 range(physical_count), key=lambda index: (loads[index], index)
             )
             bins[bin_index].append(selection)
-            loads[bin_index] += selection.estimated_load_seconds
+            loads[bin_index] += selection.estimated_load_micros
 
         ordered_bins = sorted(
             (
@@ -252,8 +285,8 @@ def build_execution_groups(
                     "selected_count": len(names),
                     "selection_sha256": _selection_digest(names),
                     "group_sha256": _group_digest(selections),
-                    "estimated_load_seconds": sum(
-                        selection.estimated_load_seconds for selection in selections
+                    "estimated_load_micros": sum(
+                        selection.estimated_load_micros for selection in selections
                     ),
                 }
             )
@@ -298,7 +331,7 @@ def build_execution_groups_matrix(
                     "selected_count": 0,
                     "selection_sha256": "",
                     "group_sha256": "",
-                    "estimated_load_seconds": 0.0,
+                    "estimated_load_micros": 0,
                     "has_python": "true",
                     "has_mutants": "false",
                 }
@@ -386,16 +419,15 @@ def resolve_execution_group(
     if _group_digest(selections) != group_digest:
         raise PlanValidationError("execution group digest does not match")
 
-    estimated_load = group.get("estimated_load_seconds")
+    estimated_load = group.get("estimated_load_micros")
+    expected_load = sum(selection.estimated_load_micros for selection in selections)
     if (
-        isinstance(estimated_load, bool)
-        or not isinstance(estimated_load, (int, float))
-        or not math.isfinite(float(estimated_load))
-        or float(estimated_load) < 0
+        not isinstance(estimated_load, int)
+        or isinstance(estimated_load, bool)
+        or estimated_load < 0
     ):
         raise PlanValidationError("execution group estimated load is invalid")
-    expected_load = sum(selection.estimated_load_seconds for selection in selections)
-    if float(estimated_load) != expected_load:
+    if estimated_load != expected_load:
         raise PlanValidationError(
             "execution group estimated load does not match logical shards"
         )
@@ -412,7 +444,7 @@ def validate_execution_group_descriptor(
     selected_count: int,
     selection_sha256: str,
     group_sha256: str,
-    estimated_load_seconds: float,
+    estimated_load_micros: int,
 ) -> tuple[str, ...]:
     """Validate a shell-transported matrix group and return exact mutant IDs."""
 
@@ -436,7 +468,7 @@ def validate_execution_group_descriptor(
         "selected_count": selected_count,
         "selection_sha256": selection_sha256,
         "group_sha256": group_sha256,
-        "estimated_load_seconds": estimated_load_seconds,
+        "estimated_load_micros": estimated_load_micros,
     }
     topology = build_execution_groups(
         plan_directory,
@@ -509,7 +541,7 @@ def _parse_args() -> argparse.Namespace:
     group.add_argument("--selected-count", type=int, required=True)
     group.add_argument("--selection-sha256", required=True)
     group.add_argument("--group-sha256", required=True)
-    group.add_argument("--estimated-load-seconds", type=float, required=True)
+    group.add_argument("--estimated-load-micros", type=int, required=True)
     return parser.parse_args()
 
 
@@ -550,7 +582,7 @@ def main() -> None:
                 selected_count=args.selected_count,
                 selection_sha256=args.selection_sha256,
                 group_sha256=args.group_sha256,
-                estimated_load_seconds=args.estimated_load_seconds,
+                estimated_load_micros=args.estimated_load_micros,
             )
             return
         validate_matrix_entry(
