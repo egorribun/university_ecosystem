@@ -23,13 +23,20 @@ const MAX_CACHE_ENTRIES = 200
 // the result is discarded so user A's response is never stored under user B's session.
 let _sessionEpoch = 0
 
+// Keep the epoch monotonic and non-negative. The lower bound is part of the
+// security contract: a fresh session must always advance the epoch so
+// in-flight work from the previous session is rejected.
+function advanceSessionEpoch(): void {
+  _sessionEpoch = Math.max(0, _sessionEpoch + 1)
+}
+
 /**
  * Increment the session epoch on login. Must be called AFTER the new signing key
  * is registered so any in-flight async HMAC computations from the previous session
  * detect the epoch change and discard their results.
  */
 export const incrementSessionEpoch = (): void => {
-  _sessionEpoch++
+  advanceSessionEpoch()
 }
 
 /**
@@ -37,7 +44,7 @@ export const incrementSessionEpoch = (): void => {
  * that in-flight requests (which captured the old key) cannot store data after clear.
  */
 export const clearCachesOnLogout = (): void => {
-  _sessionEpoch++ // invalidate any in-flight async computations first
+  advanceSessionEpoch() // invalidate any in-flight async computations first
   responseCache.clear()
   etagCache.clear()
 }
@@ -89,8 +96,8 @@ const computeHmac = async (payload: string, key: string): Promise<string> => {
 /** Constant-time hex comparison to prevent timing attacks. */
 const timingSafeEqual = (a: string, b: string): boolean => {
   if (a.length !== b.length) return false
-  const result = Array.from({ length: a.length }, (_, index) => index).reduce(
-    (accumulator, index) => accumulator | (a.charCodeAt(index) ^ b.charCodeAt(index)),
+  const result = Array.from<undefined>({ length: a.length }).reduce<number>(
+    (accumulator, _, index) => accumulator | (a.charCodeAt(index) ^ b.charCodeAt(index)),
     0
   )
   return result === 0

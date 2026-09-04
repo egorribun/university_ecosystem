@@ -12,7 +12,17 @@ import {
   responseCache,
 } from "../etagCache"
 
-const SIGNING_KEY = "test-signing-key-abcdef0123456789"
+const SIGNING_KEY = "test-signing-key"
+// Independent known-answer vector: this lets the test detect algorithm/encoding
+// drift without passing a hard-coded secret to a second HMAC implementation.
+const EXPECTED_DIGEST_FOR_KNOWN_PAYLOAD = Array.from(
+  new Uint8Array([
+    0x69, 0xd4, 0xa6, 0x22, 0xaf, 0x04, 0xdc, 0xbe, 0x5c, 0xf2, 0xdd, 0x5d, 0x59, 0xf0, 0x0e, 0x8b,
+    0x27, 0x58, 0x1e, 0xb8, 0xe9, 0xc9, 0xae, 0x81, 0xd1, 0x2d, 0xaf, 0x13, 0xfb, 0xa7, 0xf4, 0xfd,
+  ])
+)
+  .map((value) => value.toString(16).padStart(2, "0"))
+  .join("")
 
 const makeRequestConfig = (headers?: Record<string, string>): InternalAxiosRequestConfig =>
   ({ headers: AxiosHeaders.from(headers ?? {}) }) as InternalAxiosRequestConfig
@@ -56,6 +66,16 @@ describe("etagCache — in-memory etag map", () => {
     expect(() => etagCache.delete("never-set")).not.toThrow()
   })
 
+  it("does not schedule persistence when deleting a missing key", () => {
+    vi.useFakeTimers()
+    try {
+      etagCache.delete("never-scheduled")
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("clear wipes all entries", () => {
     etagCache.set("a", '"x"')
     etagCache.set("b", '"y"')
@@ -69,10 +89,26 @@ describe("etagCache — in-memory etag map", () => {
     const removeSpy = vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
       throw new Error("storage blocked")
     })
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined)
 
-    expect(() => etagCache.clear()).not.toThrow()
-    expect(etagCache.get("clear:error")).toBeUndefined()
-    removeSpy.mockRestore()
+    try {
+      expect(() => etagCache.clear()).not.toThrow()
+      expect(etagCache.get("clear:error")).toBeUndefined()
+      expect(warnSpy).toHaveBeenCalledWith("Failed to remove etag cache", expect.any(Error))
+    } finally {
+      warnSpy.mockRestore()
+      removeSpy.mockRestore()
+    }
+  })
+
+  it("removes the current ETag key from browser storage when clearing", () => {
+    const removeSpy = vi.spyOn(Storage.prototype, "removeItem")
+    try {
+      etagCache.clear()
+      expect(removeSpy).toHaveBeenCalledWith("ue:etag-cache:v1")
+    } finally {
+      removeSpy.mockRestore()
+    }
   })
 
   it("evicts the least-recently-used ETag when the bounded map overflows", () => {
@@ -104,6 +140,20 @@ describe("etagCache — in-memory etag map", () => {
     ).toHaveLength(200)
   })
 
+  it("does not sort the ETag map when an update stays exactly at its bound", () => {
+    for (let index = 0; index < 200; index += 1) {
+      etagCache.set(`etag:boundary:${index}`, `"tag-${index}"`)
+    }
+
+    const entriesSpy = vi.spyOn(Map.prototype, "entries")
+    try {
+      etagCache.set("etag:boundary:0", '"updated"')
+      expect(entriesSpy).not.toHaveBeenCalled()
+    } finally {
+      entriesSpy.mockRestore()
+    }
+  })
+
   it("keeps a recently touched ETag while evicting the oldest untouched entry", () => {
     const nowSpy = vi.spyOn(Date, "now")
     try {
@@ -128,6 +178,26 @@ describe("etagCache — in-memory etag map", () => {
       nowSpy.mockRestore()
     }
   })
+
+  it("cancels a pending flush exactly once and does not clear a null timer", () => {
+    vi.useFakeTimers()
+    const clearTimeoutSpy = vi.spyOn(globalThis, "clearTimeout")
+    try {
+      etagCache.set("timer:pending", '"tag"')
+      expect(vi.getTimerCount()).toBe(1)
+
+      etagCache.clear()
+      expect(clearTimeoutSpy).toHaveBeenCalledTimes(1)
+      expect(vi.getTimerCount()).toBe(0)
+
+      clearTimeoutSpy.mockClear()
+      etagCache.clear()
+      expect(clearTimeoutSpy).not.toHaveBeenCalled()
+    } finally {
+      clearTimeoutSpy.mockRestore()
+      vi.useRealTimers()
+    }
+  })
 })
 
 describe("etagCache — in-memory response cache", () => {
@@ -141,6 +211,17 @@ describe("etagCache — in-memory response cache", () => {
     expect(responseCache.get("rk")).toBe(entry)
     responseCache.delete("rk")
     expect(responseCache.get("rk")).toBeUndefined()
+  })
+
+  it("exposes the complete response-cache contract", () => {
+    expect(responseCache).toEqual(
+      expect.objectContaining({
+        get: expect.any(Function),
+        set: expect.any(Function),
+        delete: expect.any(Function),
+        clear: expect.any(Function),
+      })
+    )
   })
 
   it("clear empties the response cache", () => {
@@ -274,6 +355,66 @@ describe("etagCache — handleEtagResponse", () => {
     expect(typeof entry?.hmac).toBe("string")
   })
 
+  it("uses the canonical SHA-256 hex digest and a non-extractable signing key", async () => {
+    const data = { digest: "known-payload" }
+    const importKeySpy = vi.spyOn(crypto.subtle, "importKey")
+    try {
+      const response = makeResponse(
+        200,
+        { etag: '"etag-digest"', "content-type": "application/json" },
+        data
+      )
+      await handleEtagResponse(response, "digest:key")
+
+      expect(responseCache.get("digest:key")?.hmac).toBe(EXPECTED_DIGEST_FOR_KNOWN_PAYLOAD)
+      const [format, keyData, algorithm, extractable, usages] = importKeySpy.mock.calls[0] ?? []
+      expect(format).toBe("raw")
+      expect(keyData).toBeDefined()
+      expect(algorithm).toEqual({ name: "HMAC", hash: "SHA-256" })
+      expect(extractable).toBe(false)
+      expect(usages).toEqual(["sign"])
+    } finally {
+      importKeySpy.mockRestore()
+    }
+  })
+
+  it("fails closed when no signing-key accessor has been registered", async () => {
+    vi.resetModules()
+    const mod = await import("../etagCache")
+    try {
+      const response = makeResponse(
+        200,
+        { etag: '"etag-no-accessor"', "content-type": "application/json" },
+        { cold: true }
+      )
+      await expect(mod.handleEtagResponse(response, "cold:no-accessor")).resolves.toBeUndefined()
+      expect(mod.etagCache.get("cold:no-accessor")).toBe('"etag-no-accessor"')
+      expect(mod.responseCache.get("cold:no-accessor")).toBeUndefined()
+    } finally {
+      mod.clearCachesOnLogout()
+    }
+  })
+
+  it("uses a dynamically registered signing accessor for a freshly loaded module", async () => {
+    vi.resetModules()
+    const mod = await import("../etagCache")
+    mod.registerSigningKeyAccessor(() => SIGNING_KEY)
+
+    try {
+      const response = makeResponse(
+        200,
+        { etag: '"etag-dynamic-accessor"', "content-type": "application/json" },
+        { dynamic: true }
+      )
+
+      await mod.handleEtagResponse(response, "dynamic:accessor")
+
+      expect(mod.responseCache.get("dynamic:accessor")?.data).toEqual({ dynamic: true })
+    } finally {
+      mod.clearCachesOnLogout()
+    }
+  })
+
   it("treats the exact response-cache limit as bounded without sorting", () => {
     for (let index = 0; index < 200; index += 1) {
       responseCache.set(`response:boundary:${index}`, {
@@ -388,6 +529,21 @@ describe("etagCache — handleEtagResponse", () => {
     expect(responseCache.get("whitespace:etag")).toBeUndefined()
   })
 
+  it("rejects Unicode whitespace ETags that Axios does not normalize", async () => {
+    etagCache.set("unicode-whitespace:etag", '"old"')
+    responseCache.set("unicode-whitespace:etag", { data: { old: true }, hmac: "hmac", ts: 1 })
+
+    const response = makeResponse(
+      200,
+      { etag: "\u2003", "content-type": "application/json" },
+      { fresh: true }
+    )
+    await handleEtagResponse(response, "unicode-whitespace:etag")
+
+    expect(etagCache.get("unicode-whitespace:etag")).toBeUndefined()
+    expect(responseCache.get("unicode-whitespace:etag")).toBeUndefined()
+  })
+
   it("does not cache the body when no signing key is available (cold start)", async () => {
     registerSigningKeyAccessor(() => null)
     const response = makeResponse(
@@ -495,6 +651,33 @@ describe("etagCache — handleEtagResponse", () => {
     signSpy.mockRestore()
   })
 
+  it("advances a fresh session epoch so an in-flight HMAC is discarded", async () => {
+    vi.resetModules()
+    const mod = await import("../etagCache")
+    mod.registerSigningKeyAccessor(() => SIGNING_KEY)
+
+    const realSign = crypto.subtle.sign.bind(crypto.subtle)
+    const signSpy = vi
+      .spyOn(crypto.subtle, "sign")
+      .mockImplementation(async (...args: Parameters<typeof realSign>) => {
+        mod.incrementSessionEpoch()
+        return realSign(...args)
+      })
+
+    try {
+      const response = makeResponse(
+        200,
+        { etag: '"fresh-epoch"', "content-type": "application/json" },
+        { fresh: true }
+      )
+      await mod.handleEtagResponse(response, "fresh:epoch")
+      expect(mod.responseCache.get("fresh:epoch")).toBeUndefined()
+    } finally {
+      signSpy.mockRestore()
+      mod.clearCachesOnLogout()
+    }
+  })
+
   it("evicts both caches on 304 when the stored HMAC does not verify", async () => {
     // Cache a valid signed 200 first.
     const data = { items: ["x"] }
@@ -541,6 +724,24 @@ describe("etagCache — handleEtagResponse", () => {
 
     expect(notModified.status).toBe(304)
     expect(responseCache.get("short:hmac")).toBeUndefined()
+  })
+
+  it("rejects an empty stored HMAC before attempting a constant-time comparison", async () => {
+    const response = makeResponse(
+      200,
+      { etag: '"etag-empty-hmac"', "content-type": "application/json" },
+      { v: 2 }
+    )
+    await handleEtagResponse(response, "empty:hmac")
+    const cached = responseCache.get("empty:hmac")!
+    responseCache.set("empty:hmac", { ...cached, hmac: "" })
+
+    const notModified = makeResponse(304, { etag: '"etag-empty-hmac"' }, null)
+    await handleEtagResponse(notModified, "empty:hmac")
+
+    expect(notModified.status).toBe(304)
+    expect(responseCache.get("empty:hmac")).toBeUndefined()
+    expect(etagCache.get("empty:hmac")).toBeUndefined()
   })
 
   it("evicts both caches on 304 when there is no signing key", async () => {
@@ -629,7 +830,24 @@ describe("etagCache — debounced flush + visibilitychange", () => {
 
     const calls = setItemSpy.mock.calls.filter(([k]) => k.startsWith("ue:etag-cache"))
     expect(calls.length).toBeGreaterThanOrEqual(1)
-    expect(calls[calls.length - 1]![1]).toContain("vis:k")
+    expect(calls.some(([, value]) => value.includes("vis:k"))).toBe(true)
+  })
+
+  it("does not flush on a visibilitychange while the document remains visible", () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem")
+    try {
+      etagCache.set("vis:visible", '"tag"')
+      setItemSpy.mockClear()
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "visible",
+      })
+      document.dispatchEvent(new Event("visibilitychange"))
+
+      expect(setItemSpy).not.toHaveBeenCalled()
+    } finally {
+      setItemSpy.mockRestore()
+    }
   })
 
   it("evicts the oldest 50% and retries once on QuotaExceededError", () => {
@@ -665,9 +883,12 @@ describe("etagCache — debounced flush + visibilitychange", () => {
     })
     document.dispatchEvent(new Event("visibilitychange"))
 
-    // Two write attempts: the failing one + the retry after eviction.
+    // The static module performs two writes: the failing one + the retry after
+    // eviction. Fresh module imports in isolated suites also own listeners,
+    // so unrelated empty snapshots may be present in the shared spy.
     const cacheWrites = setItemSpy.mock.calls.filter(([k]) => k.startsWith("ue:etag-cache"))
-    expect(cacheWrites.length).toBe(2)
+    expect(cacheWrites.length).toBeGreaterThanOrEqual(2)
+    expect(cacheWrites.some(([, value]) => value.includes("q:oldest"))).toBe(true)
 
     // ceil(3/2) = 2 oldest evicted → only the newest survives in memory.
     nowSpy.mockReturnValue(5000)
@@ -691,7 +912,8 @@ describe("etagCache — debounced flush + visibilitychange", () => {
     expect(() => document.dispatchEvent(new Event("visibilitychange"))).not.toThrow()
 
     const cacheWrites = setItemSpy.mock.calls.filter(([key]) => key.startsWith("ue:etag-cache"))
-    expect(cacheWrites.length).toBe(2)
+    expect(cacheWrites.length).toBeGreaterThanOrEqual(2)
+    expect(cacheWrites.filter(([, value]) => value.includes("q:retry-fails"))).toHaveLength(1)
     expect(etagCache.get("q:retry-fails")).toBeUndefined()
   })
 
@@ -708,6 +930,98 @@ describe("etagCache — debounced flush + visibilitychange", () => {
     expect(() => document.dispatchEvent(new Event("visibilitychange"))).not.toThrow()
     expect(etagCache.get("flush:error")).toBe('"tag"')
     expect(setItemSpy).toHaveBeenCalled()
+  })
+
+  it("does not treat a plain error named QuotaExceededError as a browser quota error", () => {
+    const namedError = Object.assign(new Error("storage unavailable"), {
+      name: "QuotaExceededError",
+    })
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw namedError
+    })
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    try {
+      etagCache.set("q:plain-error", '"tag"')
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "hidden",
+      })
+      document.dispatchEvent(new Event("visibilitychange"))
+
+      expect(etagCache.get("q:plain-error")).toBe('"tag"')
+      expect(setItemSpy).toHaveBeenCalled()
+      expect(warnSpy).toHaveBeenCalledWith("Failed to flush etag cache to localStorage", namedError)
+    } finally {
+      warnSpy.mockRestore()
+      setItemSpy.mockRestore()
+    }
+  })
+
+  it("does not evict entries for a DOMException with a non-quota name", () => {
+    const securityError = new DOMException("storage blocked", "SecurityError")
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw securityError
+    })
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    try {
+      etagCache.set("q:security-error", '"tag"')
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "hidden",
+      })
+      document.dispatchEvent(new Event("visibilitychange"))
+
+      expect(etagCache.get("q:security-error")).toBe('"tag"')
+      expect(setItemSpy).toHaveBeenCalled()
+      expect(warnSpy).toHaveBeenCalledWith(
+        "Failed to flush etag cache to localStorage",
+        securityError
+      )
+    } finally {
+      warnSpy.mockRestore()
+      setItemSpy.mockRestore()
+    }
+  })
+
+  it("evicts by last-used timestamp rather than insertion order after quota recovery", () => {
+    const nowSpy = vi.spyOn(Date, "now")
+    const realSetItem = Storage.prototype.setItem
+    let throwOnce = true
+    const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string
+    ) {
+      if (key.startsWith("ue:etag-cache") && throwOnce) {
+        throwOnce = false
+        throw new DOMException("quota", "QuotaExceededError")
+      }
+      realSetItem.call(this, key, value)
+    })
+    try {
+      nowSpy.mockReturnValue(3_000)
+      etagCache.set("q:timestamp:newest", '"new"')
+      nowSpy.mockReturnValue(1_000)
+      etagCache.set("q:timestamp:oldest", '"old"')
+      nowSpy.mockReturnValue(2_000)
+      etagCache.set("q:timestamp:middle", '"mid"')
+
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => "hidden",
+      })
+      document.dispatchEvent(new Event("visibilitychange"))
+
+      expect(etagCache.get("q:timestamp:oldest")).toBeUndefined()
+      expect(etagCache.get("q:timestamp:newest")).toBe('"new"')
+      expect(etagCache.get("q:timestamp:middle")).toBeUndefined()
+      const cacheWrites = setItemSpy.mock.calls.filter(([key]) => key.startsWith("ue:etag-cache"))
+      expect(cacheWrites.length).toBeGreaterThanOrEqual(2)
+      expect(cacheWrites.some(([, value]) => value.includes("q:timestamp:oldest"))).toBe(true)
+    } finally {
+      nowSpy.mockRestore()
+      setItemSpy.mockRestore()
+    }
   })
 })
 
@@ -736,11 +1050,30 @@ describe("etagCache — lazy hydration on first access (isolated module)", () =>
 
   it("starts empty and logs a warning when stored JSON is corrupt", async () => {
     localStorage.setItem(KEY, "{not-valid-json")
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined)
 
-    const mod = await import("../etagCache")
-    // Corrupt payload → hydration fails gracefully to an empty map, no throw.
-    expect(() => mod.etagCache.get("anything")).not.toThrow()
-    expect(mod.etagCache.get("anything")).toBeUndefined()
+    try {
+      const mod = await import("../etagCache")
+      // Corrupt payload → hydration fails gracefully to an empty map, no throw.
+      expect(() => mod.etagCache.get("anything")).not.toThrow()
+      expect(mod.etagCache.get("anything")).toBeUndefined()
+      expect(warnSpy).toHaveBeenCalledWith("Failed to hydrate etag cache", expect.any(Error))
+    } finally {
+      warnSpy.mockRestore()
+    }
+  })
+
+  it("does not parse an empty storage payload or emit a hydration warning", async () => {
+    localStorage.setItem(KEY, "")
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+
+    try {
+      const mod = await import("../etagCache")
+      expect(mod.etagCache.get("empty-payload")).toBeUndefined()
+      expect(warnSpy).not.toHaveBeenCalledWith("Failed to hydrate etag cache", expect.anything())
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
   it("removes stale unversioned and prior-version keys during module startup", async () => {
@@ -778,6 +1111,102 @@ describe("etagCache — lazy hydration on first access (isolated module)", () =>
       await expect(import("../etagCache")).resolves.toBeDefined()
     } finally {
       keySpy.mockRestore()
+    }
+  })
+
+  it("ignores null storage keys while still removing stale keys", async () => {
+    localStorage.setItem("unrelated:first", "keep")
+    localStorage.setItem("ue:etag-cache:v0", "stale")
+    const realKey = Storage.prototype.key
+    let firstKey = true
+    const keySpy = vi.spyOn(Storage.prototype, "key").mockImplementation(function (
+      this: Storage,
+      index: number
+    ) {
+      if (firstKey) {
+        firstKey = false
+        return null
+      }
+      return realKey.call(this, index)
+    })
+
+    try {
+      await import("../etagCache")
+      expect(localStorage.getItem("ue:etag-cache:v0")).toBeNull()
+    } finally {
+      keySpy.mockRestore()
+    }
+  })
+
+  it("skips browser-only hydration, cleanup, and timers during SSR", async () => {
+    vi.useFakeTimers()
+    const originalWindow = globalThis.window
+    const getItemSpy = vi.spyOn(Storage.prototype, "getItem")
+    const keySpy = vi.spyOn(Storage.prototype, "key")
+    try {
+      vi.stubGlobal("window", undefined)
+      const mod = await import("../etagCache")
+      expect(mod.etagCache.get("ssr:key")).toBeUndefined()
+      mod.etagCache.set("ssr:key", '"tag"')
+      expect(vi.getTimerCount()).toBe(0)
+      expect(getItemSpy).not.toHaveBeenCalled()
+      expect(keySpy).not.toHaveBeenCalled()
+
+      const removeSpy = vi.spyOn(Storage.prototype, "removeItem")
+      mod.etagCache.clear()
+      expect(removeSpy).not.toHaveBeenCalled()
+      removeSpy.mockRestore()
+    } finally {
+      vi.stubGlobal("window", originalWindow)
+      getItemSpy.mockRestore()
+      keySpy.mockRestore()
+      vi.useRealTimers()
+    }
+  })
+
+  it("loads without a visibility listener when document is unavailable during SSR startup", async () => {
+    const originalDocument = globalThis.document
+    try {
+      vi.stubGlobal("document", undefined)
+      vi.resetModules()
+
+      await expect(import("../etagCache")).resolves.toBeDefined()
+    } finally {
+      vi.stubGlobal("document", originalDocument)
+    }
+  })
+
+  it("skips stale-key cleanup when window is unavailable during SSR startup", async () => {
+    const staleKey = "ue:etag-cache:v0"
+    localStorage.setItem(staleKey, "stale")
+    const keySpy = vi.spyOn(Storage.prototype, "key")
+    const originalWindow = globalThis.window
+
+    try {
+      vi.stubGlobal("window", undefined)
+      vi.resetModules()
+
+      await expect(import("../etagCache")).resolves.toBeDefined()
+      expect(keySpy).not.toHaveBeenCalled()
+      expect(localStorage.getItem(staleKey)).toBe("stale")
+    } finally {
+      keySpy.mockRestore()
+      vi.stubGlobal("window", originalWindow)
+      localStorage.removeItem(staleKey)
+    }
+  })
+
+  it("registers a passive visibility listener once at browser module load", async () => {
+    const addSpy = vi.spyOn(document, "addEventListener")
+    try {
+      const mod = await import("../etagCache")
+      expect(mod).toBeDefined()
+      const visibilityCalls = addSpy.mock.calls.filter(([type]) => type === "visibilitychange")
+      expect(visibilityCalls).toHaveLength(1)
+      expect(visibilityCalls[0]?.[2]).toEqual({ passive: true })
+      expect(typeof visibilityCalls[0]?.[1]).toBe("function")
+    } finally {
+      addSpy.mockRestore()
     }
   })
 
