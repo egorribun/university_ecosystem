@@ -990,6 +990,80 @@ describe("useMessengerController — branch top-up", () => {
         expect(result.current.messages.find((m) => m.id === "msg-1")?.text).toBe("to clear")
       })
     })
+
+    it("writes only the target chat metadata in the clear mutation cache update", async () => {
+      mocks.paramsRef.current = { chatId: "chat-1" }
+      mocks.chatApi.getChats.mockResolvedValue({
+        items: [
+          {
+            id: "chat-1",
+            participants: [{ id: "current-user-id" }, { id: "peer" }],
+            unread_count: 3,
+            last_message: { content: "last", created_at: "2026-08-25T12:00:00Z" },
+          },
+          {
+            id: "chat-2",
+            participants: [{ id: "current-user-id" }, { id: "peer-2" }],
+            unread_count: 1,
+            last_message: { content: "keep", created_at: "2026-08-25T12:01:00Z" },
+          },
+        ],
+        has_more: false,
+        next_cursor: null,
+      })
+      mocks.chatApi.getMessages.mockResolvedValue({
+        items: [
+          {
+            id: "msg-1",
+            chat_id: "chat-1",
+            sender_id: "peer",
+            content: "to clear",
+            created_at: "2026-08-25T12:00:00Z",
+            read_status: false,
+          },
+        ],
+        has_more: true,
+        next_cursor: "older-cursor",
+      })
+      mocks.chatApi.clearChat.mockResolvedValue({ status: "ok" })
+
+      const { queryClient, HookWrapper } = createQueryHarness()
+      const setQueryData = vi.spyOn(queryClient, "setQueryData")
+      const { result: hookResult } = renderHook(() => useMessengerController(), {
+        wrapper: HookWrapper,
+      })
+      await waitFor(() => expect(hookResult.current.contacts).toHaveLength(2))
+      await waitFor(() => expect(hookResult.current.messages).toHaveLength(1))
+
+      act(() => hookResult.current.handleClearChat())
+      act(() => hookResult.current.confirmDialog?.onConfirm())
+
+      // Let the awaited `cancelQueries` in onMutate and the resolved mutation
+      // settle without waiting on a mutant-dependent UI predicate. The cache
+      // update itself is the contract under test and fails fast if removed.
+      await act(async () => {
+        await Promise.resolve()
+        await Promise.resolve()
+        await new Promise((resolve) => setTimeout(resolve, 0))
+      })
+
+      const chatsUpdate = setQueryData.mock.calls.find(
+        ([key]) => JSON.stringify(key) === JSON.stringify(["chats"])
+      )
+      expect(chatsUpdate).toBeDefined()
+      const updatedChats = chatsUpdate?.[1] as {
+        items: Array<{ id: string; unread_count: number; last_message?: unknown }>
+      }
+      expect(updatedChats.items.find((chat) => chat.id === "chat-1")).toMatchObject({
+        last_message: undefined,
+        unread_count: 0,
+      })
+      expect(updatedChats.items.find((chat) => chat.id === "chat-2")).toMatchObject({
+        last_message: { content: "keep", created_at: "2026-08-25T12:01:00Z" },
+        unread_count: 1,
+      })
+      expect(mocks.chatApi.clearChat).toHaveBeenCalledWith("chat-1")
+    })
   })
 
   describe("delete chat optimistic mutation (514-545)", () => {
