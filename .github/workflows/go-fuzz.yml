@@ -32,17 +32,19 @@ jobs:
         run: |
           cd services/file-processor
           # Keep one fuzz worker: the default GOMAXPROCS-sized pool can OOM
-          # the runner. A 30-second budget is long enough for the bounded
-          # smoke corpus while leaving shutdown headroom on shared runners.
-          go test -v -fuzz=FuzzEstimateQueryDepth -fuzztime=30s -parallel=1 ./internal/middleware
+          # the runner. Keep a one-second shutdown margin: Go 1.26.6 still
+          # has golang/go#75804, where the exact fuzztime deadline can escape
+          # as a false `context deadline exceeded` failure. The 29-second
+          # smoke budget remains bounded while avoiding that runtime race.
+          go test -v -fuzz=FuzzEstimateQueryDepth -fuzztime=29s -parallel=1 ./internal/middleware
 
       - name: Run gateway JWT fuzz test
         run: |
           cd services/gateway
-          go test -v -fuzz=FuzzJWTValidation -fuzztime=30s -parallel=1 ./middleware
+          go test -v -fuzz=FuzzJWTValidation -fuzztime=29s -parallel=1 ./middleware
 
       - name: Run ws-hub parser fuzz tests
         run: |
           cd services/ws-hub
-          go test -v -fuzz=FuzzParseMessage -fuzztime=30s -parallel=1 ./pkg/hub
-          go test -v -fuzz=FuzzExtractAlgFromHeader -fuzztime=30s -parallel=1 ./pkg/hub
+          go test -v -fuzz=FuzzParseMessage -fuzztime=29s -parallel=1 ./pkg/hub
+          go test -v -fuzz=FuzzExtractAlgFromHeader -fuzztime=29s -parallel=1 ./pkg/hub
