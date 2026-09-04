@@ -630,6 +630,11 @@ also_copy = [
     "docs",
     "containers/quality",
     "k8s/kyverno",
+    # Standalone Kubernetes contracts read the root ingress and example secret
+    # manifests directly; keep these inputs in the isolated baseline tree so
+    # mutmut's stats pass exercises the same repository surface as CI.
+    "k8s/ingress.yaml",
+    "k8s/secrets-example.yaml",
     "k8s/backend",
     "k8s/frontend",
     # test_feature_flag_architecture_contract reads the flagd deployment,
