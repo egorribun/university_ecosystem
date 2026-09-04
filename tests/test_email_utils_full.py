@@ -44,7 +44,12 @@ def test_log_event_uses_root_logger_when_module_logger_disabled(caplog):
         email_mod.logger.disabled = True
         with caplog.at_level(logging.WARNING, logger=""):
             _log_event(logging.WARNING, "test.disabled.logger.path")
-        assert any("test.disabled.logger.path" in r.message for r in caplog.records)
+        # ``LogRecord.message`` is a formatter-populated convenience field,
+        # not part of the stdlib record contract.  ``getMessage()`` is stable
+        # regardless of whether another handler formatted the record first.
+        assert any(
+            "test.disabled.logger.path" in r.getMessage() for r in caplog.records
+        )
     finally:
         email_mod.logger.disabled = original_disabled
 
@@ -58,7 +63,7 @@ def test_log_event_uses_module_logger_when_enabled(caplog):
         email_mod.logger.disabled = False
         with caplog.at_level(logging.WARNING, logger="app.utils.email"):
             _log_event(logging.WARNING, "test.module.logger.path")
-        assert any("test.module.logger.path" in r.message for r in caplog.records)
+        assert any("test.module.logger.path" in r.getMessage() for r in caplog.records)
     finally:
         email_mod.logger.disabled = original_disabled
 
