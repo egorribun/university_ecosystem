@@ -2273,6 +2273,7 @@ def test_manual_mutation_evidence_is_isolated_from_required_ci_contexts() -> Non
     assert "--num-shards 128" in manual_mutation_text
     assert "scripts/mutmut_shard_budget.py" in manual_mutation_text
     assert "--max-timeout-seconds 20970" in manual_mutation_text
+    assert "--metadata-startup-reserve-seconds 120" in manual_mutation_text
     assert '--prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json"' in (
         manual_mutation_text
     )

@@ -274,11 +274,15 @@ jobs:
             --prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json" \
             --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR"
           MUTMUT_FAILURE_REASON="deriving the stats-based mutation budget"
+          # The exact-universe reuse path has a measured <=89-second
+          # pre-run envelope; keep a 120-second fail-closed reserve while
+          # leaving the full six-hour deadline and evidence headroom intact.
           MUTMUT_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
             --selected-file /tmp/mutmut-shard.txt \
             --stats mutants/mutmut-stats.json \
             --max-children 3 \
             --control-cycle-reserve-seconds 5 \
+            --metadata-startup-reserve-seconds 120 \
             --max-timeout-seconds 20970 \
             --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
           if ! [[ "$MUTMUT_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then

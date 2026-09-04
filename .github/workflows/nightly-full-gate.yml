@@ -145,11 +145,15 @@ jobs:
           for shard in $(seq 1 128); do
             printf -v shard_file 'shard-%02d.txt' "$shard"
             test -s "mutants/mutmut-full-plan/$shard_file"
+            # Keep nightly's stats-derived bound aligned with the measured
+            # mutation startup envelope; the live deadline guard remains the
+            # authoritative setup/evidence safety check.
             uv run python scripts/mutmut_shard_budget.py \
               --selected-file "mutants/mutmut-full-plan/$shard_file" \
               --stats mutants/mutmut-stats.json \
               --max-children 8 \
               --control-cycle-reserve-seconds 1 \
+              --metadata-startup-reserve-seconds 120 \
               --max-timeout-seconds 20970 \
               --output "mutants/mutmut-full-plan/budget-${shard_file%.txt}.json"
           done
@@ -296,11 +300,15 @@ jobs:
             --prepare-exact-execution "$MUTMUT_EVIDENCE_DIR/execution-plan.json" \
             --execution-evidence-dir "$MUTMUT_EVIDENCE_DIR"
           MUTMUT_FAILURE_REASON="deriving the stats-based mutation budget"
+          # The live deadline check below accounts for runner setup and the
+          # required evidence reserve; this 120-second helper reserve covers
+          # mutmut's internal startup/metadata phase without truncation.
           MUTMUT_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
             --selected-file /tmp/mutmut-shard.txt \
             --stats mutants/mutmut-stats.json \
             --max-children 8 \
             --control-cycle-reserve-seconds 1 \
+            --metadata-startup-reserve-seconds 120 \
             --max-timeout-seconds 20970 \
             --output "$MUTMUT_EVIDENCE_DIR/shard-budget.json")"
           if ! [[ "$MUTMUT_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
@@ -378,10 +386,13 @@ jobs:
             if [ "$survivor_count" -gt 0 ]; then
               cp mutants/mutmut-stats-full.json mutants/mutmut-stats.json
               MUTMUT_FAILURE_REASON="deriving the full-map survivor confirmation budget"
+              # Survivor confirmation uses the same bounded mutmut startup
+              # phase and remains subject to the job-level deadline guard.
               FULL_MAP_BUDGET_TIMEOUT_SECONDS="$(uv run python scripts/mutmut_shard_budget.py \
                 --selected-file "$MUTMUT_EVIDENCE_DIR/full-map-survivors.txt" \
                 --stats mutants/mutmut-stats-full.json \
                 --max-children 2 \
+                --metadata-startup-reserve-seconds 120 \
                 --max-timeout-seconds 20970 \
                 --output "$MUTMUT_EVIDENCE_DIR/full-map-survivor-budget.json")"
               if ! [[ "$FULL_MAP_BUDGET_TIMEOUT_SECONDS" =~ ^[1-9][0-9]*$ ]]; then
