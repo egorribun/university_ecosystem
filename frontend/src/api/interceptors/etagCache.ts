@@ -290,14 +290,16 @@ export const handleEtagResponse = async (response: AxiosResponse, etagKey: strin
   const responseHeaders = AxiosHeaders.from(
     (response.headers ?? undefined) as AxiosHeaders | string | undefined
   )
-  const tag = responseHeaders.get("etag") ?? responseHeaders.get("ETag")
+  // AxiosHeaders performs case-insensitive lookup, so one canonical key keeps
+  // the contract deterministic for both `etag` and `ETag` response spellings.
+  const tag = responseHeaders.get("etag")
 
   if (typeof tag === "string" && tag.trim()) {
     etagCache.set(etagKey, tag)
     // Only cache JSON responses — caching HTML error pages or other content types
     // can corrupt the response cache and break the app on 304 cache hit.
-    const contentType = (responseHeaders.get("content-type") as string | null) ?? ""
-    const isJson = contentType.includes("application/json")
+    const contentType = responseHeaders.get("content-type")
+    const isJson = typeof contentType === "string" && contentType.includes("application/json")
 
     if (response.status === 200 && response.data && isJson) {
       const signingKey = getSigningKey()

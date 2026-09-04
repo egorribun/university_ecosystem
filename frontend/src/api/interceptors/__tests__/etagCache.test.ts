@@ -230,9 +230,15 @@ describe("etagCache — applyEtagHeader", () => {
 
   it("leaves headers without If-None-Match when there is no cached tag", () => {
     const config = makeRequestConfig()
-    applyEtagHeader(config, "no-such-key")
-    const headers = config.headers as AxiosHeaders
-    expect(headers.has("if-none-match")).toBe(false)
+    const setSpy = vi.spyOn(AxiosHeaders.prototype, "set")
+    try {
+      applyEtagHeader(config, "no-such-key")
+      const headers = config.headers as AxiosHeaders
+      expect(headers.has("if-none-match")).toBe(false)
+      expect(setSpy).not.toHaveBeenCalled()
+    } finally {
+      setSpy.mockRestore()
+    }
   })
 
   it("creates AxiosHeaders when the request config has no headers object", () => {
@@ -268,6 +274,43 @@ describe("etagCache — handleEtagResponse", () => {
     expect(typeof entry?.hmac).toBe("string")
   })
 
+  it("treats the exact response-cache limit as bounded without sorting", () => {
+    for (let index = 0; index < 200; index += 1) {
+      responseCache.set(`response:boundary:${index}`, {
+        data: index,
+        hmac: "hmac",
+        ts: index,
+      })
+    }
+
+    const entriesSpy = vi.spyOn(Map.prototype, "entries")
+    try {
+      // Updating an existing key keeps the map exactly at its limit. The
+      // eviction path must return before constructing a sorted snapshot.
+      responseCache.set("response:boundary:0", { data: "updated", hmac: "hmac", ts: 999 })
+      expect(entriesSpy).not.toHaveBeenCalled()
+    } finally {
+      entriesSpy.mockRestore()
+    }
+  })
+
+  it("evicts by timestamp rather than insertion order when responses overflow", () => {
+    for (let index = 0; index < 199; index += 1) {
+      responseCache.set(`response:ordered:${index}`, {
+        data: index,
+        hmac: "hmac",
+        ts: 1_000 + index,
+      })
+    }
+    responseCache.set("response:ordered:oldest", { data: "old", hmac: "hmac", ts: 1 })
+
+    responseCache.set("response:ordered:overflow", { data: "new", hmac: "hmac", ts: 2_000 })
+
+    expect(responseCache.get("response:ordered:oldest")).toBeUndefined()
+    expect(responseCache.get("response:ordered:0")).toBeDefined()
+    expect(responseCache.get("response:ordered:overflow")).toBeDefined()
+  })
+
   it("accepts a response without a headers object", async () => {
     await expect(
       handleEtagResponse(
@@ -296,6 +339,55 @@ describe("etagCache — handleEtagResponse", () => {
     expect(responseCache.get("page:home")).toBeUndefined()
   })
 
+  it("does not cache JSON payloads for a non-200 response", async () => {
+    const response = makeResponse(
+      201,
+      { etag: '"etag-created"', "content-type": "application/json" },
+      { created: true }
+    )
+
+    await handleEtagResponse(response, "created:response")
+
+    expect(etagCache.get("created:response")).toBe('"etag-created"')
+    expect(responseCache.get("created:response")).toBeUndefined()
+  })
+
+  it("stores an ETag without caching when content type is absent", async () => {
+    const response = makeResponse(200, { etag: '"etag-no-content-type"' }, { ok: true })
+
+    await handleEtagResponse(response, "no-content-type")
+
+    expect(etagCache.get("no-content-type")).toBe('"etag-no-content-type"')
+    expect(responseCache.get("no-content-type")).toBeUndefined()
+  })
+
+  it("accepts AxiosHeaders case-insensitive matching for an upper-case ETag", async () => {
+    const response = makeResponse(
+      200,
+      { ETag: '"etag-uppercase"', "content-type": "text/plain" },
+      "plain text"
+    )
+
+    await handleEtagResponse(response, "uppercase:etag")
+
+    expect(etagCache.get("uppercase:etag")).toBe('"etag-uppercase"')
+  })
+
+  it("rejects a whitespace-only ETag and clears stale caches", async () => {
+    etagCache.set("whitespace:etag", '"old"')
+    responseCache.set("whitespace:etag", { data: { old: true }, hmac: "hmac", ts: 1 })
+
+    const response = makeResponse(
+      200,
+      { etag: "   ", "content-type": "application/json" },
+      { fresh: true }
+    )
+    await handleEtagResponse(response, "whitespace:etag")
+
+    expect(etagCache.get("whitespace:etag")).toBeUndefined()
+    expect(responseCache.get("whitespace:etag")).toBeUndefined()
+  })
+
   it("does not cache the body when no signing key is available (cold start)", async () => {
     registerSigningKeyAccessor(() => null)
     const response = makeResponse(
@@ -306,6 +398,26 @@ describe("etagCache — handleEtagResponse", () => {
     await handleEtagResponse(response, "cold:key")
     expect(etagCache.get("cold:key")).toBe('"etag-cold"')
     expect(responseCache.get("cold:key")).toBeUndefined()
+  })
+
+  it("deletes an existing response cache when the signing key disappears", async () => {
+    const first = makeResponse(
+      200,
+      { etag: '"etag-key-present"', "content-type": "application/json" },
+      { old: true }
+    )
+    await handleEtagResponse(first, "key:disappears")
+    expect(responseCache.get("key:disappears")).toBeDefined()
+
+    registerSigningKeyAccessor(() => null)
+    const second = makeResponse(
+      200,
+      { etag: '"etag-key-missing"', "content-type": "application/json" },
+      { fresh: true }
+    )
+    await handleEtagResponse(second, "key:disappears")
+
+    expect(responseCache.get("key:disappears")).toBeUndefined()
   })
 
   it("deletes both caches when the response carries no etag", async () => {
@@ -398,14 +510,20 @@ describe("etagCache — handleEtagResponse", () => {
     const corrupted = responseCache.get("bad:hmac")!
     responseCache.set("bad:hmac", { ...corrupted, hmac: "00".repeat(32) })
 
-    const notModified = makeResponse(304, { etag: '"etag-bad-hmac"' }, null)
-    await handleEtagResponse(notModified, "bad:hmac")
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined)
+    try {
+      const notModified = makeResponse(304, { etag: '"etag-bad-hmac"' }, null)
+      await handleEtagResponse(notModified, "bad:hmac")
 
-    // Mismatch path: status stays 304, both caches evicted.
-    expect(notModified.status).toBe(304)
-    expect(notModified.data).toBeNull()
-    expect(etagCache.get("bad:hmac")).toBeUndefined()
-    expect(responseCache.get("bad:hmac")).toBeUndefined()
+      // Mismatch path: status stays 304, both caches evicted.
+      expect(notModified.status).toBe(304)
+      expect(notModified.data).toBeNull()
+      expect(etagCache.get("bad:hmac")).toBeUndefined()
+      expect(responseCache.get("bad:hmac")).toBeUndefined()
+      expect(warnSpy).toHaveBeenCalledWith("[etagCache] HMAC mismatch for key:", "bad:hmac")
+    } finally {
+      warnSpy.mockRestore()
+    }
   })
 
   it("rejects a stored HMAC with a different length without comparing characters", async () => {
