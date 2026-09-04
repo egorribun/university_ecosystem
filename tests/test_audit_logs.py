@@ -19,7 +19,7 @@ def _find_event(caplog, logger_name: str, event: str) -> dict:
         if record.name != logger_name:
             continue
         try:
-            payload = json.loads(record.message)
+            payload = json.loads(record.getMessage())
         except json.JSONDecodeError:
             continue
         if payload.get("event") == event:

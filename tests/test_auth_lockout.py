@@ -25,7 +25,7 @@ def _find_event(caplog: Any, event: str) -> dict[Any, Any] | None:
         if record.name != "app.auth":
             continue
         try:
-            payload = json.loads(record.message)
+            payload = json.loads(record.getMessage())
             if isinstance(payload, dict) and payload.get("event") == event:
                 return payload
         except json.JSONDecodeError:
