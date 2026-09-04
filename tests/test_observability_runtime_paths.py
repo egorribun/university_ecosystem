@@ -270,6 +270,7 @@ def test_configure_worker_observability():
         patch("app.core.observability.settings") as mock_settings,
         patch("app.core.observability._configure_logging"),
         patch("app.core.observability._configure_otel") as mock_conf_otel,
+        patch("app.core.observability._logger") as mock_logger,
     ):
         mock_settings.enable_otel = True
         mock_conf_otel.return_value = MagicMock()
@@ -278,3 +279,6 @@ def test_configure_worker_observability():
             worker_name="test_worker", engine=MagicMock()
         )
         mock_conf_otel.assert_called_once()
+        mock_logger.info.assert_called_once_with(
+            "Worker %s observability configured", "test_worker"
+        )

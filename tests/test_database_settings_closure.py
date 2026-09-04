@@ -39,6 +39,42 @@ def test_cgroup_cpu_count_prefers_v2_quota_over_host_affinity(monkeypatch):
     assert database._cgroup_aware_cpu_count() == 2
 
 
+@pytest.mark.parametrize(
+    ("cpu_max", "expected"),
+    (
+        # A quota smaller than one period still grants one CPU; it must not
+        # fall through to the host affinity count.
+        ("1 100000\n", 1),
+        # A one-microsecond period is valid and exercises the upper cap.
+        ("100000 1\n", 32),
+        # CPU quotas are integer divisions.  Returning a float would leak into
+        # pool-size arithmetic and violate the helper's ``int`` contract.
+        ("150000 100000\n", 1),
+    ),
+)
+def test_cgroup_cpu_count_v2_preserves_positive_quota_integer_contract(
+    monkeypatch, cpu_max, expected
+):
+    def fake_open(path, *args, **kwargs):
+        if path == "/sys/fs/cgroup/cpu.max":
+            return io.StringIO(cpu_max)
+        raise FileNotFoundError(path)
+
+    monkeypatch.setattr(builtins, "open", fake_open)
+    # Make a quota fallback observably different from each valid quota result.
+    monkeypatch.setattr(
+        database.os,
+        "sched_getaffinity",
+        lambda _: set(range(4)),
+        raising=False,
+    )
+
+    result = database._cgroup_aware_cpu_count()
+
+    assert result == expected
+    assert isinstance(result, int)
+
+
 def test_cgroup_cpu_count_caps_large_v2_quota(monkeypatch):
     def fake_open(path, *args, **kwargs):
         if path == "/sys/fs/cgroup/cpu.max":
@@ -92,6 +128,26 @@ def test_cgroup_cpu_count_uses_positive_v1_quota(monkeypatch):
     monkeypatch.setattr(database.os, "sched_getaffinity", unavailable, raising=False)
     monkeypatch.setattr(builtins, "open", fake_open)
     assert database._cgroup_aware_cpu_count() == 4
+
+
+def test_cgroup_cpu_count_rejects_non_positive_v1_period(monkeypatch):
+    """A zero cgroup-v1 period must not produce a quota-derived pool size."""
+
+    def unavailable(_):
+        raise NotImplementedError
+
+    def fake_open(path, *args, **kwargs):
+        if path.endswith("cpu.cfs_quota_us"):
+            return io.StringIO("8")
+        if path.endswith("cpu.cfs_period_us"):
+            return io.StringIO("0")
+        raise FileNotFoundError(path)
+
+    monkeypatch.setattr(database.os, "sched_getaffinity", unavailable, raising=False)
+    monkeypatch.setattr(database.os, "cpu_count", lambda: 6)
+    monkeypatch.setattr(builtins, "open", fake_open)
+
+    assert database._cgroup_aware_cpu_count() == 6
 
 
 def test_cgroup_cpu_count_caps_large_quota(monkeypatch):

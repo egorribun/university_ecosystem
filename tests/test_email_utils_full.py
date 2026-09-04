@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import smtplib
 from email.message import EmailMessage
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from app.utils.email import (
@@ -66,6 +67,111 @@ def test_log_event_uses_module_logger_when_enabled(caplog):
         assert any("test.module.logger.path" in r.getMessage() for r in caplog.records)
     finally:
         email_mod.logger.disabled = original_disabled
+
+
+def test_log_event_preserves_redacted_payload_and_logging_contract(monkeypatch):
+    """The stdlib bridge keeps the event name, redacts fields, and preserves context."""
+    import app.utils.email as email_mod
+
+    module_logger = MagicMock()
+    module_logger.disabled = False
+    get_logger = MagicMock(return_value=module_logger)
+    monkeypatch.setattr(email_mod, "logger", module_logger)
+    monkeypatch.setattr(email_mod, "is_logger_enabled", lambda *_args: True)
+    real_logging = email_mod.logging
+
+    class LoggingProxy:
+        def getLogger(self, name=None):
+            return get_logger(name)
+
+        def __getattr__(self, name):
+            return getattr(real_logging, name)
+
+    monkeypatch.setattr(email_mod, "logging", LoggingProxy())
+
+    redactor = MagicMock()
+
+    def redact(_logger, _method_name, event):
+        event["email"] = "[REDACTED]"
+
+    redactor.side_effect = redact
+    monkeypatch.setattr(email_mod, "_redact_pii", redactor)
+
+    error = ValueError("boom")
+    _log_event(
+        logging.ERROR,
+        "email.delivery.failed",
+        extra={"request_id": "req-42", "email": "student@example.org"},
+        exc_info=error,
+    )
+
+    get_logger.assert_called_once_with(email_mod.__name__)
+    redactor.assert_called_once()
+    assert redactor.call_args.args[0] is module_logger
+    assert redactor.call_args.args[1] == "log"
+    assert redactor.call_args.args[2]["event"] == "email.delivery.failed"
+    module_logger.log.assert_called_once_with(
+        logging.ERROR,
+        "email.delivery.failed",
+        extra={"request_id": "req-42", "email": "[REDACTED]"},
+        exc_info=error,
+        stacklevel=3,
+    )
+
+
+def test_log_event_routing_handles_disabled_and_missing_flags(monkeypatch):
+    """Disabled or partially compatible loggers fall back to the root logger."""
+    import app.utils.email as email_mod
+
+    root_logger = MagicMock()
+    module_logger = SimpleNamespace(disabled=True, log=MagicMock())
+
+    def get_logger(name=None):
+        return module_logger if name == email_mod.__name__ else root_logger
+
+    monkeypatch.setattr(email_mod, "logger", module_logger)
+    monkeypatch.setattr(email_mod, "is_logger_enabled", lambda *_args: True)
+    real_logging = email_mod.logging
+
+    class LoggingProxy:
+        def getLogger(self, name=None):
+            return get_logger(name)
+
+        def __getattr__(self, name):
+            return getattr(real_logging, name)
+
+    monkeypatch.setattr(email_mod, "logging", LoggingProxy())
+    monkeypatch.setattr(email_mod, "_redact_pii", MagicMock())
+
+    _log_event(logging.WARNING, "disabled.logger")
+
+    root_logger.log.assert_called_once()
+    module_logger.log.assert_not_called()
+
+    # A logger supplied by an integration may not expose ``disabled`` at all;
+    # the documented default is enabled (False), so it should use the module
+    # target rather than unexpectedly dropping into the root logger.
+    missing_flag_logger = SimpleNamespace(log=MagicMock())
+    monkeypatch.setattr(email_mod, "logger", missing_flag_logger)
+    monkeypatch.setattr(
+        email_mod,
+        "logging",
+        LoggingProxy(),
+    )
+
+    # The proxy's module logger now returns the logger without a ``disabled``
+    # attribute, while unrelated pytest logging continues to use the stdlib.
+    monkeypatch.setattr(
+        email_mod.logging,
+        "getLogger",
+        lambda name=None: missing_flag_logger
+        if name == email_mod.__name__
+        else root_logger,
+    )
+
+    _log_event(logging.INFO, "missing.disabled.flag")
+
+    missing_flag_logger.log.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

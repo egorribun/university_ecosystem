@@ -1616,6 +1616,21 @@ def test_incremental_mutation_budget_matches_declared_gate() -> None:
     assert "grep '^app/core/tenant\\.py$'" not in job_text
 
 
+def test_mutmut_execution_disables_periodic_otel_exporter_thread() -> None:
+    """Mutation subprocesses must not register a fork-unsafe OTEL callback."""
+
+    workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    incremental = workflow["jobs"]["mutation-tests-incremental"]
+    assert incremental["env"]["OTEL_METRIC_EXPORT_INTERVAL"] == "inf"
+
+    # Keep the setting scoped to real mutation execution. Stats and universe
+    # producers still exercise the normal observability configuration.
+    for job_name in ("mutation-tests-stats", "mutation-tests-universe"):
+        assert "OTEL_METRIC_EXPORT_INTERVAL" not in workflow["jobs"][job_name].get(
+            "env", {}
+        )
+
+
 def test_mutation_jobs_never_persist_the_workflow_token() -> None:
     workflow = yaml.safe_load(CI_WORKFLOW_PATH.read_text(encoding="utf-8"))
 

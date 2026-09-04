@@ -3552,6 +3552,12 @@ jobs:
     timeout-minutes: 360
     env:
       OTEL_SDK_DISABLED: "true"
+      # mutmut forks test processes after the application has constructed
+      # metric readers. An infinite export interval keeps the mutation
+      # subprocesses deterministic without registering the SDK's periodic
+      # at-fork callback; normal stats/universe and observability jobs retain
+      # the default exporter behavior.
+      OTEL_METRIC_EXPORT_INTERVAL: "inf"
       REVOCATION_REDIS_URL: redis://localhost:6380/0
     permissions:
       contents: read

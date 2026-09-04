@@ -150,6 +150,56 @@ def test_configure_logging_builds_json_and_console_processor_chains():
         )
 
 
+def test_configure_logging_json_preserves_serializer_and_foreign_chain():
+    """JSON rendering and stdlib bridging keep their security processors."""
+    handlers = [
+        (handler, handler.formatter) for handler in logging.getLogger().handlers
+    ]
+    try:
+        with (
+            patch.object(logging_mod, "_configured", False),
+            patch("structlog.configure"),
+            patch("logging.basicConfig"),
+            patch("structlog.processors.JSONRenderer") as renderer,
+            patch("structlog.stdlib.ProcessorFormatter") as formatter,
+        ):
+            logging_mod.configure_logging(json_output=True)
+
+        renderer.assert_called_once_with(serializer=logging_mod._orjson_serializer)
+        formatter_kwargs = formatter.call_args.kwargs
+        foreign_pre_chain = formatter_kwargs["foreign_pre_chain"]
+        assert structlog.processors.format_exc_info in foreign_pre_chain
+    finally:
+        for handler, previous_formatter in handlers:
+            handler.setFormatter(previous_formatter)
+
+
+def test_configure_logging_console_preserves_safe_traceback_formatter():
+    """Console mode must retain the no-locals traceback formatter."""
+    handlers = [
+        (handler, handler.formatter) for handler in logging.getLogger().handlers
+    ]
+    try:
+        with (
+            patch.object(logging_mod, "_configured", False),
+            patch("structlog.configure"),
+            patch("logging.basicConfig"),
+            patch("structlog.dev.RichTracebackFormatter") as traceback_formatter,
+            patch("structlog.dev.ConsoleRenderer") as renderer,
+            patch("structlog.stdlib.ProcessorFormatter"),
+        ):
+            logging_mod.configure_logging(json_output=False)
+
+        traceback_formatter.assert_called_once_with(show_locals=False)
+        renderer.assert_called_once_with(
+            colors=True,
+            exception_formatter=traceback_formatter.return_value,
+        )
+    finally:
+        for handler, previous_formatter in handlers:
+            handler.setFormatter(previous_formatter)
+
+
 def test_is_logger_enabled_preserves_false_results_for_both_logger_apis():
     structlog_logger = MagicMock()
     structlog_logger.is_enabled_for.return_value = False

@@ -518,10 +518,18 @@ async def clear_redis_between_tests(mock_global_redis):
     """
     await mock_global_redis.flushall()
     from app.core.ratelimit import clear_delay_memory, clear_memory_state
+    from app.core.ratelimit.circuit_breaker import get_circuit_breaker
 
     clear_memory_state()
     clear_delay_memory()
+    # The rate-limit circuit breaker is a process-wide singleton.  Mutation
+    # clean-test unions run many otherwise independent tests in one process;
+    # an earlier Redis-failure scenario must not force later memory/Redis
+    # contract tests through the stricter fallback path.
+    rate_limit_breaker = get_circuit_breaker()
+    rate_limit_breaker.reset_for_testing()
     yield
+    rate_limit_breaker.reset_for_testing()
 
 
 @pytest.fixture(autouse=True)

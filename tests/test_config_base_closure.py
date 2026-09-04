@@ -48,6 +48,16 @@ def test_resolve_env_file_warns_for_explicit_example_copy(
         assert base._resolve_env_file(tmp_path) == candidate
 
     assert "identical" in caplog.text
+    messages = [
+        str(getattr(record, "msg", ""))
+        + " "
+        + str(getattr(record, "msg", {}).get("message", ""))
+        if isinstance(getattr(record, "msg", None), dict)
+        else record.getMessage()
+        for record in caplog.records
+    ]
+    assert any(str(candidate) in message for message in messages)
+    assert any(str(example) in message for message in messages)
 
 
 def test_resolve_env_file_accepts_explicit_candidate_with_real_values(
@@ -122,6 +132,16 @@ def test_resolve_env_file_warns_for_default_env_copy(
         assert base._resolve_env_file(tmp_path) == candidate
 
     assert "identical" in caplog.text
+    messages = [
+        str(getattr(record, "msg", ""))
+        + " "
+        + str(getattr(record, "msg", {}).get("message", ""))
+        if isinstance(getattr(record, "msg", None), dict)
+        else record.getMessage()
+        for record in caplog.records
+    ]
+    assert any(str(candidate) in message for message in messages)
+    assert any(str(example) in message for message in messages)
 
 
 def test_resolve_env_file_accepts_default_env_with_real_values(
