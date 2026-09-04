@@ -39,9 +39,31 @@ def test_cgroup_cpu_count_prefers_v2_quota_over_host_affinity(monkeypatch):
     assert database._cgroup_aware_cpu_count() == 2
 
 
+def test_cgroup_cpu_count_caps_large_v2_quota(monkeypatch):
+    def fake_open(path, *args, **kwargs):
+        if path == "/sys/fs/cgroup/cpu.max":
+            return io.StringIO("6400000 100000\n")
+        raise FileNotFoundError(path)
+
+    monkeypatch.setattr(builtins, "open", fake_open)
+    monkeypatch.setattr(
+        database.os,
+        "sched_getaffinity",
+        lambda _: set(range(64)),
+        raising=False,
+    )
+    assert database._cgroup_aware_cpu_count() == 32
+
+
 @pytest.mark.parametrize(
     "cpu_max",
-    ("max 100000\n", "malformed\n", "100000 nope\n", "0 100000\n"),
+    (
+        "max 100000\n",
+        "malformed\n",
+        "100000 nope\n",
+        "0 100000\n",
+        "100000 0\n",
+    ),
 )
 def test_cgroup_cpu_count_v2_unlimited_or_invalid_uses_affinity(monkeypatch, cpu_max):
     def fake_open(path, *args, **kwargs):
