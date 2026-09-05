@@ -1276,6 +1276,7 @@ jobs:
       - e2e-wasm-build
     permissions:
       contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:
@@ -1303,6 +1304,7 @@ jobs:
       - e2e-wasm-build
     permissions:
       contents: read
+      actions: read
     strategy:
       fail-fast: false
       matrix:

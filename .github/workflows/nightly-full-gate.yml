@@ -1026,6 +1026,7 @@ jobs:
     uses: ./.github/workflows/reusable-e2e-tests.yml
     permissions:
       contents: read
+      actions: read
     with:
       node-version: "24"
       python-version: "3.14"
