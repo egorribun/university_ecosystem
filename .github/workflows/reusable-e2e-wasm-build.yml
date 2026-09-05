@@ -110,7 +110,15 @@ jobs:
           for package_root in package_roots:
               if not package_root.is_dir() or package_root.is_symlink():
                   raise SystemExit(f"missing or symlinked WASM package: {package_root}")
-              for path in sorted(package_root.rglob("*")):
+              # ``Path.rglob`` keeps the relative spelling of a relative root.
+              # Resolve the validated package root before walking so every
+              # path can be safely compared with the absolute checkout root.
+              absolute_package_root = package_root.resolve()
+              if not absolute_package_root.is_relative_to(root):
+                  raise SystemExit(
+                      f"WASM package escapes checkout root: {package_root}"
+                  )
+              for path in sorted(absolute_package_root.rglob("*")):
                   if path.is_symlink():
                       raise SystemExit(f"symlink in WASM package: {path}")
                   if path.is_file():

@@ -76,6 +76,13 @@ def test_shared_e2e_wasm_producer_is_immutable_and_fail_closed() -> None:
         "WASM_INVENTORY.json",
     ):
         assert required in publish_run
+    # Inventory paths must be absolute before they are made relative to the
+    # absolute checkout root.  GitHub runners execute this snippet from the
+    # repository root, but ``Path.rglob`` preserves the relative spelling of
+    # ``Path('rust-crypto/pkg')``; calling ``relative_to(root)`` directly then
+    # raises ValueError and aborts every producer job.
+    assert "package_root.resolve()" in publish_run
+    assert "absolute_package_root.rglob" in publish_run
     assert set(
         (
             "EXPECTED_SHA",
